@@ -300,7 +300,7 @@
       document.querySelectorAll('[data-ofh-minutes]').forEach(function (b) { b.classList.toggle('on', b === btn); });
       load();
     });
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
-    else load();
+    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
 })();

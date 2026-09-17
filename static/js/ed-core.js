@@ -284,6 +284,10 @@
     if (!scp.hidden) reflectScope();
   }
 
+  // Audit finding #4 (2026-09-16): suppresses syncAttrs()'s ed:view dispatch during init()'s
+  // own cold-boot pass -- see that dispatch's own comment for why.
+  var _booting = true;
+
   function syncAttrs() {
     app.setAttribute('data-workspace', state.workspace);
     app.setAttribute('data-subview', state.subview);
@@ -299,7 +303,17 @@
     showMainView();
     reflectScopeVisibility();
     renderRailChildren();
-    document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
+    // Audit finding #4 (2026-09-16): init() below calls syncAttrs() AND setTicker() during
+    // the SAME cold-boot pass, each dispatching its own event (ed:view / ed:ticker) into
+    // every view module's now-live listener (see init()'s own comment on why this dispatch
+    // used to reach nobody). Every module treats ed:view and ed:ticker as equally sufficient
+    // triggers for a full reload, so firing BOTH during boot -- when neither the view nor the
+    // ticker has actually CHANGED from anything, there is simply no prior state yet -- causes
+    // a genuine duplicate hydration this fix exists to eliminate. `_booting` suppresses this
+    // dispatch only during that one initial pass; setTicker's OWN ed:ticker dispatch (below,
+    // unconditional) is the single signal every module hydrates from at cold start, and
+    // ed:view fires normally, exactly once per call, on every REAL subsequent view change.
+    if (!_booting) document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
   }
 
   function setWorkspace(ws) {
@@ -638,8 +652,15 @@
   function paintQuote(q) {
     var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
     if (px) {
-      px.textContent = q.spot_disp || fmt(q.spot);
+      var state = q.spotState || q.spot_state || '';
+      if (state === 'unavailable' || (q.spot == null && !q.spot_disp)) {
+        px.textContent = 'UNAVAILABLE';
+      } else {
+        px.textContent = q.spot_disp || fmt(q.spot);
+        if (state === 'stale') px.textContent += ' STALE';
+      }
       var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
+      if (state) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + state;
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
     if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
@@ -664,10 +685,13 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called only
   // from pollWatchlistQuotes. A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct) {
+  function setWlRow(sym, spot, chgPct, spotState) {
     var key = (sym || '').replace('$', '');
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]') || document.querySelector('.wl-px[data-wlpx="' + key + '"]');
-    if (pe) pe.textContent = (spot != null) ? fmt(spot) : '—';
+    if (pe) {
+      if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
+      else pe.textContent = fmt(spot) + (spotState === 'stale' ? ' STALE' : '');
+    }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]') || document.querySelector('.wl-chg[data-wlchg="' + key + '"]');
     if (ce) {
       if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
@@ -725,7 +749,8 @@
         var quotes = data.quotes || {};
         list.forEach(function (sym) {
           var row = quotes[sym];
-          setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null);
+          setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null,
+            row ? row.spot_state : 'unavailable');
         });
       })
       .catch(function () {
@@ -761,10 +786,13 @@
       // the payload's own real freshness verdict (build_l1_context: stale when the L0
       // spot is missing or unusable) — use it, not "an event arrived", to label LIVE vs
       // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
-      var stale = !!p.l1_stale;
+      var stale = !!p.l1_stale || p.spot_state === 'stale';
+      var unavailable = p.spot_state === 'unavailable' || p.spot == null;
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
-        feedCls: stale ? 'stale' : '', feedLabel: stale ? 'STALE' : 'LIVE',
+        spotState: p.spot_state,
+        feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
+        feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'STALE' : 'LIVE'),
         ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
     });
     // Independent-review finding (2026-09-12): the heatmap only ever refetched on the 3s/12s
@@ -772,12 +800,21 @@
     // manually dispatches that event proves rendering after delivery, not TIMELY delivery.
     // This reuses the ALREADY-OPEN SSE connection (no new daemon/connection) that server.py's
     // refresh_gamma_surface_from_stream now pushes a `gamma_surface_seq` event on the instant
-    // it publishes -- the browser reacts to the PUSH instead of waiting out the slow poll. The
-    // poll remains as the fallback path (SSE down/stalled), unchanged.
+    // it publishes -- the browser reacts to the PUSH instead of waiting out the slow poll.
+    //
+    // Audit finding #3 (2026-09-16), FIXED: this used to dispatch the SAME generic `ed:refresh`
+    // event the 12s poll fires -- every one of the ~11 modules that listen to `ed:refresh` for
+    // their OWN, largely UNRELATED endpoint (Chain, Alerts, Trade Desk, Liquidity Map, Order
+    // Flow, Flow, Levels) refetched on EVERY single streamed gamma tick, not just the ones that
+    // actually consume gamma-surface-derived data. A gamma-surface change now dispatches its
+    // own, narrower `ed:gamma-push` event, consumed only by the modules that actually read
+    // gamma-surface/per-strike data (ed-gamma.js, ed-gamma-panels.js's GEX-by-strike panel,
+    // ed-gamma-chart.js) -- the 12s poll's `ed:refresh{slow}` remains the ONLY thing that
+    // drives every other module's slower, session-cadence refresh.
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
       if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
-      document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true, pushed: true } }));
+      document.dispatchEvent(new CustomEvent('ed:gamma-push', { detail: { surfaceSeq: env.surface_seq } }));
     });
     _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
   }
@@ -836,7 +873,10 @@
         var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
         paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
           chgPct: d.chg_pct, quoteIngestion: d.quote_ingestion,
-          feedCls: healthy ? '' : 'warn', feedLabel: healthy ? 'LIVE' : 'DEGRADED', ageLabel: age });
+          spotState: d.spot_state,
+          feedCls: d.spot_state === 'unavailable' ? 'stale' : (healthy ? '' : 'warn'),
+          feedLabel: d.spot_state === 'unavailable' ? 'UNAVAILABLE' : (d.spot_state === 'stale' ? 'STALE' : (healthy ? 'LIVE' : 'DEGRADED')),
+          ageLabel: age });
       })
       .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });
   }
@@ -940,12 +980,29 @@
     });
     // initial ticker + header
     setTicker(state.ticker);
+    _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
     tickClock(); setInterval(tickClock, 1000);
     setInterval(liveTick, 3000);   // single scheduler drives header (fast) + gamma (slow)
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  // Audit finding #4 (2026-09-16): every view module (ed-gamma.js, ed-gamma-panels.js, etc.)
+  // loads with `defer`, and per the HTML spec a deferred script executes AFTER parsing
+  // finishes, while `document.readyState` is already 'interactive' -- so `init()` used to
+  // ALWAYS take this file's own "not loading, run immediately" branch, firing `ed:ticker`/
+  // `ed:view` (setTicker/syncAttrs, below) before any LATER script tag had even executed,
+  // let alone registered its own `ed:ticker`/`ed:view` listener. Every view module's initial
+  // render therefore came from its OWN separate bottom-of-file self-call
+  // (`else load()`/`else loadAll()`), never from this dispatch -- two independent hydration
+  // mechanisms that happened to avoid colliding only because of that ordering coincidence,
+  // not because either one was designed to be the sole owner. `init()` now ALWAYS waits for
+  // `DOMContentLoaded`, which the HTML spec guarantees fires strictly after every deferred
+  // script has executed -- making this dispatch the one hydration trigger every module can
+  // reliably listen for, and letting each module's own self-call be removed (see those
+  // files) rather than duplicate it. `readyState === 'complete'` is the one case where
+  // DOMContentLoaded has already fired (a very late/dynamic script insertion) and must run
+  // immediately instead of waiting for an event that will never come again.
+  if (document.readyState === 'complete') init();
+  else document.addEventListener('DOMContentLoaded', init);
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,

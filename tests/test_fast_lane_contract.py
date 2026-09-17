@@ -61,7 +61,7 @@ def test_fast_quote_auth_failure_serves_carried_forward_plane(monkeypatch):
         "ask": 749.76,
         "spot_disp": "749.73",
         "quote_ingestion": "schwab_streaming_level_one",
-        "quote_source_detail": {"carried_forward": False},
+        "quote_source_detail": {"spot": "LAST_PRICE", "carried_forward": False},
     }
     monkeypatch.setattr(srv._lmp, "get_quote", lambda _t: dict(stale))
     monkeypatch.setattr(

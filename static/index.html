@@ -498,6 +498,10 @@
      without the number itself ever being withheld, narrowed, or replaced with '—'. */
   .heat .hcell.state-partial{box-shadow:inset 0 0 0 1px var(--ed-warn)}
   .heat .hcell.state-stale,.heat .hcell.state-unavailable{box-shadow:inset 0 0 0 1px var(--ed-stale)}
+  /* Audit finding #6 (2026-09-16): a vendor-REJECTED contract is worse than merely
+     unconfirmed -- it failed visibly, in the same border-tint language as the states
+     above, not lumped into the same dashed-stale treatment as "not yet requested". */
+  .heat .hcell.state-rejected{box-shadow:inset 0 0 0 1px var(--ed-alert)}
 
   /* main-panel view switching (Heatmap / Chart / Levels / Multi-Map) */
   .mvwrap{padding:0;position:relative}

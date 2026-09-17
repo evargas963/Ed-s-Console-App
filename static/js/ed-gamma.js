@@ -607,10 +607,19 @@
         // ts_recv/age_sec the API already carries, never fabricated here.
         var snapshotAge = cellState && (cellState.call || cellState.put)
           ? Math.max((cellState.call || {}).age_sec || 0, (cellState.put || {}).age_sec || 0) : null;
+        // Audit finding #6 (2026-09-16): a vendor-rejected contract must fail its cell
+        // VISIBLY, not read as indistinguishable from "simply never requested yet" --
+        // rejected_reason is the vendor's own error, carried on whichever leg was refused.
+        var rejectedReason = liveState === 'rejected'
+          ? ((cellState.call || {}).rejected_reason || (cellState.put || {}).rejected_reason) : null;
         var stateTitle = liveState === 'live' ? ''
           : liveState === 'partial' ? 'PARTIAL: only one side of this cell is confirmed live-streamed; the value shown is still the full computed figure'
           : liveState === 'stale' ? ('SNAPSHOT: not currently confirmed live-streamed' +
               (snapshotAge != null ? ' (last confirmed ' + Math.round(snapshotAge) + 's ago)' : '') + ' -- most recent valid computed value shown')
+          : liveState === 'pending' ? 'PENDING: contract requested from the vendor, awaiting first confirmed tick -- most recent valid computed value shown'
+          : liveState === 'daemon_unavailable' ? 'DAEMON UNAVAILABLE: the capture daemon is unreachable, so this request cannot even be attempted yet -- most recent valid computed value shown'
+          : liveState === 'rejected' ? ('REJECTED: the vendor refused this contract\'s subscription' +
+              (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
           : '';
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
@@ -841,13 +850,60 @@
     if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
     updateScope(surface);
   }
+  // Independent-review finding (2026-09-16, follow-up mandate): server.py's stream_coverage
+  // is computed over the WHOLE canonical surface (every strike x every expiry with a real
+  // contract identity), never the Auto/Wider/All-windowed subset the operator is actually
+  // LOOKING AT (rowSel.idx x viewCols, decided entirely client-side and never sent to the
+  // server) -- so a "LIVE" verdict keyed on it answers "is the canonical surface fully
+  // live", not the mandate's own "does every VISIBLE cell meet the requirement". Computed
+  // here instead, directly from the DOM this exact render just painted (`data-cell-state`,
+  // stamped on every rendered .hcell by the SAME per-cell state the server already
+  // disclosed) -- an exact match to what is on screen by construction, never a second,
+  // independently-derived windowing calculation that could drift from the real one.
+  function _visibleCellCoverage() {
+    var host = document.getElementById('heatBody');
+    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, unavailable: 0 };
+    var cells = host ? host.querySelectorAll('.hcell[data-cell-state]') : [];
+    for (var i = 0; i < cells.length; i++) {
+      var st = cells[i].getAttribute('data-cell-state');
+      if (Object.prototype.hasOwnProperty.call(counts, st)) counts[st]++;
+    }
+    var total = cells.length;
+    return {
+      total_visible_cells: total,
+      live: counts.live, partial: counts.partial, stale: counts.stale,
+      pending: counts.pending, daemon_unavailable: counts.daemon_unavailable,
+      rejected: counts.rejected, unavailable: counts.unavailable,
+      live_pct: total ? Math.round(1000 * counts.live / total) / 10 : 0,
+      meets_live_requirement: total > 0 && counts.live === total,
+    };
+  }
+
   function updateScope(surface) {   // lightweight: only the age/scope tag in the panel header
     // Independent review, 2026-09-16 (CORRECTED): see the identical fix in the sibling render
     // function above -- Number(surface.spot) fabricates a real, finite 0 when surface.spot is
     // explicitly null, which then passes the isFinite(spot) guard below as if it were real.
     var strikes = surface.strikes || [], exps = surface.expirations || [],
         spot = surface.spot == null ? NaN : Number(surface.spot);
-    var srcLabel = surface.source === 'terrain_live_cache' ? (surface.complete === false ? 'LIVE·window' : 'LIVE')
+    // Audit finding #6 (2026-09-16), FIXED, THEN CORRECTED (follow-up mandate): "LIVE" used
+    // to mean only "surface.source == terrain_live_cache" -- true for nearly every live-
+    // pathway surface with NO per-cell coverage requirement at all. Gating it on coverage
+    // over the WHOLE canonical surface (the first fix) was itself still wrong scope -- see
+    // _visibleCellCoverage's own comment. The word "LIVE" (in ANY form, including a
+    // percentage-qualified one) never renders below 100% visible coverage: a partial cover
+    // reads "STREAMING·NN%", a wholly unconfirmed one "WARMING" -- neither contains the
+    // literal word LIVE, so a viewer scanning for that one word can never mistake a partial
+    // reading for a complete one.
+    var cov = _visibleCellCoverage();
+    var liveWord;
+    if (cov.total_visible_cells === 0) {
+      liveWord = 'WARMING';                       // no visible cell has confirmed identity yet
+    } else if (cov.meets_live_requirement) {
+      liveWord = 'LIVE';
+    } else {
+      liveWord = 'STREAMING·' + cov.live_pct.toFixed(0) + '%';
+    }
+    var srcLabel = surface.source === 'terrain_live_cache' ? (liveWord + (surface.complete === false ? '·window' : ''))
       : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
     var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
     var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
@@ -857,7 +913,15 @@
       var shownCols = document.querySelectorAll('#heatBody .heat thead .hexp').length;
       var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
       el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
-      el.title = (surface.coverage && surface.coverage.note) || '';
+      // Exact coverage breakdown on hover -- counts and percentages for live/partial/
+      // stale/pending/daemon-unavailable/rejected/unavailable of the VISIBLE cells
+      // specifically (not the canonical surface's own, possibly much larger, cell count).
+      el.title = cov.total_visible_cells
+        ? ('visible coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
+           ' stale, ' + cov.pending + ' pending, ' + cov.daemon_unavailable + ' daemon-unavailable, ' +
+           cov.rejected + ' rejected, ' + cov.unavailable + ' unavailable of ' +
+           cov.total_visible_cells + ' visible cells (' + cov.live_pct + '% live)')
+        : ((surface.coverage && surface.coverage.note) || '');
     }
   }
   // ROOT-CAUSE FIX (2026-09-13, controlled reproduction confirmed): server.py pushes a
@@ -937,6 +1001,10 @@
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    // Audit finding #3 (2026-09-16): the heatmap's own timely-update path -- a streamed
+    // gamma-surface change now arrives on its own narrow event (see ed-core.js), not the
+    // generic ed:refresh broadcast every other module also listens to.
+    document.addEventListener('ed:gamma-push', function () { load(); });
     document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });   // A: cross-panel sync
     document.addEventListener('ed:theme', function () {   // recolour: force a rebuild (revision is unchanged but the palette changed)
       var h = document.getElementById('heatBody'); if (h && _lastSurface) { _lastRevision = null; renderSurface(h, _lastSurface); }
@@ -956,8 +1024,10 @@
       var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
       if (_lastSurface) renderSurface(h, _lastSurface); else load();
     });
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
-    else load();
+    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+    // deferred ed:ticker/ed:view dispatch (see its own init() comment) -- this module's
+    // former self-call here duplicated that ownership and only avoided a double-fetch by
+    // the coincidence that ed-core's dispatch fired too early to reach this listener.
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);

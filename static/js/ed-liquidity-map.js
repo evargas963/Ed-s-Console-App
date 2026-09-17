@@ -215,7 +215,7 @@
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
-    else load();
+    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
 })();

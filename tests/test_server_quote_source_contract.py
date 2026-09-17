@@ -20,7 +20,7 @@ class _Resp:
         return {
             "SPY": {
                 "quote": {
-                    "lastPrice": None,
+                    "lastPrice": 501.25,
                     "mark": 501.25,
                     "bidPrice": 501.2,
                     "askPrice": 501.3,
@@ -46,7 +46,7 @@ def test_rest_fast_quote_payload_exposes_field_sources(monkeypatch):
     assert payload["quote_time_source"] == "schwab_rest_quote"
     assert isinstance(payload["server_received_ts"], float)
     assert payload["quote_source_detail"] == {
-        "spot": "mark",
+        "spot": "LAST_PRICE",
         "bid": "bidPrice",
         "ask": "askPrice",
         "mid": "schwab_quote_mark",
@@ -81,7 +81,7 @@ def test_rest_fast_quote_spot_fail_closed_not_zero(monkeypatch):
 
     assert payload["spot"] is None
     assert payload.get("spot_source") is None
-    assert payload["quote_source_detail"]["spot"] == "unavailable_missing_last_and_mark"
+    assert payload["quote_source_detail"]["spot"] == "unavailable_missing_last_price"
 
 
 def test_a_primed_quote_memo_cannot_satisfy_the_fail_closed_path(monkeypatch):
@@ -114,7 +114,7 @@ def test_a_primed_quote_memo_cannot_satisfy_the_fail_closed_path(monkeypatch):
     assert payload["spot"] is None, (
         "a stale memoised success satisfied the fail-closed path — the assertion measures "
         "the cache, not the behaviour (RC-314)")
-    assert payload["quote_source_detail"]["spot"] == "unavailable_missing_last_and_mark"
+    assert payload["quote_source_detail"]["spot"] == "unavailable_missing_last_price"
 
 
 def test_rest_fast_quote_source_has_no_silent_zero_spot_fallback():

@@ -285,7 +285,8 @@ def test_watchlist_quotes_reuses_a_fresh_plane_row_with_no_vendor_call(monkeypat
 
     tk = "ZZWLPLANE"
     L._by_ticker[tk] = {"spot": 812.5, "spot_disp": "812.50", "chg_pct": 0.42,
-                         "exchange_quote_ts": 1_800_000_000.0, "server_received_ts": _t.time()}
+                         "exchange_quote_ts": 1_800_000_000.0, "server_received_ts": _t.time(),
+                         "quote_source_detail": {"spot": "LAST_PRICE"}}
     called = {"n": 0}
 
     def _boom(*_a, **_k):

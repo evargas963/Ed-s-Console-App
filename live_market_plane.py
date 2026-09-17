@@ -104,14 +104,30 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         pspot = prev.get("spot") if prev else None
         pbid = prev.get("bid") if prev else None
         pask = prev.get("ask") if prev else None
+        prev_spot_source = None
+        if prev:
+            _prev_qsd = prev.get("quote_source_detail")
+            if isinstance(_prev_qsd, dict):
+                prev_spot_source = _prev_qsd.get("spot")
 
-    spot_f = last or mark
-    spot_source = "LAST_PRICE" if last is not None else ("MARK" if mark is not None else None)
+    # Current live spot is LAST_PRICE only. MARK is the vendor mid and may update
+    # quote_mid; it must never become spot. A bid/ask-only tick keeps the prior
+    # LAST_PRICE rather than inventing a substitute.
+    if last is not None:
+        spot_f = last
+        spot_source = "LAST_PRICE"
+    elif (
+        prev is not None
+        and pspot is not None
+        and pspot > 0
+        and prev_spot_source == "LAST_PRICE"
+    ):
+        spot_f = pspot
+        spot_source = "LAST_PRICE"
+    else:
+        return False
     bid_source = "BID_PRICE" if bid is not None else None
     ask_source = "ASK_PRICE" if ask is not None else None
-
-    if spot_f is None or spot_f <= 0:
-        return False
 
     # exchange_quote_ts (set below) carries the EXCHANGE quote clock — Schwab
     # QUOTE_TIME_MILLIS in epoch seconds — NOT a server clock. The genuine server wall
@@ -245,23 +261,27 @@ def get_quote(ticker: str) -> Optional[dict[str, Any]]:
 PLANE_QUOTE_STALE_SEC: float = 30.0
 
 
+def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
+    """True only when this plane row's spot is a native Schwab LAST_PRICE."""
+    if not row or not isinstance(row, dict):
+        return False
+    spot = _positive_float(row.get("spot"))
+    if spot is None:
+        return False
+    qsd = row.get("quote_source_detail")
+    if not isinstance(qsd, dict):
+        return False
+    return qsd.get("spot") == "LAST_PRICE"
+
+
 def quote_is_fresh(q: dict[str, Any]) -> bool:
     """Is this plane row trustworthy as a LIVE value right now.
 
-    A row explicitly marked carried_forward (W3-C4/RC-121 — Schwab auth degraded, this is
-    the best available and everyone downstream is already seeing it under that label) is
-    exempt from the age check: it has already declared its own untrustworthiness via
-    quote_source_detail, which this function's callers carry through unchanged. Blocking it
-    here would not make it fresher — it would just make Tier C/L1 silently revert to a
-    DIFFERENT, unlabelled number while the header kept showing the labelled degraded one,
-    recreating the exact divergence this whole freshness gate exists to prevent.
-
-    Everything else must prove its own age: a missing server_received_ts cannot be assumed
-    fresh (fail closed, same as every other absence in this codebase).
+    Carried-forward / auth-degraded rows keep their LAST_PRICE number and their
+    degradation flags, but they are not LIVE: treating them as fresh made every
+    consumer paint an old print as current. Age is the only live gate. A missing
+    server_received_ts cannot be assumed fresh (fail closed).
     """
-    qsd = q.get("quote_source_detail")
-    if isinstance(qsd, dict) and qsd.get("carried_forward"):
-        return True
     received = _safe_float(q.get("server_received_ts"))
     if received is None:
         return False
@@ -291,12 +311,15 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     # (a genuinely-absent percent-change must overwrite a stale one, never leave it standing)
     # is a different, already-correct property this fix does not touch.
     fresh = quote_is_fresh(q)
+    last_price_spot = plane_spot_is_last_price(q)
+    # Provenance always travels, even on a stale or non-LAST_PRICE row — the
+    # flags are how a consumer knows not to treat the number as live.
+    if "quote_source_detail" in q and q["quote_source_detail"] is not None:
+        ms_dict["quote_source_detail"] = q["quote_source_detail"]
     if fresh:
-        for k in (
-            "spot",
+        overlay_keys = [
             "bid",
             "ask",
-            "spot_disp",
             "bid_disp",
             "ask_disp",
             "quote_mid",
@@ -306,12 +329,10 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
             "spread_source",
             "spread_pts_source",
             "quote_ingestion",
-            # W3-C4 / RC-121: the provenance DETAIL travels with the quote it describes.
-            # Omitting it here meant Tier C payloads carried Layer A's spot while STRIPPING
-            # its degradation flags (carried_forward / schwab_auth_degraded) — the exact
-            # fields that say whether the number can be trusted.
-            "quote_source_detail",
-        ):
+        ]
+        if last_price_spot:
+            overlay_keys = ["spot", "spot_disp", *overlay_keys]
+        for k in overlay_keys:
             if k in q and q[k] is not None:
                 ms_dict[k] = q[k]
     # chg_pct is deliberately OUTSIDE the sparse-overlay loop above: that loop only ever
@@ -331,7 +352,7 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     # Claiming the plane as authority when its PRICE fields were just withheld for staleness
     # would misattribute whatever spot ms_dict actually stands on (resolve_spot's, untouched
     # above) to this plane instead.
-    if fresh:
+    if fresh and last_price_spot:
         ms_dict["_quote_authority"] = "live_market_plane"
 
 
@@ -357,12 +378,13 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
     # own already-correct spot, set at build time by _project_l1, stands untouched), chg_pct
     # keeps its pre-existing unconditional-overwrite contract below unchanged.
     fresh = quote_is_fresh(q)
+    last_price_spot = plane_spot_is_last_price(q)
+    if "quote_source_detail" in q and q["quote_source_detail"] is not None:
+        l1_payload["quote_source_detail"] = q["quote_source_detail"]
     if fresh:
-        for k in (
-            "spot",
+        overlay_keys = [
             "bid",
             "ask",
-            "spot_disp",
             "bid_disp",
             "ask_disp",
             "quote_mid",
@@ -372,8 +394,10 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
             "spread_source",
             "spread_pts_source",
             "quote_ingestion",
-            "quote_source_detail",   # W3-C4 / RC-121: same carriage as merge_into_state
-        ):
+        ]
+        if last_price_spot:
+            overlay_keys = ["spot", "spot_disp", *overlay_keys]
+        for k in overlay_keys:
             if k in q and q[k] is not None:
                 l1_payload[k] = q[k]
     # chg_pct OUTSIDE the loop, unconditional overwrite when present — see merge_into_state's
@@ -386,7 +410,7 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
     fts = q.get("exchange_quote_ts")
     if fts is not None:
         l1_payload["_live_plane_fast_ts"] = fts
-    if fresh:
+    if fresh and last_price_spot:
         l1_payload["_quote_authority"] = "live_market_plane"
         l1_payload["l1_live_overlay_applied"] = True
 

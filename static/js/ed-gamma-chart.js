@@ -42,6 +42,11 @@
   var _view = null;            // {lo, hi} once the operator has zoomed/panned; null = auto-fit
   var _pin = null;             // {vx, vy} pinned crosshair in viewBox space, or null
   var _lastCtx = null;         // {bars, win, spot, terrain} from the last successful render
+  var _lastRaw = null;         // {barsData, strikesData, terrain} raw endpoint responses --
+                               // lets a gamma-surface-only push (see loadGammaPushOnly below)
+                               // re-render with fresh GEX-by-strike data without re-fetching
+                               // the two endpoints (bars1m/terrain) that push carries no new
+                               // information for.
   var _viewTicker = null, _viewMode = null;   // domain resets only on a genuine context change
   // Deep-research finding (operator directive, 2026-09-14): real TradingView gives its
   // SECONDARY axis the same independent drag-to-rescale the primary axis gets (there, time is
@@ -278,6 +283,50 @@
   function okJson(r){ if(!r.ok) throw new Error(r.status); return r.json(); }
   function nullp(){ return null; }
 
+  // Audit finding #3 (2026-09-16, follow-up): a streamed gamma-surface push carries no new
+  // information for /api/bars1m (price history) -- that alone stays on the 12s/view-entry
+  // cadence. /api/terrain/strikes (the GEX-by-strike profile this chart's 'profile' mode
+  // plots) IS gamma-surface-derived and always was.
+  //
+  // CONFIRMED REGRESSION (2026-09-17, live-UI field audit): /api/terrain was ALSO excluded
+  // here on the reasoning "a streamed OPTION tick carries no new terrain/spot information" --
+  // true when this was written, but FALSE now that ed:gamma-push also fires on a canonical
+  // SPOT-ONLY tick (refresh_gamma_surface_from_spot_tick, server.py) with no option tick at
+  // all. /api/terrain's own spot field (`terrain.spot`, read by render() below as THE spot
+  // this chart's line/label draws) was left pointing at `_lastRaw.terrain` -- the STALE
+  // object from the last full 12s-cadence load() -- so the header's spot could move on every
+  // tick while this chart's own spot line sat frozen for up to 12s. The exact same class of
+  // "header moves, this panel does not" defect the heatmap fix (2026-09-17) already closed,
+  // now closed here too: /api/terrain is refetched on every push, alongside /api/terrain/
+  // strikes (both via the shared, cross-module deduped fetch -- l1_sse_guards.js:
+  // sharedFetchJson -- so a simultaneous panels.js loadGbs() reading /api/terrain/strikes
+  // for the SAME ticker on the SAME push still collapses to one real network call each).
+  // /api/bars1m stays excluded -- a streamed tick, spot or option, cannot change PRIOR
+  // minute bars.
+  function loadGammaPushOnlyImpl(tk, _signal) {
+    var host = document.getElementById('chartBody');
+    if (!host || !stillChart(tk)) return;
+    var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
+      return fetch(u, { cache: 'no-store' }).then(okJson);
+    };
+    return Promise.all([
+      sharedFetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk)).catch(nullp),
+      sharedFetch('/api/terrain?ticker=' + encodeURIComponent(tk)).catch(nullp),
+    ]).then(function (res) {
+      if (!stillChart(tk)) return;
+      var strikesData = res[0], terrain = res[1];
+      if (strikesData == null && terrain == null) return;
+      var barsData = _lastRaw ? _lastRaw.barsData : null;
+      if (strikesData == null) strikesData = _lastRaw ? _lastRaw.strikesData : null;
+      if (terrain == null) terrain = _lastRaw ? _lastRaw.terrain : null;
+      render(host, barsData, strikesData, terrain);
+    });
+  }
+  var _gammaPushLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGammaPushOnlyImpl(ticker(), signal); })
+    : { trigger: function () { loadGammaPushOnlyImpl(ticker()); }, reset: function () {} };
+  function loadGammaPushOnly() { _gammaPushLoader.trigger(ticker()); }
+
   function render(host, barsData, strikesData, terrain) {
     var bars = (barsData && barsData.bars) || [];
     var srows = (strikesData && strikesData.today && strikesData.today.all) || [];
@@ -357,6 +406,7 @@
       // axis visibly narrowed the window but the note never appeared. renderInto re-evaluates
       // it fresh on every call instead, the same way it already does for `lo`/`hi` under _view.
     _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend };
+    _lastRaw = { barsData: barsData, strikesData: strikesData, terrain: terrain };
     renderInto(host, bars, win, spot, terrain, legend);
   }
   // Repaints from already-fetched data at a possibly operator-overridden [lo,hi] domain -- used
@@ -602,8 +652,15 @@
   document.addEventListener('ed:ticker', load);
   document.addEventListener('ed:scope', load);   // #3: re-window on a scope change
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+  // Audit finding #3 (2026-09-16, follow-up): only /api/terrain/strikes (this widget's
+  // GEX-by-strike profile) is gamma-surface-derived -- react to the narrow push with the
+  // SCOPED reload (loadGammaPushOnlyImpl, above), never the full load() the 12s poll uses,
+  // which would also refetch /api/bars1m and /api/terrain for no reason on every streamed tick.
+  document.addEventListener('ed:gamma-push', loadGammaPushOnly);
   document.addEventListener('ed:strike', function () { applyChartHighlight(); });   // A: cross-panel sync
   document.addEventListener('ed:theme', load);   // re-render SVG for the new theme's tokens
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { bindModes(); load(); });
-  else { bindModes(); load(); }
+  // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+  // deferred ed:ticker/ed:view dispatch (see that file's init() comment) -- bindModes() is
+  // pure DOM/button wiring with no data dependency, so it still runs immediately here.
+  bindModes();
 })();

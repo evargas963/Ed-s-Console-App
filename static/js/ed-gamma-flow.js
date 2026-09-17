@@ -211,7 +211,7 @@
     // no fight for the slot). A fresh explicit selection is then required to observe again.
     document.addEventListener('ed:ticker', function () { if (window.EdStream && window.EdStream.clearDesired) window.EdStream.clearDesired(); load(); });
     document.addEventListener('ed:expiry', function () { if (window.EdStream && window.EdStream.clearDesired) window.EdStream.clearDesired(); load(); });
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
-    else load();
+    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
+    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
 })();

@@ -50,15 +50,15 @@ def test_extended_trade_is_accepted_when_regular_quote_is_empty() -> None:
     assert last == 744.54, "an extended-session trade is still a trade"
 
 
-def test_close_is_the_last_resort_only() -> None:
-    """With no trade in any session the close may be used — nothing newer exists."""
+def test_close_is_never_current_last() -> None:
+    """A session close is a different quantity. It must not become last-traded."""
     last, _pct = _extract_quote("SPY", _payload(
         "SPY",
         quote={},
         extended={},
         regular={"regularMarketLastPrice": 743.29},
     ))
-    assert last == 743.29
+    assert last is None
 
 
 def test_zero_does_not_fall_through_the_ladder() -> None:

@@ -334,6 +334,59 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
         assert server._terrain_cache[TK]["_contracts_rest"] == _CONTRACTS
 
 
+def test_a_second_tick_with_a_moved_spot_forces_a_full_recompute_not_a_stale_splice(monkeypatch):
+    """Independent-review finding (2026-09-16, follow-up mandate): net_gex_1pct/dex/vanna
+    are functions of spot -- a streamed tick that also carries a genuinely NEW resolved spot
+    must not be spliced into the prior surface's OTHER expiries/cells, which were priced at
+    the OLD spot. Proven end-to-end through refresh_gamma_surface_from_stream's own wiring
+    (not just the pure incremental functions in test_gamma_surface_projection_v1.py): a spy
+    on project_gamma_surface_update_expiry proves it is never even attempted with a stale
+    prior_spot once the second tick's resolve_spot disagrees with the first tick's own
+    already-cached spot, and the full recompute this forces reflects the NEW spot exactly."""
+    _put_rest_baseline(computed_ts_utc=time.time() - 10.0)
+    spot1 = _SPOT
+    spot2 = _SPOT + 5.0   # a genuinely different resolved spot for the second tick
+    now1 = time.time()
+    streamed1 = {"gamma": 0.5, "gamma_ts_recv": now1}
+    monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks",
+                        lambda sym: streamed1 if sym == _CONTRACT_SYMBOL else None)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (spot1, "stub", time.time()))
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now1) == "ok"
+    with server._terrain_cache_lock:
+        cached_after_1 = server._terrain_cache[TK]["_gamma_surface"]
+    assert cached_after_1["spot"] == spot1
+
+    real_update_expiry = server.project_gamma_surface_update_expiry
+    calls = []
+
+    def _spy_update_expiry(prior_surface, chain, spot, target_expiry, *, prior_spot):
+        calls.append({"spot": spot, "prior_spot": prior_spot})
+        return real_update_expiry(prior_surface, chain, spot, target_expiry, prior_spot=prior_spot)
+    monkeypatch.setattr(server, "project_gamma_surface_update_expiry", _spy_update_expiry)
+
+    now2 = time.time()
+    streamed2 = {"gamma": 0.6, "gamma_ts_recv": now2}
+    monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks",
+                        lambda sym: streamed2 if sym == _CONTRACT_SYMBOL else None)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (spot2, "stub", time.time()))
+    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now2) == "ok"
+
+    assert calls, "the incremental splice must still be ATTEMPTED (and correctly refused), not skipped"
+    assert calls[0]["spot"] == spot2 and calls[0]["prior_spot"] == spot1, (
+        "the splice attempt must be told the truth about both spots, not a value already "
+        "reconciled to look safe"
+    )
+    with server._terrain_cache_lock:
+        cached_after_2 = server._terrain_cache[TK]["_gamma_surface"]
+    assert cached_after_2["spot"] == spot2
+    # The full recompute this forces must reflect the NEW spot exactly -- an independent
+    # full computation at spot2 on the same overlaid contracts, never a value left over
+    # from spot1.
+    overlaid2, _n2 = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed2})
+    expected_at_spot2 = _backfilled(project_gamma_surface(overlaid2, spot2))
+    assert _cells_match_ignoring_vanna_drift(cached_after_2["cells"], expected_at_spot2["cells"])
+
+
 def test_stream_overlay_symbols_names_only_the_contract_actually_freshened_not_every_desired_one(monkeypatch):
     """A SIXTH independent review (2026-09-13), REPRODUCED: the heatmap's 'observed' demand
     state used to promote to 'observed' off `stream_overlay_contracts > 0` alone -- a single
@@ -437,9 +490,10 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": now})
 
     orig_project = server.project_gamma_surface
+    orig_update_expiry = server.project_gamma_surface_update_expiry
     fresh_marker = {"expirations": [], "strikes": [], "cells": [], "marker": "FRESH_REST_GENERATION"}
 
-    def racing_project(contracts_arg, spot_arg):
+    def _simulate_race():
         # Simulate a REAL REST refresh landing WHILE this function computes, publishing a
         # newer generation before this function gets a chance to write its own (older) one.
         with server._terrain_cache_lock:
@@ -449,13 +503,28 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
                 "_gamma_surface": fresh_marker,
                 "computed_ts_utc": time.time(),
             }
+
+    def racing_project(contracts_arg, spot_arg):
+        _simulate_race()
         return orig_project(contracts_arg, spot_arg)
 
+    def racing_update_expiry(prior_surface_arg, contracts_arg, spot_arg, expiry_arg, *, prior_spot):
+        # 2026-09-16 incremental-update path (audit finding #2): a prior _gamma_surface is
+        # already cached from _put_rest_baseline, so refresh_gamma_surface_from_stream now
+        # takes THIS path instead of the full project_gamma_surface -- the race must be
+        # simulated here too, or the CAS-race invariant this test exists to prove would go
+        # completely untested the instant the incremental path is available.
+        _simulate_race()
+        return orig_update_expiry(prior_surface_arg, contracts_arg, spot_arg, expiry_arg,
+                                  prior_spot=prior_spot)
+
     monkeypatch.setattr(server, "project_gamma_surface", racing_project)
+    monkeypatch.setattr(server, "project_gamma_surface_update_expiry", racing_update_expiry)
     try:
         status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
     finally:
         server.project_gamma_surface = orig_project
+        server.project_gamma_surface_update_expiry = orig_update_expiry
     assert status == "stale_baseline_superseded"
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]
@@ -472,6 +541,12 @@ def test_never_raises_on_an_internal_error(monkeypatch):
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": time.time()})
     monkeypatch.setattr(server, "project_gamma_surface",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    # 2026-09-16 incremental-update path (audit finding #2): a prior _gamma_surface is
+    # already cached from _put_rest_baseline, so the code under test reaches
+    # project_gamma_surface_update_expiry, not project_gamma_surface directly -- both
+    # must independently prove the never-raises guarantee.
+    monkeypatch.setattr(server, "project_gamma_surface_update_expiry",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, time.time())
     assert status.startswith("error:")

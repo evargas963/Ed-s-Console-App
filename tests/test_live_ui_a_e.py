@@ -23,4 +23,7 @@ def test_transport_liveness_badge_survives_in_ed_core():
     assert "getElementById('hFeedDot')" in core
     assert "getElementById('hFeed')" in core
     assert "getElementById('hAge')" in core
-    assert "feedLabel: healthy ? 'LIVE' : 'DEGRADED'" in core
+    assert "feedLabel:" in core
+    assert "'LIVE'" in core
+    assert "'STALE'" in core
+    assert "'UNAVAILABLE'" in core

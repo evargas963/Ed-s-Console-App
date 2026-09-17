@@ -713,11 +713,17 @@ def _spot_from_quote(ticker: str) -> tuple[float | None, float | None]:
     # None on every call, so the authority silently fell through to a stale stored
     # snapshot and the card kept disagreeing with the header. Locked by
     # tests/test_spot_authority_v1.py::test_quote_parser_key_contract.
+    if parsed.get("spot_source") != "lastPrice":
+        log.warning("resolve_spot: quote leg has no lastPrice for %s "
+                    "(last=%s mark=%s regular_close=%s) — current spot is unavailable",
+                    ticker, parsed.get("last"), parsed.get("mark"),
+                    parsed.get("regular_close"))
+        return None, None
     spot = parsed.get("spot")
     if spot and spot > 0:
         return float(spot), parsed.get("trade_time")
-    log.warning("resolve_spot: quote leg produced no usable spot for %s "
-                "(last=%s mark=%s) - falling back to a lower-precedence source",
+    log.warning("resolve_spot: quote leg produced no lastPrice spot for %s "
+                "(last=%s mark=%s) — current spot is unavailable",
                 ticker, parsed.get("last"), parsed.get("mark"))
     return None, None
 
@@ -810,15 +816,16 @@ def _install_signal_handlers() -> None:
 
 
 def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
-    """Last persisted snapshot leg. Explicitly stale — lowest precedence."""
+    """As-of snapshots.spot (persisted lastPrice). Not current live spot."""
     import sqlite3 as _sq
 
     try:
         con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=30.0)
     except Exception as e:
-        log.debug("resolve_spot stored leg failed for %s: %s", ticker, e, exc_info=True)
+        log.debug("stored as-of spot read failed for %s: %s", ticker, e, exc_info=True)
         return None, None
     row = None
+    tk = ticker_storage_key(ticker) or ticker
     try:
         con.row_factory = _sq.Row
         # `timeframe` MUST be named: idx_snap_ticker_tf_ts is (ticker, timeframe, ts_utc),
@@ -830,7 +837,7 @@ def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
             row = con.execute(
                 "SELECT spot, ts_utc FROM snapshots "
                 "WHERE ticker=? AND timeframe=? AND spot IS NOT NULL "
-                "ORDER BY ts_utc DESC LIMIT 1", (ticker, tf)).fetchone()
+                "ORDER BY ts_utc DESC LIMIT 1", (tk, tf)).fetchone()
             if row:
                 break
     except Exception:
@@ -843,81 +850,80 @@ def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
 def resolve_spot(ticker: str, *, chain_json: dict | None = None,
                  allow_stored: bool = True,
                  quote_node: dict | None = None) -> tuple[float | None, str, float | None]:
-    """THE single spot authority. Returns (spot, source, as_of_ts_utc).
+    """THE single current-spot authority. Returns (spot, source, as_of_ts_utc).
 
-    RC-14: four independent spot sources existed and each consumer picked one, so the
-    terrain card and the console header displayed different prices for the same ticker at
-    the same instant (743.29 vs 742.49). Every consumer now calls this, and every payload
-    carries the source, so a divergence is impossible to hide.
+    Fresh native Schwab LAST_PRICE is the sole producer of current live spot.
+    Transports (streaming plane, REST lastPrice) may differ; the value, provenance,
+    and generation may not. MARK, midpoint, chain underlying, regular close, stored
+    snapshot, cache, and bar close never become current spot.
 
-    Operator-reproduced defect (2026-09-14): that fix only unified the REST-polling world.
-    live_market_plane (Layer A) is a SEPARATE, independently-governed live quote store fed
-    primarily by the Schwab streaming websocket, and the header/analytics stack (Tier A/B/C
-    -- GET /api/live/state, GET /api/analytics/light, _fetch_state) reads it directly,
-    bypassing this function entirely. Terrain/Gamma Chart's inputs go through this function
-    and never saw a streaming tick. Two disciplined producers that never checked each other
-    is exactly RC-14's shape one layer up. The plane is now this function's own
-    highest-precedence source (freshness-gated below), so header and terrain converge on
-    the SAME number instead of two parallel hierarchies that happened to usually agree.
+    `allow_stored` and `chain_json` remain on the signature so existing callers do
+    not grow a second selector. They are ignored for current live spot: a missing
+    or stale LAST_PRICE is None / a stale LAST_PRICE, never a substitute.
 
-    Precedence is by freshness and by matching what the operator SEES:
-      0. the live streaming plane (live_market_plane) -- the freshest real trade this
-         process has seen, when recent enough to trust
-      1. live Schwab quote (lastPrice -> mark) -- the console header's REST fallback
-      2. the chain's own underlying node -- as fresh as the chain, no extra call
-      3. the last stored snapshot -- explicitly stale, only when nothing better exists
+    Precedence:
+      0. fresh streaming-plane LAST_PRICE
+      1. REST quote/extended lastPrice
+      2. stale streaming-plane LAST_PRICE (still LAST_PRICE; callers label STALE)
+      else None / "none" (UNAVAILABLE)
     """
-    tk = (ticker or "").upper().strip()
+    _ = chain_json, allow_stored
+    tk = ticker_storage_key(ticker) or (ticker or "").upper().strip()
     if not tk:
         return None, "none", None
 
-    # 0. the streaming plane. Freshness-gated against the SAME boundary this file already
-    #    uses for "how old is too old for a quote" (_CARD_FRESHNESS_V1_QUOTE_STALE_SEC) --
-    #    a plane row this stale is no longer meaningfully "streaming"; falling through to
-    #    the REST leg below is more honest than serving a stopped stream as live.
     try:
         _plane_row = _lmp.get_quote(tk)
     except Exception as e:
         log.debug("resolve_spot plane leg failed for %s: %s", tk, e, exc_info=True)
         _plane_row = None
-    if _plane_row:
-        _plane_spot = _plane_row.get("spot")
-        # quote_is_fresh is the SAME freshness contract live_market_plane's own
-        # merge_into_state/apply_l1_live_quote_overlay use — one function, not a duplicated
-        # age computation per file (the "or 0.0" this replaced was flagged, correctly, by
-        # this repo's own silent-zero governance gate: a missing timestamp defaulting to the
-        # epoch is exactly the pattern that gate exists to catch).
-        if _plane_spot and _plane_spot > 0 and _lmp.quote_is_fresh(_plane_row):
-            return float(_plane_spot), SPOT_SOURCE_PLANE, _plane_row.get("exchange_quote_ts")
+    _plane_last = (
+        _plane_row
+        if _plane_row and _lmp.plane_spot_is_last_price(_plane_row)
+        else None
+    )
 
-    # 1. the only source that is a REAL TRADE. When the caller already fetched the quote
-    #    (the hot _fetch_state path), reuse that node instead of a second round-trip — the
-    #    precedence + fallbacks below are then IDENTICAL to every other consumer, so the
-    #    analytics card can no longer derive a different spot than the header / terrain.
+    if _plane_last and _lmp.quote_is_fresh(_plane_last):
+        return (
+            float(_plane_last["spot"]),
+            SPOT_SOURCE_PLANE,
+            _plane_last.get("exchange_quote_ts"),
+        )
+
     if quote_node is not None:
         _pq = _parse_quote_node_session_fields(quote_node)
         _sp = _pq.get("spot")
-        if _sp and _sp > 0:
+        if _pq.get("spot_source") == "lastPrice" and _sp and _sp > 0:
             return float(_sp), SPOT_SOURCE_QUOTE, _pq.get("trade_time")
     else:
         spot, ts = _spot_from_quote(tk)
         if spot is not None:
             return spot, SPOT_SOURCE_QUOTE, ts
 
-    # 2. stored snapshot BEFORE the chain: a persisted snapshot was itself captured from
-    #    quote.lastPrice, so it is a stale TRADE. The chain underlying is a session CLOSE
-    #    masquerading as "last", which is worse than a slightly old real price.
-    if allow_stored:
-        spot, ts = _spot_from_stored(tk)
-        if spot is not None:
-            return spot, SPOT_SOURCE_SNAPSHOT, ts
-
-    # 3. last resort, explicitly labelled as a CLOSE so no caller can mistake it for spot
-    if chain_json is not None:
-        spot = chain_underlying_spot(chain_json)
-        if spot and spot > 0:
-            return float(spot), SPOT_SOURCE_CHAIN, None
+    if _plane_last:
+        return (
+            float(_plane_last["spot"]),
+            SPOT_SOURCE_PLANE,
+            _plane_last.get("exchange_quote_ts"),
+        )
     return None, "none", None
+
+
+def current_spot_state(source: str, ticker: str) -> str:
+    """Label resolve_spot's answer: live, stale, or unavailable. Not a second selector."""
+    if source in (None, "none"):
+        return "unavailable"
+    if source == SPOT_SOURCE_QUOTE:
+        return "live"
+    if source == SPOT_SOURCE_PLANE:
+        try:
+            row = _lmp.get_quote(ticker)
+        except Exception:
+            return "stale"
+        if row and _lmp.plane_spot_is_last_price(row) and _lmp.quote_is_fresh(row):
+            return "live"
+        return "stale"
+    return "unavailable"
 
 
 def spot_is_a_close(source: str) -> bool:
@@ -3269,15 +3275,8 @@ def _evict_old_expiry_entries(ticker: str, keep_expiry: Optional[str]) -> None:
 
 
 def _plane_fast_quote_has_spot(row: dict | None) -> bool:
-    if not row or not isinstance(row, dict):
-        return False
-    spot = row.get("spot")
-    if spot is None:
-        return False
-    try:
-        return float(spot) > 0
-    except (TypeError, ValueError):
-        return False
+    """True only when the plane row carries a LAST_PRICE current spot."""
+    return _lmp.plane_spot_is_last_price(row)
 
 
 def _stale_fast_quote_carried_forward(prev: dict, tkr: str) -> dict:
@@ -3458,7 +3457,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         "server_received_ts": server_received_ts,
         "quote_ingestion": quote_ingestion,
         "quote_source_detail": {
-            "spot": spot_source or "unavailable_missing_last_and_mark",
+            "spot": "LAST_PRICE" if spot_source == "lastPrice" else "unavailable_missing_last_price",
             "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
             "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
@@ -3482,18 +3481,18 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
     prev = _lmp.get_quote(tkr)
 
     if auth == "streaming":
-        try:
-            from app.options.order_flow.streaming import streaming_l1_cache_usable
-        except ImportError:
-            streaming_l1_cache_usable = None  # type: ignore[misc, assignment]
         if (
-            streaming_l1_cache_usable is not None
-            and prev
+            prev
             and prev.get("quote_ingestion") == "schwab_streaming_level_one"
-            and streaming_l1_cache_usable(tkr)
+            and _lmp.plane_spot_is_last_price(prev)
+            and _lmp.quote_is_fresh(prev)
         ):
             return dict(prev)
-        if prev and prev.get("quote_ingestion") == "rest_bootstrap_pending_stream":
+        if (
+            prev
+            and prev.get("quote_ingestion") == "rest_bootstrap_pending_stream"
+            and _lmp.plane_spot_is_last_price(prev)
+        ):
             return dict(prev)
         if prev and prev.get("quote_ingestion") == "schwab_streaming_level_one":
             return _record_rest_fast_quote_with_auth_fallback(
@@ -4987,10 +4986,9 @@ def _base_money_path_capture_one(ticker: str):
         node = q_json.get(t) or q_json.get(ticker) or {}
         session_q = _parse_quote_node_session_fields(node)
         parsed_last = session_q.get("last")
-        parsed_mark = session_q.get("mark")
-        spot_f = parsed_last if parsed_last and parsed_last > 0 else (
-            parsed_mark if parsed_mark and parsed_mark > 0 else None
-        )
+        # Persist lastPrice only as an as-of historical print. MARK / close must
+        # never enter snapshots.spot — that column is mixed-semantics if they do.
+        spot_f = parsed_last if parsed_last and parsed_last > 0 else None
         if spot_f is None or float(spot_f) <= 0:
             return BaseCaptureAttempt(t, "error:no_spot", time.monotonic() - t0)
 
@@ -5676,8 +5674,7 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     last = _safe_float_quote(_q.get("lastPrice"))
     if last is None or last <= 0:
         last = _safe_float_quote(_ext.get("lastPrice"))
-    if last is None or last <= 0:
-        last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
+    regular_close = _safe_float_quote(_reg.get("regularMarketLastPrice"))
     mark = _safe_float_quote(_q.get("mark"))
     if mark is None or mark <= 0:
         mark = _safe_float_quote(_ext.get("mark"))
@@ -5704,8 +5701,10 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     if trade_time is None:
         trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
     trade_time = _epoch_seconds(trade_time)
-    spot_source = "lastPrice" if last and last > 0 else ("mark" if mark and mark > 0 else None)
-    spot = last if spot_source == "lastPrice" else (mark if spot_source == "mark" else None)
+    # Current live spot is quote/extended lastPrice only. regularMarketLastPrice is
+    # a session close; mark is the vendor mid. Neither may become spot.
+    spot_source = "lastPrice" if last and last > 0 else None
+    spot = last if spot_source == "lastPrice" else None
     try:
         spot_f = float(spot) if spot and float(spot) > 0 else None
     except (TypeError, ValueError):
@@ -5736,6 +5735,7 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     pct_chg = extract_pct_change(_q, _reg, last)
     return {
         "last": last,
+        "regular_close": regular_close,
         "mark": mark,
         "chg_pct": pct_chg,
         "bid": bid,
@@ -6048,6 +6048,26 @@ def _l2_refresh_in_progress_for_l1(ticker: str, expiry: Optional[str]) -> bool:
     return False
 
 
+def _l1_row_with_current_spot(tkr: str, row: dict | None) -> dict:
+    """Stamp resolve_spot's LAST_PRICE answer onto the L1 input row. One faucet."""
+    _l1_spot, _l1_spot_source, _l1_spot_ts = resolve_spot(tkr)
+    out = dict(row) if row else {}
+    if _l1_spot is not None:
+        out["spot"] = _l1_spot
+        out["spot_disp"] = f"{_l1_spot:.2f}"
+        out["spot_state"] = current_spot_state(_l1_spot_source, tkr)
+        out["quote_source_detail"] = dict(out.get("quote_source_detail") or {})
+        out["quote_source_detail"]["spot"] = (
+            "LAST_PRICE" if _l1_spot_source in (SPOT_SOURCE_PLANE, SPOT_SOURCE_QUOTE)
+            else _l1_spot_source
+        )
+    else:
+        out["spot"] = None
+        out["spot_disp"] = "UNAVAILABLE"
+        out["spot_state"] = "unavailable"
+    return out
+
+
 def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") -> dict:
     """
     L1 near-real-time context projection — delegates to planes.context_light.
@@ -6076,14 +6096,7 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     # least had a resolve_spot-derived value underneath before merge_into_state clobbered it.
     # bid/ask/fast_generation_id are left as-is (a narrower, pre-existing staleness question
     # this fix does not expand scope to cover); only the SPOT figure is corrected.
-    if row and not _lmp.quote_is_fresh(row):
-        _l1_spot, _l1_spot_source, _l1_spot_ts = resolve_spot(tkr)
-        if _l1_spot is not None:
-            row = dict(row)
-            row["spot"] = _l1_spot
-            row["spot_disp"] = f"{_l1_spot:.2f}"
-            row["quote_source_detail"] = dict(row.get("quote_source_detail") or {})
-            row["quote_source_detail"]["spot"] = _l1_spot_source
+    row = _l1_row_with_current_spot(tkr, row)
     ent = _resolve_l2_cache_entry_for_l1(tkr, expiry)
     l1_eval_wall_ts = time.time()
     inflight = _l2_refresh_in_progress_for_l1(tkr, expiry)
@@ -6197,7 +6210,7 @@ def _l1_maybe_rebuild_quote_scope(
 
     tkr = ticker.upper().strip()
     key = (tkr, expiry if expiry is not None else "__auto__")
-    row = _lmp.get_quote(tkr)
+    row = _l1_row_with_current_spot(tkr, _lmp.get_quote(tkr))
     ent = _resolve_l2_cache_entry_for_l1(tkr, expiry)
     l1_eval_wall_ts = time.time()
     cached = _l1_snapshot_cache.get(key)
@@ -6467,22 +6480,21 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     try:
         client = get_client()
     except HTTPException as he:
-        if not _plane_fast_quote_has_spot(row):
-            if _schwab_auth_http_unavailable(he):
-                return {
-                    "_tier": "A_live",
-                    "ticker": tkr,
-                    "selected_exp": expiry,
-                    "session_label": sess,
-                    "state_error": "token_invalid",
-                    "error": "token_invalid",
-                    "state_error_detail": str(he.detail or ""),
-                    "remediation": "Run: python reauth_schwab.py --manual",
-                    "_server_build_ts": time.time(),
-                    "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
-                    "_endpoint": "/api/live/state",
-                }
-            raise
+        if _schwab_auth_http_unavailable(he) and not _plane_fast_quote_has_spot(row):
+            return {
+                "_tier": "A_live",
+                "ticker": tkr,
+                "selected_exp": expiry,
+                "session_label": sess,
+                "state_error": "token_invalid",
+                "error": "token_invalid",
+                "state_error_detail": str(he.detail or ""),
+                "remediation": "Run: python reauth_schwab.py --manual",
+                "_server_build_ts": time.time(),
+                "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
+                "_endpoint": "/api/live/state",
+            }
+        client = None
     # Operator-reproduced defect (2026-09-14, spot 360 audit): this gate previously trusted
     # ANY plane row with a spot, however old — if the streaming websocket silently stalled,
     # the header kept painting that stopped price as live forever, with no fallback, while
@@ -6547,7 +6559,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     "server_received_ts": server_received_ts,
                     "fast_generation_id": _lmp.next_fast_generation(tkr),
                     "quote_source_detail": {
-                        "spot": spot_source,
+                        "spot": "LAST_PRICE" if spot_source == "lastPrice" else None,
                         "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
                         "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
                         "mid": "unavailable_missing_mark_and_bid_ask",
@@ -6643,6 +6655,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "session_label": sess,
         "spot": spot_f,
         "spot_source": _rs_source,
+        "spot_state": current_spot_state(_rs_source, tkr),
         "spot_as_of_ts_utc": _rs_ts,
         "chg_pct": chg_pct,
         "bid": bid,
@@ -10347,7 +10360,18 @@ async def _app_lifespan(app):
         # longer registered; _sse_background_loop owns viewed-key cadence.
         # The quote lane (live_market_plane → live_quote SSE) still updates
         # per tick via record_from_level_one_equity.
-        start_order_flow_stream(None, None, DEFAULT_TICKER)
+        #
+        # CONFIRMED ROOT DEFECT (2026-09-17): `on_tick_callback` was this function's own
+        # already-built hook for "an equity tick just landed" — symmetric to
+        # set_streamed_greeks_hook below for option ticks — and it was simply never wired
+        # to anything. The header's spot moved on every streamed tick via the line above;
+        # the gamma heatmap's dollar cells (ALL spot-dependent) did not, because nothing
+        # downstream of a spot-only tick ever re-ran the exposure math — only an option
+        # contract's own tick (the hook below) or the ~60s REST cycle did. Wired to the
+        # coalesced dispatcher so a fast-ticking spot cannot pile up unbounded background
+        # recomputes; see refresh_gamma_surface_from_spot_tick's own docstring.
+        start_order_flow_stream(None, None, DEFAULT_TICKER,
+                                on_tick_callback=_dispatch_spot_gamma_refresh)
         # RC-UI-2: freshen a cached gamma surface the instant its active option
         # contract's stream carries new GAMMA/DELTA/OPEN_INTEREST, instead of waiting
         # for the next ~60s wide-chain REST cycle. See refresh_gamma_surface_from_stream's
@@ -12417,17 +12441,161 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _per_strike_view_from_contracts(contracts: list, spot: float) -> dict:
+def _contract_expiry_str(ct: dict) -> str:
+    return str((ct or {}).get("expirationDate") or "")[:10]
+
+
+def _per_strike_exposures_by_expiry(contracts: list, spot: float) -> "dict[str, dict]":
+    """Partition `contracts` by their own `expirationDate` and run the SAME canonical faucet
+    (compute_exposures_by_strike) once per partition, returning {expiry: exposures_dict}.
+
+    2026-09-16 audit follow-up: this is the building block for an incremental per-strike
+    update, mirroring project_gamma_surface_update_expiry's per-expiry splice for the
+    strike x expiry surface. `_merge_all_expiry_exposures` sums these back into the exact
+    same total compute_exposures_by_strike(contracts, ...) would produce in one call —
+    because every field that function accumulates is a plain per-contract sum, or an OR of
+    a per-contract boolean (see its own body: call_oi/call_delta/call_gamma/.../put_* are
+    running sums; has_oi/has_valid_gamma are booleans; net_gamma/net_delta/net_dex_dollars/
+    net_gex_1pct/total_oi_dollars are linear combinations of those sums) — never an average,
+    rank, or anything else that would make summing per-expiry partials wrong."""
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    by_exp: "dict[str, list]" = {}
+    for ct in contracts or []:
+        if not isinstance(ct, dict):
+            continue
+        by_exp.setdefault(_contract_expiry_str(ct), []).append(ct)
+    out: "dict[str, dict]" = {}
+    for exp, subset in by_exp.items():
+        exposures, _diag = _cebs(subset, spot=spot, require_oi=True)
+        out[exp] = exposures
+    return out
+
+
+def _merge_strike_exposure_bucket(a: dict, b: dict) -> dict:
+    """Additively merge two per-strike exposure buckets from DIFFERENT expiries (see
+    `_per_strike_exposures_by_expiry`'s docstring for why plain add/OR reproduces the
+    single-call result exactly). Generic over field names, not a hardcoded list, so a field
+    compute_exposures_by_strike adds later merges correctly as long as it keeps the same
+    additive-or-boolean-or-sparse-None shape every existing field already has.
+
+    Two field shapes need special handling beyond plain `+`: `has_oi`/`has_valid_gamma` are
+    booleans (OR, not add), and `call_oi`/`put_oi`/`call_volume`/`put_volume` use `None` —
+    not `0.0` — as their sparse "no contract at this strike/expiry contributed this field"
+    sentinel (see `_strike_bucket`'s own initializer). `None + None -> None` (still nothing
+    contributed anywhere), `None + X -> X` (one side had it, the other didn't -- exactly
+    `_strike_bucket`'s own `prev if prev is not None else ...` accumulation rule, applied to
+    merging two already-summed partials instead of one raw value at a time)."""
+    out = dict(a)
+    for k, v in b.items():
+        if k not in out:
+            out[k] = v
+            continue
+        cur = out[k]
+        if isinstance(v, bool) or isinstance(cur, bool):
+            out[k] = bool(cur) or bool(v)
+        elif cur is None:
+            out[k] = v
+        elif v is None:
+            out[k] = cur
+        else:
+            out[k] = cur + v
+    return out
+
+
+def _merge_all_expiry_exposures(by_expiry: "dict[str, dict]") -> dict:
+    merged: dict = {}
+    for exposures in by_expiry.values():
+        for strike, bucket in exposures.items():
+            merged[strike] = (_merge_strike_exposure_bucket(merged[strike], bucket)
+                              if strike in merged else dict(bucket))
+    return merged
+
+
+def _per_strike_view_from_contracts(contracts: list, spot: float,
+                                    by_expiry_out: "dict | None" = None) -> dict:
     """The exact {all, near, far} shape /api/terrain/strikes serves, computed directly from
     `contracts` via the SAME reusable, pure functions terrain_engine.compute_terrain already
     calls internally (compute_exposures_by_strike -> _per_strike_scopes) — not a second
     formula, just called directly so a caller that already has an OVERLAID contract list (and
     does not want to pay for the rest of compute_terrain's unrelated fields: pin, walls,
-    regime, confidence) can get a consistent per-strike view from it."""
-    from math_exposure_core import compute_exposures_by_strike as _cebs
+    regime, confidence) can get a consistent per-strike view from it.
+
+    The 'all' exposures are now built by partitioning `contracts` per expiry and merging
+    (`_per_strike_exposures_by_expiry` / `_merge_all_expiry_exposures`) instead of one call
+    over the whole list — numerically IDENTICAL (see those functions' docstrings), but this
+    lets a caller pass `by_expiry_out` (a dict this function fills in-place) to capture the
+    per-expiry breakdown for a LATER incremental update (`_per_strike_view_update_expiry`)
+    without a second full pass. 'near'/'far' (DTE-scoped chips) are unchanged — still one
+    full-chain pass each inside `_per_strike_scopes` — that cost is paid on this (the
+    REST-cadence) path only, never on the eager per-tick path; see
+    `_per_strike_view_update_expiry`'s own docstring for why those two chips are carried
+    over rather than recomputed on every streamed tick."""
     from terrain_engine import _per_strike_scopes
-    exposures, _diag = _cebs(contracts, spot=spot, require_oi=True)
+    by_expiry = _per_strike_exposures_by_expiry(contracts, spot)
+    if by_expiry_out is not None:
+        by_expiry_out.clear()
+        by_expiry_out.update(by_expiry)
+    exposures = _merge_all_expiry_exposures(by_expiry)
     return _per_strike_scopes(exposures, contracts, spot)
+
+
+def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
+                                   prior_view: "dict | None", overlaid: list, spot: float,
+                                   affected_expiries: "list[str]", *,
+                                   prior_spot: "float | None") -> "tuple[dict, dict] | None":
+    """Incrementally update the per-strike 'all' view for ONLY the expiries a streamed tick
+    actually touched, reusing every OTHER expiry's already-computed contribution from
+    `prior_by_expiry` (2026-09-16 audit follow-up — see `_per_strike_exposures_by_expiry`'s
+    docstring for the additive-merge proof this relies on). Returns
+    `(new_view, new_by_expiry_cache)`, or None when an incremental update cannot be proven
+    safe (no cache to update from, the tick's own contracts carry no resolvable expiry, or
+    spot has moved — see below) — the caller falls back to
+    `_per_strike_view_from_contracts`'s full recompute exactly like
+    `project_gamma_surface_update_expiry`'s own fallback contract.
+
+    Independent-review finding (2026-09-16, follow-up mandate): every field this view
+    reports (net_gex_1pct and the raw exposures the 'all' rows are built from) is a
+    function of spot, for EVERY expiry, not only the touched one — the identical hazard
+    `project_gamma_surface_update_expiry` guards against, and the identical fix: `spot`
+    must be IDENTICAL to `prior_spot` (the spot `prior_by_expiry`/`prior_view` were
+    themselves computed against) or this returns None, forcing a full, fresh-spot
+    recompute of every expiry rather than merging a fresh slice for one expiry with
+    stale-spot contributions cached from every other.
+
+    Scope, disclosed: only the 'all' aggregate (the one /api/terrain/strikes' primary GEX-
+    by-strike panel and the heatmap's own per-cell backfill actually read on a streamed
+    tick) is recomputed here. 'near'/'far' (the <=7DTE / >7DTE chips) are CARRIED OVER
+    unchanged from `prior_view` — recomputing them incrementally would require the same
+    per-expiry decomposition AGAIN split a second way (by DTE, not by expiry identity),
+    which is a real, separable piece of work with its own edge cases (a contract crossing
+    the 7-DTE boundary as calendar time passes) — deferred rather than risked here. Those
+    two chips are refreshed at the normal REST cadence (`_terrain_refresh_one`), same as
+    the expirations list, walls, and regime already are; only the primary aggregate gets
+    the eager, per-tick, incremental treatment the operator's mandate targets."""
+    if not prior_by_expiry or not affected_expiries:
+        return None
+    if prior_spot is None or float(prior_spot) != float(spot):
+        return None
+    from terrain_engine import _per_strike_rows
+    new_by_expiry = dict(prior_by_expiry)
+    for exp in affected_expiries:
+        exp_contracts = [ct for ct in overlaid if isinstance(ct, dict)
+                         and _contract_expiry_str(ct) == exp]
+        if not exp_contracts:
+            return None   # nothing to recompute this expiry's contribution from -- unsafe
+        try:
+            from math_exposure_core import compute_exposures_by_strike as _cebs
+            exposures, _diag = _cebs(exp_contracts, spot=spot, require_oi=True)
+        except Exception:
+            return None
+        new_by_expiry[exp] = exposures
+    merged = _merge_all_expiry_exposures(new_by_expiry)
+    new_view = {
+        "all": _per_strike_rows(merged, overlaid),
+        "near": (prior_view or {}).get("near", []),
+        "far": (prior_view or {}).get("far", []),
+    }
+    return new_view, new_by_expiry
 
 
 def _desired_stream_greeks_for_ticker(tk: str) -> dict:
@@ -12453,21 +12621,105 @@ def _desired_stream_greeks_for_ticker(tk: str) -> dict:
     Schwab's $SPX -> SPXW weekly, is still recognized via the nearest banked complete chain) —
     independent-review finding (2026-09-12): a bare vendor-root == ticker-root equality check
     silently excludes exactly this legitimate case."""
-    from app.options.order_flow.streaming import (
-        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
     from app.options.order_flow.state import get_stream_greeks
     out: dict = {}
+    for sym in _desired_option_symbols_for_ticker(tk):
+        greeks = get_stream_greeks(sym)
+        if greeks:
+            out[sym] = greeks
+    return out
+
+
+def _desired_option_symbols_for_ticker(tk: str) -> "list[str]":
+    """Every option-contract symbol this daemon currently DESIRES for `tk` — the primary/
+    pinned contract AND every additionally-desired contract (RC-UI-3 multi-contract
+    coverage) — regardless of whether a stream tick has landed for it yet.
+
+    Extracted from `_desired_stream_greeks_for_ticker` (2026-09-16, coverage-summary
+    'pending' state): that function's own candidate set already IS "desired", but it only
+    ever surfaced the subset with an existing `get_stream_greeks` entry — a symbol the
+    vendor has genuinely admitted but which has not yet produced its first tick was
+    therefore indistinguishable from a symbol nobody ever asked for. This is the desired
+    set on its own, so a caller can tell "requested, awaiting first tick" (PENDING) apart
+    from "never desired at all" (UNAVAILABLE)."""
+    from app.options.order_flow.streaming import (
+        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
+    out: "list[str]" = []
     candidates = list(get_active_option_contracts())
     primary = get_active_option_contract()
     if primary:
         candidates.append(primary)
     for sym in candidates:
-        if not sym or sym in out or not contract_matches_underlying(sym, tk):
-            continue
-        greeks = get_stream_greeks(sym)
-        if greeks:
-            out[sym] = greeks
+        if sym and sym not in out and contract_matches_underlying(sym, tk):
+            out.append(sym)
     return out
+
+
+def _option_contract_admission_summary(tk: str) -> dict:
+    """Per-symbol admitted/observed/active/pending/rejected accounting for `tk`'s desired
+    option contracts, sourced ENTIRELY from PRODUCER acknowledgements (2026-09-16,
+    independent-review follow-up mandate item 1: "expose the exact admitted, active,
+    pending and rejected contracts"). Every bucket answers a materially different
+    question about a desired symbol:
+      'active'   — has produced a tick WITHIN the canonical staleness window
+                   (GAMMA_SURFACE_STREAM_STALENESS_SEC, the SAME bound
+                   overlay_streamed_contract_fields/the 'live' cell state already use) —
+                   freshness-gated, not merely "has ever ticked". A symbol whose only
+                   observation is older than this window is 'observed', not 'active':
+                   correctness finding (2026-09-17) — a harness or UI claiming a stale
+                   historical observation is "currently active" is exactly the false-
+                   success shape the operator's own negative controls exist to catch.
+      'observed' — has produced at least one real tick EVER (present in
+                   _desired_stream_greeks_for_ticker's own output) but that tick is
+                   OLDER than the staleness window — the vendor genuinely sent data at
+                   some point; it is not necessarily still fresh right now.
+      'admitted' — the DAEMON's own durable, heartbeat-confirmed open coverage epoch names
+                   this symbol (streaming.read_producer_admitted_option_contracts,
+                   LEVELONE_OPTIONS service) but no tick has EVER arrived — the vendor
+                   subscription itself is confirmed, only the first observation is still
+                   outstanding.
+      'pending'  — desired, the daemon is CONFIRMED alive, but neither a tick nor a
+                   confirmed admission has landed yet — requested, outcome not yet known.
+      'rejected' — {symbol: vendor_error} for every desired symbol the vendor's most
+                   recent batched subscribe attempt explicitly refused.
+    A desired symbol that fits none of the above (daemon unreachable) is simply omitted
+    from every bucket — unknown is never fabricated as any of these five claims; the
+    `daemon_available` flag on the returned dict is how a caller tells "genuinely nothing
+    to report yet" apart from "cannot know right now". `active` and `observed` are
+    mutually exclusive (a symbol is one or the other, never both), and a REJECTED symbol
+    is reported ONLY in `rejected` — never also counted as `active`/`observed`/`admitted`/
+    `pending`, so a caller cannot mistake "the vendor refused this" for any flavor of
+    success by unioning buckets carelessly."""
+    from app.options.order_flow.streaming import (
+        read_producer_admitted_option_contracts, read_producer_rejected_option_contracts,
+        is_option_producer_daemon_available)
+    desired = _desired_option_symbols_for_ticker(tk)
+    daemon_available = is_option_producer_daemon_available()
+    rejected_all = read_producer_rejected_option_contracts()
+    admitted_l1 = set((read_producer_admitted_option_contracts() or {}).get("LEVELONE_OPTIONS") or [])
+    streamed = _desired_stream_greeks_for_ticker(tk)
+    now = time.time()
+    admitted, active, observed, pending = [], [], [], []
+    rejected: "dict[str, str]" = {}
+    for sym in desired:
+        if sym in rejected_all:
+            rejected[sym] = rejected_all[sym]
+        elif sym in streamed:
+            ts_recv = _leg_stream_ts_recv(streamed.get(sym))
+            if ts_recv is not None and (now - ts_recv) <= GAMMA_SURFACE_STREAM_STALENESS_SEC:
+                active.append(sym)
+            else:
+                observed.append(sym)
+        elif sym in admitted_l1:
+            admitted.append(sym)
+        elif daemon_available:
+            pending.append(sym)
+        # else: daemon unavailable -- genuinely unknown, omitted from every bucket
+    return {
+        "daemon_available": daemon_available,
+        "admitted": sorted(admitted), "active": sorted(active), "observed": sorted(observed),
+        "pending": sorted(pending), "rejected": rejected,
+    }
 
 
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
@@ -12534,7 +12786,10 @@ def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
     return max(candidates) if candidates else None
 
 
-def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set) -> None:
+def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set,
+                                           rejected_symbols: "dict[str, str] | None" = None,
+                                           desired_symbols: "set[str] | None" = None, *,
+                                           daemon_available: bool = True) -> None:
     """Operator directive (2026-09-15, always-live heatmap mandate): attach per-leg (call/put)
     and per-cell aggregate STREAM state to an already-projected gamma surface's cells, in place.
 
@@ -12542,26 +12797,52 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     a cell's already-computed net_gex_1pct/etc value (project_gamma_surface/
     compute_exposures_by_strike remains the sole exposure computation). It only annotates, per
     leg, WHETHER that value is currently backed by a confirmed-fresh Schwab stream tick, so a
-    client can honestly render LIVE / PARTIAL / STALE / UNAVAILABLE instead of presenting every
-    REST-cadence cell as indistinguishable from a genuinely streamed one.
+    client can honestly render LIVE / PARTIAL / STALE / PENDING / REJECTED / DAEMON_UNAVAILABLE /
+    UNAVAILABLE instead of presenting every REST-cadence cell as indistinguishable from a
+    genuinely streamed one.
 
     Per leg, `overlay_symbols` is the EXACT set _gamma_surface_contracts_with_stream_overlay (or
     refresh_gamma_surface_from_stream's own equivalent) already decided passed this cycle's
     REST-precedence + GAMMA_SURFACE_STREAM_STALENESS_SEC check for this specific symbol — reused
-    verbatim rather than re-deriving a second staleness policy:
-      'live'        — this symbol's tick was fresh enough to be overlaid THIS cycle.
-      'stale'       — the symbol IS currently desired/subscribed (present in `streamed`, which
-                      _desired_stream_greeks_for_ticker already filters to symbols matching this
-                      ticker) but its tick did not pass this cycle's check.
-      'unavailable' — no symbol for this leg (missing contract), or a symbol never desired at
-                      all — covers unsubscribed, missing, and mismatched-identity alike.
+    verbatim rather than re-deriving a second staleness policy. `rejected_symbols` (2026-09-16,
+    audit finding #6 — "fail the affected cells visibly", bounded-vendor-call reconciliation) is
+    the producer's own {symbol: vendor_error} map (streaming.read_producer_rejected_option_
+    contracts) — a symbol the vendor explicitly refused, not merely one not yet confirmed.
+    `desired_symbols` (2026-09-16, operator's follow-up mandate: disclose PENDING distinctly from
+    UNAVAILABLE) is `_desired_option_symbols_for_ticker`'s output — every symbol the daemon has
+    asked the vendor for, whether or not a tick has landed yet.
 
-    Cell aggregate, over whichever legs actually exist for this strike/expiry:
-      live        — every existing leg is 'live'.
-      partial     — at least one existing leg is 'live', not all.
-      stale       — no leg is 'live', at least one existing leg is 'stale'.
-      unavailable — every existing leg is 'unavailable' (or there are no legs at all)."""
+    Independent-review finding (2026-09-16, follow-up mandate): 'pending' used to mean only
+    "the CLIENT desires this symbol" — indistinguishable from a daemon that has silently died
+    and will never admit anything again. `daemon_available` (streaming.
+    is_option_producer_daemon_available — a FRESH producer heartbeat confirmed on this exact
+    connection, never inferred) gates 'pending': a desired symbol reads 'pending' only while the
+    daemon is confirmed alive; the identical symbol reads 'daemon_unavailable' the instant it
+    is not, which is a materially different, and more actionable, fact for an operator ("the
+    daemon needs restarting", not "this contract is merely queued behind a live one"):
+      'live'                — this symbol's tick was fresh enough to be overlaid THIS cycle.
+      'stale'                — the symbol IS currently desired/subscribed (present in
+                              `streamed`, which _desired_stream_greeks_for_ticker already
+                              filters to symbols matching this ticker) but its tick did not
+                              pass this cycle's check.
+      'pending'              — the symbol is desired, the daemon is CONFIRMED alive, and no
+                              tick/rejection has landed yet — requested, outcome not yet known.
+      'daemon_unavailable'   — the symbol is desired but the daemon's own producer heartbeat is
+                              stale or absent — the outcome cannot be pending, because nothing
+                              is currently working on it.
+      'rejected'             — the vendor explicitly refused this contract's subscription; its
+                              own error is carried on the leg so the UI can disclose WHY.
+      'unavailable'          — no symbol for this leg (missing contract), or a symbol never
+                              desired at all — covers unsubscribed, missing, and mismatched-
+                              identity alike.
+
+    Cell aggregate, over whichever legs actually exist for this strike/expiry, checked in this
+    priority order (live > partial > stale > pending > daemon_unavailable > rejected >
+    unavailable) — 'partial' requires at least one live leg, not all; every other aggregate is
+    "no leg is any higher-priority state, at least one existing leg is this one"."""
     now = time.time()
+    rejected_symbols = rejected_symbols or {}
+    desired_symbols = desired_symbols or set()
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
         state_row = []
@@ -12580,14 +12861,23 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     leg_state = "live"
                 elif sym in streamed:
                     leg_state = "stale"
+                elif sym in rejected_symbols:
+                    leg_state = "rejected"
+                elif sym in desired_symbols and not daemon_available:
+                    leg_state = "daemon_unavailable"
+                elif sym in desired_symbols:
+                    leg_state = "pending"
                 else:
                     leg_state = "unavailable"
                 leg_states.append(leg_state)
                 ts_recv = _leg_stream_ts_recv(greeks)
-                legs[side] = {
+                leg_out = {
                     "symbol": sym, "state": leg_state, "ts_recv": ts_recv,
                     "age_sec": (round(now - ts_recv, 1) if ts_recv is not None else None),
                 }
+                if leg_state == "rejected":
+                    leg_out["rejected_reason"] = rejected_symbols.get(sym)
+                legs[side] = leg_out
             if not leg_states:
                 cell_state = "unavailable"
             elif all(s == "live" for s in leg_states):
@@ -12596,6 +12886,12 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                 cell_state = "partial"
             elif any(s == "stale" for s in leg_states):
                 cell_state = "stale"
+            elif any(s == "pending" for s in leg_states):
+                cell_state = "pending"
+            elif any(s == "daemon_unavailable" for s in leg_states):
+                cell_state = "daemon_unavailable"
+            elif any(s == "rejected" for s in leg_states):
+                cell_state = "rejected"
             else:
                 cell_state = "unavailable"
             legs["state"] = cell_state
@@ -12606,13 +12902,94 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
 def _gamma_surface_cell_state_counts(surface: dict) -> dict:
     """Tally the per-cell 'state' _stamp_gamma_surface_cell_stream_state already attached into
     cheap surface-level counts — a client or test's one-field check instead of scanning every
-    cell. The four states are mutually exclusive per cell (see that function's docstring)."""
-    counts = {"live": 0, "partial": 0, "stale": 0, "unavailable": 0}
+    cell. The seven states are mutually exclusive per cell (see that function's docstring)."""
+    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
+              "rejected": 0, "unavailable": 0}
     for cell in (surface.get("cells") or []):
         for col in (cell.get("stream") or []):
             if isinstance(col, dict) and col.get("state") in counts:
                 counts[col["state"]] += 1
     return counts
+
+
+def _gamma_surface_coverage_summary(surface: dict) -> dict:
+    """The CANONICAL-SURFACE coverage verdict for a projected surface — every strike x
+    every expiry the server projected, not merely whichever subset the client happens to
+    be scrolled/scoped to (2026-09-16, audit finding #6; independent-review CORRECTION,
+    follow-up mandate: this field's scope must be named honestly, because it is NOT the
+    same thing as "coverage of what the operator is currently looking at").
+
+    Independent-review finding (2026-09-16): Auto/Wider/All strike-count windowing
+    (EdShell.scopeSelect) and expiry-column windowing (ed-gamma.js's own viewCols) are
+    BOTH decided entirely client-side and never communicated to the server — the server
+    has no way to know which strikes/expiries are actually rendered right now. Computing
+    `meets_live_requirement` over this whole canonical surface therefore answers "is the
+    full projected book fully live", which can be STRICTER than what the mandate's own
+    "every VISIBLE cell" language asks for (a narrower Auto-scoped view could be 100% live
+    while a distant, invisible strike this field still counts is merely 'pending'). This
+    field stays a genuinely useful, correctly-labelled canonical/diagnostic metric — the
+    CLIENT's own "LIVE" word is gated on a SEPARATE, DOM-derived visible-scope computation
+    (ed-gamma.js's `_visibleCellCoverage`, counting only the `.hcell` elements this exact
+    render painted) which this field must never be mistaken for. The `scope` key on the
+    returned dict makes that explicit in the wire payload itself, not only in this
+    docstring.
+
+    Coverage is judged only over cells that HAVE a real contract identity (at least one of
+    call/put resolved to an actual OSI symbol) — a strike/expiry combination with no
+    contract at all was never a viewable data point, and counting it against the bar would
+    make `meets_live_requirement` false on nearly every real chain (different expiries
+    legitimately cover different strike ranges) for a reason that has nothing to do with
+    streaming health.
+
+    `meets_live_requirement` implements the operator's own already-recorded directive
+    (2026-09-15, "always-live heatmap mandate"): "every visible heatmap cell must
+    correspond to an exact option contract actively receiving streamed Schwab updates" —
+    literally 100% of cells-with-a-contract must be 'live', not merely "at least one cell
+    is" — over THIS field's own canonical scope; the client's visible-scope computation is
+    the actual authority for the on-screen LIVE word.
+
+    `pending` (2026-09-16, operator's follow-up mandate) is counted and reported distinctly
+    from `unavailable`: a cell whose contract has been REQUESTED of the vendor but has not
+    yet ticked (or been rejected) is materially different from one nobody asked for at all,
+    and both the mandate's coverage-disclosure requirement and a fair 'not yet live' verdict
+    need that distinction on screen, not folded into the same bucket. `daemon_unavailable`
+    (2026-09-16, follow-up mandate) is likewise counted distinctly from `pending`: the
+    capture daemon itself being unreachable is a materially different, more actionable fact
+    than a contract merely queued behind a live daemon's own poll cycle."""
+    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
+              "rejected": 0, "unavailable": 0}
+    relevant = 0
+    for cell in (surface.get("cells") or []):
+        contracts_row = cell.get("contracts") or []
+        stream_row = cell.get("stream") or []
+        for j, col in enumerate(stream_row):
+            if not isinstance(col, dict):
+                continue          # no contract identity at all -- never a viewable data cell
+            pair = contracts_row[j] if j < len(contracts_row) else None
+            has_identity = bool(isinstance(pair, dict) and (pair.get("call") or pair.get("put")))
+            if not has_identity:
+                continue
+            relevant += 1
+            state = col.get("state")
+            if state in counts:
+                counts[state] += 1
+            else:
+                counts["unavailable"] += 1
+    live_pct = round(100.0 * counts["live"] / relevant, 1) if relevant else 0.0
+    return {
+        # Independent-review finding (2026-09-16): explicit, machine-readable scope
+        # disclosure, not just a docstring comment -- this whole dict describes the
+        # CANONICAL surface (every projected strike x expiry), never the client's current
+        # Auto/Wider/All-windowed view. A consumer that needs the on-screen LIVE verdict
+        # must use the client's own visible-scope computation, not this field.
+        "scope": "canonical_surface",
+        "total_visible_cells": relevant,
+        "live": counts["live"], "partial": counts["partial"], "stale": counts["stale"],
+        "pending": counts["pending"], "daemon_unavailable": counts["daemon_unavailable"],
+        "rejected": counts["rejected"], "unavailable": counts["unavailable"],
+        "live_pct": live_pct,
+        "meets_live_requirement": relevant > 0 and counts["live"] == relevant,
+    }
 
 
 def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> str:
@@ -12664,6 +13041,20 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             payload = _terrain_cache.get(tk) or {}
             base_contracts = payload.get("_contracts_rest")
             read_generation = payload.get("_contracts_rest_computed_ts")
+            prior_gamma_surface = payload.get("_gamma_surface")
+            prior_per_strike = payload.get("_per_strike")
+            # The by-expiry cache is only trustworthy when it was built from THIS EXACT REST
+            # baseline generation -- _terrain_refresh_one does not maintain it (that path
+            # keeps its own, separately-gated per_strike write; see that function), so it is
+            # populated lazily, here, by whichever eager call is first for a given
+            # `read_generation`. A stale-generation cache (leftover from a PRIOR baseline) is
+            # never used for the merge: silently rolling an old baseline's unaffected-expiry
+            # contributions into a new baseline's total would understate/overstate strikes
+            # the new REST cycle already corrected, for a reason having nothing to do with
+            # streaming freshness.
+            prior_per_strike_by_expiry = (
+                payload.get("_per_strike_expiry_raw")
+                if payload.get("_per_strike_expiry_raw_generation") == read_generation else None)
         if not base_contracts:
             return "no_rest_baseline"
         from math_exposure_core import overlay_streamed_contract_fields
@@ -12698,9 +13089,63 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         spot, spot_source, spot_ts = resolve_spot(tk)
         if not spot:
             return "no_current_spot"
-        new_surface = project_gamma_surface(overlaid, spot)
-        new_per_strike = _per_strike_view_from_contracts(overlaid, spot)
         _overlaid_syms_now = _overlaid_symbols(base_contracts, overlaid)
+        # Audit finding #2 (2026-09-16): a streamed tick only ever freshens the specific
+        # contracts _desired_stream_greeks_for_ticker found newer data for -- each one
+        # belongs to exactly one expiry (an option symbol encodes its own expiry) -- so
+        # recomputing the FULL strike x expiry grid through compute_exposures_by_strike on
+        # every tick (measured ~1.95s at SPXW scale) recomputes N-1 unaffected expiries'
+        # worth of exposure math for nothing. Incrementally update only the expiries whose
+        # own contracts were actually overlaid this call, through the SAME canonical faucet
+        # (project_gamma_surface_update_expiry), falling back to one full recompute the
+        # instant that cannot be done SAFELY (no cached surface to update from, or a
+        # strike/expiry shape the incremental splice does not recognize) -- never a
+        # shape-mismatched or approximated surface.
+        _sym_to_exp = {ct.get("symbol"): str(ct.get("expirationDate") or "")[:10]
+                      for ct in overlaid if isinstance(ct, dict) and ct.get("symbol")}
+        affected_expiries = sorted({
+            _sym_to_exp[s] for s in _overlaid_syms_now
+            if s in _sym_to_exp and len(_sym_to_exp[s]) == 10
+        })
+        # The spot `prior_gamma_surface` (and, by construction, `prior_per_strike`/
+        # `prior_per_strike_by_expiry` — always co-written with it, in this function and in
+        # _terrain_refresh_one alike) were themselves computed/stamped against — captured
+        # ONCE here, never re-derived from an intermediate splice result further down (whose
+        # own dict has no "spot" key until the caller stamps the FINAL result). Both
+        # incremental attempts below are validated against this SAME prior identity.
+        _prior_spot = prior_gamma_surface.get("spot") if prior_gamma_surface is not None else None
+        new_surface = None
+        if prior_gamma_surface is not None:
+            _incremental = prior_gamma_surface
+            for _exp in affected_expiries:
+                _updated = project_gamma_surface_update_expiry(
+                    _incremental, overlaid, spot, _exp, prior_spot=_prior_spot)
+                if _updated is None:
+                    _incremental = None
+                    break
+                _incremental = _updated
+            if _incremental is not None and affected_expiries:
+                new_surface = _incremental
+        if new_surface is None:
+            new_surface = project_gamma_surface(overlaid, spot)
+        # Audit follow-up (2026-09-16): the per-strike 'all' aggregate is a DEPENDENT
+        # aggregate of the surface (the same underlying exposure math, rolled up by strike
+        # across every expiry) -- it must not be recomputed over the whole chain on every
+        # tick either, once the surface itself no longer is. Same incremental-with-fallback
+        # contract as the surface above; see _per_strike_view_update_expiry's docstring for
+        # the scope this covers (the 'all' rows only; 'near'/'far' carry over to the next
+        # REST cycle).
+        new_per_strike = None
+        new_per_strike_by_expiry = None
+        _incremental_ps = _per_strike_view_update_expiry(
+            prior_per_strike_by_expiry, prior_per_strike, overlaid, spot, affected_expiries,
+            prior_spot=_prior_spot)
+        if _incremental_ps is not None:
+            new_per_strike, new_per_strike_by_expiry = _incremental_ps
+        if new_per_strike is None:
+            new_per_strike_by_expiry = {}
+            new_per_strike = _per_strike_view_from_contracts(
+                overlaid, spot, by_expiry_out=new_per_strike_by_expiry)
         if new_surface is not None:
             # ONE spot faucet (operator directive, 2026-09-15): stamp the EXACT resolve_spot
             # result this cycle used, same convention as _terrain_refresh_one's own stamp --
@@ -12715,7 +13160,13 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             # the SAME per-cell stream-state stamp as the REST cycle (_terrain_refresh_one) --
             # this is the path a genuinely fresh tick actually takes, so it is the one MOST
             # likely to move a cell from 'stale'/'unavailable' into 'live'.
-            _stamp_gamma_surface_cell_stream_state(new_surface, streamed, set(_overlaid_syms_now))
+            from app.options.order_flow.streaming import (
+                read_producer_rejected_option_contracts, is_option_producer_daemon_available)
+            _stamp_gamma_surface_cell_stream_state(
+                new_surface, streamed, set(_overlaid_syms_now),
+                read_producer_rejected_option_contracts(),
+                set(_desired_option_symbols_for_ticker(tk)),
+                daemon_available=is_option_producer_daemon_available())
             try:
                 # Best-effort enhancement -- a bug here must never block publishing an
                 # otherwise-genuinely-fresh eager refresh.
@@ -12753,10 +13204,188 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
                 new_surface["surface_seq"] = seq
             payload["_gamma_surface"] = new_surface
             payload["_per_strike"] = new_per_strike
+            payload["_per_strike_expiry_raw"] = new_per_strike_by_expiry
+            payload["_per_strike_expiry_raw_generation"] = read_generation
         return "ok"
     except Exception as e:  # never let a best-effort freshening take the feed loop down
         log.debug("refresh_gamma_surface_from_stream failed for %s: %s", contract_symbol, e)
         return f"error:{type(e).__name__}"
+
+
+def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
+    """CONFIRMED ROOT DEFECT (2026-09-17): the header's spot updates on every streamed
+    LEVELONE_EQUITIES tick (live_market_plane -> resolve_spot's own top-priority source),
+    but NOTHING downstream of that path ever re-ran the gamma exposure math —
+    refresh_gamma_surface_from_stream fires ONLY on a streamed OPTION contract's own
+    greeks tick (app.options.order_flow.streaming's `_streamed_greeks_hook`), a
+    completely independent signal. A quiet options market with an actively-moving
+    underlying could show a fresh, correct, ticking header spot over a heatmap whose
+    every dollar cell was still priced off spot from up to ~60s ago (the next terrain
+    REST cycle) — GEX/DEX/OI$ all scale with spot (gamma exposure by spot SQUARED), so
+    this is a real, visible correctness defect, not merely a latency one.
+
+    This is the SYMMETRIC sibling of refresh_gamma_surface_from_stream: same trigger
+    SHAPE (a streamed tick, eagerly freshening a cached surface between REST cycles),
+    different trigger SIGNAL (canonical spot changed, not an option's own greeks).
+    Registered as app.options.order_flow.streaming.start_order_flow_stream's
+    `on_tick_callback` (an EXISTING, already-built hook for exactly this equity-tick
+    signal that was simply never wired to anything) via the coalesced dispatcher
+    `_dispatch_spot_gamma_refresh`, which is what actually keeps this off the capture
+    ingestion path — this function itself is a plain, potentially-slow, synchronous
+    call, exactly like refresh_gamma_surface_from_stream is once its own caller has
+    already moved it to a background thread.
+
+    A spot change invalidates EVERY expiry's dollar values simultaneously — this ALWAYS
+    performs a full project_gamma_surface recompute, never
+    project_gamma_surface_update_expiry's per-expiry splice (which would, correctly,
+    refuse via its own `prior_spot` identity guard anyway; this path does not even
+    attempt it, since "spot moved" is precisely the condition that guard exists to
+    catch). Per-strike is refreshed the identical way, for the identical reason.
+
+    No-ops (returns a diagnostic status, never raises) when: there is no cached ticker
+    at all (nothing to refresh — the next REST cycle seeds it), there is no prior
+    surface yet, canonical spot is unavailable, or canonical spot is UNCHANGED since the
+    surface's own stamped value (exact identity, not a tolerance — requirement: never an
+    unnecessary full-surface recomputation when nothing actually moved). Publishes
+    through the SAME REST-baseline compare-and-swap (`_contracts_rest_computed_ts`)
+    refresh_gamma_surface_from_stream already uses, so a late/superseded computation can
+    only ever be silently discarded, never corrupt a newer result."""
+    try:
+        tk = ticker_storage_key(ticker or "")
+        if not tk:
+            return "no_ticker"
+        with _terrain_cache_lock:
+            payload = _terrain_cache.get(tk)
+            if payload is None:
+                return "no_cached_ticker"
+            base_contracts = payload.get("_contracts_rest")
+            read_generation = payload.get("_contracts_rest_computed_ts")
+            prior_gamma_surface = payload.get("_gamma_surface")
+        if not base_contracts:
+            return "no_rest_baseline"
+        if prior_gamma_surface is None:
+            return "no_prior_surface"
+        prior_spot = prior_gamma_surface.get("spot")
+        spot, spot_source, spot_ts = resolve_spot(tk)
+        if not spot:
+            return "no_current_spot"
+        if prior_spot is not None and float(prior_spot) == float(spot):
+            return "spot_unchanged"
+        # Overlay every currently-desired contract's freshest streamed greeks onto the
+        # untouched REST baseline — the SAME overlay refresh_gamma_surface_from_stream
+        # uses, so an option contract's own tick freshness is respected here too, even
+        # though THIS call was triggered by spot, not by that contract's own tick.
+        from math_exposure_core import overlay_streamed_contract_fields
+        streamed = _desired_stream_greeks_for_ticker(tk)
+        overlaid, n = overlay_streamed_contract_fields(
+            base_contracts, streamed,
+            newer_than_ts=read_generation, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+        _overlaid_syms_now = _overlaid_symbols(base_contracts, overlaid)
+        new_surface = project_gamma_surface(overlaid, spot)
+        new_surface["spot"] = float(spot)
+        new_surface["spot_source"] = spot_source
+        new_surface["spot_as_of_ts_utc"] = spot_ts
+        from app.options.order_flow.streaming import (
+            read_producer_rejected_option_contracts, is_option_producer_daemon_available)
+        _stamp_gamma_surface_cell_stream_state(
+            new_surface, streamed, set(_overlaid_syms_now),
+            read_producer_rejected_option_contracts(),
+            set(_desired_option_symbols_for_ticker(tk)),
+            daemon_available=is_option_producer_daemon_available())
+        try:
+            _backfill_gex_cells_from_last_valid(tk, new_surface)
+        except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
+            log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
+        applied_ts = time.time()
+        new_surface["stream_overlay_contracts"] = n
+        new_surface["stream_overlay_symbols"] = _overlaid_syms_now
+        new_surface["stream_overlay_computed_ts_utc"] = applied_ts
+        new_surface["spot_tick_triggered"] = True   # disclosure: this generation was
+        # published by a spot tick, not an option tick or the REST cycle -- diagnostic
+        # only, never load-bearing for any gate.
+        # The per-strike aggregate is equally spot-dependent for every expiry — always a
+        # full recompute here too, never an incremental per-expiry merge.
+        new_per_strike_by_expiry: dict = {}
+        new_per_strike = _per_strike_view_from_contracts(
+            overlaid, spot, by_expiry_out=new_per_strike_by_expiry)
+        with _terrain_cache_lock:
+            payload = _terrain_cache.get(tk)
+            if payload is None:
+                return "cache_evicted"
+            if payload.get("_contracts_rest_computed_ts") != read_generation:
+                return "stale_baseline_superseded"
+            new_surface["surface_seq"] = _next_gamma_surface_seq(tk)
+            payload["_gamma_surface"] = new_surface
+            payload["_per_strike"] = new_per_strike
+            payload["_per_strike_expiry_raw"] = new_per_strike_by_expiry
+            payload["_per_strike_expiry_raw_generation"] = read_generation
+        return "ok"
+    except Exception as e:  # never let a best-effort freshening take the feed loop down
+        log.debug("refresh_gamma_surface_from_spot_tick failed for %s: %s", ticker, e)
+        return f"error:{type(e).__name__}"
+
+
+#: Coalesced per-ticker dispatch for refresh_gamma_surface_from_spot_tick (2026-09-17).
+#: One lifecycle owner (this module-level executor + state), at most one recompute in
+#: flight per ticker, a tick arriving mid-flight coalesces into exactly one trailing
+#: rerun (never an unbounded queue), latest-state convergence (the rerun always reads
+#: CURRENT resolve_spot/_terrain_cache state fresh, never a stale captured snapshot),
+#: and CAS protection via the SAME `_contracts_rest_computed_ts` compare-and-swap the
+#: underlying function already publishes through. Reimplemented here (rather than
+#: reusing app.options.order_flow.streaming's own option-tick hook dispatcher) because
+#: that one's coalescing state is a private closure of its `_feed_loop`, not exposed for
+#: reuse from this module — this is the smallest complete mechanism with the identical
+#: properties, on its own dedicated single-worker executor so a slow recompute never
+#: blocks the daemon-plane-feed's own DB-read thread that calls this callback.
+_spot_gamma_refresh_executor: "ThreadPoolExecutor | None" = None
+_spot_gamma_refresh_inflight: "set[str]" = set()
+_spot_gamma_refresh_pending: "set[str]" = set()
+_spot_gamma_refresh_lock = threading.Lock()
+
+
+def _get_spot_gamma_refresh_executor() -> ThreadPoolExecutor:
+    global _spot_gamma_refresh_executor
+    if _spot_gamma_refresh_executor is None:
+        _spot_gamma_refresh_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="spot-gamma-refresh")
+    return _spot_gamma_refresh_executor
+
+
+def _run_spot_gamma_refresh(tk: str) -> None:
+    try:
+        refresh_gamma_surface_from_spot_tick(tk)
+    except Exception as e:  # institutional-swallow-ok: best-effort background refresh, never load-bearing
+        log.debug("spot-triggered gamma refresh failed for %s: %s", tk, e)
+    finally:
+        rerun = False
+        with _spot_gamma_refresh_lock:
+            _spot_gamma_refresh_inflight.discard(tk)
+            if tk in _spot_gamma_refresh_pending:
+                _spot_gamma_refresh_pending.discard(tk)
+                _spot_gamma_refresh_inflight.add(tk)
+                rerun = True
+    if rerun:
+        _get_spot_gamma_refresh_executor().submit(_run_spot_gamma_refresh, tk)
+
+
+def _dispatch_spot_gamma_refresh(ticker: str) -> None:
+    """Registered as start_order_flow_stream's `on_tick_callback` — invoked synchronously,
+    per qualifying equity row, on the daemon-plane-feed's own single-worker DB executor
+    thread (app.options.order_flow.streaming._feed_loop). Must return immediately: all
+    this does is coalesce-and-submit to this module's own dedicated executor, never the
+    recompute itself."""
+    try:
+        tk = ticker_storage_key(ticker or "")
+    except Exception:  # institutional-swallow-ok: a malformed ticker is simply skipped
+        return
+    if not tk:
+        return
+    with _spot_gamma_refresh_lock:
+        if tk in _spot_gamma_refresh_inflight:
+            _spot_gamma_refresh_pending.add(tk)
+            return
+        _spot_gamma_refresh_inflight.add(tk)
+    _get_spot_gamma_refresh_executor().submit(_run_spot_gamma_refresh, tk)
 
 
 def _ticker_on_terrain_board(tk: str) -> bool:
@@ -12930,8 +13559,13 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     # EVERY cycle, even when _overlay_n == 0 -- a cell must still be told apart
                     # as 'stale' (desired but not fresh) vs 'unavailable' (never desired) even
                     # when nothing was fresh enough to overlay this particular cycle.
+                    from app.options.order_flow.streaming import (
+                        read_producer_rejected_option_contracts, is_option_producer_daemon_available)
                     _stamp_gamma_surface_cell_stream_state(
-                        payload["_gamma_surface"], _desired_stream_greeks_for_ticker(tk), set(_overlay_syms))
+                        payload["_gamma_surface"], _desired_stream_greeks_for_ticker(tk),
+                        set(_overlay_syms), read_producer_rejected_option_contracts(),
+                        set(_desired_option_symbols_for_ticker(tk)),
+                        daemon_available=is_option_producer_daemon_available())
                     try:
                         # Best-effort enhancement, like the overlay above -- a bug here must
                         # never take down an otherwise-freshly-computed, valid surface.
@@ -13669,8 +14303,13 @@ def _radar_fallback_recompute() -> list[dict] | None:
         # RC-82: a stored-chain row is PROVISIONAL — narrower than the loop's chain, so its
         # walls sit systematically inward. Labelled, not hidden: it cannot be removed (per-symbol
         # vendor calls measured a 40.5s cold sweep) and it must not masquerade as a loop row.
-        out.append(snap.to_dict() | {"spot_source": SPOT_SOURCE_SNAPSHOT,
-                                     "levels_source": LEVELS_SOURCE_STORED_CHAIN})
+        # snapshots.spot is an as-of lastPrice print, not current live spot.
+        out.append(snap.to_dict() | {
+            "spot_source": SPOT_SOURCE_SNAPSHOT,
+            "spot_state": "historical",
+            "spot_role": "as_of_snapshot_last_price",
+            "levels_source": LEVELS_SOURCE_STORED_CHAIN,
+        })
     return out
 
 
@@ -13734,11 +14373,18 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     """
     spot, spot_source, spot_ts = resolve_spot(ticker)
     if spot is None:
-        return payload
+        out = dict(payload)
+        out["spot"] = None
+        out["spot_source"] = "none"
+        out["spot_state"] = "unavailable"
+        out["spot_as_of_ts_utc"] = None
+        out["spot_disp"] = "UNAVAILABLE"
+        return out
 
     out = dict(payload)
     out["spot"] = spot
     out["spot_source"] = spot_source
+    out["spot_state"] = current_spot_state(spot_source, ticker)
     out["spot_as_of_ts_utc"] = spot_ts
     # RC-130: wall geometry states are a function of SPOT, which was just re-resolved —
     # recomputed with the SAME producer definition (wall_geometry_state), and BEFORE the
@@ -14702,6 +15348,75 @@ def _backfill_gex_cells_from_last_valid(tk: str, surface: dict) -> None:
     # this cycle) exactly as it was -- backfill found nothing to offer either.
 
 
+def _project_gamma_expiry_slice(chain: list, e: str, spot: float):
+    """Compute ONE expiry's strike-bucketed exposures through the canonical faucet
+    (extracted 2026-09-16 from project_gamma_surface, audit finding #2, so
+    project_gamma_surface_update_expiry can call the identical per-expiry logic on a
+    single expiry instead of duplicating a second computation). Returns
+    (exposures_e, sym_map, dte) or None if this expiry's slice is unusable (no native
+    schwab_expirationDate match, or empty) — the caller's job to decide what "unusable"
+    means for its own shape (project_gamma_surface skips it; the incremental update
+    falls back to a full recompute)."""
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from numeric_contract import float_finite_or_none
+
+    slice_e, slice_src = _filter_contracts_by_selected_expiry(chain, e)
+    if slice_src != "schwab_expirationDate" or not slice_e:
+        return None
+    # THE canonical faucet — identical call the selected-expiry analytics path uses
+    exposures_e, _diag_e = _cebs(slice_e, spot=spot, require_oi=True)
+    dte: "int | None" = None
+    sym_map: dict[float, dict[str, str]] = {}
+    for ct in slice_e:  # native DTE for the column header, never inferred
+        if dte is None:
+            _d = ct.get("daysToExpiration")
+            if _d is not None:
+                try:
+                    dte = int(_d)
+                except (TypeError, ValueError):
+                    pass
+        side = (ct.get("putCall") or "").upper()
+        sym = ct.get("symbol")
+        # Same canonical vendor-numeric coercion compute_exposures_by_strike itself uses
+        # for this exact field (math_exposure_core._f -> float_finite_or_none) — a raw
+        # float() here would be a second, ad-hoc coercion authority for a Schwab vendor
+        # field.
+        _sk = float_finite_or_none(ct.get("strikePrice"))
+        if sym and side in ("CALL", "PUT") and _sk is not None:
+            sym_map.setdefault(_sk, {})[side.lower()] = str(sym)
+    return exposures_e, sym_map, dte, len(slice_e)
+
+
+def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
+    """Shape ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its
+    compute_exposures_by_strike bucket (extracted 2026-09-16 alongside
+    _project_gamma_expiry_slice — see that function's docstring; this is the OTHER half
+    project_gamma_surface's per-cell loop used to inline, now shared with the incremental
+    update path so both produce byte-identical cells from the same bucket). Returns
+    (gex, dex, vanna, oi, volume, contracts, has_gex_data, has_oi) — see
+    project_gamma_surface's own inline comments (moved here verbatim) for why each gate
+    exists."""
+    from numeric_contract import float_finite_or_none
+
+    def _bf(v):
+        fv = float_finite_or_none(v)
+        return round(fv) if fv is not None else None
+
+    syms = syms or {}
+    _has_oi = bool(bucket is not None and bucket.get("has_oi"))
+    _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
+    gex = _bf(bucket.get("net_gex_1pct")) if _has_gex_data else None
+    dex = _bf(bucket.get("net_dex_dollars")) if _has_gex_data else None
+    _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
+    vanna = round(_vn, 2) if _vn is not None else None
+    call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
+    oi = {"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None}
+    call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")
+    volume = {"call": _bf(call_vol), "put": _bf(put_vol)} if bucket is not None else {"call": None, "put": None}
+    contracts = {"call": syms.get("call"), "put": syms.get("put")}
+    return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi
+
+
 def project_gamma_surface(chain: list, spot: float) -> dict:
     """PURE projection of a wide chain into a strike × expiry net_gex_1pct grid.
 
@@ -14711,9 +15426,6 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     helper). Because the faucet buckets each contract independently, summing per-expiry cells at
     a strike reconciles exactly to the full-book value at that strike (same spot). Contracts with
     malformed/missing native expiry are excluded and counted — never reassigned to a column."""
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-    from numeric_contract import float_finite_or_none
-
     total_contracts = len(chain) if isinstance(chain, list) else 0
     expiries = _expiries_from_contracts(chain)
     valid_exp_keys = {str(e)[:10] for e in expiries}
@@ -14737,33 +15449,15 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     symbols_by_expiry: dict[str, dict[float, dict[str, str]]] = {}
     contracts_used = 0
     for e in expiries:
-        slice_e, slice_src = _filter_contracts_by_selected_expiry(chain, e)
-        if slice_src != "schwab_expirationDate" or not slice_e:
+        _slice = _project_gamma_expiry_slice(chain, e, spot)
+        if _slice is None:
             continue
-        # THE canonical faucet — identical call the selected-expiry analytics path uses
-        exposures_e, _diag_e = _cebs(slice_e, spot=spot, require_oi=True)
+        exposures_e, sym_map, dte, n_used = _slice
         per_expiry[e] = exposures_e
-        contracts_used += len(slice_e)
+        contracts_used += n_used
         for k in exposures_e.keys():
             strike_set.add(float(k))
-        sym_map: dict[float, dict[str, str]] = {}
-        for ct in slice_e:  # native DTE for the column header, never inferred
-            if e not in exp_dte:
-                _d = ct.get("daysToExpiration")
-                if _d is not None:
-                    try:
-                        exp_dte[e] = int(_d)
-                    except (TypeError, ValueError):
-                        pass
-            side = (ct.get("putCall") or "").upper()
-            sym = ct.get("symbol")
-            # Same canonical vendor-numeric coercion compute_exposures_by_strike itself
-            # uses for this exact field (math_exposure_core._f -> float_finite_or_none) --
-            # a raw float() here would be a second, ad-hoc coercion authority for a Schwab
-            # vendor field.
-            _sk = float_finite_or_none(ct.get("strikePrice"))
-            if sym and side in ("CALL", "PUT") and _sk is not None:
-                sym_map.setdefault(_sk, {})[side.lower()] = str(sym)
+        exp_dte[e] = dte
         symbols_by_expiry[e] = sym_map
 
     strikes = sorted(strike_set)
@@ -14780,76 +15474,37 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     # per-cell value (call_vanna - put_vanna, matching compute_net_vanna's +call/-put dealer
     # convention) is carried too, though today's UI surfaces Vanna aggregated by strike (its
     # own aggregate-only maturity today: see AGG_$_ONLY), not yet as a per-expiry column.
-    def _bf(v):
-        fv = float_finite_or_none(v)
-        return round(fv) if fv is not None else None
-
+    #
+    # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): `bucket is not None`
+    # was once the ONLY gate here, but compute_exposures_by_strike creates a bucket for
+    # every strike/side/multiplier-valid contract BEFORE the require_oi filter runs -- a
+    # contract with a real strike and multiplier but zero/missing OI still gets a bucket,
+    # just one whose net_gex_1pct/net_dex_dollars never left their pre-initialized 0.0
+    # default. has_oi/has_valid_gamma (math_exposure_core.py's own canonical signals) are
+    # the fix — see _gamma_surface_cell_fields, which now owns this gating for both the
+    # full-surface and incremental-update paths.
     cells = []
     cells_with_data = 0
     cells_total = 0
     cells_with_oi_but_invalid_greeks = 0
     for k in strikes:
-        row = []
-        dex_row = []
-        vanna_row = []
-        oi_row = []
-        vol_row = []
-        contracts_row = []
+        row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
         for col in expirations:
             cells_total += 1
             bucket = per_expiry.get(col["expiry"], {}).get(k)
-            # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): `bucket is not
-            # None` was the ONLY gate here, but compute_exposures_by_strike creates a bucket
-            # for every strike/side/multiplier-valid contract BEFORE the require_oi filter
-            # runs -- a contract with a real strike and multiplier but zero/missing OI still
-            # gets a bucket, just one whose net_gex_1pct/net_dex_dollars never left their
-            # pre-initialized 0.0 default (nothing ever passed the OI gate to add to them).
-            # Schwab's live SPX chain feed is currently frozen/stuck server-side (a live,
-            # reproduced vendor incident -- SPY/QQQ unaffected through the identical code path
-            # at the same instant), so `bucket is not None` was true everywhere while the real
-            # numbers were a fabricated-looking 0.0 for a strike with genuinely no usable OI.
-            # has_oi (math_exposure_core.py's own canonical signal, set at the exact point OI
-            # actually contributes to the accumulation) is the fix, not a second, independent
-            # re-derivation of the same fact from call_oi/put_oi presence.
-            #
-            # Operator directive (2026-09-15, canonical input-validity rules): has_oi alone is
-            # NOT enough to trust net_gex_1pct/net_dex_dollars/vanna -- live-reproduced 2026-
-            # 09-15: SPY/QQQ 0DTE ITM puts carry perfectly real OI while Schwab's own reported
-            # greeks for them are internally self-contradictory (delta=-1.0, gamma=0.0, vega=
-            # 0.0 alongside a real-looking IV) -- has_valid_gamma (math_exposure_core.py, set
-            # only when a contract's greeks actually passed vendor_greeks_unavailable/
-            # gamma_is_plausible AND contributed) is the independent, additional gate the
-            # gamma/delta-DERIVED fields need; OI/Volume below are untouched by it since they
-            # never depended on greeks at all.
-            _has_oi = bool(bucket is not None and bucket.get("has_oi"))
-            _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
-            if _has_gex_data:
+            syms = symbols_by_expiry.get(col["expiry"], {}).get(k)
+            gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
+                _gamma_surface_cell_fields(bucket, syms)
+            if has_gex:
                 cells_with_data += 1
-            elif _has_oi:
+            elif has_oi:
                 cells_with_oi_but_invalid_greeks += 1
-            row.append(_bf(bucket.get("net_gex_1pct")) if _has_gex_data else None)
-            dex_row.append(_bf(bucket.get("net_dex_dollars")) if _has_gex_data else None)
-            # call_vanna/put_vanna are pre-initialized to a real 0.0 by _strike_bucket
-            # (compute_exposures_by_strike, math_exposure_core.py) -- the SAME accumulator
-            # shape net_gex_1pct/net_dex_dollars have, and the SAME _has_gex_data gate above
-            # now applies here too (see that comment: a 0.0 default with no OI ever added to
-            # it is not a computed zero). call_oi/put_oi/call_volume/put_volume, right below,
-            # are the genuinely-optional fields and correctly keep their own None-preserving
-            # .get(), ungated by greeks validity (they never depended on greeks).
-            # NOT _bf: that helper rounds to the nearest WHOLE unit, correct for gex/dex's
-            # dollar magnitudes above but not for vanna's own much smaller per-vol-point scale
-            # (a real net vanna of 0.4 rounded to 0 loses sign and all magnitude). Rounded to 2
-            # decimals instead, matching /api/options/vanna-by-strike's own rounding of the
-            # identical call_vanna-put_vanna quantity from this same faucet -- reproduced live:
-            # the two endpoints showed materially different pictures of the same strike/vanna.
-            _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
-            vanna_row.append(round(_vn, 2) if _vn is not None else None)
-            call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
-            oi_row.append({"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None})
-            call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")
-            vol_row.append({"call": _bf(call_vol), "put": _bf(put_vol)} if bucket is not None else {"call": None, "put": None})
-            syms = symbols_by_expiry.get(col["expiry"], {}).get(k) or {}
-            contracts_row.append({"call": syms.get("call"), "put": syms.get("put")})
+            row.append(gex)
+            dex_row.append(dex)
+            vanna_row.append(vanna)
+            oi_row.append(oi)
+            vol_row.append(volume)
+            contracts_row.append(contracts)
         cells.append({
             "strike": k, "gex": row, "dex": dex_row, "vanna": vanna_row,
             "oi": oi_row, "volume": vol_row, "contracts": contracts_row,
@@ -14864,23 +15519,8 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     # usable OI (exactly the live SPX case this was written from) -- gamma_available is
     # gated on cells_with_data specifically, the same signal each cell's own _has_data used.
     gamma_available = cells_with_data > 0
-    # Operator directive (2026-09-15, canonical input-validity rules): the OLD single "no
-    # usable open interest" wording covered BOTH a real OI outage (SPX, 2026-09-14: the
-    # vendor reports zero OI) AND an invalid-greeks-only outage (SPY/QQQ 0DTE ITM puts,
-    # 2026-09-15: OI is real, the vendor's greeks for it are internally self-contradictory)
-    # as if they were the same fact -- an operator reading `gamma_unavailable_reason` could
-    # not tell "there is nothing here" from "there is real interest but Schwab's greeks for
-    # it are unusable right now". Both counts are diagnostic-only, never load-bearing for any
-    # gate (gamma_available/cells_with_data above are the actual authorities).
-    if gamma_available:
-        _reason = None
-    elif cells_with_oi_but_invalid_greeks > 0:
-        _reason = (
-            "real open interest exists but Schwab's own reported greeks for it are invalid "
-            "this cycle ({} of {} strike×expiry cells have OI with unusable greeks)"
-        ).format(cells_with_oi_but_invalid_greeks, cells_total)
-    else:
-        _reason = "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
+    _reason = _gamma_surface_unavailable_reason(gamma_available, cells_with_oi_but_invalid_greeks,
+                                                cells_total)
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
@@ -14889,6 +15529,154 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
         "gamma_unavailable_reason": _reason,
         "cells_total": cells_total,
         "cells_with_oi_but_invalid_greeks": cells_with_oi_but_invalid_greeks,
+    }
+
+
+def _gamma_surface_unavailable_reason(gamma_available: bool, cells_with_oi_but_invalid_greeks: int,
+                                      cells_total: int) -> "str | None":
+    """The ONE message for why a surface has no usable gamma this cycle (extracted
+    2026-09-16 alongside _project_gamma_expiry_slice/_gamma_surface_cell_fields so
+    project_gamma_surface_update_expiry reports identically to a full recompute).
+    Operator directive (2026-09-15, canonical input-validity rules): distinguishes a real
+    OI outage (SPX, 2026-09-14: the vendor reports zero OI) from an invalid-greeks-only
+    outage (SPY/QQQ 0DTE ITM puts, 2026-09-15: OI is real, Schwab's own greeks for it are
+    internally self-contradictory) — an operator reading this could not tell "there is
+    nothing here" from "there is real interest but Schwab's greeks for it are unusable
+    right now" before this split. Both counts are diagnostic-only, never load-bearing for
+    any gate (gamma_available/cells_with_data are the actual authorities)."""
+    if gamma_available:
+        return None
+    if cells_with_oi_but_invalid_greeks > 0:
+        return (
+            "real open interest exists but Schwab's own reported greeks for it are invalid "
+            "this cycle ({} of {} strike×expiry cells have OI with unusable greeks)"
+        ).format(cells_with_oi_but_invalid_greeks, cells_total)
+    return "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
+
+
+def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: float,
+                                        target_expiry: str, *,
+                                        prior_spot: "float | None") -> "dict | None":
+    """Incremental sibling of project_gamma_surface (2026-09-16, audit finding #2: a
+    streamed tick touches contracts belonging to exactly ONE expiry — an option symbol
+    encodes its own expiry — but the eager refresh path used to re-run the full
+    strike×expiry grid through compute_exposures_by_strike for EVERY expiry on every
+    single tick, measured at ~1.95s at SPXW scale. This recomputes ONLY `target_expiry`'s
+    strike slice, through the exact same canonical faucet
+    (_project_gamma_expiry_slice/_gamma_surface_cell_fields — never a second exposure
+    formula), and splices the result into a shallow COPY of `prior_surface`'s cells;
+    every other expiry's cells are the SAME objects, not recomputed or even re-touched.
+
+    `prior_surface` MUST be a surface project_gamma_surface (or this function) itself
+    produced from the SAME strike/expiry set `chain` implies — true by construction in
+    refresh_gamma_surface_from_stream, which builds both from the one REST-baseline
+    chain. `contracts_total`/`contracts_used`/`contracts_excluded_malformed_expiry` are
+    therefore copied verbatim from `prior_surface`: overlaying streamed fields onto an
+    unchanged contract list never changes which contracts exist, only some of their
+    field values, so those chain-shape counts cannot have moved.
+
+    Independent-review finding (2026-09-16, follow-up mandate): net_gex_1pct/net_dex_
+    dollars/net_oi_dollars/vanna are ALL functions of spot (gamma/delta/OI scaled by spot
+    or spot², and vanna a genuinely non-separable closed-form function of spot via
+    Black-Scholes d1/d2) — for EVERY expiry, not only `target_expiry`. Splicing in only
+    the touched expiry's fresh slice while leaving every other column's cells computed
+    against a STALE spot would silently show a mix of dollar values priced off different
+    underlying prices the instant spot moves between two streamed ticks. `prior_spot` is
+    the exact spot `prior_surface` was itself computed/stamped against (the caller's own
+    cached record of it, never re-derived here); incremental reuse is safe ONLY when it is
+    IDENTICAL to `spot` (this is an identity check, not a within-tolerance one — the
+    slightest genuine spot movement invalidates every untouched expiry's dollar values,
+    not just the touched one). `prior_spot=None` (unknown/never recorded) also forces a
+    full recompute, fail-closed.
+
+    Returns None — meaning "fall back to a full project_gamma_surface call" — whenever
+    incremental splicing cannot be done SAFELY: spot has moved since `prior_surface` was
+    computed (see above), `target_expiry` is not an existing column in `prior_surface` (a
+    genuinely new expiry appearing must re-derive the sorted column list), or the
+    recomputed slice contains a strike `prior_surface` never carried (a new strike
+    appearing must re-derive the sorted row list). All three are handled the identical
+    way — never silently producing a shape-mismatched or stale-spot surface; the caller
+    always has the safe full recompute to fall back to."""
+    if prior_spot is None or float(prior_spot) != float(spot):
+        return None
+    expirations = prior_surface.get("expirations") or []
+    col_idx = next((i for i, e in enumerate(expirations) if e.get("expiry") == target_expiry), None)
+    if col_idx is None:
+        return None
+    _slice = _project_gamma_expiry_slice(chain, target_expiry, spot)
+    if _slice is None:
+        return None
+    exposures_e, sym_map, dte, _n_used = _slice
+    prior_strikes = prior_surface.get("strikes") or []
+    strike_index = {k: i for i, k in enumerate(prior_strikes)}
+
+    prior_cells = prior_surface.get("cells") or []
+    if len(prior_cells) != len(prior_strikes):
+        return None     # shape already inconsistent -- do not compound it, fall back
+
+    cells_with_data = 0
+    cells_with_oi_but_invalid_greeks = 0
+    new_cells = list(prior_cells)   # shallow: untouched strike rows are the SAME objects
+    # Only strikes THIS expiry's slice actually names need a new row — the base REST chain
+    # (and therefore which (strike, expiry) pairs have any contract at all) is unchanged by
+    # a streamed overlay, so a strike absent from exposures_e/sym_map was equally absent
+    # last time and this column's value there is already, and stays, None. Rebuilding every
+    # strike's row unconditionally would touch (and reallocate) rows target_expiry never
+    # affected, defeating the identity-preservation this function exists to provide.
+    touched_strikes = set(exposures_e.keys()) | set(sym_map.keys())
+    if any(float(k) not in strike_index for k in touched_strikes):
+        return None    # a strike this expiry now reports that the prior surface never had
+    for k in touched_strikes:
+        i = strike_index[float(k)]
+        old_cell = prior_cells[i]
+        bucket = exposures_e.get(k)
+        syms = sym_map.get(k)
+        gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
+            _gamma_surface_cell_fields(bucket, syms)
+        if has_gex:
+            cells_with_data += 1
+        elif has_oi:
+            cells_with_oi_but_invalid_greeks += 1
+        new_row = dict(old_cell)
+        for field, value in (("gex", gex), ("dex", dex), ("vanna", vanna),
+                             ("oi", oi), ("volume", volume), ("contracts", contracts)):
+            col = list(old_cell.get(field) or [])
+            if col_idx >= len(col):
+                return None      # column count disagrees with `expirations` -- fall back
+            col[col_idx] = value
+            new_row[field] = col
+        new_cells[i] = new_row
+
+    # Every OTHER column's own cells_with_data/cells_with_oi_but_invalid_greeks contribution
+    # is read back out of the UNTOUCHED cells this function never recomputed — a cheap scan
+    # over already-computed values, not exposure math, so this stays genuinely incremental.
+    other_cols_with_data = 0
+    other_cols_invalid_oi = 0
+    for j, e in enumerate(expirations):
+        if j == col_idx:
+            continue
+        for cell in new_cells:
+            gex_row = cell.get("gex") or []
+            oi_row = cell.get("oi") or []
+            if j < len(gex_row) and gex_row[j] is not None:
+                other_cols_with_data += 1
+            elif j < len(oi_row) and isinstance(oi_row[j], dict) and (
+                    oi_row[j].get("call") or oi_row[j].get("put")):
+                other_cols_invalid_oi += 1
+    total_cells_with_data = other_cols_with_data + cells_with_data
+    total_invalid_oi = other_cols_invalid_oi + cells_with_oi_but_invalid_greeks
+    cells_total = int(prior_surface.get("cells_total") or (len(new_cells) * len(expirations)))
+    gamma_available = total_cells_with_data > 0
+    return {
+        "expirations": expirations, "strikes": prior_strikes, "cells": new_cells,
+        "contracts_total": prior_surface.get("contracts_total"),
+        "contracts_used": prior_surface.get("contracts_used"),
+        "contracts_excluded_malformed_expiry": prior_surface.get("contracts_excluded_malformed_expiry"),
+        "gamma_available": gamma_available,
+        "gamma_unavailable_reason": _gamma_surface_unavailable_reason(
+            gamma_available, total_invalid_oi, cells_total),
+        "cells_total": cells_total,
+        "cells_with_oi_but_invalid_greeks": total_invalid_oi,
     }
 
 
@@ -14944,11 +15732,28 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
         # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
         # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
-        # _terrain_refresh_one/refresh_gamma_surface_from_stream). `stream_confirmed_live` and
-        # `cell_stream_state_counts` are the honest, per-cell-grounded signal for that question;
-        # the legacy "live" field's own meaning is left unchanged so existing consumers are not
-        # silently redefined underneath them.
-        _cell_state_counts = _gamma_surface_cell_state_counts(surf)
+        # _terrain_refresh_one/refresh_gamma_surface_from_stream).
+        #
+        # Audit finding #6 (2026-09-16), FIXED: `stream_confirmed_live` used to mean "at least
+        # one cell is live" (true with 1 of hundreds), and the field the UI actually rendered
+        # a "LIVE" label from (this response's own `source`/`live` above) required NO per-cell
+        # coverage at all -- a trader could see "LIVE" over a mostly stale/unavailable grid.
+        # `stream_confirmed_live` is REMOVED (dead, misleadingly named, never consumed) and
+        # replaced by `stream_coverage`, the ONE coverage verdict
+        # (_gamma_surface_coverage_summary) with exact live/partial/stale/rejected/unavailable
+        # counts and percentages, and `meets_live_requirement` gating the ONLY honest "LIVE"
+        # claim: 100% of cells carrying a real contract identity, not source-path identity or
+        # one live cell.
+        _coverage = _gamma_surface_coverage_summary(surf)
+        try:
+            # Independent-review finding (2026-09-16, follow-up mandate item 1): "expose the
+            # exact admitted, active, pending and rejected contracts" — a symbol-level
+            # accounting, distinct from the per-cell disclosure above. Best-effort: a
+            # diagnostic field must never take down the surface it is attached to.
+            _contract_admission = _option_contract_admission_summary(tk)
+        except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
+            log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
+            _contract_admission = None
         return JSONResponse({
             "ticker": tk, "symbol": tk, "available": _gamma_available,
             # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
@@ -14956,8 +15761,9 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             # existing frontend contract picks this up with no client-side change required.
             "reason": None if _gamma_available else surf.get("gamma_unavailable_reason"),
             "source": "terrain_live_cache", "live": True, "stale": stale,
-            "cell_stream_state_counts": _cell_state_counts,
-            "stream_confirmed_live": _cell_state_counts["live"] > 0,
+            "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
+            "stream_coverage": _coverage,
+            "contract_admission": _contract_admission,
             "degraded": live.get("levels_stale_reason") if stale else None,
             # ONE spot faucet (operator directive, 2026-09-15): prefer the spot stamped
             # directly ON THIS SURFACE (by _terrain_refresh_one's REST cycle OR the eager
@@ -15048,15 +15854,21 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             spot1 = float(s1)
             surface = project_gamma_surface(json.loads(c1), spot1)
             # Always-live heatmap mandate (2026-09-15): a banked-morning reference has no stream
-            # overlay input at all -- every leg on every cell stamps 'unavailable', consistent
-            # with "REST may bootstrap or recover the surface, but it cannot satisfy LIVE".
-            _stamp_gamma_surface_cell_stream_state(surface, {}, set())
+            # overlay input at all -- every leg on every cell stamps 'unavailable' UNLESS the
+            # daemon is already, independently, requesting that leg's contract (a genuine
+            # 'pending' -- the caller is honestly waiting on the vendor, not merely looking at a
+            # never-subscribed contract), consistent with "REST may bootstrap or recover the
+            # surface, but it cannot satisfy LIVE".
+            from app.options.order_flow.streaming import is_option_producer_daemon_available
+            _stamp_gamma_surface_cell_stream_state(
+                surface, {}, set(), None, set(_desired_option_symbols_for_ticker(tk)),
+                daemon_available=is_option_producer_daemon_available())
             _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
                 "source": "banked_morning_reference", "live": False, "stale": True,
                 "cell_stream_state_counts": _gamma_surface_cell_state_counts(surface),
-                "stream_confirmed_live": False,
+                "stream_coverage": _gamma_surface_coverage_summary(surface),
                 "warming": _warming, "requested": _requested, "on_board": _on_board,
                 "degraded": ("live terrain surface unavailable — showing banked morning wide "
                              "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
@@ -15183,6 +15995,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
         try:
             spot, source, ts = resolve_spot(tk)
             payload = {"ticker": tk, "spot": spot, "spot_source": source,
+                       "spot_state": current_spot_state(source, tk),
                        "spot_as_of_ts_utc": ts}
             with _spot_poll_lock:
                 _spot_poll_cache[tk] = (time.time(), payload)
@@ -15418,8 +16231,14 @@ def get_desk_structure(
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     out: dict = {"subject": tk, "as_of_utc": at}
     try:
+        # Live LAST_PRICE only when this is a current request. A historical as_of
+        # keeps the as-of bar close and must not receive today's live print.
+        live_spot = None
+        if not (as_of and as_of > 0):
+            live_spot, _, _ = resolve_spot(tk)
         out["distribution"] = desk_store.terminal_distribution(
-            _desk_db, tk, at, horizon_sessions=max(1, min(int(horizon_sessions), 60)))
+            _desk_db, tk, at, horizon_sessions=max(1, min(int(horizon_sessions), 60)),
+            spot=live_spot)
     except Exception as e:
         out["distribution"] = {"available": False, "reason": f"{type(e).__name__}: {e}"}
     if long_strike > 0 and short_strike > 0:
@@ -16268,10 +17087,12 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
         need_fetch: list[str] = []
         for t in seen:
             row = _lmp.get_quote(t)
-            if row and _lmp.quote_is_fresh(row) and row.get("spot") is not None:
+            if row and _lmp.quote_is_fresh(row) and _lmp.plane_spot_is_last_price(row):
                 out[t] = {
                     "spot": row["spot"],
                     "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
+                    "spot_state": "live",
+                    "spot_source": SPOT_SOURCE_PLANE,
                     "chg_pct": resolve_chg_pct(t, row.get("chg_pct")),
                     "exchange_quote_ts": row.get("exchange_quote_ts"),
                 }
@@ -16312,12 +17133,14 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
                 continue
             pq = _parse_quote_node_session_fields(node)
             spot = pq.get("spot")
-            if spot is None:
+            if pq.get("spot_source") != "lastPrice" or spot is None:
                 continue
             chg_pct = resolve_chg_pct(t, pq.get("chg_pct"))
             out[t] = {
                 "spot": spot,
                 "spot_disp": f"{spot:.2f}",
+                "spot_state": "live",
+                "spot_source": SPOT_SOURCE_QUOTE,
                 "chg_pct": chg_pct,
                 "exchange_quote_ts": pq.get("quote_ts"),
             }
@@ -16332,7 +17155,7 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
                 "quote_ingestion": "rest_watchlist_batch",
                 "fast_generation_id": _lmp.next_fast_generation(t),
                 "quote_source_detail": {
-                    "spot": pq.get("spot_source") or "unavailable_missing_last_and_mark",
+                    "spot": "LAST_PRICE",
                     "carried_forward": False,
                 },
             })
@@ -18021,13 +18844,8 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         selected_exp = _default_expiry(expiries, ticker)
 
         # Try charm with all contracts, no filter
-        # ONE spot faucet (operator directive, 2026-09-15, repo-wide spot audit): this used to
-        # read chain_json["underlyingPrice"] directly -- a second, independent spot selector
-        # bypassing resolve_spot (RC-14), the ONE canonical authority. resolve_spot still
-        # falls through to this same chain's underlying node as its own last-resort tier, so
-        # this diagnostic view keeps working identically when nothing fresher exists, but now
-        # prefers the SAME live/quote/stored precedence every other consumer uses instead of
-        # a chain-only reading that could silently disagree with the product's own number.
+        # ONE spot faucet: LAST_PRICE only via resolve_spot. Chain underlyingPrice is
+        # never current live spot. If LAST_PRICE is missing this diagnostic fails closed.
         spot, spot_source, spot_ts = resolve_spot(ticker, chain_json=chain_json)
         if spot is None or spot <= 0:
             return {"error": f"no spot available (resolve_spot) for {ticker}"}

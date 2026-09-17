@@ -541,6 +541,81 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(allContracts).toBeGreaterThanOrEqual(widerContracts);
   });
 
+  test('a live gamma_surface_seq push re-renders and re-declares demand for the CURRENTLY SELECTED scope, never reverts to Auto (2026-09-17, spot-tick live-UI mandate)', async ({ page }) => {
+    // The spot-tick fix (refresh_gamma_surface_from_spot_tick, server.py) makes a NEW surface
+    // generation arrive live while the operator may be looking at Wider or All, not just Auto
+    // -- every prior push test in this file only ever exercised the DEFAULT (Auto) scope, and
+    // every prior scope test only ever exercised a STATIC load with no push in between. This
+    // is the missing combination the mandate's own "browser proof" section names explicitly:
+    // "actual Auto/Wider/All controls... actual rendered cells... displayed spot/GEX changes".
+    // Real 116-strike/16-expiration fixture (same one the REAL-DATA VIEWPORT test above uses)
+    // so Auto (11 rows) and Wider (23 rows) are genuinely, visibly different counts.
+    const REAL_RAW = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
+    // This banked-morning fixture (like the real /api/options/gamma-surface response it was
+    // captured from) carries per-cell vendor contract identity -- synthesized here only
+    // because the checked-in JSON snapshot predates that field; without it every cell's
+    // demand would be empty and this test could not tell "no push happened" apart from
+    // "the surface never carried contracts to demand in the first place".
+    const REAL = Object.assign({}, REAL_RAW, {
+      cells: REAL_RAW.cells.map((c) => Object.assign({}, c, {
+        contracts: REAL_RAW.expirations.map((e) => ({
+          call: 'C' + c.strike + 'X' + e.expiry, put: 'P' + c.strike + 'X' + e.expiry,
+        })),
+      })),
+    });
+    let surfaceCalls = 0;
+    const pushedGex = -999000000;   // a value nothing in the baseline fixture already has
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      surfaceCalls += 1;
+      if (surfaceCalls === 1) {
+        route.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify(Object.assign({}, REAL, { surface_seq: 1 })),
+        });
+        return;
+      }
+      const pushed = JSON.parse(JSON.stringify(REAL));
+      pushed.cells.find((c) => c.strike === 764.0).gex[2] = pushedGex;   // strike 764 / 2026-09-11 column
+      pushed.surface_seq = 2;
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pushed) });
+    });
+    const demandCalls = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      demandCalls.push(body.contracts || []);
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      await new Promise((r) => setTimeout(r, 500));   // see the delivery-timing test above for why
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.setViewportSize({ width: 1672, height: 941 });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const rows = page.locator('#heatBody .heat tbody tr');
+    await expect(rows).toHaveCount(11);   // Auto, sanity
+
+    await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
+    await expect(rows).toHaveCount(23);
+    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+    const widerContractsBeforePush = demandCalls[demandCalls.length - 1].length;
+    expect(await page.evaluate(() => window.EdShell.getScope())).toBe('wider');
+
+    const pushedCell = page.locator('.hcell[data-strike="764"][data-expiry="2026-09-11"]');
+    await expect(pushedCell).toHaveText('-$999.0M', { timeout: 3000 });   // the live push landed
+    await expect(rows).toHaveCount(23);   // still Wider -- the push must never silently revert scope
+    expect(await page.evaluate(() => window.EdShell.getScope())).toBe('wider');
+    // The new generation carries the identical strike/expiry population (only a GEX value
+    // changed), so the recomputed demand set is byte-identical to what is already confirmed
+    // -- ed-stream.js's own dedup (see its "cacheTrustworthy" short-circuit) correctly sends
+    // NO redundant POST here. Proving that requires a genuinely NEW population, covered by
+    // the scope-switch assertions above; what this push must never do is drop back to
+    // Auto's demand shape while still labelled Wider.
+    expect(widerContractsBeforePush).toBeGreaterThan(0);
+  });
+
   test('GEX-by-strike displays each row\'s own session volume, not just signed GEX$ (RC-UI-2 finding #5a)', async ({ page }) => {
     // Independent-review finding (2026-09-12), REPRODUCED: "GEX-by-strike does not display its
     // row's volume field" -- terrain_engine._per_strike_rows' own shape is
@@ -675,9 +750,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(bg586[0]).toBeGreaterThan(bg586[1]);   // red channel dominant
     // spot row is the 583 strike (nearest 583.41)
     await expect(page.locator('tr.spotrow .hstrike')).toHaveText('583');
-    // a LIVE surface shows no stale/reference banner and is tagged a live WINDOW (not "complete")
+    // The default SURFACE fixture carries no per-cell `stream` state at all (it predates the
+    // always-live mandate's per-cell stamping and is used here to test value/colour/format
+    // rendering, not streaming disclosure) -- independent-review finding (2026-09-16, follow-
+    // up mandate): the header must NEVER read the word LIVE without genuine per-cell
+    // confirmation, not even via a legacy "payload predates this field" compatibility
+    // fallback. A surface with zero confirmed-identity visible cells honestly reads WARMING.
     await expect(page.locator('.heat-banner')).toHaveCount(0);
-    await expect(page.locator('#heatScope')).toContainText('LIVE·window');
+    await expect(page.locator('#heatScope')).toContainText('WARMING');
     // #7: shade legend present — vertical magnitude legend at the heatmap's right edge
     await expect(page.locator('.heat-vlegend .bar')).toBeVisible();
     // C: nearest-expiry (front) column emphasised
@@ -1488,7 +1568,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     });
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    // 2026-09-16: poll for the MEANINGFUL condition (the heatmap's own non-empty demand
+    // having landed), not merely "any request happened" -- an unrelated owner (Strike
+    // Detail, suppressed above to an empty selection but still issuing its own clear call)
+    // can legitimately POST an earlier, empty request that "length > 0" alone would catch.
+    await expect.poll(() => {
+      const last = requests[requests.length - 1];
+      return last && last.contracts && last.contracts.length;
+    }).toBeGreaterThan(0);
     const sent = requests[requests.length - 1].contracts.slice().sort();
     // BOTH visible columns' call+put for every strike that has one -- 2026-09-11 (all
     // three strikes) AND 2026-09-18 (580 has no contracts on that expiry in this fixture,
@@ -2126,5 +2213,326 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(colTitles.length).toBe(2);
     colTitles.forEach((t) => expect(t || '').not.toMatch(/PARTIALLY|excluded|safety limit/));
     await expect(page.locator('#heatBody .scope-note')).not.toContainText('capped');
+  });
+
+  // ---------------------------------------------------------------------------
+  // 2026-09-16 audit findings #3/#4/#5/#6 — bounded/consolidated live-UI architecture
+  // ---------------------------------------------------------------------------
+
+  test('audit #4: cold start hydrates every endpoint exactly once, never twice', async ({ page }) => {
+    // The former design had TWO independent initial-hydration mechanisms (ed-core.js's own
+    // ed:ticker/ed:view dispatch, and each view module's own bottom-of-file self-call) that
+    // only avoided colliding because of a script-load-order coincidence. Now there is exactly
+    // one (ed-core.js's dispatch, deferred to DOMContentLoaded) -- proven here by counting
+    // calls to endpoints owned by DIFFERENT modules across the initial render.
+    const counts = {};
+    // fallback() (not continue()) chains to the next-registered handler -- here, intercept()'s
+    // own catch-all from beforeEach, which actually fulfills with mock data. continue() would
+    // instead send the request over the real network, bypassing every mock entirely.
+    const track = (path) => (route) => {
+      counts[path] = (counts[path] || 0) + 1;
+      return route.fallback();
+    };
+    await page.route('**/api/options/gamma-surface**', track('gamma-surface'));
+    await page.route('**/api/terrain/strikes**', track('terrain-strikes'));
+    await page.route('**/api/terrain?**', track('terrain'));
+    await page.route('**/api/options/tape**', track('tape'));
+    await page.route('**/api/chain**', track('chain'));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    // Give any accidental second trigger (a stray immediate self-call racing the deferred
+    // dispatch) a real chance to land before asserting the count stayed at exactly one.
+    await page.waitForTimeout(300);
+    for (const path of ['gamma-surface', 'terrain-strikes', 'terrain', 'tape', 'chain']) {
+      expect(counts[path] || 0, `${path} must hydrate exactly once on cold start`).toBe(1);
+    }
+  });
+
+  test('audit #3: one gamma_surface_seq push refetches only gamma-surface-derived endpoints, not unrelated ones', async ({ page }) => {
+    let gammaCalls = 0, strikesCalls = 0, terrainCalls = 0;
+    const unrelated = { tape: 0, chain: 0, analytics: 0 };
+    // fallback() (not continue()) -- see the identical note in the cold-start test above.
+    await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
+    await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
+    // CONFIRMED REGRESSION (2026-09-17, live-UI field audit): a gamma-surface push can now
+    // mean "canonical spot moved with NO option tick at all"
+    // (refresh_gamma_surface_from_spot_tick) -- /api/terrain's own spot/walls/flip/net-GEX
+    // fields (the Gamma Chart's spot line, Key Levels) are exactly as gamma-surface-derived
+    // as /api/terrain/strikes is, and moved from "unrelated" into the reacting set.
+    await page.route('**/api/terrain?**', (route) => { terrainCalls += 1; return route.fallback(); });
+    await page.route('**/api/options/tape**', (route) => { unrelated.tape += 1; return route.fallback(); });
+    await page.route('**/api/chain**', (route) => { unrelated.chain += 1; return route.fallback(); });
+    await page.route('**/api/analytics/state**', (route) => { unrelated.analytics += 1; return route.fallback(); });
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      // Long enough to land AFTER the strike-clear settle wait below (else the push
+      // fires before this test ever captures its baseline counts, and the SSE-reaction
+      // assertions below would look like no reaction happened at all).
+      await new Promise((r) => setTimeout(r, 1000));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    // The heatmap auto-selects the at-the-money strike by default, which gives Strike
+    // Detail's OWN legitimate ed:gamma-push reaction (loadStrike, reading /api/chain) a
+    // selection to act on -- a real, separate mechanism this test is not about (it only
+    // cares about endpoints with NO business reacting to a gamma-surface push at all).
+    // Clearing the selection isolates the test to that claim. The initial auto-select
+    // itself scheduled a 600ms-delayed loadOf() (ed-gamma-panels.js's own ed:strike
+    // handler) BEFORE this clears it -- wait that out too, or it fires during this test's
+    // own observation window and gets mistaken for a reaction to the gamma-surface push.
+    await page.evaluate(() => window.EdShell.setStrike(null));
+    await page.waitForTimeout(650);
+    const beforeUnrelated = Object.assign({}, unrelated);
+    const gammaBefore = gammaCalls, strikesBefore = strikesCalls, terrainBefore = terrainCalls;
+    await page.waitForTimeout(600);   // past the mocked SSE delay (1000ms from page load)
+    // The genuinely gamma-surface-derived endpoints DID react to the push.
+    expect(gammaCalls).toBeGreaterThan(gammaBefore);
+    expect(strikesCalls).toBeGreaterThan(strikesBefore);
+    expect(terrainCalls).toBeGreaterThan(terrainBefore);
+    // Nothing unrelated fired again just because ONE gamma-surface push arrived.
+    expect(unrelated).toEqual(beforeUnrelated);
+  });
+
+  test('audit #3 (follow-up): two modules reacting to the SAME push for the SAME endpoint collapse into one network call', async ({ page }) => {
+    // On the Chart view, ed-gamma-chart.js's own GEX profile AND ed-gamma-panels.js's
+    // Key Levels rail (isGamma() is view-independent -- see that file's own gate) are BOTH
+    // active and BOTH react to ed:gamma-push by reading /api/terrain/strikes for the SAME
+    // ticker -- exactly the "independently refetches multiple related endpoints" shape the
+    // operator's mandate bans. l1_sse_guards.js's sharedFetchJson must collapse the two
+    // into a single real request, not merely narrow WHICH modules react.
+    let strikesCalls = 0;
+    await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      await new Promise((r) => setTimeout(r, 1000));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#chartBody svg')).toBeVisible();
+    await page.waitForTimeout(200);   // let the view-switch's own hydration settle
+    const before = strikesCalls;
+    await page.waitForTimeout(1100);   // past the mocked SSE delay
+    // Exactly one MORE call for the one push, not two (one per reacting module).
+    expect(strikesCalls - before).toBe(1);
+  });
+
+  test('audit #3 (follow-up): one gamma_surface_seq push costs a strict, documented request budget of at most 4 REST calls total, including Strike Detail and Key Levels', async ({ page }) => {
+    // Independent-review finding (2026-09-16, follow-up mandate item 7): "consolidate
+    // gamma-push data delivery or prove a strict request budget including selected Strike
+    // Detail". The heatmap auto-selects the at-the-money strike by default, so Strike
+    // Detail (ed-gamma-panels.js, reading /api/chain) is ALSO a genuine ed:gamma-push
+    // reactor whenever a strike is selected -- a prior test isolated the OTHER two
+    // endpoints by explicitly clearing the selection; this one leaves it selected and
+    // measures the TRUE worst case: every endpoint any gamma-push reactor can possibly
+    // touch, together, for one push.
+    //
+    // Budget revised 4->3->4 (2026-09-17, live-UI field audit): /api/terrain (Key Levels'
+    // spot/walls/flip/net-GEX, view-independent per isGamma()) was found to be a
+    // CONFIRMED REGRESSION -- gamma-surface-derived data left off the push entirely, so it
+    // sat on the 12s cadence while claiming an unconditional "terrain · live" label. Wiring
+    // it to the push (this row's own fix) is a genuine, documented, deliberate budget
+    // increase from 3 to 4 distinct endpoints (gamma-surface, terrain/strikes, chain,
+    // terrain) -- correctness over the smaller number. Still each fetched exactly once,
+    // regardless of how many modules react to the SAME push (Key Levels and the Gamma
+    // Chart's own spot-line fix both read /api/terrain and collapse to one real call via
+    // sharedFetchJson).
+    let gammaCalls = 0, strikesCalls = 0, chainCalls = 0, terrainCalls = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
+    await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
+    await page.route('**/api/chain**', (route) => { chainCalls += 1; return route.fallback(); });
+    await page.route('**/api/terrain?**', (route) => { terrainCalls += 1; return route.fallback(); });
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      await new Promise((r) => setTimeout(r, 1000));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    await page.waitForTimeout(200);   // let cold-start hydration (including auto-select) settle
+    const before = { gamma: gammaCalls, strikes: strikesCalls, chain: chainCalls, terrain: terrainCalls };
+    await page.waitForTimeout(1100);   // past the mocked SSE delay
+    expect(gammaCalls - before.gamma).toBe(1);
+    expect(strikesCalls - before.strikes).toBe(1);
+    expect(chainCalls - before.chain).toBe(1);
+    expect(terrainCalls - before.terrain).toBe(1);
+    const totalDelta = (gammaCalls - before.gamma) + (strikesCalls - before.strikes)
+      + (chainCalls - before.chain) + (terrainCalls - before.terrain);
+    expect(totalDelta).toBeLessThanOrEqual(4);
+  });
+
+  test('CONFIRMED REGRESSION FIX (2026-09-17): the Gamma Chart spot line moves on a spot-only gamma_surface_seq push, not just the 12s poll', async ({ page }) => {
+    // Live-UI field audit finding: ed-gamma-chart.js's own gamma-push handler reused the
+    // STALE `_lastRaw.terrain` object instead of refetching /api/terrain, on the reasoning
+    // "a streamed option tick carries no terrain/spot information" -- true before this
+    // mandate's spot-tick fix, false now that a push can ALSO mean "spot moved with no
+    // option tick at all". This proves the fix: the terrain response is genuinely refetched
+    // on the push, and the chart's own spot line/label reflects the NEW value.
+    let terrainSpot = 583.41;
+    await page.route('**/api/terrain?**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, { spot: terrainSpot })),
+    }));
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      await new Promise((r) => setTimeout(r, 1000));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#chartBody svg')).toContainText('spot 583.41');
+    // Canonical spot moves -- NO option tick, purely a spot-only tick's own gamma_surface_seq
+    // push (the exact shape refresh_gamma_surface_from_spot_tick produces).
+    terrainSpot = 601.23;
+    await page.waitForTimeout(1100);   // past the mocked SSE delay
+    await expect(page.locator('#chartBody svg')).toContainText('spot 601.23');
+  });
+
+  test('CONFIRMED REGRESSION FIX (2026-09-17): Key Levels rail updates on a gamma_surface_seq push, not just the 12s poll', async ({ page }) => {
+    let terrainSpot = 583.41;
+    await page.route('**/api/terrain?**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, { spot: terrainSpot })),
+    }));
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      await new Promise((r) => setTimeout(r, 1000));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klSpot')).toHaveText('583.41');
+    terrainSpot = 601.23;
+    await page.waitForTimeout(1100);   // past the mocked SSE delay
+    await expect(page.locator('#klSpot')).toHaveText('601.23');
+  });
+
+  test('audit #5: the Chain view does not poll on a fixed 12s cadence while inactive, and hydrates once on entry', async ({ page }) => {
+    let chainCalls = 0;
+    await page.route('**/api/chain**', (route) => {
+      chainCalls += 1;
+      // Strike Detail (ed-gamma-panels.js) ALSO reads /api/chain for a selected strike's own
+      // OI/volume, on the SAME 12s cadence -- a real, separate, still-correct mechanism this
+      // test is not about. Returning empty contracts here (same convention the "declares
+      // live-streaming demand" test above uses) means Strike Detail has nothing to select and
+      // never re-reads it, isolating this test to the Chain LADDER's own fetch behavior.
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ticker: 'SPY', spot: 583.41, expiry: '2026-09-11', status: 'ok', contracts: [] }),
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();   // lands on Gamma, not Chain
+    // The heatmap auto-selects the at-the-money strike by default, which gives Strike
+    // Detail (ed-gamma-panels.js) something to read from /api/chain on its OWN, separate,
+    // still-correct ed:refresh{slow} cadence -- a real mechanism unrelated to this test.
+    // Clearing the selection isolates this test to the Chain LADDER's own fetch behavior.
+    await page.evaluate(() => window.EdShell.setStrike(null));
+    const afterLoad = chainCalls;
+    // Simulate what USED to be several 12s slow-poll ticks while a DIFFERENT view is active --
+    // the old design's unconditional ed:refresh{slow} listener would have refetched the
+    // complete chain on every one of these even though nobody was looking at it.
+    for (let i = 0; i < 4; i++) {
+      await page.evaluate((n) => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { tick: n, slow: true } })), i);
+    }
+    await page.waitForTimeout(200);
+    expect(chainCalls).toBe(afterLoad);   // zero extra chain fetches while Chain was never viewed
+    // Entering the Chain view for the first time hydrates it exactly once.
+    await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
+    await expect.poll(() => chainCalls).toBeGreaterThan(afterLoad);
+    const afterEntry = chainCalls;
+    await page.waitForTimeout(200);
+    expect(chainCalls).toBe(afterEntry);   // exactly one hydration on entry, not a burst
+  });
+
+  test('audit #6: the header never reads the word LIVE (in any form) when visible coverage is only partial', async ({ page }) => {
+    // Two visible cells, one genuinely live-streaming and one merely stale -- 50% coverage
+    // must read as a disclosed percentage, never a source-path-only check that ignores
+    // per-cell coverage, and never a label containing the word LIVE at all (follow-up
+    // mandate independent-review finding: "LIVE·50%" still contains the literal word LIVE,
+    // which a viewer scanning for that one word could mistake for a complete reading).
+    // No stream_coverage is set on the payload at all -- the header's LIVE/STREAMING word is
+    // computed client-side from the DOM's own data-cell-state attributes (visible-scope
+    // coverage), never from this canonical-surface, server-computed field.
+    const surf = surfaceWithStreamState([{ call: 'live' }, { call: 'stale' }]);
+    surf.source = 'terrain_live_cache';
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surf),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    const scopeText = await page.locator('#heatScope').textContent();
+    expect(scopeText).toMatch(/STREAMING·50%/);
+    expect(scopeText).not.toMatch(/LIVE/);   // the literal word must never appear below 100%
+    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 unavailable of 2 visible/);
+  });
+
+  test('audit #6: a vendor-rejected contract renders a distinct, visibly-failed cell', async ({ page }) => {
+    const surf = Object.assign({}, SURFACE, {
+      strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+      cells: [{
+        strike: 583, gex: [null], contracts: [{ call: 'BADSYM', put: null }],
+        stream: [{ state: 'rejected', call: { symbol: 'BADSYM', state: 'rejected', rejected_reason: 'vendor refused' } }],
+      }],
+    });
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surf),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveClass(/state-rejected/);
+    await expect(cell).toHaveAttribute('title', /REJECTED.*vendor refused/);
+  });
+
+  test('audit #3: a late gamma_surface_seq push scoped to the PREVIOUS ticker never paints the new ticker\'s cells', async ({ page }) => {
+    // surfaceRevision()'s own key includes the server-owned surface_seq counter specifically
+    // so cell-VALUE-only changes are never mistaken for "nothing changed" (RC-UI-2 finding
+    // #1 -- see the identical note earlier in this file). This fixture's two ticker
+    // responses share the same strikes/expirations shape, so a real, incrementing
+    // surface_seq is required here for the same reason production always stamps one.
+    let seq = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      const url = route.request().url();
+      const tk = decodeURIComponent((url.match(/[?&]ticker=([^&]+)/) || [])[1] || 'SPY');
+      const value = tk === 'SPY' ? 1000 : 9000;
+      seq += 1;
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, {
+          strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          cells: [{ strike: 583, gex: [value] }], surface_seq: seq,
+        })),
+      });
+    });
+    // A short, fixed delay (same proven pattern as the "genuine SSE push" test above) --
+    // long enough for the test to switch ticker before it lands, short enough to keep the
+    // test fast. The push is scoped to SPY, the ticker this test is about to LEAVE.
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      await new Promise((r) => setTimeout(r, 400));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":99}\n\n',
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$1.0K');   // SPY's own value
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(cell).toHaveText('$9.0K');   // now QQQ's own value, before the SPY-scoped push lands
+    // Give the held-open SSE connection's delayed SPY-scoped push a real chance to arrive
+    // and, if the scope guard were broken, repaint over QQQ's own value.
+    await page.waitForTimeout(500);
+    await expect(cell).toHaveText('$9.0K');   // still QQQ's -- the stale SPY-scoped push was ignored
   });
 });

@@ -108,7 +108,7 @@ def check_single_spot_authority() -> list[Violation]:
     """
     out: list[Violation] = []
     banned = ("chain_underlying_spot(",)
-    allowed_lines = ("def chain_underlying_spot", "chain_underlying_spot(chain_json)")
+    allowed_lines = ("def chain_underlying_spot",)
     for rel in ("server.py", "terrain_engine.py"):
         f = REPO / rel
         if not f.exists():
@@ -119,6 +119,25 @@ def check_single_spot_authority() -> list[Violation]:
                 out.append(Violation(f, n,
                                      "spot must be read through resolve_spot() - the single "
                                      "authority (RC-14). Do not call chain_underlying_spot directly."))
+    server_txt = (REPO / "server.py").read_text(encoding="utf-8")
+    rs_start = server_txt.find("def resolve_spot(")
+    if rs_start < 0:
+        out.append(Violation(REPO / "server.py", 1, "resolve_spot is missing"))
+    else:
+        rs_end = server_txt.find("\ndef ", rs_start + 1)
+        rs_body = server_txt[rs_start:rs_end if rs_end > 0 else None]
+        for needle, why in (
+            ("_spot_from_stored(", "resolve_spot must not promote snapshots.spot to current live spot"),
+            ("chain_underlying_spot(", "resolve_spot must not promote chain underlying to current live spot"),
+        ):
+            if needle in rs_body:
+                out.append(Violation(REPO / "server.py", server_txt[:rs_start].count("\n") + 1, why))
+    plane = REPO / "live_market_plane.py"
+    if plane.exists():
+        for n, line in enumerate(plane.read_text(encoding="utf-8").splitlines(), start=1):
+            if "spot_f = last or mark" in line or "last or mark" in line:
+                out.append(Violation(plane, n,
+                                     "plane current spot must be LAST_PRICE only; MARK is not spot"))
     return out
 
 

@@ -181,6 +181,41 @@
     return { trigger: trigger, reset: reset };
   }
 
+  /**
+   * Dedup concurrent identical-URL GETs into ONE real network request (2026-09-16 audit
+   * follow-up, finding #3: a single `ed:gamma-push` SSE event still fanned out to multiple
+   * independent REST GETs -- e.g. ed-gamma-chart.js and ed-gamma-panels.js both fetching
+   * `/api/terrain/strikes?ticker=X` for the SAME ticker on the SAME push, each with its own
+   * `fetch()` call the browser has no reason to know are redundant).
+   *
+   * Every caller for the identical URL while a request is already in flight gets the SAME
+   * promise -- the browser sees exactly one request, not one per caller. This is deliberately
+   * NOT a cache: the URL is removed from the in-flight map the instant it settles (success or
+   * failure), so the NEXT call for that URL always starts a fresh request rather than serving
+   * a stale response -- correctness (freshness) is unaffected, only the redundant CONCURRENT
+   * call is eliminated. Each caller's own staleness guard (stillChart/stillCurrent/etc., all
+   * already checked before applying a response) is untouched -- this only changes how many
+   * times the network is actually asked, never who gets to apply what.
+   *
+   * No AbortSignal is accepted deliberately: a shared in-flight request must not be cancelled
+   * because ONE of several callers waiting on it navigated away -- every caller's own
+   * "am I still relevant" check at resolution time already absorbs a response that arrives
+   * for a context nobody wants any more.
+   *
+   * @param {string} url
+   * @returns {Promise<any>} parsed JSON; rejects on a non-2xx status or a network error.
+   */
+  var _sharedFetchInFlight = Object.create(null);
+  function sharedFetchJson(url) {
+    if (_sharedFetchInFlight[url]) return _sharedFetchInFlight[url];
+    var p = fetch(url, { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); });
+    p.then(function () { delete _sharedFetchInFlight[url]; },
+           function () { delete _sharedFetchInFlight[url]; });
+    _sharedFetchInFlight[url] = p;
+    return p;
+  }
+
   g.EdL1SseGuards = {
     normL1ExpiryKey: normL1ExpiryKey,
     l1ApplyGenerationMonotonic: l1ApplyGenerationMonotonic,
@@ -188,5 +223,6 @@
     l1EnvelopeScopeMatches: l1EnvelopeScopeMatches,
     l1PayloadMatchesActiveScope: l1PayloadMatchesActiveScope,
     makeCoalescedLoader: makeCoalescedLoader,
+    sharedFetchJson: sharedFetchJson,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
