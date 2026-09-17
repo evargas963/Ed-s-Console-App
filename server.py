@@ -10347,7 +10347,18 @@ async def _app_lifespan(app):
         # longer registered; _sse_background_loop owns viewed-key cadence.
         # The quote lane (live_market_plane → live_quote SSE) still updates
         # per tick via record_from_level_one_equity.
-        start_order_flow_stream(None, None, DEFAULT_TICKER)
+        #
+        # CONFIRMED ROOT DEFECT (2026-09-17): `on_tick_callback` was this function's own
+        # already-built hook for "an equity tick just landed" — symmetric to
+        # set_streamed_greeks_hook below for option ticks — and it was simply never wired
+        # to anything. The header's spot moved on every streamed tick via the line above;
+        # the gamma heatmap's dollar cells (ALL spot-dependent) did not, because nothing
+        # downstream of a spot-only tick ever re-ran the exposure math — only an option
+        # contract's own tick (the hook below) or the ~60s REST cycle did. Wired to the
+        # coalesced dispatcher so a fast-ticking spot cannot pile up unbounded background
+        # recomputes; see refresh_gamma_surface_from_spot_tick's own docstring.
+        start_order_flow_stream(None, None, DEFAULT_TICKER,
+                                on_tick_callback=_dispatch_spot_gamma_refresh)
         # RC-UI-2: freshen a cached gamma surface the instant its active option
         # contract's stream carries new GAMMA/DELTA/OPEN_INTEREST, instead of waiting
         # for the next ~60s wide-chain REST cycle. See refresh_gamma_surface_from_stream's
@@ -12632,17 +12643,26 @@ def _desired_option_symbols_for_ticker(tk: str) -> "list[str]":
 
 
 def _option_contract_admission_summary(tk: str) -> dict:
-    """Per-symbol admitted/active/pending/rejected accounting for `tk`'s desired option
-    contracts, sourced ENTIRELY from PRODUCER acknowledgements (2026-09-16, independent-
-    review follow-up mandate item 1: "expose the exact admitted, active, pending and
-    rejected contracts"). Every bucket answers a materially different question about a
-    desired symbol:
-      'active'   — has produced at least one real tick (present in
-                   _desired_stream_greeks_for_ticker's own output) — the vendor is not
-                   merely subscribed, it is genuinely sending data.
+    """Per-symbol admitted/observed/active/pending/rejected accounting for `tk`'s desired
+    option contracts, sourced ENTIRELY from PRODUCER acknowledgements (2026-09-16,
+    independent-review follow-up mandate item 1: "expose the exact admitted, active,
+    pending and rejected contracts"). Every bucket answers a materially different
+    question about a desired symbol:
+      'active'   — has produced a tick WITHIN the canonical staleness window
+                   (GAMMA_SURFACE_STREAM_STALENESS_SEC, the SAME bound
+                   overlay_streamed_contract_fields/the 'live' cell state already use) —
+                   freshness-gated, not merely "has ever ticked". A symbol whose only
+                   observation is older than this window is 'observed', not 'active':
+                   correctness finding (2026-09-17) — a harness or UI claiming a stale
+                   historical observation is "currently active" is exactly the false-
+                   success shape the operator's own negative controls exist to catch.
+      'observed' — has produced at least one real tick EVER (present in
+                   _desired_stream_greeks_for_ticker's own output) but that tick is
+                   OLDER than the staleness window — the vendor genuinely sent data at
+                   some point; it is not necessarily still fresh right now.
       'admitted' — the DAEMON's own durable, heartbeat-confirmed open coverage epoch names
                    this symbol (streaming.read_producer_admitted_option_contracts,
-                   LEVELONE_OPTIONS service) but no tick has arrived yet — the vendor
+                   LEVELONE_OPTIONS service) but no tick has EVER arrived — the vendor
                    subscription itself is confirmed, only the first observation is still
                    outstanding.
       'pending'  — desired, the daemon is CONFIRMED alive, but neither a tick nor a
@@ -12650,9 +12670,13 @@ def _option_contract_admission_summary(tk: str) -> dict:
       'rejected' — {symbol: vendor_error} for every desired symbol the vendor's most
                    recent batched subscribe attempt explicitly refused.
     A desired symbol that fits none of the above (daemon unreachable) is simply omitted
-    from every bucket — unknown is never fabricated as any of these four claims; the
+    from every bucket — unknown is never fabricated as any of these five claims; the
     `daemon_available` flag on the returned dict is how a caller tells "genuinely nothing
-    to report yet" apart from "cannot know right now"."""
+    to report yet" apart from "cannot know right now". `active` and `observed` are
+    mutually exclusive (a symbol is one or the other, never both), and a REJECTED symbol
+    is reported ONLY in `rejected` — never also counted as `active`/`observed`/`admitted`/
+    `pending`, so a caller cannot mistake "the vendor refused this" for any flavor of
+    success by unioning buckets carelessly."""
     from app.options.order_flow.streaming import (
         read_producer_admitted_option_contracts, read_producer_rejected_option_contracts,
         is_option_producer_daemon_available)
@@ -12660,14 +12684,19 @@ def _option_contract_admission_summary(tk: str) -> dict:
     daemon_available = is_option_producer_daemon_available()
     rejected_all = read_producer_rejected_option_contracts()
     admitted_l1 = set((read_producer_admitted_option_contracts() or {}).get("LEVELONE_OPTIONS") or [])
-    active_syms = set(_desired_stream_greeks_for_ticker(tk).keys())
-    admitted, active, pending = [], [], []
+    streamed = _desired_stream_greeks_for_ticker(tk)
+    now = time.time()
+    admitted, active, observed, pending = [], [], [], []
     rejected: "dict[str, str]" = {}
     for sym in desired:
         if sym in rejected_all:
             rejected[sym] = rejected_all[sym]
-        elif sym in active_syms:
-            active.append(sym)
+        elif sym in streamed:
+            ts_recv = _leg_stream_ts_recv(streamed.get(sym))
+            if ts_recv is not None and (now - ts_recv) <= GAMMA_SURFACE_STREAM_STALENESS_SEC:
+                active.append(sym)
+            else:
+                observed.append(sym)
         elif sym in admitted_l1:
             admitted.append(sym)
         elif daemon_available:
@@ -12675,7 +12704,7 @@ def _option_contract_admission_summary(tk: str) -> dict:
         # else: daemon unavailable -- genuinely unknown, omitted from every bucket
     return {
         "daemon_available": daemon_available,
-        "admitted": sorted(admitted), "active": sorted(active),
+        "admitted": sorted(admitted), "active": sorted(active), "observed": sorted(observed),
         "pending": sorted(pending), "rejected": rejected,
     }
 
@@ -13168,6 +13197,182 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
     except Exception as e:  # never let a best-effort freshening take the feed loop down
         log.debug("refresh_gamma_surface_from_stream failed for %s: %s", contract_symbol, e)
         return f"error:{type(e).__name__}"
+
+
+def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
+    """CONFIRMED ROOT DEFECT (2026-09-17): the header's spot updates on every streamed
+    LEVELONE_EQUITIES tick (live_market_plane -> resolve_spot's own top-priority source),
+    but NOTHING downstream of that path ever re-ran the gamma exposure math —
+    refresh_gamma_surface_from_stream fires ONLY on a streamed OPTION contract's own
+    greeks tick (app.options.order_flow.streaming's `_streamed_greeks_hook`), a
+    completely independent signal. A quiet options market with an actively-moving
+    underlying could show a fresh, correct, ticking header spot over a heatmap whose
+    every dollar cell was still priced off spot from up to ~60s ago (the next terrain
+    REST cycle) — GEX/DEX/OI$ all scale with spot (gamma exposure by spot SQUARED), so
+    this is a real, visible correctness defect, not merely a latency one.
+
+    This is the SYMMETRIC sibling of refresh_gamma_surface_from_stream: same trigger
+    SHAPE (a streamed tick, eagerly freshening a cached surface between REST cycles),
+    different trigger SIGNAL (canonical spot changed, not an option's own greeks).
+    Registered as app.options.order_flow.streaming.start_order_flow_stream's
+    `on_tick_callback` (an EXISTING, already-built hook for exactly this equity-tick
+    signal that was simply never wired to anything) via the coalesced dispatcher
+    `_dispatch_spot_gamma_refresh`, which is what actually keeps this off the capture
+    ingestion path — this function itself is a plain, potentially-slow, synchronous
+    call, exactly like refresh_gamma_surface_from_stream is once its own caller has
+    already moved it to a background thread.
+
+    A spot change invalidates EVERY expiry's dollar values simultaneously — this ALWAYS
+    performs a full project_gamma_surface recompute, never
+    project_gamma_surface_update_expiry's per-expiry splice (which would, correctly,
+    refuse via its own `prior_spot` identity guard anyway; this path does not even
+    attempt it, since "spot moved" is precisely the condition that guard exists to
+    catch). Per-strike is refreshed the identical way, for the identical reason.
+
+    No-ops (returns a diagnostic status, never raises) when: there is no cached ticker
+    at all (nothing to refresh — the next REST cycle seeds it), there is no prior
+    surface yet, canonical spot is unavailable, or canonical spot is UNCHANGED since the
+    surface's own stamped value (exact identity, not a tolerance — requirement: never an
+    unnecessary full-surface recomputation when nothing actually moved). Publishes
+    through the SAME REST-baseline compare-and-swap (`_contracts_rest_computed_ts`)
+    refresh_gamma_surface_from_stream already uses, so a late/superseded computation can
+    only ever be silently discarded, never corrupt a newer result."""
+    try:
+        tk = ticker_storage_key(ticker or "")
+        if not tk:
+            return "no_ticker"
+        with _terrain_cache_lock:
+            payload = _terrain_cache.get(tk)
+            if payload is None:
+                return "no_cached_ticker"
+            base_contracts = payload.get("_contracts_rest")
+            read_generation = payload.get("_contracts_rest_computed_ts")
+            prior_gamma_surface = payload.get("_gamma_surface")
+        if not base_contracts:
+            return "no_rest_baseline"
+        if prior_gamma_surface is None:
+            return "no_prior_surface"
+        prior_spot = prior_gamma_surface.get("spot")
+        spot, spot_source, spot_ts = resolve_spot(tk)
+        if not spot:
+            return "no_current_spot"
+        if prior_spot is not None and float(prior_spot) == float(spot):
+            return "spot_unchanged"
+        # Overlay every currently-desired contract's freshest streamed greeks onto the
+        # untouched REST baseline — the SAME overlay refresh_gamma_surface_from_stream
+        # uses, so an option contract's own tick freshness is respected here too, even
+        # though THIS call was triggered by spot, not by that contract's own tick.
+        from math_exposure_core import overlay_streamed_contract_fields
+        streamed = _desired_stream_greeks_for_ticker(tk)
+        overlaid, n = overlay_streamed_contract_fields(
+            base_contracts, streamed,
+            newer_than_ts=read_generation, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+        _overlaid_syms_now = _overlaid_symbols(base_contracts, overlaid)
+        new_surface = project_gamma_surface(overlaid, spot)
+        new_surface["spot"] = float(spot)
+        new_surface["spot_source"] = spot_source
+        new_surface["spot_as_of_ts_utc"] = spot_ts
+        from app.options.order_flow.streaming import (
+            read_producer_rejected_option_contracts, is_option_producer_daemon_available)
+        _stamp_gamma_surface_cell_stream_state(
+            new_surface, streamed, set(_overlaid_syms_now),
+            read_producer_rejected_option_contracts(),
+            set(_desired_option_symbols_for_ticker(tk)),
+            daemon_available=is_option_producer_daemon_available())
+        try:
+            _backfill_gex_cells_from_last_valid(tk, new_surface)
+        except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
+            log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
+        applied_ts = time.time()
+        new_surface["stream_overlay_contracts"] = n
+        new_surface["stream_overlay_symbols"] = _overlaid_syms_now
+        new_surface["stream_overlay_computed_ts_utc"] = applied_ts
+        new_surface["spot_tick_triggered"] = True   # disclosure: this generation was
+        # published by a spot tick, not an option tick or the REST cycle -- diagnostic
+        # only, never load-bearing for any gate.
+        # The per-strike aggregate is equally spot-dependent for every expiry — always a
+        # full recompute here too, never an incremental per-expiry merge.
+        new_per_strike_by_expiry: dict = {}
+        new_per_strike = _per_strike_view_from_contracts(
+            overlaid, spot, by_expiry_out=new_per_strike_by_expiry)
+        with _terrain_cache_lock:
+            payload = _terrain_cache.get(tk)
+            if payload is None:
+                return "cache_evicted"
+            if payload.get("_contracts_rest_computed_ts") != read_generation:
+                return "stale_baseline_superseded"
+            new_surface["surface_seq"] = _next_gamma_surface_seq(tk)
+            payload["_gamma_surface"] = new_surface
+            payload["_per_strike"] = new_per_strike
+            payload["_per_strike_expiry_raw"] = new_per_strike_by_expiry
+            payload["_per_strike_expiry_raw_generation"] = read_generation
+        return "ok"
+    except Exception as e:  # never let a best-effort freshening take the feed loop down
+        log.debug("refresh_gamma_surface_from_spot_tick failed for %s: %s", ticker, e)
+        return f"error:{type(e).__name__}"
+
+
+#: Coalesced per-ticker dispatch for refresh_gamma_surface_from_spot_tick (2026-09-17).
+#: One lifecycle owner (this module-level executor + state), at most one recompute in
+#: flight per ticker, a tick arriving mid-flight coalesces into exactly one trailing
+#: rerun (never an unbounded queue), latest-state convergence (the rerun always reads
+#: CURRENT resolve_spot/_terrain_cache state fresh, never a stale captured snapshot),
+#: and CAS protection via the SAME `_contracts_rest_computed_ts` compare-and-swap the
+#: underlying function already publishes through. Reimplemented here (rather than
+#: reusing app.options.order_flow.streaming's own option-tick hook dispatcher) because
+#: that one's coalescing state is a private closure of its `_feed_loop`, not exposed for
+#: reuse from this module — this is the smallest complete mechanism with the identical
+#: properties, on its own dedicated single-worker executor so a slow recompute never
+#: blocks the daemon-plane-feed's own DB-read thread that calls this callback.
+_spot_gamma_refresh_executor: "ThreadPoolExecutor | None" = None
+_spot_gamma_refresh_inflight: "set[str]" = set()
+_spot_gamma_refresh_pending: "set[str]" = set()
+_spot_gamma_refresh_lock = threading.Lock()
+
+
+def _get_spot_gamma_refresh_executor() -> ThreadPoolExecutor:
+    global _spot_gamma_refresh_executor
+    if _spot_gamma_refresh_executor is None:
+        _spot_gamma_refresh_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="spot-gamma-refresh")
+    return _spot_gamma_refresh_executor
+
+
+def _run_spot_gamma_refresh(tk: str) -> None:
+    try:
+        refresh_gamma_surface_from_spot_tick(tk)
+    except Exception as e:  # institutional-swallow-ok: best-effort background refresh, never load-bearing
+        log.debug("spot-triggered gamma refresh failed for %s: %s", tk, e)
+    finally:
+        rerun = False
+        with _spot_gamma_refresh_lock:
+            _spot_gamma_refresh_inflight.discard(tk)
+            if tk in _spot_gamma_refresh_pending:
+                _spot_gamma_refresh_pending.discard(tk)
+                _spot_gamma_refresh_inflight.add(tk)
+                rerun = True
+    if rerun:
+        _get_spot_gamma_refresh_executor().submit(_run_spot_gamma_refresh, tk)
+
+
+def _dispatch_spot_gamma_refresh(ticker: str) -> None:
+    """Registered as start_order_flow_stream's `on_tick_callback` — invoked synchronously,
+    per qualifying equity row, on the daemon-plane-feed's own single-worker DB executor
+    thread (app.options.order_flow.streaming._feed_loop). Must return immediately: all
+    this does is coalesce-and-submit to this module's own dedicated executor, never the
+    recompute itself."""
+    try:
+        tk = ticker_storage_key(ticker or "")
+    except Exception:  # institutional-swallow-ok: a malformed ticker is simply skipped
+        return
+    if not tk:
+        return
+    with _spot_gamma_refresh_lock:
+        if tk in _spot_gamma_refresh_inflight:
+            _spot_gamma_refresh_pending.add(tk)
+            return
+        _spot_gamma_refresh_inflight.add(tk)
+    _get_spot_gamma_refresh_executor().submit(_run_spot_gamma_refresh, tk)
 
 
 def _ticker_on_terrain_board(tk: str) -> bool:

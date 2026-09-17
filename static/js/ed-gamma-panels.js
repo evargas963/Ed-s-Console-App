@@ -57,13 +57,18 @@
   function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
   // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
   // aborted immediately once a different ticker is selected, instead of blocking it.
-  function loadLevelsImpl(tk, signal) {
+  function loadLevelsImpl(tk, _signal) {
     if (!stillLevelsCtx(tk)) return;
-    return fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    // 2026-09-17, live-UI field audit: shared, cross-module deduped fetch (see
+    // l1_sse_guards.js:sharedFetchJson) -- ed-gamma-chart.js's own Gamma Chart spot line
+    // reads this SAME /api/terrain for the SAME ticker on the SAME ed:gamma-push tick
+    // (see that file's own fix); this collapses the two into one real network call.
+    var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
+      return fetch(u, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+    };
+    return sharedFetch('/api/terrain?ticker=' + encodeURIComponent(tk))
       .then(function (d) { if (stillLevelsCtx(tk)) renderLevels(d); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
+      .catch(function () {
         if (stillLevelsCtx(tk)) renderLevels(null);
       });
   }
@@ -922,7 +927,18 @@
   // and a selected Strike Detail row, both backed by the SAME _per_strike cache
   // server.py's refresh_gamma_surface_from_stream also refreshes). Those two now react to
   // the narrow ed:gamma-push event instead; everything else stays on the 12s cadence above.
+  //
+  // CONFIRMED REGRESSION (2026-09-17, live-UI field audit), FIXED: Key Levels (klSpot/
+  // klFlip/klCall/klPut/klAbs/klPeak/klNet/klRegime, all read from /api/terrain) was left
+  // OUT of that split entirely -- it stayed on the 12s cadence alone, yet its own "terrain
+  // · live" label (renderLevels, above) claimed unconditional liveness whenever not stale.
+  // /api/terrain's spot/walls/flip/net-GEX-at-spot are exactly as gamma-surface/spot-
+  // derived as GEX-by-strike is -- a spot-only tick (refresh_gamma_surface_from_spot_tick)
+  // moves every one of them just as much as it moves the heatmap. loadLevels() now reacts
+  // to the SAME push, closing the identical "header moves, this panel does not" gap the
+  // Gamma Chart's own spot line just had fixed.
   document.addEventListener('ed:gamma-push', function () {
+    loadLevels();
     loadGbs();
     var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());

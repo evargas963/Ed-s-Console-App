@@ -20,30 +20,56 @@ Metrics captured per (ticker, scope):
     Wider/All are now GENUINELY DIFFERENT symbol sets (independent-review finding, 2026-09-
     16 follow-up mandate: a prior draft of this harness demanded every expiry for BOTH
     Wider and All, making them identical measurements wearing two names) -- see
-    `_wide_chain_symbols`'s own docstring for the exact windowing rule.
-  - time_to_accepted_sec / time_to_active_sec: now tracked for EVERY requested symbol, not
-    a single "primary" contract (independent-review finding: the previous version asked
-    for N symbols but measured only the ONE contract /api/order-flow/options-microstructure
-    happens to report on). `time_to_accepted_sec` is wall-clock to the LAST requested
-    symbol reaching 'admitted' or 'active' in /api/options/gamma-surface's own
-    `contract_admission` field (streaming.read_producer_admitted_option_contracts --
-    genuine producer/vendor acknowledgement, not a client-side desired-state guess);
+    `_wide_chain_symbols`'s own docstring for the exact windowing rule. This script's own
+    strike-count windowing is a HONEST APPROXIMATION of ed-core.js's real client-side
+    scopeSelect, not a byte-for-byte replica -- proving the ACTUAL rendered scope's own
+    emitted demand requires driving the real browser UI, which this Python/REST harness
+    cannot do; see `manual_metrics_owed` in the report and the companion Playwright spec
+    tests/e2e/console-gamma-scope-live-demand.spec.js for that proof.
+  - time_to_accepted_sec / time_to_active_sec: tracked for EVERY requested symbol, never a
+    single "primary" contract. CORRECTED 2026-09-17 (independent review, false-success
+    finding): a REJECTED symbol no longer satisfies EITHER metric -- the prior formula
+    `(admitted | active | rejected) == requested` treated a vendor REFUSAL as equivalent to
+    a successful subscription, which is exactly backwards. `time_to_accepted_sec` is now
+    wall-clock to the LAST requested symbol reaching 'admitted' OR 'active' OR 'observed'
+    (a real vendor acknowledgement of SOME kind) with ZERO symbols rejected or unresolved;
     `time_to_active_sec` is wall-clock to the LAST requested symbol reaching 'active'
-    (a real tick has actually arrived) in that SAME field.
-  - admission_snapshot: the full per-symbol admitted/active/pending/rejected/unresolved
-    breakdown at the moment this measurement stopped polling -- so a reviewer can see
-    exactly which symbols (if any) never resolved, not just an aggregate count.
-  - first_usable_render_ms / first_fully_classified_render_ms: measured from
-    /api/options/gamma-surface's own surface_seq advancing at all (usable) vs.
-    stream_coverage.meets_live_requirement becoming true (fully classified).
+    SPECIFICALLY (freshness-gated -- a stale historical 'observed' tick does not count),
+    again with zero rejected/unresolved. If any symbol is genuinely rejected, NEITHER
+    timing is ever satisfied for that (ticker, scope) — a poisoned symbol makes full
+    acceptance of the WHOLE requested set impossible by definition, and this harness must
+    say so (`ok: false`, an explicit `rejected` list), never quietly time only the
+    survivors and call it a pass.
+  - admission_snapshot: the full per-symbol admitted/active/observed/pending/rejected/
+    unresolved breakdown at the moment this measurement stopped polling, sourced from
+    server.py's `_option_contract_admission_summary` (itself sourced entirely from
+    PRODUCER acknowledgements) — so a reviewer can see exactly which symbols (if any)
+    never resolved, not just an aggregate count.
+  - baseline_surface_seq / first_usable_render_ms: `baseline_surface_seq` is captured
+    BEFORE the demand POST (independent review finding, 2026-09-17: a prior draft only
+    initialized its "seen" generation to None right before polling STARTED, so the very
+    FIRST poll response — even one carrying the PRE-EXISTING generation from before demand
+    was ever submitted — satisfied "a render happened"). `first_usable_render_ms` is now
+    measured only once `surface_seq` is STRICTLY GREATER than that baseline.
+  - baseline_gex_cells / gex_changed: `baseline_gex_cells` is captured from the SAME
+    pre-demand read as `baseline_surface_seq`. `gex_changed` (bool) requires the post-
+    demand surface to carry BOTH a strictly newer `surface_seq` AND at least one different
+    displayed GEX-dollar cell value versus the baseline — matching the operator's own
+    decisive proof ("spot changes and displayed GEX dollar cells visibly change").
+  - first_fully_classified_render_ms: measured from stream_coverage.meets_live_requirement
+    becoming true.
   - backend_compute_ms: stream_overlay_receipt_to_computed_ms already stamped on the surface
-    by refresh_gamma_surface_from_stream (server.py) -- the canonical, already-measured
-    number, not a second stopwatch.
+    by refresh_gamma_surface_from_stream/refresh_gamma_surface_from_spot_tick (server.py) --
+    the canonical, already-measured number, not a second stopwatch.
   - rest_requests_startup / rest_requests_per_streamed_update / rest_requests_ticker_switch:
     counted via /api/build's own request-count diagnostics when present, else via the
     heartbeat/coverage table row-count delta as a lower-bound proxy (documented per field).
   - cell_state_counts: live/partial/stale/pending/daemon_unavailable/rejected/unavailable
     straight from stream_coverage (server.py's _gamma_surface_coverage_summary).
+  - ok: the ONE pass/fail verdict for this (ticker, scope) — False on ANY of: a rejected
+    symbol, an unresolved symbol, the daemon reporting unavailable, no strictly-newer
+    surface_seq observed, or no GEX-dollar cell actually changing. `main()` exits nonzero
+    if any requested (ticker, scope) has `ok: false`.
 
 This script makes NO claim about CPU/event-loop responsiveness or exact per-request browser
 network timing -- those require a live browser instrumented with the Browser pane's own
@@ -147,15 +173,27 @@ def _wide_chain_symbols(base: str, ticker: str, scope: str) -> list:
     return symbols
 
 
+def _surface_gex_cells(surf: dict) -> "list | None":
+    """The exact displayed GEX-dollar values, in stable (strike, expiry-column) order, for
+    the 'gex changed' proof -- read straight off the SAME cells the heatmap renders (never
+    a derived/rounded copy), so a genuine comparison against a later read is possible."""
+    cells = surf.get("cells")
+    if not isinstance(cells, list):
+        return None
+    return [c.get("gex") for c in cells if isinstance(c, dict)]
+
+
 def measure_one(base: str, ticker: str, scope: str) -> dict:
     symbols = _wide_chain_symbols(base, ticker, scope)
     result = {
         "ticker": ticker, "scope": scope,
         "requested_contract_count": len(symbols),
         "time_to_accepted_sec": None, "time_to_active_sec": None,
-        "first_usable_render_ms": None, "first_fully_classified_render_ms": None,
+        "baseline_surface_seq": None, "first_usable_render_ms": None,
+        "gex_changed": False, "first_fully_classified_render_ms": None,
         "backend_compute_ms": None, "cell_state_counts": None, "stream_coverage": None,
         "admission_snapshot": None,
+        "ok": False,
         "notes": [],
     }
     if not symbols:
@@ -163,22 +201,44 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
         return result
     requested = set(symbols)
 
+    # Independent-review finding (2026-09-17): baseline surface_seq and displayed GEX
+    # cells must be captured BEFORE the demand POST -- a prior draft only initialized its
+    # "seen" generation to None right before polling started, so the very FIRST poll
+    # response (even one carrying a generation from BEFORE this demand was ever submitted)
+    # satisfied "a render happened". A post-demand render is proven only by a STRICTLY
+    # newer generation than whatever already existed.
+    try:
+        baseline_surf = _get(base, "/api/options/gamma-surface?" + urlencode({"ticker": ticker}))
+    except Exception as e:  # noqa: BLE001 -- a baseline read failure is a real measurement failure
+        result["notes"].append(f"could not read baseline surface before demand: {e}")
+        return result
+    baseline_seq = baseline_surf.get("surface_seq")
+    baseline_gex = _surface_gex_cells(baseline_surf)
+    result["baseline_surface_seq"] = baseline_seq
+
     _post(base, "/api/streaming/active-option-contracts", {"contracts": symbols})
     t_requested = time.monotonic()
 
     # Independent-review finding (2026-09-16, follow-up mandate item 8): the prior version
     # tracked ONE "primary" contract via /api/order-flow/options-microstructure regardless
     # of how many symbols were actually requested. Every one of `requested` is now tracked
-    # through requested -> admitted/active -> (or rejected), sourced from
+    # through requested -> admitted/active/observed -> (or rejected), sourced from
     # /api/options/gamma-surface's own `contract_admission` field -- itself sourced from
-    # genuine PRODUCER acknowledgements (streaming.read_producer_admitted_option_contracts /
-    # read_producer_rejected_option_contracts), never a client-side desired-state guess.
-    accepted_at = None    # LAST requested symbol reaches admitted-or-active-or-rejected
-    active_at = None      # LAST requested symbol reaches active (a real tick has arrived)
+    # genuine PRODUCER acknowledgements, never a client-side desired-state guess.
+    #
+    # CORRECTED 2026-09-17 (independent review, false-success finding): a REJECTED symbol
+    # must NEVER satisfy 'accepted' or 'active' -- it is the opposite of a successful
+    # subscription. Both timings require the FULL requested set to be free of
+    # rejected/unresolved symbols; a single rejection makes both permanently unsatisfiable
+    # for this (ticker, scope), which the harness must say plainly, not paper over by
+    # timing only the symbols that happened to succeed.
+    accepted_at = None    # LAST requested symbol reaches admitted/active/observed, ZERO rejected/unresolved
+    active_at = None      # LAST requested symbol reaches 'active' SPECIFICALLY (freshness-gated), ZERO rejected/unresolved
     first_usable_at = None
     first_classified_at = None
+    gex_changed_at = None
     last_admission: dict = {}
-    seen_seq = None
+    last_surf: dict = {}
     deadline = t_requested + MAX_WAIT_SEC
     while time.monotonic() < deadline:
         try:
@@ -188,10 +248,16 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
             # surfaces as this measurement's own "never resolved" notes below.
             time.sleep(POLL_INTERVAL_SEC)
             continue
+        last_surf = surf
         seq = surf.get("surface_seq")
-        if seq is not None and seq != seen_seq and first_usable_at is None:
+        if first_usable_at is None and seq is not None and (
+                baseline_seq is None or seq > baseline_seq):
             first_usable_at = time.monotonic()
-            seen_seq = seq
+        if gex_changed_at is None and first_usable_at is not None:
+            cur_gex = _surface_gex_cells(surf)
+            if cur_gex is not None and baseline_gex is not None and cur_gex != baseline_gex:
+                gex_changed_at = time.monotonic()
+                result["gex_changed"] = True
         cov = surf.get("stream_coverage") or {}
         if cov.get("meets_live_requirement") and first_classified_at is None:
             first_classified_at = time.monotonic()
@@ -204,39 +270,68 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
         last_admission = admission
         admitted = requested & set(admission.get("admitted") or [])
         active = requested & set(admission.get("active") or [])
+        observed = requested & set(admission.get("observed") or [])
         rejected = requested & set((admission.get("rejected") or {}).keys())
-        if accepted_at is None and (admitted | active | rejected) == requested:
+        resolved_some_way = admitted | active | observed | rejected
+        unresolved_now = requested - resolved_some_way
+        if accepted_at is None and not rejected and not unresolved_now:
             accepted_at = time.monotonic()
-        if active_at is None and (active | rejected) == requested:
+        if active_at is None and active == requested:
             active_at = time.monotonic()
 
-        if first_classified_at is not None and active_at is not None:
+        if first_classified_at is not None and active_at is not None and gex_changed_at is not None:
             break
         time.sleep(POLL_INTERVAL_SEC)
 
-    unresolved = requested - set(last_admission.get("admitted") or []) \
-        - set(last_admission.get("active") or []) - set((last_admission.get("rejected") or {}).keys())
+    admitted_f = requested & set(last_admission.get("admitted") or [])
+    active_f = requested & set(last_admission.get("active") or [])
+    observed_f = requested & set(last_admission.get("observed") or [])
+    rejected_f = {s: r for s, r in (last_admission.get("rejected") or {}).items() if s in requested}
+    unresolved_f = requested - admitted_f - active_f - observed_f - set(rejected_f.keys())
+    daemon_available = last_admission.get("daemon_available")
     result["admission_snapshot"] = {
-        "daemon_available": last_admission.get("daemon_available"),
-        "admitted": sorted(requested & set(last_admission.get("admitted") or [])),
-        "active": sorted(requested & set(last_admission.get("active") or [])),
-        "rejected": {s: r for s, r in (last_admission.get("rejected") or {}).items() if s in requested},
-        "unresolved": sorted(unresolved),
+        "daemon_available": daemon_available,
+        "admitted": sorted(admitted_f), "active": sorted(active_f), "observed": sorted(observed_f),
+        "rejected": rejected_f, "unresolved": sorted(unresolved_f),
     }
+
+    if rejected_f:
+        result["notes"].append(
+            f"{len(rejected_f)} of {len(requested)} requested symbol(s) REJECTED by the "
+            f"vendor -- full acceptance of this (ticker, scope) is impossible: {sorted(rejected_f)}")
+    if unresolved_f:
+        result["notes"].append(
+            f"{len(unresolved_f)} of {len(requested)} requested symbol(s) never reached "
+            f"admitted/active/observed/rejected within MAX_WAIT_SEC: {sorted(unresolved_f)}")
+    if daemon_available is False:
+        result["notes"].append("capture daemon reported UNAVAILABLE during this measurement")
+
     if accepted_at:
         result["time_to_accepted_sec"] = round(accepted_at - t_requested, 3)
-    else:
-        result["notes"].append(
-            f"{len(unresolved)} of {len(requested)} requested symbol(s) never reached "
-            f"admitted/active/rejected within MAX_WAIT_SEC")
     if active_at:
         result["time_to_active_sec"] = round(active_at - t_requested, 3)
+    elif not rejected_f and not unresolved_f:
+        result["notes"].append("not every requested symbol reached freshness-gated 'active' within MAX_WAIT_SEC")
     if first_usable_at:
         result["first_usable_render_ms"] = round((first_usable_at - t_requested) * 1000.0, 1)
+    else:
+        result["notes"].append(
+            f"surface_seq never advanced past the pre-demand baseline ({baseline_seq}) "
+            f"within MAX_WAIT_SEC")
     if first_classified_at:
         result["first_fully_classified_render_ms"] = round((first_classified_at - t_requested) * 1000.0, 1)
     else:
         result["notes"].append("surface never reached meets_live_requirement within MAX_WAIT_SEC")
+    if not result["gex_changed"]:
+        result["notes"].append("no displayed GEX-dollar cell changed from its pre-demand baseline")
+
+    # The ONE pass/fail verdict: any rejected/unresolved symbol, an unavailable daemon, no
+    # strictly-newer generation, or no changed GEX cell fails this (ticker, scope) outright
+    # -- never a narrative "mostly worked".
+    result["ok"] = bool(
+        not rejected_f and not unresolved_f and daemon_available is not False
+        and first_usable_at is not None and result["gex_changed"]
+    )
     return result
 
 
@@ -261,18 +356,28 @@ def main() -> int:
 
     report = {"base_url": args.base_url, "started_ts_utc": time.time(),
               "build": build, "results": []}
+    any_failed = False
     for ticker in tickers:
         for scope in scopes:
             print(f"  {ticker} / {scope} ...")
             r = measure_one(args.base_url, ticker, scope)
             report["results"].append(r)
-            print(f"    requested={r['requested_contract_count']} "
+            verdict = "PASS" if r["ok"] else "FAIL"
+            if not r["ok"]:
+                any_failed = True
+            print(f"    [{verdict}] requested={r['requested_contract_count']} "
                   f"accepted={r['time_to_accepted_sec']}s active={r['time_to_active_sec']}s "
-                  f"coverage={r['stream_coverage']}")
+                  f"gex_changed={r['gex_changed']} coverage={r['stream_coverage']}")
+            for note in r["notes"]:
+                print(f"      note: {note}")
     report["finished_ts_utc"] = time.time()
+    report["all_ok"] = not any_failed
     report["manual_metrics_owed"] = [
         "REST requests per startup / streamed update / ticker switch (browser network tab)",
         "CPU/event-loop responsiveness (browser performance profile)",
+        "Auto/Wider/All scope proof against the ACTUAL rendered browser UI (this harness's "
+        "own strike-count windowing is a documented approximation, not the real "
+        "ed-core.js scopeSelect -- see tests/e2e/console-gamma-scope-live-demand.spec.js)",
     ]
 
     out_path = Path(args.out) if args.out else (
@@ -280,6 +385,9 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"wrote {out_path}")
+    if any_failed:
+        print("FAIL: at least one requested (ticker, scope) did not pass -- see notes above", file=sys.stderr)
+        return 1
     return 0
 
 

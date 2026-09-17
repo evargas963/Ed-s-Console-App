@@ -284,28 +284,43 @@
   function nullp(){ return null; }
 
   // Audit finding #3 (2026-09-16, follow-up): a streamed gamma-surface push carries no new
-  // information for /api/bars1m (price history) or /api/terrain (regime/walls/pin) -- only
-  // /api/terrain/strikes (the GEX-by-strike profile this chart's 'profile' mode plots) is
-  // gamma-surface-derived. The old `ed:gamma-push` wiring called the SAME monolithic load()
-  // the 12s poll uses, refetching all THREE endpoints on every streamed tick -- exactly the
-  // "unrelated REST fan-out from one Gamma publication" the mandate bans. This refetches only
-  // the one relevant endpoint (via the shared, cross-module deduped fetch -- see
-  // l1_sse_guards.js:sharedFetchJson -- so a simultaneous panels.js loadGbs() for the SAME
-  // ticker on the SAME push collapses into one real network call) and re-renders with the
-  // last-known bars/terrain responses, which a streamed options tick cannot have changed.
+  // information for /api/bars1m (price history) -- that alone stays on the 12s/view-entry
+  // cadence. /api/terrain/strikes (the GEX-by-strike profile this chart's 'profile' mode
+  // plots) IS gamma-surface-derived and always was.
+  //
+  // CONFIRMED REGRESSION (2026-09-17, live-UI field audit): /api/terrain was ALSO excluded
+  // here on the reasoning "a streamed OPTION tick carries no new terrain/spot information" --
+  // true when this was written, but FALSE now that ed:gamma-push also fires on a canonical
+  // SPOT-ONLY tick (refresh_gamma_surface_from_spot_tick, server.py) with no option tick at
+  // all. /api/terrain's own spot field (`terrain.spot`, read by render() below as THE spot
+  // this chart's line/label draws) was left pointing at `_lastRaw.terrain` -- the STALE
+  // object from the last full 12s-cadence load() -- so the header's spot could move on every
+  // tick while this chart's own spot line sat frozen for up to 12s. The exact same class of
+  // "header moves, this panel does not" defect the heatmap fix (2026-09-17) already closed,
+  // now closed here too: /api/terrain is refetched on every push, alongside /api/terrain/
+  // strikes (both via the shared, cross-module deduped fetch -- l1_sse_guards.js:
+  // sharedFetchJson -- so a simultaneous panels.js loadGbs() reading /api/terrain/strikes
+  // for the SAME ticker on the SAME push still collapses to one real network call each).
+  // /api/bars1m stays excluded -- a streamed tick, spot or option, cannot change PRIOR
+  // minute bars.
   function loadGammaPushOnlyImpl(tk, _signal) {
     var host = document.getElementById('chartBody');
     if (!host || !stillChart(tk)) return;
     var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
       return fetch(u, { cache: 'no-store' }).then(okJson);
     };
-    return sharedFetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk)).catch(nullp)
-      .then(function (strikesData) {
-        if (!stillChart(tk) || strikesData == null) return;
-        var barsData = _lastRaw ? _lastRaw.barsData : null;
-        var terrain = _lastRaw ? _lastRaw.terrain : null;
-        render(host, barsData, strikesData, terrain);
-      });
+    return Promise.all([
+      sharedFetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk)).catch(nullp),
+      sharedFetch('/api/terrain?ticker=' + encodeURIComponent(tk)).catch(nullp),
+    ]).then(function (res) {
+      if (!stillChart(tk)) return;
+      var strikesData = res[0], terrain = res[1];
+      if (strikesData == null && terrain == null) return;
+      var barsData = _lastRaw ? _lastRaw.barsData : null;
+      if (strikesData == null) strikesData = _lastRaw ? _lastRaw.strikesData : null;
+      if (terrain == null) terrain = _lastRaw ? _lastRaw.terrain : null;
+      render(host, barsData, strikesData, terrain);
+    });
   }
   var _gammaPushLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
     ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGammaPushOnlyImpl(ticker(), signal); })
