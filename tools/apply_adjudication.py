@@ -699,6 +699,27 @@ _mark_repaired(
     "test_run_repair_failure_reports_none_not_zero_counts proving the None-on-failure shape "
     "via a monkeypatched batch-writer that raises.",
     "calibration_ml_governance")
+_mark_repaired(
+    ["FB-01076", "FB-01077", "FB-01078", "FB-00892", "FB-00893"],
+    "REPAIRED 2026-09-17: tools/pin_neutral_1m_5m_divergence_audit_v1.py's "
+    "bar_anchor_scope_sql() no longer SQL-defaults a NULL horizon_outcome_schema_version "
+    "(same genuine-nullable root cause repaired repeatedly across this branch), and its two "
+    "COALESCE(outcome_filled,0)=N sites now compare outcome_filled directly -- db.py's own "
+    "production queries (fill_outcomes, pin_neutral eligibility, etc.) already compare "
+    "outcome_filled bare throughout, so a COALESCE here was the outlier against this repo's "
+    "own established contract, not the norm. The JSON-registered SQL templates for this "
+    "file's by_ticker_agg and unfilled_has_anchor keys (snapshot_sql/registry_full_c.json) "
+    "carried the identical COALESCE shapes -- not reachable by the discovery scanner since "
+    "they are JSON string values, not Python string literals -- and were fixed in lockstep, "
+    "including trimming the now-3-vs-2 placeholder mismatch this created (all three "
+    "bar_anchor_scope_sql() call sites' scope tuples shrank from (tf, V1, V1) to (tf, V1)). "
+    "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py's own COALESCE-quoting example "
+    "input was reworded to a bare comparison (it was just demonstrating alias substitution, "
+    "not asserting the shape must be COALESCE). Tests: the same file gained a structural "
+    "no-COALESCE proof plus a real-DB integration test exercising inventory_timeframe and "
+    "by_ticker_breakdown end-to-end, which would have raised sqlite3.ProgrammingError on any "
+    "placeholder-count mismatch.",
+    "calibration_ml_governance")
 
 
 def main() -> int:

@@ -33,8 +33,8 @@
   "verdict_counts": {
     "NOT_PROVEN": 1105,
     "NOT_FALLBACK": 27,
-    "REPAIRED": 74,
-    "FALLBACK": 20
+    "REPAIRED": 79,
+    "FALLBACK": 15
   },
   "candidates": [
     {
@@ -12520,9 +12520,9 @@
       "snippet": "COALESCE(s.outcome_filled,0)=0",
       "semantic_field_guess": null,
       "context": "test_bar_anchor_scope_supports_table_alias",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/pin_neutral_1m_5m_divergence_audit_v1.py's bar_anchor_scope_sql() no longer SQL-defaults a NULL horizon_outcome_schema_version (same genuine-nullable root cause repaired repeatedly across this branch), and its two COALESCE(outcome_filled,0)=N sites now compare outcome_filled directly -- db.py's own production queries (fill_outcomes, pin_neutral eligibility, etc.) already compare outcome_filled bare throughout, so a COALESCE here was the outlier against this repo's own established contract, not the norm. The JSON-registered SQL templates for this file's by_ticker_agg and unfilled_has_anchor keys (snapshot_sql/registry_full_c.json) carried the identical COALESCE shapes -- not reachable by the discovery scanner since they are JSON string values, not Python string literals -- and were fixed in lockstep, including trimming the now-3-vs-2 placeholder mismatch this created (all three bar_anchor_scope_sql() call sites' scope tuples shrank from (tf, V1, V1) to (tf, V1)). tests/test_pin_neutral_1m_5m_divergence_audit_v1.py's own COALESCE-quoting example input was reworded to a bare comparison (it was just demonstrating alias substitution, not asserting the shape must be COALESCE). Tests: the same file gained a structural no-COALESCE proof plus a real-DB integration test exercising inventory_timeframe and by_ticker_breakdown end-to-end, which would have raised sqlite3.ProgrammingError on any placeholder-count mismatch.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -12534,9 +12534,9 @@
       "snippet": "COALESCE(s.outcome_filled,0)=0",
       "semantic_field_guess": null,
       "context": "test_bar_anchor_scope_supports_table_alias",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/pin_neutral_1m_5m_divergence_audit_v1.py's bar_anchor_scope_sql() no longer SQL-defaults a NULL horizon_outcome_schema_version (same genuine-nullable root cause repaired repeatedly across this branch), and its two COALESCE(outcome_filled,0)=N sites now compare outcome_filled directly -- db.py's own production queries (fill_outcomes, pin_neutral eligibility, etc.) already compare outcome_filled bare throughout, so a COALESCE here was the outlier against this repo's own established contract, not the norm. The JSON-registered SQL templates for this file's by_ticker_agg and unfilled_has_anchor keys (snapshot_sql/registry_full_c.json) carried the identical COALESCE shapes -- not reachable by the discovery scanner since they are JSON string values, not Python string literals -- and were fixed in lockstep, including trimming the now-3-vs-2 placeholder mismatch this created (all three bar_anchor_scope_sql() call sites' scope tuples shrank from (tf, V1, V1) to (tf, V1)). tests/test_pin_neutral_1m_5m_divergence_audit_v1.py's own COALESCE-quoting example input was reworded to a bare comparison (it was just demonstrating alias substitution, not asserting the shape must be COALESCE). Tests: the same file gained a structural no-COALESCE proof plus a real-DB integration test exercising inventory_timeframe and by_ticker_breakdown end-to-end, which would have raised sqlite3.ProgrammingError on any placeholder-count mismatch.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15096,9 +15096,9 @@
       "snippet": "AND COALESCE(",
       "semantic_field_guess": null,
       "context": "bar_anchor_scope_sql",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/pin_neutral_1m_5m_divergence_audit_v1.py's bar_anchor_scope_sql() no longer SQL-defaults a NULL horizon_outcome_schema_version (same genuine-nullable root cause repaired repeatedly across this branch), and its two COALESCE(outcome_filled,0)=N sites now compare outcome_filled directly -- db.py's own production queries (fill_outcomes, pin_neutral eligibility, etc.) already compare outcome_filled bare throughout, so a COALESCE here was the outlier against this repo's own established contract, not the norm. The JSON-registered SQL templates for this file's by_ticker_agg and unfilled_has_anchor keys (snapshot_sql/registry_full_c.json) carried the identical COALESCE shapes -- not reachable by the discovery scanner since they are JSON string values, not Python string literals -- and were fixed in lockstep, including trimming the now-3-vs-2 placeholder mismatch this created (all three bar_anchor_scope_sql() call sites' scope tuples shrank from (tf, V1, V1) to (tf, V1)). tests/test_pin_neutral_1m_5m_divergence_audit_v1.py's own COALESCE-quoting example input was reworded to a bare comparison (it was just demonstrating alias substitution, not asserting the shape must be COALESCE). Tests: the same file gained a structural no-COALESCE proof plus a real-DB integration test exercising inventory_timeframe and by_ticker_breakdown end-to-end, which would have raised sqlite3.ProgrammingError on any placeholder-count mismatch.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15110,9 +15110,9 @@
       "snippet": "COALESCE(outcome_filled,0)=1",
       "semantic_field_guess": null,
       "context": "inventory_timeframe",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/pin_neutral_1m_5m_divergence_audit_v1.py's bar_anchor_scope_sql() no longer SQL-defaults a NULL horizon_outcome_schema_version (same genuine-nullable root cause repaired repeatedly across this branch), and its two COALESCE(outcome_filled,0)=N sites now compare outcome_filled directly -- db.py's own production queries (fill_outcomes, pin_neutral eligibility, etc.) already compare outcome_filled bare throughout, so a COALESCE here was the outlier against this repo's own established contract, not the norm. The JSON-registered SQL templates for this file's by_ticker_agg and unfilled_has_anchor keys (snapshot_sql/registry_full_c.json) carried the identical COALESCE shapes -- not reachable by the discovery scanner since they are JSON string values, not Python string literals -- and were fixed in lockstep, including trimming the now-3-vs-2 placeholder mismatch this created (all three bar_anchor_scope_sql() call sites' scope tuples shrank from (tf, V1, V1) to (tf, V1)). tests/test_pin_neutral_1m_5m_divergence_audit_v1.py's own COALESCE-quoting example input was reworded to a bare comparison (it was just demonstrating alias substitution, not asserting the shape must be COALESCE). Tests: the same file gained a structural no-COALESCE proof plus a real-DB integration test exercising inventory_timeframe and by_ticker_breakdown end-to-end, which would have raised sqlite3.ProgrammingError on any placeholder-count mismatch.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15124,9 +15124,9 @@
       "snippet": "COALESCE(outcome_filled,0)=0",
       "semantic_field_guess": null,
       "context": "inventory_timeframe",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/pin_neutral_1m_5m_divergence_audit_v1.py's bar_anchor_scope_sql() no longer SQL-defaults a NULL horizon_outcome_schema_version (same genuine-nullable root cause repaired repeatedly across this branch), and its two COALESCE(outcome_filled,0)=N sites now compare outcome_filled directly -- db.py's own production queries (fill_outcomes, pin_neutral eligibility, etc.) already compare outcome_filled bare throughout, so a COALESCE here was the outlier against this repo's own established contract, not the norm. The JSON-registered SQL templates for this file's by_ticker_agg and unfilled_has_anchor keys (snapshot_sql/registry_full_c.json) carried the identical COALESCE shapes -- not reachable by the discovery scanner since they are JSON string values, not Python string literals -- and were fixed in lockstep, including trimming the now-3-vs-2 placeholder mismatch this created (all three bar_anchor_scope_sql() call sites' scope tuples shrank from (tf, V1, V1) to (tf, V1)). tests/test_pin_neutral_1m_5m_divergence_audit_v1.py's own COALESCE-quoting example input was reworded to a bare comparison (it was just demonstrating alias substitution, not asserting the shape must be COALESCE). Tests: the same file gained a structural no-COALESCE proof plus a real-DB integration test exercising inventory_timeframe and by_ticker_breakdown end-to-end, which would have raised sqlite3.ProgrammingError on any placeholder-count mismatch.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {

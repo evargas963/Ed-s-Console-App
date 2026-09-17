@@ -56,7 +56,7 @@ def bar_anchor_scope_sql(extra: str = "", alias: str = "") -> str:
     base = f"""
         {p}zone = 'pin_neutral'
         AND {p}timeframe = ?
-        AND COALESCE({p}horizon_outcome_schema_version, ?) = ?
+        AND {p}horizon_outcome_schema_version = ?
     """.strip()
     if extra:
         return base + " AND " + extra
@@ -64,7 +64,7 @@ def bar_anchor_scope_sql(extra: str = "", alias: str = "") -> str:
 
 
 def inventory_timeframe(conn: sqlite3.Connection, tf: str) -> dict[str, Any]:
-    scope = (tf, V1, V1)
+    scope = (tf, V1)
     _cs = get_snapshot_sql("tools/pin_neutral_1m_5m_divergence_audit_v1.py:count_star")
     total = _cnt(
         conn,
@@ -73,12 +73,12 @@ def inventory_timeframe(conn: sqlite3.Connection, tf: str) -> dict[str, Any]:
     )
     filled = _cnt(
         conn,
-        _cs + " WHERE " + bar_anchor_scope_sql("COALESCE(outcome_filled,0)=1"),
+        _cs + " WHERE " + bar_anchor_scope_sql("outcome_filled=1"),
         scope,
     )
     unfilled = _cnt(
         conn,
-        _cs + " WHERE " + bar_anchor_scope_sql("COALESCE(outcome_filled,0)=0"),
+        _cs + " WHERE " + bar_anchor_scope_sql("outcome_filled=0"),
         scope,
     )
     anch_ok = _cnt(
@@ -104,7 +104,7 @@ def inventory_timeframe(conn: sqlite3.Connection, tf: str) -> dict[str, Any]:
 
 
 def by_ticker_breakdown(conn: sqlite3.Connection, tf: str) -> list[dict[str, Any]]:
-    scope = (tf, V1, V1)
+    scope = (tf, V1)
     rows = conn.execute(
         get_snapshot_sql("tools/pin_neutral_1m_5m_divergence_audit_v1.py:by_ticker_agg")
         + " WHERE "
@@ -117,7 +117,7 @@ def by_ticker_breakdown(conn: sqlite3.Connection, tf: str) -> list[dict[str, Any
 
 def issue19_funnel_for_tf(conn: sqlite3.Connection, tf: str) -> dict[str, Any]:
     """Stages 1–9 for one timeframe (pin_neutral BAR_ANCHOR scope only)."""
-    scope = (tf, V1, V1)
+    scope = (tf, V1)
     _cs = get_snapshot_sql("tools/pin_neutral_1m_5m_divergence_audit_v1.py:count_star")
     s1 = _cnt(conn, _cs + " WHERE " + bar_anchor_scope_sql(), scope)
     s2 = _cnt(
