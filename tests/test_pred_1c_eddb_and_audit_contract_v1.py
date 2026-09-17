@@ -1,4 +1,19 @@
-"""Hermetic contracts for pred_1c persistence and the legacy audit wiring."""
+"""Hermetic contracts for pred_1c persistence.
+
+No-fallback lock repair (2026-09-17, operator point 12, "prove zero ... test
+references" for the tools/legacy/horizon_7/ deletion): this file used to also pin
+tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py's source text (a deprecated,
+"DEPRECATED -- 7-horizon era... do not run against post-D3 databases" module that was
+deleted along with the rest of that directory). That test was never updated when the
+directory was deleted, so it had been failing with FileNotFoundError ever since --
+found only now because point 12 required actually running the tests that reference the
+deletion, rather than trusting a prior "zero references" claim. Confirmed via repo-wide
+grep that `governed_rows_with_pred_1c_nonnull` and the audited query shape have no
+other definition or consumer anywhere in the current codebase (the deprecated metric
+was genuinely retired, not relocated), so the test was deleted rather than repointed --
+there is nothing left to test it against. This file's real schema-contract test
+(unaffected, was passing throughout) is unchanged below.
+"""
 
 from __future__ import annotations
 
@@ -34,11 +49,3 @@ def test_snapshots_table_accepts_pred_1c_triple_minimal_insert(tmp_path: Path) -
         ).fetchone()
     assert row is not None
     assert tuple(row) == pytest.approx((0.31, 0.41, 0.28))
-
-
-def test_phase5_audit_module_defines_governed_pred_1c_metric() -> None:
-    source = (
-        ROOT / "tools" / "legacy" / "horizon_7" / "_phase5_discrimination_audit_v1.py"
-    ).read_text(encoding="utf-8")
-    assert '"governed_rows_with_pred_1c_nonnull": n_gov_pred1c,' in source
-    assert "s.pred_1c_up_prob IS NOT NULL" in source

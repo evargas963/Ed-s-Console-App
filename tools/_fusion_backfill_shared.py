@@ -9,6 +9,20 @@ identical "DEPRECATED -- 7-horizon era... do not run against post-D3 databases" 
 Neither helper is specific to the deprecated 7-horizon schema; they were only defined
 alongside it incidentally. Given three separate files import these, they are collected here
 as the ONE shared producer rather than duplicated three times.
+
+CORRECTED 2026-09-17 (operator point 12, "prove no duplicate classifier exists elsewhere"):
+the original relocation moved `_incomplete_fused_sql` into all three consumers but missed
+`_classify_failure` for one of them -- backfill_fusion_policy_complete_v1.py kept its own
+pre-existing local `_classify_failure_complete`, which had ALREADY DRIFTED from this one:
+a different label for the identical MonteCarloStackInputError case ("INSUFFICIENT_HISTORY"
+vs this function's "HISTORICAL_CONTEXT_INSUFFICIENT"), and a finer message-content check
+distinguishing "insufficient history" from "feature reconstruction failure" within the
+Xgb/Lstm/Transformer/Fusion branch that this function lacked entirely. Two backfill tools
+silently reporting the SAME underlying failure kind under two different category labels
+would corrupt any comparison of their failure_categories summaries. Fixed by folding the
+finer (strictly more informative) distinction in here as the single canonical classifier,
+standardizing on this function's tested "HISTORICAL_CONTEXT_INSUFFICIENT" spelling, and
+deleting the local duplicate -- see tools/backfill_fusion_policy_complete_v1.py.
 """
 from __future__ import annotations
 
@@ -34,6 +48,8 @@ def _classify_failure(exc: BaseException, hint: str = "") -> str:
         exc,
         (XgbInferenceInputError, LstmSequenceInputError, TransformerSequenceInputError, FusionModelInputError),
     ):
+        if "snapshot" in s or "60" in s or "sequence" in s or "history" in s:
+            return "HISTORICAL_CONTEXT_INSUFFICIENT"
         return "FEATURE_RECONSTRUCTION_FAILURE"
     if isinstance(exc, ParallelRuntimeArtifactError):
         return "MISSING_ARTIFACTS"

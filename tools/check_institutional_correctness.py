@@ -1732,12 +1732,16 @@ def _rc_numeric_claims_cite_a_command_violations() -> list[Violation]:
 #: PROTOTYPED before shipping: 9 sites match, 7 of them here. The severity of this defect
 #: is a function of whether it sits on the request path, which is why server.py is NOT
 #: grandfathered -- a regression there blocks the commit.
+#: (tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py was grandfathered here too,
+#: but that whole directory was deleted 2026-09-17 as quarantined dead code during the
+#: no-fallback lock repair -- see point 12's proof in reports/no_fallback_repair_plan.md.
+#: An entry naming a path that no longer exists can never match, so it was pure clutter,
+#: not a live exemption; removed rather than left to look like an active carve-out.)
 _SNAPSHOT_TF_GRANDFATHERED = frozenset({
     "snapshot_normalizer.py",                      # deliberate full-history rebuild
     "research/gex_r1_screen_v1/signal.py",
     "tools/check_card_direction_integrity.py",
     "verification/base_ticker_observability.py",
-    "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",   # frozen legacy backfill
 })
 _SNAPSHOTS_ORDER_RE = re.compile(
     r"FROM\s+snapshots\b(?:(?!;|\"\"\"|').){0,400}?ORDER\s+BY\s+ts_utc",

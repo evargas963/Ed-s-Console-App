@@ -37,7 +37,7 @@ from timeframe_config import CANONICAL_TIMEFRAME
 
 import logging
 
-from tools._fusion_backfill_shared import _incomplete_fused_sql
+from tools._fusion_backfill_shared import _classify_failure, _incomplete_fused_sql
 
 log = logging.getLogger(__name__)
 
@@ -57,33 +57,6 @@ def _sqlite_exec_retry(conn: sqlite3.Connection, sql: str, params: tuple, *, lab
                 raise
             time.sleep(min(2.0, 0.02 * (1.5**min(attempt, 20))))
     raise last if last else RuntimeError(label or "sqlite retry exhausted")
-
-
-def _classify_failure_complete(exc: BaseException, hint: str = "") -> str:
-    from features.fusion_model_input import FusionModelInputError
-    from features.lstm_sequence_input import LstmSequenceInputError, TransformerSequenceInputError
-    from features.monte_carlo_stack_input import MonteCarloStackInputError
-    from features.xgb_model_input import XgbInferenceInputError
-    from ml_predict import ParallelRuntimeArtifactError
-
-    s = f"{hint} {exc!r}".lower()
-    if isinstance(exc, MonteCarloStackInputError):
-        return "INSUFFICIENT_HISTORY"
-    if isinstance(exc, (XgbInferenceInputError, LstmSequenceInputError, TransformerSequenceInputError, FusionModelInputError)):
-        if "snapshot" in s or "60" in s or "sequence" in s or "history" in s:
-            return "INSUFFICIENT_HISTORY"
-        return "FEATURE_RECONSTRUCTION_FAILURE"
-    if isinstance(exc, ParallelRuntimeArtifactError):
-        return "MISSING_ARTIFACTS"
-    if isinstance(exc, FileNotFoundError):
-        return "MISSING_ARTIFACTS"
-    if isinstance(exc, ValueError) and "inference" in s:
-        return "FEATURE_RECONSTRUCTION_FAILURE"
-    if "no such file" in s or ".pkl" in s or "artifact" in s:
-        return "MISSING_ARTIFACTS"
-    if isinstance(exc, (ImportError, OSError)) and "model" in s:
-        return "MODEL_LOAD_FAILURE"
-    return "OTHER"
 
 
 def _max_eligible_per_horizon(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -226,7 +199,7 @@ def main() -> int:
                 inp = signal_input_from_snapshot_row_dict(rd)
             except Exception as e:
                 skipped += 1
-                cat = _classify_failure_complete(e, "signal_input")
+                cat = _classify_failure(e, "signal_input")
                 summary["failure_categories"][cat] += 1
                 rec = {"rowid": rowid, "ticker": tkr, "stage": "signal_input", "category": cat, "detail": repr(e)}
                 failures.append(rec)
@@ -239,7 +212,7 @@ def main() -> int:
                 flat, hz_errs, _stack_integrity_v1 = compute_fusion_policy_flat_for_replay(inp, db)
             except Exception as e:
                 skipped += 1
-                cat = _classify_failure_complete(e, "stack")
+                cat = _classify_failure(e, "stack")
                 summary["failure_categories"][cat] += 1
                 rec = {
                     "rowid": rowid,
