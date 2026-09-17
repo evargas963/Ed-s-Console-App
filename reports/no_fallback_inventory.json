@@ -29,11 +29,11 @@
   },
   "unscanned_unknown_extensions": [],
   "candidate_count": 1226,
-  "adjudicated_this_pass": 139,
+  "adjudicated_this_pass": 140,
   "verdict_counts": {
-    "NOT_PROVEN": 1105,
+    "NOT_PROVEN": 1104,
     "NOT_FALLBACK": 27,
-    "REPAIRED": 85,
+    "REPAIRED": 86,
     "FALLBACK": 9
   },
   "candidates": [
@@ -3700,10 +3700,10 @@
       "snippet": "ms.vix_regime      = getattr(mkt_ctx, \"vix_regime\",     \"\")",
       "semantic_field_guess": "vix_regime",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's build_market_state() read mkt_ctx.vix_regime/vix_color/vix_implication/pcr_arrow/pcr_color/pcr_label via getattr(mkt_ctx, name, default) -- but mkt_ctx is provably always a real MarketContext instance: server.py's _fetch_and_store_mkt_ctx falls back to a fresh MarketContext() of its own (never None or a partial object) on any fetch failure, and every real and test call site confirmed to pass a full MarketContext/mock with these fields always set. The getattr default could never fire -- provably redundant, same class as the SQL COALESCE repairs across this branch, just in attribute-access form. Simplified all six to bare attribute access. Tests: tests/test_action12_7_market_state_fail_closed.py gained test_mkt_ctx_fields_read_directly_no_silent_default_on_a_real_value, proving a genuine non-default value flows through untouched; the file's other 12 tests (including the gex_magnitude disclosure tests from the earlier market_state_rendering repair) still pass, as do the three other build_market_state test files.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00263",

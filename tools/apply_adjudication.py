@@ -802,6 +802,23 @@ _mark_repaired(
     "real-DB proof that the predicate selects a BAR_ANCHOR_V1 row and excludes a row of a "
     "different recorded schema version).",
     "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00262"],
+    "REPAIRED 2026-09-17: market_state.py's build_market_state() read "
+    "mkt_ctx.vix_regime/vix_color/vix_implication/pcr_arrow/pcr_color/pcr_label via "
+    "getattr(mkt_ctx, name, default) -- but mkt_ctx is provably always a real MarketContext "
+    "instance: server.py's _fetch_and_store_mkt_ctx falls back to a fresh MarketContext() "
+    "of its own (never None or a partial object) on any fetch failure, and every real and "
+    "test call site confirmed to pass a full MarketContext/mock with these fields always "
+    "set. The getattr default could never fire -- provably redundant, same class as the SQL "
+    "COALESCE repairs across this branch, just in attribute-access form. Simplified all six "
+    "to bare attribute access. Tests: "
+    "tests/test_action12_7_market_state_fail_closed.py gained "
+    "test_mkt_ctx_fields_read_directly_no_silent_default_on_a_real_value, proving a genuine "
+    "non-default value flows through untouched; the file's other 12 tests (including the "
+    "gex_magnitude disclosure tests from the earlier market_state_rendering repair) still "
+    "pass, as do the three other build_market_state test files.",
+    "market_state_rendering")
 
 
 def main() -> int:

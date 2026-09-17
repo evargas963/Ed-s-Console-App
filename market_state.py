@@ -1200,15 +1200,19 @@ def build_market_state(
             logging.getLogger(__name__).warning(f"Order Flow Engine error: {_of_e}")
 
     # ── 4. VIX / PCR — from mkt_ctx ─────────────────────────────────────────
-    ms.vix             = getattr(mkt_ctx, "vix",            None)
-    ms.vix_regime      = getattr(mkt_ctx, "vix_regime",     "")
-    ms.vix_color       = getattr(mkt_ctx, "vix_color",      "#9ca3af")
-    ms.vix_implication = getattr(mkt_ctx, "vix_implication","")
-    _pcr               = getattr(mkt_ctx, "pcr",            None)
+    # No-fallback lock (2026-09-17): mkt_ctx is always a real MarketContext instance --
+    # _fetch_and_store_mkt_ctx (server.py) falls back to a fresh MarketContext() of its
+    # own on any fetch failure, never None or a partial object -- so these fields are
+    # provably always present; a getattr(...) default here can never fire.
+    ms.vix             = mkt_ctx.vix
+    ms.vix_regime      = mkt_ctx.vix_regime
+    ms.vix_color       = mkt_ctx.vix_color
+    ms.vix_implication = mkt_ctx.vix_implication
+    _pcr               = mkt_ctx.pcr
     ms.pcr_val         = _f(_pcr)
-    ms.pcr_arrow       = getattr(mkt_ctx, "pcr_arrow",      "")
-    ms.pcr_color       = getattr(mkt_ctx, "pcr_color",      "#9ca3af")
-    ms.pcr_label       = getattr(mkt_ctx, "pcr_label",      "")
+    ms.pcr_arrow       = mkt_ctx.pcr_arrow
+    ms.pcr_color       = mkt_ctx.pcr_color
+    ms.pcr_label       = mkt_ctx.pcr_label
     ms.iv_direction = (
         iv_direction if iv_direction in ("expanding", "contracting", "flat") else None
     )

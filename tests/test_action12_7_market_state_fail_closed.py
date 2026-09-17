@@ -296,3 +296,31 @@ def test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure(_mock_c
     assert ms.gex_magnitude != "large", (
         "must not have read consensus_summary.gex_magnitude as a guessed substitute"
     )
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_mkt_ctx_fields_read_directly_no_silent_default_on_a_real_value(_mock_cs):
+    """
+    No-fallback lock repair (2026-09-17, FB-00262 + 5 sibling sites): mkt_ctx.vix_regime/
+    vix_color/vix_implication/pcr_arrow/pcr_color/pcr_label used to be read via
+    getattr(mkt_ctx, name, default) -- but mkt_ctx is provably always a real MarketContext
+    instance in production (server.py's _fetch_and_store_mkt_ctx falls back to a fresh
+    MarketContext() of its own on any fetch failure, never None or a partial object), so
+    the getattr default could never fire. Proves a genuine non-default mock value flows
+    through untouched -- the field is read directly, not silently coerced to the old
+    getattr default.
+    """
+    ctx = _mkt_ctx()
+    ctx.vix_regime = "elevated"
+    ctx.vix_color = "#ff0000"
+    ctx.vix_implication = "hedging pressure rising"
+    ctx.pcr_arrow = "up"
+    ctx.pcr_color = "#00ff00"
+    ctx.pcr_label = "put pressure building"
+    ms = build_market_state(**_base_kwargs(mkt_ctx=ctx))
+    assert ms.vix_regime == "elevated"
+    assert ms.vix_color == "#ff0000"
+    assert ms.vix_implication == "hedging pressure rising"
+    assert ms.pcr_arrow == "up"
+    assert ms.pcr_color == "#00ff00"
+    assert ms.pcr_label == "put pressure building"
