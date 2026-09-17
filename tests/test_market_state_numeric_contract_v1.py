@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from bayesian_fusion import FusionPayload
 from market_state import _f_ms, _ms_price_disp, build_market_state
 from signal_types import TheCall
 from tests.test_build_market_state_spot_fail_closed import _base_kwargs, _fake_compute_signals
@@ -100,7 +101,11 @@ def test_forward_prob_nan_surfaces_none_on_ms(mock_cs):
 
 @patch("signals.compute_signals")
 def test_fusion_prob_nan_surfaces_none(mock_cs):
-    fusion = SimpleNamespace(
+    # No-fallback lock (2026-09-17): market_state.py now reads FusionPayload fields
+    # directly (no getattr default), so a stand-in for this test must be a genuine
+    # FusionPayload instance -- a partial SimpleNamespace that only supplied the fields
+    # this specific test cared about would crash on the MC pass-through fields.
+    fusion = FusionPayload(
         available=True,
         dominant_outcome="breakout",
         dominant_probability=0.6,

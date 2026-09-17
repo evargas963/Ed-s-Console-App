@@ -29,11 +29,11 @@
   },
   "unscanned_unknown_extensions": [],
   "candidate_count": 1226,
-  "adjudicated_this_pass": 155,
+  "adjudicated_this_pass": 173,
   "verdict_counts": {
-    "NOT_PROVEN": 1089,
-    "NOT_FALLBACK": 33,
-    "REPAIRED": 95,
+    "NOT_PROVEN": 1071,
+    "NOT_FALLBACK": 39,
+    "REPAIRED": 107,
     "FALLBACK": 9
   },
   "candidates": [
@@ -3714,10 +3714,10 @@
       "snippet": "iv_direction if iv_direction in (\"expanding\", \"contracting\", \"flat\") else None",
       "semantic_field_guess": "iv_direction",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `iv_direction if iv_direction in (\"expanding\", \"contracting\", \"flat\") else None` / the analogous charm_direction check is an explicit WHITELIST validation -- any value outside the three named, real states maps to an honest None, never to a fabricated valid-looking member of the enum. This is the mission's own required 'ordinary control flow, not falsely rejected' positive control: it EXPOSES an invalid/unknown input as None rather than substituting a guessed value for it.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00264",
@@ -3728,10 +3728,10 @@
       "snippet": "charm_direction",
       "semantic_field_guess": "charm_direction",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `iv_direction if iv_direction in (\"expanding\", \"contracting\", \"flat\") else None` / the analogous charm_direction check is an explicit WHITELIST validation -- any value outside the three named, real states maps to an honest None, never to a fabricated valid-looking member of the enum. This is the mission's own required 'ordinary control flow, not falsely rejected' positive control: it EXPOSES an invalid/unknown input as None rather than substituting a guessed value for it.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00265",
@@ -3758,7 +3758,7 @@
       "context": "build_market_state",
       "adjudication": "REPAIRED",
       "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "required_repair": "REPAIRED 2026-09-17: market_state.py build_market_state() -- except-handler no longer guesses a value off consensus_summary.gex_magnitude (an attribute that does not exist upstream in practice); failure is now disclosed via ms.state_error/state_error_detail. Tests: tests/test_action12_7_market_state_fail_closed.py::test_gex_magnitude_computation_failure_is_disclosed_not_guessed, ::test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure.",
+      "required_repair": "REPAIRED 2026-09-17: market_state.py build_market_state() -- except-handler no longer guesses a value off consensus_summary.gex_magnitude (an attribute that does not exist upstream in practice); failure is now disclosed via ms.state_error/state_error_detail. FB-00294 is the same source line as FB-00266, caught a second time by the discovery scanner's separate GETATTR_DEFAULT matcher (the original line nested a getattr(...) call inside an `... or 'negligible'` OR_LADDER shape, tripping both detectors). Tests: tests/test_action12_7_market_state_fail_closed.py::test_gex_magnitude_computation_failure_is_disclosed_not_guessed, ::test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure.",
       "proposed_ownership_group": "market_state_rendering"
     },
     {
@@ -3826,10 +3826,10 @@
       "snippet": "_vix_bkt_src = (vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix)",
       "semantic_field_guess": "market_iv_level",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` (and its 3 siblings) is the deliberately tested, version-locked VOL_INPUT_CONTRACT 1.0.0 (ratified 2026-07-09) migration shape -- tests/test_market_context_fetch_fail_closed.py's own test_signalinput_vix_still_macro_vix_only structurally asserts this EXACT source text must be present, documenting it as 'the vol_ctx=None fallback' to mkt_ctx.vix, which carries the SAME underlying macro $VIX quote via an older plumbing path (not an alternate/different vendor source). This is a reviewed, in-progress internal migration compatibility shim with its own dedicated governance and test suite (vol_observability.py, features/replay_signal_input_v1.py, test_volatility_regime_fail_closed.py), not an undisclosed substitution masking a genuine computation failure. Repairing it would break an existing, deliberate structural lock.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00272",
@@ -3938,10 +3938,10 @@
       "snippet": "ms.fusion_n_models_active = getattr(_fusion, 'n_sources_active', 0)",
       "semantic_field_guess": "n_sources_active",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00280",
@@ -3952,10 +3952,10 @@
       "snippet": "ms.vol_regime = getattr(_vr, 'vol_regime', 'unknown')",
       "semantic_field_guess": "vol_regime",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00281",
@@ -3994,10 +3994,10 @@
       "snippet": "ms.final_tradeable = bool(getattr(_mhd, \"final_tradeable\", False))",
       "semantic_field_guess": "final_tradeable",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00284",
@@ -4008,10 +4008,10 @@
       "snippet": "ms.guest_anchor_active = bool(getattr(_sig_out, \"guest_anchor_active\", False))",
       "semantic_field_guess": "guest_anchor_active",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00285",
@@ -4050,10 +4050,10 @@
       "snippet": "vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix),",
       "semantic_field_guess": "market_iv_level",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` (and its 3 siblings) is the deliberately tested, version-locked VOL_INPUT_CONTRACT 1.0.0 (ratified 2026-07-09) migration shape -- tests/test_market_context_fetch_fail_closed.py's own test_signalinput_vix_still_macro_vix_only structurally asserts this EXACT source text must be present, documenting it as 'the vol_ctx=None fallback' to mkt_ctx.vix, which carries the SAME underlying macro $VIX quote via an older plumbing path (not an alternate/different vendor source). This is a reviewed, in-progress internal migration compatibility shim with its own dedicated governance and test suite (vol_observability.py, features/replay_signal_input_v1.py, test_volatility_regime_fail_closed.py), not an undisclosed substitution masking a genuine computation failure. Repairing it would break an existing, deliberate structural lock.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00288",
@@ -4064,10 +4064,10 @@
       "snippet": "vix_direction=(vol_ctx.market_iv_direction if vol_ctx is not None else None),",
       "semantic_field_guess": "market_iv_direction",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` (and its 3 siblings) is the deliberately tested, version-locked VOL_INPUT_CONTRACT 1.0.0 (ratified 2026-07-09) migration shape -- tests/test_market_context_fetch_fail_closed.py's own test_signalinput_vix_still_macro_vix_only structurally asserts this EXACT source text must be present, documenting it as 'the vol_ctx=None fallback' to mkt_ctx.vix, which carries the SAME underlying macro $VIX quote via an older plumbing path (not an alternate/different vendor source). This is a reviewed, in-progress internal migration compatibility shim with its own dedicated governance and test suite (vol_observability.py, features/replay_signal_input_v1.py, test_volatility_regime_fail_closed.py), not an undisclosed substitution masking a genuine computation failure. Repairing it would break an existing, deliberate structural lock.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00289",
@@ -4078,10 +4078,10 @@
       "snippet": "vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None),",
       "semantic_field_guess": "market_iv_change",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` (and its 3 siblings) is the deliberately tested, version-locked VOL_INPUT_CONTRACT 1.0.0 (ratified 2026-07-09) migration shape -- tests/test_market_context_fetch_fail_closed.py's own test_signalinput_vix_still_macro_vix_only structurally asserts this EXACT source text must be present, documenting it as 'the vol_ctx=None fallback' to mkt_ctx.vix, which carries the SAME underlying macro $VIX quote via an older plumbing path (not an alternate/different vendor source). This is a reviewed, in-progress internal migration compatibility shim with its own dedicated governance and test suite (vol_observability.py, features/replay_signal_input_v1.py, test_volatility_regime_fail_closed.py), not an undisclosed substitution masking a genuine computation failure. Repairing it would break an existing, deliberate structural lock.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00290",
@@ -4092,10 +4092,10 @@
       "snippet": "ms.trade_mode = str(getattr(_mhd, \"trade_mode\", \"intraday\") or \"intraday\")",
       "semantic_field_guess": "trade_mode",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00291",
@@ -4106,10 +4106,10 @@
       "snippet": "ms.contradiction_state = str(getattr(_mhd, \"contradiction_state\", \"none\") or \"none\")",
       "semantic_field_guess": "contradiction_state",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00292",
@@ -4120,10 +4120,10 @@
       "snippet": "ms.conflict_level_display = str(getattr(_mr, \"conflict_level\", \"high\") or \"high\")",
       "semantic_field_guess": "conflict_level",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00293",
@@ -4134,10 +4134,10 @@
       "snippet": "ms.entry_state = str(getattr(_mhd, \"entry_state\", \"no_setup\") or \"no_setup\")",
       "semantic_field_guess": "entry_state",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00294",
@@ -4148,10 +4148,10 @@
       "snippet": "ms.gex_magnitude = str(getattr(consensus_summary, \"gex_magnitude\", \"negligible\") or \"negligible\")",
       "semantic_field_guess": "gex_magnitude",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py build_market_state() -- except-handler no longer guesses a value off consensus_summary.gex_magnitude (an attribute that does not exist upstream in practice); failure is now disclosed via ms.state_error/state_error_detail. FB-00294 is the same source line as FB-00266, caught a second time by the discovery scanner's separate GETATTR_DEFAULT matcher (the original line nested a getattr(...) call inside an `... or 'negligible'` OR_LADDER shape, tripping both detectors). Tests: tests/test_action12_7_market_state_fail_closed.py::test_gex_magnitude_computation_failure_is_disclosed_not_guessed, ::test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00295",
@@ -4162,10 +4162,10 @@
       "snippet": "ms.size_modifier_display = str(getattr(_pt, \"size_modifier_display\", \"0.00x\") or \"0.00x\")",
       "semantic_field_guess": "size_modifier_display",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00296",
@@ -4176,10 +4176,10 @@
       "snippet": "\"status\": getattr(s, 'status', 'inactive'),",
       "semantic_field_guess": "status",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00297",
@@ -4190,10 +4190,10 @@
       "snippet": "\"row_state\": \"missing\" if _missing else str(getattr(_a, \"row_state\", \"weak\")),",
       "semantic_field_guess": "row_state",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters simplified to bare attribute access, following the same dataclass-completeness proof as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload (8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field read is a class-defaulted or required field, confirmed by tracing FusionPayload's construction to functions typed `-> FusionPayload`), _vr always None or volatility_regime.VolRegimePayload (frozen dataclass, all fields required), _path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass type, not loose `object` -- whose 6 StackStage fields and each StackStage's own fields are all required/defaulted, and _mhd/_mr/_pt/_a are all multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, FinalTradePlan, SupportingHorizonAssessment respectively) with every field required (most have NO class-level default at all, an even stronger guarantee than TheCall). guest_anchor_active/_weights_ticker/_affiliation/_rationale and model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty computed value, not a missing attribute, and confirming each is safe to drop needs a deeper trace into multi_horizon_decision.py's own construction logic this pass did not do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all 12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload instance, same precedent as the TheCall fixture fix. Confirmed no other test file both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/rules_engine.py test files construct incomplete stand-ins, but for functions other than build_market_state, confirmed via grep + one AST-based false-positive check). Tests: all 4 build_market_state test files (30 tests) still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00298",

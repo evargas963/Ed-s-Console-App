@@ -393,10 +393,13 @@ def _mark_repaired(ids: list[str], repair_note: str, group: str) -> None:
 
 
 _mark_repaired(
-    ["FB-00266"],
+    ["FB-00266", "FB-00294"],
     "REPAIRED 2026-09-17: market_state.py build_market_state() -- except-handler no longer "
     "guesses a value off consensus_summary.gex_magnitude (an attribute that does not exist "
     "upstream in practice); failure is now disclosed via ms.state_error/state_error_detail. "
+    "FB-00294 is the same source line as FB-00266, caught a second time by the discovery "
+    "scanner's separate GETATTR_DEFAULT matcher (the original line nested a getattr(...) "
+    "call inside an `... or 'negligible'` OR_LADDER shape, tripping both detectors). "
     "Tests: tests/test_action12_7_market_state_fail_closed.py::"
     "test_gex_magnitude_computation_failure_is_disclosed_not_guessed, "
     "::test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure.",
@@ -567,6 +570,38 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "legitimately absent in a correct call. The guard prevents a `None.upper()` "
                 "crash; its degraded output is an honest blank space in the label, not a "
                 "fabricated ticker symbol that could be mistaken for real data.",
+                "none",
+                "market_state_rendering",
+            )
+        if c["id"] in ("FB-00263", "FB-00264"):
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "Investigated 2026-09-17: `iv_direction if iv_direction in (\"expanding\", "
+                "\"contracting\", \"flat\") else None` / the analogous charm_direction check "
+                "is an explicit WHITELIST validation -- any value outside the three named, "
+                "real states maps to an honest None, never to a fabricated valid-looking "
+                "member of the enum. This is the mission's own required 'ordinary control "
+                "flow, not falsely rejected' positive control: it EXPOSES an invalid/unknown "
+                "input as None rather than substituting a guessed value for it.",
+                "none",
+                "market_state_rendering",
+            )
+        if c["id"] in ("FB-00271", "FB-00287", "FB-00288", "FB-00289"):
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "Investigated 2026-09-17: `vol_ctx.market_iv_level if vol_ctx is not None "
+                "else mkt_ctx.vix` (and its 3 siblings) is the deliberately tested, "
+                "version-locked VOL_INPUT_CONTRACT 1.0.0 (ratified 2026-07-09) migration "
+                "shape -- tests/test_market_context_fetch_fail_closed.py's own "
+                "test_signalinput_vix_still_macro_vix_only structurally asserts this EXACT "
+                "source text must be present, documenting it as 'the vol_ctx=None fallback' "
+                "to mkt_ctx.vix, which carries the SAME underlying macro $VIX quote via an "
+                "older plumbing path (not an alternate/different vendor source). This is a "
+                "reviewed, in-progress internal migration compatibility shim with its own "
+                "dedicated governance and test suite (vol_observability.py, "
+                "features/replay_signal_input_v1.py, test_volatility_regime_fail_closed.py), "
+                "not an undisclosed substitution masking a genuine computation failure. "
+                "Repairing it would break an existing, deliberate structural lock.",
                 "none",
                 "market_state_rendering",
             )
@@ -910,6 +945,37 @@ _mark_repaired(
     "directly), so they are unaffected. Tests: the 4 build_market_state test files (30 "
     "tests) plus test_action11_9_call_engine_fail_closed.py and "
     "test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+    "market_state_rendering")
+_mark_repaired(
+    ["FB-00279", "FB-00280", "FB-00283", "FB-00284", "FB-00290", "FB-00291",
+     "FB-00292", "FB-00293", "FB-00295", "FB-00296", "FB-00297"],
+    "REPAIRED 2026-09-17: market_state.py's remaining signals-output getattr clusters "
+    "simplified to bare attribute access, following the same dataclass-completeness proof "
+    "as the TheCall cluster: _regime is always None or a real regime_engine.RegimePayload "
+    "(8 required fields), _fusion always None or bayesian_fusion.FusionPayload (every field "
+    "read is a class-defaulted or required field, confirmed by tracing FusionPayload's "
+    "construction to functions typed `-> FusionPayload`), _vr always None or "
+    "volatility_regime.VolRegimePayload (frozen dataclass, all fields required), "
+    "_path (stack_decision_path) is Optional[StackDecisionPath] -- a SPECIFIC dataclass "
+    "type, not loose `object` -- whose 6 StackStage fields and each StackStage's own "
+    "fields are all required/defaulted, and _mhd/_mr/_pt/_a are all "
+    "multi_horizon_decision.py dataclasses (MultiHorizonDecision, HorizonAlignmentReport, "
+    "FinalTradePlan, SupportingHorizonAssessment respectively) with every field required "
+    "(most have NO class-level default at all, an even stronger guarantee than TheCall). "
+    "guest_anchor_active/_weights_ticker/_affiliation/_rationale and "
+    "model_serving_provenance are declared, class-defaulted fields on SignalOutput itself. "
+    "Value-level `or <default>` guards on _mhd/_mr/_pt string fields (e.g. `_mhd.final_bias "
+    "or 'WAIT'`) were deliberately LEFT AS-IS -- those guard against a genuinely-empty "
+    "computed value, not a missing attribute, and confirming each is safe to drop needs a "
+    "deeper trace into multi_horizon_decision.py's own construction logic this pass did not "
+    "do. A second incomplete SimpleNamespace test stand-in for FusionPayload (missing all "
+    "12 Monte-Carlo/weight fields) was found and replaced with a real FusionPayload "
+    "instance, same precedent as the TheCall fixture fix. Confirmed no other test file "
+    "both calls build_market_state(...) and uses an incomplete SimpleNamespace/Mock "
+    "regime/fusion/vol_regime/stack_decision_path stand-in (several call_engine.py/"
+    "rules_engine.py test files construct incomplete stand-ins, but for functions other "
+    "than build_market_state, confirmed via grep + one AST-based false-positive check). "
+    "Tests: all 4 build_market_state test files (30 tests) still pass.",
     "market_state_rendering")
 
 
