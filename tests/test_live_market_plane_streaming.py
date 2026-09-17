@@ -152,22 +152,14 @@ def test_record_from_level_one_does_not_carry_forward_missing_bid_ask():
     assert row["quote_source_detail"]["carried_forward"] is False
 
 
-def test_record_from_level_one_uses_mark_but_not_midpoint_for_spot():
+def test_record_from_level_one_rejects_mark_as_current_spot():
     ok = lmp.record_from_level_one_equity(
         "MARKONLY",
         {"key": "MARKONLY", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
     )
 
-    assert ok is True
-    row = lmp.get_quote("MARKONLY")
-    assert row is not None
-    assert row["spot"] == 20.95
-    assert row["quote_source_detail"]["spot"] == "MARK"
-    # Wire-first: quote_mid follows Schwab MARK, not (bid+ask)/2 (which would be 21.0).
-    assert row["quote_mid"] == 20.95
-    assert row["mid_source"] == "schwab_streaming_mark"
-    assert row["spread_source"] == "derived_bid_ask_fraction_schwab_mark_denom"
-    assert row["quote_source_detail"]["mid"] == "schwab_streaming_mark"
+    assert ok is False
+    assert lmp.get_quote("MARKONLY") is None
 
 
 def test_record_from_level_one_rejects_midpoint_spot_fabrication():

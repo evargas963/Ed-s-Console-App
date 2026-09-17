@@ -652,8 +652,15 @@
   function paintQuote(q) {
     var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
     if (px) {
-      px.textContent = q.spot_disp || fmt(q.spot);
+      var state = q.spotState || q.spot_state || '';
+      if (state === 'unavailable' || (q.spot == null && !q.spot_disp)) {
+        px.textContent = 'UNAVAILABLE';
+      } else {
+        px.textContent = q.spot_disp || fmt(q.spot);
+        if (state === 'stale') px.textContent += ' STALE';
+      }
       var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
+      if (state) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + state;
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
     if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
@@ -678,10 +685,13 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called only
   // from pollWatchlistQuotes. A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct) {
+  function setWlRow(sym, spot, chgPct, spotState) {
     var key = (sym || '').replace('$', '');
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]') || document.querySelector('.wl-px[data-wlpx="' + key + '"]');
-    if (pe) pe.textContent = (spot != null) ? fmt(spot) : '—';
+    if (pe) {
+      if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
+      else pe.textContent = fmt(spot) + (spotState === 'stale' ? ' STALE' : '');
+    }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]') || document.querySelector('.wl-chg[data-wlchg="' + key + '"]');
     if (ce) {
       if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
@@ -739,7 +749,8 @@
         var quotes = data.quotes || {};
         list.forEach(function (sym) {
           var row = quotes[sym];
-          setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null);
+          setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null,
+            row ? row.spot_state : 'unavailable');
         });
       })
       .catch(function () {
@@ -775,10 +786,13 @@
       // the payload's own real freshness verdict (build_l1_context: stale when the L0
       // spot is missing or unusable) — use it, not "an event arrived", to label LIVE vs
       // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
-      var stale = !!p.l1_stale;
+      var stale = !!p.l1_stale || p.spot_state === 'stale';
+      var unavailable = p.spot_state === 'unavailable' || p.spot == null;
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
-        feedCls: stale ? 'stale' : '', feedLabel: stale ? 'STALE' : 'LIVE',
+        spotState: p.spot_state,
+        feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
+        feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'STALE' : 'LIVE'),
         ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
     });
     // Independent-review finding (2026-09-12): the heatmap only ever refetched on the 3s/12s
@@ -859,7 +873,10 @@
         var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
         paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
           chgPct: d.chg_pct, quoteIngestion: d.quote_ingestion,
-          feedCls: healthy ? '' : 'warn', feedLabel: healthy ? 'LIVE' : 'DEGRADED', ageLabel: age });
+          spotState: d.spot_state,
+          feedCls: d.spot_state === 'unavailable' ? 'stale' : (healthy ? '' : 'warn'),
+          feedLabel: d.spot_state === 'unavailable' ? 'UNAVAILABLE' : (d.spot_state === 'stale' ? 'STALE' : (healthy ? 'LIVE' : 'DEGRADED')),
+          ageLabel: age });
       })
       .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });
   }

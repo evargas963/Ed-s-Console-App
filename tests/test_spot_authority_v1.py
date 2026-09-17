@@ -39,11 +39,18 @@ def test_quote_parser_key_contract() -> None:
     assert parsed["spot_source"] == "lastPrice"
 
 
-def test_quote_parser_falls_back_last_then_mark() -> None:
-    """Precedence inside the parser: lastPrice, then mark. Both are Schwab leaves."""
+def test_quote_parser_never_promotes_mark_or_close_to_spot() -> None:
+    """Current spot is lastPrice only. MARK and regular close stay distinct fields."""
     only_mark = server._parse_quote_node_session_fields({"quote": {"mark": 100.25}})
-    assert only_mark["spot"] == 100.25
-    assert only_mark["spot_source"] == "mark"
+    assert only_mark["spot"] is None
+    assert only_mark["spot_source"] is None
+    assert only_mark["mark"] == 100.25
+
+    only_close = server._parse_quote_node_session_fields(
+        {"regular": {"regularMarketLastPrice": 99.0}}
+    )
+    assert only_close["spot"] is None
+    assert only_close["regular_close"] == 99.0
 
     neither = server._parse_quote_node_session_fields({"quote": {}})
     assert neither["spot"] is None
@@ -55,8 +62,7 @@ def test_resolve_spot_reports_its_source() -> None:
     spot, source, _ts = server.resolve_spot("SPY")
     assert source in (
         server.SPOT_SOURCE_QUOTE,
-        server.SPOT_SOURCE_CHAIN,
-        server.SPOT_SOURCE_SNAPSHOT,
+        server.SPOT_SOURCE_PLANE,
         "none",
     )
     if spot is not None:
@@ -144,7 +150,8 @@ def test_resolve_spot_prefers_a_fresh_streaming_plane_row_over_the_rest_quote(mo
 
     tk = "ZZPLANESPOT"
     L._by_ticker[tk] = {"spot": 700.42, "server_received_ts": _t.time(),
-                         "exchange_quote_ts": 1_800_000_000.0}
+                         "exchange_quote_ts": 1_800_000_000.0,
+                         "quote_source_detail": {"spot": "LAST_PRICE"}}
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
@@ -170,7 +177,8 @@ def test_resolve_spot_falls_through_when_the_plane_row_is_stale(monkeypatch) -> 
     tk = "ZZPLANESTALE"
     L._by_ticker[tk] = {"spot": 700.42,
                          "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0),
-                         "exchange_quote_ts": 1_800_000_000.0}
+                         "exchange_quote_ts": 1_800_000_000.0,
+                         "quote_source_detail": {"spot": "LAST_PRICE"}}
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
@@ -213,7 +221,8 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
     tk = "ZZCONVERGE"
     L._by_ticker[tk] = {"spot": 812.5, "server_received_ts": _t.time(),
                          "exchange_quote_ts": 1_800_000_000.0, "bid": 812.4, "ask": 812.6,
-                         "spot_disp": "812.50", "bid_disp": "812.40", "ask_disp": "812.60"}
+                         "spot_disp": "812.50", "bid_disp": "812.40", "ask_disp": "812.60",
+                         "quote_source_detail": {"spot": "LAST_PRICE"}}
     try:
         # A REST call here would prove nothing (the plane must win first) -- if either
         # consumer fell through to it, this distinct value would surface the divergence.
@@ -233,48 +242,17 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
         L._by_ticker.pop(tk, None)
 
 
-def test_resolve_spot_falls_through_when_the_quote_is_unusable(monkeypatch) -> None:
-    """A dead quote leg must degrade to a LOWER-precedence source, still labelled."""
+def test_resolve_spot_never_promotes_stored_or_chain_when_last_price_is_absent(monkeypatch) -> None:
+    """A missing LAST_PRICE is UNAVAILABLE. Stored snapshot and chain close stay unused."""
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {}}}))
+                        lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"mark": 111.11}}}))
     monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
-    spot, source, _ts = server.resolve_spot("SPY")
-    assert spot == 111.11
-    assert source == server.SPOT_SOURCE_SNAPSHOT
-
-
-def test_chain_underlying_is_never_preferred_over_a_stored_trade(monkeypatch) -> None:
-    """RC-16: `chain.underlying.last` is a session CLOSE, not a last trade.
-
-    Verified on the wire after hours 2026-07-19: quote.closePrice, quote.mark,
-    regularMarketLastPrice, chains.underlying.last and chains.underlyingPrice ALL read
-    743.29 (Friday's regular close) while quote.lastPrice read 742.4861 (the true last
-    trade). Ranking the chain above a stored snapshot would serve the previous session's
-    close as spot -- exactly the 743.29-vs-742.49 divergence the operator reported.
-    """
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {}}}))       # no live trade
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (742.4861, 0.0))
-
-    spot, source, _ts = server.resolve_spot("SPY", chain_json={"underlying": {"last": 743.29}})
-    assert spot == 742.4861, "a stale real TRADE must beat a session CLOSE"
-    assert source == server.SPOT_SOURCE_SNAPSHOT
-    assert not server.spot_is_a_close(source)
-
-
-def test_chain_close_is_used_last_and_flagged_as_a_close(monkeypatch) -> None:
-    """When nothing else exists the close may be shown, but never unlabelled."""
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {}}}))
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (None, None))
-
-    spot, source, _ts = server.resolve_spot("SPY", chain_json={"underlying": {"last": 743.29}})
-    assert spot == 743.29
-    assert source == server.SPOT_SOURCE_CHAIN
-    assert server.spot_is_a_close(source), "a close must be flagged so the UI can say so"
+    spot, source, _ts = server.resolve_spot(
+        "SPY", chain_json={"underlying": {"last": 743.29, "mark": 743.20, "close": 743.10}}
+    )
+    assert spot is None
+    assert source == "none"
 
 
 def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
@@ -313,11 +291,15 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
     assert out["headline"] != "stale"
 
 
-def test_reprice_keeps_cached_payload_when_spot_is_unavailable(monkeypatch) -> None:
-    """No live spot means serve the cache unchanged — never blank the card."""
+def test_reprice_does_not_keep_cached_spot_as_current_when_last_price_is_unavailable(monkeypatch) -> None:
+    """A cached terrain spot must not silently become current live spot."""
     monkeypatch.setattr(server, "resolve_spot", lambda _tk, **_kw: (None, "none", None))
     cached = {"ticker": "SPY", "spot": 745.10, "regime": "LONG_GAMMA_CHOP"}
-    assert server._reprice_cached_terrain(cached, "SPY") == cached
+    out = server._reprice_cached_terrain(cached, "SPY")
+    assert out["spot"] is None
+    assert out["spot_source"] == "none"
+    assert out["spot_state"] == "unavailable"
+    assert out["regime"] == "LONG_GAMMA_CHOP"
 
 
 def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) -> None:
@@ -472,7 +454,8 @@ def test_merge_into_state_applies_a_fresh_plane_row(monkeypatch) -> None:
     import live_market_plane as L
 
     tk = "ZZMERGEFRESH"
-    L._by_ticker[tk] = {"spot": 850.0, "server_received_ts": _t.time()}
+    L._by_ticker[tk] = {"spot": 850.0, "server_received_ts": _t.time(),
+                         "quote_source_detail": {"spot": "LAST_PRICE"}}
     try:
         ms = {"spot": 700.42, "ticker": tk}
         L.merge_into_state(ms, tk)
@@ -498,16 +481,15 @@ def test_apply_l1_live_quote_overlay_skips_a_stale_plane_row() -> None:
         L._by_ticker.pop(tk, None)
 
 
-def test_quote_is_fresh_exempts_an_explicitly_carried_forward_row() -> None:
-    """W3-C4/RC-121: a row explicitly labelled carried_forward has already declared its own
-    untrustworthiness via quote_source_detail -- everyone downstream (header, Tier C, L1)
-    should see the SAME labelled degraded value, not have Tier C/L1 silently fall back to a
-    different, unlabelled one while the header keeps showing the honest one."""
+def test_quote_is_fresh_does_not_treat_carried_forward_as_live() -> None:
+    """A carried-forward LAST_PRICE may still be shown as STALE. It is not LIVE."""
     import live_market_plane as L
 
-    q = {"spot": 700.0, "server_received_ts": 1.0,   # ancient by any wall-clock measure
-         "quote_source_detail": {"carried_forward": True, "schwab_auth_degraded": True}}
-    assert L.quote_is_fresh(q) is True
+    q = {"spot": 700.0, "server_received_ts": 1.0,
+         "quote_source_detail": {"spot": "LAST_PRICE", "carried_forward": True,
+                                 "schwab_auth_degraded": True}}
+    assert L.quote_is_fresh(q) is False
+    assert L.plane_spot_is_last_price(q) is True
 
 
 def test_project_l1_corrects_a_stale_plane_spot_via_resolve_spot(monkeypatch) -> None:

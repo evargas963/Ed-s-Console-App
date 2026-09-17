@@ -1062,6 +1062,7 @@ def terminal_distribution(
             "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE,
         }
 
+    anchor_source = "provided_last_price"
     if spot is None or spot <= 0:
         try:
             con = _connect(db_path, read_only=True)
@@ -1071,8 +1072,10 @@ def terminal_distribution(
                 (subject.upper(), as_of_utc)).fetchone()
             con.close()
             spot = float(row["close"]) if row else None
+            anchor_source = "as_of_bar_close"
         except sqlite3.OperationalError:
             spot = None
+            anchor_source = "as_of_bar_close"
     if not spot or spot <= 0:
         return {"subject": subject.upper(), "available": False,
                 "reason": "no regular-session close at or before this instant",
@@ -1115,6 +1118,8 @@ def terminal_distribution(
         "subject": subject.upper(),
         "available": True,
         "spot": spot,
+        "spot_role": "simulation_anchor",
+        "anchor_source": anchor_source,
         "horizon_sessions": int(horizon_sessions),
         "n_paths": int(n_paths),
         "n_returns": len(rets),

@@ -288,11 +288,8 @@ def _last_traded_price(quote: dict, ext: dict, reg: dict) -> Optional[float]:
     for candidate in (quote.get("lastPrice"), ext.get("lastPrice")):
         if candidate is not None and float(candidate) > 0:
             return candidate
-    # Nothing traded in either session -- the regular close is a DIFFERENT quantity and is
-    # acceptable only because nothing newer exists.
-    close = reg.get("regularMarketLastPrice")
-    if close is not None and float(close) > 0:
-        return close
+    # Regular close is a different quantity. It must not become last-traded / current spot.
+    _ = reg
     return None
 
 

@@ -337,7 +337,7 @@ def test_spot_endpoint_shape_single_authority():
 
     body = json.loads(srv.get_spot(ticker="SPY").body)
     assert body["ticker"] == "SPY"
-    assert set(body) == {"ticker", "spot", "spot_source", "spot_as_of_ts_utc"}
+    assert set(body) == {"ticker", "spot", "spot_source", "spot_state", "spot_as_of_ts_utc"}
 
 
 def test_scorecard_endpoint_serves_live_coach_numbers_or_empty():

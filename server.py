@@ -713,11 +713,17 @@ def _spot_from_quote(ticker: str) -> tuple[float | None, float | None]:
     # None on every call, so the authority silently fell through to a stale stored
     # snapshot and the card kept disagreeing with the header. Locked by
     # tests/test_spot_authority_v1.py::test_quote_parser_key_contract.
+    if parsed.get("spot_source") != "lastPrice":
+        log.warning("resolve_spot: quote leg has no lastPrice for %s "
+                    "(last=%s mark=%s regular_close=%s) — current spot is unavailable",
+                    ticker, parsed.get("last"), parsed.get("mark"),
+                    parsed.get("regular_close"))
+        return None, None
     spot = parsed.get("spot")
     if spot and spot > 0:
         return float(spot), parsed.get("trade_time")
-    log.warning("resolve_spot: quote leg produced no usable spot for %s "
-                "(last=%s mark=%s) - falling back to a lower-precedence source",
+    log.warning("resolve_spot: quote leg produced no lastPrice spot for %s "
+                "(last=%s mark=%s) — current spot is unavailable",
                 ticker, parsed.get("last"), parsed.get("mark"))
     return None, None
 
@@ -810,15 +816,16 @@ def _install_signal_handlers() -> None:
 
 
 def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
-    """Last persisted snapshot leg. Explicitly stale — lowest precedence."""
+    """As-of snapshots.spot (persisted lastPrice). Not current live spot."""
     import sqlite3 as _sq
 
     try:
         con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=30.0)
     except Exception as e:
-        log.debug("resolve_spot stored leg failed for %s: %s", ticker, e, exc_info=True)
+        log.debug("stored as-of spot read failed for %s: %s", ticker, e, exc_info=True)
         return None, None
     row = None
+    tk = ticker_storage_key(ticker) or ticker
     try:
         con.row_factory = _sq.Row
         # `timeframe` MUST be named: idx_snap_ticker_tf_ts is (ticker, timeframe, ts_utc),
@@ -830,7 +837,7 @@ def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
             row = con.execute(
                 "SELECT spot, ts_utc FROM snapshots "
                 "WHERE ticker=? AND timeframe=? AND spot IS NOT NULL "
-                "ORDER BY ts_utc DESC LIMIT 1", (ticker, tf)).fetchone()
+                "ORDER BY ts_utc DESC LIMIT 1", (tk, tf)).fetchone()
             if row:
                 break
     except Exception:
@@ -843,81 +850,80 @@ def _spot_from_stored(ticker: str) -> tuple[float | None, float | None]:
 def resolve_spot(ticker: str, *, chain_json: dict | None = None,
                  allow_stored: bool = True,
                  quote_node: dict | None = None) -> tuple[float | None, str, float | None]:
-    """THE single spot authority. Returns (spot, source, as_of_ts_utc).
+    """THE single current-spot authority. Returns (spot, source, as_of_ts_utc).
 
-    RC-14: four independent spot sources existed and each consumer picked one, so the
-    terrain card and the console header displayed different prices for the same ticker at
-    the same instant (743.29 vs 742.49). Every consumer now calls this, and every payload
-    carries the source, so a divergence is impossible to hide.
+    Fresh native Schwab LAST_PRICE is the sole producer of current live spot.
+    Transports (streaming plane, REST lastPrice) may differ; the value, provenance,
+    and generation may not. MARK, midpoint, chain underlying, regular close, stored
+    snapshot, cache, and bar close never become current spot.
 
-    Operator-reproduced defect (2026-09-14): that fix only unified the REST-polling world.
-    live_market_plane (Layer A) is a SEPARATE, independently-governed live quote store fed
-    primarily by the Schwab streaming websocket, and the header/analytics stack (Tier A/B/C
-    -- GET /api/live/state, GET /api/analytics/light, _fetch_state) reads it directly,
-    bypassing this function entirely. Terrain/Gamma Chart's inputs go through this function
-    and never saw a streaming tick. Two disciplined producers that never checked each other
-    is exactly RC-14's shape one layer up. The plane is now this function's own
-    highest-precedence source (freshness-gated below), so header and terrain converge on
-    the SAME number instead of two parallel hierarchies that happened to usually agree.
+    `allow_stored` and `chain_json` remain on the signature so existing callers do
+    not grow a second selector. They are ignored for current live spot: a missing
+    or stale LAST_PRICE is None / a stale LAST_PRICE, never a substitute.
 
-    Precedence is by freshness and by matching what the operator SEES:
-      0. the live streaming plane (live_market_plane) -- the freshest real trade this
-         process has seen, when recent enough to trust
-      1. live Schwab quote (lastPrice -> mark) -- the console header's REST fallback
-      2. the chain's own underlying node -- as fresh as the chain, no extra call
-      3. the last stored snapshot -- explicitly stale, only when nothing better exists
+    Precedence:
+      0. fresh streaming-plane LAST_PRICE
+      1. REST quote/extended lastPrice
+      2. stale streaming-plane LAST_PRICE (still LAST_PRICE; callers label STALE)
+      else None / "none" (UNAVAILABLE)
     """
-    tk = (ticker or "").upper().strip()
+    _ = chain_json, allow_stored
+    tk = ticker_storage_key(ticker) or (ticker or "").upper().strip()
     if not tk:
         return None, "none", None
 
-    # 0. the streaming plane. Freshness-gated against the SAME boundary this file already
-    #    uses for "how old is too old for a quote" (_CARD_FRESHNESS_V1_QUOTE_STALE_SEC) --
-    #    a plane row this stale is no longer meaningfully "streaming"; falling through to
-    #    the REST leg below is more honest than serving a stopped stream as live.
     try:
         _plane_row = _lmp.get_quote(tk)
     except Exception as e:
         log.debug("resolve_spot plane leg failed for %s: %s", tk, e, exc_info=True)
         _plane_row = None
-    if _plane_row:
-        _plane_spot = _plane_row.get("spot")
-        # quote_is_fresh is the SAME freshness contract live_market_plane's own
-        # merge_into_state/apply_l1_live_quote_overlay use — one function, not a duplicated
-        # age computation per file (the "or 0.0" this replaced was flagged, correctly, by
-        # this repo's own silent-zero governance gate: a missing timestamp defaulting to the
-        # epoch is exactly the pattern that gate exists to catch).
-        if _plane_spot and _plane_spot > 0 and _lmp.quote_is_fresh(_plane_row):
-            return float(_plane_spot), SPOT_SOURCE_PLANE, _plane_row.get("exchange_quote_ts")
+    _plane_last = (
+        _plane_row
+        if _plane_row and _lmp.plane_spot_is_last_price(_plane_row)
+        else None
+    )
 
-    # 1. the only source that is a REAL TRADE. When the caller already fetched the quote
-    #    (the hot _fetch_state path), reuse that node instead of a second round-trip — the
-    #    precedence + fallbacks below are then IDENTICAL to every other consumer, so the
-    #    analytics card can no longer derive a different spot than the header / terrain.
+    if _plane_last and _lmp.quote_is_fresh(_plane_last):
+        return (
+            float(_plane_last["spot"]),
+            SPOT_SOURCE_PLANE,
+            _plane_last.get("exchange_quote_ts"),
+        )
+
     if quote_node is not None:
         _pq = _parse_quote_node_session_fields(quote_node)
         _sp = _pq.get("spot")
-        if _sp and _sp > 0:
+        if _pq.get("spot_source") == "lastPrice" and _sp and _sp > 0:
             return float(_sp), SPOT_SOURCE_QUOTE, _pq.get("trade_time")
     else:
         spot, ts = _spot_from_quote(tk)
         if spot is not None:
             return spot, SPOT_SOURCE_QUOTE, ts
 
-    # 2. stored snapshot BEFORE the chain: a persisted snapshot was itself captured from
-    #    quote.lastPrice, so it is a stale TRADE. The chain underlying is a session CLOSE
-    #    masquerading as "last", which is worse than a slightly old real price.
-    if allow_stored:
-        spot, ts = _spot_from_stored(tk)
-        if spot is not None:
-            return spot, SPOT_SOURCE_SNAPSHOT, ts
-
-    # 3. last resort, explicitly labelled as a CLOSE so no caller can mistake it for spot
-    if chain_json is not None:
-        spot = chain_underlying_spot(chain_json)
-        if spot and spot > 0:
-            return float(spot), SPOT_SOURCE_CHAIN, None
+    if _plane_last:
+        return (
+            float(_plane_last["spot"]),
+            SPOT_SOURCE_PLANE,
+            _plane_last.get("exchange_quote_ts"),
+        )
     return None, "none", None
+
+
+def current_spot_state(source: str, ticker: str) -> str:
+    """Label resolve_spot's answer: live, stale, or unavailable. Not a second selector."""
+    if source in (None, "none"):
+        return "unavailable"
+    if source == SPOT_SOURCE_QUOTE:
+        return "live"
+    if source == SPOT_SOURCE_PLANE:
+        try:
+            row = _lmp.get_quote(ticker)
+        except Exception:
+            return "stale"
+        if row and _lmp.plane_spot_is_last_price(row) and _lmp.quote_is_fresh(row):
+            return "live"
+        return "stale"
+    return "unavailable"
 
 
 def spot_is_a_close(source: str) -> bool:
@@ -3269,15 +3275,8 @@ def _evict_old_expiry_entries(ticker: str, keep_expiry: Optional[str]) -> None:
 
 
 def _plane_fast_quote_has_spot(row: dict | None) -> bool:
-    if not row or not isinstance(row, dict):
-        return False
-    spot = row.get("spot")
-    if spot is None:
-        return False
-    try:
-        return float(spot) > 0
-    except (TypeError, ValueError):
-        return False
+    """True only when the plane row carries a LAST_PRICE current spot."""
+    return _lmp.plane_spot_is_last_price(row)
 
 
 def _stale_fast_quote_carried_forward(prev: dict, tkr: str) -> dict:
@@ -3458,7 +3457,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         "server_received_ts": server_received_ts,
         "quote_ingestion": quote_ingestion,
         "quote_source_detail": {
-            "spot": spot_source or "unavailable_missing_last_and_mark",
+            "spot": "LAST_PRICE" if spot_source == "lastPrice" else "unavailable_missing_last_price",
             "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
             "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
@@ -3482,18 +3481,18 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
     prev = _lmp.get_quote(tkr)
 
     if auth == "streaming":
-        try:
-            from app.options.order_flow.streaming import streaming_l1_cache_usable
-        except ImportError:
-            streaming_l1_cache_usable = None  # type: ignore[misc, assignment]
         if (
-            streaming_l1_cache_usable is not None
-            and prev
+            prev
             and prev.get("quote_ingestion") == "schwab_streaming_level_one"
-            and streaming_l1_cache_usable(tkr)
+            and _lmp.plane_spot_is_last_price(prev)
+            and _lmp.quote_is_fresh(prev)
         ):
             return dict(prev)
-        if prev and prev.get("quote_ingestion") == "rest_bootstrap_pending_stream":
+        if (
+            prev
+            and prev.get("quote_ingestion") == "rest_bootstrap_pending_stream"
+            and _lmp.plane_spot_is_last_price(prev)
+        ):
             return dict(prev)
         if prev and prev.get("quote_ingestion") == "schwab_streaming_level_one":
             return _record_rest_fast_quote_with_auth_fallback(
@@ -4987,10 +4986,9 @@ def _base_money_path_capture_one(ticker: str):
         node = q_json.get(t) or q_json.get(ticker) or {}
         session_q = _parse_quote_node_session_fields(node)
         parsed_last = session_q.get("last")
-        parsed_mark = session_q.get("mark")
-        spot_f = parsed_last if parsed_last and parsed_last > 0 else (
-            parsed_mark if parsed_mark and parsed_mark > 0 else None
-        )
+        # Persist lastPrice only as an as-of historical print. MARK / close must
+        # never enter snapshots.spot — that column is mixed-semantics if they do.
+        spot_f = parsed_last if parsed_last and parsed_last > 0 else None
         if spot_f is None or float(spot_f) <= 0:
             return BaseCaptureAttempt(t, "error:no_spot", time.monotonic() - t0)
 
@@ -5676,8 +5674,7 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     last = _safe_float_quote(_q.get("lastPrice"))
     if last is None or last <= 0:
         last = _safe_float_quote(_ext.get("lastPrice"))
-    if last is None or last <= 0:
-        last = _safe_float_quote(_reg.get("regularMarketLastPrice"))
+    regular_close = _safe_float_quote(_reg.get("regularMarketLastPrice"))
     mark = _safe_float_quote(_q.get("mark"))
     if mark is None or mark <= 0:
         mark = _safe_float_quote(_ext.get("mark"))
@@ -5704,8 +5701,10 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     if trade_time is None:
         trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
     trade_time = _epoch_seconds(trade_time)
-    spot_source = "lastPrice" if last and last > 0 else ("mark" if mark and mark > 0 else None)
-    spot = last if spot_source == "lastPrice" else (mark if spot_source == "mark" else None)
+    # Current live spot is quote/extended lastPrice only. regularMarketLastPrice is
+    # a session close; mark is the vendor mid. Neither may become spot.
+    spot_source = "lastPrice" if last and last > 0 else None
+    spot = last if spot_source == "lastPrice" else None
     try:
         spot_f = float(spot) if spot and float(spot) > 0 else None
     except (TypeError, ValueError):
@@ -5736,6 +5735,7 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     pct_chg = extract_pct_change(_q, _reg, last)
     return {
         "last": last,
+        "regular_close": regular_close,
         "mark": mark,
         "chg_pct": pct_chg,
         "bid": bid,
@@ -6048,6 +6048,26 @@ def _l2_refresh_in_progress_for_l1(ticker: str, expiry: Optional[str]) -> bool:
     return False
 
 
+def _l1_row_with_current_spot(tkr: str, row: dict | None) -> dict:
+    """Stamp resolve_spot's LAST_PRICE answer onto the L1 input row. One faucet."""
+    _l1_spot, _l1_spot_source, _l1_spot_ts = resolve_spot(tkr)
+    out = dict(row) if row else {}
+    if _l1_spot is not None:
+        out["spot"] = _l1_spot
+        out["spot_disp"] = f"{_l1_spot:.2f}"
+        out["spot_state"] = current_spot_state(_l1_spot_source, tkr)
+        out["quote_source_detail"] = dict(out.get("quote_source_detail") or {})
+        out["quote_source_detail"]["spot"] = (
+            "LAST_PRICE" if _l1_spot_source in (SPOT_SOURCE_PLANE, SPOT_SOURCE_QUOTE)
+            else _l1_spot_source
+        )
+    else:
+        out["spot"] = None
+        out["spot_disp"] = "UNAVAILABLE"
+        out["spot_state"] = "unavailable"
+    return out
+
+
 def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") -> dict:
     """
     L1 near-real-time context projection — delegates to planes.context_light.
@@ -6076,14 +6096,7 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     # least had a resolve_spot-derived value underneath before merge_into_state clobbered it.
     # bid/ask/fast_generation_id are left as-is (a narrower, pre-existing staleness question
     # this fix does not expand scope to cover); only the SPOT figure is corrected.
-    if row and not _lmp.quote_is_fresh(row):
-        _l1_spot, _l1_spot_source, _l1_spot_ts = resolve_spot(tkr)
-        if _l1_spot is not None:
-            row = dict(row)
-            row["spot"] = _l1_spot
-            row["spot_disp"] = f"{_l1_spot:.2f}"
-            row["quote_source_detail"] = dict(row.get("quote_source_detail") or {})
-            row["quote_source_detail"]["spot"] = _l1_spot_source
+    row = _l1_row_with_current_spot(tkr, row)
     ent = _resolve_l2_cache_entry_for_l1(tkr, expiry)
     l1_eval_wall_ts = time.time()
     inflight = _l2_refresh_in_progress_for_l1(tkr, expiry)
@@ -6197,7 +6210,7 @@ def _l1_maybe_rebuild_quote_scope(
 
     tkr = ticker.upper().strip()
     key = (tkr, expiry if expiry is not None else "__auto__")
-    row = _lmp.get_quote(tkr)
+    row = _l1_row_with_current_spot(tkr, _lmp.get_quote(tkr))
     ent = _resolve_l2_cache_entry_for_l1(tkr, expiry)
     l1_eval_wall_ts = time.time()
     cached = _l1_snapshot_cache.get(key)
@@ -6467,22 +6480,21 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     try:
         client = get_client()
     except HTTPException as he:
-        if not _plane_fast_quote_has_spot(row):
-            if _schwab_auth_http_unavailable(he):
-                return {
-                    "_tier": "A_live",
-                    "ticker": tkr,
-                    "selected_exp": expiry,
-                    "session_label": sess,
-                    "state_error": "token_invalid",
-                    "error": "token_invalid",
-                    "state_error_detail": str(he.detail or ""),
-                    "remediation": "Run: python reauth_schwab.py --manual",
-                    "_server_build_ts": time.time(),
-                    "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
-                    "_endpoint": "/api/live/state",
-                }
-            raise
+        if _schwab_auth_http_unavailable(he) and not _plane_fast_quote_has_spot(row):
+            return {
+                "_tier": "A_live",
+                "ticker": tkr,
+                "selected_exp": expiry,
+                "session_label": sess,
+                "state_error": "token_invalid",
+                "error": "token_invalid",
+                "state_error_detail": str(he.detail or ""),
+                "remediation": "Run: python reauth_schwab.py --manual",
+                "_server_build_ts": time.time(),
+                "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
+                "_endpoint": "/api/live/state",
+            }
+        client = None
     # Operator-reproduced defect (2026-09-14, spot 360 audit): this gate previously trusted
     # ANY plane row with a spot, however old — if the streaming websocket silently stalled,
     # the header kept painting that stopped price as live forever, with no fallback, while
@@ -6547,7 +6559,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                     "server_received_ts": server_received_ts,
                     "fast_generation_id": _lmp.next_fast_generation(tkr),
                     "quote_source_detail": {
-                        "spot": spot_source,
+                        "spot": "LAST_PRICE" if spot_source == "lastPrice" else None,
                         "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
                         "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
                         "mid": "unavailable_missing_mark_and_bid_ask",
@@ -6643,6 +6655,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "session_label": sess,
         "spot": spot_f,
         "spot_source": _rs_source,
+        "spot_state": current_spot_state(_rs_source, tkr),
         "spot_as_of_ts_utc": _rs_ts,
         "chg_pct": chg_pct,
         "bid": bid,
@@ -14290,8 +14303,13 @@ def _radar_fallback_recompute() -> list[dict] | None:
         # RC-82: a stored-chain row is PROVISIONAL — narrower than the loop's chain, so its
         # walls sit systematically inward. Labelled, not hidden: it cannot be removed (per-symbol
         # vendor calls measured a 40.5s cold sweep) and it must not masquerade as a loop row.
-        out.append(snap.to_dict() | {"spot_source": SPOT_SOURCE_SNAPSHOT,
-                                     "levels_source": LEVELS_SOURCE_STORED_CHAIN})
+        # snapshots.spot is an as-of lastPrice print, not current live spot.
+        out.append(snap.to_dict() | {
+            "spot_source": SPOT_SOURCE_SNAPSHOT,
+            "spot_state": "historical",
+            "spot_role": "as_of_snapshot_last_price",
+            "levels_source": LEVELS_SOURCE_STORED_CHAIN,
+        })
     return out
 
 
@@ -14355,11 +14373,18 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     """
     spot, spot_source, spot_ts = resolve_spot(ticker)
     if spot is None:
-        return payload
+        out = dict(payload)
+        out["spot"] = None
+        out["spot_source"] = "none"
+        out["spot_state"] = "unavailable"
+        out["spot_as_of_ts_utc"] = None
+        out["spot_disp"] = "UNAVAILABLE"
+        return out
 
     out = dict(payload)
     out["spot"] = spot
     out["spot_source"] = spot_source
+    out["spot_state"] = current_spot_state(spot_source, ticker)
     out["spot_as_of_ts_utc"] = spot_ts
     # RC-130: wall geometry states are a function of SPOT, which was just re-resolved —
     # recomputed with the SAME producer definition (wall_geometry_state), and BEFORE the
@@ -15970,6 +15995,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
         try:
             spot, source, ts = resolve_spot(tk)
             payload = {"ticker": tk, "spot": spot, "spot_source": source,
+                       "spot_state": current_spot_state(source, tk),
                        "spot_as_of_ts_utc": ts}
             with _spot_poll_lock:
                 _spot_poll_cache[tk] = (time.time(), payload)
@@ -16205,8 +16231,14 @@ def get_desk_structure(
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     out: dict = {"subject": tk, "as_of_utc": at}
     try:
+        # Live LAST_PRICE only when this is a current request. A historical as_of
+        # keeps the as-of bar close and must not receive today's live print.
+        live_spot = None
+        if not (as_of and as_of > 0):
+            live_spot, _, _ = resolve_spot(tk)
         out["distribution"] = desk_store.terminal_distribution(
-            _desk_db, tk, at, horizon_sessions=max(1, min(int(horizon_sessions), 60)))
+            _desk_db, tk, at, horizon_sessions=max(1, min(int(horizon_sessions), 60)),
+            spot=live_spot)
     except Exception as e:
         out["distribution"] = {"available": False, "reason": f"{type(e).__name__}: {e}"}
     if long_strike > 0 and short_strike > 0:
@@ -17055,10 +17087,12 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
         need_fetch: list[str] = []
         for t in seen:
             row = _lmp.get_quote(t)
-            if row and _lmp.quote_is_fresh(row) and row.get("spot") is not None:
+            if row and _lmp.quote_is_fresh(row) and _lmp.plane_spot_is_last_price(row):
                 out[t] = {
                     "spot": row["spot"],
                     "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
+                    "spot_state": "live",
+                    "spot_source": SPOT_SOURCE_PLANE,
                     "chg_pct": resolve_chg_pct(t, row.get("chg_pct")),
                     "exchange_quote_ts": row.get("exchange_quote_ts"),
                 }
@@ -17099,12 +17133,14 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
                 continue
             pq = _parse_quote_node_session_fields(node)
             spot = pq.get("spot")
-            if spot is None:
+            if pq.get("spot_source") != "lastPrice" or spot is None:
                 continue
             chg_pct = resolve_chg_pct(t, pq.get("chg_pct"))
             out[t] = {
                 "spot": spot,
                 "spot_disp": f"{spot:.2f}",
+                "spot_state": "live",
+                "spot_source": SPOT_SOURCE_QUOTE,
                 "chg_pct": chg_pct,
                 "exchange_quote_ts": pq.get("quote_ts"),
             }
@@ -17119,7 +17155,7 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
                 "quote_ingestion": "rest_watchlist_batch",
                 "fast_generation_id": _lmp.next_fast_generation(t),
                 "quote_source_detail": {
-                    "spot": pq.get("spot_source") or "unavailable_missing_last_and_mark",
+                    "spot": "LAST_PRICE",
                     "carried_forward": False,
                 },
             })
@@ -18808,13 +18844,8 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         selected_exp = _default_expiry(expiries, ticker)
 
         # Try charm with all contracts, no filter
-        # ONE spot faucet (operator directive, 2026-09-15, repo-wide spot audit): this used to
-        # read chain_json["underlyingPrice"] directly -- a second, independent spot selector
-        # bypassing resolve_spot (RC-14), the ONE canonical authority. resolve_spot still
-        # falls through to this same chain's underlying node as its own last-resort tier, so
-        # this diagnostic view keeps working identically when nothing fresher exists, but now
-        # prefers the SAME live/quote/stored precedence every other consumer uses instead of
-        # a chain-only reading that could silently disagree with the product's own number.
+        # ONE spot faucet: LAST_PRICE only via resolve_spot. Chain underlyingPrice is
+        # never current live spot. If LAST_PRICE is missing this diagnostic fails closed.
         spot, spot_source, spot_ts = resolve_spot(ticker, chain_json=chain_json)
         if spot is None or spot <= 0:
             return {"error": f"no spot available (resolve_spot) for {ticker}"}
