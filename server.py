@@ -13716,8 +13716,15 @@ def _terrain_loop() -> None:
             with _logger_lock:
                 tickers = list(_logger_tickers)
         except Exception as e:
-            log.warning("terrain loop: dynamic ticker roster read failed, using CORE_TICKERS: %s", e)
-            tickers = list(CORE_TICKERS)
+            # No-fallback lock (2026-09-17): a roster-read failure must not be silently
+            # processed as CORE_TICKERS -- that would run this cycle's terrain compute
+            # against a roster the operator never enrolled, indistinguishable from a
+            # real, intended enrolled board. `tickers` stays [] (its pre-declared
+            # default above): this cycle does no enrolled-board work and retries next
+            # cycle, the same degrade-safely behavior an empty enrolled board already
+            # has (see TICKER-PREVIEW-NO-ENROLL below -- a genuinely empty board is
+            # already a handled, non-crashing state here).
+            log.warning("terrain loop: dynamic ticker roster read failed, skipping this cycle's enrolled-board work: %s", e)
         # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a
         # ticker merely PREVIEWED (never enrolled onto _logger_tickers -- see
         # TICKER-PREVIEW-NO-ENROLL below) got exactly ONE on-demand terrain compute (the
@@ -13845,12 +13852,15 @@ def _seed_strike_geometry_from_storage() -> None:
     LOW_CONFIDENCE_NARROW_CHAIN for one cycle on every restart. The geometry is already
     on disk; reading it once off the request path removes that window entirely.
     """
-    try:
-        with _logger_lock:
-            tickers = list(_logger_tickers)
-    except Exception as e:
-        log.warning("strike-geometry seed: dynamic ticker roster read failed, using CORE_TICKERS: %s", e)
-        tickers = list(CORE_TICKERS)
+    # No-fallback lock (2026-09-17): a roster-read failure here must not be silently
+    # narrowed to CORE_TICKERS -- that would seed strike geometry for a roster the
+    # operator never enrolled while looking like a normal, complete seed. This
+    # function's own caller (_terrain_prewarm_worker) already has the correct,
+    # documented degrade path for this whole seed failing outright ("first cycle uses
+    # cold-start width"), so a roster-read exception is left to propagate there rather
+    # than caught and silently narrowed.
+    with _logger_lock:
+        tickers = list(_logger_tickers)
     seeded = 0
     for tk in tickers:
         try:
@@ -13942,11 +13952,18 @@ def _bars_loop() -> None:
     log.info("Bar collection loop started (quotes only, whole enrolled universe, viewport-independent)")
     while _bars_loop_running:
         cycle_start = time.monotonic()
+        tickers: list[str] = []
         try:
             with _logger_lock:
                 tickers = list(_logger_tickers)
-        except Exception:
-            tickers = list(CORE_TICKERS)
+        except Exception as e:
+            # No-fallback lock (2026-09-17): a roster-read failure must not be silently
+            # processed as CORE_TICKERS -- that would collect bars for a roster the
+            # operator never enrolled. `tickers` stays [] (pre-declared above); the
+            # `if tickers and ...` guard below already treats an empty roster as
+            # "nothing to collect this cycle," the same degrade-safely behavior a
+            # genuinely empty enrolled board already has.
+            log.warning("bars loop: dynamic ticker roster read failed, skipping this cycle's collection: %s", e)
         # RC-48: only capturable sessions. A market-closed tick would persist a frozen bar.
         if tickers and _is_loggable_session():
             try:

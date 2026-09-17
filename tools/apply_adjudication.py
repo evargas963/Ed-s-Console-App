@@ -984,6 +984,32 @@ _mark_repaired(
     "than build_market_state, confirmed via grep + one AST-based false-positive check). "
     "Tests: all 4 build_market_state test files (30 tests) still pass.",
     "market_state_rendering")
+_mark_repaired(
+    ["FB-00519", "FB-00559", "FB-00560"],
+    "REPAIRED 2026-09-17 (completing a repair the operator correctly rejected as "
+    "incomplete on 2026-09-17): server.py's three background-loop ticker-roster readers "
+    "(_terrain_loop, _bars_loop, _seed_strike_geometry_from_storage) processed "
+    "CORE_TICKERS as the enrolled roster on any _logger_lock/_logger_tickers read "
+    "failure -- an earlier pass in this same session had added a log.warning disclosing "
+    "the substitution but still RAN the cycle's work against CORE_TICKERS as though it "
+    "were the requested set, which the operator correctly identified as 'logging the "
+    "fallback is not a repair.' Redesigned per-site: _terrain_loop/_bars_loop leave "
+    "`tickers` at its pre-declared [] on a roster-read failure (skipping that cycle's "
+    "enrolled-board work entirely -- the same degrade-safely behavior a genuinely empty "
+    "enrolled board already has, so no new failure mode is introduced) rather than "
+    "processing an unrequested roster; _seed_strike_geometry_from_storage's inner "
+    "try/except was removed entirely so a roster-read failure propagates to its caller "
+    "(_terrain_prewarm_worker), which already has a correct, documented, ALREADY-ACCEPTED "
+    "degrade path for this whole one-time boot seed failing outright ('first cycle uses "
+    "cold-start width') -- narrowing to CORE_TICKERS inside the seed would have been a "
+    "WORSE outcome (a silently-incomplete seed masquerading as a normal one) than letting "
+    "the existing outer handler take over. This closes the market_data_server_core group: "
+    "0 FALLBACK remaining. Tests: tests/test_server_ticker_roster_read_failure.py (5 new "
+    "tests, including one proving the roster-read exception genuinely propagates out of "
+    "_seed_strike_geometry_from_storage rather than being swallowed); "
+    "tests/test_bars_collection_service_v1.py and 5 other files referencing these "
+    "functions (109 tests total) still pass.",
+    "market_data_server_core")
 
 
 def main() -> int:
