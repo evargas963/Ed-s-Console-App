@@ -410,17 +410,20 @@ def _seed_calibration_health_fixture(
     now_ts: float,
 ) -> None:
     """Populate calibration_decision_log + logging_universe for deterministic counter tests."""
+    # No-fallback lock (2026-09-17): logging_universe must be built via EdDB so this
+    # fixture matches the REAL production schema (db.py's CREATE TABLE has no `active`
+    # column -- eviction is DELETE-based). A hand-rolled fixture table that happened to
+    # add its own `active` column here would mask a production bug where the real
+    # schema's absent column made every enrolled-ticker count silently fail closed to 0.
+    _ = EdDB(db_path)
     conn = sqlite3.connect(str(db_path))
     configure_sqlite_connection(conn)
     try:
         ensure_calibration_schema(conn)
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS logging_universe ("
-            "ticker TEXT PRIMARY KEY, active INTEGER NOT NULL DEFAULT 1)"
-        )
         conn.executemany(
-            "INSERT OR REPLACE INTO logging_universe (ticker, active) VALUES (?, 1)",
-            [(f"FIX{i:02d}",) for i in range(enrolled_tickers)],
+            "INSERT OR REPLACE INTO logging_universe "
+            "(ticker, category, enrolled_ts_utc, last_seen_ts_utc) VALUES (?, 'core', ?, ?)",
+            [(f"FIX{i:02d}", now_ts, now_ts) for i in range(enrolled_tickers)],
         )
         lo_24 = now_ts - 86400.0
         lo_48 = now_ts - 2 * 86400.0
@@ -582,3 +585,30 @@ def test_calibration_rate_health_enrolled_override_deterministic(
     assert health["expected_per_24h"] == pytest.approx(
         20 * SESSION_MINUTES_RTH * EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER
     )
+
+
+def test_count_enrolled_tickers_against_real_production_schema(tmp_path: Path) -> None:
+    """
+    No-fallback lock repair (FB-00148): logging_universe has never had an `active`
+    column in db.py's real CREATE TABLE -- the prior query, which defaulted a missing
+    `active` value to 1 before comparing it, always raised sqlite3.OperationalError
+    against a real production database, silently swallowed by the broad except into a
+    fabricated "0 enrolled tickers" on every single call. This proves the repaired
+    query returns
+    the real row count against the actual EdDB-created schema, not a hand-rolled
+    fixture schema that happens to include the nonexistent column.
+    """
+    from calibration.writer import _count_enrolled_tickers
+
+    db_path = tmp_path / "enrolled_real_schema.db"
+    _ = EdDB(db_path)
+    conn = sqlite3.connect(str(db_path))
+    configure_sqlite_connection(conn)
+    conn.executemany(
+        "INSERT INTO logging_universe (ticker, category, enrolled_ts_utc, last_seen_ts_utc) "
+        "VALUES (?, 'core', 1.0, 1.0)",
+        [(f"T{i:02d}",) for i in range(7)],
+    )
+    conn.commit()
+    assert _count_enrolled_tickers(conn) == 7
+    conn.close()

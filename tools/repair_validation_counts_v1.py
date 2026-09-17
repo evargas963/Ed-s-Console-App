@@ -63,7 +63,6 @@ def main() -> None:
             CANONICAL_TIMEFRAME,
             DERIVED_TIMEFRAME,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
         ),
     ).fetchone()["n"]
     print(
@@ -73,6 +72,7 @@ def main() -> None:
         repr(CANONICAL_TIMEFRAME),
     )
 
+    loop_counts: dict[str, int] = {}
     for label, qkey, params in (
         (
             "pin_neutral outcome_filled IS NULL",
@@ -84,14 +84,19 @@ def main() -> None:
             "tools/repair_validation_counts_v1.py:loop_eq0",
             (CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME),
         ),
-        (
-            "pin_neutral COALESCE(outcome_filled,0)=0",
-            "tools/repair_validation_counts_v1.py:loop_coalesce0",
-            (CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME),
-        ),
     ):
         n = int(conn.execute(get_snapshot_sql(qkey), params).fetchone()["n"])
+        loop_counts[label] = n
         print(label + ":", n)
+    # No-fallback lock (2026-09-17): this used to be a third live query defaulting a
+    # NULL outcome_filled to zero for the comparison -- mathematically just the sum of
+    # the two counts above (IS NULL and =0 are disjoint), so it's derived here rather
+    # than issued as its own SQL-level default-on-NULL query.
+    print(
+        "pin_neutral outcome_filled unrecorded-or-zero (IS NULL + =0):",
+        loop_counts["pin_neutral outcome_filled IS NULL"]
+        + loop_counts["pin_neutral outcome_filled = 0"],
+    )
 
     anchor_feasible = int(
         conn.execute(
@@ -99,7 +104,6 @@ def main() -> None:
             (
                 CANONICAL_TIMEFRAME,
                 DERIVED_TIMEFRAME,
-                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                 HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             ),
         ).fetchone()["n"]

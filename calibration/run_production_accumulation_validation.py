@@ -164,15 +164,32 @@ def _duplicate_key_groups(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return [{"ticker": r["ticker"], "decision_ts_utc": r["decision_ts_utc"], "c": int(r["c"])} for r in rows]
 
 
-def _unsafe_non_exact_joins(conn: sqlite3.Connection) -> int:
-    r = conn.execute(
-        """
+def _non_exact_or_unrecorded_joins(conn: sqlite3.Connection) -> dict[str, int]:
+    """
+    Counts trusted, outcome-attached rows whose join is NOT provably exact, split into
+    two distinct buckets rather than folded into one "safe/unsafe" count: a recorded
+    nearest-tolerance match (genuinely non-exact) and an unrecorded join method (NULL --
+    provenance simply unknown). No-fallback lock (2026-09-17): the prior query defaulted
+    a NULL join method to an exempted blank sentinel before comparing it against 'exact',
+    silently counting "we don't know how this row was joined" as
+    "safe" alongside a proven exact match. Unknown provenance is not safe -- it must be
+    reported as its own risk, not assumed away.
+    """
+    base = """
         SELECT COUNT(*) FROM calibration_decision_log
         WHERE calibration_trust = 'trusted' AND outcome_5c IS NOT NULL
-          AND IFNULL(outcome_join_method, '') NOT IN ('exact', '')
+          AND {cond}
         """
-    ).fetchone()
-    return int(r[0]) if r else 0
+    nearest = conn.execute(
+        base.format(cond="outcome_join_method = 'nearest_within_tol'")
+    ).fetchone()[0]
+    unrecorded = conn.execute(
+        base.format(cond="outcome_join_method IS NULL")
+    ).fetchone()[0]
+    return {
+        "nearest_within_tol": int(nearest),
+        "unrecorded_provenance": int(unrecorded),
+    }
 
 
 def run(out_db: Path) -> dict[str, Any]:
@@ -276,7 +293,7 @@ def run(out_db: Path) -> dict[str, Any]:
             ).fetchone()[0]
         )
         n_total = int(conn.execute("SELECT COUNT(*) FROM calibration_decision_log").fetchone()[0])
-        unsafe_join = _unsafe_non_exact_joins(conn)
+        join_risk = _non_exact_or_unrecorded_joins(conn)
         conn.close()
 
         ca = anchor1.get("calibration_trusted_anchor_audit") or {}
@@ -295,7 +312,8 @@ def run(out_db: Path) -> dict[str, Any]:
             and join1.get("ambiguous_exact_ts_duplicate_snapshots", -1) == 0,
             "outcome_join_pass_after_resync": join2.get("binary_pass") is True
             and join2.get("verification_fail", -1) == 0,
-            "unsafe_joins_zero": unsafe_join == 0,
+            "unsafe_joins_zero": join_risk["nearest_within_tol"] == 0
+            and join_risk["unrecorded_provenance"] == 0,
             "anchor_all_trusted_anchored": without_anchor == 0 and trusted_total == n_trusted,
             "anchor_audit_binary": anchor1.get("binary_pass") is True,
         }
@@ -339,7 +357,8 @@ def run(out_db: Path) -> dict[str, Any]:
                 "trusted_rows_with_anchor": ca.get("trusted_rows_with_anchor"),
             },
             "legacy_report": leg1.get("counts"),
-            "unsafe_non_exact_join_rows_trusted": unsafe_join,
+            "unsafe_non_exact_join_rows_trusted": join_risk["nearest_within_tol"],
+            "unrecorded_join_provenance_rows_trusted": join_risk["unrecorded_provenance"],
             "warnings": warnings,
             "pass_gates": pass_gates,
             "binary_pass": overall,

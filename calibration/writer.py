@@ -438,10 +438,15 @@ CALIBRATION_RATE_WARN_RATIO: float = 0.5
 
 
 def _count_enrolled_tickers(conn: sqlite3.Connection) -> int:
+    # No-fallback lock (2026-09-17): logging_universe has no `active` column --
+    # db.py's CREATE TABLE never defines one, and eviction is DELETE-based
+    # (logging_universe_eviction_log is a separate audit trail, not an in-row flag),
+    # so every row present IS enrolled by construction. The prior
+    # `WHERE COALESCE(active, 1) = 1` referenced a column that has never existed,
+    # meaning this query always raised sqlite3.OperationalError in production and the
+    # except below silently reported a fabricated "0 enrolled" every single call.
     try:
-        row = conn.execute(
-            "SELECT COUNT(*) FROM logging_universe WHERE COALESCE(active, 1) = 1"
-        ).fetchone()
+        row = conn.execute("SELECT COUNT(*) FROM logging_universe").fetchone()
     except sqlite3.Error:
         return 0
     return int(row[0]) if row and row[0] is not None else 0

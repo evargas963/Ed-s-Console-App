@@ -720,6 +720,88 @@ _mark_repaired(
     "by_ticker_breakdown end-to-end, which would have raised sqlite3.ProgrammingError on any "
     "placeholder-count mismatch.",
     "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00137", "FB-00830"],
+    "REPAIRED 2026-09-17: calibration/run_production_accumulation_validation.py's "
+    "_unsafe_non_exact_joins (renamed _non_exact_or_unrecorded_joins) and the mirrored "
+    "assertion in tests/test_calibration_outcome_join_scale.py both used "
+    "IFNULL(outcome_join_method, '') NOT IN ('exact', '') / != 'exact' -- defaulting a NULL "
+    "(unrecorded) join method to a never-occurring '' sentinel before the comparison, which "
+    "silently counted 'we don't know how this row was joined' as safe alongside a proven "
+    "exact match. Split into two explicit, non-overlapping counts (recorded "
+    "nearest_within_tol vs. unrecorded/NULL provenance); the validation harness's "
+    "unsafe_joins_zero gate now requires BOTH to be zero, and the report exposes both counts "
+    "by name rather than one folded 'unsafe' figure. This was originally reclassified "
+    "NOT_FALLBACK before the operator's blanket SQL correction swept it to FALLBACK; "
+    "re-investigated on its own evidence (not the blanket ruling) and confirmed as a genuine "
+    "repair target, not a safe idiom -- unrecorded provenance was being silently treated as "
+    "safe by omission from the risk count. Tests: "
+    "tests/test_calibration_accumulation_validation.py gained "
+    "test_non_exact_or_unrecorded_joins_separates_nearest_from_unrecorded (direct unit proof "
+    "of the two-bucket split); the full accumulation harness "
+    "(test_production_accumulation_harness_passes) and outcome-join scale suite both still "
+    "pass end-to-end.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00148"],
+    "REPAIRED 2026-09-17: calibration/writer.py's _count_enrolled_tickers queried "
+    "logging_universe WHERE COALESCE(active, 1) = 1 -- but db.py's real CREATE TABLE for "
+    "logging_universe has never had an `active` column (eviction is DELETE-based, tracked "
+    "separately in logging_universe_eviction_log, not an in-row flag). This query has always "
+    "raised sqlite3.OperationalError against a real production database, silently swallowed "
+    "by the function's own broad except into a fabricated '0 enrolled tickers' on every "
+    "single call -- a confirmed production bug hiding behind the fallback pattern, not just a "
+    "style violation. Fixed to SELECT COUNT(*) FROM logging_universe with no WHERE clause, "
+    "since every row present is enrolled by construction. Also fixed "
+    "tests/test_calibration_logging_production_path.py's _seed_calibration_health_fixture, "
+    "which had its own hand-rolled logging_universe CREATE TABLE that (accidentally) DID "
+    "define an `active` column -- a fixture schema diverging from the real production schema, "
+    "which is exactly what let the original bug's tests pass while production silently always "
+    "returned 0. The fixture now builds via EdDB (the real schema) instead. Tests: added "
+    "test_count_enrolled_tickers_against_real_production_schema, which would have failed "
+    "loudly (sqlite3.OperationalError) against the pre-repair query and the real schema.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00927"],
+    "REPAIRED 2026-09-17: tools/_multi_timeframe_audit_v1.py's schema-version histogram "
+    "used COALESCE(horizon_outcome_schema_version, -1) as a GROUP BY key -- binning NULL "
+    "rows under a fabricated sentinel, -1, written into a report field literally named "
+    "'schema_version' that could be misread as a genuine (if nonsensical) version number "
+    "rather than 'unknown'. A bare GROUP BY lets SQLite group NULL rows on their own; the "
+    "report now carries a real null for that bucket. Tests: "
+    "tests/test_multi_timeframe_audit_v1.py (structural no-COALESCE proof; a direct proof of "
+    "the query shape's NULL-grouping behavior, since a NULL "
+    "horizon_outcome_schema_version isn't constructible through a fresh EdDB's NOT NULL "
+    "DEFAULT 3 schema).",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-01105"],
+    "REPAIRED 2026-09-17: tools/repair_validation_counts_v1.py's diagnostic counts used "
+    "SQL-level default-on-NULL comparisons for outcome_filled and horizon_outcome_schema_version "
+    "throughout, including a whole third comparison line explicitly labeled by that shape "
+    "whose value was always mathematically just the sum of the two bare-comparison lines "
+    "above it (outcome_filled IS NULL and outcome_filled = 0 are disjoint, so their SQL-level "
+    "default-on-NULL union added no information). Simplified every query to a bare "
+    "comparison and derived the redundant comparison in Python instead of issuing a fourth "
+    "SQL-level default-on-NULL query; removed the now-unused loop_coalesce0 JSON registry "
+    "entry. Three MORE COALESCE occurrences in this file's JSON-registered SQL templates "
+    "(snapshot_sql/_auto_extracted.json, snapshot_sql/registry_full_b.json) were unreachable "
+    "by the discovery scanner (JSON string values, not Python literals) and were fixed in "
+    "lockstep, including trimming two now-3-vs-2 placeholder mismatches this created. Tests: "
+    "tests/test_repair_validation_counts_v1.py (structural no-COALESCE proof; a real-DB "
+    "end-to-end run proving every placeholder-count fix line up correctly and the derived "
+    "sum prints correctly).",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-01135"],
+    "REPAIRED 2026-09-17: tools/smoke_movement_heads_inference_v1.py's GOV governed-"
+    "population predicate SQL-defaulted a NULL horizon_outcome_schema_version to 3 -- the "
+    "identical shape and identical genuine-nullable root cause repaired repeatedly across "
+    "this branch. Simplified to a bare equality. Tests: "
+    "tests/test_smoke_movement_heads_inference_v1.py (structural no-COALESCE proof; a "
+    "real-DB proof that the predicate selects a BAR_ANCHOR_V1 row and excludes a row of a "
+    "different recorded schema version).",
+    "calibration_ml_governance")
 
 
 def main() -> int:

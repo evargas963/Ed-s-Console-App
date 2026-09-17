@@ -18,7 +18,7 @@
   "tools/ontology_mismatch_evidence.py:77": "SELECT DISTINCT market_session FROM snapshots WHERE timeframe = ? AND outcome_1c IS NOT NULL ORDER BY market_session",
   "tools/ontology_mismatch_evidence.py:86": "SELECT DISTINCT session_bucket FROM snapshots WHERE timeframe = ? AND outcome_1c IS NOT NULL ORDER BY session_bucket",
   "tools/ontology_mismatch_evidence.py:95": "SELECT DISTINCT vix_bucket FROM snapshots WHERE timeframe = ? AND outcome_1c IS NOT NULL ORDER BY vix_bucket",
-  "tools/repair_validation_counts_v1.py:27": "SELECT COUNT(*) AS n FROM snapshots WHERE zone='pin_neutral' AND timeframe IN (?, ?) AND COALESCE(outcome_filled,0)=0 AND horizon_outcome_schema_version=3",
+  "tools/repair_validation_counts_v1.py:27": "SELECT COUNT(*) AS n FROM snapshots WHERE zone='pin_neutral' AND timeframe IN (?, ?) AND outcome_filled=0 AND horizon_outcome_schema_version=3",
   "tools/repair_validation_counts_v1.py:33": "SELECT COUNT(*) AS n FROM snapshots WHERE zone='pin_neutral' AND timeframe IN (?, ?) AND outcome_1c IS NOT NULL",
   "tools/repair_validation_counts_v1.py:38": "SELECT COUNT(*) AS n FROM snapshots WHERE zone='pin_neutral' AND timeframe IN (?, ?) AND outcome_1c IS NULL AND horizon_outcome_schema_version=3"
 }
