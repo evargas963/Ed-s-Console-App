@@ -1665,42 +1665,48 @@ def build_market_state(
         # HorizonAlignmentReport, _pt a FinalTradePlan, and each _a a
         # SupportingHorizonAssessment (multi_horizon_decision.py, all @dataclass with
         # every field below required or class-defaulted) -- every getattr(..., default)
-        # for THEIR ATTRIBUTE PRESENCE below was provably dead code. The subsequent
-        # `or <default>` value-level guards on several of these are left as-is: they
-        # guard against a genuinely-empty computed value, not a missing attribute, and
-        # verifying each is unconditionally safe to drop needs a deeper trace into this
-        # module's own construction logic that is out of scope for this pass.
+        # for THEIR ATTRIBUTE PRESENCE was already provably dead code (fixed earlier).
+        # The value-level `or <default>` guards below were traced into
+        # multi_horizon_decision.py's own construction logic (per-field, not assumed):
+        # final_bias/final_quality/primary_horizon/trade_mode/alignment_state/
+        # contradiction_state/conflict_level/entry_state/risk_note/decision_provenance/
+        # entry_display_text/stop_display_text/targets_display/hold_style/
+        # size_modifier_display/row_state are each built from an exhaustive if/elif/else
+        # chain or a hardcoded non-empty literal -- there is no code path that produces
+        # an empty/falsy value for any of them, so every one of these `or` guards was
+        # dead. supporting_horizon_summary/wait_reason/reason_code genuinely CAN be ""
+        # by design (e.g. no other horizons to summarize) -- their `or ""` guards were
+        # already no-ops (both sides identical when they'd fire), simplified for
+        # consistency, not because they were unsafe.
         _mhb = _sig_out.multi_horizon_bundle
         if _mhb is not None and getattr(_mhb, "final_decision", None) is not None:
             _mhd = _mhb.final_decision
             _mr = _mhd.alignment_report
             _pt = _mhd.final_trade_plan
-            ms.final_bias = str(_mhd.final_bias or "WAIT")
+            ms.final_bias = str(_mhd.final_bias)
             ms.final_confidence = float_finite_or_none(_mhd.final_confidence)
-            ms.final_quality = str(_mhd.final_quality or "D")
+            ms.final_quality = str(_mhd.final_quality)
             ms.final_tradeable = bool(_mhd.final_tradeable)
-            ms.primary_horizon = str(_mhd.primary_horizon or "1c")
-            ms.trade_mode = str(_mhd.trade_mode or "intraday")
-            ms.supporting_horizon_summary = str(_mhd.supporting_horizon_summary or "")
-            ms.alignment_state_display = normalize_alignment_state(
-                _mhd.alignment_state or "no_primary"
-            )
-            ms.contradiction_state = str(_mhd.contradiction_state or "none")
-            ms.conflict_level_display = str(_mr.conflict_level or "high")
-            ms.entry_state = str(_mhd.entry_state or "no_setup")
-            ms.risk_note = str(_mhd.risk_note or "")
-            ms.wait_reason = str(_mhd.wait_reason or "")
-            ms.decision_provenance = str(_mhd.decision_provenance or "")
+            ms.primary_horizon = str(_mhd.primary_horizon)
+            ms.trade_mode = str(_mhd.trade_mode)
+            ms.supporting_horizon_summary = str(_mhd.supporting_horizon_summary)
+            ms.alignment_state_display = normalize_alignment_state(_mhd.alignment_state)
+            ms.contradiction_state = str(_mhd.contradiction_state)
+            ms.conflict_level_display = str(_mr.conflict_level)
+            ms.entry_state = str(_mhd.entry_state)
+            ms.risk_note = str(_mhd.risk_note)
+            ms.wait_reason = str(_mhd.wait_reason)
+            ms.decision_provenance = str(_mhd.decision_provenance)
             ms.guest_anchor_active = bool(_sig_out.guest_anchor_active)
             ms.guest_anchor_weights_ticker = _sig_out.guest_anchor_weights_ticker
             ms.guest_anchor_affiliation = _sig_out.guest_anchor_affiliation
             ms.guest_anchor_rationale = _sig_out.guest_anchor_rationale
             if _pt is not None:
-                ms.entry_display_text = str(_pt.entry_display_text or ms.entry_display_text)
-                ms.stop_display_text = str(_pt.stop_display_text or "—")
-                ms.targets_display = str(_pt.targets_display or "—")
-                ms.hold_style = str(_pt.hold_style or ms.hold_style)
-                ms.size_modifier_display = str(_pt.size_modifier_display or "0.00x")
+                ms.entry_display_text = str(_pt.entry_display_text)
+                ms.stop_display_text = str(_pt.stop_display_text)
+                ms.targets_display = str(_pt.targets_display)
+                ms.hold_style = str(_pt.hold_style)
+                ms.size_modifier_display = str(_pt.size_modifier_display)
             _rows = []
             for _a in list(_mhd.supporting_assessments):
                 _missing = bool(_a.missing)
@@ -1717,9 +1723,9 @@ def build_market_state(
                         "confidence": _conf,
                         "entry_ref": _a.entry_ref,
                         "effect": str(_a.effect),
-                        "row_state": "missing" if _missing else str(_a.row_state or "weak"),
+                        "row_state": "missing" if _missing else str(_a.row_state),
                         "state": "missing" if _missing else "ok",
-                        "reason_code": str(_a.reason_code or ""),
+                        "reason_code": str(_a.reason_code),
                         "missing_horizon": _hz if _missing else None,
                     }
                 )
