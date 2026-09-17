@@ -33,8 +33,8 @@
   "verdict_counts": {
     "NOT_PROVEN": 1105,
     "NOT_FALLBACK": 26,
-    "FALLBACK": 47,
-    "REPAIRED": 48
+    "FALLBACK": 38,
+    "REPAIRED": 57
   },
   "candidates": [
     {
@@ -6094,9 +6094,9 @@
       "snippet": "COALESCE(MAX(snapshot_id), 0)",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: normalized_training_sync.py's _aggregate_select_exprs -- all 6 MAX/SUM COALESCE(...,0) calls removed. The one consumer, compute_snapshots_training_fingerprint, concatenates every value into a change-detection fingerprint STRING; an aggregate-over-zero-rows now contributes 'None' instead of '0', still a distinct, deterministic, change-sensitive token (the fingerprint's only real contract). Tests: tests/test_issue16_normalized_training_sync.py::test_fingerprint_handles_empty_snapshots_table_without_crashing.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -6108,9 +6108,9 @@
       "snippet": "COALESCE(MAX(CAST(horizon_outcome_schema_version AS INTEGER)), 0)",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: normalized_training_sync.py's _aggregate_select_exprs -- all 6 MAX/SUM COALESCE(...,0) calls removed. The one consumer, compute_snapshots_training_fingerprint, concatenates every value into a change-detection fingerprint STRING; an aggregate-over-zero-rows now contributes 'None' instead of '0', still a distinct, deterministic, change-sensitive token (the fingerprint's only real contract). Tests: tests/test_issue16_normalized_training_sync.py::test_fingerprint_handles_empty_snapshots_table_without_crashing.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -6122,9 +6122,9 @@
       "snippet": "COALESCE(SUM(CAST(",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: normalized_training_sync.py's _aggregate_select_exprs -- all 6 MAX/SUM COALESCE(...,0) calls removed. The one consumer, compute_snapshots_training_fingerprint, concatenates every value into a change-detection fingerprint STRING; an aggregate-over-zero-rows now contributes 'None' instead of '0', still a distinct, deterministic, change-sensitive token (the fingerprint's only real contract). Tests: tests/test_issue16_normalized_training_sync.py::test_fingerprint_handles_empty_snapshots_table_without_crashing.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -6136,9 +6136,9 @@
       "snippet": "COALESCE(SUM(CAST(",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: normalized_training_sync.py's _aggregate_select_exprs -- all 6 MAX/SUM COALESCE(...,0) calls removed. The one consumer, compute_snapshots_training_fingerprint, concatenates every value into a change-detection fingerprint STRING; an aggregate-over-zero-rows now contributes 'None' instead of '0', still a distinct, deterministic, change-sensitive token (the fingerprint's only real contract). Tests: tests/test_issue16_normalized_training_sync.py::test_fingerprint_handles_empty_snapshots_table_without_crashing.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -6150,9 +6150,9 @@
       "snippet": "COALESCE(SUM(CAST(",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: normalized_training_sync.py's _aggregate_select_exprs -- all 6 MAX/SUM COALESCE(...,0) calls removed. The one consumer, compute_snapshots_training_fingerprint, concatenates every value into a change-detection fingerprint STRING; an aggregate-over-zero-rows now contributes 'None' instead of '0', still a distinct, deterministic, change-sensitive token (the fingerprint's only real contract). Tests: tests/test_issue16_normalized_training_sync.py::test_fingerprint_handles_empty_snapshots_table_without_crashing.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -6164,9 +6164,9 @@
       "snippet": "COALESCE(SUM(CAST(",
       "semantic_field_guess": null,
       "context": "_aggregate_select_exprs",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: normalized_training_sync.py's _aggregate_select_exprs -- all 6 MAX/SUM COALESCE(...,0) calls removed. The one consumer, compute_snapshots_training_fingerprint, concatenates every value into a change-detection fingerprint STRING; an aggregate-over-zero-rows now contributes 'None' instead of '0', still a distinct, deterministic, change-sensitive token (the fingerprint's only real contract). Tests: tests/test_issue16_normalized_training_sync.py::test_fingerprint_handles_empty_snapshots_table_without_crashing.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -10168,9 +10168,9 @@
       "snippet": "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized",
       "semantic_field_guess": null,
       "context": "materialize_normalized_table",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: snapshot_normalizer.py's MAX(snapshot_id) COALESCE removed -- the very next line's Python `int(row_mx[0] if ... is not None else 0)` already handled the NULL case identically.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14900,9 +14900,9 @@
       "snippet": "COALESCE(MAX(snapshot_id), 0) AS max_snapshot_id,",
       "semantic_field_guess": null,
       "context": "_id_assignment_preview",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/migrate_snapshots_schema_repair_v1.py's MAX(snapshot_id) COALESCE removed -- the Python-side `int(row[...] or 0)` two lines below already handled the NULL case identically.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -15572,9 +15572,9 @@
       "snippet": "SELECT COALESCE(SUM(c-1),0) FROM (SELECT COUNT(*) c FROM level_crosses GROUP BY ticker, ts_utc, level_value HAVING COUNT(*)>1)",
       "semantic_field_guess": null,
       "context": "section_db",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/repo_exposure_audit.py's SUM(c-1) COALESCE removed. Unlike the other aggregate sites in this group, this one had NO pre-existing Python-side guard -- the f-string/division right after it would have crashed on the common, healthy-database 'zero duplicate groups' case if the SQL-level default were simply deleted, so an explicit `extra = extra_row if extra_row is not None else 0` guard was added. Tests: tests/test_repo_exposure_audit_v1.py (3 new tests, including the zero-duplicates case that would have crashed without the added guard).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {

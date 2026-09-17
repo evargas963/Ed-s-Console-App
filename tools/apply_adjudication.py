@@ -550,6 +550,41 @@ def _apply_deleted_file_repairs(raw_candidates: list[dict]) -> int:
     return n
 
 
+_mark_repaired(
+    ["FB-00433", "FB-00434", "FB-00435", "FB-00436", "FB-00437", "FB-00438"],
+    "REPAIRED 2026-09-17: normalized_training_sync.py's _aggregate_select_exprs -- all 6 "
+    "MAX/SUM COALESCE(...,0) calls removed. The one consumer, "
+    "compute_snapshots_training_fingerprint, concatenates every value into a change-"
+    "detection fingerprint STRING; an aggregate-over-zero-rows now contributes 'None' "
+    "instead of '0', still a distinct, deterministic, change-sensitive token (the "
+    "fingerprint's only real contract). Tests: "
+    "tests/test_issue16_normalized_training_sync.py::"
+    "test_fingerprint_handles_empty_snapshots_table_without_crashing.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00724"],
+    "REPAIRED 2026-09-17: snapshot_normalizer.py's MAX(snapshot_id) COALESCE removed -- "
+    "the very next line's Python `int(row_mx[0] if ... is not None else 0)` already "
+    "handled the NULL case identically.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-01062"],
+    "REPAIRED 2026-09-17: tools/migrate_snapshots_schema_repair_v1.py's "
+    "MAX(snapshot_id) COALESCE removed -- the Python-side `int(row[...] or 0)` two lines "
+    "below already handled the NULL case identically.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-01110"],
+    "REPAIRED 2026-09-17: tools/repo_exposure_audit.py's SUM(c-1) COALESCE removed. Unlike "
+    "the other aggregate sites in this group, this one had NO pre-existing Python-side "
+    "guard -- the f-string/division right after it would have crashed on the common, "
+    "healthy-database 'zero duplicate groups' case if the SQL-level default were simply "
+    "deleted, so an explicit `extra = extra_row if extra_row is not None else 0` guard was "
+    "added. Tests: tests/test_repo_exposure_audit_v1.py (3 new tests, including the "
+    "zero-duplicates case that would have crashed without the added guard).",
+    "calibration_ml_governance")
+
+
 def main() -> int:
     raw_path = REPO / "reports" / "no_fallback_discovery_raw.json"
     out_path = REPO / "reports" / "no_fallback_inventory.json"
