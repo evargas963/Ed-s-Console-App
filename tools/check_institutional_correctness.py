@@ -1414,6 +1414,36 @@ def check_single_stream_authority() -> list[Violation]:
     return out
 
 
+def check_no_fallback_lock() -> list[Violation]:
+    """REPO-WIDE NO-FALLBACK MECHANICAL LOCK (operator mandate 2026-09-17).
+
+    A semantic field may contain only the exact value defined by that field; a missing/
+    stale/failed canonical source must expose that exact failure state, never a substitute.
+    This gate is diff-scoped (governance/no_fallback_registry.json + tools/
+    check_no_fallback_lock.py, same 'operator_quote co-staged' convention as
+    governance/level_faucets.json/RC-212) so it can be ENFORCED immediately without first
+    repairing every pre-existing violation the repo-wide census already found (tracked
+    separately in reports/no_fallback_inventory.json) — a commit that adds none of the
+    encoded fallback shapes passes; one that adds a new SQL COALESCE-on-a-non-aggregate,
+    an unauthorized pandas imputation call, an except-handler zero/empty substitution, a
+    JS ||/?? on a protected field, or a silent weakening of this lock itself, fails here,
+    in required CI, on the actual PR/merge diff. See tools/check_no_fallback_lock.py's own
+    module docstring for the full rule list (R1-R7) and why it is scoped this narrowly
+    rather than approximating the broader discovery scanner's candidate net.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_no_fallback_lock import violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / "governance" / "no_fallback_registry.json", 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_no_fallback_lock.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
 def check_test_claims_are_executed() -> list[Violation]:
     """RC-298 — a test that string-matches prose cannot detect a false claim.
 
@@ -3310,6 +3340,7 @@ CHECKS = [
     # declared in governance/retired_checks.md): prose matchers over residual text and a second
     # approval authority. RC-163's structural half is level_producers_have_consumers below.
     ("domain_faucet_registry", check_domain_faucet_registry, True),  # RC-212: one faucet per DOMAIN; greeks only at bs_*
+    ("no_fallback_lock", check_no_fallback_lock, True),  # operator mandate 2026-09-17: no fallback substitution for a missing/failed canonical field, diff-scoped, zero allowlist
     ("phase2a_single_level_computation", check_phase2a_single_level_computation, True),  # Phase 2A: one computation + one materialization per (ticker, level_id, scope, generation)
     # RC-470: rc_document_without_resolve RETIRED (governance/retired_checks.md) -
     # backlog growth stays enforced by open_item_cap; same-day unfinished rows still
