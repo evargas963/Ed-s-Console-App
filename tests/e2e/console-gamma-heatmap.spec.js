@@ -675,9 +675,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(bg586[0]).toBeGreaterThan(bg586[1]);   // red channel dominant
     // spot row is the 583 strike (nearest 583.41)
     await expect(page.locator('tr.spotrow .hstrike')).toHaveText('583');
-    // a LIVE surface shows no stale/reference banner and is tagged a live WINDOW (not "complete")
+    // The default SURFACE fixture carries no per-cell `stream` state at all (it predates the
+    // always-live mandate's per-cell stamping and is used here to test value/colour/format
+    // rendering, not streaming disclosure) -- independent-review finding (2026-09-16, follow-
+    // up mandate): the header must NEVER read the word LIVE without genuine per-cell
+    // confirmation, not even via a legacy "payload predates this field" compatibility
+    // fallback. A surface with zero confirmed-identity visible cells honestly reads WARMING.
     await expect(page.locator('.heat-banner')).toHaveCount(0);
-    await expect(page.locator('#heatScope')).toContainText('LIVE·window');
+    await expect(page.locator('#heatScope')).toContainText('WARMING');
     // #7: shade legend present — vertical magnitude legend at the heatmap's right edge
     await expect(page.locator('.heat-vlegend .bar')).toBeVisible();
     // C: nearest-expiry (front) column emphasised
@@ -2237,6 +2242,40 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(strikesCalls - before).toBe(1);
   });
 
+  test('audit #3 (follow-up): one gamma_surface_seq push costs a strict, documented request budget of at most 3 REST calls total, including Strike Detail', async ({ page }) => {
+    // Independent-review finding (2026-09-16, follow-up mandate item 7): "consolidate
+    // gamma-push data delivery or prove a strict request budget including selected Strike
+    // Detail". The heatmap auto-selects the at-the-money strike by default, so Strike
+    // Detail (ed-gamma-panels.js, reading /api/chain) is ALSO a genuine ed:gamma-push
+    // reactor whenever a strike is selected -- a prior test isolated the OTHER two
+    // endpoints by explicitly clearing the selection; this one leaves it selected and
+    // measures the TRUE worst case: every endpoint any gamma-push reactor can possibly
+    // touch, together, for one push. The documented budget is exactly 3 distinct REST
+    // endpoints (gamma-surface, terrain/strikes, chain), each fetched exactly once,
+    // regardless of how many modules react to the SAME push.
+    let gammaCalls = 0, strikesCalls = 0, chainCalls = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
+    await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
+    await page.route('**/api/chain**', (route) => { chainCalls += 1; return route.fallback(); });
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      await new Promise((r) => setTimeout(r, 1000));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    await page.waitForTimeout(200);   // let cold-start hydration (including auto-select) settle
+    const before = { gamma: gammaCalls, strikes: strikesCalls, chain: chainCalls };
+    await page.waitForTimeout(1100);   // past the mocked SSE delay
+    expect(gammaCalls - before.gamma).toBe(1);
+    expect(strikesCalls - before.strikes).toBe(1);
+    expect(chainCalls - before.chain).toBe(1);
+    const totalDelta = (gammaCalls - before.gamma) + (strikesCalls - before.strikes) + (chainCalls - before.chain);
+    expect(totalDelta).toBeLessThanOrEqual(3);
+  });
+
   test('audit #5: the Chain view does not poll on a fixed 12s cadence while inactive, and hydrates once on entry', async ({ page }) => {
     let chainCalls = 0;
     await page.route('**/api/chain**', (route) => {
@@ -2275,25 +2314,26 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(chainCalls).toBe(afterEntry);   // exactly one hydration on entry, not a burst
   });
 
-  test('audit #6: the header never reads bare LIVE when visible coverage is only partial', async ({ page }) => {
+  test('audit #6: the header never reads the word LIVE (in any form) when visible coverage is only partial', async ({ page }) => {
     // Two visible cells, one genuinely live-streaming and one merely stale -- 50% coverage
-    // must read as a disclosed percentage, never the bare word the old source-path-only
-    // check would have shown regardless of per-cell coverage.
+    // must read as a disclosed percentage, never a source-path-only check that ignores
+    // per-cell coverage, and never a label containing the word LIVE at all (follow-up
+    // mandate independent-review finding: "LIVE·50%" still contains the literal word LIVE,
+    // which a viewer scanning for that one word could mistake for a complete reading).
+    // No stream_coverage is set on the payload at all -- the header's LIVE/STREAMING word is
+    // computed client-side from the DOM's own data-cell-state attributes (visible-scope
+    // coverage), never from this canonical-surface, server-computed field.
     const surf = surfaceWithStreamState([{ call: 'live' }, { call: 'stale' }]);
     surf.source = 'terrain_live_cache';
-    surf.stream_coverage = {
-      total_visible_cells: 2, live: 1, partial: 0, stale: 1, rejected: 0, unavailable: 0,
-      live_pct: 50.0, meets_live_requirement: false,
-    };
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surf),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     const scopeText = await page.locator('#heatScope').textContent();
-    expect(scopeText).toMatch(/LIVE·50%/);
-    expect(scopeText).not.toMatch(/·\s*LIVE\s*(·window)?\s*$/);   // never the bare word alone
-    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 rejected, 0 unavailable of 2 visible/);
+    expect(scopeText).toMatch(/STREAMING·50%/);
+    expect(scopeText).not.toMatch(/LIVE/);   // the literal word must never appear below 100%
+    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 unavailable of 2 visible/);
   });
 
   test('audit #6: a vendor-rejected contract renders a distinct, visibly-failed cell', async ({ page }) => {

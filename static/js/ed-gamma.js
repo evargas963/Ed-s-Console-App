@@ -617,6 +617,7 @@
           : liveState === 'stale' ? ('SNAPSHOT: not currently confirmed live-streamed' +
               (snapshotAge != null ? ' (last confirmed ' + Math.round(snapshotAge) + 's ago)' : '') + ' -- most recent valid computed value shown')
           : liveState === 'pending' ? 'PENDING: contract requested from the vendor, awaiting first confirmed tick -- most recent valid computed value shown'
+          : liveState === 'daemon_unavailable' ? 'DAEMON UNAVAILABLE: the capture daemon is unreachable, so this request cannot even be attempted yet -- most recent valid computed value shown'
           : liveState === 'rejected' ? ('REJECTED: the vendor refused this contract\'s subscription' +
               (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
@@ -849,29 +850,58 @@
     if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
     updateScope(surface);
   }
+  // Independent-review finding (2026-09-16, follow-up mandate): server.py's stream_coverage
+  // is computed over the WHOLE canonical surface (every strike x every expiry with a real
+  // contract identity), never the Auto/Wider/All-windowed subset the operator is actually
+  // LOOKING AT (rowSel.idx x viewCols, decided entirely client-side and never sent to the
+  // server) -- so a "LIVE" verdict keyed on it answers "is the canonical surface fully
+  // live", not the mandate's own "does every VISIBLE cell meet the requirement". Computed
+  // here instead, directly from the DOM this exact render just painted (`data-cell-state`,
+  // stamped on every rendered .hcell by the SAME per-cell state the server already
+  // disclosed) -- an exact match to what is on screen by construction, never a second,
+  // independently-derived windowing calculation that could drift from the real one.
+  function _visibleCellCoverage() {
+    var host = document.getElementById('heatBody');
+    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, unavailable: 0 };
+    var cells = host ? host.querySelectorAll('.hcell[data-cell-state]') : [];
+    for (var i = 0; i < cells.length; i++) {
+      var st = cells[i].getAttribute('data-cell-state');
+      if (Object.prototype.hasOwnProperty.call(counts, st)) counts[st]++;
+    }
+    var total = cells.length;
+    return {
+      total_visible_cells: total,
+      live: counts.live, partial: counts.partial, stale: counts.stale,
+      pending: counts.pending, daemon_unavailable: counts.daemon_unavailable,
+      rejected: counts.rejected, unavailable: counts.unavailable,
+      live_pct: total ? Math.round(1000 * counts.live / total) / 10 : 0,
+      meets_live_requirement: total > 0 && counts.live === total,
+    };
+  }
+
   function updateScope(surface) {   // lightweight: only the age/scope tag in the panel header
     // Independent review, 2026-09-16 (CORRECTED): see the identical fix in the sibling render
     // function above -- Number(surface.spot) fabricates a real, finite 0 when surface.spot is
     // explicitly null, which then passes the isFinite(spot) guard below as if it were real.
     var strikes = surface.strikes || [], exps = surface.expirations || [],
         spot = surface.spot == null ? NaN : Number(surface.spot);
-    // Audit finding #6 (2026-09-16), FIXED: "LIVE" used to mean only "surface.source ==
-    // terrain_live_cache" -- true for nearly every live-pathway surface with NO per-cell
-    // coverage requirement at all, so the header could say LIVE while the grid underneath
-    // was mostly stale/unavailable. The word "LIVE" is now gated on the server's own
-    // coverage verdict (stream_coverage.meets_live_requirement, the operator's own "every
-    // visible cell must be actively streaming" directive) -- anything short of that
-    // discloses the real percentage instead of claiming a status the data does not meet.
-    var cov = surface.stream_coverage;
+    // Audit finding #6 (2026-09-16), FIXED, THEN CORRECTED (follow-up mandate): "LIVE" used
+    // to mean only "surface.source == terrain_live_cache" -- true for nearly every live-
+    // pathway surface with NO per-cell coverage requirement at all. Gating it on coverage
+    // over the WHOLE canonical surface (the first fix) was itself still wrong scope -- see
+    // _visibleCellCoverage's own comment. The word "LIVE" (in ANY form, including a
+    // percentage-qualified one) never renders below 100% visible coverage: a partial cover
+    // reads "STREAMING·NN%", a wholly unconfirmed one "WARMING" -- neither contains the
+    // literal word LIVE, so a viewer scanning for that one word can never mistake a partial
+    // reading for a complete one.
+    var cov = _visibleCellCoverage();
     var liveWord;
-    if (cov === undefined) {
-      liveWord = 'LIVE';                          // payload predates stream_coverage entirely
-    } else if (!cov || cov.total_visible_cells === 0) {
-      liveWord = 'WARMING';                       // no contract identity confirmed yet
+    if (cov.total_visible_cells === 0) {
+      liveWord = 'WARMING';                       // no visible cell has confirmed identity yet
     } else if (cov.meets_live_requirement) {
       liveWord = 'LIVE';
     } else {
-      liveWord = 'LIVE·' + cov.live_pct.toFixed(0) + '%';
+      liveWord = 'STREAMING·' + cov.live_pct.toFixed(0) + '%';
     }
     var srcLabel = surface.source === 'terrain_live_cache' ? (liveWord + (surface.complete === false ? '·window' : ''))
       : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
@@ -884,12 +914,13 @@
       var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
       el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
       // Exact coverage breakdown on hover -- counts and percentages for live/partial/
-      // stale/pending/rejected/unavailable, not just the headline word.
-      el.title = cov
-        ? ('coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
-           ' stale, ' + (cov.pending || 0) + ' pending, ' + cov.rejected + ' rejected, ' +
-           cov.unavailable + ' unavailable of ' + cov.total_visible_cells +
-           ' visible cells (' + cov.live_pct + '% live)')
+      // stale/pending/daemon-unavailable/rejected/unavailable of the VISIBLE cells
+      // specifically (not the canonical surface's own, possibly much larger, cell count).
+      el.title = cov.total_visible_cells
+        ? ('visible coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
+           ' stale, ' + cov.pending + ' pending, ' + cov.daemon_unavailable + ' daemon-unavailable, ' +
+           cov.rejected + ' rejected, ' + cov.unavailable + ' unavailable of ' +
+           cov.total_visible_cells + ' visible cells (' + cov.live_pct + '% live)')
         : ((surface.coverage && surface.coverage.note) || '');
     }
   }

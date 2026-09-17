@@ -121,6 +121,29 @@ def test_desired_not_yet_ticked_is_pending_not_unavailable():
     assert col["state"] == "pending"
 
 
+def test_desired_symbol_reads_daemon_unavailable_not_pending_when_daemon_is_down():
+    """Independent-review finding (2026-09-16, follow-up mandate): 'pending' used to mean
+    only "the client desires this symbol" -- indistinguishable from a daemon that has
+    silently died and will never admit anything. A DEAD daemon must read a materially
+    different, more actionable state than 'still queued behind a live one'."""
+    surf = _surface({"call": "AAA", "put": "BBB"})
+    _stamp_gamma_surface_cell_stream_state(
+        surf, {}, set(), None, {"AAA", "BBB"}, daemon_available=False)
+    col = surf["cells"][0]["stream"][0]
+    assert col["call"]["state"] == "daemon_unavailable"
+    assert col["put"]["state"] == "daemon_unavailable"
+    assert col["state"] == "daemon_unavailable"
+
+
+def test_daemon_unavailable_never_reported_for_a_symbol_nobody_desired():
+    # daemon_available=False must not turn EVERY never-desired symbol into
+    # daemon_unavailable too -- it only applies to symbols actually desired.
+    surf = _surface({"call": "AAA", "put": "BBB"})
+    _stamp_gamma_surface_cell_stream_state(surf, {}, set(), None, set(), daemon_available=False)
+    col = surf["cells"][0]["stream"][0]
+    assert col["call"]["state"] == "unavailable" and col["put"]["state"] == "unavailable"
+
+
 def test_pending_takes_priority_over_unavailable_but_not_over_stale_or_live():
     # One leg desired-but-never-ticked (pending), the other never desired (unavailable):
     # the cell aggregate must read 'pending', not 'unavailable'.
@@ -157,7 +180,8 @@ def test_cell_state_counts_tallies_across_cells_and_columns():
     _stamp_gamma_surface_cell_stream_state(surf, streamed, {"AAA", "BBB"})
     counts = _gamma_surface_cell_state_counts(surf)
     # cell0: live (both legs live). cell1: stale (CCC desired, not overlaid). cell2: unavailable (DDD never desired).
-    assert counts == {"live": 1, "partial": 0, "stale": 1, "pending": 0, "rejected": 0, "unavailable": 1}
+    assert counts == {"live": 1, "partial": 0, "stale": 1, "pending": 0,
+                       "daemon_unavailable": 0, "rejected": 0, "unavailable": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +404,40 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
         assert cov["meets_live_requirement"] is False, (
             "a pending (not-yet-confirmed) cell must NOT satisfy the LIVE requirement")
         assert d["cell_stream_state_counts"]["pending"] == 1
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+
+
+def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
+    """Independent-review finding (2026-09-16, follow-up mandate): a desired-but-untouched
+    contract while the capture daemon itself is unreachable must count in its OWN bucket,
+    distinct from 'pending' (daemon alive, outcome merely not yet known) -- both must be
+    excluded from meets_live_requirement, but conflating them hides an operator-actionable
+    fact (restart the daemon) behind one that implies nothing is wrong (just wait)."""
+    tk = ticker_storage_key("ZZZTEST_DAEMON_DOWN")
+    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
+            "cells": [
+                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
+                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
+            ],
+            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
+            "gamma_available": True}
+    # X is live-streaming; Y is desired but the daemon itself is confirmed unreachable.
+    _stamp_gamma_surface_cell_stream_state(
+        surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"}, daemon_available=False)
+    with server._terrain_cache_lock:
+        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+    try:
+        d = _call(tk)
+        cov = d["stream_coverage"]
+        assert cov["live"] == 1 and cov["daemon_unavailable"] == 1
+        assert cov.get("pending", 0) == 0, "a daemon-down symbol must not also count as pending"
+        assert cov.get("unavailable", 0) == 0, "a daemon-down symbol must not also count as unavailable"
+        assert cov["meets_live_requirement"] is False
+        assert d["cell_stream_state_counts"]["daemon_unavailable"] == 1
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)

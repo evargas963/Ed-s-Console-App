@@ -1460,6 +1460,66 @@ def test_multi_C_two_extras_one_fails_the_other_still_reaches_steady_state(
     assert _MSFT_CONTRACT not in rejected_state
 
 
+def test_multi_L_a_rejected_symbol_is_not_retried_on_the_very_next_tick(tmp_path, monkeypatch):
+    """Independent-review finding (2026-09-16, follow-up mandate item 6): "add rejection
+    backoff or demand-generation gating so rejected symbols are not retried every second".
+    The prior design re-offered a rejected symbol to the vendor on EVERY poll tick forever
+    -- this proves a poisoned symbol, still desired, is excluded from the very next tick's
+    batched vendor call while its backoff window is open."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream(fail_calls={"l1_option_add"})
+    contract_state: dict = {}
+    rejected_state: dict = {}
+    rejection_backoff: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, rejected_state=rejected_state,
+            rejection_backoff=rejection_backoff)
+    asyncio.run(go())   # tick 1: SPY subscribes fine, QQQ's l1_option_add is rejected
+    assert _QQQ_CONTRACT in rejected_state
+    assert _QQQ_CONTRACT in rejection_backoff
+    calls_after_tick1 = len(stream.calls)
+
+    stream.fail_calls = set()   # the vendor would now accept QQQ if asked again
+    asyncio.run(go())   # tick 2: still inside the backoff window
+    assert len(stream.calls) == calls_after_tick1, (
+        "a symbol still inside its backoff window must not be offered to the vendor again"
+    )
+    assert "l1:extra:" + _QQQ_CONTRACT not in contract_state
+
+
+def test_multi_M_backoff_expiry_allows_a_retry_and_success_clears_it(tmp_path, monkeypatch):
+    """The mirror of the test above: once the backoff window elapses, the symbol IS
+    offered again, and a successful admission clears its backoff entry (so a LATER,
+    unrelated rejection is not silently pre-empted by a stale expiry check)."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream(fail_calls={"l1_option_add"})
+    contract_state: dict = {}
+    rejected_state: dict = {}
+    rejection_backoff: dict = {}
+    fake_now = {"t": 1_000_000.0}
+    monkeypatch.setattr(rsc.time, "time", lambda: fake_now["t"])
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, rejected_state=rejected_state,
+            rejection_backoff=rejection_backoff)
+    asyncio.run(go())   # tick 1: QQQ rejected, backoff set for fake_now + OPTION_REJECTION_BACKOFF_SEC
+    assert rejection_backoff[_QQQ_CONTRACT] == fake_now["t"] + rsc.OPTION_REJECTION_BACKOFF_SEC
+
+    stream.fail_calls = set()
+    fake_now["t"] += rsc.OPTION_REJECTION_BACKOFF_SEC + 1.0   # backoff window has elapsed
+    new_state = asyncio.run(go())
+    assert new_state["l1:extra:" + _QQQ_CONTRACT] == _QQQ_CONTRACT, (
+        "once the backoff window elapses, the symbol must be offered to the vendor again"
+    )
+    assert _QQQ_CONTRACT not in rejection_backoff, "a successful admission clears the backoff entry"
+    assert _QQQ_CONTRACT not in rejected_state
+
+
 def test_multi_D_a_symbol_in_both_primary_and_plural_signals_is_reconciled_once(
         tmp_path, monkeypatch):
     """The union of primary + plural is de-duplicated: a symbol requested as BOTH the

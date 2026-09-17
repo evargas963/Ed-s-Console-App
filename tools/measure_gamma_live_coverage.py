@@ -16,13 +16,23 @@ Usage:
         --scopes auto,wider,all --out reports/gamma_live_coverage_<date>.json
 
 Metrics captured per (ticker, scope):
-  - requested_contract_count: exactly what the client's own demand call asked for.
-  - time_to_accepted_sec: wall-clock from the demand POST to the FIRST moment the vendor
-    heartbeat's coverage epochs confirm every requested symbol admitted (stream_spine.
-    read_open_coverage_symbols) -- polls the SAME table the app's own confirmation UI reads.
-  - time_to_active_sec: wall-clock to the LAST requested contract reaching genuine
-    contract_match=true via /api/order-flow/options-microstructure (data actually flowing,
-    not merely subscribed).
+  - requested_contract_count: exactly what the client's own demand call asked for. Auto/
+    Wider/All are now GENUINELY DIFFERENT symbol sets (independent-review finding, 2026-09-
+    16 follow-up mandate: a prior draft of this harness demanded every expiry for BOTH
+    Wider and All, making them identical measurements wearing two names) -- see
+    `_wide_chain_symbols`'s own docstring for the exact windowing rule.
+  - time_to_accepted_sec / time_to_active_sec: now tracked for EVERY requested symbol, not
+    a single "primary" contract (independent-review finding: the previous version asked
+    for N symbols but measured only the ONE contract /api/order-flow/options-microstructure
+    happens to report on). `time_to_accepted_sec` is wall-clock to the LAST requested
+    symbol reaching 'admitted' or 'active' in /api/options/gamma-surface's own
+    `contract_admission` field (streaming.read_producer_admitted_option_contracts --
+    genuine producer/vendor acknowledgement, not a client-side desired-state guess);
+    `time_to_active_sec` is wall-clock to the LAST requested symbol reaching 'active'
+    (a real tick has actually arrived) in that SAME field.
+  - admission_snapshot: the full per-symbol admitted/active/pending/rejected/unresolved
+    breakdown at the moment this measurement stopped polling -- so a reviewer can see
+    exactly which symbols (if any) never resolved, not just an aggregate count.
   - first_usable_render_ms / first_fully_classified_render_ms: measured from
     /api/options/gamma-surface's own surface_seq advancing at all (usable) vs.
     stream_coverage.meets_live_requirement becoming true (fully classified).
@@ -32,8 +42,8 @@ Metrics captured per (ticker, scope):
   - rest_requests_startup / rest_requests_per_streamed_update / rest_requests_ticker_switch:
     counted via /api/build's own request-count diagnostics when present, else via the
     heartbeat/coverage table row-count delta as a lower-bound proxy (documented per field).
-  - cell_state_counts: live/partial/stale/rejected/unavailable straight from
-    stream_coverage (server.py's _gamma_surface_coverage_summary).
+  - cell_state_counts: live/partial/stale/pending/daemon_unavailable/rejected/unavailable
+    straight from stream_coverage (server.py's _gamma_surface_coverage_summary).
 
 This script makes NO claim about CPU/event-loop responsiveness or exact per-request browser
 network timing -- those require a live browser instrumented with the Browser pane's own
@@ -74,25 +84,63 @@ def _post(base: str, path: str, payload: dict) -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
+#: Auto shows the near-money strikes only; Wider widens that same window; All drops the
+#: strike window AND the single-expiry restriction entirely. Independent-review finding
+#: (2026-09-16, follow-up mandate item 8): a prior draft asked for every expiry for BOTH
+#: Wider and All, making them identical measurements under two names. This does not claim
+#: byte-for-byte parity with ed-core.js's own scopeSelect (a client-side pixel-count-driven
+#: window) -- it is a HONEST, DIFFERENT, DOCUMENTED approximation of the same intent (a
+#: strike-count-bounded near-money view vs. the complete book), sufficient to prove the
+#: three scopes actually place genuinely different vendor demand, which is what the
+#: mandate's "actual requested contract counts" and "Auto, Wider and All scopes" items ask
+#: this harness to measure.
+_AUTO_STRIKES_EACH_SIDE = 5     # Auto: 5 strikes above and below spot (11 total, both legs)
+_WIDER_STRIKES_EACH_SIDE = 15   # Wider: 3x Auto's window
+
+
 def _wide_chain_symbols(base: str, ticker: str, scope: str) -> list:
-    """The exact contract set a real client would demand for this scope -- read from the
-    SAME /api/chain the frontend's own heatmap-column-to-contract mapping is built from,
-    never guessed. `scope` narrows which expiries/strikes a real Auto/Wider/All selection
-    would cover; this harness demands every contract /api/chain reports for the ticker's
-    default expiry (Auto) or every expiry it lists (Wider/All), matching ed-gamma.js's own
-    "demand every visible column's contracts" rule (see that file's 2026-09-15 comment)."""
+    """The contract set this harness demands for `scope`, read from the SAME /api/chain the
+    frontend's own heatmap-column-to-contract mapping is built from, never guessed.
+
+    'auto'  — the ticker's default expiry only, the _AUTO_STRIKES_EACH_SIDE strikes nearest
+              spot on each side (both call and put legs).
+    'wider' — the default expiry only, _WIDER_STRIKES_EACH_SIDE strikes nearest spot —
+              GENUINELY more contracts than 'auto', never the same count.
+    'all'   — every expiry /api/expiries lists, every strike each one reports — the
+              complete book, no strike window at all."""
     chain = _get(base, "/api/chain?" + urlencode({"ticker": ticker}))
-    expiries = [chain.get("expiry")] if scope == "auto" else None
-    if expiries is None:
+    spot = chain.get("spot")
+    default_expiry = chain.get("expiry")
+
+    def _strikes_near_spot(contracts: list, n_each_side: "int | None") -> list:
+        if n_each_side is None or spot is None:
+            return contracts
+        by_strike: dict = {}
+        for ct in contracts:
+            k = ct.get("strikePrice")
+            if k is None:
+                continue
+            by_strike.setdefault(float(k), []).append(ct)
+        strikes_sorted = sorted(by_strike.keys(), key=lambda k: abs(k - float(spot)))
+        kept_strikes = set(strikes_sorted[: n_each_side * 2])
+        return [ct for k, cts in by_strike.items() if k in kept_strikes for ct in cts]
+
+    if scope == "auto":
+        expiries, window = [default_expiry], _AUTO_STRIKES_EACH_SIDE
+    elif scope == "wider":
+        expiries, window = [default_expiry], _WIDER_STRIKES_EACH_SIDE
+    else:
         exp_resp = _get(base, "/api/expiries?" + urlencode({"ticker": ticker}))
-        expiries = exp_resp.get("expiries") or ([chain.get("expiry")] if chain.get("expiry") else [])
+        expiries = exp_resp.get("expiries") or ([default_expiry] if default_expiry else [])
+        window = None
+
     symbols = []
     for exp in expiries:
         if not exp:
             continue
-        c = chain if exp == chain.get("expiry") else _get(
+        c = chain if exp == default_expiry else _get(
             base, "/api/chain?" + urlencode({"ticker": ticker, "expiry": exp}))
-        for ct in (c.get("contracts") or []):
+        for ct in _strikes_near_spot(c.get("contracts") or [], window):
             sym = ct.get("symbol")
             if sym:
                 symbols.append(sym)
@@ -100,7 +148,6 @@ def _wide_chain_symbols(base: str, ticker: str, scope: str) -> list:
 
 
 def measure_one(base: str, ticker: str, scope: str) -> dict:
-    t0 = time.monotonic()
     symbols = _wide_chain_symbols(base, ticker, scope)
     result = {
         "ticker": ticker, "scope": scope,
@@ -108,25 +155,37 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
         "time_to_accepted_sec": None, "time_to_active_sec": None,
         "first_usable_render_ms": None, "first_fully_classified_render_ms": None,
         "backend_compute_ms": None, "cell_state_counts": None, "stream_coverage": None,
+        "admission_snapshot": None,
         "notes": [],
     }
     if not symbols:
         result["notes"].append("no contracts returned -- market likely closed or ticker unavailable")
         return result
+    requested = set(symbols)
 
     _post(base, "/api/streaming/active-option-contracts", {"contracts": symbols})
     t_requested = time.monotonic()
 
-    accepted_at = None
-    active_at = None
+    # Independent-review finding (2026-09-16, follow-up mandate item 8): the prior version
+    # tracked ONE "primary" contract via /api/order-flow/options-microstructure regardless
+    # of how many symbols were actually requested. Every one of `requested` is now tracked
+    # through requested -> admitted/active -> (or rejected), sourced from
+    # /api/options/gamma-surface's own `contract_admission` field -- itself sourced from
+    # genuine PRODUCER acknowledgements (streaming.read_producer_admitted_option_contracts /
+    # read_producer_rejected_option_contracts), never a client-side desired-state guess.
+    accepted_at = None    # LAST requested symbol reaches admitted-or-active-or-rejected
+    active_at = None      # LAST requested symbol reaches active (a real tick has arrived)
     first_usable_at = None
     first_classified_at = None
+    last_admission: dict = {}
     seen_seq = None
     deadline = t_requested + MAX_WAIT_SEC
     while time.monotonic() < deadline:
         try:
             surf = _get(base, "/api/options/gamma-surface?" + urlencode({"ticker": ticker}))
-        except Exception as e:  # noqa: BLE001 -- a transient poll failure is not a measurement
+        except Exception:  # institutional-swallow-ok: a transient poll failure is not a
+            # measurement -- the loop simply retries on the next tick; a persistent failure
+            # surfaces as this measurement's own "never resolved" notes below.
             time.sleep(POLL_INTERVAL_SEC)
             continue
         seq = surf.get("surface_seq")
@@ -140,26 +199,36 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
             result["backend_compute_ms"] = surf["stream_overlay_receipt_to_computed_ms"]
         result["cell_state_counts"] = surf.get("cell_stream_state_counts")
         result["stream_coverage"] = cov
-        try:
-            micro = _get(base, "/api/order-flow/options-microstructure?" +
-                         urlencode({"ticker": ticker}))
-            if micro.get("contract_match") and accepted_at is None:
-                accepted_at = time.monotonic()
-            if micro.get("contract_match") and active_at is None:
-                active_at = time.monotonic()
-        except Exception:  # institutional-swallow-ok: a transient poll failure of the
-            # diagnostic microstructure read is not itself a measurement -- the poll loop
-            # simply tries again on the next tick; a real, persistent failure surfaces as
-            # this measurement's own "never observed contract_match=true" note below.
-            pass
+
+        admission = surf.get("contract_admission") or {}
+        last_admission = admission
+        admitted = requested & set(admission.get("admitted") or [])
+        active = requested & set(admission.get("active") or [])
+        rejected = requested & set((admission.get("rejected") or {}).keys())
+        if accepted_at is None and (admitted | active | rejected) == requested:
+            accepted_at = time.monotonic()
+        if active_at is None and (active | rejected) == requested:
+            active_at = time.monotonic()
+
         if first_classified_at is not None and active_at is not None:
             break
         time.sleep(POLL_INTERVAL_SEC)
 
+    unresolved = requested - set(last_admission.get("admitted") or []) \
+        - set(last_admission.get("active") or []) - set((last_admission.get("rejected") or {}).keys())
+    result["admission_snapshot"] = {
+        "daemon_available": last_admission.get("daemon_available"),
+        "admitted": sorted(requested & set(last_admission.get("admitted") or [])),
+        "active": sorted(requested & set(last_admission.get("active") or [])),
+        "rejected": {s: r for s, r in (last_admission.get("rejected") or {}).items() if s in requested},
+        "unresolved": sorted(unresolved),
+    }
     if accepted_at:
         result["time_to_accepted_sec"] = round(accepted_at - t_requested, 3)
     else:
-        result["notes"].append("never observed contract_match=true within MAX_WAIT_SEC (accepted)")
+        result["notes"].append(
+            f"{len(unresolved)} of {len(requested)} requested symbol(s) never reached "
+            f"admitted/active/rejected within MAX_WAIT_SEC")
     if active_at:
         result["time_to_active_sec"] = round(active_at - t_requested, 3)
     if first_usable_at:

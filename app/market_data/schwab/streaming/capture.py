@@ -1151,9 +1151,20 @@ async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitt
         return left + right
 
 
+#: Once the vendor explicitly refuses a symbol, do not offer it again in the very next
+#: batched call one poll tick later -- a genuinely poisoned symbol would force the SAME
+#: bisection cost on every tick, forever (independent-review finding, 2026-09-16 follow-up
+#: mandate item 6: "rejected symbols are not retried every second"). 30s is a handful of
+#: poll cycles at this loop's own ~1s interval -- long enough to stop hammering the vendor,
+#: short enough that a transient (not permanent) rejection clears within one operator-
+#: visible refresh cycle, not an indefinite ban.
+OPTION_REJECTION_BACKOFF_SEC = 30.0
+
+
 async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_requested: set, *,
                                             writer, epoch_state: dict | None,
-                                            rejected_state: "dict[str, str] | None" = None) -> None:
+                                            rejected_state: "dict[str, str] | None" = None,
+                                            rejection_backoff: "dict[str, float] | None" = None) -> None:
     """Reconcile ADDITIONAL concurrently-desired symbols for LEVELONE_OPTIONS (RC-UI-3,
     2026-09-12 multi-contract coverage; rearchitected 2026-09-16 for bounded vendor
     calls), beside the one primary/pinned contract `_apply_active_option_contract_subs`
@@ -1178,7 +1189,14 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
 
     `in_play` is unchanged: the union of every symbol that still needs consideration this
     tick — desired extras, symbols contract_state still remembers holding, and symbols
-    epoch_state still has an open epoch or a pending close for."""
+    epoch_state still has an open epoch or a pending close for.
+
+    `rejection_backoff` (2026-09-16, independent-review follow-up mandate item 6): a
+    persisted {symbol: retry_eligible_monotonic_ts} map, mutated in place, same lifecycle
+    as `rejected_state`. A symbol still inside its backoff window is excluded from `to_add`
+    entirely this tick — genuinely still desired and still not held, but not yet offered to
+    the vendor again — so a persistently-poisoned symbol costs one bisection attempt per
+    backoff window, not one every single poll tick forever."""
     prefix = f"{EXTRA_OPTION_CONTRACT_SVC_KEY}:extra:"
     in_play: set[str] = {k[len(prefix):] for k in contract_state if k.startswith(prefix)}
     in_play |= set(extra_requested)
@@ -1201,12 +1219,16 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
 
     to_remove: "list[str]" = []
     to_add: "list[str]" = []
+    now = time.time()
     for symbol in sorted(in_play):
         held = contract_state.get(f"{prefix}{symbol}")
         wanted = symbol in extra_requested
         if held is not None and not wanted:
             to_remove.append(symbol)
         elif held is None and wanted:
+            backoff_until = (rejection_backoff or {}).get(symbol)
+            if backoff_until is not None and now < backoff_until:
+                continue    # still inside its post-rejection backoff window -- not offered
             to_add.append(symbol)
         # held == wanted (both set or both clear): already correct, nothing to do.
 
@@ -1269,6 +1291,8 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
             epoch_key = f"{prefix}{symbol}"
             if rejected_state is not None:
                 rejected_state.pop(symbol, None)
+            if rejection_backoff is not None:
+                rejection_backoff.pop(symbol, None)
             if writer is not None and epoch_state is not None:
                 _open_coverage_epoch_tracked(writer, epoch_state, epoch_key, symbol,
                                              EXTRA_OPTION_CONTRACT_SERVICE_NAME,
@@ -1296,6 +1320,9 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
                 print(f"{EXTRA_OPTION_CONTRACT_SERVICE_NAME}: vendor REJECTED "
                       f"{len(rejected)} of {len(to_add)} requested contract(s): "
                       f"{[s for s, _ in rejected]}")
+        if rejection_backoff is not None:
+            for symbol, _reason in rejected:
+                rejection_backoff[symbol] = now + OPTION_REJECTION_BACKOFF_SEC
 
     # Prune keys nothing references any more so state does not grow without bound.
     for symbol in sorted(in_play):
@@ -1313,6 +1340,8 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
                 epoch_state.pop(f"{epoch_key}_pending_close", None)
             if rejected_state is not None and not wanted:
                 rejected_state.pop(symbol, None)
+            if rejection_backoff is not None and not wanted:
+                rejection_backoff.pop(symbol, None)
 
 
 async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoch_state: "dict | None", *,
@@ -1445,7 +1474,8 @@ async def _apply_option_primary_role_transfer(stream, contract_state: dict, epoc
 
 async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
                                              writer=None, epoch_state: dict | None = None,
-                                             rejected_state: "dict[str, str] | None" = None) -> dict:
+                                             rejected_state: "dict[str, str] | None" = None,
+                                             rejection_backoff: "dict[str, float] | None" = None) -> dict:
     """Diff the server's requested active OPTION CONTRACT(s) against what is currently
     held, PER SERVICE (LEVELONE_OPTIONS and OPTIONS_BOOK reconciled independently — see
     _reconcile_option_service).
@@ -1531,7 +1561,7 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
         extra_requested.add(deferred_symbol)
     await _apply_extra_option_contract_subs(
         stream, contract_state, extra_requested, writer=writer, epoch_state=epoch_state,
-        rejected_state=rejected_state)
+        rejected_state=rejected_state, rejection_backoff=rejection_backoff)
     return contract_state
 
 
@@ -1539,6 +1569,7 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
                                             stop: asyncio.Event, writer=None,
                                             epoch_state: dict | None = None,
                                             rejected_state: "dict[str, str] | None" = None,
+                                            rejection_backoff: "dict[str, float] | None" = None,
                                             interval_sec: float = 1.0,
                                             request_recycle: asyncio.Event | None = None) -> None:
     """Fast poll of the active-option-contract signal — same shape and cadence as
@@ -1578,7 +1609,7 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
         try:
             new_cur = await _apply_active_option_contract_subs(
                 stream, get_current(), writer=writer, epoch_state=epoch_state,
-                rejected_state=rejected_state)
+                rejected_state=rejected_state, rejection_backoff=rejection_backoff)
             set_current(new_cur)
         except OptionCoverageCompensationError as e:
             # NOT an ordinary bad tick: vendor state uncertain AND no durable coverage.
@@ -2024,6 +2055,11 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     #: call reconciliation) — same lifecycle as option_epoch_state (persists across a
     #: recycle within this daemon lifetime; a fresh daemon lifetime starts clean).
     option_rejected_state: "dict[str, str]" = {}
+    #: {symbol: retry_eligible_epoch_ts} for every additional contract currently backing
+    #: off after a vendor rejection (2026-09-16, independent-review follow-up mandate item
+    #: 6: "rejected symbols are not retried every second") — same lifecycle as
+    #: option_rejected_state.
+    option_rejection_backoff: "dict[str, float]" = {}
     # PR214 premerge gap 4: the option poll loop sets this when a coverage-compensation
     # failure leaves vendor state uncertain with no durable coverage; the main loop below
     # treats it exactly like the half-open watchdog and recycles the stream.
@@ -2053,6 +2089,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 lambda c: option_state.__setitem__("contract", c), stop,
                 writer=writer, epoch_state=option_epoch_state,
                 rejected_state=option_rejected_state,
+                rejection_backoff=option_rejection_backoff,
                 request_recycle=option_recycle_request)))
         except BaseException:
             await _cancel_and_await(started, what="control-task construction failed")

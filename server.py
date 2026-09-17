@@ -12517,15 +12517,26 @@ def _per_strike_view_from_contracts(contracts: list, spot: float,
 
 def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
                                    prior_view: "dict | None", overlaid: list, spot: float,
-                                   affected_expiries: "list[str]") -> "tuple[dict, dict] | None":
+                                   affected_expiries: "list[str]", *,
+                                   prior_spot: "float | None") -> "tuple[dict, dict] | None":
     """Incrementally update the per-strike 'all' view for ONLY the expiries a streamed tick
     actually touched, reusing every OTHER expiry's already-computed contribution from
     `prior_by_expiry` (2026-09-16 audit follow-up — see `_per_strike_exposures_by_expiry`'s
     docstring for the additive-merge proof this relies on). Returns
     `(new_view, new_by_expiry_cache)`, or None when an incremental update cannot be proven
-    safe (no cache to update from, or the tick's own contracts carry no resolvable expiry) —
-    the caller falls back to `_per_strike_view_from_contracts`'s full recompute exactly like
+    safe (no cache to update from, the tick's own contracts carry no resolvable expiry, or
+    spot has moved — see below) — the caller falls back to
+    `_per_strike_view_from_contracts`'s full recompute exactly like
     `project_gamma_surface_update_expiry`'s own fallback contract.
+
+    Independent-review finding (2026-09-16, follow-up mandate): every field this view
+    reports (net_gex_1pct and the raw exposures the 'all' rows are built from) is a
+    function of spot, for EVERY expiry, not only the touched one — the identical hazard
+    `project_gamma_surface_update_expiry` guards against, and the identical fix: `spot`
+    must be IDENTICAL to `prior_spot` (the spot `prior_by_expiry`/`prior_view` were
+    themselves computed against) or this returns None, forcing a full, fresh-spot
+    recompute of every expiry rather than merging a fresh slice for one expiry with
+    stale-spot contributions cached from every other.
 
     Scope, disclosed: only the 'all' aggregate (the one /api/terrain/strikes' primary GEX-
     by-strike panel and the heatmap's own per-cell backfill actually read on a streamed
@@ -12538,6 +12549,8 @@ def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
     the expirations list, walls, and regime already are; only the primary aggregate gets
     the eager, per-tick, incremental treatment the operator's mandate targets."""
     if not prior_by_expiry or not affected_expiries:
+        return None
+    if prior_spot is None or float(prior_spot) != float(spot):
         return None
     from terrain_engine import _per_strike_rows
     new_by_expiry = dict(prior_by_expiry)
@@ -12618,6 +12631,55 @@ def _desired_option_symbols_for_ticker(tk: str) -> "list[str]":
     return out
 
 
+def _option_contract_admission_summary(tk: str) -> dict:
+    """Per-symbol admitted/active/pending/rejected accounting for `tk`'s desired option
+    contracts, sourced ENTIRELY from PRODUCER acknowledgements (2026-09-16, independent-
+    review follow-up mandate item 1: "expose the exact admitted, active, pending and
+    rejected contracts"). Every bucket answers a materially different question about a
+    desired symbol:
+      'active'   — has produced at least one real tick (present in
+                   _desired_stream_greeks_for_ticker's own output) — the vendor is not
+                   merely subscribed, it is genuinely sending data.
+      'admitted' — the DAEMON's own durable, heartbeat-confirmed open coverage epoch names
+                   this symbol (streaming.read_producer_admitted_option_contracts,
+                   LEVELONE_OPTIONS service) but no tick has arrived yet — the vendor
+                   subscription itself is confirmed, only the first observation is still
+                   outstanding.
+      'pending'  — desired, the daemon is CONFIRMED alive, but neither a tick nor a
+                   confirmed admission has landed yet — requested, outcome not yet known.
+      'rejected' — {symbol: vendor_error} for every desired symbol the vendor's most
+                   recent batched subscribe attempt explicitly refused.
+    A desired symbol that fits none of the above (daemon unreachable) is simply omitted
+    from every bucket — unknown is never fabricated as any of these four claims; the
+    `daemon_available` flag on the returned dict is how a caller tells "genuinely nothing
+    to report yet" apart from "cannot know right now"."""
+    from app.options.order_flow.streaming import (
+        read_producer_admitted_option_contracts, read_producer_rejected_option_contracts,
+        is_option_producer_daemon_available)
+    desired = _desired_option_symbols_for_ticker(tk)
+    daemon_available = is_option_producer_daemon_available()
+    rejected_all = read_producer_rejected_option_contracts()
+    admitted_l1 = set((read_producer_admitted_option_contracts() or {}).get("LEVELONE_OPTIONS") or [])
+    active_syms = set(_desired_stream_greeks_for_ticker(tk).keys())
+    admitted, active, pending = [], [], []
+    rejected: "dict[str, str]" = {}
+    for sym in desired:
+        if sym in rejected_all:
+            rejected[sym] = rejected_all[sym]
+        elif sym in active_syms:
+            active.append(sym)
+        elif sym in admitted_l1:
+            admitted.append(sym)
+        elif daemon_available:
+            pending.append(sym)
+        # else: daemon unavailable -- genuinely unknown, omitted from every bucket
+    return {
+        "daemon_available": daemon_available,
+        "admitted": sorted(admitted), "active": sorted(active),
+        "pending": sorted(pending), "rejected": rejected,
+    }
+
+
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
     """Which contracts' own dicts `overlay_streamed_contract_fields` actually replaced with a
     freshened copy -- that function's own contract is "sparse, non-destructive... a contract
@@ -12684,7 +12746,8 @@ def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
 
 def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set,
                                            rejected_symbols: "dict[str, str] | None" = None,
-                                           desired_symbols: "set[str] | None" = None) -> None:
+                                           desired_symbols: "set[str] | None" = None, *,
+                                           daemon_available: bool = True) -> None:
     """Operator directive (2026-09-15, always-live heatmap mandate): attach per-leg (call/put)
     and per-cell aggregate STREAM state to an already-projected gamma surface's cells, in place.
 
@@ -12692,8 +12755,9 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     a cell's already-computed net_gex_1pct/etc value (project_gamma_surface/
     compute_exposures_by_strike remains the sole exposure computation). It only annotates, per
     leg, WHETHER that value is currently backed by a confirmed-fresh Schwab stream tick, so a
-    client can honestly render LIVE / PARTIAL / STALE / PENDING / REJECTED / UNAVAILABLE instead
-    of presenting every REST-cadence cell as indistinguishable from a genuinely streamed one.
+    client can honestly render LIVE / PARTIAL / STALE / PENDING / REJECTED / DAEMON_UNAVAILABLE /
+    UNAVAILABLE instead of presenting every REST-cadence cell as indistinguishable from a
+    genuinely streamed one.
 
     Per leg, `overlay_symbols` is the EXACT set _gamma_surface_contracts_with_stream_overlay (or
     refresh_gamma_surface_from_stream's own equivalent) already decided passed this cycle's
@@ -12704,28 +12768,36 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     contracts) — a symbol the vendor explicitly refused, not merely one not yet confirmed.
     `desired_symbols` (2026-09-16, operator's follow-up mandate: disclose PENDING distinctly from
     UNAVAILABLE) is `_desired_option_symbols_for_ticker`'s output — every symbol the daemon has
-    asked the vendor for, whether or not a tick has landed yet; a symbol present here but absent
-    from `streamed` has been requested and is awaiting either its first tick or an explicit vendor
-    rejection, which is a materially different fact than "nobody asked for this contract at all":
-      'live'        — this symbol's tick was fresh enough to be overlaid THIS cycle.
-      'stale'       — the symbol IS currently desired/subscribed (present in `streamed`, which
-                      _desired_stream_greeks_for_ticker already filters to symbols matching this
-                      ticker) but its tick did not pass this cycle's check.
-      'pending'     — the symbol is desired (in `desired_symbols`) but has never yet produced a
-                      tick (absent from `streamed`) and was not vendor-rejected — requested,
-                      outcome not yet known.
-      'rejected'    — the vendor explicitly refused this contract's subscription; its own error
-                      is carried on the leg so the UI can disclose WHY, not just THAT.
-      'unavailable' — no symbol for this leg (missing contract), or a symbol never desired at
-                      all — covers unsubscribed, missing, and mismatched-identity alike.
+    asked the vendor for, whether or not a tick has landed yet.
 
-    Cell aggregate, over whichever legs actually exist for this strike/expiry:
-      live        — every existing leg is 'live'.
-      partial     — at least one existing leg is 'live', not all.
-      stale       — no leg is 'live', at least one existing leg is 'stale'.
-      pending     — no leg is 'live' or 'stale', at least one existing leg is 'pending'.
-      rejected    — no leg is 'live'/'stale'/'pending', at least one existing leg is 'rejected'.
-      unavailable — every existing leg is 'unavailable' (or there are no legs at all)."""
+    Independent-review finding (2026-09-16, follow-up mandate): 'pending' used to mean only
+    "the CLIENT desires this symbol" — indistinguishable from a daemon that has silently died
+    and will never admit anything again. `daemon_available` (streaming.
+    is_option_producer_daemon_available — a FRESH producer heartbeat confirmed on this exact
+    connection, never inferred) gates 'pending': a desired symbol reads 'pending' only while the
+    daemon is confirmed alive; the identical symbol reads 'daemon_unavailable' the instant it
+    is not, which is a materially different, and more actionable, fact for an operator ("the
+    daemon needs restarting", not "this contract is merely queued behind a live one"):
+      'live'                — this symbol's tick was fresh enough to be overlaid THIS cycle.
+      'stale'                — the symbol IS currently desired/subscribed (present in
+                              `streamed`, which _desired_stream_greeks_for_ticker already
+                              filters to symbols matching this ticker) but its tick did not
+                              pass this cycle's check.
+      'pending'              — the symbol is desired, the daemon is CONFIRMED alive, and no
+                              tick/rejection has landed yet — requested, outcome not yet known.
+      'daemon_unavailable'   — the symbol is desired but the daemon's own producer heartbeat is
+                              stale or absent — the outcome cannot be pending, because nothing
+                              is currently working on it.
+      'rejected'             — the vendor explicitly refused this contract's subscription; its
+                              own error is carried on the leg so the UI can disclose WHY.
+      'unavailable'          — no symbol for this leg (missing contract), or a symbol never
+                              desired at all — covers unsubscribed, missing, and mismatched-
+                              identity alike.
+
+    Cell aggregate, over whichever legs actually exist for this strike/expiry, checked in this
+    priority order (live > partial > stale > pending > daemon_unavailable > rejected >
+    unavailable) — 'partial' requires at least one live leg, not all; every other aggregate is
+    "no leg is any higher-priority state, at least one existing leg is this one"."""
     now = time.time()
     rejected_symbols = rejected_symbols or {}
     desired_symbols = desired_symbols or set()
@@ -12749,6 +12821,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     leg_state = "stale"
                 elif sym in rejected_symbols:
                     leg_state = "rejected"
+                elif sym in desired_symbols and not daemon_available:
+                    leg_state = "daemon_unavailable"
                 elif sym in desired_symbols:
                     leg_state = "pending"
                 else:
@@ -12772,6 +12846,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                 cell_state = "stale"
             elif any(s == "pending" for s in leg_states):
                 cell_state = "pending"
+            elif any(s == "daemon_unavailable" for s in leg_states):
+                cell_state = "daemon_unavailable"
             elif any(s == "rejected" for s in leg_states):
                 cell_state = "rejected"
             else:
@@ -12784,8 +12860,9 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
 def _gamma_surface_cell_state_counts(surface: dict) -> dict:
     """Tally the per-cell 'state' _stamp_gamma_surface_cell_stream_state already attached into
     cheap surface-level counts — a client or test's one-field check instead of scanning every
-    cell. The six states are mutually exclusive per cell (see that function's docstring)."""
-    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "rejected": 0, "unavailable": 0}
+    cell. The seven states are mutually exclusive per cell (see that function's docstring)."""
+    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
+              "rejected": 0, "unavailable": 0}
     for cell in (surface.get("cells") or []):
         for col in (cell.get("stream") or []):
             if isinstance(col, dict) and col.get("state") in counts:
@@ -12794,11 +12871,26 @@ def _gamma_surface_cell_state_counts(surface: dict) -> dict:
 
 
 def _gamma_surface_coverage_summary(surface: dict) -> dict:
-    """The ONE honest coverage verdict for a projected surface (2026-09-16, audit finding
-    #6: the prior `stream_confirmed_live` field was TRUE the instant even one cell was
-    'live' out of potentially hundreds, and the UI's actual "LIVE" label never even read
-    that field — it was keyed on `source == terrain_live_cache` alone, true for nearly
-    every live-pathway surface with NO per-cell coverage requirement at all).
+    """The CANONICAL-SURFACE coverage verdict for a projected surface — every strike x
+    every expiry the server projected, not merely whichever subset the client happens to
+    be scrolled/scoped to (2026-09-16, audit finding #6; independent-review CORRECTION,
+    follow-up mandate: this field's scope must be named honestly, because it is NOT the
+    same thing as "coverage of what the operator is currently looking at").
+
+    Independent-review finding (2026-09-16): Auto/Wider/All strike-count windowing
+    (EdShell.scopeSelect) and expiry-column windowing (ed-gamma.js's own viewCols) are
+    BOTH decided entirely client-side and never communicated to the server — the server
+    has no way to know which strikes/expiries are actually rendered right now. Computing
+    `meets_live_requirement` over this whole canonical surface therefore answers "is the
+    full projected book fully live", which can be STRICTER than what the mandate's own
+    "every VISIBLE cell" language asks for (a narrower Auto-scoped view could be 100% live
+    while a distant, invisible strike this field still counts is merely 'pending'). This
+    field stays a genuinely useful, correctly-labelled canonical/diagnostic metric — the
+    CLIENT's own "LIVE" word is gated on a SEPARATE, DOM-derived visible-scope computation
+    (ed-gamma.js's `_visibleCellCoverage`, counting only the `.hcell` elements this exact
+    render painted) which this field must never be mistaken for. The `scope` key on the
+    returned dict makes that explicit in the wire payload itself, not only in this
+    docstring.
 
     Coverage is judged only over cells that HAVE a real contract identity (at least one of
     call/put resolved to an actual OSI symbol) — a strike/expiry combination with no
@@ -12811,15 +12903,19 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
     (2026-09-15, "always-live heatmap mandate"): "every visible heatmap cell must
     correspond to an exact option contract actively receiving streamed Schwab updates" —
     literally 100% of cells-with-a-contract must be 'live', not merely "at least one cell
-    is". This is the ONE authority app-wide for whether a surface may honestly be labeled
-    LIVE; no other field or source-path check may make that claim.
+    is" — over THIS field's own canonical scope; the client's visible-scope computation is
+    the actual authority for the on-screen LIVE word.
 
     `pending` (2026-09-16, operator's follow-up mandate) is counted and reported distinctly
     from `unavailable`: a cell whose contract has been REQUESTED of the vendor but has not
     yet ticked (or been rejected) is materially different from one nobody asked for at all,
     and both the mandate's coverage-disclosure requirement and a fair 'not yet live' verdict
-    need that distinction on screen, not folded into the same bucket."""
-    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "rejected": 0, "unavailable": 0}
+    need that distinction on screen, not folded into the same bucket. `daemon_unavailable`
+    (2026-09-16, follow-up mandate) is likewise counted distinctly from `pending`: the
+    capture daemon itself being unreachable is a materially different, more actionable fact
+    than a contract merely queued behind a live daemon's own poll cycle."""
+    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
+              "rejected": 0, "unavailable": 0}
     relevant = 0
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
@@ -12839,10 +12935,16 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
                 counts["unavailable"] += 1
     live_pct = round(100.0 * counts["live"] / relevant, 1) if relevant else 0.0
     return {
+        # Independent-review finding (2026-09-16): explicit, machine-readable scope
+        # disclosure, not just a docstring comment -- this whole dict describes the
+        # CANONICAL surface (every projected strike x expiry), never the client's current
+        # Auto/Wider/All-windowed view. A consumer that needs the on-screen LIVE verdict
+        # must use the client's own visible-scope computation, not this field.
+        "scope": "canonical_surface",
         "total_visible_cells": relevant,
         "live": counts["live"], "partial": counts["partial"], "stale": counts["stale"],
-        "pending": counts["pending"], "rejected": counts["rejected"],
-        "unavailable": counts["unavailable"],
+        "pending": counts["pending"], "daemon_unavailable": counts["daemon_unavailable"],
+        "rejected": counts["rejected"], "unavailable": counts["unavailable"],
         "live_pct": live_pct,
         "meets_live_requirement": relevant > 0 and counts["live"] == relevant,
     }
@@ -12963,11 +13065,19 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             _sym_to_exp[s] for s in _overlaid_syms_now
             if s in _sym_to_exp and len(_sym_to_exp[s]) == 10
         })
+        # The spot `prior_gamma_surface` (and, by construction, `prior_per_strike`/
+        # `prior_per_strike_by_expiry` — always co-written with it, in this function and in
+        # _terrain_refresh_one alike) were themselves computed/stamped against — captured
+        # ONCE here, never re-derived from an intermediate splice result further down (whose
+        # own dict has no "spot" key until the caller stamps the FINAL result). Both
+        # incremental attempts below are validated against this SAME prior identity.
+        _prior_spot = prior_gamma_surface.get("spot") if prior_gamma_surface is not None else None
         new_surface = None
         if prior_gamma_surface is not None:
             _incremental = prior_gamma_surface
             for _exp in affected_expiries:
-                _updated = project_gamma_surface_update_expiry(_incremental, overlaid, spot, _exp)
+                _updated = project_gamma_surface_update_expiry(
+                    _incremental, overlaid, spot, _exp, prior_spot=_prior_spot)
                 if _updated is None:
                     _incremental = None
                     break
@@ -12986,7 +13096,8 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         new_per_strike = None
         new_per_strike_by_expiry = None
         _incremental_ps = _per_strike_view_update_expiry(
-            prior_per_strike_by_expiry, prior_per_strike, overlaid, spot, affected_expiries)
+            prior_per_strike_by_expiry, prior_per_strike, overlaid, spot, affected_expiries,
+            prior_spot=_prior_spot)
         if _incremental_ps is not None:
             new_per_strike, new_per_strike_by_expiry = _incremental_ps
         if new_per_strike is None:
@@ -13007,11 +13118,13 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             # the SAME per-cell stream-state stamp as the REST cycle (_terrain_refresh_one) --
             # this is the path a genuinely fresh tick actually takes, so it is the one MOST
             # likely to move a cell from 'stale'/'unavailable' into 'live'.
-            from app.options.order_flow.streaming import read_producer_rejected_option_contracts
+            from app.options.order_flow.streaming import (
+                read_producer_rejected_option_contracts, is_option_producer_daemon_available)
             _stamp_gamma_surface_cell_stream_state(
                 new_surface, streamed, set(_overlaid_syms_now),
                 read_producer_rejected_option_contracts(),
-                set(_desired_option_symbols_for_ticker(tk)))
+                set(_desired_option_symbols_for_ticker(tk)),
+                daemon_available=is_option_producer_daemon_available())
             try:
                 # Best-effort enhancement -- a bug here must never block publishing an
                 # otherwise-genuinely-fresh eager refresh.
@@ -13228,11 +13341,13 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     # EVERY cycle, even when _overlay_n == 0 -- a cell must still be told apart
                     # as 'stale' (desired but not fresh) vs 'unavailable' (never desired) even
                     # when nothing was fresh enough to overlay this particular cycle.
-                    from app.options.order_flow.streaming import read_producer_rejected_option_contracts
+                    from app.options.order_flow.streaming import (
+                        read_producer_rejected_option_contracts, is_option_producer_daemon_available)
                     _stamp_gamma_surface_cell_stream_state(
                         payload["_gamma_surface"], _desired_stream_greeks_for_ticker(tk),
                         set(_overlay_syms), read_producer_rejected_option_contracts(),
-                        set(_desired_option_symbols_for_ticker(tk)))
+                        set(_desired_option_symbols_for_ticker(tk)),
+                        daemon_available=is_option_producer_daemon_available())
                     try:
                         # Best-effort enhancement, like the overlay above -- a bug here must
                         # never take down an otherwise-freshly-computed, valid surface.
@@ -15210,7 +15325,8 @@ def _gamma_surface_unavailable_reason(gamma_available: bool, cells_with_oi_but_i
 
 
 def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: float,
-                                        target_expiry: str) -> "dict | None":
+                                        target_expiry: str, *,
+                                        prior_spot: "float | None") -> "dict | None":
     """Incremental sibling of project_gamma_surface (2026-09-16, audit finding #2: a
     streamed tick touches contracts belonging to exactly ONE expiry — an option symbol
     encodes its own expiry — but the eager refresh path used to re-run the full
@@ -15229,14 +15345,30 @@ def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: 
     unchanged contract list never changes which contracts exist, only some of their
     field values, so those chain-shape counts cannot have moved.
 
+    Independent-review finding (2026-09-16, follow-up mandate): net_gex_1pct/net_dex_
+    dollars/net_oi_dollars/vanna are ALL functions of spot (gamma/delta/OI scaled by spot
+    or spot², and vanna a genuinely non-separable closed-form function of spot via
+    Black-Scholes d1/d2) — for EVERY expiry, not only `target_expiry`. Splicing in only
+    the touched expiry's fresh slice while leaving every other column's cells computed
+    against a STALE spot would silently show a mix of dollar values priced off different
+    underlying prices the instant spot moves between two streamed ticks. `prior_spot` is
+    the exact spot `prior_surface` was itself computed/stamped against (the caller's own
+    cached record of it, never re-derived here); incremental reuse is safe ONLY when it is
+    IDENTICAL to `spot` (this is an identity check, not a within-tolerance one — the
+    slightest genuine spot movement invalidates every untouched expiry's dollar values,
+    not just the touched one). `prior_spot=None` (unknown/never recorded) also forces a
+    full recompute, fail-closed.
+
     Returns None — meaning "fall back to a full project_gamma_surface call" — whenever
-    incremental splicing cannot be done SAFELY: `target_expiry` is not an existing column
-    in `prior_surface` (a genuinely new expiry appearing must re-derive the sorted column
-    list), or the recomputed slice contains a strike `prior_surface` never carried (a new
-    strike appearing must re-derive the sorted row list). Both are rare — a REST cycle
-    within the last ~60s already re-derived the current strike/expiry set — and never
-    silently produce a shape-mismatched surface; the caller always has the safe full
-    recompute to fall back to."""
+    incremental splicing cannot be done SAFELY: spot has moved since `prior_surface` was
+    computed (see above), `target_expiry` is not an existing column in `prior_surface` (a
+    genuinely new expiry appearing must re-derive the sorted column list), or the
+    recomputed slice contains a strike `prior_surface` never carried (a new strike
+    appearing must re-derive the sorted row list). All three are handled the identical
+    way — never silently producing a shape-mismatched or stale-spot surface; the caller
+    always has the safe full recompute to fall back to."""
+    if prior_spot is None or float(prior_spot) != float(spot):
+        return None
     expirations = prior_surface.get("expirations") or []
     col_idx = next((i for i, e in enumerate(expirations) if e.get("expiry") == target_expiry), None)
     if col_idx is None:
@@ -15383,6 +15515,15 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         # claim: 100% of cells carrying a real contract identity, not source-path identity or
         # one live cell.
         _coverage = _gamma_surface_coverage_summary(surf)
+        try:
+            # Independent-review finding (2026-09-16, follow-up mandate item 1): "expose the
+            # exact admitted, active, pending and rejected contracts" — a symbol-level
+            # accounting, distinct from the per-cell disclosure above. Best-effort: a
+            # diagnostic field must never take down the surface it is attached to.
+            _contract_admission = _option_contract_admission_summary(tk)
+        except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
+            log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
+            _contract_admission = None
         return JSONResponse({
             "ticker": tk, "symbol": tk, "available": _gamma_available,
             # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
@@ -15392,6 +15533,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "source": "terrain_live_cache", "live": True, "stale": stale,
             "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
             "stream_coverage": _coverage,
+            "contract_admission": _contract_admission,
             "degraded": live.get("levels_stale_reason") if stale else None,
             # ONE spot faucet (operator directive, 2026-09-15): prefer the spot stamped
             # directly ON THIS SURFACE (by _terrain_refresh_one's REST cycle OR the eager
@@ -15487,8 +15629,10 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             # 'pending' -- the caller is honestly waiting on the vendor, not merely looking at a
             # never-subscribed contract), consistent with "REST may bootstrap or recover the
             # surface, but it cannot satisfy LIVE".
+            from app.options.order_flow.streaming import is_option_producer_daemon_available
             _stamp_gamma_surface_cell_stream_state(
-                surface, {}, set(), None, set(_desired_option_symbols_for_ticker(tk)))
+                surface, {}, set(), None, set(_desired_option_symbols_for_ticker(tk)),
+                daemon_available=is_option_producer_daemon_available())
             _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,

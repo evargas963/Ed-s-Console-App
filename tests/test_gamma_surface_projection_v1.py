@@ -381,7 +381,7 @@ def test_incremental_update_matches_a_full_recompute_for_the_changed_expiry(monk
     chain = _chain()
     prior = project_gamma_surface(chain, SPOT)
     full = project_gamma_surface(chain, SPOT)   # independent second full computation
-    updated = project_gamma_surface_update_expiry(prior, chain, SPOT, E1)
+    updated = project_gamma_surface_update_expiry(prior, chain, SPOT, E1, prior_spot=SPOT)
     assert updated is not None, "a real two-expiry union surface must never force a fallback"
     e1_col = [i for i, e in enumerate(full["expirations"]) if e["expiry"] == E1][0]
     for full_row, upd_row in zip(full["cells"], updated["cells"]):
@@ -402,7 +402,7 @@ def test_incremental_update_leaves_the_other_expirys_cells_byte_identical_object
     never re-touched, let alone recomputed, when only E1 changed."""
     chain = _chain()
     prior = project_gamma_surface(chain, SPOT)
-    updated = project_gamma_surface_update_expiry(prior, chain, SPOT, E1)
+    updated = project_gamma_surface_update_expiry(prior, chain, SPOT, E1, prior_spot=SPOT)
     assert updated is not None
     e1_strikes = {float(ct["strikePrice"]) for ct in _slice(chain, E1)}
     prior_by_strike = {row["strike"]: row for row in prior["cells"]}
@@ -420,7 +420,8 @@ def test_incremental_update_leaves_the_other_expirys_cells_byte_identical_object
 def test_incremental_update_falls_back_to_none_for_an_unknown_expiry():
     chain = _chain()
     prior = project_gamma_surface(chain, SPOT)
-    assert project_gamma_surface_update_expiry(prior, chain, SPOT, "1999-01-01") is None
+    assert project_gamma_surface_update_expiry(
+        prior, chain, SPOT, "1999-01-01", prior_spot=SPOT) is None
 
 
 def test_incremental_update_falls_back_to_none_when_prior_surface_lacks_the_strike():
@@ -437,7 +438,26 @@ def test_incremental_update_falls_back_to_none_when_prior_surface_lacks_the_stri
     prior = project_gamma_surface(narrow_chain, SPOT)
     assert target_strike not in prior["strikes"], (
         "test setup must actually remove the strike, or this proves nothing")
-    assert project_gamma_surface_update_expiry(prior, chain, SPOT, E1) is None
+    assert project_gamma_surface_update_expiry(prior, chain, SPOT, E1, prior_spot=SPOT) is None
+
+
+def test_incremental_update_falls_back_to_none_when_spot_has_moved():
+    """Independent-review finding (2026-09-16, follow-up mandate): net_gex_1pct/net_dex_
+    dollars/vanna are functions of spot for EVERY expiry, not only the one a streamed tick
+    touched. Splicing in a fresh E1 slice (priced at the NEW spot) while leaving E2's cells
+    at their OLD spot's values would silently show two columns priced off different
+    underlying prices. `prior_spot` != the call's own `spot` must force a full recompute,
+    never a partial splice, regardless of how small the spot move is (identity check, not a
+    tolerance)."""
+    chain = _chain()
+    prior = project_gamma_surface(chain, SPOT)
+    moved_spot = SPOT + 0.01   # the smallest possible genuine move -- proves this is an
+    # identity check, not a magnitude-gated tolerance that would let a tiny move slip through.
+    assert project_gamma_surface_update_expiry(
+        prior, chain, moved_spot, E1, prior_spot=SPOT) is None
+    # prior_spot=None (unknown/never recorded) must fail closed identically.
+    assert project_gamma_surface_update_expiry(
+        prior, chain, SPOT, E1, prior_spot=None) is None
 
 
 # ---- per-strike 'all' aggregate incrementality (2026-09-16, operator follow-up mandate:
@@ -478,7 +498,8 @@ def test_per_strike_view_update_expiry_matches_a_full_recompute_for_the_changed_
     by_expiry: dict = {}
     prior_view = _per_strike_view_from_contracts(chain, SPOT, by_expiry_out=by_expiry)
     full_view = _per_strike_view_from_contracts(chain, SPOT)   # independent second full pass
-    result = _per_strike_view_update_expiry(by_expiry, prior_view, chain, SPOT, [E1])
+    result = _per_strike_view_update_expiry(
+        by_expiry, prior_view, chain, SPOT, [E1], prior_spot=SPOT)
     assert result is not None, "a real two-expiry union chain must never force a fallback"
     updated_view, updated_by_expiry = result
     assert updated_view["all"] == full_view["all"], (
@@ -495,12 +516,31 @@ def test_per_strike_view_update_expiry_matches_a_full_recompute_for_the_changed_
 def test_per_strike_view_update_expiry_falls_back_to_none_with_no_prior_cache():
     chain = _chain()
     prior_view = _per_strike_view_from_contracts(chain, SPOT)
-    assert _per_strike_view_update_expiry(None, prior_view, chain, SPOT, [E1]) is None
-    assert _per_strike_view_update_expiry({}, prior_view, chain, SPOT, [E1]) is None
+    assert _per_strike_view_update_expiry(
+        None, prior_view, chain, SPOT, [E1], prior_spot=SPOT) is None
+    assert _per_strike_view_update_expiry(
+        {}, prior_view, chain, SPOT, [E1], prior_spot=SPOT) is None
 
 
 def test_per_strike_view_update_expiry_falls_back_to_none_with_no_affected_expiries():
     chain = _chain()
     by_expiry: dict = {}
     prior_view = _per_strike_view_from_contracts(chain, SPOT, by_expiry_out=by_expiry)
-    assert _per_strike_view_update_expiry(by_expiry, prior_view, chain, SPOT, []) is None
+    assert _per_strike_view_update_expiry(
+        by_expiry, prior_view, chain, SPOT, [], prior_spot=SPOT) is None
+
+
+def test_per_strike_view_update_expiry_falls_back_to_none_when_spot_has_moved():
+    """Independent-review finding (2026-09-16, follow-up mandate): the per-strike 'all'
+    aggregate is as spot-dependent as the surface itself, for every expiry -- a moved spot
+    must force a full recompute, never a partial merge of a fresh E1 slice against E2's
+    stale-spot cached contribution. Identity check, not a tolerance: even the smallest
+    genuine move must be caught."""
+    chain = _chain()
+    by_expiry: dict = {}
+    prior_view = _per_strike_view_from_contracts(chain, SPOT, by_expiry_out=by_expiry)
+    moved_spot = SPOT + 0.01
+    assert _per_strike_view_update_expiry(
+        by_expiry, prior_view, chain, moved_spot, [E1], prior_spot=SPOT) is None
+    assert _per_strike_view_update_expiry(
+        by_expiry, prior_view, chain, SPOT, [E1], prior_spot=None) is None
