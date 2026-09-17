@@ -85,6 +85,8 @@ const cells = strikes.map((k, i) => ({ strike: k, gex: [1000 * (i + 1)],
   contracts: [{ call: 'SPY_C_' + k, put: 'SPY_P_' + k }] }));
 const surface = {
   available: true,
+  current_spot: 764,
+  current_spot_state: 'live',
   spot: 764,
   strikes,
   cells,
@@ -115,7 +117,7 @@ for (const [, strikeStr, gexStr] of rows) {
 // scopeSelect output flows through, so this proves the render loop's own reversal, not a
 // scopeSelect-specific behaviour.
 const host2 = makeHost();
-G.renderSurface(host2, { ...surface, strikes: [100, 200, 300], cells: [
+G.renderSurface(host2, { ...surface, current_spot: 200, current_spot_state: 'live', strikes: [100, 200, 300], cells: [
   { strike: 100, gex: [1], contracts: [{ call: 'C100', put: 'P100' }] },
   { strike: 200, gex: [2], contracts: [{ call: 'C200', put: 'P200' }] },
   { strike: 300, gex: [3], contracts: [{ call: 'C300', put: 'P300' }] },
@@ -144,18 +146,35 @@ assert.ok(rendered.length > 0, 'live surface with contracts must demand them');
 // Missing contract arrays fail closed — no empty successful state.
 assert.throws(() => G.selectLiveHeatmap({
   available: true, source: 'terrain_live_cache',
+  current_spot: 100, current_spot_state: 'live',
   strikes: [100], expirations: [{ expiry: '2026-09-11', expired: false }],
   cells: [{ strike: 100, gex: [1] }],
 }, 'all', null, null, null), /contracts missing/);
+assert.throws(() => G.selectLiveHeatmap({
+  available: true, source: 'terrain_live_cache', spot: 999,
+  strikes: [100], expirations: [{ expiry: '2026-09-11', expired: false }],
+  cells: [{ strike: 100, gex: [1], contracts: [{ call: 'C', put: 'P' }] }],
+}, 'all', null, null, null), /no live selected-contract set/);
+const noSpotHost = makeHost();
+G.renderSurface(noSpotHost, {
+  available: true, source: 'terrain_live_cache', live: true, stale: false,
+  spot: 999, strikes: [100],
+  expirations: [{ expiry: '2026-09-11', dte: 1, expired: false }],
+  cells: [{ strike: 100, gex: [500000], contracts: [{ call: 'C100', put: 'P100' }] }],
+});
+assert.ok(noSpotHost.innerHTML.includes('UNAVAILABLE'),
+  'missing current_spot must fail closed even when surface.spot is present');
+assert.ok(!noSpotHost.innerHTML.includes('999'),
+  'surface.spot must never be substituted for current_spot');
 G.renderSurface(makeHost(), { available: false, source: 'unavailable' });
 assert.throws(() => G.heatmapVisibleContracts(), /no selected-contract set/);
 assert.throws(() => G.heatmapVisibleContracts(undefined, { idx: [0] }, [0]), /cells array required/);
 
-// An expiry column with contracts but no GEX must stay on the grid and read NO OI,
-// not look like a missing paint.
+// An expiry column with contracts but no GEX must stay on the grid. Null GEX is not NO OI.
 const emptyColHost = makeHost();
 G.renderSurface(emptyColHost, {
   available: true, source: 'terrain_live_cache', live: true, stale: false,
+  current_spot: 100, current_spot_state: 'live',
   spot: 100, strikes: [100, 101],
   expirations: [
     { expiry: '2026-09-18', dte: 1, expired: false },
@@ -166,10 +185,41 @@ G.renderSurface(emptyColHost, {
     { strike: 101, gex: [-200000, null], contracts: [{ call: 'C101a', put: 'P101a' }, { call: 'C101b', put: 'P101b' }] },
   ],
 });
-assert.ok(emptyColHost.innerHTML.includes('NO OI'), 'all-null expiry column must disclose NO OI');
+assert.ok(!emptyColHost.innerHTML.includes('NO OI'), 'null GEX must not produce a NO OI label');
+assert.ok(emptyColHost.innerHTML.includes('OI UNAVAILABLE'),
+  'listed contracts with no OI field must read OI UNAVAILABLE');
 assert.ok((emptyColHost.innerHTML.match(/data-expiry="2026-10-01"/g) || []).length === 2,
   'all-null expiry column must still render every row');
-assert.ok(emptyColHost.innerHTML.includes('2 of 4 cells have no usable OI'),
-  'empty-cell count must be disclosed');
+
+const statesHost = makeHost();
+G.renderSurface(statesHost, {
+  available: true, source: 'terrain_live_cache', live: true, stale: false,
+  current_spot: 100, current_spot_state: 'live',
+  strikes: [90, 100, 110],
+  expirations: [{ expiry: '2026-09-18', dte: 1, expired: false }],
+  cells: [
+    { strike: 90, gex: [null], contracts: [{ call: null, put: null }],
+      value_states: ['no_contract'],
+      stream: [{ state: 'unavailable' }] },
+    { strike: 100, gex: [0], oi: [{ call: 0, put: 0 }],
+      contracts: [{ call: 'C100', put: 'P100' }],
+      value_states: ['zero_oi'],
+      stream: [{ state: 'pending' }] },
+    { strike: 110, gex: [null], oi: [{ call: 40, put: 20 }],
+      contracts: [{ call: 'C110', put: 'P110' }],
+      value_states: ['gamma_unavailable'],
+      stream: [{ state: 'rejected', call: { rejected_reason: 'vendor' } }] },
+  ],
+});
+assert.ok(statesHost.innerHTML.includes('NO CONTRACT'), 'no listed contract stays NO CONTRACT');
+assert.ok(statesHost.innerHTML.includes('$0'), 'zero OI must render numerical zero, not an em dash');
+assert.ok(statesHost.innerHTML.includes('GAMMA UNAVAILABLE'), 'missing gamma stays GAMMA UNAVAILABLE');
+assert.ok(statesHost.innerHTML.includes('data-cell-state="pending"'), 'pending stream state stays distinct');
+assert.ok(statesHost.innerHTML.includes('data-cell-state="rejected"'), 'rejected stream state stays distinct');
+assert.ok(!statesHost.innerHTML.includes('>—<'), 'em dash must not stand in for a proven zero');
+assert.strictEqual(G.classifyHeatmapCell({ gex: [null], contracts: [{ call: 'C', put: 'P' }] }, 0),
+  'oi_unavailable', 'null GEX with listed contracts is not NO CONTRACT');
+assert.strictEqual(G.canonicalCurrentSpot({ spot: 12, current_spot: 34 }), 34);
+assert.ok(Number.isNaN(G.canonicalCurrentSpot({ spot: 12 })), 'absent current_spot is not surface.spot');
 
 console.log('ed_gamma: all assertions passed');

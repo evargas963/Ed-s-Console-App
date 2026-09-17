@@ -10,7 +10,7 @@ const { test, expect } = require('@playwright/test');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
 function surfaceFor(tk, spot) {
-  return { ticker: tk, symbol: tk, available: true, spot: spot, source: 'terrain_live_cache',
+  return { ticker: tk, symbol: tk, available: true, current_spot: spot, current_spot_state: 'live', spot: spot, source: 'terrain_live_cache',
     live: true, stale: false, age_sec: 5, chain_basis: 'full', complete: false,
     expirations: EXPS.map(function (e, i) { return { expiry: e, dte: [2, 3, 9][i] }; }),
     strikes: [spot - 2, spot, spot + 2],

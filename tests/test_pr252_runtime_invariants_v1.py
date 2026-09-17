@@ -150,3 +150,105 @@ def test_runtime_inventory_cannot_mark_failed_surfaces_live():
     assert inv["runtime_summary"]["LIVE"] == 0
     assert inv["api_surfaces"]["/api/terrain/scorecard"]["status"] != "NOT_PROVEN"
     assert inv["api_surfaces"]["/api/vol-observability"]["status"] != "NOT_PROVEN"
+
+
+def _cell_ct(strike, side, oi, *, gamma=0.04, delta=0.5, exp="2026-09-18T20:00:00.000+00:00"):
+    # institutional-synthetic-ok: adversarial cell-state proof needs controlled OI/gamma.
+    payload = {
+        "strikePrice": strike, "putCall": side, "multiplier": 100,
+        "delta": delta if side == "CALL" else -abs(delta), "gamma": gamma,
+        "volatility": 20.0, "totalVolume": 0, "bidSize": 1, "askSize": 1,
+        "daysToExpiration": 5, "expirationDate": exp,
+        "symbol": f"TEST  260918{'C' if side == 'CALL' else 'P'}{int(strike * 1000):08d}",
+    }
+    if oi is not None:
+        payload["openInterest"] = oi
+    return payload
+
+
+def test_current_spot_absent_never_reads_surface_spot():
+    src = (ROOT / "static" / "js" / "ed-gamma.js").read_text(encoding="utf-8")
+    assert "surface.current_spot != null ? surface.current_spot : surface.spot" not in src
+    assert "canonicalCurrentSpot(surface)" in src
+    assert "current LAST_PRICE is UNAVAILABLE" in src
+    import tools.spot_binding_lock as L
+    files = {"static/js/ed-gamma.js": src}
+    assert L.ed_js_dual_spot_fallback_violations(files) == []
+
+
+def test_cell_states_are_distinct_and_reconcile_exactly():
+    from server import (
+        VALUE_STATE_COMPUTED,
+        VALUE_STATE_GAMMA_UNAVAILABLE,
+        VALUE_STATE_NO_CONTRACT,
+        VALUE_STATE_OI_UNAVAILABLE,
+        VALUE_STATE_ZERO_OI,
+        project_gamma_surface,
+    )
+
+    exp_a = "2026-09-18T20:00:00.000+00:00"
+    exp_b = "2026-10-16T20:00:00.000+00:00"
+    chain = [
+        _cell_ct(95.0, "CALL", 0, exp=exp_a), _cell_ct(95.0, "PUT", 0, exp=exp_a),
+        _cell_ct(100.0, "CALL", None, exp=exp_a), _cell_ct(100.0, "PUT", None, exp=exp_a),
+        _cell_ct(105.0, "CALL", 400, gamma=None, delta=-1.0, exp=exp_a),
+        _cell_ct(105.0, "PUT", 400, gamma=None, delta=-1.0, exp=exp_a),
+        _cell_ct(100.0, "CALL", 500, exp=exp_b), _cell_ct(100.0, "PUT", 500, exp=exp_b),
+    ]
+    surface = project_gamma_surface(chain, 100.0)
+    by = {(row["strike"], i): row["value_states"][i]
+          for row in surface["cells"]
+          for i, _exp in enumerate(surface["expirations"])}
+    exp_index = {e["expiry"]: i for i, e in enumerate(surface["expirations"])}
+    ia, ib = exp_index["2026-09-18"], exp_index["2026-10-16"]
+    assert by[(95.0, ia)] == VALUE_STATE_ZERO_OI
+    assert by[(100.0, ia)] == VALUE_STATE_OI_UNAVAILABLE
+    assert by[(105.0, ia)] == VALUE_STATE_GAMMA_UNAVAILABLE
+    assert by[(100.0, ib)] == VALUE_STATE_COMPUTED
+    assert by[(95.0, ib)] == VALUE_STATE_NO_CONTRACT
+    assert by[(105.0, ib)] == VALUE_STATE_NO_CONTRACT
+    row95 = [r for r in surface["cells"] if r["strike"] == 95.0][0]
+    assert row95["gex"][ia] == 0
+    counts = surface["value_state_counts"]
+    assert counts["total"] == surface["cells_total"] == 6
+    assert counts["zero_oi"] == 1
+    assert counts["oi_unavailable"] == 1
+    assert counts["gamma_unavailable"] == 1
+    assert counts["computed"] == 1
+    assert counts["no_contract"] == 2
+    assert sum(counts[k] for k in (
+        "no_contract", "zero_oi", "oi_unavailable", "gamma_unavailable", "computed"
+    )) == 6
+
+
+def test_null_gex_alone_is_not_no_contract_or_no_oi():
+    from server import classify_gamma_cell_value_state, VALUE_STATE_NO_CONTRACT
+    state = classify_gamma_cell_value_state(
+        {"has_oi": False, "oi_absent": True, "call_oi": None, "put_oi": None,
+         "has_valid_gamma": False},
+        {"call": "C100", "put": "P100"},
+    )
+    assert state == "oi_unavailable"
+    assert state != VALUE_STATE_NO_CONTRACT
+    assert state != "no_oi"
+
+
+def test_selected_contracts_equal_listed_cells():
+    import server
+    from server import project_gamma_surface
+
+    chain = [
+        _cell_ct(100.0, "CALL", 10), _cell_ct(100.0, "PUT", 0),
+        _cell_ct(105.0, "CALL", None),
+    ]
+    surface = project_gamma_surface(chain, 100.0)
+    selected = server._selected_contracts_from_surface(surface)
+    listed = []
+    for row in surface["cells"]:
+        for pair in row["contracts"]:
+            if pair.get("call"):
+                listed.append(pair["call"])
+            if pair.get("put"):
+                listed.append(pair["put"])
+    assert selected == listed
+    assert selected, "listed contracts must be demanded"

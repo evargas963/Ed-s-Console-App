@@ -260,8 +260,90 @@
   }
 
   // ---- render the grid from a canonical surface payload (no math) ----
+  var VALUE_NO_CONTRACT = 'no_contract';
+  var VALUE_ZERO_OI = 'zero_oi';
+  var VALUE_OI_UNAVAILABLE = 'oi_unavailable';
+  var VALUE_GAMMA_UNAVAILABLE = 'gamma_unavailable';
+  var VALUE_COMPUTED = 'computed';
+  var VALUE_LABEL = {
+    no_contract: 'NO CONTRACT',
+    zero_oi: 'ZERO OI',
+    oi_unavailable: 'OI UNAVAILABLE',
+    gamma_unavailable: 'GAMMA UNAVAILABLE',
+    computed: 'COMPUTED'
+  };
+
+  function canonicalCurrentSpot(surface) {
+    if (!surface || !Object.prototype.hasOwnProperty.call(surface, 'current_spot')) return NaN;
+    if (surface.current_spot == null) return NaN;
+    var n = Number(surface.current_spot);
+    return isFinite(n) ? n : NaN;
+  }
+  function currentSpotUnusable(surface) {
+    if (!isFinite(canonicalCurrentSpot(surface))) return true;
+    var st = surface.current_spot_state;
+    return st === 'stale' || st === 'unavailable';
+  }
+  function classifyHeatmapCell(row, colIdx) {
+    if (row && Array.isArray(row.value_states) && row.value_states[colIdx] != null) {
+      return String(row.value_states[colIdx]);
+    }
+    var contracts = (row && row.contracts && row.contracts[colIdx]) || {};
+    var listed = !!(contracts.call || contracts.put);
+    if (!listed) return VALUE_NO_CONTRACT;
+    var oi = (row && row.oi && row.oi[colIdx]) || null;
+    var gex = row && row.gex ? row.gex[colIdx] : null;
+    var gexNum = (gex != null && !isNaN(Number(gex)));
+    if (oi && typeof oi === 'object') {
+      var sides = [];
+      if (contracts.call) sides.push(oi.call);
+      if (contracts.put) sides.push(oi.put);
+      if (sides.length && sides.every(function (v) { return v == null; })) return VALUE_OI_UNAVAILABLE;
+      if (sides.length && sides.every(function (v) { return v != null && Number(v) === 0; })) return VALUE_ZERO_OI;
+      if (sides.some(function (v) { return v == null; }) &&
+          sides.every(function (v) { return v == null || Number(v) === 0; })) {
+        return VALUE_OI_UNAVAILABLE;
+      }
+      if (!gexNum && sides.some(function (v) { return v != null && Number(v) > 0; })) {
+        return VALUE_GAMMA_UNAVAILABLE;
+      }
+    }
+    if (gexNum) return VALUE_COMPUTED;
+    return VALUE_OI_UNAVAILABLE;
+  }
+  function tallyVisibleValueStates(cells, rowIdxs, colIdxs) {
+    var counts = {
+      no_contract: 0, zero_oi: 0, oi_unavailable: 0, gamma_unavailable: 0, computed: 0
+    };
+    (rowIdxs || []).forEach(function (i) {
+      (colIdxs || []).forEach(function (j) {
+        var st = classifyHeatmapCell((cells || [])[i], j);
+        if (!Object.prototype.hasOwnProperty.call(counts, st)) st = VALUE_NO_CONTRACT;
+        counts[st] += 1;
+      });
+    });
+    counts.total = counts.no_contract + counts.zero_oi + counts.oi_unavailable +
+      counts.gamma_unavailable + counts.computed;
+    return counts;
+  }
+  function columnValueLabel(cells, colIdx, dteText) {
+    var counts = { no_contract: 0, zero_oi: 0, oi_unavailable: 0, gamma_unavailable: 0, computed: 0 };
+    (cells || []).forEach(function (row) {
+      var st = classifyHeatmapCell(row, colIdx);
+      if (Object.prototype.hasOwnProperty.call(counts, st)) counts[st] += 1;
+    });
+    var listed = counts.zero_oi + counts.oi_unavailable + counts.gamma_unavailable + counts.computed;
+    if (listed === 0) return 'NO CONTRACT';
+    if (counts.computed > 0) return dteText;
+    if (counts.zero_oi === listed) return 'ZERO OI';
+    if (counts.oi_unavailable === listed) return 'OI UNAVAILABLE';
+    if (counts.gamma_unavailable === listed) return 'GAMMA UNAVAILABLE';
+    return dteText || 'MIXED';
+  }
+
   function _currentHeatmapUnusable(surface) {
-    return !surface || surface.available === false || surface.source === 'banked_morning_reference';
+    return !surface || surface.available === false || surface.source === 'banked_morning_reference'
+      || currentSpotUnusable(surface);
   }
 
   function selectLiveHeatmap(surface, scopeMode, host, expFilter, panAnchor) {
@@ -286,8 +368,7 @@
     var ES = (typeof window !== 'undefined' && window.EdShell) ? window.EdShell : null;
     var prev = ES && ES.getState ? ES.getState().scope : null;
     if (ES && ES.setScope && scopeMode) ES.setScope(scopeMode);
-    var spot = surface.current_spot != null ? surface.current_spot : surface.spot;
-    spot = spot == null ? NaN : Number(spot);
+    var spot = canonicalCurrentSpot(surface);
     var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, panAnchor != null ? panAnchor : spot)
       : { idx: strikes.map(function (_s, i) { return i; }), shown: strikes.length, total: strikes.length };
     var scope = scopeMode || ((ES && ES.getScope) ? ES.getScope() : 'auto');
@@ -331,6 +412,13 @@
         available: false, live: false, stale: true, source: 'unavailable',
         warming: surface.warming, requested: surface.requested, on_board: surface.on_board,
         reason: 'historical morning Gamma is not the current heatmap — use Exposure history'
+      };
+    } else if (surface && surface.available !== false && currentSpotUnusable(surface)) {
+      surface = {
+        ticker: surface.ticker, symbol: surface.symbol || surface.ticker,
+        available: false, live: false, stale: true, source: 'unavailable',
+        warming: surface.warming, requested: surface.requested, on_board: surface.on_board,
+        reason: 'current LAST_PRICE is UNAVAILABLE — heatmap will not substitute surface.spot'
       };
     }
     if (!surface || surface.available === false) {
@@ -591,24 +679,20 @@
       // above), so a column's tooltip only ever distinguishes expired vs the real
       // accept/observed/rejected outcome (demandTitle), never a client-guessed capacity cut.
       var streamed = !!demandColSet[j];
-      var colHasGex = cells.some(function (row) {
-        var mv = _measureRow(row, measure)[j];
-        return mv != null && !isNaN(mv);
-      });
-      var dte = expired ? 'EXPIRED' : !colHasGex ? 'NO OI'
-        : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var dteText = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var dte = expired ? 'EXPIRED' : columnValueLabel(cells, j, dteText);
       var title = expired
         ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
-        : !colHasGex
-          ? 'this expiration is listed but has no usable open interest — GEX cannot be computed; not a missing paint'
+        : (dte !== dteText && dte !== 'EXPIRED')
+          ? ('column classified from cell states as ' + dte + ' — not inferred from null GEX')
         : demandTitle(streamed, j);
       tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') +
-        (!colHasGex && !expired ? ' empty-oi' : '') + (streamed ? ' stream-demand' : '') + '"' +
+        (dte !== dteText && !expired ? ' empty-oi' : '') + (streamed ? ' stream-demand' : '') + '"' +
         ' data-col="' + j + '" title="' + escapeHtml(title) + '"' +
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
-    var emptyShown = 0, valueShown = 0;
+    var valueStateCounts = { no_contract: 0, zero_oi: 0, oi_unavailable: 0, gamma_unavailable: 0, computed: 0 };
     // Just-updated flash (state-authority review, 2026-09-12): a cell whose value
     // genuinely differs from what THIS SAME (strike, expiry) showed a moment ago gets a
     // one-shot CSS highlight (see .hcell.flash-update in console.html) -- the ONLY signal
@@ -635,7 +719,11 @@
         // tooling that read a heatmap cell's value -- it now holds whichever measure is
         // selected (gex/dex/oi/volume), not literally GEX specifically.
         var v = mrow[j2];
-        if (v == null || isNaN(v)) emptyShown += 1; else valueShown += 1;
+        var valueState = classifyHeatmapCell(row, j2);
+        if (Object.prototype.hasOwnProperty.call(valueStateCounts, valueState)) {
+          valueStateCounts[valueState] += 1;
+        }
+        if (valueState === VALUE_ZERO_OI) v = 0;
         // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: "Always
         // display the best valid data available... Never blank valid data, narrow the view,
         // or choose what I am allowed to inspect." `row.stream[j2]` (server.py's
@@ -677,23 +765,25 @@
               (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
           : '';
+        var valueLabel = VALUE_LABEL[valueState] || valueState;
+        var cellText = (valueState === VALUE_COMPUTED || valueState === VALUE_ZERO_OI)
+          ? formatMeasureValue(v, measure)
+          : valueLabel;
+        var valueTitle = valueState === VALUE_ZERO_OI ? 'ZERO OI: authoritative open interest is 0; GEX is the computed $0'
+          : valueState === VALUE_NO_CONTRACT ? 'NO CONTRACT: this strike is not listed on this expiry'
+          : valueState === VALUE_OI_UNAVAILABLE ? 'OI UNAVAILABLE: a listed contract is missing open interest'
+          : valueState === VALUE_GAMMA_UNAVAILABLE ? 'GAMMA UNAVAILABLE: open interest is present but Gamma is unusable'
+          : '';
+        var combinedTitle = [valueTitle, stateTitle].filter(Boolean).join(' · ');
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
           (justChanged ? ' flash-update' : '') + (liveState ? ' state-' + liveState : '') +
+          ' value-' + valueState +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
-          (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
+          'data-value-state="' + valueState + '" ' +
+          (combinedTitle ? 'title="' + escapeHtml(combinedTitle) + '" ' : '') +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          // Independent-review finding, REPRODUCED (live SPX, 2026-09-14): a cell with no
-          // usable OI rendered as a BLANK td, visually indistinguishable from "still loading"
-          // or "outside the streamed window" -- an operator scanning the grid had no way to
-          // tell "no data here" from "nothing painted yet". A blank cell also hid the exact
-          // defect this session found (Schwab's wide multi-expiry chain returning OI=0 for
-          // every SPX contract): the grid looked merely quiet, not wrong. An explicit em dash
-          // makes absence a visible, deliberate statement -- reserved for a cell with NO valid
-          // computed value at all (has_oi=false), never for one that merely is not currently
-          // confirmed live-streamed (that cell still shows its real, valid, honestly-labelled
-          // snapshot value, per the operator's final directive above).
-          (st.empty ? '—' : formatMeasureValue(v, measure)) + '</td>';
+          cellText + '</td>';
       }
       tbl += '</tr>';
     });
@@ -704,9 +794,14 @@
     // itself (demandCols above) -- every visible column is demanded in full; per-cell
     // live/partial/stale/unavailable disclosure (the render loop above) is now the honest
     // signal for what is and is not actually confirmed live, not a client-guessed ceiling.
+    var stateBits = [];
+    if (valueStateCounts.no_contract) stateBits.push(valueStateCounts.no_contract + ' NO CONTRACT');
+    if (valueStateCounts.zero_oi) stateBits.push(valueStateCounts.zero_oi + ' ZERO OI');
+    if (valueStateCounts.oi_unavailable) stateBits.push(valueStateCounts.oi_unavailable + ' OI UNAVAILABLE');
+    if (valueStateCounts.gamma_unavailable) stateBits.push(valueStateCounts.gamma_unavailable + ' GAMMA UNAVAILABLE');
+    if (valueStateCounts.computed) stateBits.push(valueStateCounts.computed + ' COMPUTED');
     var colsTxt = viewCols.length + ' of ' + exps.length + ' expirations' +
-      (emptyShown ? (' · ' + emptyShown + ' of ' + (emptyShown + valueShown) +
-        ' cells have no usable OI (that strike is not listed on that expiry)') : '') +
+      (stateBits.length ? (' · ' + stateBits.join(', ')) : '') +
       (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '') +
       // A manual pan is never silent: the strike window is not following live spot until the
       // operator double-clicks the strike axis (or switches ticker) to resume auto-centring.
@@ -939,11 +1034,9 @@
   }
 
   function updateScope(surface) {   // lightweight: only the age/scope tag in the panel header
-    // Independent review, 2026-09-16 (CORRECTED): see the identical fix in the sibling render
-    // function above -- Number(surface.spot) fabricates a real, finite 0 when surface.spot is
-    // explicitly null, which then passes the isFinite(spot) guard below as if it were real.
-    var strikes = surface.strikes || [], exps = surface.expirations || [],
-        spot = surface.spot == null ? NaN : Number(surface.spot);
+    // Current heatmap header uses LAST_PRICE-backed current_spot only. A missing
+    // current_spot is UNAVAILABLE, never coerced through Number(null) to a fake 0.
+    var strikes = surface.strikes || [], exps = surface.expirations || [];
     // Audit finding #6 (2026-09-16), FIXED, THEN CORRECTED (follow-up mandate): "LIVE" used
     // to mean only "surface.source == terrain_live_cache" -- true for nearly every live-
     // pathway surface with NO per-cell coverage requirement at all. Gating it on coverage
@@ -971,14 +1064,11 @@
       var shownRows = document.querySelectorAll('#heatBody .heat tbody tr').length;
       var shownCols = document.querySelectorAll('#heatBody .heat thead .hexp').length;
       var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
-      var currentSpot = surface.current_spot == null ? NaN : Number(surface.current_spot);
-      var spotNote = isFinite(spot) ? spot.toFixed(2) : '—';
+      var currentSpot = canonicalCurrentSpot(surface);
+      var spotNote = isFinite(currentSpot) ? currentSpot.toFixed(2) : 'UNAVAILABLE';
       var genNote = '';
       if (isFinite(currentSpot) && surface.spot_is_current === false) {
-        spotNote = currentSpot.toFixed(2) + ' (cells from ' + spotNote + ')';
         genNote = ' · UPDATING';
-      } else if (isFinite(currentSpot)) {
-        spotNote = currentSpot.toFixed(2);
       }
       if (surface.current_spot_generation != null && surface.computed_from_spot_generation != null
           && surface.current_spot_generation !== surface.computed_from_spot_generation) {
@@ -1124,5 +1214,10 @@
   _root.EdGamma = { formatUsd: formatUsd, cellStyle: cellStyle, nearestStrikeIndex: nearestStrikeIndex,
     renderSurface: renderSurface, selectLiveHeatmap: selectLiveHeatmap,
     heatmapDemandSymbols: heatmapDemandSymbols,
-    heatmapVisibleContracts: heatmapVisibleContracts };
+    heatmapVisibleContracts: heatmapVisibleContracts,
+    canonicalCurrentSpot: canonicalCurrentSpot,
+    currentSpotUnusable: currentSpotUnusable,
+    classifyHeatmapCell: classifyHeatmapCell,
+    tallyVisibleValueStates: tallyVisibleValueStates,
+    columnValueLabel: columnValueLabel };
 })();

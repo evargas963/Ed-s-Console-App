@@ -28,7 +28,7 @@ function gexAt(k, ci) {
   return Math.round(sign * base * jitter);
 }
 const SURFACE = {
-  ticker: '$SPX', symbol: '$SPX', available: true, spot: SPOT, source: 'terrain_live_cache',
+  ticker: '$SPX', symbol: '$SPX', available: true, current_spot: SPOT, current_spot_state: 'live', spot: SPOT, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 4, chain_basis: 'full', complete: false,
   coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: STRIKE_LIST.length,
     note: 'near-money LIVE window (strike_count-bounded terrain chain) — NOT the full strike_range=ALL book' },

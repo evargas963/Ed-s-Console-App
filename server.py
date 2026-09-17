@@ -15711,15 +15711,73 @@ def _project_gamma_expiry_slice(chain: list, e: str, spot: float):
     return exposures_e, sym_map, dte, len(slice_e)
 
 
+VALUE_STATE_NO_CONTRACT = "no_contract"
+VALUE_STATE_ZERO_OI = "zero_oi"
+VALUE_STATE_OI_UNAVAILABLE = "oi_unavailable"
+VALUE_STATE_GAMMA_UNAVAILABLE = "gamma_unavailable"
+VALUE_STATE_COMPUTED = "computed"
+GAMMA_CELL_VALUE_STATES = (
+    VALUE_STATE_NO_CONTRACT,
+    VALUE_STATE_ZERO_OI,
+    VALUE_STATE_OI_UNAVAILABLE,
+    VALUE_STATE_GAMMA_UNAVAILABLE,
+    VALUE_STATE_COMPUTED,
+)
+
+
+def classify_gamma_cell_value_state(bucket: "dict | None", contracts: "dict | None") -> str:
+    """ONE classifier for a strike×expiry cell. Null GEX is never read as NO OI.
+
+    - no listed contract → no_contract
+    - listed, every authoritative OI is 0, none missing → zero_oi
+    - listed, any OI field missing and no positive OI → oi_unavailable
+    - listed, OI present (>0) but Gamma unusable → gamma_unavailable
+    - listed, OI present and Gamma usable → computed
+    """
+    contracts = contracts or {}
+    listed = bool(contracts.get("call") or contracts.get("put"))
+    if bucket is None:
+        return VALUE_STATE_NO_CONTRACT if not listed else VALUE_STATE_OI_UNAVAILABLE
+    has_oi = bool(bucket.get("has_oi"))
+    oi_absent = bool(bucket.get("oi_absent"))
+    call_oi = bucket.get("call_oi")
+    put_oi = bucket.get("put_oi")
+    positive = (call_oi is not None and call_oi > 0) or (put_oi is not None and put_oi > 0)
+    if not listed and not has_oi and not oi_absent:
+        return VALUE_STATE_NO_CONTRACT
+    if oi_absent and not has_oi:
+        return VALUE_STATE_OI_UNAVAILABLE
+    if has_oi and not positive:
+        return VALUE_STATE_ZERO_OI
+    if has_oi and positive and not bucket.get("has_valid_gamma"):
+        return VALUE_STATE_GAMMA_UNAVAILABLE
+    if has_oi and bucket.get("has_valid_gamma"):
+        return VALUE_STATE_COMPUTED
+    if listed:
+        return VALUE_STATE_OI_UNAVAILABLE
+    return VALUE_STATE_NO_CONTRACT
+
+
+def _gamma_surface_value_state_counts(cells: list, n_cols: int) -> dict:
+    counts = {k: 0 for k in GAMMA_CELL_VALUE_STATES}
+    for row in cells:
+        states = (row or {}).get("value_states") or []
+        for j in range(n_cols):
+            st = states[j] if j < len(states) else VALUE_STATE_NO_CONTRACT
+            if st not in counts:
+                st = VALUE_STATE_NO_CONTRACT
+            counts[st] += 1
+    counts["total"] = sum(counts[k] for k in GAMMA_CELL_VALUE_STATES)
+    return counts
+
+
 def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     """Shape ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its
     compute_exposures_by_strike bucket (extracted 2026-09-16 alongside
     _project_gamma_expiry_slice — see that function's docstring; this is the OTHER half
     project_gamma_surface's per-cell loop used to inline, now shared with the incremental
     update path so both produce byte-identical cells from the same bucket). Returns
-    (gex, dex, vanna, oi, volume, contracts, has_gex_data, has_oi) — see
-    project_gamma_surface's own inline comments (moved here verbatim) for why each gate
-    exists."""
+    (gex, dex, vanna, oi, volume, contracts, has_gex_data, has_oi, value_state)."""
     from numeric_contract import float_finite_or_none
 
     def _bf(v):
@@ -15727,18 +15785,24 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
         return round(fv) if fv is not None else None
 
     syms = syms or {}
+    contracts = {"call": syms.get("call"), "put": syms.get("put")}
+    value_state = classify_gamma_cell_value_state(bucket, contracts)
     _has_oi = bool(bucket is not None and bucket.get("has_oi"))
-    _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
-    gex = _bf(bucket.get("net_gex_1pct")) if _has_gex_data else None
-    dex = _bf(bucket.get("net_dex_dollars")) if _has_gex_data else None
-    _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
-    vanna = round(_vn, 2) if _vn is not None else None
+    _has_gex_data = value_state in (VALUE_STATE_COMPUTED, VALUE_STATE_ZERO_OI)
+    if value_state == VALUE_STATE_ZERO_OI:
+        gex, dex, vanna = 0, 0, 0.0
+    elif value_state == VALUE_STATE_COMPUTED:
+        gex = _bf(bucket.get("net_gex_1pct"))
+        dex = _bf(bucket.get("net_dex_dollars"))
+        _vn = bucket["call_vanna"] - bucket["put_vanna"]
+        vanna = round(_vn, 2) if _vn is not None else None
+    else:
+        gex, dex, vanna = None, None, None
     call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
     oi = {"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None}
     call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")
     volume = {"call": _bf(call_vol), "put": _bf(put_vol)} if bucket is not None else {"call": None, "put": None}
-    contracts = {"call": syms.get("call"), "put": syms.get("put")}
-    return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi
+    return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi, value_state
 
 
 def project_gamma_surface(chain: list, spot: float) -> dict:
@@ -15812,16 +15876,16 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     cells_total = 0
     cells_with_oi_but_invalid_greeks = 0
     for k in strikes:
-        row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
+        row, dex_row, vanna_row, oi_row, vol_row, contracts_row, state_row = [], [], [], [], [], [], []
         for col in expirations:
             cells_total += 1
             bucket = per_expiry.get(col["expiry"], {}).get(k)
             syms = symbols_by_expiry.get(col["expiry"], {}).get(k)
-            gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
+            gex, dex, vanna, oi, volume, contracts, has_gex, has_oi, value_state = \
                 _gamma_surface_cell_fields(bucket, syms)
             if has_gex:
                 cells_with_data += 1
-            elif has_oi:
+            elif value_state == VALUE_STATE_GAMMA_UNAVAILABLE:
                 cells_with_oi_but_invalid_greeks += 1
             row.append(gex)
             dex_row.append(dex)
@@ -15829,9 +15893,11 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
             oi_row.append(oi)
             vol_row.append(volume)
             contracts_row.append(contracts)
+            state_row.append(value_state)
         cells.append({
             "strike": k, "gex": row, "dex": dex_row, "vanna": vanna_row,
             "oi": oi_row, "volume": vol_row, "contracts": contracts_row,
+            "value_states": state_row,
         })
 
     # Operator directive (2026-09-14, live SPX reproduction): a grid where every single cell
@@ -15845,6 +15911,7 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     gamma_available = cells_with_data > 0
     _reason = _gamma_surface_unavailable_reason(gamma_available, cells_with_oi_but_invalid_greeks,
                                                 cells_total)
+    value_state_counts = _gamma_surface_value_state_counts(cells, len(expirations))
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
@@ -15853,6 +15920,7 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
         "gamma_unavailable_reason": _reason,
         "cells_total": cells_total,
         "cells_with_oi_but_invalid_greeks": cells_with_oi_but_invalid_greeks,
+        "value_state_counts": value_state_counts,
     }
 
 
@@ -15955,16 +16023,19 @@ def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: 
         old_cell = prior_cells[i]
         bucket = exposures_e.get(k)
         syms = sym_map.get(k)
-        gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
+        gex, dex, vanna, oi, volume, contracts, has_gex, has_oi, value_state = \
             _gamma_surface_cell_fields(bucket, syms)
         if has_gex:
             cells_with_data += 1
-        elif has_oi:
+        elif value_state == VALUE_STATE_GAMMA_UNAVAILABLE:
             cells_with_oi_but_invalid_greeks += 1
         new_row = dict(old_cell)
         for field, value in (("gex", gex), ("dex", dex), ("vanna", vanna),
-                             ("oi", oi), ("volume", volume), ("contracts", contracts)):
+                             ("oi", oi), ("volume", volume), ("contracts", contracts),
+                             ("value_states", value_state)):
             col = list(old_cell.get(field) or [])
+            if field == "value_states" and not col:
+                col = [VALUE_STATE_NO_CONTRACT] * len(expirations)
             if col_idx >= len(col):
                 return None      # column count disagrees with `expirations` -- fall back
             col[col_idx] = value
@@ -16001,6 +16072,7 @@ def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: 
             gamma_available, total_invalid_oi, cells_total),
         "cells_total": cells_total,
         "cells_with_oi_but_invalid_greeks": total_invalid_oi,
+        "value_state_counts": _gamma_surface_value_state_counts(new_cells, len(expirations)),
     }
 
 
@@ -16089,6 +16161,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "stream_coverage": _coverage,
             "contract_admission": _contract_admission,
             "selected_contracts": _selected_contracts_from_surface(surf),
+            "value_state_counts": surf.get("value_state_counts") or _gamma_surface_value_state_counts(
+                surf.get("cells") or [], len(surf.get("expirations") or [])),
             "degraded": live.get("levels_stale_reason") if stale else None,
             # Computed-from spot is the stamp the cells were actually priced from.
             # Current LAST_PRICE is a separate observation: cells computed from an

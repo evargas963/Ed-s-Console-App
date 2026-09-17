@@ -13,8 +13,8 @@ exposure. `has_oi` is the fix: set exactly when a contract actually clears the O
 by every consumer before treating a bucket's numeric fields as real.
 
 This file proves three things with synthetic (never live-vendor) chain data:
-  1. Missing/unusable OI reads as ABSENT (has_oi=False, gamma_available=False, cells None) --
-     never a fabricated numeric zero.
+  1. Authoritative OI == 0 is ZERO OI and computed GEX $0. Missing OI is OI UNAVAILABLE.
+     Null GEX is never read as NO OI.
   2. A genuinely computed zero (real OI on both sides, net exposure nets to exactly 0.0) still
      renders as a real 0 -- absence-detection must not swallow real measurements.
   3. The banked "morning reference" gamma-surface fallback may only populate a ticker's data
@@ -52,39 +52,39 @@ SPOT = 100.0
 
 # ---------------------------------------------------------------- 1. missing OI is absent ----
 
-def test_zero_oi_everywhere_yields_has_oi_false_not_a_fabricated_zero():
-    """The exact live-SPX shape: every contract reports openInterest=0."""
+def test_zero_oi_everywhere_yields_has_oi_true_and_authoritative_zero():
+    """Listed contracts reporting openInterest=0 are a measured zero, not absence."""
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
              _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
     exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
     assert exposures, "buckets must still exist (created before the OI gate runs)"
     for k, b in exposures.items():
-        assert b["has_oi"] is False, f"strike {k} cleared has_oi with zero OI everywhere"
-        assert b["net_gex_1pct"] == 0.0, "the raw accumulator is still its pre-init 0.0"
+        assert b["has_oi"] is True, f"strike {k} must treat authoritative OI=0 as present"
+        assert b["call_oi"] == 0.0
+        assert b["put_oi"] == 0.0
+        assert b["net_gex_1pct"] == 0.0
 
 
-def test_zero_oi_everywhere_surface_reports_gamma_unavailable_and_null_cells():
+def test_zero_oi_everywhere_surface_reports_zero_gex_not_null_cells():
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
              _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
     surface = project_gamma_surface(chain, SPOT)
-    assert surface["gamma_available"] is False
-    assert surface["gamma_unavailable_reason"] is not None
-    assert "no usable open interest" in surface["gamma_unavailable_reason"]
+    assert surface["gamma_available"] is True
     assert surface["cells"], "the strike axis is still built from the raw buckets"
     for row in surface["cells"]:
-        assert row["gex"] == [None]
-        assert row["dex"] == [None]
-        assert row["vanna"] == [None]
+        assert row["gex"] == [0]
+        assert row["dex"] == [0]
+        assert row["value_states"] == ["zero_oi"]
 
 
-def test_zero_oi_everywhere_terrain_per_strike_rows_draws_no_bars():
+def test_zero_oi_everywhere_terrain_per_strike_rows_draws_computed_zero_bars():
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0)]
     exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
     rows = _per_strike_rows(exposures, chain)
-    assert rows == [], f"drew a fabricated $0 bar for a no-OI strike: {rows}"
+    assert len(rows) == 1 and rows[0][0] == 95.0 and rows[0][1] == 0.0
 
 
-def test_vanna_by_strike_route_omits_no_oi_strikes_instead_of_a_fabricated_zero():
+def test_vanna_by_strike_route_keeps_zero_oi_strikes_as_computed_zero():
     tk = server.ticker_storage_key("ZZTESTNOOI")
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
              _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
@@ -94,7 +94,9 @@ def test_vanna_by_strike_route_omits_no_oi_strikes_instead_of_a_fabricated_zero(
         import json
         body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
         assert body["available"] is True
-        assert body["rows"] == [], f"a no-OI chain must yield zero rows, not fabricated ones: {body['rows']}"
+        strikes = {r[0] for r in body["rows"]}
+        assert strikes == {95.0, 100.0}
+        assert all(r[1] == 0.0 for r in body["rows"])
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -129,19 +131,33 @@ def test_real_oi_that_nets_to_exactly_zero_terrain_row_is_zero_not_dropped():
     assert len(rows) == 1 and rows[0][0] == 100.0 and rows[0][1] == 0.0
 
 
-def test_a_mixed_chain_keeps_the_no_oi_strike_absent_beside_the_real_zero_strike():
-    """Negative + positive control in one chain: absence and a real zero must coexist correctly."""
+def test_missing_oi_is_unavailable_not_zero():
+    chain = [_ct(95.0, "CALL", None), _ct(95.0, "PUT", None)]
+    exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
+    b = exposures[95.0]
+    assert b["has_oi"] is False
+    assert b["oi_absent"] is True
+    surface = project_gamma_surface(chain, SPOT)
+    row = [r for r in surface["cells"] if r["strike"] == 95.0][0]
+    assert row["gex"] == [None]
+    assert row["value_states"] == ["oi_unavailable"]
+
+
+def test_a_mixed_chain_keeps_zero_oi_beside_the_netted_zero_strike():
+    """Zero-OI listed contracts stay $0; real OI that nets to 0 stays a computed 0."""
     chain = [
-        _ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),                     # no OI -> absent
+        _ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
         _ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
-        _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5),                # real OI, nets to 0
+        _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5),
     ]
     surface = project_gamma_surface(chain, SPOT)
-    assert surface["gamma_available"] is True, "one real strike is enough to make the surface available"
+    assert surface["gamma_available"] is True
     row95 = [r for r in surface["cells"] if r["strike"] == 95.0][0]
     row100 = [r for r in surface["cells"] if r["strike"] == 100.0][0]
-    assert row95["gex"] == [None]
+    assert row95["gex"] == [0]
+    assert row95["value_states"] == ["zero_oi"]
     assert row100["gex"] == [0]
+    assert row100["value_states"] == ["computed"]
 
 
 # ------------------------------------------ 3. persisted SPX fallback: date match + real age ----

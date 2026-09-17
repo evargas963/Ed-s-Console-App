@@ -26,7 +26,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 
 const SURFACE = {
-  ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41,
+  ticker: '$SPX', symbol: '$SPX', available: true, current_spot: 583.41, current_spot_state: 'live', spot: 583.41,
   source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
   complete: false,
   coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: 3,
@@ -1384,9 +1384,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       for (var si = 0; si < strikes.length; si++) {
         var row = [];
         for (var j = 0; j < exps.length; j++) row.push((j % 2 ? 1 : -1) * 1000 * ((si % 50) + 1));
-        cells.push({ strike: strikes[si], gex: row });
+        cells.push({ strike: strikes[si], gex: row,
+          contracts: exps.map(function (_e, j) { return { call: 'C' + si + '_' + j, put: 'P' + si + '_' + j }; }) });
       }
-      var surface = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
+      var surface = { available: true, source: 'terrain_live_cache', live: true, current_spot: 600, current_spot_state: 'live', spot: 600, complete: false,
         coverage: { chain_basis: 'full' }, expirations: exps, strikes: strikes, cells: cells };
       var t0 = performance.now();
       window.EdGamma.renderSurface(host, surface);   // 200 strikes x 20 expiries = 4000 cells
@@ -1407,7 +1408,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       var banner = function () { var b = host.querySelector('.heat-banner'); return b ? b.textContent : ''; };
       var scope = function () { return document.getElementById('heatScope').textContent; };
       var live = function (age, stale) {
-        return { available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
+        return { available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, current_spot: 583.41, current_spot_state: 'live', spot: 583.41,
           complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
           coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], contracts: [{ call: 'C583', put: 'P583' }] }] };
       };
