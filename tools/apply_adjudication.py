@@ -527,6 +527,29 @@ _mark_repaired(
     "calibration_ml_governance")
 
 
+def _apply_deleted_file_repairs(raw_candidates: list[dict]) -> int:
+    """A candidate whose FILE no longer exists on disk is REPAIRED by deletion, full stop --
+    generalized after a real gap this session's own reconciliation caught: the
+    tools/legacy/horizon_7/ deletion was recorded via a manually-typed FB-id list that
+    missed 17 of the directory's own 29 candidates (every non-SQL, non-EXCEPT_SUBSTITUTE
+    pattern in those files was simply never enumerated by hand). Checking the filesystem
+    directly cannot have that class of gap -- a deleted file has zero surviving candidates,
+    mechanically, regardless of which patterns this session happened to adjudicate in it."""
+    n = 0
+    for c in raw_candidates:
+        if c["adjudication"] == "REPAIRED":
+            continue
+        if not (REPO / c["file"]).exists():
+            c["adjudication"] = "REPAIRED"
+            c["required_repair"] = (
+                f"REPAIRED (file deleted): {c['file']} no longer exists in this tree -- "
+                f"see git history for the commit that removed it and its own reasoning."
+            )
+            c["proposed_ownership_group"] = "deleted_file"
+            n += 1
+    return n
+
+
 def main() -> int:
     raw_path = REPO / "reports" / "no_fallback_discovery_raw.json"
     out_path = REPO / "reports" / "no_fallback_inventory.json"
@@ -556,6 +579,9 @@ def main() -> int:
             c["required_repair"] = ("pending semantic adjudication -- not yet reached by a "
                                      "human/agent reading in this pass")
             c["proposed_ownership_group"] = "unadjudicated_pending_next_pass"
+
+    deleted_file_repairs = _apply_deleted_file_repairs(candidates)
+    applied += deleted_file_repairs
 
     by_verdict: dict[str, int] = {}
     for c in candidates:

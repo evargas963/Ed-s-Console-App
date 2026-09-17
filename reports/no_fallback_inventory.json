@@ -29,12 +29,12 @@
   },
   "unscanned_unknown_extensions": [],
   "candidate_count": 1226,
-  "adjudicated_this_pass": 122,
+  "adjudicated_this_pass": 139,
   "verdict_counts": {
-    "NOT_PROVEN": 1121,
+    "NOT_PROVEN": 1105,
     "NOT_FALLBACK": 26,
-    "FALLBACK": 48,
-    "REPAIRED": 31
+    "FALLBACK": 47,
+    "REPAIRED": 48
   },
   "candidates": [
     {
@@ -14046,10 +14046,10 @@
       "snippet": "sc = Counter((r[\"market_session\"] or \"unknown\") for r in rows)",
       "semantic_field_guess": "market_session",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01002",
@@ -14060,10 +14060,10 @@
       "snippet": "rc = Counter((r[\"regime_primary\"] or \"NULL\") for r in rows)",
       "semantic_field_guess": "regime_primary",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01003",
@@ -14074,10 +14074,10 @@
       "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) AS v, COUNT(*) AS c",
       "semantic_field_guess": null,
       "context": "main",
-      "adjudication": "FALLBACK",
+      "adjudication": "REPAIRED",
       "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
-      "proposed_ownership_group": "calibration_ml_governance"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01004",
@@ -14088,10 +14088,10 @@
       "snippet": "sess[str(r[\"market_session\"] or \"unknown\")].append(i)",
       "semantic_field_guess": "market_session",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01005",
@@ -14158,10 +14158,10 @@
       "snippet": "chunk_size = int(args.chunk_size) if getattr(args, \"chunk_size\", 0) else 0",
       "semantic_field_guess": "chunk_size",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01010",
@@ -14172,10 +14172,10 @@
       "snippet": "ticker = str(r[\"ticker\"] or \"\")",
       "semantic_field_guess": "ticker",
       "context": "_process_rows",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01011",
@@ -14186,10 +14186,10 @@
       "snippet": "edb = EdDB(db_path, allow_noncanonical=bool(getattr(args, \"allow_noncanonical_db\", False)))",
       "semantic_field_guess": "allow_noncanonical_db",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01012",
@@ -14256,10 +14256,10 @@
       "snippet": "ms = r[\"market_session\"] or \"unknown\"",
       "semantic_field_guess": "market_session",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01017",
@@ -14270,10 +14270,10 @@
       "snippet": "counts_by_ticker[r[\"ticker\"]] = counts_by_ticker.get(r[\"ticker\"], 0) + 1",
       "semantic_field_guess": "counts_by_ticker.",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01018",
@@ -14284,10 +14284,10 @@
       "snippet": "counts_by_session[ms] = counts_by_session.get(ms, 0) + 1",
       "semantic_field_guess": "counts_by_session.",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01019",
@@ -14298,10 +14298,10 @@
       "snippet": "for hz in phase9.get(\"edge_positive_horizons\", []):",
       "semantic_field_guess": "phase9.edge_positive_horizons",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01020",
@@ -14326,10 +14326,10 @@
       "snippet": "exp_rows = reconciled.get(\"expected_artifact_matrix\", {}).get(\"grouped_by_ticker_horizon_model_head\", [])",
       "semantic_field_guess": "get.grouped_by_ticker_horizon_model_head",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01022",
@@ -14340,10 +14340,10 @@
       "snippet": "min_rows = reconciled.get(\"ticker_minimum_requirements\", [])",
       "semantic_field_guess": "reconciled.ticker_minimum_requirements",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01023",
@@ -14354,10 +14354,10 @@
       "snippet": "inference_fail_count = sum(1 for dt in phase10.get(\"decision_traces\", []) if \"INFERENCE_NULL\" in dt.get(\"failure_flags\", []))",
       "semantic_field_guess": "dt.failure_flags",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01024",
@@ -14382,10 +14382,10 @@
       "snippet": "shorter = [x for x in qual if horizon_order.get(x[\"horizon\"], 0) < horizon_order.get(chosen[\"horizon\"], 0)]",
       "semantic_field_guess": "horizon_order.",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/run_phase9_decision_policy_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01026",
@@ -14396,10 +14396,10 @@
       "snippet": "shorter = [x for x in qual if horizon_order.get(x[\"horizon\"], 0) < horizon_order.get(chosen[\"horizon\"], 0)]",
       "semantic_field_guess": "horizon_order.",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/run_phase9_decision_policy_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01027",
@@ -14410,10 +14410,10 @@
       "snippet": "qual.sort(key=lambda x: (horizon_order.get(x[\"horizon\"], 0), x[\"move_prob\"]), reverse=True)",
       "semantic_field_guess": "horizon_order.",
       "context": "main",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED (file deleted): tools/legacy/horizon_7/run_phase9_decision_policy_v1.py no longer exists in this tree -- see git history for the commit that removed it and its own reasoning.",
+      "proposed_ownership_group": "deleted_file"
     },
     {
       "id": "FB-01028",
