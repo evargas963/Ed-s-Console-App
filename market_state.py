@@ -935,7 +935,11 @@ def _schwab_days_to_expiration_for_contract(
 
 def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     """Contract-first framing: DTE, strike/right, breakeven when bid/ask exist."""
-    exp = ms.call_option_expiry or ms.selected_exp
+    # No-fallback lock (2026-09-17): ms.call_option_expiry has exactly one write site in
+    # this whole repo (build_market_state, always set to selected_exp), so it is provably
+    # always equal to ms.selected_exp by the time this runs -- the `or` fallback could
+    # never actually substitute a different value.
+    exp = ms.call_option_expiry
     k = ms.rec_strike
     side = (ms.call_option_right or ms.rec_side or "").upper().strip()
     t = (ms.ticker or "").upper().strip()
@@ -1966,7 +1970,8 @@ def build_market_state(
         contracts_use,
         ms.rec_strike,
         ms.call_option_right,
-        expiry=(ms.call_option_expiry or ms.selected_exp),
+        # Same provable-redundancy reasoning as _build_contract_context_ms above.
+        expiry=ms.call_option_expiry,
     )
     ms.dte_warn, ms.dte_color = dte_style(_selected_dte)
 

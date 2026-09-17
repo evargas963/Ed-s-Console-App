@@ -518,6 +518,58 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "calibration_ml_governance",
             )
+        if c["id"] in ("FB-00258", "FB-00259", "FB-00286"):
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "Investigated 2026-09-17: `for ct in contracts or []` / `(ct for ct in "
+                "contracts or [])` is an ordinary iteration-safety guard, not a value "
+                "substitution -- None and [] produce the IDENTICAL observable behavior here "
+                "(zero iterations), and no semantic field is ever assigned a fabricated "
+                "value as a result. This is the mission's own required 'ordinary control "
+                "flow, not falsely rejected' positive control, not a fallback.",
+                "none",
+                "market_state_rendering",
+            )
+        if c["id"] == "FB-00265":
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "Investigated 2026-09-17: `charm_top_drivers or []` normalizes an "
+                "Optional[list] parameter to a list, matching the MarketState dataclass "
+                "field's own `field(default_factory=list)` default. Unlike a scalar/enum "
+                "default (which can be mistaken for a genuine reading), an empty list is "
+                "not a fabricated valid-looking VALUE -- 'no drivers computed' and 'zero "
+                "drivers found' render and behave identically for every consumer (an empty "
+                "iteration either way). Ordinary collection-type normalization, not a "
+                "fallback substitution.",
+                "none",
+                "market_state_rendering",
+            )
+        if c["id"] == "FB-00270":
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "Investigated 2026-09-17: `exp_key = str(expiry or \"\")[:10]` is immediately "
+                "followed by `if len(exp_key) != 10: return None` -- an explicit, "
+                "self-documented ('An empty/missing expiry is a governed absence -- NO "
+                "selected-contract DTE -- never a silent search across every expiry') "
+                "fail-closed check. The `or \"\"` only exists so None can be uniformly "
+                "length-checked alongside a malformed string; it is the disclose-the-"
+                "failure pattern the mandate itself requires, not a substitution for it.",
+                "none",
+                "market_state_rendering",
+            )
+        if c["id"] == "FB-00285":
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "Investigated 2026-09-17: `t = (ms.ticker or \"\").upper().strip()` feeds a "
+                "purely cosmetic contract-label string (e.g. 'SPY 2026-06-20 450C'). "
+                "ms.ticker is populated from build_market_state's required, non-Optional "
+                "`ticker: str` parameter -- the function's own primary identity input, never "
+                "legitimately absent in a correct call. The guard prevents a `None.upper()` "
+                "crash; its degraded output is an honest blank space in the label, not a "
+                "fabricated ticker symbol that could be mistaken for real data.",
+                "none",
+                "market_state_rendering",
+            )
 
 
 _mark_repaired(
@@ -818,6 +870,20 @@ _mark_repaired(
     "non-default value flows through untouched; the file's other 12 tests (including the "
     "gex_magnitude disclosure tests from the earlier market_state_rendering repair) still "
     "pass, as do the three other build_market_state test files.",
+    "market_state_rendering")
+_mark_repaired(
+    ["FB-00260", "FB-00281"],
+    "REPAIRED 2026-09-17: market_state.py's two `ms.call_option_expiry or "
+    "ms.selected_exp` sites (_build_contract_context_ms and the selected-DTE call in "
+    "build_market_state) simplified to bare `ms.call_option_expiry` -- that field has "
+    "exactly one write site in this whole repo (build_market_state's own "
+    "`ms.call_option_expiry = selected_exp`, always executed before either read site "
+    "runs), so it is provably always equal to ms.selected_exp: the `or` fallback could "
+    "never actually substitute a different value. Updated "
+    "tests/test_single_producer_batch_f02_f13_v1.py's "
+    "test_rc345_selected_dte_selectors_both_key_on_expiry, which had asserted the exact "
+    "pre-repair source text, to match the simplified shape while preserving the real "
+    "invariant it protects (both DTE-selector callers pass the selected expiry).",
     "market_state_rendering")
 
 

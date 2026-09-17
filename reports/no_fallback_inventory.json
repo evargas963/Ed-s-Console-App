@@ -29,11 +29,11 @@
   },
   "unscanned_unknown_extensions": [],
   "candidate_count": 1226,
-  "adjudicated_this_pass": 140,
+  "adjudicated_this_pass": 148,
   "verdict_counts": {
-    "NOT_PROVEN": 1104,
-    "NOT_FALLBACK": 27,
-    "REPAIRED": 86,
+    "NOT_PROVEN": 1096,
+    "NOT_FALLBACK": 33,
+    "REPAIRED": 88,
     "FALLBACK": 9
   },
   "candidates": [
@@ -3644,10 +3644,10 @@
       "snippet": "for ct in contracts or []:",
       "semantic_field_guess": "contracts",
       "context": "_oe_bid_ask_mid",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `for ct in contracts or []` / `(ct for ct in contracts or [])` is an ordinary iteration-safety guard, not a value substitution -- None and [] produce the IDENTICAL observable behavior here (zero iterations), and no semantic field is ever assigned a fabricated value as a result. This is the mission's own required 'ordinary control flow, not falsely rejected' positive control, not a fallback.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00259",
@@ -3658,10 +3658,10 @@
       "snippet": "for ct in contracts or []:",
       "semantic_field_guess": "contracts",
       "context": "_schwab_days_to_expiration_for_contract",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `for ct in contracts or []` / `(ct for ct in contracts or [])` is an ordinary iteration-safety guard, not a value substitution -- None and [] produce the IDENTICAL observable behavior here (zero iterations), and no semantic field is ever assigned a fabricated value as a result. This is the mission's own required 'ordinary control flow, not falsely rejected' positive control, not a fallback.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00260",
@@ -3672,10 +3672,10 @@
       "snippet": "exp = ms.call_option_expiry or ms.selected_exp",
       "semantic_field_guess": "call_option_expiry",
       "context": "_build_contract_context_ms",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's two `ms.call_option_expiry or ms.selected_exp` sites (_build_contract_context_ms and the selected-DTE call in build_market_state) simplified to bare `ms.call_option_expiry` -- that field has exactly one write site in this whole repo (build_market_state's own `ms.call_option_expiry = selected_exp`, always executed before either read site runs), so it is provably always equal to ms.selected_exp: the `or` fallback could never actually substitute a different value. Updated tests/test_single_producer_batch_f02_f13_v1.py's test_rc345_selected_dte_selectors_both_key_on_expiry, which had asserted the exact pre-repair source text, to match the simplified shape while preserving the real invariant it protects (both DTE-selector callers pass the selected expiry).",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00261",
@@ -3742,10 +3742,10 @@
       "snippet": "ms.charm_top_drivers       = charm_top_drivers or []",
       "semantic_field_guess": "charm_top_drivers",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `charm_top_drivers or []` normalizes an Optional[list] parameter to a list, matching the MarketState dataclass field's own `field(default_factory=list)` default. Unlike a scalar/enum default (which can be mistaken for a genuine reading), an empty list is not a fabricated valid-looking VALUE -- 'no drivers computed' and 'zero drivers found' render and behave identically for every consumer (an empty iteration either way). Ordinary collection-type normalization, not a fallback substitution.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00266",
@@ -3812,10 +3812,10 @@
       "snippet": "exp_key = str(expiry or \"\")[:10]",
       "semantic_field_guess": "expiry",
       "context": "_schwab_days_to_expiration_for_contract",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `exp_key = str(expiry or \"\")[:10]` is immediately followed by `if len(exp_key) != 10: return None` -- an explicit, self-documented ('An empty/missing expiry is a governed absence -- NO selected-contract DTE -- never a silent search across every expiry') fail-closed check. The `or \"\"` only exists so None can be uniformly length-checked alongside a malformed string; it is the disclose-the-failure pattern the mandate itself requires, not a substitution for it.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00271",
@@ -3966,10 +3966,10 @@
       "snippet": "expiry=(ms.call_option_expiry or ms.selected_exp),",
       "semantic_field_guess": "call_option_expiry",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's two `ms.call_option_expiry or ms.selected_exp` sites (_build_contract_context_ms and the selected-DTE call in build_market_state) simplified to bare `ms.call_option_expiry` -- that field has exactly one write site in this whole repo (build_market_state's own `ms.call_option_expiry = selected_exp`, always executed before either read site runs), so it is provably always equal to ms.selected_exp: the `or` fallback could never actually substitute a different value. Updated tests/test_single_producer_batch_f02_f13_v1.py's test_rc345_selected_dte_selectors_both_key_on_expiry, which had asserted the exact pre-repair source text, to match the simplified shape while preserving the real invariant it protects (both DTE-selector callers pass the selected expiry).",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00282",
@@ -4022,10 +4022,10 @@
       "snippet": "t = (ms.ticker or \"\").upper().strip()",
       "semantic_field_guess": "ticker",
       "context": "_build_contract_context_ms",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `t = (ms.ticker or \"\").upper().strip()` feeds a purely cosmetic contract-label string (e.g. 'SPY 2026-06-20 450C'). ms.ticker is populated from build_market_state's required, non-Optional `ticker: str` parameter -- the function's own primary identity input, never legitimately absent in a correct call. The guard prevents a `None.upper()` crash; its degraded output is an honest blank space in the label, not a fabricated ticker symbol that could be mistaken for real data.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00286",
@@ -4036,10 +4036,10 @@
       "snippet": "(ct for ct in contracts or []",
       "semantic_field_guess": "contracts",
       "context": "_build_contract_context_ms",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term | ADJUDICATED: Investigated 2026-09-17: `for ct in contracts or []` / `(ct for ct in contracts or [])` is an ordinary iteration-safety guard, not a value substitution -- None and [] produce the IDENTICAL observable behavior here (zero iterations), and no semantic field is ever assigned a fabricated value as a result. This is the mission's own required 'ordinary control flow, not falsely rejected' positive control, not a fallback.",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00287",
