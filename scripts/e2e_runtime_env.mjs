@@ -1,7 +1,7 @@
 // @ts-check
 // Isolated E2E process-boundary env. playwright.config.mjs and the Python
-// isolation tests both import this module. It must NOT import @playwright/test:
-// loading that package from a pytest xdist worker timed out at 30s
+// isolation tests both import this module. It must not load the Playwright
+// test package: that import from a pytest xdist worker timed out at 30s
 // (test_e2e_boundary_rejects_poisoned_inherited_runtime_state).
 import fs from 'node:fs';
 import os from 'node:os';
