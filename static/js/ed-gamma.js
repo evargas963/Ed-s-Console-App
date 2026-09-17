@@ -912,7 +912,14 @@
       var shownRows = document.querySelectorAll('#heatBody .heat tbody tr').length;
       var shownCols = document.querySelectorAll('#heatBody .heat thead .hexp').length;
       var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
-      el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
+      var currentSpot = surface.current_spot == null ? NaN : Number(surface.current_spot);
+      var spotNote = isFinite(spot) ? spot.toFixed(2) : '—';
+      if (isFinite(currentSpot) && surface.spot_is_current === false) {
+        spotNote = currentSpot.toFixed(2) + ' (cells from ' + spotNote + ')';
+      } else if (isFinite(currentSpot)) {
+        spotNote = currentSpot.toFixed(2);
+      }
+      el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + spotNote + ' · ' + srcLabel + age + basis;
       // Exact coverage breakdown on hover -- counts and percentages for live/partial/
       // stale/pending/daemon-unavailable/rejected/unavailable of the VISIBLE cells
       // specifically (not the canonical surface's own, possibly much larger, cell count).

@@ -42,16 +42,19 @@ def test_rest_fast_quote_payload_exposes_field_sources(monkeypatch):
     assert payload["mid_source"] == "schwab_quote_mark"
     assert payload["spread_source"] == "derived_bid_ask_fraction_schwab_mark_denom"
     assert payload["spread_pts"] == 0.1
+    assert payload["last_price_native_ts"] == 1_778_018_398.0
     assert payload["exchange_quote_ts"] == 1_778_018_399.0
     assert payload["quote_time_source"] == "schwab_rest_quote"
     assert isinstance(payload["server_received_ts"], float)
+    assert payload["last_price_generation"] == payload["fast_generation_id"]
     assert payload["quote_source_detail"] == {
         "spot": "LAST_PRICE",
         "bid": "bidPrice",
         "ask": "askPrice",
         "mid": "schwab_quote_mark",
         "spread": "schwab_bid_ask",
-        "quote_ts": "QUOTE_TIME_MILLIS",  # M6: exchange_quote_ts carries the quote clock here
+        "quote_ts": "QUOTE_TIME_MILLIS",  # M6: exchange clock provenance for quoteTime
+        "last_price_session": "quote",
         "carried_forward": False,
     }
 
@@ -100,7 +103,7 @@ def test_a_primed_quote_memo_cannot_satisfy_the_fail_closed_path(monkeypatch):
         status_code = 200
 
         def json(self) -> dict:
-            return {"SPY": {"quote": {"lastPrice": 501.25, "mark": 501.25}}}
+            return {"SPY": {"quote": {"lastPrice": 501.25, "mark": 501.25, "tradeTime": 1_778_018_398.0}}}
 
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_a, **_k: _Priming())

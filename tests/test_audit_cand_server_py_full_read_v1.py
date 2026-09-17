@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import builtins
 import inspect
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -253,6 +254,7 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
                     "bidPrice": 99.9,
                     "askPrice": 100.1,
                     "mark": 100.0,
+                    "tradeTime": int(time.time() * 1000),
                     "totalVolume": 1000,
                 }
             }

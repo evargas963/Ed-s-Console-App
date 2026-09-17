@@ -151,6 +151,31 @@ def test_one_withheld_contract_fails_ok(monkeypatch):
     assert any("never reached" in n for n in r["notes"])
 
 
+def test_observed_only_never_passes_ok(monkeypatch):
+    """Stale observed ticks are vendor acknowledgements, not live coverage."""
+    baseline = _surface(1, [10.0, 20.0], _admission())
+    observed_only = _surface(2, [11.0, 20.0], _admission(observed=[SYM_A, SYM_B]))
+    r = _run(monkeypatch, _FakeWorld(baseline, [observed_only]))
+    assert r["ok"] is False
+    assert r["time_to_active_sec"] is None
+
+
+def test_admitted_only_never_passes_ok(monkeypatch):
+    baseline = _surface(1, [10.0, 20.0], _admission())
+    admitted_only = _surface(2, [11.0, 20.0], _admission(admitted=[SYM_A, SYM_B]))
+    r = _run(monkeypatch, _FakeWorld(baseline, [admitted_only]))
+    assert r["ok"] is False
+    assert r["time_to_active_sec"] is None
+
+
+def test_meets_live_requirement_false_fails_ok(monkeypatch):
+    baseline = _surface(1, [10.0, 20.0], _admission())
+    not_live = _surface(2, [11.0, 20.0], _admission(active=[SYM_A, SYM_B]))
+    not_live["stream_coverage"] = {"meets_live_requirement": False}
+    r = _run(monkeypatch, _FakeWorld(baseline, [not_live]))
+    assert r["ok"] is False
+
+
 def test_genuinely_clean_run_passes_ok(monkeypatch):
     """The positive control: without this, every negative-control test above could be
     trivially satisfied by a harness that always returns ok=False."""

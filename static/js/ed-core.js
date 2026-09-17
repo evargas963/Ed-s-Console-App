@@ -779,21 +779,21 @@
       var bts = (p._server_build_ts != null ? p._server_build_ts : env.l1_server_build_ts);
       if (G && !G.l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)) return;
       _sseUp = true; _lastSseTs = Date.now(); _hdrGen++;   // supersede any in-flight fallback poll
-      var ageMs = bts ? Math.max(0, Math.round(Date.now() - bts * 1000)) : null;
-      // TRUTHFUL LIVE: receiving an SSE event only proves the SERVER pushed a projection
-      // promptly — it does not prove the underlying quote is fresh (the server can build
-      // and push on schedule from an L0 row that itself stopped updating). p.l1_stale is
-      // the payload's own real freshness verdict (build_l1_context: stale when the L0
-      // spot is missing or unusable) — use it, not "an event arrived", to label LIVE vs
-      // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
-      var stale = !!p.l1_stale || p.spot_state === 'stale';
+      // SPOT LIVE/STALE/UNAVAILABLE is the LAST_PRICE observation, never "an SSE
+      // event arrived" and never whole-screen streaming health. Age is the last
+      // trade clock, not the server projection build timestamp.
+      var stale = p.spot_state === 'stale' || (!!p.l1_stale && p.spot_state !== 'live');
       var unavailable = p.spot_state === 'unavailable' || p.spot == null;
+      var ageMs = p.last_price_age_ms;
+      if (ageMs == null && p.last_price_native_ts != null) {
+        ageMs = Math.max(0, Math.round(Date.now() - Number(p.last_price_native_ts) * 1000));
+      }
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
         spotState: p.spot_state,
         feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
-        feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'STALE' : 'LIVE'),
-        ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
+        feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'SPOT STALE' : 'SPOT LIVE'),
+        ageLabel: ageMs != null ? ageMs + 'ms' : '—' });
     });
     // Independent-review finding (2026-09-12): the heatmap only ever refetched on the 3s/12s
     // slow-tick poll (liveTick's `ed:refresh` at tick % 4 === 0) -- a Playwright test that
@@ -868,14 +868,16 @@
         paintSession(d.session_label);              // header poll also carries session (no extra read)
         notePlane(d, ex);
         if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }
-        var age = (d.streaming_plane && d.streaming_plane.streaming_staleness_ms != null)
-          ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';
-        var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
+        var age = (d.last_price_age_ms != null)
+          ? Math.round(d.last_price_age_ms) + 'ms'
+          : (d.last_price_native_ts != null
+            ? Math.max(0, Math.round(Date.now() - Number(d.last_price_native_ts) * 1000)) + 'ms'
+            : '—');
         paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
           chgPct: d.chg_pct, quoteIngestion: d.quote_ingestion,
           spotState: d.spot_state,
-          feedCls: d.spot_state === 'unavailable' ? 'stale' : (healthy ? '' : 'warn'),
-          feedLabel: d.spot_state === 'unavailable' ? 'UNAVAILABLE' : (d.spot_state === 'stale' ? 'STALE' : (healthy ? 'LIVE' : 'DEGRADED')),
+          feedCls: (d.spot_state === 'unavailable' || d.spot_state === 'stale') ? 'stale' : '',
+          feedLabel: d.spot_state === 'unavailable' ? 'UNAVAILABLE' : (d.spot_state === 'stale' ? 'SPOT STALE' : 'SPOT LIVE'),
           ageLabel: age });
       })
       .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });

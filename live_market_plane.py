@@ -111,11 +111,16 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
                 prev_spot_source = _prev_qsd.get("spot")
 
     # Current live spot is LAST_PRICE only. MARK is the vendor mid and may update
-    # quote_mid; it must never become spot. A bid/ask-only tick keeps the prior
-    # LAST_PRICE rather than inventing a substitute.
-    if last is not None:
+    # quote_mid; it must never become spot. A bid/ask-only tick may update bid/ask
+    # state but MUST NOT refresh the prior LAST_PRICE observation's value, native
+    # timestamp, receive time, generation, or freshness.
+    last_is_new = last is not None
+    if last_is_new:
         spot_f = last
         spot_source = "LAST_PRICE"
+        last_price_native_ts = _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
+        last_price_received_ts = None  # set to now when the row is written
+        last_price_generation = None
     elif (
         prev is not None
         and pspot is not None
@@ -124,6 +129,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     ):
         spot_f = pspot
         spot_source = "LAST_PRICE"
+        last_price_native_ts = prev.get("last_price_native_ts")
+        last_price_received_ts = prev.get("last_price_received_ts") or prev.get("server_received_ts")
+        last_price_generation = prev.get("last_price_generation") or prev.get("fast_generation_id")
     else:
         return False
     bid_source = "BID_PRICE" if bid is not None else None
@@ -173,10 +181,21 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         pass
 
-    server_received_ts = time.time()
+    now = time.time()
+    if last_is_new:
+        last_price_received_ts = now
+        last_price_generation = next_fast_generation(t)
+        server_received_ts = now
+        fast_generation_id = last_price_generation
+    else:
+        server_received_ts = last_price_received_ts
+        fast_generation_id = last_price_generation
     out = {
         "ticker": t,
         "spot": float(spot_f),
+        "last_price_native_ts": last_price_native_ts,
+        "last_price_received_ts": last_price_received_ts,
+        "last_price_generation": last_price_generation,
         "bid": float(bid) if bid is not None else None,
         "ask": float(ask) if ask is not None else None,
         "spot_disp": f"{float(spot_f):.2f}",
@@ -198,7 +217,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         "spread_pts_source": (
             "derived_bid_ask_pts" if bid is not None and ask is not None else None
         ),
-        "fast_generation_id": next_fast_generation(t),
+        "fast_generation_id": fast_generation_id,
         "exchange_quote_ts": quote_ts,
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
         "server_received_ts": server_received_ts,
@@ -210,7 +229,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
             "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
             "quote_ts": quote_ts_clock,  # M6: which exchange clock exchange_quote_ts carries (QUOTE_TIME_MILLIS, or TRADE_TIME_MILLIS_proxy on fallback)
-            "carried_forward": False,
+            "carried_forward": not last_is_new,
             "previous_spot_available": pspot is not None,
             "previous_bid_available": pbid is not None,
             "previous_ask_available": pask is not None,
@@ -274,18 +293,30 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
     return qsd.get("spot") == "LAST_PRICE"
 
 
-def quote_is_fresh(q: dict[str, Any]) -> bool:
-    """Is this plane row trustworthy as a LIVE value right now.
+def last_price_freshness_ts(q: dict[str, Any] | None) -> float | None:
+    """Native LAST_PRICE observation clock. Bid/ask-only updates must not move this."""
+    if not q or not isinstance(q, dict):
+        return None
+    native = _safe_float(q.get("last_price_native_ts"))
+    if native is not None:
+        return native
+    received = _safe_float(q.get("last_price_received_ts"))
+    if received is not None:
+        return received
+    return _safe_float(q.get("server_received_ts"))
 
-    Carried-forward / auth-degraded rows keep their LAST_PRICE number and their
-    degradation flags, but they are not LIVE: treating them as fresh made every
-    consumer paint an old print as current. Age is the only live gate. A missing
-    server_received_ts cannot be assumed fresh (fail closed).
+
+def quote_is_fresh(q: dict[str, Any]) -> bool:
+    """Is this plane row's LAST_PRICE trustworthy as a LIVE value right now.
+
+    Age follows the LAST_PRICE observation itself — native TRADE_TIME when present,
+    else the server receive time of that LAST_PRICE tick. A later bid/ask-only row
+    must not make an old trade look fresh. A missing observation clock fails closed.
     """
-    received = _safe_float(q.get("server_received_ts"))
-    if received is None:
+    observed = last_price_freshness_ts(q)
+    if observed is None:
         return False
-    age = time.time() - received
+    age = time.time() - observed
     return age >= 0.0 and age < PLANE_QUOTE_STALE_SEC
 
 
@@ -331,7 +362,11 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
             "quote_ingestion",
         ]
         if last_price_spot:
-            overlay_keys = ["spot", "spot_disp", *overlay_keys]
+            overlay_keys = [
+                "spot", "spot_disp",
+                "last_price_native_ts", "last_price_received_ts", "last_price_generation",
+                *overlay_keys,
+            ]
         for k in overlay_keys:
             if k in q and q[k] is not None:
                 ms_dict[k] = q[k]
@@ -396,7 +431,11 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
             "quote_ingestion",
         ]
         if last_price_spot:
-            overlay_keys = ["spot", "spot_disp", *overlay_keys]
+            overlay_keys = [
+                "spot", "spot_disp",
+                "last_price_native_ts", "last_price_received_ts", "last_price_generation",
+                *overlay_keys,
+            ]
         for k in overlay_keys:
             if k in q and q[k] is not None:
                 l1_payload[k] = q[k]

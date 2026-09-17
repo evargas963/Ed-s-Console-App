@@ -71,9 +71,12 @@ Metrics captured per (ticker, scope):
   - cell_state_counts: live/partial/stale/pending/daemon_unavailable/rejected/unavailable
     straight from stream_coverage (server.py's _gamma_surface_coverage_summary).
   - ok: the ONE pass/fail verdict for this (ticker, scope) — False on ANY of: a rejected
-    symbol, an unresolved symbol, the daemon reporting unavailable, no strictly-newer
-    surface_seq observed, or no GEX-dollar cell actually changing. `main()` exits nonzero
-    if any requested (ticker, scope) has `ok: false`.
+    symbol, an unresolved symbol, an admitted-or-observed symbol that never reached
+    freshness-gated `active`, the daemon reporting unavailable, `meets_live_requirement`
+    remaining false, no strictly-newer surface_seq observed, or no GEX-dollar cell
+    actually changing. `ok` requires `active == requested` AND
+    `stream_coverage.meets_live_requirement`. `main()` exits nonzero if any requested
+    (ticker, scope) has `ok: false`.
 
 This script makes NO claim about CPU/event-loop responsiveness or exact per-request browser
 network timing -- those require a live browser instrumented with the Browser pane's own
@@ -329,12 +332,27 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
     if not result["gex_changed"]:
         result["notes"].append("no displayed GEX-dollar cell changed from its pre-demand baseline")
 
-    # The ONE pass/fail verdict: any rejected/unresolved symbol, an unavailable daemon, no
-    # strictly-newer generation, or no changed GEX cell fails this (ticker, scope) outright
-    # -- never a narrative "mostly worked".
+    # The ONE pass/fail verdict: every requested contract must be freshness-gated
+    # active, the surface must meet the live-coverage requirement, the daemon must
+    # be available, and GEX$ must have changed on a newer generation. Observed,
+    # admitted, rejected, unresolved, or daemon-unavailable is a fail.
+    meets_live = bool((last_surf.get("stream_coverage") or {}).get("meets_live_requirement"))
+    if not meets_live and "surface never reached meets_live_requirement" not in " ".join(result["notes"]):
+        if first_classified_at is None:
+            pass  # already noted above
+    if active_f != requested:
+        result["notes"].append(
+            f"not every requested symbol is freshness-gated active "
+            f"({len(active_f)}/{len(requested)}); observed/admitted is not live"
+        )
     result["ok"] = bool(
-        not rejected_f and not unresolved_f and daemon_available is not False
-        and first_usable_at is not None and result["gex_changed"]
+        active_f == requested
+        and meets_live
+        and not rejected_f
+        and not unresolved_f
+        and daemon_available is True
+        and first_usable_at is not None
+        and result["gex_changed"]
     )
     return result
 

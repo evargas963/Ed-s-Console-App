@@ -1108,6 +1108,28 @@ def _subs_or_add(contract_state: dict, svc_key: str, exclude_key: str, subs_fn, 
     return _op
 
 
+class SchwabVendorSymbolRejection(Exception):
+    """Explicit Schwab refusal of a stream symbol. Not a transport, auth, or timeout."""
+
+
+def _is_explicit_vendor_symbol_rejection(exc: BaseException) -> bool:
+    """True only when the vendor itself refused a symbol.
+
+    A timeout, auth failure, or generic RuntimeError is not a symbol rejection —
+    those must not be isolated into rejected_state or backoff as if Schwab
+    refused the contract.
+    """
+    if isinstance(exc, SchwabVendorSymbolRejection):
+        return True
+    name = type(exc).__name__
+    if name not in ("UnexpectedResponseCode", "UnexpectedResponse"):
+        return False
+    mod = type(exc).__module__
+    if not isinstance(mod, str):
+        return False
+    return "schwab" in mod.lower()
+
+
 async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitted) -> "list[tuple[str, str]]":
     """Subscribe `symbols` to the vendor in as FEW network round trips as possible
     (2026-09-16, audit finding: the prior design issued one full WS round trip PER
@@ -1143,6 +1165,8 @@ async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitt
         on_admitted(list(symbols))
         return []
     except Exception as e:
+        if not _is_explicit_vendor_symbol_rejection(e):
+            raise
         if len(symbols) == 1:
             return [(symbols[0], f"{type(e).__name__}: {e}")]
         mid = len(symbols) // 2

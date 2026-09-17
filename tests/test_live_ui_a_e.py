@@ -8,11 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_transport_liveness_badge_survives_in_ed_core():
-    """The transport-liveness half of this test (a LIVE/STALE badge + age, driven off the
-    streaming-health flag) has a real equivalent. Repointed to static/js/ed-core.js (/console
-    cutover, operator directive 2026-09-14): setFeed()/paintQuote() paint #hFeedDot/#hFeed/
-    #hAge off the same streaming_healthy flag legacy's badge used, just LIVE/DEGRADED rather
-    than legacy's SSE LIVE/SSE STALE spelling.
+    """The header badge names LAST_PRICE observation state (SPOT LIVE / SPOT STALE /
+    UNAVAILABLE), not whole-screen streaming health. Repointed to static/js/ed-core.js.
 
     The Tier-C decision-bundle-age half (data-bundle-freshness, _updateDecisionBundleAgeUI,
     _updateTierCLaneStaleMarkers, data-ed-tier-c/data-lane-stale) has no equivalent — the new
@@ -24,6 +21,7 @@ def test_transport_liveness_badge_survives_in_ed_core():
     assert "getElementById('hFeed')" in core
     assert "getElementById('hAge')" in core
     assert "feedLabel:" in core
-    assert "'LIVE'" in core
-    assert "'STALE'" in core
+    assert "'SPOT LIVE'" in core
+    assert "'SPOT STALE'" in core
     assert "'UNAVAILABLE'" in core
+    assert "streaming_healthy" not in core.split("function paintQuote")[1].split("function liveTick")[0]
