@@ -668,6 +668,18 @@ _mark_repaired(
     "test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version precedent, "
     "since a NULL row isn't constructible through the ORM on a freshly created database).",
     "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00122", "FB-00124"],
+    "REPAIRED 2026-09-17: calibration/phase6_edge_discovery_governed_v1.py's load_rows() "
+    "governed-population query no longer SQL-defaults a NULL horizon_outcome_schema_version "
+    "to 3 -- identical shape and identical genuine-nullable root cause already repaired "
+    "across db.py and calibration/canonical_1m_grid_scan.py. "
+    "calibration/phase65_edge_isolation_v1.py's FROZEN['governed_predicate'] constant quoted "
+    "the same COALESCE as prose describing this exact query (it imports load_rows from this "
+    "module); reworded to match the repaired query rather than left stale. Tests: "
+    "tests/test_phase6_edge_discovery_governed_schema_version.py (a real anchored, "
+    "full-outcome BAR_ANCHOR_V1 row is still loaded; structural proofs for both files).",
+    "calibration_ml_governance")
 
 
 def main() -> int:
