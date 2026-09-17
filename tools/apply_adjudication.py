@@ -885,6 +885,32 @@ _mark_repaired(
     "pre-repair source text, to match the simplified shape while preserving the real "
     "invariant it protects (both DTE-selector callers pass the selected expiry).",
     "market_state_rendering")
+_mark_repaired(
+    ["FB-00272", "FB-00273", "FB-00274", "FB-00275", "FB-00276", "FB-00277", "FB-00278"],
+    "REPAIRED 2026-09-17: market_state.py's whole 'The Call' field-population block "
+    "(~30 getattr(_call, name, default) calls, of which these 7 were the ones the "
+    "discovery scanner's semantic-term matcher flagged) simplified to bare attribute "
+    "access. _call is always a signal_types.TheCall instance -- a @dataclass whose every "
+    "field read here is required or class-defaulted, and call_engine.py is confirmed the "
+    "SOLE production constructor -- so Python's own dataclass machinery makes it "
+    "impossible to construct a TheCall missing any of them; every getattr default was "
+    "provably dead code. Also simplified the sibling 'Right Now' block's `_rules.micro` "
+    "sub-fields (session_high/session_low/sweeps/last_sweep -- _micro is always a real "
+    "micro_structure.MicroRead when truthy, confirmed via rules_engine.py's `micro=micro` "
+    "pass-through) and `_rules.headline_1m` (a required, non-default str field on "
+    "RulesCard), beyond the scanner-flagged set, matching this branch's established "
+    "practice of fixing the whole identical-shape cluster once one member is confirmed. "
+    "One test (tests/test_market_state_numeric_contract_v1.py) had constructed an "
+    "incomplete SimpleNamespace stand-in for TheCall (only 12 of its ~30 fields) that "
+    "the pre-repair getattr calls had silently tolerated -- replaced with a real TheCall "
+    "instance, matching this session's established precedent of fixing a test fixture to "
+    "the real schema rather than leaving it diverged. Other test files construct "
+    "incomplete RulesCard(micro=SimpleNamespace(...)) stand-ins, but confirmed none of "
+    "them route through build_market_state (they test rules_engine.py/call_engine.py "
+    "directly), so they are unaffected. Tests: the 4 build_market_state test files (30 "
+    "tests) plus test_action11_9_call_engine_fail_closed.py and "
+    "test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+    "market_state_rendering")
 
 
 def main() -> int:

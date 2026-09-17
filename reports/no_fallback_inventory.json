@@ -29,11 +29,11 @@
   },
   "unscanned_unknown_extensions": [],
   "candidate_count": 1226,
-  "adjudicated_this_pass": 148,
+  "adjudicated_this_pass": 155,
   "verdict_counts": {
-    "NOT_PROVEN": 1096,
+    "NOT_PROVEN": 1089,
     "NOT_FALLBACK": 33,
-    "REPAIRED": 88,
+    "REPAIRED": 95,
     "FALLBACK": 9
   },
   "candidates": [
@@ -3840,10 +3840,10 @@
       "snippet": "ms.trade_type       = getattr(_call, 'trade_type', 'none')",
       "semantic_field_guess": "trade_type",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's whole 'The Call' field-population block (~30 getattr(_call, name, default) calls, of which these 7 were the ones the discovery scanner's semantic-term matcher flagged) simplified to bare attribute access. _call is always a signal_types.TheCall instance -- a @dataclass whose every field read here is required or class-defaulted, and call_engine.py is confirmed the SOLE production constructor -- so Python's own dataclass machinery makes it impossible to construct a TheCall missing any of them; every getattr default was provably dead code. Also simplified the sibling 'Right Now' block's `_rules.micro` sub-fields (session_high/session_low/sweeps/last_sweep -- _micro is always a real micro_structure.MicroRead when truthy, confirmed via rules_engine.py's `micro=micro` pass-through) and `_rules.headline_1m` (a required, non-default str field on RulesCard), beyond the scanner-flagged set, matching this branch's established practice of fixing the whole identical-shape cluster once one member is confirmed. One test (tests/test_market_state_numeric_contract_v1.py) had constructed an incomplete SimpleNamespace stand-in for TheCall (only 12 of its ~30 fields) that the pre-repair getattr calls had silently tolerated -- replaced with a real TheCall instance, matching this session's established precedent of fixing a test fixture to the real schema rather than leaving it diverged. Other test files construct incomplete RulesCard(micro=SimpleNamespace(...)) stand-ins, but confirmed none of them route through build_market_state (they test rules_engine.py/call_engine.py directly), so they are unaffected. Tests: the 4 build_market_state test files (30 tests) plus test_action11_9_call_engine_fail_closed.py and test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00273",
@@ -3854,10 +3854,10 @@
       "snippet": "_tt = getattr(_call, 'trade_type', 'none')",
       "semantic_field_guess": "trade_type",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's whole 'The Call' field-population block (~30 getattr(_call, name, default) calls, of which these 7 were the ones the discovery scanner's semantic-term matcher flagged) simplified to bare attribute access. _call is always a signal_types.TheCall instance -- a @dataclass whose every field read here is required or class-defaulted, and call_engine.py is confirmed the SOLE production constructor -- so Python's own dataclass machinery makes it impossible to construct a TheCall missing any of them; every getattr default was provably dead code. Also simplified the sibling 'Right Now' block's `_rules.micro` sub-fields (session_high/session_low/sweeps/last_sweep -- _micro is always a real micro_structure.MicroRead when truthy, confirmed via rules_engine.py's `micro=micro` pass-through) and `_rules.headline_1m` (a required, non-default str field on RulesCard), beyond the scanner-flagged set, matching this branch's established practice of fixing the whole identical-shape cluster once one member is confirmed. One test (tests/test_market_state_numeric_contract_v1.py) had constructed an incomplete SimpleNamespace stand-in for TheCall (only 12 of its ~30 fields) that the pre-repair getattr calls had silently tolerated -- replaced with a real TheCall instance, matching this session's established precedent of fixing a test fixture to the real schema rather than leaving it diverged. Other test files construct incomplete RulesCard(micro=SimpleNamespace(...)) stand-ins, but confirmed none of them route through build_market_state (they test rules_engine.py/call_engine.py directly), so they are unaffected. Tests: the 4 build_market_state test files (30 tests) plus test_action11_9_call_engine_fail_closed.py and test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00274",
@@ -3868,10 +3868,10 @@
       "snippet": "ms.size_cue         = getattr(_call, 'size_cue', 'SKIP')",
       "semantic_field_guess": "size_cue",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's whole 'The Call' field-population block (~30 getattr(_call, name, default) calls, of which these 7 were the ones the discovery scanner's semantic-term matcher flagged) simplified to bare attribute access. _call is always a signal_types.TheCall instance -- a @dataclass whose every field read here is required or class-defaulted, and call_engine.py is confirmed the SOLE production constructor -- so Python's own dataclass machinery makes it impossible to construct a TheCall missing any of them; every getattr default was provably dead code. Also simplified the sibling 'Right Now' block's `_rules.micro` sub-fields (session_high/session_low/sweeps/last_sweep -- _micro is always a real micro_structure.MicroRead when truthy, confirmed via rules_engine.py's `micro=micro` pass-through) and `_rules.headline_1m` (a required, non-default str field on RulesCard), beyond the scanner-flagged set, matching this branch's established practice of fixing the whole identical-shape cluster once one member is confirmed. One test (tests/test_market_state_numeric_contract_v1.py) had constructed an incomplete SimpleNamespace stand-in for TheCall (only 12 of its ~30 fields) that the pre-repair getattr calls had silently tolerated -- replaced with a real TheCall instance, matching this session's established precedent of fixing a test fixture to the real schema rather than leaving it diverged. Other test files construct incomplete RulesCard(micro=SimpleNamespace(...)) stand-ins, but confirmed none of them route through build_market_state (they test rules_engine.py/call_engine.py directly), so they are unaffected. Tests: the 4 build_market_state test files (30 tests) plus test_action11_9_call_engine_fail_closed.py and test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00275",
@@ -3882,10 +3882,10 @@
       "snippet": "ms.call_state             = getattr(_call, 'call_state', 'WAIT')",
       "semantic_field_guess": "call_state",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's whole 'The Call' field-population block (~30 getattr(_call, name, default) calls, of which these 7 were the ones the discovery scanner's semantic-term matcher flagged) simplified to bare attribute access. _call is always a signal_types.TheCall instance -- a @dataclass whose every field read here is required or class-defaulted, and call_engine.py is confirmed the SOLE production constructor -- so Python's own dataclass machinery makes it impossible to construct a TheCall missing any of them; every getattr default was provably dead code. Also simplified the sibling 'Right Now' block's `_rules.micro` sub-fields (session_high/session_low/sweeps/last_sweep -- _micro is always a real micro_structure.MicroRead when truthy, confirmed via rules_engine.py's `micro=micro` pass-through) and `_rules.headline_1m` (a required, non-default str field on RulesCard), beyond the scanner-flagged set, matching this branch's established practice of fixing the whole identical-shape cluster once one member is confirmed. One test (tests/test_market_state_numeric_contract_v1.py) had constructed an incomplete SimpleNamespace stand-in for TheCall (only 12 of its ~30 fields) that the pre-repair getattr calls had silently tolerated -- replaced with a real TheCall instance, matching this session's established precedent of fixing a test fixture to the real schema rather than leaving it diverged. Other test files construct incomplete RulesCard(micro=SimpleNamespace(...)) stand-ins, but confirmed none of them route through build_market_state (they test rules_engine.py/call_engine.py directly), so they are unaffected. Tests: the 4 build_market_state test files (30 tests) plus test_action11_9_call_engine_fail_closed.py and test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00276",
@@ -3896,10 +3896,10 @@
       "snippet": "ms.call_forecast_state    = getattr(_call, 'forecast_state', 'dormant')",
       "semantic_field_guess": "forecast_state",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's whole 'The Call' field-population block (~30 getattr(_call, name, default) calls, of which these 7 were the ones the discovery scanner's semantic-term matcher flagged) simplified to bare attribute access. _call is always a signal_types.TheCall instance -- a @dataclass whose every field read here is required or class-defaulted, and call_engine.py is confirmed the SOLE production constructor -- so Python's own dataclass machinery makes it impossible to construct a TheCall missing any of them; every getattr default was provably dead code. Also simplified the sibling 'Right Now' block's `_rules.micro` sub-fields (session_high/session_low/sweeps/last_sweep -- _micro is always a real micro_structure.MicroRead when truthy, confirmed via rules_engine.py's `micro=micro` pass-through) and `_rules.headline_1m` (a required, non-default str field on RulesCard), beyond the scanner-flagged set, matching this branch's established practice of fixing the whole identical-shape cluster once one member is confirmed. One test (tests/test_market_state_numeric_contract_v1.py) had constructed an incomplete SimpleNamespace stand-in for TheCall (only 12 of its ~30 fields) that the pre-repair getattr calls had silently tolerated -- replaced with a real TheCall instance, matching this session's established precedent of fixing a test fixture to the real schema rather than leaving it diverged. Other test files construct incomplete RulesCard(micro=SimpleNamespace(...)) stand-ins, but confirmed none of them route through build_market_state (they test rules_engine.py/call_engine.py directly), so they are unaffected. Tests: the 4 build_market_state test files (30 tests) plus test_action11_9_call_engine_fail_closed.py and test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00277",
@@ -3910,10 +3910,10 @@
       "snippet": "ms.put_state             = getattr(_call, 'put_state', 'WAIT')",
       "semantic_field_guess": "put_state",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's whole 'The Call' field-population block (~30 getattr(_call, name, default) calls, of which these 7 were the ones the discovery scanner's semantic-term matcher flagged) simplified to bare attribute access. _call is always a signal_types.TheCall instance -- a @dataclass whose every field read here is required or class-defaulted, and call_engine.py is confirmed the SOLE production constructor -- so Python's own dataclass machinery makes it impossible to construct a TheCall missing any of them; every getattr default was provably dead code. Also simplified the sibling 'Right Now' block's `_rules.micro` sub-fields (session_high/session_low/sweeps/last_sweep -- _micro is always a real micro_structure.MicroRead when truthy, confirmed via rules_engine.py's `micro=micro` pass-through) and `_rules.headline_1m` (a required, non-default str field on RulesCard), beyond the scanner-flagged set, matching this branch's established practice of fixing the whole identical-shape cluster once one member is confirmed. One test (tests/test_market_state_numeric_contract_v1.py) had constructed an incomplete SimpleNamespace stand-in for TheCall (only 12 of its ~30 fields) that the pre-repair getattr calls had silently tolerated -- replaced with a real TheCall instance, matching this session's established precedent of fixing a test fixture to the real schema rather than leaving it diverged. Other test files construct incomplete RulesCard(micro=SimpleNamespace(...)) stand-ins, but confirmed none of them route through build_market_state (they test rules_engine.py/call_engine.py directly), so they are unaffected. Tests: the 4 build_market_state test files (30 tests) plus test_action11_9_call_engine_fail_closed.py and test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00278",
@@ -3924,10 +3924,10 @@
       "snippet": "ms.put_forecast_state    = getattr(_call, 'put_forecast_state', 'dormant')",
       "semantic_field_guess": "put_forecast_state",
       "context": "build_market_state",
-      "adjudication": "NOT_PROVEN",
+      "adjudication": "REPAIRED",
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+      "required_repair": "REPAIRED 2026-09-17: market_state.py's whole 'The Call' field-population block (~30 getattr(_call, name, default) calls, of which these 7 were the ones the discovery scanner's semantic-term matcher flagged) simplified to bare attribute access. _call is always a signal_types.TheCall instance -- a @dataclass whose every field read here is required or class-defaulted, and call_engine.py is confirmed the SOLE production constructor -- so Python's own dataclass machinery makes it impossible to construct a TheCall missing any of them; every getattr default was provably dead code. Also simplified the sibling 'Right Now' block's `_rules.micro` sub-fields (session_high/session_low/sweeps/last_sweep -- _micro is always a real micro_structure.MicroRead when truthy, confirmed via rules_engine.py's `micro=micro` pass-through) and `_rules.headline_1m` (a required, non-default str field on RulesCard), beyond the scanner-flagged set, matching this branch's established practice of fixing the whole identical-shape cluster once one member is confirmed. One test (tests/test_market_state_numeric_contract_v1.py) had constructed an incomplete SimpleNamespace stand-in for TheCall (only 12 of its ~30 fields) that the pre-repair getattr calls had silently tolerated -- replaced with a real TheCall instance, matching this session's established precedent of fixing a test fixture to the real schema rather than leaving it diverged. Other test files construct incomplete RulesCard(micro=SimpleNamespace(...)) stand-ins, but confirmed none of them route through build_market_state (they test rules_engine.py/call_engine.py directly), so they are unaffected. Tests: the 4 build_market_state test files (30 tests) plus test_action11_9_call_engine_fail_closed.py and test_action11_12_regime_engine_fail_closed.py (13 tests) all still pass.",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "id": "FB-00279",

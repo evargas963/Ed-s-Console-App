@@ -1535,24 +1535,36 @@ def build_market_state(
             ms.zone_label       = _rules.zone_label
             ms.zone_badge_css   = _rules.zone_color or zone_badge_color(_rules.zone_label)
             ms.rules_headline   = _rules.headline
-            ms.rules_headline_1m = getattr(_rules, 'headline_1m', '') or ''
+            # headline_1m is a required (non-default) str field on RulesCard -- always
+            # present and already a str, so getattr's default could never fire.
+            ms.rules_headline_1m = _rules.headline_1m
             ms.rules_detail     = _rules.detail
             ms.rules_alerts     = list(_rules.alerts or [])
 
             # Session levels + sweeps from micro
-            _micro = getattr(_rules, 'micro', None)
+            # No-fallback lock (2026-09-17): RulesCard.micro is always the same object
+            # rules_engine.py's build_rules_card received as its own `micro` parameter
+            # (micro=micro, passed straight through), so a truthy _micro here is always a
+            # real micro_structure.MicroRead instance -- session_high/session_low/sweeps/
+            # last_sweep are declared @dataclass fields on it, always present.
+            _micro = _rules.micro
             if _micro:
-                ms.session_high = getattr(_micro, 'session_high', None)
-                ms.session_low = getattr(_micro, 'session_low', None)
-                _sweeps = getattr(_micro, 'sweeps', [])
+                ms.session_high = _micro.session_high
+                ms.session_low = _micro.session_low
+                _sweeps = _micro.sweeps
                 ms.n_sweeps_today = len(_sweeps)
-                _last_sw = getattr(_micro, 'last_sweep', None)
+                _last_sw = _micro.last_sweep
                 if _last_sw:
                     ms.last_sweep_type = _last_sw.type
                     ms.last_sweep_level = _last_sw.level
                     ms.last_sweep_held = _last_sw.held
 
         # The Call — entry/stop/target + new fields
+        # No-fallback lock (2026-09-17): _call is always a signal_types.TheCall instance
+        # (a @dataclass whose every field below is required or class-defaulted -- Python's
+        # own dataclass machinery makes it impossible to construct a TheCall missing any of
+        # them; call_engine.py is the sole constructor). Every getattr(_call, ..., default)
+        # here was provably dead code.
         _call = _sig_out.call
         if _call:
             ms.call_signal      = _call.signal
@@ -1562,54 +1574,53 @@ def build_market_state(
             ms.target           = _call.target
             ms.target2          = _call.target2
             ms.reward_risk      = _call.reward_risk
-            ms.reward_risk2     = getattr(_call, 'reward_risk2', None)
+            ms.reward_risk2     = _call.reward_risk2
             ms.entry_disp       = _ms_price_disp(_call.entry)
             ms.stop_disp        = _ms_price_disp(_call.stop)
             ms.target_disp      = _ms_price_disp(_call.target)
             ms.target2_disp     = _ms_price_disp(_call.target2)
             ms.rr_disp          = f"{_call.reward_risk:.1f}x" if _call.reward_risk else "—"
-            ms.rr2_disp         = f"{_call.reward_risk2:.1f}x" if getattr(_call, 'reward_risk2', None) else "—"
+            ms.rr2_disp         = f"{_call.reward_risk2:.1f}x" if _call.reward_risk2 else "—"
             ms.call_headline    = _call.headline
             ms.call_reasoning   = _call.reasoning
-            ms.trade_type       = getattr(_call, 'trade_type', 'none')
-            _tt = getattr(_call, 'trade_type', 'none')
-            ms.trade_type_label = _tt.replace('_', ' ').title() if _tt and _tt != 'none' else ''
-            ms.invalidation     = getattr(_call, 'invalidation', '')
-            ms.confluence_count = getattr(_call, 'confluence_count', 0)
-            ms.confluence_total = getattr(_call, 'confluence_total', None)
-            ms.confluence_detail = getattr(_call, 'confluence_detail', '')
-            ms.mh_promoted_directional = bool(getattr(_call, 'mh_promoted_directional', False))
-            ms.time_qualifier   = getattr(_call, 'time_qualifier', '')
-            ms.replay_max_hold_bars = int(getattr(_call, 'replay_max_hold_bars', 0) or 0)
-            ms.size_cue         = getattr(_call, 'size_cue', 'SKIP')
+            ms.trade_type       = _call.trade_type
+            ms.trade_type_label = _call.trade_type.replace('_', ' ').title() if _call.trade_type and _call.trade_type != 'none' else ''
+            ms.invalidation     = _call.invalidation
+            ms.confluence_count = _call.confluence_count
+            ms.confluence_total = _call.confluence_total
+            ms.confluence_detail = _call.confluence_detail
+            ms.mh_promoted_directional = _call.mh_promoted_directional
+            ms.time_qualifier   = _call.time_qualifier
+            ms.replay_max_hold_bars = _call.replay_max_hold_bars
+            ms.size_cue         = _call.size_cue
             ms.rules_pred_agree = _call.rules_pred_agree
             ms.time_warning     = _call.time_warning
             ms.size_note        = _call.size_note
             # Validation gate — fail-closed when call omits flags
-            ms.validation_passed  = getattr(_call, 'validation_passed', None)
-            ms.structure_valid    = getattr(_call, 'structure_valid', None)
-            ms.probability_valid  = getattr(_call, 'probability_valid', None)
-            ms.risk_valid         = getattr(_call, 'risk_valid', None)
-            ms.validation_summary = getattr(_call, 'validation_summary', '')
+            ms.validation_passed  = _call.validation_passed
+            ms.structure_valid    = _call.structure_valid
+            ms.probability_valid  = _call.probability_valid
+            ms.risk_valid         = _call.risk_valid
+            ms.validation_summary = _call.validation_summary
             # Position sizing
-            ms.r_units          = getattr(_call, 'r_units', None)
-            ms.execution_mode   = getattr(_call, 'execution_mode', 'NO_TRADE')
-            ms.sizing_summary   = getattr(_call, 'sizing_summary', '')
+            ms.r_units          = _call.r_units
+            ms.execution_mode   = _call.execution_mode
+            ms.sizing_summary   = _call.sizing_summary
             # Call Readiness
-            ms.call_readiness_score   = getattr(_call, 'readiness_score', 0)
-            ms.call_state             = getattr(_call, 'call_state', 'WAIT')
-            ms.call_forecast_state    = getattr(_call, 'forecast_state', 'dormant')
-            ms.call_readiness_reasons = list(getattr(_call, 'readiness_reasons', []) or [])
-            ms.call_missing_conditions = list(getattr(_call, 'missing_conditions', []) or [])
-            ms.call_readiness_component_scores = dict(getattr(_call, 'readiness_component_scores', {}) or {})
-            ms.call_wait_blocker = getattr(_call, 'wait_blocker', None)
+            ms.call_readiness_score   = _call.readiness_score
+            ms.call_state             = _call.call_state
+            ms.call_forecast_state    = _call.forecast_state
+            ms.call_readiness_reasons = list(_call.readiness_reasons)
+            ms.call_missing_conditions = list(_call.missing_conditions)
+            ms.call_readiness_component_scores = dict(_call.readiness_component_scores)
+            ms.call_wait_blocker = _call.wait_blocker
             # Put Readiness
-            ms.put_readiness_score   = getattr(_call, 'put_readiness_score', 0)
-            ms.put_state             = getattr(_call, 'put_state', 'WAIT')
-            ms.put_forecast_state    = getattr(_call, 'put_forecast_state', 'dormant')
-            ms.put_readiness_reasons = list(getattr(_call, 'put_readiness_reasons', []) or [])
-            ms.put_missing_conditions = list(getattr(_call, 'put_missing_conditions', []) or [])
-            ms.put_readiness_component_scores = dict(getattr(_call, 'put_readiness_component_scores', {}) or {})
+            ms.put_readiness_score   = _call.put_readiness_score
+            ms.put_state             = _call.put_state
+            ms.put_forecast_state    = _call.put_forecast_state
+            ms.put_readiness_reasons = list(_call.put_readiness_reasons)
+            ms.put_missing_conditions = list(_call.put_missing_conditions)
+            ms.put_readiness_component_scores = dict(_call.put_readiness_component_scores)
 
         # MODEL_SERVING_PROVENANCE_SURFACE_V1 — ungated copy (provenance must be
         # visible on every serve, not only when a multi-horizon decision exists).
