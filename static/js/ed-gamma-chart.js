@@ -42,6 +42,11 @@
   var _view = null;            // {lo, hi} once the operator has zoomed/panned; null = auto-fit
   var _pin = null;             // {vx, vy} pinned crosshair in viewBox space, or null
   var _lastCtx = null;         // {bars, win, spot, terrain} from the last successful render
+  var _lastRaw = null;         // {barsData, strikesData, terrain} raw endpoint responses --
+                               // lets a gamma-surface-only push (see loadGammaPushOnly below)
+                               // re-render with fresh GEX-by-strike data without re-fetching
+                               // the two endpoints (bars1m/terrain) that push carries no new
+                               // information for.
   var _viewTicker = null, _viewMode = null;   // domain resets only on a genuine context change
   // Deep-research finding (operator directive, 2026-09-14): real TradingView gives its
   // SECONDARY axis the same independent drag-to-rescale the primary axis gets (there, time is
@@ -278,6 +283,35 @@
   function okJson(r){ if(!r.ok) throw new Error(r.status); return r.json(); }
   function nullp(){ return null; }
 
+  // Audit finding #3 (2026-09-16, follow-up): a streamed gamma-surface push carries no new
+  // information for /api/bars1m (price history) or /api/terrain (regime/walls/pin) -- only
+  // /api/terrain/strikes (the GEX-by-strike profile this chart's 'profile' mode plots) is
+  // gamma-surface-derived. The old `ed:gamma-push` wiring called the SAME monolithic load()
+  // the 12s poll uses, refetching all THREE endpoints on every streamed tick -- exactly the
+  // "unrelated REST fan-out from one Gamma publication" the mandate bans. This refetches only
+  // the one relevant endpoint (via the shared, cross-module deduped fetch -- see
+  // l1_sse_guards.js:sharedFetchJson -- so a simultaneous panels.js loadGbs() for the SAME
+  // ticker on the SAME push collapses into one real network call) and re-renders with the
+  // last-known bars/terrain responses, which a streamed options tick cannot have changed.
+  function loadGammaPushOnlyImpl(tk, _signal) {
+    var host = document.getElementById('chartBody');
+    if (!host || !stillChart(tk)) return;
+    var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
+      return fetch(u, { cache: 'no-store' }).then(okJson);
+    };
+    return sharedFetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk)).catch(nullp)
+      .then(function (strikesData) {
+        if (!stillChart(tk) || strikesData == null) return;
+        var barsData = _lastRaw ? _lastRaw.barsData : null;
+        var terrain = _lastRaw ? _lastRaw.terrain : null;
+        render(host, barsData, strikesData, terrain);
+      });
+  }
+  var _gammaPushLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGammaPushOnlyImpl(ticker(), signal); })
+    : { trigger: function () { loadGammaPushOnlyImpl(ticker()); }, reset: function () {} };
+  function loadGammaPushOnly() { _gammaPushLoader.trigger(ticker()); }
+
   function render(host, barsData, strikesData, terrain) {
     var bars = (barsData && barsData.bars) || [];
     var srows = (strikesData && strikesData.today && strikesData.today.all) || [];
@@ -357,6 +391,7 @@
       // axis visibly narrowed the window but the note never appeared. renderInto re-evaluates
       // it fresh on every call instead, the same way it already does for `lo`/`hi` under _view.
     _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend };
+    _lastRaw = { barsData: barsData, strikesData: strikesData, terrain: terrain };
     renderInto(host, bars, win, spot, terrain, legend);
   }
   // Repaints from already-fetched data at a possibly operator-overridden [lo,hi] domain -- used
@@ -602,10 +637,11 @@
   document.addEventListener('ed:ticker', load);
   document.addEventListener('ed:scope', load);   // #3: re-window on a scope change
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
-  // Audit finding #3 (2026-09-16): this widget's load() includes /api/terrain/strikes, a
-  // genuinely gamma-surface-derived aggregate -- react to the narrow push too, not only the
-  // 12s poll (see ed-core.js's ed:gamma-push dispatch).
-  document.addEventListener('ed:gamma-push', load);
+  // Audit finding #3 (2026-09-16, follow-up): only /api/terrain/strikes (this widget's
+  // GEX-by-strike profile) is gamma-surface-derived -- react to the narrow push with the
+  // SCOPED reload (loadGammaPushOnlyImpl, above), never the full load() the 12s poll uses,
+  // which would also refetch /api/bars1m and /api/terrain for no reason on every streamed tick.
+  document.addEventListener('ed:gamma-push', loadGammaPushOnly);
   document.addEventListener('ed:strike', function () { applyChartHighlight(); });   // A: cross-panel sync
   document.addEventListener('ed:theme', load);   // re-render SVG for the new theme's tokens
   // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's

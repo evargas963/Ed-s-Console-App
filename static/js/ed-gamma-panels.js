@@ -209,14 +209,21 @@
   function stillGbsCtx(tk) { var host = document.getElementById('gbsBody'); return isGamma() && !!host && ticker() === tk; }
   // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
   // aborted immediately once a different ticker is selected, instead of blocking it.
-  function loadGbsImpl(tk, signal) {
+  function loadGbsImpl(tk, _signal) {
     var host = document.getElementById('gbsBody');
     if (!stillGbsCtx(tk)) return;
-    return fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    // 2026-09-16 audit follow-up (finding #3): shared, cross-module deduped fetch --
+    // ed-gamma-chart.js's own GEX-by-strike profile reads this SAME endpoint for the SAME
+    // ticker on the SAME `ed:gamma-push` tick; sharedFetchJson collapses the two into one
+    // real network request instead of two independent ones. No AbortSignal is passed (see
+    // that function's own docstring) -- stillGbsCtx() below still discards a response that
+    // arrives for a context this panel has since left.
+    var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
+      return fetch(u, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+    };
+    return sharedFetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk))
       .then(function (d) { if (stillGbsCtx(tk)) renderGbs(host, d, tk); })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
+      .catch(function () {
         if (stillGbsCtx(tk)) renderGbs(host, null, tk);
       });
   }

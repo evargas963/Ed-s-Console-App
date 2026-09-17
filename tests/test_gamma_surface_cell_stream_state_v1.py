@@ -108,6 +108,47 @@ def test_no_legs_at_all_is_unavailable():
     assert col["state"] == "unavailable"
 
 
+def test_desired_not_yet_ticked_is_pending_not_unavailable():
+    """Operator follow-up mandate (2026-09-16): a contract the daemon has genuinely
+    REQUESTED from the vendor, but which has not produced its first tick (and was not
+    rejected), is a materially different fact from "nobody asked for this contract at
+    all" -- it must report 'pending', never fall into the same 'unavailable' bucket."""
+    surf = _surface({"call": "AAA", "put": "BBB"})
+    # Neither symbol has ever streamed (absent from `streamed`); both are desired.
+    _stamp_gamma_surface_cell_stream_state(surf, {}, set(), None, {"AAA", "BBB"})
+    col = surf["cells"][0]["stream"][0]
+    assert col["call"]["state"] == "pending" and col["put"]["state"] == "pending"
+    assert col["state"] == "pending"
+
+
+def test_pending_takes_priority_over_unavailable_but_not_over_stale_or_live():
+    # One leg desired-but-never-ticked (pending), the other never desired (unavailable):
+    # the cell aggregate must read 'pending', not 'unavailable'.
+    surf = _surface({"call": "AAA", "put": "BBB"})
+    _stamp_gamma_surface_cell_stream_state(surf, {}, set(), None, {"AAA"})
+    col = surf["cells"][0]["stream"][0]
+    assert col["call"]["state"] == "pending" and col["put"]["state"] == "unavailable"
+    assert col["state"] == "pending"
+    # A stale leg (has ticked before, just not fresh this cycle) still outranks pending.
+    surf2 = _surface({"call": "AAA", "put": "BBB"})
+    _stamp_gamma_surface_cell_stream_state(
+        surf2, {"AAA": {"gamma_ts_recv": time.time() - 60}}, set(), None, {"AAA", "BBB"})
+    col2 = surf2["cells"][0]["stream"][0]
+    assert col2["call"]["state"] == "stale" and col2["put"]["state"] == "pending"
+    assert col2["state"] == "stale"
+
+
+def test_rejected_desired_symbol_reports_rejected_not_pending():
+    # A symbol both desired AND vendor-rejected must read 'rejected' -- the vendor's own
+    # explicit refusal is more informative than the generic "awaiting an outcome" pending
+    # state, and rejected is checked before desired-but-absent in the leg classification.
+    surf = _surface({"call": "AAA", "put": None})
+    _stamp_gamma_surface_cell_stream_state(
+        surf, {}, set(), {"AAA": "RuntimeError: refused"}, {"AAA"})
+    col = surf["cells"][0]["stream"][0]
+    assert col["call"]["state"] == "rejected"
+
+
 def test_cell_state_counts_tallies_across_cells_and_columns():
     surf = _surface({"call": "AAA", "put": "BBB"}, {"call": "CCC", "put": None})
     surf["cells"].append({"strike": 9.0, "contracts": [{"call": None, "put": "DDD"}]})
@@ -116,7 +157,7 @@ def test_cell_state_counts_tallies_across_cells_and_columns():
     _stamp_gamma_surface_cell_stream_state(surf, streamed, {"AAA", "BBB"})
     counts = _gamma_surface_cell_state_counts(surf)
     # cell0: live (both legs live). cell1: stale (CCC desired, not overlaid). cell2: unavailable (DDD never desired).
-    assert counts == {"live": 1, "partial": 0, "stale": 1, "rejected": 0, "unavailable": 1}
+    assert counts == {"live": 1, "partial": 0, "stale": 1, "pending": 0, "rejected": 0, "unavailable": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +346,40 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
         assert cov["meets_live_requirement"] is False, (
             "one live cell out of two must NOT satisfy the LIVE requirement"
         )
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+
+
+def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live():
+    """Operator follow-up mandate (2026-09-16): coverage disclosure must count live/
+    partial/stale/PENDING/rejected/unavailable cells distinctly -- a pending contract
+    (requested, no tick yet) must never count toward meets_live_requirement, and must
+    never be silently folded into the unavailable bucket the client cannot act on."""
+    tk = ticker_storage_key("ZZZTEST_PENDING")
+    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
+            "cells": [
+                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
+                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
+            ],
+            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
+            "gamma_available": True}
+    # X is live-streaming; Y has been requested (desired) but never ticked.
+    _stamp_gamma_surface_cell_stream_state(
+        surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"})
+    with server._terrain_cache_lock:
+        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+    try:
+        d = _call(tk)
+        cov = d["stream_coverage"]
+        assert cov["total_visible_cells"] == 2
+        assert cov["live"] == 1 and cov["pending"] == 1
+        assert cov.get("unavailable", 0) == 0, "the pending leg must not also be counted as unavailable"
+        assert cov["meets_live_requirement"] is False, (
+            "a pending (not-yet-confirmed) cell must NOT satisfy the LIVE requirement")
+        assert d["cell_stream_state_counts"]["pending"] == 1
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)

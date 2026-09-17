@@ -2210,6 +2210,33 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(unrelated).toEqual(beforeUnrelated);
   });
 
+  test('audit #3 (follow-up): two modules reacting to the SAME push for the SAME endpoint collapse into one network call', async ({ page }) => {
+    // On the Chart view, ed-gamma-chart.js's own GEX profile AND ed-gamma-panels.js's
+    // Key Levels rail (isGamma() is view-independent -- see that file's own gate) are BOTH
+    // active and BOTH react to ed:gamma-push by reading /api/terrain/strikes for the SAME
+    // ticker -- exactly the "independently refetches multiple related endpoints" shape the
+    // operator's mandate bans. l1_sse_guards.js's sharedFetchJson must collapse the two
+    // into a single real request, not merely narrow WHICH modules react.
+    let strikesCalls = 0;
+    await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
+    await page.route('**/api/analytics/light/stream**', async (route) => {
+      await new Promise((r) => setTimeout(r, 1000));
+      route.fulfill({
+        status: 200, contentType: 'text/event-stream',
+        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator('#chartBody svg')).toBeVisible();
+    await page.waitForTimeout(200);   // let the view-switch's own hydration settle
+    const before = strikesCalls;
+    await page.waitForTimeout(1100);   // past the mocked SSE delay
+    // Exactly one MORE call for the one push, not two (one per reacting module).
+    expect(strikesCalls - before).toBe(1);
+  });
+
   test('audit #5: the Chain view does not poll on a fixed 12s cadence while inactive, and hydrates once on entry', async ({ page }) => {
     let chainCalls = 0;
     await page.route('**/api/chain**', (route) => {
@@ -2266,7 +2293,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const scopeText = await page.locator('#heatScope').textContent();
     expect(scopeText).toMatch(/LIVE·50%/);
     expect(scopeText).not.toMatch(/·\s*LIVE\s*(·window)?\s*$/);   // never the bare word alone
-    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 rejected, 0 unavailable of 2 visible/);
+    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 rejected, 0 unavailable of 2 visible/);
   });
 
   test('audit #6: a vendor-rejected contract renders a distinct, visibly-failed cell', async ({ page }) => {

@@ -616,6 +616,7 @@
           : liveState === 'partial' ? 'PARTIAL: only one side of this cell is confirmed live-streamed; the value shown is still the full computed figure'
           : liveState === 'stale' ? ('SNAPSHOT: not currently confirmed live-streamed' +
               (snapshotAge != null ? ' (last confirmed ' + Math.round(snapshotAge) + 's ago)' : '') + ' -- most recent valid computed value shown')
+          : liveState === 'pending' ? 'PENDING: contract requested from the vendor, awaiting first confirmed tick -- most recent valid computed value shown'
           : liveState === 'rejected' ? ('REJECTED: the vendor refused this contract\'s subscription' +
               (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
@@ -883,11 +884,12 @@
       var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
       el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
       // Exact coverage breakdown on hover -- counts and percentages for live/partial/
-      // stale/rejected/unavailable, not just the headline word.
+      // stale/pending/rejected/unavailable, not just the headline word.
       el.title = cov
         ? ('coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
-           ' stale, ' + cov.rejected + ' rejected, ' + cov.unavailable + ' unavailable of ' +
-           cov.total_visible_cells + ' visible cells (' + cov.live_pct + '% live)')
+           ' stale, ' + (cov.pending || 0) + ' pending, ' + cov.rejected + ' rejected, ' +
+           cov.unavailable + ' unavailable of ' + cov.total_visible_cells +
+           ' visible cells (' + cov.live_pct + '% live)')
         : ((surface.coverage && surface.coverage.note) || '');
     }
   }

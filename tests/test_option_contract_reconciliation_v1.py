@@ -1322,6 +1322,42 @@ def test_multi_A_primary_and_one_extra_symbol_both_subscribe_and_open_durably(
     assert ("options_book_sub", (_SPY_CONTRACT,)) in subs
 
 
+def test_multi_A2_thirty_extra_symbols_admit_in_one_vendor_call_not_thirty(
+        tmp_path, monkeypatch):
+    """2026-09-16 rearchitecture (bounded vendor calls, audit finding #1) — the decisive,
+    at-scale regression this mandate names explicitly: "serialized one-call-per-contract
+    reconciliation" must fail this test. The PRIOR design called _reconcile_option_service
+    once PER symbol, each issuing its own vendor round trip -- an N-symbol change cost N
+    network round trips. This proves the opposite at N=30: every symbol admits through
+    EXACTLY ONE batched vendor call, not thirty."""
+    symbols = sorted(f"MSFT  260918C00{300 + i:03d}000" for i in range(30))
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: symbols)
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state: dict = {}
+    contract_state: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, writer=writer, epoch_state=epoch_state)
+    new_state = asyncio.run(go())
+    writer.close()
+
+    for sym in symbols:
+        assert new_state["l1:extra:" + sym] == sym, f"{sym} must have reached steady state"
+    # SPY (the primary) issues its own SUBS first; the 30 extras must then admit through
+    # exactly ONE l1_option_add call carrying every symbol -- not 30 separate calls, and
+    # not merely fewer-than-30 (a partial batching fix could still be O(log N) or O(sqrt N)
+    # and this would not catch it as decisively as an exact count of 1).
+    add_calls = [c for c in stream.calls if c[0] == "l1_option_add"]
+    assert len(add_calls) == 1, (
+        f"expected exactly one batched vendor call for 30 extra symbols with no vendor "
+        f"rejection, got {len(add_calls)}: {add_calls}")
+    assert set(add_calls[0][1]) == set(symbols)
+    assert stream.held["LEVELONE_OPTIONS"] == {_SPY_CONTRACT, *symbols}
+
+
 def test_multi_B_dropping_an_extra_symbol_unsubscribes_closes_and_prunes_state(
         tmp_path, monkeypatch):
     """Removing a symbol from the plural signal drives the SAME close-before-unsub

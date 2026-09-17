@@ -17,7 +17,14 @@ import inspect
 import json
 from pathlib import Path
 
-from server import project_gamma_surface, project_gamma_surface_update_expiry
+from server import (
+    project_gamma_surface,
+    project_gamma_surface_update_expiry,
+    _per_strike_exposures_by_expiry,
+    _merge_all_expiry_exposures,
+    _per_strike_view_from_contracts,
+    _per_strike_view_update_expiry,
+)
 from math_exposure_core import compute_exposures_by_strike
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -431,3 +438,69 @@ def test_incremental_update_falls_back_to_none_when_prior_surface_lacks_the_stri
     assert target_strike not in prior["strikes"], (
         "test setup must actually remove the strike, or this proves nothing")
     assert project_gamma_surface_update_expiry(prior, chain, SPOT, E1) is None
+
+
+# ---- per-strike 'all' aggregate incrementality (2026-09-16, operator follow-up mandate:
+# "dependent strike aggregates" must not be fully recomputed on every streamed tick either,
+# once the surface itself no longer is) — same reconcile-exactly / fall-back-to-None
+# discipline as project_gamma_surface_update_expiry above. ----
+
+def test_per_expiry_exposures_additively_merge_to_the_full_recompute(monkeypatch):
+    """The building block the incremental per-strike update relies on: partitioning the
+    two-expiry union chain by expiry and merging the two per-expiry exposures dicts must
+    reproduce compute_exposures_by_strike's own single-call result over the WHOLE chain,
+    strike for strike, field for field -- proving the merge is a real additive identity,
+    not merely 'close enough'."""
+    import time_et
+    # bs_vanna's t_years input reads now_et() fresh on every call (see
+    # test_gamma_surface_stream_refresh_v1.py's identical fix) -- frozen so the two
+    # separate compute_exposures_by_strike passes below compare exactly, not to within a
+    # wall-clock-drift tolerance.
+    frozen = time_et.now_et()
+    monkeypatch.setattr(time_et, "now_et", lambda: frozen)
+    chain = _chain()
+    full, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
+    by_expiry = _per_strike_exposures_by_expiry(chain, SPOT)
+    assert set(by_expiry.keys()) == {E1, E2}
+    merged = _merge_all_expiry_exposures(by_expiry)
+    assert set(merged.keys()) == set(full.keys())
+    for strike, bucket in full.items():
+        assert merged[strike] == bucket, (
+            f"merged per-expiry exposures at strike {strike} must equal the full single-call "
+            f"recompute exactly: {merged[strike]} != {bucket}")
+
+
+def test_per_strike_view_update_expiry_matches_a_full_recompute_for_the_changed_expiry(monkeypatch):
+    import time_et
+    frozen = time_et.now_et()
+    monkeypatch.setattr(time_et, "now_et", lambda: frozen)
+    chain = _chain()
+    by_expiry: dict = {}
+    prior_view = _per_strike_view_from_contracts(chain, SPOT, by_expiry_out=by_expiry)
+    full_view = _per_strike_view_from_contracts(chain, SPOT)   # independent second full pass
+    result = _per_strike_view_update_expiry(by_expiry, prior_view, chain, SPOT, [E1])
+    assert result is not None, "a real two-expiry union chain must never force a fallback"
+    updated_view, updated_by_expiry = result
+    assert updated_view["all"] == full_view["all"], (
+        "the incremental 'all' aggregate must reconcile exactly to a full recompute — the "
+        "same canonical faucet on a narrower input, never an approximation")
+    # 'near'/'far' are deliberately carried over from the prior view, not recomputed here
+    # (see _per_strike_view_update_expiry's own docstring) -- still present, unchanged.
+    assert updated_view["near"] == prior_view.get("near", [])
+    assert updated_view["far"] == prior_view.get("far", [])
+    # the cache for the UNAFFECTED expiry (E2) must be the untouched prior object.
+    assert updated_by_expiry[E2] is by_expiry[E2]
+
+
+def test_per_strike_view_update_expiry_falls_back_to_none_with_no_prior_cache():
+    chain = _chain()
+    prior_view = _per_strike_view_from_contracts(chain, SPOT)
+    assert _per_strike_view_update_expiry(None, prior_view, chain, SPOT, [E1]) is None
+    assert _per_strike_view_update_expiry({}, prior_view, chain, SPOT, [E1]) is None
+
+
+def test_per_strike_view_update_expiry_falls_back_to_none_with_no_affected_expiries():
+    chain = _chain()
+    by_expiry: dict = {}
+    prior_view = _per_strike_view_from_contracts(chain, SPOT, by_expiry_out=by_expiry)
+    assert _per_strike_view_update_expiry(by_expiry, prior_view, chain, SPOT, []) is None
