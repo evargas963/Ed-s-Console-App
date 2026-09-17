@@ -64,6 +64,35 @@ going forward. A LEGACY-format (`FB-NNNNN`) id with no match is expected and rep
 visibility only (the underlying code was deleted by a real repair), never a failure.
 Proof: `tests/test_fallback_discovery_fingerprint_identity.py::test_adjudication_target_validation_distinguishes_legacy_from_shifted`.
 
+**Point 12 closure (deletion and helper-necessity proofs, 2026-09-17):** auditing
+`tools/legacy/horizon_7/`'s deletion and `tools/_fusion_backfill_shared.py`'s necessity
+claim did not confirm a clean bill of health — it surfaced two real, previously-
+unverified defects:
+- `tests/test_batch_movement_backfill_contract_v1.py` and one test inside
+  `tests/test_pred_1c_eddb_and_audit_contract_v1.py` were still reading/loading files
+  from the deleted `tools/legacy/horizon_7/` directory and had been failing with
+  `FileNotFoundError` ever since it was deleted — a real, currently-red regression a
+  prior "zero references" claim never caught, because these tests were never actually
+  run against the post-deletion tree until now. Confirmed via repo-wide grep that
+  neither `_sanitize_snapshot_dict_for_mvp` nor the `governed_rows_with_pred_1c_nonnull`
+  audit metric these tests pinned has any other definition or consumer anywhere in the
+  current codebase — both were genuinely retired with the directory, not relocated.
+  Deleted the dead-legacy-pinning test file and test; kept the unrelated, still-passing
+  real-schema test in the second file.
+- `tools/_fusion_backfill_shared.py`'s own docstring claimed all three fusion-backfill
+  tools shared `_classify_failure`, but `tools/backfill_fusion_policy_complete_v1.py`
+  never actually imported it — it kept a pre-existing local `_classify_failure_complete`
+  already drifted from the shared version (a different label for the identical
+  `MonteCarloStackInputError` case, plus a finer history-vs-reconstruction message check
+  the shared version lacked). Folded the finer distinction into the shared function as
+  the single canonical classifier and deleted the local duplicate — now genuinely one
+  producer for all three consumers.
+- Also removed an orphaned grandfather-exemption entry in
+  `tools/check_institutional_correctness.py` naming a horizon_7 file that can never
+  match anything post-deletion — inert, but stale clutter that looked like a live
+  carve-out.
+Proof: `tests/test_fusion_backfill_shared_v1.py` (extended), `tests/test_pred_1c_eddb_and_audit_contract_v1.py`, `tests/test_audit_snapshot_columns.py`.
+
 **The first repair pass on this branch was rejected twice by the operator**, each time for
 a specific, named defect rather than a vague "try harder": (1) an early pass treated a
 pre-existing structural test's assertion as proof of correctness instead of tracing the
