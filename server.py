@@ -3958,7 +3958,6 @@ from calibration.option_chain_morning_full import (
 from calibration.complete_chain_capture import (
     eligible_near_term_expiries,
     has_complete_chain_capture_today,
-    latest_complete_chain_capture,
     next_capture_batch,
     persist_complete_chain_capture,
 )
@@ -13109,14 +13108,26 @@ def _gamma_current_spot_fields(ticker: str, computed_spot) -> dict:
             current_f = float(current)
     except (TypeError, ValueError):
         current_f = None
+    row = _lmp.get_quote(ticker)
+    gen = None
+    native_ts = ts
+    if row and _lmp.plane_spot_is_last_price(row):
+        gen = row.get("last_price_generation")
+        native_ts = row.get("last_price_native_ts") or ts
     return {
         "current_spot": current_f,
         "current_spot_source": source,
         "current_spot_state": current_spot_state(source, ticker, as_of_ts=ts),
         "current_spot_as_of_ts_utc": ts,
+        "current_spot_generation": gen,
+        "last_price_generation": gen,
+        "last_price_native_ts": native_ts,
         "spot_is_current": (
             current_f is not None and computed_f is not None and current_f == computed_f
         ),
+        "computed_from_spot_generation": gen if (
+            current_f is not None and computed_f is not None and current_f == computed_f
+        ) else None,
     }
 
 
@@ -13131,6 +13142,43 @@ def _gamma_surface_cell_state_counts(surface: dict) -> dict:
             if isinstance(col, dict) and col.get("state") in counts:
                 counts[col["state"]] += 1
     return counts
+
+
+def _selected_contracts_from_surface(surface: dict) -> list[str]:
+    """ONE canonical selected-contract set: cells[].contracts[].call|put, first-seen order.
+
+    This is the live-capable contract identity set projected on the surface. The client
+    viewport (Auto/Wider/All) may request a subset of this set; it may not invent a
+    second independent derivation. Missing/non-list cells or contracts fail closed as
+    an empty selected set only when the surface itself is empty — a present surface
+    with a non-list contracts field raises so a schema break cannot look successful.
+    """
+    cells = (surface or {}).get("cells")
+    if cells is None:
+        return []
+    if not isinstance(cells, list):
+        raise TypeError("gamma surface cells must be a list")
+    out: list[str] = []
+    seen: set[str] = set()
+    for cell in cells:
+        if not isinstance(cell, dict):
+            raise TypeError("gamma surface cell must be an object")
+        contracts = cell.get("contracts")
+        if contracts is None:
+            continue
+        if not isinstance(contracts, list):
+            raise TypeError("gamma surface cell.contracts must be a list")
+        for col in contracts:
+            if col is None:
+                continue
+            if not isinstance(col, dict):
+                raise TypeError("gamma surface cell.contracts[] must be an object")
+            for side in ("call", "put"):
+                sym = col.get(side)
+                if isinstance(sym, str) and sym and sym not in seen:
+                    seen.add(sym)
+                    out.append(sym)
+    return out
 
 
 def _gamma_surface_coverage_summary(surface: dict) -> dict:
@@ -16040,6 +16088,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
             "stream_coverage": _coverage,
             "contract_admission": _contract_admission,
+            "selected_contracts": _selected_contracts_from_surface(surf),
             "degraded": live.get("levels_stale_reason") if stale else None,
             # Computed-from spot is the stamp the cells were actually priced from.
             # Current LAST_PRICE is a separate observation: cells computed from an
@@ -16080,10 +16129,15 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                        "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
         })
 
-    # ---- FALLBACK: banked MORNING wide chain — REFERENCE ONLY, never presented as intraday ----
+    # Current Gamma may NEVER use banked_morning_reference (operator 2026-09-17).
+    # Historical morning Gamma lives only on /api/exposure/history.
     hit = _GAMMA_SURFACE_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
+        cached = hit[1]
+        if isinstance(cached, dict) and cached.get("source") == "banked_morning_reference":
+            _GAMMA_SURFACE_CACHE.pop(tk, None)
+        else:
+            return JSONResponse(cached)
     # #1-A: separate the two truths the UI must not conflate.
     #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
     #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
@@ -16101,7 +16155,9 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                      "live": False, "stale": True, "warming": _warming,
                      "requested": _requested, "on_board": _on_board,
-                     "reason": "no live terrain surface and no banked wide chain"}
+                     "reason": ("live Gamma surface unavailable — current heatmap is "
+                                "UNAVAILABLE (historical morning Gamma is "
+                                "/api/exposure/history, never this surface)")}
     try:
         db = get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
@@ -16124,44 +16180,14 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                                   "from a prior session (not today's ET date) -- not served as "
                                   "a morning reference to avoid presenting stale data as current")
         if rows_t:
-            et_date, s1, c1, ts1 = rows_t[0]
-            spot1 = float(s1)
-            surface = project_gamma_surface(json.loads(c1), spot1)
-            # Always-live heatmap mandate (2026-09-15): a banked-morning reference has no stream
-            # overlay input at all -- every leg on every cell stamps 'unavailable' UNLESS the
-            # daemon is already, independently, requesting that leg's contract (a genuine
-            # 'pending' -- the caller is honestly waiting on the vendor, not merely looking at a
-            # never-subscribed contract), consistent with "REST may bootstrap or recover the
-            # surface, but it cannot satisfy LIVE".
-            from app.options.order_flow.streaming import is_option_producer_daemon_available
-            _stamp_gamma_surface_cell_stream_state(
-                surface, {}, set(), None, set(_desired_option_symbols_for_ticker(tk)),
-                daemon_available=is_option_producer_daemon_available())
-            _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
-            payload = {
-                "ticker": tk, "symbol": tk, "available": True,
-                "source": "banked_morning_reference", "live": False, "stale": True,
-                "cell_stream_state_counts": _gamma_surface_cell_state_counts(surface),
-                "stream_coverage": _gamma_surface_coverage_summary(surface),
-                "warming": _warming, "requested": _requested, "on_board": _on_board,
-                "degraded": ("live terrain surface unavailable — showing banked morning wide "
-                             "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
-                "et_date": et_date, "spot": spot1,
-                "chain_as_of_ts_utc": ts1, "spot_as_of_ts_utc": ts1, "age_sec": _age_sec,
-                "chain_basis": "banked_morning", "complete": False,
-                "coverage": {"window": "banked_morning_wide", "strike_count": len(surface.get("strikes") or []),
-                             "note": ("banked morning wide reference — strike-count bounded, not intraday "
-                                      "and not proven complete (not strike_range=ALL)")},
-                **_stamp_surface_session(surface, reference_date=str(et_date)),
-                "provenance": {
-                    "producer": "math_exposure_core.compute_exposures_by_strike",
-                    "source": "newest_banked_wide_chain:option_chain_morning_full",
-                    "classification": "DERIVED", "cell_metric": "net_gex_1pct",
-                    "spot_basis": "captured_morning_spot",
-                },
-                "method": ("REFERENCE: newest banked MORNING wide chain -> per-expiry "
-                           "compute_exposures_by_strike; morning spot/Greeks, not intraday"),
-            }
+            et_date, _s1, _c1, _ts1 = rows_t[0]
+            payload["historical_morning_available"] = True
+            payload["historical_morning_et_date"] = str(et_date)
+            payload["reason"] = (
+                "live Gamma surface unavailable — current heatmap is UNAVAILABLE; "
+                "a same-session morning capture exists as historical reference at "
+                "/api/exposure/history and must not populate this heatmap"
+            )
     except Exception as e:  # fail-closed to explicit unavailability
         payload = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                    "live": False, "stale": True, "warming": _warming,
@@ -17788,7 +17814,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
             d = date.fromisoformat(resolved_expiry)
             client = get_client()
             c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-                client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
+                client, t, strike_range="ALL", from_date=d, to_date=d, priority=True)
             if c_resp is not None and c_resp.status_code == 200:
                 # This fetch's OWN as-of instant -- captured the moment the vendor's response
                 # is in hand, before any overlay -- is the correct `newer_than_ts` baseline.
@@ -17870,60 +17896,34 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                 # No contracts at all for the mismatch case — fall through to the
                 # persisted/stored tiers below rather than returning an empty response.
             else:
-                log.warning("chain: live fetch non-200 for %s expiry %s, falling back",
+                log.warning("chain: live fetch non-200 for %s expiry %s — fail closed",
                            t, resolved_expiry)
+                return JSONResponse({
+                    "ticker": t, "spot": None, "expiry": resolved_expiry, "contracts": [],
+                    "status": "live_fetch_failed", "available": False,
+                    "reason": f"live strike_range=ALL fetch HTTP {getattr(c_resp, 'status_code', None)}",
+                    "scope": {"kind": "live_fetch_failed",
+                              "requested_expiry": resolved_expiry},
+                })
         except Exception as e:
-            log.warning("chain: live fetch failed for %s expiry %s (%s), falling back",
+            log.warning("chain: live fetch failed for %s expiry %s (%s) — fail closed",
                        t, resolved_expiry, e)
-
-        try:
-            cap = latest_complete_chain_capture(get_db().db_path, t, resolved_expiry)
-        except Exception as e:
-            cap = None
-            log.debug("chain: persisted-capture read failed for %s %s: %s",
-                     t, resolved_expiry, e)
-        if cap:
-            # Same overlay faucet as the live tiers above, bounded here by the capture's
-            # OWN as-of (a streamed field only overlays a banked capture when it is
-            # genuinely newer than that specific capture, not merely "recent").
-            cap_contracts, cap_overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-                t, cap["contracts"], newer_than_ts=cap["ts_utc"])
             return JSONResponse({
-                "ticker": t, "spot": cap["spot"], "expiry": resolved_expiry,
-                "contracts": cap_contracts, "status": "ok",
-                "stream_overlay_contracts": cap_overlay_n,
-                "scope": {"kind": "persisted_complete_capture_fallback",
-                         "requested_expiry": resolved_expiry,
-                         "completeness_basis": cap["completeness_basis"],
-                         "captured_ts": cap["ts_utc"],
-                         "captured_age_sec": round(time.time() - cap["ts_utc"], 1),
-                         "note": "a prior COMPLETE capture — not fetched live this "
-                                 "request, staleness stated above"},
+                "ticker": t, "spot": None, "expiry": resolved_expiry, "contracts": [],
+                "status": "live_fetch_failed", "available": False,
+                "reason": f"live strike_range=ALL fetch failed: {e}",
+                "scope": {"kind": "live_fetch_failed",
+                          "requested_expiry": resolved_expiry},
             })
 
-    contracts, spot, stored_ts = _latest_chain_and_spot(t)
-    if not contracts:
-        return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [],
-                            "status": "no_chain",
-                            "scope": {"kind": "stored_analytical_snapshot_fallback"}})
-    stored_expiry = None
-    for ct in contracts:
-        if isinstance(ct, dict) and ct.get("expirationDate"):
-            stored_expiry = str(ct["expirationDate"])[:10]
-            break
-    # A FOURTH independent review (2026-09-13), REPRODUCED: same newer_than_ts=None ordering
-    # bug as the live-fetch tier above, here against a STORED snapshot's own row ts_utc
-    # (now returned by _latest_chain_and_spot) instead of a live fetch's instant.
-    contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-        t, contracts, newer_than_ts=stored_ts)
     return JSONResponse({
-        "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,
-        "stream_overlay_contracts": overlay_n,
-        "status": "ok",
-        "scope": {"kind": "stored_analytical_snapshot_fallback",
-                 "note": "bounded analytical snapshot, NOT proven complete — live "
-                         "complete-chain fetch and any persisted capture were both "
-                         "unavailable this request"},
+        "ticker": t, "spot": None, "expiry": resolved_expiry, "contracts": [],
+        "status": "no_chain" if resolved_expiry is None else "live_fetch_failed",
+        "available": False,
+        "reason": ("live complete-chain fetch unavailable — cached, stored, or "
+                   "historical snapshots are not substituted"),
+        "scope": {"kind": "no_live_expiry" if resolved_expiry is None else "live_fetch_failed",
+                  "requested_expiry": resolved_expiry},
     })
 
 

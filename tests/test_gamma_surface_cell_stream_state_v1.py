@@ -509,10 +509,9 @@ def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path,
     monkeypatch.setattr(server, "get_db", lambda: _FakeDB(db))
     try:
         d = _call(tk)
-        assert d["source"] == "banked_morning_reference"
-        assert d["stream_coverage"]["meets_live_requirement"] is False
-        assert d["cell_stream_state_counts"]["live"] == 0
-        assert d["cell_stream_state_counts"]["unavailable"] > 0
+        assert d["source"] == "unavailable"
+        assert d["available"] is False
+        assert d.get("cells") in (None, [])
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)

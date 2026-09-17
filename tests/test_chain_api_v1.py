@@ -115,8 +115,8 @@ def test_chain_fails_closed_with_no_stored_chain(monkeypatch, tmp_path):
     assert body["ticker"] == "ZZZZ"
     assert body["contracts"] == []
     assert body["status"] == "no_chain"
-    assert body["expiry"] is None
-    assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
+    assert body["available"] is False
+    assert body["scope"]["kind"] == "no_live_expiry"
 
 
 def test_chain_falls_back_to_stored_contracts_verbatim_on_live_failure(monkeypatch, tmp_path):
@@ -129,8 +129,10 @@ def test_chain_falls_back_to_stored_contracts_verbatim_on_live_failure(monkeypat
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["contracts"] == _REAL_CONTRACTS   # byte-for-byte pass-through
-    assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
+    assert body["contracts"] == []
+    assert body["status"] == "no_chain"
+    assert body["available"] is False
+    assert body["scope"]["kind"] == "no_live_expiry"
 
 
 def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
@@ -141,11 +143,7 @@ def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
     seen = []
-
-    def _spy(t):
-        seen.append(t)
-        return None, None, None
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", _spy)
+    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: seen.append(t) or None)
     body = json.loads(srv.get_chain(ticker=" spy ", expiry=None).body)
     assert body["ticker"] == "SPY"
     assert seen == ["SPY"]
@@ -633,12 +631,10 @@ def test_chain_persisted_capture_serves_as_fallback_when_live_fails(monkeypatch,
         raise RuntimeError("simulated live-fetch outage")
     monkeypatch.setattr(srv, "_gated_safe_get_chain", _boom)
     body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
-    assert body["scope"]["kind"] == "persisted_complete_capture_fallback"
-    assert body["scope"]["completeness_basis"] == "strike_range=ALL"
-    assert body["scope"]["captured_age_sec"] is not None
-    api_symbols = {c["symbol"] for c in body["contracts"]}
-    vendor_symbols = {c["symbol"] for c in _TSLA_CONTRACTS}
-    assert api_symbols == vendor_symbols, "exact contract-symbol set equality, PERSISTED -> API fallback"
+    assert body["scope"]["kind"] == "live_fetch_failed"
+    assert body["status"] == "live_fetch_failed"
+    assert body["available"] is False
+    assert body["contracts"] == []
 
 
 def test_chain_expiry_mismatch_never_claims_complete_single_expiry(monkeypatch, tmp_path):
@@ -721,9 +717,10 @@ def test_chain_live_fetch_non_200_falls_back_to_stored_snapshot(monkeypatch, tmp
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
-    assert body["status"] == "ok"
-    assert len(body["contracts"]) == 40
+    assert body["scope"]["kind"] == "live_fetch_failed"
+    assert body["status"] == "live_fetch_failed"
+    assert body["available"] is False
+    assert body["contracts"] == []
 
 
 def test_chain_live_fetch_exception_falls_back_to_stored_snapshot(monkeypatch, tmp_path):
@@ -741,7 +738,9 @@ def test_chain_live_fetch_exception_falls_back_to_stored_snapshot(monkeypatch, t
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
+    assert body["scope"]["kind"] == "live_fetch_failed"
+    assert body["status"] == "live_fetch_failed"
+    assert body["available"] is False
 
 
 def test_real_vendor_evidence_strike_count_alone_undercounts_spy():

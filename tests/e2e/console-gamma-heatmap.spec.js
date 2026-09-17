@@ -35,9 +35,12 @@ const SURFACE = {
   expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
   strikes: [580, 583, 586],
   cells: [
-    { strike: 580, gex: [-90000, null] },
-    { strike: 583, gex: [958600, 300000] },
-    { strike: 586, gex: [-264500, 120000] },
+    { strike: 580, gex: [-90000, null],
+      contracts: [{ call: 'SPX_580C1', put: 'SPX_580P1' }, { call: 'SPX_580C2', put: 'SPX_580P2' }] },
+    { strike: 583, gex: [958600, 300000],
+      contracts: [{ call: 'SPX_583C1', put: 'SPX_583P1' }, { call: 'SPX_583C2', put: 'SPX_583P2' }] },
+    { strike: 586, gex: [-264500, 120000],
+      contracts: [{ call: 'SPX_586C1', put: 'SPX_586P1' }, { call: 'SPX_586C2', put: 'SPX_586P2' }] },
   ],
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
@@ -212,7 +215,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: call,
           // chain_as_of_ts_utc / spot_as_of_ts_utc / chain_basis / et_date are DELIBERATELY
           // identical to SURFACE's own (unmodified) values on both fetches -- exactly what an
@@ -248,8 +251,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583, 586], expirations: [{ expiry: '2026-09-11', dte: 2 }],
           cells: [
-            { strike: 583, gex: [changedValue] },
-            { strike: 586, gex: [-50000] },   // identical on every fetch
+            { strike: 583, gex: [changedValue], contracts: [{ call: 'C583', put: 'P583' }] },
+            { strike: 586, gex: [-50000], contracts: [{ call: 'C586', put: 'P586' }] },   // identical on every fetch
           ],
           surface_seq: call,
         })),
@@ -288,7 +291,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: surfaceCalls,
         })),
       });
@@ -336,7 +339,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: call,
         })),
       });
@@ -396,7 +399,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: JSON.stringify(Object.assign({}, SURFACE, {
           ticker: tk, symbol: tk,
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: 1,
         })),
       });
@@ -447,7 +450,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     let available = true;
     await page.route('**/api/options/gamma-surface**', (route) => {
       const body = available
-        ? Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }], cells: [{ strike: 583, gex: [1000] }] })
+        ? Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }], cells: [{ strike: 583, gex: [1000], contracts: [{ call: 'C583', put: 'P583' }] }] })
         : { available: false, reason: 'not currently active for this symbol' };
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
@@ -515,6 +518,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // 16 unexpired expirations x 3 strikes: enough columns that Auto (front column only,
     // 1 col x 3 strikes x 2 sides = 6 symbols) and Wider (min(2*autoColCount,16) columns)
     // genuinely differ in how many contracts they cover.
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
     }));
@@ -592,6 +596,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
       });
     });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#heatBody .heat tbody tr');
@@ -873,18 +878,15 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, SURFACE, {
-        source: 'banked_morning_reference', live: false, stale: true,
+        source: 'banked_morning_reference', live: false, stale: true, available: true,
         degraded: 'live terrain surface unavailable — showing banked MORNING chain (reference only: morning spot + morning Greeks, NOT intraday)',
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const banner = page.locator('.heat-banner.ref');
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText('MORNING REFERENCE');
-    await expect(banner).toContainText('intraday');
-    await expect(page.locator('#heatScope')).toContainText('REF');
-    // B: the reference surface visually recedes, not just a banner
-    await expect(page.locator('.heat-wrap.recede')).toBeVisible();
+    await expect(page.locator('#heatBody .placeholder .big')).toContainText('Gamma surface unavailable');
+    await expect(page.locator('#heatBody')).toContainText('historical morning Gamma is not the current heatmap');
+    await expect(page.locator('#heatBody .hcell')).toHaveCount(0);
+    await expect(page.locator('#heatScope')).not.toContainText('REF·morning');
   });
 
   test('persists workspace/view across reload (D: UI state, not market truth)', async ({ page }) => {
@@ -1047,10 +1049,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // disclosed, Auto selects a legible viewport, Wider widens it, All available exposes everything at
   // the same row height, and an expired prior-session column is never dressed as current structure.
   test('REAL-DATA VIEWPORT: 116x16 canonical surface -> Auto 11 rows x <=11 unexpired columns; Wider 23; All 116x16 legible + EXPIRED labelled; no data loss', async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
     const stamped = Object.assign({}, REAL, {
-      session_date_et: '2026-09-10', prior_session: true,
+      source: 'terrain_live_cache', live: true, available: true, stale: false,
+      session_date_et: '2026-09-10', prior_session: false,
       expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
+      cells: REAL.cells.map((row) => Object.assign({}, row, {
+        contracts: REAL.expirations.map((_e, j) => ({
+          call: 'C' + row.strike + '_' + j, put: 'P' + row.strike + '_' + j,
+        })),
+      })),
     });
     expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
     expect(stamped.expirations.filter((e) => e.expired).map((e) => e.expiry)).toEqual(['2026-09-09']);
@@ -1080,11 +1089,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(rowH).toBeGreaterThanOrEqual(30);
     const cellFont = await page.locator('#heatBody .hcell').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(cellFont).toBeGreaterThanOrEqual(13);
-    // prior-session reference is unmistakable and concise (details in the tooltip, not a paragraph)
-    const banner = page.locator('#heatBody .heat-banner.ref');
-    await expect(banner).toContainText('PRIOR SESSION REFERENCE');
-    await expect(banner).toContainText('2026-09-09');
-    expect((await banner.getAttribute('title') || '').length).toBeGreaterThan(20);
+    await expect(page.locator('#heatBody .heat-banner.ref')).toHaveCount(0);
     // WIDER: 23 rows, up to twice the Auto column budget (nearest unexpired first, expired labelled)
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
     await expect(rows).toHaveCount(23);
@@ -1404,13 +1409,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       var live = function (age, stale) {
         return { available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
           complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
-          coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600] }] };
+          coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], contracts: [{ call: 'C583', put: 'P583' }] }] };
       };
-      var banked = function (etd, warming) {   // an ON-BOARD symbol (on_board:true) -> a refresh is coming
-        return { available: true, source: 'banked_morning_reference', live: false, stale: true, warming: warming, requested: true, on_board: true,
-          chain_as_of_ts_utc: null, spot_as_of_ts_utc: null, chain_basis: 'banked_morning', et_date: etd, age_sec: null,
-          coverage: { window: 'banked_morning_wide' }, degraded: 'banked morning wide reference (not intraday)',
-          expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [100000] }] };
+      var banked = function (etd, warming) {   // current heatmap must refuse banked cells
+        return { available: false, source: 'unavailable', live: false, stale: true, warming: warming, requested: true, on_board: true,
+          reason: 'historical morning Gamma is not the current heatmap',
+          et_date: etd };
       };
       // A: same live DATA revision, age changes -> table preserved, scope age updates
       R(host, live(3)); mark(); R(host, live(99));
@@ -2554,7 +2558,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }], surface_seq: seq,
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }], surface_seq: seq,
         })),
       });
     });

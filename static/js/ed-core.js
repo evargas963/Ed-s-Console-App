@@ -85,7 +85,7 @@
   // base), WIDER (2x that base), ALL (every strike in the current canonical input). Presentation
   // only — the window never changes any value, only which canonical strikes are on screen.
   var SCOPE_MODES = ['auto', 'wider', 'all'];
-  function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
+  function _lsScope() { var v = _ls('ed_scope', 'all'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'all'; }
   var state = {
     ticker: (_ls(TICKER_KEY, 'SPY')).toUpperCase(),
     workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),

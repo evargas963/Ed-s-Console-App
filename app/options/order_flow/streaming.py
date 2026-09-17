@@ -47,6 +47,7 @@ from stream_spine import (
     PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,
     read_open_coverage_symbols,
+    producer_code_sha,
     read_producer_heartbeat,
     read_rejected_option_contracts,
     resolve_stream_db_path,
@@ -337,12 +338,21 @@ def _stream_db_identity_status() -> dict[str, Any]:
     finally:
         con.close()
     if beat is None:
-        return {"server_resolved_path": resolved, "producer_heartbeat": None, "identity_match": None}
+        return {"server_resolved_path": resolved, "producer_heartbeat": None,
+                "identity_match": None, "server_git_sha": producer_code_sha(),
+                "daemon_git_sha": None, "sha_match": False}
     age = time.time() - beat["heartbeat_ts"]
+    server_sha = producer_code_sha()
+    daemon_sha = beat.get("producer_git_sha")
+    sha_match = bool(server_sha and daemon_sha and server_sha == daemon_sha)
+    age_ok = age <= STREAM_PRODUCER_HEARTBEAT_STALE_SEC
     return {
         "server_resolved_path": resolved,
         "producer_heartbeat": {**beat, "age_sec": age},
-        "identity_match": age <= STREAM_PRODUCER_HEARTBEAT_STALE_SEC,
+        "server_git_sha": server_sha,
+        "daemon_git_sha": daemon_sha,
+        "sha_match": sha_match,
+        "identity_match": bool(age_ok and sha_match),
     }
 
 

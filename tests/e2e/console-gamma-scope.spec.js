@@ -34,7 +34,11 @@ const LIVE = { spot: 100, spot_disp: '100.00', bid: 99.99, ask: 100.01, session_
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [99, 100, 101],
-  cells: [{ strike: 99, gex: [-90000] }, { strike: 100, gex: [958600] }, { strike: 101, gex: [-264500] }] };
+  cells: [
+    { strike: 99, gex: [-90000], contracts: [{ call: 'C99', put: 'P99' }] },
+    { strike: 100, gex: [958600], contracts: [{ call: 'C100', put: 'P100' }] },
+    { strike: 101, gex: [-264500], contracts: [{ call: 'C101', put: 'P101' }] },
+  ] };
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -55,7 +59,7 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     await intercept(page);
     // each Playwright test gets a fresh context (localStorage already empty), so we only seed the
     // ticker — NOT localStorage.clear(), which would re-run on reload and wipe the persisted scope.
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
   });
 
   test('one control governs the workspace, labelled "All available" not "Full"', async ({ page }) => {

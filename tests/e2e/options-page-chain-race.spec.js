@@ -80,6 +80,34 @@ test('a delayed old-expiry chain response cannot overwrite the newly-selected ex
     expect(chainRequests).toContain(EXP_B);
   });
 
+
+test('#m-spot paints LAST_PRICE even when /api/chain is delayed, and UNAVAILABLE when spot fails',
+  async ({ page }) => {
+    await page.route('**/api/expiries*', (r) =>
+      r.fulfill({ status: 200, contentType: 'application/json',
+                  body: JSON.stringify({ expiries: [EXP_A] }) }));
+    await page.route('**/api/spot*', (r) =>
+      r.fulfill({ status: 200, contentType: 'application/json',
+                  body: JSON.stringify({
+                    ticker: 'SPY', spot: 650.25,
+                    last_price_generation: 9,
+                    last_price_native_ts: 1757000000,
+                    spot_source: 'LAST_PRICE',
+                  }) }));
+    await page.route('**/api/chain*', async (route) => {
+      await new Promise((res) => setTimeout(res, 900));
+      return route.fulfill({ status: 200, contentType: 'application/json',
+                             body: JSON.stringify(chainFor(EXP_A, 111)) });
+    });
+    await page.goto('/options');
+    await expect(page.locator('#m-spot')).toHaveText('650.25', { timeout: 800 });
+    await expect(page.locator('#m-spot')).toHaveAttribute('data-last-price-generation', '9');
+    await page.unroute('**/api/spot*');
+    await page.route('**/api/spot*', (r) => r.fulfill({ status: 503, body: 'no' }));
+    await page.goto('/options');
+    await expect(page.locator('#m-spot')).toHaveText('UNAVAILABLE', { timeout: 800 });
+  });
+
 // A fourth independent review (2026-09-13), REPRODUCED: the guard above proves the CURRENT
 // ticker/expiry selection matches, but two different requests for the SAME identity
 // (A -> B -> A: the first A request, and the third request issued after returning to A) are

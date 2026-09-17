@@ -215,12 +215,12 @@ def test_a_same_session_banked_chain_is_served_with_a_real_disclosed_age(tmp_pat
     try:
         import json
         d = json.loads(get_options_gamma_surface(ticker="ZZTESTTODAY").body)
-        assert d["available"] is True
-        assert d["source"] == "banked_morning_reference"
+        assert d["available"] is False
+        assert d["source"] == "unavailable"
         assert d["live"] is False
-        assert d["et_date"] == today_et
-        assert d["chain_as_of_ts_utc"] == captured_ts
-        assert d["age_sec"] is not None
-        assert abs(d["age_sec"] - 1800.0) < 5.0, f"disclosed age must be real, got {d['age_sec']}"
+        assert d.get("historical_morning_available") is True
+        assert d.get("historical_morning_et_date") == today_et
+        assert "history" in (d.get("reason") or "").lower()
+        assert d.get("cells") in (None, [])
     finally:
         _clear_gamma_surface(tk)

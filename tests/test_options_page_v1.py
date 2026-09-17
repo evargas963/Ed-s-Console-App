@@ -93,11 +93,8 @@ def test_scope_honesty_all_four_tiers_are_distinctly_labeled():
     src = _src()
     assert "complete_single_expiry" in src
     assert "expiry_scope_mismatch" in src
-    assert "persisted_complete_capture_fallback" in src
-    assert "stored_analytical_snapshot_fallback" in src
-    # Each non-complete tier's rendered text must say so honestly (not proven complete /
-    # a visible warning), not merely be distinguishable by an internal string match.
-    assert "not proven complete" in src.lower() or "NOT proven complete" in src
+    assert "live_fetch_failed" in src
+    assert "not substituted from cache" in src
     assert "complete chain" in src   # the ONE tier's positive label
 
 

@@ -1,7 +1,7 @@
 {
   "mission": "everything is live unless a proven Schwab/source contract makes it impossible",
   "as_of": "2026-09-17",
-  "candidate_note": "Denominator is rendered binding INSTANCES (page+target+semantic), not unique /api paths or unique semantic names. A LAST_PRICE painted in four places is four rows.",
+  "candidate_note": "Denominator is rendered binding INSTANCES (page+target+semantic). status/designed_capability is intended semantic capability. runtime_status is observed state and cannot be LIVE without runtime_evidence. A blank, banked, timed-out, disconnected, or undemanded surface is not runtime LIVE.",
   "authority": "resolve_spot / live_market_plane.commit_last_price_observation is the one LAST_PRICE commit. REST and stream adapters produce LastPriceObservation.",
   "status_vocab": [
     "LIVE",
@@ -11,15 +11,15 @@
     "NOT_PROVEN"
   ],
   "summary": {
-    "total": 69,
+    "total": 71,
     "LIVE": 52,
-    "HISTORICAL_REFERENCE": 16,
+    "HISTORICAL_REFERENCE": 18,
     "UNAVAILABLE": 1,
     "FAIL": 0,
     "NOT_PROVEN": 0,
-    "binding_instances": 69,
+    "binding_instances": 71,
     "generated_templates": 16,
-    "static_instances": 53
+    "static_instances": 55
   },
   "api_surfaces": {
     "/api/analytics/light/stream": {
@@ -88,7 +88,7 @@
         "desk.html #radar-body"
       ],
       "status": "HISTORICAL_REFERENCE",
-      "source_contract": "FINRA short-volume / structure radar filtered on knowledge time (desk_store.radar_rows). Product is as-of research, not lastPrice. Main-console Desk/Radar pane is an unwired placeholder \u2014 see fields.desk_workspace_radar_placeholder."
+      "source_contract": "FINRA short-volume / structure radar filtered on knowledge time (desk_store.radar_rows). Product is as-of research, not lastPrice. Main-console Desk/Radar pane is an unwired placeholder — see fields.desk_workspace_radar_placeholder."
     },
     "/api/desk/structure": {
       "ui": [
@@ -207,7 +207,7 @@
         "#tdBody"
       ],
       "status": "LIVE",
-      "source_contract": "L2 book + L1. Aggressor side is UNAVAILABLE (Schwab exposes no native field) \u2014 see fields.book_aggressor."
+      "source_contract": "L2 book + L1. Aggressor side is UNAVAILABLE (Schwab exposes no native field) — see fields.book_aggressor."
     },
     "/api/order-flow/options-microstructure": {
       "ui": [
@@ -246,7 +246,7 @@
         "ed-stream.js Auto/Wider/All"
       ],
       "status": "LIVE",
-      "source_contract": "Requested \u2192 pending \u2192 freshness-gated active. RTH proof of every requested contract is a separate verdict."
+      "source_contract": "Requested → pending → freshness-gated active. RTH proof of every requested contract is a separate verdict."
     },
     "/api/streaming/active-ticker": {
       "ui": [
@@ -261,14 +261,14 @@
         "#chartBody spot/walls"
       ],
       "status": "LIVE",
-      "source_contract": "_reprice_cached_terrain \u2192 resolve_spot for current spot; walls/flip from terrain loop"
+      "source_contract": "_reprice_cached_terrain → resolve_spot for current spot; walls/flip from terrain loop"
     },
     "/api/terrain/scorecard": {
       "ui": [
         "chart.html scorecard"
       ],
-      "status": "NOT_PROVEN",
-      "source_contract": "Bound in chart.html; live vs banked not proven per painted field"
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Daily terrain backtest artifact (reports/terrain_backtest_latest.json). Coach withholds figures when stale. Not a current-spot / current-Gamma surface."
     },
     "/api/terrain/strikes": {
       "ui": [
@@ -282,8 +282,8 @@
       "ui": [
         "system"
       ],
-      "status": "NOT_PROVEN",
-      "source_contract": "Referenced in static; live UI binding not proven"
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Diagnostic vol-index projection; never feeds the money path. Referenced on the system placeholder; no painted current-spot field."
     },
     "/api/watchlist-quotes": {
       "ui": [
@@ -398,7 +398,7 @@
       "page": "index.html #heatBody",
       "source": "/api/options/gamma-surface",
       "status": "LIVE",
-      "limit": "unsubscribed cells stay on REST until admitted \u2014 admission is not a source limit",
+      "limit": "unsubscribed cells stay on REST until admitted — admission is not a source limit",
       "source_contract": "Schwab LEVELONE_OPTIONS OPEN_INTEREST (SDK LevelOneOptionFields) plus chains.*.openInterest REST"
     },
     {
@@ -857,7 +857,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "SSE live_quote / /api/live/state",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#hChg",
@@ -872,7 +874,9 @@
       "freshness": "plane freshness",
       "update_trigger": "SSE live_quote",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#hBidAsk",
@@ -887,7 +891,9 @@
       "freshness": "plane freshness; bid/ask-only does not refresh LAST_PRICE",
       "update_trigger": "SSE live_quote",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#hFeed",
@@ -902,7 +908,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "last_price_age_ms / current_spot_state",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#hAge",
@@ -917,7 +925,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "last_price_age_ms",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#hSession",
@@ -932,7 +942,9 @@
       "freshness": "not lastPrice",
       "update_trigger": "/api/live/state",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html.wl-px",
@@ -947,7 +959,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/watchlist-quotes via _ingest_rest_last_price_observation",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html.wl-chg",
@@ -962,7 +976,9 @@
       "freshness": "plane freshness",
       "update_trigger": "/api/watchlist-quotes",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#heatScope.current_spot",
@@ -977,7 +993,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/options/gamma-surface current_spot",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#heatScope.computed_from_spot",
@@ -992,7 +1010,9 @@
       "freshness": "must disclose mismatch vs current_spot",
       "update_trigger": "ed:gamma-push / load",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#heatBody.gex",
@@ -1007,7 +1027,9 @@
       "freshness": "per-cell stream state",
       "update_trigger": "ed:gamma-push / renderSurface",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#heatBody.dex",
@@ -1022,7 +1044,9 @@
       "freshness": "per-cell stream state",
       "update_trigger": "ed:gamma-push",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#heatBody.oi",
@@ -1035,9 +1059,11 @@
       "timestamp": "cell stream ts_recv",
       "generation": "admission generation",
       "freshness": "pending is subscription state, not a source limit",
-      "update_trigger": "setAdditionalContracts \u2192 pending \u2192 freshness-gated active",
+      "update_trigger": "setAdditionalContracts → pending → freshness-gated active",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#heatBody.vanna",
@@ -1052,7 +1078,9 @@
       "freshness": "computed_from_spot disclosure",
       "update_trigger": "ed:gamma-push",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#heatBody.charm",
@@ -1067,7 +1095,9 @@
       "freshness": "computed_from_spot disclosure",
       "update_trigger": "ed:gamma-push",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klSpot",
@@ -1082,7 +1112,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/terrain _reprice_cached_terrain",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klFlip",
@@ -1097,7 +1129,9 @@
       "freshness": "geometry cadence",
       "update_trigger": "/api/terrain",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klCall",
@@ -1112,7 +1146,9 @@
       "freshness": "geometry cadence",
       "update_trigger": "/api/terrain",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klPut",
@@ -1127,7 +1163,9 @@
       "freshness": "geometry cadence",
       "update_trigger": "/api/terrain",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klAbs",
@@ -1142,7 +1180,9 @@
       "freshness": "geometry cadence",
       "update_trigger": "/api/terrain",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klPeak",
@@ -1157,7 +1197,9 @@
       "freshness": "geometry cadence",
       "update_trigger": "/api/terrain",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klNet",
@@ -1172,7 +1214,9 @@
       "freshness": "geometry cadence",
       "update_trigger": "/api/terrain",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klPcr",
@@ -1187,7 +1231,9 @@
       "freshness": "OI live when admitted",
       "update_trigger": "ed:refresh slow",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#klRegime",
@@ -1202,7 +1248,9 @@
       "freshness": "follows current_spot",
       "update_trigger": "/api/terrain",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#sdBody",
@@ -1217,7 +1265,9 @@
       "freshness": "unsubscribed REST until admitted",
       "update_trigger": "ed:strike / ed:refresh",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#gbsBody",
@@ -1232,7 +1282,9 @@
       "freshness": "reprice at resolve_spot",
       "update_trigger": "ed:refresh / ed:gamma-push",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#ofBody",
@@ -1247,7 +1299,9 @@
       "freshness": "no native aggressor",
       "update_trigger": "ed:refresh",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#chainBody",
@@ -1262,7 +1316,9 @@
       "freshness": "unsubscribed REST until admitted",
       "update_trigger": "ed:refresh",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#flowBody",
@@ -1277,7 +1333,9 @@
       "freshness": "signed aggressor UNAVAILABLE unless native",
       "update_trigger": "ed:refresh",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#vnBody",
@@ -1292,7 +1350,9 @@
       "freshness": "LIVE overlay",
       "update_trigger": "ed:refresh",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#chmBody",
@@ -1307,7 +1367,9 @@
       "freshness": "LIVE overlay",
       "update_trigger": "ed:refresh",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#stBody",
@@ -1322,7 +1384,9 @@
       "freshness": "contract facts, not ticks",
       "update_trigger": "ed:view",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "index.html#tdBody.spot",
@@ -1337,7 +1401,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/spot then /api/levels last_price_generation",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#tdBody.detect",
@@ -1352,7 +1418,9 @@
       "freshness": "same endpoints as Book/DOM",
       "update_trigger": "ed:refresh",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#obBody",
@@ -1367,7 +1435,9 @@
       "freshness": "requires capture daemon",
       "update_trigger": "ed:refresh",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#obBody.aggressor",
@@ -1382,7 +1452,9 @@
       "freshness": "UNAVAILABLE by vendor contract",
       "update_trigger": "none",
       "status": "UNAVAILABLE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "UNAVAILABLE",
+      "runtime_status": "UNAVAILABLE"
     },
     {
       "id": "index.html#ofhBody.history",
@@ -1397,7 +1469,9 @@
       "freshness": "historical bins",
       "update_trigger": "ed:view",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "index.html#ofhBody.latest",
@@ -1412,7 +1486,9 @@
       "freshness": "latest_column_live when capture age < 30s",
       "update_trigger": "ed:refresh while heatmap visible",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#liqmBody.spot",
@@ -1427,7 +1503,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/levels resolve_spot + last_price_generation",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#liqmBody.zones",
@@ -1442,7 +1520,9 @@
       "freshness": "zones derived; spot is LIVE",
       "update_trigger": "ed:refresh while map visible",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#lvlBody",
@@ -1457,7 +1537,9 @@
       "freshness": "must never become current spot",
       "update_trigger": "ed:view",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "index.html#chartBody.spot",
@@ -1472,7 +1554,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/terrain reprice",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#chartBody.bars",
@@ -1487,7 +1571,9 @@
       "freshness": "forming minute bound to /api/spot",
       "update_trigger": "ed:refresh",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "index.html#levelsBody",
@@ -1502,7 +1588,9 @@
       "freshness": "same /api/levels renderer",
       "update_trigger": "ed:view",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "index.html#alertsList",
@@ -1517,7 +1605,9 @@
       "freshness": "same LAST_PRICE as header",
       "update_trigger": "ed:refresh slow",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#aiCtxFresh",
@@ -1532,7 +1622,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "mirrors #hFeed/#hAge",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#deskRadarBody.spot",
@@ -1547,7 +1639,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/terrain/radar _radar_apply_plane_spot",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "index.html#deskRadarBody.contact",
@@ -1562,7 +1656,9 @@
       "freshness": "historical when no fresh plane LAST_PRICE",
       "update_trigger": "ed:refresh while radar visible",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "desk.html#radar-body",
@@ -1577,7 +1673,9 @@
       "freshness": "knowledge-time product",
       "update_trigger": "page load",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "desk.html#brief",
@@ -1592,7 +1690,9 @@
       "freshness": "not lastPrice",
       "update_trigger": "page load",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "desk.html#dossier",
@@ -1607,7 +1707,9 @@
       "freshness": "not lastPrice",
       "update_trigger": "page load",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "desk.html#structure.bar_close",
@@ -1622,7 +1724,9 @@
       "freshness": "must never populate current fields",
       "update_trigger": "page load",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "chart.html#liveSpot",
@@ -1637,7 +1741,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/spot",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "chart.html#bars",
@@ -1652,7 +1758,9 @@
       "freshness": "forming candle from /api/spot",
       "update_trigger": "poll",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "chart.html#levels",
@@ -1667,7 +1775,9 @@
       "freshness": "reference overlays",
       "update_trigger": "poll",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "chart.html#forces",
@@ -1682,7 +1792,9 @@
       "freshness": "value_class=HISTORICAL_REFERENCE; current_spot_class=LIVE",
       "update_trigger": "page poll",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "chart.html#forces.current_spot",
@@ -1697,7 +1809,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/forces stamp",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "exposure.html#currentSpot",
@@ -1712,7 +1826,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/spot",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "exposure.html#flow",
@@ -1727,7 +1843,9 @@
       "freshness": "value_class=HISTORICAL_REFERENCE; current_spot_class=LIVE",
       "update_trigger": "page poll",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "exposure.html#flow.current_spot",
@@ -1742,7 +1860,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/exposure/flow stamp",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "options.html#m-spot",
@@ -1757,7 +1877,9 @@
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
       "update_trigger": "/api/spot (never chain underlying last/mark)",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "options.html#chain-body",
@@ -1772,7 +1894,9 @@
       "freshness": "same overlay as console chain",
       "update_trigger": "loadChain",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "options.html#micro",
@@ -1787,7 +1911,9 @@
       "freshness": "no native aggressor",
       "update_trigger": "poll",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "morning_gamma_reference",
@@ -1802,7 +1928,9 @@
       "freshness": "must never populate current fields",
       "update_trigger": "none",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "index.html.contract_admission",
@@ -1814,10 +1942,12 @@
       "source_observation": "LEVELONE_OPTIONS subscribe is possible; pending is subscription state",
       "timestamp": "admission ts",
       "generation": "demand generation",
-      "freshness": "requested \u2192 pending \u2192 freshness-gated active; not a Schwab field absence",
+      "freshness": "requested → pending → freshness-gated active; not a Schwab field absence",
       "update_trigger": "setAdditionalContracts",
       "status": "LIVE",
-      "instance_kind": "generated"
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "localStorage.ed_ticker",
@@ -1832,7 +1962,9 @@
       "freshness": "not market data",
       "update_trigger": "ed:ticker",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "sessionStorage.none_market",
@@ -1847,7 +1979,9 @@
       "freshness": "not a market binding",
       "update_trigger": "none",
       "status": "HISTORICAL_REFERENCE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
       "id": "sse.live_quote",
@@ -1860,9 +1994,11 @@
       "timestamp": "last_price_native_ts",
       "generation": "last_price_generation",
       "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
-      "update_trigger": "planes.l1_events.notify_quote_updated \u2192 SSE",
+      "update_trigger": "planes.l1_events.notify_quote_updated → SSE",
       "status": "LIVE",
-      "instance_kind": "static"
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
     },
     {
       "id": "ed:ticker.payload",
@@ -1877,6 +2013,42 @@
       "freshness": "not a price",
       "update_trigger": "user / watchlist",
       "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "chart.html#scorecard",
+      "page": "chart.html",
+      "view": "coach",
+      "target": "scorecard tooltip hold-rates",
+      "semantic": "TERRAIN_SCORECARD",
+      "canonical_producer": "reports/terrain_backtest_latest.json via /api/terrain/scorecard",
+      "source_observation": "daily backtest artifact; withheld when stale",
+      "timestamp": "generated_utc",
+      "generation": "none",
+      "freshness": "SCORECARD_MAX_TRADING_DAY_AGE",
+      "update_trigger": "daily scorecard run",
+      "status": "HISTORICAL_REFERENCE",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static"
+    },
+    {
+      "id": "index.html#vol-observability",
+      "page": "index.html",
+      "view": "system placeholder",
+      "target": "system /api/vol-observability mention",
+      "semantic": "VOL_OBSERVABILITY",
+      "canonical_producer": "vol_observability_payload",
+      "source_observation": "diagnostic vol-index projection; never money path; no painted current field",
+      "timestamp": "observation ts",
+      "generation": "none",
+      "freshness": "diagnostic",
+      "update_trigger": "none painted",
+      "status": "HISTORICAL_REFERENCE",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE",
       "instance_kind": "static"
     }
   ],
@@ -1887,5 +2059,12 @@
     "UNAVAILABLE": 1,
     "FAIL": 0,
     "NOT_PROVEN": 0
+  },
+  "runtime_summary": {
+    "LIVE": 0,
+    "HISTORICAL_REFERENCE": 18,
+    "UNAVAILABLE": 1,
+    "FAIL": 0,
+    "NOT_PROVEN": 52
   }
 }

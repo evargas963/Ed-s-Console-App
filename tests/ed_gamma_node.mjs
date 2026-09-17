@@ -81,7 +81,8 @@ function makeHost() {
 }
 
 const strikes = [759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769]; // ascending, as the API serves them
-const cells = strikes.map((k, i) => ({ strike: k, gex: [1000 * (i + 1)] }));
+const cells = strikes.map((k, i) => ({ strike: k, gex: [1000 * (i + 1)],
+  contracts: [{ call: 'SPY_C_' + k, put: 'SPY_P_' + k }] }));
 const surface = {
   available: true,
   spot: 764,
@@ -115,9 +116,60 @@ for (const [, strikeStr, gexStr] of rows) {
 // scopeSelect-specific behaviour.
 const host2 = makeHost();
 G.renderSurface(host2, { ...surface, strikes: [100, 200, 300], cells: [
-  { strike: 100, gex: [1] }, { strike: 200, gex: [2] }, { strike: 300, gex: [3] },
+  { strike: 100, gex: [1], contracts: [{ call: 'C100', put: 'P100' }] },
+  { strike: 200, gex: [2], contracts: [{ call: 'C200', put: 'P200' }] },
+  { strike: 300, gex: [3], contracts: [{ call: 'C300', put: 'P300' }] },
 ] });
 const rowStrikes2 = [...host2.innerHTML.matchAll(/data-strike="(\d+)"/g)].map((m) => Number(m[1]));
 assert.deepStrictEqual(rowStrikes2, [300, 200, 100]);
+
+// Banked morning cells cannot enter the current heatmap.
+const bankedHost = makeHost();
+G.renderSurface(bankedHost, Object.assign({}, surface, {
+  source: 'banked_morning_reference', available: true, live: false,
+}));
+assert.ok(bankedHost.innerHTML.includes('Gamma surface unavailable'),
+  'banked morning reference must not paint current heatmap cells');
+assert.ok(!bankedHost.innerHTML.includes('data-strike='),
+  'banked morning reference must not emit heatmap cells');
+
+// Rendered live-capable contracts == demanded contracts (one selected set).
+const demandHost = makeHost();
+G.renderSurface(demandHost, surface);
+const rendered = G.heatmapVisibleContracts();
+const demanded = G.heatmapDemandSymbols();
+assert.deepStrictEqual(demanded, rendered, 'demand set must equal rendered selected-contract set');
+assert.ok(rendered.length > 0, 'live surface with contracts must demand them');
+
+// Missing contract arrays fail closed — no empty successful state.
+assert.throws(() => G.selectLiveHeatmap({
+  available: true, source: 'terrain_live_cache',
+  strikes: [100], expirations: [{ expiry: '2026-09-11', expired: false }],
+  cells: [{ strike: 100, gex: [1] }],
+}, 'all', null, null, null), /contracts missing/);
+G.renderSurface(makeHost(), { available: false, source: 'unavailable' });
+assert.throws(() => G.heatmapVisibleContracts(), /no selected-contract set/);
+assert.throws(() => G.heatmapVisibleContracts(undefined, { idx: [0] }, [0]), /cells array required/);
+
+// An expiry column with contracts but no GEX must stay on the grid and read NO OI,
+// not look like a missing paint.
+const emptyColHost = makeHost();
+G.renderSurface(emptyColHost, {
+  available: true, source: 'terrain_live_cache', live: true, stale: false,
+  spot: 100, strikes: [100, 101],
+  expirations: [
+    { expiry: '2026-09-18', dte: 1, expired: false },
+    { expiry: '2026-10-01', dte: 14, expired: false },
+  ],
+  cells: [
+    { strike: 100, gex: [500000, null], contracts: [{ call: 'C100a', put: 'P100a' }, { call: 'C100b', put: 'P100b' }] },
+    { strike: 101, gex: [-200000, null], contracts: [{ call: 'C101a', put: 'P101a' }, { call: 'C101b', put: 'P101b' }] },
+  ],
+});
+assert.ok(emptyColHost.innerHTML.includes('NO OI'), 'all-null expiry column must disclose NO OI');
+assert.ok((emptyColHost.innerHTML.match(/data-expiry="2026-10-01"/g) || []).length === 2,
+  'all-null expiry column must still render every row');
+assert.ok(emptyColHost.innerHTML.includes('2 of 4 cells have no usable OI'),
+  'empty-cell count must be disclosed');
 
 console.log('ed_gamma: all assertions passed');

@@ -15,8 +15,10 @@ STATUS_VOCAB = {"LIVE", "HISTORICAL_REFERENCE", "UNAVAILABLE", "FAIL", "NOT_PROV
 INSTANCE_KEYS = {
     "id", "page", "view", "target", "semantic", "canonical_producer",
     "source_observation", "timestamp", "generation", "freshness",
-    "update_trigger", "status", "instance_kind",
+    "update_trigger", "status", "designed_capability", "runtime_status",
+    "instance_kind",
 }
+RUNTIME_VOCAB = {"LIVE", "HISTORICAL_REFERENCE", "UNAVAILABLE", "FAIL", "NOT_PROVEN"}
 FRAGMENT_APIS = {
     "/api/desk",
     "/api/diagnostics",
@@ -87,6 +89,16 @@ def test_instance_denominator_reconciles() -> None:
         missing = INSTANCE_KEYS - set(row)
         assert not missing, f"{row.get('id')}: missing {sorted(missing)}"
         assert row["status"] in STATUS_VOCAB
+        assert row["designed_capability"] == row["status"]
+        assert row["runtime_status"] in RUNTIME_VOCAB
+        if row.get("runtime_failure"):
+            assert row["runtime_status"] != "LIVE", (
+                f"{row['id']}: runtime_failure cannot be counted runtime LIVE"
+            )
+        if row["runtime_status"] == "LIVE":
+            assert row.get("runtime_evidence"), (
+                f"{row['id']}: runtime LIVE requires runtime_evidence"
+            )
     keys = [(r["page"], r["target"], r["semantic"]) for r in instances]
     dups = [k for k, n in Counter(keys).items() if n > 1]
     assert dups == [], f"duplicate binding instances (not unique semantics): {dups}"
@@ -116,6 +128,21 @@ def test_instance_denominator_reconciles() -> None:
     assert summary["NOT_PROVEN"] == 0
     assert summary["total"] == summary["binding_instances"]
     assert summary["total"] == summary["static_instances"] + summary["generated_templates"]
+    runtime = written["runtime_summary"]
+    rt_counts = Counter(r["runtime_status"] for r in instances)
+    assert runtime == {
+        "LIVE": rt_counts.get("LIVE", 0),
+        "HISTORICAL_REFERENCE": rt_counts.get("HISTORICAL_REFERENCE", 0),
+        "UNAVAILABLE": rt_counts.get("UNAVAILABLE", 0),
+        "FAIL": rt_counts.get("FAIL", 0),
+        "NOT_PROVEN": rt_counts.get("NOT_PROVEN", 0),
+    }
+    assert runtime["FAIL"] == 0
+    assert runtime["LIVE"] == 0 or all(
+        r.get("runtime_evidence") for r in instances if r["runtime_status"] == "LIVE"
+    )
+    leftover_ids = {"chart.html#scorecard", "index.html#vol-observability"}
+    assert leftover_ids <= {r["id"] for r in instances}
 
 
 def test_required_paths_are_not_not_proven() -> None:
