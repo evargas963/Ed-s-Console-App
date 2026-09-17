@@ -147,7 +147,10 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
                 accepted_at = time.monotonic()
             if micro.get("contract_match") and active_at is None:
                 active_at = time.monotonic()
-        except Exception:  # noqa: BLE001
+        except Exception:  # institutional-swallow-ok: a transient poll failure of the
+            # diagnostic microstructure read is not itself a measurement -- the poll loop
+            # simply tries again on the next tick; a real, persistent failure surfaces as
+            # this measurement's own "never observed contract_match=true" note below.
             pass
         if first_classified_at is not None and active_at is not None:
             break
