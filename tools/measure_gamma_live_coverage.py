@@ -24,8 +24,12 @@ Metrics captured per (ticker, scope):
     strike-count windowing is a HONEST APPROXIMATION of ed-core.js's real client-side
     scopeSelect, not a byte-for-byte replica -- proving the ACTUAL rendered scope's own
     emitted demand requires driving the real browser UI, which this Python/REST harness
-    cannot do; see `manual_metrics_owed` in the report and the companion Playwright spec
-    tests/e2e/console-gamma-scope-live-demand.spec.js for that proof.
+    cannot do; see `manual_metrics_owed` in the report and, in
+    tests/e2e/console-gamma-heatmap.spec.js, 'Wider and All scope declare real streaming
+    demand for what they display, not zero', 'REAL-DATA VIEWPORT: 116x16 canonical surface
+    -> Auto 11 rows...Wider 23...All 116x16' (both drive the actual #scopeCtl buttons/
+    window.EdShell.setScope against real rendered cell counts), and 'a live gamma_surface_seq
+    push re-renders and re-declares demand for the CURRENTLY SELECTED scope' for that proof.
   - time_to_accepted_sec / time_to_active_sec: tracked for EVERY requested symbol, never a
     single "primary" contract. CORRECTED 2026-09-17 (independent review, false-success
     finding): a REJECTED symbol no longer satisfies EITHER metric -- the prior formula
@@ -377,7 +381,8 @@ def main() -> int:
         "CPU/event-loop responsiveness (browser performance profile)",
         "Auto/Wider/All scope proof against the ACTUAL rendered browser UI (this harness's "
         "own strike-count windowing is a documented approximation, not the real "
-        "ed-core.js scopeSelect -- see tests/e2e/console-gamma-scope-live-demand.spec.js)",
+        "ed-core.js scopeSelect -- already covered by real-browser Playwright tests in "
+        "tests/e2e/console-gamma-heatmap.spec.js, not by this REST-only script)",
     ]
 
     out_path = Path(args.out) if args.out else (
