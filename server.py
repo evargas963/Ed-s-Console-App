@@ -13075,9 +13075,7 @@ def _stamp_current_spot_identity(payload: dict, ticker: str) -> dict:
     """Overlay LAST_PRICE identity from resolve_spot / the plane. Never invents a price."""
     out = dict(payload)
     if out.get("spot") is not None and out.get("spot_source") is not None:
-        spot, source, ts = out["spot"], out["spot_source"], (
-            out.get("spot_as_of_ts_utc") or out.get("spot_as_of_ts")
-        )
+        spot, source, ts = out["spot"], out["spot_source"], out.get("spot_as_of_ts_utc")
     else:
         spot, source, ts = resolve_spot(ticker)
     row = _lmp.get_quote(ticker)
@@ -16260,7 +16258,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
                 with _spot_poll_lock:
                     hit = _spot_poll_cache.get(tk)
                 if hit:
-                    return JSONResponse(hit[1])  # stale > stampede
+                    return JSONResponse(_stamp_current_spot_identity(hit[1], tk))
                 return JSONResponse(
                     {"ticker": tk, "spot": None, "spot_source": None,
                      "spot_as_of_ts_utc": None, "error": "spot_resolve_timeout"},
@@ -18206,19 +18204,26 @@ def _repo_git_head_sha() -> Optional[str]:
     """Best-effort repo tip for runtime-vs-disk checks (Meet-or-Exceed cycle)."""
     import subprocess
 
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=APP_DIR,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=3.0,
-        )
-        sha = (proc.stdout or "").strip()
-        return sha or None
-    except (OSError, subprocess.SubprocessError):
-        return None
+    # Two attempts: a single 3s timeout was observed returning None under a
+    # loaded xdist worker (test_t1_startup_sha_immutable_across_repo_drift),
+    # which made /api/build report no checkout HEAD. Timeout is not "no repo".
+    for _attempt in range(2):
+        try:
+            proc = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=APP_DIR,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=15.0,
+            )
+            sha = (proc.stdout or "").strip()
+            return sha or None
+        except subprocess.TimeoutExpired:
+            continue
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return None
 
 
 @app.get("/api/release/current")

@@ -63,3 +63,7 @@ def test_playwright_server_uses_run_private_runtime() -> None:
     assert "fs.rmSync(e2eRuntime, { recursive: true, force: true })" in runner
     assert "reuseExistingServer: false" in config
     assert "fs.writeFileSync(\n    markerPath" not in runner
+    env_mod = (ROOT / "scripts" / "e2e_runtime_env.mjs").read_text(encoding="utf-8")
+    assert "ed-console-e2e-runtime-" in env_mod
+    assert "from './scripts/e2e_runtime_env.mjs'" in config
+    assert "@playwright/test" not in env_mod
