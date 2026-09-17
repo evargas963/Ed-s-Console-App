@@ -157,7 +157,13 @@ def offline_v2_knockout_snapshot_columns(column: str, model_family: str) -> list
 
 
 def validate_ablation_scoring_bundle_meta(meta: dict, family: str) -> tuple[bool, str]:
-    """Minimal on-disk bundle checks for offline ablation — not production contract drift."""
+    """Minimal on-disk bundle checks for offline ablation — not production contract drift.
+
+    No-fallback lock (2026-09-17): impute_medians may be a deliberately empty dict for a
+    model trained under MISSINGNESS_CONTRACT_VERSION issue7_v2 (native XGBoost NaN
+    handling, no median fill) -- see ml_train.apply_xgb_imputation_matrix's docstring. A
+    PARTIAL dict (some but not all features covered) is still rejected as malformed.
+    """
     if not isinstance(meta, dict):
         return False, "meta is not a dict"
     fam = (family or "").strip().lower()
@@ -168,7 +174,7 @@ def validate_ablation_scoring_bundle_meta(meta: dict, family: str) -> tuple[bool
         imp = meta.get("impute_medians")
         if not isinstance(imp, dict):
             return False, "xgb impute_medians missing"
-        if not all(f in imp for f in feats):
+        if imp and not all(f in imp for f in feats):
             return False, "xgb impute_medians incomplete"
     return True, ""
 

@@ -508,10 +508,15 @@ def test_provenance_output_shape_backward_compatible():
     from pathlib import Path
 
     ms_src = (Path(__file__).resolve().parent.parent / "market_state.py").read_text(encoding="utf-8")
+    # No-fallback lock (2026-09-17): both getattr(...) calls were simplified to bare
+    # attribute access -- _sig_out is provably always a real SignalOutput instance
+    # whenever this code runs (see market_state.py's own comment at this site), so the
+    # getattr default could never fire. Updated to match; the real invariant under test
+    # (provenance copy precedes the MH gate) is unchanged.
     i_copy = ms_src.index(
-        'ms.model_serving_provenance_v1 = getattr(_sig_out, "model_serving_provenance", None)'
+        "ms.model_serving_provenance_v1 = _sig_out.model_serving_provenance"
     )
-    i_mhb_gate = ms_src.index('_mhb = getattr(_sig_out, "multi_horizon_bundle", None)')
+    i_mhb_gate = ms_src.index("_mhb = _sig_out.multi_horizon_bundle")
     assert i_copy < i_mhb_gate, "provenance copy must precede (sit outside) the MH gate"
 
 
