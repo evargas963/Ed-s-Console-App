@@ -1179,6 +1179,11 @@
       }
       ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};
       _lastSurface = null; _lastRevision = null; _lastSelected = null;
+      // Measured 2026-09-17 on :8322: setTicker(SPY) left QQQ's 207×32 grid and
+      // current_spot 715.76 on screen for the whole SPY fetch (~15s). The previous
+      // symbol's GEX is not this ticker's current surface — drop it immediately.
+      host.innerHTML = '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
+        '<div class="sm">ticker changed — waiting for this symbol\'s current LAST_PRICE-backed surface</div></div>';
     }
     _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);

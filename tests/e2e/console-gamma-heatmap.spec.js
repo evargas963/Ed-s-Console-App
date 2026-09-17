@@ -1182,6 +1182,26 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('222.22');          // not overwritten by the stale response
   });
 
+  test('ticker switch drops the previous symbol grid before the replacement surface arrives', async ({ page }) => {
+    let release = null;
+    await page.route('**/api/options/gamma-surface**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('ticker=QQQ')) await new Promise((resolve) => { release = resolve; });
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(SURFACE),
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell')).not.toHaveCount(0);
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(page.locator('.hcell')).toHaveCount(0);
+    await expect(page.locator('#heatBody .placeholder')).toContainText('ticker changed');
+    expect(release).not.toBeNull();
+    release();
+    await expect(page.locator('.hcell')).not.toHaveCount(0);
+  });
+
   test('header consumes the canonical L1 SSE push (real server envelope) when available', async ({ page }) => {
     // The server sends an ENVELOPE {scope, payload}; the quote lives on env.payload. This event
     // is the ACTUAL production shape — a root-field parser would read undefined and never paint,
