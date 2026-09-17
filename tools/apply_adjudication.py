@@ -17,6 +17,7 @@ pass, not silently excluded, still present in the artifact for the operator/next
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -41,7 +42,7 @@ def _mark(ids: list[str], verdict: str, evidence: str, repair: str, group: str) 
 # as current-schema. This is the "zero/default constant" substitution the mission bans,
 # repeated at scale (26 sites) because each site independently re-derived the same
 # unverified assumption rather than reading it from a single adjudicated authority.
-_A1 = ["FB-00091", "FB-00093", "FB-00122", "FB-00124", "FB-00174", "FB-00181", "FB-00182",
+_A1 = ["FB-00091", "FB-00093", "FB-00122", "FB-00124", "FB-00174", "FB-bdc70f2ee2", "FB-00182",
        "FB-00184", "FB-00185", "FB-00186", "FB-00188", "FB-01005", "FB-01006", "FB-01007",
        "FB-01008", "FB-01012", "FB-01013", "FB-01014", "FB-01015", "FB-01020", "FB-01024",
        "FB-01028", "FB-01029", "FB-01135"]
@@ -124,7 +125,7 @@ _mark(["FB-00088"], "FALLBACK",
 # not a read-time substitution for a missing OBSERVATION. Genuinely different shape from
 # every other COALESCE in this file; tentatively clear but not independently re-verified
 # against the full surrounding statement in this pass.
-_mark(["FB-00187"], "NOT_PROVEN",
+_mark(["FB-2bd0ef8b53"], "NOT_PROVEN",
       "enrollment_source = COALESCE(enrollment_source, ?) reads as an UPDATE-preserve-"
       "existing-value idiom (write the new value only if none is already recorded), not a "
       "read-time substitution -- plausible NOT_FALLBACK but not independently confirmed "
@@ -163,7 +164,7 @@ _mark(["FB-00420", "FB-00972"], "NOT_PROVEN",
       "feature-level ML preprocessing, or whether missing features must instead be excluded/"
       "flagged per-row.",
       "ml_training_pipeline")
-_mark(["FB-00884"], "NOT_FALLBACK",
+_mark(["FB-109e56e688"], "NOT_FALLBACK",
       "Test file exercising the imputation behavior itself as a test fixture, not production "
       "data flow.", "none", "test_artifact")
 _mark(["FB-01111"], "NOT_PROVEN",
@@ -180,7 +181,7 @@ _mark(["FB-01156"], "FALLBACK",
       "'UNMAPPED'/None with a carried reason), never as the same string a genuine flat "
       "signal would produce.",
       "ml_training_pipeline")
-_mark(["FB-01161", "FB-01162"], "NOT_PROVEN",
+_mark(["FB-77cd99dc00-2", "FB-77cd99dc00"], "NOT_PROVEN",
       "s.fillna(-1.0) on what appears to be a bounded similarity/probability-like series -- "
       "plausible impossible-sentinel technique (like the -1 schema-version case) IF -1.0 is "
       "genuinely outside the series' real value range, but that range was not independently "
@@ -191,16 +192,16 @@ _mark(["FB-01161", "FB-01162"], "NOT_PROVEN",
 
 # ---------------------------------------------------------------------------
 # EXCEPT_SUBSTITUTE group
-_mark(["FB-00368", "FB-00369", "FB-00267", "FB-00268", "FB-00484", "FB-01097", "FB-01098",
-       "FB-01121", "FB-00618", "FB-00518", "FB-00617", "FB-00780", "FB-01057", "FB-01058",
-       "FB-00067", "FB-00068", "FB-00996", "FB-00997"], "NOT_FALLBACK",
+_mark(["FB-ca215923d9", "FB-cc26c6d515", "FB-54d8938517", "FB-cb77bdf68f", "FB-f4a5a4e72e", "FB-650c7e4a03", "FB-0ba3d519bb",
+       "FB-eadbd2a07c", "FB-5e2a25200a", "FB-2001efdb83", "FB-524ff5c377", "FB-823dd06883", "FB-4dfeb14b85", "FB-01f80a9ce9",
+       "FB-e312cd2999", "FB-3f2bee783c", "FB-c8644d8d5d", "FB-7f1f217636"], "NOT_FALLBACK",
       "Except handler records/discloses the FAILURE ITSELF (an explicit error string, a "
       "named fail-closed/error status, an error counter, or a fail-closed object flag) "
       "rather than substituting a value that could be mistaken for a successful read -- "
       "exactly the disclosure behavior the mission requires, not a violation of it.",
       "none", "correct_failure_disclosure")
-_mark(["FB-00024", "FB-00031", "FB-00032", "FB-00251", "FB-01183", "FB-01049", "FB-00502",
-       "FB-00009"], "NOT_PROVEN",
+_mark(["FB-b3df147452", "FB-ae2ec7e3cd", "FB-0fcc76485a", "FB-f8838482bf", "FB-c6358fe6d3", "FB-3fa90055dc", "FB-565d3499ab",
+       "FB-888d03613e"], "NOT_PROVEN",
       "Except/init-time assignment to None or an empty sentinel that PLAUSIBLY reads as "
       "'not yet observed/computed' rather than a fabricated valid value, but the downstream "
       "consumer was not traced in this pass to confirm it is never treated as a genuine "
@@ -208,7 +209,7 @@ _mark(["FB-00024", "FB-00031", "FB-00032", "FB-00251", "FB-01183", "FB-01049", "
       "Trace each downstream consumer to confirm None/empty is always checked and disclosed, "
       "never silently used as a real value.",
       "needs_downstream_trace")
-_mark(["FB-00573", "FB-00558"], "NOT_PROVEN",
+_mark(["FB-86ded76db5", "FB-b5e185edfd"], "NOT_PROVEN",
       "server.py sets an explicit None sentinel for gamma-surface/contract-admission state "
       "on a code path this session's own prior work (RC-560..RC-564) established a "
       "None-means-'not yet computed' convention for -- plausibly correct, but this is a "
@@ -217,12 +218,12 @@ _mark(["FB-00573", "FB-00558"], "NOT_PROVEN",
       "Confirm downstream consumers of _gamma_surface/_contract_admission never render None "
       "as a live value (per the existing cell-state disclosure machinery).",
       "needs_downstream_trace")
-_mark(["FB-00007", "FB-00490", "FB-00491"], "NOT_FALLBACK",
+_mark(["FB-9956979046", "FB-ff0caec71d", "FB-7b736f8734"], "NOT_FALLBACK",
       "Algorithm/control-flow bookkeeping (a bisection midpoint, a static probe parameter "
       "list) -- not a semantic market-data field substitution at all; the scanner's broad "
       "semantic-term match produced a false positive here.",
       "none", "scanner_false_positive")
-_mark(["FB-00543"], "NOT_PROVEN",
+_mark(["FB-485df6da94"], "NOT_PROVEN",
       "server.py: on a PriceLevels computation failure, a fresh empty PriceLevels() is "
       "assigned locally, but the immediately-following `else:` block (which publishes to "
       "_state_cache) is skipped on the exception path -- so the CACHED/served value is very "
@@ -251,7 +252,7 @@ _mark(["FB-00129", "FB-00130", "FB-00132", "FB-00133", "FB-00134"], "FALLBACK",
       "Report an explicit failure marker (e.g. null/'UNKNOWN_DUE_TO_ERROR') distinct from a "
       "genuine zero-tickers-touched outcome.",
       "calibration_ml_governance")
-_mark(["FB-00243", "FB-00246", "FB-00392", "FB-01155", "FB-01179"], "FALLBACK",
+_mark(["FB-d340b2bec9", "FB-d340b2bec9", "FB-00392", "FB-d403301e1f", "FB-2edde9ac05"], "FALLBACK",
       "tickers = [] inside an except handler in an ML training/dataset-build pipeline: "
       "silently substitutes an empty ticker list for a computation that actually failed, "
       "letting the pipeline proceed 'as if' zero tickers were ever requested rather than "
@@ -269,11 +270,11 @@ _mark(["FB-00519", "FB-00559", "FB-00560"], "FALLBACK",
       "Disclose that the dynamic roster computation failed and CORE_TICKERS is a fallback "
       "roster, rather than processing it silently as if it were the intended set.",
       "market_data_server_core")
-_mark(["FB-00929", "FB-00934"], "NOT_PROVEN",
+_mark(["FB-ccfcd18365", "FB-e966902bd3"], "NOT_PROVEN",
       "Not independently traced in this pass whether this is a genuine except-substitute or "
       "a scanner context-detection artifact (comprehension/nested-function edge case).",
       "Re-verify by direct reading in the next adjudication pass.", "needs_recheck")
-_mark(["FB-00501", "FB-00482"], "NOT_PROVEN",
+_mark(["FB-bd0514159f", "FB-e3fe3d966a"], "NOT_PROVEN",
       "`return tickers` inside an except handler -- likely returns a partially-populated or "
       "previously-set variable rather than a fresh empty/default literal (a 'cached/prior-"
       "value carry-forward presented as current' shape if so), but the exact prior state of "
@@ -281,15 +282,15 @@ _mark(["FB-00501", "FB-00482"], "NOT_PROVEN",
       "Trace what `tickers` holds at the moment the exception fires; if it is a stale prior "
       "value, disclose that explicitly rather than returning it as current.",
       "needs_downstream_trace")
-_mark(["FB-01113"], "NOT_PROVEN",
+_mark(["FB-f788e300be"], "NOT_PROVEN",
       "vendor = None inside an except in vendor_reconcile -- plausible 'not yet resolved' "
       "sentinel, not independently traced downstream in this pass.",
       "Trace downstream consumer.", "needs_downstream_trace")
-_mark(["FB-00394"], "NOT_PROVEN",
+_mark(["FB-413ed5e5b0"], "NOT_PROVEN",
       "arch_state = {} inside an except in run_once -- plausible 'no state yet' "
       "initialization vs. a real substitution; not independently traced in this pass.",
       "Trace downstream consumer.", "needs_downstream_trace")
-_mark(["FB-00261"], "NOT_FALLBACK",
+_mark(["FB-9eb53e42d6"], "NOT_FALLBACK",
       "strike_disp = str(k): formatting a strike value already held in `k` for display -- "
       "not a substitution of a missing value at all; scanner false positive (semantic-term "
       "match on the enclosing function name, not this line's actual behavior).",
@@ -311,7 +312,7 @@ _mark(["FB-00179", "FB-00180"], "FALLBACK",
       "Exclude rows with a NULL et_minute from the time-bucket computation, or backfill it "
       "from the row's own ts_utc rather than assuming :00.",
       "calibration_ml_governance")
-_mark(["FB-00269"], "NOT_FALLBACK",
+_mark(["FB-0e33d01ce4"], "NOT_FALLBACK",
       "ms.is_no_trade = True on an exception in build_market_state: a conservative, "
       "fail-CLOSED safety default (refuse to signal a trade when the state computation "
       "itself failed) -- the opposite of masking failure as a valid go-ahead signal.",
@@ -324,7 +325,7 @@ _mark(["FB-00362"], "FALLBACK",
       "Distinguish 'computed, zero flags raised' from 'computation failed, flags unknown' -- "
       "e.g. return None/raise rather than an empty set on exception.",
       "market_state_rendering")
-_mark(["FB-00522"], "NOT_FALLBACK",
+_mark(["FB-97f9771d7a"], "NOT_FALLBACK",
       "base['plane_quote_authority'] = 'rest_only' on an exception in api_live_plane: "
       "explicitly NAMES the degraded authority state (as opposed to the normal streaming-"
       "plane authority) -- disclosure, not concealment, of the failure.",
@@ -344,7 +345,7 @@ _mark(["FB-00522"], "NOT_FALLBACK",
 # case and the "(null)"/"'NULL'" audit-label case: under the mandate's own absolutist
 # wording -- "no other value may replace it" -- ANY COALESCE default is a replacement value,
 # regardless of how carefully chosen). The ONE exception is a genuine TEST FIXTURE
-# (FB-00884) exercising imputation behavior as test data, not a production/tooling
+# (FB-109e56e688) exercising imputation behavior as test data, not a production/tooling
 # authorization -- left as NOT_FALLBACK, matching every other test-artifact classification
 # in this file, which the operator's correction did not address.
 def _repair_group_for(rel_path: str) -> str:
@@ -361,7 +362,7 @@ def _repair_group_for(rel_path: str) -> str:
 
 def _apply_operator_correction_2026_09_17(raw_candidates: list[dict]) -> None:
     for c in raw_candidates:
-        if c["id"] == "FB-00884":
+        if c["id"] == "FB-109e56e688":
             continue  # test fixture, not a production/tooling authorization
         if c["pattern"] in ("SQL_COALESCE_STYLE", "IMPUTATION"):
             ADJUDICATION[c["id"]] = (
@@ -455,7 +456,7 @@ _mark_repaired(
 # "irreducible product decision" pause criterion pending explicit operator sign-off on the
 # replacement methodology, not silently picked by this session).
 _mark_repaired(
-    ["FB-00243", "FB-00246"],
+    ["FB-d340b2bec9", "FB-d340b2bec9"],
     "REPAIRED 2026-09-17: lstm_data.py -- a ticker-roster-resolution FAILURE used to log/"
     "warn the identical message a genuinely-empty roster produces, masking which one "
     "actually happened. Now disclosed distinctly (CLI script: an accurate ERROR message "
@@ -470,13 +471,13 @@ _mark_repaired(
     "(exit_code 0) instead of reporting both as the same clean skip.",
     "ml_training_pipeline")
 _mark_repaired(
-    ["FB-01155"],
+    ["FB-d403301e1f"],
     "REPAIRED 2026-09-17: train_all.py run_xgb -- a roster-resolution failure now prints an "
     "accurate ERROR before falling through to zero tickers, instead of silently training "
     "nothing with no disclosure of why.",
     "ml_training_pipeline")
 _mark_repaired(
-    ["FB-01179"],
+    ["FB-2edde9ac05"],
     "REPAIRED 2026-09-17: transformer_train.py -- same fix as train_all.py, via log.warning.",
     "ml_training_pipeline")
 
@@ -512,7 +513,7 @@ _mark_repaired(
     "calibration_ml_governance")
 
 
-# FB-00181 (db.py:3341, inside the ONE-TIME schema-flag-gated migration that ESTABLISHES
+# FB-bdc70f2ee2 (db.py:3341, inside the ONE-TIME schema-flag-gated migration that ESTABLISHES
 # horizon_outcome_schema_version in the first place) was swept into the blanket SQL
 # reclassification above without individual review. Direct investigation during repair
 # (2026-09-17) found it structurally different from every other COALESCE in this group: it
@@ -526,7 +527,7 @@ _mark_repaired(
 # display-label, update-preserve), none of which apply to a migration WRITE.
 def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) -> None:
     for c in raw_candidates:
-        if c["id"] == "FB-00181":
+        if c["id"] == "FB-bdc70f2ee2":
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "Investigated 2026-09-17 during repair (not a blanket idiom classification): "
@@ -540,14 +541,14 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "calibration_ml_governance",
             )
-        if c["id"] == "FB-00187":
+        if c["id"] == "FB-2bd0ef8b53":
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "Investigated 2026-09-17 during repair: `enrollment_source = "
                 "COALESCE(enrollment_source, ?)` inside an UPDATE is a preserve-existing-"
                 "value WRITE (only fills the column the FIRST time a ticker is "
                 "re-enrolled, never overwrites an already-recorded source with a later "
-                "re-enrollment's source) -- structurally the same shape as FB-00181, a "
+                "re-enrollment's source) -- structurally the same shape as FB-bdc70f2ee2, a "
                 "WRITE deliberately protecting prior provenance, not a READ masking a "
                 "missing value as a fabricated one. Rewriting it as an explicit "
                 "'WHERE enrollment_source IS NULL' second statement would express the "
@@ -556,7 +557,7 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "calibration_ml_governance",
             )
-        if c["id"] in ("FB-00258", "FB-00259", "FB-00286"):
+        if c["id"] in ("FB-6dd613840a", "FB-64030d6c4e", "FB-a625df9396"):
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "Investigated 2026-09-17: `for ct in contracts or []` / `(ct for ct in "
@@ -568,7 +569,7 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "market_state_rendering",
             )
-        if c["id"] == "FB-00265":
+        if c["id"] == "FB-06507286fc":
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "Investigated 2026-09-17: `charm_top_drivers or []` normalizes an "
@@ -582,7 +583,7 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "market_state_rendering",
             )
-        if c["id"] == "FB-00270":
+        if c["id"] == "FB-3a262b7a84":
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "Investigated 2026-09-17: `exp_key = str(expiry or \"\")[:10]` is immediately "
@@ -595,7 +596,7 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "market_state_rendering",
             )
-        if c["id"] == "FB-00285":
+        if c["id"] == "FB-6abc367d16":
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "Investigated 2026-09-17: `t = (ms.ticker or \"\").upper().strip()` feeds a "
@@ -608,7 +609,7 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "market_state_rendering",
             )
-        if c["id"] in ("FB-00263", "FB-00264"):
+        if c["id"] in ("FB-0d98484ac6", "FB-323c5335d4"):
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "Investigated 2026-09-17: `iv_direction if iv_direction in (\"expanding\", "
@@ -621,7 +622,7 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "market_state_rendering",
             )
-        if c["id"] in ("FB-00271", "FB-00287", "FB-00288", "FB-00289"):
+        if c["id"] in ("FB-bb5a7d52a1", "FB-bb5a7d52a1-2", "FB-351d82e25f", "FB-c02ea0a1f2"):
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "RE-INVESTIGATED 2026-09-17 (superseding an earlier pass that cited a "
@@ -639,7 +640,7 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "structurally-equivalent carriers a given caller populated -- not an "
                 "alternate/different vendor source standing in for a missing one, which is "
                 "what this rule class prohibits. The two direction/change siblings "
-                "(FB-00288 market_iv_direction, FB-00289 market_iv_change) don't even have a "
+                "(FB-351d82e25f market_iv_direction, FB-c02ea0a1f2 market_iv_change) don't even have a "
                 "mkt_ctx-side value to fall back to -- they degrade to a bare None when "
                 "vol_ctx is absent, the mandate's own required shape, not a substitution. "
                 "This finding does not depend on, and is not weakened by, the separate "
@@ -647,7 +648,7 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "market_state_rendering",
             )
-        if c["id"] in ("FB-01161", "FB-01162"):
+        if c["id"] in ("FB-77cd99dc00-2", "FB-77cd99dc00"):
             ADJUDICATION[c["id"]] = (
                 "NOT_FALLBACK",
                 "RE-INVESTIGATED 2026-09-17 per operator instruction to establish "
@@ -1161,11 +1162,58 @@ _mark_repaired(
     "ml_training_pipeline")
 
 
+#: New (post-point-5) ids are content fingerprints: `FB-` + 10 hex chars, optionally with
+#: a `-N` collision-disambiguation suffix (see fallback_discovery.py's `_finalize_ids`).
+#: Legacy (pre-point-5) ids were sequential `FB-NNNNN` (exactly 5 digits) -- structurally
+#: disjoint from the new format, so a leftover legacy id anywhere in this file can never
+#: collide with a real current candidate; it is simply inert.
+_NEW_ID_RE = re.compile(r"^FB-[0-9a-f]{10}(-\d+)?$")
+_LEGACY_ID_RE = re.compile(r"^FB-\d{5}$")
+
+
+def _validate_adjudication_targets_exist(candidates: list[dict]) -> None:
+    """Operator point 5 (2026-09-17): 'Never apply an old verdict to a shifted
+    candidate.' Under fingerprint identity, a recorded verdict's id IS a hash of the
+    exact code it was judged against -- if that code changes shape at all, the id
+    changes, and the OLD id simply stops matching anything (rather than silently
+    matching whatever unrelated candidate the old sequential-counter scheme would have
+    shifted into that slot). A NEW-format id with no match means an already-adjudicated
+    candidate's underlying expression has since changed and the verdict must be
+    re-derived by hand -- fail loudly rather than silently drop or misapply it. A
+    LEGACY-format id (pre-fingerprint, `FB-NNNNN`) with no match is the expected,
+    benign steady state of a repair that deleted the underlying code outright; counted
+    for visibility, never a failure.
+    """
+    current_ids = {c["id"] for c in candidates}
+    referenced = set(ADJUDICATION) | set(REPAIRED)
+    missing = referenced - current_ids
+    legacy_missing = {i for i in missing if _LEGACY_ID_RE.match(i)}
+    unrecognized_format = {i for i in missing if not _LEGACY_ID_RE.match(i) and not _NEW_ID_RE.match(i)}
+    shifted = missing - legacy_missing - unrecognized_format
+    if unrecognized_format:
+        raise SystemExit(
+            f"no_fallback_inventory: {len(unrecognized_format)} adjudicated id(s) match "
+            f"neither the legacy FB-NNNNN nor the current fingerprint id shape -- "
+            f"{sorted(unrecognized_format)[:20]}"
+        )
+    if shifted:
+        raise SystemExit(
+            f"no_fallback_inventory: {len(shifted)} adjudicated fingerprint id(s) no "
+            f"longer match any current candidate -- the code they were adjudicated "
+            f"against has changed shape since that verdict was recorded; re-derive the "
+            f"verdict against the current candidate, never reapply it silently: "
+            f"{sorted(shifted)[:20]}"
+        )
+    print(f"legacy (pre-fingerprint) adjudication ids no longer present (expected -- "
+          f"underlying code was deleted by repair): {len(legacy_missing)}")
+
+
 def main() -> int:
     raw_path = REPO / "reports" / "no_fallback_discovery_raw.json"
     out_path = REPO / "reports" / "no_fallback_inventory.json"
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
     candidates = raw["candidates"]
+    _validate_adjudication_targets_exist(candidates)
     _apply_operator_correction_2026_09_17(candidates)
     _apply_fb_00181_investigated_reclassification(candidates)
 
