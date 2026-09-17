@@ -3385,33 +3385,18 @@ def _rest_last_price_identity(ticker: str, pq: dict) -> dict:
             "last_price_is_new_observation": False,
             "server_received_ts": now,
         }
-    prev = _lmp.get_quote(ticker)
-    if (
-        prev
-        and _lmp.plane_spot_is_last_price(prev)
-        and prev.get("last_price_native_ts") == trade_time
-        and prev.get("spot") == sf
-        and prev.get("last_price_generation") is not None
-    ):
-        gen = prev.get("last_price_generation")
-        received = prev.get("last_price_received_ts")
-        new_obs = False
-    else:
-        gen = _lmp.next_fast_generation(ticker)
-        received = now
-        new_obs = True
     return {
         "spot": sf,
         "spot_disp": f"{sf:.2f}",
         "last_price_native_ts": trade_time,
-        "last_price_received_ts": received,
-        "last_price_generation": gen,
-        "fast_generation_id": gen,
+        "last_price_received_ts": None,
+        "last_price_generation": None,
+        "fast_generation_id": None,
         "quote_time_source": "schwab_rest_quote",
         "quote_source_detail_spot": "LAST_PRICE",
         "last_price_session": last_session,
         "last_price_ok": True,
-        "last_price_is_new_observation": new_obs,
+        "last_price_is_new_observation": True,
         "server_received_ts": now,
     }
 
@@ -3438,13 +3423,29 @@ def _apply_rest_last_price_identity(row: dict, identity: dict) -> dict:
 
 
 def _commit_rest_last_price_row(ticker: str, row: dict) -> dict:
-    """ONE REST LAST_PRICE plane writer. Dispatches gamma only on a new observation."""
+    """REST adapter: LastPriceObservation -> the ONE plane commit."""
     out = dict(row)
-    is_new = bool(out.pop("_last_price_is_new_observation", False))
-    _lmp.record_quote(ticker, out)
-    if is_new and _lmp.plane_spot_is_last_price(out):
-        _dispatch_spot_gamma_refresh(ticker)
-    return out
+    out.pop("_last_price_is_new_observation", None)
+    qsd = out.get("quote_source_detail") or {}
+    if qsd.get("spot") != "LAST_PRICE" or out.get("spot") is None:
+        return out
+    obs = _lmp.LastPriceObservation(
+        ticker=ticker,
+        last_price=float(out["spot"]),
+        native_ts=out.get("last_price_native_ts"),
+        received_ts=time.time(),
+        session=qsd.get("last_price_session"),
+        ingestion=out.get("quote_ingestion") or "schwab_rest_quote",
+        is_new=True,
+    )
+    extra = {
+        k: v for k, v in out.items()
+        if k not in {
+            "spot", "spot_disp", "last_price_native_ts", "last_price_received_ts",
+            "last_price_generation", "fast_generation_id",
+        }
+    }
+    return _lmp.commit_last_price_observation(obs, extra)
 
 
 def _ingest_rest_last_price_observation(
@@ -3608,11 +3609,7 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
             )
         ),
         "spread_pts_source": ("derived_bid_ask_pts" if spread_pts is not None else None),
-        "fast_generation_id": (
-            identity["fast_generation_id"]
-            if identity["fast_generation_id"] is not None
-            else _lmp.next_fast_generation(tkr)
-        ),
+        "fast_generation_id": identity["fast_generation_id"],
         "exchange_quote_ts": quote_ts,
         "quote_ingestion": quote_ingestion,
         "quote_source_detail": {
@@ -13074,6 +13071,31 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
         cell["stream"] = state_row
 
 
+def _stamp_current_spot_identity(payload: dict, ticker: str) -> dict:
+    """Overlay LAST_PRICE identity from resolve_spot / the plane. Never invents a price."""
+    out = dict(payload)
+    if out.get("spot") is not None and out.get("spot_source") is not None:
+        spot, source, ts = out["spot"], out["spot_source"], (
+            out.get("spot_as_of_ts_utc") or out.get("spot_as_of_ts")
+        )
+    else:
+        spot, source, ts = resolve_spot(ticker)
+    row = _lmp.get_quote(ticker)
+    out["current_spot"] = spot
+    out["current_spot_source"] = source
+    out["current_spot_state"] = current_spot_state(source, ticker, as_of_ts=ts)
+    out["current_spot_as_of_ts"] = ts
+    if row and _lmp.plane_spot_is_last_price(row):
+        out["last_price_native_ts"] = row.get("last_price_native_ts")
+        out["last_price_received_ts"] = row.get("last_price_received_ts")
+        out["last_price_generation"] = row.get("last_price_generation")
+    else:
+        out["last_price_native_ts"] = ts
+        out["last_price_received_ts"] = None
+        out["last_price_generation"] = None
+    return out
+
+
 def _gamma_current_spot_fields(ticker: str, computed_spot) -> dict:
     """Current LAST_PRICE versus the spot the gamma cells were actually computed from."""
     current, source, ts = resolve_spot(ticker)
@@ -13587,6 +13609,14 @@ def _dispatch_spot_gamma_refresh(ticker: str) -> None:
             return
         _spot_gamma_refresh_inflight.add(tk)
     _get_spot_gamma_refresh_executor().submit(_run_spot_gamma_refresh, tk)
+
+
+def _on_plane_last_price_committed(ticker: str, _row=None) -> None:
+    """Plane-commit hook: gamma invalidation lives with the ONE commit owner."""
+    _dispatch_spot_gamma_refresh(ticker)
+
+
+_lmp.register_last_price_committed(_on_plane_last_price_committed)
 
 
 def _ticker_on_terrain_board(tk: str) -> bool:
@@ -15139,7 +15169,13 @@ def get_order_flow_book_heatmap(ticker: str = Query(default=DEFAULT_TICKER),
     except (TypeError, ValueError):
         bounded_minutes = 60.0
     payload = book_heatmap_for_ticker(tk, minutes=bounded_minutes)
-    return JSONResponse(payload)
+    stamped = _stamp_current_spot_identity(payload, tk)
+    latest = stamped.get("latest_captured_ts")
+    stamped["latest_column_ts"] = latest
+    stamped["latest_column_live"] = bool(
+        latest is not None and (time.time() - float(latest)) < _lmp.PLANE_QUOTE_STALE_SEC
+    )
+    return JSONResponse(stamped)
 
 
 #: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
@@ -15167,7 +15203,10 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
     now = time.time()
     hit = _FORCES_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
+        stamped = _stamp_current_spot_identity(hit[1], tk)
+        stamped["value_class"] = "HISTORICAL_REFERENCE"
+        stamped["current_spot_class"] = "LIVE"
+        return JSONResponse(stamped)
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "fewer than 2 banked wide captures for this ticker"}
     try:
@@ -15250,7 +15289,10 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
     _FORCES_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
+    stamped = _stamp_current_spot_identity(payload, tk)
+    stamped["value_class"] = "HISTORICAL_REFERENCE"
+    stamped["current_spot_class"] = "LIVE"
+    return JSONResponse(stamped)
 
 
 #: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
@@ -15271,7 +15313,10 @@ def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
     now = time.time()
     hit = _EXPOSURE_FLOW_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
+        stamped = _stamp_current_spot_identity(hit[1], tk)
+        stamped["value_class"] = "HISTORICAL_REFERENCE"
+        stamped["current_spot_class"] = "LIVE"
+        return JSONResponse(stamped)
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "no banked accrual frames for this ticker"}
     try:
@@ -15308,7 +15353,10 @@ def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"flow read failed: {e}"}
     _EXPOSURE_FLOW_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
+    stamped = _stamp_current_spot_identity(payload, tk)
+    stamped["value_class"] = "HISTORICAL_REFERENCE"
+    stamped["current_spot_class"] = "LIVE"
+    return JSONResponse(stamped)
 
 
 #: RC-209: Split·DEX and multi-day structure were gated ONLY by missing endpoints.
@@ -16201,7 +16249,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
         with _spot_poll_lock:
             hit = _spot_poll_cache.get(tk)
             if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
-                return JSONResponse(hit[1])
+                return JSONResponse(_stamp_current_spot_identity(hit[1], tk))
             leader = tk not in _spot_poll_inflight
             if leader:
                 _spot_poll_inflight[tk] = threading.Event()
@@ -16222,9 +16270,11 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
             continue
         try:
             spot, source, ts = resolve_spot(tk)
-            payload = {"ticker": tk, "spot": spot, "spot_source": source,
-                       "spot_state": current_spot_state(source, tk, as_of_ts=ts),
-                       "spot_as_of_ts_utc": ts}
+            payload = _stamp_current_spot_identity({
+                "ticker": tk, "spot": spot, "spot_source": source,
+                "spot_state": current_spot_state(source, tk, as_of_ts=ts),
+                "spot_as_of_ts_utc": ts,
+            }, tk)
             with _spot_poll_lock:
                 _spot_poll_cache[tk] = (time.time(), payload)
             return JSONResponse(payload)
@@ -18576,6 +18626,7 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
     ):
         families_absent.append({"family": fam, "reason": why})
 
+    row_lp = _lmp.get_quote(tk) if _lmp.plane_spot_is_last_price(_lmp.get_quote(tk)) else None
     return JSONResponse({
         "ticker": tk,
         "schema_version": 1,
@@ -18583,6 +18634,10 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
         "spot": spot,
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
+        "spot_state": current_spot_state(spot_source, tk, as_of_ts=spot_ts),
+        "last_price_native_ts": (row_lp.get("last_price_native_ts") if row_lp else spot_ts),
+        "last_price_received_ts": (row_lp.get("last_price_received_ts") if row_lp else None),
+        "last_price_generation": (row_lp.get("last_price_generation") if row_lp else None),
         "generation": snap.generation,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc,
         "bar_source": snap.bar_source,

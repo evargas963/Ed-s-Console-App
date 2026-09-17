@@ -473,7 +473,16 @@
     }
     var demandedCols = Object.keys(_newSymbolsByCol).map(Number);
     _demandSymbolsByCol = _newSymbolsByCol;
-    if (window.EdStream && window.EdStream.setAdditionalContracts) {
+    var visibleHaveContracts = false;
+    (cells || []).forEach(function (r) {
+      ((r && r.contracts) || []).forEach(function (c) {
+        if (c && (c.call || c.put)) visibleHaveContracts = true;
+      });
+    });
+    if (!frontDemand.length && visibleHaveContracts) {
+      // Silent All/Wider/Auto collapse: the surface named contracts but the extractor
+      // produced none. Refuse to POST [] — keep the prior heatmap demand.
+    } else if (window.EdStream && window.EdStream.setAdditionalContracts) {
       var myDemandGen = ++_demandGen;
       demandedCols.forEach(function (c) { _demandStateByCol[c] = frontDemand.length ? 'pending' : 'none'; });
       window.EdStream.setAdditionalContracts(frontDemand, 'heatmap').then(function (res) {
@@ -1038,5 +1047,23 @@
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
-  _root.EdGamma = { formatUsd: formatUsd, cellStyle: cellStyle, nearestStrikeIndex: nearestStrikeIndex, renderSurface: renderSurface };
+  function heatmapDemandSymbols(surface, scopeMode) {
+    if (!surface || !surface.available) return [];
+    var strikes = surface.strikes || [];
+    var cells = surface.cells || [];
+    var exps = surface.expirations || [];
+    var ES = (typeof window !== 'undefined' && window.EdShell) ? window.EdShell : null;
+    var prev = ES && ES.getState ? ES.getState().scope : null;
+    if (ES && ES.setScope && scopeMode) ES.setScope(scopeMode);
+    var spot = surface.current_spot != null ? surface.current_spot : surface.spot;
+    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, spot)
+      : { idx: strikes.map(function (_s, i) { return i; }) };
+    var viewCols = exps.map(function (_e, ix) { return ix; });
+    var out = _heatmapVisibleContracts(cells, rowSel, viewCols);
+    if (ES && ES.setScope && prev && prev !== scopeMode) ES.setScope(prev);
+    return out;
+  }
+  _root.EdGamma = { formatUsd: formatUsd, cellStyle: cellStyle, nearestStrikeIndex: nearestStrikeIndex,
+    renderSurface: renderSurface, heatmapDemandSymbols: heatmapDemandSymbols,
+    heatmapVisibleContracts: _heatmapVisibleContracts };
 })();

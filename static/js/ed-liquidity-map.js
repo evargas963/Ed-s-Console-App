@@ -155,8 +155,11 @@
       return '<div class="liqmap-line" style="top:' + yPct(l.value).toFixed(2) + '%;">' +
         '<span class="liqmap-line-label">' + esc(l.label) + ' ' + num(l.value) + '</span></div>';
     }).join('');
+    var gen = levels && levels.last_price_generation;
     var spotHtml = isFinite(spot)
-      ? '<div class="liqmap-spot" style="top:' + yPct(spot).toFixed(2) + '%;"><span class="liqmap-spot-label">SPOT ' + num(spot) + '</span></div>'
+      ? '<div class="liqmap-spot" style="top:' + yPct(spot).toFixed(2) + '%;" data-last-price-gen="' +
+        esc(gen == null ? '' : gen) + '"><span class="liqmap-spot-label">SPOT ' + num(spot) +
+        (gen != null ? ' · gen ' + esc(gen) : '') + '</span></div>'
       : '';
 
     var legendHtml =
@@ -214,7 +217,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    document.addEventListener('ed:refresh', function () { if (isMap()) load(); });
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }

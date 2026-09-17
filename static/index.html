@@ -1030,7 +1030,21 @@
           </div>
         </div>
       </section>
-      <section class="workspace" data-ws-pane="desk"><div class="placeholder"><div class="big">Desk / Research — Radar · Brief · Dossier · Structures · Scenarios · Evidence · Replay · AI Research</div><div class="sm">Wires to /api/desk/* (all take as_of epoch — Knowledge-Time replay is real and temporally sealed). AI Research backend NOT_PROVEN.</div></div></section>
+      <section class="workspace" data-ws-pane="desk">
+        <div class="sub-pane" data-sub-pane="radar">
+          <div class="panel">
+            <div class="panel-h"><span class="t">Desk Radar</span><span class="sub">plane LAST_PRICE · wall contacts</span>
+              <div class="r"><span class="prov native">TERRAIN RADAR</span></div></div>
+            <div class="panel-b" id="deskRadarBody"><div class="placeholder"><div class="sm">Live contacts from /api/terrain/radar — spot repriced from plane LAST_PRICE when fresh; snapshot as-of otherwise.</div></div></div>
+          </div>
+        </div>
+        <div class="sub-pane" data-sub-pane="brief"><div class="placeholder"><div class="sm">Knowledge-time /api/desk/brief (as_of). Not current lastPrice.</div></div></div>
+        <div class="sub-pane" data-sub-pane="dossier"><div class="placeholder"><div class="sm">Knowledge-time /api/desk/dossier (as_of). Not current lastPrice.</div></div></div>
+        <div class="sub-pane" data-sub-pane="structures"><div class="placeholder"><div class="sm">Knowledge-time /api/desk/structure. as_of_bar_close must never populate current fields.</div></div></div>
+        <div class="sub-pane" data-sub-pane="scenarios"><div class="placeholder"><div class="sm">Knowledge-time scenarios (as_of).</div></div></div>
+        <div class="sub-pane" data-sub-pane="evidence"><div class="placeholder"><div class="sm">Knowledge-time /api/desk/evidence (as_of).</div></div></div>
+        <div class="sub-pane" data-sub-pane="replay"><div class="placeholder"><div class="sm">Knowledge-time replay (as_of epoch).</div></div></div>
+      </section>
       <section class="workspace" data-ws-pane="portfolio"><div class="placeholder"><div class="big">Portfolio / Risk — Positions · Exposure · Risk · Scenarios</div><div class="sm">Architectural home preserved. No canonical positions/risk producer today.</div><div class="notproven">HOME PRESERVED — NOT_PROVEN</div></div></section>
       <section class="workspace" data-ws-pane="system"><div class="placeholder"><div class="big">System / Trust — Data Health · Feeds · Provenance · Models · Runtime</div><div class="sm">Can I trust what Ed Console is showing? Wires to /api/health, /api/build (process identity + code drift), /api/diagnostics/*, /api/governance/panel, /api/vol-observability, /api/release/current.</div></div></section>
 
@@ -1074,5 +1088,6 @@
 <script src="/static/js/ed-liquidity-map.js" defer></script>
 <script src="/static/js/ed-trade-desk.js" defer></script>
 <script src="/static/js/ed-alerts.js" defer></script>
+<script src="/static/js/ed-desk-radar.js" defer></script>
 </body>
 </html>

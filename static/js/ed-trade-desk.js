@@ -422,6 +422,7 @@
     return Promise.all([
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
+      fetchJson('/api/spot?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
       // snapshot=live -- see ed-liquidity-map.js's identical comment; the endpoint's own
       // default is a frozen pre-9:30ET snapshot, wrong for an "as of right now" synthesis page.
@@ -431,7 +432,7 @@
       fetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), signal),
     ]).then(function (results) {
       if (!stillRightNow(tk)) return;
-      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
+      var detect = results[0], levelsD = results[1], spotD = results[2], terrain = results[3], snap = results[4], strikesD = results[5];
       // Independent-review finding, REPRODUCED: this used to fall back to terrain.spot when
       // levelsD was absent -- both endpoints resolve spot via the same server-side
       // resolve_spot() authority today (server.py's get_levels/_reprice_cached_terrain), so
@@ -441,10 +442,14 @@
       // contract for spot ("every other surface carries the values out of the same snapshot");
       // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
       // instead of silently substituting a second source.
-      var spot = levelsD ? Number(levelsD.spot) : NaN;
+      var spot = spotD && spotD.spot != null ? Number(spotD.spot) : NaN;
+      var gen = (spotD && spotD.last_price_generation != null) ? spotD.last_price_generation
+        : (levelsD && levelsD.last_price_generation);
+      var ident = (isFinite(spot) ? 'spot ' + num(spot) : '') +
+        (gen != null ? ' · LAST_PRICE gen ' + esc(gen) : '');
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
-        '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +
+        '</span><span class="fl-meta" data-last-price-gen="' + esc(gen == null ? '' : gen) + '">' + ident + '</span></div></div>' +
         '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD, spot) + confirmStage(terrain) + '</div>' +
         contextSummary(terrain, snap, spot) +
         migrationSection(strikesD, terrain, spot, tk) +

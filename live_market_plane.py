@@ -22,7 +22,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Optional
 
 from instrument_identity import ticker_storage_key
 
@@ -38,6 +39,36 @@ _last_sse_pushed_gen: dict[str, float] = {}
 
 _gen_lock = threading.Lock()
 _fast_lane_gen_by_ticker: dict[str, int] = {}
+
+#: Optional hook registered by server.py so gamma invalidation has the same owner as
+#: storage and dispatch. Adapters must not call this themselves.
+_on_last_price_committed: Optional[Callable[[str, dict[str, Any]], None]] = None
+
+
+@dataclass(frozen=True)
+class LastPriceObservation:
+    """Canonical LAST_PRICE observation. REST and stream adapters produce this shape.
+
+    Generation, receive-clock preservation, storage, event dispatch, and gamma
+    invalidation are owned exclusively by commit_last_price_observation.
+    """
+
+    ticker: str
+    last_price: float
+    native_ts: Optional[float]
+    received_ts: float
+    session: Optional[str]
+    ingestion: str
+    is_new: bool = True
+
+
+def register_last_price_committed(
+    cb: Optional[Callable[[str, dict[str, Any]], None]],
+) -> None:
+    """Register the ONE post-commit hook (gamma invalidation). None clears it."""
+    global _on_last_price_committed
+    _on_last_price_committed = cb
+
 
 
 def next_fast_generation(ticker: str) -> int:
@@ -83,14 +114,145 @@ def _epoch_seconds_from_millis(val: Any) -> Optional[float]:
     return f / 1000.0
 
 
+
+_LAST_PRICE_OWNED = (
+    "spot",
+    "spot_disp",
+    "last_price_native_ts",
+    "last_price_received_ts",
+    "last_price_generation",
+    "fast_generation_id",
+)
+
+
+def commit_last_price_observation(
+    obs: LastPriceObservation,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """ONE LAST_PRICE plane commit.
+
+    Owns validation, timestamp preservation, generation, storage, event
+    dispatch, and gamma invalidation. REST and stream adapters produce a
+    LastPriceObservation and call this; they must not assign generation or
+    notify themselves.
+    """
+    t = ticker_storage_key(obs.ticker)
+    if not t:
+        raise ValueError("LastPriceObservation.ticker is empty")
+    spot = _positive_float(obs.last_price)
+    if spot is None:
+        raise ValueError("LastPriceObservation.last_price must be a positive finite number")
+
+    extra = dict(extra or {})
+    now = float(obs.received_ts) if obs.received_ts else time.time()
+    with _lock:
+        prev = _by_ticker.get(t)
+
+    same = bool(
+        prev
+        and plane_spot_is_last_price(prev)
+        and prev.get("last_price_native_ts") == obs.native_ts
+        and prev.get("spot") == spot
+        and prev.get("last_price_generation") is not None
+    )
+    extras_changed = bool(
+        prev
+        and (
+            prev.get("bid") != extra.get("bid", prev.get("bid"))
+            or prev.get("ask") != extra.get("ask", prev.get("ask"))
+            or prev.get("exchange_quote_ts") != extra.get("exchange_quote_ts", prev.get("exchange_quote_ts"))
+        )
+    )
+    if same or not obs.is_new:
+        if prev and prev.get("last_price_generation") is not None:
+            gen = prev.get("last_price_generation")
+            received = prev.get("last_price_received_ts") or now
+            is_new = False
+            native_ts = obs.native_ts if obs.is_new else prev.get("last_price_native_ts")
+            fast_gen = next_fast_generation(t) if extras_changed else gen
+        else:
+            gen = next_fast_generation(t)
+            received = now
+            is_new = True
+            native_ts = obs.native_ts
+            fast_gen = gen
+    else:
+        gen = next_fast_generation(t)
+        received = now
+        is_new = True
+        native_ts = obs.native_ts
+        fast_gen = gen
+
+    row: dict[str, Any] = {
+        "ticker": t,
+        "spot": float(spot),
+        "spot_disp": f"{float(spot):.2f}",
+        "last_price_native_ts": native_ts,
+        "last_price_received_ts": received,
+        "last_price_generation": gen,
+        "fast_generation_id": fast_gen,
+        "quote_ingestion": obs.ingestion,
+        "server_received_ts": extra.get("server_received_ts", now if is_new else received),
+    }
+    for k, v in extra.items():
+        if k in _LAST_PRICE_OWNED or k == "_last_price_is_new_observation":
+            continue
+        row[k] = v
+    qsd = dict(row.get("quote_source_detail") or {})
+    qsd["spot"] = "LAST_PRICE"
+    qsd["carried_forward"] = not is_new
+    if obs.session:
+        qsd["last_price_session"] = obs.session
+    row["quote_source_detail"] = qsd
+
+    with _lock:
+        _by_ticker[t] = row
+    try:
+        from planes.l1_events import notify_quote_updated
+
+        notify_quote_updated(t)
+    except Exception as e:
+        log.debug("notify_quote_updated: %s", e, exc_info=True)
+    if is_new and _on_last_price_committed is not None:
+        try:
+            _on_last_price_committed(t, row)
+        except Exception as e:
+            log.debug("on_last_price_committed: %s", e, exc_info=True)
+    return dict(row)
+
+
+def observation_from_level_one_equity(
+    ticker: str, item: dict[str, Any], *, received_ts: float | None = None
+) -> LastPriceObservation | None:
+    """Stream adapter: LEVEL_ONE_EQUITY content row -> LastPriceObservation or None."""
+    if not item or not isinstance(item, dict):
+        return None
+    last = _positive_float(item.get("LAST_PRICE"))
+    t = ticker_storage_key(ticker)
+    if last is None or not t:
+        return None
+    return LastPriceObservation(
+        ticker=t,
+        last_price=float(last),
+        native_ts=_epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS")),
+        received_ts=received_ts if received_ts is not None else time.time(),
+        session=None,
+        ingestion="schwab_streaming_level_one",
+        is_new=True,
+    )
+
+
 def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     """
-    Ingest one Schwab streaming LEVEL_ONE_EQUITY content row into the plane.
-    Returns True if the stored row changed (new generation recorded).
+    Stream adapter: ingest one Schwab LEVEL_ONE_EQUITY content row.
+
+    Builds a LastPriceObservation (or carries the prior LAST_PRICE) and passes
+    it to commit_last_price_observation. Bid/ask-only ticks update extras
+    without bumping LAST_PRICE generation.
     """
     if not item or not isinstance(item, dict):
         return False
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
+    t = ticker_storage_key(ticker)
     if not t:
         return False
 
@@ -110,17 +272,11 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
             if isinstance(_prev_qsd, dict):
                 prev_spot_source = _prev_qsd.get("spot")
 
-    # Current live spot is LAST_PRICE only. MARK is the vendor mid and may update
-    # quote_mid; it must never become spot. A bid/ask-only tick may update bid/ask
-    # state but MUST NOT refresh the prior LAST_PRICE observation's value, native
-    # timestamp, receive time, generation, or freshness.
     last_is_new = last is not None
     if last_is_new:
         spot_f = last
-        spot_source = "LAST_PRICE"
         last_price_native_ts = _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
-        last_price_received_ts = None  # set to now when the row is written
-        last_price_generation = None
+        received_ts = time.time()
     elif (
         prev is not None
         and pspot is not None
@@ -128,23 +284,13 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         and prev_spot_source == "LAST_PRICE"
     ):
         spot_f = pspot
-        spot_source = "LAST_PRICE"
         last_price_native_ts = prev.get("last_price_native_ts")
-        last_price_received_ts = prev.get("last_price_received_ts") or prev.get("server_received_ts")
-        last_price_generation = prev.get("last_price_generation") or prev.get("fast_generation_id")
+        received_ts = prev.get("last_price_received_ts") or prev.get("server_received_ts") or time.time()
     else:
         return False
     bid_source = "BID_PRICE" if bid is not None else None
     ask_source = "ASK_PRICE" if ask is not None else None
 
-    # exchange_quote_ts (set below) carries the EXCHANGE quote clock — Schwab
-    # QUOTE_TIME_MILLIS in epoch seconds — NOT a server clock. The genuine server wall
-    # clock is the separate server_received_ts (time.time()). When QUOTE_TIME_MILLIS is
-    # absent we fall back to TRADE_TIME_MILLIS as a LABELED PROXY (M6) rather than
-    # conflating the two silently; the clock actually used is recorded in
-    # quote_source_detail["quote_ts"] so a trade-time value is never aged as a quote time
-    # without provenance. The name->value contract (exchange_quote_ts must never hold a
-    # server wall clock) is machine-pinned by tools/check_schwab_market_field_semantics (M5).
     _qtm = _epoch_seconds_from_millis(item.get("QUOTE_TIME_MILLIS"))
     _ttm = _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
     if _qtm is not None:
@@ -181,24 +327,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         pass
 
-    now = time.time()
-    if last_is_new:
-        last_price_received_ts = now
-        last_price_generation = next_fast_generation(t)
-        server_received_ts = now
-        fast_generation_id = last_price_generation
-    else:
-        server_received_ts = last_price_received_ts
-        fast_generation_id = last_price_generation
-    out = {
-        "ticker": t,
-        "spot": float(spot_f),
-        "last_price_native_ts": last_price_native_ts,
-        "last_price_received_ts": last_price_received_ts,
-        "last_price_generation": last_price_generation,
+    extra = {
         "bid": float(bid) if bid is not None else None,
         "ask": float(ask) if ask is not None else None,
-        "spot_disp": f"{float(spot_f):.2f}",
         "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
         "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
         "quote_mid": quote_mid,
@@ -217,37 +348,35 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         "spread_pts_source": (
             "derived_bid_ask_pts" if bid is not None and ask is not None else None
         ),
-        "fast_generation_id": fast_generation_id,
         "exchange_quote_ts": quote_ts,
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
-        "server_received_ts": server_received_ts,
-        "quote_ingestion": "schwab_streaming_level_one",
         "quote_source_detail": {
-            "spot": spot_source,
+            "spot": "LAST_PRICE",
             "bid": bid_source,
             "ask": ask_source,
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
             "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
-            "quote_ts": quote_ts_clock,  # M6: which exchange clock exchange_quote_ts carries (QUOTE_TIME_MILLIS, or TRADE_TIME_MILLIS_proxy on fallback)
-            "carried_forward": not last_is_new,
+            "quote_ts": quote_ts_clock,
             "previous_spot_available": pspot is not None,
             "previous_bid_available": pbid is not None,
             "previous_ask_available": pask is not None,
         },
     }
-    with _lock:
-        _by_ticker[t] = out
-    try:
-        from planes.l1_events import notify_quote_updated
-
-        notify_quote_updated(t)
-    except Exception as e:
-        log.debug("notify_quote_updated: %s", e, exc_info=True)
+    obs = LastPriceObservation(
+        ticker=t,
+        last_price=float(spot_f),
+        native_ts=last_price_native_ts,
+        received_ts=float(received_ts),
+        session=None,
+        ingestion="schwab_streaming_level_one",
+        is_new=last_is_new,
+    )
+    commit_last_price_observation(obs, extra)
     return True
 
 
 def record_quote(ticker: str, payload: dict[str, Any]) -> None:
-    """Persist a full plane row (e.g. REST fast-quote). Replaces prior row for ticker."""
+    """Storage helper for non-LAST_PRICE plane rows (tests, auth carry-forward). LAST_PRICE observations must go through commit_last_price_observation."""
     t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
     if not t:
         return

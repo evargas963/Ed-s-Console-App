@@ -2199,9 +2199,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       demandCalls.push(body.contracts || []);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setScope('all'));   // demand follows every displayed column
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+    await expect.poll(() => {
+      const last = demandCalls[demandCalls.length - 1] || [];
+      return last.length;
+    }).toBe(244);
 
     const lastDemand = demandCalls[demandCalls.length - 1];
     expect(lastDemand.length).toBe(244);   // the FULL set -- no cap, no split, no exclusion
@@ -2214,6 +2218,45 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     colTitles.forEach((t) => expect(t || '').not.toMatch(/PARTIALLY|excluded|safety limit/));
     await expect(page.locator('#heatBody .scope-note')).not.toContainText('capped');
   });
+
+  test('Auto/Wider/All demand cannot silently collapse to zero when the surface names contracts', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(2, 61)),
+    }));
+    const demandCalls = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      demandCalls.push(body.contracts || []);
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const scopes = ['auto', 'wider', 'all'];
+    for (const scope of scopes) {
+      await page.evaluate((s) => window.EdShell.setScope(s), scope);
+      await expect.poll(() => {
+        const last = demandCalls[demandCalls.length - 1] || [];
+        return last.length;
+      }, { timeout: 8000 }).toBeGreaterThan(0);
+      const last = demandCalls[demandCalls.length - 1];
+      expect(last.length, `${scope} collapsed to zero`).toBeGreaterThan(0);
+    }
+    const viaHelper = await page.evaluate((surface) => {
+      const G = window.EdGamma;
+      return {
+        auto: G.heatmapDemandSymbols(surface, 'auto').length,
+        wider: G.heatmapDemandSymbols(surface, 'wider').length,
+        all: G.heatmapDemandSymbols(surface, 'all').length,
+      };
+    }, surfaceWithContracts(2, 61));
+    expect(viaHelper.auto).toBeGreaterThan(0);
+    expect(viaHelper.wider).toBeGreaterThan(0);
+    expect(viaHelper.all).toBeGreaterThan(0);
+    expect(viaHelper.all).toBeGreaterThanOrEqual(viaHelper.wider);
+    expect(viaHelper.wider).toBeGreaterThanOrEqual(viaHelper.auto);
+  });
+
 
   // ---------------------------------------------------------------------------
   // 2026-09-16 audit findings #3/#4/#5/#6 — bounded/consolidated live-UI architecture

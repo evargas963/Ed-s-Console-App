@@ -1,4 +1,4 @@
-"""Reconcile reports/whole_ui_live_inventory_v1.json to every UI market binding."""
+"""Reconcile reports/whole_ui_live_inventory_v1.json to every rendered binding instance."""
 
 from __future__ import annotations
 
@@ -12,6 +12,11 @@ INV_PATH = ROOT / "reports" / "whole_ui_live_inventory_v1.json"
 STATIC = ROOT / "static"
 SKIP_PAGES = {"ops.html", "governance.html"}
 STATUS_VOCAB = {"LIVE", "HISTORICAL_REFERENCE", "UNAVAILABLE", "FAIL", "NOT_PROVEN"}
+INSTANCE_KEYS = {
+    "id", "page", "view", "target", "semantic", "canonical_producer",
+    "source_observation", "timestamp", "generation", "freshness",
+    "update_trigger", "status", "instance_kind",
+}
 FRAGMENT_APIS = {
     "/api/desk",
     "/api/diagnostics",
@@ -21,39 +26,35 @@ FRAGMENT_APIS = {
     "/api/spot.spot",
 }
 REQUIRED_INDEX_MARKET_IDS = {
-    "hPx",
-    "hChg",
-    "hBidAsk",
-    "hFeed",
-    "hAge",
-    "hSession",
-    "heatBody",
-    "klSpot",
-    "klFlip",
-    "klCall",
-    "klPut",
-    "klAbs",
-    "klPeak",
-    "klNet",
-    "klPcr",
-    "klRegime",
-    "sdBody",
-    "gbsBody",
-    "ofBody",
-    "chainBody",
-    "flowBody",
-    "vnBody",
-    "chmBody",
-    "stBody",
-    "tdBody",
-    "obBody",
-    "ofhBody",
-    "liqmBody",
-    "lvlBody",
-    "chartBody",
-    "levelsBody",
-    "alertsList",
-    "aiCtxFresh",
+    "hPx", "hChg", "hBidAsk", "hFeed", "hAge", "hSession",
+    "heatBody", "klSpot", "klFlip", "klCall", "klPut", "klAbs", "klPeak",
+    "klNet", "klPcr", "klRegime", "sdBody", "gbsBody", "ofBody", "chainBody",
+    "flowBody", "vnBody", "chmBody", "stBody", "tdBody", "obBody", "ofhBody",
+    "liqmBody", "lvlBody", "chartBody", "levelsBody", "alertsList", "aiCtxFresh",
+    "deskRadarBody",
+}
+REQUIRED_LAST_PRICE_TARGETS = {
+    "index.html#hPx",
+    "index.html#klSpot",
+    "index.html#heatScope.current_spot",
+    "index.html#tdBody.spot",
+    "index.html#liqmBody.spot",
+    "index.html#deskRadarBody.spot",
+    "chart.html#liveSpot",
+    "exposure.html#currentSpot",
+    "options.html#m-spot",
+    "sse.live_quote",
+}
+REQUIRED_CLOSED_PATHS = {
+    "index.html#deskRadarBody.spot",
+    "index.html.contract_admission",
+    "index.html#tdBody.spot",
+    "index.html#ofhBody.latest",
+    "index.html#liqmBody.zones",
+    "index.html#alertsList",
+    "chart.html#forces",
+    "exposure.html#flow",
+    "options.html#m-spot",
 }
 
 
@@ -78,28 +79,63 @@ def _static_api_paths() -> set[str]:
     return found
 
 
-def test_inventory_status_vocab_and_counts() -> None:
+def test_instance_denominator_reconciles() -> None:
     inv = _load()
-    fields = inv["fields"]
-    assert fields, "inventory has no fields"
-    counts = Counter(f["status"] for f in fields)
-    assert set(counts) <= STATUS_VOCAB
-    assert counts.get("FAIL", 0) == 0
+    instances = inv["instances"]
+    assert instances, "inventory has no binding instances"
+    for row in instances:
+        missing = INSTANCE_KEYS - set(row)
+        assert not missing, f"{row.get('id')}: missing {sorted(missing)}"
+        assert row["status"] in STATUS_VOCAB
+    keys = [(r["page"], r["target"], r["semantic"]) for r in instances]
+    dups = [k for k, n in Counter(keys).items() if n > 1]
+    assert dups == [], f"duplicate binding instances (not unique semantics): {dups}"
+    last_price = [r for r in instances if r["semantic"] == "LAST_PRICE"]
+    assert len(last_price) >= 8, (
+        "LAST_PRICE painted in multiple locations must be multiple instance rows, "
+        f"got {len(last_price)}"
+    )
+    ids = {r["id"] for r in instances}
+    missing_lp = sorted(REQUIRED_LAST_PRICE_TARGETS - ids)
+    assert missing_lp == [], f"required LAST_PRICE instances missing: {missing_lp}"
+    counts = Counter(r["status"] for r in instances)
     summary = {
-        "total": len(fields),
+        "total": len(instances),
         "LIVE": counts.get("LIVE", 0),
         "HISTORICAL_REFERENCE": counts.get("HISTORICAL_REFERENCE", 0),
         "UNAVAILABLE": counts.get("UNAVAILABLE", 0),
         "FAIL": counts.get("FAIL", 0),
         "NOT_PROVEN": counts.get("NOT_PROVEN", 0),
+        "binding_instances": len(instances),
+        "generated_templates": sum(1 for r in instances if r["instance_kind"] == "generated"),
+        "static_instances": sum(1 for r in instances if r["instance_kind"] == "static"),
     }
-    inv["summary"] = summary
-    # Keep the file honest: if summary is present it must match the computed counts.
-    written = json.loads(INV_PATH.read_text(encoding="utf-8"))
-    if "summary" in written:
-        assert written["summary"] == summary
-    assert summary["total"] == sum(summary[k] for k in STATUS_VOCAB)
-    assert summary["NOT_PROVEN"] > 0  # required RTH / unmatched paths remain
+    written = _load()
+    assert written["summary"] == summary
+    assert summary["FAIL"] == 0
+    assert summary["NOT_PROVEN"] == 0
+    assert summary["total"] == summary["binding_instances"]
+    assert summary["total"] == summary["static_instances"] + summary["generated_templates"]
+
+
+def test_required_paths_are_not_not_proven() -> None:
+    inv = _load()
+    by_id = {r["id"]: r for r in inv["instances"]}
+    for iid in REQUIRED_CLOSED_PATHS:
+        assert iid in by_id, f"required path missing from instance inventory: {iid}"
+        assert by_id[iid]["status"] != "NOT_PROVEN", iid
+        assert by_id[iid]["status"] != "FAIL", iid
+    fields = {f["id"]: f for f in inv["fields"]}
+    assert fields["desk_workspace_radar_placeholder"]["status"] == "LIVE"
+    assert fields["contract_admission_pending"]["status"] == "LIVE"
+    assert fields["tdBody"]["status"] == "LIVE"
+    assert fields["ofhBody"]["status"] == "LIVE"
+    assert fields["liqmBody"]["status"] == "LIVE"
+    assert fields["alertsList"]["status"] == "LIVE"
+    assert fields["chart_html_forces"]["status"] == "HISTORICAL_REFERENCE"
+    assert fields["exposure_html_flow"]["status"] == "HISTORICAL_REFERENCE"
+    assert fields["options_html_spot"]["status"] == "LIVE"
+    assert "/api/spot" in fields["options_html_spot"]["source"]
 
 
 def test_every_static_api_binding_is_inventoried() -> None:
@@ -111,28 +147,27 @@ def test_every_static_api_binding_is_inventoried() -> None:
     assert "/api/watchlist-quotes" in surfaces
     assert "/api/spot" in surfaces
     assert "/api/state" in surfaces
+    assert "/api/terrain/radar" in surfaces
 
 
 def test_every_index_market_id_is_inventoried() -> None:
     inv = _load()
     ids = {f["id"] for f in inv["fields"]}
+    inst_text = " ".join(r["target"] + " " + r["id"] for r in inv["instances"])
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     present = set(re.findall(r'id="([^"]+)"', html))
     missing = sorted(REQUIRED_INDEX_MARKET_IDS - present)
     assert missing == [], f"required market ids missing from index.html: {missing}"
     unmapped = sorted(REQUIRED_INDEX_MARKET_IDS - ids)
-    # heatBody is covered by heat_* fields; allow that alias.
-    unmapped = [u for u in unmapped if u != "heatBody"]
+    unmapped = [u for u in unmapped if u != "heatBody" and u != "deskRadarBody"]
     assert unmapped == [], f"index market ids missing from inventory: {unmapped}"
+    assert "deskRadarBody" in inst_text
     assert "wl-px" in ids and "wl-chg" in ids
 
 
 def test_cannot_be_live_adjudications_are_source_contracts() -> None:
     inv = _load()
     by_id = {f["id"]: f for f in inv["fields"]}
-    radar = by_id["desk_workspace_radar_placeholder"]
-    assert radar["status"] == "NOT_PROVEN"
-    assert "timeout" in (radar.get("limit") or "").lower()
     oi = by_id["heat_cells_oi"]
     assert oi["status"] == "LIVE"
     assert "OPEN_INTEREST" in oi["source_contract"]
@@ -143,10 +178,13 @@ def test_cannot_be_live_adjudications_are_source_contracts() -> None:
     assert bar["status"] == "HISTORICAL_REFERENCE"
     assert "never populate current" in bar["limit"]
     pending = by_id["contract_admission_pending"]
-    assert pending["status"] == "NOT_PROVEN"
+    assert pending["status"] == "LIVE"
     aggressor = by_id["book_aggressor"]
     assert aggressor["status"] == "UNAVAILABLE"
     assert "no native aggressor" in aggressor["source_contract"]
+    forces = by_id["chart_html_forces"]
+    assert forces["status"] == "HISTORICAL_REFERENCE"
+    assert "current_spot" in forces["source_contract"]
 
 
 def test_radar_plane_last_price_reprices_snapshot_spot() -> None:

@@ -215,7 +215,18 @@
   function renderChain(payload){
     var tbody = document.getElementById('chain-body');
     tbody.innerHTML = '';
-    document.getElementById('m-spot').textContent = payload.spot === null || payload.spot === undefined ? '—' : fmt(payload.spot, 2);
+    // LAST_PRICE current spot is /api/spot only — never chain underlying last/mark.
+    if (payload.current_spot_from_resolve == null && payload.spot != null) {
+      document.getElementById('m-spot').textContent = '—';
+    } else {
+      document.getElementById('m-spot').textContent =
+        payload.current_spot_from_resolve === null || payload.current_spot_from_resolve === undefined
+          ? '—' : fmt(payload.current_spot_from_resolve, 2);
+    }
+    var mSpot = document.getElementById('m-spot');
+    if (mSpot && payload.last_price_generation != null) {
+      mSpot.setAttribute('data-last-price-gen', String(payload.last_price_generation));
+    }
     document.getElementById('m-expiry').textContent = payload.expiry || '—';
     document.getElementById('m-count').textContent = String((payload.contracts || []).length);
     renderScope(payload.scope);
@@ -302,10 +313,17 @@
       return mySeq !== chainReqSeq ||
         (tkEl.value || 'SPY').toUpperCase().trim() !== t || expSelect.value !== exp;
     }
-    fetch(url)
-      .then(function(r){ return r.json(); })
-      .then(function(payload){
-        if (stale()) return;   // superseded by a newer ticker, expiry, or same-identity refresh
+    Promise.all([
+      fetch(url).then(function(r){ return r.json(); }),
+      fetch('/api/spot?ticker=' + encodeURIComponent(t)).then(function(r){ return r.json(); }).catch(function(){ return null; })
+    ])
+      .then(function(pair){
+        if (stale()) return;
+        var payload = pair[0] || {};
+        var spotP = pair[1];
+        payload.current_spot_from_resolve = spotP && spotP.spot != null ? spotP.spot : null;
+        payload.last_price_generation = spotP && spotP.last_price_generation;
+        payload.spot = payload.current_spot_from_resolve;  // ITM class uses resolve_spot, never chain last
         renderChain(payload);
       })
       .catch(function(){

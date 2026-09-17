@@ -359,3 +359,24 @@ def test_watchlist_fast_quote_and_tier_a_share_one_rest_last_price_owner() -> No
     assert "_dispatch_spot_gamma_refresh" not in watch
     assert "next_fast_generation" not in watch
     assert "next_fast_generation" not in tier
+    assert "next_fast_generation" not in identity
+    assert "commit_last_price_observation" in commit
+    assert "_lmp.record_quote" not in commit
+    assert "_dispatch_spot_gamma_refresh" not in commit
+
+
+def test_stream_and_rest_share_one_plane_commit() -> None:
+    import inspect
+
+    stream = inspect.getsource(L.record_from_level_one_equity)
+    rest = inspect.getsource(server._commit_rest_last_price_row)
+    commit = inspect.getsource(L.commit_last_price_observation)
+    assert "commit_last_price_observation" in stream
+    assert "LastPriceObservation" in stream
+    assert "commit_last_price_observation" in rest
+    assert "LastPriceObservation" in rest
+    assert "next_fast_generation" not in stream
+    assert "notify_quote_updated" not in stream
+    assert "next_fast_generation" in commit
+    assert "notify_quote_updated" in commit
+    assert "_on_last_price_committed" in commit
