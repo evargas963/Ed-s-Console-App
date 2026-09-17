@@ -4853,9 +4853,15 @@ class EdDB:
         scope = "rth_0930_1600_et" if rth_only else "all_hours"
         rth_clause = ""
         if rth_only:
+            # Fallback lock (2026-09-17): a NULL et_minute used to be assumed :00, fabricating
+            # a specific wrong time-of-day for the RTH boundary check. et_minute is a genuine
+            # nullable INTEGER (db.py:1114); dropping the default lets SQL's own NULL
+            # semantics naturally EXCLUDE a row whose minute is unrecorded from the rth_only
+            # scope (a comparison against NULL is never true) rather than guessing it landed
+            # inside or outside the window.
             rth_clause = (
-                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) >= {self.ACCURACY_RTH_START_MIN}"
-                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) < {self.ACCURACY_RTH_END_MIN} "
+                f" AND (et_hour * 60 + et_minute) >= {self.ACCURACY_RTH_START_MIN}"
+                f" AND (et_hour * 60 + et_minute) < {self.ACCURACY_RTH_END_MIN} "
             )
 
         for horizon in PRIMARY_DECISION_HORIZONS:
@@ -5617,11 +5623,18 @@ _ISSUE19_CTX_GROUP_COLS = frozenset(
 
 
 def sql_issue19_snapshots_context_group(col: str) -> str:
-    """Labeled-row distribution for Issue 19 context audit (whitelist columns only)."""
+    """Labeled-row distribution for Issue 19 context audit (whitelist columns only).
+
+    Fallback lock (2026-09-17): the '(null)' SQL-level display default is removed (operator
+    ruling: no display-label exemption survives). The one caller
+    (tools/issue19_option_a_post_validate.py) puts this straight into a JSON-shaped
+    "key": r["k"] report entry -- a real JSON `null` for a genuinely-NULL column is more
+    honest than a string that could be mistaken for an actual category value, not less.
+    """
     if col not in _ISSUE19_CTX_GROUP_COLS:
         raise ValueError(f"unsupported context group column: {col!r}")
     return (
-        f"SELECT COALESCE({col}, '(null)') AS k, COUNT(*) AS n FROM snapshots "
+        f"SELECT {col} AS k, COUNT(*) AS n FROM snapshots "
         "WHERE timeframe = ? AND outcome_1c IS NOT NULL "
         "GROUP BY k ORDER BY n DESC LIMIT 50"
     )

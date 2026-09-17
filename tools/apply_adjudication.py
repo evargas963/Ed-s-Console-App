@@ -502,6 +502,22 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "calibration_ml_governance",
             )
+        if c["id"] == "FB-00187":
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "Investigated 2026-09-17 during repair: `enrollment_source = "
+                "COALESCE(enrollment_source, ?)` inside an UPDATE is a preserve-existing-"
+                "value WRITE (only fills the column the FIRST time a ticker is "
+                "re-enrolled, never overwrites an already-recorded source with a later "
+                "re-enrollment's source) -- structurally the same shape as FB-00181, a "
+                "WRITE deliberately protecting prior provenance, not a READ masking a "
+                "missing value as a fabricated one. Rewriting it as an explicit "
+                "'WHERE enrollment_source IS NULL' second statement would express the "
+                "identical semantics with no behavioral difference, at the cost of a "
+                "second round trip for no real gain -- left as-is.",
+                "none",
+                "calibration_ml_governance",
+            )
 
 
 _mark_repaired(
@@ -582,6 +598,31 @@ _mark_repaired(
     "deleted, so an explicit `extra = extra_row if extra_row is not None else 0` guard was "
     "added. Tests: tests/test_repo_exposure_audit_v1.py (3 new tests, including the "
     "zero-duplicates case that would have crashed without the added guard).",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00179", "FB-00180"],
+    "REPAIRED 2026-09-17: db.py compute_accuracy's rth_only boundary check "
+    "(et_hour*60+et_minute) no longer defaults a NULL et_minute to :00 -- et_minute is a "
+    "genuine nullable INTEGER, and dropping the SQL default lets a row with an unrecorded "
+    "minute be naturally excluded (SQL NULL arithmetic fails the boundary comparison) "
+    "rather than assumed to have landed on the hour. Tests: "
+    "tests/test_model_accuracy_wire.py::test_compute_accuracy_rth_scope_excludes_null_et_minute.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00058"],
+    "REPAIRED 2026-09-17: audit_model_readiness.py's rules_signal GROUP BY report no longer "
+    "SQL-defaults a NULL signal to the string 'NULL' -- SQLite already groups a genuine NULL "
+    "into its own distinct bucket unaided, and the report's own f-string "
+    "(', '.join(f'{s}:{c}' ...)) already prints Python's 'None' for that bucket, an "
+    "equally self-describing label.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00175"],
+    "REPAIRED 2026-09-17: db.py sql_issue19_snapshots_context_group no longer SQL-defaults "
+    "a NULL grouping column to the string '(null)' -- the one caller "
+    "(tools/issue19_option_a_post_validate.py) puts the result straight into a JSON-shaped "
+    "report entry, where a real JSON null is more honest than a string that could be "
+    "mistaken for a genuine category value.",
     "calibration_ml_governance")
 
 
