@@ -33,8 +33,8 @@
   "verdict_counts": {
     "NOT_PROVEN": 1105,
     "NOT_FALLBACK": 27,
-    "REPAIRED": 65,
-    "FALLBACK": 29
+    "REPAIRED": 67,
+    "FALLBACK": 27
   },
   "candidates": [
     {
@@ -1306,9 +1306,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
       "semantic_field_guess": null,
       "context": "scan_db",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: calibration/canonical_1m_grid_scan.py's two snapshots-scoping queries no longer SQL-default a NULL horizon_outcome_schema_version to HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1 -- identical shape and identical genuine-nullable root cause (a bare ALTER TABLE ADD COLUMN with no DEFAULT for pre-existing databases) already repaired across db.py's own fill_outcomes-family queries. Dropping the COALESCE lets SQL NULL propagation exclude a row of unknown/legacy schema version from the scan rather than silently counting it as verified BAR_ANCHOR_V1. Tests: tests/test_canonical_1m_grid_scan_schema_version.py (a real BAR_ANCHOR_V1 row is still counted; a structural proof mirrors db.py's own test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version precedent, since a NULL row isn't constructible through the ORM on a freshly created database).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -1334,9 +1334,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
       "semantic_field_guess": null,
       "context": "scan_db",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: calibration/canonical_1m_grid_scan.py's two snapshots-scoping queries no longer SQL-default a NULL horizon_outcome_schema_version to HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1 -- identical shape and identical genuine-nullable root cause (a bare ALTER TABLE ADD COLUMN with no DEFAULT for pre-existing databases) already repaired across db.py's own fill_outcomes-family queries. Dropping the COALESCE lets SQL NULL propagation exclude a row of unknown/legacy schema version from the scan rather than silently counting it as verified BAR_ANCHOR_V1. Tests: tests/test_canonical_1m_grid_scan_schema_version.py (a real BAR_ANCHOR_V1 row is still counted; a structural proof mirrors db.py's own test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version precedent, since a NULL row isn't constructible through the ORM on a freshly created database).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {

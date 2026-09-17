@@ -654,6 +654,20 @@ _mark_repaired(
     "scenario -- a decoy snapshot present at decision_ts_utc -- that would have silently "
     "attached the wrong outcome under the old guess).",
     "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00091", "FB-00093"],
+    "REPAIRED 2026-09-17: calibration/canonical_1m_grid_scan.py's two snapshots-scoping "
+    "queries no longer SQL-default a NULL horizon_outcome_schema_version to "
+    "HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1 -- identical shape and identical genuine-nullable "
+    "root cause (a bare ALTER TABLE ADD COLUMN with no DEFAULT for pre-existing databases) "
+    "already repaired across db.py's own fill_outcomes-family queries. Dropping the COALESCE "
+    "lets SQL NULL propagation exclude a row of unknown/legacy schema version from the scan "
+    "rather than silently counting it as verified BAR_ANCHOR_V1. Tests: "
+    "tests/test_canonical_1m_grid_scan_schema_version.py (a real BAR_ANCHOR_V1 row is still "
+    "counted; a structural proof mirrors db.py's own "
+    "test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version precedent, "
+    "since a NULL row isn't constructible through the ORM on a freshly created database).",
+    "calibration_ml_governance")
 
 
 def main() -> int:

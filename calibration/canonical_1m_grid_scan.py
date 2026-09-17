@@ -63,9 +63,9 @@ def scan_db(db_path: Path, *, tz_now_utc: float | None = None) -> GridDefectScan
             """
             SELECT COUNT(*) FROM snapshots
             WHERE timeframe = ?
-              AND COALESCE(horizon_outcome_schema_version, ?) = ?
+              AND horizon_outcome_schema_version = ?
             """,
-            (CANONICAL_TIMEFRAME, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
+            (CANONICAL_TIMEFRAME, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
         ).fetchone()[0]
     )
 
@@ -109,12 +109,11 @@ def scan_db(db_path: Path, *, tz_now_utc: float | None = None) -> GridDefectScan
         SELECT snapshot_id, ticker, ts_utc, outcome_filled
         FROM snapshots
         WHERE timeframe = ?
-          AND COALESCE(horizon_outcome_schema_version, ?) = ?
+          AND horizon_outcome_schema_version = ?
           AND ts_utc < ?
         """,
         (
             CANONICAL_TIMEFRAME,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             ts_cutoff,
         ),
