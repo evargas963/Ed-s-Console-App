@@ -157,8 +157,14 @@ class MarketState:
     pin_strength:       str             = "Very Low"
     net_delta:          Optional[float] = None      # share-equivalent
     net_gamma:          Optional[float] = None
-    gex_magnitude:      str             = "negligible"  # large/moderate/small/negligible
-    dex_magnitude:      str             = "negligible"
+    # No-fallback lock (2026-09-17): both were non-Optional str with a "negligible"
+    # class default -- a genuine computation failure (gex) or a producer that has never
+    # existed (dex; governance/provenance_roots.py's own registry records
+    # 'dex_magnitude': ('MARKET', None), no derivation function) must read as None, not
+    # as a specific, valid-looking magnitude bucket indistinguishable from a real
+    # negligible reading.
+    gex_magnitude:      Optional[str]   = None  # large/moderate/small/negligible/None=unavailable
+    dex_magnitude:      Optional[str]   = None  # None=unavailable; no producer exists yet
     zone:               str             = "pin"     # pin | breakout | breakdown
 
     # Regime colors (derived, not computed inline in UI)
@@ -1148,18 +1154,26 @@ def build_market_state(
             from math_exposure_core import gex_magnitude_label
             ms.gex_magnitude = gex_magnitude_label(_ng)
         except Exception as _gme:
-            # Fallback lock (2026-09-17): this used to guess a value off consensus_summary's
-            # own (nonexistent in practice -- gex_magnitude is computed downstream, never an
-            # upstream attribute) 'gex_magnitude' attribute, defaulting to the meaningful,
-            # valid-looking "negligible" either way -- a real computation failure (the ONLY
-            # realistic trigger here is gex_magnitude_label's own import failing) read
-            # identically to a genuinely-computed negligible reading. gex_magnitude_label
-            # itself never raises for a float/None input, so this branch fires only on a
-            # genuine system fault; disclose it explicitly rather than guessing.
-            ms.gex_magnitude = "negligible"
+            # No-fallback lock (2026-09-17, corrected from an earlier pass that kept
+            # "negligible" here alongside the state_error disclosure -- the operator
+            # correctly rejected that as still substituting a meaningful state).
+            # gex_magnitude_label itself never raises for a float/None input, so this
+            # branch fires only on a genuine system fault (realistically, its own
+            # import failing). The field is now genuinely unavailable, not a specific,
+            # valid-looking bucket that happens to also carry a disclosed error.
+            ms.gex_magnitude = None
             ms.state_error = ms.state_error or "gex_magnitude_computation_failed"
             ms.state_error_detail = ms.state_error_detail or f"{type(_gme).__name__}: {_gme}"[:200]
-        ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
+        # No-fallback lock (2026-09-17): dex_magnitude has never had a real producer --
+        # governance/provenance_roots.py's own registry records
+        # 'dex_magnitude': ('MARKET', None), and consensus_summary (an ExposureRow) has
+        # never carried this attribute in practice. The prior getattr(...,'negligible')
+        # always silently fabricated the same specific bucket regardless of the true
+        # (unknown) delta-exposure magnitude. Left genuinely None until a real
+        # dex-magnitude computation exists; every consumer (call_engine.greek_bias,
+        # governance) already treats None as "exclude this input," not a fabricated
+        # equivalent of "negligible."
+        ms.dex_magnitude = None
     else:
         ms.bias_signal  = "Neutral"
         ms.pin_strength = "Very Low"

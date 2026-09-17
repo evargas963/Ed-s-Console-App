@@ -1543,9 +1543,13 @@ def compute_call(
     _charm_vote_direction = (
         inp.charm_direction if CHARM_VOTE_VALIDATION_STATUS == "APPROVED" else None
     )
+    # No-fallback lock (2026-09-17): an unavailable dex_magnitude/charm_magnitude must
+    # not be silently treated as "moderate" -- greek_bias itself now excludes that
+    # vote's contribution entirely when the magnitude is None, rather than assuming a
+    # specific significance for exposure whose scale was never actually computed.
     greek_b = greek_bias(inp.net_delta, _charm_vote_direction, inp.put_call_oi_ratio,
-                         dex_magnitude=inp.dex_magnitude or "moderate",
-                         charm_magnitude=inp.charm_magnitude or "moderate")
+                         dex_magnitude=inp.dex_magnitude,
+                         charm_magnitude=inp.charm_magnitude)
     cross_sig = _cross_instrument_signal(inp)
 
     # Broad tape: three independent basket/ETF reads (SPY, QQQ, IWM) — no cross-index veto.

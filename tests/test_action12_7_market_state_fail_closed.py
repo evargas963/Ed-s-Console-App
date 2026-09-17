@@ -255,13 +255,16 @@ def test_market_state_source_imports_canonical_provenance_gate():
 
 @patch("signals.compute_signals", side_effect=_fake_compute_signals)
 def test_gex_magnitude_computation_failure_is_disclosed_not_guessed(_mock_cs, monkeypatch):
-    """No-fallback lock repair (2026-09-17, FB-00266): a genuine gex_magnitude_label failure
-    (the only realistic trigger is math_exposure_core's own import failing) used to be caught
-    and silently papered over by guessing a value off consensus_summary's own 'gex_magnitude'
-    attribute -- an attribute that does not exist upstream in practice, so the guess always
-    landed on the same hardcoded 'negligible' default either way, indistinguishable from a
-    genuinely-computed negligible reading. The failure must now be disclosed via
-    state_error/state_error_detail, not silently absorbed."""
+    """No-fallback lock repair (2026-09-17, FB-00266, corrected 2026-09-17 per operator
+    rejection of a first pass that kept 'negligible' here): a genuine gex_magnitude_label
+    failure (the only realistic trigger is math_exposure_core's own import failing) used
+    to be caught and silently papered over by guessing a value off consensus_summary's
+    own 'gex_magnitude' attribute -- an attribute that does not exist upstream in
+    practice. The first repair pass replaced the guess with a hardcoded 'negligible'
+    plus a state_error disclosure -- still a meaningful, valid-looking value substituted
+    for a genuine computation failure. gex_magnitude is now genuinely None on failure;
+    the failure is disclosed via state_error/state_error_detail, and the field itself is
+    honestly unavailable rather than a specific bucket."""
     import math_exposure_core
 
     def _raise(_net_gex):
@@ -273,9 +276,9 @@ def test_gex_magnitude_computation_failure_is_disclosed_not_guessed(_mock_cs, mo
     ms = build_market_state(**_base_kwargs(consensus_summary=consensus))
     assert ms.state_error == "gex_magnitude_computation_failed"
     assert "RuntimeError" in (ms.state_error_detail or "")
-    assert ms.gex_magnitude == "negligible", (
-        "the degraded value stays the documented safe default, but is now DISCLOSED via "
-        "state_error rather than silently guessed from an alternate source"
+    assert ms.gex_magnitude is None, (
+        "a genuine computation failure must leave the field honestly unavailable (None), "
+        "disclosed via state_error -- not a specific, valid-looking magnitude bucket"
     )
 
 
@@ -296,6 +299,22 @@ def test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure(_mock_c
     assert ms.gex_magnitude != "large", (
         "must not have read consensus_summary.gex_magnitude as a guessed substitute"
     )
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_dex_magnitude_is_always_none_no_producer_exists(_mock_cs):
+    """
+    No-fallback lock repair (2026-09-17): dex_magnitude has never had a real producer --
+    governance/provenance_roots.py's own registry records
+    'dex_magnitude': ('MARKET', None), and consensus_summary (ExposureRow) has never
+    carried this attribute in practice. Even when consensus_summary carries a
+    plausible-looking 'dex_magnitude' attribute, build_market_state must not read it as
+    a substitute -- the field stays honestly None until a real computation exists.
+    """
+    consensus = MagicMock(bias_signal="Bullish", pin_strength="High", net_delta=1.0, net_gamma=2.0,
+                          gex_magnitude="large", dex_magnitude="large")
+    ms = build_market_state(**_base_kwargs(consensus_summary=consensus))
+    assert ms.dex_magnitude is None
 
 
 @patch("signals.compute_signals", side_effect=_fake_compute_signals)

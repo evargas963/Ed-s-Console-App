@@ -394,15 +394,50 @@ def _mark_repaired(ids: list[str], repair_note: str, group: str) -> None:
 
 _mark_repaired(
     ["FB-00266", "FB-00294"],
-    "REPAIRED 2026-09-17: market_state.py build_market_state() -- except-handler no longer "
-    "guesses a value off consensus_summary.gex_magnitude (an attribute that does not exist "
-    "upstream in practice); failure is now disclosed via ms.state_error/state_error_detail. "
-    "FB-00294 is the same source line as FB-00266, caught a second time by the discovery "
-    "scanner's separate GETATTR_DEFAULT matcher (the original line nested a getattr(...) "
-    "call inside an `... or 'negligible'` OR_LADDER shape, tripping both detectors). "
+    "REPAIRED 2026-09-17, CORRECTED 2026-09-17 (operator rejected the first pass as still "
+    "substituting a meaningful state): market_state.py build_market_state()'s except-"
+    "handler no longer guesses a value off consensus_summary.gex_magnitude (an attribute "
+    "that does not exist upstream in practice) -- the first correction stopped there but "
+    "kept a hardcoded 'negligible' alongside the new state_error disclosure, which the "
+    "operator correctly identified as still a meaningful, valid-looking value standing in "
+    "for a genuine computation failure. ms.gex_magnitude is now genuinely None on "
+    "failure; MarketState.gex_magnitude's own field type changed from `str = "
+    "\"negligible\"` to `Optional[str] = None` to make this representable. "
     "Tests: tests/test_action12_7_market_state_fail_closed.py::"
-    "test_gex_magnitude_computation_failure_is_disclosed_not_guessed, "
+    "test_gex_magnitude_computation_failure_is_disclosed_not_guessed (updated to assert "
+    "None, not 'negligible'), "
     "::test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure.",
+    "market_state_rendering")
+_mark_repaired(
+    ["FB-00282"],
+    "REPAIRED 2026-09-17 (previously deliberately paused as an apparent irreducible "
+    "product decision -- 'inventing a DEX magnitude bucketing methodology'; the operator "
+    "corrected this framing: the mandate was never to invent thresholds, only to stop "
+    "fabricating a value where no real computation exists). Traced the full construction "
+    "graph: MarketState.dex_magnitude (str='negligible' -> Optional[str]=None) -> "
+    "SignalInput.dex_magnitude (already Optional[str]=None, unaffected) -> "
+    "call_engine.py's `dex_magnitude=inp.dex_magnitude or 'moderate'` (removed the `or "
+    "'moderate'`, passes None through) -> math_exposure_core.greek_bias's own "
+    "`dex_magnitude: str = 'moderate'` parameter default and "
+    "`MAG_SCALE.get(dex_magnitude, 0.7)` (both changed to exclude the delta-magnitude "
+    "vote's contribution entirely when the magnitude is None or unrecognized, rather than "
+    "assuming a 'moderate' 0.7 significance for exposure whose scale was never computed). "
+    "governance/provenance_roots.py's own pre-existing registry already documented "
+    "'dex_magnitude': ('MARKET', None) -- no derivation function -- confirming this field "
+    "has never had a real producer; grep-confirmed no persistence (db.py) or frontend "
+    "(static/*.js) consumer exists, so the blast radius is fully contained to the "
+    "MarketState/SignalInput/call_engine/greek_bias decision chain. charm_magnitude's "
+    "identical `or 'moderate'` + MAG_SCALE default in the SAME greek_bias call was fixed "
+    "in the same pass (charm_magnitude already had a real, Optional-typed producer -- "
+    "server.py's own charm computation -- so only the consumer-side fallback needed "
+    "fixing, not the producer). Tests: "
+    "tests/test_action12_7_market_state_fail_closed.py::"
+    "test_dex_magnitude_is_always_none_no_producer_exists (new); "
+    "tests/test_greek_bias_magnitude_unavailable.py (4 new tests proving an unavailable "
+    "or unrecognized magnitude excludes that vote's score contribution entirely, not a "
+    "silent moderate-scale assumption); the existing call_engine/charm-vote-gate test "
+    "suites (41 tests) still pass since they always pass explicit magnitude strings, "
+    "never relying on the old default.",
     "market_state_rendering")
 _mark_repaired(
     ["FB-00362"],
