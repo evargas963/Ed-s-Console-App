@@ -84,3 +84,23 @@ def test_anchored_trusted_row_passes_anchor_audit_and_enters_phase3_sample(tmp_p
     p3 = analyze_phase3(db_path)
     assert p3.get("calibration_rows", 0) == 1
     assert (p3.get("provenance") or {}).get("labeled_sample_count") == 1
+
+
+def test_no_fallback_lock_repair_2026_09_17_no_coalesce_left_in_anchor_audit_source():
+    """
+    No-fallback lock repair (FB-00081/FB-00083/FB-00084): calibration_decision_log's
+    canonical_timeframe column has always been part of the base CREATE TABLE with
+    TEXT NOT NULL DEFAULT '1m' (calibration/schema.py) -- it is never added via the
+    lazy ALTER TABLE ADD COLUMN migration path (_CALIBRATION_OPTIONAL_COLUMNS does not
+    list it), so a SQL default-on-NULL around it was provably redundant.
+    """
+    import inspect
+
+    from calibration import anchor_audit as mod
+
+    src = inspect.getsource(mod)
+    code_only = "\n".join(
+        line for line in src.splitlines() if not line.strip().startswith("#")
+    )
+    assert "COALESCE" not in code_only
+    assert code_only.count("canonical_timeframe = ?") >= 3

@@ -121,7 +121,7 @@ def _audit_trusted_calibration_anchors(
     rows = conn.execute(
         """
         SELECT id, ticker, decision_ts_utc FROM calibration_decision_log
-        WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'trusted'
+        WHERE canonical_timeframe = ? AND calibration_trust = 'trusted'
         ORDER BY id
         """,
         (canon_tf,),
@@ -465,7 +465,7 @@ def run_anchor_audit(
         conn.execute(
             """
             SELECT COUNT(*) FROM calibration_decision_log
-            WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'legacy'
+            WHERE canonical_timeframe = ? AND calibration_trust = 'legacy'
             """,
             (CANONICAL_TIMEFRAME,),
         ).fetchone()[0]
@@ -474,7 +474,7 @@ def run_anchor_audit(
         conn.execute(
             """
             SELECT COUNT(*) FROM calibration_decision_log
-            WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'trusted'
+            WHERE canonical_timeframe = ? AND calibration_trust = 'trusted'
             """,
             (CANONICAL_TIMEFRAME,),
         ).fetchone()[0]

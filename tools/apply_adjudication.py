@@ -624,6 +624,20 @@ _mark_repaired(
     "report entry, where a real JSON null is more honest than a string that could be "
     "mistaken for a genuine category value.",
     "calibration_ml_governance")
+_mark_repaired(
+    ["FB-00081", "FB-00083", "FB-00084"],
+    "REPAIRED 2026-09-17: calibration/anchor_audit.py's three canonical_timeframe filters "
+    "no longer SQL-default a NULL canonical_timeframe to '1m' -- "
+    "calibration/schema.py's base CREATE TABLE IF NOT EXISTS calibration_decision_log "
+    "declares canonical_timeframe TEXT NOT NULL DEFAULT '1m' from inception, and the "
+    "column is absent from _CALIBRATION_OPTIONAL_COLUMNS (the lazy ALTER TABLE ADD "
+    "COLUMN migration list), so no code path can ever produce a row with a NULL value "
+    "here -- the same 'provably redundant, engine-enforced NOT NULL' shape as "
+    "research_excluded. Tests: "
+    "tests/test_calibration_anchor_stability.py::test_no_fallback_lock_repair_2026_09_17_"
+    "no_coalesce_left_in_anchor_audit_source (structural) plus the file's 2 pre-existing "
+    "behavioral tests, both still green.",
+    "calibration_ml_governance")
 
 
 def main() -> int:
