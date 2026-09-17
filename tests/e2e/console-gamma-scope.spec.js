@@ -59,7 +59,14 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     await intercept(page);
     // each Playwright test gets a fresh context (localStorage already empty), so we only seed the
     // ticker — NOT localStorage.clear(), which would re-run on reload and wipe the persisted scope.
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('ed_ticker', 'SPY');
+        // Seed Auto only when the key is absent. addInitScript re-runs on reload; writing
+        // auto unconditionally would destroy the persisted All-available choice this file proves.
+        if (localStorage.getItem('ed_scope') == null) localStorage.setItem('ed_scope', 'auto');
+      } catch (e) {}
+    });
   });
 
   test('one control governs the workspace, labelled "All available" not "Full"', async ({ page }) => {

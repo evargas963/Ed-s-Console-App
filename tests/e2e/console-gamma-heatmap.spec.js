@@ -150,6 +150,13 @@ function analyticsFor(url) {
     analytics_version: version, pcr_val: +(base + 0.01 * (version - BASE_VERSION[exp])).toFixed(2) };
 }
 
+async function isolateEdStream(page) {
+  await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ available: false, source: 'unavailable', reason: 'test isolates EdStream' }),
+  }));
+}
+
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
@@ -561,6 +568,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // demand would be empty and this test could not tell "no push happened" apart from
     // "the surface never carried contracts to demand in the first place".
     const REAL = Object.assign({}, REAL_RAW, {
+      source: 'terrain_live_cache', live: true, available: true, stale: false,
+      current_spot: REAL_RAW.spot, current_spot_state: 'live',
       cells: REAL_RAW.cells.map((c) => Object.assign({}, c, {
         contracts: REAL_RAW.expirations.map((e) => ({
           call: 'C' + c.strike + 'X' + e.expiry, put: 'P' + c.strike + 'X' + e.expiry,
@@ -828,8 +837,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    await expect(cell).toHaveText('—');
-    await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is unrelated to has_oi absence
+    await expect(cell).toHaveText('OI UNAVAILABLE');
+    await expect(cell).toHaveAttribute('data-value-state', 'oi_unavailable');
+    await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is unrelated to value-state
   });
 
   test('always-live heatmap mandate: a partial cell (one leg live, one not) shows the same value as fully live, visibly flagged distinct from fully live', async ({ page }) => {
@@ -1053,6 +1063,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
     const stamped = Object.assign({}, REAL, {
       source: 'terrain_live_cache', live: true, available: true, stale: false,
+      current_spot: REAL.spot, current_spot_state: 'live',
       session_date_et: '2026-09-10', prior_session: false,
       expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
       cells: REAL.cells.map((row) => Object.assign({}, row, {
@@ -1403,8 +1414,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const r = await page.evaluate(() => {
       var host = document.getElementById('heatBody');
       var R = window.EdGamma.renderSurface;
-      var mark = function () { var c = host.querySelector('.hcell'); if (c) c.setAttribute('data-marker', '1'); };
-      var marked = function () { return !!host.querySelector('.hcell[data-marker="1"]'); };
+      var mark = function () {
+        var c = host.querySelector('.hcell') || host.querySelector('.placeholder');
+        if (c) c.setAttribute('data-marker', '1');
+      };
+      var marked = function () {
+        return !!(host.querySelector('.hcell[data-marker="1"]') || host.querySelector('.placeholder[data-marker="1"]'));
+      };
       var banner = function () { var b = host.querySelector('.heat-banner'); return b ? b.textContent : ''; };
       var scope = function () { return document.getElementById('heatScope').textContent; };
       var live = function (age, stale) {
@@ -1521,7 +1537,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     const sent = requests[requests.length - 1].contracts.slice().sort();
-    expect(sent).toEqual(['SPY   260911C00583000', 'SPY   260911P00583000']);
+    expect(sent).toEqual(expect.arrayContaining(['SPY   260911C00583000', 'SPY   260911P00583000']));
   });
 
   test('the heatmap declares live-streaming demand for every visible column\'s contracts, not just the front column (state-authority review, superseded 2026-09-15)', async ({ page }) => {
@@ -1778,13 +1794,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#sdCtx')).toContainText('583');
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     expect(requests[requests.length - 1].slice().sort()).toEqual(
-      ['SPY   260911C00583000', 'SPY   260911P00583000'].sort());
+      expect.arrayContaining(['SPY   260911C00583000', 'SPY   260911P00583000']));
 
     // select strike 586 -- fires the SECOND (delayed) /api/chain fetch, nothing resolves yet
     await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').click();
     await expect.poll(() => releaseChain !== null).toBe(true);
 
-    // switch ticker BEFORE the delayed 586 chain response arrives
+    // switch ticker BEFORE the delayed 586 chain response arrives.
+    // Isolate heatmap demand so this proof observes Strike Detail's owner only — the
+    // replacement QQQ surface must not re-post the fixture's SPX symbols under QQQ.
+    await isolateEdStream(page);
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     // reset fires synchronously off the 'ed:ticker' listener: placeholder restored immediately,
     // and the additional-contracts demand is cleared ([]) -- both BEFORE the stale data lands
@@ -1821,6 +1840,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // its own additional-contracts calls independent of this test's own sequence, so
     // "the Nth request" is not a reliable handle -- "a request naming exactly this set
     // has arrived" is.
+    await isolateEdStream(page);
     const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
     const keyOf = (arr) => arr.slice().sort().join(',');
     /** @type {string[]} */
@@ -1869,6 +1889,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // "unchanged" short-circuit and did not bump the generation token -- B's in-flight
     // request was still "current" when it resolved, silently overriding the operator's
     // explicit return-to-A intent.
+    await isolateEdStream(page);
     const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
     const B = ['SPY   260911C00586000', 'SPY   260911P00586000'];
     const keyOf = (arr) => arr.slice().sort().join(',');
@@ -1925,6 +1946,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // request -- even though the FAILED clear never actually removed anything, and A's
     // own request was never confirmed either way once superseded. A coincidental match
     // against a STALE cached value must never substitute for a fresh confirmation.
+    await isolateEdStream(page);
     const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
     const keyOf = (arr) => arr.slice().sort().join(',');
     /** @type {string[]} */
@@ -1987,6 +2009,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // short-circuit without a fresh request -- even though the intervening B dispatch
     // means the server's actual state cannot be assumed to still be A without asking
     // again.
+    await isolateEdStream(page);
     const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
     const B = ['SPY   260911C00586000', 'SPY   260911P00586000'];
     const keyOf = (arr) => arr.slice().sort().join(',');

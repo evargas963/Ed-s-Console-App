@@ -411,6 +411,7 @@
         ticker: surface.ticker, symbol: surface.symbol || surface.ticker,
         available: false, live: false, stale: true, source: 'unavailable',
         warming: surface.warming, requested: surface.requested, on_board: surface.on_board,
+        et_date: surface.et_date,
         reason: 'historical morning Gamma is not the current heatmap — use Exposure history'
       };
     } else if (surface && surface.available !== false && currentSpotUnusable(surface)) {
@@ -418,6 +419,7 @@
         ticker: surface.ticker, symbol: surface.symbol || surface.ticker,
         available: false, live: false, stale: true, source: 'unavailable',
         warming: surface.warming, requested: surface.requested, on_board: surface.on_board,
+        et_date: surface.et_date,
         reason: 'current LAST_PRICE is UNAVAILABLE — heatmap will not substitute surface.spot'
       };
     }
@@ -432,22 +434,30 @@
       }
       ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {}; _lastSelected = null;
       // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
-      // lifecycle"): _lastSurface/_lastRevision used to survive an unavailable result
-      // untouched (this branch returned before either was ever assigned), so a LATER
-      // presentation-only event -- ed:theme, or the "else load()" branches missing entirely
-      // -- reused the LAST AVAILABLE surface as if it were still current: ed:theme's
+      // lifecycle"): _lastSurface used to survive an unavailable result untouched (this
+      // branch returned before it was ever assigned), so a LATER presentation-only event
+      // -- ed:theme, or the "else load()" branches missing entirely -- reused the LAST
+      // AVAILABLE surface as if it were still current: ed:theme's
       // `if (h && _lastSurface) renderSurface(h, _lastSurface)` repainted the stale data as
       // available AND reissued its streamed-contract demand, resurrecting exactly the
-      // subscription this branch just cleared. Fixed by invalidating the cache here too --
-      // a presentation-only re-render has nothing left to reuse and correctly falls back to
-      // a fresh load() instead of resurrecting stale state.
-      _lastSurface = null; _lastRevision = null; _lastSelected = null;
+      // subscription this branch just cleared. _lastSurface stays null so a presentation
+      // re-render has nothing to reuse. The DATA revision (source/et_date/reason/ticker)
+      // is kept so a STATUS-only change (warming → requested) can patch the banner without
+      // rebuilding the placeholder. A different et_date or reason is a DATA change and
+      // rebuilds.
+      _lastSurface = null; _lastSelected = null;
       // Independent-review finding, REPRODUCED: this branch invalidates every other piece of
       // render state for the reason stated above, but left _panAnchor/_panTicker untouched --
       // pan a strike, ticker goes briefly unavailable (delisted tick, no chain), becomes
       // available again for the SAME ticker, and the stale manual pan silently reapplies
       // instead of the window re-centering on live spot like every other invalidated field.
       _panAnchor = null; _panTicker = null;
+      var unavailRev = surfaceRevision(surface);
+      if (unavailRev && unavailRev === _lastRevision && host.querySelector('.placeholder')) {
+        applyStatus(host, surface);
+        return;
+      }
+      _lastRevision = unavailRev;
       // #1-A: even with no surface to draw, disclose the collection status honestly — a requested
       // symbol that is NOT on the board must read "not currently active for this symbol", never a
       // promised refresh. buildBanner is the ONE place that wording lives (warming/requested/board).
@@ -939,7 +949,11 @@
     // DATA revision only — decides whether the expensive TABLE rebuilds. Status (live/stale/warming/
     // age) is deliberately NOT here; it is refreshed every time via applyStatus. et_date discriminates
     // banked captures (whose chain/spot as-of are null) so a new morning capture cannot reuse the grid.
-    if (!s || s.available === false) return 'unavailable|' + (s && s.source);
+    if (!s || s.available === false) {
+      // STATUS (warming/requested/stale/age) is deliberately excluded — same DATA identity
+      // with a collection-state change must keep the placeholder and only refresh the banner.
+      return ['unavailable', s && s.source, s && s.et_date, s && s.reason, s && (s.ticker || s.symbol)].join('|');
+    }
     // ticker + expiry filter are part of WHICH cells are shown: a symbol change or an expiry-column
     // change must always rebuild the grid, never reuse a prior symbol's/expiry's table.
     var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
@@ -1155,7 +1169,18 @@
       ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from the view just left
       return;
     }
-    _pendingTicker = st.ticker || 'SPY';
+    var nextTicker = st.ticker || 'SPY';
+    // Switching ticker while staying on the heatmap used to keep the OLD ticker's
+    // demanded contracts posted under the NEW ticker's context until the replacement
+    // surface arrived. Clear immediately — same instant discipline Strike Detail uses.
+    if (_pendingTicker != null && _pendingTicker !== nextTicker) {
+      if (window.EdStream && window.EdStream.setAdditionalContracts) {
+        window.EdStream.setAdditionalContracts([], 'heatmap');
+      }
+      ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};
+      _lastSurface = null; _lastRevision = null; _lastSelected = null;
+    }
+    _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);
   }
 

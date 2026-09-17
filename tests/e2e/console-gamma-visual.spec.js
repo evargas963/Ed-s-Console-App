@@ -34,7 +34,13 @@ const SURFACE = {
     note: 'near-money LIVE window (strike_count-bounded terrain chain) — NOT the full strike_range=ALL book' },
   chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: EXPS, strikes: STRIKE_LIST,
-  cells: STRIKE_LIST.map(function (k) { return { strike: k, gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }) }; }),
+  cells: STRIKE_LIST.map(function (k) {
+    return {
+      strike: k,
+      gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }),
+      contracts: EXPS.map(function (_e, ci) { return { call: 'C' + k + '_' + ci, put: 'P' + k + '_' + ci }; }),
+    };
+  }),
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
 const TERRAIN = { ticker: '$SPX', spot: SPOT, gamma_flip: 4992.4, call_wall: 5100, put_wall: 4900,
