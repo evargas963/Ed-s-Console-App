@@ -647,6 +647,26 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
                 "none",
                 "market_state_rendering",
             )
+        if c["id"] in ("FB-01161", "FB-01162"):
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "RE-INVESTIGATED 2026-09-17 per operator instruction to establish "
+                "correctness independently (not defer to a blanket pattern-match): "
+                "training_cache.py's compare_tabular_data_fingerprint_from_df uses "
+                "s.fillna(-1.0) ONLY to make a ts_utc Series hashable/sortable when "
+                "computing a cache content_hash (confirmed via grep: content_hash flows "
+                "into compute_feature_cache_key/compute_scheduler_cache_key -- cache KEY "
+                "generation -- never into engineer_features, X, or any model .fit()/"
+                ".predict() call anywhere in the repo). ts_utc is a Unix epoch timestamp "
+                "(~1.7-1.9 billion for real dates); -1.0 is structurally outside that "
+                "domain and can never be confused with, or collide with, a genuine "
+                "timestamp. This is a hash-stability sentinel for cache-key computation, "
+                "not model-feature imputation -- the mandate's ML-imputation rule targets "
+                "missing training/serving data becoming an observed value fed to a model, "
+                "which does not happen here.",
+                "none",
+                "ml_training_pipeline",
+            )
 
 
 _mark_repaired(
@@ -1045,6 +1065,48 @@ _mark_repaired(
     "tests/test_bars_collection_service_v1.py and 5 other files referencing these "
     "functions (109 tests total) still pass.",
     "market_data_server_core")
+_mark_repaired(
+    ["FB-00972"],
+    "REPAIRED 2026-09-17: tools/feature_curation_gate.py's Spearman-hierarchical "
+    "clustering median-imputed missing feature readings before computing the "
+    "correlation matrix -- fabricating a value the correlation would then treat as "
+    "observed data, capable of silently pulling two features into (or out of) the same "
+    "redundancy cluster based on invented numbers rather than real co-movement. This "
+    "is a RESEARCH/CURATION tool (feature redundancy analysis for curation decisions), "
+    "not a production model training or serving path -- but the same principle applies: "
+    "a missing reading must not become an observed one. Changed to complete-case rows "
+    "only (pandas .dropna()): a row missing any clustered column is excluded from the "
+    "correlation computation entirely. Tests: "
+    "tests/test_feature_curation_gate_no_impute.py (structural no-fillna proof; a "
+    "direct proof that an incomplete row's other column value is excluded from the "
+    "correlation, never diluting/distorting it via a fabricated median).",
+    "ml_training_pipeline")
+_mark_repaired(
+    ["FB-01156"],
+    "REPAIRED 2026-09-17: train_compare.py's _compute_baseline mapped a rules_signal "
+    "value outside {long, short, wait} (unexpected/malformed) to 'flat' via fillna -- "
+    "treating an unrecognized signal the same as a genuine wait/flat reading, capable "
+    "of silently biasing the reported baseline-accuracy diagnostic metric in either "
+    "direction. This is a diagnostic/reporting metric, not a value fed to any model, "
+    "but the same principle applies. Changed to exclude unmapped rows from the metric "
+    "entirely rather than guessing a prediction for them. Tests: "
+    "tests/test_train_compare_baseline_no_impute.py (4 new tests, including an "
+    "unrecognized-signal-value case proving it's excluded rather than scored as a "
+    "coincidental 'flat' guess).",
+    "ml_training_pipeline")
+_mark_repaired(
+    ["FB-01111"],
+    "REPAIRED 2026-09-17: tools/research/d2_dual_label_eval_report.py's run_cell "
+    "defaulted a NULL tb_truncated_{hz} flag to 0 (not truncated) via fillna before "
+    "filtering -- an unrecorded truncation status is not proof the row wasn't "
+    "truncated, so silently including it in the 'confirmed untruncated' subset could "
+    "bias this research evaluation's fixed-vs-triple-barrier labeling comparison. "
+    "Changed to a bare `== 0` comparison, which excludes NaN rows naturally via "
+    "pandas' NaN-not-equal-zero semantics (mirroring SQL NULL propagation used "
+    "throughout this branch's earlier repairs). Tests: "
+    "tests/test_d2_dual_label_truncation_no_impute.py (structural no-fillna proof; a "
+    "direct proof that a NaN truncation flag is excluded, not assumed 0).",
+    "ml_training_pipeline")
 
 
 def main() -> int:
