@@ -504,6 +504,29 @@ def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) ->
             )
 
 
+_mark_repaired(
+    ["FB-00114", "FB-00115", "FB-01072", "FB-01075"],
+    "REPAIRED 2026-09-17: calibration/operable_surface_quarantine.py's operable_filter_sql "
+    "and its own quarantine UPDATE, plus tools/operable_surface_gate.py's own COUNT query "
+    "and report-string description of the same predicate -- COALESCE(research_excluded,0) "
+    "was provably-redundant, not a real fallback: every call site is guarded by _has_col() "
+    "before running, and the ONE writer that ever creates the column always does so via "
+    "'ALTER TABLE ... ADD COLUMN research_excluded INTEGER NOT NULL DEFAULT 0', which "
+    "SQLite backfills onto every pre-existing row and enforces going forward -- NULL is "
+    "structurally impossible past that guard. Simplified to a plain `research_excluded=0`/"
+    "`=1`. Tests: tests/test_operable_surface_gate.py (2 new tests) plus the 3 pre-existing "
+    "tests in that file, all still passing unchanged.",
+    "calibration_ml_governance")
+_mark_repaired(
+    ["FB-01073", "FB-01074"],
+    "REPAIRED 2026-09-17: tools/operable_surface_gate.py's MAX/MIN aggregate-over-possibly-"
+    "empty-set COALESCE(...,0) calls removed at the SQL level (per the operator's ruling: "
+    "no aggregate exemption survives). Behavior is unchanged -- this file's own "
+    "pre-existing Python-side `float(x or 0.0)` on the very next line already handled the "
+    "resulting NULL identically; only the SQL-level redundancy is gone.",
+    "calibration_ml_governance")
+
+
 def main() -> int:
     raw_path = REPO / "reports" / "no_fallback_discovery_raw.json"
     out_path = REPO / "reports" / "no_fallback_inventory.json"

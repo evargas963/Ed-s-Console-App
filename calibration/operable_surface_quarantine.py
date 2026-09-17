@@ -39,7 +39,13 @@ def operable_filter_sql(conn: sqlite3.Connection) -> str:
     definition, guarded, consumed everywhere.
     """
     if _has_col(conn, "calibration_decision_log", "research_excluded"):
-        return "COALESCE(research_excluded,0)=0"
+        # Fallback lock (2026-09-17): the COALESCE here was provably-redundant defensive
+        # code, not a real fallback -- this branch runs ONLY when the column already
+        # exists, and the ONE writer that ever creates it (quarantine_old_unattached below)
+        # always does so via "ALTER TABLE ... ADD COLUMN research_excluded INTEGER NOT NULL
+        # DEFAULT 0", which SQLite backfills onto every pre-existing row and enforces going
+        # forward -- NULL is structurally impossible once _has_col() is true.
+        return "research_excluded=0"
     return "1=1"
 
 
@@ -79,7 +85,7 @@ def quarantine_old_unattached(
             SET research_excluded=1,
                 research_exclude_reason=?
             WHERE calibration_trust='trusted'
-              AND COALESCE(research_excluded,0)=0
+              AND research_excluded=0
               AND decision_ts_utc < ?
               AND matched_snapshot_ts_utc IS NULL
             """,
