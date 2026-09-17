@@ -2208,22 +2208,13 @@ _PRICE_BARS_GRANDFATHERED = frozenset({
     "tools/_phase4a_proof_not_exists.py", "tools/_phase4a_quantify_anchor_miss.py",
     "tools/_phase4b_audits.py", "tools/_phase4_bar_check.py", "tools/_phase4_snapshot_detail.py",
     "tools/research/d2_build_dual_label_scratch_db.py",
-    "tools/legacy/horizon_7/audit_fused_policy_history_sufficiency_v1.py",
-    "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",
-    "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py",
-    "tools/legacy/horizon_7/batch_backfill_movement_predictions_v1.py",
-    "tools/legacy/horizon_7/build_checkpoint_provenance_bundle_v1.py",
-    "tools/legacy/horizon_7/enforce_universal_ticker_readiness_v1.py",
-    "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py",
-    "tools/legacy/horizon_7/report_pred_1c_governed_remediation_v1.py",
-    "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
-    "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
-    "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
-    "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
-    "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py",
-    "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
-    "tools/legacy/horizon_7/_quick_gov_pred1c.py",
-    "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py",
+    # tools/legacy/horizon_7/* (17 files) DELETED 2026-09-17 (no-fallback lock repair,
+    # calibration_ml_governance group): shrinking this burn-down by deleting the file is the
+    # entry's own documented removal path ("remove an entry only by gating the file (or
+    # deleting it)"). Every file there carried an identical banner ("DEPRECATED — 7-horizon
+    # era... do not run against post-D3 databases... for audit history only") and the
+    # directory's own README confirmed the whole tree was quarantined dead code, not a
+    # required responsibility.
     "research/challenger_eval_v1/runner.py", "research/pilot_step3/data_loader.py",
 })
 
@@ -2770,11 +2761,8 @@ _RTH_GRANDFATHERED = frozenset({
     "tools/_multi_timeframe_audit_v1.py",
     "tools/_phase8_remediate_tmp.py",
     "tools/feature_curation_gate.py",
-    "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
-    "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
-    "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
-    "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
-    "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
+    # tools/legacy/horizon_7/* DELETED 2026-09-17 (no-fallback lock repair) -- see the
+    # identical note on _PRICE_BARS_GRANDFATHERED above.
     "tools/run_final_fused_vs_xgb_comparison_v1.py",
     "tools/run_phase8_calibration_global_v1.py",
     "tools/study_pin_charm_v1.py",

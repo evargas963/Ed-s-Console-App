@@ -65,7 +65,13 @@ def run_xgb(
 
             enrolled = load_user_scheduler_tickers_or_empty()
             tickers = resolve_ml_training_roster(enrolled, db_path)
-        except Exception:
+        except Exception as _roster_exc:
+            # Fallback lock (2026-09-17): a roster-resolution failure used to silently
+            # produce the SAME empty-tickers result a genuinely-empty enrollment does,
+            # training nothing with no disclosure of which happened.
+            print(f"  ERROR: ticker roster resolution failed "
+                  f"({type(_roster_exc).__name__}: {_roster_exc}) — training zero tickers, "
+                  f"this is a resolution failure, not a confirmed-empty roster.")
             tickers = []
         tickers = [t for t in tickers if t and not str(t).startswith("$")]
 

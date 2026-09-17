@@ -32,9 +32,9 @@
   "adjudicated_this_pass": 122,
   "verdict_counts": {
     "NOT_PROVEN": 1121,
-    "NOT_FALLBACK": 25,
-    "FALLBACK": 78,
-    "REPAIRED": 2
+    "NOT_FALLBACK": 26,
+    "FALLBACK": 54,
+    "REPAIRED": 25
   },
   "candidates": [
     {
@@ -2468,9 +2468,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
       "semantic_field_guess": null,
       "context": "_snapshot_rows_affected_by_bar_mutations",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: db.py -- COALESCE(horizon_outcome_schema_version, X) = X simplified to a plain `horizon_outcome_schema_version = ?` across fill_outcomes, refresh_all_governed_bar_anchor_outcomes_v1, fill_outcomes_pin_neutral_backfill_v1, and _snapshot_rows_affected_by_bar_mutations. Tests: tests/test_horizon_bar_outcomes.py::test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2566,9 +2566,9 @@
       "snippet": "WHERE COALESCE(horizon_outcome_schema_version, 0) <",
       "semantic_field_guess": null,
       "context": "_migrate_outcome_anchor_bar_canonical",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: Investigated 2026-09-17 during repair (not a blanket idiom classification): this COALESCE sits inside the ONE-TIME, schema-flag-gated migration (guarded by a ed_schema_flags row check) that ESTABLISHES horizon_outcome_schema_version for pre-existing rows -- it is the WRITE mechanism, not a READ masking absence. COALESCE(...,0) deliberately treats an unrecorded version as 'older than any real version, needs migrating', which is what makes it safe for every OTHER (read-side) query in this file to now assume the column is populated.",
+      "required_repair": "none",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2580,9 +2580,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
       "semantic_field_guess": null,
       "context": "refresh_all_governed_bar_anchor_outcomes_v1",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: db.py -- COALESCE(horizon_outcome_schema_version, X) = X simplified to a plain `horizon_outcome_schema_version = ?` across fill_outcomes, refresh_all_governed_bar_anchor_outcomes_v1, fill_outcomes_pin_neutral_backfill_v1, and _snapshot_rows_affected_by_bar_mutations. Tests: tests/test_horizon_bar_outcomes.py::test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2608,9 +2608,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
       "semantic_field_guess": null,
       "context": "refresh_all_governed_bar_anchor_outcomes_v1",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: db.py -- COALESCE(horizon_outcome_schema_version, X) = X simplified to a plain `horizon_outcome_schema_version = ?` across fill_outcomes, refresh_all_governed_bar_anchor_outcomes_v1, fill_outcomes_pin_neutral_backfill_v1, and _snapshot_rows_affected_by_bar_mutations. Tests: tests/test_horizon_bar_outcomes.py::test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2622,9 +2622,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
       "semantic_field_guess": null,
       "context": "_do",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: db.py -- COALESCE(horizon_outcome_schema_version, X) = X simplified to a plain `horizon_outcome_schema_version = ?` across fill_outcomes, refresh_all_governed_bar_anchor_outcomes_v1, fill_outcomes_pin_neutral_backfill_v1, and _snapshot_rows_affected_by_bar_mutations. Tests: tests/test_horizon_bar_outcomes.py::test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2636,9 +2636,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
       "semantic_field_guess": null,
       "context": "_do",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: db.py -- COALESCE(horizon_outcome_schema_version, X) = X simplified to a plain `horizon_outcome_schema_version = ?` across fill_outcomes, refresh_all_governed_bar_anchor_outcomes_v1, fill_outcomes_pin_neutral_backfill_v1, and _snapshot_rows_affected_by_bar_mutations. Tests: tests/test_horizon_bar_outcomes.py::test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -2664,9 +2664,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
       "semantic_field_guess": null,
       "context": "_do",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: db.py -- COALESCE(horizon_outcome_schema_version, X) = X simplified to a plain `horizon_outcome_schema_version = ?` across fill_outcomes, refresh_all_governed_bar_anchor_outcomes_v1, fill_outcomes_pin_neutral_backfill_v1, and _snapshot_rows_affected_by_bar_mutations. Tests: tests/test_horizon_bar_outcomes.py::test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version.",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -3434,9 +3434,9 @@
       "snippet": "tickers = []",
       "semantic_field_guess": "tickers",
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure | ADJUDICATED: tickers = [] inside an except handler in an ML training/dataset-build pipeline: silently substitutes an empty ticker list for a computation that actually failed, letting the pipeline proceed 'as if' zero tickers were ever requested rather than surfacing that ticker-list resolution itself failed. Matches the mission's prohibited 'empty collection' + 'exception-triggered substitute' shapes.",
-      "required_repair": "Propagate/raise the failure, or mark the run as degraded/incomplete rather than silently training on an empty-appearing ticker set.",
+      "adjudication": "REPAIRED",
+      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
+      "required_repair": "REPAIRED 2026-09-17: lstm_data.py -- a ticker-roster-resolution FAILURE used to log/warn the identical message a genuinely-empty roster produces, masking which one actually happened. Now disclosed distinctly (CLI script: an accurate ERROR message before the same sys.exit(1); library function: a distinct log.warning naming the exception).",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -3476,9 +3476,9 @@
       "snippet": "tickers = []",
       "semantic_field_guess": "tickers",
       "context": "build_lstm_dataset",
-      "adjudication": "FALLBACK",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure | ADJUDICATED: tickers = [] inside an except handler in an ML training/dataset-build pipeline: silently substitutes an empty ticker list for a computation that actually failed, letting the pipeline proceed 'as if' zero tickers were ever requested rather than surfacing that ticker-list resolution itself failed. Matches the mission's prohibited 'empty collection' + 'exception-triggered substitute' shapes.",
-      "required_repair": "Propagate/raise the failure, or mark the run as degraded/incomplete rather than silently training on an empty-appearing ticker set.",
+      "adjudication": "REPAIRED",
+      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
+      "required_repair": "REPAIRED 2026-09-17: lstm_data.py -- a ticker-roster-resolution FAILURE used to log/warn the identical message a genuinely-empty roster produces, masking which one actually happened. Now disclosed distinctly (CLI script: an accurate ERROR message before the same sys.exit(1); library function: a distinct log.warning naming the exception).",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -5520,9 +5520,9 @@
       "snippet": "tickers = []",
       "semantic_field_guess": "tickers",
       "context": "_training_ticker_union",
-      "adjudication": "FALLBACK",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure | ADJUDICATED: tickers = [] inside an except handler in an ML training/dataset-build pipeline: silently substitutes an empty ticker list for a computation that actually failed, letting the pipeline proceed 'as if' zero tickers were ever requested rather than surfacing that ticker-list resolution itself failed. Matches the mission's prohibited 'empty collection' + 'exception-triggered substitute' shapes.",
-      "required_repair": "Propagate/raise the failure, or mark the run as degraded/incomplete rather than silently training on an empty-appearing ticker set.",
+      "adjudication": "REPAIRED",
+      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
+      "required_repair": "REPAIRED 2026-09-17: ml_scheduler.py -- _training_ticker_union no longer swallows a roster-resolution failure into an empty list; the one call site now distinguishes 'resolution failed' (exit_code 2, error disclosed) from 'confirmed-empty enrollment' (exit_code 0) instead of reporting both as the same clean skip.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -14102,9 +14102,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "main",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14116,9 +14116,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "main",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14130,9 +14130,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14144,9 +14144,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14200,9 +14200,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14214,9 +14214,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14228,9 +14228,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14242,9 +14242,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "main",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14312,9 +14312,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14368,9 +14368,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14424,9 +14424,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -14438,9 +14438,9 @@
       "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
       "semantic_field_guess": null,
       "context": "<module>",
-      "adjudication": "FALLBACK",
-      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
-      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "adjudication": "REPAIRED",
+      "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL fallback substitution",
+      "required_repair": "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all identically quarantined dead code per the directory's own README). Dependent files (tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, tools/backfill_fusion_policy_columns_expanded_v1.py, tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
       "proposed_ownership_group": "calibration_ml_governance"
     },
     {
@@ -16202,9 +16202,9 @@
       "snippet": "tickers = []",
       "semantic_field_guess": "tickers",
       "context": "run_xgb",
-      "adjudication": "FALLBACK",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure | ADJUDICATED: tickers = [] inside an except handler in an ML training/dataset-build pipeline: silently substitutes an empty ticker list for a computation that actually failed, letting the pipeline proceed 'as if' zero tickers were ever requested rather than surfacing that ticker-list resolution itself failed. Matches the mission's prohibited 'empty collection' + 'exception-triggered substitute' shapes.",
-      "required_repair": "Propagate/raise the failure, or mark the run as degraded/incomplete rather than silently training on an empty-appearing ticker set.",
+      "adjudication": "REPAIRED",
+      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
+      "required_repair": "REPAIRED 2026-09-17: train_all.py run_xgb -- a roster-resolution failure now prints an accurate ERROR before falling through to zero tickers, instead of silently training nothing with no disclosure of why.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {
@@ -16538,9 +16538,9 @@
       "snippet": "tickers = []",
       "semantic_field_guess": "tickers",
       "context": "prepare_transformer_data",
-      "adjudication": "FALLBACK",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure | ADJUDICATED: tickers = [] inside an except handler in an ML training/dataset-build pipeline: silently substitutes an empty ticker list for a computation that actually failed, letting the pipeline proceed 'as if' zero tickers were ever requested rather than surfacing that ticker-list resolution itself failed. Matches the mission's prohibited 'empty collection' + 'exception-triggered substitute' shapes.",
-      "required_repair": "Propagate/raise the failure, or mark the run as degraded/incomplete rather than silently training on an empty-appearing ticker set.",
+      "adjudication": "REPAIRED",
+      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
+      "required_repair": "REPAIRED 2026-09-17: transformer_train.py -- same fix as train_all.py, via log.warning.",
       "proposed_ownership_group": "ml_training_pipeline"
     },
     {

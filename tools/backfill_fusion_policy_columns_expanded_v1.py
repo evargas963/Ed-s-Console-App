@@ -32,10 +32,7 @@ from ml_horizon import ML_HORIZON_SLUGS
 from signals import compute_fusion_policy_flat_for_replay
 from timeframe_config import CANONICAL_TIMEFRAME
 
-from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import (
-    _classify_failure,
-    _incomplete_fused_sql,
-)
+from tools._fusion_backfill_shared import _classify_failure, _incomplete_fused_sql
 
 
 def main() -> int:

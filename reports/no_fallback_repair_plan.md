@@ -4,14 +4,45 @@ Generated from `reports/no_fallback_inventory.json`. **Status 2026-09-17 (operat
 correction + repair cycle in progress):** the first-pass "confirmed-safe SQL idiom" and
 "deferred ML imputation" classifications were REJECTED by the operator and reclassified
 FALLBACK (see `tools/apply_adjudication.py`'s own `_apply_operator_correction_2026_09_17`).
-Current counts: 78 `FALLBACK`, 1121 `NOT_PROVEN`, 25 `NOT_FALLBACK`, 2 `REPAIRED`, of 1226
-candidates. Repair is now proceeding continuously group-by-group (adjudicate → repair →
-test → lock → reconcile → commit → next group), not gated behind full census completion.
+Current counts (after this repair cycle): 54 `FALLBACK`, 1121 `NOT_PROVEN`, 26 `NOT_FALLBACK`,
+25 `REPAIRED`, of 1226 candidates. Repair is proceeding continuously group-by-group
+(adjudicate → repair → test → lock → reconcile → commit → next group), not gated behind
+full census completion.
 
-## Group 1: `calibration_ml_governance` (64 confirmed FALLBACK — grew from 35 after the
-operator's SQL-idiom correction folded 29 more items in: the aggregate-over-empty-set,
-display-label, and update-preserve COALESCE/IFNULL sites this session had wrongly cleared
-as safe, plus the audit-flag COALESCE(...,0) sites previously deferred)
+## Group 1: `calibration_ml_governance` — **partially repaired (18 of 64), 46 remaining**
+
+18 REPAIRED this cycle: `tools/legacy/horizon_7/*` (12 FB ids, whole directory DELETED as
+quarantined dead code, 4 dependent files repaired), db.py's 6
+`COALESCE(horizon_outcome_schema_version, X) = X` sites simplified to a plain `= ?`. One
+item (`FB-00181`) reclassified `NOT_FALLBACK` after direct investigation found it is the
+ONE-TIME migration WRITE that establishes the column, not a masking READ — see
+`reports/no_fallback_inventory.json`'s own evidence field for that entry, and
+`tools/apply_adjudication.py`'s `_apply_fb_00181_investigated_reclassification` for why this
+is a considered exception, not a re-run of the operator's rejected blanket idiom
+classifications.
+
+**Remaining 46 (not yet repaired this cycle):** `calibration/anchor_audit.py` (3),
+`calibration/backfill_outcomes.py` (1), `calibration/canonical_1m_grid_scan.py` (2),
+`calibration/operable_surface_quarantine.py` (2),
+`calibration/phase65_edge_isolation_v1.py` (1),
+`calibration/phase6_edge_discovery_governed_v1.py` (1),
+`calibration/repair_canonical_1m_edge_carry_v1.py` (2),
+`calibration/repair_canonical_1m_interior_gaps_v1.py` (3),
+`calibration/run_production_accumulation_validation.py` (1), `calibration/writer.py` (1),
+db.py's `enrollment_source = COALESCE(enrollment_source, ?)` (1, FB-00187, needs the full
+UPDATE statement's intent confirmed), `normalized_training_sync.py` (6),
+`snapshot_normalizer.py` (1), `tests/test_pin_neutral_1m_5m_divergence_audit_v1.py` (2),
+`tools/_multi_timeframe_audit_v1.py` (1), `tools/migrate_snapshots_schema_repair_v1.py` (1),
+`tools/operable_surface_gate.py` (4), `tools/pin_neutral_1m_5m_divergence_audit_v1.py` (3),
+`tools/repair_validation_counts_v1.py` (1), `tools/repo_exposure_audit.py` (1),
+`tools/smoke_movement_heads_inference_v1.py` (1), `audit_model_readiness.py` (1).
+
+Most of these are the `COALESCE(<audit-flag>, 0)` shape (research_excluded/outcome_filled/
+active) needing the same DDL-intent confirmation before ruling on the replacement, or the
+same `COALESCE(MAX(...), 0)` aggregate shape now confirmed to need an explicit
+non-COALESCE rewrite per the operator's ruling (functionally equivalent to
+`COALESCE(MAX(x),0)` → `SELECT COALESCE(...)` removed, reading NULL directly and having the
+CALLER treat a None result as zero explicitly, rather than doing it inside the SQL).
 
 **Root defect, one shape repeated 26 times:** `COALESCE(horizon_outcome_schema_version, 3)`
 (and its bound-parameter equivalent) across `db.py` (9 sites) and `tools/legacy/horizon_7/*`
@@ -53,26 +84,27 @@ the correct "repair" may be deletion rather than a fix.
 **Cursor overlap:** none of these files are in Cursor's current `fix/pr252-whole-ui-live`
 overlap list.
 
-## Group 2: `ml_training_pipeline` (11 confirmed FALLBACK — grew from 6 after the operator's
-imputation correction: "the operator did not pre-authorize ML imputation" reclassified
-`ml_train.py`/`tools/feature_curation_gate.py`/`tools/research/d2_dual_label_eval_report.py`/
-`training_cache.py` (2 sites) from deferred/safe to FALLBACK)
+## Group 2: `ml_training_pipeline` — **5 of 11 REPAIRED this cycle; 6 IMPUTATION items
+deliberately NOT repaired, paused as an irreducible product decision**
 
-`tickers = []` inside `except` handlers in `lstm_data.py` (2 sites), `ml_scheduler.py`,
-`train_all.py`, `transformer_train.py` — a failed ticker-list computation silently proceeds as
-if zero tickers were ever requested, rather than surfacing that ticker-list resolution itself
-failed. `train_compare.py:55` — `.map(rules_map).fillna('flat')` — an unmapped/missing
-`rules_signal` reads identically to a genuinely-computed flat (no-position) signal. Plus (new)
-`ml_train.py`/`tools/feature_curation_gate.py` median imputation, `tools/research/
-d2_dual_label_eval_report.py`'s `fillna(0)` boolean-flag default, `training_cache.py`'s two
-`fillna(-1.0)` sentinel sites (domain range not independently confirmed to exclude -1.0).
+REPAIRED: `tickers = []` inside `except` handlers in `lstm_data.py` (2 sites),
+`ml_scheduler.py`, `train_all.py`, `transformer_train.py` — a failed ticker-list computation
+used to log/report the identical message a genuinely-empty roster produces; now each site
+discloses which actually happened (an accurate error message, and in `ml_scheduler.py`'s
+case a distinct `exit_code` for resolution-failure vs. confirmed-empty).
 
-**Repair shape:** propagate/raise on the ticker-list failure, or mark the training run as
-degraded/incomplete rather than silently training on an empty-appearing ticker set. For
-`train_compare.py`, expose unmapped signals as a distinct state, never the same string a
-genuine flat signal produces. For the imputation sites, exclude/flag missing feature rows
-rather than imputing a value (per the operator's ruling) — a real methodology change to the
-training pipeline, needing care not to silently change model behavior mid-repair.
+**NOT repaired, deliberately paused:** `ml_train.py`/`tools/feature_curation_gate.py`
+median imputation, `train_compare.py:55`'s `fillna('flat')`, `tools/research/
+d2_dual_label_eval_report.py`'s `fillna(0)`, `training_cache.py`'s two `fillna(-1.0)`
+sites. `ml_train.py`'s own comments show this is deliberate, carefully-engineered ML
+methodology (median imputation fit ONLY on the train partition, explicitly to avoid
+training-skew leakage, with its own prior leakage-bug fix already on record) — changing it
+to "exclude/flag missing rows" per the operator's ruling is a genuine product-accuracy
+decision (different training-set size, different model behavior) that this session is
+treating as the mission's own named exception: "continue automatically unless there is...
+an irreducible product decision." Needs explicit operator sign-off on the REPLACEMENT
+methodology (row exclusion? a distinct missing-indicator feature? a minimum-completeness
+threshold?) before implementation, not a unilateral pick.
 
 **Files:** `lstm_data.py`, `ml_scheduler.py`, `train_all.py`, `train_compare.py`,
 `transformer_train.py`, `ml_train.py`, `tools/feature_curation_gate.py`,

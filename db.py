@@ -3754,7 +3754,7 @@ class EdDB:
                     FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
                       AND outcome_filled = 0
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                       AND ts_utc < ? AND ts_utc > ?
                     ORDER BY ts_utc DESC
                     LIMIT ?
@@ -3762,7 +3762,10 @@ class EdDB:
                     (
                         tkr,
                         tf,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                        # Fallback lock (2026-09-17): was COALESCE(horizon_outcome_schema_version, X) =
+                        # X, silently treating a NULL (pre-migration/unrecorded) row as CONFIRMED
+                        # current-schema with no per-row proof. A plain `= ?` naturally excludes NULL
+                        # rows (SQL: NULL = X is never true) instead of assuming them.
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         tz,
                         min_snap_ts,
@@ -3830,11 +3833,13 @@ class EdDB:
                     """
                     SELECT DISTINCT ticker FROM snapshots
                     WHERE timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                     """,
                     (
                         CANONICAL_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                        # Fallback lock (2026-09-17): was COALESCE(...,X)=X; a plain `= ?` naturally
+                        # excludes NULL (unrecorded-version) rows instead of assuming the current
+                        # version for them.
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                     ),
                 )
@@ -3844,13 +3849,12 @@ class EdDB:
                     """
                     SELECT snapshot_id, ts_utc, atr FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                       AND ts_utc < ?
                     """,
                     (
                         tkr,
                         CANONICAL_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         tz,
                     ),
@@ -3957,11 +3961,13 @@ class EdDB:
                     WHERE zone = 'pin_neutral'
                       AND outcome_filled = 0
                       AND timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                     """,
                     (
                         DERIVED_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                        # Fallback lock (2026-09-17): was COALESCE(...,X)=X; a plain `= ?` naturally
+                        # excludes NULL (unrecorded-version) rows instead of assuming the current
+                        # version for them.
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                     ),
                 ).fetchone()
@@ -3980,12 +3986,11 @@ class EdDB:
                     WHERE zone = 'pin_neutral'
                       AND outcome_filled = 0
                       AND timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                     ORDER BY ticker, ts_utc
                     """,
                     (
                         CANONICAL_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                     ),
                 ).fetchall()
@@ -5186,13 +5191,14 @@ def _snapshot_rows_affected_by_bar_mutations(
         """
         SELECT snapshot_id, ts_utc, atr FROM snapshots
         WHERE ticker = ? AND timeframe = ?
-          AND COALESCE(horizon_outcome_schema_version, ?) = ?
+          AND horizon_outcome_schema_version = ?
           AND ts_utc < ?
         """,
         (
             tkr,
             CANONICAL_TIMEFRAME,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+            # Fallback lock (2026-09-17): was COALESCE(...,X)=X; a plain `= ?` naturally excludes
+            # NULL (unrecorded-version) rows instead of assuming the current version for them.
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             tz,
         ),

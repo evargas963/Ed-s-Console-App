@@ -190,9 +190,32 @@ def _protected_field_population() -> set[str]:
     return {n for n in names if not _FAILURE_NAME_RE.search(n)}
 
 
+#: A line asserting the BANNED pattern's own ABSENCE (the idiom every regression test that
+#: locks this repair's own fixes uses, e.g. `assert "COALESCE(...)" not in source`) can
+#: never itself be the violation it is proving is gone -- it is meta-code checking for the
+#: pattern, structurally the same self-reference class as a comment. Matched narrowly
+#: (assert ... not in) so it cannot be used to smuggle real fallback-executing code past
+#: the gate under an unrelated assert.
+_NEGATIVE_ASSERTION_RE = re.compile(r"\bassert\b.*\bnot\s+in\b")
+
+
+def _is_comment_line(text: str) -> bool:
+    """True when the ENTIRE line is a comment (Python `#` or SQL `--`) or a negative test
+    assertion proving a banned pattern's absence -- see _NEGATIVE_ASSERTION_RE. An
+    explanatory comment documenting a fix necessarily quotes the banned pattern in prose
+    (the RC-47 lesson); a real code line that HAPPENS to carry a trailing comment still
+    gets scanned (only a line whose first non-whitespace character starts the comment is
+    skipped) -- this narrows false positives without reopening any actual code path."""
+    stripped = text.strip()
+    return (stripped.startswith("#") or stripped.startswith("--")
+            or bool(_NEGATIVE_ASSERTION_RE.search(stripped)))
+
+
 def _r1_sql(rel: str, added: list[tuple[int, str]]) -> list[Finding]:
     out: list[Finding] = []
     for line_no, text in added:
+        if _is_comment_line(text):
+            continue
         if _SQL_FALLBACK_RE.search(text):
             out.append(Finding(
                 rel, line_no, "R1_SQL_COALESCE",
@@ -205,6 +228,8 @@ def _r1_sql(rel: str, added: list[tuple[int, str]]) -> list[Finding]:
 def _r2_imputation(rel: str, added: list[tuple[int, str]]) -> list[Finding]:
     out: list[Finding] = []
     for line_no, text in added:
+        if _is_comment_line(text):
+            continue
         if _IMPUTATION_RE.search(text):
             out.append(Finding(
                 rel, line_no, "R2_IMPUTATION",

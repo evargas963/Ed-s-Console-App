@@ -265,12 +265,14 @@ def _training_ticker_union(
     db_path / timeframe / label_column are unused here; kept for call-site stability.
     RTH-labeled rows in snapshots determine whether training *runs* per ticker, not *membership*.
     """
-    try:
-        from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
+    # Fallback lock (2026-09-17): this used to catch any resolution failure and return an
+    # empty list, indistinguishable from a genuinely-empty enrollment -- the one caller logs
+    # "logging_universe enrollment empty" either way and skips with exit_code 0, silently
+    # reporting a real resolution FAILURE as a clean, nothing-wrong skip. Let it propagate;
+    # the caller now distinguishes the two explicitly.
+    from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
 
-        tickers = load_user_scheduler_tickers_or_empty()
-    except Exception:
-        tickers = []
+    tickers = load_user_scheduler_tickers_or_empty()
     return sorted({t for t in tickers if t and not str(t).startswith("$")})
 
 
@@ -2640,7 +2642,14 @@ def run_once(
     # (avoids snapshot_id UNIQUE races with the live server's debounced materialize mid-train).
     os.environ["ED_TRAINING_SKIP_INLINE_NORMSYNC"] = "1"
 
-    tickers = _training_ticker_union(DB_PATH, label_column=target_column)
+    try:
+        tickers = _training_ticker_union(DB_PATH, label_column=target_column)
+    except Exception as _roster_exc:
+        log.warning(
+            "ticker roster resolution FAILED (%s: %s) — this is a resolution failure, "
+            "not a confirmed-empty enrollment", type(_roster_exc).__name__, _roster_exc)
+        return {"exit_code": 2, "ticker_outcomes": [], "ml_horizon": hz_sched, "skipped": True,
+                "error": f"{type(_roster_exc).__name__}: {_roster_exc}"}
     if not tickers:
         log.warning(
             "No tickers: logging_universe enrollment empty. "

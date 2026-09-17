@@ -411,6 +411,98 @@ _mark_repaired(
     "::test_active_base_collapse_flags_caches_a_successful_read.",
     "market_state_rendering")
 
+# ml_training_pipeline: 5 except-substitute repairs (the 6 IMPUTATION items in this group
+# stay FALLBACK, unrepaired -- ml_train.py/training_cache.py's own imputation methodology
+# is a real product-accuracy decision, not a mechanical fix; treated as the mission's own
+# "irreducible product decision" pause criterion pending explicit operator sign-off on the
+# replacement methodology, not silently picked by this session).
+_mark_repaired(
+    ["FB-00243", "FB-00246"],
+    "REPAIRED 2026-09-17: lstm_data.py -- a ticker-roster-resolution FAILURE used to log/"
+    "warn the identical message a genuinely-empty roster produces, masking which one "
+    "actually happened. Now disclosed distinctly (CLI script: an accurate ERROR message "
+    "before the same sys.exit(1); library function: a distinct log.warning naming the "
+    "exception).",
+    "ml_training_pipeline")
+_mark_repaired(
+    ["FB-00392"],
+    "REPAIRED 2026-09-17: ml_scheduler.py -- _training_ticker_union no longer swallows a "
+    "roster-resolution failure into an empty list; the one call site now distinguishes "
+    "'resolution failed' (exit_code 2, error disclosed) from 'confirmed-empty enrollment' "
+    "(exit_code 0) instead of reporting both as the same clean skip.",
+    "ml_training_pipeline")
+_mark_repaired(
+    ["FB-01155"],
+    "REPAIRED 2026-09-17: train_all.py run_xgb -- a roster-resolution failure now prints an "
+    "accurate ERROR before falling through to zero tickers, instead of silently training "
+    "nothing with no disclosure of why.",
+    "ml_training_pipeline")
+_mark_repaired(
+    ["FB-01179"],
+    "REPAIRED 2026-09-17: transformer_train.py -- same fix as train_all.py, via log.warning.",
+    "ml_training_pipeline")
+
+# calibration_ml_governance: tools/legacy/horizon_7/* (11 sites) DELETED entirely -- the
+# whole directory was quarantined dead code (identical "DEPRECATED... do not run against
+# post-D3 databases" banner on every file, confirmed by its own README), not a required
+# responsibility. Four files outside that directory had real imports from it
+# (_incomplete_fused_sql/_classify_failure, schema-agnostic, relocated to the new
+# tools/_fusion_backfill_shared.py; GOV_WHERE, genuinely schema-specific to the dropped
+# outcome_3c/8c/13c columns, removed outright since the query would error against the
+# current schema) -- see tests/test_fusion_backfill_shared_v1.py.
+_mark_repaired(
+    ["FB-01005", "FB-01006", "FB-01007", "FB-01008", "FB-01012", "FB-01013", "FB-01014",
+     "FB-01015", "FB-01020", "FB-01024", "FB-01028", "FB-01029"],
+    "REPAIRED 2026-09-17: tools/legacy/horizon_7/ deleted entirely (17 files, all "
+    "identically quarantined dead code per the directory's own README). Dependent files "
+    "(tools/backfill_fusion_policy_complete_v1.py, tools/validate_fusion_backfill_complete_v1.py, "
+    "tools/backfill_fusion_policy_columns_expanded_v1.py, "
+    "tools/analyze_fused_xgb_comparison_dataset_v1.py) repaired to not import from the "
+    "deleted module. Tests: tests/test_fusion_backfill_shared_v1.py (7 tests).",
+    "calibration_ml_governance")
+# db.py: 6 COALESCE(horizon_outcome_schema_version, X) = X sites simplified to a plain
+# `= ?` (SQL's own NULL semantics naturally exclude an unrecorded-version row instead of
+# assuming the current anchor version for it). See tests/test_horizon_bar_outcomes.py.
+_mark_repaired(
+    ["FB-00174", "FB-00182", "FB-00184", "FB-00185", "FB-00186", "FB-00188"],
+    "REPAIRED 2026-09-17: db.py -- COALESCE(horizon_outcome_schema_version, X) = X "
+    "simplified to a plain `horizon_outcome_schema_version = ?` across fill_outcomes, "
+    "refresh_all_governed_bar_anchor_outcomes_v1, fill_outcomes_pin_neutral_backfill_v1, "
+    "and _snapshot_rows_affected_by_bar_mutations. Tests: "
+    "tests/test_horizon_bar_outcomes.py::"
+    "test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version.",
+    "calibration_ml_governance")
+
+
+# FB-00181 (db.py:3341, inside the ONE-TIME schema-flag-gated migration that ESTABLISHES
+# horizon_outcome_schema_version in the first place) was swept into the blanket SQL
+# reclassification above without individual review. Direct investigation during repair
+# (2026-09-17) found it structurally different from every other COALESCE in this group: it
+# is not a READ masking a missing value as a confirmed one -- it is the WRITE that
+# deliberately treats "no version recorded" (COALESCE(...,0), 0 being lower than any real
+# version) as "needs migrating to the current version", which is the correct, intentional
+# mechanism that makes the other 6 repaired read-queries' `= ?` filters actually correct
+# (a NULL row gets migrated to a real version here, not silently left ambiguous forever).
+# Reclassified NOT_FALLBACK with this specific reasoning -- distinct from, not a re-run of,
+# the operator's rejected blanket "safe idiom" classifications (aggregate-over-empty-set,
+# display-label, update-preserve), none of which apply to a migration WRITE.
+def _apply_fb_00181_investigated_reclassification(raw_candidates: list[dict]) -> None:
+    for c in raw_candidates:
+        if c["id"] == "FB-00181":
+            ADJUDICATION[c["id"]] = (
+                "NOT_FALLBACK",
+                "Investigated 2026-09-17 during repair (not a blanket idiom classification): "
+                "this COALESCE sits inside the ONE-TIME, schema-flag-gated migration "
+                "(guarded by a ed_schema_flags row check) that ESTABLISHES "
+                "horizon_outcome_schema_version for pre-existing rows -- it is the WRITE "
+                "mechanism, not a READ masking absence. COALESCE(...,0) deliberately "
+                "treats an unrecorded version as 'older than any real version, needs "
+                "migrating', which is what makes it safe for every OTHER (read-side) query "
+                "in this file to now assume the column is populated.",
+                "none",
+                "calibration_ml_governance",
+            )
+
 
 def main() -> int:
     raw_path = REPO / "reports" / "no_fallback_discovery_raw.json"
@@ -418,6 +510,7 @@ def main() -> int:
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
     candidates = raw["candidates"]
     _apply_operator_correction_2026_09_17(candidates)
+    _apply_fb_00181_investigated_reclassification(candidates)
 
     applied = 0
     for c in candidates:
