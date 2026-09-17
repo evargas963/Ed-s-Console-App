@@ -1198,6 +1198,28 @@ def main() -> int:
     for c in candidates:
         by_verdict[c["adjudication"]] = by_verdict.get(c["adjudication"], 0) + 1
 
+    # No-fallback lock (2026-09-17, operator point 11): explicit, checked invariant --
+    # REPAIRED + NOT_FALLBACK + FALLBACK + NOT_PROVEN must equal the total candidate
+    # count. This is structurally guaranteed by the loop above (every candidate gets
+    # exactly one c["adjudication"] value), but an implicit guarantee is not a checked
+    # one -- a future refactor could silently break it (e.g. a candidate skipped
+    # entirely, or double-counted). Fail loudly rather than let a silent count drift
+    # ship in the inventory artifact every downstream report/doc trusts.
+    _known_verdicts = {"REPAIRED", "NOT_FALLBACK", "FALLBACK", "NOT_PROVEN"}
+    _unexpected = set(by_verdict) - _known_verdicts
+    if _unexpected:
+        raise SystemExit(
+            f"no_fallback_inventory: unknown verdict value(s) {sorted(_unexpected)} -- "
+            f"every candidate must be exactly one of {sorted(_known_verdicts)}"
+        )
+    _sum_known = sum(by_verdict.get(v, 0) for v in _known_verdicts)
+    if _sum_known != len(candidates):
+        raise SystemExit(
+            f"no_fallback_inventory: verdict counts sum to {_sum_known} but "
+            f"candidate_count is {len(candidates)} -- inventory is corrupt, refusing "
+            f"to write a report with a stale/incorrect total"
+        )
+
     report = {
         "scanned_by_type": raw["scanned_by_type"],
         "unscanned_declared_noop_by_ext": raw["unscanned_declared_noop_by_ext"],
