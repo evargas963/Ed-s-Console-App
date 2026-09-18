@@ -49,4 +49,6 @@ def test_compute_spread_no_generic_fallback_label_survives():
         ],
     }
     spread = ofe._compute_spread(data)
-    assert "schwab_bid_ask" not in (spread["spread_pts_source"] or "")
+    source = spread["spread_pts_source"]
+    assert source is not None
+    assert "schwab_bid_ask" not in source
