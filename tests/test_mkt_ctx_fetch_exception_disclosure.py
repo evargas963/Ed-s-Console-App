@@ -155,8 +155,10 @@ def test_build_market_state_surfaces_mkt_ctx_error():
 
 
 def test_build_market_state_clean_mkt_ctx_copies_only_measured_fields():
-    ctx = market_context.MarketContext(vix=18.0, vix_regime="Normal", pcr=0.9, pcr_arrow="↑")
-    ms = build_market_state(**_base_kwargs(mkt_ctx=ctx))
+    ctx = market_context.MarketContext(vix=18.0, vix_regime="Normal")
+    # PCR is per-ticker data, passed directly (PR #254 point 2) -- never read
+    # from mkt_ctx, which no longer carries pcr fields at all.
+    ms = build_market_state(**_base_kwargs(mkt_ctx=ctx, pcr_val=0.9, pcr_arrow="↑"))
     assert ms.state_error is None
     assert ms.vix_regime == "Normal"
     assert ms.pcr_arrow == "↑"

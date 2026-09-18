@@ -4616,12 +4616,17 @@ def _get_stale_mkt_ctx():
         }
 
 
-def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
+def _fetch_and_store_mkt_ctx(client):
     """One full market-context sweep + current-cache store + confluence persist.
 
     A failed fetch produces no current MarketContext. The previous successful
     observation is demoted to `_stale_mkt_ctx` with its original timestamp and
     generation. Neutral error objects are never stored or persisted.
+
+    No pcr/prev_pcr here: PCR is per-ticker (this ticker's own option-chain
+    totals), computed and consumed entirely within server.py's per-ticker loop
+    (see market_context.pcr_trend) -- it was never a property of this shared,
+    ticker-independent fetch (see MarketContext's own docstring).
 
     Call ONLY under the single-flight discipline in _get_mkt_ctx /
     _mkt_ctx_background_refresh.
@@ -4640,8 +4645,6 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
             client,
             safe_get_quote_fn=lambda _c, _tk, **_kw: _memoized_quote_response(
                 _tk, client=_c, **_kw),
-            pcr=pcr,
-            prev_pcr=prev_pcr,
             stream_chg_pct_fn=_stream_chg_fn,
         )
         if ctx.error:
@@ -4682,11 +4685,11 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
     return ctx
 
 
-def _mkt_ctx_background_refresh(client, pcr=None, prev_pcr=None):
+def _mkt_ctx_background_refresh(client):
     """Single-flight worker body for the expired-current refresh path."""
     global _mkt_ctx_refresh_inflight
     try:
-        _fetch_and_store_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr)
+        _fetch_and_store_mkt_ctx(client)
     except Exception as e:
         log.warning("mkt_ctx background refresh failed: %s", e, exc_info=True)
     finally:
@@ -4695,7 +4698,7 @@ def _mkt_ctx_background_refresh(client, pcr=None, prev_pcr=None):
             _mkt_ctx_refresh_cond.notify_all()
 
 
-def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
+def _get_mkt_ctx(client, *, force_sync=False):
     """Return the current MarketContext, or None if current is unavailable.
 
     Fresh current (within TTL): served directly. Expired current: demoted to
@@ -4704,7 +4707,12 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
     synchronous sweep; still returns None if that sweep fails.
 
     Prior-value substitution is prohibited: a stale observation never
-    populates or satisfies current fields.
+    populates or satisfies current fields. A cached MarketContext is an
+    IMMUTABLE observation identified by (_cached_mkt_ctx_ts,
+    _cached_mkt_ctx_generation) -- every field on it was observed together, at
+    that one fetch; nothing here (or anywhere else) may write into it after
+    construction. See MarketContext's own docstring for why PCR specifically
+    is never one of its fields.
     """
     global _mkt_ctx_refresh_inflight
     mkt_ctx_cache_eval_wall_ts = time.time()
@@ -4713,8 +4721,6 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
             _cached_mkt_ctx is not None
             and (mkt_ctx_cache_eval_wall_ts - _cached_mkt_ctx_ts) < MKT_CTX_TTL
         ):
-            if pcr is not None:
-                _cached_mkt_ctx.pcr = pcr
             return _cached_mkt_ctx
         if _cached_mkt_ctx is not None:
             _demote_current_mkt_ctx_to_stale_locked()
@@ -4723,7 +4729,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
                 _mkt_ctx_refresh_inflight = True
                 try:
                     _get_mkt_ctx_refresh_executor().submit(
-                        _mkt_ctx_background_refresh, client, pcr, prev_pcr
+                        _mkt_ctx_background_refresh, client
                     )
                 except RuntimeError:
                     _mkt_ctx_refresh_inflight = False
@@ -4735,19 +4741,17 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
                 _cached_mkt_ctx is not None
                 and (time.time() - _cached_mkt_ctx_ts) < MKT_CTX_TTL
             ):
-                if pcr is not None:
-                    _cached_mkt_ctx.pcr = pcr
                 return _cached_mkt_ctx
         _mkt_ctx_refresh_inflight = True
     try:
-        return _fetch_and_store_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr)
+        return _fetch_and_store_mkt_ctx(client)
     finally:
         with _cached_mkt_ctx_lock:
             _mkt_ctx_refresh_inflight = False
             _mkt_ctx_refresh_cond.notify_all()
 
 
-def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=None):
+def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx):
     """Force one current refresh when weighted_push fields are missing.
 
     Historical quote ticks must not populate current confluence fields.
@@ -4763,7 +4767,7 @@ def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=N
     global _cached_mkt_ctx_ts
     with _cached_mkt_ctx_lock:
         _cached_mkt_ctx_ts = 0.0
-    fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr, force_sync=True)
+    fresh = _get_mkt_ctx(client, force_sync=True)
     still = missing_confluence_weighted_pushes(fresh)
     if still:
         log.error(
@@ -7378,9 +7382,19 @@ def _fetch_state(
             _bar_move    = round(float(_lb_close) - float(_lb_open), 4)
             _candle_dir  = _classify_direction(_bar_move, float(_lb_open))
             _candle_body = abs(_bar_move)
-    # ── Global market context (PCR update only on a current context) ─────────
-    if mkt_ctx is not None and pcr_val is not None:
-        mkt_ctx.pcr = pcr_val
+    # ── PCR trend ──────────────────────────────────────────────────────────────
+    # No-fallback lock repair (2026-09-18, PR #254 point 2): pcr_val is THIS
+    # ticker's own option-chain put/call ratio (totals[0].pcr_oi above) -- it used
+    # to be written onto the shared, cached MarketContext (mkt_ctx.pcr = pcr_val),
+    # which server.py's own module docstring says holds data "IDENTICAL regardless
+    # of which ticker we're processing". Every other ticker's request within the
+    # cache TTL would then read back THIS ticker's PCR as if it were their own,
+    # and the object's timestamp/generation (which describe the whole cached
+    # fetch) never changed to reflect the mutation. PCR now flows exactly like
+    # charm already does: computed here, in this ticker's own scope, and passed
+    # directly into build_market_state below -- never stored on mkt_ctx at all.
+    from market_context import pcr_trend
+    pcr_arrow, pcr_color, pcr_label = pcr_trend(pcr_val, prev_pcr)
 
     # ── Price levels ──────────────────────────────────────────────────────────
     # Carry the SAME canonical snapshot /api/levels serializes. Reuse the carried
@@ -8212,6 +8226,12 @@ def _fetch_state(
         charm_drift_toward=_charm_toward,
         charm_magnitude=_charm_mag,
         charm_top_drivers=_charm_drivers,
+        # PCR — computed above from this ticker's own option-chain totals, passed
+        # directly like charm (PR #254 point 2: never stored on the shared mkt_ctx).
+        pcr_val=pcr_val,
+        pcr_arrow=pcr_arrow,
+        pcr_color=pcr_color,
+        pcr_label=pcr_label,
         # RC-292/RC-295: terrain SSOT absolute-gamma strike — the same fail-closed read
         # the pin score uses above (None when the terrain cache is absent or stale).
         absolute_gamma_strike=_pin_strike,

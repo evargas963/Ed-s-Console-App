@@ -1062,6 +1062,14 @@ def build_market_state(
     charm_drift_toward: float | None = None,
     charm_magnitude: Optional[str] = None,
     charm_top_drivers: list | None = None,
+    # PCR — this ticker's own option-chain put/call ratio, computed by server BEFORE
+    # calling this function (from totals[0].pcr_oi + market_context.pcr_trend), passed
+    # in directly like charm. Never read from mkt_ctx (PR #254 point 2: PCR is
+    # per-ticker data and was never a property of the shared MarketContext).
+    pcr_val: float | None = None,
+    pcr_arrow: str = "→",
+    pcr_color: str = "#9ca3af",
+    pcr_label: str = "",
     # RC-292/RC-295: terrain SSOT absolute-gamma strike (full book), read by the server
     # from the terrain cache (fail-closed None when stale) and passed in like charm.
     absolute_gamma_strike: float | None = None,
@@ -1217,14 +1225,13 @@ def build_market_state(
             import logging
             logging.getLogger(__name__).warning(f"Order Flow Engine error: {_of_e}")
 
-    # ── 4. VIX / PCR — from current mkt_ctx only ─────────────────────────────
+    # ── 4. VIX — from current mkt_ctx only ───────────────────────────────────
     # A failed current fetch produces no MarketContext. Neutral dataclass
     # defaults must not enter current fields. Prior/stale context is not
     # accepted here.
     if mkt_ctx is None:
         ms.state_error = ms.state_error or "market_context_unavailable"
         ms.state_error_detail = ms.state_error_detail or "current MarketContext unavailable"
-        _pcr = None
     else:
         _ctx_err = getattr(mkt_ctx, "error", "")
         if isinstance(_ctx_err, str) and _ctx_err:
@@ -1234,12 +1241,14 @@ def build_market_state(
             ms.vix_regime = mkt_ctx.vix_regime
             ms.vix_color = mkt_ctx.vix_color
             ms.vix_implication = mkt_ctx.vix_implication
-        _pcr = mkt_ctx.pcr
-        if _pcr is not None:
-            ms.pcr_arrow = mkt_ctx.pcr_arrow
-            ms.pcr_color = mkt_ctx.pcr_color
-            ms.pcr_label = mkt_ctx.pcr_label
-        ms.pcr_val = _f(_pcr)
+
+    # ── PCR — this ticker's own option-chain reading, passed in directly (PR #254
+    # point 2: never read from the shared mkt_ctx, which is not per-ticker data) ──
+    if pcr_val is not None:
+        ms.pcr_arrow = pcr_arrow
+        ms.pcr_color = pcr_color
+        ms.pcr_label = pcr_label
+    ms.pcr_val = _f(pcr_val)
     ms.iv_direction = (
         iv_direction if iv_direction in ("expanding", "contracting", "flat") else None
     )

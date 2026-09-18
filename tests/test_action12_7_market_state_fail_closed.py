@@ -18,10 +18,6 @@ def _mkt_ctx() -> MagicMock:
     ctx.qqq_chg_pct = None
     ctx.iwm_chg_pct = None
     ctx.vix = None
-    ctx.pcr = None
-    ctx.pcr_arrow = ""
-    ctx.pcr_color = ""
-    ctx.pcr_label = ""
     ctx.vix_regime = ""
     ctx.vix_color = ""
     ctx.vix_implication = ""
@@ -327,23 +323,37 @@ def test_mkt_ctx_fields_read_directly_no_silent_default_on_a_real_value(_mock_cs
     measured.vix_regime = "elevated"
     measured.vix_color = "#ff0000"
     measured.vix_implication = "hedging pressure rising"
-    measured.pcr = 0.9
-    measured.pcr_arrow = "up"
-    measured.pcr_color = "#00ff00"
-    measured.pcr_label = "put pressure building"
     ms = build_market_state(**_base_kwargs(mkt_ctx=measured))
     assert ms.vix_regime == "elevated"
     assert ms.vix_color == "#ff0000"
     assert ms.vix_implication == "hedging pressure rising"
+
+    orphan_labels = _mkt_ctx()
+    orphan_labels.vix = None
+    orphan_labels.vix_regime = "elevated"
+    ms_orphan = build_market_state(**_base_kwargs(mkt_ctx=orphan_labels))
+    assert ms_orphan.vix_regime == ""
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_pcr_fields_passed_directly_never_read_from_mkt_ctx(_mock_cs):
+    """No-fallback lock repair (2026-09-18, PR #254 point 2): PCR is this ticker's
+    own option-chain reading, computed by server.py and passed directly into
+    build_market_state (exactly like charm) -- it must never be sourced from the
+    shared mkt_ctx, which no longer carries pcr fields at all. A mkt_ctx mock with
+    no pcr attributes proves the label fields cannot leak from there."""
+    ctx_with_no_pcr_attrs = _mkt_ctx()
+    ms = build_market_state(
+        **_base_kwargs(
+            mkt_ctx=ctx_with_no_pcr_attrs,
+            pcr_val=0.9, pcr_arrow="up", pcr_color="#00ff00", pcr_label="put pressure building",
+        )
+    )
+    assert ms.pcr_val == pytest.approx(0.9)
     assert ms.pcr_arrow == "up"
     assert ms.pcr_color == "#00ff00"
     assert ms.pcr_label == "put pressure building"
 
-    orphan_labels = _mkt_ctx()
-    orphan_labels.vix = None
-    orphan_labels.pcr = None
-    orphan_labels.vix_regime = "elevated"
-    orphan_labels.pcr_arrow = "up"
-    ms_orphan = build_market_state(**_base_kwargs(mkt_ctx=orphan_labels))
-    assert ms_orphan.vix_regime == ""
-    assert ms_orphan.pcr_arrow == ""
+    ms_absent = build_market_state(**_base_kwargs(mkt_ctx=ctx_with_no_pcr_attrs))
+    assert ms_absent.pcr_val is None
+    assert ms_absent.pcr_arrow == ""

@@ -192,6 +192,21 @@ class ConfluenceRead:
 
 @dataclass
 class MarketContext:
+    """This object's own contract (see its cache in server.py): "This data is IDENTICAL
+    regardless of which ticker we're processing." PCR/pcr_arrow/pcr_color/pcr_label were
+    removed 2026-09-18 (no-fallback lock repair, PR #254 point 2) because they violated
+    that contract -- server.py computed pcr from THIS TICKER's own option-chain totals
+    (totals[0].pcr_oi) and mutated it onto this SHARED, cached object after construction,
+    so whichever ticker's request cycle ran last silently overwrote every other ticker's
+    displayed PCR for the rest of the cache TTL, and pcr_arrow/color/label (computed only
+    at construction, from a pcr/prev_pcr pair that was always None in the real server
+    flow -- fetch_market_context's only real caller never passed one) went stale relative
+    to the mutated pcr the moment it changed. PCR is genuinely per-ticker data and now
+    flows the same way charm already does: computed in server.py's per-ticker loop via
+    pcr_trend() below, passed directly into market_state.build_market_state as explicit
+    parameters, never stored on this shared object at all.
+    """
+
     vix:             Optional[float] = None
     vix_regime:      str             = "—"
     vix_color:       str             = "#9ca3af"
@@ -238,11 +253,6 @@ class MarketContext:
     tnx_yield:       Optional[float] = None   # 10Y Treasury yield (e.g. 4.25)
     tnx_chg:         Optional[float] = None   # change today (basis points concept: 4.25 → 4.30 = +0.05)
     bond_signal:     Optional[str]   = None  # set when TNX move is known; 'flight_to_safety', 'risk_on', 'neutral', 'rate_stress'
-
-    pcr:             Optional[float] = None
-    pcr_arrow:       str             = "→"
-    pcr_color:       str             = "#9ca3af"
-    pcr_label:       str             = ""
 
     # Session label — derived once from ET clock, shared across all tickers.
     # Values: "RTH" | "Pre-Market" | "After-Hours" | "Closed" (None until _derive_session runs)
@@ -701,9 +711,26 @@ def resolve_chg_pct(ticker: str, rest_chg_pct: Optional[float], *,
     return rest_chg_pct
 
 
+def pcr_trend(pcr: Optional[float], prev_pcr: Optional[float]) -> tuple[str, str, str]:
+    """(arrow, color, label) for a put/call-ratio reading relative to its own previous
+    reading -- PER-TICKER (this ticker's own option-chain pcr vs ITS previous cycle),
+    never compared across different tickers. Call this in the same per-ticker scope
+    that computed `pcr`, exactly like charm's direction/magnitude are computed alongside
+    charm_net in server.py -- never store the result on the shared MarketContext (see
+    that class's own docstring for why).
+    """
+    if pcr is None:
+        return "→", "#9ca3af", ""
+    if prev_pcr is None:
+        return "→", "#9ca3af", "baseline"
+    if pcr > prev_pcr + 0.05:
+        return "↑", "#991b1b", "put pressure building"
+    if pcr < prev_pcr - 0.05:
+        return "↓", "#166534", "hedges unwinding"
+    return "→", "#92400e", "flat"
+
+
 def fetch_market_context(client, safe_get_quote_fn,
-                         pcr: Optional[float] = None,
-                         prev_pcr: Optional[float] = None,
                          stream_chg_pct_fn: Optional[Callable[[str], Optional[float]]] = None) -> MarketContext:
     """
     Fetch market context. safe_get_quote_fn is the already-imported safe_get_quote.
@@ -711,7 +738,7 @@ def fetch_market_context(client, safe_get_quote_fn,
         REGULAR_MARKET_CHANGE_PERCENT/CHANGE_PERCENT as primary over REST-derived chg_pct.
     Never raises — returns partial context on any error.
     """
-    ctx    = MarketContext(pcr=pcr)
+    ctx    = MarketContext()
     errors = []
 
     def _fetch(sym):
@@ -853,17 +880,6 @@ def fetch_market_context(client, safe_get_quote_fn,
 
     if errors:
         ctx.error = "; ".join(errors[:3])
-
-    # PCR trend
-    if pcr is not None:
-        if prev_pcr is None:
-            ctx.pcr_arrow, ctx.pcr_color, ctx.pcr_label = "→", "#9ca3af", "baseline"
-        elif pcr > prev_pcr + 0.05:
-            ctx.pcr_arrow, ctx.pcr_color, ctx.pcr_label = "↑", "#991b1b", "put pressure building"
-        elif pcr < prev_pcr - 0.05:
-            ctx.pcr_arrow, ctx.pcr_color, ctx.pcr_label = "↓", "#166534", "hedges unwinding"
-        else:
-            ctx.pcr_arrow, ctx.pcr_color, ctx.pcr_label = "→", "#92400e", "flat"
 
     # Session label — derived from ET clock, shared across all tickers
     ctx.session_label = _derive_session()
