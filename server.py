@@ -230,7 +230,7 @@ from schwab_client import (
     safe_get_price_history,
     SchwabAuthError,
 )
-from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+from instrument_identity import ticker_storage_key, vendor_option_root   # RC-126: the ONE query-symbol authority
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
     gamma_is_plausible,
@@ -13188,12 +13188,20 @@ def _selected_contracts_from_surface(surface: dict) -> list[str]:
 def gamma_cell_has_contract_identity(pair) -> bool:
     """ONE stream-coverage eligibility predicate.
 
-    A cell is eligible iff it carries at least one real contract identity
-    (``contracts.call`` or ``contracts.put``). NO CONTRACT cells stay labelled
-    and never enter the denominator. ZERO OI cells are real contracts and stay
-    eligible. Schema: ``config/gamma_stream_coverage_eligibility_v1.json``.
+    A cell is eligible iff ``instrument_identity.vendor_option_root`` validates
+    at least one of ``contracts.call`` / ``contracts.put`` as a 21-character
+    OSI identity. A truthy call/put string is not enough. Non-string values
+    fail closed. NO CONTRACT cells stay labelled and never enter the
+    denominator. ZERO OI cells with a validated OSI stay eligible.
+    Schema: ``config/gamma_stream_coverage_eligibility_v1.json``.
     """
-    return bool(isinstance(pair, dict) and (pair.get("call") or pair.get("put")))
+    if not isinstance(pair, dict):
+        return False
+    for side in ("call", "put"):
+        raw = pair.get(side)
+        if isinstance(raw, str) and vendor_option_root(raw):
+            return True
+    return False
 
 
 def _gamma_surface_coverage_summary(surface: dict) -> dict:
@@ -13266,7 +13274,7 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
         # Auto/Wider/All-windowed view. A consumer that needs the on-screen LIVE verdict
         # must use the client's own visible-scope computation, not this field.
         "scope": "canonical_surface",
-        "total_visible_cells": relevant,
+        "total_eligible_cells": relevant,
         "live": counts["live"], "partial": counts["partial"], "stale": counts["stale"],
         "pending": counts["pending"], "daemon_unavailable": counts["daemon_unavailable"],
         "rejected": counts["rejected"], "unavailable": counts["unavailable"],
@@ -16090,6 +16098,19 @@ def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: 
     }
 
 
+def _stamp_gamma_ticker_identity(payload: dict, requested: str, canonical: str) -> dict:
+    """Echo the raw request ticker beside the canonical storage key.
+
+    Client admission exact-matches ``requested_ticker`` to the request string
+    and the current EdShell ticker. It must not reimplement ticker_storage_key.
+    """
+    out = dict(payload) if isinstance(payload, dict) else {}
+    out["ticker"] = canonical
+    out["symbol"] = canonical
+    out["requested_ticker"] = (requested or "").strip()
+    return out
+
+
 def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
     """Session identity for a projected surface, stamped by the ONE ET clock (server side — a
     browser never decides what day it is): today's ET session date, whether the surface is a
@@ -16164,7 +16185,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
             log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
             _contract_admission = None
-        return JSONResponse({
+        return JSONResponse(_stamp_gamma_ticker_identity({
             "ticker": tk, "symbol": tk, "available": _gamma_available,
             # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
             # reads surface.reason for the placeholder message; reusing it here means the
@@ -16215,7 +16236,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
                        "partition by native expirationDate -> compute_exposures_by_strike per expiry "
                        "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
-        })
+        }, ticker, tk))
 
     # Current Gamma may NEVER use banked_morning_reference (operator 2026-09-17).
     # Historical morning Gamma lives only on /api/exposure/history.
@@ -16225,7 +16246,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         if isinstance(cached, dict) and cached.get("source") == "banked_morning_reference":
             _GAMMA_SURFACE_CACHE.pop(tk, None)
         else:
-            return JSONResponse(cached)
+            return JSONResponse(_stamp_gamma_ticker_identity(cached, ticker, tk))
     # #1-A: separate the two truths the UI must not conflate.
     #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
     #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
@@ -16282,7 +16303,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                    "requested": _requested, "on_board": _on_board,
                    "reason": f"gamma-surface read failed: {e}"}
     _GAMMA_SURFACE_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
+    return JSONResponse(_stamp_gamma_ticker_identity(payload, ticker, tk))
 
 
 @app.get("/api/exposure/history")
@@ -16713,10 +16734,10 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
         cached = terrain_cache_get(tk)
     if cached is not None:
         # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
-        return _reprice_cached_terrain(cached, tk)
+        return _stamp_current_spot_identity(_reprice_cached_terrain(cached, tk), tk)
     spot, spot_source, spot_ts = resolve_spot(tk)
     _why = _terrain_refresh_last_error.get(tk)
-    return compute_terrain(tk, None, spot).to_dict() | {
+    return _stamp_current_spot_identity(compute_terrain(tk, None, spot).to_dict() | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
         # unexplained shrug is how $SPX stayed dark for a session.
@@ -16729,7 +16750,7 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
         # fields while SPY returned all five. A flag a consumer must parse English to discover
         # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
         **terrain_staleness(None, tk),
-    }
+    }, tk)
 
 
 def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None, float | None]:

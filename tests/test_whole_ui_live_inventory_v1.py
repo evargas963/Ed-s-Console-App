@@ -38,19 +38,19 @@ REQUIRED_INDEX_MARKET_IDS = {
 REQUIRED_LAST_PRICE_TARGETS = {
     "index.html#hPx",
     "index.html#klSpot",
-    "index.html#heatScope.current_spot",
-    "index.html#tdBody.spot",
-    "index.html#liqmBody.spot",
-    "index.html#deskRadarBody.spot",
+    "index.html#heatScope_current_spot",
+    "index.html#tdBody_spot",
+    "index.html#liqmBody_spot",
+    "index.html#deskRadarBody_spot",
     "chart.html#liveSpot",
     "exposure.html#currentSpot",
     "options.html#m-spot",
     "sse.live_quote",
 }
 REQUIRED_CLOSED_PATHS = {
-    "index.html#deskRadarBody.spot",
+    "index.html#deskRadarBody_spot",
     "index.html.contract_admission",
-    "index.html#tdBody.spot",
+    "index.html#tdBody_spot",
     "index.html#ofhBody.latest",
     "index.html#liqmBody.zones",
     "index.html#alertsList",
@@ -190,6 +190,15 @@ def test_every_index_market_id_is_inventoried() -> None:
     assert unmapped == [], f"index market ids missing from inventory: {unmapped}"
     assert "deskRadarBody" in inst_text
     assert "wl-px" in ids and "wl-chg" in ids
+
+
+def test_spot_identity_harness_enumerates_every_last_price_target() -> None:
+    core = (STATIC / "js" / "ed-core.js").read_text(encoding="utf-8")
+    for iid in REQUIRED_LAST_PRICE_TARGETS:
+        assert iid in core, f"capture inventory missing {iid}"
+    assert "function exactSpotIdentityEqual" in core
+    assert "function stampSpotIdentity" in core
+    assert "tickerStorageKey" not in core
 
 
 def test_cannot_be_live_adjudications_are_source_contracts() -> None:

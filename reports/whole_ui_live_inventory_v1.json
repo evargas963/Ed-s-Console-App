@@ -981,7 +981,7 @@
       "runtime_status": "NOT_PROVEN"
     },
     {
-      "id": "index.html#heatScope.current_spot",
+      "id": "index.html#heatScope_current_spot",
       "page": "index.html",
       "view": "options/heatmap",
       "target": "#heatScope",
@@ -1389,7 +1389,7 @@
       "runtime_status": "HISTORICAL_REFERENCE"
     },
     {
-      "id": "index.html#tdBody.spot",
+      "id": "index.html#tdBody_spot",
       "page": "index.html",
       "view": "trade-desk",
       "target": "#tdBody .fl-meta",
@@ -1491,7 +1491,7 @@
       "runtime_status": "NOT_PROVEN"
     },
     {
-      "id": "index.html#liqmBody.spot",
+      "id": "index.html#liqmBody_spot",
       "page": "index.html",
       "view": "liquidity/map",
       "target": ".liqmap-spot",
@@ -1627,7 +1627,7 @@
       "runtime_status": "NOT_PROVEN"
     },
     {
-      "id": "index.html#deskRadarBody.spot",
+      "id": "index.html#deskRadarBody_spot",
       "page": "index.html",
       "view": "desk/radar",
       "target": "#deskRadarBody td[data-last-price-gen]",

@@ -35,6 +35,18 @@
       '</tr></thead><tbody>' + rows.map(rowHtml).join('') + '</tbody></table>' +
       '<div class="fl-foot">tracked ' + esc(d.tracked) + ' · scanned ' + esc(d.scanned) +
       ' · /api/terrain/radar reprices from plane LAST_PRICE</div>';
+    var current = (st().ticker || '').toUpperCase();
+    var mine = rows.filter(function (r) { return String(r.ticker || '').toUpperCase() === current; })[0] || rows[0];
+    if (mine && window.EdSpotIdentity && window.EdSpotIdentity.stamp) {
+      window.EdSpotIdentity.stamp(h, {
+        ticker: mine.ticker,
+        last_price: mine.spot,
+        last_price_native_ts: mine.last_price_native_ts,
+        last_price_received_ts: mine.last_price_received_ts,
+        source: mine.current_spot_source || mine.spot_source,
+        generation: mine.last_price_generation
+      });
+    }
   }
 
   function loadImpl(signal) {

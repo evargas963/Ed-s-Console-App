@@ -273,19 +273,20 @@
     computed: 'COMPUTED'
   };
   // Schema fact: config/gamma_stream_coverage_eligibility_v1.json
-  // Production cells carry server.gamma_cell_has_contract_identity on
-  // stream[j].has_contract_identity. This mirror exists only for unstamped
-  // fixtures / DOM filtering and is locked by
-  // tests/test_gamma_stream_coverage_eligibility_v1.py.
+  // The server stamp is mandatory. A missing or malformed stamp is ineligible.
+  // There is no client-side identity parser.
   var STREAM_COVERAGE_ELIGIBILITY_SCHEMA = 'gamma_stream_coverage_eligibility_v1';
-  function gammaCellHasContractIdentity(pair) {
-    return !!(pair && typeof pair === 'object' && (pair.call || pair.put));
+  var _surfaceRequest = null;
+  function beginSurfaceRequest(ticker, gen) {
+    if (arguments.length === 0) {
+      _surfaceRequest = null;
+      return null;
+    }
+    _surfaceRequest = { ticker: ticker == null ? '' : String(ticker), gen: gen };
+    return _surfaceRequest;
   }
   function cellHasContractIdentity(row, colIdx, cellState) {
-    if (cellState && Object.prototype.hasOwnProperty.call(cellState, 'has_contract_identity')) {
-      return cellState.has_contract_identity === true;
-    }
-    return gammaCellHasContractIdentity((row && row.contracts && row.contracts[colIdx]) || {});
+    return !!(cellState && cellState.has_contract_identity === true);
   }
 
   function canonicalCurrentSpot(surface) {
@@ -413,8 +414,7 @@
   }
 
   function renderSurface(host, surface) {
-    if (window.EdShell && window.EdShell.tickerStorageKey && surface &&
-        !surfaceTickerAdmitted(surface)) {
+    if (!surfaceTickerAdmitted(surface)) {
       rejectForeignGammaSurface(host, surface,
         'response ticker does not match the current symbol');
       return;
@@ -430,6 +430,7 @@
     if (surface && surface.source === 'banked_morning_reference') {
       surface = {
         ticker: surface.ticker, symbol: surface.symbol || surface.ticker,
+        requested_ticker: surface.requested_ticker,
         available: false, live: false, stale: true, source: 'unavailable',
         warming: surface.warming, requested: surface.requested, on_board: surface.on_board,
         et_date: surface.et_date,
@@ -438,6 +439,7 @@
     } else if (surface && surface.available !== false && currentSpotUnusable(surface)) {
       surface = {
         ticker: surface.ticker, symbol: surface.symbol || surface.ticker,
+        requested_ticker: surface.requested_ticker,
         available: false, live: false, stale: true, source: 'unavailable',
         warming: surface.warming, requested: surface.requested, on_board: surface.on_board,
         et_date: surface.et_date,
@@ -1056,8 +1058,8 @@
     var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, unavailable: 0 };
     host = host || document.getElementById('heatBody');
     // Eligible stream cells only: the server stamp (data-has-contract-identity=1)
-    // is the same predicate as server.gamma_cell_has_contract_identity. NO CONTRACT
-    // cells remain labelled on the grid and are excluded from this denominator.
+    // is mandatory. This count is the VISIBLE DOM surface, never the canonical
+    // server total_eligible_cells. NO CONTRACT cells remain labelled and excluded.
     var cells = host ? host.querySelectorAll('.hcell[data-cell-state][data-has-contract-identity="1"]') : [];
     for (var i = 0; i < cells.length; i++) {
       var st = cells[i].getAttribute('data-cell-state');
@@ -1078,14 +1080,24 @@
 
   function stampHeatScopeSpotIdentity(el, surface) {
     if (!el) return;
-    var observedAt = Date.now() / 1000;
-    el.setAttribute('data-spot-ticker', surface && surface.ticker != null ? String(surface.ticker) : '');
-    el.setAttribute('data-last-price', isFinite(canonicalCurrentSpot(surface)) ? String(canonicalCurrentSpot(surface)) : '');
-    el.setAttribute('data-last-price-native-ts', surface && surface.last_price_native_ts != null ? String(surface.last_price_native_ts) : '');
-    el.setAttribute('data-last-price-recv-ts', surface && surface.last_price_received_ts != null ? String(surface.last_price_received_ts) : '');
-    el.setAttribute('data-spot-source', surface && surface.current_spot_source != null ? String(surface.current_spot_source) : '');
-    el.setAttribute('data-spot-generation', surface && surface.current_spot_generation != null ? String(surface.current_spot_generation) : '');
-    el.setAttribute('data-observed-at', String(observedAt));
+    var stamp = window.EdSpotIdentity && window.EdSpotIdentity.stamp;
+    var obs = {
+      ticker: surface && surface.ticker != null ? surface.ticker : '',
+      last_price: isFinite(canonicalCurrentSpot(surface)) ? canonicalCurrentSpot(surface) : '',
+      last_price_native_ts: surface ? surface.last_price_native_ts : null,
+      last_price_received_ts: surface ? surface.last_price_received_ts : null,
+      source: surface ? surface.current_spot_source : '',
+      generation: surface ? surface.current_spot_generation : null
+    };
+    if (stamp) stamp(el, obs);
+    else {
+      el.setAttribute('data-spot-ticker', obs.ticker != null ? String(obs.ticker) : '');
+      el.setAttribute('data-last-price', obs.last_price !== '' ? String(obs.last_price) : '');
+      el.setAttribute('data-last-price-native-ts', obs.last_price_native_ts != null ? String(obs.last_price_native_ts) : '');
+      el.setAttribute('data-last-price-recv-ts', obs.last_price_received_ts != null ? String(obs.last_price_received_ts) : '');
+      el.setAttribute('data-spot-source', obs.source != null ? String(obs.source) : '');
+      el.setAttribute('data-spot-generation', obs.generation != null ? String(obs.generation) : '');
+    }
   }
   function spotIdentityFromSurface(surface, observedAt) {
     return {
@@ -1099,19 +1111,31 @@
       observation_time: observedAt != null ? observedAt : (Date.now() / 1000)
     };
   }
+  function _nonEmptyString(v) {
+    return typeof v === 'string' && v.trim() !== '';
+  }
   function surfaceTickerAdmitted(surface, requestTicker, requestGen) {
     var ES = window.EdShell;
-    if (!ES || !ES.tickerStorageKey) return true;
-    if (requestGen != null && ES.getTickerGeneration && ES.getTickerGeneration() !== requestGen) return false;
-    if (!surface || surface.ticker == null || String(surface.ticker).trim() === '') {
-      return requestTicker == null && requestGen == null;
+    if (!ES || typeof ES.getState !== 'function' || typeof ES.getTickerGeneration !== 'function') {
+      return false;
     }
-    var key = ES.tickerStorageKey;
-    var resp = key(surface.ticker);
-    if (!resp) return false;
-    if (requestTicker != null && resp !== key(requestTicker)) return false;
-    var current = ES.getState ? ((ES.getState().ticker) || '') : '';
-    if (current && resp !== key(current)) return false;
+    var reqTicker = requestTicker;
+    var reqGen = requestGen;
+    if (reqTicker == null || reqGen == null) {
+      if (!_surfaceRequest) return false;
+      if (reqTicker == null) reqTicker = _surfaceRequest.ticker;
+      if (reqGen == null) reqGen = _surfaceRequest.gen;
+    }
+    if (!_nonEmptyString(reqTicker)) return false;
+    if (reqGen == null || !isFinite(Number(reqGen))) return false;
+    if (ES.getTickerGeneration() !== reqGen) return false;
+    var current = ES.getState() ? ES.getState().ticker : null;
+    if (!_nonEmptyString(current) || current !== reqTicker) return false;
+    if (!surface || typeof surface !== 'object') return false;
+    if (!_nonEmptyString(surface.ticker)) return false;
+    if (typeof surface.requested_ticker !== 'string') return false;
+    if (surface.requested_ticker !== reqTicker) return false;
+    if (surface.requested_ticker !== current) return false;
     return true;
   }
   function rejectForeignGammaSurface(host, surface, reason) {
@@ -1207,7 +1231,8 @@
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
     var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || 'SPY') === ticker;
+    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap'
+      && _nonEmptyString(s.ticker) && s.ticker === ticker;
   }
   // Only the actual network fetch is coalesced. The "leaving the heatmap" cleanup below is
   // synchronous and state-authority-visible (it releases streamed-contract demand) -- it must
@@ -1223,8 +1248,17 @@
   function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
-    var requestGen = (window.EdShell && window.EdShell.getTickerGeneration)
-      ? window.EdShell.getTickerGeneration() : 0;
+    if (!window.EdShell || typeof window.EdShell.getState !== 'function'
+        || typeof window.EdShell.getTickerGeneration !== 'function') {
+      rejectForeignGammaSurface(host, {}, 'missing EdShell identity authority');
+      return;
+    }
+    if (!_nonEmptyString(ticker)) {
+      rejectForeignGammaSurface(host, {}, 'malformed ticker');
+      return;
+    }
+    var requestGen = window.EdShell.getTickerGeneration();
+    beginSurfaceRequest(ticker, requestGen);
     host.setAttribute('aria-busy', 'true');
     return fetch('/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -1239,7 +1273,10 @@
       })
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;   // superseded by a newer ticker -- that load renders instead
-        if (stillCurrent(ticker)) renderSurface(host, { ticker: ticker, available: false, reason: 'no console serving /api/options/gamma-surface' });
+        if (stillCurrent(ticker)) renderSurface(host, {
+          ticker: ticker, requested_ticker: ticker, available: false,
+          reason: 'no console serving /api/options/gamma-surface'
+        });
       });
   }
   var _pendingTicker = null;
@@ -1260,7 +1297,11 @@
       ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from the view just left
       return;
     }
-    var nextTicker = st.ticker || 'SPY';
+    if (!_nonEmptyString(st.ticker)) {
+      rejectForeignGammaSurface(host, {}, 'malformed ticker');
+      return;
+    }
+    var nextTicker = st.ticker;
     // Switching ticker while staying on the heatmap used to keep the OLD ticker's
     // demanded contracts posted under the NEW ticker's context until the replacement
     // surface arrived. Clear immediately — same instant discipline Strike Detail uses.
@@ -1341,7 +1382,7 @@
     classifyHeatmapCell: classifyHeatmapCell,
     tallyVisibleValueStates: tallyVisibleValueStates,
     columnValueLabel: columnValueLabel,
-    gammaCellHasContractIdentity: gammaCellHasContractIdentity,
+    beginSurfaceRequest: beginSurfaceRequest,
     cellHasContractIdentity: cellHasContractIdentity,
     visibleCellCoverage: _visibleCellCoverage,
     surfaceTickerAdmitted: surfaceTickerAdmitted,

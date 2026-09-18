@@ -31,7 +31,7 @@ const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 99.8, 100.3, 100.5, 100.
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
 const LIVE = { spot: 100, spot_disp: '100.00', bid: 99.99, ask: 100.01, session_label: 'RTH',
   analytics_lightweight: { spy_chg_pct: 0.1 }, streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 300 } };
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, current_spot: 100, current_spot_state: 'live', spot: 100, source: 'terrain_live_cache',
+const SURFACE = { ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', available: true, current_spot: 100, current_spot_state: 'live', spot: 100, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [99, 100, 101],
   cells: [

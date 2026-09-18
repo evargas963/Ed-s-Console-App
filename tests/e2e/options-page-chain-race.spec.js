@@ -101,7 +101,7 @@ test('#m-spot paints LAST_PRICE even when /api/chain is delayed, and UNAVAILABLE
     });
     await page.goto('/options');
     await expect(page.locator('#m-spot')).toHaveText('650.25', { timeout: 800 });
-    await expect(page.locator('#m-spot')).toHaveAttribute('data-last-price-generation', '9');
+    await expect(page.locator('#m-spot')).toHaveAttribute('data-spot-generation', '9');
     await page.unroute('**/api/spot*');
     await page.route('**/api/spot*', (r) => r.fulfill({ status: 503, body: 'no' }));
     await page.goto('/options');

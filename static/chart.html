@@ -199,6 +199,7 @@
      menus anchor under their buttons. -->
 <div id="top">
   <input id="tk" value="SPY" spellcheck="false">
+  <span id="lpIdentity" hidden></span>
   <span id="livedot" title="feed state"></span>
   <span id="regchip">…</span>
   <span id="narrator">loading…</span>
@@ -867,6 +868,7 @@ async function load() {
       liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
     }
     chartTicker = tk;
+    pollSpot();
     // RC-164: this line referenced `_chartCommitInflight`, declared by an Enter-key commit guard
     // that is NOT in this file — I stripped that guard's hunk from my commits by matching the
     // string `commitChartTicker`, and this line does not contain it, so the REFERENCE survived
@@ -2124,6 +2126,16 @@ async function pollSpot() {
       if (asOf) liveSpotAsOf = asOf;
       liveSpotSource = j.spot_source != null ? String(j.spot_source) : null;
       liveSpot = Number(j.spot);
+      var liveEl = document.getElementById('lpIdentity');
+      if (liveEl) {
+        liveEl.textContent = String(liveSpot);
+        liveEl.setAttribute('data-spot-ticker', j.ticker != null ? String(j.ticker) : tk);
+        liveEl.setAttribute('data-last-price', String(liveSpot));
+        liveEl.setAttribute('data-last-price-native-ts', j.last_price_native_ts != null ? String(j.last_price_native_ts) : '');
+        liveEl.setAttribute('data-last-price-recv-ts', j.last_price_received_ts != null ? String(j.last_price_received_ts) : '');
+        liveEl.setAttribute('data-spot-source', j.current_spot_source != null ? String(j.current_spot_source) : (liveSpotSource || ''));
+        liveEl.setAttribute('data-spot-generation', j.last_price_generation != null ? String(j.last_price_generation) : '');
+      }
       noteSpotTick(liveSpot);
       // Age label + FORCES pill must tick with the binding, not wait for the 15s cycle.
       const _mage = document.getElementById('spotage');

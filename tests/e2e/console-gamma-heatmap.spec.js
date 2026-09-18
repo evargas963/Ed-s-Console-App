@@ -30,10 +30,10 @@ function tickerFromUrl(url) {
 }
 function withRequestTicker(url, payload) {
   const tk = tickerFromUrl(url);
-  return Object.assign({}, payload, { ticker: tk, symbol: tk });
+  return Object.assign({}, payload, { ticker: tk, symbol: tk, requested_ticker: tk });
 }
 const SURFACE = {
-  ticker: 'SPY', symbol: 'SPY', available: true, current_spot: 583.41, current_spot_state: 'live',
+  ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', available: true, current_spot: 583.41, current_spot_state: 'live',
   current_spot_source: 'plane', current_spot_generation: 7, last_price_generation: 7,
   last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
   spot: 583.41,
@@ -55,7 +55,7 @@ const SURFACE = {
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
 const SURFACE_QQQ = Object.assign({}, SURFACE, {
-  ticker: 'QQQ', symbol: 'QQQ', current_spot: 480.25, spot: 480.25,
+  ticker: 'QQQ', symbol: 'QQQ', requested_ticker: 'QQQ', current_spot: 480.25, spot: 480.25,
   cells: [
     { strike: 580, gex: [-80000, null],
       contracts: [{ call: 'QQQ_580C1', put: 'QQQ_580P1' }, { call: 'QQQ_580C2', put: 'QQQ_580P2' }] },
@@ -110,7 +110,7 @@ function surfaceWithStreamState(perCol) {
       : states.every(function (s) { return s === 'live'; }) ? 'live'
       : states.some(function (s) { return s === 'live'; }) ? 'partial'
       : states.some(function (s) { return s === 'stale'; }) ? 'stale' : 'unavailable';
-    var out = { state: cellState };
+    var out = { state: cellState, has_contract_identity: !!(legs.call || legs.put) };
     if (legs.call) out.call = leg(legs.call, 'C' + i);
     if (legs.put) out.put = leg(legs.put, 'P' + i);
     return out;
@@ -122,7 +122,9 @@ function surfaceWithStreamState(perCol) {
   });
 }
 const TERRAIN = {
-  ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
+  ticker: 'SPY', spot: 583.41, last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+  last_price_generation: 7, current_spot_source: 'plane', spot_source: 'plane',
+  gamma_flip: 582.90, call_wall: 586, put_wall: 580,
   absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
   regime: 'LONG_GAMMA_CHOP', levels_stale: false,
 };
@@ -141,7 +143,9 @@ const PLANE = { session: 'RTH', versions: Object.assign({}, BASE_VERSION) };
 function expiryOf(url) { return decodeURIComponent((url.match(/[?&]expiry=([^&]+)/) || [])[1] || ''); }
 function liveNow(url) {
   const exp = expiryOf(url);
-  return { spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: PLANE.session,
+  return { ticker: 'SPY', spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: PLANE.session,
+    last_price_generation: 7, last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+    current_spot_source: 'plane',
     selected_exp: exp || null,
     analytics_lightweight: { spy_chg_pct: 0.38, analytics_version: PLANE.versions[exp] },
     streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 } };
@@ -174,7 +178,7 @@ function analyticsFor(url) {
 async function isolateEdStream(page) {
   await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
     status: 200, contentType: 'application/json',
-    body: JSON.stringify({ available: false, source: 'unavailable', reason: 'test isolates EdStream' }),
+    body: JSON.stringify({ ticker: 'SPY', requested_ticker: 'SPY', available: false, source: 'unavailable', reason: 'test isolates EdStream' }),
   }));
 }
 
@@ -184,12 +188,32 @@ async function intercept(page) {
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = withRequestTicker(url, SURFACE);
     else if (url.includes('/api/analytics/state')) body = analyticsFor(url);
+    else if (url.includes('/api/terrain/radar')) body = {
+      tracked: 1, scanned: 1,
+      rows: [{ ticker: 'SPY', spot: 583.41, spot_state: 'live', spot_source: 'plane',
+        current_spot_source: 'plane', last_price_generation: 7,
+        last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6 }],
+    };
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
     else if (url.includes('/api/live/state')) body = liveNow(url);
+    else if (url.includes('/api/spot')) body = {
+      ticker: 'SPY', spot: 583.41, spot_source: 'plane', current_spot_source: 'plane',
+      last_price_generation: 7, last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+    };
+    else if (url.includes('/api/levels')) body = {
+      ticker: 'SPY', spot: 583.41, spot_source: 'plane', current_spot_source: 'plane',
+      last_price_generation: 7, last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+      levels: [],
+    };
+    else if (url.includes('/api/liquidity-snapshot')) body = {
+      snapshot_type: 'live',
+      zones: [{ zone_type: 'support_liquidity', zone_low: 580, zone_high: 582, confluence_score: 1 }],
+    };
+    else if (url.includes('/api/order-flow/microstructure')) body = {};
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -425,7 +449,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
-          ticker: tk, symbol: tk,
+          ticker: tk, symbol: tk, requested_ticker: tk,
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
           cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: 1,
@@ -479,7 +503,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/options/gamma-surface**', (route) => {
       const body = available
         ? Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }], cells: [{ strike: 583, gex: [1000], contracts: [{ call: 'C583', put: 'P583' }] }] })
-        : { ticker: 'SPY', symbol: 'SPY', available: false, reason: 'not currently active for this symbol' };
+        : { ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', available: false, reason: 'not currently active for this symbol' };
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -589,6 +613,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // demand would be empty and this test could not tell "no push happened" apart from
     // "the surface never carried contracts to demand in the first place".
     const REAL = Object.assign({}, REAL_RAW, {
+      ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY',
       source: 'terrain_live_cache', live: true, available: true, stale: false,
       current_spot: REAL_RAW.spot, current_spot_state: 'live',
       cells: REAL_RAW.cells.map((c) => Object.assign({}, c, {
@@ -1083,6 +1108,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
     const stamped = Object.assign({}, REAL, {
+      ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY',
       source: 'terrain_live_cache', live: true, available: true, stale: false,
       current_spot: REAL.spot, current_spot_state: 'live',
       session_date_et: '2026-09-10', prior_session: false,
@@ -1279,7 +1305,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('visible coverage excludes NO CONTRACT and still reaches LIVE when eligible cells are live', async ({ page }) => {
     const surf = {
-      ticker: 'SPY', symbol: 'SPY', available: true, current_spot: 100, current_spot_state: 'live',
+      ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', available: true, current_spot: 100, current_spot_state: 'live',
       current_spot_source: 'plane', current_spot_generation: 3, last_price_generation: 3,
       last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
       spot: 100, source: 'terrain_live_cache', live: true, stale: false, complete: false,
@@ -1334,42 +1360,250 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(cov.live_pct).toBe(100);
   });
 
-  test('spot identity consumers agree on the same LAST_PRICE generation', async ({ page }) => {
-    await page.route('**/api/live/state**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({
-        ticker: 'SPY', spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42,
-        spot_state: 'live', last_price_generation: 7, last_price_native_ts: 1757000200.5,
-        last_price_received_ts: 1757000200.6, current_spot_source: 'plane',
-        session_label: 'RTH',
-        analytics_lightweight: { spy_chg_pct: 0.38, analytics_version: 7 },
-        streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 },
-      }),
+  test('spot identity consumers agree on exact LAST_PRICE identity fields', async ({ page }) => {
+    const expected = {
+      ticker: 'SPY', last_price: 583.41, last_price_native_ts: 1757000200.5,
+      last_price_received_ts: 1757000200.6, source: 'plane', generation: 7,
+    };
+    await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
+      status: 200, contentType: 'text/event-stream',
+      body: 'event: l1_projection\ndata: ' + JSON.stringify({
+        l1_sse_schema: 1, scope: { ticker: 'SPY', expiry: '__auto__' },
+        l1_generation: 7,
+        payload: {
+          ticker: 'SPY', spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42,
+          last_price_generation: 7, last_price_native_ts: 1757000200.5,
+          last_price_received_ts: 1757000200.6, current_spot_source: 'plane',
+          spot_state: 'live',
+        },
+      }) + '\n\n',
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
-    const snap = await page.evaluate(() => {
-      const first = window.EdShell.captureSpotConsumers();
-      const gens = first.consumers.map((c) => c.generation).filter((g) => g != null);
-      if (new Set(gens).size > 1) return { retried: true, ...window.EdShell.captureSpotConsumers() };
-      return { retried: false, ...first };
-    });
-    expect(snap.consumers.length).toBeGreaterThanOrEqual(2);
-    const gens = new Set(snap.consumers.map((c) => c.generation).filter((g) => g != null));
-    expect(gens.size).toBe(1);
-    expect([...gens][0]).toBe(7);
-    const priced = snap.consumers.filter((c) => c.last_price != null);
-    expect(priced.length).toBeGreaterThanOrEqual(2);
-    const value = priced[0].last_price;
-    for (const c of priced) {
-      expect(c.last_price).toBe(value);
-      expect(c.ticker).toBeTruthy();
-      expect(c.last_price_native_ts).toBe(1757000200.5);
-      expect(c.last_price_received_ts).toBe(1757000200.6);
-      expect(c.generation).toBe(7);
-      expect(c.observation_time).toBeGreaterThan(0);
-      expect(c.source).toBeTruthy();
+    await expect(page.locator('#hPx')).toHaveAttribute('data-spot-generation', '7');
+    await page.evaluate(() => window.EdShell.setWorkspace('trade-desk'));
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.getElementById('tdBody');
+      return el && el.getAttribute('data-spot-generation');
+    })).toBe('7');
+    await page.evaluate(() => window.EdShell.setWorkspace('liquidity'));
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.getElementById('liqmBody');
+      return el && el.getAttribute('data-spot-generation');
+    })).toBe('7');
+    await page.evaluate(() => window.EdShell.setWorkspace('desk'));
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.getElementById('deskRadarBody');
+      return el && el.getAttribute('data-spot-generation');
+    })).toBe('7');
+    const snap = await page.evaluate(() => window.EdShell.captureSpotConsumers());
+    expect(snap.inventory).toEqual(expect.arrayContaining([
+      'index.html#hPx', 'index.html#klSpot', 'index.html#heatScope_current_spot',
+      'index.html#tdBody_spot', 'index.html#liqmBody_spot', 'index.html#deskRadarBody_spot',
+      'chart.html#liveSpot', 'exposure.html#currentSpot', 'options.html#m-spot', 'sse.live_quote',
+    ]));
+    const byId = {};
+    for (const c of snap.consumers) byId[c.consumer] = c;
+    for (const id of [
+      'index.html#hPx', 'index.html#klSpot', 'index.html#heatScope_current_spot',
+      'index.html#tdBody_spot', 'index.html#liqmBody_spot', 'index.html#deskRadarBody_spot',
+      'sse.live_quote',
+    ]) {
+      const c = byId[id];
+      expect(c, id).toBeTruthy();
+      expect(c.ticker).toBe(expected.ticker);
+      expect(c.last_price).toBe(expected.last_price);
+      expect(c.last_price_native_ts).toBe(expected.last_price_native_ts);
+      expect(c.last_price_received_ts).toBe(expected.last_price_received_ts);
+      expect(c.source).toBe(expected.source);
+      expect(c.generation).toBe(expected.generation);
+      expect(c.observation_time).toBeUndefined();
     }
+    const equal = await page.evaluate(() => {
+      const snap = window.EdShell.captureSpotConsumers();
+      const priced = snap.consumers.filter((c) => c.last_price != null && c.generation != null);
+      return priced.slice(1).every((c) => window.EdSpotIdentity.exactEqual(priced[0], c));
+    });
+    expect(equal).toBe(true);
+
+    async function readPageSpot(path, elId) {
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
+      await expect.poll(async () => page.locator('#' + elId).getAttribute('data-spot-generation')).toBe('7');
+      return page.evaluate((id) => {
+        const el = document.getElementById(id);
+        return {
+          ticker: el.getAttribute('data-spot-ticker'),
+          last_price: Number(el.getAttribute('data-last-price')),
+          last_price_native_ts: Number(el.getAttribute('data-last-price-native-ts')),
+          last_price_received_ts: Number(el.getAttribute('data-last-price-recv-ts')),
+          source: el.getAttribute('data-spot-source'),
+          generation: Number(el.getAttribute('data-spot-generation')),
+        };
+      }, elId);
+    }
+    for (const [path, elId] of [['/chart', 'lpIdentity'], ['/exposure', 'currentSpot'], ['/options', 'm-spot']]) {
+      const obs = await readPageSpot(path, elId);
+      expect(obs.ticker).toBe(expected.ticker);
+      expect(obs.last_price).toBe(expected.last_price);
+      expect(obs.last_price_native_ts).toBe(expected.last_price_native_ts);
+      expect(obs.last_price_received_ts).toBe(expected.last_price_received_ts);
+      expect(obs.source).toBe(expected.source);
+      expect(obs.generation).toBe(expected.generation);
+    }
+  });
+
+  test('unequal source ticker or timestamp across spot consumers is detected', async ({ page }) => {
+    await page.route('**/api/live/state**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        ticker: 'SPY', spot: 583.41, spot_disp: '583.41',
+        last_price_generation: 7, last_price_native_ts: 1757000200.5,
+        last_price_received_ts: 1757000200.6, current_spot_source: 'plane',
+        session_label: 'RTH', analytics_lightweight: {}, streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 },
+      }),
+    }));
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, {
+        current_spot_source: 'rest', last_price_native_ts: 1757000999.0,
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    const verdict = await page.evaluate(() => {
+      const snap = window.EdShell.captureSpotConsumers();
+      const header = snap.consumers.find((c) => c.consumer === 'index.html#hPx');
+      const heat = snap.consumers.find((c) => c.consumer === 'index.html#heatScope_current_spot');
+      return {
+        header, heat,
+        equal: !!(header && heat && window.EdSpotIdentity.exactEqual(header, heat)),
+      };
+    });
+    expect(verdict.header).toBeTruthy();
+    expect(verdict.heat).toBeTruthy();
+    expect(verdict.equal).toBe(false);
+    expect(verdict.header.source).not.toBe(verdict.heat.source);
+    expect(verdict.header.last_price_native_ts).not.toBe(verdict.heat.last_price_native_ts);
+  });
+
+  test('missing server eligibility stamp is ineligible on the visible surface', async ({ page }) => {
+    const surf = Object.assign({}, SURFACE, {
+      strikes: [100], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+      cells: [{
+        strike: 100, gex: [5000], contracts: [{ call: 'C100', put: 'P100' }],
+        value_states: ['computed'],
+        stream: [{ state: 'live' }],
+      }],
+    });
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(withRequestTicker(route.request().url(), surf)),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell')).toHaveCount(1);
+    await expect(page.locator('.hcell[data-has-contract-identity="1"]')).toHaveCount(0);
+    const cov = await page.evaluate(() => window.EdGamma.visibleCellCoverage(document.getElementById('heatBody')));
+    expect(cov.scope).toBe('visible_surface');
+    expect(cov.total_visible_cells).toBe(0);
+    expect(cov.live).toBe(0);
+  });
+
+  test('malformed non-string contract identities do not become eligible from a client parser', async ({ page }) => {
+    const surf = Object.assign({}, SURFACE, {
+      strikes: [100], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+      cells: [{
+        strike: 100, gex: [5000],
+        contracts: [{ call: 123, put: { symbol: 'P100' } }],
+        value_states: ['computed'],
+        stream: [{ state: 'live', has_contract_identity: 'true' }],
+      }],
+    });
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(withRequestTicker(route.request().url(), surf)),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell')).toHaveCount(1);
+    await expect(page.locator('.hcell[data-has-contract-identity="1"]')).toHaveCount(0);
+    const cov = await page.evaluate(() => window.EdGamma.visibleCellCoverage(document.getElementById('heatBody')));
+    expect(cov.total_visible_cells).toBe(0);
+  });
+
+  test('missing payload ticker rejects the surface', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, { ticker: undefined })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .placeholder')).toBeVisible();
+    await expect(page.locator('.hcell')).toHaveCount(0);
+  });
+
+  test('missing identity authority rejects render and demand', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    const out = await page.evaluate(() => {
+      const host = document.getElementById('heatBody');
+      window.EdShell = null;
+      window.EdGamma.renderSurface(host, {
+        ticker: 'SPY', requested_ticker: 'SPY', available: true,
+        current_spot: 583.41, current_spot_state: 'live',
+        strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2, expired: false }],
+        cells: [{ strike: 583, gex: [1], contracts: [{ call: 'C', put: 'P' }] }],
+      });
+      return {
+        placeholder: !!host.querySelector('.placeholder'),
+        cells: host.querySelectorAll('.hcell').length,
+      };
+    });
+    expect(out.placeholder).toBe(true);
+    expect(out.cells).toBe(0);
+  });
+
+  test('direct render without request context is rejected', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    const out = await page.evaluate(() => {
+      window.EdGamma.beginSurfaceRequest();
+      const host = document.getElementById('heatBody');
+      window.EdGamma.renderSurface(host, {
+        ticker: 'SPY', requested_ticker: 'SPY', available: true,
+        current_spot: 583.41, current_spot_state: 'live',
+        strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2, expired: false }],
+        cells: [{ strike: 583, gex: [1], contracts: [{ call: 'C', put: 'P' }] }],
+      });
+      return {
+        placeholder: !!host.querySelector('.placeholder'),
+        cells: host.querySelectorAll('.hcell').length,
+      };
+    });
+    expect(out.placeholder).toBe(true);
+    expect(out.cells).toBe(0);
+  });
+
+  test('missing requested_ticker or identity authority rejects the surface', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, { requested_ticker: undefined })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .placeholder')).toBeVisible();
+    await expect(page.locator('.hcell')).toHaveCount(0);
+  });
+
+  test('SPX vs $SPX requested_ticker drift is rejected without a JS normalizer', async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', '$SPX'); } catch (e) {} });
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, {
+        ticker: '$SPX', symbol: '$SPX', requested_ticker: 'SPX',
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .placeholder')).toBeVisible();
+    await expect(page.locator('.hcell')).toHaveCount(0);
+    const hasNormalizer = await page.evaluate(() => typeof window.EdShell.tickerStorageKey === 'function');
+    expect(hasNormalizer).toBe(false);
   });
 
   test('header consumes the canonical L1 SSE push (real server envelope) when available', async ({ page }) => {
@@ -1614,12 +1848,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       var banner = function () { var b = host.querySelector('.heat-banner'); return b ? b.textContent : ''; };
       var scope = function () { return document.getElementById('heatScope').textContent; };
       var live = function (age, stale) {
-        return { available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, current_spot: 583.41, current_spot_state: 'live', spot: 583.41,
+        return { ticker: 'SPY', requested_ticker: 'SPY', available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, current_spot: 583.41, current_spot_state: 'live', spot: 583.41,
           complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
           coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], contracts: [{ call: 'C583', put: 'P583' }] }] };
       };
       var banked = function (etd, warming) {   // current heatmap must refuse banked cells
-        return { available: false, source: 'unavailable', live: false, stale: true, warming: warming, requested: true, on_board: true,
+        return { ticker: 'SPY', requested_ticker: 'SPY', available: false, source: 'unavailable', live: false, stale: true, warming: warming, requested: true, on_board: true,
           reason: 'historical morning Gamma is not the current heatmap',
           et_date: etd };
       };
@@ -1664,7 +1898,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({
-        ticker: 'SPY', symbol: 'SPY',
+        ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY',
         available: false, source: 'unavailable', live: false, stale: true,
         warming: false, requested: true, on_board: false,
         reason: 'no live terrain surface and no banked wide chain',
@@ -2772,7 +3006,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
-          ticker: tk, symbol: tk,
+          ticker: tk, symbol: tk, requested_ticker: tk,
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
           cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }], surface_seq: seq,
         })),

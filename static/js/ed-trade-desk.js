@@ -443,8 +443,7 @@
       // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
       // instead of silently substituting a second source.
       var spot = spotD && spotD.spot != null ? Number(spotD.spot) : NaN;
-      var gen = (spotD && spotD.last_price_generation != null) ? spotD.last_price_generation
-        : (levelsD && levelsD.last_price_generation);
+      var gen = (spotD && spotD.last_price_generation != null) ? spotD.last_price_generation : null;
       var ident = (isFinite(spot) ? 'spot ' + num(spot) : '') +
         (gen != null ? ' · LAST_PRICE gen ' + esc(gen) : '');
       h.innerHTML =
@@ -456,6 +455,16 @@
         '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
         'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
         'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
+      if (window.EdSpotIdentity && window.EdSpotIdentity.stamp) {
+        window.EdSpotIdentity.stamp(h, {
+          ticker: tk,
+          last_price: isFinite(spot) ? spot : null,
+          last_price_native_ts: spotD && spotD.last_price_native_ts,
+          last_price_received_ts: spotD && spotD.last_price_received_ts,
+          source: spotD && (spotD.current_spot_source || spotD.spot_source),
+          generation: gen
+        });
+      }
       wireMigrationChips(h, tk);
       var migEl = document.getElementById('tdMigration');
       if (migEl && _lastMig) wireMigInteraction(migEl, _lastMig.ascStrikes, _lastMig.win, tk);

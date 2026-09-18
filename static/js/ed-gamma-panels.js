@@ -84,6 +84,16 @@
       return;
     }
     txt('klSpot', px(d.spot));
+    if (window.EdSpotIdentity && window.EdSpotIdentity.stamp) {
+      window.EdSpotIdentity.stamp(document.getElementById('klSpot'), {
+        ticker: d.ticker != null ? d.ticker : ticker(),
+        last_price: d.spot,
+        last_price_native_ts: d.last_price_native_ts,
+        last_price_received_ts: d.last_price_received_ts,
+        source: d.current_spot_source || d.spot_source,
+        generation: d.last_price_generation
+      });
+    }
     txt('klFlip', px(d.gamma_flip));
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));

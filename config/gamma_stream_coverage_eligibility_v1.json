@@ -1,11 +1,11 @@
 {
   "schema": "gamma_stream_coverage_eligibility_v1",
   "owner": "server.gamma_cell_has_contract_identity",
-  "rule": "A heatmap cell is stream-coverage eligible iff at least one of contracts.call or contracts.put is a real contract identity. NO CONTRACT cells stay labelled and are excluded from the denominator. ZERO OI cells are real contracts and remain included.",
+  "validator": "instrument_identity.vendor_option_root",
+  "rule": "A heatmap cell is stream-coverage eligible iff the server stamps has_contract_identity=true. That stamp is true iff vendor_option_root(call) or vendor_option_root(put) is non-empty (21-character OSI). The client consumes only that stamp; a missing or malformed stamp is ineligible. NO CONTRACT cells stay labelled and are excluded. ZERO OI cells with a validated OSI remain included.",
   "payload_field": "has_contract_identity",
   "dom_attribute": "data-has-contract-identity",
   "eligible_value": "1",
   "ineligible_value": "0",
-  "mirror_owner": "static/js/ed-gamma.js::gammaCellHasContractIdentity",
-  "mirror_reason": "Visible Auto/Wider/All scope is decided only on the client. Production cells carry the server stamp; unstamped fixtures and DOM filtering apply the same predicate. The mirror is locked by tests/test_gamma_stream_coverage_eligibility_v1.py."
+  "client_rule": "cellHasContractIdentity returns true only when stream[j].has_contract_identity === true. There is no client-side identity parser."
 }

@@ -19,6 +19,20 @@ vm.runInThisContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'),
 
 const G = globalThis.EdGamma;
 assert(G && typeof G.formatUsd === 'function' && typeof G.cellStyle === 'function', 'EdGamma missing');
+globalThis.window = globalThis;
+let gen = 1;
+function installShell(ticker) {
+  globalThis.EdShell = {
+    getState() { return { ticker: ticker, workspace: 'options', subview: 'gamma', view: 'heatmap' }; },
+    getTickerGeneration() { return gen; },
+    setStrike() {},
+  };
+  G.beginSurfaceRequest(ticker, gen);
+}
+function withId(surf, ticker) {
+  return Object.assign({}, surf, { ticker: ticker, requested_ticker: ticker });
+}
+installShell('SPY');
 
 // ---- E: value formatting is formatting-only and equals the backend number ----
 assert.strictEqual(G.formatUsd(958600), '$958.6K');
@@ -73,8 +87,8 @@ global.document = {
   querySelectorAll: () => [],
   addEventListener: () => {},
 };
-global.window = {};
 global.getComputedStyle = () => ({ getPropertyValue: () => '' });
+installShell('SPY');
 
 function makeHost() {
   return { innerHTML: '', querySelector: () => null, querySelectorAll: () => [] };
@@ -85,6 +99,7 @@ const cells = strikes.map((k, i) => ({ strike: k, gex: [1000 * (i + 1)],
   contracts: [{ call: 'SPY_C_' + k, put: 'SPY_P_' + k }] }));
 const surface = {
   available: true,
+  ticker: 'SPY', requested_ticker: 'SPY',
   current_spot: 764,
   current_spot_state: 'live',
   spot: 764,
@@ -96,6 +111,7 @@ const surface = {
 };
 
 const host1 = makeHost();
+installShell('SPY');
 G.renderSurface(host1, surface);
 const rowStrikes = [...host1.innerHTML.matchAll(/data-strike="(\d+)"/g)].map((m) => Number(m[1]));
 // one data-strike per <td> per row (single expiry column here) -> one value per row, in
@@ -117,11 +133,11 @@ for (const [, strikeStr, gexStr] of rows) {
 // scopeSelect output flows through, so this proves the render loop's own reversal, not a
 // scopeSelect-specific behaviour.
 const host2 = makeHost();
-G.renderSurface(host2, { ...surface, current_spot: 200, current_spot_state: 'live', strikes: [100, 200, 300], cells: [
+G.renderSurface(host2, withId({ ...surface, current_spot: 200, current_spot_state: 'live', strikes: [100, 200, 300], cells: [
   { strike: 100, gex: [1], contracts: [{ call: 'C100', put: 'P100' }] },
   { strike: 200, gex: [2], contracts: [{ call: 'C200', put: 'P200' }] },
   { strike: 300, gex: [3], contracts: [{ call: 'C300', put: 'P300' }] },
-] });
+] }, 'SPY'));
 const rowStrikes2 = [...host2.innerHTML.matchAll(/data-strike="(\d+)"/g)].map((m) => Number(m[1]));
 assert.deepStrictEqual(rowStrikes2, [300, 200, 100]);
 
@@ -156,23 +172,23 @@ assert.throws(() => G.selectLiveHeatmap({
   cells: [{ strike: 100, gex: [1], contracts: [{ call: 'C', put: 'P' }] }],
 }, 'all', null, null, null), /no live selected-contract set/);
 const noSpotHost = makeHost();
-G.renderSurface(noSpotHost, {
+G.renderSurface(noSpotHost, withId({
   available: true, source: 'terrain_live_cache', live: true, stale: false,
   spot: 999, strikes: [100],
   expirations: [{ expiry: '2026-09-11', dte: 1, expired: false }],
   cells: [{ strike: 100, gex: [500000], contracts: [{ call: 'C100', put: 'P100' }] }],
-});
+}, 'SPY'));
 assert.ok(noSpotHost.innerHTML.includes('UNAVAILABLE'),
   'missing current_spot must fail closed even when surface.spot is present');
 assert.ok(!noSpotHost.innerHTML.includes('999'),
   'surface.spot must never be substituted for current_spot');
-G.renderSurface(makeHost(), { available: false, source: 'unavailable' });
+G.renderSurface(makeHost(), withId({ available: false, source: 'unavailable' }, 'SPY'));
 assert.throws(() => G.heatmapVisibleContracts(), /no selected-contract set/);
 assert.throws(() => G.heatmapVisibleContracts(undefined, { idx: [0] }, [0]), /cells array required/);
 
 // An expiry column with contracts but no GEX must stay on the grid. Null GEX is not NO OI.
 const emptyColHost = makeHost();
-G.renderSurface(emptyColHost, {
+G.renderSurface(emptyColHost, withId({
   available: true, source: 'terrain_live_cache', live: true, stale: false,
   current_spot: 100, current_spot_state: 'live',
   spot: 100, strikes: [100, 101],
@@ -184,7 +200,7 @@ G.renderSurface(emptyColHost, {
     { strike: 100, gex: [500000, null], contracts: [{ call: 'C100a', put: 'P100a' }, { call: 'C100b', put: 'P100b' }] },
     { strike: 101, gex: [-200000, null], contracts: [{ call: 'C101a', put: 'P101a' }, { call: 'C101b', put: 'P101b' }] },
   ],
-});
+}, 'SPY'));
 assert.ok(!emptyColHost.innerHTML.includes('NO OI'), 'null GEX must not produce a NO OI label');
 assert.ok(emptyColHost.innerHTML.includes('OI UNAVAILABLE'),
   'listed contracts with no OI field must read OI UNAVAILABLE');
@@ -192,7 +208,7 @@ assert.ok((emptyColHost.innerHTML.match(/data-expiry="2026-10-01"/g) || []).leng
   'all-null expiry column must still render every row');
 
 const statesHost = makeHost();
-G.renderSurface(statesHost, {
+G.renderSurface(statesHost, withId({
   available: true, source: 'terrain_live_cache', live: true, stale: false,
   current_spot: 100, current_spot_state: 'live',
   strikes: [90, 100, 110],
@@ -210,7 +226,7 @@ G.renderSurface(statesHost, {
       value_states: ['gamma_unavailable'],
       stream: [{ state: 'rejected', call: { rejected_reason: 'vendor' } }] },
   ],
-});
+}, 'SPY'));
 assert.ok(statesHost.innerHTML.includes('NO CONTRACT'), 'no listed contract stays NO CONTRACT');
 assert.ok(statesHost.innerHTML.includes('$0'), 'zero OI must render numerical zero, not an em dash');
 assert.ok(statesHost.innerHTML.includes('GAMMA UNAVAILABLE'), 'missing gamma stays GAMMA UNAVAILABLE');
@@ -246,7 +262,7 @@ function makeQueryableHost() {
 const mixedHost = makeHost();
 const mixedSurface = {
   available: true, source: 'terrain_live_cache', live: true, stale: false,
-  ticker: 'SPY', current_spot: 100, current_spot_state: 'live',
+  ticker: 'SPY', requested_ticker: 'SPY', current_spot: 100, current_spot_state: 'live',
   strikes: [90, 95, 100, 105, 110],
   expirations: [{ expiry: '2026-09-18', dte: 1, expired: false }],
   cells: [
@@ -290,7 +306,47 @@ assert.strictEqual(
   mixedCov.total_visible_cells,
 );
 assert.strictEqual(mixedCov.meets_live_requirement, false);
-assert.ok(G.gammaCellHasContractIdentity({ call: 'C', put: null }));
-assert.ok(!G.gammaCellHasContractIdentity({ call: null, put: null }));
+assert.strictEqual(G.cellHasContractIdentity({}, 0, { has_contract_identity: true }), true);
+assert.strictEqual(G.cellHasContractIdentity({}, 0, { has_contract_identity: false }), false);
+assert.strictEqual(G.cellHasContractIdentity({ contracts: [{ call: 'C' }] }, 0, {}), false,
+  'missing server stamp is ineligible');
+assert.strictEqual(G.cellHasContractIdentity({ contracts: [{ call: 'C' }] }, 0, { has_contract_identity: 'true' }), false,
+  'malformed stamp is ineligible');
+assert.strictEqual(G.cellHasContractIdentity({ contracts: [{ call: 'C' }] }, 0, null), false);
+assert.ok(!G.gammaCellHasContractIdentity, 'no JS identity parser');
+
+const rejectHost = makeHost();
+G.renderSurface(rejectHost, { available: true, current_spot: 100, current_spot_state: 'live',
+  strikes: [100], expirations: [{ expiry: '2026-09-18', expired: false }],
+  cells: [{ strike: 100, gex: [1], contracts: [{ call: 'C', put: 'P' }] }] });
+assert.ok(rejectHost.innerHTML.includes('Gamma surface unavailable'),
+  'direct render without request context must reject');
+
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }), true);
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY' }), false, 'missing requested_ticker');
+assert.strictEqual(G.surfaceTickerAdmitted({ requested_ticker: 'SPY' }), false, 'missing payload ticker');
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: '$SPX', requested_ticker: 'SPX' }), false,
+  'index alias drift must not be normalized on the client');
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPX', requested_ticker: '$SPX' }), false,
+  'bare vs dollar index mismatch must reject');
+const saved = global.window.EdShell;
+global.window.EdShell = { getState() { return { ticker: 'SPY' }; } };
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }), false,
+  'missing getTickerGeneration rejects');
+global.window.EdShell = null;
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }), false,
+  'missing EdShell identity authority rejects');
+global.window.EdShell = saved;
+G.beginSurfaceRequest('SPY', gen);
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }, 'QQQ', gen), false,
+  'request-ticker mismatch rejects');
+G.beginSurfaceRequest();
+const bypassHost = makeHost();
+G.renderSurface(bypassHost, withId(surface, 'SPY'));
+assert.ok(bypassHost.innerHTML.includes('Gamma surface unavailable'),
+  'direct render bypassing request context must reject');
+assert.ok(!bypassHost.innerHTML.includes('data-strike='),
+  'direct render bypassing request context must not paint cells');
+installShell('SPY');
 
 console.log('ed_gamma: all assertions passed');

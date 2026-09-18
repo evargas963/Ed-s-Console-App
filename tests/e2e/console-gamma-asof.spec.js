@@ -8,7 +8,7 @@
  */
 const { test, expect } = require('@playwright/test');
 
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, current_spot: 100, current_spot_state: 'live', spot: 100, source: 'terrain_live_cache',
+const SURFACE = { ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', available: true, current_spot: 100, current_spot_state: 'live', spot: 100, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [98, 100, 102],
   cells: [
