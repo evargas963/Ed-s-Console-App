@@ -499,6 +499,8 @@ _META_TOOLING_EXCLUDED_FROM_CONTENT_RULES = (
     "tools/fallback_discovery.py", "tools/apply_adjudication.py",
     "tools/check_fallback_discovery_completeness.py",
     "tools/reconcile_no_fallback_inventory_lineage.py",
+    "tests/test_fallback_discovery_fingerprint_identity.py",
+    "tests/test_no_fallback_inventory_lineage_v1.py",
 )
 
 
