@@ -100,7 +100,8 @@
     // more measures the SAME grid can present, not a second computation or a second UI. This
     // is that ONE measure switch: 'gex' | 'dex' | 'oi' | 'volume'. Vanna stays aggregate-only
     // today (see the Key Levels 'AGG $ ONLY' badge) since it has no per-expiry column yet.
-    measure: 'gex'
+    measure: 'gex',
+    tickerGeneration: 0
   };
   function normalizeState() {   // restored state must be valid for the current NAV config
     if (!NAV[state.workspace]) state.workspace = 'options';
@@ -516,6 +517,26 @@
     var s = String(raw || '').trim().toUpperCase();
     return /^[$^]?[A-Z0-9][A-Z0-9.\-\/]{0,11}$/.test(s) ? s : null;
   }
+  // Mirror of instrument_identity.ticker_storage_key — locked by
+  // tests/test_gamma_stream_coverage_eligibility_v1.py. A JS caller cannot
+  // import the Python owner; this is the unavoidable client key used to
+  // compare a gamma response ticker against the request / EdShell ticker.
+  var BROKER_INDEX_BARE_ROOTS = {
+    SPX: 1, DJI: 1, COMPX: 1, VIX: 1, VXN: 1, RVX: 1,
+    NDX: 1, RUT: 1, DJX: 1, XSP: 1, OEX: 1
+  };
+  function tickerStorageKey(ticker) {
+    var t = String(ticker == null ? '' : ticker).trim();
+    if (!t) return '';
+    if (t.charAt(0) === '$') {
+      var rest = t.slice(1).trim();
+      if (!rest) return '$';
+      return '$' + rest.toUpperCase();
+    }
+    var u = t.toUpperCase();
+    if (BROKER_INDEX_BARE_ROOTS[u]) return '$' + u;
+    return u;
+  }
   function removeSymbol(sym) {
     var list = loadWL().filter(function (s) { return s !== sym; });
     saveWL(list); renderWatchlist();
@@ -524,6 +545,7 @@
   // ================= ticker store (ONE selected-symbol state across every surface) =================
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
+    state.tickerGeneration = (state.tickerGeneration || 0) + 1;
     try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
     ['hSym', 'aiCtxSym'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
     // Every panel header ticker label shares .hticker (mvTicker, chTicker, flTicker, vnTicker,
@@ -649,6 +671,48 @@
     schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
     rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
   };
+  function stampHeaderSpotIdentity(el, q) {
+    if (!el) return;
+    var observedAt = Date.now() / 1000;
+    var last = (q.spot != null && !isNaN(Number(q.spot))) ? Number(q.spot) : null;
+    el.setAttribute('data-spot-ticker', q.ticker != null ? String(q.ticker) : (state.ticker || ''));
+    el.setAttribute('data-last-price', last != null ? String(last) : '');
+    el.setAttribute('data-last-price-native-ts', q.last_price_native_ts != null ? String(q.last_price_native_ts) : '');
+    el.setAttribute('data-last-price-recv-ts', q.last_price_received_ts != null ? String(q.last_price_received_ts) : '');
+    el.setAttribute('data-spot-source', q.current_spot_source != null ? String(q.current_spot_source) : (q.quoteIngestion || ''));
+    el.setAttribute('data-spot-generation', q.last_price_generation != null ? String(q.last_price_generation) : '');
+    el.setAttribute('data-observed-at', String(observedAt));
+  }
+  function readSpotIdentity(el, consumer) {
+    if (!el) return null;
+    var last = el.getAttribute('data-last-price');
+    var gen = el.getAttribute('data-spot-generation');
+    var nativeTs = el.getAttribute('data-last-price-native-ts');
+    var recvTs = el.getAttribute('data-last-price-recv-ts');
+    var observed = el.getAttribute('data-observed-at');
+    return {
+      consumer: consumer,
+      ticker: el.getAttribute('data-spot-ticker') || null,
+      last_price: last ? Number(last) : null,
+      last_price_native_ts: nativeTs ? Number(nativeTs) : null,
+      last_price_received_ts: recvTs ? Number(recvTs) : null,
+      source: el.getAttribute('data-spot-source') || null,
+      generation: gen ? Number(gen) : null,
+      observation_time: observed ? Number(observed) : null
+    };
+  }
+  function captureSpotConsumers() {
+    var consumers = [];
+    var header = readSpotIdentity(document.getElementById('hPx'), 'header');
+    if (header) consumers.push(header);
+    var heat = readSpotIdentity(document.getElementById('heatScope'), 'heatScope');
+    if (heat) consumers.push(heat);
+    if (window.EdGamma && window.EdGamma.lastSpotIdentity) {
+      var surf = window.EdGamma.lastSpotIdentity();
+      if (surf) consumers.push(surf);
+    }
+    return { ticker: state.ticker, generation: state.tickerGeneration, consumers: consumers };
+  }
   function paintQuote(q) {
     var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
     if (px) {
@@ -662,6 +726,7 @@
       var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
       if (state) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + state;
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
+      stampHeaderSpotIdentity(px, q);
     }
     if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
     if (chg) {  // formatting only — sign/value are canonical
@@ -791,6 +856,11 @@
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
         spotState: p.spot_state,
+        ticker: p.ticker || state.ticker,
+        last_price_native_ts: p.last_price_native_ts,
+        last_price_received_ts: p.last_price_received_ts,
+        last_price_generation: p.last_price_generation,
+        current_spot_source: p.current_spot_source || p.spot_source,
         feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
         feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'SPOT STALE' : 'SPOT LIVE'),
         ageLabel: ageMs != null ? ageMs + 'ms' : '—' });
@@ -876,6 +946,11 @@
         paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
           chgPct: d.chg_pct, quoteIngestion: d.quote_ingestion,
           spotState: d.spot_state,
+          ticker: d.ticker || state.ticker,
+          last_price_native_ts: d.last_price_native_ts,
+          last_price_received_ts: d.last_price_received_ts,
+          last_price_generation: d.last_price_generation,
+          current_spot_source: d.current_spot_source || d.spot_source,
           feedCls: (d.spot_state === 'unavailable' || d.spot_state === 'stale') ? 'stale' : '',
           feedLabel: d.spot_state === 'unavailable' ? 'UNAVAILABLE' : (d.spot_state === 'stale' ? 'SPOT STALE' : 'SPOT LIVE'),
           ageLabel: age });
@@ -1008,6 +1083,9 @@
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
+    getTickerGeneration: function () { return state.tickerGeneration || 0; },
+    tickerStorageKey: tickerStorageKey,
+    captureSpotConsumers: captureSpotConsumers,
     addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     setScope: setScope, getScope: function () { return state.scope; },

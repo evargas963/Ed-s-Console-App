@@ -13066,6 +13066,7 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
             else:
                 cell_state = "unavailable"
             legs["state"] = cell_state
+            legs["has_contract_identity"] = gamma_cell_has_contract_identity(pair)
             state_row.append(legs)
         cell["stream"] = state_row
 
@@ -13111,9 +13112,11 @@ def _gamma_current_spot_fields(ticker: str, computed_spot) -> dict:
     row = _lmp.get_quote(ticker)
     gen = None
     native_ts = ts
+    received_ts = None
     if row and _lmp.plane_spot_is_last_price(row):
         gen = row.get("last_price_generation")
         native_ts = row.get("last_price_native_ts") or ts
+        received_ts = row.get("last_price_received_ts")
     return {
         "current_spot": current_f,
         "current_spot_source": source,
@@ -13122,6 +13125,7 @@ def _gamma_current_spot_fields(ticker: str, computed_spot) -> dict:
         "current_spot_generation": gen,
         "last_price_generation": gen,
         "last_price_native_ts": native_ts,
+        "last_price_received_ts": received_ts,
         "spot_is_current": (
             current_f is not None and computed_f is not None and current_f == computed_f
         ),
@@ -13181,6 +13185,17 @@ def _selected_contracts_from_surface(surface: dict) -> list[str]:
     return out
 
 
+def gamma_cell_has_contract_identity(pair) -> bool:
+    """ONE stream-coverage eligibility predicate.
+
+    A cell is eligible iff it carries at least one real contract identity
+    (``contracts.call`` or ``contracts.put``). NO CONTRACT cells stay labelled
+    and never enter the denominator. ZERO OI cells are real contracts and stay
+    eligible. Schema: ``config/gamma_stream_coverage_eligibility_v1.json``.
+    """
+    return bool(isinstance(pair, dict) and (pair.get("call") or pair.get("put")))
+
+
 def _gamma_surface_coverage_summary(surface: dict) -> dict:
     """The CANONICAL-SURFACE coverage verdict for a projected surface — every strike x
     every expiry the server projected, not merely whichever subset the client happens to
@@ -13235,8 +13250,7 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
             if not isinstance(col, dict):
                 continue          # no contract identity at all -- never a viewable data cell
             pair = contracts_row[j] if j < len(contracts_row) else None
-            has_identity = bool(isinstance(pair, dict) and (pair.get("call") or pair.get("put")))
-            if not has_identity:
+            if not gamma_cell_has_contract_identity(pair):
                 continue
             relevant += 1
             state = col.get("state")

@@ -1982,40 +1982,55 @@ def test_forced_surrender_waits_out_a_claim_it_cannot_retract(tmp_path, monkeypa
     """A controlled surrender must never happen while a standing positive claim can still
     confirm the coverage it is giving up.
 
-    MEASURED before the barrier: the recycle tore the stream down with the retraction
-    unwritten, and the consumer reported contract_match=true for the surrendered contract
-    until the claim aged out — a false positive for the whole remaining lease.
-
-    The consumer is sampled CONTINUOUSLY across the entire surrender, so the assertion is
-    "no instant", not "not at the end"."""
+    Proof is explicit asyncio synchronization, not a scheduler-count / sleep budget:
+    the sampler is running before the barrier starts, it observes the live claim while
+    the vendor still holds it, surrender is recorded only after the barrier returns,
+    the sampler then observes the post-surrender state, and no post-surrender
+    observation confirms the old contract."""
     env = _claim_barrier_env(tmp_path, monkeypatch)
     try:
         assert _confirms(env), "precondition: the live claim confirms while genuinely held"
         env.unwritable()
 
-        held = {"vendor": True}
-        violations = []
-        samples = {"n": 0}
+        sampler_started = asyncio.Event()
+        saw_claim_while_held = asyncio.Event()
+        barrier_started = asyncio.Event()
+        surrender_done = asyncio.Event()
+        saw_post_surrender = asyncio.Event()
+        post_surrender_confirms = []
 
         async def sampler(stop):
+            sampler_started.set()
             while not stop.is_set():
-                samples["n"] += 1
-                if _confirms(env) and not held["vendor"]:
-                    violations.append(time.monotonic())
-                await asyncio.sleep(0.02)
+                confirms = _confirms(env)
+                if confirms and not barrier_started.is_set():
+                    saw_claim_while_held.set()
+                if confirms and barrier_started.is_set() and not surrender_done.is_set():
+                    # still inside the lease wait — vendor has not surrendered
+                    saw_claim_while_held.set()
+                if surrender_done.is_set():
+                    if confirms:
+                        post_surrender_confirms.append(time.monotonic())
+                    else:
+                        saw_post_surrender.set()
+                        return
+                await asyncio.sleep(0)
 
         async def go():
             stop = asyncio.Event()
             s = asyncio.create_task(sampler(stop))
             try:
+                await sampler_started.wait()
+                await saw_claim_while_held.wait()
+                barrier_started.set()
                 waited = await env.d._surrender_claim_or_wait_out_lease(
                     env.w, reason="stream_recycle")
-                held["vendor"] = False          # the surrender happens HERE
                 for key in ("l1", "book"):
                     env.d._close_coverage_epoch_tracked(
                         env.w, env.epoch_state, key, reason="stream_recycle",
                         surrendered_ts=200.0)
-                await asyncio.sleep(0.2)        # keep sampling past the surrender
+                surrender_done.set()
+                await asyncio.wait_for(saw_post_surrender.wait(), timeout=2.0)
                 return waited
             finally:
                 stop.set()
@@ -2025,10 +2040,14 @@ def test_forced_surrender_waits_out_a_claim_it_cannot_retract(tmp_path, monkeypa
 
         assert waited >= env.ttl * 0.8, (
             f"the barrier must have held for roughly the standing lease; waited {waited}")
-        assert samples["n"] > 10, "the sampler must actually have run across the barrier"
-        assert violations == [], (
-            f"{len(violations)} instant(s) where the surrendered contract was still "
-            f"producer-confirmed")
+        assert sampler_started.is_set(), "sampler must have started before the barrier"
+        assert saw_claim_while_held.is_set(), (
+            "sampler must have observed the claim while the vendor still held it")
+        assert surrender_done.is_set(), "surrender is recorded only after the barrier returns"
+        assert saw_post_surrender.is_set(), "sampler must have observed the post-surrender state"
+        assert post_surrender_confirms == [], (
+            f"{len(post_surrender_confirms)} post-surrender observation(s) still "
+            f"confirmed the old contract")
         assert not _confirms(env), (
             "after a controlled surrender nothing may confirm the contract")
     finally:

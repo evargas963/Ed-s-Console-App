@@ -222,4 +222,75 @@ assert.strictEqual(G.classifyHeatmapCell({ gex: [null], contracts: [{ call: 'C',
 assert.strictEqual(G.canonicalCurrentSpot({ spot: 12, current_spot: 34 }), 34);
 assert.ok(Number.isNaN(G.canonicalCurrentSpot({ spot: 12 })), 'absent current_spot is not surface.spot');
 
+function makeQueryableHost() {
+  const host = { innerHTML: '' };
+  host.querySelector = function (sel) { return host.querySelectorAll(sel)[0] || null; };
+  host.querySelectorAll = function (sel) {
+    const tags = host.innerHTML.match(/<td class="hcell[^"]*"[^>]*>/g) || [];
+    return tags.filter((tag) => {
+      if (sel.indexOf('.hcell') === -1) return false;
+      if (sel.indexOf('data-cell-state') !== -1 && tag.indexOf('data-cell-state=') === -1) return false;
+      if (sel.indexOf('data-has-contract-identity="1"') !== -1 &&
+          tag.indexOf('data-has-contract-identity="1"') === -1) return false;
+      return true;
+    }).map((tag) => ({
+      getAttribute: function (name) {
+        const m = tag.match(new RegExp(name + '="([^"]*)"'));
+        return m ? m[1] : null;
+      },
+    }));
+  };
+  return host;
+}
+
+const mixedHost = makeHost();
+const mixedSurface = {
+  available: true, source: 'terrain_live_cache', live: true, stale: false,
+  ticker: 'SPY', current_spot: 100, current_spot_state: 'live',
+  strikes: [90, 95, 100, 105, 110],
+  expirations: [{ expiry: '2026-09-18', dte: 1, expired: false }],
+  cells: [
+    { strike: 90, gex: [null], contracts: [{ call: null, put: null }],
+      value_states: ['no_contract'],
+      stream: [{ state: 'unavailable', has_contract_identity: false }] },
+    { strike: 95, gex: [0], oi: [{ call: 0, put: 0 }],
+      contracts: [{ call: 'C95', put: 'P95' }],
+      value_states: ['zero_oi'],
+      stream: [{ state: 'pending', has_contract_identity: true }] },
+    { strike: 100, gex: [5000], contracts: [{ call: 'C100', put: 'P100' }],
+      value_states: ['computed'],
+      stream: [{ state: 'live', has_contract_identity: true }] },
+    { strike: 105, gex: [2000], contracts: [{ call: 'C105', put: 'P105' }],
+      value_states: ['computed'],
+      stream: [{ state: 'stale', has_contract_identity: true }] },
+    { strike: 110, gex: [1000], contracts: [{ call: 'C110', put: 'P110' }],
+      value_states: ['computed'],
+      stream: [{ state: 'rejected', has_contract_identity: true,
+        call: { rejected_reason: 'vendor' } }] },
+  ],
+};
+G.renderSurface(mixedHost, mixedSurface);
+assert.ok(mixedHost.innerHTML.includes('NO CONTRACT'), 'NO CONTRACT stays labelled');
+assert.ok(mixedHost.innerHTML.includes('data-has-contract-identity="0"'),
+  'NO CONTRACT is stamped ineligible');
+assert.ok(mixedHost.innerHTML.includes('$0'), 'ZERO OI stays a real contract with $0');
+const mixedQuery = makeQueryableHost();
+mixedQuery.innerHTML = mixedHost.innerHTML;
+const mixedCov = G.visibleCellCoverage(mixedQuery);
+assert.strictEqual(mixedCov.schema, 'gamma_stream_coverage_eligibility_v1');
+assert.strictEqual(mixedCov.total_visible_cells, 4, JSON.stringify(mixedCov));
+assert.strictEqual(mixedCov.live, 1);
+assert.strictEqual(mixedCov.pending, 1);
+assert.strictEqual(mixedCov.stale, 1);
+assert.strictEqual(mixedCov.rejected, 1);
+assert.strictEqual(mixedCov.unavailable, 0);
+assert.strictEqual(
+  mixedCov.live + mixedCov.partial + mixedCov.stale + mixedCov.pending +
+    mixedCov.daemon_unavailable + mixedCov.rejected + mixedCov.unavailable,
+  mixedCov.total_visible_cells,
+);
+assert.strictEqual(mixedCov.meets_live_requirement, false);
+assert.ok(G.gammaCellHasContractIdentity({ call: 'C', put: null }));
+assert.ok(!G.gammaCellHasContractIdentity({ call: null, put: null }));
+
 console.log('ed_gamma: all assertions passed');
