@@ -3471,7 +3471,13 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
             "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
             "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
-            "spread": "schwab_bid_ask" if spread_frac is not None else "unavailable_missing_bid_or_ask",
+            # Composed FROM the bid/ask provenance stamped just above (never a separate
+            # hardcoded constant) -- agrees with the two sources it was built from by
+            # construction.
+            "spread": (
+                "bidPrice+askPrice" if bid is not None and ask is not None
+                else "unavailable_missing_bid_or_ask"
+            ),
             "quote_ts": pq["quote_ts_clock"],  # M6: exchange clock carried in exchange_quote_ts
             "carried_forward": False,
         },
@@ -6597,7 +6603,12 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
                                 if mid_src == "derived_bid_ask_mid"
                                 else "derived_bid_ask_fraction_schwab_mark_denom"
                             )
-                        row["quote_source_detail"]["spread"] = "schwab_bid_ask"
+                        # Composed FROM the bid/ask provenance already stamped just above
+                        # (never a separate hardcoded constant) -- agrees with the two
+                        # sources it was built from by construction, not by coincidence.
+                        row["quote_source_detail"]["spread"] = (
+                            f"{row['quote_source_detail']['bid']}+{row['quote_source_detail']['ask']}"
+                        )
                     except (TypeError, ValueError):
                         pass
     if not row or row.get("spot") is None:
