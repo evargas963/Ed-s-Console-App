@@ -344,6 +344,35 @@ _mark(["FB-97f9771d7a"], "NOT_FALLBACK",
       "plane authority) -- disclosure, not concealment, of the failure.",
       "none", "correct_failure_disclosure")
 
+# ---------------------------------------------------------------------------
+# Operator's "first 20" audit (2026-09-18, PR #254 point 4): items 14-15, 17 -- three of
+# the four legitimate NOT_FALLBACK cases this pass independently re-traced (not merely
+# carried forward from a prior claim; each consumer was read, per the mission's own
+# standard that existing code/comments are not proof).
+_mark(["FB-b92d34f048", "FB-7b4603bd7b"], "NOT_FALLBACK",
+      "_extract_canonical_book: bid_levels/ask_levels default to [] only when `snapshot` "
+      "is None (no book), and the SAME return dict stamps has_book=snapshot is not None "
+      "at the top level. Every real consumer traced (_compute_book_imbalance checks "
+      "`if not cb['has_book']: return None` before touching the levels; "
+      "_microstructure_structural stamps status='no_book' from the same flag, and every "
+      "level-derived sub-field inherits that explicit disclosure) gates on this flag "
+      "before treating the levels as meaningful -- the empty list is never presented as "
+      "'book present, zero levels' on its own.",
+      "none", "correct_failure_disclosure")
+_mark(["FB-6595e11c59"], "NOT_FALLBACK",
+      "delta_weighted accumulates from 0.0 but is returned as None whenever "
+      "saw_delta_weight stays False (no (delta, volume) pair with both values present) -- "
+      "an explicit boolean flag proving absence, not the accumulated 0.0 itself, decides "
+      "the returned value. A genuine zero-sum result (real contributions that net to "
+      "zero) is distinguishable from no contributions at all.",
+      "none", "correct_failure_disclosure")
+_mark(["FB-6a22423d02"], "NOT_FALLBACK",
+      "iv_val = iv_raw if (iv_raw is not None and iv_raw > 0 and iv_raw != "
+      "MISSING_GREEK_SENTINEL and finite) else None -- a validation expression returning "
+      "None for invalid/missing/sentinel input, the mission's own named legitimate "
+      "fail-closed pattern.",
+      "none", "correct_failure_disclosure")
+
 
 # =============================================================================
 # OPERATOR CORRECTION (2026-09-17, independent review of the first pass): every

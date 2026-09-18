@@ -1,7 +1,7 @@
 {
   "scanned_by_type": {
     "json": 282,
-    "python": 1272,
+    "python": 1277,
     "javascript": 44,
     "sql": 2,
     "batch": 3,
@@ -388,7 +388,7 @@
     "reports/ui_transport/universal_card_fidelity_2026-07-09-rth-autonomous-day.json": 1,
     "reports/ui_transport/universal_card_fidelity_2026-07-10.json": 1
   },
-  "candidate_count": 1109,
+  "candidate_count": 1102,
   "candidates": [
     {
       "file": "adaptive_similarity_engine.py",
@@ -406,7 +406,7 @@
     },
     {
       "file": "app/market_data/schwab/streaming/capture.py",
-      "line": 1148,
+      "line": 1157,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "mid = len(symbols) // 2",
@@ -420,7 +420,21 @@
     },
     {
       "file": "app/market_data/schwab/streaming/capture.py",
-      "line": 2141,
+      "line": 275,
+      "language": "python",
+      "pattern": "TERNARY",
+      "snippet": "conds_out = \",\".join(str(x) for x in conds) if isinstance(conds, list) else conds",
+      "semantic_field_guess": "join",
+      "context": "alpaca_item_to_topic_msg",
+      "normalized_expr": "IfExp(test=Call(func=Name(id='isinstance', ctx=Load()), args=[Name(id='conds', ctx=Load()), Name(id='list', ctx=Load())]), body=Call(func=Attribute(value=Constant(value=','), attr='join', ctx=Load()), args=[GeneratorExp(elt=Call(func=Name(id='str', ctx=Load()), args=[Name(id='x', ctx=Load())]), generators=[comprehension(target=Name(id='x', ctx=Store()), iter=Name(id='conds', ctx=Load()), is_async=0)])]), orelse=Name(id='conds', ctx=Load()))",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
+      "fingerprint": "f28e09ce47a438caeb13327ef4bf922e8700fb90c332df55a5a18f419f3e6788",
+      "id": "FB-f28e09ce47"
+    },
+    {
+      "file": "app/market_data/schwab/streaming/capture.py",
+      "line": 2150,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "seen = stats.per_service.get(\"LEVELONE_EQUITIES\", 0) > 0  # caps-ok: diagnostic unseen-count; 0 means never seen",
@@ -431,20 +445,6 @@
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
       "fingerprint": "6d19179cd560f75a35fa8777ec00a737eb02b6e7858e421757252c5189b8ba17",
       "id": "FB-6d19179cd5"
-    },
-    {
-      "file": "app/market_data/schwab/streaming/capture.py",
-      "line": 269,
-      "language": "python",
-      "pattern": "TERNARY",
-      "snippet": "conditions=\",\".join(str(x) for x in conds) if isinstance(conds, list) else conds,",
-      "semantic_field_guess": "join",
-      "context": "alpaca_item_to_topic_msg",
-      "normalized_expr": "IfExp(test=Call(func=Name(id='isinstance', ctx=Load()), args=[Name(id='conds', ctx=Load()), Name(id='list', ctx=Load())]), body=Call(func=Attribute(value=Constant(value=','), attr='join', ctx=Load()), args=[GeneratorExp(elt=Call(func=Name(id='str', ctx=Load()), args=[Name(id='x', ctx=Load())]), generators=[comprehension(target=Name(id='x', ctx=Store()), iter=Name(id='conds', ctx=Load()), is_async=0)])]), orelse=Name(id='conds', ctx=Load()))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "fingerprint": "f28e09ce47a438caeb13327ef4bf922e8700fb90c332df55a5a18f419f3e6788",
-      "id": "FB-f28e09ce47"
     },
     {
       "file": "app/options/contracts/default.py",
@@ -462,49 +462,7 @@
     },
     {
       "file": "app/options/order_flow/engine.py",
-      "line": 158,
-      "language": "python",
-      "pattern": "TERNARY",
-      "snippet": "for level in (bids if isinstance(bids, list) else [bids]):",
-      "semantic_field_guess": "bids",
-      "context": "_iter_bids_levels",
-      "normalized_expr": "IfExp(test=Call(func=Name(id='isinstance', ctx=Load()), args=[Name(id='bids', ctx=Load()), Name(id='list', ctx=Load())]), body=Name(id='bids', ctx=Load()), orelse=List(elts=[Name(id='bids', ctx=Load())], ctx=Load()))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "fingerprint": "62ba5dbb413d9529d5bfc2ef7cc1907b8af13fe7016667977495b09e24139179",
-      "id": "FB-62ba5dbb41"
-    },
-    {
-      "file": "app/options/order_flow/engine.py",
-      "line": 182,
-      "language": "python",
-      "pattern": "TERNARY",
-      "snippet": "for level in (asks if isinstance(asks, list) else [asks]):",
-      "semantic_field_guess": "asks",
-      "context": "_iter_asks_levels",
-      "normalized_expr": "IfExp(test=Call(func=Name(id='isinstance', ctx=Load()), args=[Name(id='asks', ctx=Load()), Name(id='list', ctx=Load())]), body=Name(id='asks', ctx=Load()), orelse=List(elts=[Name(id='asks', ctx=Load())], ctx=Load()))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "fingerprint": "c314c85ce3cc0ff9e7a82ff27528524c681aff1591470edfe79f6956be33dc98",
-      "id": "FB-c314c85ce3"
-    },
-    {
-      "file": "app/options/order_flow/engine.py",
-      "line": 475,
-      "language": "python",
-      "pattern": "OR_LADDER",
-      "snippet": "leaf_tag = bid_leaf or ask_leaf or \"schwab_bid_ask\"",
-      "semantic_field_guess": "bid_leaf",
-      "context": "_compute_spread",
-      "normalized_expr": "BoolOp(op=Or(), values=[Name(id='bid_leaf', ctx=Load()), Name(id='ask_leaf', ctx=Load()), Constant(value='schwab_bid_ask')])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "fingerprint": "020d4d9e0ddb96a7f3e96ed0bfbb0add167816ce59d9178d4010debe42250106",
-      "id": "FB-020d4d9e0d"
-    },
-    {
-      "file": "app/options/order_flow/engine.py",
-      "line": 558,
+      "line": 578,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []",
@@ -518,7 +476,7 @@
     },
     {
       "file": "app/options/order_flow/engine.py",
-      "line": 559,
+      "line": 579,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []",
@@ -532,21 +490,7 @@
     },
     {
       "file": "app/options/order_flow/engine.py",
-      "line": 1067,
-      "language": "python",
-      "pattern": "TERNARY",
-      "snippet": "book_imb = book_imbalance_5 if book_imbalance_5 is not None else _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)",
-      "semantic_field_guess": "book_imbalance_5",
-      "context": "_compute_institutional_flow_proxy",
-      "normalized_expr": "IfExp(test=Compare(left=Name(id='book_imbalance_5', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Name(id='book_imbalance_5', ctx=Load()), orelse=Call(func=Name(id='_compute_book_imbalance', ctx=Load()), args=[Name(id='data', ctx=Load()), Name(id='OF_BOOK_DEPTH_DEEP', ctx=Load())]))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "fingerprint": "cfc024d7666ef2c140fa47e0640b23afe90ad8e322536ba4107d9e7da872abab",
-      "id": "FB-cfc024d766"
-    },
-    {
-      "file": "app/options/order_flow/engine.py",
-      "line": 995,
+      "line": 1015,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "delta_weighted if saw_delta_weight else None,",
@@ -560,7 +504,7 @@
     },
     {
       "file": "app/options/order_flow/engine.py",
-      "line": 890,
+      "line": 910,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "iv_val = iv_raw if (iv_raw is not None and iv_raw > 0",
@@ -571,62 +515,6 @@
       "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
       "fingerprint": "6a22423d02423a914862881e5079b69ca8030d93556c290bf43372ed694b156b",
       "id": "FB-6a22423d02"
-    },
-    {
-      "file": "app/options/order_flow/history.py",
-      "line": 26,
-      "language": "python",
-      "pattern": "OR_LADDER",
-      "snippet": "sym = ticker_storage_key(contract) or str(contract or \"\").strip()",
-      "semantic_field_guess": "ticker_storage_key",
-      "context": "hydrate_option_content",
-      "normalized_expr": "BoolOp(op=Or(), values=[Call(func=Name(id='ticker_storage_key', ctx=Load()), args=[Name(id='contract', ctx=Load())]), Call(func=Attribute(value=Call(func=Name(id='str', ctx=Load()), args=[BoolOp(op=Or(), values=[Name(id='contract', ctx=Load()), Constant(value='')])]), attr='strip', ctx=Load()))])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "fingerprint": "f4e793af108a8cb6721f4d454b9b8b63b5cace11d7452cf3b3dc086382207f1d",
-      "id": "FB-f4e793af10"
-    },
-    {
-      "file": "app/options/order_flow/history.py",
-      "line": 116,
-      "language": "python",
-      "pattern": "OR_LADDER",
-      "snippet": "sym = ticker_storage_key(contract) or str(contract or \"\").strip()",
-      "semantic_field_guess": "ticker_storage_key",
-      "context": "tape_rows_for_symbol",
-      "normalized_expr": "BoolOp(op=Or(), values=[Call(func=Name(id='ticker_storage_key', ctx=Load()), args=[Name(id='contract', ctx=Load())]), Call(func=Attribute(value=Call(func=Name(id='str', ctx=Load()), args=[BoolOp(op=Or(), values=[Name(id='contract', ctx=Load()), Constant(value='')])]), attr='strip', ctx=Load()))])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "fingerprint": "474f722c4dd0208bacd643bd713d83e35e5added5fc2d5c1f4e3983555f51abc",
-      "id": "FB-474f722c4d"
-    },
-    {
-      "file": "app/options/order_flow/history.py",
-      "line": 237,
-      "language": "python",
-      "pattern": "OR_LADDER",
-      "snippet": "sym = ticker_storage_key(ticker) or str(ticker or \"\").strip().upper()",
-      "semantic_field_guess": "ticker_storage_key",
-      "context": "book_heatmap_for_ticker",
-      "normalized_expr": "BoolOp(op=Or(), values=[Call(func=Name(id='ticker_storage_key', ctx=Load()), args=[Name(id='ticker', ctx=Load())]), Call(func=Attribute(value=Call(func=Attribute(value=Call(func=Name(id='str', ctx=Load()), args=[BoolOp(op=Or(), values=[Name(id='ticker', ctx=Load()), Constant(value='')])]), attr='strip', ctx=Load())), attr='upper', ctx=Load()))])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "fingerprint": "2e4e2a5f6d3ea9c186d5b6253c2354cd362dad2e3b407190ef071b2de99f2166",
-      "id": "FB-2e4e2a5f6d"
-    },
-    {
-      "file": "app/options/order_flow/history.py",
-      "line": 237,
-      "language": "python",
-      "pattern": "OR_LADDER",
-      "snippet": "sym = ticker_storage_key(ticker) or str(ticker or \"\").strip().upper()",
-      "semantic_field_guess": "ticker",
-      "context": "book_heatmap_for_ticker",
-      "normalized_expr": "BoolOp(op=Or(), values=[Name(id='ticker', ctx=Load()), Constant(value='')])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "fingerprint": "b4b594bc6debd23d1d3f6097e99069885180f796788c82c2005c5a7d5429be8d",
-      "id": "FB-b4b594bc6d"
     },
     {
       "file": "app/options/order_flow/state.py",
@@ -644,7 +532,7 @@
     },
     {
       "file": "app/options/order_flow/state.py",
-      "line": 189,
+      "line": 199,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "oi = (float_nonnegative_or_none(content_item.get(\"OPEN_INTEREST\"))",
@@ -658,7 +546,7 @@
     },
     {
       "file": "app/options/order_flow/state.py",
-      "line": 95,
+      "line": 105,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "sym = ticker_storage_key(symbol or content_item.get(\"key\"))",
@@ -672,7 +560,7 @@
     },
     {
       "file": "app/options/order_flow/state.py",
-      "line": 112,
+      "line": 122,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "sym = ticker_storage_key(symbol or content_item.get(\"key\"))",
@@ -686,7 +574,7 @@
     },
     {
       "file": "app/options/order_flow/state.py",
-      "line": 237,
+      "line": 247,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "seq = self._receive_seq.get(sym, 0) + 1",
@@ -700,7 +588,7 @@
     },
     {
       "file": "app/options/order_flow/state.py",
-      "line": 330,
+      "line": 340,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "return [dict(x) for x in self._receive_log.get(sym, ())]",
@@ -6398,7 +6286,7 @@
     },
     {
       "file": "server.py",
-      "line": 828,
+      "line": 840,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker) or ticker",
@@ -6412,7 +6300,7 @@
     },
     {
       "file": "server.py",
-      "line": 871,
+      "line": 883,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker) or (ticker or \"\").upper().strip()",
@@ -6426,7 +6314,7 @@
     },
     {
       "file": "server.py",
-      "line": 1051,
+      "line": 1063,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get(\"ED_VIEWER_STATE_CACHE_TTL_SEC\", \"5.0\"))",
@@ -6440,7 +6328,7 @@
     },
     {
       "file": "server.py",
-      "line": 1089,
+      "line": 1101,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "LIVE_QUOTE_SSE_INTERVAL_SEC: float = float(os.environ.get(\"ED_LIVE_QUOTE_SSE_INTERVAL_SEC\", \"0.12\"))",
@@ -6454,7 +6342,7 @@
     },
     {
       "file": "server.py",
-      "line": 1595,
+      "line": 1607,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "os.environ.get(\"ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES\", \"3\")",
@@ -6468,7 +6356,7 @@
     },
     {
       "file": "server.py",
-      "line": 1846,
+      "line": 1858,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "return (float_positive_or_none(entry.get(\"generated_at\"))",
@@ -6482,7 +6370,7 @@
     },
     {
       "file": "server.py",
-      "line": 2778,
+      "line": 2790,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "exp = expiry if expiry is not None else \"__auth_error__\"",
@@ -6496,7 +6384,7 @@
     },
     {
       "file": "server.py",
-      "line": 4273,
+      "line": 4291,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "return tickers",
@@ -6510,7 +6398,7 @@
     },
     {
       "file": "server.py",
-      "line": 5561,
+      "line": 5579,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "for ct in contracts or []:",
@@ -6524,7 +6412,7 @@
     },
     {
       "file": "server.py",
-      "line": 5705,
+      "line": 5723,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "spot = last if spot_source == \"lastPrice\" else None",
@@ -6538,7 +6426,7 @@
     },
     {
       "file": "server.py",
-      "line": 7031,
+      "line": 7054,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "selected_exp = expiry or _default_expiry(expiries, ticker)",
@@ -6552,7 +6440,7 @@
     },
     {
       "file": "server.py",
-      "line": 7140,
+      "line": 7163,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_tick_ts = parsed_quote_time or parsed_trade_time",
@@ -6566,7 +6454,7 @@
     },
     {
       "file": "server.py",
-      "line": 7201,
+      "line": 7224,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes",
@@ -6580,7 +6468,7 @@
     },
     {
       "file": "server.py",
-      "line": 7203,
+      "line": 7226,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "pick_net_gex_peak_strike(exposures, _gamma_strikes, institutional=True)",
@@ -6594,7 +6482,7 @@
     },
     {
       "file": "server.py",
-      "line": 7396,
+      "line": 7419,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_pl_bucket = _state_cache.get(_cache_key, {})",
@@ -6608,7 +6496,7 @@
     },
     {
       "file": "server.py",
-      "line": 7468,
+      "line": 7491,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_hours_rem = _hours_until_close(now_et) or 0.0",
@@ -6622,7 +6510,7 @@
     },
     {
       "file": "server.py",
-      "line": 7960,
+      "line": 7983,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "nd_raw   = (consensus_summary.net_delta   if consensus_summary else None)",
@@ -6636,7 +6524,7 @@
     },
     {
       "file": "server.py",
-      "line": 9494,
+      "line": 9517,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ms_dict[\"kl_gamma_voids\"]  = _gamma_voids or []",
@@ -6650,7 +6538,7 @@
     },
     {
       "file": "server.py",
-      "line": 9976,
+      "line": 9999,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "ms_dict[\"filled_snapshots\"] = db_counts.get(\"filled\", 0)",
@@ -6664,7 +6552,7 @@
     },
     {
       "file": "server.py",
-      "line": 12251,
+      "line": 12274,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "observed = _terrain_last_cycle_sec if _terrain_last_cycle_sec > 0 else TERRAIN_REFRESH_SEC",
@@ -6678,7 +6566,7 @@
     },
     {
       "file": "server.py",
-      "line": 12480,
+      "line": 12503,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "for ct in contracts or []:",
@@ -6692,7 +6580,7 @@
     },
     {
       "file": "server.py",
-      "line": 12861,
+      "line": 12884,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "rejected_symbols = rejected_symbols or {}",
@@ -6706,7 +6594,7 @@
     },
     {
       "file": "server.py",
-      "line": 12862,
+      "line": 12885,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "desired_symbols = desired_symbols or set()",
@@ -6720,7 +6608,7 @@
     },
     {
       "file": "server.py",
-      "line": 13700,
+      "line": 13723,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "_terrain_refresh_last_error[tk] = f\"{type(e).__name__}: {e}\"",
@@ -6734,7 +6622,7 @@
     },
     {
       "file": "server.py",
-      "line": 14672,
+      "line": 14695,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "_payload_spot = live_spot if live_spot is not None else spot_used",
@@ -6748,7 +6636,7 @@
     },
     {
       "file": "server.py",
-      "line": 16516,
+      "line": 16539,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "exp_key = expiry if expiry is not None else \"__auto__\"",
@@ -6762,7 +6650,7 @@
     },
     {
       "file": "server.py",
-      "line": 16621,
+      "line": 16644,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "base[\"plane_quote_authority\"] = \"rest_only\"",
@@ -6776,7 +6664,7 @@
     },
     {
       "file": "server.py",
-      "line": 16909,
+      "line": 16932,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "row_spy = _lmp.get_quote(\"SPY\") or {}",
@@ -6790,7 +6678,7 @@
     },
     {
       "file": "server.py",
-      "line": 17215,
+      "line": 17238,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "expiry = expiry or None",
@@ -6832,7 +6720,7 @@
     },
     {
       "file": "server.py",
-      "line": 1084,
+      "line": 1096,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"first_quote\": int(os.environ.get(\"ED_UI_SLA_FIRST_QUOTE_MS\", \"500\")),",
@@ -6846,7 +6734,7 @@
     },
     {
       "file": "server.py",
-      "line": 1684,
+      "line": 1696,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "return (ticker.upper().strip(), expiry if expiry is not None else \"__auto__\")",
@@ -6860,7 +6748,7 @@
     },
     {
       "file": "server.py",
-      "line": 2941,
+      "line": 2953,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"kl_gamma_voids\": gamma_voids or [],",
@@ -6874,7 +6762,7 @@
     },
     {
       "file": "server.py",
-      "line": 3642,
+      "line": 3660,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "return stream_spot, stream_regime if stream_regime is not None else None",
@@ -6888,7 +6776,7 @@
     },
     {
       "file": "server.py",
-      "line": 3928,
+      "line": 3946,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "return self._bars_source.get(ticker, \"schwab_quote_totalVolume_delta\")",
@@ -6902,7 +6790,7 @@
     },
     {
       "file": "server.py",
-      "line": 4989,
+      "line": 5007,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "spot_f = parsed_last if parsed_last and parsed_last > 0 else None",
@@ -6916,7 +6804,7 @@
     },
     {
       "file": "server.py",
-      "line": 5747,
+      "line": 5765,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"quote_ts\": quote_time or trade_time,",
@@ -6930,7 +6818,7 @@
     },
     {
       "file": "server.py",
-      "line": 5886,
+      "line": 5904,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prev = _l1_generation.get(key, 0)",
@@ -6944,7 +6832,7 @@
     },
     {
       "file": "server.py",
-      "line": 6085,
+      "line": 6103,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "key = (tkr, expiry if expiry is not None else \"__auto__\")",
@@ -6958,7 +6846,7 @@
     },
     {
       "file": "server.py",
-      "line": 6210,
+      "line": 6228,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "key = (tkr, expiry if expiry is not None else \"__auto__\")",
@@ -6972,7 +6860,7 @@
     },
     {
       "file": "server.py",
-      "line": 6278,
+      "line": 6296,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "key = (tkr, expiry if expiry is not None else \"__auto__\")",
@@ -6986,7 +6874,7 @@
     },
     {
       "file": "server.py",
-      "line": 6318,
+      "line": 6336,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "return (t, expiry if expiry is not None else \"__auto__\")",
@@ -7000,7 +6888,7 @@
     },
     {
       "file": "server.py",
-      "line": 6354,
+      "line": 6372,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "last = _l1_sse_last_emit_mono.get(sk, 0.0)",
@@ -7014,7 +6902,7 @@
     },
     {
       "file": "server.py",
-      "line": 7021,
+      "line": 7044,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_safe_float_quote(_quote_dict.get(\"totalVolume\"))",
@@ -7028,7 +6916,7 @@
     },
     {
       "file": "server.py",
-      "line": 7255,
+      "line": 7278,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_charm_used = _charm_raw.get(\"contracts_used\", 0)",
@@ -7042,7 +6930,7 @@
     },
     {
       "file": "server.py",
-      "line": 7256,
+      "line": 7279,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_charm_err  = _charm_raw.get(\"error\", \"\")",
@@ -7056,7 +6944,7 @@
     },
     {
       "file": "server.py",
-      "line": 7445,
+      "line": 7468,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "price_levels = PriceLevels()",
@@ -7070,7 +6958,7 @@
     },
     {
       "file": "server.py",
-      "line": 7749,
+      "line": 7772,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "for _vz in (_gamma_voids or []):",
@@ -7084,7 +6972,7 @@
     },
     {
       "file": "server.py",
-      "line": 9546,
+      "line": 9569,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"top_gex_drivers\"] = getattr(cs, \"top_gex_drivers\", []) or []",
@@ -7098,7 +6986,7 @@
     },
     {
       "file": "server.py",
-      "line": 9547,
+      "line": 9570,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"top_dex_drivers\"] = getattr(cs, \"top_dex_drivers\", []) or []",
@@ -7112,7 +7000,7 @@
     },
     {
       "file": "server.py",
-      "line": 9656,
+      "line": 9679,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"call_state\": getattr(ms, \"call_state\", \"WAIT\"),",
@@ -7126,7 +7014,7 @@
     },
     {
       "file": "server.py",
-      "line": 9657,
+      "line": 9680,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"forecast_state\": getattr(ms, \"call_forecast_state\", \"dormant\"),",
@@ -7140,7 +7028,7 @@
     },
     {
       "file": "server.py",
-      "line": 9667,
+      "line": 9690,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"call_state\": getattr(ms, \"put_state\", \"WAIT\"),",
@@ -7154,7 +7042,7 @@
     },
     {
       "file": "server.py",
-      "line": 9668,
+      "line": 9691,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"forecast_state\": getattr(ms, \"put_forecast_state\", \"dormant\"),",
@@ -7168,7 +7056,7 @@
     },
     {
       "file": "server.py",
-      "line": 9908,
+      "line": 9931,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"fut_es_symbol\"]   = getattr(mkt_ctx, \"fut_es_symbol\", \"\") or \"\"",
@@ -7182,7 +7070,7 @@
     },
     {
       "file": "server.py",
-      "line": 9911,
+      "line": 9934,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"fut_nq_symbol\"]   = getattr(mkt_ctx, \"fut_nq_symbol\", \"\") or \"\"",
@@ -7196,7 +7084,7 @@
     },
     {
       "file": "server.py",
-      "line": 9914,
+      "line": 9937,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"fut_rty_symbol\"]  = getattr(mkt_ctx, \"fut_rty_symbol\", \"\") or \"\"",
@@ -7210,7 +7098,7 @@
     },
     {
       "file": "server.py",
-      "line": 11238,
+      "line": 11261,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "raw = (symbol if symbol is not None and str(symbol).strip() else ticker) or DEFAULT_TICKER",
@@ -7224,7 +7112,7 @@
     },
     {
       "file": "server.py",
-      "line": 11950,
+      "line": 11973,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "status = str(result.get(\"status\", \"\"))",
@@ -7238,7 +7126,7 @@
     },
     {
       "file": "server.py",
-      "line": 12030,
+      "line": 12053,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "ts = float(ts_utc if ts_utc is not None else time.time())",
@@ -7252,7 +7140,7 @@
     },
     {
       "file": "server.py",
-      "line": 12449,
+      "line": 12472,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "n = _gamma_surface_seq.get(tk, 0) + 1",
@@ -7266,7 +7154,7 @@
     },
     {
       "file": "server.py",
-      "line": 14510,
+      "line": 14533,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority",
@@ -7280,7 +7168,7 @@
     },
     {
       "file": "server.py",
-      "line": 14729,
+      "line": 14752,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority",
@@ -7294,7 +7182,7 @@
     },
     {
       "file": "server.py",
-      "line": 14809,
+      "line": 14832,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7308,7 +7196,7 @@
     },
     {
       "file": "server.py",
-      "line": 14850,
+      "line": 14873,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7322,7 +7210,7 @@
     },
     {
       "file": "server.py",
-      "line": 14890,
+      "line": 14913,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7336,7 +7224,7 @@
     },
     {
       "file": "server.py",
-      "line": 14942,
+      "line": 14965,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7350,7 +7238,7 @@
     },
     {
       "file": "server.py",
-      "line": 14972,
+      "line": 14995,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7364,7 +7252,7 @@
     },
     {
       "file": "server.py",
-      "line": 15076,
+      "line": 15099,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7378,7 +7266,7 @@
     },
     {
       "file": "server.py",
-      "line": 15134,
+      "line": 15157,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7392,7 +7280,7 @@
     },
     {
       "file": "server.py",
-      "line": 15295,
+      "line": 15318,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "last = _LAST_VALID_GEX_CELLS_DB_WRITE_TS.get(tk, 0.0)",
@@ -7406,7 +7294,7 @@
     },
     {
       "file": "server.py",
-      "line": 15750,
+      "line": 15773,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7420,7 +7308,7 @@
     },
     {
       "file": "server.py",
-      "line": 15767,
+      "line": 15790,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_gamma_available = surf.get(\"gamma_available\", True)",
@@ -7434,7 +7322,7 @@
     },
     {
       "file": "server.py",
-      "line": 15945,
+      "line": 15968,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7448,7 +7336,7 @@
     },
     {
       "file": "server.py",
-      "line": 16005,
+      "line": 16028,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority",
@@ -7462,7 +7350,7 @@
     },
     {
       "file": "server.py",
-      "line": 16219,
+      "line": 16242,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7476,7 +7364,7 @@
     },
     {
       "file": "server.py",
-      "line": 16267,
+      "line": 16290,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7490,7 +7378,7 @@
     },
     {
       "file": "server.py",
-      "line": 16342,
+      "line": 16365,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority",
@@ -7504,7 +7392,7 @@
     },
     {
       "file": "server.py",
-      "line": 16807,
+      "line": 16830,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "drop_m = float(_l1_sse_last_drop_mono or 0.0)  # silent-zero-ok: 0 means \"no drop ever recorded\" and every consumer below gates on drop_m > 0.0 before deriving an age",
@@ -7518,7 +7406,7 @@
     },
     {
       "file": "server.py",
-      "line": 18336,
+      "line": 18359,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7532,7 +7420,7 @@
     },
     {
       "file": "server.py",
-      "line": 18356,
+      "line": 18379,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -7546,7 +7434,7 @@
     },
     {
       "file": "server.py",
-      "line": 19020,
+      "line": 19043,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "zone = state.get(\"zone\", \"?\")",
@@ -7560,7 +7448,7 @@
     },
     {
       "file": "server.py",
-      "line": 19021,
+      "line": 19044,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "vwap_side = state.get(\"vwap_side\", \"?\")",
@@ -7574,7 +7462,7 @@
     },
     {
       "file": "server.py",
-      "line": 19022,
+      "line": 19045,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "bias = state.get(\"bias_signal\", \"?\")",
@@ -7588,7 +7476,7 @@
     },
     {
       "file": "server.py",
-      "line": 19023,
+      "line": 19046,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "pin = state.get(\"pin_strength\", \"?\")",
@@ -7602,7 +7490,7 @@
     },
     {
       "file": "server.py",
-      "line": 19024,
+      "line": 19047,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "nd = state.get(\"net_delta\", \"?\")",
@@ -7616,7 +7504,7 @@
     },
     {
       "file": "server.py",
-      "line": 19025,
+      "line": 19048,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "ng = state.get(\"net_gamma\", \"?\")",
@@ -7630,7 +7518,7 @@
     },
     {
       "file": "server.py",
-      "line": 19026,
+      "line": 19049,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "gex_mag = state.get(\"gex_magnitude\", \"?\")",
@@ -7644,7 +7532,7 @@
     },
     {
       "file": "server.py",
-      "line": 19027,
+      "line": 19050,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "dex_mag = state.get(\"dex_magnitude\", \"?\")",
@@ -7658,7 +7546,7 @@
     },
     {
       "file": "server.py",
-      "line": 19028,
+      "line": 19051,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "samples = state.get(\"samples_used\", \"?\")",
@@ -7672,7 +7560,7 @@
     },
     {
       "file": "server.py",
-      "line": 19029,
+      "line": 19052,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "model_note = state.get(\"model_note\", \"?\")",
@@ -7686,7 +7574,7 @@
     },
     {
       "file": "server.py",
-      "line": 19030,
+      "line": 19053,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "session_bkt = state.get(\"session_bucket\", \"?\")",
@@ -7700,7 +7588,7 @@
     },
     {
       "file": "server.py",
-      "line": 19031,
+      "line": 19054,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "vix_bkt = state.get(\"vix_bucket\", \"?\")",
@@ -7714,7 +7602,7 @@
     },
     {
       "file": "server.py",
-      "line": 971,
+      "line": 983,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "str(strike_range or \"\"), str(to_date or \"\"), str(from_date or \"\"))",
@@ -7728,7 +7616,7 @@
     },
     {
       "file": "server.py",
-      "line": 1654,
+      "line": 1666,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "return str(update_source or \"\") not in _BACKGROUND_UPDATE_SOURCES",
@@ -7742,7 +7630,7 @@
     },
     {
       "file": "server.py",
-      "line": 1963,
+      "line": 1975,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "refresh_due = bool(sse_live or (age >= ttl))",
@@ -7756,7 +7644,7 @@
     },
     {
       "file": "server.py",
-      "line": 3461,
+      "line": 3473,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"mid\": mid_source or \"unavailable_missing_mark_and_bid_ask\",",
@@ -7770,7 +7658,7 @@
     },
     {
       "file": "server.py",
-      "line": 3673,
+      "line": 3691,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "last_t = _last_tick_coherent_fetch_mono_by_ticker.get(sym, 0.0)",
@@ -7784,7 +7672,7 @@
     },
     {
       "file": "server.py",
-      "line": 4153,
+      "line": 4171,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "raw = os.environ.get(\"ED_MAX_USER_PERSISTED_LOGGING_TICKERS\", \"\").strip()",
@@ -7798,7 +7686,7 @@
     },
     {
       "file": "server.py",
-      "line": 5519,
+      "line": 5537,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ct for ct in (contracts or [])",
@@ -7812,7 +7700,7 @@
     },
     {
       "file": "server.py",
-      "line": 7339,
+      "line": 7362,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prev_pcr  = _state_cache.get(_cache_key, {}).get(\"pcr_val\")",
@@ -7826,7 +7714,7 @@
     },
     {
       "file": "server.py",
-      "line": 7340,
+      "line": 7363,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prev_spot = _state_cache.get(_cache_key, {}).get(\"spot_f\")",
@@ -7840,7 +7728,7 @@
     },
     {
       "file": "server.py",
-      "line": 7447,
+      "line": 7470,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_sc = _state_cache.get(_cache_key, {})",
@@ -7854,7 +7742,7 @@
     },
     {
       "file": "server.py",
-      "line": 7699,
+      "line": 7722,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_sum_gex = float(aggregate_net_gex(exposures, _cons_strikes) or 0.0)",
@@ -7868,7 +7756,7 @@
     },
     {
       "file": "server.py",
-      "line": 7851,
+      "line": 7874,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_vol_prev_published_vix = _state_cache.get(_cache_key, {}).get(\"vix\")",
@@ -7882,7 +7770,7 @@
     },
     {
       "file": "server.py",
-      "line": 7981,
+      "line": 8004,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if _latest_bar_ts_1m > zt.get(\"last_bar_ts_1m\", 0.0):",
@@ -7896,7 +7784,7 @@
     },
     {
       "file": "server.py",
-      "line": 7984,
+      "line": 8007,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if _latest_bar_ts_5m > zt.get(\"last_bar_ts_5m\", 0.0):",
@@ -7910,7 +7798,7 @@
     },
     {
       "file": "server.py",
-      "line": 9829,
+      "line": 9852,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "issues = \"; \".join(art.get(\"issues\", [])) or \"Metadata lacks provenance\"",
@@ -7924,7 +7812,7 @@
     },
     {
       "file": "server.py",
-      "line": 10784,
+      "line": 10807,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "health.get(\"last_24h_count\", 0),",
@@ -7938,7 +7826,7 @@
     },
     {
       "file": "server.py",
-      "line": 11652,
+      "line": 11675,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "n = _terrain_consecutive_fails.get(tk, 0) + 1",
@@ -7952,7 +7840,7 @@
     },
     {
       "file": "server.py",
-      "line": 12060,
+      "line": 12083,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "n_attempts = _complete_chain_capture_attempts.get(attempt_key, 0) + 1",
@@ -7966,7 +7854,7 @@
     },
     {
       "file": "server.py",
-      "line": 12392,
+      "line": 12415,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL",
@@ -7980,7 +7868,7 @@
     },
     {
       "file": "server.py",
-      "line": 12526,
+      "line": 12549,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "merged[strike] = (_merge_strike_exposure_bucket(merged[strike], bucket)",
@@ -7994,7 +7882,7 @@
     },
     {
       "file": "server.py",
-      "line": 12985,
+      "line": 13008,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "pair = contracts_row[j] if j < len(contracts_row) else None",
@@ -8008,7 +7896,7 @@
     },
     {
       "file": "server.py",
-      "line": 13271,
+      "line": 13294,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or \"\")",
@@ -8022,7 +7910,7 @@
     },
     {
       "file": "server.py",
-      "line": 13395,
+      "line": 13418,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or \"\")",
@@ -8036,7 +7924,7 @@
     },
     {
       "file": "server.py",
-      "line": 13477,
+      "line": 13500,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "_terrain_refresh_last_error[tk] = (",
@@ -8050,7 +7938,7 @@
     },
     {
       "file": "server.py",
-      "line": 15030,
+      "line": 15053,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "charm_err = str(_ce)[:120]",
@@ -8064,7 +7952,7 @@
     },
     {
       "file": "server.py",
-      "line": 15756,
+      "line": 15779,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "surf = (live or {}).get(\"_gamma_surface\")",
@@ -8078,7 +7966,7 @@
     },
     {
       "file": "server.py",
-      "line": 17916,
+      "line": 17939,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "src = (source or \"user\").lower()",
@@ -8092,7 +7980,7 @@
     },
     {
       "file": "server.py",
-      "line": 18490,
+      "line": 18513,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "e = (expiry or \"\").strip()",
@@ -8106,7 +7994,7 @@
     },
     {
       "file": "server.py",
-      "line": 18742,
+      "line": 18765,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "result[\"level_generation\"] = _canon.generation if _canon is not None else None",
@@ -8120,7 +8008,7 @@
     },
     {
       "file": "server.py",
-      "line": 18745,
+      "line": 18768,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "_canon.as_of_ts_utc if _canon is not None else None)",
@@ -8134,7 +8022,7 @@
     },
     {
       "file": "server.py",
-      "line": 18746,
+      "line": 18769,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "result[\"level_bar_source\"] = _canon.bar_source if _canon is not None else None",
@@ -8148,7 +8036,7 @@
     },
     {
       "file": "server.py",
-      "line": 18815,
+      "line": 18838,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ticker = ticker_storage_key(ticker or DEFAULT_TICKER)   # Cursor-audit F1: bare \"SPX\" -> \"$SPX\"",
@@ -8162,7 +8050,7 @@
     },
     {
       "file": "server.py",
-      "line": 2113,
+      "line": 2125,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "qsd_plane = (plane_quote or {}).get(\"quote_source_detail\") if plane_quote else {}",
@@ -8176,7 +8064,7 @@
     },
     {
       "file": "server.py",
-      "line": 5902,
+      "line": 5920,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "int(_l1_instrumentation.get(\"l1_generation_assign_total\", 0)) + 1",
@@ -8190,7 +8078,7 @@
     },
     {
       "file": "server.py",
-      "line": 6574,
+      "line": 6592,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "row[\"quote_source_detail\"][\"mid\"] = mid_src or \"unavailable_missing_mark_and_bid_ask\"",
@@ -8204,7 +8092,7 @@
     },
     {
       "file": "server.py",
-      "line": 8061,
+      "line": 8084,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"volume\": getattr(b, \"volume\", 0.0),",
@@ -8218,7 +8106,7 @@
     },
     {
       "file": "server.py",
-      "line": 8204,
+      "line": 8227,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "filled_snapshots=db_counts.get(\"filled\", 0),",
@@ -8232,7 +8120,7 @@
     },
     {
       "file": "server.py",
-      "line": 9477,
+      "line": 9500,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "_kl_contracts_total = max(int(getattr(diag, \"contracts_total\", 0) or 0), 1)",
@@ -8246,7 +8134,7 @@
     },
     {
       "file": "server.py",
-      "line": 12047,
+      "line": 12070,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if _complete_chain_capture_attempts.get((tk, expiry, et_date), 0)",
@@ -8260,7 +8148,7 @@
     },
     {
       "file": "server.py",
-      "line": 12230,
+      "line": 12253,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "failure = \"\" if (skipped or quarantined) else str(_terrain_refresh_last_error.get(",
@@ -8274,7 +8162,7 @@
     },
     {
       "file": "server.py",
-      "line": 15009,
+      "line": 15032,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "contracts = chain1 if isinstance(chain1, list) else (",
@@ -8288,7 +8176,7 @@
     },
     {
       "file": "server.py",
-      "line": 15469,
+      "line": 15492,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "1 for ct in (chain or [])",
@@ -8302,7 +8190,7 @@
     },
     {
       "file": "server.py",
-      "line": 15813,
+      "line": 15836,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"spot\": surf.get(\"spot\", live.get(\"spot\")),",
@@ -8316,7 +8204,7 @@
     },
     {
       "file": "server.py",
-      "line": 15814,
+      "line": 15837,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"spot_source\": surf.get(\"spot_source\", live.get(\"spot_source\")),",
@@ -8330,7 +8218,7 @@
     },
     {
       "file": "server.py",
-      "line": 15816,
+      "line": 15839,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"spot_as_of_ts_utc\": surf.get(\"spot_as_of_ts_utc\", live.get(\"spot_as_of_ts_utc\")),",
@@ -8344,7 +8232,7 @@
     },
     {
       "file": "server.py",
-      "line": 17723,
+      "line": 17746,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"source\":       s.get(\"source\", \"\u2014\"),",
@@ -8372,7 +8260,7 @@
     },
     {
       "file": "server.py",
-      "line": 1248,
+      "line": 1260,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_l1_sse_diag[\"l1_light_sse_rejected_total\"] = int(_l1_sse_diag.get(\"l1_light_sse_rejected_total\", 0)) + 1",
@@ -8386,7 +8274,7 @@
     },
     {
       "file": "server.py",
-      "line": 1262,
+      "line": 1274,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_l1_sse_diag[\"l1_light_sse_rejected_total\"] = int(_l1_sse_diag.get(\"l1_light_sse_rejected_total\", 0)) + 1",
@@ -8400,7 +8288,7 @@
     },
     {
       "file": "server.py",
-      "line": 1378,
+      "line": 1390,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_l1_sse_diag[\"l1_light_sse_events_delivered\"] = int(_l1_sse_diag.get(\"l1_light_sse_events_delivered\", 0)) + 1",
@@ -8414,7 +8302,7 @@
     },
     {
       "file": "server.py",
-      "line": 4573,
+      "line": 4591,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "t = (ticker or \"\").upper().strip()",
@@ -8428,7 +8316,7 @@
     },
     {
       "file": "server.py",
-      "line": 5354,
+      "line": 5372,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"active_architecture\": active or None,",
@@ -8442,7 +8330,7 @@
     },
     {
       "file": "server.py",
-      "line": 7430,
+      "line": 7453,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(price_levels, \"session_rth_positive_volume_bars\", 0),",
@@ -8456,7 +8344,7 @@
     },
     {
       "file": "server.py",
-      "line": 7709,
+      "line": 7732,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_sum_oi = (_sum_oi or 0.0) + _bucket_oi",
@@ -8470,7 +8358,7 @@
     },
     {
       "file": "server.py",
-      "line": 8537,
+      "line": 8560,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_resolved_logger_source = logger_source or resolve_logger_source_from_update_source(",
@@ -8484,7 +8372,7 @@
     },
     {
       "file": "server.py",
-      "line": 9479,
+      "line": 9502,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "float(getattr(diag, \"contracts_used\", 0) or 0) / _kl_contracts_total,",
@@ -8498,7 +8386,7 @@
     },
     {
       "file": "server.py",
-      "line": 10901,
+      "line": 10924,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"ticker\": ticker or None,",
@@ -8512,7 +8400,7 @@
     },
     {
       "file": "server.py",
-      "line": 11150,
+      "line": 11173,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "expiry=expiry if expiry is not None else (data_cache_key[1] if data_cache_key else None),",
@@ -8526,7 +8414,7 @@
     },
     {
       "file": "server.py",
-      "line": 11373,
+      "line": 11396,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = (ticker or \"\").upper().strip()",
@@ -8540,7 +8428,7 @@
     },
     {
       "file": "server.py",
-      "line": 11391,
+      "line": 11414,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_strike_expiry_count[tk] = max(_strike_expiry_count.get(tk, 0), n_exp)",
@@ -8554,7 +8442,7 @@
     },
     {
       "file": "server.py",
-      "line": 12231,
+      "line": 12254,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "ticker_storage_key(ticker) if ticker else \"\", \"\") or \"\")",
@@ -8568,7 +8456,7 @@
     },
     {
       "file": "server.py",
-      "line": 12308,
+      "line": 12331,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if now - _accrual_last_write.get(tk, 0.0) < floor:",
@@ -8582,7 +8470,7 @@
     },
     {
       "file": "server.py",
-      "line": 12716,
+      "line": 12739,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "admitted_l1 = set((read_producer_admitted_option_contracts() or {}).get(\"LEVELONE_OPTIONS\") or [])",
@@ -8596,7 +8484,7 @@
     },
     {
       "file": "server.py",
-      "line": 15530,
+      "line": 15553,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "bucket = per_expiry.get(col[\"expiry\"], {}).get(k)",
@@ -8610,7 +8498,7 @@
     },
     {
       "file": "server.py",
-      "line": 15531,
+      "line": 15554,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "syms = symbols_by_expiry.get(col[\"expiry\"], {}).get(k)",
@@ -8624,7 +8512,7 @@
     },
     {
       "file": "server.py",
-      "line": 15826,
+      "line": 15849,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "\"strike_min\": (strikes[0] if strikes else None),",
@@ -8638,7 +8526,7 @@
     },
     {
       "file": "server.py",
-      "line": 15827,
+      "line": 15850,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "\"strike_max\": (strikes[-1] if strikes else None),",
@@ -8652,7 +8540,7 @@
     },
     {
       "file": "server.py",
-      "line": 16612,
+      "line": 16635,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "t = (ticker or DEFAULT_TICKER).upper().strip()",
@@ -8666,7 +8554,7 @@
     },
     {
       "file": "server.py",
-      "line": 16650,
+      "line": 16673,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "t = (ticker or DEFAULT_TICKER).upper().strip()",
@@ -8680,7 +8568,7 @@
     },
     {
       "file": "server.py",
-      "line": 17099,
+      "line": 17122,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "raw = [t.strip().upper() for t in (tickers or \"\").split(\",\") if t.strip()]",
@@ -8694,7 +8582,7 @@
     },
     {
       "file": "server.py",
-      "line": 17536,
+      "line": 17559,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "resolved_expiry = (expiry or \"\").strip()[:10] or None",
@@ -8708,7 +8596,7 @@
     },
     {
       "file": "server.py",
-      "line": 18732,
+      "line": 18755,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "result[\"as_of_cutoff_et\"] = (out.raw_levels or {}).get(\"cutoff_et\")",
@@ -8722,7 +8610,7 @@
     },
     {
       "file": "server.py",
-      "line": 18743,
+      "line": 18766,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "result[\"level_semantic_scope\"] = (out.raw_levels or {}).get(\"semantic_scope\")",
@@ -8736,7 +8624,7 @@
     },
     {
       "file": "server.py",
-      "line": 18922,
+      "line": 18945,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ticker = (ticker or DEFAULT_TICKER).upper().strip()",
@@ -8750,7 +8638,7 @@
     },
     {
       "file": "server.py",
-      "line": 871,
+      "line": 883,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker) or (ticker or \"\").upper().strip()",
@@ -8764,7 +8652,7 @@
     },
     {
       "file": "server.py",
-      "line": 969,
+      "line": 981,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "key = ((ticker or \"\").strip().upper(),",
@@ -8778,7 +8666,7 @@
     },
     {
       "file": "server.py",
-      "line": 1079,
+      "line": 1091,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "for t in os.environ.get(\"ED_UI_PANEL_WARM_TICKERS\", \"SPY,QQQ,IWM\").split(\",\")",
@@ -8792,7 +8680,7 @@
     },
     {
       "file": "server.py",
-      "line": 2034,
+      "line": 2046,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "active = str(active_ticker or \"\").strip().upper()",
@@ -8806,7 +8694,7 @@
     },
     {
       "file": "server.py",
-      "line": 2110,
+      "line": 2122,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "active = str(ticker or md.get(\"ticker\") or \"\").upper().strip()",
@@ -8820,7 +8708,7 @@
     },
     {
       "file": "server.py",
-      "line": 4143,
+      "line": 4161,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "return os.environ.get(\"ED_LOGGING_UNIVERSE_FIFO_EVICTION\", \"\").strip().lower() in (",
@@ -8834,7 +8722,7 @@
     },
     {
       "file": "server.py",
-      "line": 7439,
+      "line": 7462,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(price_levels, \"session_rth_positive_volume_bars\", 0),",
@@ -8848,7 +8736,7 @@
     },
     {
       "file": "server.py",
-      "line": 7753,
+      "line": 7776,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_vz_dist = min(abs(_vz.get(\"lower\", spot_f) - spot_f), abs(_vz.get(\"upper\", spot_f) - spot_f))",
@@ -8862,7 +8750,7 @@
     },
     {
       "file": "server.py",
-      "line": 7924,
+      "line": 7947,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "_sym = getattr(_cq, 'symbol', '').upper()",
@@ -8876,7 +8764,7 @@
     },
     {
       "file": "server.py",
-      "line": 7929,
+      "line": 7952,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "_sym = getattr(_sq, 'symbol', '').upper()",
@@ -8890,7 +8778,7 @@
     },
     {
       "file": "server.py",
-      "line": 15352,
+      "line": 15375,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "\"dex\": dex_row[j] if j < len(dex_row) else None,",
@@ -8904,7 +8792,7 @@
     },
     {
       "file": "server.py",
-      "line": 15353,
+      "line": 15376,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "\"vanna\": vanna_row[j] if j < len(vanna_row) else None,",
@@ -8918,7 +8806,7 @@
     },
     {
       "file": "server.py",
-      "line": 18673,
+      "line": 18696,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_rv = (out.raw_levels or {}).get(\"vwap\")",
@@ -8932,7 +8820,7 @@
     },
     {
       "file": "server.py",
-      "line": 18828,
+      "line": 18851,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "return {\"error\": f\"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}\"}",
@@ -8946,7 +8834,7 @@
     },
     {
       "file": "server.py",
-      "line": 19016,
+      "line": 19039,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if os.environ.get(\"ED_ALLOW_DEBUG_ENDPOINTS\", \"\").strip().lower() not in (\"1\", \"true\", \"yes\"):",
@@ -8960,7 +8848,7 @@
     },
     {
       "file": "server.py",
-      "line": 7422,
+      "line": 7445,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(price_levels, \"session_rth_positive_volume_bars\", 0) or 0",
@@ -8974,7 +8862,7 @@
     },
     {
       "file": "server.py",
-      "line": 8013,
+      "line": 8036,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "(recent_cross_eval_wall_ts - c.get(\"ts_utc\", 0)) / 60",
@@ -8988,7 +8876,7 @@
     },
     {
       "file": "server.py",
-      "line": 8790,
+      "line": 8813,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "nearest_below_name=ms.nearest_below_name if hasattr(ms, \"nearest_below_name\") else None,",
@@ -9002,7 +8890,7 @@
     },
     {
       "file": "server.py",
-      "line": 8791,
+      "line": 8814,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "nearest_below_val=ms.nearest_below_val if hasattr(ms, \"nearest_below_val\") else None,",
@@ -9016,7 +8904,7 @@
     },
     {
       "file": "server.py",
-      "line": 8792,
+      "line": 8815,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "nearest_below_dist=ms.nearest_below_dist if hasattr(ms, \"nearest_below_dist\") else None,",
@@ -9030,7 +8918,7 @@
     },
     {
       "file": "server.py",
-      "line": 8802,
+      "line": 8825,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "spy_spot=(mkt_ctx.spy_last if mkt_ctx is not None else None),",
@@ -9044,7 +8932,7 @@
     },
     {
       "file": "server.py",
-      "line": 8806,
+      "line": 8829,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "qqq_spot=(mkt_ctx.qqq_last if mkt_ctx is not None else None),",
@@ -9058,7 +8946,7 @@
     },
     {
       "file": "server.py",
-      "line": 8813,
+      "line": 8836,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "iwm_spot=(mkt_ctx.iwm_last if mkt_ctx is not None else None),",
@@ -9072,7 +8960,7 @@
     },
     {
       "file": "server.py",
-      "line": 9771,
+      "line": 9794,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "allow_sync = os.environ.get(\"ED_ALLOW_ACTIVE_SYNC\", \"0\").strip().lower() in (\"1\", \"true\", \"yes\")",
@@ -9086,7 +8974,7 @@
     },
     {
       "file": "server.py",
-      "line": 10284,
+      "line": 10307,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "if not r or getattr(r, \"status_code\", 0) != 200:",
@@ -9100,7 +8988,7 @@
     },
     {
       "file": "server.py",
-      "line": 10288,
+      "line": 10311,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(r, \"status_code\", \"None\"),",
@@ -9114,7 +9002,7 @@
     },
     {
       "file": "server.py",
-      "line": 18715,
+      "line": 18738,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "x[\"distance_to_spot\"] if x[\"distance_to_spot\"] is not None else 1e9,",
@@ -9128,7 +9016,7 @@
     },
     {
       "file": "server.py",
-      "line": 15033,
+      "line": 15056,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"doi_below\": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k < spot1)),",
@@ -9142,7 +9030,7 @@
     },
     {
       "file": "server.py",
-      "line": 15034,
+      "line": 15057,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"doi_above\": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k > spot1)),",
@@ -9156,7 +9044,7 @@
     },
     {
       "file": "server.py",
-      "line": 18716,
+      "line": 18739,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "-x.get(\"tradeable_score\", 0),",
@@ -9170,7 +9058,7 @@
     },
     {
       "file": "server.py",
-      "line": 9218,
+      "line": 9241,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if os.environ.get(\"ED_LIVE_SNAPSHOT_MATERIALIZE\", \"0\").strip().lower() in (",
@@ -9184,7 +9072,7 @@
     },
     {
       "file": "server.py",
-      "line": 18242,
+      "line": 18265,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"replacement\": f\"/api/levels?ticker={(ticker or DEFAULT_TICKER).upper().strip()}\",",
@@ -9198,7 +9086,7 @@
     },
     {
       "file": "server.py",
-      "line": 8582,
+      "line": 8605,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(price_levels, \"session_rth_positive_volume_bars\", 0) or 0",
@@ -9212,7 +9100,7 @@
     },
     {
       "file": "server.py",
-      "line": 8746,
+      "line": 8769,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "market_session=(session_label or \"unknown\").lower().replace(\"-\", \"\"),",
@@ -9226,7 +9114,7 @@
     },
     {
       "file": "server.py",
-      "line": 8659,
+      "line": 8682,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "log.warning(f\"Constituent {getattr(cq, 'symbol', '?')} chg_pct fetch failed: {e}\")",
@@ -9240,7 +9128,7 @@
     },
     {
       "file": "server.py",
-      "line": 8679,
+      "line": 8702,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "log.warning(f\"Sector {getattr(sq, 'symbol', '?')} chg_pct fetch failed: {e}\")",
@@ -10612,7 +10500,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 525,
+      "line": 539,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10626,7 +10514,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 586,
+      "line": 600,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10640,7 +10528,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1511,
+      "line": 1525,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10654,7 +10542,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1567,
+      "line": 1581,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10668,7 +10556,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1620,
+      "line": 1634,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10682,7 +10570,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1672,
+      "line": 1686,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10696,7 +10584,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1679,
+      "line": 1693,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10710,7 +10598,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1766,
+      "line": 1780,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10724,7 +10612,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1835,
+      "line": 1849,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10738,7 +10626,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1884,
+      "line": 1898,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10752,7 +10640,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1939,
+      "line": 1953,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10766,7 +10654,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 1946,
+      "line": 1960,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10780,7 +10668,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 2002,
+      "line": 2016,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10794,7 +10682,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 2009,
+      "line": 2023,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10808,7 +10696,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 2057,
+      "line": 2071,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ accepted: true, contracts: body.contracts || [] }) });",
@@ -10822,7 +10710,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 2121,
+      "line": 2140,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10836,7 +10724,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 2157,
+      "line": 2180,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -10850,7 +10738,7 @@
     },
     {
       "file": "tests/e2e/console-gamma-heatmap.spec.js",
-      "line": 2200,
+      "line": 2225,
       "language": "javascript",
       "pattern": "OR_OR",
       "snippet": "return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });",
@@ -11843,6 +11731,20 @@
       "id": "FB-361f9a9c74"
     },
     {
+      "file": "tests/test_no_fallback_item13_spread_provenance_v1.py",
+      "line": 52,
+      "language": "python",
+      "pattern": "OR_LADDER",
+      "snippet": "assert \"schwab_bid_ask\" not in (spread[\"spread_pts_source\"] or \"\")",
+      "semantic_field_guess": "spread_pts_source",
+      "context": "test_compute_spread_no_generic_fallback_label_survives",
+      "normalized_expr": "BoolOp(op=Or(), values=[Subscript(value=Name(id='spread', ctx=Load()), slice=Constant(value='spread_pts_source'), ctx=Load()), Constant(value='')])",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
+      "fingerprint": "43d719742997b24371ee6512742b0e080be632a25d3cf2fc6b179bb92c665933",
+      "id": "FB-43d7197429"
+    },
+    {
       "file": "tests/test_option_volume_is_live_v1.py",
       "line": 88,
       "language": "python",
@@ -12096,7 +11998,7 @@
     },
     {
       "file": "tests/test_stream_capture_daemon_v1.py",
-      "line": 1062,
+      "line": 1088,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "initial_state = state or SimpleNamespace(client=object())",
