@@ -785,14 +785,24 @@
       // and push on schedule from an L0 row that itself stopped updating). p.l1_stale is
       // the payload's own real freshness verdict (build_l1_context: stale when the L0
       // spot is missing or unusable) — use it, not "an event arrived", to label LIVE vs
-      // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
+      // STALE.
       var stale = !!p.l1_stale || p.spot_state === 'stale';
       var unavailable = p.spot_state === 'unavailable' || p.spot == null;
+      // RC-REHAB-1 (Phase 2, confirmed live during real RTH 2026-09-18): this branch used to
+      // stop at LIVE/STALE/UNAVAILABLE — it never checked streaming_healthy, so a genuinely
+      // unhealthy streaming plane (confirmed hours-stale that day) painted this badge LIVE
+      // here while the poll-fallback path (refreshHeader, below) correctly painted DEGRADED
+      // for the exact same underlying state — same signal, two different verdicts, purely a
+      // function of which code path last ran. p.streaming_healthy now carries the same flag
+      // the fallback path already used (attached server-side in
+      // server.py:_l1_attach_freshness_semantics, the one function both the SSE push and the
+      // HTTP GET twin route through) so both paths agree.
+      var healthy = !!p.streaming_healthy;
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
         spotState: p.spot_state,
-        feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
-        feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'STALE' : 'LIVE'),
+        feedCls: unavailable ? 'stale' : (stale ? 'stale' : (healthy ? '' : 'warn')),
+        feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'STALE' : (healthy ? 'LIVE' : 'DEGRADED')),
         ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
     });
     // Independent-review finding (2026-09-12): the heatmap only ever refetched on the 3s/12s

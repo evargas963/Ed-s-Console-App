@@ -3601,39 +3601,42 @@ def _latest_cached_ms_and_key_for_ticker(ticker: str) -> tuple[Optional[dict], O
 
 
 def _stream_spot_and_of_regime(symbol: str) -> tuple[Optional[float], Optional[str]]:
-    """Light read from streamer + OrderFlowEngine for tick-trigger comparison only."""
+    """Light read from streamer + OrderFlowEngine for tick-trigger comparison only.
+
+    RC-REHAB-1 (Phase 2): this function's import used to name `get_top_of_book`, a function
+    `app.options.order_flow.state` has never defined (only `get_top_of_book_sizes`, which
+    returns bid/ask SIZE, not LAST_PRICE -- and the private `_top[sym]` dict it would read
+    from carries no LAST_PRICE field at all; that's tape/trade data, not top-of-book quote
+    data). `from X import a, b` fails atomically in Python, so this import raised
+    ImportError on EVERY call, and the bare `except ImportError: return None, None` above
+    silently swallowed it -- not just the get_top_of_book sub-path, the ENTIRE function,
+    every call, always returning (None, None). Its caller (`tick_triggers_coherent_refresh`
+    in `live_decision_bundle.py:273,330`) only acts when stream_spot/stream_of_regime are
+    NOT None, so this silently disabled two real tick-trigger checks (stream spot moved;
+    order-flow regime changed) with no error, no log, nothing to notice by. The raw-content
+    LAST_PRICE scan below was already correct and already present as a fallback for the
+    (nonexistent) fast path -- it is now the only path, not a fallback.
+    """
     global _order_flow_engine
     stream_spot = None
     stream_regime = None
     try:
-        from app.options.order_flow.state import get_content_for_symbol, get_top_of_book
+        from app.options.order_flow.state import get_content_for_symbol
         from app.options.order_flow.engine import OrderFlowEngine
     except ImportError:
         return None, None
     content = get_content_for_symbol(symbol)
     if not content:
         return None, None
-    try:
-        top = get_top_of_book(symbol)
-        if isinstance(top, dict) and top.get("LAST_PRICE") is not None:
+    for item in reversed(content):
+        if isinstance(item, dict) and item.get("LAST_PRICE") is not None:
             try:
-                v = float(top["LAST_PRICE"])
+                v = float(item["LAST_PRICE"])
                 if v > 0:
                     stream_spot = v
+                    break
             except (TypeError, ValueError):
                 pass
-    except (ImportError, AttributeError, TypeError):
-        pass
-    if stream_spot is None:
-        for item in reversed(content):
-            if isinstance(item, dict) and item.get("LAST_PRICE") is not None:
-                try:
-                    v = float(item["LAST_PRICE"])
-                    if v > 0:
-                        stream_spot = v
-                        break
-                except (TypeError, ValueError):
-                    pass
     try:
         if _order_flow_engine is None:
             _order_flow_engine = OrderFlowEngine()
@@ -5960,9 +5963,48 @@ def _l1_cache_maintain(now_ts: float) -> None:
         _l1_instrumentation["l1_cache_reconcile_lru_backfilled_total"] += backfilled
 
 
+#: RC-REHAB-1 (Phase 2): confirmed live during real RTH (2026-09-18) that the header badge
+#: can read "DEGRADED" or silently "LIVE" for the SAME underlying streaming-plane state,
+#: depending only on which code path last painted it. The REST poll fallback
+#: (GET /api/live/state, ed-core.js refreshHeader) has always attached streaming_plane.
+#: streaming_healthy and shown DEGRADED when it's false, even with a fresh spot. The
+#: primary path -- the l1_projection SSE push and its HTTP twin GET /api/analytics/light,
+#: both built by _project_l1/_l1_http_get_projection -- never carried this signal at all, so
+#: ed-core.js's l1_projection handler could only ever paint LIVE/STALE/UNAVAILABLE, never
+#: DEGRADED, regardless of the real streaming-plane health. _l1_attach_freshness_semantics
+#: runs on every path that produces an `out` dict consumed by both the SSE push and the HTTP
+#: GET (_project_l1 directly, and _l1_http_get_projection's cache-hit read) -- one insertion
+#: point covers both. get_streaming_diagnostics() itself is not cheap (DB + status-file I/O);
+#: this reuses the same short-memo convention as QUOTE_MEMO_TTL_SEC rather than adding a
+#: fresh read to what can be a per-tick build/serve path.
+_STREAMING_HEALTH_MEMO_TTL_SEC: float = 1.0
+_streaming_health_memo: tuple[float, bool] = (0.0, False)
+_streaming_health_memo_lock = threading.Lock()
+
+
+def _memoized_streaming_healthy() -> bool:
+    global _streaming_health_memo
+    now = time.monotonic()
+    with _streaming_health_memo_lock:
+        ts, healthy = _streaming_health_memo
+        if (now - ts) < _STREAMING_HEALTH_MEMO_TTL_SEC:
+            return healthy
+    try:
+        from app.options.order_flow.streaming import get_streaming_diagnostics
+
+        healthy = bool(get_streaming_diagnostics().get("streaming_healthy"))
+    except Exception:
+        healthy = False
+    with _streaming_health_memo_lock:
+        _streaming_health_memo = (now, healthy)
+    return healthy
+
+
 def _l1_attach_freshness_semantics(out: dict[str, Any], now_ts: float) -> None:
     """Explicit quote vs order-flow freshness — safe for cache-hit + live quote overlay."""
     from planes.l1_runtime import L1_ORDER_FLOW_STALE_SEC
+
+    out["streaming_healthy"] = _memoized_streaming_healthy()
 
     of_ts = out.get("order_flow_as_of_ts")
     if of_ts is None:
