@@ -226,6 +226,7 @@ def write_bundle_integrity_manifest(
     hz: str,
     *,
     source_run_manifest: dict | None = None,
+    source_manifest_corrupt_reason: str | None = None,
     allow_missing_required: bool = False,
 ) -> dict[str, Any]:
     """
@@ -234,6 +235,13 @@ def write_bundle_integrity_manifest(
     Hashes the artifact bytes that live in ``bundle_dir`` (what will be served is
     what is hashed) and binds ticker/horizon/role identity plus the training-run
     lineage from the candidate ``scheduler_run_manifest.json`` when available.
+
+    ``source_run_manifest`` is ``None`` for two DIFFERENT reasons a caller must
+    distinguish before calling this function: the source manifest genuinely was
+    never written, or it exists but failed to load (see
+    ``training_cache.ManifestCorruptError``). Pass ``source_manifest_corrupt_reason``
+    for the latter case -- ``source_lineage`` records `source_manifest_absent` vs
+    `source_manifest_invalid` distinctly rather than collapsing both into "absent".
 
     ``allow_missing_required`` exists ONLY for the Item-4 fleet migration's
     reconstruction of INCOMPLETE legacy bundles: present files get pinned while
@@ -274,7 +282,14 @@ def write_bundle_integrity_manifest(
             identity={"ticker": t, "horizon": su, "artifact_role": "*"},
         )
 
-    src = source_run_manifest if isinstance(source_run_manifest, dict) else None
+    if source_run_manifest is not None and not isinstance(source_run_manifest, dict):
+        # The parameter's own type contract is `dict | None`; anything else is a
+        # caller bug, not a legitimate "absent" input -- fail closed rather than
+        # silently treating a malformed argument the same as a genuinely absent one.
+        raise TypeError(
+            f"source_run_manifest must be dict or None, got {type(source_run_manifest).__name__}"
+        )
+    src = source_run_manifest
     lineage_keys = (
         "scheduler_cache_key",
         "feature_cache_key",
@@ -289,11 +304,12 @@ def write_bundle_integrity_manifest(
         "data_end",
         "row_count",
     )
-    source_lineage: dict[str, Any] = (
-        {k: src.get(k) for k in lineage_keys if src.get(k) is not None}
-        if src
-        else {"source_manifest_absent": True}
-    )
+    if src:
+        source_lineage: dict[str, Any] = {k: src.get(k) for k in lineage_keys if src.get(k) is not None}
+    elif source_manifest_corrupt_reason is not None:
+        source_lineage = {"source_manifest_invalid": True, "reason": source_manifest_corrupt_reason}
+    else:
+        source_lineage = {"source_manifest_absent": True}
 
     manifest: dict[str, Any] = {
         "schema_version": BUNDLE_INTEGRITY_SCHEMA_VERSION,
@@ -891,13 +907,26 @@ def promote_horizon_bundle_from_candidate(
     # run manifest, so nothing bound active-serving bytes to any manifest. Stamp
     # the bundle integrity manifest from the bytes just placed in the active dir
     # plus the candidate run-manifest lineage.
-    from training_cache import load_run_manifest
+    from training_cache import ManifestCorruptError, load_run_manifest
+
+    manifest_state: dict | None
+    manifest_corrupt_reason: str | None = None
+    try:
+        manifest_state = load_run_manifest(src_dir)
+    except ManifestCorruptError as e:
+        # Distinct from absent (item 1, repo-wide semantic-coherence mission): a
+        # present-but-corrupt source manifest must not be recorded the same way as
+        # "no manifest was ever written" -- see write_bundle_integrity_manifest's own
+        # source_lineage handling below.
+        manifest_state = None
+        manifest_corrupt_reason = str(e)
 
     write_bundle_integrity_manifest(
         active_ticker_dir,
         ticker,
         hz,
-        source_run_manifest=load_run_manifest(src_dir),
+        source_run_manifest=manifest_state,
+        source_manifest_corrupt_reason=manifest_corrupt_reason,
     )
     return active_ticker_dir
 

@@ -2867,6 +2867,7 @@ def run_once(
                 compute_scheduler_cache_key,
                 compute_feature_cache_key,
                 load_run_manifest,
+                ManifestCorruptError,
                 save_run_manifest,
                 build_manifest,
                 full_skip_eligible,
@@ -2945,8 +2946,18 @@ def run_once(
             skip_train = bool(promote_from_manifests_only or preflip_candidate_root is not None)
 
             if skip_train:
-                parallel_man = load_run_manifest(parallel_out)
-                cascade_man = load_run_manifest(cascade_out)
+                try:
+                    parallel_man = load_run_manifest(parallel_out)
+                    cascade_man = load_run_manifest(cascade_out)
+                except ManifestCorruptError as e:
+                    # Distinct from absent (repo-wide semantic-coherence mission, item
+                    # 1): "missing" and "present but corrupt" are different facts an
+                    # operator reading this log needs to tell apart.
+                    log.warning(
+                        "%s: --promote-from-manifests skipped (manifest corrupt: %s)",
+                        ticker, e,
+                    )
+                    continue
                 if not parallel_man or not cascade_man:
                     log.warning(
                         "%s: --promote-from-manifests skipped (parallel and/or cascade manifest missing)",
@@ -3054,8 +3065,20 @@ def run_once(
                     "preflip frozen candidates" if preflip_candidate_root else "--promote-from-manifests",
                 )
             else:
-                parallel_man = load_run_manifest(parallel_out) if not bypass_cache else None
-                cascade_man = load_run_manifest(cascade_out) if not bypass_cache else None
+                def _load_cache_manifest(d: Path) -> dict | None:
+                    # Distinct from absent (repo-wide semantic-coherence mission, item
+                    # 1): a corrupt cache manifest is logged, not silently treated the
+                    # same as "cache empty" -- the resulting behavior (re-train instead
+                    # of resuming from cache) is the same safe choice either way, but
+                    # the reason must stay visible rather than conflated.
+                    try:
+                        return load_run_manifest(d)
+                    except ManifestCorruptError as e:
+                        log.warning("%s: cache manifest at %s is corrupt, ignoring: %s", ticker, d, e)
+                        return None
+
+                parallel_man = _load_cache_manifest(parallel_out) if not bypass_cache else None
+                cascade_man = _load_cache_manifest(cascade_out) if not bypass_cache else None
 
                 par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0) if parallel_man else 0
                 cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0) if cascade_man else 0
