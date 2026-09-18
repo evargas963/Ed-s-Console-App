@@ -65,6 +65,15 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/ops/status': ('OPS', None),
     '/api/options/charm-by-strike': ('PRODUCER', 'server.py:get_charm_by_strike'),
     '/api/options/gamma-surface': ('PRODUCER', 'server.py:project_gamma_surface'),
+    # RC-REHAB-1 (Phase 3): served_routes() only scanned server.py until now, so this
+    # already-extracted route (app/api/routes/options_order_flow.py, mounted before this
+    # session's own desk.py extraction) was never actually checked by this suite -- a
+    # pre-existing gap this fix's scan-widening surfaced, not something new. CARRIER, not
+    # PRODUCER: it re-serves the SAME options_live_payload shape /api/order-flow/
+    # options-microstructure computes live, built here from persisted/replayed
+    # stream_capture.db rows (hydrate_option_content) instead of a fresh live computation --
+    # a replay of an already-rooted payload, not a new root of its own.
+    '/api/options/history': ('CARRIER', None),
     '/api/options/tape': ('PRODUCER', 'server.py:get_options_tape'),
     '/api/options/vanna-by-strike': ('PRODUCER', 'server.py:get_vanna_by_strike'),
     '/api/order-flow/book-heatmap': ('PRODUCER', 'server.py:get_order_flow_book_heatmap'),

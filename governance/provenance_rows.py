@@ -2791,22 +2791,26 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_client).',
     ),
     Row(
-        file='server.py', derivation='get_desk_brief', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (Phase 3): moved from server.py to app/api/routes/desk.py (first
+        # extraction slice of server.py's decomposition); server.py re-exports the name so
+        # existing callers keep working, but the real definition -- and this row's file ref --
+        # must point at where the function actually lives.
+        file='app/api/routes/desk.py', derivation='get_desk_brief', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='The newest research brief held at `as_of`, with each block aged against that instant rather than against now.',
     ),
     Row(
-        file='server.py', derivation='get_desk_dossier', disposition='ALLOWLISTED',
+        file='app/api/routes/desk.py', derivation='get_desk_dossier', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification="One name's measured structure as it stood at `as_of`, from the desk fact store.",
     ),
     Row(
-        file='server.py', derivation='get_desk_radar', disposition='ALLOWLISTED',
+        file='app/api/routes/desk.py', derivation='get_desk_radar', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Candidate structure as it stood at `as_of`, read from the desk fact store; the as-of bound is what keeps a replay honest.',
     ),
     Row(
-        file='server.py', derivation='get_desk_structure', disposition='ALLOWLISTED',
+        file='app/api/routes/desk.py', derivation='get_desk_structure', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Deterministic payoff plus the PHYSICAL terminal distribution for one candidate, as of the requested instant.',
     ),
