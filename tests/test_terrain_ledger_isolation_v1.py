@@ -66,13 +66,33 @@ def _private_copy(tmp_path: Path) -> Path:
     return watched
 
 
+_INNER_RUNTIME_SELECTORS = (
+    "ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT", "ED_TERRAIN_QUARANTINE_LEDGER",
+)
+
+
+def _inner_env(watched: Path) -> dict[str, str]:
+    """Child pytest must be serial and must own its own runtime root.
+
+    Inheriting PYTEST_XDIST_WORKER / the parent's ED_RUNTIME_ROOT lets collection
+    walk a sibling worker's already-rmtree'd ed-pytest-gw* path (FileNotFoundError).
+    Same class as tests/test_full_suite_output_sink_v1._child_env.
+    """
+    env = {
+        k: v for k, v in os.environ.items()
+        if not k.startswith("PYTEST_") and k not in _INNER_RUNTIME_SELECTORS
+    }
+    env["ED_TEST_TRACKED_TERRAIN_LEDGER"] = str(watched)
+    return env
+
+
 def _run_inner(test_file: Path, watched: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             sys.executable, "-m", "pytest", str(test_file), "-q",
             "-p", "tests.conftest",          # the REAL repo conftest, not a copy
             "-p", "no:cacheprovider",
-            "--rootdir", str(ROOT),
+            "--rootdir", str(test_file.parent),
         ],
         cwd=str(ROOT),
         capture_output=True,
@@ -80,7 +100,7 @@ def _run_inner(test_file: Path, watched: Path) -> subprocess.CompletedProcess[st
         encoding="utf-8",
         errors="replace",
         timeout=420,
-        env={**os.environ, "ED_TEST_TRACKED_TERRAIN_LEDGER": str(watched)},
+        env=_inner_env(watched),
     )
 
 
@@ -142,3 +162,16 @@ def test_the_provers_never_touch_the_real_tracked_file():
     assert uses == [f"{token} = ROOT / \"reports\" / \"terrain_quarantine_ledger.jsonl\"",
                     f"shutil.copy({token}, watched)"], uses
     assert "ED_TEST_TRACKED_TERRAIN_LEDGER" in (ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
+
+
+def test_inner_pytest_does_not_inherit_xdist_runtime_root(tmp_path, monkeypatch):
+    """The inner collection process is the lifecycle owner of its runtime path."""
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw2")
+    monkeypatch.setenv("ED_RUNTIME_ROOT", str(tmp_path / "parent-runtime"))
+    monkeypatch.setenv("ED_ARTIFACTS_ROOT", str(tmp_path / "parent-art"))
+    watched = tmp_path / "watched.jsonl"
+    watched.write_text("", encoding="utf-8")
+    env = _inner_env(watched)
+    assert "PYTEST_XDIST_WORKER" not in env
+    assert "ED_RUNTIME_ROOT" not in env
+    assert env["ED_TEST_TRACKED_TERRAIN_LEDGER"] == str(watched)

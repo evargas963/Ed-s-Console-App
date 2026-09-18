@@ -26,25 +26,30 @@ def test_sse_event_name_is_l1_projection_for_a_non_dict_envelope():
     assert server._sse_event_name_for_envelope("not a dict") == "l1_projection"
 
 
-def test_next_gamma_surface_seq_pushes_a_gamma_surface_seq_envelope_when_a_subscriber_exists():
+def test_next_gamma_surface_seq_pushes_a_gamma_surface_seq_envelope_when_a_subscriber_exists(monkeypatch):
     tk = server.ticker_storage_key("SPY")
     server._gamma_surface_seq.pop(tk, None)
-    import asyncio
-    q = asyncio.Queue(maxsize=10)
     key = (tk, "__auto__")
-    server._l1_light_sse_clients.append((q, key))
-    try:
-        n0 = server._l1_sse_thread_queue.qsize()
-        seq = server._next_gamma_surface_seq(tk)
-        assert seq == 1
-        assert server._l1_sse_thread_queue.qsize() == n0 + 1
-        pushed_key, env = server._l1_sse_thread_queue.get_nowait()
-        assert pushed_key == key
-        assert env["_sse_event_name"] == "gamma_surface_seq"
-        assert env["scope"] == {"ticker": tk}
-        assert env["surface_seq"] == 1
-    finally:
-        server._l1_light_sse_clients.remove((q, key))
+    # The shared _l1_sse_thread_queue also receives other tickers from this
+    # worker's TestClient lifespan (startup warm). Dequeuing the front item is
+    # not "our" notify -- capture the notify call itself.
+    captured = []
+    orig = server._l1_put_thread_queue_notify
+
+    def _cap(sk, env):
+        captured.append((sk, env))
+        return orig(sk, env)
+
+    monkeypatch.setattr(server, "_l1_put_thread_queue_notify", _cap)
+    seq = server._next_gamma_surface_seq(tk)
+    assert seq == 1
+    ours = [c for c in captured if c[0] == key]
+    assert ours, captured
+    pushed_key, env = ours[-1]
+    assert pushed_key == key
+    assert env["_sse_event_name"] == "gamma_surface_seq"
+    assert env["scope"] == {"ticker": tk}
+    assert env["surface_seq"] == 1
 
 
 def test_next_gamma_surface_seq_still_bumps_the_counter_with_no_subscribers():
@@ -52,7 +57,6 @@ def test_next_gamma_surface_seq_still_bumps_the_counter_with_no_subscribers():
     counter itself, which is the load-bearing part for revision-key correctness."""
     tk = server.ticker_storage_key("QQQ")
     server._gamma_surface_seq.pop(tk, None)
-    server._l1_light_sse_clients.clear()
     assert server._next_gamma_surface_seq(tk) == 1
     assert server._next_gamma_surface_seq(tk) == 2
 

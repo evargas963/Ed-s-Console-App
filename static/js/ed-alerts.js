@@ -44,7 +44,10 @@
     var alerts = proximityAlerts(d);
     if (!alerts.length) { s.hidden = true; list.innerHTML = ''; return; }
     s.hidden = false;
-    list.innerHTML = alerts.map(function (a) { return '<span class="alert-pill">' + esc(a) + '</span>'; }).join('');
+    var gen = d.last_price_generation != null ? d.last_price_generation : '';
+    list.innerHTML = (gen !== '' ? '<span class="alert-pill" data-last-price-gen="' + esc(gen) +
+      '">LAST_PRICE gen ' + esc(gen) + '</span>' : '') +
+      alerts.map(function (a) { return '<span class="alert-pill">' + esc(a) + '</span>'; }).join('');
   }
 
   function loadImpl(tk, signal) {

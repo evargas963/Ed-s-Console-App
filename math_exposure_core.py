@@ -192,16 +192,18 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # a computed value, not re-derive presence from call_oi/put_oi being non-None
             # (equivalent today, but a second definition of the same fact is how these drift).
             "has_oi": False,
+            # Authoritative OI includes a vendor 0. has_oi is True when any listed
+            # contract reported a finite non-negative openInterest (0 or more).
+            # oi_absent is True when any listed contract omitted openInterest.
+            # Missing OI is not a zero. Zero OI is a measured zero, not absence.
+            "oi_absent": False,
             # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
-            # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
-            # question "did any contract that cleared it ALSO report genuine, vendor-
-            # confirmed-usable greeks" (see vendor_greeks_unavailable). A contract can have
-            # real OI and simultaneously garbage greeks (live-reproduced: SPY/QQQ 0DTE ITM
-            # puts, real OI, delta=-1.0/gamma=0.0) -- conflating the two meant a genuinely
-            # invalid-greeks strike silently rendered as a computed $0 instead of an honest
-            # absence. Never re-derived from call_gamma/put_gamma being nonzero (a REAL
-            # position can net to a genuine zero too -- see net_gex_1pct's own honest-zero
-            # test coverage).
+            # "did any contract report an authoritative OI number"; has_valid_gamma answers
+            # the INDEPENDENT question "did any contract that also had positive OI report
+            # genuine, vendor-confirmed-usable greeks" (see vendor_greeks_unavailable).
+            # A contract can have real OI and simultaneously garbage greeks. Never
+            # re-derived from call_gamma/put_gamma being nonzero (a REAL position can
+            # net to a genuine zero too -- see net_gex_1pct's own honest-zero coverage).
             "has_valid_gamma": False,
             "call_oi": None,
             "put_oi": None,
@@ -318,6 +320,21 @@ def compute_exposures_by_strike(
 
         if oi is None:
             missing += 1
+            b["oi_absent"] = True
+        elif oi < 0:
+            missing += 1
+        else:
+            # Authoritative OI, including 0. Recorded before the greek gate so a
+            # proven zero is distinguishable from a missing field.
+            b["has_oi"] = True
+            if side == "CALL":
+                prev = b.get("call_oi")
+                b["call_oi"] = oi if prev is None else float(prev) + oi
+                b["call_oi_mult"] += oi * mult
+            else:
+                prev = b.get("put_oi")
+                b["put_oi"] = oi if prev is None else float(prev) + oi
+                b["put_oi_mult"] += oi * mult
         if require_oi and (oi is None or oi <= 0):
             continue
 
@@ -338,16 +355,8 @@ def compute_exposures_by_strike(
             missing += 1
 
         used += 1
-        # The ONE canonical "did OI actually contribute here" signal (see _strike_bucket's own
-        # comment) -- exactly the condition every OI-gated accumulation below already shares.
-        if oi is not None:
-            b["has_oi"] = True
 
         if side == "CALL":
-            if oi is not None:
-                prev = b.get("call_oi")
-                b["call_oi"] = oi if prev is None else float(prev) + oi
-                b["call_oi_mult"] += oi * mult
             if oi is not None and delta_ok:
                 b["call_delta"] += delta * oi * mult
             if oi is not None and gamma_ok:
@@ -376,10 +385,6 @@ def compute_exposures_by_strike(
                     if _vn is not None:
                         b["call_vanna"] += _vn * oi * mult
         elif side == "PUT":
-            if oi is not None:
-                prev = b.get("put_oi")
-                b["put_oi"] = oi if prev is None else float(prev) + oi
-                b["put_oi_mult"] += oi * mult
             if oi is not None and delta_ok:
                 b["put_delta"] += delta * oi * mult
             if oi is not None and gamma_ok:

@@ -337,7 +337,14 @@ def test_spot_endpoint_shape_single_authority():
 
     body = json.loads(srv.get_spot(ticker="SPY").body)
     assert body["ticker"] == "SPY"
-    assert set(body) == {"ticker", "spot", "spot_source", "spot_state", "spot_as_of_ts_utc"}
+    required = {
+        "ticker", "spot", "spot_source", "spot_state", "spot_as_of_ts_utc",
+        "current_spot", "current_spot_source", "current_spot_state", "current_spot_as_of_ts",
+        "last_price_native_ts", "last_price_received_ts", "last_price_generation",
+    }
+    assert required <= set(body)
+    assert body["current_spot"] == body["spot"]
+    assert body["current_spot_source"] == body["spot_source"]
 
 
 def test_scorecard_endpoint_serves_live_coach_numbers_or_empty():

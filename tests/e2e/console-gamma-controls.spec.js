@@ -10,11 +10,13 @@ const { test, expect } = require('@playwright/test');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
 function surfaceFor(tk, spot) {
-  return { ticker: tk, symbol: tk, available: true, spot: spot, source: 'terrain_live_cache',
+  return { ticker: tk, symbol: tk, requested_ticker: tk, canonical_ticker: tk, available: true, current_spot: spot, current_spot_state: 'live', spot: spot, source: 'terrain_live_cache',
     live: true, stale: false, age_sec: 5, chain_basis: 'full', complete: false,
     expirations: EXPS.map(function (e, i) { return { expiry: e, dte: [2, 3, 9][i] }; }),
     strikes: [spot - 2, spot, spot + 2],
-    cells: [spot - 2, spot, spot + 2].map(function (k) { return { strike: k, gex: [-90000, 958600, -264500] }; }) };
+    cells: [spot - 2, spot, spot + 2].map(function (k) {
+      return { strike: k, gex: [-90000, 958600, -264500],
+        contracts: EXPS.map(function (e) { return { call: 'C' + k + e, put: 'P' + k + e }; }) }; }) };
 }
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
   net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false, levels_age_sec: 10 };
@@ -153,6 +155,10 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#flTicker')).toHaveText('AAPL');
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await expect(page.locator('#mvTicker')).toHaveText('AAPL');
+    // Heatmap ATM auto-select schedules a 600ms delayed /api/options/tape (ed-gamma-panels
+    // scheduleDelayedOf). Drain that AAPL-era timer before the observation window starts so
+    // a legitimate still-on-AAPL tape fetch is not counted as a leftover after QQQ.
+    await page.waitForTimeout(650);
     // switch by WATCHLIST CLICK -> the same single state everywhere; nothing keeps asking for AAPL
     reqs.length = 0;
     await page.locator('.wl-row .wl-sym', { hasText: 'QQQ' }).click();

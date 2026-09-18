@@ -1,0 +1,11 @@
+{
+  "schema": "gamma_stream_coverage_eligibility_v1",
+  "owner": "server.gamma_cell_has_contract_identity",
+  "validator": "instrument_identity.vendor_option_root",
+  "rule": "A heatmap cell is stream-coverage eligible iff the server stamps has_contract_identity=true. That stamp is true iff vendor_option_root(call) or vendor_option_root(put) is non-empty (21-character OSI). The client consumes only that stamp; a missing or malformed stamp is ineligible. NO CONTRACT cells stay labelled and are excluded. ZERO OI cells with a validated OSI remain included.",
+  "payload_field": "has_contract_identity",
+  "dom_attribute": "data-has-contract-identity",
+  "eligible_value": "1",
+  "ineligible_value": "0",
+  "client_rule": "cellHasContractIdentity returns true only when stream[j].has_contract_identity === true. There is no client-side identity parser."
+}

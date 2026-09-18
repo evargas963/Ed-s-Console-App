@@ -84,6 +84,17 @@
       return;
     }
     txt('klSpot', px(d.spot));
+    if (window.EdSpotIdentity && window.EdSpotIdentity.stamp) {
+      window.EdSpotIdentity.stamp(document.getElementById('klSpot'), {
+        ticker: d.ticker != null ? d.ticker : ticker(),
+        last_price: d.spot,
+        last_price_native_ts: d.last_price_native_ts,
+        last_price_received_ts: d.last_price_received_ts,
+        source: Object.prototype.hasOwnProperty.call(d, 'current_spot_source')
+          ? d.current_spot_source : null,
+        generation: d.last_price_generation
+      });
+    }
     txt('klFlip', px(d.gamma_flip));
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
@@ -587,6 +598,7 @@
   // (DOM placeholder + additional-contracts demand) the instant the ticker changes, same
   // discipline `_setAdditionalContractsDemand([])` already gives an empty/failed chain.
   function resetStrikeDetailForTickerChange() {
+    cancelDelayedOf();
     _sdDesired = { strike: null, expiry: null };
     var host = document.getElementById('sdBody');
     if (host) {
@@ -900,13 +912,41 @@
     ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadOfImpl(ticker(), signal); })
     : { trigger: function () { loadOfImpl(ticker()); }, reset: function () {} };
   function loadOf() { if (isGamma()) _ofLoader.trigger(ticker()); }
+  // The tape scopes to whichever contract(s) are DESIRED server-side -- that identity is
+  // only current once the streaming demand POST Strike Detail just issued resolves, so a
+  // short delay (not the full ~12s slow-refresh cadence) is a deliberate, disclosed
+  // approximation. The timer is owned: a later strike, a ticker change, or leaving Gamma
+  // cancels it. When it fires it re-checks the ticker that scheduled it -- a fire-and-forget
+  // setTimeout(loadOf) used to issue the abandoned ticker's /api/options/tape after the
+  // operator had already moved on (console-gamma-controls #9).
+  var _ofDelayTimer = null;
+  var _ofDelayTicker = null;
+  function cancelDelayedOf() {
+    if (_ofDelayTimer != null) { clearTimeout(_ofDelayTimer); _ofDelayTimer = null; }
+    _ofDelayTicker = null;
+  }
+  function scheduleDelayedOf() {
+    cancelDelayedOf();
+    var tk = ticker();
+    _ofDelayTicker = tk;
+    _ofDelayTimer = setTimeout(function () {
+      _ofDelayTimer = null;
+      var scheduled = _ofDelayTicker;
+      _ofDelayTicker = null;
+      if (!scheduled || ticker() !== scheduled) return;
+      loadOf();
+    }, 600);
+  }
 
   // ---------- events ----------
   function loadAll() { loadLevels(); loadGbs(); loadPcr(); loadVanna(); loadCharm(); loadStructures(); loadOf(); }   // loadPcr is a no-op unless its context changed or it is still warming
   document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
   document.addEventListener('ed:expiry', loadPcr);   // the ratio is scoped to the selected expiry -> re-read for the new context
   document.addEventListener('ed:plane', loadPcr);    // the bundle generation or the market session changed -> identity check
-  document.addEventListener('ed:view', loadAll);
+  document.addEventListener('ed:view', function () {
+    if (!isGamma()) cancelDelayedOf();
+    loadAll();
+  });
   document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
   document.addEventListener('ed:refresh', function (e) {
     if (!e.detail || !e.detail.slow) return;
@@ -947,12 +987,8 @@
     var det = e.detail || {};
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
     if (det.strike != null) loadStrike(det.strike, det.expiry);
-    // The tape scopes to whichever contract(s) are DESIRED server-side -- that identity is
-    // only current once the streaming demand POST Strike Detail just issued resolves, so a
-    // short delay (not the full ~12s slow-refresh cadence) is a deliberate, disclosed
-    // approximation, not a race: loadOf() itself re-verifies isGamma()/ticker() at the
-    // moment it actually runs, same as every other coalesced loader in this file.
-    if (det.strike != null) setTimeout(loadOf, 600);
+    if (det.strike != null) scheduleDelayedOf();
+    else cancelDelayedOf();
   });
   document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
     loadLevels(); loadGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail

@@ -8,10 +8,14 @@
  */
 const { test, expect } = require('@playwright/test');
 
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
+const SURFACE = { ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: true, current_spot: 100, current_spot_state: 'live', spot: 100, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [98, 100, 102],
-  cells: [{ strike: 98, gex: [-90000] }, { strike: 100, gex: [958600] }, { strike: 102, gex: [-264500] }] };
+  cells: [
+    { strike: 98, gex: [-90000], contracts: [{ call: 'C98', put: 'P98' }] },
+    { strike: 100, gex: [958600], contracts: [{ call: 'C100', put: 'P100' }] },
+    { strike: 102, gex: [-264500], contracts: [{ call: 'C102', put: 'P102' }] },
+  ] };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
   levels_stale: false, levels_age_sec: 21 };

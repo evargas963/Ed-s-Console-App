@@ -188,6 +188,7 @@ def test_surface_cell_with_oi_but_all_invalid_greeks_is_none_not_fabricated_zero
     assert row["gex"] == [None]
     assert row["dex"] == [None]
     assert row["vanna"] == [None]
+    assert row["value_states"] == ["gamma_unavailable"]
     # OI itself is untouched -- it never depended on greeks validity.
     assert row["oi"] == [{"call": 500, "put": 500}]
     assert surface["gamma_available"] is False
@@ -197,13 +198,17 @@ def test_surface_cell_with_oi_but_all_invalid_greeks_is_none_not_fabricated_zero
         "no usable open interest" not in surface["gamma_unavailable_reason"].lower()
 
 
-def test_surface_reason_distinguishes_no_oi_from_invalid_greeks():
-    no_oi_call = _ct(100.0, "CALL", 0)
-    no_oi_put = _ct(100.0, "PUT", 0)
-    surface = project_gamma_surface([no_oi_call, no_oi_put], SPOT)
-    assert surface["gamma_available"] is False
-    assert surface["cells_with_oi_but_invalid_greeks"] == 0
-    assert "no usable open interest" in surface["gamma_unavailable_reason"].lower()
+def test_surface_reason_distinguishes_missing_oi_from_invalid_greeks():
+    missing = project_gamma_surface([_ct(100.0, "CALL", None), _ct(100.0, "PUT", None)], SPOT)
+    assert missing["gamma_available"] is False
+    assert missing["cells_with_oi_but_invalid_greeks"] == 0
+    assert missing["cells"][0]["value_states"] == ["oi_unavailable"]
+    assert missing["cells"][0]["gex"] == [None]
+
+    zero = project_gamma_surface([_ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)], SPOT)
+    assert zero["gamma_available"] is True
+    assert zero["cells"][0]["gex"] == [0]
+    assert zero["cells"][0]["value_states"] == ["zero_oi"]
 
 
 # ---------------------------------------------------------------------------

@@ -155,8 +155,11 @@
       return '<div class="liqmap-line" style="top:' + yPct(l.value).toFixed(2) + '%;">' +
         '<span class="liqmap-line-label">' + esc(l.label) + ' ' + num(l.value) + '</span></div>';
     }).join('');
+    var gen = levels && levels.last_price_generation;
     var spotHtml = isFinite(spot)
-      ? '<div class="liqmap-spot" style="top:' + yPct(spot).toFixed(2) + '%;"><span class="liqmap-spot-label">SPOT ' + num(spot) + '</span></div>'
+      ? '<div class="liqmap-spot" style="top:' + yPct(spot).toFixed(2) + '%;" data-last-price-gen="' +
+        esc(gen == null ? '' : gen) + '"><span class="liqmap-spot-label">SPOT ' + num(spot) +
+        (gen != null ? ' · gen ' + esc(gen) : '') + '</span></div>'
       : '';
 
     var legendHtml =
@@ -173,6 +176,17 @@
       '<div class="liqmap-wrap-outer"><div class="liqmap-wrap" style="height:' + mapH + 'px;">' + zonesHtml + linesHtml + spotHtml + '</div></div>' +
       legendHtml +
       '<div class="fl-foot">Zones and reference levels come straight from /api/liquidity-snapshot and /api/levels — this view arranges them on a price axis and computes nothing new.</div>';
+    if (window.EdSpotIdentity && window.EdSpotIdentity.stamp) {
+      window.EdSpotIdentity.stamp(h, {
+        ticker: tk,
+        last_price: isFinite(spot) ? spot : null,
+        last_price_native_ts: levels && levels.last_price_native_ts,
+        last_price_received_ts: levels && levels.last_price_received_ts,
+        source: levels && Object.prototype.hasOwnProperty.call(levels, 'current_spot_source')
+          ? levels.current_spot_source : null,
+        generation: gen
+      });
+    }
     var wrap = h.querySelector('.liqmap-wrap');
     if (wrap) wireLiqMapInteraction(wrap, lo, hi);
   }
@@ -214,7 +228,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    document.addEventListener('ed:refresh', function () { if (isMap()) load(); });
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }

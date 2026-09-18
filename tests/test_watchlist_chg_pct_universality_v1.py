@@ -7,6 +7,7 @@ fails against the pre-fix ordering, restored immediately after)."""
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -109,16 +110,22 @@ def test_live_state_rest_backfill_survives_merge_into_state(monkeypatch):
             # parses spot from this SAME node. Added so resolve_spot succeeds the same way a
             # real REST quote would, keeping this test's actual subject (chg_pct backfill
             # surviving the plane merge) isolated from the unrelated spot-authority path.
-            return {ticker: {"quote": {"netPercentChange": 7.77, "lastPrice": 55.0}}}
+            return {ticker: {"quote": {"netPercentChange": 7.77, "lastPrice": 55.0,
+                                      "tradeTime": int(time.time() * 1000)}}}
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _FakeResp())
 
-    out = srv._tier_a_live_state_dict(ticker, None)
-    assert out["chg_pct"] == 7.77, (
-        f"REST backfill (7.77) was overwritten by the plane overlay's stale chg_pct=None "
-        f"-- got {out['chg_pct']!r}"
-    )
+    import live_market_plane as L
+    L._by_ticker.pop(ticker, None)
+    try:
+        out = srv._tier_a_live_state_dict(ticker, None)
+        assert out["chg_pct"] == 7.77, (
+            f"REST backfill (7.77) was overwritten by the plane overlay's stale chg_pct=None "
+            f"-- got {out['chg_pct']!r}"
+        )
+    finally:
+        L._by_ticker.pop(ticker, None)
 
 
 def test_merge_into_state_chg_pct_overwrites_unconditionally_including_none(monkeypatch):
@@ -250,14 +257,18 @@ def test_watchlist_quotes_route_reports_auth_failure_distinctly(monkeypatch):
 
 
 def test_watchlist_quotes_route_success_shape(monkeypatch):
+    import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
+
+    L._by_ticker.pop("ZZZTEST", None)
 
     class _FakeResp:
         status_code = 200
 
         def json(self):
-            return {"ZZZTEST": {"quote": {"lastPrice": 55.0, "netPercentChange": 1.11}}}
+            return {"ZZZTEST": {"quote": {"lastPrice": 55.0, "netPercentChange": 1.11,
+                                         "tradeTime": int(time.time() * 1000)}}}
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
@@ -318,7 +329,8 @@ def test_watchlist_quotes_records_a_fresh_fetch_into_the_plane(monkeypatch):
         status_code = 200
 
         def json(self):
-            return {"ZZWLRECORD": {"quote": {"lastPrice": 61.5, "netPercentChange": -0.2}}}
+            return {"ZZWLRECORD": {"quote": {"lastPrice": 61.5, "netPercentChange": -0.2,
+                                            "tradeTime": int(time.time() * 1000)}}}
 
     tk = "ZZWLRECORD"
     L._by_ticker.pop(tk, None)

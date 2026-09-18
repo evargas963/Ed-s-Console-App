@@ -15,9 +15,16 @@ here because both actually happened:
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 import server
+
+
+def _live_quote(last: float) -> dict:
+    """REST lastPrice is one observation with its matching tradeTime."""
+    return {"lastPrice": last, "tradeTime": int(time.time() * 1000)}
 
 
 def test_quote_parser_key_contract() -> None:
@@ -97,11 +104,15 @@ class _FakeResp:
 def _cold_quote_memo():
     """RC-112: the vendor memo is process state; every test starts cold so a stub cached by
     one test can never satisfy (or poison) the next within the 1s TTL."""
+    import live_market_plane as L
+
     with server._quote_memo_lock:
         server._quote_memo.clear()
+    L._by_ticker.pop("SPY", None)
     yield
     with server._quote_memo_lock:
         server._quote_memo.clear()
+    L._by_ticker.pop("SPY", None)
 
 
 def test_spot_from_quote_actually_returns_the_quote_price(monkeypatch) -> None:
@@ -128,7 +139,7 @@ def test_resolve_spot_prefers_the_quote_over_the_stored_snapshot(monkeypatch) ->
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(
         server, "safe_get_quote",
-        lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 999.99}}}),
+        lambda _client, tk, **_kw: _FakeResp({tk: {"quote": _live_quote(999.99)}}),
     )
     monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
     spot, source, _ts = server.resolve_spot("SPY")
@@ -156,7 +167,7 @@ def test_resolve_spot_prefers_a_fresh_streaming_plane_row_over_the_rest_quote(mo
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
             server, "safe_get_quote",
-            lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 111.11}}}),
+            lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": _live_quote(111.11)}}),
         )
         spot, source, _ts = server.resolve_spot(tk)
         assert spot == 700.42, "a fresh plane row must beat a REST quote, not the other way around"
@@ -183,7 +194,7 @@ def test_resolve_spot_falls_through_when_the_plane_row_is_stale(monkeypatch) -> 
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
             server, "safe_get_quote",
-            lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 111.11}}}),
+            lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": _live_quote(111.11)}}),
         )
         spot, source, _ts = server.resolve_spot(tk)
         assert spot == 111.11, "a stale plane row must not be preferred over a live REST quote"
@@ -202,7 +213,7 @@ def test_resolve_spot_falls_through_when_the_plane_has_no_row(monkeypatch) -> No
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(
         server, "safe_get_quote",
-        lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 222.22}}}),
+        lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": _live_quote(222.22)}}),
     )
     spot, source, _ts = server.resolve_spot(tk)
     assert spot == 222.22
@@ -229,7 +240,7 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
             server, "safe_get_quote",
-            lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 1.0}}}),
+            lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": _live_quote(1.0)}}),
         )
         terrain_spot, terrain_source, _ts = server.resolve_spot(tk)
         header_out = server._tier_a_live_state_dict(tk, None)
@@ -242,15 +253,41 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
         L._by_ticker.pop(tk, None)
 
 
+def test_resolve_spot_refuses_last_price_bound_only_to_regular_market_trade_time(monkeypatch) -> None:
+    """regularMarketTradeTime is a session-close clock and cannot timestamp live lastPrice."""
+    monkeypatch.setattr(server, "get_client", lambda: object())
+    monkeypatch.setattr(
+        server, "safe_get_quote",
+        lambda _client, tk, **_kw: _FakeResp({
+            tk: {
+                "quote": {"lastPrice": 760.40},
+                "regular": {"regularMarketLastPrice": 758.0, "regularMarketTradeTime": int(time.time() * 1000)},
+            }
+        }),
+    )
+    tk = "ZZUNBOUNDTT"
+    import live_market_plane as L
+    L._by_ticker.pop(tk, None)
+    spot, source, ts = server.resolve_spot(tk)
+    assert spot is None
+    assert source == "none"
+    assert ts is None
+    L._by_ticker.pop(tk, None)
+
+
 def test_resolve_spot_never_promotes_stored_or_chain_when_last_price_is_absent(monkeypatch) -> None:
     """A missing LAST_PRICE is UNAVAILABLE. Stored snapshot and chain close stay unused."""
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
                         lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"mark": 111.11}}}))
     monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
+    tk = "ZZNOLAST"
+    import live_market_plane as L
+    L._by_ticker.pop(tk, None)
     spot, source, _ts = server.resolve_spot(
-        "SPY", chain_json={"underlying": {"last": 743.29, "mark": 743.20, "close": 743.10}}
+        tk, chain_json={"underlying": {"last": 743.29, "mark": 743.20, "close": 743.10}}
     )
+    L._by_ticker.pop(tk, None)
     assert spot is None
     assert source == "none"
 
@@ -267,7 +304,7 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
     """
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
+                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": _live_quote(744.93)}}))
 
     cached = {
         "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
@@ -312,7 +349,7 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     """
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
+                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": _live_quote(744.93)}}))
     monkeypatch.setitem(server._terrain_cache, "SPY", {
         "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
         "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
@@ -509,7 +546,7 @@ def test_project_l1_corrects_a_stale_plane_spot_via_resolve_spot(monkeypatch) ->
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
             server, "safe_get_quote",
-            lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 123.45}}}),
+            lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": _live_quote(123.45)}}),
         )
         out = server._project_l1(tk, None, reason="test")
         assert out.get("spot") == 123.45, (

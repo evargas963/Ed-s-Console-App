@@ -61,7 +61,7 @@ def resolve_build_generation() -> Optional[str]:
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=3.0,
+                timeout=15.0,
             )
             _build_generation_cache["git_sha"] = (proc.stdout or "").strip() or None
         except (OSError, subprocess.SubprocessError):

@@ -197,14 +197,8 @@
     } else if (kind === 'expiry_scope_mismatch') {
       el.textContent = '⚠ vendor returned a different expiry — not proven complete';
       el.classList.add('warn');
-    } else if (kind === 'persisted_complete_capture_fallback') {
-      var age = scope.captured_age_sec;
-      el.textContent = '⚠ prior complete capture' +
-        (age !== null && age !== undefined ? ' (' + Math.round(age) + 's old)' : '') +
-        ' — not live';
-      el.classList.add('warn');
-    } else if (kind === 'stored_analytical_snapshot_fallback') {
-      el.textContent = '⚠ bounded analytical snapshot — NOT proven complete';
+    } else if (kind === 'live_fetch_failed' || kind === 'no_live_expiry') {
+      el.textContent = '⚠ live chain fetch failed — not substituted from cache';
       el.classList.add('warn');
     } else {
       el.textContent = 'scope: unknown';
@@ -215,13 +209,13 @@
   function renderChain(payload){
     var tbody = document.getElementById('chain-body');
     tbody.innerHTML = '';
-    document.getElementById('m-spot').textContent = payload.spot === null || payload.spot === undefined ? '—' : fmt(payload.spot, 2);
+    // #m-spot is owned by paintSpot(/api/spot). Chain must not overwrite it.
     document.getElementById('m-expiry').textContent = payload.expiry || '—';
     document.getElementById('m-count').textContent = String((payload.contracts || []).length);
     renderScope(payload.scope);
 
-    if (payload.status === 'no_chain' || !payload.contracts || !payload.contracts.length) {
-      notice('No chain available for ' + payload.ticker + (payload.expiry ? (' / ' + payload.expiry) : '') + ' — nothing to select.');
+    if (payload.status === 'no_chain' || payload.status === 'live_fetch_failed' || !payload.contracts || !payload.contracts.length) {
+      notice(payload.reason || ('No chain available for ' + payload.ticker + (payload.expiry ? (' / ' + payload.expiry) : '') + ' — nothing to select.'));
       return;
     }
     notice('');
@@ -302,16 +296,59 @@
       return mySeq !== chainReqSeq ||
         (tkEl.value || 'SPY').toUpperCase().trim() !== t || expSelect.value !== exp;
     }
-    fetch(url)
-      .then(function(r){ return r.json(); })
-      .then(function(payload){
-        if (stale()) return;   // superseded by a newer ticker, expiry, or same-identity refresh
-        renderChain(payload);
+    var spotEl = document.getElementById('m-spot');
+    if (spotEl) spotEl.textContent = 'UPDATING';
+    loadSpot(t, stale);
+    fetch(url).then(function(r){
+      if (!r.ok) throw new Error('chain HTTP ' + r.status);
+      return r.json();
+    }).then(function(payload){
+        if (stale()) return;
+        var painted = document.getElementById('m-spot');
+        var spotNow = painted ? parseFloat(painted.textContent) : NaN;
+        payload.spot = isFinite(spotNow) ? spotNow : payload.spot;
+        renderChain(payload || {});
       })
       .catch(function(){
         if (stale()) return;
         notice('Chain fetch failed.');
       });
+  }
+
+  function paintSpot(spotP){
+    var el = document.getElementById('m-spot');
+    if (!el) return;
+    var ok = spotP && spotP.spot != null && isFinite(Number(spotP.spot));
+    if (!ok) {
+      el.textContent = 'UNAVAILABLE';
+      el.removeAttribute('data-spot-ticker');
+      el.removeAttribute('data-last-price');
+      el.removeAttribute('data-last-price-native-ts');
+      el.removeAttribute('data-last-price-recv-ts');
+      el.removeAttribute('data-spot-source');
+      el.removeAttribute('data-spot-generation');
+      return;
+    }
+    el.textContent = fmt(spotP.spot, 2);
+    el.setAttribute('data-spot-ticker', spotP.ticker != null ? String(spotP.ticker) : '');
+    el.setAttribute('data-last-price', String(spotP.spot));
+    el.setAttribute('data-last-price-native-ts', spotP.last_price_native_ts != null ? String(spotP.last_price_native_ts) : '');
+    el.setAttribute('data-last-price-recv-ts', spotP.last_price_received_ts != null ? String(spotP.last_price_received_ts) : '');
+    el.setAttribute('data-spot-source', Object.prototype.hasOwnProperty.call(spotP, 'current_spot_source') && spotP.current_spot_source != null ? String(spotP.current_spot_source) : '');
+    el.setAttribute('data-spot-generation', spotP.last_price_generation != null ? String(spotP.last_price_generation) : '');
+  }
+
+  function loadSpot(t, stale){
+    fetch('/api/spot?ticker=' + encodeURIComponent(t)).then(function(r){
+      if (!r.ok) throw new Error('spot HTTP ' + r.status);
+      return r.json();
+    }).then(function(spotP){
+      if (stale()) return;
+      paintSpot(spotP);
+    }).catch(function(){
+      if (stale()) return;
+      paintSpot(null);
+    });
   }
 
   // The complete expiry universe, operator-accessible (round-2 requirement): populate the

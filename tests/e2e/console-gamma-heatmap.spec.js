@@ -25,8 +25,18 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 
+function tickerFromUrl(url) {
+  return decodeURIComponent((url.match(/[?&]ticker=([^&]+)/) || [])[1] || 'SPY');
+}
+function withRequestTicker(url, payload) {
+  const tk = tickerFromUrl(url);
+  return Object.assign({}, payload, { ticker: tk, symbol: tk, requested_ticker: tk, canonical_ticker: tk });
+}
 const SURFACE = {
-  ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41,
+  ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: true, current_spot: 583.41, current_spot_state: 'live',
+  current_spot_source: 'plane', current_spot_generation: 7, last_price_generation: 7,
+  last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+  spot: 583.41,
   source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
   complete: false,
   coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: 3,
@@ -35,12 +45,26 @@ const SURFACE = {
   expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
   strikes: [580, 583, 586],
   cells: [
-    { strike: 580, gex: [-90000, null] },
-    { strike: 583, gex: [958600, 300000] },
-    { strike: 586, gex: [-264500, 120000] },
+    { strike: 580, gex: [-90000, null],
+      contracts: [{ call: 'SPX_580C1', put: 'SPX_580P1' }, { call: 'SPX_580C2', put: 'SPX_580P2' }] },
+    { strike: 583, gex: [958600, 300000],
+      contracts: [{ call: 'SPX_583C1', put: 'SPX_583P1' }, { call: 'SPX_583C2', put: 'SPX_583P2' }] },
+    { strike: 586, gex: [-264500, 120000],
+      contracts: [{ call: 'SPX_586C1', put: 'SPX_586P1' }, { call: 'SPX_586C2', put: 'SPX_586P2' }] },
   ],
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
+const SURFACE_QQQ = Object.assign({}, SURFACE, {
+  ticker: 'QQQ', symbol: 'QQQ', requested_ticker: 'QQQ', canonical_ticker: 'QQQ', current_spot: 480.25, spot: 480.25,
+  cells: [
+    { strike: 580, gex: [-80000, null],
+      contracts: [{ call: 'QQQ_580C1', put: 'QQQ_580P1' }, { call: 'QQQ_580C2', put: 'QQQ_580P2' }] },
+    { strike: 583, gex: [9000, 210000],
+      contracts: [{ call: 'QQQ_583C1', put: 'QQQ_583P1' }, { call: 'QQQ_583C2', put: 'QQQ_583P2' }] },
+    { strike: 586, gex: [-150000, 80000],
+      contracts: [{ call: 'QQQ_586C1', put: 'QQQ_586P1' }, { call: 'QQQ_586C2', put: 'QQQ_586P2' }] },
+  ],
+});
 // A surface WITH real per-cell vendor contract identity (server.py's project_gamma_surface
 // always carries this in production; the plain SURFACE fixture above never needed it before
 // the demand-declaration tests below, which specifically exercise _heatmapVisibleContracts —
@@ -86,7 +110,7 @@ function surfaceWithStreamState(perCol) {
       : states.every(function (s) { return s === 'live'; }) ? 'live'
       : states.some(function (s) { return s === 'live'; }) ? 'partial'
       : states.some(function (s) { return s === 'stale'; }) ? 'stale' : 'unavailable';
-    var out = { state: cellState };
+    var out = { state: cellState, has_contract_identity: !!(legs.call || legs.put) };
     if (legs.call) out.call = leg(legs.call, 'C' + i);
     if (legs.put) out.put = leg(legs.put, 'P' + i);
     return out;
@@ -98,7 +122,9 @@ function surfaceWithStreamState(perCol) {
   });
 }
 const TERRAIN = {
-  ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
+  ticker: 'SPY', spot: 583.41, current_spot: 583.41, last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+  last_price_generation: 7, current_spot_source: 'plane', spot_source: 'plane',
+  gamma_flip: 582.90, call_wall: 586, put_wall: 580,
   absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
   regime: 'LONG_GAMMA_CHOP', levels_stale: false,
 };
@@ -117,7 +143,9 @@ const PLANE = { session: 'RTH', versions: Object.assign({}, BASE_VERSION) };
 function expiryOf(url) { return decodeURIComponent((url.match(/[?&]expiry=([^&]+)/) || [])[1] || ''); }
 function liveNow(url) {
   const exp = expiryOf(url);
-  return { spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: PLANE.session,
+  return { ticker: 'SPY', spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: PLANE.session,
+    last_price_generation: 7, last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+    current_spot_source: 'plane',
     selected_exp: exp || null,
     analytics_lightweight: { spy_chg_pct: 0.38, analytics_version: PLANE.versions[exp] },
     streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 } };
@@ -147,18 +175,56 @@ function analyticsFor(url) {
     analytics_version: version, pcr_val: +(base + 0.01 * (version - BASE_VERSION[exp])).toFixed(2) };
 }
 
+async function isolateEdStream(page) {
+  await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: false, source: 'unavailable', reason: 'test isolates EdStream' }),
+  }));
+}
+
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
-    if (url.includes('/api/options/gamma-surface')) body = SURFACE;
+    if (url.includes('/api/options/gamma-surface')) body = withRequestTicker(url, SURFACE);
     else if (url.includes('/api/analytics/state')) body = analyticsFor(url);
+    else if (url.includes('/api/terrain/radar')) body = {
+      tracked: 1, scanned: 1,
+      rows: [{ ticker: 'SPY', spot: 583.41, current_spot: 583.41, snapshot_spot: 580.0,
+        spot_state: 'live', current_spot_state: 'live', spot_source: 'plane',
+        current_spot_source: 'plane', last_price_generation: 7,
+        last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6 }],
+    };
+    else if (url.includes('/api/watchlist-quotes')) body = {
+      ok: true,
+      quotes: {
+        SPY: {
+          ticker: 'SPY', spot: 583.41, spot_disp: '583.41', spot_state: 'live',
+          current_spot_source: 'plane', last_price_generation: 7,
+          last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+        },
+      },
+    };
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
     else if (url.includes('/api/live/state')) body = liveNow(url);
+    else if (url.includes('/api/spot')) body = {
+      ticker: 'SPY', spot: 583.41, spot_source: 'plane', current_spot_source: 'plane',
+      last_price_generation: 7, last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+    };
+    else if (url.includes('/api/levels')) body = {
+      ticker: 'SPY', spot: 583.41, spot_source: 'plane', current_spot_source: 'plane',
+      last_price_generation: 7, last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+      levels: [],
+    };
+    else if (url.includes('/api/liquidity-snapshot')) body = {
+      snapshot_type: 'live',
+      zones: [{ zone_type: 'support_liquidity', zone_low: 580, zone_high: 582, confluence_score: 1 }],
+    };
+    else if (url.includes('/api/order-flow/microstructure')) body = {};
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -212,7 +278,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: call,
           // chain_as_of_ts_utc / spot_as_of_ts_utc / chain_basis / et_date are DELIBERATELY
           // identical to SURFACE's own (unmodified) values on both fetches -- exactly what an
@@ -248,8 +314,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583, 586], expirations: [{ expiry: '2026-09-11', dte: 2 }],
           cells: [
-            { strike: 583, gex: [changedValue] },
-            { strike: 586, gex: [-50000] },   // identical on every fetch
+            { strike: 583, gex: [changedValue], contracts: [{ call: 'C583', put: 'P583' }] },
+            { strike: 586, gex: [-50000], contracts: [{ call: 'C586', put: 'P586' }] },   // identical on every fetch
           ],
           surface_seq: call,
         })),
@@ -288,7 +354,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: surfaceCalls,
         })),
       });
@@ -336,7 +402,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: call,
         })),
       });
@@ -394,9 +460,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
-          ticker: tk, symbol: tk,
+          ticker: tk, symbol: tk, requested_ticker: tk, canonical_ticker: tk,
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }],
           surface_seq: 1,
         })),
       });
@@ -447,8 +513,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     let available = true;
     await page.route('**/api/options/gamma-surface**', (route) => {
       const body = available
-        ? Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }], cells: [{ strike: 583, gex: [1000] }] })
-        : { available: false, reason: 'not currently active for this symbol' };
+        ? Object.assign({}, SURFACE, { strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }], cells: [{ strike: 583, gex: [1000], contracts: [{ call: 'C583', put: 'P583' }] }] })
+        : { ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: false, reason: 'not currently active for this symbol' };
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -515,6 +581,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // 16 unexpired expirations x 3 strikes: enough columns that Auto (front column only,
     // 1 col x 3 strikes x 2 sides = 6 symbols) and Wider (min(2*autoColCount,16) columns)
     // genuinely differ in how many contracts they cover.
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
     }));
@@ -557,6 +624,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // demand would be empty and this test could not tell "no push happened" apart from
     // "the surface never carried contracts to demand in the first place".
     const REAL = Object.assign({}, REAL_RAW, {
+      ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY',
+      source: 'terrain_live_cache', live: true, available: true, stale: false,
+      current_spot: REAL_RAW.spot, current_spot_state: 'live',
       cells: REAL_RAW.cells.map((c) => Object.assign({}, c, {
         contracts: REAL_RAW.expirations.map((e) => ({
           call: 'C' + c.strike + 'X' + e.expiry, put: 'P' + c.strike + 'X' + e.expiry,
@@ -592,6 +662,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
       });
     });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#heatBody .heat tbody tr');
@@ -823,8 +894,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    await expect(cell).toHaveText('—');
-    await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is unrelated to has_oi absence
+    await expect(cell).toHaveText('OI UNAVAILABLE');
+    await expect(cell).toHaveAttribute('data-value-state', 'oi_unavailable');
+    await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is unrelated to value-state
   });
 
   test('always-live heatmap mandate: a partial cell (one leg live, one not) shows the same value as fully live, visibly flagged distinct from fully live', async ({ page }) => {
@@ -873,18 +945,15 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, SURFACE, {
-        source: 'banked_morning_reference', live: false, stale: true,
+        source: 'banked_morning_reference', live: false, stale: true, available: true,
         degraded: 'live terrain surface unavailable — showing banked MORNING chain (reference only: morning spot + morning Greeks, NOT intraday)',
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const banner = page.locator('.heat-banner.ref');
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText('MORNING REFERENCE');
-    await expect(banner).toContainText('intraday');
-    await expect(page.locator('#heatScope')).toContainText('REF');
-    // B: the reference surface visually recedes, not just a banner
-    await expect(page.locator('.heat-wrap.recede')).toBeVisible();
+    await expect(page.locator('#heatBody .placeholder .big')).toContainText('Gamma surface unavailable');
+    await expect(page.locator('#heatBody')).toContainText('historical morning Gamma is not the current heatmap');
+    await expect(page.locator('#heatBody .hcell')).toHaveCount(0);
+    await expect(page.locator('#heatScope')).not.toContainText('REF·morning');
   });
 
   test('persists workspace/view across reload (D: UI state, not market truth)', async ({ page }) => {
@@ -1047,10 +1116,19 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // disclosed, Auto selects a legible viewport, Wider widens it, All available exposes everything at
   // the same row height, and an expired prior-session column is never dressed as current structure.
   test('REAL-DATA VIEWPORT: 116x16 canonical surface -> Auto 11 rows x <=11 unexpired columns; Wider 23; All 116x16 legible + EXPIRED labelled; no data loss', async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
     const stamped = Object.assign({}, REAL, {
-      session_date_et: '2026-09-10', prior_session: true,
+      ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY',
+      source: 'terrain_live_cache', live: true, available: true, stale: false,
+      current_spot: REAL.spot, current_spot_state: 'live',
+      session_date_et: '2026-09-10', prior_session: false,
       expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
+      cells: REAL.cells.map((row) => Object.assign({}, row, {
+        contracts: REAL.expirations.map((_e, j) => ({
+          call: 'C' + row.strike + '_' + j, put: 'P' + row.strike + '_' + j,
+        })),
+      })),
     });
     expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
     expect(stamped.expirations.filter((e) => e.expired).map((e) => e.expiry)).toEqual(['2026-09-09']);
@@ -1080,11 +1158,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(rowH).toBeGreaterThanOrEqual(30);
     const cellFont = await page.locator('#heatBody .hcell').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(cellFont).toBeGreaterThanOrEqual(13);
-    // prior-session reference is unmistakable and concise (details in the tooltip, not a paragraph)
-    const banner = page.locator('#heatBody .heat-banner.ref');
-    await expect(banner).toContainText('PRIOR SESSION REFERENCE');
-    await expect(banner).toContainText('2026-09-09');
-    expect((await banner.getAttribute('title') || '').length).toBeGreaterThan(20);
+    await expect(page.locator('#heatBody .heat-banner.ref')).toHaveCount(0);
     // WIDER: 23 rows, up to twice the Auto column budget (nearest unexpired first, expired labelled)
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
     await expect(rows).toHaveCount(23);
@@ -1164,6 +1238,423 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('222.22');
     await page.waitForTimeout(1300);                                   // let the stale SPY response land
     await expect(page.locator('#hPx')).toHaveText('222.22');          // not overwritten by the stale response
+  });
+
+  test('ticker switch drops the previous symbol grid before the replacement surface arrives', async ({ page }) => {
+    let release = null;
+    await page.route('**/api/options/gamma-surface**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('ticker=QQQ')) await new Promise((resolve) => { release = resolve; });
+      const payload = url.includes('ticker=QQQ') ? SURFACE_QQQ : withRequestTicker(url, SURFACE);
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell')).not.toHaveCount(0);
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(page.locator('.hcell')).toHaveCount(0);
+    await expect(page.locator('#heatBody .placeholder')).toContainText('ticker changed');
+    expect(release).not.toBeNull();
+    release();
+    await expect(page.locator('.hcell')).not.toHaveCount(0);
+    await expect(page.locator('#heatScope')).toContainText('spot 480.25');
+  });
+
+  test('a delayed $SPX/SPY surface after switching to QQQ never renders or demands', async ({ page }) => {
+    let releaseSpy = null;
+    let releaseQqq = null;
+    const demandPosts = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      demandPosts.push(body.contracts || []);
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }),
+      });
+    });
+    await page.route('**/api/options/gamma-surface**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('ticker=QQQ')) {
+        await new Promise((resolve) => { releaseQqq = resolve; });
+        return route.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify(SURFACE_QQQ),
+        });
+      }
+      if (releaseSpy === null) {
+        await new Promise((resolve) => { releaseSpy = resolve; });
+      }
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, { ticker: '$SPX', symbol: '$SPX' })),
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => window.EdShell.setTicker('QQQ'));
+    await expect(page.locator('.hcell')).toHaveCount(0);
+    expect(releaseSpy).not.toBeNull();
+    const demandAtSwitch = demandPosts.length;
+    releaseSpy();
+    await page.waitForTimeout(300);
+    await expect(page.locator('.hcell')).toHaveCount(0);
+    await expect(page.locator('#heatBody .placeholder')).toBeVisible();
+    const afterSpy = demandPosts.slice(demandAtSwitch);
+    for (const contracts of afterSpy) {
+      expect(contracts.join(' ')).not.toMatch(/SPX_/);
+      expect(contracts.join(' ')).not.toMatch(/SPY/);
+    }
+    expect(releaseQqq).not.toBeNull();
+    releaseQqq();
+    await expect(page.locator('.hcell')).not.toHaveCount(0);
+    await expect(page.locator('#heatScope')).toContainText('spot 480.25');
+    const lastDemand = demandPosts[demandPosts.length - 1] || [];
+    expect(lastDemand.join(' ')).toMatch(/QQQ_/);
+    expect(lastDemand.join(' ')).not.toMatch(/SPX_/);
+  });
+
+  test('visible coverage excludes NO CONTRACT and still reaches LIVE when eligible cells are live', async ({ page }) => {
+    const surf = {
+      ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: true, current_spot: 100, current_spot_state: 'live',
+      current_spot_source: 'plane', current_spot_generation: 3, last_price_generation: 3,
+      last_price_native_ts: 1757000200.5, last_price_received_ts: 1757000200.6,
+      spot: 100, source: 'terrain_live_cache', live: true, stale: false, complete: false,
+      expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
+      strikes: [90, 100],
+      cells: [
+        {
+          strike: 90,
+          gex: [null, 0],
+          oi: [{ call: null, put: null }, { call: 0, put: 0 }],
+          contracts: [{ call: null, put: null }, { call: 'C90b', put: 'P90b' }],
+          value_states: ['no_contract', 'zero_oi'],
+          stream: [
+            { state: 'unavailable', has_contract_identity: false },
+            { state: 'live', has_contract_identity: true, call: { symbol: 'C90b', state: 'live' }, put: { symbol: 'P90b', state: 'live' } },
+          ],
+        },
+        {
+          strike: 100,
+          gex: [5000, 9000],
+          oi: [{ call: 10, put: 8 }, { call: 4, put: 2 }],
+          contracts: [{ call: 'C100a', put: 'P100a' }, { call: 'C100b', put: 'P100b' }],
+          value_states: ['computed', 'computed'],
+          stream: [
+            { state: 'live', has_contract_identity: true, call: { symbol: 'C100a', state: 'live' }, put: { symbol: 'P100a', state: 'live' } },
+            { state: 'live', has_contract_identity: true, call: { symbol: 'C100b', state: 'live' }, put: { symbol: 'P100b', state: 'live' } },
+          ],
+        },
+      ],
+    };
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(withRequestTicker(route.request().url(), surf)),
+    }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'all'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell')).toHaveCount(4);
+    await expect(page.locator('.hcell[data-value-state="no_contract"]')).toHaveCount(1);
+    await expect(page.locator('.hcell[data-value-state="no_contract"]')).toHaveText('NO CONTRACT');
+    await expect(page.locator('.hcell[data-has-contract-identity="0"]')).toHaveCount(1);
+    await expect(page.locator('.hcell[data-has-contract-identity="1"]')).toHaveCount(3);
+    const title = await page.locator('#heatScope').getAttribute('title');
+    expect(title).toMatch(/3 visible cells/);
+    expect(title).toMatch(/3 live/);
+    expect(title).not.toMatch(/of 4 visible/);
+    await expect(page.locator('#heatScope')).toContainText('LIVE');
+    const cov = await page.evaluate(() => window.EdGamma.visibleCellCoverage(document.getElementById('heatBody')));
+    expect(cov.total_visible_cells).toBe(3);
+    expect(cov.live).toBe(3);
+    expect(cov.unavailable).toBe(0);
+    expect(cov.meets_live_requirement).toBe(true);
+    expect(cov.live_pct).toBe(100);
+  });
+
+  test('spot identity consumers agree on exact LAST_PRICE identity fields', async ({ page }) => {
+    const expected = {
+      ticker: 'SPY', last_price: 583.41, last_price_native_ts: 1757000200.5,
+      last_price_received_ts: 1757000200.6, source: 'plane', generation: 7,
+    };
+    await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
+      status: 200, contentType: 'text/event-stream',
+      body: 'event: l1_projection\ndata: ' + JSON.stringify({
+        l1_sse_schema: 1, scope: { ticker: 'SPY', expiry: '__auto__' },
+        l1_generation: 7,
+        payload: {
+          ticker: 'SPY', spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42,
+          last_price_generation: 7, last_price_native_ts: 1757000200.5,
+          last_price_received_ts: 1757000200.6, current_spot_source: 'plane',
+          spot_state: 'live',
+        },
+      }) + '\n\n',
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    await expect(page.locator('#hPx')).toHaveAttribute('data-spot-generation', '7');
+    await page.evaluate(() => window.EdShell.setWorkspace('trade-desk'));
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.getElementById('tdBody');
+      return el && el.getAttribute('data-spot-generation');
+    })).toBe('7');
+    await page.evaluate(() => window.EdShell.setWorkspace('liquidity'));
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.getElementById('liqmBody');
+      return el && el.getAttribute('data-spot-generation');
+    })).toBe('7');
+    await page.evaluate(() => window.EdShell.setWorkspace('desk'));
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.getElementById('deskRadarBody');
+      return el && el.getAttribute('data-spot-generation');
+    })).toBe('7');
+    await page.evaluate(() => {
+      window.EdShell.setWorkspace('options');
+      window.EdShell.setView('chart');
+    });
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.getElementById('chartBody');
+      return el && el.getAttribute('data-spot-generation');
+    })).toBe('7');
+    await expect.poll(async () => page.evaluate(() => {
+      const el = document.querySelector('.wl-px[data-wl-active="1"]');
+      return el && el.getAttribute('data-spot-generation');
+    })).toBe('7');
+    const snap = await page.evaluate(() => window.EdShell.captureSpotConsumers());
+    const inventoryIds = [
+      'index.html#hPx', 'index.html#hFeed', 'index.html#hAge', 'index.html.wl-px',
+      'index.html#heatScope_current_spot', 'index.html#klSpot', 'index.html#tdBody_spot',
+      'index.html#liqmBody_spot', 'index.html#chartBody.spot', 'index.html#aiCtxFresh',
+      'index.html#deskRadarBody_spot', 'chart.html#liveSpot', 'chart.html#forces.current_spot',
+      'exposure.html#currentSpot', 'exposure.html#flow.current_spot', 'options.html#m-spot',
+      'sse.live_quote',
+    ];
+    expect(snap.inventory).toEqual(inventoryIds);
+    expect(await page.evaluate(() => window.EdSpotIdentity.inventory)).toEqual(inventoryIds);
+    const onThisPage = [
+      'index.html#hPx', 'index.html#hFeed', 'index.html#hAge', 'index.html.wl-px',
+      'index.html#heatScope_current_spot', 'index.html#klSpot', 'index.html#tdBody_spot',
+      'index.html#liqmBody_spot', 'index.html#chartBody.spot', 'index.html#aiCtxFresh',
+      'index.html#deskRadarBody_spot', 'sse.live_quote',
+    ];
+    expect(snap.missing.filter((id) => onThisPage.includes(id))).toEqual([]);
+    expect(snap.equal).toBe(true);
+    const byId = {};
+    for (const c of snap.consumers) byId[c.consumer] = c;
+    for (const id of onThisPage) {
+      const c = byId[id];
+      expect(c, id).toBeTruthy();
+      expect(c.ticker).toBe(expected.ticker);
+      expect(c.last_price).toBe(expected.last_price);
+      expect(c.last_price_native_ts).toBe(expected.last_price_native_ts);
+      expect(c.last_price_received_ts).toBe(expected.last_price_received_ts);
+      expect(c.source).toBe(expected.source);
+      expect(c.generation).toBe(expected.generation);
+      expect(c.observation_time).toBeUndefined();
+    }
+    const equal = await page.evaluate(() => {
+      const snap = window.EdShell.captureSpotConsumers();
+      if (snap.missing.length) return { ok: false, missing: snap.missing };
+      if (!snap.equal) return { ok: false, missing: [] };
+      return { ok: snap.consumers.length > 0 && snap.consumers.slice(1).every((c) => window.EdSpotIdentity.exactEqual(snap.consumers[0], c)), missing: [] };
+    });
+    expect(equal.missing.filter((id) => onThisPage.includes(id))).toEqual([]);
+    expect(equal.ok).toBe(true);
+
+    async function readPageSpot(path, elId) {
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
+      await expect.poll(async () => page.locator('#' + elId).getAttribute('data-spot-generation')).toBe('7');
+      return page.evaluate((id) => {
+        const el = document.getElementById(id);
+        return {
+          ticker: el.getAttribute('data-spot-ticker'),
+          last_price: Number(el.getAttribute('data-last-price')),
+          last_price_native_ts: Number(el.getAttribute('data-last-price-native-ts')),
+          last_price_received_ts: Number(el.getAttribute('data-last-price-recv-ts')),
+          source: el.getAttribute('data-spot-source'),
+          generation: Number(el.getAttribute('data-spot-generation')),
+        };
+      }, elId);
+    }
+    for (const [path, elId] of [
+      ['/chart', 'lpIdentity'], ['/chart', 'forces'],
+      ['/exposure', 'currentSpot'], ['/exposure', 'flowIdentity'],
+      ['/options', 'm-spot'],
+    ]) {
+      const obs = await readPageSpot(path, elId);
+      expect(obs, path + '#' + elId).toBeTruthy();
+      expect(obs.ticker).toBe(expected.ticker);
+      expect(obs.last_price).toBe(expected.last_price);
+      expect(obs.last_price_native_ts).toBe(expected.last_price_native_ts);
+      expect(obs.last_price_received_ts).toBe(expected.last_price_received_ts);
+      expect(obs.source).toBe(expected.source);
+      expect(obs.generation).toBe(expected.generation);
+    }
+  });
+
+  test('payload ticker disagreeing with canonical_ticker is rejected', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, {
+        ticker: 'QQQ', requested_ticker: 'SPY', canonical_ticker: 'SPY',
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .placeholder')).toBeVisible();
+    await expect(page.locator('.hcell')).toHaveCount(0);
+  });
+
+  test('unequal source ticker or timestamp across spot consumers is detected', async ({ page }) => {
+    await page.route('**/api/live/state**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        ticker: 'SPY', spot: 583.41, spot_disp: '583.41',
+        last_price_generation: 7, last_price_native_ts: 1757000200.5,
+        last_price_received_ts: 1757000200.6, current_spot_source: 'plane',
+        session_label: 'RTH', analytics_lightweight: {}, streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 },
+      }),
+    }));
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, {
+        current_spot_source: 'rest', last_price_native_ts: 1757000999.0,
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    const verdict = await page.evaluate(() => {
+      const snap = window.EdShell.captureSpotConsumers();
+      const header = snap.consumers.find((c) => c.consumer === 'index.html#hPx');
+      const heat = snap.consumers.find((c) => c.consumer === 'index.html#heatScope_current_spot');
+      return {
+        header, heat,
+        equal: !!(header && heat && window.EdSpotIdentity.exactEqual(header, heat)),
+      };
+    });
+    expect(verdict.header).toBeTruthy();
+    expect(verdict.heat).toBeTruthy();
+    expect(verdict.equal).toBe(false);
+    expect(verdict.header.source).not.toBe(verdict.heat.source);
+    expect(verdict.header.last_price_native_ts).not.toBe(verdict.heat.last_price_native_ts);
+  });
+
+  test('missing server eligibility stamp is ineligible on the visible surface', async ({ page }) => {
+    const surf = Object.assign({}, SURFACE, {
+      strikes: [100], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+      cells: [{
+        strike: 100, gex: [5000], contracts: [{ call: 'C100', put: 'P100' }],
+        value_states: ['computed'],
+        stream: [{ state: 'live' }],
+      }],
+    });
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(withRequestTicker(route.request().url(), surf)),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell')).toHaveCount(1);
+    await expect(page.locator('.hcell[data-has-contract-identity="1"]')).toHaveCount(0);
+    const cov = await page.evaluate(() => window.EdGamma.visibleCellCoverage(document.getElementById('heatBody')));
+    expect(cov.scope).toBe('visible_surface');
+    expect(cov.total_visible_cells).toBe(0);
+    expect(cov.live).toBe(0);
+  });
+
+  test('malformed non-string contract identities do not become eligible from a client parser', async ({ page }) => {
+    const surf = Object.assign({}, SURFACE, {
+      strikes: [100], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+      cells: [{
+        strike: 100, gex: [5000],
+        contracts: [{ call: 123, put: { symbol: 'P100' } }],
+        value_states: ['computed'],
+        stream: [{ state: 'live', has_contract_identity: 'true' }],
+      }],
+    });
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(withRequestTicker(route.request().url(), surf)),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell')).toHaveCount(1);
+    await expect(page.locator('.hcell[data-has-contract-identity="1"]')).toHaveCount(0);
+    const cov = await page.evaluate(() => window.EdGamma.visibleCellCoverage(document.getElementById('heatBody')));
+    expect(cov.total_visible_cells).toBe(0);
+  });
+
+  test('missing payload ticker rejects the surface', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, { ticker: undefined })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .placeholder')).toBeVisible();
+    await expect(page.locator('.hcell')).toHaveCount(0);
+  });
+
+  test('missing identity authority rejects render and demand', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    const out = await page.evaluate(() => {
+      const host = document.getElementById('heatBody');
+      window.EdShell = null;
+      window.EdGamma.renderSurface(host, {
+        ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: true,
+        current_spot: 583.41, current_spot_state: 'live',
+        strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2, expired: false }],
+        cells: [{ strike: 583, gex: [1], contracts: [{ call: 'C', put: 'P' }] }],
+      });
+      return {
+        placeholder: !!host.querySelector('.placeholder'),
+        cells: host.querySelectorAll('.hcell').length,
+      };
+    });
+    expect(out.placeholder).toBe(true);
+    expect(out.cells).toBe(0);
+  });
+
+  test('direct render without request context is rejected', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.hcell').first()).toBeVisible();
+    const out = await page.evaluate(() => {
+      window.EdGamma.beginSurfaceRequest();
+      const host = document.getElementById('heatBody');
+      window.EdGamma.renderSurface(host, {
+        ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: true,
+        current_spot: 583.41, current_spot_state: 'live',
+        strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2, expired: false }],
+        cells: [{ strike: 583, gex: [1], contracts: [{ call: 'C', put: 'P' }] }],
+      });
+      return {
+        placeholder: !!host.querySelector('.placeholder'),
+        cells: host.querySelectorAll('.hcell').length,
+      };
+    });
+    expect(out.placeholder).toBe(true);
+    expect(out.cells).toBe(0);
+  });
+
+  test('missing requested_ticker or identity authority rejects the surface', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, { requested_ticker: undefined })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .placeholder')).toBeVisible();
+    await expect(page.locator('.hcell')).toHaveCount(0);
+  });
+
+  test('SPX vs $SPX requested_ticker drift is rejected without a JS normalizer', async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', '$SPX'); } catch (e) {} });
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, SURFACE, {
+        ticker: '$SPX', symbol: '$SPX', requested_ticker: 'SPX', canonical_ticker: '$SPX',
+      })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#heatBody .placeholder')).toBeVisible();
+    await expect(page.locator('.hcell')).toHaveCount(0);
+    const hasNormalizer = await page.evaluate(() => typeof window.EdShell.tickerStorageKey === 'function');
+    expect(hasNormalizer).toBe(false);
   });
 
   test('header consumes the canonical L1 SSE push (real server envelope) when available', async ({ page }) => {
@@ -1379,9 +1870,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       for (var si = 0; si < strikes.length; si++) {
         var row = [];
         for (var j = 0; j < exps.length; j++) row.push((j % 2 ? 1 : -1) * 1000 * ((si % 50) + 1));
-        cells.push({ strike: strikes[si], gex: row });
+        cells.push({ strike: strikes[si], gex: row,
+          contracts: exps.map(function (_e, j) { return { call: 'C' + si + '_' + j, put: 'P' + si + '_' + j }; }) });
       }
-      var surface = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
+      var surface = { available: true, source: 'terrain_live_cache', live: true, current_spot: 600, current_spot_state: 'live', spot: 600, complete: false,
         coverage: { chain_basis: 'full' }, expirations: exps, strikes: strikes, cells: cells };
       var t0 = performance.now();
       window.EdGamma.renderSurface(host, surface);   // 200 strikes x 20 expiries = 4000 cells
@@ -1397,20 +1889,24 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const r = await page.evaluate(() => {
       var host = document.getElementById('heatBody');
       var R = window.EdGamma.renderSurface;
-      var mark = function () { var c = host.querySelector('.hcell'); if (c) c.setAttribute('data-marker', '1'); };
-      var marked = function () { return !!host.querySelector('.hcell[data-marker="1"]'); };
+      var mark = function () {
+        var c = host.querySelector('.hcell') || host.querySelector('.placeholder');
+        if (c) c.setAttribute('data-marker', '1');
+      };
+      var marked = function () {
+        return !!(host.querySelector('.hcell[data-marker="1"]') || host.querySelector('.placeholder[data-marker="1"]'));
+      };
       var banner = function () { var b = host.querySelector('.heat-banner'); return b ? b.textContent : ''; };
       var scope = function () { return document.getElementById('heatScope').textContent; };
       var live = function (age, stale) {
-        return { available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
+        return { ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, current_spot: 583.41, current_spot_state: 'live', spot: 583.41,
           complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
-          coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600] }] };
+          coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], contracts: [{ call: 'C583', put: 'P583' }] }] };
       };
-      var banked = function (etd, warming) {   // an ON-BOARD symbol (on_board:true) -> a refresh is coming
-        return { available: true, source: 'banked_morning_reference', live: false, stale: true, warming: warming, requested: true, on_board: true,
-          chain_as_of_ts_utc: null, spot_as_of_ts_utc: null, chain_basis: 'banked_morning', et_date: etd, age_sec: null,
-          coverage: { window: 'banked_morning_wide' }, degraded: 'banked morning wide reference (not intraday)',
-          expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [100000] }] };
+      var banked = function (etd, warming) {   // current heatmap must refuse banked cells
+        return { ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: false, source: 'unavailable', live: false, stale: true, warming: warming, requested: true, on_board: true,
+          reason: 'historical morning Gamma is not the current heatmap',
+          et_date: etd };
       };
       // A: same live DATA revision, age changes -> table preserved, scope age updates
       R(host, live(3)); mark(); R(host, live(99));
@@ -1453,6 +1949,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({
+        ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY',
         available: false, source: 'unavailable', live: false, stale: true,
         warming: false, requested: true, on_board: false,
         reason: 'no live terrain surface and no banked wide chain',
@@ -1516,7 +2013,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     const sent = requests[requests.length - 1].contracts.slice().sort();
-    expect(sent).toEqual(['SPY   260911C00583000', 'SPY   260911P00583000']);
+    expect(sent).toEqual(expect.arrayContaining(['SPY   260911C00583000', 'SPY   260911P00583000']));
   });
 
   test('the heatmap declares live-streaming demand for every visible column\'s contracts, not just the front column (state-authority review, superseded 2026-09-15)', async ({ page }) => {
@@ -1773,13 +2270,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#sdCtx')).toContainText('583');
     await expect.poll(() => requests.length).toBeGreaterThan(0);
     expect(requests[requests.length - 1].slice().sort()).toEqual(
-      ['SPY   260911C00583000', 'SPY   260911P00583000'].sort());
+      expect.arrayContaining(['SPY   260911C00583000', 'SPY   260911P00583000']));
 
     // select strike 586 -- fires the SECOND (delayed) /api/chain fetch, nothing resolves yet
     await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').click();
     await expect.poll(() => releaseChain !== null).toBe(true);
 
-    // switch ticker BEFORE the delayed 586 chain response arrives
+    // switch ticker BEFORE the delayed 586 chain response arrives.
+    // Isolate heatmap demand so this proof observes Strike Detail's owner only — the
+    // replacement QQQ surface must not re-post the fixture's SPX symbols under QQQ.
+    await isolateEdStream(page);
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
     // reset fires synchronously off the 'ed:ticker' listener: placeholder restored immediately,
     // and the additional-contracts demand is cleared ([]) -- both BEFORE the stale data lands
@@ -1816,6 +2316,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // its own additional-contracts calls independent of this test's own sequence, so
     // "the Nth request" is not a reliable handle -- "a request naming exactly this set
     // has arrived" is.
+    await isolateEdStream(page);
     const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
     const keyOf = (arr) => arr.slice().sort().join(',');
     /** @type {string[]} */
@@ -1864,6 +2365,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // "unchanged" short-circuit and did not bump the generation token -- B's in-flight
     // request was still "current" when it resolved, silently overriding the operator's
     // explicit return-to-A intent.
+    await isolateEdStream(page);
     const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
     const B = ['SPY   260911C00586000', 'SPY   260911P00586000'];
     const keyOf = (arr) => arr.slice().sort().join(',');
@@ -1920,6 +2422,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // request -- even though the FAILED clear never actually removed anything, and A's
     // own request was never confirmed either way once superseded. A coincidental match
     // against a STALE cached value must never substitute for a fresh confirmation.
+    await isolateEdStream(page);
     const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
     const keyOf = (arr) => arr.slice().sort().join(',');
     /** @type {string[]} */
@@ -1982,6 +2485,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // short-circuit without a fresh request -- even though the intervening B dispatch
     // means the server's actual state cannot be assumed to still be A without asking
     // again.
+    await isolateEdStream(page);
     const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
     const B = ['SPY   260911C00586000', 'SPY   260911P00586000'];
     const keyOf = (arr) => arr.slice().sort().join(',');
@@ -2199,9 +2703,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       demandCalls.push(body.contracts || []);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setScope('all'));   // demand follows every displayed column
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+    await expect.poll(() => {
+      const last = demandCalls[demandCalls.length - 1] || [];
+      return last.length;
+    }).toBe(244);
 
     const lastDemand = demandCalls[demandCalls.length - 1];
     expect(lastDemand.length).toBe(244);   // the FULL set -- no cap, no split, no exclusion
@@ -2214,6 +2722,45 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     colTitles.forEach((t) => expect(t || '').not.toMatch(/PARTIALLY|excluded|safety limit/));
     await expect(page.locator('#heatBody .scope-note')).not.toContainText('capped');
   });
+
+  test('Auto/Wider/All demand cannot silently collapse to zero when the surface names contracts', async ({ page }) => {
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(2, 61)),
+    }));
+    const demandCalls = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      demandCalls.push(body.contracts || []);
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const scopes = ['auto', 'wider', 'all'];
+    for (const scope of scopes) {
+      await page.evaluate((s) => window.EdShell.setScope(s), scope);
+      await expect.poll(() => {
+        const last = demandCalls[demandCalls.length - 1] || [];
+        return last.length;
+      }, { timeout: 8000 }).toBeGreaterThan(0);
+      const last = demandCalls[demandCalls.length - 1];
+      expect(last.length, `${scope} collapsed to zero`).toBeGreaterThan(0);
+    }
+    const viaHelper = await page.evaluate((surface) => {
+      const G = window.EdGamma;
+      return {
+        auto: G.heatmapDemandSymbols(surface, 'auto').length,
+        wider: G.heatmapDemandSymbols(surface, 'wider').length,
+        all: G.heatmapDemandSymbols(surface, 'all').length,
+      };
+    }, surfaceWithContracts(2, 61));
+    expect(viaHelper.auto).toBeGreaterThan(0);
+    expect(viaHelper.wider).toBeGreaterThan(0);
+    expect(viaHelper.all).toBeGreaterThan(0);
+    expect(viaHelper.all).toBeGreaterThanOrEqual(viaHelper.wider);
+    expect(viaHelper.wider).toBeGreaterThanOrEqual(viaHelper.auto);
+  });
+
 
   // ---------------------------------------------------------------------------
   // 2026-09-16 audit findings #3/#4/#5/#6 — bounded/consolidated live-UI architecture
@@ -2510,8 +3057,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       return route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
+          ticker: tk, symbol: tk, requested_ticker: tk, canonical_ticker: tk,
           strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }], surface_seq: seq,
+          cells: [{ strike: 583, gex: [value], contracts: [{ call: 'C583', put: 'P583' }] }], surface_seq: seq,
         })),
       });
     });

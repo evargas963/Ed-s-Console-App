@@ -31,10 +31,14 @@ const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 99.8, 100.3, 100.5, 100.
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
 const LIVE = { spot: 100, spot_disp: '100.00', bid: 99.99, ask: 100.01, session_label: 'RTH',
   analytics_lightweight: { spy_chg_pct: 0.1 }, streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 300 } };
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
+const SURFACE = { ticker: 'SPY', symbol: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: true, current_spot: 100, current_spot_state: 'live', spot: 100, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [99, 100, 101],
-  cells: [{ strike: 99, gex: [-90000] }, { strike: 100, gex: [958600] }, { strike: 101, gex: [-264500] }] };
+  cells: [
+    { strike: 99, gex: [-90000], contracts: [{ call: 'C99', put: 'P99' }] },
+    { strike: 100, gex: [958600], contracts: [{ call: 'C100', put: 'P100' }] },
+    { strike: 101, gex: [-264500], contracts: [{ call: 'C101', put: 'P101' }] },
+  ] };
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -55,7 +59,14 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     await intercept(page);
     // each Playwright test gets a fresh context (localStorage already empty), so we only seed the
     // ticker — NOT localStorage.clear(), which would re-run on reload and wipe the persisted scope.
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('ed_ticker', 'SPY');
+        // Seed Auto only when the key is absent. addInitScript re-runs on reload; writing
+        // auto unconditionally would destroy the persisted All-available choice this file proves.
+        if (localStorage.getItem('ed_scope') == null) localStorage.setItem('ed_scope', 'auto');
+      } catch (e) {}
+    });
   });
 
   test('one control governs the workspace, labelled "All available" not "Full"', async ({ page }) => {

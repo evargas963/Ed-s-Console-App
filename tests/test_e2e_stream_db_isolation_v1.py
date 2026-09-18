@@ -30,7 +30,7 @@ def _e2e_server_env(poison_root: Path) -> dict[str, str]:
         "ED_TERRAIN_QUARANTINE_LEDGER": str(poison_root / "production_terrain.jsonl"),
     })
     script = (
-        "import {e2eServerEnv,e2eRuntimeRoot} from './playwright.config.mjs';"
+        "import {e2eServerEnv,e2eRuntimeRoot} from './scripts/e2e_runtime_env.mjs';"
         "console.log(JSON.stringify({env:e2eServerEnv,root:e2eRuntimeRoot}));"
     )
     result = subprocess.run(

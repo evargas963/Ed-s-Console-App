@@ -1,0 +1,2070 @@
+{
+  "mission": "everything is live unless a proven Schwab/source contract makes it impossible",
+  "as_of": "2026-09-17",
+  "candidate_note": "Denominator is rendered binding INSTANCES (page+target+semantic). status/designed_capability is intended semantic capability. runtime_status is observed state and cannot be LIVE without runtime_evidence. A blank, banked, timed-out, disconnected, or undemanded surface is not runtime LIVE.",
+  "authority": "resolve_spot / live_market_plane.commit_last_price_observation is the one LAST_PRICE commit. REST and stream adapters produce LastPriceObservation.",
+  "status_vocab": [
+    "LIVE",
+    "HISTORICAL_REFERENCE",
+    "UNAVAILABLE",
+    "FAIL",
+    "NOT_PROVEN"
+  ],
+  "summary": {
+    "total": 71,
+    "LIVE": 52,
+    "HISTORICAL_REFERENCE": 18,
+    "UNAVAILABLE": 1,
+    "FAIL": 0,
+    "NOT_PROVEN": 0,
+    "binding_instances": 71,
+    "generated_templates": 16,
+    "static_instances": 55
+  },
+  "api_surfaces": {
+    "/api/analytics/light/stream": {
+      "ui": [
+        "header #hPx/#hChg/#hBidAsk/#hFeed/#hAge"
+      ],
+      "status": "LIVE",
+      "source_contract": "L1 projection over live_market_plane LAST_PRICE + bid/ask"
+    },
+    "/api/analytics/state": {
+      "ui": [
+        "#klPcr",
+        "alertsList"
+      ],
+      "status": "LIVE",
+      "source_contract": "Tier C / PCR and rules_alerts; spot via resolve_spot overlay"
+    },
+    "/api/bars1m": {
+      "ui": [
+        "#chartBody",
+        "chart.html",
+        "exposure.html"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Closed 1-minute bars. Forming minute on Chart/Exposure is bound to /api/spot, never bar close as current spot."
+    },
+    "/api/build": {
+      "ui": [
+        "system chrome"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Build identity, not a market value"
+    },
+    "/api/chain": {
+      "ui": [
+        "#chainBody",
+        "#sdBody",
+        "#stBody"
+      ],
+      "status": "LIVE",
+      "source_contract": "Schwab chain REST baseline + LEVELONE_OPTIONS overlay (GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLATILITY) when the capture daemon holds the contract. Pending admission is a subscription state, not a vendor field absence."
+    },
+    "/api/desk/brief": {
+      "ui": [
+        "desk.html brief"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Knowledge-time research brief (as_of). Must never populate current spot."
+    },
+    "/api/desk/dossier": {
+      "ui": [
+        "desk.html dossier"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Knowledge-time dossier (as_of). Must never populate current spot."
+    },
+    "/api/desk/evidence": {
+      "ui": [
+        "desk.html evidence"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Study scoreboard as_of. Not current market."
+    },
+    "/api/desk/radar": {
+      "ui": [
+        "desk.html #radar-body"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "FINRA short-volume / structure radar filtered on knowledge time (desk_store.radar_rows). Product is as-of research, not lastPrice. Main-console Desk/Radar pane is an unwired placeholder — see fields.desk_workspace_radar_placeholder."
+    },
+    "/api/desk/structure": {
+      "ui": [
+        "desk.html scenarios"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Payoff vs physical terminal distribution. Anchor as_of_bar_close is simulation input and must never populate current fields."
+    },
+    "/api/expiries": {
+      "ui": [
+        "#expSel"
+      ],
+      "status": "LIVE",
+      "source_contract": "Vendor listed expiries for the selected ticker"
+    },
+    "/api/exposure/flow": {
+      "ui": [
+        "exposure.html flow"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Banked accrual frames; current_spot overlaid from resolve_spot"
+    },
+    "/api/forces": {
+      "ui": [
+        "chart.html forces",
+        "exposure.html charm/vanna votes"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Banked morning-chain values; current_spot overlaid from resolve_spot"
+    },
+    "/api/governance/panel": {
+      "ui": [
+        "system chrome"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Governance, not market"
+    },
+    "/api/health": {
+      "ui": [
+        "system chrome"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Process health, not market"
+    },
+    "/api/level_crosses": {
+      "ui": [
+        "chart.html crosses"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Recorded cross events"
+    },
+    "/api/levels": {
+      "ui": [
+        "#lvlBody",
+        "chart.html levels",
+        "trade desk FRAME"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Prior-day / overnight / session structure. VWAP path is carried from the same snapshot. These are reference levels, not current lastPrice. Spot on this page must come from resolve_spot / /api/spot."
+    },
+    "/api/liquidity-snapshot": {
+      "ui": [
+        "#liqmBody",
+        "trade desk FRAME"
+      ],
+      "status": "LIVE",
+      "source_contract": "snapshot=live zones scored at resolve_spot; LAST_PRICE identity on /api/levels spot"
+    },
+    "/api/live/state": {
+      "ui": [
+        "header fallback",
+        "#hSession"
+      ],
+      "status": "LIVE",
+      "source_contract": "Tier A plane + REST LAST_PRICE via _ingest_rest_last_price_observation"
+    },
+    "/api/options/charm-by-strike": {
+      "ui": [
+        "#chmBody"
+      ],
+      "status": "LIVE",
+      "source_contract": "Canonical charm faucet over chain + stream overlay"
+    },
+    "/api/options/gamma-surface": {
+      "ui": [
+        "#heatBody",
+        "#heatScope"
+      ],
+      "status": "LIVE",
+      "source_contract": "project_gamma_surface; current_spot from resolve_spot; computed_from_spot disclosed separately; OPEN_INTEREST/GAMMA/DELTA overlay from LEVELONE_OPTIONS when admitted"
+    },
+    "/api/options/tape": {
+      "ui": [
+        "#ofBody"
+      ],
+      "status": "LIVE",
+      "source_contract": "LEVELONE_OPTIONS trade prints"
+    },
+    "/api/options/vanna-by-strike": {
+      "ui": [
+        "#vnBody"
+      ],
+      "status": "LIVE",
+      "source_contract": "Canonical vanna faucet over chain + stream overlay"
+    },
+    "/api/order-flow/book-heatmap": {
+      "ui": [
+        "#ofhBody"
+      ],
+      "status": "LIVE",
+      "source_contract": "History historical; latest column live when latest_captured_ts is fresh"
+    },
+    "/api/order-flow/microstructure": {
+      "ui": [
+        "#obBody",
+        "#tdBody"
+      ],
+      "status": "LIVE",
+      "source_contract": "L2 book + L1. Aggressor side is UNAVAILABLE (Schwab exposes no native field) — see fields.book_aggressor."
+    },
+    "/api/order-flow/options-microstructure": {
+      "ui": [
+        "#flowBody",
+        "options.html"
+      ],
+      "status": "LIVE",
+      "source_contract": "OPTIONS_BOOK + LEVELONE_OPTIONS for the selected contract. Signed aggressor is UNAVAILABLE unless native_aggressor_available is true."
+    },
+    "/api/spot": {
+      "ui": [
+        "chart.html liveSpot",
+        "exposure.html currentSpot",
+        "Key Levels via resolve_spot"
+      ],
+      "status": "LIVE",
+      "source_contract": "server.resolve_spot LAST_PRICE only"
+    },
+    "/api/state": {
+      "ui": [
+        "legacy alias of analytics/state"
+      ],
+      "status": "LIVE",
+      "source_contract": "Same payload as /api/analytics/state"
+    },
+    "/api/streaming/active-option-contract": {
+      "ui": [
+        "ed-stream.js",
+        "options.html"
+      ],
+      "status": "LIVE",
+      "source_contract": "Daemon admission state. Pending is a subscription state, not a source limitation."
+    },
+    "/api/streaming/active-option-contracts": {
+      "ui": [
+        "ed-stream.js Auto/Wider/All"
+      ],
+      "status": "LIVE",
+      "source_contract": "Requested → pending → freshness-gated active. RTH proof of every requested contract is a separate verdict."
+    },
+    "/api/streaming/active-ticker": {
+      "ui": [
+        "ed-stream.js"
+      ],
+      "status": "LIVE",
+      "source_contract": "Equity stream admission"
+    },
+    "/api/terrain": {
+      "ui": [
+        "#klSpot and walls",
+        "#chartBody spot/walls"
+      ],
+      "status": "LIVE",
+      "source_contract": "_reprice_cached_terrain → resolve_spot for current spot; walls/flip from terrain loop"
+    },
+    "/api/terrain/scorecard": {
+      "ui": [
+        "chart.html scorecard"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Daily terrain backtest artifact (reports/terrain_backtest_latest.json). Coach withholds figures when stale. Not a current-spot / current-Gamma surface."
+    },
+    "/api/terrain/strikes": {
+      "ui": [
+        "#gbsBody",
+        "#chartBody profile"
+      ],
+      "status": "LIVE",
+      "source_contract": "Per-strike GEX$ from terrain + stream overlay"
+    },
+    "/api/vol-observability": {
+      "ui": [
+        "system"
+      ],
+      "status": "HISTORICAL_REFERENCE",
+      "source_contract": "Diagnostic vol-index projection; never feeds the money path. Referenced on the system placeholder; no painted current-spot field."
+    },
+    "/api/watchlist-quotes": {
+      "ui": [
+        ".wl-px",
+        ".wl-chg"
+      ],
+      "status": "LIVE",
+      "source_contract": "Plane LAST_PRICE else REST via _ingest_rest_last_price_observation"
+    },
+    "/api/terrain/radar": {
+      "ui": [
+        "index.html #deskRadarBody"
+      ],
+      "status": "LIVE",
+      "source_contract": "_radar_apply_plane_spot LAST_PRICE when fresh; else labeled snapshot as-of"
+    }
+  },
+  "fields": [
+    {
+      "id": "hPx",
+      "ui": "header price #hPx",
+      "page": "index.html",
+      "source": "/api/analytics/light/stream then /api/live/state",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "resolve_spot LAST_PRICE"
+    },
+    {
+      "id": "hChg",
+      "ui": "header chg% #hChg",
+      "page": "index.html",
+      "source": "resolve_chg_pct via L1/REST",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "LEVELONE_EQUITIES CHANGE_PERCENT then REST"
+    },
+    {
+      "id": "hBidAsk",
+      "ui": "header bid/ask #hBidAsk",
+      "page": "index.html",
+      "source": "LEVELONE_EQUITIES BID_PRICE/ASK_PRICE else REST bidPrice/askPrice",
+      "status": "LIVE",
+      "limit": "bid/ask-only ticks do not refresh LAST_PRICE identity",
+      "source_contract": "quote.bidPrice/askPrice and LEVELONE_EQUITIES"
+    },
+    {
+      "id": "hFeed",
+      "ui": "header SPOT LIVE / STALE #hFeed",
+      "page": "index.html",
+      "source": "current_spot_state + last_price_age_ms",
+      "status": "LIVE",
+      "limit": "scoped to LAST_PRICE clocks, not stream health",
+      "source_contract": "LAST_PRICE observation clocks"
+    },
+    {
+      "id": "hAge",
+      "ui": "header data age #hAge",
+      "page": "index.html",
+      "source": "last_price_age_ms",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "LAST_PRICE observation clocks"
+    },
+    {
+      "id": "hSession",
+      "ui": "header session #hSession",
+      "page": "index.html",
+      "source": "/api/live/state session_label",
+      "status": "LIVE",
+      "limit": "exchange session clock, not lastPrice",
+      "source_contract": "ET session derivation"
+    },
+    {
+      "id": "wl-px",
+      "ui": "watchlist spot",
+      "page": "index.html",
+      "source": "/api/watchlist-quotes",
+      "status": "LIVE",
+      "limit": "REST lastPrice without same-node tradeTime is UNAVAILABLE",
+      "source_contract": "quote.lastPrice binds quote.tradeTime; extended.lastPrice binds extended.tradeTime"
+    },
+    {
+      "id": "wl-chg",
+      "ui": "watchlist chg%",
+      "page": "index.html",
+      "source": "/api/watchlist-quotes",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "resolve_chg_pct"
+    },
+    {
+      "id": "heat_cells_gex",
+      "ui": "gamma heatmap GEX$",
+      "page": "index.html #heatBody",
+      "source": "/api/options/gamma-surface",
+      "status": "LIVE",
+      "limit": "cells are computed_from_spot; current_spot disclosed separately",
+      "source_contract": "stream overlay of LEVELONE_OPTIONS GAMMA + REST baseline"
+    },
+    {
+      "id": "heat_cells_dex",
+      "ui": "gamma heatmap DEX",
+      "page": "index.html #heatBody",
+      "source": "/api/options/gamma-surface",
+      "status": "LIVE",
+      "limit": "same computed_from_spot disclosure",
+      "source_contract": "LEVELONE_OPTIONS DELTA overlay"
+    },
+    {
+      "id": "heat_cells_oi",
+      "ui": "gamma heatmap OI",
+      "page": "index.html #heatBody",
+      "source": "/api/options/gamma-surface",
+      "status": "LIVE",
+      "limit": "unsubscribed cells stay on REST until admitted — admission is not a source limit",
+      "source_contract": "Schwab LEVELONE_OPTIONS OPEN_INTEREST (SDK LevelOneOptionFields) plus chains.*.openInterest REST"
+    },
+    {
+      "id": "heat_cells_vanna",
+      "ui": "gamma heatmap Vanna",
+      "page": "index.html #heatBody",
+      "source": "/api/options/gamma-surface",
+      "status": "LIVE",
+      "limit": "same computed_from_spot disclosure",
+      "source_contract": "derived from overlaid contracts"
+    },
+    {
+      "id": "heat_cells_charm",
+      "ui": "gamma heatmap Charm",
+      "page": "index.html #heatBody",
+      "source": "/api/options/gamma-surface",
+      "status": "LIVE",
+      "limit": "same computed_from_spot disclosure",
+      "source_contract": "derived from overlaid contracts"
+    },
+    {
+      "id": "heat_current_spot",
+      "ui": "heatmap current_spot",
+      "page": "index.html #heatScope",
+      "source": "resolve_spot via gamma-surface",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "LAST_PRICE"
+    },
+    {
+      "id": "heat_computed_from_spot",
+      "ui": "heatmap computed_from_spot",
+      "page": "index.html #heatScope",
+      "source": "spot used for cells",
+      "status": "LIVE",
+      "limit": "must disclose mismatch; must never be painted as current when generations differ",
+      "source_contract": "same surface payload"
+    },
+    {
+      "id": "heat_live_word",
+      "ui": "heatmap LIVE/STREAMING/WARMING",
+      "page": "index.html #heatScope",
+      "source": "stream_coverage.meets_live_requirement",
+      "status": "LIVE",
+      "limit": "LIVE only when every visible cell is freshness-gated streaming",
+      "source_contract": "admission + freshness"
+    },
+    {
+      "id": "klSpot",
+      "ui": "Key Levels spot",
+      "page": "index.html",
+      "source": "/api/terrain _reprice_cached_terrain",
+      "status": "LIVE",
+      "limit": "walls refresh on terrain loop then reprice",
+      "source_contract": "resolve_spot"
+    },
+    {
+      "id": "klFlip",
+      "ui": "Key Levels gamma flip",
+      "page": "index.html",
+      "source": "/api/terrain",
+      "status": "LIVE",
+      "limit": "geometry cadence ~terrain loop",
+      "source_contract": "terrain SSOT"
+    },
+    {
+      "id": "klCall",
+      "ui": "Key Levels call wall",
+      "page": "index.html",
+      "source": "/api/terrain",
+      "status": "LIVE",
+      "limit": "geometry cadence ~terrain loop",
+      "source_contract": "terrain SSOT"
+    },
+    {
+      "id": "klPut",
+      "ui": "Key Levels put wall",
+      "page": "index.html",
+      "source": "/api/terrain",
+      "status": "LIVE",
+      "limit": "geometry cadence ~terrain loop",
+      "source_contract": "terrain SSOT"
+    },
+    {
+      "id": "klAbs",
+      "ui": "Key Levels absolute gamma",
+      "page": "index.html",
+      "source": "/api/terrain",
+      "status": "LIVE",
+      "limit": "geometry cadence ~terrain loop",
+      "source_contract": "terrain SSOT"
+    },
+    {
+      "id": "klPeak",
+      "ui": "Key Levels net GEX peak",
+      "page": "index.html",
+      "source": "/api/terrain",
+      "status": "LIVE",
+      "limit": "geometry cadence ~terrain loop",
+      "source_contract": "terrain SSOT"
+    },
+    {
+      "id": "klNet",
+      "ui": "Key Levels net GEX / 1%",
+      "page": "index.html",
+      "source": "/api/terrain",
+      "status": "LIVE",
+      "limit": "geometry cadence ~terrain loop",
+      "source_contract": "terrain SSOT"
+    },
+    {
+      "id": "klPcr",
+      "ui": "Key Levels put/call OI",
+      "page": "index.html",
+      "source": "/api/analytics/state",
+      "status": "LIVE",
+      "limit": "OI live when contracts streamed",
+      "source_contract": "OPEN_INTEREST stream + chain REST"
+    },
+    {
+      "id": "klRegime",
+      "ui": "Key Levels regime",
+      "page": "index.html",
+      "source": "/api/terrain reprice at live spot",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "sign of cached profile at resolve_spot"
+    },
+    {
+      "id": "sdBody",
+      "ui": "Strike Detail OI/vol/gamma/delta/IV",
+      "page": "index.html",
+      "source": "/api/chain + stream overlay",
+      "status": "LIVE",
+      "limit": "unsubscribed contracts REST until admitted",
+      "source_contract": "LEVELONE_OPTIONS + chain REST"
+    },
+    {
+      "id": "gbsBody",
+      "ui": "GEX by Strike",
+      "page": "index.html",
+      "source": "/api/terrain/strikes",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "terrain + stream overlay"
+    },
+    {
+      "id": "ofBody",
+      "ui": "options tape",
+      "page": "index.html",
+      "source": "/api/options/tape",
+      "status": "LIVE",
+      "limit": "no native aggressor",
+      "source_contract": "LEVELONE_OPTIONS prints"
+    },
+    {
+      "id": "chainBody",
+      "ui": "option chain OI/vol/IV/delta/spot",
+      "page": "index.html",
+      "source": "/api/chain",
+      "status": "LIVE",
+      "limit": "unsubscribed contracts REST until admitted",
+      "source_contract": "LEVELONE_OPTIONS OPEN_INTEREST exists; REST is fallback not a limit"
+    },
+    {
+      "id": "flowBody",
+      "ui": "options flow book/depth/tape",
+      "page": "index.html",
+      "source": "/api/order-flow/options-microstructure",
+      "status": "LIVE",
+      "limit": "signed aggressor UNAVAILABLE unless native_aggressor_available",
+      "source_contract": "OPTIONS_BOOK + LEVELONE_OPTIONS"
+    },
+    {
+      "id": "vnBody",
+      "ui": "Vanna by Strike",
+      "page": "index.html",
+      "source": "/api/options/vanna-by-strike",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "canonical faucet"
+    },
+    {
+      "id": "chmBody",
+      "ui": "Charm by Strike",
+      "page": "index.html",
+      "source": "/api/options/charm-by-strike",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "canonical faucet"
+    },
+    {
+      "id": "stBody",
+      "ui": "contract structures metadata",
+      "page": "index.html",
+      "source": "/api/chain",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "multiplier/settlement/exercise are contract facts, not ticks",
+      "source_contract": "Schwab chain contract fields"
+    },
+    {
+      "id": "tdBody",
+      "ui": "trade desk detect/frame/confirm",
+      "page": "index.html",
+      "source": "microstructure + levels + terrain + liquidity-snapshot",
+      "status": "LIVE",
+      "limit": "assembles live endpoints; identity of every painted number vs LAST_PRICE generation is not proven on this SHA",
+      "source_contract": "/api/spot LAST_PRICE identity stamped on #tdBody"
+    },
+    {
+      "id": "obBody",
+      "ui": "Book/DOM top/spread/depth/imbalance",
+      "page": "index.html",
+      "source": "/api/order-flow/microstructure",
+      "status": "LIVE",
+      "limit": "requires capture daemon owning the stream",
+      "source_contract": "NASDAQ_BOOK/NYSE_BOOK + LEVELONE_EQUITIES"
+    },
+    {
+      "id": "book_aggressor",
+      "ui": "Book/DOM aggressor side",
+      "page": "index.html #obBody",
+      "source": "none",
+      "status": "UNAVAILABLE",
+      "limit": "Schwab exposes no native aggressor field",
+      "source_contract": "Schwab exposes no native aggressor field; UI must not fabricate signed flow"
+    },
+    {
+      "id": "ofhBody",
+      "ui": "book heatmap",
+      "page": "index.html",
+      "source": "/api/order-flow/book-heatmap",
+      "status": "LIVE",
+      "limit": "history of captured depth; live latest-column not proven",
+      "source_contract": "latest_column_live + last_price_generation; history stays historical"
+    },
+    {
+      "id": "liqmBody",
+      "ui": "liquidity map zones + spot",
+      "page": "index.html",
+      "source": "/api/liquidity-snapshot + /api/levels",
+      "status": "LIVE",
+      "limit": "spot must be resolve_spot; zone live identity not proven",
+      "source_contract": "zones at resolve_spot; spot LAST_PRICE generation stamped"
+    },
+    {
+      "id": "lvlBody",
+      "ui": "liquidity levels PDH/POC/VWAP",
+      "page": "index.html",
+      "source": "/api/levels",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "prior-day/overnight are reference; must never become current spot",
+      "source_contract": "canonical levels snapshot"
+    },
+    {
+      "id": "chartBody",
+      "ui": "gamma chart bars + spot + walls",
+      "page": "index.html",
+      "source": "/api/bars1m + /api/terrain + /api/terrain/strikes",
+      "status": "LIVE",
+      "limit": "closed bars are historical; spot/walls from terrain reprice",
+      "source_contract": "resolve_spot + terrain"
+    },
+    {
+      "id": "levelsBody",
+      "ui": "gamma levels view",
+      "page": "index.html",
+      "source": "/api/levels",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "same /api/levels renderer",
+      "source_contract": "canonical levels"
+    },
+    {
+      "id": "alertsList",
+      "ui": "rules alerts",
+      "page": "index.html",
+      "source": "/api/analytics/state rules_alerts",
+      "status": "LIVE",
+      "limit": "alert predicates vs live LAST_PRICE not proven per rule",
+      "source_contract": "rules_alerts on build_market_state.spot from resolve_spot"
+    },
+    {
+      "id": "aiCtxFresh",
+      "ui": "analyst freshness",
+      "page": "index.html",
+      "source": "header feed/age",
+      "status": "LIVE",
+      "limit": "mirrors LAST_PRICE age",
+      "source_contract": "same as #hFeed/#hAge"
+    },
+    {
+      "id": "desk_workspace_radar_placeholder",
+      "ui": "main-console Desk/Radar #deskRadarBody",
+      "page": "index.html",
+      "source": "/api/terrain/radar",
+      "status": "LIVE",
+      "limit": "snapshot as-of when plane LAST_PRICE is not fresh; labeled",
+      "source_contract": "_radar_apply_plane_spot"
+    },
+    {
+      "id": "terrain_radar_spot",
+      "ui": "/api/terrain/radar row spot",
+      "page": "API consumed by tools/chart; not main pane",
+      "source": "plane LAST_PRICE else labeled snapshot as-of",
+      "status": "LIVE",
+      "limit": "tickers with no fresh plane LAST_PRICE stay historical/as-of and must be labeled",
+      "source_contract": "_radar_apply_plane_spot; no per-row Schwab call"
+    },
+    {
+      "id": "desk_html_radar",
+      "ui": "desk.html FINRA/structure radar",
+      "page": "desk.html",
+      "source": "/api/desk/radar",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "knowledge-time product; not lastPrice",
+      "source_contract": "desk_store.radar_rows as_of"
+    },
+    {
+      "id": "desk_html_brief",
+      "ui": "desk.html brief",
+      "page": "desk.html",
+      "source": "/api/desk/brief",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": null,
+      "source_contract": "as_of research"
+    },
+    {
+      "id": "desk_html_dossier",
+      "ui": "desk.html dossier",
+      "page": "desk.html",
+      "source": "/api/desk/dossier",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": null,
+      "source_contract": "as_of research"
+    },
+    {
+      "id": "desk_html_structure_bar_close",
+      "ui": "desk.html simulation anchor",
+      "page": "desk.html",
+      "source": "as_of_bar_close",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "must never populate current fields",
+      "source_contract": "desk_store anchor_source as_of_bar_close"
+    },
+    {
+      "id": "chart_html_spot",
+      "ui": "chart.html live spot",
+      "page": "chart.html",
+      "source": "/api/spot",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "resolve_spot LAST_PRICE only (RC-225)"
+    },
+    {
+      "id": "chart_html_bars",
+      "ui": "chart.html 1m bars",
+      "page": "chart.html",
+      "source": "/api/bars1m",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "forming candle from /api/spot, never bar close as current",
+      "source_contract": "closed bars + spot binding"
+    },
+    {
+      "id": "chart_html_levels",
+      "ui": "chart.html PDH/VWAP overlays",
+      "page": "chart.html",
+      "source": "/api/levels",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "reference overlays",
+      "source_contract": "canonical levels"
+    },
+    {
+      "id": "chart_html_forces",
+      "ui": "chart.html charm/vanna forces",
+      "page": "chart.html",
+      "source": "/api/forces",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "banked-chain comments vs live overlay",
+      "source_contract": "banked morning chain; current_spot stamped LIVE"
+    },
+    {
+      "id": "exposure_html_spot",
+      "ui": "exposure.html current spot",
+      "page": "exposure.html",
+      "source": "/api/spot",
+      "status": "LIVE",
+      "limit": null,
+      "source_contract": "resolve_spot LAST_PRICE only"
+    },
+    {
+      "id": "exposure_html_flow",
+      "ui": "exposure.html flow",
+      "page": "exposure.html",
+      "source": "/api/exposure/flow",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "live identity not proven",
+      "source_contract": "banked accrual; current_spot stamped LIVE"
+    },
+    {
+      "id": "options_html_spot",
+      "ui": "options.html #m-spot",
+      "page": "options.html",
+      "source": "/api/spot",
+      "status": "LIVE",
+      "limit": "must be resolve_spot; this SHA does not prove the page refuses chain underlying last/mark",
+      "source_contract": "resolve_spot LAST_PRICE only; chain last/mark refused"
+    },
+    {
+      "id": "options_html_chain",
+      "ui": "options.html chain table",
+      "page": "options.html",
+      "source": "/api/chain",
+      "status": "LIVE",
+      "limit": "same overlay as console chain",
+      "source_contract": "chain + LEVELONE_OPTIONS"
+    },
+    {
+      "id": "options_html_micro",
+      "ui": "options.html microstructure",
+      "page": "options.html",
+      "source": "/api/order-flow/options-microstructure",
+      "status": "LIVE",
+      "limit": "no native aggressor",
+      "source_contract": "OPTIONS_BOOK + LEVELONE_OPTIONS"
+    },
+    {
+      "id": "morning_gamma_reference",
+      "ui": "banked morning gamma",
+      "page": "not a current field",
+      "source": "option_chain_morning_full",
+      "status": "HISTORICAL_REFERENCE",
+      "limit": "prior-session / morning reference only; must never populate current fields",
+      "source_contract": "calibration.option_chain_morning_full"
+    },
+    {
+      "id": "contract_admission_pending",
+      "ui": "heatmap/chain cells waiting admission",
+      "page": "index.html",
+      "source": "capture daemon",
+      "status": "LIVE",
+      "limit": "pending is not a vendor field absence",
+      "source_contract": "subscription state; LEVELONE_OPTIONS subscribe is possible"
+    }
+  ],
+  "instances": [
+    {
+      "id": "index.html#hPx",
+      "page": "index.html",
+      "view": "header",
+      "target": "#hPx",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "SSE live_quote / /api/live/state",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#hChg",
+      "page": "index.html",
+      "view": "header",
+      "target": "#hChg",
+      "semantic": "CHANGE_PERCENT",
+      "canonical_producer": "resolve_chg_pct",
+      "source_observation": "LEVELONE CHANGE_PERCENT else REST",
+      "timestamp": "exchange_quote_ts",
+      "generation": "fast_generation_id",
+      "freshness": "plane freshness",
+      "update_trigger": "SSE live_quote",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#hBidAsk",
+      "page": "index.html",
+      "view": "header",
+      "target": "#hBidAsk",
+      "semantic": "BID_ASK",
+      "canonical_producer": "live_market_plane bid/ask extras",
+      "source_observation": "BID_PRICE/ASK_PRICE else REST bidPrice/askPrice",
+      "timestamp": "QUOTE_TIME_MILLIS",
+      "generation": "fast_generation_id (not last_price on bid-only)",
+      "freshness": "plane freshness; bid/ask-only does not refresh LAST_PRICE",
+      "update_trigger": "SSE live_quote",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#hFeed",
+      "page": "index.html",
+      "view": "header",
+      "target": "#hFeed",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "last_price_age_ms / current_spot_state",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#hAge",
+      "page": "index.html",
+      "view": "header",
+      "target": "#hAge",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "last_price_age_ms",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#hSession",
+      "page": "index.html",
+      "view": "header",
+      "target": "#hSession",
+      "semantic": "SESSION_LABEL",
+      "canonical_producer": "ET session derivation",
+      "source_observation": "exchange calendar",
+      "timestamp": "session clock",
+      "generation": "none",
+      "freshness": "not lastPrice",
+      "update_trigger": "/api/live/state",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html.wl-px",
+      "page": "index.html",
+      "view": "watchlist",
+      "target": ".wl-px",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/watchlist-quotes via _ingest_rest_last_price_observation",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html.wl-chg",
+      "page": "index.html",
+      "view": "watchlist",
+      "target": ".wl-chg",
+      "semantic": "CHANGE_PERCENT",
+      "canonical_producer": "resolve_chg_pct",
+      "source_observation": "REST/stream chg",
+      "timestamp": "same as watchlist quote",
+      "generation": "last_price_generation",
+      "freshness": "plane freshness",
+      "update_trigger": "/api/watchlist-quotes",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#heatScope_current_spot",
+      "page": "index.html",
+      "view": "options/heatmap",
+      "target": "#heatScope",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/options/gamma-surface current_spot",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#heatScope.computed_from_spot",
+      "page": "index.html",
+      "view": "options/heatmap",
+      "target": "#heatScope",
+      "semantic": "GAMMA_COMPUTED_FROM_SPOT",
+      "canonical_producer": "project_gamma_surface",
+      "source_observation": "spot used for cells",
+      "timestamp": "surface as_of",
+      "generation": "gamma surface revision",
+      "freshness": "must disclose mismatch vs current_spot",
+      "update_trigger": "ed:gamma-push / load",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#heatBody.gex",
+      "page": "index.html",
+      "view": "options/heatmap",
+      "target": "#heatBody .hcell",
+      "semantic": "GEX_DOLLARS",
+      "canonical_producer": "project_gamma_surface",
+      "source_observation": "LEVELONE GAMMA overlay + REST baseline",
+      "timestamp": "cell stream ts_recv",
+      "generation": "surface revision",
+      "freshness": "per-cell stream state",
+      "update_trigger": "ed:gamma-push / renderSurface",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#heatBody.dex",
+      "page": "index.html",
+      "view": "options/heatmap",
+      "target": "#heatBody .hcell",
+      "semantic": "DEX",
+      "canonical_producer": "project_gamma_surface",
+      "source_observation": "LEVELONE DELTA overlay",
+      "timestamp": "cell stream ts_recv",
+      "generation": "surface revision",
+      "freshness": "per-cell stream state",
+      "update_trigger": "ed:gamma-push",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#heatBody.oi",
+      "page": "index.html",
+      "view": "options/heatmap",
+      "target": "#heatBody .hcell",
+      "semantic": "OPEN_INTEREST",
+      "canonical_producer": "LEVELONE_OPTIONS OPEN_INTEREST + chain REST",
+      "source_observation": "Schwab OPEN_INTEREST / chains.*.openInterest",
+      "timestamp": "cell stream ts_recv",
+      "generation": "admission generation",
+      "freshness": "pending is subscription state, not a source limit",
+      "update_trigger": "setAdditionalContracts → pending → freshness-gated active",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#heatBody.vanna",
+      "page": "index.html",
+      "view": "options/heatmap",
+      "target": "#heatBody .hcell",
+      "semantic": "VANNA",
+      "canonical_producer": "project_gamma_surface derived",
+      "source_observation": "overlaid contracts",
+      "timestamp": "cell stream ts_recv",
+      "generation": "surface revision",
+      "freshness": "computed_from_spot disclosure",
+      "update_trigger": "ed:gamma-push",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#heatBody.charm",
+      "page": "index.html",
+      "view": "options/heatmap",
+      "target": "#heatBody .hcell",
+      "semantic": "CHARM",
+      "canonical_producer": "project_gamma_surface derived",
+      "source_observation": "overlaid contracts",
+      "timestamp": "cell stream ts_recv",
+      "generation": "surface revision",
+      "freshness": "computed_from_spot disclosure",
+      "update_trigger": "ed:gamma-push",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klSpot",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klSpot",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/terrain _reprice_cached_terrain",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klFlip",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klFlip",
+      "semantic": "GAMMA_FLIP",
+      "canonical_producer": "terrain SSOT",
+      "source_observation": "terrain loop",
+      "timestamp": "terrain as_of",
+      "generation": "terrain generation",
+      "freshness": "geometry cadence",
+      "update_trigger": "/api/terrain",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klCall",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klCall",
+      "semantic": "CALL_WALL",
+      "canonical_producer": "terrain SSOT",
+      "source_observation": "terrain loop",
+      "timestamp": "terrain as_of",
+      "generation": "terrain generation",
+      "freshness": "geometry cadence",
+      "update_trigger": "/api/terrain",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klPut",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klPut",
+      "semantic": "PUT_WALL",
+      "canonical_producer": "terrain SSOT",
+      "source_observation": "terrain loop",
+      "timestamp": "terrain as_of",
+      "generation": "terrain generation",
+      "freshness": "geometry cadence",
+      "update_trigger": "/api/terrain",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klAbs",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klAbs",
+      "semantic": "ABS_GAMMA",
+      "canonical_producer": "terrain SSOT",
+      "source_observation": "terrain loop",
+      "timestamp": "terrain as_of",
+      "generation": "terrain generation",
+      "freshness": "geometry cadence",
+      "update_trigger": "/api/terrain",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klPeak",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klPeak",
+      "semantic": "NET_GEX_PEAK",
+      "canonical_producer": "terrain SSOT",
+      "source_observation": "terrain loop",
+      "timestamp": "terrain as_of",
+      "generation": "terrain generation",
+      "freshness": "geometry cadence",
+      "update_trigger": "/api/terrain",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klNet",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klNet",
+      "semantic": "NET_GEX_1PCT",
+      "canonical_producer": "terrain SSOT",
+      "source_observation": "terrain loop",
+      "timestamp": "terrain as_of",
+      "generation": "terrain generation",
+      "freshness": "geometry cadence",
+      "update_trigger": "/api/terrain",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klPcr",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klPcr",
+      "semantic": "PUT_CALL_OI",
+      "canonical_producer": "/api/analytics/state",
+      "source_observation": "OPEN_INTEREST stream + chain REST",
+      "timestamp": "state as_of",
+      "generation": "last_price_generation on payload",
+      "freshness": "OI live when admitted",
+      "update_trigger": "ed:refresh slow",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#klRegime",
+      "page": "index.html",
+      "view": "options/key-levels",
+      "target": "#klRegime",
+      "semantic": "DEALER_REGIME",
+      "canonical_producer": "terrain reprice at resolve_spot",
+      "source_observation": "sign of cached profile at live spot",
+      "timestamp": "spot_as_of_ts_utc",
+      "generation": "last_price_generation",
+      "freshness": "follows current_spot",
+      "update_trigger": "/api/terrain",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#sdBody",
+      "page": "index.html",
+      "view": "options/strike-detail",
+      "target": "#sdBody",
+      "semantic": "CONTRACT_GREEKS_OI",
+      "canonical_producer": "/api/chain + LEVELONE_OPTIONS overlay",
+      "source_observation": "chain REST + stream",
+      "timestamp": "chain/stream ts",
+      "generation": "admission",
+      "freshness": "unsubscribed REST until admitted",
+      "update_trigger": "ed:strike / ed:refresh",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#gbsBody",
+      "page": "index.html",
+      "view": "options/gex-by-strike",
+      "target": "#gbsBody",
+      "semantic": "GEX_DOLLARS",
+      "canonical_producer": "/api/terrain/strikes",
+      "source_observation": "terrain + stream overlay",
+      "timestamp": "terrain as_of",
+      "generation": "surface revision",
+      "freshness": "reprice at resolve_spot",
+      "update_trigger": "ed:refresh / ed:gamma-push",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#ofBody",
+      "page": "index.html",
+      "view": "options/tape",
+      "target": "#ofBody",
+      "semantic": "OPTION_PRINT",
+      "canonical_producer": "/api/options/tape",
+      "source_observation": "LEVELONE_OPTIONS prints",
+      "timestamp": "ts_recv",
+      "generation": "print seq",
+      "freshness": "no native aggressor",
+      "update_trigger": "ed:refresh",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#chainBody",
+      "page": "index.html",
+      "view": "options/chain",
+      "target": "#chainBody",
+      "semantic": "CHAIN_CONTRACT",
+      "canonical_producer": "/api/chain + LEVELONE_OPTIONS",
+      "source_observation": "vendor chain fields",
+      "timestamp": "chain/stream ts",
+      "generation": "admission",
+      "freshness": "unsubscribed REST until admitted",
+      "update_trigger": "ed:refresh",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#flowBody",
+      "page": "index.html",
+      "view": "options/flow",
+      "target": "#flowBody",
+      "semantic": "OPTIONS_BOOK",
+      "canonical_producer": "/api/order-flow/options-microstructure",
+      "source_observation": "OPTIONS_BOOK + LEVELONE_OPTIONS",
+      "timestamp": "book ts_recv",
+      "generation": "book seq",
+      "freshness": "signed aggressor UNAVAILABLE unless native",
+      "update_trigger": "ed:refresh",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#vnBody",
+      "page": "index.html",
+      "view": "options/vanna",
+      "target": "#vnBody",
+      "semantic": "VANNA",
+      "canonical_producer": "/api/options/vanna-by-strike",
+      "source_observation": "canonical faucet",
+      "timestamp": "as_of",
+      "generation": "surface revision",
+      "freshness": "LIVE overlay",
+      "update_trigger": "ed:refresh",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#chmBody",
+      "page": "index.html",
+      "view": "options/charm",
+      "target": "#chmBody",
+      "semantic": "CHARM",
+      "canonical_producer": "/api/options/charm-by-strike",
+      "source_observation": "canonical faucet",
+      "timestamp": "as_of",
+      "generation": "surface revision",
+      "freshness": "LIVE overlay",
+      "update_trigger": "ed:refresh",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#stBody",
+      "page": "index.html",
+      "view": "options/structures",
+      "target": "#stBody",
+      "semantic": "CONTRACT_SPEC",
+      "canonical_producer": "/api/chain",
+      "source_observation": "multiplier/settlement/exercise",
+      "timestamp": "none",
+      "generation": "none",
+      "freshness": "contract facts, not ticks",
+      "update_trigger": "ed:view",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "index.html#tdBody_spot",
+      "page": "index.html",
+      "view": "trade-desk",
+      "target": "#tdBody .fl-meta",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/spot then /api/levels last_price_generation",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#tdBody.detect",
+      "page": "index.html",
+      "view": "trade-desk",
+      "target": "#tdBody .td-grid",
+      "semantic": "MICROSTRUCTURE",
+      "canonical_producer": "/api/order-flow/microstructure",
+      "source_observation": "L2+L1",
+      "timestamp": "book/L1 ts",
+      "generation": "last_price_generation on spot stamp",
+      "freshness": "same endpoints as Book/DOM",
+      "update_trigger": "ed:refresh",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#obBody",
+      "page": "index.html",
+      "view": "order-flow/book",
+      "target": "#obBody",
+      "semantic": "BOOK_DOM",
+      "canonical_producer": "/api/order-flow/microstructure",
+      "source_observation": "NASDAQ_BOOK/NYSE_BOOK + LEVELONE",
+      "timestamp": "book ts_recv",
+      "generation": "book seq",
+      "freshness": "requires capture daemon",
+      "update_trigger": "ed:refresh",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#obBody.aggressor",
+      "page": "index.html",
+      "view": "order-flow/book",
+      "target": "#obBody aggressor",
+      "semantic": "AGGRESSOR_SIDE",
+      "canonical_producer": "none",
+      "source_observation": "Schwab exposes no native aggressor field",
+      "timestamp": "none",
+      "generation": "none",
+      "freshness": "UNAVAILABLE by vendor contract",
+      "update_trigger": "none",
+      "status": "UNAVAILABLE",
+      "instance_kind": "static",
+      "designed_capability": "UNAVAILABLE",
+      "runtime_status": "UNAVAILABLE"
+    },
+    {
+      "id": "index.html#ofhBody.history",
+      "page": "index.html",
+      "view": "order-flow/heatmap",
+      "target": "#ofhCanvas",
+      "semantic": "BOOK_DEPTH_HISTORY",
+      "canonical_producer": "book_heatmap_for_ticker",
+      "source_observation": "stream_book_raw TOTAL_VOLUME",
+      "timestamp": "since_ts/until_ts",
+      "generation": "none",
+      "freshness": "historical bins",
+      "update_trigger": "ed:view",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "generated",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "index.html#ofhBody.latest",
+      "page": "index.html",
+      "view": "order-flow/heatmap",
+      "target": "#ofhCanvas latest column",
+      "semantic": "BOOK_DEPTH_LATEST",
+      "canonical_producer": "book_heatmap_for_ticker latest bucket + latest_column_live",
+      "source_observation": "latest captured book tick",
+      "timestamp": "latest_column_ts / latest_captured_ts",
+      "generation": "last_price_generation stamped",
+      "freshness": "latest_column_live when capture age < 30s",
+      "update_trigger": "ed:refresh while heatmap visible",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#liqmBody_spot",
+      "page": "index.html",
+      "view": "liquidity/map",
+      "target": ".liqmap-spot",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/levels resolve_spot + last_price_generation",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#liqmBody.zones",
+      "page": "index.html",
+      "view": "liquidity/map",
+      "target": ".liqmap-zone",
+      "semantic": "LIQUIDITY_ZONE",
+      "canonical_producer": "/api/liquidity-snapshot snapshot=live",
+      "source_observation": "confluence zones scored at resolve_spot",
+      "timestamp": "snapshot as_of",
+      "generation": "last_price_generation on spot stamp",
+      "freshness": "zones derived; spot is LIVE",
+      "update_trigger": "ed:refresh while map visible",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#lvlBody",
+      "page": "index.html",
+      "view": "liquidity/levels",
+      "target": "#lvlBody",
+      "semantic": "REFERENCE_LEVELS",
+      "canonical_producer": "/api/levels",
+      "source_observation": "PDH/POC/VWAP snapshot",
+      "timestamp": "snapshot_as_of_ts_utc",
+      "generation": "snapshot generation (not last_price)",
+      "freshness": "must never become current spot",
+      "update_trigger": "ed:view",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "index.html#chartBody.spot",
+      "page": "index.html",
+      "view": "options/chart",
+      "target": "#chartBody spot",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/terrain reprice",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#chartBody.bars",
+      "page": "index.html",
+      "view": "options/chart",
+      "target": "#chartBody bars",
+      "semantic": "BAR_1M",
+      "canonical_producer": "/api/bars1m",
+      "source_observation": "closed 1-minute bars",
+      "timestamp": "bar end",
+      "generation": "none",
+      "freshness": "forming minute bound to /api/spot",
+      "update_trigger": "ed:refresh",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "index.html#levelsBody",
+      "page": "index.html",
+      "view": "options/levels",
+      "target": "#levelsBody",
+      "semantic": "REFERENCE_LEVELS",
+      "canonical_producer": "/api/levels",
+      "source_observation": "canonical levels",
+      "timestamp": "snapshot_as_of",
+      "generation": "snapshot generation",
+      "freshness": "same /api/levels renderer",
+      "update_trigger": "ed:view",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "index.html#alertsList",
+      "page": "index.html",
+      "view": "header/alerts",
+      "target": "#alertsList .alert-pill",
+      "semantic": "RULES_ALERT",
+      "canonical_producer": "rules engine via /api/analytics/state",
+      "source_observation": "predicates on resolve_spot LAST_PRICE (build_market_state.spot)",
+      "timestamp": "state as_of",
+      "generation": "last_price_generation on payload / alert pill",
+      "freshness": "same LAST_PRICE as header",
+      "update_trigger": "ed:refresh slow",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#aiCtxFresh",
+      "page": "index.html",
+      "view": "analyst-drawer",
+      "target": "#aiCtxFresh",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "mirrors #hFeed/#hAge",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#deskRadarBody_spot",
+      "page": "index.html",
+      "view": "desk/radar",
+      "target": "#deskRadarBody td[data-last-price-gen]",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/terrain/radar _radar_apply_plane_spot",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "index.html#deskRadarBody.contact",
+      "page": "index.html",
+      "view": "desk/radar",
+      "target": "#deskRadarBody table",
+      "semantic": "RADAR_CONTACT",
+      "canonical_producer": "/api/terrain/radar",
+      "source_observation": "wall/flip contact at plane or as-of spot",
+      "timestamp": "spot_as_of_ts_utc",
+      "generation": "last_price_generation when live",
+      "freshness": "historical when no fresh plane LAST_PRICE",
+      "update_trigger": "ed:refresh while radar visible",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "desk.html#radar-body",
+      "page": "desk.html",
+      "view": "radar",
+      "target": "#radar-body",
+      "semantic": "FINRA_STRUCTURE",
+      "canonical_producer": "/api/desk/radar",
+      "source_observation": "desk_store.radar_rows as_of",
+      "timestamp": "as_of",
+      "generation": "none",
+      "freshness": "knowledge-time product",
+      "update_trigger": "page load",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "desk.html#brief",
+      "page": "desk.html",
+      "view": "brief",
+      "target": "brief body",
+      "semantic": "DESK_BRIEF",
+      "canonical_producer": "/api/desk/brief",
+      "source_observation": "as_of research",
+      "timestamp": "as_of",
+      "generation": "none",
+      "freshness": "not lastPrice",
+      "update_trigger": "page load",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "desk.html#dossier",
+      "page": "desk.html",
+      "view": "dossier",
+      "target": "dossier body",
+      "semantic": "DESK_DOSSIER",
+      "canonical_producer": "/api/desk/dossier",
+      "source_observation": "as_of research",
+      "timestamp": "as_of",
+      "generation": "none",
+      "freshness": "not lastPrice",
+      "update_trigger": "page load",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "desk.html#structure.bar_close",
+      "page": "desk.html",
+      "view": "structure",
+      "target": "simulation anchor",
+      "semantic": "AS_OF_BAR_CLOSE",
+      "canonical_producer": "desk_store anchor_source",
+      "source_observation": "as_of_bar_close",
+      "timestamp": "as_of",
+      "generation": "none",
+      "freshness": "must never populate current fields",
+      "update_trigger": "page load",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "chart.html#liveSpot",
+      "page": "chart.html",
+      "view": "chart",
+      "target": "liveSpot / /api/spot",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/spot",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "chart.html#bars",
+      "page": "chart.html",
+      "view": "chart",
+      "target": "1m bars",
+      "semantic": "BAR_1M",
+      "canonical_producer": "/api/bars1m",
+      "source_observation": "closed bars",
+      "timestamp": "bar end",
+      "generation": "none",
+      "freshness": "forming candle from /api/spot",
+      "update_trigger": "poll",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "chart.html#levels",
+      "page": "chart.html",
+      "view": "chart",
+      "target": "PDH/VWAP overlays",
+      "semantic": "REFERENCE_LEVELS",
+      "canonical_producer": "/api/levels",
+      "source_observation": "canonical levels",
+      "timestamp": "snapshot_as_of",
+      "generation": "snapshot generation",
+      "freshness": "reference overlays",
+      "update_trigger": "poll",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "chart.html#forces",
+      "page": "chart.html",
+      "view": "chart",
+      "target": "charm/vanna forces",
+      "semantic": "BANKED_FORCES",
+      "canonical_producer": "/api/forces + _stamp_current_spot_identity",
+      "source_observation": "option_chain_morning_full OI/DEX/CHARM (banked); current_spot is LIVE LAST_PRICE",
+      "timestamp": "newer_et_date / current_spot_as_of_ts",
+      "generation": "last_price_generation on current_spot only",
+      "freshness": "value_class=HISTORICAL_REFERENCE; current_spot_class=LIVE",
+      "update_trigger": "page poll",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "chart.html#forces.current_spot",
+      "page": "chart.html",
+      "view": "chart",
+      "target": "/api/forces current_spot",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/forces stamp",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "exposure.html#currentSpot",
+      "page": "exposure.html",
+      "view": "exposure",
+      "target": "currentSpot / /api/spot",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/spot",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "exposure.html#flow",
+      "page": "exposure.html",
+      "view": "exposure",
+      "target": "flow frames",
+      "semantic": "BANKED_ACCRUAL",
+      "canonical_producer": "/api/exposure/flow + _stamp_current_spot_identity",
+      "source_observation": "option_chain_accrual frames (banked); current_spot is LIVE LAST_PRICE",
+      "timestamp": "et_date / frame t",
+      "generation": "last_price_generation on current_spot only",
+      "freshness": "value_class=HISTORICAL_REFERENCE; current_spot_class=LIVE",
+      "update_trigger": "page poll",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "exposure.html#flow.current_spot",
+      "page": "exposure.html",
+      "view": "exposure",
+      "target": "/api/exposure/flow current_spot",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/exposure/flow stamp",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "options.html#m-spot",
+      "page": "options.html",
+      "view": "chain",
+      "target": "#m-spot",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "/api/spot (never chain underlying last/mark)",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "options.html#chain-body",
+      "page": "options.html",
+      "view": "chain",
+      "target": "#chain-body",
+      "semantic": "CHAIN_CONTRACT",
+      "canonical_producer": "/api/chain + LEVELONE_OPTIONS",
+      "source_observation": "vendor chain fields",
+      "timestamp": "chain/stream ts",
+      "generation": "admission",
+      "freshness": "same overlay as console chain",
+      "update_trigger": "loadChain",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "options.html#micro",
+      "page": "options.html",
+      "view": "microstructure",
+      "target": "micro panel",
+      "semantic": "OPTIONS_BOOK",
+      "canonical_producer": "/api/order-flow/options-microstructure",
+      "source_observation": "OPTIONS_BOOK + LEVELONE_OPTIONS",
+      "timestamp": "book ts_recv",
+      "generation": "book seq",
+      "freshness": "no native aggressor",
+      "update_trigger": "poll",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "morning_gamma_reference",
+      "page": "not a current field",
+      "view": "reference",
+      "target": "option_chain_morning_full",
+      "semantic": "MORNING_GAMMA",
+      "canonical_producer": "calibration.option_chain_morning_full",
+      "source_observation": "prior-session / morning",
+      "timestamp": "et_date",
+      "generation": "none",
+      "freshness": "must never populate current fields",
+      "update_trigger": "none",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "index.html.contract_admission",
+      "page": "index.html",
+      "view": "options/heatmap+chain",
+      "target": "heatmap/chain pending cells",
+      "semantic": "CONTRACT_ADMISSION",
+      "canonical_producer": "capture daemon set_active_option_contracts",
+      "source_observation": "LEVELONE_OPTIONS subscribe is possible; pending is subscription state",
+      "timestamp": "admission ts",
+      "generation": "demand generation",
+      "freshness": "requested → pending → freshness-gated active; not a Schwab field absence",
+      "update_trigger": "setAdditionalContracts",
+      "status": "LIVE",
+      "instance_kind": "generated",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "localStorage.ed_ticker",
+      "page": "index.html",
+      "view": "shell",
+      "target": "localStorage ed_ticker",
+      "semantic": "UI_TICKER",
+      "canonical_producer": "EdShell",
+      "source_observation": "client navigation, not a market value",
+      "timestamp": "none",
+      "generation": "none",
+      "freshness": "not market data",
+      "update_trigger": "ed:ticker",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "sessionStorage.none_market",
+      "page": "index.html",
+      "view": "shell",
+      "target": "sessionStorage",
+      "semantic": "NONE",
+      "canonical_producer": "none",
+      "source_observation": "no market value persisted in sessionStorage",
+      "timestamp": "none",
+      "generation": "none",
+      "freshness": "not a market binding",
+      "update_trigger": "none",
+      "status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE"
+    },
+    {
+      "id": "sse.live_quote",
+      "page": "index.html",
+      "view": "header/plane",
+      "target": "EventSource live_quote",
+      "semantic": "LAST_PRICE",
+      "canonical_producer": "resolve_spot / live_market_plane.commit_last_price_observation",
+      "source_observation": "Schwab LAST_PRICE (quote.lastPrice+tradeTime or LEVELONE LAST_PRICE+TRADE_TIME_MILLIS)",
+      "timestamp": "last_price_native_ts",
+      "generation": "last_price_generation",
+      "freshness": "quote_is_fresh / PLANE_QUOTE_STALE_SEC=30 / last_price_age_ms",
+      "update_trigger": "planes.l1_events.notify_quote_updated → SSE",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "ed:ticker.payload",
+      "page": "index.html",
+      "view": "cross-module",
+      "target": "ed:ticker CustomEvent",
+      "semantic": "UI_TICKER",
+      "canonical_producer": "EdShell",
+      "source_observation": "ticker switch payload",
+      "timestamp": "none",
+      "generation": "none",
+      "freshness": "not a price",
+      "update_trigger": "user / watchlist",
+      "status": "LIVE",
+      "instance_kind": "static",
+      "designed_capability": "LIVE",
+      "runtime_status": "NOT_PROVEN"
+    },
+    {
+      "id": "chart.html#scorecard",
+      "page": "chart.html",
+      "view": "coach",
+      "target": "scorecard tooltip hold-rates",
+      "semantic": "TERRAIN_SCORECARD",
+      "canonical_producer": "reports/terrain_backtest_latest.json via /api/terrain/scorecard",
+      "source_observation": "daily backtest artifact; withheld when stale",
+      "timestamp": "generated_utc",
+      "generation": "none",
+      "freshness": "SCORECARD_MAX_TRADING_DAY_AGE",
+      "update_trigger": "daily scorecard run",
+      "status": "HISTORICAL_REFERENCE",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static"
+    },
+    {
+      "id": "index.html#vol-observability",
+      "page": "index.html",
+      "view": "system placeholder",
+      "target": "system /api/vol-observability mention",
+      "semantic": "VOL_OBSERVABILITY",
+      "canonical_producer": "vol_observability_payload",
+      "source_observation": "diagnostic vol-index projection; never money path; no painted current field",
+      "timestamp": "observation ts",
+      "generation": "none",
+      "freshness": "diagnostic",
+      "update_trigger": "none painted",
+      "status": "HISTORICAL_REFERENCE",
+      "designed_capability": "HISTORICAL_REFERENCE",
+      "runtime_status": "HISTORICAL_REFERENCE",
+      "instance_kind": "static"
+    }
+  ],
+  "fields_summary": {
+    "total": 60,
+    "LIVE": 47,
+    "HISTORICAL_REFERENCE": 12,
+    "UNAVAILABLE": 1,
+    "FAIL": 0,
+    "NOT_PROVEN": 0
+  },
+  "runtime_summary": {
+    "LIVE": 0,
+    "HISTORICAL_REFERENCE": 18,
+    "UNAVAILABLE": 1,
+    "FAIL": 0,
+    "NOT_PROVEN": 52
+  }
+}

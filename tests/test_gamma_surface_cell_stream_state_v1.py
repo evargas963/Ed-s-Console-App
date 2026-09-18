@@ -34,6 +34,9 @@ _CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
 _CONTRACT_SYMBOL = _CONTRACTS[0]["symbol"]
 _CONTRACT_SYMBOL_B = _CONTRACTS[1]["symbol"]
 TK = ticker_storage_key("CRWD")
+X = "XXX   260911C00001000"
+Y = "YYY   260911C00001000"
+BAD = "BAD   260911C00001000"
 
 
 # ---------------------------------------------------------------------------
@@ -301,10 +304,10 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
     trivial case where the bar and the old (wrong) >=1 threshold happen to coincide."""
     tk = ticker_storage_key("ZZZTEST1")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
-            "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
+            "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": X, "put": None}]}],
             "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
-    _stamp_gamma_surface_cell_stream_state(surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"})
+    _stamp_gamma_surface_cell_stream_state(surf, {X: {"gamma_ts_recv": time.time()}}, {X})
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
@@ -324,7 +327,7 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
 def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
     tk = ticker_storage_key("ZZZTEST2")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
-            "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
+            "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": X, "put": None}]}],
             "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
     _stamp_gamma_surface_cell_stream_state(surf, {}, set())   # never desired
@@ -349,22 +352,22 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
     tk = ticker_storage_key("ZZZTEST_PARTIAL")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
             "cells": [
-                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
-                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
+                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": X, "put": None}]},
+                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": Y, "put": None}]},
             ],
             "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
     # X is live-streaming; Y is desired but has never been confirmed fresh -- one of two
     # visible cells is live, the other merely 'stale'.
     _stamp_gamma_surface_cell_stream_state(
-        surf, {"X": {"gamma_ts_recv": time.time()}, "Y": {"gamma_ts_recv": time.time() - 999}}, {"X"})
+        surf, {X: {"gamma_ts_recv": time.time()}, Y: {"gamma_ts_recv": time.time() - 999}}, {X})
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         cov = d["stream_coverage"]
-        assert cov["total_visible_cells"] == 2
+        assert cov["total_eligible_cells"] == 2
         assert cov["live"] == 1 and cov["stale"] == 1
         assert cov["live_pct"] == 50.0
         assert cov["meets_live_requirement"] is False, (
@@ -384,21 +387,21 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
     tk = ticker_storage_key("ZZZTEST_PENDING")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
             "cells": [
-                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
-                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
+                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": X, "put": None}]},
+                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": Y, "put": None}]},
             ],
             "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
     # X is live-streaming; Y has been requested (desired) but never ticked.
     _stamp_gamma_surface_cell_stream_state(
-        surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"})
+        surf, {X: {"gamma_ts_recv": time.time()}}, {X}, None, {X, Y})
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         cov = d["stream_coverage"]
-        assert cov["total_visible_cells"] == 2
+        assert cov["total_eligible_cells"] == 2
         assert cov["live"] == 1 and cov["pending"] == 1
         assert cov.get("unavailable", 0) == 0, "the pending leg must not also be counted as unavailable"
         assert cov["meets_live_requirement"] is False, (
@@ -419,14 +422,14 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
     tk = ticker_storage_key("ZZZTEST_DAEMON_DOWN")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
             "cells": [
-                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
-                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
+                {"strike": 10.0, "gex": [1.0], "contracts": [{"call": X, "put": None}]},
+                {"strike": 11.0, "gex": [1.0], "contracts": [{"call": Y, "put": None}]},
             ],
             "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
     # X is live-streaming; Y is desired but the daemon itself is confirmed unreachable.
     _stamp_gamma_surface_cell_stream_state(
-        surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"}, daemon_available=False)
+        surf, {X: {"gamma_ts_recv": time.time()}}, {X}, None, {X, Y}, daemon_available=False)
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
@@ -450,10 +453,10 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
     visibly', not silently lump it into 'unavailable' forever."""
     tk = ticker_storage_key("ZZZTEST_REJECTED")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
-            "cells": [{"strike": 10.0, "gex": [None], "contracts": [{"call": "BADSYM", "put": None}]}],
+            "cells": [{"strike": 10.0, "gex": [None], "contracts": [{"call": BAD, "put": None}]}],
             "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": False}
-    _stamp_gamma_surface_cell_stream_state(surf, {}, set(), {"BADSYM": "RuntimeError: refused"})
+    _stamp_gamma_surface_cell_stream_state(surf, {}, set(), {BAD: "RuntimeError: refused"})
     assert surf["cells"][0]["stream"][0]["state"] == "rejected"
     assert surf["cells"][0]["stream"][0]["call"]["rejected_reason"] == "RuntimeError: refused"
     with server._terrain_cache_lock:
@@ -509,10 +512,9 @@ def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path,
     monkeypatch.setattr(server, "get_db", lambda: _FakeDB(db))
     try:
         d = _call(tk)
-        assert d["source"] == "banked_morning_reference"
-        assert d["stream_coverage"]["meets_live_requirement"] is False
-        assert d["cell_stream_state_counts"]["live"] == 0
-        assert d["cell_stream_state_counts"]["unavailable"] > 0
+        assert d["source"] == "unavailable"
+        assert d["available"] is False
+        assert d.get("cells") in (None, [])
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)

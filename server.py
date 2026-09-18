@@ -230,7 +230,7 @@ from schwab_client import (
     safe_get_price_history,
     SchwabAuthError,
 )
-from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+from instrument_identity import ticker_storage_key, vendor_option_root   # RC-126: the ONE query-symbol authority
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
     gamma_is_plausible,
@@ -720,8 +720,14 @@ def _spot_from_quote(ticker: str) -> tuple[float | None, float | None]:
                     parsed.get("regular_close"))
         return None, None
     spot = parsed.get("spot")
+    trade_time = parsed.get("trade_time")
+    if trade_time is None:
+        log.warning("resolve_spot: quote lastPrice for %s has no matching tradeTime "
+                    "on session %s — observation unbound, current spot unavailable",
+                    ticker, parsed.get("last_price_session"))
+        return None, None
     if spot and spot > 0:
-        return float(spot), parsed.get("trade_time")
+        return float(spot), trade_time
     log.warning("resolve_spot: quote leg produced no lastPrice spot for %s "
                 "(last=%s mark=%s) — current spot is unavailable",
                 ticker, parsed.get("last"), parsed.get("mark"))
@@ -893,11 +899,12 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
     if quote_node is not None:
         _pq = _parse_quote_node_session_fields(quote_node)
         _sp = _pq.get("spot")
-        if _pq.get("spot_source") == "lastPrice" and _sp and _sp > 0:
-            return float(_sp), SPOT_SOURCE_QUOTE, _pq.get("trade_time")
+        _tt = _pq.get("trade_time")
+        if _pq.get("spot_source") == "lastPrice" and _sp and _sp > 0 and _tt is not None:
+            return float(_sp), SPOT_SOURCE_QUOTE, _tt
     else:
         spot, ts = _spot_from_quote(tk)
-        if spot is not None:
+        if spot is not None and ts is not None:
             return spot, SPOT_SOURCE_QUOTE, ts
 
     if _plane_last:
@@ -909,12 +916,27 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
     return None, "none", None
 
 
-def current_spot_state(source: str, ticker: str) -> str:
+def _rest_last_price_is_fresh(as_of_ts: float | None) -> bool:
+    """REST lastPrice is live only when its matching native trade timestamp is fresh."""
+    if as_of_ts is None:
+        return False
+    try:
+        age = time.time() - float(as_of_ts)
+    except (TypeError, ValueError):
+        return False
+    return age >= 0.0 and age < _lmp.PLANE_QUOTE_STALE_SEC
+
+
+def current_spot_state(source: str, ticker: str, as_of_ts: float | None = None) -> str:
     """Label resolve_spot's answer: live, stale, or unavailable. Not a second selector."""
     if source in (None, "none"):
         return "unavailable"
     if source == SPOT_SOURCE_QUOTE:
-        return "live"
+        if as_of_ts is None:
+            return "unavailable"
+        if _rest_last_price_is_fresh(as_of_ts):
+            return "live"
+        return "stale"
     if source == SPOT_SOURCE_PLANE:
         try:
             row = _lmp.get_quote(ticker)
@@ -3310,6 +3332,146 @@ def _fast_quote_token_invalid_payload(detail: str) -> dict:
     }
 
 
+def _rest_last_price_identity(ticker: str, pq: dict) -> dict:
+    """ONE constructor of REST LAST_PRICE observation identity.
+
+    quote.lastPrice binds only quote.tradeTime; extended.lastPrice binds only
+    extended.tradeTime. The parser already refuses a cross-node clock.
+    regularMarketLastPrice is a session-close semantic and is never admitted
+    as current spot. Absent a matching same-node tradeTime, current spot is
+    UNAVAILABLE — this function never borrows another node's timestamp.
+    """
+    last_session = pq.get("last_price_session")
+    trade_time = pq.get("trade_time")
+    spot = pq.get("spot")
+    ok = (
+        last_session in ("quote", "extended")
+        and pq.get("spot_source") == "lastPrice"
+        and spot is not None
+        and trade_time is not None
+    )
+    now = time.time()
+    if not ok:
+        return {
+            "spot": None,
+            "spot_disp": "—",
+            "last_price_native_ts": None,
+            "last_price_received_ts": None,
+            "last_price_generation": None,
+            "fast_generation_id": None,
+            "quote_time_source": "unavailable",
+            "quote_source_detail_spot": "unavailable_missing_last_price",
+            "last_price_session": None,
+            "last_price_ok": False,
+            "last_price_is_new_observation": False,
+            "server_received_ts": now,
+        }
+    try:
+        sf = float(spot)
+    except (TypeError, ValueError):
+        sf = None
+    if sf is None:
+        return {
+            "spot": None,
+            "spot_disp": "—",
+            "last_price_native_ts": None,
+            "last_price_received_ts": None,
+            "last_price_generation": None,
+            "fast_generation_id": None,
+            "quote_time_source": "unavailable",
+            "quote_source_detail_spot": "unavailable_missing_last_price",
+            "last_price_session": None,
+            "last_price_ok": False,
+            "last_price_is_new_observation": False,
+            "server_received_ts": now,
+        }
+    return {
+        "spot": sf,
+        "spot_disp": f"{sf:.2f}",
+        "last_price_native_ts": trade_time,
+        "last_price_received_ts": None,
+        "last_price_generation": None,
+        "fast_generation_id": None,
+        "quote_time_source": "schwab_rest_quote",
+        "quote_source_detail_spot": "LAST_PRICE",
+        "last_price_session": last_session,
+        "last_price_ok": True,
+        "last_price_is_new_observation": True,
+        "server_received_ts": now,
+    }
+
+
+def _apply_rest_last_price_identity(row: dict, identity: dict) -> dict:
+    """Stamp the ONE REST LAST_PRICE identity onto a plane-shaped row."""
+    out = dict(row)
+    out["spot"] = identity["spot"]
+    out["spot_disp"] = identity["spot_disp"]
+    out["last_price_native_ts"] = identity["last_price_native_ts"]
+    out["last_price_received_ts"] = identity["last_price_received_ts"]
+    out["last_price_generation"] = identity["last_price_generation"]
+    if identity["fast_generation_id"] is not None:
+        out["fast_generation_id"] = identity["fast_generation_id"]
+    out["quote_time_source"] = identity["quote_time_source"]
+    out["server_received_ts"] = identity["server_received_ts"]
+    qsd = dict(out.get("quote_source_detail") or {})
+    qsd["spot"] = identity["quote_source_detail_spot"]
+    qsd["last_price_session"] = identity["last_price_session"]
+    qsd["carried_forward"] = False
+    out["quote_source_detail"] = qsd
+    out["_last_price_is_new_observation"] = identity["last_price_is_new_observation"]
+    return out
+
+
+def _commit_rest_last_price_row(ticker: str, row: dict) -> dict:
+    """REST adapter: LastPriceObservation -> the ONE plane commit."""
+    out = dict(row)
+    out.pop("_last_price_is_new_observation", None)
+    qsd = out.get("quote_source_detail") or {}
+    if qsd.get("spot") != "LAST_PRICE" or out.get("spot") is None:
+        return out
+    obs = _lmp.LastPriceObservation(
+        ticker=ticker,
+        last_price=float(out["spot"]),
+        native_ts=out.get("last_price_native_ts"),
+        received_ts=time.time(),
+        session=qsd.get("last_price_session"),
+        ingestion=out.get("quote_ingestion") or "schwab_rest_quote",
+        is_new=True,
+    )
+    extra = {
+        k: v for k, v in out.items()
+        if k not in {
+            "spot", "spot_disp", "last_price_native_ts", "last_price_received_ts",
+            "last_price_generation", "fast_generation_id",
+        }
+    }
+    return _lmp.commit_last_price_observation(obs, extra)
+
+
+def _ingest_rest_last_price_observation(
+    ticker: str,
+    pq: dict,
+    *,
+    quote_ingestion: str,
+    extra: dict | None = None,
+) -> dict:
+    """ONE REST LAST_PRICE observation owner: construct identity, record, dispatch once.
+
+    Unbound lastPrice (no matching same-node tradeTime) is not recorded — a missing
+    current observation must not overwrite a prior LAST_PRICE on the plane.
+    """
+    identity = _rest_last_price_identity(ticker, pq)
+    row = dict(extra or {})
+    row["ticker"] = ticker
+    row["quote_ingestion"] = quote_ingestion
+    if extra and extra.get("chg_pct") is not None:
+        row["chg_pct"] = extra["chg_pct"]
+    row = _apply_rest_last_price_identity(row, identity)
+    if not identity["last_price_ok"]:
+        return row
+    return _commit_rest_last_price_row(ticker, row)
+
+
 def _record_rest_fast_quote_with_auth_fallback(
     tkr: str, prev: dict | None, quote_ingestion: str
 ) -> dict:
@@ -3327,8 +3489,7 @@ def _record_rest_fast_quote_with_auth_fallback(
 
     try:
         out = _build_rest_fast_quote_payload(tkr, quote_ingestion)
-        _lmp.record_quote(tkr, out)
-        return out
+        return _commit_rest_last_price_row(tkr, out)
     except HTTPException as he:
         if not _schwab_auth_http_unavailable(he):
             raise
@@ -3390,8 +3551,6 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     t_parse0 = time.perf_counter()
     _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
     pq = _parse_quote_node_session_fields(_node)
-    spot_f = pq["spot"]
-    spot_source = pq["spot_source"]
     bid = pq["bid"]
     ask = pq["ask"]
     quote_mid = pq["quote_mid"]
@@ -3409,7 +3568,8 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         pass
     t_parse1 = time.perf_counter()
     quote_ts = pq["quote_ts"]
-    server_received_ts = time.time()
+    # spot_source is decided only by _rest_last_price_identity (LAST_PRICE or unavailable).
+    identity = _rest_last_price_identity(tkr, pq)
     from market_context import resolve_chg_pct
     chg_pct = resolve_chg_pct(tkr, pq.get("chg_pct"))
     total_ms = (time.perf_counter() - t0) * 1000.0
@@ -3424,16 +3584,14 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
         (t_quote1 - t_quote0) * 1000.0,
         (t_parse1 - t_parse0) * 1000.0,
         quote_attempts,
-        server_received_ts,
+        identity["server_received_ts"],
         quote_ingestion,
     )
-    return {
+    payload = {
         "ticker": tkr,
-        "spot": float(spot_f) if spot_f is not None else None,
         "chg_pct": chg_pct,
         "bid": float(bid) if bid is not None else None,
         "ask": float(ask) if ask is not None else None,
-        "spot_disp": f"{spot_f:.2f}" if spot_f is not None else "—",
         "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
         "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
         "quote_mid": quote_mid,
@@ -3451,21 +3609,18 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
             )
         ),
         "spread_pts_source": ("derived_bid_ask_pts" if spread_pts is not None else None),
-        "fast_generation_id": _lmp.next_fast_generation(tkr),
+        "fast_generation_id": identity["fast_generation_id"],
         "exchange_quote_ts": quote_ts,
-        "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
-        "server_received_ts": server_received_ts,
         "quote_ingestion": quote_ingestion,
         "quote_source_detail": {
-            "spot": "LAST_PRICE" if spot_source == "lastPrice" else "unavailable_missing_last_price",
             "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
             "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
             "spread": "schwab_bid_ask" if spread_frac is not None else "unavailable_missing_bid_or_ask",
             "quote_ts": pq["quote_ts_clock"],  # M6: exchange clock carried in exchange_quote_ts
-            "carried_forward": False,
         },
     }
+    return _apply_rest_last_price_identity(payload, identity)
 
 
 def _fetch_fast_quote_payload(ticker: str) -> dict:
@@ -3803,7 +3958,6 @@ from calibration.option_chain_morning_full import (
 from calibration.complete_chain_capture import (
     eligible_near_term_expiries,
     has_complete_chain_capture_today,
-    latest_complete_chain_capture,
     next_capture_batch,
     persist_complete_chain_capture,
 )
@@ -5672,8 +5826,10 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     _ext = node.get("extended") or {}
     _reg = node.get("regular") or {}
     last = _safe_float_quote(_q.get("lastPrice"))
-    if last is None or last <= 0:
+    last_session = "quote" if last is not None and last > 0 else None
+    if last_session is None:
         last = _safe_float_quote(_ext.get("lastPrice"))
+        last_session = "extended" if last is not None and last > 0 else None
     regular_close = _safe_float_quote(_reg.get("regularMarketLastPrice"))
     mark = _safe_float_quote(_q.get("mark"))
     if mark is None or mark <= 0:
@@ -5695,12 +5851,16 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     if quote_time is None:
         quote_time = _safe_float_quote(_ext.get("quoteTime"))
     quote_time = _epoch_seconds(quote_time)
-    trade_time = _safe_float_quote(_q.get("tradeTime"))
-    if trade_time is None:
-        trade_time = _safe_float_quote(_ext.get("tradeTime"))
-    if trade_time is None:
-        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
-    trade_time = _epoch_seconds(trade_time)
+    # LAST_PRICE and its trade timestamp are one observation. quote.lastPrice
+    # binds only to quote.tradeTime; extended.lastPrice binds only to
+    # extended.tradeTime. regularMarketTradeTime is a session-close clock and
+    # must never timestamp a live lastPrice.
+    if last_session == "quote":
+        trade_time = _epoch_seconds(_safe_float_quote(_q.get("tradeTime")))
+    elif last_session == "extended":
+        trade_time = _epoch_seconds(_safe_float_quote(_ext.get("tradeTime")))
+    else:
+        trade_time = None
     # Current live spot is quote/extended lastPrice only. regularMarketLastPrice is
     # a session close; mark is the vendor mid. Neither may become spot.
     spot_source = "lastPrice" if last and last > 0 else None
@@ -5754,6 +5914,7 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
             else ("TRADE_TIME_MILLIS_proxy" if trade_time is not None else "unavailable")
         ),
         "spot_source": spot_source,
+        "last_price_session": last_session,
         "spot": spot_f,
         "quote_mid": quote_mid,
         "mid_source": mid_source,
@@ -6055,7 +6216,14 @@ def _l1_row_with_current_spot(tkr: str, row: dict | None) -> dict:
     if _l1_spot is not None:
         out["spot"] = _l1_spot
         out["spot_disp"] = f"{_l1_spot:.2f}"
-        out["spot_state"] = current_spot_state(_l1_spot_source, tkr)
+        out["spot_state"] = current_spot_state(_l1_spot_source, tkr, as_of_ts=_l1_spot_ts)
+        out["spot_as_of_ts_utc"] = _l1_spot_ts
+        out["last_price_native_ts"] = out.get("last_price_native_ts") or _l1_spot_ts
+        out["last_price_received_ts"] = out.get("last_price_received_ts") or out.get("server_received_ts")
+        out["last_price_generation"] = out.get("last_price_generation") or out.get("fast_generation_id")
+        out["last_price_age_ms"] = (
+            None if _l1_spot_ts is None else max(0, int(round((time.time() - float(_l1_spot_ts)) * 1000)))
+        )
         out["quote_source_detail"] = dict(out.get("quote_source_detail") or {})
         out["quote_source_detail"]["spot"] = (
             "LAST_PRICE" if _l1_spot_source in (SPOT_SOURCE_PLANE, SPOT_SOURCE_QUOTE)
@@ -6065,6 +6233,7 @@ def _l1_row_with_current_spot(tkr: str, row: dict | None) -> dict:
         out["spot"] = None
         out["spot_disp"] = "UNAVAILABLE"
         out["spot_state"] = "unavailable"
+        out["last_price_age_ms"] = None
     return out
 
 
@@ -6117,6 +6286,12 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     # blank even after that route was fixed (caught in review — a route-level fix does not
     # reach a browser path that never calls that route).
     out["chg_pct"] = _chg_pct_with_rest_backfill(tkr, row)
+    out["spot_state"] = row.get("spot_state")
+    out["spot_as_of_ts_utc"] = row.get("spot_as_of_ts_utc")
+    out["last_price_native_ts"] = row.get("last_price_native_ts")
+    out["last_price_received_ts"] = row.get("last_price_received_ts")
+    out["last_price_generation"] = row.get("last_price_generation")
+    out["last_price_age_ms"] = row.get("last_price_age_ms")
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
@@ -6294,6 +6469,7 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
     # cannot backfill. Re-resolve fresh (stream, then the row the overlay just applied,
     # then REST) so a cache-hit SSE/HTTP read gets the same live answer a fresh build would.
     out["chg_pct"] = _chg_pct_with_rest_backfill(tkr, _lmp.get_quote(tkr))
+    out = _l1_row_with_current_spot(tkr, out)
     _l1_touch_scope(key)
     built = float(out.get("as_of_ts") or out.get("_server_build_ts") or l1_eval_wall_ts)
     age = max(0.0, l1_eval_wall_ts - built)
@@ -6533,63 +6709,52 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
             _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
             _quote_node_for_resolve = _node
             pq = _parse_quote_node_session_fields(_node)
-            spot_source = pq["spot_source"]
-            spot = pq["spot"]
             bid, ask = pq["bid"], pq["ask"]
-            if spot and float(spot) > 0:
-                sf = float(spot)
-                quote_ts = pq["quote_ts"]
-                server_received_ts = time.time()
-                from market_context import resolve_chg_pct
-                chg_pct = resolve_chg_pct(tkr, pq.get("chg_pct"))
-                row = {
-                    "ticker": tkr,
-                    "spot": sf,
-                    "chg_pct": chg_pct,
-                    "bid": bid,
-                    "ask": ask,
-                    "spot_disp": f"{sf:.2f}",
-                    "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
-                    "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
-                    "spread": None,
-                    "spread_pts": None,
-                    "quote_ingestion": "rest_tier_a",
-                    "exchange_quote_ts": quote_ts,
-                    "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
-                    "server_received_ts": server_received_ts,
-                    "fast_generation_id": _lmp.next_fast_generation(tkr),
-                    "quote_source_detail": {
-                        "spot": "LAST_PRICE" if spot_source == "lastPrice" else None,
-                        "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
-                        "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
-                        "mid": "unavailable_missing_mark_and_bid_ask",
-                        "spread": "unavailable_missing_bid_or_ask",
-                        "quote_ts": pq["quote_ts_clock"],  # M6: exchange clock carried in exchange_quote_ts
-                        "carried_forward": False,
-                    },
-                }
-                mid = pq["quote_mid"]
-                mid_src = pq["mid_source"]
-                if mid is not None:
-                    row["quote_mid"] = mid
-                    row["mid_source"] = mid_src
-                row["quote_source_detail"]["mid"] = mid_src or "unavailable_missing_mark_and_bid_ask"
-                if bid is not None and ask is not None:
-                    try:
-                        b_px, a_px = float(bid), float(ask)
-                        raw_spread = round(a_px - b_px, 4)
-                        row["spread_pts"] = raw_spread if raw_spread >= 0.0 else None
-                        row["spread_pts_source"] = "derived_bid_ask_pts"
-                        if mid is not None and mid > 0:
-                            row["spread"] = (a_px - b_px) / mid
-                            row["spread_source"] = (
-                                "derived_bid_ask_mid_fraction"
-                                if mid_src == "derived_bid_ask_mid"
-                                else "derived_bid_ask_fraction_schwab_mark_denom"
-                            )
-                        row["quote_source_detail"]["spread"] = "schwab_bid_ask"
-                    except (TypeError, ValueError):
-                        pass
+            extra: dict = {
+                "bid": bid,
+                "ask": ask,
+                "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
+                "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
+                "spread": None,
+                "spread_pts": None,
+                "exchange_quote_ts": pq["quote_ts"],
+                "quote_source_detail": {
+                    "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
+                    "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
+                    "mid": "unavailable_missing_mark_and_bid_ask",
+                    "spread": "unavailable_missing_bid_or_ask",
+                    "quote_ts": pq["quote_ts_clock"],
+                },
+            }
+            mid = pq["quote_mid"]
+            mid_src = pq["mid_source"]
+            if mid is not None:
+                extra["quote_mid"] = mid
+                extra["mid_source"] = mid_src
+                extra["quote_source_detail"]["mid"] = mid_src or "unavailable_missing_mark_and_bid_ask"
+            if bid is not None and ask is not None:
+                try:
+                    b_px, a_px = float(bid), float(ask)
+                    raw_spread = round(a_px - b_px, 4)
+                    extra["spread_pts"] = raw_spread if raw_spread >= 0.0 else None
+                    extra["spread_pts_source"] = "derived_bid_ask_pts"
+                    if mid is not None and mid > 0:
+                        extra["spread"] = (a_px - b_px) / mid
+                        extra["spread_source"] = (
+                            "derived_bid_ask_mid_fraction"
+                            if mid_src == "derived_bid_ask_mid"
+                            else "derived_bid_ask_fraction_schwab_mark_denom"
+                        )
+                    extra["quote_source_detail"]["spread"] = "schwab_bid_ask"
+                except (TypeError, ValueError):
+                    pass
+            from market_context import resolve_chg_pct
+            extra["chg_pct"] = resolve_chg_pct(tkr, pq.get("chg_pct"))
+            ingested = _ingest_rest_last_price_observation(
+                tkr, pq, quote_ingestion="rest_tier_a", extra=extra
+            )
+            if _lmp.plane_spot_is_last_price(ingested):
+                row = ingested
     if not row or row.get("spot") is None:
         return {
             "_tier": "A_live",
@@ -6655,7 +6820,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "session_label": sess,
         "spot": spot_f,
         "spot_source": _rs_source,
-        "spot_state": current_spot_state(_rs_source, tkr),
+        "spot_state": current_spot_state(_rs_source, tkr, as_of_ts=_rs_ts),
         "spot_as_of_ts_utc": _rs_ts,
         "chg_pct": chg_pct,
         "bid": bid,
@@ -6679,7 +6844,13 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
         "quote_time_source": row.get("quote_time_source"),
         "server_received_ts": row.get("server_received_ts"),
         "exchange_quote_ts": row.get("exchange_quote_ts"),
-        "fast_generation_id": row.get("fast_generation_id"),
+        "last_price_native_ts": row.get("last_price_native_ts") or _rs_ts,
+        "last_price_received_ts": row.get("last_price_received_ts") or row.get("server_received_ts"),
+        "last_price_generation": row.get("last_price_generation") or row.get("fast_generation_id"),
+        "last_price_age_ms": (
+            None if _rs_ts is None else max(0, int(round((time.time() - float(_rs_ts)) * 1000)))
+        ),
+        "fast_generation_id": row.get("last_price_generation") or row.get("fast_generation_id"),
         "_live_plane_fast_ts": row.get("exchange_quote_ts"),
         "_server_build_ts": time.time(),
         "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
@@ -12895,8 +13066,73 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
             else:
                 cell_state = "unavailable"
             legs["state"] = cell_state
+            legs["has_contract_identity"] = gamma_cell_has_contract_identity(pair)
             state_row.append(legs)
         cell["stream"] = state_row
+
+
+def _stamp_current_spot_identity(payload: dict, ticker: str) -> dict:
+    """Overlay LAST_PRICE identity from resolve_spot / the plane. Never invents a price."""
+    out = dict(payload)
+    if out.get("spot") is not None and out.get("spot_source") is not None:
+        spot, source, ts = out["spot"], out["spot_source"], out.get("spot_as_of_ts_utc")
+    else:
+        spot, source, ts = resolve_spot(ticker)
+    row = _lmp.get_quote(ticker)
+    out["current_spot"] = spot
+    out["current_spot_source"] = source
+    out["current_spot_state"] = current_spot_state(source, ticker, as_of_ts=ts)
+    out["current_spot_as_of_ts"] = ts
+    if row and _lmp.plane_spot_is_last_price(row):
+        out["last_price_native_ts"] = row.get("last_price_native_ts")
+        out["last_price_received_ts"] = row.get("last_price_received_ts")
+        out["last_price_generation"] = row.get("last_price_generation")
+    else:
+        out["last_price_native_ts"] = ts
+        out["last_price_received_ts"] = None
+        out["last_price_generation"] = None
+    return out
+
+
+def _gamma_current_spot_fields(ticker: str, computed_spot) -> dict:
+    """Current LAST_PRICE versus the spot the gamma cells were actually computed from."""
+    current, source, ts = resolve_spot(ticker)
+    computed_f = None
+    try:
+        if computed_spot is not None:
+            computed_f = float(computed_spot)
+    except (TypeError, ValueError):
+        computed_f = None
+    current_f = None
+    try:
+        if current is not None:
+            current_f = float(current)
+    except (TypeError, ValueError):
+        current_f = None
+    row = _lmp.get_quote(ticker)
+    gen = None
+    native_ts = ts
+    received_ts = None
+    if row and _lmp.plane_spot_is_last_price(row):
+        gen = row.get("last_price_generation")
+        native_ts = row.get("last_price_native_ts") or ts
+        received_ts = row.get("last_price_received_ts")
+    return {
+        "current_spot": current_f,
+        "current_spot_source": source,
+        "current_spot_state": current_spot_state(source, ticker, as_of_ts=ts),
+        "current_spot_as_of_ts_utc": ts,
+        "current_spot_generation": gen,
+        "last_price_generation": gen,
+        "last_price_native_ts": native_ts,
+        "last_price_received_ts": received_ts,
+        "spot_is_current": (
+            current_f is not None and computed_f is not None and current_f == computed_f
+        ),
+        "computed_from_spot_generation": gen if (
+            current_f is not None and computed_f is not None and current_f == computed_f
+        ) else None,
+    }
 
 
 def _gamma_surface_cell_state_counts(surface: dict) -> dict:
@@ -12910,6 +13146,62 @@ def _gamma_surface_cell_state_counts(surface: dict) -> dict:
             if isinstance(col, dict) and col.get("state") in counts:
                 counts[col["state"]] += 1
     return counts
+
+
+def _selected_contracts_from_surface(surface: dict) -> list[str]:
+    """ONE canonical selected-contract set: cells[].contracts[].call|put, first-seen order.
+
+    This is the live-capable contract identity set projected on the surface. The client
+    viewport (Auto/Wider/All) may request a subset of this set; it may not invent a
+    second independent derivation. Missing/non-list cells or contracts fail closed as
+    an empty selected set only when the surface itself is empty — a present surface
+    with a non-list contracts field raises so a schema break cannot look successful.
+    """
+    cells = (surface or {}).get("cells")
+    if cells is None:
+        return []
+    if not isinstance(cells, list):
+        raise TypeError("gamma surface cells must be a list")
+    out: list[str] = []
+    seen: set[str] = set()
+    for cell in cells:
+        if not isinstance(cell, dict):
+            raise TypeError("gamma surface cell must be an object")
+        contracts = cell.get("contracts")
+        if contracts is None:
+            continue
+        if not isinstance(contracts, list):
+            raise TypeError("gamma surface cell.contracts must be a list")
+        for col in contracts:
+            if col is None:
+                continue
+            if not isinstance(col, dict):
+                raise TypeError("gamma surface cell.contracts[] must be an object")
+            for side in ("call", "put"):
+                sym = col.get(side)
+                if isinstance(sym, str) and sym and sym not in seen:
+                    seen.add(sym)
+                    out.append(sym)
+    return out
+
+
+def gamma_cell_has_contract_identity(pair) -> bool:
+    """ONE stream-coverage eligibility predicate.
+
+    A cell is eligible iff ``instrument_identity.vendor_option_root`` validates
+    at least one of ``contracts.call`` / ``contracts.put`` as a 21-character
+    OSI identity. A truthy call/put string is not enough. Non-string values
+    fail closed. NO CONTRACT cells stay labelled and never enter the
+    denominator. ZERO OI cells with a validated OSI stay eligible.
+    Schema: ``config/gamma_stream_coverage_eligibility_v1.json``.
+    """
+    if not isinstance(pair, dict):
+        return False
+    for side in ("call", "put"):
+        raw = pair.get(side)
+        if isinstance(raw, str) and vendor_option_root(raw):
+            return True
+    return False
 
 
 def _gamma_surface_coverage_summary(surface: dict) -> dict:
@@ -12966,8 +13258,7 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
             if not isinstance(col, dict):
                 continue          # no contract identity at all -- never a viewable data cell
             pair = contracts_row[j] if j < len(contracts_row) else None
-            has_identity = bool(isinstance(pair, dict) and (pair.get("call") or pair.get("put")))
-            if not has_identity:
+            if not gamma_cell_has_contract_identity(pair):
                 continue
             relevant += 1
             state = col.get("state")
@@ -12983,7 +13274,7 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
         # Auto/Wider/All-windowed view. A consumer that needs the on-screen LIVE verdict
         # must use the client's own visible-scope computation, not this field.
         "scope": "canonical_surface",
-        "total_visible_cells": relevant,
+        "total_eligible_cells": relevant,
         "live": counts["live"], "partial": counts["partial"], "stale": counts["stale"],
         "pending": counts["pending"], "daemon_unavailable": counts["daemon_unavailable"],
         "rejected": counts["rejected"], "unavailable": counts["unavailable"],
@@ -13386,6 +13677,14 @@ def _dispatch_spot_gamma_refresh(ticker: str) -> None:
             return
         _spot_gamma_refresh_inflight.add(tk)
     _get_spot_gamma_refresh_executor().submit(_run_spot_gamma_refresh, tk)
+
+
+def _on_plane_last_price_committed(ticker: str, _row=None) -> None:
+    """Plane-commit hook: gamma invalidation lives with the ONE commit owner."""
+    _dispatch_spot_gamma_refresh(ticker)
+
+
+_lmp.register_last_price_committed(_on_plane_last_price_committed)
 
 
 def _ticker_on_terrain_board(tk: str) -> bool:
@@ -14125,6 +14424,10 @@ def _radar_row(t: dict, spot: float, atr: "AtrPair", status: str, level_name: st
     """One radar contact. `_sort` puts regime changes ahead of every wall."""
     return {
         "ticker": t.get("ticker"), "spot": spot, "regime": t.get("regime"),
+        "spot_source": t.get("spot_source"),
+        "spot_state": t.get("spot_state"),
+        "spot_as_of_ts_utc": t.get("spot_as_of_ts_utc"),
+        "last_price_generation": t.get("last_price_generation"),
         "posture": t.get("posture"), "status": status,
         "wall_name": level_name, "wall": level,
         "distance_pct": round(gap / spot * 100, 3) if gap is not None else None,
@@ -14313,6 +14616,49 @@ def _radar_fallback_recompute() -> list[dict] | None:
     return out
 
 
+def _radar_apply_plane_spot(t: dict) -> dict:
+    """Reprice a radar snapshot from the plane LAST_PRICE without a Schwab call.
+
+    snapshots.spot is an as-of lastPrice and must never populate current fields.
+    A 51-ticker REST sweep is an implementation stall, not a source limitation.
+    """
+    ticker = t.get("ticker") or ""
+    plane_row = _lmp.get_quote(ticker)
+    out = dict(t)
+    if t.get("spot") is not None:
+        out["snapshot_spot"] = t.get("spot")
+        out["snapshot_spot_source"] = t.get("spot_source")
+    if not (
+        plane_row
+        and _lmp.quote_is_fresh(plane_row)
+        and _lmp.plane_spot_is_last_price(plane_row)
+    ):
+        # Snapshot as-of stays on snapshot_* only. current spot fields stay empty.
+        out["spot"] = None
+        out["current_spot"] = None
+        out["spot_source"] = None
+        out["current_spot_source"] = None
+        out["spot_state"] = "unavailable"
+        out["current_spot_state"] = "unavailable"
+        out["last_price_generation"] = None
+        out["last_price_native_ts"] = None
+        out["last_price_received_ts"] = None
+        return out
+    native = plane_row.get("last_price_native_ts")
+    received = plane_row.get("last_price_received_ts")
+    out["spot"] = plane_row["spot"]
+    out["current_spot"] = plane_row["spot"]
+    out["spot_source"] = SPOT_SOURCE_PLANE
+    out["current_spot_source"] = SPOT_SOURCE_PLANE
+    out["spot_state"] = current_spot_state(SPOT_SOURCE_PLANE, ticker, as_of_ts=native)
+    out["current_spot_state"] = out["spot_state"]
+    out["spot_as_of_ts_utc"] = native
+    out["last_price_generation"] = plane_row.get("last_price_generation")
+    out["last_price_native_ts"] = native
+    out["last_price_received_ts"] = received
+    return out
+
+
 @app.get("/api/terrain/radar")
 def get_terrain_radar(limit: int = Query(default=12, ge=1, le=60)):
     """Air-traffic radar: ONLY tickers currently in the operator's airspace.
@@ -14336,6 +14682,7 @@ def get_terrain_radar(limit: int = Query(default=12, ge=1, le=60)):
     blind = 0
     cached = _terrain_snapshots_for_radar()
     for t in cached:
+        t = _radar_apply_plane_spot(t)
         spot = t.get("spot")
         if t.get("confidence") != "TRUSTED" or not spot:
             blind += 1
@@ -14384,7 +14731,7 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     out = dict(payload)
     out["spot"] = spot
     out["spot_source"] = spot_source
-    out["spot_state"] = current_spot_state(spot_source, ticker)
+    out["spot_state"] = current_spot_state(spot_source, ticker, as_of_ts=spot_ts)
     out["spot_as_of_ts_utc"] = spot_ts
     # RC-130: wall geometry states are a function of SPOT, which was just re-resolved —
     # recomputed with the SAME producer definition (wall_geometry_state), and BEFORE the
@@ -14909,7 +15256,13 @@ def get_order_flow_book_heatmap(ticker: str = Query(default=DEFAULT_TICKER),
     except (TypeError, ValueError):
         bounded_minutes = 60.0
     payload = book_heatmap_for_ticker(tk, minutes=bounded_minutes)
-    return JSONResponse(payload)
+    stamped = _stamp_current_spot_identity(payload, tk)
+    latest = stamped.get("latest_captured_ts")
+    stamped["latest_column_ts"] = latest
+    stamped["latest_column_live"] = bool(
+        latest is not None and (time.time() - float(latest)) < _lmp.PLANE_QUOTE_STALE_SEC
+    )
+    return JSONResponse(stamped)
 
 
 #: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
@@ -14937,7 +15290,10 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
     now = time.time()
     hit = _FORCES_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
+        stamped = _stamp_current_spot_identity(hit[1], tk)
+        stamped["value_class"] = "HISTORICAL_REFERENCE"
+        stamped["current_spot_class"] = "LIVE"
+        return JSONResponse(stamped)
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "fewer than 2 banked wide captures for this ticker"}
     try:
@@ -15020,7 +15376,10 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
     _FORCES_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
+    stamped = _stamp_current_spot_identity(payload, tk)
+    stamped["value_class"] = "HISTORICAL_REFERENCE"
+    stamped["current_spot_class"] = "LIVE"
+    return JSONResponse(stamped)
 
 
 #: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
@@ -15041,7 +15400,10 @@ def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
     now = time.time()
     hit = _EXPOSURE_FLOW_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
+        stamped = _stamp_current_spot_identity(hit[1], tk)
+        stamped["value_class"] = "HISTORICAL_REFERENCE"
+        stamped["current_spot_class"] = "LIVE"
+        return JSONResponse(stamped)
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "no banked accrual frames for this ticker"}
     try:
@@ -15078,7 +15440,10 @@ def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"flow read failed: {e}"}
     _EXPOSURE_FLOW_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
+    stamped = _stamp_current_spot_identity(payload, tk)
+    stamped["value_class"] = "HISTORICAL_REFERENCE"
+    stamped["current_spot_class"] = "LIVE"
+    return JSONResponse(stamped)
 
 
 #: RC-209: Split·DEX and multi-day structure were gated ONLY by missing endpoints.
@@ -15387,15 +15752,73 @@ def _project_gamma_expiry_slice(chain: list, e: str, spot: float):
     return exposures_e, sym_map, dte, len(slice_e)
 
 
+VALUE_STATE_NO_CONTRACT = "no_contract"
+VALUE_STATE_ZERO_OI = "zero_oi"
+VALUE_STATE_OI_UNAVAILABLE = "oi_unavailable"
+VALUE_STATE_GAMMA_UNAVAILABLE = "gamma_unavailable"
+VALUE_STATE_COMPUTED = "computed"
+GAMMA_CELL_VALUE_STATES = (
+    VALUE_STATE_NO_CONTRACT,
+    VALUE_STATE_ZERO_OI,
+    VALUE_STATE_OI_UNAVAILABLE,
+    VALUE_STATE_GAMMA_UNAVAILABLE,
+    VALUE_STATE_COMPUTED,
+)
+
+
+def classify_gamma_cell_value_state(bucket: "dict | None", contracts: "dict | None") -> str:
+    """ONE classifier for a strike×expiry cell. Null GEX is never read as NO OI.
+
+    - no listed contract → no_contract
+    - listed, every authoritative OI is 0, none missing → zero_oi
+    - listed, any OI field missing and no positive OI → oi_unavailable
+    - listed, OI present (>0) but Gamma unusable → gamma_unavailable
+    - listed, OI present and Gamma usable → computed
+    """
+    contracts = contracts or {}
+    listed = bool(contracts.get("call") or contracts.get("put"))
+    if bucket is None:
+        return VALUE_STATE_NO_CONTRACT if not listed else VALUE_STATE_OI_UNAVAILABLE
+    has_oi = bool(bucket.get("has_oi"))
+    oi_absent = bool(bucket.get("oi_absent"))
+    call_oi = bucket.get("call_oi")
+    put_oi = bucket.get("put_oi")
+    positive = (call_oi is not None and call_oi > 0) or (put_oi is not None and put_oi > 0)
+    if not listed and not has_oi and not oi_absent:
+        return VALUE_STATE_NO_CONTRACT
+    if oi_absent and not has_oi:
+        return VALUE_STATE_OI_UNAVAILABLE
+    if has_oi and not positive:
+        return VALUE_STATE_ZERO_OI
+    if has_oi and positive and not bucket.get("has_valid_gamma"):
+        return VALUE_STATE_GAMMA_UNAVAILABLE
+    if has_oi and bucket.get("has_valid_gamma"):
+        return VALUE_STATE_COMPUTED
+    if listed:
+        return VALUE_STATE_OI_UNAVAILABLE
+    return VALUE_STATE_NO_CONTRACT
+
+
+def _gamma_surface_value_state_counts(cells: list, n_cols: int) -> dict:
+    counts = {k: 0 for k in GAMMA_CELL_VALUE_STATES}
+    for row in cells:
+        states = (row or {}).get("value_states") or []
+        for j in range(n_cols):
+            st = states[j] if j < len(states) else VALUE_STATE_NO_CONTRACT
+            if st not in counts:
+                st = VALUE_STATE_NO_CONTRACT
+            counts[st] += 1
+    counts["total"] = sum(counts[k] for k in GAMMA_CELL_VALUE_STATES)
+    return counts
+
+
 def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     """Shape ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its
     compute_exposures_by_strike bucket (extracted 2026-09-16 alongside
     _project_gamma_expiry_slice — see that function's docstring; this is the OTHER half
     project_gamma_surface's per-cell loop used to inline, now shared with the incremental
     update path so both produce byte-identical cells from the same bucket). Returns
-    (gex, dex, vanna, oi, volume, contracts, has_gex_data, has_oi) — see
-    project_gamma_surface's own inline comments (moved here verbatim) for why each gate
-    exists."""
+    (gex, dex, vanna, oi, volume, contracts, has_gex_data, has_oi, value_state)."""
     from numeric_contract import float_finite_or_none
 
     def _bf(v):
@@ -15403,18 +15826,24 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
         return round(fv) if fv is not None else None
 
     syms = syms or {}
+    contracts = {"call": syms.get("call"), "put": syms.get("put")}
+    value_state = classify_gamma_cell_value_state(bucket, contracts)
     _has_oi = bool(bucket is not None and bucket.get("has_oi"))
-    _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
-    gex = _bf(bucket.get("net_gex_1pct")) if _has_gex_data else None
-    dex = _bf(bucket.get("net_dex_dollars")) if _has_gex_data else None
-    _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
-    vanna = round(_vn, 2) if _vn is not None else None
+    _has_gex_data = value_state in (VALUE_STATE_COMPUTED, VALUE_STATE_ZERO_OI)
+    if value_state == VALUE_STATE_ZERO_OI:
+        gex, dex, vanna = 0, 0, 0.0
+    elif value_state == VALUE_STATE_COMPUTED:
+        gex = _bf(bucket.get("net_gex_1pct"))
+        dex = _bf(bucket.get("net_dex_dollars"))
+        _vn = bucket["call_vanna"] - bucket["put_vanna"]
+        vanna = round(_vn, 2) if _vn is not None else None
+    else:
+        gex, dex, vanna = None, None, None
     call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
     oi = {"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None}
     call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")
     volume = {"call": _bf(call_vol), "put": _bf(put_vol)} if bucket is not None else {"call": None, "put": None}
-    contracts = {"call": syms.get("call"), "put": syms.get("put")}
-    return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi
+    return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi, value_state
 
 
 def project_gamma_surface(chain: list, spot: float) -> dict:
@@ -15488,16 +15917,16 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     cells_total = 0
     cells_with_oi_but_invalid_greeks = 0
     for k in strikes:
-        row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
+        row, dex_row, vanna_row, oi_row, vol_row, contracts_row, state_row = [], [], [], [], [], [], []
         for col in expirations:
             cells_total += 1
             bucket = per_expiry.get(col["expiry"], {}).get(k)
             syms = symbols_by_expiry.get(col["expiry"], {}).get(k)
-            gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
+            gex, dex, vanna, oi, volume, contracts, has_gex, has_oi, value_state = \
                 _gamma_surface_cell_fields(bucket, syms)
             if has_gex:
                 cells_with_data += 1
-            elif has_oi:
+            elif value_state == VALUE_STATE_GAMMA_UNAVAILABLE:
                 cells_with_oi_but_invalid_greeks += 1
             row.append(gex)
             dex_row.append(dex)
@@ -15505,9 +15934,11 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
             oi_row.append(oi)
             vol_row.append(volume)
             contracts_row.append(contracts)
+            state_row.append(value_state)
         cells.append({
             "strike": k, "gex": row, "dex": dex_row, "vanna": vanna_row,
             "oi": oi_row, "volume": vol_row, "contracts": contracts_row,
+            "value_states": state_row,
         })
 
     # Operator directive (2026-09-14, live SPX reproduction): a grid where every single cell
@@ -15521,6 +15952,7 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
     gamma_available = cells_with_data > 0
     _reason = _gamma_surface_unavailable_reason(gamma_available, cells_with_oi_but_invalid_greeks,
                                                 cells_total)
+    value_state_counts = _gamma_surface_value_state_counts(cells, len(expirations))
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
@@ -15529,6 +15961,7 @@ def project_gamma_surface(chain: list, spot: float) -> dict:
         "gamma_unavailable_reason": _reason,
         "cells_total": cells_total,
         "cells_with_oi_but_invalid_greeks": cells_with_oi_but_invalid_greeks,
+        "value_state_counts": value_state_counts,
     }
 
 
@@ -15631,16 +16064,19 @@ def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: 
         old_cell = prior_cells[i]
         bucket = exposures_e.get(k)
         syms = sym_map.get(k)
-        gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
+        gex, dex, vanna, oi, volume, contracts, has_gex, has_oi, value_state = \
             _gamma_surface_cell_fields(bucket, syms)
         if has_gex:
             cells_with_data += 1
-        elif has_oi:
+        elif value_state == VALUE_STATE_GAMMA_UNAVAILABLE:
             cells_with_oi_but_invalid_greeks += 1
         new_row = dict(old_cell)
         for field, value in (("gex", gex), ("dex", dex), ("vanna", vanna),
-                             ("oi", oi), ("volume", volume), ("contracts", contracts)):
+                             ("oi", oi), ("volume", volume), ("contracts", contracts),
+                             ("value_states", value_state)):
             col = list(old_cell.get(field) or [])
+            if field == "value_states" and not col:
+                col = [VALUE_STATE_NO_CONTRACT] * len(expirations)
             if col_idx >= len(col):
                 return None      # column count disagrees with `expirations` -- fall back
             col[col_idx] = value
@@ -15677,7 +16113,62 @@ def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: 
             gamma_available, total_invalid_oi, cells_total),
         "cells_total": cells_total,
         "cells_with_oi_but_invalid_greeks": total_invalid_oi,
+        "value_state_counts": _gamma_surface_value_state_counts(new_cells, len(expirations)),
     }
+
+
+def _stamp_gamma_ticker_identity(payload: dict, requested: str, canonical: str) -> dict:
+    """Validate producer identity, then stamp transport metadata.
+
+    ``ticker`` / ``canonical_ticker`` are the request's storage key only after
+    any producer ``ticker``/``symbol`` agrees with that key. A disagreement is
+    rejected — never relabeled. ``requested_ticker`` is the raw query string
+    and must already be a non-empty string; empty is not coerced.
+    """
+    if not isinstance(requested, str) or requested.strip() == "":
+        raise ValueError("gamma identity: requested ticker is missing")
+    if not isinstance(canonical, str) or canonical.strip() == "":
+        raise ValueError("gamma identity: canonical ticker is missing")
+    req = requested.strip()
+    canon = canonical.strip()
+    out = dict(payload) if isinstance(payload, dict) else {}
+    producer = out.get("ticker")
+    if producer in (None, ""):
+        producer = out.get("symbol")
+    if producer not in (None, ""):
+        if ticker_storage_key(str(producer)) != canon:
+            raise ValueError(
+                "gamma identity: producer ticker "
+                f"{producer!r} disagrees with request canonical {canon!r}"
+            )
+    out["ticker"] = canon
+    out["symbol"] = canon
+    out["canonical_ticker"] = canon
+    out["requested_ticker"] = req
+    return out
+
+
+def _gamma_identity_response(payload: dict, requested: str, canonical: str) -> JSONResponse:
+    """Stamp a gamma payload or return an explicit unavailable reject."""
+    try:
+        return JSONResponse(_stamp_gamma_ticker_identity(payload, requested, canonical))
+    except ValueError as exc:
+        reject = {
+            "available": False,
+            "source": "unavailable",
+            "live": False,
+            "stale": True,
+            "reason": str(exc),
+        }
+        try:
+            reject = _stamp_gamma_ticker_identity(
+                {**reject, "ticker": canonical, "symbol": canonical},
+                requested,
+                canonical,
+            )
+        except ValueError:
+            pass
+        return JSONResponse(reject)
 
 
 def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
@@ -15754,7 +16245,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
             log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
             _contract_admission = None
-        return JSONResponse({
+        return _gamma_identity_response({
             "ticker": tk, "symbol": tk, "available": _gamma_available,
             # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
             # reads surface.reason for the placeholder message; reusing it here means the
@@ -15764,18 +16255,19 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
             "stream_coverage": _coverage,
             "contract_admission": _contract_admission,
+            "selected_contracts": _selected_contracts_from_surface(surf),
+            "value_state_counts": surf.get("value_state_counts") or _gamma_surface_value_state_counts(
+                surf.get("cells") or [], len(surf.get("expirations") or [])),
             "degraded": live.get("levels_stale_reason") if stale else None,
-            # ONE spot faucet (operator directive, 2026-09-15): prefer the spot stamped
-            # directly ON THIS SURFACE (by _terrain_refresh_one's REST cycle OR the eager
-            # per-tick refresh_gamma_surface_from_stream, whichever produced this exact
-            # surface_seq generation) over the top-level terrain payload's own spot fields --
-            # the eager path can legitimately publish a NEWER resolve_spot value than the
-            # REST cycle's own `live.get("spot")` without the top-level fields having caught
-            # up, and this surface's own cells were computed from ITS stamp, not the top
-            # level's. Falls back to the top-level fields only for a surface predating this
-            # stamp (never expected in production, kept for defensive compatibility).
+            # Computed-from spot is the stamp the cells were actually priced from.
+            # Current LAST_PRICE is a separate observation: cells computed from an
+            # older spot must not be presented as if they were priced at the live print.
             "spot": surf.get("spot", live.get("spot")),
             "spot_source": surf.get("spot_source", live.get("spot_source")),
+            "computed_from_spot": surf.get("spot", live.get("spot")),
+            "computed_from_spot_source": surf.get("spot_source", live.get("spot_source")),
+            "computed_from_spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc", live.get("spot_as_of_ts_utc")),
+            **_gamma_current_spot_fields(tk, surf.get("spot", live.get("spot"))),
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
             "spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc", live.get("spot_as_of_ts_utc")),
             "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
@@ -15804,12 +16296,17 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
                        "partition by native expirationDate -> compute_exposures_by_strike per expiry "
                        "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
-        })
+        }, ticker, tk)
 
-    # ---- FALLBACK: banked MORNING wide chain — REFERENCE ONLY, never presented as intraday ----
+    # Current Gamma may NEVER use banked_morning_reference (operator 2026-09-17).
+    # Historical morning Gamma lives only on /api/exposure/history.
     hit = _GAMMA_SURFACE_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
+        cached = hit[1]
+        if isinstance(cached, dict) and cached.get("source") == "banked_morning_reference":
+            _GAMMA_SURFACE_CACHE.pop(tk, None)
+        else:
+            return _gamma_identity_response(cached, ticker, tk)
     # #1-A: separate the two truths the UI must not conflate.
     #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
     #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
@@ -15827,7 +16324,9 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                      "live": False, "stale": True, "warming": _warming,
                      "requested": _requested, "on_board": _on_board,
-                     "reason": "no live terrain surface and no banked wide chain"}
+                     "reason": ("live Gamma surface unavailable — current heatmap is "
+                                "UNAVAILABLE (historical morning Gamma is "
+                                "/api/exposure/history, never this surface)")}
     try:
         db = get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
@@ -15850,51 +16349,21 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                                   "from a prior session (not today's ET date) -- not served as "
                                   "a morning reference to avoid presenting stale data as current")
         if rows_t:
-            et_date, s1, c1, ts1 = rows_t[0]
-            spot1 = float(s1)
-            surface = project_gamma_surface(json.loads(c1), spot1)
-            # Always-live heatmap mandate (2026-09-15): a banked-morning reference has no stream
-            # overlay input at all -- every leg on every cell stamps 'unavailable' UNLESS the
-            # daemon is already, independently, requesting that leg's contract (a genuine
-            # 'pending' -- the caller is honestly waiting on the vendor, not merely looking at a
-            # never-subscribed contract), consistent with "REST may bootstrap or recover the
-            # surface, but it cannot satisfy LIVE".
-            from app.options.order_flow.streaming import is_option_producer_daemon_available
-            _stamp_gamma_surface_cell_stream_state(
-                surface, {}, set(), None, set(_desired_option_symbols_for_ticker(tk)),
-                daemon_available=is_option_producer_daemon_available())
-            _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
-            payload = {
-                "ticker": tk, "symbol": tk, "available": True,
-                "source": "banked_morning_reference", "live": False, "stale": True,
-                "cell_stream_state_counts": _gamma_surface_cell_state_counts(surface),
-                "stream_coverage": _gamma_surface_coverage_summary(surface),
-                "warming": _warming, "requested": _requested, "on_board": _on_board,
-                "degraded": ("live terrain surface unavailable — showing banked morning wide "
-                             "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
-                "et_date": et_date, "spot": spot1,
-                "chain_as_of_ts_utc": ts1, "spot_as_of_ts_utc": ts1, "age_sec": _age_sec,
-                "chain_basis": "banked_morning", "complete": False,
-                "coverage": {"window": "banked_morning_wide", "strike_count": len(surface.get("strikes") or []),
-                             "note": ("banked morning wide reference — strike-count bounded, not intraday "
-                                      "and not proven complete (not strike_range=ALL)")},
-                **_stamp_surface_session(surface, reference_date=str(et_date)),
-                "provenance": {
-                    "producer": "math_exposure_core.compute_exposures_by_strike",
-                    "source": "newest_banked_wide_chain:option_chain_morning_full",
-                    "classification": "DERIVED", "cell_metric": "net_gex_1pct",
-                    "spot_basis": "captured_morning_spot",
-                },
-                "method": ("REFERENCE: newest banked MORNING wide chain -> per-expiry "
-                           "compute_exposures_by_strike; morning spot/Greeks, not intraday"),
-            }
+            et_date, _s1, _c1, _ts1 = rows_t[0]
+            payload["historical_morning_available"] = True
+            payload["historical_morning_et_date"] = str(et_date)
+            payload["reason"] = (
+                "live Gamma surface unavailable — current heatmap is UNAVAILABLE; "
+                "a same-session morning capture exists as historical reference at "
+                "/api/exposure/history and must not populate this heatmap"
+            )
     except Exception as e:  # fail-closed to explicit unavailability
         payload = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                    "live": False, "stale": True, "warming": _warming,
                    "requested": _requested, "on_board": _on_board,
                    "reason": f"gamma-surface read failed: {e}"}
     _GAMMA_SURFACE_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
+    return _gamma_identity_response(payload, ticker, tk)
 
 
 @app.get("/api/exposure/history")
@@ -15973,7 +16442,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
         with _spot_poll_lock:
             hit = _spot_poll_cache.get(tk)
             if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
-                return JSONResponse(hit[1])
+                return JSONResponse(_stamp_current_spot_identity(hit[1], tk))
             leader = tk not in _spot_poll_inflight
             if leader:
                 _spot_poll_inflight[tk] = threading.Event()
@@ -15984,7 +16453,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
                 with _spot_poll_lock:
                     hit = _spot_poll_cache.get(tk)
                 if hit:
-                    return JSONResponse(hit[1])  # stale > stampede
+                    return JSONResponse(_stamp_current_spot_identity(hit[1], tk))
                 return JSONResponse(
                     {"ticker": tk, "spot": None, "spot_source": None,
                      "spot_as_of_ts_utc": None, "error": "spot_resolve_timeout"},
@@ -15994,9 +16463,11 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
             continue
         try:
             spot, source, ts = resolve_spot(tk)
-            payload = {"ticker": tk, "spot": spot, "spot_source": source,
-                       "spot_state": current_spot_state(source, tk),
-                       "spot_as_of_ts_utc": ts}
+            payload = _stamp_current_spot_identity({
+                "ticker": tk, "spot": spot, "spot_source": source,
+                "spot_state": current_spot_state(source, tk, as_of_ts=ts),
+                "spot_as_of_ts_utc": ts,
+            }, tk)
             with _spot_poll_lock:
                 _spot_poll_cache[tk] = (time.time(), payload)
             return JSONResponse(payload)
@@ -16323,10 +16794,10 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
         cached = terrain_cache_get(tk)
     if cached is not None:
         # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
-        return _reprice_cached_terrain(cached, tk)
+        return _stamp_current_spot_identity(_reprice_cached_terrain(cached, tk), tk)
     spot, spot_source, spot_ts = resolve_spot(tk)
     _why = _terrain_refresh_last_error.get(tk)
-    return compute_terrain(tk, None, spot).to_dict() | {
+    return _stamp_current_spot_identity(compute_terrain(tk, None, spot).to_dict() | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
         # unexplained shrug is how $SPX stayed dark for a session.
@@ -16339,7 +16810,7 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
         # fields while SPY returned all five. A flag a consumer must parse English to discover
         # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
         **terrain_staleness(None, tk),
-    }
+    }, tk)
 
 
 def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None, float | None]:
@@ -17089,12 +17560,19 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
             row = _lmp.get_quote(t)
             if row and _lmp.quote_is_fresh(row) and _lmp.plane_spot_is_last_price(row):
                 out[t] = {
+                    "ticker": t,
                     "spot": row["spot"],
                     "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
-                    "spot_state": "live",
+                    "spot_state": current_spot_state(
+                        SPOT_SOURCE_PLANE, t,
+                        as_of_ts=row.get("last_price_native_ts") or row.get("last_price_received_ts") or row.get("exchange_quote_ts")),
                     "spot_source": SPOT_SOURCE_PLANE,
+                    "current_spot_source": SPOT_SOURCE_PLANE,
                     "chg_pct": resolve_chg_pct(t, row.get("chg_pct")),
-                    "exchange_quote_ts": row.get("exchange_quote_ts"),
+                    "exchange_quote_ts": row.get("last_price_native_ts") or row.get("exchange_quote_ts"),
+                    "last_price_generation": row.get("last_price_generation") or row.get("fast_generation_id"),
+                    "last_price_native_ts": row.get("last_price_native_ts"),
+                    "last_price_received_ts": row.get("last_price_received_ts"),
                 }
             else:
                 need_fetch.append(t)
@@ -17132,33 +17610,36 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
             if not node:
                 continue
             pq = _parse_quote_node_session_fields(node)
-            spot = pq.get("spot")
-            if pq.get("spot_source") != "lastPrice" or spot is None:
-                continue
-            chg_pct = resolve_chg_pct(t, pq.get("chg_pct"))
-            out[t] = {
-                "spot": spot,
-                "spot_disp": f"{spot:.2f}",
-                "spot_state": "live",
-                "spot_source": SPOT_SOURCE_QUOTE,
-                "chg_pct": chg_pct,
-                "exchange_quote_ts": pq.get("quote_ts"),
-            }
-            # Record into the plane so this fetch becomes the ONE answer every other
-            # consumer (resolve_spot, the header, Tier C, L1) sees too, not a value only
-            # this route ever knew about.
-            _lmp.record_quote(t, {
-                "ticker": t, "spot": float(spot), "spot_disp": f"{spot:.2f}",
-                "chg_pct": chg_pct, "exchange_quote_ts": pq.get("quote_ts"),
-                "quote_time_source": "schwab_rest_quote" if pq.get("quote_ts") is not None else "unavailable",
-                "server_received_ts": server_received_ts,
-                "quote_ingestion": "rest_watchlist_batch",
-                "fast_generation_id": _lmp.next_fast_generation(t),
-                "quote_source_detail": {
-                    "spot": "LAST_PRICE",
-                    "carried_forward": False,
+            ingested = _ingest_rest_last_price_observation(
+                t,
+                pq,
+                quote_ingestion="rest_watchlist_batch",
+                extra={
+                    "chg_pct": resolve_chg_pct(t, pq.get("chg_pct")),
+                    "exchange_quote_ts": pq.get("trade_time"),
+                    "quote_source_detail": {
+                        "quote_ts": pq.get("quote_ts_clock"),
+                    },
+                    "server_received_ts": server_received_ts,
                 },
-            })
+            )
+            if not _lmp.plane_spot_is_last_price(ingested):
+                continue
+            out[t] = {
+                "ticker": t,
+                "spot": ingested["spot"],
+                "spot_disp": ingested.get("spot_disp") or f"{ingested['spot']:.2f}",
+                "spot_state": current_spot_state(
+                    SPOT_SOURCE_QUOTE, t, as_of_ts=ingested.get("last_price_native_ts")
+                ),
+                "spot_source": SPOT_SOURCE_QUOTE,
+                "current_spot_source": SPOT_SOURCE_QUOTE,
+                "chg_pct": ingested.get("chg_pct"),
+                "exchange_quote_ts": ingested.get("last_price_native_ts"),
+                "last_price_generation": ingested.get("last_price_generation"),
+                "last_price_native_ts": ingested.get("last_price_native_ts"),
+                "last_price_received_ts": ingested.get("last_price_received_ts"),
+            }
         return {"ok": True, "error": None, "quotes": out}
 
     loop = asyncio.get_event_loop()
@@ -17510,7 +17991,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
             d = date.fromisoformat(resolved_expiry)
             client = get_client()
             c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-                client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
+                client, t, strike_range="ALL", from_date=d, to_date=d, priority=True)
             if c_resp is not None and c_resp.status_code == 200:
                 # This fetch's OWN as-of instant -- captured the moment the vendor's response
                 # is in hand, before any overlay -- is the correct `newer_than_ts` baseline.
@@ -17592,60 +18073,34 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                 # No contracts at all for the mismatch case — fall through to the
                 # persisted/stored tiers below rather than returning an empty response.
             else:
-                log.warning("chain: live fetch non-200 for %s expiry %s, falling back",
+                log.warning("chain: live fetch non-200 for %s expiry %s — fail closed",
                            t, resolved_expiry)
+                return JSONResponse({
+                    "ticker": t, "spot": None, "expiry": resolved_expiry, "contracts": [],
+                    "status": "live_fetch_failed", "available": False,
+                    "reason": f"live strike_range=ALL fetch HTTP {getattr(c_resp, 'status_code', None)}",
+                    "scope": {"kind": "live_fetch_failed",
+                              "requested_expiry": resolved_expiry},
+                })
         except Exception as e:
-            log.warning("chain: live fetch failed for %s expiry %s (%s), falling back",
+            log.warning("chain: live fetch failed for %s expiry %s (%s) — fail closed",
                        t, resolved_expiry, e)
-
-        try:
-            cap = latest_complete_chain_capture(get_db().db_path, t, resolved_expiry)
-        except Exception as e:
-            cap = None
-            log.debug("chain: persisted-capture read failed for %s %s: %s",
-                     t, resolved_expiry, e)
-        if cap:
-            # Same overlay faucet as the live tiers above, bounded here by the capture's
-            # OWN as-of (a streamed field only overlays a banked capture when it is
-            # genuinely newer than that specific capture, not merely "recent").
-            cap_contracts, cap_overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-                t, cap["contracts"], newer_than_ts=cap["ts_utc"])
             return JSONResponse({
-                "ticker": t, "spot": cap["spot"], "expiry": resolved_expiry,
-                "contracts": cap_contracts, "status": "ok",
-                "stream_overlay_contracts": cap_overlay_n,
-                "scope": {"kind": "persisted_complete_capture_fallback",
-                         "requested_expiry": resolved_expiry,
-                         "completeness_basis": cap["completeness_basis"],
-                         "captured_ts": cap["ts_utc"],
-                         "captured_age_sec": round(time.time() - cap["ts_utc"], 1),
-                         "note": "a prior COMPLETE capture — not fetched live this "
-                                 "request, staleness stated above"},
+                "ticker": t, "spot": None, "expiry": resolved_expiry, "contracts": [],
+                "status": "live_fetch_failed", "available": False,
+                "reason": f"live strike_range=ALL fetch failed: {e}",
+                "scope": {"kind": "live_fetch_failed",
+                          "requested_expiry": resolved_expiry},
             })
 
-    contracts, spot, stored_ts = _latest_chain_and_spot(t)
-    if not contracts:
-        return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [],
-                            "status": "no_chain",
-                            "scope": {"kind": "stored_analytical_snapshot_fallback"}})
-    stored_expiry = None
-    for ct in contracts:
-        if isinstance(ct, dict) and ct.get("expirationDate"):
-            stored_expiry = str(ct["expirationDate"])[:10]
-            break
-    # A FOURTH independent review (2026-09-13), REPRODUCED: same newer_than_ts=None ordering
-    # bug as the live-fetch tier above, here against a STORED snapshot's own row ts_utc
-    # (now returned by _latest_chain_and_spot) instead of a live fetch's instant.
-    contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-        t, contracts, newer_than_ts=stored_ts)
     return JSONResponse({
-        "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,
-        "stream_overlay_contracts": overlay_n,
-        "status": "ok",
-        "scope": {"kind": "stored_analytical_snapshot_fallback",
-                 "note": "bounded analytical snapshot, NOT proven complete — live "
-                         "complete-chain fetch and any persisted capture were both "
-                         "unavailable this request"},
+        "ticker": t, "spot": None, "expiry": resolved_expiry, "contracts": [],
+        "status": "no_chain" if resolved_expiry is None else "live_fetch_failed",
+        "available": False,
+        "reason": ("live complete-chain fetch unavailable — cached, stored, or "
+                   "historical snapshots are not substituted"),
+        "scope": {"kind": "no_live_expiry" if resolved_expiry is None else "live_fetch_failed",
+                  "requested_expiry": resolved_expiry},
     })
 
 
@@ -17926,19 +18381,26 @@ def _repo_git_head_sha() -> Optional[str]:
     """Best-effort repo tip for runtime-vs-disk checks (Meet-or-Exceed cycle)."""
     import subprocess
 
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=APP_DIR,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=3.0,
-        )
-        sha = (proc.stdout or "").strip()
-        return sha or None
-    except (OSError, subprocess.SubprocessError):
-        return None
+    # Two attempts: a single 3s timeout was observed returning None under a
+    # loaded xdist worker (test_t1_startup_sha_immutable_across_repo_drift),
+    # which made /api/build report no checkout HEAD. Timeout is not "no repo".
+    for _attempt in range(2):
+        try:
+            proc = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=APP_DIR,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=15.0,
+            )
+            sha = (proc.stdout or "").strip()
+            return sha or None
+        except subprocess.TimeoutExpired:
+            continue
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return None
 
 
 @app.get("/api/release/current")
@@ -18346,6 +18808,7 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
     ):
         families_absent.append({"family": fam, "reason": why})
 
+    row_lp = _lmp.get_quote(tk) if _lmp.plane_spot_is_last_price(_lmp.get_quote(tk)) else None
     return JSONResponse({
         "ticker": tk,
         "schema_version": 1,
@@ -18353,6 +18816,10 @@ def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
         "spot": spot,
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
+        "spot_state": current_spot_state(spot_source, tk, as_of_ts=spot_ts),
+        "last_price_native_ts": (row_lp.get("last_price_native_ts") if row_lp else spot_ts),
+        "last_price_received_ts": (row_lp.get("last_price_received_ts") if row_lp else None),
+        "last_price_generation": (row_lp.get("last_price_generation") if row_lp else None),
         "generation": snap.generation,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc,
         "bar_source": snap.bar_source,

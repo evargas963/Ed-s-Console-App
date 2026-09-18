@@ -88,15 +88,18 @@ class _FlakyOptionStream:
     service ok, one erroring) can be reproduced deterministically — never a synthetic
     shortcut around the real async call shape _reconcile_option_service actually drives.
     A simulated failure never mutates `held` (a failed vendor call changes nothing)."""
-    def __init__(self, *, fail_calls: set[str] | None = None):
+    def __init__(self, *, fail_calls: set[str] | None = None, fail_exc: BaseException | None = None):
         self.calls: list[tuple] = []
         self.fail_calls = fail_calls or set()
+        self.fail_exc = fail_exc
         self.held: dict[str, set] = {"LEVELONE_OPTIONS": set(), "OPTIONS_BOOK": set()}
 
     async def _maybe_fail(self, name, syms):
         self.calls.append((name, tuple(syms)))
         if name in self.fail_calls:
-            raise RuntimeError(f"simulated vendor failure: {name}")
+            if self.fail_exc is not None:
+                raise self.fail_exc
+            raise rsc.SchwabVendorSymbolRejection(f"simulated vendor failure: {name}")
 
     async def _subs(self, service, name, syms):
         await self._maybe_fail(name, syms)
@@ -1421,7 +1424,7 @@ def test_multi_C_two_extras_one_fails_the_other_still_reaches_steady_state(
     async def _l1_add(syms):
         stream.calls.append(("l1_option_add", tuple(syms)))
         if _QQQ_CONTRACT in syms:
-            raise RuntimeError("simulated vendor failure: l1_option_add")
+            raise rsc.SchwabVendorSymbolRejection("simulated vendor failure: l1_option_add")
         stream.held["LEVELONE_OPTIONS"] |= set(syms)
     stream.level_one_option_add = _l1_add
 
@@ -2413,3 +2416,55 @@ def test_case_C_escalation_cannot_fabricate_a_new_epoch_if_the_signal_flips_back
             f"declared unusable; got {live.calls}")
     finally:
         w.close()
+
+
+def test_generic_runtime_error_never_becomes_vendor_rejected(monkeypatch):
+    """A transport/generic failure is not Schwab refusing the symbol."""
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream(
+        fail_calls={"l1_option_add"},
+        fail_exc=RuntimeError("timeout talking to vendor"),
+    )
+    rejected_state: dict = {}
+    contract_state: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, rejected_state=rejected_state)
+
+    with pytest.raises(RuntimeError, match="timeout talking to vendor"):
+        asyncio.run(go())
+    assert _QQQ_CONTRACT not in rejected_state
+    assert "l1:extra:" + _QQQ_CONTRACT not in contract_state
+
+
+def test_timeout_never_becomes_vendor_rejected(monkeypatch):
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [_QQQ_CONTRACT])
+    stream = _FlakyOptionStream(
+        fail_calls={"l1_option_add"},
+        fail_exc=TimeoutError("stream timed out"),
+    )
+    rejected_state: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, {}, rejected_state=rejected_state)
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(go())
+    assert rejected_state == {}
+
+
+def test_non_schwab_unexpected_response_code_is_not_vendor_rejection():
+    class UnexpectedResponseCode(Exception):
+        pass
+
+    assert rsc._is_explicit_vendor_symbol_rejection(
+        rsc.SchwabVendorSymbolRejection("refused")
+    ) is True
+    assert rsc._is_explicit_vendor_symbol_rejection(
+        UnexpectedResponseCode("looks similar")
+    ) is False
+    assert rsc._is_explicit_vendor_symbol_rejection(RuntimeError("auth failed")) is False

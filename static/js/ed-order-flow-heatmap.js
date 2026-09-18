@@ -247,8 +247,11 @@
       }
     }
 
+    var liveTag = d.latest_column_live ? ' · LATEST COLUMN LIVE' : ' · latest column as-of capture';
+    var genTag = d.last_price_generation != null ? ' · LAST_PRICE gen ' + d.last_price_generation : '';
     var rowsInfo = d.rows_scanned + (d.rows_capped ? '+ (capped)' : '') + ' book ticks · ' +
-      fmtCT(d.since_ts) + '–' + fmtCT(d.until_ts) + ' CT · latest capture ' + fmtCT(d.latest_captured_ts) + ' CT';
+      fmtCT(d.since_ts) + '–' + fmtCT(d.until_ts) + ' CT · latest capture ' + fmtCT(d.latest_captured_ts) + ' CT' +
+      liveTag + genTag;
     h.innerHTML = '';
     h.appendChild(canvas);
     var foot = document.createElement('div');
@@ -292,7 +295,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    document.addEventListener('ed:refresh', function () { if (isHeatmap()) load(); });
     document.addEventListener('click', function (e) {
       var btn = e.target.closest && e.target.closest('[data-ofh-minutes]');
       if (!btn) return;

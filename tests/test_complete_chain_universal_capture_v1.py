@@ -41,6 +41,7 @@ from types import SimpleNamespace
 from calibration.complete_chain_capture import (
     eligible_near_term_expiries,
     has_complete_chain_capture_today,
+    latest_complete_chain_capture,
     next_capture_batch,
     persist_complete_chain_capture,
 )
@@ -244,8 +245,8 @@ def test_universal_complete_chain_iterates_both_eligible_expiries_and_persists_e
         assert c["from_date"] == c["to_date"], "budget-safety: each fetch bounded to exactly one expiry"
         assert c["priority"] is False, "background systematic capture must never jump the priority queue"
 
-    tsla_cap = srv.latest_complete_chain_capture(db_path, "ZZTEST", _TSLA_EXPIRY)
-    spy_cap = srv.latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY)
+    tsla_cap = latest_complete_chain_capture(db_path, "ZZTEST", _TSLA_EXPIRY)
+    spy_cap = latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY)
     assert tsla_cap is not None and spy_cap is not None
     assert {c["symbol"] for c in tsla_cap["contracts"]} == {c["symbol"] for c in _TSLA_CONTRACTS}, (
         "exact vendor -> persisted contract-symbol set equality for expiry 1"
@@ -339,7 +340,7 @@ def test_universal_complete_chain_rejects_an_expiry_scope_mismatch(monkeypatch, 
         "ZZTEST", client=object(), contracts=_wide_contracts_spanning_both_real_expiries(),
         ts_utc=_TS_IN_WINDOW)
 
-    assert srv.latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY) is None, (
+    assert latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY) is None, (
         "vendor answering with the wrong expiry must never be banked as that expiry's proof"
     )
 
@@ -432,7 +433,7 @@ def test_B_cycle_two_same_day_advances_past_already_complete_expiries(monkeypatc
         "cycle 2 must attempt exactly the remaining not-yet-captured expiries"
     )
     for e in all_expiries[:cap]:
-        assert srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        assert latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
 
 
 def test_C_eventual_full_coverage_across_successive_cycles(monkeypatch, tmp_path):
@@ -462,21 +463,21 @@ def test_C_eventual_full_coverage_across_successive_cycles(monkeypatch, tmp_path
             "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
         captured = {
             e for e in all_expiries
-            if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+            if latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
         }
         if captured == set(all_expiries):
             break
 
     captured = {
         e for e in all_expiries
-        if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        if latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
     }
     assert captured == set(all_expiries), (
         f"eventual coverage must reach EXACT set equality with the declared eligible "
         f"set within {max_cycles} cycles; missing {set(all_expiries) - captured}"
     )
     for e in all_expiries:
-        cap_row = srv.latest_complete_chain_capture(db_path, "ZZTEST", e)
+        cap_row = latest_complete_chain_capture(db_path, "ZZTEST", e)
         assert {c["symbol"] for c in cap_row["contracts"]} == {c["symbol"] for c in contracts_by_expiry[e]}
 
 
@@ -502,7 +503,7 @@ def test_D_restart_re_entry_advances_from_durable_db_state(monkeypatch, tmp_path
         "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
     captured_before_restart = {
         e for e in all_expiries
-        if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        if latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
     }
     assert captured_before_restart, "precondition: cycle 1 must have captured something"
 
@@ -518,7 +519,7 @@ def test_D_restart_re_entry_advances_from_durable_db_state(monkeypatch, tmp_path
     )
     captured_after = {
         e for e in all_expiries
-        if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        if latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
     }
     assert captured_after > captured_before_restart, (
         "post-restart, the remaining expiries must still be attempted and captured"
@@ -565,13 +566,13 @@ def test_E_one_chronically_failing_expiry_does_not_starve_later_ones(monkeypatch
 
     captured = {
         e for e in healthy
-        if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        if latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
     }
     assert captured == set(healthy), (
         f"every healthy expiry must eventually be captured despite one chronic "
         f"failure hogging a budget slot each cycle; missing {set(healthy) - captured}"
     )
-    assert srv.latest_complete_chain_capture(db_path, "ZZTEST", chronic_failer) is None, (
+    assert latest_complete_chain_capture(db_path, "ZZTEST", chronic_failer) is None, (
         "the chronically-failing expiry itself must never be falsely marked complete"
     )
     assert (

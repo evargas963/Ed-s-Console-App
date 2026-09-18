@@ -171,8 +171,8 @@ def test_fallback_is_labelled_not_live_never_intraday():
     try:
         d = _call(tk)
         assert d["live"] is False and d["stale"] is True
-        assert d["source"] in ("unavailable", "banked_morning_reference")
-        if d["source"] == "banked_morning_reference":
-            assert "not intraday" in d["degraded"].lower() or "morning" in d["degraded"].lower()
+        assert d["source"] == "unavailable"
+        assert d["available"] is False
+        assert "banked_morning_reference" != d["source"]
     finally:
         _clear(tk)

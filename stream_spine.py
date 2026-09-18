@@ -168,9 +168,27 @@ CREATE TABLE IF NOT EXISTS stream_producer_heartbeat (
     heartbeat_ts REAL NOT NULL,
     resolved_db_path TEXT NOT NULL,
     claimed_coverage_json TEXT,
-    rejected_contracts_json TEXT
+    rejected_contracts_json TEXT,
+    producer_git_sha TEXT
 );
 """
+
+
+def producer_code_sha() -> "str | None":
+    """Git HEAD of the checkout that loaded this module — the daemon and the server
+    each call this in THEIR own process. A heartbeat carrying a different SHA than the
+    server process is a cross-checkout daemon and must fail closed."""
+    import subprocess
+    root = Path(__file__).resolve().parent
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(root), capture_output=True, text=True, check=True, timeout=15.0,
+        )
+        sha = (proc.stdout or "").strip()
+        return sha or None
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 #: How long a PUBLISHED producer coverage claim can still confirm a subscription. It is
@@ -192,9 +210,19 @@ def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
     try:
         row = conn.execute(
             "SELECT daemon_pid, heartbeat_ts, resolved_db_path, claimed_coverage_json, "
-            "rejected_contracts_json FROM stream_producer_heartbeat WHERE id = 1").fetchone()
+            "rejected_contracts_json, producer_git_sha "
+            "FROM stream_producer_heartbeat WHERE id = 1").fetchone()
     except sqlite3.OperationalError:
-        return None
+        try:
+            row = conn.execute(
+                "SELECT daemon_pid, heartbeat_ts, resolved_db_path, claimed_coverage_json, "
+                "rejected_contracts_json FROM stream_producer_heartbeat WHERE id = 1"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        if row is None:
+            return None
+        row = tuple(row) + (None,)
     if row is None:
         return None
     try:
@@ -206,7 +234,8 @@ def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
     except (TypeError, ValueError):
         rejected = None      # unparseable rejection map is UNKNOWN, never confirmation
     return {"daemon_pid": row[0], "heartbeat_ts": row[1], "resolved_db_path": row[2],
-            "claimed_coverage": claimed, "rejected_contracts": rejected}
+            "claimed_coverage": claimed, "rejected_contracts": rejected,
+            "producer_git_sha": row[5]}
 
 
 def read_rejected_option_contracts(conn: sqlite3.Connection, *, stale_sec: float,
@@ -659,6 +688,9 @@ class CaptureWriter:
             if "rejected_contracts_json" not in hb_cols:
                 self._conn.execute("ALTER TABLE stream_producer_heartbeat "
                                    "ADD COLUMN rejected_contracts_json TEXT")
+            if "producer_git_sha" not in hb_cols:
+                self._conn.execute("ALTER TABLE stream_producer_heartbeat "
+                                   "ADD COLUMN producer_git_sha TEXT")
             self._conn.commit()
         except Exception:
             # Init failed after connect — close before the object is discarded so the
@@ -834,7 +866,8 @@ class CaptureWriter:
 
     def write_heartbeat(self, *, pid: int | None = None, ts: float | None = None,
                         claimed_coverage: "dict[str, list[int]] | None" = None,
-                        rejected_contracts: "dict[str, str] | None" = None) -> None:
+                        rejected_contracts: "dict[str, str] | None" = None,
+                        producer_git_sha: "str | None" = None) -> None:
         """Producer identity/liveness signal written INTO the canonical stream_capture.db
         itself (PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS, Gap 2) -- not a separate
         checkout-relative status file. A consumer opening its OWN resolved db_path and
@@ -852,16 +885,19 @@ class CaptureWriter:
             self._last_rejected_contracts = {str(k): str(v) for k, v in rejected_contracts.items()}
         rejected = None if self._last_rejected_contracts is None else json.dumps(
             self._last_rejected_contracts, sort_keys=True)
+        sha = producer_git_sha if producer_git_sha is not None else producer_code_sha()
         try:
             self._conn.execute(
                 "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, "
-                "resolved_db_path, claimed_coverage_json, rejected_contracts_json) "
-                "VALUES (1, ?, ?, ?, ?, ?) "
+                "resolved_db_path, claimed_coverage_json, rejected_contracts_json, "
+                "producer_git_sha) "
+                "VALUES (1, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET daemon_pid=excluded.daemon_pid, "
                 "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path, "
                 "claimed_coverage_json=excluded.claimed_coverage_json, "
-                "rejected_contracts_json=excluded.rejected_contracts_json",
-                (p, t, str(self.db_path), claim, rejected))
+                "rejected_contracts_json=excluded.rejected_contracts_json, "
+                "producer_git_sha=excluded.producer_git_sha",
+                (p, t, str(self.db_path), claim, rejected, sha))
             self._conn.commit()
         except Exception as e:
             raise CoverageWriteError(f"write_heartbeat: {e}") from e

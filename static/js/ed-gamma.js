@@ -87,6 +87,15 @@
   // can slice by whole rows from this list, which `symbols` alone (already flattened) cannot
   // safely support.
   function _heatmapVisibleContractsByColumn(cells, rowSel, cols) {
+    if (!Array.isArray(cells)) {
+      throw new Error('heatmapVisibleContracts: cells array required at schema boundary');
+    }
+    if (!rowSel || !Array.isArray(rowSel.idx)) {
+      throw new Error('heatmapVisibleContracts: rowSel.idx required at schema boundary');
+    }
+    if (!Array.isArray(cols)) {
+      throw new Error('heatmapVisibleContracts: cols array required at schema boundary');
+    }
     return cols.map(function (j) {
       var seen = {}, symbols = [], rows = [];
       rowSel.idx.forEach(function (i) {
@@ -251,7 +260,165 @@
   }
 
   // ---- render the grid from a canonical surface payload (no math) ----
+  var VALUE_NO_CONTRACT = 'no_contract';
+  var VALUE_ZERO_OI = 'zero_oi';
+  var VALUE_OI_UNAVAILABLE = 'oi_unavailable';
+  var VALUE_GAMMA_UNAVAILABLE = 'gamma_unavailable';
+  var VALUE_COMPUTED = 'computed';
+  var VALUE_LABEL = {
+    no_contract: 'NO CONTRACT',
+    zero_oi: 'ZERO OI',
+    oi_unavailable: 'OI UNAVAILABLE',
+    gamma_unavailable: 'GAMMA UNAVAILABLE',
+    computed: 'COMPUTED'
+  };
+  // Schema fact: config/gamma_stream_coverage_eligibility_v1.json
+  // The server stamp is mandatory. A missing or malformed stamp is ineligible.
+  // There is no client-side identity parser.
+  var STREAM_COVERAGE_ELIGIBILITY_SCHEMA = 'gamma_stream_coverage_eligibility_v1';
+  var _surfaceRequest = null;
+  function beginSurfaceRequest(ticker, gen) {
+    if (arguments.length === 0) {
+      _surfaceRequest = null;
+      return null;
+    }
+    _surfaceRequest = { ticker: ticker == null ? '' : String(ticker), gen: gen };
+    return _surfaceRequest;
+  }
+  function cellHasContractIdentity(row, colIdx, cellState) {
+    return !!(cellState && cellState.has_contract_identity === true);
+  }
+
+  function canonicalCurrentSpot(surface) {
+    if (!surface || !Object.prototype.hasOwnProperty.call(surface, 'current_spot')) return NaN;
+    if (surface.current_spot == null) return NaN;
+    var n = Number(surface.current_spot);
+    return isFinite(n) ? n : NaN;
+  }
+  function currentSpotUnusable(surface) {
+    if (!isFinite(canonicalCurrentSpot(surface))) return true;
+    var st = surface.current_spot_state;
+    return st === 'stale' || st === 'unavailable';
+  }
+  function classifyHeatmapCell(row, colIdx) {
+    if (row && Array.isArray(row.value_states) && row.value_states[colIdx] != null) {
+      return String(row.value_states[colIdx]);
+    }
+    var contracts = (row && row.contracts && row.contracts[colIdx]) || {};
+    var listed = !!(contracts.call || contracts.put);
+    if (!listed) return VALUE_NO_CONTRACT;
+    var oi = (row && row.oi && row.oi[colIdx]) || null;
+    var gex = row && row.gex ? row.gex[colIdx] : null;
+    var gexNum = (gex != null && !isNaN(Number(gex)));
+    if (oi && typeof oi === 'object') {
+      var sides = [];
+      if (contracts.call) sides.push(oi.call);
+      if (contracts.put) sides.push(oi.put);
+      if (sides.length && sides.every(function (v) { return v == null; })) return VALUE_OI_UNAVAILABLE;
+      if (sides.length && sides.every(function (v) { return v != null && Number(v) === 0; })) return VALUE_ZERO_OI;
+      if (sides.some(function (v) { return v == null; }) &&
+          sides.every(function (v) { return v == null || Number(v) === 0; })) {
+        return VALUE_OI_UNAVAILABLE;
+      }
+      if (!gexNum && sides.some(function (v) { return v != null && Number(v) > 0; })) {
+        return VALUE_GAMMA_UNAVAILABLE;
+      }
+    }
+    if (gexNum) return VALUE_COMPUTED;
+    return VALUE_OI_UNAVAILABLE;
+  }
+  function tallyVisibleValueStates(cells, rowIdxs, colIdxs) {
+    var counts = {
+      no_contract: 0, zero_oi: 0, oi_unavailable: 0, gamma_unavailable: 0, computed: 0
+    };
+    (rowIdxs || []).forEach(function (i) {
+      (colIdxs || []).forEach(function (j) {
+        var st = classifyHeatmapCell((cells || [])[i], j);
+        if (!Object.prototype.hasOwnProperty.call(counts, st)) st = VALUE_NO_CONTRACT;
+        counts[st] += 1;
+      });
+    });
+    counts.total = counts.no_contract + counts.zero_oi + counts.oi_unavailable +
+      counts.gamma_unavailable + counts.computed;
+    return counts;
+  }
+  function columnValueLabel(cells, colIdx, dteText) {
+    var counts = { no_contract: 0, zero_oi: 0, oi_unavailable: 0, gamma_unavailable: 0, computed: 0 };
+    (cells || []).forEach(function (row) {
+      var st = classifyHeatmapCell(row, colIdx);
+      if (Object.prototype.hasOwnProperty.call(counts, st)) counts[st] += 1;
+    });
+    var listed = counts.zero_oi + counts.oi_unavailable + counts.gamma_unavailable + counts.computed;
+    if (listed === 0) return 'NO CONTRACT';
+    if (counts.computed > 0) return dteText;
+    if (counts.zero_oi === listed) return 'ZERO OI';
+    if (counts.oi_unavailable === listed) return 'OI UNAVAILABLE';
+    if (counts.gamma_unavailable === listed) return 'GAMMA UNAVAILABLE';
+    return dteText || 'MIXED';
+  }
+
+  function _currentHeatmapUnusable(surface) {
+    return !surface || surface.available === false || surface.source === 'banked_morning_reference'
+      || currentSpotUnusable(surface);
+  }
+
+  function selectLiveHeatmap(surface, scopeMode, host, expFilter, panAnchor) {
+    if (_currentHeatmapUnusable(surface)) {
+      throw new Error('selectLiveHeatmap: current heatmap has no live selected-contract set');
+    }
+    var cells = surface.cells;
+    if (!Array.isArray(cells)) {
+      throw new Error('selectLiveHeatmap: cells array required');
+    }
+    var strikes = surface.strikes || [];
+    var exps = surface.expirations || [];
+    if (cells.length && strikes.length && cells[0] && cells[0].contracts != null
+        && !Array.isArray(cells[0].contracts)) {
+      throw new Error('selectLiveHeatmap: cell.contracts must be an array');
+    }
+    if (cells.length && exps.length && !cells.some(function (c) {
+      return c && Array.isArray(c.contracts);
+    })) {
+      throw new Error('selectLiveHeatmap: cell.contracts missing at schema boundary');
+    }
+    var ES = (typeof window !== 'undefined' && window.EdShell) ? window.EdShell : null;
+    var prev = ES && ES.getState ? ES.getState().scope : null;
+    if (ES && ES.setScope && scopeMode) ES.setScope(scopeMode);
+    var spot = canonicalCurrentSpot(surface);
+    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, panAnchor != null ? panAnchor : spot)
+      : { idx: strikes.map(function (_s, i) { return i; }), shown: strikes.length, total: strikes.length };
+    var scope = scopeMode || ((ES && ES.getScope) ? ES.getScope() : 'auto');
+    var allCols = exps.map(function (_e, ix) { return ix; });
+    var unexpired = allCols.filter(function (ix) { return exps[ix] && exps[ix].expired !== true; });
+    var viewCols, expiredHidden = 0, filterMissing = false;
+    if (expFilter) {
+      viewCols = allCols.filter(function (ix) { return exps[ix] && exps[ix].expiry === expFilter; });
+      filterMissing = !viewCols.length;
+    } else if (scope === 'auto') {
+      var pool = unexpired.length ? unexpired : allCols;
+      viewCols = pool.slice(0, autoColCount(host));
+      expiredHidden = allCols.length - unexpired.length;
+    } else if (scope === 'wider') {
+      var expiredCols = allCols.filter(function (ix) { return exps[ix] && exps[ix].expired === true; });
+      viewCols = unexpired.concat(expiredCols).slice(0, 2 * autoColCount(host)).sort(function (a, b) { return a - b; });
+    } else {
+      viewCols = allCols;
+    }
+    if (ES && ES.setScope && prev && scopeMode && prev !== scopeMode) ES.setScope(prev);
+    var symbols = filterMissing ? [] : _heatmapVisibleContracts(cells, rowSel, viewCols);
+    return {
+      cells: cells, rowSel: rowSel, viewCols: viewCols, symbols: symbols,
+      filterMissing: filterMissing, expiredHidden: expiredHidden, spot: spot,
+      strikes: strikes, exps: exps, scope: scope
+    };
+  }
+
   function renderSurface(host, surface) {
+    if (!surfaceTickerAdmitted(surface)) {
+      rejectForeignGammaSurface(host, surface,
+        'response ticker does not match the current symbol');
+      return;
+    }
     // Independent-review finding (2026-09-12, state-authority review): "actual Schwab
     // updates visibly change the appropriate values and colors" -- a full unconditional
     // table rebuild on every update changes the DOM correctly but gives a trader no cue
@@ -260,6 +427,25 @@
     // surface, so the diff below compares against what was actually on screen a moment
     // ago, not the surface currently being rendered.
     var _priorSurfaceForFlash = _lastSurface;
+    if (surface && surface.source === 'banked_morning_reference') {
+      surface = {
+        ticker: surface.ticker, symbol: surface.symbol || surface.ticker,
+        requested_ticker: surface.requested_ticker,
+        available: false, live: false, stale: true, source: 'unavailable',
+        warming: surface.warming, requested: surface.requested, on_board: surface.on_board,
+        et_date: surface.et_date,
+        reason: 'historical morning Gamma is not the current heatmap — use Exposure history'
+      };
+    } else if (surface && surface.available !== false && currentSpotUnusable(surface)) {
+      surface = {
+        ticker: surface.ticker, symbol: surface.symbol || surface.ticker,
+        requested_ticker: surface.requested_ticker,
+        available: false, live: false, stale: true, source: 'unavailable',
+        warming: surface.warming, requested: surface.requested, on_board: surface.on_board,
+        et_date: surface.et_date,
+        reason: 'current LAST_PRICE is UNAVAILABLE — heatmap will not substitute surface.spot'
+      };
+    }
     if (!surface || surface.available === false) {
       // Independent-review finding (2026-09-13), REPRODUCED: an unavailable result (no
       // chain, delisted, not on board) never cleared the heatmap's own streamed-contract
@@ -269,24 +455,32 @@
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         window.EdStream.setAdditionalContracts([], 'heatmap');
       }
-      ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from a prior available render
+      ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {}; _lastSelected = null;
       // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
-      // lifecycle"): _lastSurface/_lastRevision used to survive an unavailable result
-      // untouched (this branch returned before either was ever assigned), so a LATER
-      // presentation-only event -- ed:theme, or the "else load()" branches missing entirely
-      // -- reused the LAST AVAILABLE surface as if it were still current: ed:theme's
+      // lifecycle"): _lastSurface used to survive an unavailable result untouched (this
+      // branch returned before it was ever assigned), so a LATER presentation-only event
+      // -- ed:theme, or the "else load()" branches missing entirely -- reused the LAST
+      // AVAILABLE surface as if it were still current: ed:theme's
       // `if (h && _lastSurface) renderSurface(h, _lastSurface)` repainted the stale data as
       // available AND reissued its streamed-contract demand, resurrecting exactly the
-      // subscription this branch just cleared. Fixed by invalidating the cache here too --
-      // a presentation-only re-render has nothing left to reuse and correctly falls back to
-      // a fresh load() instead of resurrecting stale state.
-      _lastSurface = null; _lastRevision = null;
+      // subscription this branch just cleared. _lastSurface stays null so a presentation
+      // re-render has nothing to reuse. The DATA revision (source/et_date/reason/ticker)
+      // is kept so a STATUS-only change (warming → requested) can patch the banner without
+      // rebuilding the placeholder. A different et_date or reason is a DATA change and
+      // rebuilds.
+      _lastSurface = null; _lastSelected = null;
       // Independent-review finding, REPRODUCED: this branch invalidates every other piece of
       // render state for the reason stated above, but left _panAnchor/_panTicker untouched --
       // pan a strike, ticker goes briefly unavailable (delisted tick, no chain), becomes
       // available again for the SAME ticker, and the stale manual pan silently reapplies
       // instead of the window re-centering on live spot like every other invalidated field.
       _panAnchor = null; _panTicker = null;
+      var unavailRev = surfaceRevision(surface);
+      if (unavailRev && unavailRev === _lastRevision && host.querySelector('.placeholder')) {
+        applyStatus(host, surface);
+        return;
+      }
+      _lastRevision = unavailRev;
       // #1-A: even with no surface to draw, disclose the collection status honestly — a requested
       // symbol that is NOT on the board must read "not currently active for this symbol", never a
       // promised refresh. buildBanner is the ONE place that wording lives (warming/requested/board).
@@ -308,52 +502,18 @@
         '</div>' + srcNote + '</div>';
       return;
     }
-    var exps = surface.expirations || [], strikes = surface.strikes || [], cells = surface.cells || [];
-    // Independent review, 2026-09-16 (CORRECTED): Number(surface.spot) fabricates a real,
-    // finite 0 when surface.spot is explicitly null (Number(null) === 0), which then passes
-    // the isFinite(spot) guard below as if it were a genuine price (see ed-gamma-chart.js's
-    // identical fix). Absence checked explicitly before numeric conversion.
-    var spot = surface.spot == null ? NaN : Number(surface.spot);
-    // A manual strike-axis pan persists across re-renders of the SAME ticker (same contract
-    // as _view/_pin elsewhere); switching tickers has nothing meaningful to persist against.
-    if (_panTicker !== surface.ticker) { _panAnchor = null; _panTicker = surface.ticker; }
     var ES = window.EdShell;
-    // #5: expiry filter (from the canonical /api/expiries dropdown) is PRESENTATION — it selects which
-    // already-computed expiry column(s) to show; it never recomputes a value.
     var expFilter = (ES && ES.getExpiry) ? ES.getExpiry() : null;
     var scope = (ES && ES.getScope) ? ES.getScope() : 'auto';
-    // Operator field-inventory audit (2026-09-13): which of the SAME surface's own
-    // gex/dex/oi/volume fields this render presents -- see _measureRow's own comment.
     var measure = (ES && ES.getMeasure) ? ES.getMeasure() : 'gex';
-    // VIEWPORT (real-data repair 2026-09-10): the canonical surface is served complete (the live SPY
-    // reference is 116 strikes x 16 expirations) and the heatmap used to draw ALL of it, collapsing
-    // the approved ~11-row workstation into an unreadable dump. The display now SELECTS a viewport:
-    //   rows    = the ONE shell scope policy (EdShell.scopeSelect: Auto 11 strikes around spot,
-    //             Wider 23, All available = every canonical strike, scrolled at the same row height);
-    //   columns = the expiry filter's column, else in Auto the nearest UNEXPIRED expirations that fit
-    //             legibly (server-stamped `expired`; a prior session's 0DTE is never shown as current
-    //             structure), else every canonical column with expired ones labelled EXPIRED.
-    // Selection only: every cell value is the API value; nothing is dropped from the payload, and the
-    // counts (canonical vs shown) are disclosed in the header and the scope note.
-    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, _panAnchor != null ? _panAnchor : spot)
-      : { idx: strikes.map(function (_s, i) { return i; }), shown: strikes.length, total: strikes.length };
-    var allCols = exps.map(function (_e, ix) { return ix; });
-    var unexpired = allCols.filter(function (ix) { return exps[ix].expired !== true; });
-    var viewCols, expiredHidden = 0, filterMissing = false;
-    if (expFilter) {
-      viewCols = allCols.filter(function (ix) { return exps[ix].expiry === expFilter; });
-      filterMissing = !viewCols.length;
-    } else if (scope === 'auto') {
-      var pool = unexpired.length ? unexpired : allCols;      // nothing unexpired: show what exists, labelled
-      viewCols = pool.slice(0, autoColCount(host));
-      expiredHidden = allCols.length - unexpired.length;
-    } else if (scope === 'wider') {
-      // twice the Auto column budget: nearest unexpired first, then expired (labelled); the grid scrolls
-      var expiredCols = allCols.filter(function (ix) { return exps[ix].expired === true; });
-      viewCols = unexpired.concat(expiredCols).slice(0, 2 * autoColCount(host)).sort(function (a, b) { return a - b; });
-    } else {
-      viewCols = allCols;                                       // every canonical column, scrolled at legible width
-    }
+    if (_panTicker !== surface.ticker) { _panAnchor = null; _panTicker = surface.ticker; }
+    var sel = selectLiveHeatmap(surface, scope, host, expFilter, _panAnchor);
+    var exps = sel.exps, strikes = sel.strikes, cells = sel.cells;
+    var spot = sel.spot;
+    var rowSel = sel.rowSel, viewCols = sel.viewCols;
+    var expiredHidden = sel.expiredHidden, filterMissing = sel.filterMissing;
+    _lastSelected = sel;
+    _lastSpotIdentity = spotIdentityFromSurface(surface);
     // Independent-review finding (2026-09-13), REPRODUCED, then a FOURTH review overturned the
     // first fix: falling back to `viewCols = allCols` avoided a blank grid, but the operator's
     // own requirement is that a selected expiry absent from the surface reads UNAVAILABLE for
@@ -431,7 +591,7 @@
     // Schwab updates" -- Auto's own former front-column-only policy is retired; demand now
     // always covers every currently-VIEWED column, in every scope, the same rule Wider/All
     // and an explicit expiry filter already used.
-    var demandCols = viewCols;
+    var demandCols = sel.viewCols;
     // Independent-review finding (2026-09-13), REPRODUCED: the column-header tooltip
     // claimed "sub-second streaming updates active for this column" the instant a column
     // was in `demandCols` -- but `demandCols` only names what THIS module ASKED for; the
@@ -461,19 +621,26 @@
     // refuses or throttles at some real scale, that will surface as those specific symbols
     // never reaching 'live' (per-symbol evidence, see the render loop below) -- honest,
     // proven, reportable fact, never a client-side guess standing in for one.
-    var frontDemand = [], _newSymbolsByCol = {};
+    var frontDemand = sel.symbols.slice();
+    var _newSymbolsByCol = {};
     if (demandCols.length) {
       var byCol = _heatmapVisibleContractsByColumn(cells, rowSel, demandCols);
-      var seen = {};
       for (var _bc = 0; _bc < byCol.length; _bc++) {
-        var entry = byCol[_bc];
-        entry.symbols.forEach(function (s) { if (!seen[s]) { seen[s] = true; frontDemand.push(s); } });
-        _newSymbolsByCol[entry.col] = entry.symbols;
+        _newSymbolsByCol[byCol[_bc].col] = byCol[_bc].symbols;
       }
     }
     var demandedCols = Object.keys(_newSymbolsByCol).map(Number);
     _demandSymbolsByCol = _newSymbolsByCol;
-    if (window.EdStream && window.EdStream.setAdditionalContracts) {
+    var visibleHaveContracts = false;
+    (cells || []).forEach(function (r) {
+      ((r && r.contracts) || []).forEach(function (c) {
+        if (c && (c.call || c.put)) visibleHaveContracts = true;
+      });
+    });
+    if (!frontDemand.length && visibleHaveContracts) {
+      // Silent All/Wider/Auto collapse: the surface named contracts but the extractor
+      // produced none. Refuse to POST [] — keep the prior heatmap demand.
+    } else if (window.EdStream && window.EdStream.setAdditionalContracts) {
       var myDemandGen = ++_demandGen;
       demandedCols.forEach(function (c) { _demandStateByCol[c] = frontDemand.length ? 'pending' : 'none'; });
       window.EdStream.setAdditionalContracts(frontDemand, 'heatmap').then(function (res) {
@@ -546,15 +713,20 @@
       // above), so a column's tooltip only ever distinguishes expired vs the real
       // accept/observed/rejected outcome (demandTitle), never a client-guessed capacity cut.
       var streamed = !!demandColSet[j];
-      var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var dteText = (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var dte = expired ? 'EXPIRED' : columnValueLabel(cells, j, dteText);
       var title = expired
         ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
+        : (dte !== dteText && dte !== 'EXPIRED')
+          ? ('column classified from cell states as ' + dte + ' — not inferred from null GEX')
         : demandTitle(streamed, j);
-      tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + (streamed ? ' stream-demand' : '') + '"' +
+      tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') +
+        (dte !== dteText && !expired ? ' empty-oi' : '') + (streamed ? ' stream-demand' : '') + '"' +
         ' data-col="' + j + '" title="' + escapeHtml(title) + '"' +
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
+    var valueStateCounts = { no_contract: 0, zero_oi: 0, oi_unavailable: 0, gamma_unavailable: 0, computed: 0 };
     // Just-updated flash (state-authority review, 2026-09-12): a cell whose value
     // genuinely differs from what THIS SAME (strike, expiry) showed a moment ago gets a
     // one-shot CSS highlight (see .hcell.flash-update in console.html) -- the ONLY signal
@@ -581,6 +753,11 @@
         // tooling that read a heatmap cell's value -- it now holds whichever measure is
         // selected (gex/dex/oi/volume), not literally GEX specifically.
         var v = mrow[j2];
+        var valueState = classifyHeatmapCell(row, j2);
+        if (Object.prototype.hasOwnProperty.call(valueStateCounts, valueState)) {
+          valueStateCounts[valueState] += 1;
+        }
+        if (valueState === VALUE_ZERO_OI) v = 0;
         // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: "Always
         // display the best valid data available... Never blank valid data, narrow the view,
         // or choose what I am allowed to inspect." `row.stream[j2]` (server.py's
@@ -598,6 +775,7 @@
         // has, unlabelled.
         var cellState = (row.stream || [])[j2];
         var liveState = cellState ? cellState.state : null;
+        var hasIdentity = cellHasContractIdentity(row, j2, cellState);
         var st = cellStyle(v, maxAbs, heat);
         var priorKey = row.strike + '|' + exps[j2].expiry;
         var justChanged = _priorSurfaceForFlash &&
@@ -622,23 +800,26 @@
               (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
           : '';
+        var valueLabel = VALUE_LABEL[valueState] || valueState;
+        var cellText = (valueState === VALUE_COMPUTED || valueState === VALUE_ZERO_OI)
+          ? formatMeasureValue(v, measure)
+          : valueLabel;
+        var valueTitle = valueState === VALUE_ZERO_OI ? 'ZERO OI: authoritative open interest is 0; GEX is the computed $0'
+          : valueState === VALUE_NO_CONTRACT ? 'NO CONTRACT: this strike is not listed on this expiry'
+          : valueState === VALUE_OI_UNAVAILABLE ? 'OI UNAVAILABLE: a listed contract is missing open interest'
+          : valueState === VALUE_GAMMA_UNAVAILABLE ? 'GAMMA UNAVAILABLE: open interest is present but Gamma is unusable'
+          : '';
+        var combinedTitle = [valueTitle, stateTitle].filter(Boolean).join(' · ');
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
           (justChanged ? ' flash-update' : '') + (liveState ? ' state-' + liveState : '') +
+          ' value-' + valueState +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
-          (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
+          'data-has-contract-identity="' + (hasIdentity ? '1' : '0') + '" ' +
+          'data-value-state="' + valueState + '" ' +
+          (combinedTitle ? 'title="' + escapeHtml(combinedTitle) + '" ' : '') +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          // Independent-review finding, REPRODUCED (live SPX, 2026-09-14): a cell with no
-          // usable OI rendered as a BLANK td, visually indistinguishable from "still loading"
-          // or "outside the streamed window" -- an operator scanning the grid had no way to
-          // tell "no data here" from "nothing painted yet". A blank cell also hid the exact
-          // defect this session found (Schwab's wide multi-expiry chain returning OI=0 for
-          // every SPX contract): the grid looked merely quiet, not wrong. An explicit em dash
-          // makes absence a visible, deliberate statement -- reserved for a cell with NO valid
-          // computed value at all (has_oi=false), never for one that merely is not currently
-          // confirmed live-streamed (that cell still shows its real, valid, honestly-labelled
-          // snapshot value, per the operator's final directive above).
-          (st.empty ? '—' : formatMeasureValue(v, measure)) + '</td>';
+          cellText + '</td>';
       }
       tbl += '</tr>';
     });
@@ -649,12 +830,21 @@
     // itself (demandCols above) -- every visible column is demanded in full; per-cell
     // live/partial/stale/unavailable disclosure (the render loop above) is now the honest
     // signal for what is and is not actually confirmed live, not a client-guessed ceiling.
+    var stateBits = [];
+    if (valueStateCounts.no_contract) stateBits.push(valueStateCounts.no_contract + ' NO CONTRACT');
+    if (valueStateCounts.zero_oi) stateBits.push(valueStateCounts.zero_oi + ' ZERO OI');
+    if (valueStateCounts.oi_unavailable) stateBits.push(valueStateCounts.oi_unavailable + ' OI UNAVAILABLE');
+    if (valueStateCounts.gamma_unavailable) stateBits.push(valueStateCounts.gamma_unavailable + ' GAMMA UNAVAILABLE');
+    if (valueStateCounts.computed) stateBits.push(valueStateCounts.computed + ' COMPUTED');
     var colsTxt = viewCols.length + ' of ' + exps.length + ' expirations' +
+      (stateBits.length ? (' · ' + stateBits.join(', ')) : '') +
       (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '') +
       // A manual pan is never silent: the strike window is not following live spot until the
       // operator double-clicks the strike axis (or switches ticker) to resume auto-centring.
       (_panAnchor != null ? ' · PANNED to ' + fmtStrike(_panAnchor) + ' — not following spot; double-click the strike axis to resume' : '');
-    var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt }) : '';
+    var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt })
+      : ('<div class="scope-note"><span>' + escapeHtml(rowSel.shown + ' of ' + strikes.length +
+        ' strikes · ' + colsTxt) + '</span></div>');
     // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the
     // dollar value is printed in every cell — shade = |GEX$|), matching the approved reference.
     // Measure-adaptive legend labels: gex/dex are signed dealer-net measures (call-side
@@ -695,7 +885,7 @@
       window.EdShell.setStrike(strikes[spotIdx], _fe);
     }
     applyStrikeHighlight(host);
-    updateScope(surface);
+    updateScope(surface, host);
   }
 
   function applyStrikeHighlight(host) {
@@ -721,7 +911,7 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
   // ---- fetch + render, guarded (latest-wins) ----
-  var _lastSurface = null, _lastRevision = null;
+  var _lastSurface = null, _lastRevision = null, _lastSelected = null, _lastSpotIdentity = null;
   // Streaming-demand confirmation state (2026-09-13) — see the demand-dispatch block in
   // renderSurface for why this exists: `demandCols` is only a REQUEST, not a guarantee.
   //
@@ -785,7 +975,11 @@
     // DATA revision only — decides whether the expensive TABLE rebuilds. Status (live/stale/warming/
     // age) is deliberately NOT here; it is refreshed every time via applyStatus. et_date discriminates
     // banked captures (whose chain/spot as-of are null) so a new morning capture cannot reuse the grid.
-    if (!s || s.available === false) return 'unavailable|' + (s && s.source);
+    if (!s || s.available === false) {
+      // STATUS (warming/requested/stale/age) is deliberately excluded — same DATA identity
+      // with a collection-state change must keep the placeholder and only refresh the banner.
+      return ['unavailable', s && s.source, s && s.et_date, s && s.reason, s && (s.ticker || s.symbol)].join('|');
+    }
     // ticker + expiry filter are part of WHICH cells are shown: a symbol change or an expiry-column
     // change must always rebuild the grid, never reuse a prior symbol's/expiry's table.
     var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
@@ -848,7 +1042,7 @@
     if (b) host.insertAdjacentHTML('afterbegin', b);
     var wrap = host.querySelector('.heat-wrap');
     if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
-    updateScope(surface);
+    updateScope(surface, host);
   }
   // Independent-review finding (2026-09-16, follow-up mandate): server.py's stream_coverage
   // is computed over the WHOLE canonical surface (every strike x every expiry with a real
@@ -860,16 +1054,21 @@
   // stamped on every rendered .hcell by the SAME per-cell state the server already
   // disclosed) -- an exact match to what is on screen by construction, never a second,
   // independently-derived windowing calculation that could drift from the real one.
-  function _visibleCellCoverage() {
-    var host = document.getElementById('heatBody');
+  function _visibleCellCoverage(host) {
     var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, unavailable: 0 };
-    var cells = host ? host.querySelectorAll('.hcell[data-cell-state]') : [];
+    host = host || document.getElementById('heatBody');
+    // Eligible stream cells only: the server stamp (data-has-contract-identity=1)
+    // is mandatory. This count is the VISIBLE DOM surface, never the canonical
+    // server total_eligible_cells. NO CONTRACT cells remain labelled and excluded.
+    var cells = host ? host.querySelectorAll('.hcell[data-cell-state][data-has-contract-identity="1"]') : [];
     for (var i = 0; i < cells.length; i++) {
       var st = cells[i].getAttribute('data-cell-state');
       if (Object.prototype.hasOwnProperty.call(counts, st)) counts[st]++;
     }
     var total = cells.length;
     return {
+      scope: 'visible_surface',
+      schema: STREAM_COVERAGE_ELIGIBILITY_SCHEMA,
       total_visible_cells: total,
       live: counts.live, partial: counts.partial, stale: counts.stale,
       pending: counts.pending, daemon_unavailable: counts.daemon_unavailable,
@@ -879,12 +1078,78 @@
     };
   }
 
-  function updateScope(surface) {   // lightweight: only the age/scope tag in the panel header
-    // Independent review, 2026-09-16 (CORRECTED): see the identical fix in the sibling render
-    // function above -- Number(surface.spot) fabricates a real, finite 0 when surface.spot is
-    // explicitly null, which then passes the isFinite(spot) guard below as if it were real.
-    var strikes = surface.strikes || [], exps = surface.expirations || [],
-        spot = surface.spot == null ? NaN : Number(surface.spot);
+  function stampHeatScopeSpotIdentity(el, surface) {
+    if (!el) return;
+    var stamp = window.EdSpotIdentity && window.EdSpotIdentity.stamp;
+    if (!stamp) return;
+    stamp(el, {
+      ticker: surface && surface.ticker != null ? surface.ticker : '',
+      last_price: isFinite(canonicalCurrentSpot(surface)) ? canonicalCurrentSpot(surface) : '',
+      last_price_native_ts: surface ? surface.last_price_native_ts : null,
+      last_price_received_ts: surface ? surface.last_price_received_ts : null,
+      source: surface && Object.prototype.hasOwnProperty.call(surface, 'current_spot_source')
+        ? surface.current_spot_source : null,
+      generation: surface ? surface.current_spot_generation : null
+    });
+  }
+  function spotIdentityFromSurface(surface) {
+    return {
+      consumer: 'gamma-surface',
+      ticker: surface && surface.ticker != null ? surface.ticker : null,
+      last_price: isFinite(canonicalCurrentSpot(surface)) ? canonicalCurrentSpot(surface) : null,
+      last_price_native_ts: surface ? surface.last_price_native_ts : null,
+      last_price_received_ts: surface ? surface.last_price_received_ts : null,
+      source: surface && Object.prototype.hasOwnProperty.call(surface, 'current_spot_source')
+        ? surface.current_spot_source : null,
+      generation: surface && surface.current_spot_generation != null ? surface.current_spot_generation : null
+    };
+  }
+  function _nonEmptyString(v) {
+    return typeof v === 'string' && v.trim() !== '';
+  }
+  function surfaceTickerAdmitted(surface, requestTicker, requestGen) {
+    var ES = window.EdShell;
+    if (!ES || typeof ES.getState !== 'function' || typeof ES.getTickerGeneration !== 'function') {
+      return false;
+    }
+    var reqTicker = requestTicker;
+    var reqGen = requestGen;
+    if (reqTicker == null || reqGen == null) {
+      if (!_surfaceRequest) return false;
+      if (reqTicker == null) reqTicker = _surfaceRequest.ticker;
+      if (reqGen == null) reqGen = _surfaceRequest.gen;
+    }
+    if (!_nonEmptyString(reqTicker)) return false;
+    if (reqGen == null || !isFinite(Number(reqGen))) return false;
+    if (ES.getTickerGeneration() !== reqGen) return false;
+    var current = ES.getState() ? ES.getState().ticker : null;
+    if (!_nonEmptyString(current) || current !== reqTicker) return false;
+    if (!surface || typeof surface !== 'object') return false;
+    if (!_nonEmptyString(surface.ticker)) return false;
+    if (!_nonEmptyString(surface.canonical_ticker)) return false;
+    if (surface.ticker !== surface.canonical_ticker) return false;
+    if (typeof surface.requested_ticker !== 'string') return false;
+    if (surface.requested_ticker !== reqTicker) return false;
+    if (surface.requested_ticker !== current) return false;
+    return true;
+  }
+  function rejectForeignGammaSurface(host, surface, reason) {
+    if (window.EdStream && window.EdStream.setAdditionalContracts) {
+      window.EdStream.setAdditionalContracts([], 'heatmap');
+    }
+    ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};
+    _lastSurface = null; _lastRevision = null; _lastSelected = null; _lastSpotIdentity = null;
+    if (!host) return;
+    if (host.querySelector && host.querySelector('.placeholder')) return;
+    host.innerHTML = '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
+      '<div class="sm">' + escapeHtml(reason || 'ticker identity rejected — waiting for this symbol\'s current LAST_PRICE-backed surface') +
+      '</div></div>';
+  }
+
+  function updateScope(surface, host) {   // lightweight: only the age/scope tag in the panel header
+    // Current heatmap header uses LAST_PRICE-backed current_spot only. A missing
+    // current_spot is UNAVAILABLE, never coerced through Number(null) to a fake 0.
+    var strikes = surface.strikes || [], exps = surface.expirations || [];
     // Audit finding #6 (2026-09-16), FIXED, THEN CORRECTED (follow-up mandate): "LIVE" used
     // to mean only "surface.source == terrain_live_cache" -- true for nearly every live-
     // pathway surface with NO per-cell coverage requirement at all. Gating it on coverage
@@ -894,7 +1159,7 @@
     // reads "STREAMING·NN%", a wholly unconfirmed one "WARMING" -- neither contains the
     // literal word LIVE, so a viewer scanning for that one word can never mistake a partial
     // reading for a complete one.
-    var cov = _visibleCellCoverage();
+    var cov = _visibleCellCoverage(host);
     var liveWord;
     if (cov.total_visible_cells === 0) {
       liveWord = 'WARMING';                       // no visible cell has confirmed identity yet
@@ -904,7 +1169,7 @@
       liveWord = 'STREAMING·' + cov.live_pct.toFixed(0) + '%';
     }
     var srcLabel = surface.source === 'terrain_live_cache' ? (liveWord + (surface.complete === false ? '·window' : ''))
-      : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
+      : (surface.source || 'UNAVAILABLE');
     var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
     var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
     var el = document.getElementById('heatScope');
@@ -912,7 +1177,18 @@
       var shownRows = document.querySelectorAll('#heatBody .heat tbody tr').length;
       var shownCols = document.querySelectorAll('#heatBody .heat thead .hexp').length;
       var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
-      el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
+      var currentSpot = canonicalCurrentSpot(surface);
+      var spotNote = isFinite(currentSpot) ? currentSpot.toFixed(2) : 'UNAVAILABLE';
+      var genNote = '';
+      if (isFinite(currentSpot) && surface.spot_is_current === false) {
+        genNote = ' · UPDATING';
+      }
+      if (surface.current_spot_generation != null && surface.computed_from_spot_generation != null
+          && surface.current_spot_generation !== surface.computed_from_spot_generation) {
+        genNote = ' · UPDATING';
+      }
+      el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + spotNote + genNote + ' · ' + srcLabel + age + basis;
+      stampHeatScopeSpotIdentity(el, surface);
       // Exact coverage breakdown on hover -- counts and percentages for live/partial/
       // stale/pending/daemon-unavailable/rejected/unavailable of the VISIBLE cells
       // specifically (not the canonical surface's own, possibly much larger, cell count).
@@ -950,7 +1226,8 @@
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
     var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || 'SPY') === ticker;
+    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap'
+      && _nonEmptyString(s.ticker) && s.ticker === ticker;
   }
   // Only the actual network fetch is coalesced. The "leaving the heatmap" cleanup below is
   // synchronous and state-authority-visible (it releases streamed-contract demand) -- it must
@@ -966,13 +1243,35 @@
   function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
+    if (!window.EdShell || typeof window.EdShell.getState !== 'function'
+        || typeof window.EdShell.getTickerGeneration !== 'function') {
+      rejectForeignGammaSurface(host, {}, 'missing EdShell identity authority');
+      return;
+    }
+    if (!_nonEmptyString(ticker)) {
+      rejectForeignGammaSurface(host, {}, 'malformed ticker');
+      return;
+    }
+    var requestGen = window.EdShell.getTickerGeneration();
+    beginSurfaceRequest(ticker, requestGen);
     host.setAttribute('aria-busy', 'true');
     return fetch('/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
+      .then(function (d) {
+        if (!stillCurrent(ticker)) return;
+        if (!surfaceTickerAdmitted(d, ticker, requestGen)) {
+          rejectForeignGammaSurface(host, d,
+            'response ticker does not match the request generation');
+          return;
+        }
+        renderSurface(host, d);
+      })
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;   // superseded by a newer ticker -- that load renders instead
-        if (stillCurrent(ticker)) renderSurface(host, { available: false, reason: 'no console serving /api/options/gamma-surface' });
+        if (stillCurrent(ticker)) renderSurface(host, {
+          ticker: ticker, requested_ticker: ticker, canonical_ticker: ticker, available: false,
+          reason: 'no console serving /api/options/gamma-surface'
+        });
       });
   }
   var _pendingTicker = null;
@@ -993,7 +1292,27 @@
       ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from the view just left
       return;
     }
-    _pendingTicker = st.ticker || 'SPY';
+    if (!_nonEmptyString(st.ticker)) {
+      rejectForeignGammaSurface(host, {}, 'malformed ticker');
+      return;
+    }
+    var nextTicker = st.ticker;
+    // Switching ticker while staying on the heatmap used to keep the OLD ticker's
+    // demanded contracts posted under the NEW ticker's context until the replacement
+    // surface arrived. Clear immediately — same instant discipline Strike Detail uses.
+    if (_pendingTicker != null && _pendingTicker !== nextTicker) {
+      if (window.EdStream && window.EdStream.setAdditionalContracts) {
+        window.EdStream.setAdditionalContracts([], 'heatmap');
+      }
+      ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};
+      _lastSurface = null; _lastRevision = null; _lastSelected = null; _lastSpotIdentity = null;
+      // Measured 2026-09-17 on :8322: setTicker(SPY) left QQQ's 207×32 grid and
+      // current_spot 715.76 on screen for the whole SPY fetch (~15s). The previous
+      // symbol's GEX is not this ticker's current surface — drop it immediately.
+      host.innerHTML = '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
+        '<div class="sm">ticker changed — waiting for this symbol\'s current LAST_PRICE-backed surface</div></div>';
+    }
+    _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);
   }
 
@@ -1031,5 +1350,38 @@
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
-  _root.EdGamma = { formatUsd: formatUsd, cellStyle: cellStyle, nearestStrikeIndex: nearestStrikeIndex, renderSurface: renderSurface };
+  function heatmapDemandSymbols(surface, scopeMode) {
+    if (arguments.length === 0) {
+      if (!_lastSelected) {
+        throw new Error('heatmapDemandSymbols: no selected-contract set');
+      }
+      return _lastSelected.symbols.slice();
+    }
+    return selectLiveHeatmap(surface, scopeMode, null, null, null).symbols.slice();
+  }
+  function heatmapVisibleContracts(cells, rowSel, cols) {
+    if (arguments.length === 0) {
+      if (!_lastSelected) {
+        throw new Error('heatmapVisibleContracts: no selected-contract set');
+      }
+      return _lastSelected.symbols.slice();
+    }
+    return _heatmapVisibleContracts(cells, rowSel, cols);
+  }
+  _root.EdGamma = { formatUsd: formatUsd, cellStyle: cellStyle, nearestStrikeIndex: nearestStrikeIndex,
+    renderSurface: renderSurface, selectLiveHeatmap: selectLiveHeatmap,
+    heatmapDemandSymbols: heatmapDemandSymbols,
+    heatmapVisibleContracts: heatmapVisibleContracts,
+    canonicalCurrentSpot: canonicalCurrentSpot,
+    currentSpotUnusable: currentSpotUnusable,
+    classifyHeatmapCell: classifyHeatmapCell,
+    tallyVisibleValueStates: tallyVisibleValueStates,
+    columnValueLabel: columnValueLabel,
+    beginSurfaceRequest: beginSurfaceRequest,
+    cellHasContractIdentity: cellHasContractIdentity,
+    visibleCellCoverage: _visibleCellCoverage,
+    surfaceTickerAdmitted: surfaceTickerAdmitted,
+    spotIdentityFromSurface: spotIdentityFromSurface,
+    lastSpotIdentity: function () { return _lastSpotIdentity ? Object.assign({}, _lastSpotIdentity) : null; },
+    STREAM_COVERAGE_ELIGIBILITY_SCHEMA: STREAM_COVERAGE_ELIGIBILITY_SCHEMA };
 })();

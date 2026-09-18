@@ -422,6 +422,7 @@
     return Promise.all([
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
+      fetchJson('/api/spot?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
       // snapshot=live -- see ed-liquidity-map.js's identical comment; the endpoint's own
       // default is a frozen pre-9:30ET snapshot, wrong for an "as of right now" synthesis page.
@@ -431,7 +432,7 @@
       fetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), signal),
     ]).then(function (results) {
       if (!stillRightNow(tk)) return;
-      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
+      var detect = results[0], levelsD = results[1], spotD = results[2], terrain = results[3], snap = results[4], strikesD = results[5];
       // Independent-review finding, REPRODUCED: this used to fall back to terrain.spot when
       // levelsD was absent -- both endpoints resolve spot via the same server-side
       // resolve_spot() authority today (server.py's get_levels/_reprice_cached_terrain), so
@@ -441,16 +442,30 @@
       // contract for spot ("every other surface carries the values out of the same snapshot");
       // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
       // instead of silently substituting a second source.
-      var spot = levelsD ? Number(levelsD.spot) : NaN;
+      var spot = spotD && spotD.spot != null ? Number(spotD.spot) : NaN;
+      var gen = (spotD && spotD.last_price_generation != null) ? spotD.last_price_generation : null;
+      var ident = (isFinite(spot) ? 'spot ' + num(spot) : '') +
+        (gen != null ? ' · LAST_PRICE gen ' + esc(gen) : '');
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
-        '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +
+        '</span><span class="fl-meta" data-last-price-gen="' + esc(gen == null ? '' : gen) + '">' + ident + '</span></div></div>' +
         '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD, spot) + confirmStage(terrain) + '</div>' +
         contextSummary(terrain, snap, spot) +
         migrationSection(strikesD, terrain, spot, tk) +
         '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
         'This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. ' +
         'THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>';
+      if (window.EdSpotIdentity && window.EdSpotIdentity.stamp) {
+        window.EdSpotIdentity.stamp(h, {
+          ticker: tk,
+          last_price: isFinite(spot) ? spot : null,
+          last_price_native_ts: spotD && spotD.last_price_native_ts,
+          last_price_received_ts: spotD && spotD.last_price_received_ts,
+          source: spotD && Object.prototype.hasOwnProperty.call(spotD, 'current_spot_source')
+            ? spotD.current_spot_source : null,
+          generation: gen
+        });
+      }
       wireMigrationChips(h, tk);
       var migEl = document.getElementById('tdMigration');
       if (migEl && _lastMig) wireMigInteraction(migEl, _lastMig.ascStrikes, _lastMig.win, tk);
