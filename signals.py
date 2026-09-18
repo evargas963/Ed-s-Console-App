@@ -199,6 +199,22 @@ def _pred_override_allowed() -> bool:
     return os.environ.get("ED_CONSOLE_ALLOW_PRED_OVERRIDE", "").strip() in ("1", "true", "TRUE", "yes", "YES")
 
 
+def _require_pred_override_source(pred_override: dict) -> str:
+    """The /api/prediction/override writer (server.py) always stamps a non-empty
+    'source' key before storing an override -- client-supplied, or its own explicit
+    'user' default. A dict reaching here without one is a producer contract violation,
+    not a case to paper over with a second, inconsistent default label."""
+    raw_src = pred_override.get("source")
+    if not raw_src:
+        raise ValueError(
+            "signals: prediction override is missing its source provenance label; "
+            "the /api/prediction/override writer always stamps one (client-supplied "
+            "or its own 'user' default) -- an override dict reaching here without it "
+            "is a producer contract violation, not something to label 'api'"
+        )
+    return str(raw_src)
+
+
 def _live_model_stack_horizons(ticker: str) -> tuple[tuple[str, ...], dict[str, dict[str, Any]]]:
     """Primary horizons always run; secondary diagnostics run only with active artifacts."""
     from ml_predict import _model_dir_for_ticker, reset_ml_infer_horizon_slug, set_ml_infer_horizon_slug
@@ -1616,7 +1632,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         direction = pred_override.get("direction")
         if direction in ("up", "flat", "down"):
             if _pred_override_allowed():
-                src = str(pred_override.get("source") or "api")
+                src = _require_pred_override_source(pred_override)
                 canonical = _debug_canonical_override(canonical, direction, src)
                 pred_override_applied = True
                 pred_override_source = src
