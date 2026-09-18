@@ -2701,7 +2701,7 @@ _RTH_GRANDFATHERED = frozenset({
     "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
     "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
     "tools/legacy/run_final_fused_vs_xgb_comparison_v1.py",
-    "tools/legacy/run_phase8_calibration_global_v1.py",
+    "tools/run_phase8_calibration_global_v1.py",
     "tools/legacy/study_pin_charm_v1.py",
     "tools/legacy/study_pin_direction_v1.py",
     "tools/legacy/study_pin_regime_cut_v1.py",

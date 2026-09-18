@@ -1,3 +1,6 @@
+# greek-faucet-ok: a textbook cross-check formula is the whole point of this script --
+# it must independently compute charm the "textbook" way to verify compute_net_charm's
+# bs_charm-faucet answer against it, not call the faucet itself.
 """Verify compute_net_charm's math against the textbook Black-Scholes charm (Haug)."""
 import math
 def phi(x): return math.exp(-0.5*x*x)/math.sqrt(2*math.pi)
