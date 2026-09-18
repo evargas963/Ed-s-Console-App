@@ -1,7 +1,7 @@
 {
   "scanned_by_type": {
     "json": 282,
-    "python": 1270,
+    "python": 1272,
     "javascript": 44,
     "sql": 2,
     "batch": 3,
@@ -28,81 +28,17 @@
     ".webmanifest": 1
   },
   "unscanned_unknown_extensions": [],
-  "candidate_count": 1115,
-  "adjudicated_this_pass": 50,
+  "candidate_count": 1109,
+  "adjudicated_this_pass": 49,
   "verdict_counts": {
-    "NOT_PROVEN": 1073,
+    "NOT_PROVEN": 1067,
     "NOT_FALLBACK": 39,
     "REPAIRED": 3
   },
   "candidates": [
     {
-      "file": "active_bundle_contract.py",
-      "line": 277,
-      "language": "python",
-      "pattern": "TERNARY",
-      "snippet": "src = source_run_manifest if isinstance(source_run_manifest, dict) else None",
-      "semantic_field_guess": "source_run_manifest",
-      "context": "write_bundle_integrity_manifest",
-      "normalized_expr": "IfExp(test=Call(func=Name(id='isinstance', ctx=Load()), args=[Name(id='source_run_manifest', ctx=Load()), Name(id='dict', ctx=Load())]), body=Name(id='source_run_manifest', ctx=Load()), orelse=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
-      "fingerprint": "ca1d67243694a33021ff7c5ffa26b8849b684b3da861c455f53925e996669478",
-      "id": "FB-ca1d672436",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
-    },
-    {
       "file": "adaptive_similarity_engine.py",
-      "line": 706,
-      "language": "python",
-      "pattern": "DICT_GET_DEFAULT",
-      "snippet": "relaxed = ORDERING_PRESETS.get(preset, frozenset())",
-      "semantic_field_guess": "ORDERING_PRESETS.",
-      "context": "run_order_variant",
-      "normalized_expr": "Call(func=Attribute(value=Name(id='ORDERING_PRESETS', ctx=Load()), attr='get', ctx=Load()), args=[Name(id='preset', ctx=Load()), Call(func=Name(id='frozenset', ctx=Load()))])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "fingerprint": "4b47217ecf7036cfe6c623217a6fd5892889485cd4a9aef09e25a37351af4cac",
-      "id": "FB-4b47217ecf",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
-    },
-    {
-      "file": "adaptive_similarity_engine.py",
-      "line": 380,
-      "language": "python",
-      "pattern": "DICT_GET_DEFAULT",
-      "snippet": "ir, ia = _BUCKET_INDEX.get(rb, -99), _BUCKET_INDEX.get(ab, -99)",
-      "semantic_field_guess": "_BUCKET_INDEX.",
-      "context": "_bucket_adjacency_score",
-      "normalized_expr": "Call(func=Attribute(value=Name(id='_BUCKET_INDEX', ctx=Load()), attr='get', ctx=Load()), args=[Name(id='rb', ctx=Load()), UnaryOp(op=USub(), operand=Constant(value=99))])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "fingerprint": "58e92b984f3f53c0ca7dd34e1a5e18aa1e28aacd0f55d0c68931c7f56eadf049",
-      "id": "FB-58e92b984f",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
-    },
-    {
-      "file": "adaptive_similarity_engine.py",
-      "line": 380,
-      "language": "python",
-      "pattern": "DICT_GET_DEFAULT",
-      "snippet": "ir, ia = _BUCKET_INDEX.get(rb, -99), _BUCKET_INDEX.get(ab, -99)",
-      "semantic_field_guess": "_BUCKET_INDEX.",
-      "context": "_bucket_adjacency_score",
-      "normalized_expr": "Call(func=Attribute(value=Name(id='_BUCKET_INDEX', ctx=Load()), attr='get', ctx=Load()), args=[Name(id='ab', ctx=Load()), UnaryOp(op=USub(), operand=Constant(value=99))])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
-      "fingerprint": "05e7f89cced1ea743c7af09f540f0f1f9d06ff4ba4779b987fd039626cb99799",
-      "id": "FB-05e7f89cce",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
-    },
-    {
-      "file": "adaptive_similarity_engine.py",
-      "line": 434,
+      "line": 444,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "w = weights.get(\"below_bucket\", 1.0)",
@@ -113,22 +49,6 @@
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
       "fingerprint": "391bfca237309f7acc4998c8b513d50bfaa9c51d268e6b9c2ee6967184964ec3",
       "id": "FB-391bfca237",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
-    },
-    {
-      "file": "api_pressure.py",
-      "line": 34,
-      "language": "python",
-      "pattern": "OR_LADDER",
-      "snippet": "ep = str(endpoint or \"api\")[:120]",
-      "semantic_field_guess": "endpoint",
-      "context": "record_schwab_http_response",
-      "normalized_expr": "BoolOp(op=Or(), values=[Name(id='endpoint', ctx=Load()), Constant(value='api')])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "fingerprint": "22f7b8a7b182fb7b0368642b6c8493b7014d6e69bfc04ce6a7cf875214cc4aec",
-      "id": "FB-22f7b8a7b1",
       "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
       "proposed_ownership_group": "unadjudicated_pending_next_pass"
     },
@@ -163,22 +83,6 @@
       "id": "FB-6d19179cd5",
       "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
       "proposed_ownership_group": "unadjudicated_pending_next_pass"
-    },
-    {
-      "file": "app/market_data/schwab/streaming/capture.py",
-      "line": 2249,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder",
-      "semantic_field_guess": "pump_task",
-      "context": "_run_streaming",
-      "normalized_expr": "Assign(targets=[Name(id='pump_task', ctx=Store())], value=Call(func=Attribute(value=Name(id='asyncio', ctx=Load()), attr='create_task', ctx=Load()), args=[Call(func=Attribute(value=Name(id='asyncio', ctx=Load()), attr='sleep', ctx=Load()), args=[Constant(value=0)])]))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure | ADJUDICATED: Except/init-time assignment to an empty sentinel (not a bare None -- e.g. an empty collection/dict/string) that PLAUSIBLY reads as 'not yet observed/computed' rather than a fabricated valid value, but the downstream consumer was not traced in this pass to confirm it is never treated as a genuine reading. (This group formerly also carried the bare-None-assignment ids; those are no longer candidates at all -- see the EXCEPT_SUBSTITUTE group's own comment above.)",
-      "fingerprint": "888d03613ee21e98b3ea3da62474b83a301d5fd566ecbfefd7399021a975cf91",
-      "id": "FB-888d03613e",
-      "required_repair": "Trace each downstream consumer to confirm the empty sentinel is always checked and disclosed, never silently used as a real value.",
-      "proposed_ownership_group": "needs_downstream_trace"
     },
     {
       "file": "app/market_data/schwab/streaming/capture.py",
@@ -5526,7 +5430,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3521,
+      "line": 3544,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prior_arch = arch_state.get(arch_key, {}).get(\"active_architecture\", \"none\")",
@@ -5638,7 +5542,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3019,
+      "line": 3030,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "parallel_bal = float(evp.get(\"balanced_accuracy\", 0.0))",
@@ -5654,7 +5558,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3029,
+      "line": 3040,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "cascade_bal = float(evc.get(\"balanced_accuracy\", 0.0))",
@@ -5670,7 +5574,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3133,
+      "line": 3156,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "parallel_bal = float(evp.get(\"balanced_accuracy\", 0.0))",
@@ -5686,7 +5590,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3200,
+      "line": 3223,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "cascade_bal = float(evc.get(\"balanced_accuracy\", 0.0))",
@@ -5702,7 +5606,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3521,
+      "line": 3544,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prior_arch = arch_state.get(arch_key, {}).get(\"active_architecture\", \"none\")",
@@ -5718,7 +5622,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3525,
+      "line": 3548,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prov_dict = arch_state.get(arch_key, {}).get(\"provenance\")",
@@ -5782,7 +5686,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3006,
+      "line": 3017,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "par_streak_prev = int(parallel_man.get(\"consecutive_scheduler_skips\", 0) or 0)",
@@ -5798,7 +5702,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3007,
+      "line": 3018,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "cas_streak_prev = int(cascade_man.get(\"consecutive_scheduler_skips\", 0) or 0)",
@@ -5814,7 +5718,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3060,
+      "line": 3083,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "par_streak_prev = int(parallel_man.get(\"consecutive_scheduler_skips\", 0) or 0) if parallel_man else 0",
@@ -5830,7 +5734,7 @@
     },
     {
       "file": "ml_scheduler.py",
-      "line": 3061,
+      "line": 3084,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "cas_streak_prev = int(cascade_man.get(\"consecutive_scheduler_skips\", 0) or 0) if cascade_man else 0",
@@ -10342,7 +10246,7 @@
     },
     {
       "file": "signals.py",
-      "line": 613,
+      "line": 629,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ticker = getattr(inp, \"ticker\", \"\") or \"\"",
@@ -10358,7 +10262,7 @@
     },
     {
       "file": "signals.py",
-      "line": 897,
+      "line": 913,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ticker = getattr(inp, \"ticker\", \"\") or \"\"",
@@ -10374,7 +10278,7 @@
     },
     {
       "file": "signals.py",
-      "line": 1281,
+      "line": 1297,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ticker = getattr(inp, \"ticker\", \"\") or \"\"",
@@ -10390,7 +10294,7 @@
     },
     {
       "file": "signals.py",
-      "line": 759,
+      "line": 775,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "mc_spot_ctx",
@@ -10406,7 +10310,7 @@
     },
     {
       "file": "signals.py",
-      "line": 1293,
+      "line": 1309,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ticker = getattr(inp, \"ticker\", \"\") or \"\"",
@@ -10422,7 +10326,7 @@
     },
     {
       "file": "signals.py",
-      "line": 1445,
+      "line": 1461,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "_guest_anchor.anchor_ticker if _guest_anchor else None",
@@ -10438,7 +10342,7 @@
     },
     {
       "file": "signals.py",
-      "line": 1831,
+      "line": 1847,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "_guest_anchor.anchor_ticker if _guest_anchor is not None else None",
@@ -10486,7 +10390,7 @@
     },
     {
       "file": "signals.py",
-      "line": 561,
+      "line": 577,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(inp, \"ticker\", \"\"),",
@@ -10502,7 +10406,7 @@
     },
     {
       "file": "signals.py",
-      "line": 952,
+      "line": 968,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "shared_fusion_overlay = {\"ticker\": getattr(inp, \"ticker\", \"\") or \"\"}",
@@ -10518,7 +10422,7 @@
     },
     {
       "file": "signals.py",
-      "line": 1401,
+      "line": 1417,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "shared_fusion_overlay = {\"ticker\": getattr(inp, \"ticker\", \"\") or \"\"}",
@@ -10534,7 +10438,7 @@
     },
     {
       "file": "signals.py",
-      "line": 1492,
+      "line": 1508,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "detail=_seq_ctx_err or \"\",",
@@ -10550,7 +10454,7 @@
     },
     {
       "file": "signals.py",
-      "line": 653,
+      "line": 669,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "snap = {\"ticker\": getattr(inp, \"ticker\", \"\") or \"\"}",
@@ -10566,7 +10470,7 @@
     },
     {
       "file": "similarity_feature_search.py",
-      "line": 334,
+      "line": 339,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "js = extra_survival.get(feat, [])",

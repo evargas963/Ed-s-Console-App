@@ -212,7 +212,7 @@ _mark(["FB-ca215923d9", "FB-cc26c6d515", "FB-54d8938517", "FB-cb77bdf68f", "FB-f
       "rather than substituting a value that could be mistaken for a successful read -- "
       "exactly the disclosure behavior the mission requires, not a violation of it.",
       "none", "correct_failure_disclosure")
-_mark(["FB-b3df147452", "FB-888d03613e"], "NOT_PROVEN",
+_mark(["FB-b3df147452"], "NOT_PROVEN",
       "Except/init-time assignment to an empty sentinel (not a bare None -- e.g. an empty "
       "collection/dict/string) that PLAUSIBLY reads as 'not yet observed/computed' rather "
       "than a fabricated valid value, but the downstream consumer was not traced in this "
@@ -222,6 +222,13 @@ _mark(["FB-b3df147452", "FB-888d03613e"], "NOT_PROVEN",
       "Trace each downstream consumer to confirm the empty sentinel is always checked and "
       "disclosed, never silently used as a real value.",
       "needs_downstream_trace")
+# FB-888d03613e (capture.py:2249, pump_task = asyncio.create_task(asyncio.sleep(0)) on a
+# failed reconnect) -- no-fallback item 8 repair (2026-09-18): the fabricated placeholder
+# Task was never load-bearing (_cancel_and_await already treats pump_task=None as "nothing
+# to cancel" at both its call sites) and is now a plain `pump_task = None` assignment,
+# retired by the EXCEPT_SUBSTITUTE None-assignment exemption -- no longer a candidate.
+# Proven with a mutation test (tests/test_stream_capture_daemon_v1.py) that reintroduces
+# the placeholder and confirms it fails.
 # FB-86ded76db5 / FB-b5e185edfd (server.py _gamma_surface / _contract_admission = None)
 # retired by the EXCEPT_SUBSTITUTE detector's None-assignment exemption -- no longer
 # candidates. Their reasoning ("None-means-'not yet computed' convention... plausibly
