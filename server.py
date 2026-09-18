@@ -3601,39 +3601,42 @@ def _latest_cached_ms_and_key_for_ticker(ticker: str) -> tuple[Optional[dict], O
 
 
 def _stream_spot_and_of_regime(symbol: str) -> tuple[Optional[float], Optional[str]]:
-    """Light read from streamer + OrderFlowEngine for tick-trigger comparison only."""
+    """Light read from streamer + OrderFlowEngine for tick-trigger comparison only.
+
+    RC-REHAB-1 (Phase 2): this function's import used to name `get_top_of_book`, a function
+    `app.options.order_flow.state` has never defined (only `get_top_of_book_sizes`, which
+    returns bid/ask SIZE, not LAST_PRICE -- and the private `_top[sym]` dict it would read
+    from carries no LAST_PRICE field at all; that's tape/trade data, not top-of-book quote
+    data). `from X import a, b` fails atomically in Python, so this import raised
+    ImportError on EVERY call, and the bare `except ImportError: return None, None` above
+    silently swallowed it -- not just the get_top_of_book sub-path, the ENTIRE function,
+    every call, always returning (None, None). Its caller (`tick_triggers_coherent_refresh`
+    in `live_decision_bundle.py:273,330`) only acts when stream_spot/stream_of_regime are
+    NOT None, so this silently disabled two real tick-trigger checks (stream spot moved;
+    order-flow regime changed) with no error, no log, nothing to notice by. The raw-content
+    LAST_PRICE scan below was already correct and already present as a fallback for the
+    (nonexistent) fast path -- it is now the only path, not a fallback.
+    """
     global _order_flow_engine
     stream_spot = None
     stream_regime = None
     try:
-        from app.options.order_flow.state import get_content_for_symbol, get_top_of_book
+        from app.options.order_flow.state import get_content_for_symbol
         from app.options.order_flow.engine import OrderFlowEngine
     except ImportError:
         return None, None
     content = get_content_for_symbol(symbol)
     if not content:
         return None, None
-    try:
-        top = get_top_of_book(symbol)
-        if isinstance(top, dict) and top.get("LAST_PRICE") is not None:
+    for item in reversed(content):
+        if isinstance(item, dict) and item.get("LAST_PRICE") is not None:
             try:
-                v = float(top["LAST_PRICE"])
+                v = float(item["LAST_PRICE"])
                 if v > 0:
                     stream_spot = v
+                    break
             except (TypeError, ValueError):
                 pass
-    except (ImportError, AttributeError, TypeError):
-        pass
-    if stream_spot is None:
-        for item in reversed(content):
-            if isinstance(item, dict) and item.get("LAST_PRICE") is not None:
-                try:
-                    v = float(item["LAST_PRICE"])
-                    if v > 0:
-                        stream_spot = v
-                        break
-                except (TypeError, ValueError):
-                    pass
     try:
         if _order_flow_engine is None:
             _order_flow_engine = OrderFlowEngine()
