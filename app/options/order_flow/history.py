@@ -23,7 +23,7 @@ def hydrate_option_content(
     limit: int = 400,
 ) -> list[dict[str, Any]]:
     """Return isolated canonical content from persisted L1 and book observations."""
-    sym = ticker_storage_key(contract) or str(contract or "").strip()
+    sym = ticker_storage_key(contract)
     if not sym:
         return []
     try:
@@ -113,7 +113,7 @@ def tape_rows_for_symbol(
     Ordered newest-first (tape convention: most recent print on top), bounded by `limit`.
     Fails closed to `[]` on any read/parse error — a tape that cannot be proven is empty,
     never a stale or partial one presented as complete."""
-    sym = ticker_storage_key(contract) or str(contract or "").strip()
+    sym = ticker_storage_key(contract)
     if not sym:
         return []
     try:
@@ -234,7 +234,7 @@ def book_heatmap_for_ticker(
     Fails closed (available:false + a plain reason) at every stage; never returns a synthetic
     or interpolated cell.
     """
-    sym = ticker_storage_key(ticker) or str(ticker or "").strip().upper()
+    sym = ticker_storage_key(ticker)
     if not sym:
         return {"ticker": ticker, "available": False, "reason": "empty ticker"}
     path = resolve_stream_db_path(db_path)
