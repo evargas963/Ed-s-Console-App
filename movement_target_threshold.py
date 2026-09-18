@@ -4,7 +4,7 @@ Movement-target v2: per-horizon thresholds from empirical percentiles (JSON cont
 Canonical file: calibration/movement_target_thresholds_by_horizon_v1.json
 
 Generate / refresh with:
-  python tools/select_movement_thresholds_percentile_v1.py --db data/ed_console.db
+  python tools/legacy/select_movement_thresholds_percentile_v1.py --db data/ed_console.db
 
 Legacy ATR blend (movement_target_threshold_v1.json) is used only as fallback when
 a horizon is missing from the by-horizon file.

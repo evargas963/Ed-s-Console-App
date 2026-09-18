@@ -588,11 +588,11 @@ def wall_geometry_state(spot: float | None, wall: float | None,
 #: RC-292 pin-candidate qualification thresholds. Hardwired, not configurable. Each cites
 #: its source; neither is a new invention:
 #: — proximity: strike within 0.5% of spot — the "strike near spot" cut of the operator's
-#:   pinning framework as committed in tools/study_pin_residence_v1.py (`near`, 0.005).
+#:   pinning framework as committed in tools/legacy/study_pin_residence_v1.py (`near`, 0.005).
 PIN_CANDIDATE_PROXIMITY_MAX_FRAC = 0.005
 #: — DTE: pinning is an expiration effect (expiration-date clustering turns on positioning
 #:   into expiry — Ni, Pearson & Poteshman, JFE 2005, doi:10.1016/j.jfineco.2004.08.005);
-#:   the framework's committed cut is dte <= 1 (tools/study_pin_residence_v1.py `exp`).
+#:   the framework's committed cut is dte <= 1 (tools/legacy/study_pin_residence_v1.py `exp`).
 PIN_CANDIDATE_DTE_MAX = 1.0
 
 
@@ -619,7 +619,7 @@ def qualify_pin_candidate(
       present from the SAME book that picked the strike.
     — regime: dealers net LONG gamma at spot (net_gex_at_spot > 0). A long-gamma dealer
       sells rallies and buys dips, which pins; short gamma repels (RC-315). The framework
-      cut committed in tools/study_pin_residence_v1.py (`lng`).
+      cut committed in tools/legacy/study_pin_residence_v1.py (`lng`).
     — proximity: |strike − spot| / spot <= PIN_CANDIDATE_PROXIMITY_MAX_FRAC.
     — DTE: front expiry of THIS book within PIN_CANDIDATE_DTE_MAX days (pinning is an
       expiration effect); unknown maturity fails, never passes (RC-290).

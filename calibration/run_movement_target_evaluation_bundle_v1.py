@@ -3,7 +3,7 @@
 Run movement-target evaluation chain: Phase 5 → 6 → 6.5 → 6.5 cleanup (new heads).
 
 Optional: refresh thresholds first:
-  python tools/select_movement_thresholds_percentile_v1.py --db data/ed_console.db
+  python tools/legacy/select_movement_thresholds_percentile_v1.py --db data/ed_console.db
 
   python -m calibration.run_movement_target_evaluation_bundle_v1 --db data/ed_console.db
 """

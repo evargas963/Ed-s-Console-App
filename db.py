@@ -2163,7 +2163,7 @@ class EdDB:
 
         Non-empty indicates Issue-22 drift (e.g. raw SQL import) — normal server paths enroll
         before insert_snapshot via server._register_tracked_ticker. Used by /api/logger/status
-        and tools/_ticker_coverage_audit_v1.py.
+        and tools/legacy/_ticker_coverage_audit_v1.py.
         """
         with self._connect() as conn:
             rows = conn.execute(

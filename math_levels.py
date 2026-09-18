@@ -1151,7 +1151,7 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: PROVENANCE (RC-62, operator challenge "what is scientific about this number?"): the 0.05 was
 #: ASSERTED, never derived — its original comment merely restated it, and AT THAT TIME (now fixed)
 #: it governed both every live chain-fetch width and every TRUSTED-vs-LOW_CONFIDENCE verdict.
-#: MEASURED 2026-07-26 by `python tools/study_flip_span_convergence_v1.py` (convergence against the
+#: MEASURED 2026-07-26 by `python tools/legacy/study_flip_span_convergence_v1.py` (convergence against the
 #: flip on each stored wide chain's FULL delivered strike set, trading days only, fixed cohort of
 #: 15 chains that yield a flip at every ladder point): the flip has NOT converged at this value —
 #: median error vs the full-chain flip is 1.38% of spot at +/-5%, falling ~10x to 0.117% at +/-10%
@@ -1160,7 +1160,7 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: HELD AT 0.05 PENDING, deliberately not silently re-tuned: the cohort is only n=15 and the
 #: reference is our WIDEST AVAILABLE chain (Schwab caps strikeCount), so the study bounds the
 #: requirement from below rather than pinning it. Raising it also widens every fetch, which is a
-#: cost/latency decision. Re-set it once `python tools/probe_chain_depth_v1.py` establishes the
+#: cost/latency decision. Re-set it once `python tools/legacy/probe_chain_depth_v1.py` establishes the
 #: real vendor ceiling and the cohort is large enough to pin a value.
 GAMMA_FLIP_MIN_SPAN_PCT = 0.05
 #: GAMMA AUDIT 2026-08-26 — the operator's concern: "±5% can still be labeled TRUSTED even though

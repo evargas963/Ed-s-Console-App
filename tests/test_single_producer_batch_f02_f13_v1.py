@@ -31,23 +31,23 @@ TURN_AUDIT_OWNS = [
     "research/pilot_step3/data_loader.py",
     "research/tod_eval_v1/runner.py",
     "tools/research/d2_build_dual_label_scratch_db.py",
-    "tools/study_pin_direction_v1.py",
-    "tools/study_pin_charm_v1.py",
-    "tools/study_pin_residence_v1.py",
-    "tools/study_pin_regime_cut_v1.py",
-    "tools/study_terrain_readiness_v1.py",
-    "tools/study_card2_am_pm_v1.py",
-    "tools/study_card_lateday_v1.py",
-    "tools/study_card_lateday_v2.py",
-    "tools/study_timeslice_reversal_v1.py",
+    "tools/legacy/study_pin_direction_v1.py",
+    "tools/legacy/study_pin_charm_v1.py",
+    "tools/legacy/study_pin_residence_v1.py",
+    "tools/legacy/study_pin_regime_cut_v1.py",
+    "tools/legacy/study_terrain_readiness_v1.py",
+    "tools/legacy/study_card2_am_pm_v1.py",
+    "tools/legacy/study_card_lateday_v1.py",
+    "tools/legacy/study_card_lateday_v2.py",
+    "tools/legacy/study_timeslice_reversal_v1.py",
     "tools/lp01_touch_study_v1.py",
-    "tools/liquidity_synthesis_experiments_v1.py",
-    "tools/liquidity_oi_volume_stickiness_v1.py",
+    "tools/legacy/liquidity_synthesis_experiments_v1.py",
+    "tools/legacy/liquidity_oi_volume_stickiness_v1.py",
     "tools/terrain_backtest_report_v1.py",
-    "tools/liquidity_intraday_volume_ic_v1.py",
+    "tools/legacy/liquidity_intraday_volume_ic_v1.py",
     # F07: this suite's regime lock reads and asserts on the backtests' regime derivation.
-    "tools/liquidity_gamma_hold_horizon_experiments_v1.py",
-    "tools/liquidity_gamma_levels_experiment_v1.py",
+    "tools/legacy/liquidity_gamma_hold_horizon_experiments_v1.py",
+    "tools/legacy/liquidity_gamma_levels_experiment_v1.py",
     # F25: this suite's ticker-identity lock reads/asserts on the canonical routing across
     # the whole artifact/cache/serve continuum (writer→verifier→predictor).
     "active_bundle_contract.py",
@@ -345,20 +345,20 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     assert "RTH_START_MINS as RTH_START_MIN" in d2
     assert "RTH_START_MIN, RTH_END_MIN = 570, 960" not in d2
     for study in (
-        "tools/study_pin_direction_v1.py",
-        "tools/study_pin_charm_v1.py",
-        "tools/study_pin_residence_v1.py",
-        "tools/study_pin_regime_cut_v1.py",
-        "tools/study_terrain_readiness_v1.py",
-        "tools/study_card2_am_pm_v1.py",
-        "tools/study_card_lateday_v1.py",
-        "tools/study_card_lateday_v2.py",
-        "tools/study_timeslice_reversal_v1.py",
+        "tools/legacy/study_pin_direction_v1.py",
+        "tools/legacy/study_pin_charm_v1.py",
+        "tools/legacy/study_pin_residence_v1.py",
+        "tools/legacy/study_pin_regime_cut_v1.py",
+        "tools/legacy/study_terrain_readiness_v1.py",
+        "tools/legacy/study_card2_am_pm_v1.py",
+        "tools/legacy/study_card_lateday_v1.py",
+        "tools/legacy/study_card_lateday_v2.py",
+        "tools/legacy/study_timeslice_reversal_v1.py",
         "tools/lp01_touch_study_v1.py",
-        "tools/liquidity_synthesis_experiments_v1.py",
-        "tools/liquidity_oi_volume_stickiness_v1.py",
-        "tools/liquidity_gamma_levels_experiment_v1.py",
-        "tools/liquidity_gamma_hold_horizon_experiments_v1.py",
+        "tools/legacy/liquidity_synthesis_experiments_v1.py",
+        "tools/legacy/liquidity_oi_volume_stickiness_v1.py",
+        "tools/legacy/liquidity_gamma_levels_experiment_v1.py",
+        "tools/legacy/liquidity_gamma_hold_horizon_experiments_v1.py",
     ):
         st = _read(study)
         assert "RTH_START_MINS" in st and "9 * 60 + 30" not in st, study
@@ -828,7 +828,7 @@ def test_rc345_gamma_regime_one_classifier_two_named_books() -> None:
 
     # F07 (reopened) tools/backtest: the regime SIGN is routed through the one authority,
     # not a local `gex > 0` reconstruction under the LONG_GAMMA/SHORT_GAMMA research vocab.
-    bt = _read("tools/liquidity_gamma_hold_horizon_experiments_v1.py")
+    bt = _read("tools/legacy/liquidity_gamma_hold_horizon_experiments_v1.py")
     assert "regime_from_signed_gamma(gex)" in bt, (
         "backtest must classify the sign via the one authority (F07/RC-345)")
     btcode = "\n".join(l for l in bt.splitlines() if not l.lstrip().startswith("#"))
@@ -1128,8 +1128,8 @@ def test_rc345_confluence_features_full_contract_one_authority() -> None:
 def test_rc345_adversarial_residuals_backend_only_paths() -> None:
     """The backend half of the surviving adversarial defects (frontend half retired above)."""
     # F07: NEITHER backtest tool reconstructs regime from spot>gamma_flip.
-    for _bt in ("tools/liquidity_gamma_hold_horizon_experiments_v1.py",
-                "tools/liquidity_gamma_levels_experiment_v1.py"):
+    for _bt in ("tools/legacy/liquidity_gamma_hold_horizon_experiments_v1.py",
+                "tools/legacy/liquidity_gamma_levels_experiment_v1.py"):
         btcode = "\n".join(l for l in _read(_bt).splitlines() if not l.lstrip().startswith("#"))
         assert "float(spot) > float(snap.gamma_flip)" not in btcode, (
             f"{_bt} must not reconstruct regime from spot>flip (F07/RC-345)")
