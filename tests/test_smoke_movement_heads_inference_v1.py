@@ -31,7 +31,7 @@ def test_gov_predicate_selects_bar_anchor_v1_row_and_excludes_other_schema_versi
             ticker, timeframe, ts_utc, ts_et, spot,
             horizon_outcome_schema_version, outcome_1c, outcome_60c
         )
-        VALUES ('SPY', '1m', 1_900_000_000.0, 'et', 100.0, ?, 'up', 'up')
+        VALUES ('SPY', '1m', 1900000000.0, 'et', 100.0, ?, 'up', 'up')
         """,
         (HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,),
     )
@@ -41,7 +41,7 @@ def test_gov_predicate_selects_bar_anchor_v1_row_and_excludes_other_schema_versi
             ticker, timeframe, ts_utc, ts_et, spot,
             horizon_outcome_schema_version, outcome_1c, outcome_60c
         )
-        VALUES ('QQQ', '1m', 1_900_000_001.0, 'et', 100.0, 2, 'up', 'up')
+        VALUES ('QQQ', '1m', 1900000001.0, 'et', 100.0, 2, 'up', 'up')
         """
     )
     conn.commit()

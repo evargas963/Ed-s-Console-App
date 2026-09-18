@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from calibration.schema import ensure_calibration_schema
 from tools.operable_surface_gate import (
     evaluate_operable_surface,
@@ -150,11 +152,20 @@ def test_operable_filter_sql_no_coalesce_and_still_correct(tmp_path: Path) -> No
     # Column exists (ensure_calibration_schema creates it NOT NULL DEFAULT 0) -> real filter.
     assert operable_filter_sql(conn) == "research_excluded=0"
 
-    # A database with NO calibration_decision_log table/column at all -> degrade to 1=1,
-    # not an error and not a query referencing a possibly-absent column.
+
+def test_operable_filter_sql_fails_closed_on_unmigrated_schema(tmp_path: Path) -> None:
+    """No-fallback lock repair (2026-09-18, PR #254 point 4): a database that has never
+    been migrated by ensure_calibration_schema has never had ANY row's research-
+    operability established -- silently degrading to '1=1' would assert 'every row is
+    operable' about data nobody has ever vetted. Must fail closed, not universally admit."""
+    from calibration.operable_surface_quarantine import (
+        CalibrationSchemaNotMigratedError,
+        operable_filter_sql,
+    )
+
     bare = tmp_path / "bare.db"
     bare_conn = sqlite3.connect(str(bare))
     bare_conn.execute("CREATE TABLE calibration_decision_log (x INTEGER)")
-    assert operable_filter_sql(bare_conn) == "1=1"
+    with pytest.raises(CalibrationSchemaNotMigratedError):
+        operable_filter_sql(bare_conn)
     bare_conn.close()
-    conn.close()

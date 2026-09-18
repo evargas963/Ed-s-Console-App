@@ -40,7 +40,7 @@ def test_main_runs_end_to_end_against_real_db_and_prints_derived_sum(
             ticker, timeframe, ts_utc, ts_et, spot, zone,
             horizon_outcome_schema_version, outcome_filled, outcome_1c
         )
-        VALUES ('SPY', '1m', 1_900_000_100.0, 'et', 100.0, 'pin_neutral', ?, 0, NULL)
+        VALUES ('SPY', '1m', 1900000100.0, 'et', 100.0, 'pin_neutral', ?, 0, NULL)
         """,
         (HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,),
     )

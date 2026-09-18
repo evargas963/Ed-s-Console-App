@@ -23,6 +23,26 @@ OLD_AGE_SEC = 70 * 60
 QUARANTINE_REASON = "IRRECOVERABLE_NO_JOINABLE_SNAPSHOT_OUTCOME_V1"
 
 
+class CalibrationSchemaNotMigratedError(RuntimeError):
+    """Raised when a database lacks `research_excluded`, so operability cannot be proven.
+
+    No-fallback lock repair (2026-09-18, PR #254 point 4): a missing column used to
+    silently degrade `operable_filter_sql` to `1=1` -- treating an UNKNOWN operability
+    state as UNIVERSAL ELIGIBILITY, the exact "missing schema means everything passes"
+    shape the mission prohibits. Root-cause trace: `research_excluded` is migrated
+    unconditionally by `db.py`'s own startup path (`ensure_calibration_schema` runs
+    inside `EdDB`'s migration sequence, calibration/schema.py:_CALIBRATION_OPTIONAL_COLUMNS),
+    so any database ever opened through the canonical EdDB/db.py path already has this
+    column by construction -- this branch is reachable only by (a) a bare connection that
+    bypassed the canonical schema (a test-fixture bug, not a production state) or (b) a
+    genuinely foreign/pre-migration database file (e.g. an old backup) whose rows have
+    never been vetted for research-operability at all. Neither case may be silently
+    treated as 'everything is operable' -- the caller must migrate the database (see
+    `calibration.schema.ensure_calibration_schema`) or accept that operability is
+    unproven for this connection.
+    """
+
+
 def _has_col(conn: sqlite3.Connection, table: str, col: str) -> bool:
     return col in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
 
@@ -30,13 +50,17 @@ def _has_col(conn: sqlite3.Connection, table: str, col: str) -> bool:
 def operable_filter_sql(conn: sqlite3.Connection) -> str:
     """The ONE definition of 'this calibration row is operable for research'.
 
-    `research_excluded` is created lazily by quarantine_old_unattached, so it is absent
-    from any database that has never been quarantined — including every test fixture DB.
-    Callers must therefore degrade to '1=1' rather than emit SQL referencing a column that
-    may not exist. This predicate was copy-pasted into four places (the gate tool and the
-    three research runners); the runners' unguarded copies raised
+    Raises `CalibrationSchemaNotMigratedError` if `research_excluded` is absent --
+    every real production database has this column by the time db.py finishes its own
+    startup migrations (see the error's docstring for the full trace); a database that
+    still lacks it has never been vetted for research-operability, so returning `1=1`
+    would silently assert "every row is clean" about data nobody has ever excluded
+    anything from. This predicate was copy-pasted into four places (the gate tool and
+    the three research runners); the runners' unguarded copies raised
     `sqlite3.OperationalError: no such column: research_excluded` on fixture DBs. One
-    definition, guarded, consumed everywhere.
+    definition, guarded, consumed everywhere -- callers that want fixture convenience
+    must call `calibration.schema.ensure_calibration_schema` on their connection first,
+    not rely on this function to paper over an unmigrated schema.
     """
     if _has_col(conn, "calibration_decision_log", "research_excluded"):
         # Fallback lock (2026-09-17): the COALESCE here was provably-redundant defensive
@@ -46,7 +70,14 @@ def operable_filter_sql(conn: sqlite3.Connection) -> str:
         # DEFAULT 0", which SQLite backfills onto every pre-existing row and enforces going
         # forward -- NULL is structurally impossible once _has_col() is true.
         return "research_excluded=0"
-    return "1=1"
+    raise CalibrationSchemaNotMigratedError(
+        "calibration_decision_log.research_excluded is absent -- this connection's "
+        "database has never been migrated by calibration.schema.ensure_calibration_schema, "
+        "so no row's research-operability has ever been established. Call "
+        "ensure_calibration_schema(conn) (or ensure_calibration_schema_at_path(db_path)) "
+        "before querying operability, or treat this database as un-vetted -- never assume "
+        "every row is operable."
+    )
 
 
 def quarantine_old_unattached(

@@ -50,7 +50,7 @@ def test_inventory_timeframe_and_by_ticker_breakdown_run_against_real_db(tmp_pat
             ticker, timeframe, ts_utc, ts_et, spot, zone,
             horizon_outcome_schema_version, outcome_filled, outcome_1c
         )
-        VALUES ('SPY', '1m', 1_900_000_100.0, 'et', 100.0, 'pin_neutral', ?, 1, 'up')
+        VALUES ('SPY', '1m', 1900000100.0, 'et', 100.0, 'pin_neutral', ?, 1, 'up')
         """,
         (HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,),
     )
