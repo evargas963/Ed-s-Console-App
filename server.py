@@ -5963,9 +5963,48 @@ def _l1_cache_maintain(now_ts: float) -> None:
         _l1_instrumentation["l1_cache_reconcile_lru_backfilled_total"] += backfilled
 
 
+#: RC-REHAB-1 (Phase 2): confirmed live during real RTH (2026-09-18) that the header badge
+#: can read "DEGRADED" or silently "LIVE" for the SAME underlying streaming-plane state,
+#: depending only on which code path last painted it. The REST poll fallback
+#: (GET /api/live/state, ed-core.js refreshHeader) has always attached streaming_plane.
+#: streaming_healthy and shown DEGRADED when it's false, even with a fresh spot. The
+#: primary path -- the l1_projection SSE push and its HTTP twin GET /api/analytics/light,
+#: both built by _project_l1/_l1_http_get_projection -- never carried this signal at all, so
+#: ed-core.js's l1_projection handler could only ever paint LIVE/STALE/UNAVAILABLE, never
+#: DEGRADED, regardless of the real streaming-plane health. _l1_attach_freshness_semantics
+#: runs on every path that produces an `out` dict consumed by both the SSE push and the HTTP
+#: GET (_project_l1 directly, and _l1_http_get_projection's cache-hit read) -- one insertion
+#: point covers both. get_streaming_diagnostics() itself is not cheap (DB + status-file I/O);
+#: this reuses the same short-memo convention as QUOTE_MEMO_TTL_SEC rather than adding a
+#: fresh read to what can be a per-tick build/serve path.
+_STREAMING_HEALTH_MEMO_TTL_SEC: float = 1.0
+_streaming_health_memo: tuple[float, bool] = (0.0, False)
+_streaming_health_memo_lock = threading.Lock()
+
+
+def _memoized_streaming_healthy() -> bool:
+    global _streaming_health_memo
+    now = time.monotonic()
+    with _streaming_health_memo_lock:
+        ts, healthy = _streaming_health_memo
+        if (now - ts) < _STREAMING_HEALTH_MEMO_TTL_SEC:
+            return healthy
+    try:
+        from app.options.order_flow.streaming import get_streaming_diagnostics
+
+        healthy = bool(get_streaming_diagnostics().get("streaming_healthy"))
+    except Exception:
+        healthy = False
+    with _streaming_health_memo_lock:
+        _streaming_health_memo = (now, healthy)
+    return healthy
+
+
 def _l1_attach_freshness_semantics(out: dict[str, Any], now_ts: float) -> None:
     """Explicit quote vs order-flow freshness — safe for cache-hit + live quote overlay."""
     from planes.l1_runtime import L1_ORDER_FLOW_STALE_SEC
+
+    out["streaming_healthy"] = _memoized_streaming_healthy()
 
     of_ts = out.get("order_flow_as_of_ts")
     if of_ts is None:
