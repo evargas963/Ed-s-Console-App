@@ -35,10 +35,10 @@ _SELECT_PIN = re.compile(
 )
 
 PIN_STUDIES = (
-    "tools/study_pin_residence_v1.py",
-    "tools/study_pin_regime_cut_v1.py",
-    "tools/study_pin_direction_v1.py",
-    "tools/study_pin_charm_v1.py",
+    "tools/legacy/study_pin_residence_v1.py",
+    "tools/legacy/study_pin_regime_cut_v1.py",
+    "tools/legacy/study_pin_direction_v1.py",
+    "tools/legacy/study_pin_charm_v1.py",
 )
 
 

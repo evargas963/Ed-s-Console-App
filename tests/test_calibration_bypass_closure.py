@@ -44,11 +44,11 @@ def _allowed_path(rel: Path) -> bool:
     if s == "tests/test_execution_identity_v1.py":
         return True
     # Approved read-only probes / tooling (controlled SELECT surface).
-    if s == "tools/_phase4_prod_probe.py":
+    if s == "tools/legacy/_phase4_prod_probe.py":
         return True
-    if s == "tools/_phase4a_fast_count.py":
+    if s == "tools/legacy/_phase4a_fast_count.py":
         return True
-    if s == "tools/_phase4a_quantify_anchor_miss.py":
+    if s == "tools/legacy/_phase4a_quantify_anchor_miss.py":
         return True
     if s.startswith("governance/"):
         return True

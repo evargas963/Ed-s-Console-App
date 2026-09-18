@@ -1,7 +1,7 @@
 """Gamma audit 2026-08-26 — the flip TRUSTED label must be earned by the measured convergence span.
 
 OPERATOR CONCERN (confirmed): a chain covering only ±5% was labeled TRUSTED even though the
-console's own convergence study (tools/study_flip_span_convergence_v1.py, quoted in
+console's own convergence study (tools/legacy/study_flip_span_convergence_v1.py, quoted in
 math_levels.GAMMA_FLIP_MIN_SPAN_PCT's provenance) measured the flip error at 1.38% of spot there —
 ~10x the 0.117% at ±10%, and concluded "0.05 is measurably INSUFFICIENT".
 

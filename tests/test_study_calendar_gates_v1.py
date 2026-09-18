@@ -42,10 +42,10 @@ def test_every_named_rc58_loader_carries_the_gate():
     so their lock is structural — the gate call must sit in the source between the day assembly
     and the row admission."""
     files = [
-        "tools/study_card2_am_pm_v1.py",
-        "tools/study_timeslice_reversal_v1.py",
-        "tools/study_card_lateday_v1.py",
-        "tools/study_card_lateday_v2.py",
+        "tools/legacy/study_card2_am_pm_v1.py",
+        "tools/legacy/study_timeslice_reversal_v1.py",
+        "tools/legacy/study_card_lateday_v1.py",
+        "tools/legacy/study_card_lateday_v2.py",
         "tools/run_day_level_gex_study_v1.py",
         "research/gex_r1_screen_v1/signal.py",
         "research/pilot_step3/gamma_conditioned_study_v1.py",
