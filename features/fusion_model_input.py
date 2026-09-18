@@ -14,6 +14,7 @@ from canonical_distances import canonicalize_distance_read
 
 from features.db_feature_adapter import build_db_mvp_feature_row
 from features.mvp_source_coercion import MvpFeatureSourceError
+from features.monte_carlo_stack_input import typed_input_reason
 from features.xgb_model_input import (
     MVP_LEGACY_KEYS,
     validate_inference_snapshot_v1_envelope,
@@ -94,7 +95,7 @@ def validate_inference_snapshot_for_fusion_stack(snap: Any) -> None:
         validate_inference_snapshot_v1_envelope(snap)
     except XgbInferenceInputError as e:
         raise FusionModelInputError(
-            str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+            str(e), reason=typed_input_reason(e)
         ) from e
 
 

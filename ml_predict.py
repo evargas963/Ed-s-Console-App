@@ -54,6 +54,7 @@ from features.lstm_sequence_input import (
     TransformerSequenceInputError,
     build_transformer_merged_window,
 )
+from features.monte_carlo_stack_input import typed_input_reason
 from features.xgb_model_input import XgbInferenceInputError
 from features.parallel_stack_schema import (
     PARALLEL_STACK_SCHEMA_VERSION,
@@ -1433,7 +1434,7 @@ def _predict_lstm(
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)
         except ValueError as e:
             raise LstmSequenceInputError(
-                str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+                str(e), reason=typed_input_reason(e)
             ) from e
 
         try:
@@ -1792,7 +1793,7 @@ def _predict_transformer(
         _asof = _require_as_of_ts_utc_for_sequence_db(inference_snapshot_v1)
     except LstmSequenceInputError as e:
         raise TransformerSequenceInputError(
-            str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+            str(e), reason=typed_input_reason(e)
         ) from e
 
     try:
@@ -1862,7 +1863,7 @@ def _predict_transformer(
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)
         except ValueError as e:
             raise TransformerSequenceInputError(
-                str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+                str(e), reason=typed_input_reason(e)
             ) from e
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])

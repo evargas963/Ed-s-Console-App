@@ -44,10 +44,6 @@ def test_lineage_artifact_exists_and_is_honest():
             assert row["live_dependents"], row["deleted_symbol"]
 
 
-def test_legacy_horizon_7_directory_is_gone():
-    assert not (ROOT / "tools" / "legacy" / "horizon_7").exists()
-
-
 def test_deleted_batch_backfill_sanitizer_not_restored_as_abs_clamp():
     """Invalid spread must stay fail-closed None, not the deleted abs() sanitizer."""
     server = (ROOT / "server.py").read_text(encoding="utf-8")

@@ -90,11 +90,18 @@ def test_backfill_fusion_policy_complete_imports_cleanly():
 
 
 def test_validate_fusion_backfill_complete_imports_cleanly():
-    importlib.import_module("tools.validate_fusion_backfill_complete_v1")
+    mod = importlib.import_module("tools.validate_fusion_backfill_complete_v1")
+    assert callable(mod.main)
+    src = (ROOT / "tools" / "validate_fusion_backfill_complete_v1.py").read_text(encoding="utf-8")
+    assert "from tools._fusion_backfill_shared import _incomplete_fused_sql" in src
 
 
 def test_backfill_fusion_policy_columns_expanded_imports_cleanly():
-    importlib.import_module("tools.backfill_fusion_policy_columns_expanded_v1")
+    mod = importlib.import_module("tools.backfill_fusion_policy_columns_expanded_v1")
+    assert callable(mod.main)
+    assert mod._classify_failure is importlib.import_module(
+        "tools._fusion_backfill_shared"
+    )._classify_failure
 
 
 def test_analyze_fused_xgb_comparison_dataset_imports_cleanly():

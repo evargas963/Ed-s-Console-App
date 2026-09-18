@@ -497,6 +497,8 @@ _TEST_PROOF_NAMESPACE_PREFIX = "tests/test_no_fallback_lock"
 #: evidence/prose would otherwise self-trigger the gate (the RC-47 lesson, generalized).
 _META_TOOLING_EXCLUDED_FROM_CONTENT_RULES = (
     "tools/fallback_discovery.py", "tools/apply_adjudication.py",
+    "tools/check_fallback_discovery_completeness.py",
+    "tools/reconcile_no_fallback_inventory_lineage.py",
 )
 
 

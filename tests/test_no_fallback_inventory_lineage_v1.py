@@ -43,12 +43,12 @@ def test_lineage_tool_writes_reconciling_artifact():
 
 
 def test_planted_executable_fallback_is_discovered():
-    hits = C.prove_planted_fallback_is_discovered()
+    hits = C.prove_planted_fallback_is_discovered(C.PLANTED_FALLBACK_SRC)
     assert hits and hits[0]["pattern"] == C.PLANTED_PATTERN
 
 
 def test_omitted_executable_fallback_fails_completeness_gate():
-    C.prove_omitted_executable_fallback_fails()
+    C.prove_omitted_executable_fallback_fails(C.PLANTED_FALLBACK_SRC)
     decoy = C.discover("unrelated.py", "def ok(x):\n    return x\n")
     missing = C.completeness_ok(decoy, [(C.PLANTED_REL, C.PLANTED_PATTERN)])
     assert missing == [f"{C.PLANTED_REL}:{C.PLANTED_PATTERN}"]

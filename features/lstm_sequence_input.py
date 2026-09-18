@@ -45,6 +45,7 @@ from typing import Any, Mapping
 from features.canonical_contract import validate_feature_contract_row
 from features.mvp_source_coercion import MvpFeatureSourceError
 from features.fusion_model_input import FusionModelInputError, validate_inference_snapshot_for_fusion_stack
+from features.monte_carlo_stack_input import typed_input_reason
 from features.xgb_model_input import CANONICAL_TO_XGB_TABULAR, MVP_LEGACY_KEYS
 
 # Re-export for callers documenting sequence length (single source in lstm_data).
@@ -305,7 +306,7 @@ def build_lstm_merged_windows(
             validate_inference_snapshot_for_fusion_stack(inference_snapshot_v1)
         except FusionModelInputError as e:
             raise LstmSequenceInputError(
-                str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+                str(e), reason=typed_input_reason(e)
             ) from e
 
     last_ts = window[-1].get("ts_utc") if window else None
@@ -370,6 +371,6 @@ def build_transformer_merged_window(
         )
     except LstmSequenceInputError as e:
         raise TransformerSequenceInputError(
-            str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+            str(e), reason=typed_input_reason(e)
         ) from e
     return merged_window

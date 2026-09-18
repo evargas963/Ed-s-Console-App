@@ -28,11 +28,12 @@ def _classify_failure(exc: BaseException, hint: str = "") -> str:
     is never inferred from caller strings or exception messages.
     """
     del hint
+    from features.monte_carlo_stack_input import typed_input_reason
     from ml_predict import ParallelRuntimeArtifactError
 
-    reason = getattr(exc, "reason", None)
-    if isinstance(reason, str) and reason.strip():
-        return reason.strip()
+    reason = typed_input_reason(exc)
+    if reason != "UNCLASSIFIED":
+        return reason
     if isinstance(exc, ParallelRuntimeArtifactError):
         return "MISSING_ARTIFACTS"
     if isinstance(exc, FileNotFoundError):

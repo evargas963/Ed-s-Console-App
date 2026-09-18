@@ -34,6 +34,16 @@ class MonteCarloStackInputError(ValueError):
         self.reason = reason
 
 
+def typed_input_reason(exc: BaseException) -> str:
+    """Producer-assigned reason code, or UNCLASSIFIED. Does not read message text."""
+    if not hasattr(exc, "reason"):
+        return "UNCLASSIFIED"
+    reason = exc.reason
+    if isinstance(reason, str) and reason.strip():
+        return reason.strip()
+    return "UNCLASSIFIED"
+
+
 def resolve_monte_carlo_stack_inputs(
     inp: Any,
     inference_snapshot_v1: dict[str, Any],
