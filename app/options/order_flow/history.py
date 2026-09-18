@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
+from app.options.order_flow.engine import _iter_asks_levels, _iter_bids_levels, _sorted_valid_levels
 from app.options.order_flow.state import OrderFlowState
 from stream_spine import resolve_stream_db_path
 
@@ -296,20 +297,24 @@ def book_heatmap_for_ticker(
         if not isinstance(item, dict):
             continue
         bucket = min(n_buckets - 1, int((float(ts_recv) - t0) / bucket_sec))
-        for leaf, price_key, side in (("BIDS", "BID_PRICE", "bid"), ("ASKS", "ASK_PRICE", "ask")):
-            levels = item.get(leaf)
-            # This vendor field is not reliably a list -- app.options.order_flow.state.
-            # push_book already normalizes the identical BIDS/ASKS leaf the same way for
-            # exactly this reason (a single-level book can arrive as one bare object).
-            if not isinstance(levels, list):
-                levels = [levels] if levels else []
-            for lvl in levels:
-                if not isinstance(lvl, dict):
-                    continue
-                px, vol = lvl.get(price_key), lvl.get("TOTAL_VOLUME")
-                if px is None or vol is None:
-                    continue
-                px = round(float(px), 2)
+        # RC-REHAB-1 (Phase 2): this used to be a THIRD independent BIDS/ASKS parser, separate
+        # from app.options.order_flow.engine's canonical _iter_bids_levels/_iter_asks_levels --
+        # same raw wire shape (BIDS/ASKS -> BID_PRICE/ASK_PRICE/TOTAL_VOLUME), reimplemented
+        # with its own single-vs-list normalization and its own (looser) validity check. Two
+        # real, silent divergences existed as a result: this loop dropped a level that was
+        # itself a nested list of sub-dicts (a shape _iter_bids_levels/_iter_asks_levels already
+        # handle -- engine.py:158-171,183-195), and it accepted a zero/negative price or a
+        # negative volume with no check at all (_sorted_valid_levels' `p > 0 and v >= 0` filter
+        # now applies here too). Calling the SAME canonical functions instead of a parallel
+        # reimplementation is the fix, not switching to a different but equally independent
+        # third formula. Sort order from _sorted_valid_levels is irrelevant here (this loop
+        # buckets by price into a dict, not sliced by depth) -- only its validation matters.
+        for side, levels in (
+            ("bid", _sorted_valid_levels(_iter_bids_levels(item), descending=True)),
+            ("ask", _sorted_valid_levels(_iter_asks_levels(item), descending=False)),
+        ):
+            for price, vol in levels:
+                px = round(price, 2)
                 cell = cells.setdefault((bucket, px), {"bid": 0.0, "ask": 0.0})
                 # Operator-reproduced defect (2026-09-14): NASDAQ_BOOK/NYSE_BOOK messages are
                 # full-book snapshots, not deltas -- an UNCHANGED 100-share resting level gets

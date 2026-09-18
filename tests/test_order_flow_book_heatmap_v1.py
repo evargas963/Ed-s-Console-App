@@ -146,3 +146,46 @@ def test_options_book_rows_for_a_contract_never_leak_into_the_underlyings_heatma
     d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
     assert d["available"] is False
     assert d["reason"] == "no book history captured for this ticker"
+
+
+def test_nested_list_levels_are_no_longer_silently_dropped(tmp_path):
+    """RC-REHAB-1 (Phase 2) mutation test: this loop used to reimplement its own BIDS/ASKS
+    parser independently of engine.py's canonical _iter_bids_levels/_iter_asks_levels, and its
+    own version silently dropped a level that was itself a nested list of sub-dicts (a real
+    vendor shape those canonical functions already handle -- engine.py:158-171,183-195).
+    Consolidating onto the canonical parser fixes this as a side effect; this proves it."""
+    db = tmp_path / "stream_capture.db"
+    nested_book = {
+        "key": SYM, "BOOK_TIME": 0,
+        "BIDS": [[{"BID_PRICE": 100.00, "TOTAL_VOLUME": 77, "NUM_BIDS": 1}]],
+        "ASKS": [[{"ASK_PRICE": 100.05, "TOTAL_VOLUME": 55, "NUM_ASKS": 1}]],
+    }
+    _write_book_rows(db, [(1000.0, "NASDAQ_BOOK", nested_book)])
+    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
+    assert d["available"] is True, "a nested-list level must not make the whole row look empty"
+    cells = {(c["t"], c["price"]): c for c in d["cells"]}
+    assert cells[(0, 100.00)]["bid"] == 77.0
+    assert cells[(0, 100.05)]["ask"] == 55.0
+
+
+def test_non_positive_price_or_negative_volume_levels_are_now_rejected(tmp_path):
+    """RC-REHAB-1 (Phase 2) mutation test: the old loop only checked for None, so a malformed
+    zero/negative price or a negative volume was silently bucketed as real data. Consolidating
+    onto _sorted_valid_levels' `p > 0 and v >= 0` filter now excludes it instead."""
+    db = tmp_path / "stream_capture.db"
+    malformed_book = {
+        "key": SYM, "BOOK_TIME": 0,
+        "BIDS": [
+            {"BID_PRICE": 0.0, "TOTAL_VOLUME": 999, "NUM_BIDS": 1},
+            {"BID_PRICE": 100.00, "TOTAL_VOLUME": -5, "NUM_BIDS": 1},
+            {"BID_PRICE": 99.50, "TOTAL_VOLUME": 40, "NUM_BIDS": 1},
+        ],
+        "ASKS": [{"ASK_PRICE": 100.05, "TOTAL_VOLUME": 30, "NUM_ASKS": 1}],
+    }
+    _write_book_rows(db, [(1000.0, "NASDAQ_BOOK", malformed_book)])
+    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
+    assert d["available"] is True
+    cells = {(c["t"], c["price"]): c for c in d["cells"]}
+    assert (0, 0.0) not in cells, "a non-positive price must not become a real cell"
+    assert (0, 100.00) not in cells, "a negative volume at this price must not become a real cell"
+    assert cells[(0, 99.50)]["bid"] == 40.0, "a genuinely valid level in the same row must still resolve"
