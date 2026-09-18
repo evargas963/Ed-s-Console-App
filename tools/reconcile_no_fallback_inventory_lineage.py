@@ -21,6 +21,21 @@ broken by every later legitimate discovery/adjudication change -- it failed CI o
 anything regressed. Pinning CURRENT_REF makes this a pure historical regression proof
 that passes forever regardless of later progress, while
 reports/no_fallback_inventory_lineage_1226_to_1125.json stands as the permanent record.
+
+PINNING THE INVENTORY INPUTS WAS INSUFFICIENT (2026-09-18, operator audit): pinning
+PRIOR_REF/CURRENT_REF only fixed WHICH CANDIDATE ROWS get compared. The per-removal
+CLASSIFICATION still called `(REPO / old_file).exists()` against the live, mutable
+working tree -- a file this session deletes, restores, or later adds back at the same
+path would silently flip a removal between DELETED_FILE and
+EXPRESSION_REMOVED_OR_RESHAPED, and flip the `file_exists_now` evidence field, with
+neither pinned ref changing at all. That is exactly the class of defect this mission
+exists to remove: a "frozen historical proof" whose actual output still depends on
+unpinned, currently-evolving state. Every fact this report asserts -- which candidates
+existed, which survived, and whether a removed candidate's FILE survived -- must now
+come from the two pinned git trees (`git cat-file -e <ref>:<path>`), never from
+`Path.exists()` against whatever happens to be checked out when this runs. See
+tests/test_no_fallback_lineage_pinned_trees_v1.py for the mutation test proving a
+working-tree file add/delete cannot change the generated report.
 """
 from __future__ import annotations
 
@@ -76,13 +91,34 @@ def _load_current() -> dict:
     return _load_at_ref(CURRENT_REF)
 
 
+def _file_exists_at_ref(ref: str, path: str) -> bool:
+    """Existence within a PINNED git tree, never the live working directory.
+
+    `git cat-file -e <ref>:<path>` resolves `path` inside the tree `ref` points to and
+    exits 0 iff that exact blob exists there -- it never touches the working tree at all,
+    so this answer cannot change no matter what the working tree later adds, deletes, or
+    restores at that path."""
+    if not path:
+        return False
+    r = subprocess.run(
+        ["git", "cat-file", "-e", f"{ref}:{path}"],
+        cwd=str(REPO),
+        capture_output=True,
+        timeout=60,
+    )
+    return r.returncode == 0
+
+
 def _removal_classification(old: dict) -> tuple[str, str]:
     old_file = old.get("file") or ""
-    if not (REPO / old_file).exists():
-        return "DELETED_FILE", f"{old_file} is absent from the current tree"
+    # CURRENT_REF, not the live working tree: this classification answers "did this
+    # candidate's file survive into the pinned CURRENT state", a fact about the historical
+    # transition being proven, not about whatever happens to be checked out right now.
+    if not _file_exists_at_ref(CURRENT_REF, old_file):
+        return "DELETED_FILE", f"{old_file} is absent from {CURRENT_REF} (the pinned current tree)"
     return (
         "EXPRESSION_REMOVED_OR_RESHAPED",
-        f"{old_file} still exists but this (pattern, snippet, context) is no longer discovered",
+        f"{old_file} still exists in {CURRENT_REF} but this (pattern, snippet, context) is no longer discovered",
     )
 
 
@@ -126,7 +162,7 @@ def build_lineage(prior: dict, current: dict) -> dict:
                     "prior_ref": PRIOR_REF,
                     "snippet": old.get("snippet"),
                     "line": old.get("line"),
-                    "file_exists_now": (REPO / (old.get("file") or "")).exists(),
+                    "file_exists_at_current_ref": _file_exists_at_ref(CURRENT_REF, old.get("file") or ""),
                 },
                 "classification": classification,
             }

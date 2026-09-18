@@ -46,10 +46,24 @@ const SURFACE = {
 // the demand-declaration tests below, which specifically exercise _heatmapVisibleContracts —
 // an empty `contracts` field on every cell would make ANY scope's demand list empty,
 // masking exactly the coverage difference these tests exist to prove).
+//
+// No-fallback audit fix (2026-09-18): expirations used to be a FIXED calendar range
+// starting 2026-09-11. That date is wall-clock arithmetic wearing an absolute-date
+// disguise -- every date after it eventually becomes "today or earlier", at which point
+// a fixture built to prove "N unexpired columns" (the comments at every call site below
+// say exactly that) stops proving it, silently, with no signal beyond a suite that no
+// longer matches its own documented contract. Anchored to `new Date()` instead: every
+// generated expiry is always `e + 1` real days in the future, so `dte: e + 1` stays true
+// by construction on every run, on every date, forever -- not just on the day this was
+// written. See the "surfaceWithContracts fixture stays future-valid" regression near the
+// bottom of this file, which mocks Date to prove this across multiple simulated "todays",
+// not just verify it happens to pass right now.
 function surfaceWithContracts(nExps, nStrikes) {
+  var today = new Date();
+  var base = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   var expirations = [];
   for (var e = 0; e < nExps; e++) {
-    var d = new Date(Date.UTC(2026, 8, 11 + e));
+    var d = new Date(base + (e + 1) * 86400000);   // always strictly future: tomorrow, +2, +3, ...
     expirations.push({ expiry: d.toISOString().slice(0, 10), dte: e + 1 });
   }
   var strikes = [];
@@ -2109,9 +2123,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // real per-symbol identity `surfaceWithContracts(1, 3)`'s own column 0 actually demands.
   test('an accepted subscription is honestly disclosed as accepted, not claimed active, until real observed data arrives', async ({ page }) => {
     let overlaySymbols = [];
+    const fixtureSurface = surfaceWithContracts(1, 3);
+    // Column 0's own demanded symbol (strike 580's call leg) -- derived from the SAME
+    // generated surface being served below, never a hardcoded date, so this stays correct
+    // as wall-clock dates advance (see surfaceWithContracts's own 2026-09-18 fix note).
+    const col0Symbol = fixtureSurface.cells[0].contracts[0].call;
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, surfaceWithContracts(1, 3), {
+      body: JSON.stringify(Object.assign({}, fixtureSurface, {
         stream_overlay_contracts: overlaySymbols.length, stream_overlay_symbols: overlaySymbols,
       })),
     }));
@@ -2129,7 +2148,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
     // A later poll's surface now carries real overlay evidence FOR THIS COLUMN'S OWN
     // demanded symbol -- ONLY NOW may the tooltip claim streaming is actually active.
-    overlaySymbols = ['C580X2026-09-11'];
+    overlaySymbols = [col0Symbol];
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
     await expect(col).toHaveAttribute('title', /streaming updates observed for this column/, { timeout: 3000 });
   });
@@ -2145,9 +2164,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // 2 columns x 1 strike -- demandCols under Wider/All-style scope names both, well under
     // the 240-contract cap, so both accept.
     let overlaySymbols = [];
+    const fixtureSurface = surfaceWithContracts(2, 1);
+    // Column 0's strike-580 symbol, derived from the SAME generated surface being served
+    // below -- never a hardcoded date (see surfaceWithContracts's own fix note).
+    const col0Symbol = fixtureSurface.cells[0].contracts[0].call;
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, surfaceWithContracts(2, 1), {
+      body: JSON.stringify(Object.assign({}, fixtureSurface, {
         stream_overlay_contracts: overlaySymbols.length, stream_overlay_symbols: overlaySymbols,
       })),
     }));
@@ -2163,12 +2186,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cols.nth(0)).toHaveAttribute('title', /subscription accepted/, { timeout: 3000 });
     await expect(cols.nth(1)).toHaveAttribute('title', /subscription accepted/, { timeout: 3000 });
 
-    // Only column 0's own demanded symbol (strike 580, expiry 2026-09-11) actually overlaid.
-    overlaySymbols = ['C580X2026-09-11'];
+    // Only column 0's own demanded symbol (strike 580, front expiry) actually overlaid.
+    overlaySymbols = [col0Symbol];
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
     await expect(cols.nth(0)).toHaveAttribute('title', /streaming updates observed for this column/, { timeout: 3000 });
-    // Column 1 (a different expiry's symbol, e.g. C580X2026-09-12) has NO overlay evidence
-    // of its own -- it must stay 'accepted', never borrow column 0's evidence.
+    // Column 1 (a different expiry's symbol, col1Symbol) has NO overlay evidence of its
+    // own -- it must stay 'accepted', never borrow column 0's evidence.
     await expect(cols.nth(1)).toHaveAttribute('title', /subscription accepted.*awaiting the first observed update/);
     await expect(cols.nth(1)).not.toHaveAttribute('title', /streaming updates observed/);
   });
@@ -2190,8 +2213,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('a visible scope larger than the former 240-contract self-imposed ceiling is demanded in FULL, uncapped, unsplit', async ({ page }) => {
     // 2 columns x 61 strikes x 2 sides = 244 contracts -- previously would have capped
     // column 1 to a 118-contract partial; now both columns' contracts are demanded whole.
+    const fixtureSurface = surfaceWithContracts(2, 61);
+    const col1Expiry = fixtureSurface.expirations[1].expiry;   // derived, never hardcoded
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(2, 61)),
+      status: 200, contentType: 'application/json', body: JSON.stringify(fixtureSurface),
     }));
     const demandCalls = [];
     await page.route('**/api/streaming/active-option-contracts', (route) => {
@@ -2205,7 +2230,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
     const lastDemand = demandCalls[demandCalls.length - 1];
     expect(lastDemand.length).toBe(244);   // the FULL set -- no cap, no split, no exclusion
-    const col1Symbols = lastDemand.filter((s) => /X2026-09-12$/.test(s));
+    const col1Symbols = lastDemand.filter((s) => s.endsWith('X' + col1Expiry));
     expect(col1Symbols.length).toBe(122);   // column 1's own full 61 strikes x 2 sides
 
     const colTitles = await page.locator('.heat thead th.hexp').evaluateAll(
@@ -2534,5 +2559,49 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // and, if the scope guard were broken, repaint over QQQ's own value.
     await page.waitForTimeout(500);
     await expect(cell).toHaveText('$9.0K');   // still QQQ's -- the stale SPY-scoped push was ignored
+  });
+
+  // No-fallback audit regression (2026-09-18): surfaceWithContracts used to anchor its
+  // expirations to a fixed calendar date (2026-09-11). Every call site above relies on the
+  // fixture producing genuinely FUTURE expirations ("N unexpired columns") -- a fixed
+  // anchor date proves that only until the calendar catches up to it, then fails silently
+  // with no connection back to its real cause. This does not just check today's date; it
+  // mocks Date to several different "todays" -- including years in the future -- to prove
+  // the fix is wall-clock-RELATIVE, not a replacement hardcoded date with a longer runway.
+  test('surfaceWithContracts fixture generates strictly-future expirations on any wall-clock date (no-fallback regression)', async () => {
+    const RealDate = Date;
+    const simulatedNows = [
+      Date.UTC(2026, 8, 18),   // today, at the time of this fix
+      Date.UTC(2027, 0, 1),    // a few months out
+      Date.UTC(2031, 5, 15),   // years out
+      Date.UTC(2099, 11, 31),  // far future -- proves this isn't just a longer-runway hardcode
+    ];
+    try {
+      for (const nowMs of simulatedNows) {
+        class MockDate extends RealDate {
+          constructor(...args) {
+            if (args.length === 0) return new RealDate(nowMs);
+            super(...args);
+          }
+        }
+        MockDate.now = () => nowMs;
+        // eslint-disable-next-line no-global-assign
+        Date = MockDate;
+        const todayStr = new RealDate(nowMs).toISOString().slice(0, 10);
+        const surface = surfaceWithContracts(5, 2);
+        expect(surface.expirations.length).toBe(5);
+        surface.expirations.forEach((exp, i) => {
+          expect(exp.expiry > todayStr).toBe(true);   // strictly future, every generated row
+          expect(exp.dte).toBe(i + 1);                 // dte still matches the day offset exactly
+        });
+        // Derived option symbols track whatever the generated expiry actually is -- never a
+        // separate hardcoded string that could drift from the dates above.
+        const frontCall = surface.cells[0].contracts[0].call;
+        expect(frontCall).toBe('C580X' + surface.expirations[0].expiry);
+      }
+    } finally {
+      // eslint-disable-next-line no-global-assign
+      Date = RealDate;
+    }
   });
 });

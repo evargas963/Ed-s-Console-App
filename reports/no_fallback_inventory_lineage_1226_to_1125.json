@@ -19,12 +19,12 @@
       "symbol": "main",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "audit_model_readiness.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "audit_model_readiness.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "SELECT substr(ts_et, 1, 10) as dt, COALESCE(rules_signal, 'NULL') as sig, COUNT(*) as c",
         "line": 481,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -35,12 +35,12 @@
       "symbol": "_audit_trusted_calibration_anchors",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/anchor_audit.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/anchor_audit.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'trusted'",
         "line": 124,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -51,12 +51,12 @@
       "symbol": "run_anchor_audit",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/anchor_audit.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/anchor_audit.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'legacy'",
         "line": 468,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -67,12 +67,12 @@
       "symbol": "run_anchor_audit",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/anchor_audit.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/anchor_audit.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'trusted'",
         "line": 477,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -83,12 +83,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/backfill_outcomes.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/backfill_outcomes.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "`snapshots` at `COALESCE(matched_snapshot_ts_utc, decision_ts_utc)` so legacy partial attaches",
         "line": 14,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -99,12 +99,12 @@
       "symbol": "_resync_existing_outcomes_from_snapshots",
       "pattern": "TERNARY",
       "old_adjudication": "NOT_PROVEN",
-      "reason": "calibration/backfill_outcomes.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/backfill_outcomes.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "key_ts = float(r[\"matched_snapshot_ts_utc\"] if r[\"matched_snapshot_ts_utc\"] is not None else r[\"decision_ts_utc\"])",
         "line": 229,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -115,12 +115,12 @@
       "symbol": "scan_db",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/canonical_1m_grid_scan.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/canonical_1m_grid_scan.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
         "line": 112,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -131,12 +131,12 @@
       "symbol": "scan_db",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/canonical_1m_grid_scan.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/canonical_1m_grid_scan.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
         "line": 66,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -147,12 +147,12 @@
       "symbol": "operable_filter_sql",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/operable_surface_quarantine.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/operable_surface_quarantine.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(research_excluded,0)=0",
         "line": 42,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -163,12 +163,12 @@
       "symbol": "quarantine_old_unattached",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/operable_surface_quarantine.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/operable_surface_quarantine.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(research_excluded,0)=0",
         "line": 82,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -179,12 +179,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/phase65_edge_isolation_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/phase65_edge_isolation_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "timeframe='1m' AND COALESCE(horizon_outcome_schema_version,3)=3 AND outcome_1c..outcome_60c AND outcome_*_pts all NOT NULL AND EXISTS price_bars_1m bar anchor at ts_utc (same as phase6 load_rows)",
         "line": 37,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -195,12 +195,12 @@
       "symbol": "load_rows",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/phase6_edge_discovery_governed_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/phase6_edge_discovery_governed_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 175,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -211,12 +211,12 @@
       "symbol": "run_repair",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/repair_canonical_1m_edge_carry_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/repair_canonical_1m_edge_carry_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "rep[\"tickers_touched\"] = 0",
         "line": 136,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -227,12 +227,12 @@
       "symbol": "run_repair",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/repair_canonical_1m_edge_carry_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/repair_canonical_1m_edge_carry_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "rep[\"governed_outcome_refresh_tickers\"] = 0",
         "line": 137,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -243,12 +243,12 @@
       "symbol": "run_repair",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "rep[\"tickers_touched\"] = 0",
         "line": 157,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -259,12 +259,12 @@
       "symbol": "run_repair",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "rep[\"governed_outcome_refresh_tickers\"] = 0",
         "line": 158,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -275,12 +275,12 @@
       "symbol": "run_repair",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "rep[\"fill_outcomes_tickers\"] = 0",
         "line": 159,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -291,12 +291,12 @@
       "symbol": "_unsafe_non_exact_joins",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/run_production_accumulation_validation.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/run_production_accumulation_validation.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND IFNULL(outcome_join_method, '') NOT IN ('exact', '')",
         "line": 172,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -307,12 +307,12 @@
       "symbol": "_count_enrolled_tickers",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "calibration/writer.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "calibration/writer.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "SELECT COUNT(*) FROM logging_universe WHERE COALESCE(active, 1) = 1",
         "line": 443,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -323,12 +323,12 @@
       "symbol": "compute_call",
       "pattern": "OR_LADDER",
       "old_adjudication": "NOT_PROVEN",
-      "reason": "call_engine.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "call_engine.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "dex_magnitude=inp.dex_magnitude or \"moderate\",",
         "line": 1547,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -339,12 +339,12 @@
       "symbol": "compute_call",
       "pattern": "OR_LADDER",
       "old_adjudication": "NOT_PROVEN",
-      "reason": "call_engine.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "call_engine.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "charm_magnitude=inp.charm_magnitude or \"moderate\")",
         "line": 1548,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -355,12 +355,12 @@
       "symbol": "_snapshot_rows_affected_by_bar_mutations",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
         "line": 5189,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -371,12 +371,12 @@
       "symbol": "sql_issue19_snapshots_context_group",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "SELECT COALESCE(",
         "line": 5618,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -387,12 +387,12 @@
       "symbol": "compute_accuracy",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND (et_hour * 60 + COALESCE(et_minute, 0)) >=",
         "line": 4852,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -403,12 +403,12 @@
       "symbol": "compute_accuracy",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND (et_hour * 60 + COALESCE(et_minute, 0)) <",
         "line": 4853,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -419,12 +419,12 @@
       "symbol": "refresh_all_governed_bar_anchor_outcomes_v1",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
         "line": 3833,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -435,12 +435,12 @@
       "symbol": "refresh_all_governed_bar_anchor_outcomes_v1",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
         "line": 3847,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -451,12 +451,12 @@
       "symbol": "_do",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
         "line": 3960,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -467,12 +467,12 @@
       "symbol": "_do",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
         "line": 3983,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -483,12 +483,12 @@
       "symbol": "_do",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "db.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
         "line": 3757,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -499,12 +499,12 @@
       "symbol": "<module>",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "lstm_data.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "lstm_data.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "tickers = []",
         "line": 1340,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -515,12 +515,12 @@
       "symbol": "_build_contract_context_ms",
       "pattern": "OR_LADDER",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "exp = ms.call_option_expiry or ms.selected_exp",
         "line": 938,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -531,12 +531,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.vix_regime      = getattr(mkt_ctx, \"vix_regime\",     \"\")",
         "line": 1194,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -547,12 +547,12 @@
       "symbol": "build_market_state",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.gex_magnitude = str(getattr(consensus_summary, \"gex_magnitude\", \"negligible\") or \"negligible\")",
         "line": 1147,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -563,12 +563,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.trade_type       = getattr(_call, 'trade_type', 'none')",
         "line": 1556,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -579,12 +579,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "_tt = getattr(_call, 'trade_type', 'none')",
         "line": 1557,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -595,12 +595,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.size_cue         = getattr(_call, 'size_cue', 'SKIP')",
         "line": 1566,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -611,12 +611,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.call_state             = getattr(_call, 'call_state', 'WAIT')",
         "line": 1582,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -627,12 +627,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.call_forecast_state    = getattr(_call, 'forecast_state', 'dormant')",
         "line": 1583,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -643,12 +643,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.put_state             = getattr(_call, 'put_state', 'WAIT')",
         "line": 1590,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -659,12 +659,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.put_forecast_state    = getattr(_call, 'put_forecast_state', 'dormant')",
         "line": 1591,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -675,12 +675,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.fusion_n_models_active = getattr(_fusion, 'n_sources_active', 0)",
         "line": 1833,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -691,12 +691,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.vol_regime = getattr(_vr, 'vol_regime', 'unknown')",
         "line": 1871,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -707,12 +707,12 @@
       "symbol": "build_market_state",
       "pattern": "OR_LADDER",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "expiry=(ms.call_option_expiry or ms.selected_exp),",
         "line": 1955,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -723,12 +723,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.dex_magnitude = str(getattr(consensus_summary, \"dex_magnitude\", \"negligible\") or \"negligible\")",
         "line": 1148,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -739,12 +739,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.final_tradeable = bool(getattr(_mhd, \"final_tradeable\", False))",
         "line": 1610,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -755,12 +755,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.guest_anchor_active = bool(getattr(_sig_out, \"guest_anchor_active\", False))",
         "line": 1623,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -771,12 +771,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.trade_mode = str(getattr(_mhd, \"trade_mode\", \"intraday\") or \"intraday\")",
         "line": 1612,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -787,12 +787,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.contradiction_state = str(getattr(_mhd, \"contradiction_state\", \"none\") or \"none\")",
         "line": 1617,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -803,12 +803,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.conflict_level_display = str(getattr(_mr, \"conflict_level\", \"high\") or \"high\")",
         "line": 1618,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -819,12 +819,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.entry_state = str(getattr(_mhd, \"entry_state\", \"no_setup\") or \"no_setup\")",
         "line": 1619,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -835,12 +835,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.gex_magnitude = str(getattr(consensus_summary, \"gex_magnitude\", \"negligible\") or \"negligible\")",
         "line": 1147,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -851,12 +851,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms.size_modifier_display = str(getattr(_pt, \"size_modifier_display\", \"0.00x\") or \"0.00x\")",
         "line": 1632,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -867,12 +867,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "\"status\": getattr(s, 'status', 'inactive'),",
         "line": 1894,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -883,12 +883,12 @@
       "symbol": "build_market_state",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "market_state.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "\"row_state\": \"missing\" if _missing else str(getattr(_a, \"row_state\", \"weak\")),",
         "line": 1649,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -899,12 +899,12 @@
       "symbol": "_active_base_collapse_flags",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "ml_predict.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "ml_predict.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "flags = set()",
         "line": 2298,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -915,12 +915,12 @@
       "symbol": "_training_ticker_union",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "ml_scheduler.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "ml_scheduler.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "tickers = []",
         "line": 273,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -931,12 +931,12 @@
       "symbol": "train_ticker",
       "pattern": "IMPUTATION",
       "old_adjudication": "REPAIRED",
-      "reason": "ml_train.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "ml_train.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "X = X.fillna(pd.Series(impute_medians))",
         "line": 1188,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -947,12 +947,12 @@
       "symbol": "_aggregate_select_exprs",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "normalized_training_sync.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(MAX(snapshot_id), 0)",
         "line": 153,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -963,12 +963,12 @@
       "symbol": "_aggregate_select_exprs",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "normalized_training_sync.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(MAX(CAST(horizon_outcome_schema_version AS INTEGER)), 0)",
         "line": 174,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -979,12 +979,12 @@
       "symbol": "_aggregate_select_exprs",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "normalized_training_sync.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(SUM(CAST(",
         "line": 158,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -995,12 +995,12 @@
       "symbol": "_aggregate_select_exprs",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "normalized_training_sync.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(SUM(CAST(",
         "line": 167,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1011,12 +1011,12 @@
       "symbol": "_aggregate_select_exprs",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "normalized_training_sync.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(SUM(CAST(",
         "line": 169,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1027,12 +1027,12 @@
       "symbol": "_aggregate_select_exprs",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "normalized_training_sync.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(SUM(CAST(",
         "line": 172,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1043,12 +1043,12 @@
       "symbol": "_seed_strike_geometry_from_storage",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "server.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "server.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "tickers = list(CORE_TICKERS)",
         "line": 13844,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1059,12 +1059,12 @@
       "symbol": "_terrain_loop",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "server.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "server.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "tickers = list(CORE_TICKERS)",
         "line": 13712,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1075,12 +1075,12 @@
       "symbol": "_bars_loop",
       "pattern": "EXCEPT_SUBSTITUTE",
       "old_adjudication": "REPAIRED",
-      "reason": "server.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "server.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "tickers = list(CORE_TICKERS)",
         "line": 13940,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1091,12 +1091,12 @@
       "symbol": "materialize_normalized_table",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "snapshot_normalizer.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "snapshot_normalizer.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized",
         "line": 372,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1107,12 +1107,12 @@
       "symbol": "test_scale_exact_join_no_ambiguity_validate_passes",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tests/test_calibration_outcome_join_scale.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tests/test_calibration_outcome_join_scale.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "WHERE outcome_5c IS NOT NULL AND IFNULL(outcome_join_method,'') != 'exact'",
         "line": 94,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1123,12 +1123,12 @@
       "symbol": "test_bar_anchor_scope_supports_table_alias",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(s.outcome_filled,0)=0",
         "line": 8,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1139,12 +1139,12 @@
       "symbol": "test_bar_anchor_scope_supports_table_alias",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(s.outcome_filled,0)=0",
         "line": 11,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1155,12 +1155,12 @@
       "symbol": "main",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/_multi_timeframe_audit_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/_multi_timeframe_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) AS v, COUNT(*) AS n",
         "line": 175,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1171,12 +1171,12 @@
       "symbol": "run",
       "pattern": "IMPUTATION",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/feature_curation_gate.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/feature_curation_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "X = num[numeric_cols].fillna(num[numeric_cols].median())",
         "line": 398,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1187,12 +1187,12 @@
       "symbol": "main",
       "pattern": "OR_LADDER",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "sc = Counter((r[\"market_session\"] or \"unknown\") for r in rows)",
         "line": 141,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1203,12 +1203,12 @@
       "symbol": "main",
       "pattern": "OR_LADDER",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "rc = Counter((r[\"regime_primary\"] or \"NULL\") for r in rows)",
         "line": 150,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1219,12 +1219,12 @@
       "symbol": "main",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) AS v, COUNT(*) AS c",
         "line": 72,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1235,12 +1235,12 @@
       "symbol": "main",
       "pattern": "OR_LADDER",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "sess[str(r[\"market_session\"] or \"unknown\")].append(i)",
         "line": 342,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1251,12 +1251,12 @@
       "symbol": "main",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 46,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1267,12 +1267,12 @@
       "symbol": "main",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 69,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1283,12 +1283,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/audit_fused_policy_history_sufficiency_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/audit_fused_policy_history_sufficiency_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 29,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1299,12 +1299,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 37,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1315,12 +1315,12 @@
       "symbol": "main",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "chunk_size = int(args.chunk_size) if getattr(args, \"chunk_size\", 0) else 0",
         "line": 158,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1331,12 +1331,12 @@
       "symbol": "_process_rows",
       "pattern": "OR_LADDER",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ticker = str(r[\"ticker\"] or \"\")",
         "line": 50,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1347,12 +1347,12 @@
       "symbol": "main",
       "pattern": "GETATTR_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "edb = EdDB(db_path, allow_noncanonical=bool(getattr(args, \"allow_noncanonical_db\", False)))",
         "line": 130,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1363,12 +1363,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/batch_backfill_movement_predictions_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/batch_backfill_movement_predictions_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 49,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1379,12 +1379,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/build_checkpoint_provenance_bundle_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/build_checkpoint_provenance_bundle_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 34,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1395,12 +1395,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/enforce_universal_ticker_readiness_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/enforce_universal_ticker_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 39,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1411,12 +1411,12 @@
       "symbol": "main",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 145,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1427,12 +1427,12 @@
       "symbol": "main",
       "pattern": "OR_LADDER",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "ms = r[\"market_session\"] or \"unknown\"",
         "line": 154,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1443,12 +1443,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "counts_by_ticker[r[\"ticker\"]] = counts_by_ticker.get(r[\"ticker\"], 0) + 1",
         "line": 153,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1459,12 +1459,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "counts_by_session[ms] = counts_by_session.get(ms, 0) + 1",
         "line": 155,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1475,12 +1475,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "for hz in phase9.get(\"edge_positive_horizons\", []):",
         "line": 205,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1491,12 +1491,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 28,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1507,12 +1507,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "exp_rows = reconciled.get(\"expected_artifact_matrix\", {}).get(\"grouped_by_ticker_horizon_model_head\", [])",
         "line": 108,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1523,12 +1523,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "min_rows = reconciled.get(\"ticker_minimum_requirements\", [])",
         "line": 109,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1539,12 +1539,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "inference_fail_count = sum(1 for dt in phase10.get(\"decision_traces\", []) if \"INFERENCE_NULL\" in dt.get(\"failure_flags\", []))",
         "line": 131,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1555,12 +1555,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 28,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1571,12 +1571,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "shorter = [x for x in qual if horizon_order.get(x[\"horizon\"], 0) < horizon_order.get(chosen[\"horizon\"], 0)]",
         "line": 215,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1587,12 +1587,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "shorter = [x for x in qual if horizon_order.get(x[\"horizon\"], 0) < horizon_order.get(chosen[\"horizon\"], 0)]",
         "line": 215,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1603,12 +1603,12 @@
       "symbol": "main",
       "pattern": "DICT_GET_DEFAULT",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "qual.sort(key=lambda x: (horizon_order.get(x[\"horizon\"], 0), x[\"move_prob\"]), reverse=True)",
         "line": 213,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1619,12 +1619,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 27,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1635,12 +1635,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py is absent from the current tree",
+      "reason": "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py is absent from 21468eb2 (the pinned current tree)",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
         "line": 34,
-        "file_exists_now": false
+        "file_exists_at_current_ref": false
       },
       "classification": "DELETED_FILE"
     },
@@ -1651,12 +1651,12 @@
       "symbol": "_id_assignment_preview",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/migrate_snapshots_schema_repair_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/migrate_snapshots_schema_repair_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(MAX(snapshot_id), 0) AS max_snapshot_id,",
         "line": 309,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1667,12 +1667,12 @@
       "symbol": "evaluate_operable_surface",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/operable_surface_gate.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/operable_surface_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "calibration_trust='trusted' AND COALESCE(research_excluded,0)=0",
         "line": 242,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1683,12 +1683,12 @@
       "symbol": "evaluate_operable_surface",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/operable_surface_gate.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/operable_surface_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(MAX(ABS(matched_snapshot_ts_utc - decision_ts_utc)), 0) AS max_gap,",
         "line": 134,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1699,12 +1699,12 @@
       "symbol": "evaluate_operable_surface",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/operable_surface_gate.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/operable_surface_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(MAX(matched_snapshot_ts_utc - decision_ts_utc), 0) AS max_pos,",
         "line": 156,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1715,12 +1715,12 @@
       "symbol": "evaluate_operable_surface",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/operable_surface_gate.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/operable_surface_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "SELECT COUNT(*) AS n FROM calibration_decision_log WHERE COALESCE(research_excluded,0)=1",
         "line": 215,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1731,12 +1731,12 @@
       "symbol": "bar_anchor_scope_sql",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "AND COALESCE(",
         "line": 59,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1747,12 +1747,12 @@
       "symbol": "inventory_timeframe",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(outcome_filled,0)=1",
         "line": 76,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1763,12 +1763,12 @@
       "symbol": "inventory_timeframe",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "COALESCE(outcome_filled,0)=0",
         "line": 81,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1779,12 +1779,12 @@
       "symbol": "main",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/repair_validation_counts_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/repair_validation_counts_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "pin_neutral COALESCE(outcome_filled,0)=0",
         "line": 88,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1795,12 +1795,12 @@
       "symbol": "section_db",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/repo_exposure_audit.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/repo_exposure_audit.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "SELECT COALESCE(SUM(c-1),0) FROM (SELECT COUNT(*) c FROM level_crosses GROUP BY ticker, ts_utc, level_value HAVING COUNT(*)>1)",
         "line": 189,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1811,12 +1811,12 @@
       "symbol": "run_cell",
       "pattern": "IMPUTATION",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/research/d2_dual_label_eval_report.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/research/d2_dual_label_eval_report.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "sub = sub[sub[f\"tb_truncated_{hz}\"].fillna(0).astype(int) == 0]",
         "line": 127,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1827,12 +1827,12 @@
       "symbol": "<module>",
       "pattern": "SQL_COALESCE_STYLE",
       "old_adjudication": "REPAIRED",
-      "reason": "tools/smoke_movement_heads_inference_v1.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "tools/smoke_movement_heads_inference_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "timeframe='1m' AND COALESCE(horizon_outcome_schema_version,3)=3 AND outcome_1c IS NOT NULL AND outcome_60c IS NOT NULL",
         "line": 22,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     },
@@ -1843,12 +1843,12 @@
       "symbol": "_compute_baseline",
       "pattern": "IMPUTATION",
       "old_adjudication": "REPAIRED",
-      "reason": "train_compare.py still exists but this (pattern, snippet, context) is no longer discovered",
+      "reason": "train_compare.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
       "evidence": {
         "prior_ref": "05cc3bf4",
         "snippet": "pred = df[\"rules_signal\"].str.lower().map(rules_map).fillna(\"flat\")",
         "line": 55,
-        "file_exists_now": true
+        "file_exists_at_current_ref": true
       },
       "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
     }
