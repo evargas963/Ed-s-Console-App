@@ -408,23 +408,47 @@ def _r9_stale_fresh_badge(rel: str, src_after: str, added_line_nos: set[int],
 def _r5_lock_weakened(files: list[str], base: str | None) -> list[Finding]:
     """No bypass string of any kind is recognized here -- a shrinking diff to this file is
     ALWAYS flagged for human review; there is nothing that can silence it from inside a
-    commit message, a comment, or a co-staged file."""
+    commit message, a comment, or a co-staged file. Deleting the lock, the computation
+    registry, or the inventory is the same class of weakening.
+    """
+    out: list[Finding] = []
     rel = "tools/check_no_fallback_lock.py"
-    if rel not in files:
-        return []
-    removed_args = ["diff", "-U0"]
-    removed_args += [f"{base}...HEAD"] if base else ["--cached"]
-    removed_args += ["--", rel]
-    diff_out = _run(removed_args)
-    removed_text = "\n".join(
-        ln[1:] for ln in diff_out.splitlines() if ln.startswith("-") and not ln.startswith("---"))
-    removed_rule_def = bool(re.search(rf"^def {_RULE_FUNC_PREFIX}\d+_\w+", removed_text, re.M))
-    if removed_rule_def:
-        return [Finding(rel, 0, "R5_LOCK_WEAKENED",
-                        f"{rel}'s diff removes a rule-implementing function definition -- "
-                        f"flagged unconditionally for human review; this gate has no "
-                        f"mechanism, string, or marker that can clear this flag.")]
-    return []
+    if rel in files:
+        if not (REPO / rel).exists():
+            out.append(Finding(
+                rel, 0, "R5_LOCK_WEAKENED",
+                f"{rel} was deleted -- flagged unconditionally; this gate has no "
+                f"mechanism that can clear a lock-file deletion."))
+        else:
+            removed_args = ["diff", "-U0"]
+            removed_args += [f"{base}...HEAD"] if base else ["--cached"]
+            removed_args += ["--", rel]
+            diff_out = _run(removed_args)
+            removed_text = "\n".join(
+                ln[1:] for ln in diff_out.splitlines()
+                if ln.startswith("-") and not ln.startswith("---"))
+            removed_rule_def = bool(
+                re.search(rf"^def {_RULE_FUNC_PREFIX}\d+_\w+", removed_text, re.M)
+            )
+            if removed_rule_def:
+                out.append(Finding(
+                    rel, 0, "R5_LOCK_WEAKENED",
+                    f"{rel}'s diff removes a rule-implementing function definition -- "
+                    f"flagged unconditionally for human review; this gate has no "
+                    f"mechanism, string, or marker that can clear this flag."))
+    reg = "governance/computation_registry.json"
+    if reg in files and not (REPO / reg).exists():
+        out.append(Finding(
+            reg, 0, "R5_REGISTRY_DELETED",
+            "governance/computation_registry.json was deleted -- the protected-field "
+            "census cannot shrink by deleting its source."))
+    inv = "reports/no_fallback_inventory.json"
+    if inv in files and not (REPO / inv).exists():
+        out.append(Finding(
+            inv, 0, "R5_INVENTORY_DELETED",
+            "reports/no_fallback_inventory.json was deleted -- protected findings "
+            "cannot disappear by deleting the census."))
+    return out
 
 
 def _r6_r7_unknown_and_parse(files: list[str]) -> list[Finding]:

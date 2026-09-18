@@ -622,12 +622,20 @@ def patch_context_confluence_from_quote_ticks(
     ctx.iwm_confluence = _build_iwm_confluence(ctx.iwm_sectors)
 
 
-def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
+def current_session_label() -> str:
+    """Clock-derived session label. Independent of MarketContext quote sweep."""
+    return _derive_session()
+
+
+def iwm_blended_participation_push(ctx: Optional[MarketContext]) -> Optional[float]:
     """
     Russell 2000 tape participation for the stack: blend top-holdings confluence
     with sector-proxy confluence (IWM is diffuse — ~55% weight on named holdings,
-    ~45% on sector ETFs). Falls back to whichever side has data.
+    ~45% on sector ETFs). Returns None when either side is absent; does not
+    substitute a prior or default push.
     """
+    if ctx is None:
+        return None
     hcf = getattr(ctx, "iwm_holdings_confluence", None)
     scf = getattr(ctx, "iwm_confluence", None)
     h = getattr(hcf, "weighted_push", None) if hcf is not None else None
@@ -1108,8 +1116,10 @@ def fetch_price_levels(
     return pl
 
 
-def missing_confluence_weighted_pushes(ctx: MarketContext) -> list[str]:
+def missing_confluence_weighted_pushes(ctx: Optional[MarketContext]) -> list[str]:
     """DB column names missing from MarketContext (empty = all three pushes present)."""
+    if ctx is None:
+        return ["spy_weighted_push", "qqq_weighted_push", "iwm_weighted_push"]
     missing: list[str] = []
     spy = getattr(getattr(ctx, "confluence", None), "weighted_push", None)
     qqq = getattr(getattr(ctx, "qqq_confluence", None), "weighted_push", None)
@@ -1183,6 +1193,8 @@ def confluence_quote_rows_from_context(
     def add(sym: str, last: Optional[float], chg: Optional[float]) -> None:
         s = (sym or "").upper().strip()
         if not s or s in seen:
+            return
+        if last is None and chg is None:
             return
         seen.add(s)
         rows.append(

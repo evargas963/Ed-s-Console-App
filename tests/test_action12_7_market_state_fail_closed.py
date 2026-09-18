@@ -319,27 +319,31 @@ def test_dex_magnitude_is_always_none_no_producer_exists(_mock_cs):
 
 @patch("signals.compute_signals", side_effect=_fake_compute_signals)
 def test_mkt_ctx_fields_read_directly_no_silent_default_on_a_real_value(_mock_cs):
+    """Display fields copy only when the measured source exists. A stray
+    vix_regime on a context with no vix must not populate current fields.
     """
-    No-fallback lock repair (2026-09-17, FB-00262 + 5 sibling sites): mkt_ctx.vix_regime/
-    vix_color/vix_implication/pcr_arrow/pcr_color/pcr_label used to be read via
-    getattr(mkt_ctx, name, default) -- but mkt_ctx is provably always a real MarketContext
-    instance in production (server.py's _fetch_and_store_mkt_ctx falls back to a fresh
-    MarketContext() of its own on any fetch failure, never None or a partial object), so
-    the getattr default could never fire. Proves a genuine non-default mock value flows
-    through untouched -- the field is read directly, not silently coerced to the old
-    getattr default.
-    """
-    ctx = _mkt_ctx()
-    ctx.vix_regime = "elevated"
-    ctx.vix_color = "#ff0000"
-    ctx.vix_implication = "hedging pressure rising"
-    ctx.pcr_arrow = "up"
-    ctx.pcr_color = "#00ff00"
-    ctx.pcr_label = "put pressure building"
-    ms = build_market_state(**_base_kwargs(mkt_ctx=ctx))
+    measured = _mkt_ctx()
+    measured.vix = 22.5
+    measured.vix_regime = "elevated"
+    measured.vix_color = "#ff0000"
+    measured.vix_implication = "hedging pressure rising"
+    measured.pcr = 0.9
+    measured.pcr_arrow = "up"
+    measured.pcr_color = "#00ff00"
+    measured.pcr_label = "put pressure building"
+    ms = build_market_state(**_base_kwargs(mkt_ctx=measured))
     assert ms.vix_regime == "elevated"
     assert ms.vix_color == "#ff0000"
     assert ms.vix_implication == "hedging pressure rising"
     assert ms.pcr_arrow == "up"
     assert ms.pcr_color == "#00ff00"
     assert ms.pcr_label == "put pressure building"
+
+    orphan_labels = _mkt_ctx()
+    orphan_labels.vix = None
+    orphan_labels.pcr = None
+    orphan_labels.vix_regime = "elevated"
+    orphan_labels.pcr_arrow = "up"
+    ms_orphan = build_market_state(**_base_kwargs(mkt_ctx=orphan_labels))
+    assert ms_orphan.vix_regime == ""
+    assert ms_orphan.pcr_arrow == ""

@@ -824,12 +824,16 @@ def compute_prediction_core(
     if inference_snapshot_v1 is None:
         raise FusionModelInputError(
             "compute_prediction requires inference_snapshot_v1 — "
-            "similarity filters, timeframe reads, and spot semantics use the canonical MVP row only."
+            "similarity filters, timeframe reads, and spot semantics use the canonical MVP row only.",
+            reason="ENVELOPE_INVALID",
         )
     mvp = inference_snapshot_v1.get("features") or {}
     spot = mvp_spot(mvp)
     if spot is None:
-        raise FusionModelInputError("compute_prediction requires canonical price.spot > 0")
+        raise FusionModelInputError(
+            "compute_prediction requires canonical price.spot > 0",
+            reason="MISSING_CANONICAL_SPOT",
+        )
 
     timeframe = inp.timeframe
 

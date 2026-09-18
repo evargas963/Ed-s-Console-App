@@ -1,33 +1,8 @@
-"""No-fallback lock repair (2026-09-17, calibration_ml_governance group): the entire
-tools/legacy/horizon_7/ directory was deleted (17 files, every one carrying an identical
-"DEPRECATED -- 7-horizon era... do not run against post-D3 databases" banner, confirmed by
-its own README as a documented quarantine). Four files outside that directory had real,
-live imports FROM it: tools/backfill_fusion_policy_complete_v1.py,
-tools/validate_fusion_backfill_complete_v1.py,
-tools/backfill_fusion_policy_columns_expanded_v1.py (all three importing the schema-agnostic
-_incomplete_fused_sql, now relocated to tools/_fusion_backfill_shared.py, the ONE shared
-producer rather than duplicated three times), and tools/analyze_fused_xgb_comparison_dataset_v1.py
-(importing GOV_WHERE, which WAS genuinely schema-specific to the dropped outcome_3c/8c/13c
-columns -- that one metric was removed, not relocated, since the query would raise
-sqlite3.OperationalError against a current schema).
+"""Fusion-backfill shared helpers: typed failure classification and SQL shape.
 
-CORRECTED 2026-09-17 (operator point 12, "prove no duplicate classifier exists elsewhere"):
-_classify_failure specifically was NOT actually shared by all three despite the original
-relocation's docstring claiming it was -- backfill_fusion_policy_complete_v1.py kept its own
-pre-existing local `_classify_failure_complete`, already drifted from this module's version
-(a different label, "INSUFFICIENT_HISTORY" vs "HISTORICAL_CONTEXT_INSUFFICIENT", for the
-identical MonteCarloStackInputError case, and a finer history-vs-reconstruction message
-check this module's function lacked). Fixed by folding the finer distinction into this
-module's `_classify_failure` as the single canonical classifier and deleting the local
-duplicate -- now genuinely all three consumers share one producer.
-
-These tests prove: (1) the shared module's two functions match their original behavior
-exactly (values, not just "no crash"), including the finer distinction now folded in from
-the former duplicate, (2) all four previously-dependent files still import cleanly (the
-actual regression this repair fixes -- an import from a deleted module) and
-backfill_fusion_policy_complete_v1.py specifically no longer defines a local
-_classify_failure_complete, (3) the removed strict_v1_shape metric is genuinely gone from
-analyze_fused_xgb_comparison_dataset_v1's output shape, not silently still referenced.
+Classification is producer-reason only. Message substrings (including "60")
+must not change the category. Identical exceptions must classify identically;
+distinct producer reasons must not collapse.
 """
 from __future__ import annotations
 
@@ -51,40 +26,67 @@ def test_incomplete_fused_sql_matches_original_shape():
     assert sql.count(" OR ") == len(ML_HORIZON_SLUGS) - 1
 
 
-def test_classify_failure_matches_original_verdicts():
+def test_classify_failure_uses_typed_reason_not_message_text():
+    from features.monte_carlo_stack_input import MonteCarloStackInputError
+    from features.xgb_model_input import XgbInferenceInputError
+    from ml_predict import ParallelRuntimeArtifactError
     from tools._fusion_backfill_shared import _classify_failure
+
+    missing = MonteCarloStackInputError("canonical MVP price.spot is missing", reason="MISSING_CANONICAL_SPOT")
+    invalid = MonteCarloStackInputError("price.spot must be finite and > 0, got 60", reason="INVALID_CANONICAL_SPOT")
+    lineage = MonteCarloStackInputError("SignalInput.spot disagrees with canonical", reason="LINEAGE_DISAGREEMENT")
+    assert _classify_failure(missing) == "MISSING_CANONICAL_SPOT"
+    assert _classify_failure(invalid) == "INVALID_CANONICAL_SPOT"
+    assert _classify_failure(lineage) == "LINEAGE_DISAGREEMENT"
+    assert len({_classify_failure(missing), _classify_failure(invalid), _classify_failure(lineage)}) == 3
+
+    hist = XgbInferenceInputError("LSTM needs at least 60 snapshots", reason="INSUFFICIENT_HISTORY")
+    contract = XgbInferenceInputError("missing feature column 60", reason="FEATURE_CONTRACT_INVALID")
+    assert _classify_failure(hist) == "INSUFFICIENT_HISTORY"
+    assert _classify_failure(contract) == "FEATURE_CONTRACT_INVALID"
+    assert _classify_failure(hist) != _classify_failure(contract)
 
     assert _classify_failure(FileNotFoundError("x")) == "MISSING_ARTIFACTS"
-    assert _classify_failure(ValueError("inference failed")) == "FEATURE_RECONSTRUCTION_FAILURE"
-    assert _classify_failure(RuntimeError("no such file: y")) == "MISSING_ARTIFACTS"
-    assert _classify_failure(RuntimeError("bad sequence length")) == "HISTORICAL_CONTEXT_INSUFFICIENT"
-    assert _classify_failure(ImportError("cannot load model weights")) == "MODEL_LOAD_FAILURE"
-    assert _classify_failure(RuntimeError("something entirely unrelated")) == "OTHER"
+    assert _classify_failure(ParallelRuntimeArtifactError("artifact")) == "MISSING_ARTIFACTS"
+    assert _classify_failure(RuntimeError("no such file: y")) == "UNCLASSIFIED"
+    assert _classify_failure(ValueError("inference failed")) == "UNCLASSIFIED"
+    assert _classify_failure(RuntimeError("bad sequence length")) == "UNCLASSIFIED"
+    assert _classify_failure(ImportError("cannot load model weights")) == "UNCLASSIFIED"
 
 
-def test_classify_failure_folds_in_the_former_duplicates_finer_distinction():
-    """The deleted local _classify_failure_complete distinguished 'insufficient history'
-    from 'feature reconstruction failure' within the Xgb/Lstm/Transformer/Fusion branch by
-    checking the exception message -- this module's function lacked that distinction
-    entirely before this repair. Proves it is now present in the single shared producer."""
-    from features.xgb_model_input import XgbInferenceInputError
-
+def test_classify_failure_identical_exceptions_cannot_diverge():
+    from features.monte_carlo_stack_input import MonteCarloStackInputError
     from tools._fusion_backfill_shared import _classify_failure
 
-    assert _classify_failure(XgbInferenceInputError("not enough snapshot rows")) == \
-        "HISTORICAL_CONTEXT_INSUFFICIENT"
-    assert _classify_failure(XgbInferenceInputError("missing feature column")) == \
-        "FEATURE_RECONSTRUCTION_FAILURE"
+    a = MonteCarloStackInputError("msg-a history 60 sequence", reason="MISSING_CANONICAL_SPOT")
+    b = MonteCarloStackInputError("msg-b totally different wording", reason="MISSING_CANONICAL_SPOT")
+    assert _classify_failure(a) == _classify_failure(b) == "MISSING_CANONICAL_SPOT"
+    assert _classify_failure(a, "stack") == _classify_failure(b, "signal_input")
+
+
+def test_classify_failure_hint_and_substring_cannot_reclassify():
+    from features.monte_carlo_stack_input import MonteCarloStackInputError
+    from tools._fusion_backfill_shared import _classify_failure
+
+    exc = MonteCarloStackInputError("contains 60 history sequence artifact .pkl", reason="LINEAGE_DISAGREEMENT")
+    assert _classify_failure(exc) == "LINEAGE_DISAGREEMENT"
+    assert _classify_failure(exc, "history 60 sequence") == "LINEAGE_DISAGREEMENT"
+
+
+def test_classify_failure_unclassified_when_producer_supplies_no_reason():
+    from tools._fusion_backfill_shared import _classify_failure
+
+    class Bare(ValueError):
+        pass
+
+    assert _classify_failure(Bare("60 history sequence")) == "UNCLASSIFIED"
 
 
 def test_backfill_fusion_policy_complete_imports_cleanly():
-    # The actual regression this repair fixes: this file used to import
-    # _incomplete_fused_sql from the now-deleted tools/legacy/horizon_7/ directory.
     mod = importlib.import_module("tools.backfill_fusion_policy_complete_v1")
-    assert not hasattr(mod, "_classify_failure_complete"), (
-        "the local duplicate classifier must be gone -- this file now shares "
-        "tools._fusion_backfill_shared._classify_failure like the other two consumers"
-    )
+    shared = importlib.import_module("tools._fusion_backfill_shared")
+    assert not hasattr(mod, "_classify_failure_complete")
+    assert mod._classify_failure is shared._classify_failure
 
 
 def test_validate_fusion_backfill_complete_imports_cleanly():
@@ -97,7 +99,6 @@ def test_backfill_fusion_policy_columns_expanded_imports_cleanly():
 
 def test_analyze_fused_xgb_comparison_dataset_imports_cleanly():
     mod = importlib.import_module("tools.analyze_fused_xgb_comparison_dataset_v1")
-    # The removed metric must be genuinely gone, not silently still defined/imported.
     assert not hasattr(mod, "STRICT_GOV_WHERE")
     assert not hasattr(mod, "GOV_WHERE")
     assert not hasattr(mod, "_policy_tickers"), "orphaned by removing its only caller"
@@ -105,3 +106,14 @@ def test_analyze_fused_xgb_comparison_dataset_imports_cleanly():
 
 def test_legacy_horizon_7_directory_is_gone():
     assert not (ROOT / "tools" / "legacy" / "horizon_7").exists()
+
+
+def test_no_substring_classifier_remains_in_fusion_backfill_family():
+    shared = (ROOT / "tools" / "_fusion_backfill_shared.py").read_text(encoding="utf-8")
+    complete = (ROOT / "tools" / "backfill_fusion_policy_complete_v1.py").read_text(encoding="utf-8")
+    expanded = (ROOT / "tools" / "backfill_fusion_policy_columns_expanded_v1.py").read_text(encoding="utf-8")
+    assert '"60"' not in shared and "'60'" not in shared
+    assert "in s" not in shared
+    assert "_classify_failure_complete" not in complete
+    assert "from tools._fusion_backfill_shared import _classify_failure" in complete
+    assert "from tools._fusion_backfill_shared import _classify_failure" in expanded

@@ -24,6 +24,10 @@ from features.xgb_model_input import (
 class FusionModelInputError(ValueError):
     """Invalid InferenceSnapshotV1 or illegal MVP keys on the fusion overlay path."""
 
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
 
 def similar_setup_filters_from_canonical_features(features: dict[str, Any]) -> dict[str, Any]:
     """
@@ -56,12 +60,16 @@ def similar_setup_filters_from_db_snapshot_row(snapshot_row: Mapping[str, Any]) 
     if not isinstance(snapshot_row, Mapping):
         raise FusionModelInputError(
             f"snapshot_row must be a Mapping for similar_setup_filters, "
-            f"got {type(snapshot_row).__name__!r}"
+            f"got {type(snapshot_row).__name__!r}",
+            reason="ENVELOPE_INVALID",
         )
     try:
         canon = build_db_mvp_feature_row(dict(snapshot_row))
     except MvpFeatureSourceError as e:
-        raise FusionModelInputError(f"DB row cannot be coerced to canonical MVP for similarity: {e}") from e
+        raise FusionModelInputError(
+            f"DB row cannot be coerced to canonical MVP for similarity: {e}",
+            reason="FEATURE_CONTRACT_INVALID",
+        ) from e
     return similar_setup_filters_from_canonical_features(canon)
 
 
@@ -75,7 +83,8 @@ def assert_fusion_overlay_has_no_mvp_keys(overlay: dict[str, Any]) -> None:
     bad = set(overlay.keys()) & MVP_LEGACY_KEYS
     if bad:
         raise FusionModelInputError(
-            f"fusion model overlay must not contain MVP keys (use InferenceSnapshotV1 only): {sorted(bad)}"
+            f"fusion model overlay must not contain MVP keys (use InferenceSnapshotV1 only): {sorted(bad)}",
+            reason="CONTRACT_MISMATCH",
         )
 
 
@@ -84,7 +93,9 @@ def validate_inference_snapshot_for_fusion_stack(snap: Any) -> None:
     try:
         validate_inference_snapshot_v1_envelope(snap)
     except XgbInferenceInputError as e:
-        raise FusionModelInputError(str(e)) from e
+        raise FusionModelInputError(
+            str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+        ) from e
 
 
 _META_CATEGORICAL_COLUMNS: frozenset[str] = frozenset(

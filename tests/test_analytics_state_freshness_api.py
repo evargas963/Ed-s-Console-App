@@ -2112,55 +2112,57 @@ def _mkt_ctx_test_reset(srv, ctx=None, age_sec=0.0):
         srv._cached_mkt_ctx = ctx
         srv._cached_mkt_ctx_ts = (time.time() - age_sec) if ctx is not None else 0.0
         srv._mkt_ctx_refresh_inflight = False
+        srv._stale_mkt_ctx = None
+        srv._stale_mkt_ctx_ts = 0.0
+        srv._stale_mkt_ctx_generation = 0
+        srv._mkt_ctx_fetch_error = None
 
 
-def test_mkt_ctx_stale_serve_never_pays_sweep_inline(monkeypatch):
-    """Stale cache + previous context: callers get the previous context
-    immediately; exactly ONE background sweep runs and lands the new one."""
+def test_mkt_ctx_expired_does_not_serve_prior_as_current(monkeypatch):
+    """Expired current is demoted to stale/historical. Callers receive None
+    immediately; exactly ONE background sweep runs and lands the new current."""
     import threading as th
 
     import server as srv
     from market_context import MarketContext
 
-    old_ctx = MarketContext()
+    old_ctx = MarketContext(vix=19.0, vix_regime="Normal")
     _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
     calls = {"n": 0}
     entered = th.Event()
     release = th.Event()
     sweep_threads: list = []
 
-    # RC-17: no wall-clock assertions. "Not inline" is proven MECHANICALLY:
-    # (a) callers return the OLD context while the sweep is still held open
-    # (an inline sweep would hand back the new one), and (b) the sweep
-    # records its executing thread, which must not be the caller's. Holding
-    # the fake sweep open until after the herd of calls finishes prevents a
-    # fast executor from publishing a fresh cache mid-loop (which would
-    # correctly return the NEW object on later calls — not an inline pay).
     def _fake_sweep(client, **kwargs):
         calls["n"] += 1
         sweep_threads.append(th.current_thread())
         entered.set()
         assert release.wait(30), "test never released the held sweep"
-        return MarketContext()
+        return MarketContext(vix=20.0, vix_regime="Elevated")
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
     caller_thread = th.current_thread()
     first = srv._get_mkt_ctx(None)
-    assert first is old_ctx
+    assert first is None
+    stale = srv._get_stale_mkt_ctx()
+    assert stale is not None
+    assert stale["role"] == "stale_historical"
+    assert stale["observation"] is old_ctx
     assert entered.wait(30), "background sweep never entered"
     served = [first] + [srv._get_mkt_ctx(None) for _ in range(4)]
-    assert all(s is old_ctx for s in served), "a caller was handed the new context inline"
+    assert all(s is None for s in served), "a caller was handed prior/new context as current"
     assert sweep_threads and all(t is not caller_thread for t in sweep_threads), \
         "sweep executed inline on the caller thread"
     release.set()
     deadline = time.time() + 30
     while time.time() < deadline:
         with srv._cached_mkt_ctx_lock:
-            if srv._cached_mkt_ctx is not old_ctx and not srv._mkt_ctx_refresh_inflight:
+            if srv._cached_mkt_ctx is not None and srv._cached_mkt_ctx is not old_ctx and not srv._mkt_ctx_refresh_inflight:
                 break
         time.sleep(0.02)
     with srv._cached_mkt_ctx_lock:
         assert srv._cached_mkt_ctx is not old_ctx
+        assert srv._cached_mkt_ctx is not None
         assert srv._mkt_ctx_refresh_inflight is False
     assert calls["n"] == 1
     _mkt_ctx_test_reset(srv)
@@ -2173,7 +2175,7 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
     import server as srv
     from market_context import MarketContext
 
-    old_ctx = MarketContext()
+    old_ctx = MarketContext(vix=18.0, vix_regime="Normal")
     _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
     calls = {"n": 0}
     lk = th.Lock()
@@ -2188,7 +2190,7 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
             calls["n"] += 1
         time.sleep(0.25)   # hold the inflight window open so a herd CAN collide
         done.set()
-        return MarketContext()
+        return MarketContext(vix=21.0, vix_regime="Elevated")
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
     served: list = []
@@ -2207,7 +2209,7 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
         t.join(timeout=30)
     assert not any(t.is_alive() for t in threads), "caller thread hung"
     assert len(served) == 8
-    assert all(s is old_ctx for s in served)
+    assert all(s is None for s in served)
     assert done.wait(30), "background sweep never executed"
     deadline = time.time() + 30
     while time.time() < deadline:
@@ -2219,9 +2221,9 @@ def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
     _mkt_ctx_test_reset(srv)
 
 
-def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
-    """No context yet (boot): concurrent callers block, exactly one sweep
-    runs, and every caller returns the context it stored."""
+def test_mkt_ctx_boot_returns_none_until_current_exists(monkeypatch):
+    """No context yet (boot): concurrent callers receive None (no prior-value
+    substitution), exactly one background sweep runs."""
     import threading as th
 
     import server as srv
@@ -2230,16 +2232,16 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
     _mkt_ctx_test_reset(srv, None)
     calls = {"n": 0}
     lk = th.Lock()
-
-    # RC-17: barrier guarantees the callers actually overlap; joins are
-    # generous upper bounds with an explicit liveness assert.
+    entered = th.Event()
+    release = th.Event()
     barrier = th.Barrier(6, timeout=30)
 
     def _fake_sweep(client, **kwargs):
         with lk:
             calls["n"] += 1
-        time.sleep(0.25)   # hold the sweep open so boot joiners CAN overlap
-        return MarketContext()
+        entered.set()
+        assert release.wait(30), "test never released the held sweep"
+        return MarketContext(vix=16.0, vix_regime="Low Vol")
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
     served: list = []
@@ -2258,8 +2260,16 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
         t.join(timeout=30)
     assert not any(t.is_alive() for t in threads), "caller thread hung"
     assert len(served) == 6
+    assert all(s is None for s in served)
+    assert entered.wait(30), "background sweep never entered"
+    release.set()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        with srv._cached_mkt_ctx_lock:
+            if not srv._mkt_ctx_refresh_inflight:
+                break
+        time.sleep(0.02)
     assert calls["n"] == 1
-    assert all(s is served[0] for s in served), "boot joiners got different contexts"
     _mkt_ctx_test_reset(srv)
 
 
@@ -2269,13 +2279,13 @@ def test_mkt_ctx_force_sync_performs_fresh_sweep(monkeypatch):
     import server as srv
     from market_context import MarketContext
 
-    old_ctx = MarketContext()
+    old_ctx = MarketContext(vix=17.0, vix_regime="Normal")
     _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
     calls = {"n": 0}
 
     def _fake_sweep(client, **kwargs):
         calls["n"] += 1
-        return MarketContext()
+        return MarketContext(vix=18.0, vix_regime="Normal")
 
     monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
     out = srv._get_mkt_ctx(None, force_sync=True)

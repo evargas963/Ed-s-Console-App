@@ -356,14 +356,16 @@ def _require_as_of_ts_utc_for_sequence_db(inference_snapshot_v1: dict | None) ->
     if not inference_snapshot_v1:
         raise LstmSequenceInputError(
             "LSTM/Transformer sequence inference requires inference_snapshot_v1 with as_of_ts "
-            "for causal DB history (EdDB.get_recent_snapshots(..., as_of_ts_utc=...))."
+            "for causal DB history (EdDB.get_recent_snapshots(..., as_of_ts_utc=...)).",
+            reason="ENVELOPE_INVALID",
         )
     ts = inference_snapshot_v1.get("as_of_ts")
     if ts is None:
         raise LstmSequenceInputError(
             "InferenceSnapshotV1.as_of_ts is required for LSTM/Transformer DB history "
             "(strict causal cutoff: only snapshots with ts_utc < as_of_ts are used from the DB; "
-            "the current bar MVP is merged from inference_snapshot_v1)."
+            "the current bar MVP is merged from inference_snapshot_v1).",
+            reason="ENVELOPE_INVALID",
         )
     return float(ts)
 
@@ -1409,7 +1411,8 @@ def _predict_lstm(
             )
             if not recent or len(recent) < STREAM_5M_LOOKBACK:
                 raise LstmSequenceInputError(
-                    f"LSTM needs at least {STREAM_5M_LOOKBACK} snapshots, got {len(recent or [])}"
+                    f"LSTM needs at least {STREAM_5M_LOOKBACK} snapshots, got {len(recent or [])}",
+                    reason="INSUFFICIENT_HISTORY",
                 )
             recent = list(reversed(recent))
             window = recent[-STREAM_5M_LOOKBACK:]
@@ -1429,7 +1432,9 @@ def _predict_lstm(
         try:
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)
         except ValueError as e:
-            raise LstmSequenceInputError(str(e)) from e
+            raise LstmSequenceInputError(
+                str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+            ) from e
 
         try:
             assert_lstm_encoder_checkpoint_compatible(checkpoint)
@@ -1786,7 +1791,9 @@ def _predict_transformer(
     try:
         _asof = _require_as_of_ts_utc_for_sequence_db(inference_snapshot_v1)
     except LstmSequenceInputError as e:
-        raise TransformerSequenceInputError(str(e)) from e
+        raise TransformerSequenceInputError(
+            str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+        ) from e
 
     try:
         import torch
@@ -1823,7 +1830,8 @@ def _predict_transformer(
             )
             if not recent or len(recent) < seq_len:
                 raise TransformerSequenceInputError(
-                    f"Transformer needs at least {seq_len} snapshots, got {len(recent or [])}"
+                    f"Transformer needs at least {seq_len} snapshots, got {len(recent or [])}",
+                    reason="INSUFFICIENT_HISTORY",
                 )
             recent = list(reversed(recent))
             window = recent[-seq_len:]
@@ -1853,7 +1861,9 @@ def _predict_transformer(
         try:
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)
         except ValueError as e:
-            raise TransformerSequenceInputError(str(e)) from e
+            raise TransformerSequenceInputError(
+                str(e), reason=getattr(e, "reason", None) or "UNCLASSIFIED"
+            ) from e
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
         seq = [

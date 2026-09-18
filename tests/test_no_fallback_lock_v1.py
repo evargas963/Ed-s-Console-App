@@ -227,6 +227,41 @@ def test_removing_a_rule_function_flagged_unconditionally(repo):
     assert "R5_LOCK_WEAKENED" in _rule_tags(v)
 
 
+def test_deleting_the_lock_file_is_flagged_unconditionally(repo):
+    _stage_new_file(repo, "tools/check_no_fallback_lock.py",
+        "def _r1_sql(rel, added):\n    return []\n")
+    _commit(repo, "seed lock file")
+    _git(repo, "rm", "-q", "tools/check_no_fallback_lock.py")
+    v = M.violations()
+    assert v
+    assert "R5_LOCK_WEAKENED" in _rule_tags(v)
+
+
+def test_deleting_the_computation_registry_is_flagged(repo):
+    _git(repo, "add", "governance/computation_registry.json")
+    _commit(repo, "commit registry")
+    _git(repo, "rm", "-q", "governance/computation_registry.json")
+    v = M.violations()
+    assert v
+    assert "R5_REGISTRY_DELETED" in _rule_tags(v)
+
+
+def test_deleting_the_inventory_is_flagged(repo):
+    inv = repo / "reports" / "no_fallback_inventory.json"
+    inv.parent.mkdir(parents=True, exist_ok=True)
+    inv.write_text(json.dumps({
+        "candidate_count": 1,
+        "verdict_counts": {"FALLBACK": 1, "NOT_PROVEN": 0, "NOT_FALLBACK": 0},
+        "candidates": [{"id": "FB-aaaaaaaaaa"}],
+    }), encoding="utf-8")
+    _git(repo, "add", "reports/no_fallback_inventory.json")
+    _commit(repo, "seed inventory")
+    _git(repo, "rm", "-q", "reports/no_fallback_inventory.json")
+    v = M.violations()
+    assert v
+    assert "R5_INVENTORY_DELETED" in _rule_tags(v)
+
+
 def test_operator_quote_style_bypass_string_does_nothing(repo):
     """Operator correction: 'an arbitrary operator_quote string must not authorize
     anything.' Proves that writing the literal word 'operator_quote' anywhere in the diff --

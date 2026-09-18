@@ -1558,9 +1558,8 @@ def _get_mkt_ctx_refresh_executor() -> ThreadPoolExecutor:
     CSV row(s): NO_SCHWAB_EQUIVALENT — executor scheduling only; the sweep
       itself (fetch_market_context) is byte-identical.
     Derived-field disposition: none required (no derived field touched).
-    All consumers checked: yes — _get_mkt_ctx callers receive the same
-      MarketContext object semantics (fresh, or previous-within-grace while
-      one refresh is in flight).
+    All consumers checked: yes — _get_mkt_ctx callers receive current
+      MarketContext or None; a previous observation is never served as current.
     SCHWAB_CSV_CHECKED"""
     global _mkt_ctx_refresh_executor
     if _mkt_ctx_refresh_executor is None:
@@ -3367,9 +3366,8 @@ def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
     client = get_client()
     t_client1 = time.perf_counter()
     t_sess0 = time.perf_counter()
-    with _cached_mkt_ctx_lock:
-        _cmc = _cached_mkt_ctx
-    session_label = getattr(_cmc, "session_label", None) if _cmc is not None else None
+    from market_context import current_session_label
+    session_label = current_session_label()
     if session_label is not None and not str(session_label).strip():
         session_label = None
     t_sess1 = time.perf_counter()
@@ -4331,16 +4329,21 @@ _logger_lock:     threading.Lock   = threading.Lock()
 # VIX, SPY/QQQ/IWM quotes, 9 SPY constituents, 4 IWM sectors = 17 API calls.
 # This data is IDENTICAL regardless of which ticker we're processing.
 # Cache it once per cycle instead of re-fetching per ticker.
-_cached_mkt_ctx       = None     # MarketContext object
-_cached_mkt_ctx_ts    = 0.0      # epoch when last fetched
+#
+# Current vs stale are distinct observations. `_cached_mkt_ctx` is ONLY a
+# successful current fetch (within TTL). A failed fetch produces no current
+# MarketContext. The previous successful observation, if any, lives only on
+# `_stale_mkt_ctx` with its original timestamp and generation and must never
+# populate current fields.
+_cached_mkt_ctx       = None     # current MarketContext or None
+_cached_mkt_ctx_ts    = 0.0      # epoch when current was fetched
+_cached_mkt_ctx_generation = 0
+_stale_mkt_ctx        = None     # last successful observation (never current)
+_stale_mkt_ctx_ts     = 0.0
+_stale_mkt_ctx_generation = 0
+_mkt_ctx_fetch_error  = None     # last failed-fetch disclosure (not a MarketContext)
 _cached_mkt_ctx_lock  = threading.Lock()
 MKT_CTX_TTL           = 25.0     # seconds — refresh once per cycle (LOG_INTERVAL=30s)
-# UI_05 tail closure (2026-07-10 EVE, measured @ f478208 trials): when the TTL
-# lapsed, EVERY concurrent recompute independently ran the 17-call sweep inline
-# (no single-flight on the fetch — the lock only guarded check + store), putting
-# 8.3-10.5s inside the cold-switch chain window at pure chain <=1.8s and gate
-# wait 0. Refresh is now single-flight and stale-while-refresh: one background
-# sweep at a time; callers holding a previous context are served immediately.
 _mkt_ctx_refresh_inflight = False   # guarded by _cached_mkt_ctx_lock
 _mkt_ctx_refresh_cond = threading.Condition(_cached_mkt_ctx_lock)
 MKT_CTX_SYNC_JOIN_TIMEOUT_SEC = 30.0   # boot/force_sync bounded join on an in-flight sweep
@@ -4583,19 +4586,48 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
         log.debug("view touch_seen failed ticker=%s: %s", t, e, exc_info=True)
 
 
-def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
-    """One full market-context sweep (17 Schwab quote calls) + cache store +
-    confluence-tick persist. Extracted verbatim from the pre-2026-07-10 body
-    of _get_mkt_ctx; call ONLY under the single-flight discipline in
-    _get_mkt_ctx / _mkt_ctx_background_refresh.
+def _demote_current_mkt_ctx_to_stale_locked() -> None:
+    """Move the current observation to the stale slot. Caller holds the lock."""
+    global _cached_mkt_ctx, _cached_mkt_ctx_ts, _cached_mkt_ctx_generation
+    global _stale_mkt_ctx, _stale_mkt_ctx_ts, _stale_mkt_ctx_generation
+    if _cached_mkt_ctx is None:
+        return
+    _stale_mkt_ctx = _cached_mkt_ctx
+    _stale_mkt_ctx_ts = _cached_mkt_ctx_ts
+    _stale_mkt_ctx_generation = _cached_mkt_ctx_generation
+    _cached_mkt_ctx = None
+    _cached_mkt_ctx_ts = 0.0
 
-    Schwab CSV authority checked: yes
-    CSV row(s): quotes.$VIX.*, quotes.SPY.*, quotes.QQQ.*, quotes.IWM.* and
-      panel constituents via fetch_market_context (unchanged call shape).
-    Derived-field disposition: none required — sweep body byte-identical.
-    All consumers checked: yes — same MarketContext object stored/returned.
-    SCHWAB_CSV_CHECKED"""
-    global _cached_mkt_ctx, _cached_mkt_ctx_ts
+
+def _get_stale_mkt_ctx():
+    """Last successful MarketContext observation, or None.
+
+    Returned only as a separately named stale/historical observation with its
+    original timestamp and generation. Must not populate current fields.
+    """
+    with _cached_mkt_ctx_lock:
+        if _stale_mkt_ctx is None:
+            return None
+        return {
+            "observation": _stale_mkt_ctx,
+            "role": "stale_historical",
+            "fetched_ts": _stale_mkt_ctx_ts,
+            "generation": _stale_mkt_ctx_generation,
+        }
+
+
+def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
+    """One full market-context sweep + current-cache store + confluence persist.
+
+    A failed fetch produces no current MarketContext. The previous successful
+    observation is demoted to `_stale_mkt_ctx` with its original timestamp and
+    generation. Neutral error objects are never stored or persisted.
+
+    Call ONLY under the single-flight discipline in _get_mkt_ctx /
+    _mkt_ctx_background_refresh.
+    """
+    global _cached_mkt_ctx, _cached_mkt_ctx_ts, _cached_mkt_ctx_generation
+    global _mkt_ctx_fetch_error
     mkt_ctx_fetch_started_wall_ts = time.time()
     _stream_chg_fn = None
     try:
@@ -4606,10 +4638,6 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
     try:
         ctx = fetch_market_context(
             client,
-            # RC-112 recurrence 2: this kwarg handed the RAW vendor fetch by reference into
-            # market-context (VIX/TICK quote legs) — invisible to a call-syntax scan. The
-            # adapter keeps the (client, ticker) signature the callee expects while routing
-            # every quote it makes through the one memoized vendor faucet.
             safe_get_quote_fn=lambda _c, _tk, **_kw: _memoized_quote_response(
                 _tk, client=_c, **_kw),
             pcr=pcr,
@@ -4618,21 +4646,25 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
         )
         if ctx.error:
             log.warning(f"fetch_market_context returned error: {ctx.error}")
+            with _cached_mkt_ctx_lock:
+                _demote_current_mkt_ctx_to_stale_locked()
+                _mkt_ctx_fetch_error = f"mkt_ctx_fetch_error: {ctx.error}"
+            return None
     except Exception as e:
-        # No-fallback lock (2026-09-17): the previous `ctx = MarketContext()` here
-        # discarded the actual exception and produced an object whose fields (vix_regime,
-        # pcr_arrow, etc.) carry the SAME neutral-looking defaults as a genuine "no reading
-        # yet" state -- indistinguishable from real, valid-but-flat market data. Route the
-        # real failure through the same ctx.error disclosure channel
-        # fetch_market_context's own internal per-symbol soft-error path already uses.
         _err = f"{type(e).__name__}: {e}"
         log.warning(f"fetch_market_context failed: {_err}")
-        from market_context import MarketContext
-        ctx = MarketContext(error=f"mkt_ctx_fetch_exception: {_err}")
+        with _cached_mkt_ctx_lock:
+            _demote_current_mkt_ctx_to_stale_locked()
+            _mkt_ctx_fetch_error = f"mkt_ctx_fetch_exception: {_err}"
+        return None
     with _cached_mkt_ctx_lock:
+        if _cached_mkt_ctx is not None:
+            _demote_current_mkt_ctx_to_stale_locked()
         _cached_mkt_ctx = ctx
         _cached_mkt_ctx_ts = mkt_ctx_fetch_started_wall_ts
-    if _HAS_SIGNALS:
+        _cached_mkt_ctx_generation += 1
+        _mkt_ctx_fetch_error = None
+    if _HAS_SIGNALS and not ctx.error:
         try:
             from db import build_ts_et
             from market_context import confluence_quote_rows_from_context
@@ -4651,13 +4683,11 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
 
 
 def _mkt_ctx_background_refresh(client, pcr=None, prev_pcr=None):
-    """Single-flight worker body for the stale-while-refresh path."""
+    """Single-flight worker body for the expired-current refresh path."""
     global _mkt_ctx_refresh_inflight
     try:
         _fetch_and_store_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr)
     except Exception as e:
-        # _fetch_and_store_mkt_ctx is internally fail-soft; this guard only
-        # protects the inflight flag from an unexpected escape (never silent).
         log.warning("mkt_ctx background refresh failed: %s", e, exc_info=True)
     finally:
         with _cached_mkt_ctx_lock:
@@ -4666,25 +4696,16 @@ def _mkt_ctx_background_refresh(client, pcr=None, prev_pcr=None):
 
 
 def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
-    """Return cached global market context; the sweep is single-flight.
+    """Return the current MarketContext, or None if current is unavailable.
 
-    Fresh cache: served directly. Stale cache while a PREVIOUS context
-    exists (and force_sync is False): serve the previous context
-    immediately and kick at most ONE background sweep — UI_05 measured
-    tail cause was every concurrent recompute paying the 17-call sweep
-    inline on TTL lapse (8.3-10.5s inside the cold-switch chain window at
-    pure chain <=1.8s, gate wait 0; trials @ 1f83a25 and f478208). No
-    context yet (boot) or force_sync=True (_ensure_mkt_ctx_confluence_complete):
-    join an in-flight sweep bounded, else perform it synchronously.
+    Fresh current (within TTL): served directly. Expired current: demoted to
+    the stale/historical slot and NOT returned as current; at most one
+    background sweep is kicked. Boot or force_sync: join or perform a
+    synchronous sweep; still returns None if that sweep fails.
 
-    Schwab CSV authority checked: yes
-    CSV row(s): NO_SCHWAB_EQUIVALENT — refresh scheduling only; the Schwab
-      sweep itself lives unchanged in _fetch_and_store_mkt_ctx.
-    Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — served context
-      is at most TTL + one sweep old, disclosed here; no fabricated values.
-    All consumers checked: yes — _fetch_state (stale-while-refresh) and
-      _ensure_mkt_ctx_confluence_complete (force_sync=True) both audited.
-    SCHWAB_CSV_CHECKED"""
+    Prior-value substitution is prohibited: a stale observation never
+    populates or satisfies current fields.
+    """
     global _mkt_ctx_refresh_inflight
     mkt_ctx_cache_eval_wall_ts = time.time()
     with _cached_mkt_ctx_lock:
@@ -4692,12 +4713,12 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
             _cached_mkt_ctx is not None
             and (mkt_ctx_cache_eval_wall_ts - _cached_mkt_ctx_ts) < MKT_CTX_TTL
         ):
-            # Cache is fresh — update PCR values on the cached object
-            # (PCR is per-ticker, comes from the chain, not from market context)
             if pcr is not None:
                 _cached_mkt_ctx.pcr = pcr
             return _cached_mkt_ctx
-        if _cached_mkt_ctx is not None and not force_sync:
+        if _cached_mkt_ctx is not None:
+            _demote_current_mkt_ctx_to_stale_locked()
+        if not force_sync:
             if not _mkt_ctx_refresh_inflight:
                 _mkt_ctx_refresh_inflight = True
                 try:
@@ -4706,11 +4727,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
                     )
                 except RuntimeError:
                     _mkt_ctx_refresh_inflight = False
-            if pcr is not None:
-                _cached_mkt_ctx.pcr = pcr
-            return _cached_mkt_ctx
-        # Boot (no context yet) or force_sync: bounded join on any in-flight
-        # sweep; take over the sweep if none is running (or the join expires).
+            return None
         _join_deadline = time.monotonic() + MKT_CTX_SYNC_JOIN_TIMEOUT_SEC
         while _mkt_ctx_refresh_inflight and time.monotonic() < _join_deadline:
             _mkt_ctx_refresh_cond.wait(timeout=1.0)
@@ -4731,9 +4748,14 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
 
 
 def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=None):
-    """One forced refresh when weighted_push fields are missing before snapshot persist."""
-    from market_context import missing_confluence_weighted_pushes, patch_context_confluence_from_quote_ticks
+    """Force one current refresh when weighted_push fields are missing.
 
+    Historical quote ticks must not populate current confluence fields.
+    """
+    from market_context import missing_confluence_weighted_pushes
+
+    if mkt_ctx is None:
+        return None
     missing = missing_confluence_weighted_pushes(mkt_ctx)
     if not missing:
         return mkt_ctx
@@ -4741,31 +4763,8 @@ def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=N
     global _cached_mkt_ctx_ts
     with _cached_mkt_ctx_lock:
         _cached_mkt_ctx_ts = 0.0
-    # force_sync: this path just zeroed the cache ts because required
-    # confluence fields are MISSING — a stale-while-refresh serve would
-    # hand back the same incomplete object.
     fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr, force_sync=True)
     still = missing_confluence_weighted_pushes(fresh)
-    if still:
-        try:
-            from market_context import (
-                QQQ_TOP,
-                SPY_TOP,
-                IWM_SECTORS,
-                IWM_TOP_HOLDINGS,
-            )
-
-            tickers: set[str] = set()
-            for group in (SPY_TOP, QQQ_TOP, IWM_TOP_HOLDINGS):
-                tickers.update(sym for sym, _n, _w in group)
-            for sym, _n, _w in IWM_SECTORS:
-                tickers.add(sym)
-            chg_map = get_db().fetch_latest_confluence_quote_chg(sorted(tickers))
-            if chg_map:
-                patch_context_confluence_from_quote_ticks(fresh, chg_map)
-                still = missing_confluence_weighted_pushes(fresh)
-        except Exception as e:
-            log.debug("confluence_quote_ticks impute failed: %s", e, exc_info=True)
     if still:
         log.error(
             "Confluence fields still missing after refresh: %s (qqq/spy/iwm weighted_push)",
@@ -6837,10 +6836,11 @@ def _fetch_state(
     now_et = _eastern_now()
     _chain_window_marks.append(("chain_window_preamble_ms", time.monotonic()))
 
-    # ── Global market context — session_label before quote parse (shared across tickers) ──
+    # ── Global market context — current only; session_label from the clock ──
     if mkt_ctx is None:
         mkt_ctx = _get_mkt_ctx(client)
-    session_label = mkt_ctx.session_label   # "RTH" | "Pre-Market" | "After-Hours" | "Closed"
+    from market_context import current_session_label
+    session_label = current_session_label()
     _chain_window_marks.append(("chain_window_mkt_ctx_ms", time.monotonic()))
 
     # ── Chain + quote in parallel (independent Schwab calls — saves one RTT on cold Tier C) ──
@@ -7378,8 +7378,8 @@ def _fetch_state(
             _bar_move    = round(float(_lb_close) - float(_lb_open), 4)
             _candle_dir  = _classify_direction(_bar_move, float(_lb_open))
             _candle_body = abs(_bar_move)
-    # ── Global market context (PCR update if we have fresh data) ─────────────
-    if pcr_val is not None:
+    # ── Global market context (PCR update only on a current context) ─────────
+    if mkt_ctx is not None and pcr_val is not None:
         mkt_ctx.pcr = pcr_val
 
     # ── Price levels ──────────────────────────────────────────────────────────
@@ -7848,7 +7848,7 @@ def _fetch_state(
     # SCHWAB_CSV_CHECKED
     _vol_prev_published_vix = _state_cache.get(_cache_key, {}).get("vix")
     _vol_vix_now = None
-    if getattr(mkt_ctx, "vix", None) is not None:
+    if mkt_ctx is not None and getattr(mkt_ctx, "vix", None) is not None:
         try:
             _vol_vix_now = float(mkt_ctx.vix)
             _vix_tracker.tick(_vol_vix_now)
@@ -7911,38 +7911,34 @@ def _fetch_state(
                 _all_levels["em_lower"] = float(_em_spot) - float(_em_pts)
         _level_density = compute_level_density(_all_levels, spot_f)
 
-        # Sector strength — 3 groups
-        # Group 1: Indices (SPY, QQQ, IWM)
+        # Sector strength — 3 groups. Current context only; abstain when absent.
         _idx_data = {}
-        for _ik, _ig in [('SPY', mkt_ctx.spy_chg_pct), ('QQQ', mkt_ctx.qqq_chg_pct), ('IWM', mkt_ctx.iwm_chg_pct)]:
-            if _ig is not None: _idx_data[_ik] = float(_ig)
-        _index_strength = compute_sector_strength(_idx_data)
-
-        # Group 2: SPY top holdings (from mkt_ctx.constituents)
         _spy_holdings = {}
-        for _cq in getattr(mkt_ctx, 'constituents', []):
-            _sym = getattr(_cq, 'symbol', '').upper()
-            _chg = getattr(_cq, 'chg_pct', None)
-            if _sym and _chg is not None:
-                _spy_holdings[_sym] = float(_chg)
-        _spy_strength = compute_sector_strength(_spy_holdings)
-
-        # Group 3: IWM sector proxies (from mkt_ctx.iwm_sectors)
         _sector_data = {}
-        for _sq in getattr(mkt_ctx, 'iwm_sectors', []):
-            _sym = getattr(_sq, 'symbol', '').upper()
-            _chg = getattr(_sq, 'chg_pct', None)
-            if _sym and _chg is not None:
-                _sector_data[_sym] = float(_chg)
+        if mkt_ctx is not None:
+            for _ik, _ig in [('SPY', mkt_ctx.spy_chg_pct), ('QQQ', mkt_ctx.qqq_chg_pct), ('IWM', mkt_ctx.iwm_chg_pct)]:
+                if _ig is not None: _idx_data[_ik] = float(_ig)
+            for _cq in getattr(mkt_ctx, 'constituents', []):
+                _sym = getattr(_cq, 'symbol', '').upper()
+                _chg = getattr(_cq, 'chg_pct', None)
+                if _sym and _chg is not None:
+                    _spy_holdings[_sym] = float(_chg)
+            for _sq in getattr(mkt_ctx, 'iwm_sectors', []):
+                _sym = getattr(_sq, 'symbol', '').upper()
+                _chg = getattr(_sq, 'chg_pct', None)
+                if _sym and _chg is not None:
+                    _sector_data[_sym] = float(_chg)
+        _index_strength = compute_sector_strength(_idx_data)
+        _spy_strength = compute_sector_strength(_spy_holdings)
         _sector_strength = compute_sector_strength(_sector_data)
 
         # VOL_INPUT_CONTRACT 1.0.0: confluence consumes the same per-cycle
         # context as every other surface (computed above, outside this try).
         _vix_dir_for_confluence = vol_ctx.market_iv_direction
         _iwm_deep = compute_iwm_confluence(
-            spy_chg=mkt_ctx.spy_chg_pct,
-            qqq_chg=mkt_ctx.qqq_chg_pct,
-            iwm_chg=mkt_ctx.iwm_chg_pct,
+            spy_chg=(mkt_ctx.spy_chg_pct if mkt_ctx is not None else None),
+            qqq_chg=(mkt_ctx.qqq_chg_pct if mkt_ctx is not None else None),
+            iwm_chg=(mkt_ctx.iwm_chg_pct if mkt_ctx is not None else None),
             kre_chg=_sector_data.get('KRE'),
             xbi_chg=_sector_data.get('XBI'),
             psci_chg=_sector_data.get('PSCI'),
@@ -8643,10 +8639,10 @@ def _fetch_state(
                     from math_levels import compute_pin_width_pts
                     _pin_w = compute_pin_width_pts(_cgw, _pgw)
     
-                    # Constituents from market context — wrap each fetch independently for partial results
+                    # Constituents from current market context only.
                     mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)
                     _const_map = {}
-                    if hasattr(mkt_ctx, "constituents"):
+                    if mkt_ctx is not None and hasattr(mkt_ctx, "constituents"):
                         for cq in mkt_ctx.constituents:
                             try:
                                 if cq.chg_pct is not None:
@@ -8654,19 +8650,19 @@ def _fetch_state(
                             except Exception as e:
                                 log.warning(f"Constituent {getattr(cq, 'symbol', '?')} chg_pct fetch failed: {e}")
                     try:
-                        _spw = getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None)
+                        _spw = getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None) if mkt_ctx is not None else None
                     except Exception as e:
                         log.warning(f"spy_weighted_push (confluence) failed: {e}")
                         _spw = None
                     try:
-                        _qqqw = getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None)
+                        _qqqw = getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None) if mkt_ctx is not None else None
                     except Exception as e:
                         log.warning(f"qqq_weighted_push (qqq_confluence) failed: {e}")
                         _qqqw = None
 
-                    # IWM sectors from market context — wrap each fetch independently for partial results
+                    # IWM sectors from current market context only
                     _sect_map = {}
-                    if hasattr(mkt_ctx, "iwm_sectors"):
+                    if mkt_ctx is not None and hasattr(mkt_ctx, "iwm_sectors"):
                         for sq in mkt_ctx.iwm_sectors:
                             try:
                                 if sq.chg_pct is not None:
@@ -8795,17 +8791,23 @@ def _fetch_state(
                         put_call_oi_ratio=pcr_val,
                         oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
                         gamma_pin=_ssot_gamma_pin,
-                        spy_spot=mkt_ctx.spy_last, spy_chg_pct=mkt_ctx.spy_chg_pct,
-                        spy_zone=_etf_zone(mkt_ctx.spy_chg_pct), spy_vwap_side=None, spy_net_delta=None,
-                        qqq_spot=mkt_ctx.qqq_last, qqq_chg_pct=mkt_ctx.qqq_chg_pct,
-                        qqq_zone=_etf_zone(mkt_ctx.qqq_chg_pct), qqq_vwap_side=None, qqq_net_delta=None,
+                        spy_spot=(mkt_ctx.spy_last if mkt_ctx is not None else None),
+                        spy_chg_pct=(mkt_ctx.spy_chg_pct if mkt_ctx is not None else None),
+                        spy_zone=_etf_zone(mkt_ctx.spy_chg_pct if mkt_ctx is not None else None),
+                        spy_vwap_side=None, spy_net_delta=None,
+                        qqq_spot=(mkt_ctx.qqq_last if mkt_ctx is not None else None),
+                        qqq_chg_pct=(mkt_ctx.qqq_chg_pct if mkt_ctx is not None else None),
+                        qqq_zone=_etf_zone(mkt_ctx.qqq_chg_pct if mkt_ctx is not None else None),
+                        qqq_vwap_side=None, qqq_net_delta=None,
                         qqq_vs_spy=(round(float(mkt_ctx.qqq_chg_pct) - float(mkt_ctx.spy_chg_pct), 4)
-                                    if mkt_ctx.qqq_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
+                                    if mkt_ctx is not None and mkt_ctx.qqq_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
                         qqq_vs_spy_delta=None,
-                        iwm_spot=mkt_ctx.iwm_last, iwm_chg_pct=mkt_ctx.iwm_chg_pct,
-                        iwm_zone=_etf_zone(mkt_ctx.iwm_chg_pct), iwm_vwap_side=None, iwm_net_delta=None,
+                        iwm_spot=(mkt_ctx.iwm_last if mkt_ctx is not None else None),
+                        iwm_chg_pct=(mkt_ctx.iwm_chg_pct if mkt_ctx is not None else None),
+                        iwm_zone=_etf_zone(mkt_ctx.iwm_chg_pct if mkt_ctx is not None else None),
+                        iwm_vwap_side=None, iwm_net_delta=None,
                         iwm_vs_spy=(round(float(mkt_ctx.iwm_chg_pct) - float(mkt_ctx.spy_chg_pct), 4)
-                                    if mkt_ctx.iwm_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
+                                    if mkt_ctx is not None and mkt_ctx.iwm_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
                         iwm_risk_signal=None,
                         nvda_chg_pct=_const_map.get("NVDA"),
                         aapl_chg_pct=_const_map.get("AAPL"),

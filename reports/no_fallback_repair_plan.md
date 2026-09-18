@@ -5,9 +5,8 @@ identity correction, operator point 5):** current counts: 3 `REPAIRED`, 41 `NOT_
 0 `FALLBACK`, 1081 `NOT_PROVEN`, of 1125 candidates
 (`REPAIRED + NOT_FALLBACK + FALLBACK + NOT_PROVEN == candidate_count`, checked
 mechanically by `tools/apply_adjudication.py`'s own invariant assertion — it refuses to
-write the inventory if this ever fails to hold). **Zero FALLBACK remains repo-wide.** This
-is NOT a claim the repository is fallback-free: 1081 candidates are still NOT_PROVEN,
-meaning they have not yet been individually adjudicated one way or the other.
+write the inventory if this ever fails to hold). **Currently adjudicated FALLBACK: 0. NOT_PROVEN: 1081. Overall: NOT_PROVEN.**
+0 FALLBACK is a verdict-count, not repository compliance.
 
 **Why REPAIRED dropped from a previously-reported 115 to 3, and total candidates from
 1226 to 1125 — a candidate-identity correction, not a regression (operator point 5,
@@ -64,7 +63,8 @@ going forward. A LEGACY-format (`FB-NNNNN`) id with no match is expected and rep
 visibility only (the underlying code was deleted by a real repair), never a failure.
 Proof: `tests/test_fallback_discovery_fingerprint_identity.py::test_adjudication_target_validation_distinguishes_legacy_from_shifted`.
 
-**Point 12 closure (deletion and helper-necessity proofs, 2026-09-17):** auditing
+**Point 12 remains NOT_PROVEN.** Deleting tests that referenced deleted code is not
+retirement proof. See `reports/point12_deleted_responsibility_lineage.json`. Prior note: auditing
 `tools/legacy/horizon_7/`'s deletion and `tools/_fusion_backfill_shared.py`'s necessity
 claim did not confirm a clean bill of health — it surfaced two real, previously-
 unverified defects:

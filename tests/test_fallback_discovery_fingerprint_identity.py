@@ -200,3 +200,124 @@ def test_adjudication_target_validation_distinguishes_legacy_from_shifted():
         aa.ADJUDICATION.update(orig_adj)
         aa.REPAIRED.clear()
         aa.REPAIRED.update(orig_rep)
+
+
+def test_formatting_only_change_preserves_identity():
+    before = _discover("pkg/mod.py", _SRC_A)
+    formatted = (
+        "def build(mkt_ctx):\n"
+        "    spot = mkt_ctx.spot    or     100.0\n"
+        "    return spot\n"
+    )
+    after = _discover("pkg/mod.py", formatted)
+    assert before[0]["id"] == after[0]["id"]
+    assert before[0]["fingerprint"] == after[0]["fingerprint"]
+
+
+def test_equivalent_ast_parentheses_preserve_identity():
+    before = _discover("pkg/mod.py", _SRC_A)
+    paren = (
+        "def build(mkt_ctx):\n"
+        "    spot = (mkt_ctx.spot) or (100.0)\n"
+        "    return spot\n"
+    )
+    after = _discover("pkg/mod.py", paren)
+    assert before[0]["id"] == after[0]["id"]
+
+
+def test_semantic_change_invalidates_old_identity():
+    before = _discover("pkg/mod.py", _SRC_A)
+    changed = (
+        "def build(mkt_ctx):\n"
+        "    spot = mkt_ctx.spot or 200.0\n"
+        "    return spot\n"
+    )
+    after = _discover("pkg/mod.py", changed)
+    assert before[0]["id"] != after[0]["id"]
+    assert before[0]["fingerprint"] != after[0]["fingerprint"]
+
+
+def test_file_move_cannot_inherit_unrelated_verdict():
+    src = _SRC_A
+    a = _discover("pkg/old_name.py", src)
+    b = _discover("pkg/new_name.py", src)
+    assert a[0]["id"] != b[0]["id"]
+
+
+def test_symbol_rename_cannot_inherit_unrelated_verdict():
+    before = _discover("pkg/mod.py", _SRC_A)
+    renamed = (
+        "def compute(mkt_ctx):\n"
+        "    spot = mkt_ctx.spot or 100.0\n"
+        "    return spot\n"
+    )
+    after = _discover("pkg/mod.py", renamed)
+    assert before[0]["id"] != after[0]["id"]
+    assert before[0]["context"] != after[0]["context"]
+
+
+def test_duplicate_fingerprints_are_rejected_as_collapsed_ids():
+    src = (
+        "def build(mkt_ctx):\n"
+        "    a = mkt_ctx.spot or 100.0\n"
+        "    b = mkt_ctx.spot or 100.0\n"
+        "    c = mkt_ctx.spot or 100.0\n"
+        "    return a, b, c\n"
+    )
+    out = _discover("pkg/triples.py", src)
+    ids = [c["id"] for c in out]
+    assert len(out) == 3
+    assert len(set(ids)) == 3
+    assert any(i.endswith("-2") for i in ids)
+    assert any(i.endswith("-3") for i in ids)
+
+
+def test_deleted_protected_finding_cannot_disappear_silently():
+    import importlib
+
+    aa = importlib.import_module("tools.apply_adjudication")
+    orig_adj, orig_rep = dict(aa.ADJUDICATION), dict(aa.REPAIRED)
+    try:
+        aa.ADJUDICATION.clear()
+        aa.REPAIRED.clear()
+        aa.ADJUDICATION["FB-deadbeef01"] = ("FALLBACK", "e", "r", "g")
+        raised = False
+        try:
+            aa._validate_adjudication_targets_exist([{"id": "FB-aaaaaaaaaa"}])
+        except SystemExit:
+            raised = True
+        assert raised
+    finally:
+        aa.ADJUDICATION.clear()
+        aa.ADJUDICATION.update(orig_adj)
+        aa.REPAIRED.clear()
+        aa.REPAIRED.update(orig_rep)
+
+
+def test_legacy_sequential_id_cannot_bypass_fingerprint_validation():
+    """A legacy FB-NNNNN orphan is counted, not treated as a match for a
+    current fingerprint id. A fingerprint id that is merely numeric-looking
+    but new-format must still fail when missing."""
+    import importlib
+
+    aa = importlib.import_module("tools.apply_adjudication")
+    orig_adj, orig_rep = dict(aa.ADJUDICATION), dict(aa.REPAIRED)
+    try:
+        aa.ADJUDICATION.clear()
+        aa.REPAIRED.clear()
+        aa.ADJUDICATION["FB-00001"] = ("FALLBACK", "e", "r", "g")
+        aa._validate_adjudication_targets_exist([{"id": "FB-abc1234567"}])
+
+        aa.ADJUDICATION.clear()
+        aa.ADJUDICATION["FB-0123456789"] = ("FALLBACK", "e", "r", "g")
+        raised = False
+        try:
+            aa._validate_adjudication_targets_exist([{"id": "FB-abc1234567"}])
+        except SystemExit:
+            raised = True
+        assert raised, "10-hex fingerprint orphan must fail; legacy 5-digit must not paper over it"
+    finally:
+        aa.ADJUDICATION.clear()
+        aa.ADJUDICATION.update(orig_adj)
+        aa.REPAIRED.clear()
+        aa.REPAIRED.update(orig_rep)
