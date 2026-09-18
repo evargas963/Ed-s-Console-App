@@ -142,3 +142,42 @@ def test_apply_xgb_imputation_matrix_docstring_names_the_repair():
     from ml_train import apply_xgb_imputation_matrix
 
     assert "issue7_v2" in inspect.getsource(apply_xgb_imputation_matrix)
+
+
+def test_ablation_bundle_meta_rejects_empty_impute_medians_without_the_version_stamp():
+    """No-fallback lock repair (2026-09-18, PR #254 point 6): the relaxed validator
+    ml_predict.py's real XGBoost registry loader falls back to during a live pre-train
+    experiment (unified_stack_bundle_relaxation_active()) used to accept ANY empty
+    impute_medians dict as proof of the issue7_v2 native-NaN design -- a bundle whose
+    dict was empty for an unrelated reason (a crashed training run, a stale/foreign
+    artifact) would be silently trusted. Proves the empty-dict branch now requires the
+    bundle's own missingness_contract_version to actually match the current contract,
+    while a fully-populated dict (self-proving by content) still needs no stamp."""
+    from arch_competition.ablation_bundle_inference import validate_ablation_scoring_bundle_meta
+    from model_contract import CURRENT_MISSINGNESS_CONTRACT_VERSION
+
+    ok, msg = validate_ablation_scoring_bundle_meta(
+        {"features": ["a", "b"], "impute_medians": {}}, "xgb"
+    )
+    assert ok is False
+    assert "missingness_contract_version" in msg
+
+    ok, msg = validate_ablation_scoring_bundle_meta(
+        {"features": ["a", "b"], "impute_medians": {}, "missingness_contract_version": "some_old_v1"},
+        "xgb",
+    )
+    assert ok is False, "a wrong/stale stamp must not be accepted either"
+
+    ok, msg = validate_ablation_scoring_bundle_meta(
+        {
+            "features": ["a", "b"], "impute_medians": {},
+            "missingness_contract_version": CURRENT_MISSINGNESS_CONTRACT_VERSION,
+        },
+        "xgb",
+    )
+    assert ok is True, f"correctly-stamped empty dict must pass: {msg}"
+
+    ok, msg = validate_ablation_scoring_bundle_meta(
+        {"features": ["a", "b"], "impute_medians": {"a": 1.0, "b": 2.0}}, "xgb"
+    )
+    assert ok is True, f"a fully-populated dict is self-proving, needs no stamp: {msg}"
