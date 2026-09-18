@@ -501,6 +501,7 @@ _META_TOOLING_EXCLUDED_FROM_CONTENT_RULES = (
     "tools/reconcile_no_fallback_inventory_lineage.py",
     "tests/test_fallback_discovery_fingerprint_identity.py",
     "tests/test_no_fallback_inventory_lineage_v1.py",
+    "tests/test_fallback_discovery_json_sql_registry.py",
 )
 
 

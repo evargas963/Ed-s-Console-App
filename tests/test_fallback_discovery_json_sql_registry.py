@@ -67,27 +67,43 @@ def test_malformed_json_reports_parse_failure_not_silent_skip():
     assert hits[0]["pattern"] == "PARSE_FAILURE"
 
 
-def test_real_snapshot_sql_registry_produces_real_candidates():
+def test_real_snapshot_sql_registry_is_now_clean_a_regression_guard():
     """Not a planted fixture: scans the ACTUAL snapshot_sql/*.json files this repo
-    ships and proves db.py's real, live SQL-string registry is no longer invisible."""
-    found_any = False
+    ships. This scanner's very first real run against these files found 23 genuine
+    COALESCE occurrences (all now repaired -- see reports/no_fallback_repair_plan.md,
+    PR #254 point 7), proving the discovery gap was real, not hypothetical. Now that
+    they are fixed, this test's job flips to a regression guard: the real registry
+    must STAY clean. A future COALESCE reintroduced here would be caught by the
+    census (SQL_COALESCE_STYLE, now correctly discoverable) long before this
+    assertion -- this test exists so a silent regression in the registry itself
+    fails loudly and specifically, not just as one more line in a 1000+-candidate
+    census."""
     for name in ("registry_full_a.json", "registry_full_b.json",
                  "registry_full_c.json", "_auto_extracted.json"):
         path = ROOT / "snapshot_sql" / name
         if not path.exists():
             continue
         hits = scan_json_file(f"snapshot_sql/{name}", path.read_text(encoding="utf-8"))
-        if hits:
-            found_any = True
-            for h in hits:
-                assert h["pattern"] == "SQL_COALESCE_STYLE"
-                assert "COALESCE" in h["snippet"].upper() or "IFNULL" in h["snippet"].upper() \
-                    or "NVL(" in h["snippet"].upper()
-    assert found_any, (
-        "snapshot_sql/*.json is known (as of this repair) to contain real COALESCE "
-        "occurrences -- if this ever finds none, re-verify the fixture is still valid "
-        "rather than assuming the gap stayed closed"
+        assert hits == [], (
+            f"{name} reintroduced a SQL fallback shape after the point-7 repair: {hits}"
+        )
+
+
+def test_scanner_still_detects_a_real_looking_reintroduction():
+    """Companion to the regression guard above: proves the scanner's detection
+    capability itself is still live (not merely that the registry happens to be
+    clean right now) by mutating a real registry file's actual content in memory --
+    never touching the file on disk -- and confirming the mutation IS caught."""
+    path = ROOT / "snapshot_sql" / "registry_full_b.json"
+    src = path.read_text(encoding="utf-8")
+    mutated = src.replace(
+        '"tools/phase2_forward_write_verify.py:87": "SELECT MAX(snapshot_id) FROM snapshots"',
+        '"tools/phase2_forward_write_verify.py:87": '
+        '"SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots"',
     )
+    assert mutated != src, "fixture assumption stale -- the source line this test mutates has moved"
+    hits = scan_json_file("snapshot_sql/registry_full_b.json", mutated)
+    assert any(h["pattern"] == "SQL_COALESCE_STYLE" for h in hits)
 
 
 def test_reports_directory_json_is_excluded_from_sql_scan_but_enumerated():

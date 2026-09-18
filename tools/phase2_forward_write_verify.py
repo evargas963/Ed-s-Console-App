@@ -82,7 +82,13 @@ def main() -> None:
     db = EdDB(DB_PATH)
     with db._connect() as conn:
         row = conn.execute(get_snapshot_sql("tools/phase2_forward_write_verify.py:87")).fetchone()
-        cutoff = int(row[0])
+        # No-fallback lock repair (2026-09-18, PR #254 point 7): MAX(snapshot_id) is
+        # NULL only when `snapshots` is genuinely empty -- 0 is then the mathematically
+        # correct cutoff (every real snapshot_id from the autoincrement PK is > 0), not
+        # a substitute for an unknown value. Made an explicit, visible Python check
+        # rather than a SQL-level COALESCE, which the mission bans unconditionally
+        # regardless of how provably safe the specific default is.
+        cutoff = int(row[0]) if row[0] is not None else 0
 
     totals = TotalsRow(
         "CONSENSUS",

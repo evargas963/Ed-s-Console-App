@@ -1,32 +1,87 @@
 # No-fallback mechanical lock — grouped production repair plan
 
 Generated from `reports/no_fallback_inventory.json`. **Status 2026-09-18 (post-JSON-SQL-
-registry discovery, PR #254 point 7 / original mission point 6):** current counts: 3
-`REPAIRED`, 41 `NOT_FALLBACK`, **23 `FALLBACK`**, 1088 `NOT_PROVEN`, of 1155 candidates
-(`REPAIRED + NOT_FALLBACK + FALLBACK + NOT_PROVEN == candidate_count`, checked
-mechanically by `tools/apply_adjudication.py`'s own invariant assertion — it refuses to
-write the inventory if this ever fails to hold). **Currently adjudicated FALLBACK: 23.
-NOT_PROVEN: 1088. Overall: NOT_PROVEN, and now also FALLBACK-positive — repair owed.**
+registry discovery AND repair, PR #254 point 7 / original mission point 6):** current
+counts: 3 `REPAIRED`, 41 `NOT_FALLBACK`, **0 `FALLBACK`**, 1088 `NOT_PROVEN`, of 1132
+candidates (`REPAIRED + NOT_FALLBACK + FALLBACK + NOT_PROVEN == candidate_count`,
+checked mechanically by `tools/apply_adjudication.py`'s own invariant assertion — it
+refuses to write the inventory if this ever fails to hold). **Currently adjudicated
+FALLBACK: 0. NOT_PROVEN: 1088. Overall: still NOT_PROVEN** (1088 candidates remain
+unresolved) **— but the JSON-registry defect this discovery pass surfaced is now fully
+repaired, not merely rediscovered.**
 
-**Why FALLBACK went from 0 to 23 — a real, previously-invisible defect surfaced by
-closing a discovery gap, not a regression (PR #254 point 7, "the discovery-completeness
-proof validates the scanner using its own planted example... does not independently
-prove all executable and loader-interpreted surfaces were discovered"):** the discovery
-scanner treated every `.json` file as a declared no-op by extension. Confirmed via
-direct trace that this is false: `db.py`'s `get_snapshot_sql()` loads every
-`snapshot_sql/*.json` file and returns its string VALUES as literal SQL text, executed
-as-is by 60+ callers across the repo — a JSON value here is exactly as executable as a
-Python string literal passed to `conn.execute()`. `tools/fallback_discovery.py` now
-parses every `.json` file and walks its string values (not keys) for the same
-COALESCE/IFNULL/NVL check already applied to Python/SQL/JS source. Regenerating the
-census against the REAL repo (not a planted fixture) found 23 genuine COALESCE
-occurrences in `snapshot_sql/registry_full_a.json` / `_b.json` / `_c.json` /
-`_auto_extracted.json`, auto-classified FALLBACK by the same blanket operator
-correction that already governs every SQL_COALESCE_STYLE candidate repo-wide (see
-below) — **these have NOT yet been individually repaired; point 7's closure is the
-discovery capability, not yet the repair of what it found.**
+**Why FALLBACK briefly went from 0 to 23, then back to 0 — a real, previously-invisible
+defect surfaced by closing a discovery gap, then genuinely repaired, not a regression
+(PR #254 point 7, "the discovery-completeness proof validates the scanner using its own
+planted example... does not independently prove all executable and loader-interpreted
+surfaces were discovered"):** the discovery scanner treated every `.json` file as a
+declared no-op by extension. Confirmed via direct trace that this is false: `db.py`'s
+`get_snapshot_sql()` loads every `snapshot_sql/*.json` file and returns its string
+VALUES as literal SQL text, executed as-is by 60+ callers across the repo — a JSON value
+here is exactly as executable as a Python string literal passed to `conn.execute()`.
+`tools/fallback_discovery.py` now parses every `.json` file and walks its string values
+(not keys) for the same COALESCE/IFNULL/NVL check already applied to Python/SQL/JS
+source. Regenerating the census against the REAL repo (not a planted fixture) found 23
+genuine COALESCE occurrences in `snapshot_sql/registry_full_a.json` / `_b.json` /
+`_c.json` / `_auto_extracted.json`, auto-classified FALLBACK by the same blanket
+operator correction that already governs every SQL_COALESCE_STYLE candidate repo-wide
+(see below).
 
-**A second, genuine self-reference hazard was found and fixed in the same pass:**
+**All 23 were then individually repaired, not merely discovered — root cause traced per
+group, not a blanket text substitution:**
+- **14 occurrences of `COALESCE(horizon_outcome_schema_version, ?) = ?`** across
+  `tools/bar_history_recovery_audit_v1.py` (6), `tools/issue19_rehydration_range_v1.py`
+  (2), `bar_rehydration_issue19_v1.py` (1), and `tools/pin_neutral_eligibility_funnel_v1.py`
+  (5 of its 8) — every call site bound the SAME constant
+  (`HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1`) to BOTH the COALESCE default and the
+  comparison target, so `COALESCE(col, ?) = ?` and bare `col = ?` are exactly
+  equivalent: SQL's `NULL = anything` is never true, so dropping the COALESCE already
+  excludes unrecorded rows — the identical repair Group 1 (`calibration_ml_governance`)
+  established for this same column's Python-embedded occurrences. Fixed the SQL text
+  and removed the now-redundant duplicate parameter at each of the ~14 Python call
+  sites (one shared `PIN_PARAMS` tuple for the funnel tool covered 5 of them in one
+  edit).
+- **3 occurrences of `COALESCE(outcome_filled, 0)`** (`bar_rehydration_issue19_v1.py`,
+  and 2 more inside `pin_neutral_eligibility_funnel_v1.py`'s shared queries) — traced
+  `outcome_filled`'s only other consumers (db.py itself, 5+ internal sites) and found
+  every one already uses a bare `outcome_filled = 0/1` comparison with no COALESCE —
+  the column's own canonical owner already treats it as never-meaningfully-NULL.
+  Matched that established, already-correct idiom rather than inventing a new one.
+- **2 occurrences of `COALESCE(horizon_outcome_schema_version, -1)`** (a diagnostic
+  histogram grouping rows by schema version) — SQLite's `GROUP BY` already buckets
+  NULL rows into their own group without any COALESCE; the `-1` sentinel only relabels
+  that bucket with a synthetic value a reader must already know means "unrecorded".
+  Removed the COALESCE so NULL prints as NULL, the more informative and honest label.
+  Also found and deleted 2 fully orphaned duplicate registry keys for this same query
+  in `snapshot_sql/_auto_extracted.json` (line-numbered keys `:37`/`:65`, superseded
+  by named keys `:schema_v_hist`/`:pin_bull_schema_sample` in `registry_full_c.json`
+  that the tool actually calls — confirmed via repo-wide grep that nothing references
+  the orphaned keys) — unused duplicate-authority machinery, deleted rather than fixed.
+- **1 occurrence of `SUM(COALESCE(candle_volume, 0))`** — mathematically identical to
+  bare `SUM(candle_volume)` (SQL's `SUM` already skips NULL rows; adding 0 for each one
+  changes nothing). Removed the redundant COALESCE with zero behavior change.
+- **1 occurrence of `COALESCE(MAX(snapshot_id), 0)`** (`tools/phase2_forward_write_verify.py`)
+  — `MAX` over zero rows is NULL only when `snapshots` is genuinely empty, in which
+  case 0 is the mathematically correct cutoff (every real `snapshot_id` from the
+  autoincrement PK is `> 0`). Rather than keep this reasoning hidden inside a
+  SQL-level COALESCE (banned unconditionally regardless of how provably safe the
+  specific default is), made the same check explicit and visible in the Python caller:
+  `cutoff = int(row[0]) if row[0] is not None else 0`, with a comment naming why.
+
+A third self-reference hazard surfaced during this repair (beyond the two below, found
+when the JSON scanner itself was first built): the new test file
+(`tests/test_fallback_discovery_json_sql_registry.py`) plants COALESCE-containing
+fixture strings as Python string literals to prove the scanner works — the same
+self-match class already handled for `tests/test_fallback_discovery_fingerprint_identity.py`
+— added to `_META_TOOLING_EXCLUDED_FROM_CONTENT_RULES`.
+
+Proof: `tests/test_fallback_discovery_json_sql_registry.py` (the real-registry test
+was rewritten from "proves real COALESCE exists" to "proves the registry stays clean,
+plus the scanner still detects a reintroduction via an in-memory mutation" once the
+repair made the original assertion stale by construction — the fix working is exactly
+why that specific assertion needed to change).
+
+**A second, genuine self-reference hazard was found and fixed in the same original pass:**
 scanning ALL `.json` files unconditionally at first produced ~90 additional "candidates"
 that were not real — this mission's own governance artifacts
 (`reports/no_fallback_inventory.json`, `reports/no_fallback_inventory_lineage_*.json`,
