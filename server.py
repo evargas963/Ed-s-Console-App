@@ -53,7 +53,6 @@ import time_et as _time_et
 from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
                      is_trading_day_et)
 
-import html
 import hashlib
 import json
 import queue
@@ -77,6 +76,21 @@ from app.api.routes.desk import (  # noqa: F401
     get_desk_structure,
     get_desk_brief,
     post_desk_materialize,
+)
+# RC-REHAB-1 (Phase 3): same re-export rationale as the desk import above -- root/favicon/
+# guide_*/chart_page/exposure_page/options_page/desk_page now live in
+# app/api/routes/pages.py (mounted below via app.include_router(pages_router)).
+from app.api.routes.pages import (  # noqa: F401
+    router as pages_router,
+    root,
+    favicon,
+    guide_data_stewardship,
+    guide_training_and_maintenance,
+    guide_pipeline_quality,
+    chart_page,
+    exposure_page,
+    options_page,
+    desk_page,
 )
 from app.api.routes.options_order_flow import router as options_order_flow_router
 
@@ -10489,6 +10503,7 @@ async def _app_lifespan(app):
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
 app.include_router(options_order_flow_router)
 app.include_router(desk_router)
+app.include_router(pages_router)
 
 # F09: serve the JS projection from time_et on every request. Registered BEFORE
 # the StaticFiles mount so a committed or leftover disk blob cannot become a
@@ -10532,148 +10547,8 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 # ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
-def root():
-    html_path = static_dir / "index.html"
-    if not html_path.exists():
-        return HTMLResponse("<h1>static/index.html not found</h1>", status_code=404)
-    # Avoid stale shell JS after edits (browser disk cache of "/" was masking localForce→force fix).
-    return HTMLResponse(
-        content=html_path.read_text(encoding="utf-8"),
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate",
-            "Pragma": "no-cache",
-        },
-    )
-
-
-@app.get("/favicon.ico", include_in_schema=False)
-def favicon():
-    """Browsers request this automatically; without a route they log 404 (harmless but noisy)."""
-    return Response(status_code=204)
-
-
-@app.get("/guide/data-stewardship", response_class=HTMLResponse)
-def guide_data_stewardship():
-    """Serve DATA_STEWARDSHIP.md in the browser (king / jewels / guards + runbook)."""
-    md_path = Path(APP_DIR) / "DATA_STEWARDSHIP.md"
-    if not md_path.exists():
-        return HTMLResponse(
-            "<p>DATA_STEWARDSHIP.md not found in app directory.</p>",
-            status_code=404,
-        )
-    raw = md_path.read_text(encoding="utf-8")
-    body = html.escape(raw)
-    page = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Data stewardship &amp; ops — Ed Console</title>
-  <style>
-    body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0c0f; color: #e5e7eb;
-            margin: 0; padding: 24px; line-height: 1.55; font-size: 14px; }}
-    .wrap {{ max-width: 52rem; margin: 0 auto; }}
-    a {{ color: #60a5fa; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    pre {{ white-space: pre-wrap; word-break: break-word; font-size: 13px;
-           background: #111418; border: 1px solid #252c36; padding: 16px; border-radius: 8px; }}
-    .nav {{ margin-bottom: 20px; font-size: 13px; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="nav"><a href="/">&larr; Back to console</a></div>
-    <pre>{body}</pre>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(page)
-
-
-@app.get("/guide/training-and-maintenance", response_class=HTMLResponse)
-def guide_training_and_maintenance():
-    md_path = Path(APP_DIR) / "TRAINING_AND_MAINTENANCE.md"
-    if not md_path.exists():
-        return HTMLResponse(
-            "<p>TRAINING_AND_MAINTENANCE.md not found in app directory.</p>",
-            status_code=404,
-        )
-    raw = md_path.read_text(encoding="utf-8")
-    body = html.escape(raw)
-    page = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Training &amp; maintenance — Ed Console</title>
-  <style>
-    body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0c0f; color: #e5e7eb;
-            margin: 0; padding: 24px; line-height: 1.55; font-size: 14px; }}
-    .wrap {{ max-width: 52rem; margin: 0 auto; }}
-    a {{ color: #60a5fa; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    pre {{ white-space: pre-wrap; word-break: break-word; font-size: 13px;
-           background: #111418; border: 1px solid #252c36; padding: 16px; border-radius: 8px; }}
-    .nav {{ margin-bottom: 20px; font-size: 13px; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="nav">
-      <a href="/">&larr; Back to console</a>
-      · <a href="/guide/data-stewardship">Data stewardship</a>
-      · <a href="/guide/pipeline-quality">Pipeline quality (TQM)</a>
-      · <a href="/ops">Run tasks</a>
-    </div>
-    <pre>{body}</pre>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(page)
-
-
-@app.get("/guide/pipeline-quality", response_class=HTMLResponse)
-def guide_pipeline_quality():
-    """TQM-style checkpoints: ingest throttles, audits, normalized layer, readiness."""
-    md_path = Path(APP_DIR) / "PIPELINE_QUALITY.md"
-    if not md_path.exists():
-        return HTMLResponse(
-            "<p>PIPELINE_QUALITY.md not found in app directory.</p>",
-            status_code=404,
-        )
-    raw = md_path.read_text(encoding="utf-8")
-    body = html.escape(raw)
-    page = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pipeline quality (TQM) — Ed Console</title>
-  <style>
-    body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0c0f; color: #e5e7eb;
-            margin: 0; padding: 24px; line-height: 1.55; font-size: 14px; }}
-    .wrap {{ max-width: 52rem; margin: 0 auto; }}
-    a {{ color: #60a5fa; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    pre {{ white-space: pre-wrap; word-break: break-word; font-size: 13px;
-           background: #111418; border: 1px solid #252c36; padding: 16px; border-radius: 8px; }}
-    .nav {{ margin-bottom: 20px; font-size: 13px; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="nav">
-      <a href="/">&larr; Back to console</a>
-      · <a href="/guide/data-stewardship">Data stewardship</a>
-      · <a href="/guide/training-and-maintenance">Training &amp; maintenance</a>
-      · <a href="/ops">Run tasks</a>
-    </div>
-    <pre>{body}</pre>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(page)
+# RC-REHAB-1 (Phase 3): /, /favicon.ico, and /guide/* moved to app/api/routes/pages.py
+# (second extraction slice, same pattern as desk.py -- see that module's docstring).
 
 
 @app.get("/ops", response_class=HTMLResponse)
@@ -16114,49 +15989,8 @@ def get_terrain_scorecard():
     })
 
 
-@app.get("/chart", response_class=HTMLResponse)
-def chart_page():
-    """CR-03 screen-1 v0 — chart-first view (candles + terrain bands + coach)."""
-    p = static_dir / "chart.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/chart.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-
-@app.get("/exposure", response_class=HTMLResponse)
-def exposure_page():
-    """RC-200 (re-landed with RC-210) — the Exposure Overlay tab: dealer positioning on
-    price (operator #1 project, LIVE order 2026-08-02)."""
-    p = static_dir / "exposure.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/exposure.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-
-@app.get("/options", response_class=HTMLResponse)
-def options_page():
-    """OPTIONS_ORDER_FLOW_V1 UI/consumer wiring: chain + contract-selection + live
-    order-flow microstructure for one option contract. Reads GET /api/chain (contract
-    listing), POST /api/streaming/active-option-contract (subscribe), GET /api/order-flow/
-    options-microstructure (live book + freshness/health) — no new endpoints, no client-
-    side second producer."""
-    p = static_dir / "options.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/options.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-
-@app.get("/desk", response_class=HTMLResponse)
-def desk_page():
-    """Desk — research, candidates and book, replayable at an earlier knowledge time."""
-    p = static_dir / "desk.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/desk.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+# RC-REHAB-1 (Phase 3): /chart, /exposure, /options, and /desk (the page shells) moved to
+# app/api/routes/pages.py alongside /, /favicon.ico, and /guide/* (second extraction slice).
 
 
 # RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):
