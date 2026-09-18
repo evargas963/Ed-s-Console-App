@@ -1,12 +1,46 @@
 # No-fallback mechanical lock — grouped production repair plan
 
-Generated from `reports/no_fallback_inventory.json`. **Status 2026-09-17 (post-candidate-
-identity correction, operator point 5):** current counts: 3 `REPAIRED`, 41 `NOT_FALLBACK`,
-0 `FALLBACK`, 1081 `NOT_PROVEN`, of 1125 candidates
+Generated from `reports/no_fallback_inventory.json`. **Status 2026-09-18 (post-JSON-SQL-
+registry discovery, PR #254 point 7 / original mission point 6):** current counts: 3
+`REPAIRED`, 41 `NOT_FALLBACK`, **23 `FALLBACK`**, 1088 `NOT_PROVEN`, of 1155 candidates
 (`REPAIRED + NOT_FALLBACK + FALLBACK + NOT_PROVEN == candidate_count`, checked
 mechanically by `tools/apply_adjudication.py`'s own invariant assertion — it refuses to
-write the inventory if this ever fails to hold). **Currently adjudicated FALLBACK: 0. NOT_PROVEN: 1081. Overall: NOT_PROVEN.**
-0 FALLBACK is a verdict-count, not repository compliance.
+write the inventory if this ever fails to hold). **Currently adjudicated FALLBACK: 23.
+NOT_PROVEN: 1088. Overall: NOT_PROVEN, and now also FALLBACK-positive — repair owed.**
+
+**Why FALLBACK went from 0 to 23 — a real, previously-invisible defect surfaced by
+closing a discovery gap, not a regression (PR #254 point 7, "the discovery-completeness
+proof validates the scanner using its own planted example... does not independently
+prove all executable and loader-interpreted surfaces were discovered"):** the discovery
+scanner treated every `.json` file as a declared no-op by extension. Confirmed via
+direct trace that this is false: `db.py`'s `get_snapshot_sql()` loads every
+`snapshot_sql/*.json` file and returns its string VALUES as literal SQL text, executed
+as-is by 60+ callers across the repo — a JSON value here is exactly as executable as a
+Python string literal passed to `conn.execute()`. `tools/fallback_discovery.py` now
+parses every `.json` file and walks its string values (not keys) for the same
+COALESCE/IFNULL/NVL check already applied to Python/SQL/JS source. Regenerating the
+census against the REAL repo (not a planted fixture) found 23 genuine COALESCE
+occurrences in `snapshot_sql/registry_full_a.json` / `_b.json` / `_c.json` /
+`_auto_extracted.json`, auto-classified FALLBACK by the same blanket operator
+correction that already governs every SQL_COALESCE_STYLE candidate repo-wide (see
+below) — **these have NOT yet been individually repaired; point 7's closure is the
+discovery capability, not yet the repair of what it found.**
+
+**A second, genuine self-reference hazard was found and fixed in the same pass:**
+scanning ALL `.json` files unconditionally at first produced ~90 additional "candidates"
+that were not real — this mission's own governance artifacts
+(`reports/no_fallback_inventory.json`, `reports/no_fallback_inventory_lineage_*.json`,
+`reports/no_fallback_discovery_raw.json`) quote real COALESCE findings as human-readable
+evidence prose, and other tools' run-output snapshots (`reports/operable_surface_gate_
+latest.json`, `reports/rc6_preflight_*.json`) record a query that executed elsewhere as
+a logged string, not one the JSON file itself causes to execute. `reports/` is this
+repo's established generated-OUTPUT directory (RC-523 `runtime_layout`) — nothing under
+it is ever `json.load()`-ed back into a live SQL string the way `snapshot_sql/*.json`
+genuinely is. JSON files under `reports/` are now excluded from the SQL-registry scan
+specifically (not from scanning generally — `.py`/`.sql`/`.jsx` files that happen to
+live under `reports/`, e.g. `reports/audit_round2_scripts/*.py`, are unaffected), and
+the exclusion is counted and reported (`reports_dir_json_excluded_from_sql_scan`), never
+silently dropped. Proof: `tests/test_fallback_discovery_json_sql_registry.py`.
 
 **Why REPAIRED dropped from a previously-reported 115 to 3, and total candidates from
 1226 to 1125 — a candidate-identity correction, not a regression (operator point 5,

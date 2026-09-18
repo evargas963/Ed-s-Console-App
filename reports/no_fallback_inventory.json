@@ -1,6 +1,7 @@
 {
   "scanned_by_type": {
-    "python": 1261,
+    "json": 282,
+    "python": 1262,
     "javascript": 44,
     "sql": 2,
     "batch": 3,
@@ -8,7 +9,6 @@
     "html": 7
   },
   "unscanned_declared_noop_by_ext": {
-    ".json": 631,
     ".md": 293,
     ".mdc": 1,
     ".example": 2,
@@ -28,12 +28,13 @@
     ".webmanifest": 1
   },
   "unscanned_unknown_extensions": [],
-  "candidate_count": 1125,
-  "adjudicated_this_pass": 61,
+  "candidate_count": 1155,
+  "adjudicated_this_pass": 84,
   "verdict_counts": {
-    "NOT_PROVEN": 1081,
+    "NOT_PROVEN": 1088,
     "NOT_FALLBACK": 41,
-    "REPAIRED": 3
+    "REPAIRED": 3,
+    "FALLBACK": 23
   },
   "candidates": [
     {
@@ -598,7 +599,7 @@
     },
     {
       "file": "arch_competition/ablation_bundle_inference.py",
-      "line": 361,
+      "line": 392,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "norm = checkpoint.get(\"norm_stats\", {})",
@@ -614,7 +615,7 @@
     },
     {
       "file": "arch_competition/ablation_bundle_inference.py",
-      "line": 231,
+      "line": 262,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_ver, _n5, _n1, err = resolve_encoder_lineage(checkpoint or {}, meta)",
@@ -630,7 +631,7 @@
     },
     {
       "file": "arch_competition/ablation_bundle_inference.py",
-      "line": 324,
+      "line": 355,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "mask_conf = np.array(checkpoint.get(\"mask_conf\", [True] * len(conf_vec)), dtype=bool)",
@@ -646,7 +647,7 @@
     },
     {
       "file": "arch_competition/ablation_bundle_inference.py",
-      "line": 508,
+      "line": 539,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "checkpoint.get(\"feature_mask\", np.ones(base.shape[2], dtype=bool)),",
@@ -662,7 +663,7 @@
     },
     {
       "file": "arch_competition/ablation_bundle_inference.py",
-      "line": 351,
+      "line": 382,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "mask_5m = np.array(checkpoint.get(\"mask_5m\", [True] * X_5m.shape[2]), dtype=bool)",
@@ -678,7 +679,7 @@
     },
     {
       "file": "arch_competition/ablation_bundle_inference.py",
-      "line": 352,
+      "line": 383,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "mask_1m = np.array(checkpoint.get(\"mask_1m\", [True] * X_1m.shape[2]), dtype=bool)",
@@ -694,7 +695,7 @@
     },
     {
       "file": "arch_competition/ablation_bundle_inference.py",
-      "line": 637,
+      "line": 668,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "seq_len = int(tr_ckpt.get(\"seq_len\", 20))",
@@ -710,7 +711,7 @@
     },
     {
       "file": "arch_competition/ablation_bundle_inference.py",
-      "line": 286,
+      "line": 317,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "seq_len=checkpoint.get(\"seq_len\", 20),",
@@ -3638,7 +3639,7 @@
     },
     {
       "file": "market_context.py",
-      "line": 309,
+      "line": 319,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "q = quote or {}",
@@ -3654,7 +3655,7 @@
     },
     {
       "file": "market_context.py",
-      "line": 329,
+      "line": 339,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "quote = data.get(\"quote\", {}) or {}",
@@ -3670,7 +3671,7 @@
     },
     {
       "file": "market_context.py",
-      "line": 1041,
+      "line": 1065,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "q = sym_node.get(\"quote\", {}) or {}",
@@ -3686,7 +3687,7 @@
     },
     {
       "file": "market_context.py",
-      "line": 1093,
+      "line": 1117,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(snap, \"session_rth_positive_volume_bars\", 0) or 0",
@@ -3702,7 +3703,7 @@
     },
     {
       "file": "market_context.py",
-      "line": 610,
+      "line": 620,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "sym = str(getattr(sq, \"symbol\", \"\") or \"\").upper()",
@@ -3718,7 +3719,7 @@
     },
     {
       "file": "market_context.py",
-      "line": 599,
+      "line": 609,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "sym = str(getattr(item, \"symbol\", \"\") or \"\").upper()",
@@ -3782,7 +3783,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1254,
+      "line": 1253,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "iv_direction if iv_direction in (\"expanding\", \"contracting\", \"flat\") else None",
@@ -3798,7 +3799,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1269,
+      "line": 1268,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "charm_direction",
@@ -3814,7 +3815,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1996,
+      "line": 2001,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ms.charm_top_drivers       = charm_top_drivers or []",
@@ -3830,7 +3831,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1164,
+      "line": 1172,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "ms.gex_magnitude = None",
@@ -3846,7 +3847,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1165,
+      "line": 1173,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "ms.state_error = ms.state_error or \"gex_magnitude_computation_failed\"",
@@ -3862,7 +3863,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1166,
+      "line": 1174,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "ms.state_error_detail = ms.state_error_detail or f\"{type(_gme).__name__}: {_gme}\"[:200]",
@@ -3878,39 +3879,39 @@
     },
     {
       "file": "market_state.py",
-      "line": 1231,
+      "line": 1233,
       "language": "python",
       "pattern": "OR_LADDER",
-      "snippet": "ms.state_error = ms.state_error or \"market_context_degraded\"",
+      "snippet": "ms.state_error = ms.state_error or \"market_context_unavailable\"",
       "semantic_field_guess": "state_error",
       "context": "build_market_state",
-      "normalized_expr": "BoolOp(op=Or(), values=[Attribute(value=Name(id='ms', ctx=Load()), attr='state_error', ctx=Load()), Constant(value='market_context_degraded')])",
+      "normalized_expr": "BoolOp(op=Or(), values=[Attribute(value=Name(id='ms', ctx=Load()), attr='state_error', ctx=Load()), Constant(value='market_context_unavailable')])",
       "adjudication": "NOT_PROVEN",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "fingerprint": "c65bfaa0b11e1f5715d936003ba358e17ede5c26e2d3b7c69266bbd23a005b28",
-      "id": "FB-c65bfaa0b1",
+      "fingerprint": "987845535c3a15a2305d4f1cd6a2d6af24c356f0955c928ea2959a2290855e0f",
+      "id": "FB-987845535c",
       "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
       "proposed_ownership_group": "unadjudicated_pending_next_pass"
     },
     {
       "file": "market_state.py",
-      "line": 1232,
+      "line": 1234,
       "language": "python",
       "pattern": "OR_LADDER",
-      "snippet": "ms.state_error_detail = ms.state_error_detail or mkt_ctx.error[:200]",
+      "snippet": "ms.state_error_detail = ms.state_error_detail or \"current MarketContext unavailable\"",
       "semantic_field_guess": "state_error_detail",
       "context": "build_market_state",
-      "normalized_expr": "BoolOp(op=Or(), values=[Attribute(value=Name(id='ms', ctx=Load()), attr='state_error_detail', ctx=Load()), Subscript(value=Attribute(value=Name(id='mkt_ctx', ctx=Load()), attr='error', ctx=Load()), slice=Slice(upper=Constant(value=200)), ctx=Load())])",
+      "normalized_expr": "BoolOp(op=Or(), values=[Attribute(value=Name(id='ms', ctx=Load()), attr='state_error_detail', ctx=Load()), Constant(value='current MarketContext unavailable')])",
       "adjudication": "NOT_PROVEN",
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
-      "fingerprint": "c39d76c1b6c2ff216bf83eb27e0e14dd41dff7c7a98dfb72414cb4b595dc6e12",
-      "id": "FB-c39d76c1b6",
+      "fingerprint": "b5931b7b617efdc46eba2228d1b3915f2105af122060bd4b9d4961831afd0b7e",
+      "id": "FB-b5931b7b61",
       "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
       "proposed_ownership_group": "unadjudicated_pending_next_pass"
     },
     {
       "file": "market_state.py",
-      "line": 1537,
+      "line": 1542,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "ms.state_error = \"signals_engine_error\"",
@@ -3926,7 +3927,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1538,
+      "line": 1543,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "ms.state_error_detail = _err_short",
@@ -3942,7 +3943,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 2028,
+      "line": 2033,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "ms.is_no_trade = True",
@@ -3974,23 +3975,39 @@
     },
     {
       "file": "market_state.py",
-      "line": 1409,
+      "line": 1238,
       "language": "python",
-      "pattern": "TERNARY",
-      "snippet": "_vix_bkt_src = (vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix)",
-      "semantic_field_guess": "market_iv_level",
+      "pattern": "OR_LADDER",
+      "snippet": "ms.state_error = ms.state_error or \"market_context_degraded\"",
+      "semantic_field_guess": "state_error",
       "context": "build_market_state",
-      "normalized_expr": "IfExp(test=Compare(left=Name(id='vol_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='vol_ctx', ctx=Load()), attr='market_iv_level', ctx=Load()), orelse=Attribute(value=Name(id='mkt_ctx', ctx=Load()), attr='vix', ctx=Load()))",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: RE-INVESTIGATED 2026-09-17 (superseding an earlier pass that cited a structural test's assertion as if that were the proof -- tests are not semantic authority; corrected per direct operator instruction). Independently traced the actual source chain, not the test: server.py's per-cycle vol_ctx construction (~line 7850-7867) sets `vol_ctx = MarketVolContextV1(market_iv_level=_vol_vix_now, ...)` where `_vol_vix_now = float(mkt_ctx.vix)` -- literally the same float value read from the same single Schwab $VIX quote fetch inside market_context.fetch_market_context (one call site, confirmed via grep: no second vendor call, no alternate producer anywhere in the chain). `vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` is therefore reading the IDENTICAL underlying value through whichever of two structurally-equivalent carriers a given caller populated -- not an alternate/different vendor source standing in for a missing one, which is what this rule class prohibits. The two direction/change siblings (FB-351d82e25f market_iv_direction, FB-c02ea0a1f2 market_iv_change) don't even have a mkt_ctx-side value to fall back to -- they degrade to a bare None when vol_ctx is absent, the mandate's own required shape, not a substitution. This finding does not depend on, and is not weakened by, the separate structural test that happens to also assert this source shape.",
-      "fingerprint": "bb5a7d52a10d43a6dddec33ca18a266c24ac2667289773c41e51da7a29ed7a61",
-      "id": "FB-bb5a7d52a1",
-      "required_repair": "none",
-      "proposed_ownership_group": "market_state_rendering"
+      "normalized_expr": "BoolOp(op=Or(), values=[Attribute(value=Name(id='ms', ctx=Load()), attr='state_error', ctx=Load()), Constant(value='market_context_degraded')])",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
+      "fingerprint": "c65bfaa0b11e1f5715d936003ba358e17ede5c26e2d3b7c69266bbd23a005b28",
+      "id": "FB-c65bfaa0b1",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
     },
     {
       "file": "market_state.py",
-      "line": 1165,
+      "line": 1239,
+      "language": "python",
+      "pattern": "OR_LADDER",
+      "snippet": "ms.state_error_detail = ms.state_error_detail or _ctx_err[:200]",
+      "semantic_field_guess": "state_error_detail",
+      "context": "build_market_state",
+      "normalized_expr": "BoolOp(op=Or(), values=[Attribute(value=Name(id='ms', ctx=Load()), attr='state_error_detail', ctx=Load()), Subscript(value=Name(id='_ctx_err', ctx=Load()), slice=Slice(upper=Constant(value=200)), ctx=Load())])",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
+      "fingerprint": "46de53fb0b2eb1ef209d87a6659146ca3756cf5c08a111278395172de754418f",
+      "id": "FB-46de53fb0b",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "market_state.py",
+      "line": 1173,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ms.state_error = ms.state_error or \"gex_magnitude_computation_failed\"",
@@ -4006,7 +4023,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1166,
+      "line": 1174,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ms.state_error_detail = ms.state_error_detail or f\"{type(_gme).__name__}: {_gme}\"[:200]",
@@ -4019,6 +4036,38 @@
       "id": "FB-2aa5f80456",
       "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
       "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "market_state.py",
+      "line": 1412,
+      "language": "python",
+      "pattern": "TERNARY",
+      "snippet": "_vix_bkt_src = (vol_ctx.market_iv_level if vol_ctx is not None else None)",
+      "semantic_field_guess": "market_iv_level",
+      "context": "build_market_state",
+      "normalized_expr": "IfExp(test=Compare(left=Name(id='vol_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='vol_ctx', ctx=Load()), attr='market_iv_level', ctx=Load()), orelse=Constant(value=None))",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
+      "fingerprint": "c229c916d81e52697cf1110c94584ba901c3711a2df1f3850d8d990f538d45ab",
+      "id": "FB-c229c916d8",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "market_state.py",
+      "line": 1414,
+      "language": "python",
+      "pattern": "TERNARY",
+      "snippet": "_vix_bkt_src = (vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix)",
+      "semantic_field_guess": "market_iv_level",
+      "context": "build_market_state",
+      "normalized_expr": "IfExp(test=Compare(left=Name(id='vol_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='vol_ctx', ctx=Load()), attr='market_iv_level', ctx=Load()), orelse=Attribute(value=Name(id='mkt_ctx', ctx=Load()), attr='vix', ctx=Load()))",
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: RE-INVESTIGATED 2026-09-17 (superseding an earlier pass that cited a structural test's assertion as if that were the proof -- tests are not semantic authority; corrected per direct operator instruction). Independently traced the actual source chain, not the test: server.py's per-cycle vol_ctx construction (~line 7850-7867) sets `vol_ctx = MarketVolContextV1(market_iv_level=_vol_vix_now, ...)` where `_vol_vix_now = float(mkt_ctx.vix)` -- literally the same float value read from the same single Schwab $VIX quote fetch inside market_context.fetch_market_context (one call site, confirmed via grep: no second vendor call, no alternate producer anywhere in the chain). `vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` is therefore reading the IDENTICAL underlying value through whichever of two structurally-equivalent carriers a given caller populated -- not an alternate/different vendor source standing in for a missing one, which is what this rule class prohibits. The two direction/change siblings (FB-351d82e25f market_iv_direction, FB-c02ea0a1f2 market_iv_change) don't even have a mkt_ctx-side value to fall back to -- they degrade to a bare None when vol_ctx is absent, the mandate's own required shape, not a substitution. This finding does not depend on, and is not weakened by, the separate structural test that happens to also assert this source shape.",
+      "fingerprint": "bb5a7d52a10d43a6dddec33ca18a266c24ac2667289773c41e51da7a29ed7a61",
+      "id": "FB-bb5a7d52a1",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
     },
     {
       "file": "market_state.py",
@@ -4054,23 +4103,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1479,
-      "language": "python",
-      "pattern": "TERNARY",
-      "snippet": "vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix),",
-      "semantic_field_guess": "market_iv_level",
-      "context": "build_market_state",
-      "normalized_expr": "IfExp(test=Compare(left=Name(id='vol_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='vol_ctx', ctx=Load()), attr='market_iv_level', ctx=Load()), orelse=Attribute(value=Name(id='mkt_ctx', ctx=Load()), attr='vix', ctx=Load()))",
-      "adjudication": "NOT_FALLBACK",
-      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: RE-INVESTIGATED 2026-09-17 (superseding an earlier pass that cited a structural test's assertion as if that were the proof -- tests are not semantic authority; corrected per direct operator instruction). Independently traced the actual source chain, not the test: server.py's per-cycle vol_ctx construction (~line 7850-7867) sets `vol_ctx = MarketVolContextV1(market_iv_level=_vol_vix_now, ...)` where `_vol_vix_now = float(mkt_ctx.vix)` -- literally the same float value read from the same single Schwab $VIX quote fetch inside market_context.fetch_market_context (one call site, confirmed via grep: no second vendor call, no alternate producer anywhere in the chain). `vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` is therefore reading the IDENTICAL underlying value through whichever of two structurally-equivalent carriers a given caller populated -- not an alternate/different vendor source standing in for a missing one, which is what this rule class prohibits. The two direction/change siblings (FB-351d82e25f market_iv_direction, FB-c02ea0a1f2 market_iv_change) don't even have a mkt_ctx-side value to fall back to -- they degrade to a bare None when vol_ctx is absent, the mandate's own required shape, not a substitution. This finding does not depend on, and is not weakened by, the separate structural test that happens to also assert this source shape.",
-      "fingerprint": "bb5a7d52a10d43a6dddec33ca18a266c24ac2667289773c41e51da7a29ed7a61",
-      "id": "FB-bb5a7d52a1-2",
-      "required_repair": "none",
-      "proposed_ownership_group": "market_state_rendering"
-    },
-    {
-      "file": "market_state.py",
-      "line": 1480,
+      "line": 1485,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "vix_direction=(vol_ctx.market_iv_direction if vol_ctx is not None else None),",
@@ -4086,7 +4119,7 @@
     },
     {
       "file": "market_state.py",
-      "line": 1481,
+      "line": 1486,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None),",
@@ -4099,6 +4132,38 @@
       "id": "FB-c02ea0a1f2",
       "required_repair": "none",
       "proposed_ownership_group": "market_state_rendering"
+    },
+    {
+      "file": "market_state.py",
+      "line": 1484,
+      "language": "python",
+      "pattern": "TERNARY",
+      "snippet": "vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix) if mkt_ctx is not None else (vol_ctx.market_iv_level if vol_ctx is not None else None),",
+      "semantic_field_guess": "market_iv_level",
+      "context": "build_market_state",
+      "normalized_expr": "IfExp(test=Compare(left=Name(id='vol_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='vol_ctx', ctx=Load()), attr='market_iv_level', ctx=Load()), orelse=Attribute(value=Name(id='mkt_ctx', ctx=Load()), attr='vix', ctx=Load()))",
+      "adjudication": "NOT_FALLBACK",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term | ADJUDICATED: RE-INVESTIGATED 2026-09-17 (superseding an earlier pass that cited a structural test's assertion as if that were the proof -- tests are not semantic authority; corrected per direct operator instruction). Independently traced the actual source chain, not the test: server.py's per-cycle vol_ctx construction (~line 7850-7867) sets `vol_ctx = MarketVolContextV1(market_iv_level=_vol_vix_now, ...)` where `_vol_vix_now = float(mkt_ctx.vix)` -- literally the same float value read from the same single Schwab $VIX quote fetch inside market_context.fetch_market_context (one call site, confirmed via grep: no second vendor call, no alternate producer anywhere in the chain). `vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix` is therefore reading the IDENTICAL underlying value through whichever of two structurally-equivalent carriers a given caller populated -- not an alternate/different vendor source standing in for a missing one, which is what this rule class prohibits. The two direction/change siblings (FB-351d82e25f market_iv_direction, FB-c02ea0a1f2 market_iv_change) don't even have a mkt_ctx-side value to fall back to -- they degrade to a bare None when vol_ctx is absent, the mandate's own required shape, not a substitution. This finding does not depend on, and is not weakened by, the separate structural test that happens to also assert this source shape.",
+      "fingerprint": "bb5a7d52a10d43a6dddec33ca18a266c24ac2667289773c41e51da7a29ed7a61",
+      "id": "FB-bb5a7d52a1-2",
+      "required_repair": "none",
+      "proposed_ownership_group": "market_state_rendering"
+    },
+    {
+      "file": "market_state.py",
+      "line": 1484,
+      "language": "python",
+      "pattern": "TERNARY",
+      "snippet": "vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix) if mkt_ctx is not None else (vol_ctx.market_iv_level if vol_ctx is not None else None),",
+      "semantic_field_guess": "market_iv_level",
+      "context": "build_market_state",
+      "normalized_expr": "IfExp(test=Compare(left=Name(id='vol_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='vol_ctx', ctx=Load()), attr='market_iv_level', ctx=Load()), orelse=Constant(value=None))",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
+      "fingerprint": "c229c916d81e52697cf1110c94584ba901c3711a2df1f3850d8d990f538d45ab",
+      "id": "FB-c229c916d8-2",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
     },
     {
       "file": "math_exposure_core.py",
@@ -5110,7 +5175,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 869,
+      "line": 872,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "return \"; \".join(issues) if issues else \"bundle incomplete\"",
@@ -5126,7 +5191,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2623,
+      "line": 2634,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tkr = ticker or snapshot.get(\"ticker\", \"\") or \"\"",
@@ -5142,7 +5207,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2751,
+      "line": 2762,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tkr = ticker or snapshot.get(\"ticker\", \"\") or \"\"",
@@ -5158,7 +5223,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2782,
+      "line": 2793,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tkr = ticker or snapshot.get(\"ticker\", \"\")",
@@ -5174,7 +5239,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2815,
+      "line": 2826,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tkr = ticker or snapshot.get(\"ticker\", \"\")",
@@ -5190,7 +5255,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 135,
+      "line": 136,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "return ticker_storage_key(feature_ticker or \"\")",
@@ -5206,7 +5271,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 212,
+      "line": 213,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "model_load_status = \"fail_closed\"",
@@ -5222,7 +5287,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 213,
+      "line": 214,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "fail_closed_reason = f\"{type(ex).__name__}: {str(ex)[:300]}\"",
@@ -5238,7 +5303,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 386,
+      "line": 389,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "fm = np.asarray(checkpoint.get(\"feature_mask\", np.ones(X_raw.shape[2], dtype=bool)), dtype=bool)",
@@ -5254,7 +5319,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1589,
+      "line": 1595,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "norm = checkpoint.get(\"norm_stats\", {})",
@@ -5270,7 +5335,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1808,
+      "line": 1816,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "seq_len = checkpoint.get(\"seq_len\", 20)",
@@ -5286,7 +5351,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2623,
+      "line": 2634,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "tkr = ticker or snapshot.get(\"ticker\", \"\") or \"\"",
@@ -5302,7 +5367,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2751,
+      "line": 2762,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "tkr = ticker or snapshot.get(\"ticker\", \"\") or \"\"",
@@ -5318,7 +5383,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2782,
+      "line": 2793,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "tkr = ticker or snapshot.get(\"ticker\", \"\")",
@@ -5334,7 +5399,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2815,
+      "line": 2826,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "tkr = ticker or snapshot.get(\"ticker\", \"\")",
@@ -5350,7 +5415,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 246,
+      "line": 247,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "ctx.anchor_ticker if ctx is not None else (bt if bt != canon else None)",
@@ -5366,7 +5431,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 424,
+      "line": 427,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "fm = np.asarray(checkpoint.get(\"feature_mask\", np.ones(X.shape[2], dtype=bool)), dtype=bool)",
@@ -5382,7 +5447,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1461,
+      "line": 1467,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "checkpoint.get(\"mask_conf\", [True] * len(CONFLUENCE_FEATURES)),",
@@ -5398,7 +5463,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1525,
+      "line": 1531,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "checkpoint.get(\"mask_conf\", [True] * (len(conf_vec))),",
@@ -5414,7 +5479,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1561,
+      "line": 1567,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "mask_5m = np.array(checkpoint.get(\"mask_5m\", [True] * X_5m.shape[2]))",
@@ -5430,7 +5495,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1562,
+      "line": 1568,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "mask_1m = np.array(checkpoint.get(\"mask_1m\", [True] * X_1m.shape[2]))",
@@ -5446,7 +5511,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1722,
+      "line": 1728,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "n_enc = int(checkpoint.get(\"n_features\", 0))",
@@ -5462,7 +5527,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1874,
+      "line": 1885,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "checkpoint.get(\"feature_mask\", np.ones(base.shape[2], dtype=bool)),",
@@ -5478,7 +5543,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2940,
+      "line": 2951,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "guest_ctx.anchor_ticker if guest_ctx else None",
@@ -5494,7 +5559,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 1751,
+      "line": 1757,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "seq_len=checkpoint.get(\"seq_len\", 20),",
@@ -5510,7 +5575,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 2379,
+      "line": 2390,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "feature_ticker = (ticker or \"\").upper().strip()",
@@ -5526,7 +5591,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 171,
+      "line": 172,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "rt = (requested_ticker or \"\").upper().strip()  # display echo of the request",
@@ -5542,7 +5607,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 765,
+      "line": 768,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "strict_active_only = os.environ.get(\"ED_XGB_STRICT_ACTIVE_ONLY\", \"1\").strip().lower() not in (",
@@ -5558,7 +5623,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 176,
+      "line": 177,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "strict_active_only = os.environ.get(",
@@ -5574,7 +5639,7 @@
     },
     {
       "file": "ml_predict.py",
-      "line": 289,
+      "line": 290,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"requested_ticker\": (requested_ticker or \"\").upper().strip(),",
@@ -7158,7 +7223,7 @@
     },
     {
       "file": "server.py",
-      "line": 1596,
+      "line": 1595,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "os.environ.get(\"ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES\", \"3\")",
@@ -7174,7 +7239,7 @@
     },
     {
       "file": "server.py",
-      "line": 1847,
+      "line": 1846,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "return (float_positive_or_none(entry.get(\"generated_at\"))",
@@ -7190,7 +7255,7 @@
     },
     {
       "file": "server.py",
-      "line": 2779,
+      "line": 2778,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "exp = expiry if expiry is not None else \"__auth_error__\"",
@@ -7206,7 +7271,7 @@
     },
     {
       "file": "server.py",
-      "line": 4275,
+      "line": 4273,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "return tickers",
@@ -7222,7 +7287,7 @@
     },
     {
       "file": "server.py",
-      "line": 4877,
+      "line": 4868,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "_vstatus = None",
@@ -7238,7 +7303,7 @@
     },
     {
       "file": "server.py",
-      "line": 5570,
+      "line": 5561,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "for ct in contracts or []:",
@@ -7254,7 +7319,7 @@
     },
     {
       "file": "server.py",
-      "line": 5714,
+      "line": 5705,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "spot = last if spot_source == \"lastPrice\" else None",
@@ -7270,7 +7335,7 @@
     },
     {
       "file": "server.py",
-      "line": 7039,
+      "line": 7031,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "selected_exp = expiry or _default_expiry(expiries, ticker)",
@@ -7286,7 +7351,7 @@
     },
     {
       "file": "server.py",
-      "line": 7148,
+      "line": 7140,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_tick_ts = parsed_quote_time or parsed_trade_time",
@@ -7302,7 +7367,7 @@
     },
     {
       "file": "server.py",
-      "line": 7209,
+      "line": 7201,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes",
@@ -7318,7 +7383,7 @@
     },
     {
       "file": "server.py",
-      "line": 7211,
+      "line": 7203,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "pick_net_gex_peak_strike(exposures, _gamma_strikes, institutional=True)",
@@ -7334,7 +7399,7 @@
     },
     {
       "file": "server.py",
-      "line": 7394,
+      "line": 7396,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_pl_bucket = _state_cache.get(_cache_key, {})",
@@ -7350,7 +7415,7 @@
     },
     {
       "file": "server.py",
-      "line": 7466,
+      "line": 7468,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_hours_rem = _hours_until_close(now_et) or 0.0",
@@ -7366,7 +7431,7 @@
     },
     {
       "file": "server.py",
-      "line": 7962,
+      "line": 7960,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "nd_raw   = (consensus_summary.net_delta   if consensus_summary else None)",
@@ -7382,7 +7447,7 @@
     },
     {
       "file": "server.py",
-      "line": 9484,
+      "line": 9494,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ms_dict[\"kl_gamma_voids\"]  = _gamma_voids or []",
@@ -7398,7 +7463,7 @@
     },
     {
       "file": "server.py",
-      "line": 9966,
+      "line": 9976,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "ms_dict[\"filled_snapshots\"] = db_counts.get(\"filled\", 0)",
@@ -7414,7 +7479,7 @@
     },
     {
       "file": "server.py",
-      "line": 12241,
+      "line": 12251,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "observed = _terrain_last_cycle_sec if _terrain_last_cycle_sec > 0 else TERRAIN_REFRESH_SEC",
@@ -7430,7 +7495,7 @@
     },
     {
       "file": "server.py",
-      "line": 12470,
+      "line": 12480,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "for ct in contracts or []:",
@@ -7446,7 +7511,7 @@
     },
     {
       "file": "server.py",
-      "line": 12851,
+      "line": 12861,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "rejected_symbols = rejected_symbols or {}",
@@ -7462,7 +7527,7 @@
     },
     {
       "file": "server.py",
-      "line": 12852,
+      "line": 12862,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "desired_symbols = desired_symbols or set()",
@@ -7478,7 +7543,7 @@
     },
     {
       "file": "server.py",
-      "line": 13690,
+      "line": 13700,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "_terrain_refresh_last_error[tk] = f\"{type(e).__name__}: {e}\"",
@@ -7494,7 +7559,7 @@
     },
     {
       "file": "server.py",
-      "line": 14662,
+      "line": 14672,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "_payload_spot = live_spot if live_spot is not None else spot_used",
@@ -7510,7 +7575,7 @@
     },
     {
       "file": "server.py",
-      "line": 16506,
+      "line": 16516,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "exp_key = expiry if expiry is not None else \"__auto__\"",
@@ -7526,7 +7591,7 @@
     },
     {
       "file": "server.py",
-      "line": 16611,
+      "line": 16621,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "base[\"plane_quote_authority\"] = \"rest_only\"",
@@ -7542,7 +7607,7 @@
     },
     {
       "file": "server.py",
-      "line": 16899,
+      "line": 16909,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "row_spy = _lmp.get_quote(\"SPY\") or {}",
@@ -7558,7 +7623,7 @@
     },
     {
       "file": "server.py",
-      "line": 17205,
+      "line": 17215,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "expiry = expiry or None",
@@ -7622,7 +7687,7 @@
     },
     {
       "file": "server.py",
-      "line": 1685,
+      "line": 1684,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "return (ticker.upper().strip(), expiry if expiry is not None else \"__auto__\")",
@@ -7638,7 +7703,7 @@
     },
     {
       "file": "server.py",
-      "line": 2942,
+      "line": 2941,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"kl_gamma_voids\": gamma_voids or [],",
@@ -7654,7 +7719,7 @@
     },
     {
       "file": "server.py",
-      "line": 3644,
+      "line": 3642,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "return stream_spot, stream_regime if stream_regime is not None else None",
@@ -7670,7 +7735,7 @@
     },
     {
       "file": "server.py",
-      "line": 3930,
+      "line": 3928,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "return self._bars_source.get(ticker, \"schwab_quote_totalVolume_delta\")",
@@ -7686,7 +7751,7 @@
     },
     {
       "file": "server.py",
-      "line": 4998,
+      "line": 4989,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "spot_f = parsed_last if parsed_last and parsed_last > 0 else None",
@@ -7702,7 +7767,7 @@
     },
     {
       "file": "server.py",
-      "line": 5756,
+      "line": 5747,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"quote_ts\": quote_time or trade_time,",
@@ -7718,7 +7783,7 @@
     },
     {
       "file": "server.py",
-      "line": 5895,
+      "line": 5886,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prev = _l1_generation.get(key, 0)",
@@ -7734,7 +7799,7 @@
     },
     {
       "file": "server.py",
-      "line": 6094,
+      "line": 6085,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "key = (tkr, expiry if expiry is not None else \"__auto__\")",
@@ -7750,7 +7815,7 @@
     },
     {
       "file": "server.py",
-      "line": 6219,
+      "line": 6210,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "key = (tkr, expiry if expiry is not None else \"__auto__\")",
@@ -7766,7 +7831,7 @@
     },
     {
       "file": "server.py",
-      "line": 6287,
+      "line": 6278,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "key = (tkr, expiry if expiry is not None else \"__auto__\")",
@@ -7782,7 +7847,7 @@
     },
     {
       "file": "server.py",
-      "line": 6327,
+      "line": 6318,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "return (t, expiry if expiry is not None else \"__auto__\")",
@@ -7798,7 +7863,7 @@
     },
     {
       "file": "server.py",
-      "line": 6363,
+      "line": 6354,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "last = _l1_sse_last_emit_mono.get(sk, 0.0)",
@@ -7814,7 +7879,7 @@
     },
     {
       "file": "server.py",
-      "line": 7029,
+      "line": 7021,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_safe_float_quote(_quote_dict.get(\"totalVolume\"))",
@@ -7830,7 +7895,7 @@
     },
     {
       "file": "server.py",
-      "line": 7263,
+      "line": 7255,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_charm_used = _charm_raw.get(\"contracts_used\", 0)",
@@ -7846,7 +7911,7 @@
     },
     {
       "file": "server.py",
-      "line": 7264,
+      "line": 7256,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_charm_err  = _charm_raw.get(\"error\", \"\")",
@@ -7862,7 +7927,7 @@
     },
     {
       "file": "server.py",
-      "line": 7443,
+      "line": 7445,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "price_levels = PriceLevels()",
@@ -7878,7 +7943,7 @@
     },
     {
       "file": "server.py",
-      "line": 7747,
+      "line": 7749,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "for _vz in (_gamma_voids or []):",
@@ -7894,7 +7959,7 @@
     },
     {
       "file": "server.py",
-      "line": 9536,
+      "line": 9546,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"top_gex_drivers\"] = getattr(cs, \"top_gex_drivers\", []) or []",
@@ -7910,7 +7975,7 @@
     },
     {
       "file": "server.py",
-      "line": 9537,
+      "line": 9547,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"top_dex_drivers\"] = getattr(cs, \"top_dex_drivers\", []) or []",
@@ -7926,7 +7991,7 @@
     },
     {
       "file": "server.py",
-      "line": 9646,
+      "line": 9656,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"call_state\": getattr(ms, \"call_state\", \"WAIT\"),",
@@ -7942,7 +8007,7 @@
     },
     {
       "file": "server.py",
-      "line": 9647,
+      "line": 9657,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"forecast_state\": getattr(ms, \"call_forecast_state\", \"dormant\"),",
@@ -7958,7 +8023,7 @@
     },
     {
       "file": "server.py",
-      "line": 9657,
+      "line": 9667,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"call_state\": getattr(ms, \"put_state\", \"WAIT\"),",
@@ -7974,7 +8039,7 @@
     },
     {
       "file": "server.py",
-      "line": 9658,
+      "line": 9668,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"forecast_state\": getattr(ms, \"put_forecast_state\", \"dormant\"),",
@@ -7990,7 +8055,7 @@
     },
     {
       "file": "server.py",
-      "line": 9898,
+      "line": 9908,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"fut_es_symbol\"]   = getattr(mkt_ctx, \"fut_es_symbol\", \"\") or \"\"",
@@ -8006,7 +8071,7 @@
     },
     {
       "file": "server.py",
-      "line": 9901,
+      "line": 9911,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"fut_nq_symbol\"]   = getattr(mkt_ctx, \"fut_nq_symbol\", \"\") or \"\"",
@@ -8022,7 +8087,7 @@
     },
     {
       "file": "server.py",
-      "line": 9904,
+      "line": 9914,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "ms_dict[\"fut_rty_symbol\"]  = getattr(mkt_ctx, \"fut_rty_symbol\", \"\") or \"\"",
@@ -8038,7 +8103,7 @@
     },
     {
       "file": "server.py",
-      "line": 11228,
+      "line": 11238,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "raw = (symbol if symbol is not None and str(symbol).strip() else ticker) or DEFAULT_TICKER",
@@ -8054,7 +8119,7 @@
     },
     {
       "file": "server.py",
-      "line": 11940,
+      "line": 11950,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "status = str(result.get(\"status\", \"\"))",
@@ -8070,7 +8135,7 @@
     },
     {
       "file": "server.py",
-      "line": 12020,
+      "line": 12030,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "ts = float(ts_utc if ts_utc is not None else time.time())",
@@ -8086,7 +8151,7 @@
     },
     {
       "file": "server.py",
-      "line": 12439,
+      "line": 12449,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "n = _gamma_surface_seq.get(tk, 0) + 1",
@@ -8102,7 +8167,7 @@
     },
     {
       "file": "server.py",
-      "line": 13631,
+      "line": 13641,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "payload[\"_gamma_surface\"] = None",
@@ -8118,7 +8183,7 @@
     },
     {
       "file": "server.py",
-      "line": 14500,
+      "line": 14510,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority",
@@ -8134,7 +8199,7 @@
     },
     {
       "file": "server.py",
-      "line": 14719,
+      "line": 14729,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority",
@@ -8150,7 +8215,7 @@
     },
     {
       "file": "server.py",
-      "line": 14799,
+      "line": 14809,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8166,7 +8231,7 @@
     },
     {
       "file": "server.py",
-      "line": 14840,
+      "line": 14850,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8182,7 +8247,7 @@
     },
     {
       "file": "server.py",
-      "line": 14880,
+      "line": 14890,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8198,7 +8263,7 @@
     },
     {
       "file": "server.py",
-      "line": 14932,
+      "line": 14942,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8214,7 +8279,7 @@
     },
     {
       "file": "server.py",
-      "line": 14962,
+      "line": 14972,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8230,7 +8295,7 @@
     },
     {
       "file": "server.py",
-      "line": 15066,
+      "line": 15076,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8246,7 +8311,7 @@
     },
     {
       "file": "server.py",
-      "line": 15124,
+      "line": 15134,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8262,7 +8327,7 @@
     },
     {
       "file": "server.py",
-      "line": 15285,
+      "line": 15295,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "last = _LAST_VALID_GEX_CELLS_DB_WRITE_TS.get(tk, 0.0)",
@@ -8278,7 +8343,7 @@
     },
     {
       "file": "server.py",
-      "line": 15740,
+      "line": 15750,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8294,7 +8359,7 @@
     },
     {
       "file": "server.py",
-      "line": 15757,
+      "line": 15767,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_gamma_available = surf.get(\"gamma_available\", True)",
@@ -8310,7 +8375,7 @@
     },
     {
       "file": "server.py",
-      "line": 15782,
+      "line": 15792,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "_contract_admission = None",
@@ -8326,7 +8391,7 @@
     },
     {
       "file": "server.py",
-      "line": 15935,
+      "line": 15945,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8342,7 +8407,7 @@
     },
     {
       "file": "server.py",
-      "line": 15995,
+      "line": 16005,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority",
@@ -8358,7 +8423,7 @@
     },
     {
       "file": "server.py",
-      "line": 16209,
+      "line": 16219,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8374,7 +8439,7 @@
     },
     {
       "file": "server.py",
-      "line": 16257,
+      "line": 16267,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8390,7 +8455,7 @@
     },
     {
       "file": "server.py",
-      "line": 16332,
+      "line": 16342,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority",
@@ -8406,7 +8471,7 @@
     },
     {
       "file": "server.py",
-      "line": 16797,
+      "line": 16807,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "drop_m = float(_l1_sse_last_drop_mono or 0.0)  # silent-zero-ok: 0 means \"no drop ever recorded\" and every consumer below gates on drop_m > 0.0 before deriving an age",
@@ -8422,7 +8487,7 @@
     },
     {
       "file": "server.py",
-      "line": 18326,
+      "line": 18336,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8438,7 +8503,7 @@
     },
     {
       "file": "server.py",
-      "line": 18346,
+      "line": 18356,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or DEFAULT_TICKER)",
@@ -8454,7 +8519,7 @@
     },
     {
       "file": "server.py",
-      "line": 19010,
+      "line": 19020,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "zone = state.get(\"zone\", \"?\")",
@@ -8470,7 +8535,7 @@
     },
     {
       "file": "server.py",
-      "line": 19011,
+      "line": 19021,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "vwap_side = state.get(\"vwap_side\", \"?\")",
@@ -8486,7 +8551,7 @@
     },
     {
       "file": "server.py",
-      "line": 19012,
+      "line": 19022,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "bias = state.get(\"bias_signal\", \"?\")",
@@ -8502,7 +8567,7 @@
     },
     {
       "file": "server.py",
-      "line": 19013,
+      "line": 19023,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "pin = state.get(\"pin_strength\", \"?\")",
@@ -8518,7 +8583,7 @@
     },
     {
       "file": "server.py",
-      "line": 19014,
+      "line": 19024,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "nd = state.get(\"net_delta\", \"?\")",
@@ -8534,7 +8599,7 @@
     },
     {
       "file": "server.py",
-      "line": 19015,
+      "line": 19025,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "ng = state.get(\"net_gamma\", \"?\")",
@@ -8550,7 +8615,7 @@
     },
     {
       "file": "server.py",
-      "line": 19016,
+      "line": 19026,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "gex_mag = state.get(\"gex_magnitude\", \"?\")",
@@ -8566,7 +8631,7 @@
     },
     {
       "file": "server.py",
-      "line": 19017,
+      "line": 19027,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "dex_mag = state.get(\"dex_magnitude\", \"?\")",
@@ -8582,7 +8647,7 @@
     },
     {
       "file": "server.py",
-      "line": 19018,
+      "line": 19028,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "samples = state.get(\"samples_used\", \"?\")",
@@ -8598,7 +8663,7 @@
     },
     {
       "file": "server.py",
-      "line": 19019,
+      "line": 19029,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "model_note = state.get(\"model_note\", \"?\")",
@@ -8614,7 +8679,7 @@
     },
     {
       "file": "server.py",
-      "line": 19020,
+      "line": 19030,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "session_bkt = state.get(\"session_bucket\", \"?\")",
@@ -8630,7 +8695,7 @@
     },
     {
       "file": "server.py",
-      "line": 19021,
+      "line": 19031,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "vix_bkt = state.get(\"vix_bucket\", \"?\")",
@@ -8662,7 +8727,7 @@
     },
     {
       "file": "server.py",
-      "line": 1655,
+      "line": 1654,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "return str(update_source or \"\") not in _BACKGROUND_UPDATE_SOURCES",
@@ -8678,7 +8743,7 @@
     },
     {
       "file": "server.py",
-      "line": 1964,
+      "line": 1963,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "refresh_due = bool(sse_live or (age >= ttl))",
@@ -8694,7 +8759,7 @@
     },
     {
       "file": "server.py",
-      "line": 3463,
+      "line": 3461,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"mid\": mid_source or \"unavailable_missing_mark_and_bid_ask\",",
@@ -8710,7 +8775,7 @@
     },
     {
       "file": "server.py",
-      "line": 3675,
+      "line": 3673,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "last_t = _last_tick_coherent_fetch_mono_by_ticker.get(sym, 0.0)",
@@ -8726,7 +8791,7 @@
     },
     {
       "file": "server.py",
-      "line": 4155,
+      "line": 4153,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "raw = os.environ.get(\"ED_MAX_USER_PERSISTED_LOGGING_TICKERS\", \"\").strip()",
@@ -8742,7 +8807,7 @@
     },
     {
       "file": "server.py",
-      "line": 5528,
+      "line": 5519,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ct for ct in (contracts or [])",
@@ -8758,7 +8823,7 @@
     },
     {
       "file": "server.py",
-      "line": 7347,
+      "line": 7339,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prev_pcr  = _state_cache.get(_cache_key, {}).get(\"pcr_val\")",
@@ -8774,7 +8839,7 @@
     },
     {
       "file": "server.py",
-      "line": 7348,
+      "line": 7340,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "prev_spot = _state_cache.get(_cache_key, {}).get(\"spot_f\")",
@@ -8790,7 +8855,7 @@
     },
     {
       "file": "server.py",
-      "line": 7445,
+      "line": 7447,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_sc = _state_cache.get(_cache_key, {})",
@@ -8806,7 +8871,7 @@
     },
     {
       "file": "server.py",
-      "line": 7697,
+      "line": 7699,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_sum_gex = float(aggregate_net_gex(exposures, _cons_strikes) or 0.0)",
@@ -8822,7 +8887,7 @@
     },
     {
       "file": "server.py",
-      "line": 7849,
+      "line": 7851,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_vol_prev_published_vix = _state_cache.get(_cache_key, {}).get(\"vix\")",
@@ -8838,7 +8903,7 @@
     },
     {
       "file": "server.py",
-      "line": 7983,
+      "line": 7981,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if _latest_bar_ts_1m > zt.get(\"last_bar_ts_1m\", 0.0):",
@@ -8854,7 +8919,7 @@
     },
     {
       "file": "server.py",
-      "line": 7986,
+      "line": 7984,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if _latest_bar_ts_5m > zt.get(\"last_bar_ts_5m\", 0.0):",
@@ -8870,7 +8935,7 @@
     },
     {
       "file": "server.py",
-      "line": 9819,
+      "line": 9829,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "issues = \"; \".join(art.get(\"issues\", [])) or \"Metadata lacks provenance\"",
@@ -8886,7 +8951,7 @@
     },
     {
       "file": "server.py",
-      "line": 10774,
+      "line": 10784,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "health.get(\"last_24h_count\", 0),",
@@ -8902,7 +8967,7 @@
     },
     {
       "file": "server.py",
-      "line": 11642,
+      "line": 11652,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "n = _terrain_consecutive_fails.get(tk, 0) + 1",
@@ -8918,7 +8983,7 @@
     },
     {
       "file": "server.py",
-      "line": 12050,
+      "line": 12060,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "n_attempts = _complete_chain_capture_attempts.get(attempt_key, 0) + 1",
@@ -8934,7 +8999,7 @@
     },
     {
       "file": "server.py",
-      "line": 12382,
+      "line": 12392,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL",
@@ -8950,7 +9015,7 @@
     },
     {
       "file": "server.py",
-      "line": 12516,
+      "line": 12526,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "merged[strike] = (_merge_strike_exposure_bucket(merged[strike], bucket)",
@@ -8966,7 +9031,7 @@
     },
     {
       "file": "server.py",
-      "line": 12975,
+      "line": 12985,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "pair = contracts_row[j] if j < len(contracts_row) else None",
@@ -8982,7 +9047,7 @@
     },
     {
       "file": "server.py",
-      "line": 13261,
+      "line": 13271,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or \"\")",
@@ -8998,7 +9063,7 @@
     },
     {
       "file": "server.py",
-      "line": 13385,
+      "line": 13395,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = ticker_storage_key(ticker or \"\")",
@@ -9014,7 +9079,7 @@
     },
     {
       "file": "server.py",
-      "line": 13467,
+      "line": 13477,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "_terrain_refresh_last_error[tk] = (",
@@ -9030,7 +9095,7 @@
     },
     {
       "file": "server.py",
-      "line": 15020,
+      "line": 15030,
       "language": "python",
       "pattern": "EXCEPT_SUBSTITUTE",
       "snippet": "charm_err = str(_ce)[:120]",
@@ -9046,7 +9111,7 @@
     },
     {
       "file": "server.py",
-      "line": 15746,
+      "line": 15756,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "surf = (live or {}).get(\"_gamma_surface\")",
@@ -9062,7 +9127,7 @@
     },
     {
       "file": "server.py",
-      "line": 17906,
+      "line": 17916,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "src = (source or \"user\").lower()",
@@ -9078,7 +9143,7 @@
     },
     {
       "file": "server.py",
-      "line": 18480,
+      "line": 18490,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "e = (expiry or \"\").strip()",
@@ -9094,7 +9159,7 @@
     },
     {
       "file": "server.py",
-      "line": 18732,
+      "line": 18742,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "result[\"level_generation\"] = _canon.generation if _canon is not None else None",
@@ -9110,7 +9175,7 @@
     },
     {
       "file": "server.py",
-      "line": 18735,
+      "line": 18745,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "_canon.as_of_ts_utc if _canon is not None else None)",
@@ -9126,7 +9191,7 @@
     },
     {
       "file": "server.py",
-      "line": 18736,
+      "line": 18746,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "result[\"level_bar_source\"] = _canon.bar_source if _canon is not None else None",
@@ -9142,7 +9207,7 @@
     },
     {
       "file": "server.py",
-      "line": 18805,
+      "line": 18815,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ticker = ticker_storage_key(ticker or DEFAULT_TICKER)   # Cursor-audit F1: bare \"SPX\" -> \"$SPX\"",
@@ -9158,7 +9223,7 @@
     },
     {
       "file": "server.py",
-      "line": 2114,
+      "line": 2113,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "qsd_plane = (plane_quote or {}).get(\"quote_source_detail\") if plane_quote else {}",
@@ -9174,7 +9239,7 @@
     },
     {
       "file": "server.py",
-      "line": 5911,
+      "line": 5902,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "int(_l1_instrumentation.get(\"l1_generation_assign_total\", 0)) + 1",
@@ -9190,7 +9255,7 @@
     },
     {
       "file": "server.py",
-      "line": 6583,
+      "line": 6574,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "row[\"quote_source_detail\"][\"mid\"] = mid_src or \"unavailable_missing_mark_and_bid_ask\"",
@@ -9206,7 +9271,7 @@
     },
     {
       "file": "server.py",
-      "line": 8063,
+      "line": 8061,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "\"volume\": getattr(b, \"volume\", 0.0),",
@@ -9222,7 +9287,7 @@
     },
     {
       "file": "server.py",
-      "line": 8206,
+      "line": 8204,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "filled_snapshots=db_counts.get(\"filled\", 0),",
@@ -9238,7 +9303,7 @@
     },
     {
       "file": "server.py",
-      "line": 9467,
+      "line": 9477,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "_kl_contracts_total = max(int(getattr(diag, \"contracts_total\", 0) or 0), 1)",
@@ -9254,7 +9319,7 @@
     },
     {
       "file": "server.py",
-      "line": 12037,
+      "line": 12047,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if _complete_chain_capture_attempts.get((tk, expiry, et_date), 0)",
@@ -9270,7 +9335,7 @@
     },
     {
       "file": "server.py",
-      "line": 12220,
+      "line": 12230,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "failure = \"\" if (skipped or quarantined) else str(_terrain_refresh_last_error.get(",
@@ -9286,7 +9351,7 @@
     },
     {
       "file": "server.py",
-      "line": 14999,
+      "line": 15009,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "contracts = chain1 if isinstance(chain1, list) else (",
@@ -9302,7 +9367,7 @@
     },
     {
       "file": "server.py",
-      "line": 15459,
+      "line": 15469,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "1 for ct in (chain or [])",
@@ -9318,7 +9383,7 @@
     },
     {
       "file": "server.py",
-      "line": 15803,
+      "line": 15813,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"spot\": surf.get(\"spot\", live.get(\"spot\")),",
@@ -9334,7 +9399,7 @@
     },
     {
       "file": "server.py",
-      "line": 15804,
+      "line": 15814,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"spot_source\": surf.get(\"spot_source\", live.get(\"spot_source\")),",
@@ -9350,7 +9415,7 @@
     },
     {
       "file": "server.py",
-      "line": 15806,
+      "line": 15816,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"spot_as_of_ts_utc\": surf.get(\"spot_as_of_ts_utc\", live.get(\"spot_as_of_ts_utc\")),",
@@ -9366,7 +9431,7 @@
     },
     {
       "file": "server.py",
-      "line": 17713,
+      "line": 17723,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"source\":       s.get(\"source\", \"\u2014\"),",
@@ -9462,7 +9527,7 @@
     },
     {
       "file": "server.py",
-      "line": 5363,
+      "line": 5354,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"active_architecture\": active or None,",
@@ -9478,7 +9543,7 @@
     },
     {
       "file": "server.py",
-      "line": 7428,
+      "line": 7430,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(price_levels, \"session_rth_positive_volume_bars\", 0),",
@@ -9494,7 +9559,7 @@
     },
     {
       "file": "server.py",
-      "line": 7707,
+      "line": 7709,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_sum_oi = (_sum_oi or 0.0) + _bucket_oi",
@@ -9510,39 +9575,7 @@
     },
     {
       "file": "server.py",
-      "line": 7924,
-      "language": "python",
-      "pattern": "GETATTR_DEFAULT",
-      "snippet": "_sym = getattr(_cq, 'symbol', '').upper()",
-      "semantic_field_guess": "symbol",
-      "context": "_fetch_state",
-      "normalized_expr": "Call(func=Name(id='getattr', ctx=Load()), args=[Name(id='_cq', ctx=Load()), Constant(value='symbol'), Constant(value='')])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "fingerprint": "e820346ccbaab2498d88e96276fe2b15cb78b8100b52c6078d65828d8b05c090",
-      "id": "FB-e820346ccb",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
-    },
-    {
-      "file": "server.py",
-      "line": 7933,
-      "language": "python",
-      "pattern": "GETATTR_DEFAULT",
-      "snippet": "_sym = getattr(_sq, 'symbol', '').upper()",
-      "semantic_field_guess": "symbol",
-      "context": "_fetch_state",
-      "normalized_expr": "Call(func=Name(id='getattr', ctx=Load()), args=[Name(id='_sq', ctx=Load()), Constant(value='symbol'), Constant(value='')])",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
-      "fingerprint": "e23c2ad4da8eae16b510387a6aac3d631436e5c94c15d4780b8c908e11003a1c",
-      "id": "FB-e23c2ad4da",
-      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
-      "proposed_ownership_group": "unadjudicated_pending_next_pass"
-    },
-    {
-      "file": "server.py",
-      "line": 8533,
+      "line": 8537,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_resolved_logger_source = logger_source or resolve_logger_source_from_update_source(",
@@ -9558,7 +9591,7 @@
     },
     {
       "file": "server.py",
-      "line": 9469,
+      "line": 9479,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "float(getattr(diag, \"contracts_used\", 0) or 0) / _kl_contracts_total,",
@@ -9574,7 +9607,7 @@
     },
     {
       "file": "server.py",
-      "line": 10891,
+      "line": 10901,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"ticker\": ticker or None,",
@@ -9590,7 +9623,7 @@
     },
     {
       "file": "server.py",
-      "line": 11140,
+      "line": 11150,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "expiry=expiry if expiry is not None else (data_cache_key[1] if data_cache_key else None),",
@@ -9606,7 +9639,7 @@
     },
     {
       "file": "server.py",
-      "line": 11363,
+      "line": 11373,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "tk = (ticker or \"\").upper().strip()",
@@ -9622,7 +9655,7 @@
     },
     {
       "file": "server.py",
-      "line": 11381,
+      "line": 11391,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_strike_expiry_count[tk] = max(_strike_expiry_count.get(tk, 0), n_exp)",
@@ -9638,7 +9671,7 @@
     },
     {
       "file": "server.py",
-      "line": 12221,
+      "line": 12231,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "ticker_storage_key(ticker) if ticker else \"\", \"\") or \"\")",
@@ -9654,7 +9687,7 @@
     },
     {
       "file": "server.py",
-      "line": 12298,
+      "line": 12308,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if now - _accrual_last_write.get(tk, 0.0) < floor:",
@@ -9670,7 +9703,7 @@
     },
     {
       "file": "server.py",
-      "line": 12706,
+      "line": 12716,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "admitted_l1 = set((read_producer_admitted_option_contracts() or {}).get(\"LEVELONE_OPTIONS\") or [])",
@@ -9686,7 +9719,7 @@
     },
     {
       "file": "server.py",
-      "line": 15520,
+      "line": 15530,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "bucket = per_expiry.get(col[\"expiry\"], {}).get(k)",
@@ -9702,7 +9735,7 @@
     },
     {
       "file": "server.py",
-      "line": 15521,
+      "line": 15531,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "syms = symbols_by_expiry.get(col[\"expiry\"], {}).get(k)",
@@ -9718,7 +9751,7 @@
     },
     {
       "file": "server.py",
-      "line": 15816,
+      "line": 15826,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "\"strike_min\": (strikes[0] if strikes else None),",
@@ -9734,7 +9767,7 @@
     },
     {
       "file": "server.py",
-      "line": 15817,
+      "line": 15827,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "\"strike_max\": (strikes[-1] if strikes else None),",
@@ -9750,7 +9783,7 @@
     },
     {
       "file": "server.py",
-      "line": 16602,
+      "line": 16612,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "t = (ticker or DEFAULT_TICKER).upper().strip()",
@@ -9766,7 +9799,7 @@
     },
     {
       "file": "server.py",
-      "line": 16640,
+      "line": 16650,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "t = (ticker or DEFAULT_TICKER).upper().strip()",
@@ -9782,7 +9815,7 @@
     },
     {
       "file": "server.py",
-      "line": 17089,
+      "line": 17099,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "raw = [t.strip().upper() for t in (tickers or \"\").split(\",\") if t.strip()]",
@@ -9798,7 +9831,7 @@
     },
     {
       "file": "server.py",
-      "line": 17526,
+      "line": 17536,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "resolved_expiry = (expiry or \"\").strip()[:10] or None",
@@ -9814,7 +9847,7 @@
     },
     {
       "file": "server.py",
-      "line": 18722,
+      "line": 18732,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "result[\"as_of_cutoff_et\"] = (out.raw_levels or {}).get(\"cutoff_et\")",
@@ -9830,7 +9863,7 @@
     },
     {
       "file": "server.py",
-      "line": 18733,
+      "line": 18743,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "result[\"level_semantic_scope\"] = (out.raw_levels or {}).get(\"semantic_scope\")",
@@ -9846,7 +9879,7 @@
     },
     {
       "file": "server.py",
-      "line": 18912,
+      "line": 18922,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "ticker = (ticker or DEFAULT_TICKER).upper().strip()",
@@ -9910,7 +9943,7 @@
     },
     {
       "file": "server.py",
-      "line": 2035,
+      "line": 2034,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "active = str(active_ticker or \"\").strip().upper()",
@@ -9926,7 +9959,7 @@
     },
     {
       "file": "server.py",
-      "line": 2111,
+      "line": 2110,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "active = str(ticker or md.get(\"ticker\") or \"\").upper().strip()",
@@ -9942,7 +9975,7 @@
     },
     {
       "file": "server.py",
-      "line": 4145,
+      "line": 4143,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "return os.environ.get(\"ED_LOGGING_UNIVERSE_FIFO_EVICTION\", \"\").strip().lower() in (",
@@ -9958,7 +9991,7 @@
     },
     {
       "file": "server.py",
-      "line": 7437,
+      "line": 7439,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(price_levels, \"session_rth_positive_volume_bars\", 0),",
@@ -9974,7 +10007,7 @@
     },
     {
       "file": "server.py",
-      "line": 7751,
+      "line": 7753,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "_vz_dist = min(abs(_vz.get(\"lower\", spot_f) - spot_f), abs(_vz.get(\"upper\", spot_f) - spot_f))",
@@ -9990,7 +10023,39 @@
     },
     {
       "file": "server.py",
-      "line": 15342,
+      "line": 7924,
+      "language": "python",
+      "pattern": "GETATTR_DEFAULT",
+      "snippet": "_sym = getattr(_cq, 'symbol', '').upper()",
+      "semantic_field_guess": "symbol",
+      "context": "_fetch_state",
+      "normalized_expr": "Call(func=Name(id='getattr', ctx=Load()), args=[Name(id='_cq', ctx=Load()), Constant(value='symbol'), Constant(value='')])",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
+      "fingerprint": "e820346ccbaab2498d88e96276fe2b15cb78b8100b52c6078d65828d8b05c090",
+      "id": "FB-e820346ccb",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "server.py",
+      "line": 7929,
+      "language": "python",
+      "pattern": "GETATTR_DEFAULT",
+      "snippet": "_sym = getattr(_sq, 'symbol', '').upper()",
+      "semantic_field_guess": "symbol",
+      "context": "_fetch_state",
+      "normalized_expr": "Call(func=Name(id='getattr', ctx=Load()), args=[Name(id='_sq', ctx=Load()), Constant(value='symbol'), Constant(value='')])",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
+      "fingerprint": "e23c2ad4da8eae16b510387a6aac3d631436e5c94c15d4780b8c908e11003a1c",
+      "id": "FB-e23c2ad4da",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "server.py",
+      "line": 15352,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "\"dex\": dex_row[j] if j < len(dex_row) else None,",
@@ -10006,7 +10071,7 @@
     },
     {
       "file": "server.py",
-      "line": 15343,
+      "line": 15353,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "\"vanna\": vanna_row[j] if j < len(vanna_row) else None,",
@@ -10022,7 +10087,7 @@
     },
     {
       "file": "server.py",
-      "line": 18663,
+      "line": 18673,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "_rv = (out.raw_levels or {}).get(\"vwap\")",
@@ -10038,7 +10103,7 @@
     },
     {
       "file": "server.py",
-      "line": 18818,
+      "line": 18828,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "return {\"error\": f\"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}\"}",
@@ -10054,7 +10119,7 @@
     },
     {
       "file": "server.py",
-      "line": 19006,
+      "line": 19016,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if os.environ.get(\"ED_ALLOW_DEBUG_ENDPOINTS\", \"\").strip().lower() not in (\"1\", \"true\", \"yes\"):",
@@ -10070,7 +10135,7 @@
     },
     {
       "file": "server.py",
-      "line": 7420,
+      "line": 7422,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(price_levels, \"session_rth_positive_volume_bars\", 0) or 0",
@@ -10086,7 +10151,7 @@
     },
     {
       "file": "server.py",
-      "line": 8015,
+      "line": 8013,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "(recent_cross_eval_wall_ts - c.get(\"ts_utc\", 0)) / 60",
@@ -10102,7 +10167,7 @@
     },
     {
       "file": "server.py",
-      "line": 8786,
+      "line": 8790,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "nearest_below_name=ms.nearest_below_name if hasattr(ms, \"nearest_below_name\") else None,",
@@ -10118,7 +10183,7 @@
     },
     {
       "file": "server.py",
-      "line": 8787,
+      "line": 8791,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "nearest_below_val=ms.nearest_below_val if hasattr(ms, \"nearest_below_val\") else None,",
@@ -10134,7 +10199,7 @@
     },
     {
       "file": "server.py",
-      "line": 8788,
+      "line": 8792,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "nearest_below_dist=ms.nearest_below_dist if hasattr(ms, \"nearest_below_dist\") else None,",
@@ -10150,7 +10215,55 @@
     },
     {
       "file": "server.py",
-      "line": 9761,
+      "line": 8802,
+      "language": "python",
+      "pattern": "TERNARY",
+      "snippet": "spy_spot=(mkt_ctx.spy_last if mkt_ctx is not None else None),",
+      "semantic_field_guess": "spy_last",
+      "context": "_post_publish_persistence_tail",
+      "normalized_expr": "IfExp(test=Compare(left=Name(id='mkt_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='mkt_ctx', ctx=Load()), attr='spy_last', ctx=Load()), orelse=Constant(value=None))",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
+      "fingerprint": "3bc80aa231beaeb247c5218a2d6a1de2c441f364735feb72643edebfc3f290ab",
+      "id": "FB-3bc80aa231",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "server.py",
+      "line": 8806,
+      "language": "python",
+      "pattern": "TERNARY",
+      "snippet": "qqq_spot=(mkt_ctx.qqq_last if mkt_ctx is not None else None),",
+      "semantic_field_guess": "qqq_last",
+      "context": "_post_publish_persistence_tail",
+      "normalized_expr": "IfExp(test=Compare(left=Name(id='mkt_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='mkt_ctx', ctx=Load()), attr='qqq_last', ctx=Load()), orelse=Constant(value=None))",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
+      "fingerprint": "3fa8c08e2deb3db58947d327ea8f048abeaab8aef52a21aa0cd4b151ac371cca",
+      "id": "FB-3fa8c08e2d",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "server.py",
+      "line": 8813,
+      "language": "python",
+      "pattern": "TERNARY",
+      "snippet": "iwm_spot=(mkt_ctx.iwm_last if mkt_ctx is not None else None),",
+      "semantic_field_guess": "iwm_last",
+      "context": "_post_publish_persistence_tail",
+      "normalized_expr": "IfExp(test=Compare(left=Name(id='mkt_ctx', ctx=Load()), ops=[IsNot()], comparators=[Constant(value=None)]), body=Attribute(value=Name(id='mkt_ctx', ctx=Load()), attr='iwm_last', ctx=Load()), orelse=Constant(value=None))",
+      "adjudication": "NOT_PROVEN",
+      "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
+      "fingerprint": "903024f54eea7ddbde827943e2da3e6aba31d775331568a2d9ca7b12db79b807",
+      "id": "FB-903024f54e",
+      "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
+      "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "server.py",
+      "line": 9771,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "allow_sync = os.environ.get(\"ED_ALLOW_ACTIVE_SYNC\", \"0\").strip().lower() in (\"1\", \"true\", \"yes\")",
@@ -10166,7 +10279,7 @@
     },
     {
       "file": "server.py",
-      "line": 10274,
+      "line": 10284,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "if not r or getattr(r, \"status_code\", 0) != 200:",
@@ -10182,7 +10295,7 @@
     },
     {
       "file": "server.py",
-      "line": 10278,
+      "line": 10288,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(r, \"status_code\", \"None\"),",
@@ -10198,7 +10311,7 @@
     },
     {
       "file": "server.py",
-      "line": 18705,
+      "line": 18715,
       "language": "python",
       "pattern": "TERNARY",
       "snippet": "x[\"distance_to_spot\"] if x[\"distance_to_spot\"] is not None else 1e9,",
@@ -10214,7 +10327,7 @@
     },
     {
       "file": "server.py",
-      "line": 15023,
+      "line": 15033,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"doi_below\": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k < spot1)),",
@@ -10230,7 +10343,7 @@
     },
     {
       "file": "server.py",
-      "line": 15024,
+      "line": 15034,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "\"doi_above\": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k > spot1)),",
@@ -10246,7 +10359,7 @@
     },
     {
       "file": "server.py",
-      "line": 18706,
+      "line": 18716,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "-x.get(\"tradeable_score\", 0),",
@@ -10262,7 +10375,7 @@
     },
     {
       "file": "server.py",
-      "line": 9208,
+      "line": 9218,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "if os.environ.get(\"ED_LIVE_SNAPSHOT_MATERIALIZE\", \"0\").strip().lower() in (",
@@ -10278,7 +10391,7 @@
     },
     {
       "file": "server.py",
-      "line": 18232,
+      "line": 18242,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "\"replacement\": f\"/api/levels?ticker={(ticker or DEFAULT_TICKER).upper().strip()}\",",
@@ -10294,7 +10407,7 @@
     },
     {
       "file": "server.py",
-      "line": 8578,
+      "line": 8582,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "getattr(price_levels, \"session_rth_positive_volume_bars\", 0) or 0",
@@ -10310,7 +10423,7 @@
     },
     {
       "file": "server.py",
-      "line": 8742,
+      "line": 8746,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "market_session=(session_label or \"unknown\").lower().replace(\"-\", \"\"),",
@@ -10326,7 +10439,7 @@
     },
     {
       "file": "server.py",
-      "line": 8655,
+      "line": 8659,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "log.warning(f\"Constituent {getattr(cq, 'symbol', '?')} chg_pct fetch failed: {e}\")",
@@ -10342,7 +10455,7 @@
     },
     {
       "file": "server.py",
-      "line": 8675,
+      "line": 8679,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
       "snippet": "log.warning(f\"Sector {getattr(sq, 'symbol', '?')} chg_pct fetch failed: {e}\")",
@@ -10723,6 +10836,374 @@
       "id": "FB-63cdc3a8c9",
       "required_repair": "pending semantic adjudication -- not yet reached by a human/agent reading in this pass",
       "proposed_ownership_group": "unadjudicated_pending_next_pass"
+    },
+    {
+      "file": "snapshot_sql/_auto_extracted.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) v, COUNT(*) n FROM snapshots WHERE zone='pin_neutral' AND timeframe IN (?, ?) GROUP BY v ORDER BY n DESC",
+      "semantic_field_guess": null,
+      "context": "tools/_diag_pin_neutral_outcomes.py:37",
+      "normalized_expr": "SELECT COALESCE(horizon_outcome_schema_version, -1) v, COUNT(*) n FROM snapshots WHERE zone='pin_neutral' AND timeframe IN (?, ?) GROUP BY v ORDER BY n DESC",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/_diag_pin_neutral_outcomes.py:37' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "f99cf0801f01b42b94b50785c5864030469baffceb10395df13d535f274f168f",
+      "id": "FB-f99cf0801f",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/_auto_extracted.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "SELECT COALESCE(horizon_outcome_schema_version,-1) v, COUNT(*) n FROM snapshots WHERE zone='pin_bull' AND timeframe=? GROUP BY v ORDER BY n DESC LIMIT 5",
+      "semantic_field_guess": null,
+      "context": "tools/_diag_pin_neutral_outcomes.py:65",
+      "normalized_expr": "SELECT COALESCE(horizon_outcome_schema_version,-1) v, COUNT(*) n FROM snapshots WHERE zone='pin_bull' AND timeframe=? GROUP BY v ORDER BY n DESC LIMIT 5",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/_diag_pin_neutral_outcomes.py:65' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "c63725d38597ebc01400b5ffeb0c5aa5eaa9060db9ec30234c99b4bce20476ee",
+      "id": "FB-c63725d385",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_a.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(s.outcome_filled, 0) = 0",
+      "semantic_field_guess": null,
+      "context": "bar_rehydration_issue19_v1.py:57",
+      "normalized_expr": "AND COALESCE(s.outcome_filled, 0) = 0",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'bar_rehydration_issue19_v1.py:57' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "f02c56f61de5fcc5a4693332b55fa62e240ccb0f02fc688e3c9fced3fd036901",
+      "id": "FB-f02c56f61d",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/bar_history_recovery_audit_v1.py:63",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/bar_history_recovery_audit_v1.py:63' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "b2e4a6c25bd8bdaee0e26504908774645a86d1fb3d768e9c2d1d6fa71bcb9a1b",
+      "id": "FB-b2e4a6c25b",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(s.horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/bar_history_recovery_audit_v1.py:82",
+      "normalized_expr": "AND COALESCE(s.horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/bar_history_recovery_audit_v1.py:82' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "cfd7f730fe58dbe0ad9994ebf545159949587a01c0229fa8d93c570a2dca2d21",
+      "id": "FB-cfd7f730fe",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/bar_history_recovery_audit_v1.py:106",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/bar_history_recovery_audit_v1.py:106' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "d2a8a179871b2c2116f4cbcd0af5c85c955f7ef7dd38c986098b9d38c0aa7851",
+      "id": "FB-d2a8a17987",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/bar_history_recovery_audit_v1.py:124",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/bar_history_recovery_audit_v1.py:124' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "197629de1b3fe24dd59f185ed191a034f25f4eaecb1ab5b08079e2127acfa2be",
+      "id": "FB-197629de1b",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/bar_history_recovery_audit_v1.py:144",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/bar_history_recovery_audit_v1.py:144' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "4eeb998b7e7978f0c1be6973b5ec5deaed8bb1b0dfb23f98ce928cb6db653e84",
+      "id": "FB-4eeb998b7e",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/bar_history_recovery_audit_v1.py:197",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/bar_history_recovery_audit_v1.py:197' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "7f13b9ed866c32f11c84cc16dc4e5fbe50f9b21977e39efa92e66bfe68c1979c",
+      "id": "FB-7f13b9ed86",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "SELECT ticker, SUM(COALESCE(candle_volume,0)) AS vol FROM snapshots WHERE timeframe=? GROUP BY ticker ORDER BY vol DESC LIMIT 1",
+      "semantic_field_guess": null,
+      "context": "tools/final_system_validation_pre_accumulation_v1.py:83",
+      "normalized_expr": "SELECT ticker, SUM(COALESCE(candle_volume,0)) AS vol FROM snapshots WHERE timeframe=? GROUP BY ticker ORDER BY vol DESC LIMIT 1",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/final_system_validation_pre_accumulation_v1.py:83' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "b77e00ecda0b1703a661bb4f2e49d282c726b6ea1c437e32d2f195307f25f4f5",
+      "id": "FB-b77e00ecda",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/issue19_rehydration_range_v1.py:43",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/issue19_rehydration_range_v1.py:43' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "eb182c3f65be922f47a53441dc9144a691a7859e6c539c66c7226d6ee5cdba73",
+      "id": "FB-eb182c3f65",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/issue19_rehydration_range_v1.py:66",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/issue19_rehydration_range_v1.py:66' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "45c405b829bcbd880a12bfbca3148b7d43bfa31be09a1d9165fd646da6cadbb0",
+      "id": "FB-45c405b829",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_b.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "SELECT COALESCE(MAX(snapshot_id),0) FROM snapshots",
+      "semantic_field_guess": null,
+      "context": "tools/phase2_forward_write_verify.py:87",
+      "normalized_expr": "SELECT COALESCE(MAX(snapshot_id),0) FROM snapshots",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/phase2_forward_write_verify.py:87' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "34dc169849004464ab3ac5f54c429346ee3864a7f4d39ad9e19094574b1a7ea6",
+      "id": "FB-34dc169849",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/pin_neutral_eligibility_funnel_v1.py:stage_total",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/pin_neutral_eligibility_funnel_v1.py:stage_total' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "f370e2392fab43c079ac5b4efa25fb78aa3deb2366c9d6f8acce9b2e19827529",
+      "id": "FB-f370e2392f",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND COALESCE(outcome_filled,0)=0",
+      "semantic_field_guess": null,
+      "context": "tools/pin_neutral_eligibility_funnel_v1.py:stage_unfilled",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND COALESCE(outcome_filled,0)=0",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/pin_neutral_eligibility_funnel_v1.py:stage_unfilled' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "0ffb52ebf564dac6187f7cbee4049d4ff8ed4fed296fe4c4623b5616170ca7e3",
+      "id": "FB-0ffb52ebf5",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND COALESCE(outcome_filled,0)=1",
+      "semantic_field_guess": null,
+      "context": "tools/pin_neutral_eligibility_funnel_v1.py:stage_filled",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND COALESCE(outcome_filled,0)=1",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/pin_neutral_eligibility_funnel_v1.py:stage_filled' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "e97d6d5e654f28d3daea9a19d976237909ee924ba2898943eebdb60b22ab2599",
+      "id": "FB-e97d6d5e65",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND timeframe = ?",
+      "semantic_field_guess": null,
+      "context": "tools/pin_neutral_eligibility_funnel_v1.py:stage_tf",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND timeframe = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/pin_neutral_eligibility_funnel_v1.py:stage_tf' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "292c55792301064ce959b15c3905f28a57b2459d98a78f69b57c783284c9fb69",
+      "id": "FB-292c557923",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND timeframe = ? AND outcome_1c IS NOT NULL",
+      "semantic_field_guess": null,
+      "context": "tools/pin_neutral_eligibility_funnel_v1.py:stage_tf_o1",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND timeframe = ? AND outcome_1c IS NOT NULL",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/pin_neutral_eligibility_funnel_v1.py:stage_tf_o1' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "04df9af2151408854930b6b36c9749a52b4a3e15483ed6467d4350de93d25065",
+      "id": "FB-04df9af215",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(s.horizon_outcome_schema_version, ?) = ?",
+      "semantic_field_guess": null,
+      "context": "tools/pin_neutral_eligibility_funnel_v1.py:unfilled_no_anchor",
+      "normalized_expr": "AND COALESCE(s.horizon_outcome_schema_version, ?) = ?",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/pin_neutral_eligibility_funnel_v1.py:unfilled_no_anchor' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "20ca5266450e722139e820b7ae5fb3c593af0b048e26d37b73a4966408f147e9",
+      "id": "FB-20ca526645",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND timeframe = ? AND outcome_1c IS NOT NULL",
+      "semantic_field_guess": null,
+      "context": "tools/pin_neutral_eligibility_funnel_v1.py:five_m_pin_o1",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND timeframe = ? AND outcome_1c IS NOT NULL",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/pin_neutral_eligibility_funnel_v1.py:five_m_pin_o1' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "eead7f9133c62dac491b9819f4c03306e706555e47f460e377dd099cc0296982",
+      "id": "FB-eead7f9133",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND ticker LIKE '$SPX%'",
+      "semantic_field_guess": null,
+      "context": "tools/pin_neutral_eligibility_funnel_v1.py:spx_like",
+      "normalized_expr": "AND COALESCE(horizon_outcome_schema_version, ?) = ? AND ticker LIKE '$SPX%'",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/pin_neutral_eligibility_funnel_v1.py:spx_like' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "5c2eca21fcbe3001d298caa58324fd1e14eaf1e6798e355e8a40fd7001ae532a",
+      "id": "FB-5c2eca21fc",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) v, COUNT(*) n FROM snapshots WHERE zone='pin_neutral' AND timeframe IN (?, ?) GROUP BY v ORDER BY n DESC",
+      "semantic_field_guess": null,
+      "context": "tools/_diag_pin_neutral_outcomes.py:schema_v_hist",
+      "normalized_expr": "SELECT COALESCE(horizon_outcome_schema_version, -1) v, COUNT(*) n FROM snapshots WHERE zone='pin_neutral' AND timeframe IN (?, ?) GROUP BY v ORDER BY n DESC",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/_diag_pin_neutral_outcomes.py:schema_v_hist' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "d60b2ec24892432d66084fcdb3864bae384372744b05b5a328f3e5e6be1f3120",
+      "id": "FB-d60b2ec248",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
+    },
+    {
+      "file": "snapshot_sql/registry_full_c.json",
+      "line": 0,
+      "language": "sql-in-json",
+      "pattern": "SQL_COALESCE_STYLE",
+      "snippet": "SELECT COALESCE(horizon_outcome_schema_version,-1) v, COUNT(*) n FROM snapshots WHERE zone='pin_bull' AND timeframe=? GROUP BY v ORDER BY n DESC LIMIT 5",
+      "semantic_field_guess": null,
+      "context": "tools/_diag_pin_neutral_outcomes.py:pin_bull_schema_sample",
+      "normalized_expr": "SELECT COALESCE(horizon_outcome_schema_version,-1) v, COUNT(*) n FROM snapshots WHERE zone='pin_bull' AND timeframe=? GROUP BY v ORDER BY n DESC LIMIT 5",
+      "adjudication": "FALLBACK",
+      "evidence": "COALESCE/IFNULL/NVL in a JSON string value at 'tools/_diag_pin_neutral_outcomes.py:pin_bull_schema_sample' -- loader-interpreted as literal SQL (see db.get_snapshot_sql and its 60+ callers), not a comment or prose reference | ADJUDICATED: OPERATOR CORRECTION 2026-09-17 overrides this session's own earlier 'confirmed-safe idiom' / 'deferred to operator' classification: 'these are fallback candidates and cannot automatically pass' (SQL) / 'the operator did not pre-authorize ML imputation' -- reclassified FALLBACK unconditionally, matching tools/check_no_fallback_lock.py's own unconditional R1/R2 rules after the same correction.",
+      "fingerprint": "aec4ef17107d30715ee62c9c194bdfd91cd450df8044aaea48e050dd4ce49628",
+      "id": "FB-aec4ef1710",
+      "required_repair": "Expose the missing/failed value's own failure state; no COALESCE/IFNULL/NVL default and no imputed value may substitute for it, regardless of the default's shape.",
+      "proposed_ownership_group": "calibration_ml_governance"
     },
     {
       "file": "static/chart.html",
@@ -12198,7 +12679,7 @@
     },
     {
       "file": "tests/test_action12_7_market_state_fail_closed.py",
-      "line": 278,
+      "line": 274,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "assert \"RuntimeError\" in (ms.state_error_detail or \"\")",
@@ -13254,7 +13735,7 @@
     },
     {
       "file": "tests/test_mkt_ctx_fetch_exception_disclosure.py",
-      "line": 47,
+      "line": 150,
       "language": "python",
       "pattern": "OR_LADDER",
       "snippet": "assert \"RuntimeError\" in (ms.state_error_detail or \"\")",
@@ -14326,7 +14807,7 @@
     },
     {
       "file": "tools/check_institutional_correctness.py",
-      "line": 3151,
+      "line": 3155,
       "language": "python",
       "pattern": "DICT_GET_DEFAULT",
       "snippet": "producers = set((reg or {}).get(\"level_domain_producers\", {}).keys())",

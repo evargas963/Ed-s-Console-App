@@ -487,6 +487,81 @@ def scan_sql_file(rel: str, src: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# JSON SQL-registry detector (operator point 7 / original mission point 6:
+# "discover executable content by loader, not extension"). Confirmed real gap
+# (not hypothetical): db.py's get_snapshot_sql() loads every snapshot_sql/*.json
+# file and returns its STRING VALUES as literal SQL text, executed as-is by 60+
+# callers -- a JSON value here is exactly as executable as a Python string
+# literal passed to conn.execute(), but until this scanner existed, no
+# extension-based dispatch table would ever look inside a .json file for it.
+# Every string value (not keys -- keys are handle names, e.g. a source file
+# path, never SQL) in the parsed JSON is checked the same way a Python string
+# constant is checked: COALESCE/IFNULL/NVL anywhere inside it is a candidate.
+# This is deliberately NOT scoped to snapshot_sql/ specifically -- scanning
+# every .json file's string values costs nothing extra (no AST parse, no
+# execution) and closes the general "loader-interpreted content hidden behind
+# a non-code extension" gap rather than only the one instance found so far.
+# ---------------------------------------------------------------------------
+
+def scan_json_file(rel: str, src: str) -> list[dict]:
+    import json as _json
+
+    out: list[dict] = []
+
+    def _walk(node, path: str):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                _walk(v, f"{path}.{k}" if path else str(k))
+            return
+        if isinstance(node, list):
+            for idx, v in enumerate(node):
+                _walk(v, f"{path}[{idx}]")
+            return
+        if isinstance(node, str):
+            m = _SQL_FALLBACK_RE.search(node)
+            if m:
+                line_offset = node.count("\n", 0, m.start())
+                literal_lines = node.splitlines()
+                match_line_text = (
+                    literal_lines[line_offset].strip()
+                    if 0 <= line_offset < len(literal_lines) else node.strip()
+                )
+                snippet = match_line_text[:200]
+                out.append({
+                    "file": rel, "line": 0, "language": "sql-in-json",
+                    "pattern": "SQL_COALESCE_STYLE",
+                    "snippet": snippet,
+                    "semantic_field_guess": None,
+                    "context": path,
+                    "normalized_expr": _normalize_ws(snippet),
+                    "adjudication": "NOT_PROVEN",
+                    "evidence": f"COALESCE/IFNULL/NVL in a JSON string value at {path!r} -- "
+                                f"loader-interpreted as literal SQL (see db.get_snapshot_sql "
+                                f"and its 60+ callers), not a comment or prose reference",
+                })
+
+    try:
+        data = _json.loads(src)
+    except (ValueError, RecursionError) as e:
+        return [{
+            "file": rel, "line": 0, "language": "json",
+            "pattern": "PARSE_FAILURE",
+            "snippet": f"JSONDecodeError: {e}",
+            "semantic_field_guess": None, "context": None,
+            "normalized_expr": f"PARSE_FAILURE:{e}",
+            "adjudication": "NOT_PROVEN",
+            "evidence": "file failed to parse as JSON -- an unscanned executable surface "
+                        "is a discovery failure, not a pass; must be resolved by hand",
+        }]
+    _walk(data, "")
+    # Line numbers are not meaningful for a value discovered via json.loads (the
+    # parser discards source position); "line" stays metadata-only (0) exactly as
+    # documented for every other pattern -- identity comes from the fingerprint
+    # (file, context=key path, pattern, normalized_expr), never from line.
+    return out
+
+
+# ---------------------------------------------------------------------------
 # PowerShell / batch detectors
 # ---------------------------------------------------------------------------
 
@@ -547,8 +622,10 @@ _HANDLERS = {
 #: Extensions this tool has NO detector for at all, that still sit in an "executable/
 #: source surface" location the mission's SCOPE names (config, APIs). Emitted as explicit
 #: UNSCANNED_SURFACE entries -- never silently dropped -- per "fail nonzero on ... unknown
-#: executable surfaces."
-_DECLARED_NO_OP_EXTENSIONS = {".yaml", ".yml", ".toml", ".json", ".css"}
+#: executable surfaces." `.json` is NOT here -- see scan_json_file: db.get_snapshot_sql
+#: loads every snapshot_sql/*.json file and executes its string values as literal SQL,
+#: a confirmed live loader-interpreted surface, not a hypothetical one.
+_DECLARED_NO_OP_EXTENSIONS = {".yaml", ".yml", ".toml", ".css"}
 
 
 def main() -> int:
@@ -561,6 +638,7 @@ def main() -> int:
     unscanned_declared: dict[str, int] = {}
     unscanned_unknown: list[str] = []
     meta_tooling_excluded: dict[str, int] = {}
+    reports_json_excluded: dict[str, int] = {}
 
     for rel in _tracked_files():
         if not _in_scope(rel):
@@ -618,6 +696,26 @@ def main() -> int:
                 continue
             scanned_by_type["batch"] = scanned_by_type.get("batch", 0) + 1
             candidates.extend(scan_bat(rel, src))
+        elif ext == ".json":
+            if rel.startswith("reports/"):
+                # reports/ is this repo's established generated-OUTPUT directory (audit
+                # results, inventories, run snapshots -- see RC-523 runtime_layout) --
+                # nothing under it is ever json.load()-ed back into a live SQL string the
+                # way snapshot_sql/*.json genuinely is (db.get_snapshot_sql). Scanning it
+                # for SQL-fallback shapes self-matches this very mission's own governance
+                # artifacts (no_fallback_inventory.json etc. quote real COALESCE findings
+                # as evidence prose) and other tools' run logs that RECORD a query that
+                # executed elsewhere, not one this file itself causes to execute.
+                # Enumerated, never silently dropped -- .py/.sql/.jsx files under reports/
+                # (real source, e.g. reports/audit_round2_scripts/*.py) are unaffected;
+                # only the JSON-as-SQL-registry interpretation is excluded here.
+                reports_json_excluded[rel] = reports_json_excluded.get(rel, 0) + 1
+                continue
+            src = _read(path)
+            if src is None:
+                continue
+            scanned_by_type["json"] = scanned_by_type.get("json", 0) + 1
+            candidates.extend(scan_json_file(rel, src))
         elif ext in _DECLARED_NO_OP_EXTENSIONS:
             unscanned_declared[ext] = unscanned_declared.get(ext, 0) + 1
         elif ext in ("", ".md", ".txt", ".pt", ".pkl", ".png", ".csv", ".gitkeep",
@@ -634,6 +732,7 @@ def main() -> int:
         "unscanned_declared_noop_by_ext": unscanned_declared,
         "unscanned_unknown_extensions": unscanned_unknown,
         "meta_tooling_excluded_from_scan": meta_tooling_excluded,
+        "reports_dir_json_excluded_from_sql_scan": reports_json_excluded,
         "candidate_count": len(candidates),
         "candidates": candidates,
     }
@@ -644,6 +743,7 @@ def main() -> int:
     print(f"unscanned_declared_noop_by_ext: {unscanned_declared}")
     print(f"unscanned_unknown_extensions: {len(unscanned_unknown)} -> {unscanned_unknown[:20]}")
     print(f"meta_tooling_excluded_from_scan: {meta_tooling_excluded}")
+    print(f"reports_dir_json_excluded_from_sql_scan: {len(reports_json_excluded)} files")
     print(f"candidate_count: {len(candidates)}")
     print(f"wrote {out_path}")
     return 0
