@@ -62,7 +62,7 @@ def _render_markdown_guide(filename: str, title: str, nav_links: str) -> HTMLRes
     return HTMLResponse(page)
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)  # caps-ok: FastAPI route decorator (path, response_class=...), not a dict.get(key, default) read
 def root():
     from server import static_dir
 
@@ -79,13 +79,13 @@ def root():
     )
 
 
-@router.get("/favicon.ico", include_in_schema=False)
+@router.get("/favicon.ico", include_in_schema=False)  # caps-ok: FastAPI route decorator kwarg, not a dict.get(key, default) read
 def favicon():
     """Browsers request this automatically; without a route they log 404 (harmless but noisy)."""
     return Response(status_code=204)
 
 
-@router.get("/guide/data-stewardship", response_class=HTMLResponse)
+@router.get("/guide/data-stewardship", response_class=HTMLResponse)  # caps-ok: FastAPI route decorator, not a dict.get(key, default) read
 def guide_data_stewardship():
     """Serve DATA_STEWARDSHIP.md in the browser (king / jewels / guards + runbook)."""
     return _render_markdown_guide(
@@ -94,7 +94,7 @@ def guide_data_stewardship():
     )
 
 
-@router.get("/guide/training-and-maintenance", response_class=HTMLResponse)
+@router.get("/guide/training-and-maintenance", response_class=HTMLResponse)  # caps-ok: FastAPI route decorator, not a dict.get(key, default) read
 def guide_training_and_maintenance():
     return _render_markdown_guide(
         "TRAINING_AND_MAINTENANCE.md", "Training &amp; maintenance",
@@ -105,7 +105,7 @@ def guide_training_and_maintenance():
     )
 
 
-@router.get("/guide/pipeline-quality", response_class=HTMLResponse)
+@router.get("/guide/pipeline-quality", response_class=HTMLResponse)  # caps-ok: FastAPI route decorator, not a dict.get(key, default) read
 def guide_pipeline_quality():
     """TQM-style checkpoints: ingest throttles, audits, normalized layer, readiness."""
     return _render_markdown_guide(
@@ -117,7 +117,7 @@ def guide_pipeline_quality():
     )
 
 
-@router.get("/chart", response_class=HTMLResponse)
+@router.get("/chart", response_class=HTMLResponse)  # caps-ok: FastAPI route decorator, not a dict.get(key, default) read
 def chart_page():
     """CR-03 screen-1 v0 — chart-first view (candles + terrain bands + coach)."""
     from server import static_dir
@@ -129,7 +129,7 @@ def chart_page():
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
-@router.get("/exposure", response_class=HTMLResponse)
+@router.get("/exposure", response_class=HTMLResponse)  # caps-ok: FastAPI route decorator, not a dict.get(key, default) read
 def exposure_page():
     """RC-200 (re-landed with RC-210) — the Exposure Overlay tab: dealer positioning on
     price (operator #1 project, LIVE order 2026-08-02)."""
@@ -142,7 +142,7 @@ def exposure_page():
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
-@router.get("/options", response_class=HTMLResponse)
+@router.get("/options", response_class=HTMLResponse)  # caps-ok: FastAPI route decorator, not a dict.get(key, default) read
 def options_page():
     """OPTIONS_ORDER_FLOW_V1 UI/consumer wiring: chain + contract-selection + live
     order-flow microstructure for one option contract. Reads GET /api/chain (contract
@@ -158,7 +158,7 @@ def options_page():
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
-@router.get("/desk", response_class=HTMLResponse)
+@router.get("/desk", response_class=HTMLResponse)  # caps-ok: FastAPI route decorator, not a dict.get(key, default) read
 def desk_page():
     """Desk — research, candidates and book, replayable at an earlier knowledge time."""
     from server import static_dir
