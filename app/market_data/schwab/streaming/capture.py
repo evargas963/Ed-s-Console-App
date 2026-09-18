@@ -2242,11 +2242,16 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                     print(f"watchdog: reconnect raised a COVERAGE COMPENSATION failure "
                           f"({exc}) — partial session retired; rebuild re-armed")
                     option_recycle_request.set()
-                    pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
+                    # No stream connected this pass: there is no real pump to hold. A
+                    # fabricated placeholder task here would be a live Task object with
+                    # nothing to do, standing in for "no pump exists" -- _cancel_and_await
+                    # already treats None as "nothing to cancel" (both call sites filter
+                    # `t is not None`), so None is the correct, honest value.
+                    pump_task = None
                 except Exception as exc:  # noqa: BLE001 — retry next tick, loudly
                     print(f"watchdog: reconnect FAILED ({type(exc).__name__}: {exc}) "
                           f"— retrying after cooldown")
-                    pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
+                    pump_task = None
                 # Control tasks are re-created for the NEW generation either way: on a
                 # failed reconnect both stream handles are None, so they idle harmlessly
                 # until a later pass succeeds.

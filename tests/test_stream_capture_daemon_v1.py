@@ -1578,6 +1578,89 @@ def test_d3c_a_coverage_escalation_during_reconnect_is_not_downgraded(tmp_path, 
     assert _LifecycleStream.live == 0, "shutdown must leave zero live sessions"
 
 
+def _two_shot_recycle(gate1: asyncio.Event, gate2: asyncio.Event):
+    """Like _one_shot_recycle, but fires once per gate, in order -- lets a test force
+    TWO separate recycle passes deterministically."""
+    fired = {"a": False, "b": False}
+
+    def decide(age_sec, seen_data, since_last_reconnect, collect_session_live=True):
+        if gate1.is_set() and not fired["a"]:
+            fired["a"] = True
+            return True
+        if gate2.is_set() and not fired["b"]:
+            fired["b"] = True
+            return True
+        return False
+    return decide
+
+
+def test_no_fallback_item8_failed_reconnect_leaves_pump_task_none_not_a_placeholder(
+        tmp_path, monkeypatch):
+    """No-fallback item 8. A failed reconnect (the generic `except Exception` branch, NOT
+    an OptionCoverageCompensationError) used to set pump_task to a fabricated
+    asyncio.create_task(asyncio.sleep(0)) placeholder -- a real Task standing in for "no
+    pump exists". _cancel_and_await already treats pump_task=None as "nothing to cancel"
+    (both its call sites filter `t is not None`), so the placeholder was never load-bearing
+    -- it just manufactured a fake resource instead of recording the true missing state.
+
+    Proves: after a failed reconnect, the NEXT _retire_stream_generation call (which
+    retires that same failed generation before attempting the next reconnect) receives
+    pump_task=None, never an asyncio.Task."""
+    import app.market_data.schwab.streaming.capture as m
+
+    db = tmp_path / "cap.db"
+    _reset_lifecycle()
+    _install_lifecycle_stream(monkeypatch)
+    monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
+    write_active_option_contract_signal(_A_CONTRACT)
+
+    gate1, gate2 = asyncio.Event(), asyncio.Event()
+    monkeypatch.setattr(m, "stream_needs_recycle", _two_shot_recycle(gate1, gate2))
+
+    real_after_login = m._schwab_connect_after_login
+    calls = {"n": 0}
+
+    async def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 2:      # the FIRST reconnect attempt (generation 2)
+            raise RuntimeError("simulated transient reconnect failure")
+        return await real_after_login(*a, **k)
+    monkeypatch.setattr(m, "_schwab_connect_after_login", flaky)
+
+    retirements: list = []
+    real_retire = m._retire_stream_generation
+
+    async def recording_retire(stream, pump_task, control_tasks, *, reason):
+        retirements.append(pump_task)
+        return await real_retire(stream, pump_task, control_tasks, reason=reason)
+    monkeypatch.setattr(m, "_retire_stream_generation", recording_retire)
+
+    async def driver(stop, writer):
+        await _await_event(lambda: len(_LifecycleStream.generations) >= 1,
+                           what="generation 1 to connect")
+        gate1.set()
+        await _await_event(lambda: calls["n"] >= 2,
+                           what="the reconnect attempt that fails")
+        await asyncio.sleep(0.1)   # let the failed-reconnect except branch run
+        gate2.set()
+        await _await_event(lambda: len(retirements) >= 2,
+                           what="the failed generation to be retired")
+        await asyncio.sleep(0.15)  # let generation 3's successful reconnect finish
+        stop.set()
+
+    asyncio.run(_drive_daemon(m, db, driver=driver))
+
+    assert calls["n"] >= 3, "the rebuild must have been retried after the failure"
+    assert len(retirements) >= 2, retirements
+    failed_gen_pump_task = retirements[1]
+    assert failed_gen_pump_task is None, (
+        "a failed reconnect must leave pump_task=None (no pump exists), not a fabricated "
+        f"placeholder task: got {failed_gen_pump_task!r}")
+    assert not isinstance(failed_gen_pump_task, asyncio.Task), (
+        "must never be a real Task standing in for 'no pump' -- "
+        f"got {failed_gen_pump_task!r}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PR214 INITIALIZATION LIFECYCLE — a failure DURING startup must retire exactly
 # what startup had already acquired. Every created task has one owner, and every
