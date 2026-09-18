@@ -263,10 +263,19 @@ def alpaca_item_to_topic_msg(item: dict) -> tuple[str, dict] | None:
     if kind == "t":
         f = parse_stream_item({**item, "key": sym}, ALPACA_TRADE_FIELDS)
         conds = f.get("conditions")
+        # Alpaca's own schema documents trade conditions as an array of code strings (or
+        # absent). A present-but-non-list value is a malformed vendor payload, not a
+        # scalar condition code -- passing it through untouched used to let a wrongly-typed
+        # value (a dict, an int, ...) sit in a field every consumer expects to be str|None.
+        if conds is not None and not isinstance(conds, list):
+            print(f"alpaca: trade for {sym} has malformed conditions shape "
+                  f"{type(conds).__name__} (expected a list) -- dropping, not passing through")
+            conds_out = None
+        else:
+            conds_out = ",".join(str(x) for x in conds) if isinstance(conds, list) else conds
         return (f"print.{sym}", print_msg(
             symbol=sym, price=f.get("price"), size=f.get("size"),
-            exchange=f.get("exchange"),
-            conditions=",".join(str(x) for x in conds) if isinstance(conds, list) else conds,
+            exchange=f.get("exchange"), conditions=conds_out,
             trade_ts_ms=alpaca_rfc3339_to_ms(item.get(ALPACA_STAMP_KEY)), src=ALPACA_SRC))
     if kind == "q":
         f = parse_stream_item({**item, "key": sym}, ALPACA_QUOTE_FIELDS)

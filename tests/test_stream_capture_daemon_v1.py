@@ -664,6 +664,32 @@ def test_alpaca_control_and_bar_frames_are_not_captured():
     assert alpaca_item_to_topic_msg({"T": "t", "p": 1.0}) is None  # no symbol -> skip
 
 
+def test_alpaca_malformed_conditions_shape_is_dropped_not_passed_through(capsys):
+    """No-fallback item 9: Alpaca's schema documents trade conditions as an array of code
+    strings (or absent) -- a present-but-non-list value (a malformed vendor payload) used
+    to be passed straight into the wire-typed `conditions` field untouched, instead of
+    being disclosed as unavailable like any other malformed input."""
+    from app.market_data.schwab.streaming.capture import alpaca_item_to_topic_msg
+
+    # A dict where Alpaca's own schema always sends a list.
+    _topic, msg = alpaca_item_to_topic_msg(
+        {"T": "t", "S": "SPY", "p": 1.0, "s": 1, "c": {"not": "a list"}})
+    assert msg["conditions"] is None, (
+        "MUTATION CONTROL FAILED TO BITE: a malformed conditions shape must become None, "
+        f"never pass the wrongly-typed value through -- got {msg['conditions']!r}")
+    assert "malformed conditions shape" in capsys.readouterr().out
+
+    # A bare int, same requirement.
+    _topic, msg = alpaca_item_to_topic_msg({"T": "t", "S": "SPY", "p": 1.0, "s": 1, "c": 42})
+    assert msg["conditions"] is None
+    capsys.readouterr()   # drain, so the next assertion checks only its own case
+
+    # Genuinely absent conditions is still legitimately None, no warning needed.
+    _topic, msg = alpaca_item_to_topic_msg({"T": "t", "S": "SPY", "p": 1.0, "s": 1})
+    assert msg["conditions"] is None
+    assert "malformed conditions shape" not in capsys.readouterr().out
+
+
 def test_alpaca_pump_skips_cleanly_without_keys(tmp_path, monkeypatch, capsys):
     """No keys is a SKIP with one printed line — Schwab capture must be unaffected."""
     import app.market_data.schwab.streaming.capture as d
