@@ -2112,9 +2112,6 @@ def _mkt_ctx_test_reset(srv, ctx=None, age_sec=0.0):
         srv._cached_mkt_ctx = ctx
         srv._cached_mkt_ctx_ts = (time.time() - age_sec) if ctx is not None else 0.0
         srv._mkt_ctx_refresh_inflight = False
-        srv._stale_mkt_ctx = None
-        srv._stale_mkt_ctx_ts = 0.0
-        srv._stale_mkt_ctx_generation = 0
         srv._mkt_ctx_fetch_error = None
 
 
@@ -2144,10 +2141,11 @@ def test_mkt_ctx_expired_does_not_serve_prior_as_current(monkeypatch):
     caller_thread = th.current_thread()
     first = srv._get_mkt_ctx(None)
     assert first is None
-    stale = srv._get_stale_mkt_ctx()
-    assert stale is not None
-    assert stale["role"] == "stale_historical"
-    assert stale["observation"] is old_ctx
+    with srv._cached_mkt_ctx_lock:
+        assert srv._cached_mkt_ctx is None, (
+            "expiry clears the current slot outright (PR #254 point 3) -- "
+            "nothing retains old_ctx anywhere once it expires"
+        )
     assert entered.wait(30), "background sweep never entered"
     served = [first] + [srv._get_mkt_ctx(None) for _ in range(4)]
     assert all(s is None for s in served), "a caller was handed prior/new context as current"

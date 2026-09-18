@@ -19,7 +19,6 @@ def test_fetch_and_store_mkt_ctx_failed_fetch_produces_no_current(monkeypatch):
     with srv._cached_mkt_ctx_lock:
         srv._cached_mkt_ctx = None
         srv._cached_mkt_ctx_ts = 0.0
-        srv._stale_mkt_ctx = None
         srv._mkt_ctx_fetch_error = None
     ctx = srv._fetch_and_store_mkt_ctx(None)
     assert ctx is None
@@ -45,12 +44,16 @@ def test_fetch_and_store_mkt_ctx_failure_does_not_persist_confluence(monkeypatch
     monkeypatch.setattr(srv, "get_db", lambda: _DB())
     with srv._cached_mkt_ctx_lock:
         srv._cached_mkt_ctx = None
-        srv._stale_mkt_ctx = None
     assert srv._fetch_and_store_mkt_ctx(None) is None
     assert persisted["n"] == 0
 
 
-def test_failed_fetch_demotes_previous_current_to_stale_not_current(monkeypatch):
+def test_failed_fetch_clears_previous_current_retained_nowhere(monkeypatch):
+    """No-fallback lock repair (2026-09-18, PR #254 point 3): a failed fetch used to
+    demote the outgoing observation into a `_stale_mkt_ctx` slot with its own getter --
+    retained state with zero production consumer, removed. The only required property
+    is that a failed fetch produces no CURRENT value; the prior observation is not
+    retained anywhere, not merely renamed."""
     from market_context import MarketContext
 
     prior = MarketContext(vix=18.5, vix_regime="Normal")
@@ -58,18 +61,14 @@ def test_failed_fetch_demotes_previous_current_to_stale_not_current(monkeypatch)
         srv._cached_mkt_ctx = prior
         srv._cached_mkt_ctx_ts = 123.0
         srv._cached_mkt_ctx_generation = 7
-        srv._stale_mkt_ctx = None
 
     monkeypatch.setattr(srv, "fetch_market_context", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("x")))
     assert srv._fetch_and_store_mkt_ctx(None) is None
-    stale = srv._get_stale_mkt_ctx()
-    assert stale is not None
-    assert stale["role"] == "stale_historical"
-    assert stale["observation"] is prior
-    assert stale["fetched_ts"] == 123.0
-    assert stale["generation"] == 7
     with srv._cached_mkt_ctx_lock:
         assert srv._cached_mkt_ctx is None
+        assert srv._cached_mkt_ctx_ts == 0.0
+    assert not hasattr(srv, "_stale_mkt_ctx"), "the unused retention slot must be gone, not just unread"
+    assert not hasattr(srv, "_get_stale_mkt_ctx"), "the getter with no production consumer must be gone"
 
 
 def test_fetch_and_store_refuses_error_bearing_context_as_current(monkeypatch):
@@ -87,7 +86,6 @@ def test_fetch_and_store_refuses_error_bearing_context_as_current(monkeypatch):
     monkeypatch.setattr(srv, "get_db", lambda: _DB())
     with srv._cached_mkt_ctx_lock:
         srv._cached_mkt_ctx = None
-        srv._stale_mkt_ctx = None
     assert srv._fetch_and_store_mkt_ctx(None) is None
     with srv._cached_mkt_ctx_lock:
         assert srv._cached_mkt_ctx is None
@@ -115,7 +113,6 @@ def test_get_mkt_ctx_expired_does_not_serve_prior_as_current(monkeypatch):
         srv._cached_mkt_ctx = old
         srv._cached_mkt_ctx_ts = _t.time() - srv.MKT_CTX_TTL - 5.0
         srv._mkt_ctx_refresh_inflight = False
-        srv._stale_mkt_ctx = None
 
     entered = []
 
@@ -126,16 +123,17 @@ def test_get_mkt_ctx_expired_does_not_serve_prior_as_current(monkeypatch):
     monkeypatch.setattr(srv, "fetch_market_context", _fake)
     current = srv._get_mkt_ctx(None)
     assert current is None
-    stale = srv._get_stale_mkt_ctx()
-    assert stale is not None
-    assert stale["observation"] is old
+    with srv._cached_mkt_ctx_lock:
+        assert srv._cached_mkt_ctx is None, (
+            "expiry clears the current slot outright (PR #254 point 3) -- "
+            "nothing retains the outgoing observation anymore"
+        )
     deadline = _t.time() + 5
     while _t.time() < deadline and not entered:
         _t.sleep(0.02)
     with srv._cached_mkt_ctx_lock:
         srv._mkt_ctx_refresh_inflight = False
         srv._cached_mkt_ctx = None
-        srv._stale_mkt_ctx = None
 
 
 def test_build_market_state_none_mkt_ctx_abstains():

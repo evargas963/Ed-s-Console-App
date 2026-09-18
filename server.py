@@ -4330,17 +4330,14 @@ _logger_lock:     threading.Lock   = threading.Lock()
 # This data is IDENTICAL regardless of which ticker we're processing.
 # Cache it once per cycle instead of re-fetching per ticker.
 #
-# Current vs stale are distinct observations. `_cached_mkt_ctx` is ONLY a
-# successful current fetch (within TTL). A failed fetch produces no current
-# MarketContext. The previous successful observation, if any, lives only on
-# `_stale_mkt_ctx` with its original timestamp and generation and must never
-# populate current fields.
+# `_cached_mkt_ctx` is ONLY a successful current fetch (within TTL). A failed or
+# expired fetch produces no current MarketContext (explicit unavailable via None) --
+# it does not retain the outgoing observation anywhere (see
+# _expire_current_mkt_ctx_locked's own docstring, PR #254 point 3: that retained
+# "stale" slot had no production consumer and was removed).
 _cached_mkt_ctx       = None     # current MarketContext or None
 _cached_mkt_ctx_ts    = 0.0      # epoch when current was fetched
 _cached_mkt_ctx_generation = 0
-_stale_mkt_ctx        = None     # last successful observation (never current)
-_stale_mkt_ctx_ts     = 0.0
-_stale_mkt_ctx_generation = 0
 _mkt_ctx_fetch_error  = None     # last failed-fetch disclosure (not a MarketContext)
 _cached_mkt_ctx_lock  = threading.Lock()
 MKT_CTX_TTL           = 25.0     # seconds — refresh once per cycle (LOG_INTERVAL=30s)
@@ -4586,42 +4583,33 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
         log.debug("view touch_seen failed ticker=%s: %s", t, e, exc_info=True)
 
 
-def _demote_current_mkt_ctx_to_stale_locked() -> None:
-    """Move the current observation to the stale slot. Caller holds the lock."""
-    global _cached_mkt_ctx, _cached_mkt_ctx_ts, _cached_mkt_ctx_generation
-    global _stale_mkt_ctx, _stale_mkt_ctx_ts, _stale_mkt_ctx_generation
+def _expire_current_mkt_ctx_locked() -> None:
+    """Clear the current-observation slot. Caller holds the lock.
+
+    No-fallback lock repair (2026-09-18, PR #254 point 3): this used to also copy
+    the outgoing observation into a `_stale_mkt_ctx` slot with its own
+    `_get_stale_mkt_ctx()` getter -- retained state with zero production
+    consumer (only tests ever called the getter; grepped repo-wide to confirm).
+    "Explicit UNAVAILABLE when the canonical value cannot be produced" is fully
+    satisfied by clearing `_cached_mkt_ctx` to None here; a database of no-longer-
+    current observations that nothing reads is not a required responsibility,
+    it is exactly the "future fallback path" the operator's audit warned against
+    -- a later change could too easily be tempted to wire it into a current-value
+    substitute. Deleted rather than left in place unused.
+    """
+    global _cached_mkt_ctx, _cached_mkt_ctx_ts
     if _cached_mkt_ctx is None:
         return
-    _stale_mkt_ctx = _cached_mkt_ctx
-    _stale_mkt_ctx_ts = _cached_mkt_ctx_ts
-    _stale_mkt_ctx_generation = _cached_mkt_ctx_generation
     _cached_mkt_ctx = None
     _cached_mkt_ctx_ts = 0.0
-
-
-def _get_stale_mkt_ctx():
-    """Last successful MarketContext observation, or None.
-
-    Returned only as a separately named stale/historical observation with its
-    original timestamp and generation. Must not populate current fields.
-    """
-    with _cached_mkt_ctx_lock:
-        if _stale_mkt_ctx is None:
-            return None
-        return {
-            "observation": _stale_mkt_ctx,
-            "role": "stale_historical",
-            "fetched_ts": _stale_mkt_ctx_ts,
-            "generation": _stale_mkt_ctx_generation,
-        }
 
 
 def _fetch_and_store_mkt_ctx(client):
     """One full market-context sweep + current-cache store + confluence persist.
 
-    A failed fetch produces no current MarketContext. The previous successful
-    observation is demoted to `_stale_mkt_ctx` with its original timestamp and
-    generation. Neutral error objects are never stored or persisted.
+    A failed fetch produces no current MarketContext (cleared to None, not
+    retained anywhere -- see _expire_current_mkt_ctx_locked). Neutral error
+    objects are never stored or persisted.
 
     No pcr/prev_pcr here: PCR is per-ticker (this ticker's own option-chain
     totals), computed and consumed entirely within server.py's per-ticker loop
@@ -4650,19 +4638,19 @@ def _fetch_and_store_mkt_ctx(client):
         if ctx.error:
             log.warning(f"fetch_market_context returned error: {ctx.error}")
             with _cached_mkt_ctx_lock:
-                _demote_current_mkt_ctx_to_stale_locked()
+                _expire_current_mkt_ctx_locked()
                 _mkt_ctx_fetch_error = f"mkt_ctx_fetch_error: {ctx.error}"
             return None
     except Exception as e:
         _err = f"{type(e).__name__}: {e}"
         log.warning(f"fetch_market_context failed: {_err}")
         with _cached_mkt_ctx_lock:
-            _demote_current_mkt_ctx_to_stale_locked()
+            _expire_current_mkt_ctx_locked()
             _mkt_ctx_fetch_error = f"mkt_ctx_fetch_exception: {_err}"
         return None
     with _cached_mkt_ctx_lock:
         if _cached_mkt_ctx is not None:
-            _demote_current_mkt_ctx_to_stale_locked()
+            _expire_current_mkt_ctx_locked()
         _cached_mkt_ctx = ctx
         _cached_mkt_ctx_ts = mkt_ctx_fetch_started_wall_ts
         _cached_mkt_ctx_generation += 1
@@ -4723,7 +4711,7 @@ def _get_mkt_ctx(client, *, force_sync=False):
         ):
             return _cached_mkt_ctx
         if _cached_mkt_ctx is not None:
-            _demote_current_mkt_ctx_to_stale_locked()
+            _expire_current_mkt_ctx_locked()
         if not force_sync:
             if not _mkt_ctx_refresh_inflight:
                 _mkt_ctx_refresh_inflight = True
