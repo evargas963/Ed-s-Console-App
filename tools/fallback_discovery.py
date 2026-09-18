@@ -627,6 +627,19 @@ _HANDLERS = {
 #: a confirmed live loader-interpreted surface, not a hypothetical one.
 _DECLARED_NO_OP_EXTENSIONS = {".yaml", ".yml", ".toml", ".css"}
 
+#: The ONLY pattern types capable of self-matching prose/fixture TEXT rather than a real
+#: code SHAPE: SQL_COALESCE_STYLE fires on any string constant containing "COALESCE("
+#: etc regardless of why the string exists, and IMPUTATION fires on any `.fillna`-named
+#: call. Every other pattern (OR_LADDER, TERNARY, DICT_GET_DEFAULT, GETATTR_DEFAULT,
+#: EXCEPT_SUBSTITUTE) requires an actual matching AST SHAPE -- a docstring or evidence
+#: string that merely MENTIONS "x or y" or "getattr(...)" as prose does not parse as one
+#: of those node types, so those patterns cannot self-match meta-tooling's own text the
+#: way the two text patterns can. Confirmed empirically (2026-09-18, PR #254 point 1):
+#: scanning every currently-meta-tooling-excluded file with no exclusion at all produces
+#: SQL_COALESCE_STYLE hits and NOTHING else -- zero OR_LADDER/TERNARY/DICT_GET_DEFAULT/
+#: GETATTR_DEFAULT/EXCEPT_SUBSTITUTE hits across all of them.
+_META_TOOLING_TEXT_ONLY_PATTERNS = {"SQL_COALESCE_STYLE", "IMPUTATION"}
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -643,14 +656,7 @@ def main() -> int:
     for rel in _tracked_files():
         if not _in_scope(rel):
             continue
-        if rel in _META_TOOLING_EXCLUDED or rel.startswith(_TEST_PROOF_NAMESPACE_PREFIX):
-            # This tool's own governance meta-tooling, and its mutation/negative-control
-            # proof-test namespace (see the module docstring): their content is prose or
-            # fixture strings ABOUT fallback shapes found elsewhere, not fallback logic
-            # itself. Recorded distinctly (never silently dropped) so the report itself
-            # proves the exclusion is narrow and enumerable, not a silent skip.
-            meta_tooling_excluded[rel] = meta_tooling_excluded.get(rel, 0) + 1
-            continue
+        is_meta_tooling = rel in _META_TOOLING_EXCLUDED or rel.startswith(_TEST_PROOF_NAMESPACE_PREFIX)
         path = REPO / rel
         ext = path.suffix.lower()
         if ext == ".py":
@@ -663,6 +669,25 @@ def main() -> int:
                     "adjudication": "NOT_PROVEN",
                     "evidence": "file could not be read as UTF-8 -- unscanned surface",
                 })
+                continue
+            if is_meta_tooling:
+                # No-fallback lock repair (2026-09-18, PR #254 point 1): this file's
+                # own governance/proof role makes SQL_COALESCE_STYLE and IMPUTATION
+                # hits self-referential noise (see _META_TOOLING_TEXT_ONLY_PATTERNS'
+                # own docstring) -- but excluding the WHOLE FILE from scanning, as this
+                # gate previously did, silently concealed every OTHER pattern type too,
+                # exactly the "excludes complete executable test files... can conceal
+                # real fallback behavior" defect the operator named. Now scans the file
+                # in full and filters out ONLY the two self-matching text patterns,
+                # keeping every AST-structural pattern (OR_LADDER, TERNARY,
+                # DICT_GET_DEFAULT, GETATTR_DEFAULT, EXCEPT_SUBSTITUTE) fully in scope.
+                all_hits = scan_python(rel, src)
+                kept = [h for h in all_hits if h["pattern"] not in _META_TOOLING_TEXT_ONLY_PATTERNS]
+                filtered_count = len(all_hits) - len(kept)
+                if filtered_count:
+                    meta_tooling_excluded[rel] = meta_tooling_excluded.get(rel, 0) + filtered_count
+                scanned_by_type["python"] = scanned_by_type.get("python", 0) + 1
+                candidates.extend(kept)
                 continue
             scanned_by_type["python"] = scanned_by_type.get("python", 0) + 1
             candidates.extend(scan_python(rel, src))

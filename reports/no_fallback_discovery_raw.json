@@ -1,7 +1,7 @@
 {
   "scanned_by_type": {
     "json": 282,
-    "python": 1262,
+    "python": 1270,
     "javascript": 44,
     "sql": 2,
     "batch": 3,
@@ -29,14 +29,11 @@
   },
   "unscanned_unknown_extensions": [],
   "meta_tooling_excluded_from_scan": {
-    "tests/test_fallback_discovery_fingerprint_identity.py": 1,
-    "tests/test_fallback_discovery_json_sql_registry.py": 1,
-    "tests/test_no_fallback_inventory_lineage_v1.py": 1,
-    "tests/test_no_fallback_lock_v1.py": 1,
-    "tools/apply_adjudication.py": 1,
-    "tools/check_fallback_discovery_completeness.py": 1,
-    "tools/fallback_discovery.py": 1,
-    "tools/reconcile_no_fallback_inventory_lineage.py": 1
+    "tests/test_fallback_discovery_fingerprint_identity.py": 3,
+    "tests/test_fallback_discovery_json_sql_registry.py": 3,
+    "tests/test_no_fallback_lock_v1.py": 9,
+    "tools/apply_adjudication.py": 21,
+    "tools/fallback_discovery.py": 1
   },
   "reports_dir_json_excluded_from_sql_scan": {
     "reports/MODEL_STACK_AUDIT_ARTIFACT_AND_SCOPE_PROOF_RECOVERY_V1.json": 1,

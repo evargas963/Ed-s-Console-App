@@ -97,6 +97,28 @@ live under `reports/`, e.g. `reports/audit_round2_scripts/*.py`, are unaffected)
 the exclusion is counted and reported (`reports_dir_json_excluded_from_sql_scan`), never
 silently dropped. Proof: `tests/test_fallback_discovery_json_sql_registry.py`.
 
+**Point 1 closure (2026-09-18): "The no-fallback scanner excludes complete executable
+test files. That can conceal real fallback behavior."** Confirmed: the meta-tooling /
+test-proof exclusion (`tools/fallback_discovery.py`, `tools/apply_adjudication.py`,
+`tests/test_no_fallback_lock_v1.py`, and the other governance/proof files) previously
+skipped the WHOLE FILE via a pre-scan `continue`, hiding every pattern type — not just
+the SQL_COALESCE_STYLE/IMPUTATION hits that actually needed filtering. Verified
+empirically by scanning all 8 then-excluded files with no exclusion at all: every single
+hit across all of them was `SQL_COALESCE_STYLE` — zero `OR_LADDER`/`TERNARY`/
+`DICT_GET_DEFAULT`/`GETATTR_DEFAULT`/`EXCEPT_SUBSTITUTE` hits anywhere, confirming (not
+merely arguing) that the coarse exclusion was hiding nothing real today, but was
+architecturally capable of hiding something real tomorrow. Fixed by making the
+exclusion pattern-scoped instead of file-scoped: these files are now scanned in full,
+and only their `SQL_COALESCE_STYLE`/`IMPUTATION` hits are filtered post-scan (the two
+patterns that match on TEXT content and can self-trigger on prose/fixture strings — the
+other five patterns require an actual AST shape a docstring or evidence string cannot
+produce). `candidate_count` is unchanged (1132) since these files' non-text-pattern
+population was genuinely zero, not merely unmeasured. Proof:
+`tests/test_fallback_discovery_fingerprint_identity.py::test_meta_tooling_files_are_still_scanned_for_non_text_patterns`
+(a planted `OR_LADDER` alongside a self-matching SQL string in the same source: the
+former is kept, the latter is filtered — using the real `_META_TOOLING_TEXT_ONLY_PATTERNS`
+constant, not a re-declared copy).
+
 **Why REPAIRED dropped from a previously-reported 115 to 3, and total candidates from
 1226 to 1125 — a candidate-identity correction, not a regression (operator point 5,
 2026-09-17):** the discovery scanner previously assigned each candidate a sequential

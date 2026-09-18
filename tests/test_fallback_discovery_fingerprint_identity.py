@@ -137,11 +137,14 @@ def test_sql_string_actually_returned_is_still_flagged():
 
 def test_meta_tooling_and_test_proof_namespace_are_recorded_not_silently_skipped():
     """The governance meta-tooling files and the mission's own mutation/negative-control
-    proof namespace are excluded from the census (their content is prose/fixture text
-    ABOUT fallback shapes, not fallback logic) -- but the exclusion must be enumerable in
-    the report, never a silent drop. Runs the real driver in-process (monkeypatched argv/
-    cwd) against the real repo tree, proving the actual main() skip path, not just the
-    membership tests in isolation."""
+    proof namespace have their SQL_COALESCE_STYLE/IMPUTATION hits filtered from the
+    census (their content is prose/fixture text ABOUT those two patterns, not fallback
+    logic) -- but the filtering must be enumerable in the report, never a silent drop.
+    Since PR #254 point 1 this is a per-PATTERN filter, not a whole-file skip -- see
+    test_meta_tooling_files_are_still_scanned_for_non_text_patterns below for the
+    coverage proof that motivated the change. Runs the real driver in-process
+    (monkeypatched argv/cwd) against the real repo tree, proving the actual main() path,
+    not just the membership tests in isolation."""
     import importlib
     import json
 
@@ -163,6 +166,37 @@ def test_meta_tooling_and_test_proof_namespace_are_recorded_not_silently_skipped
     finally:
         sys.argv = old_argv
         out_path.unlink(missing_ok=True)
+
+
+def test_meta_tooling_files_are_still_scanned_for_non_text_patterns():
+    """No-fallback lock repair (2026-09-18, PR #254 point 1): "The no-fallback scanner
+    excludes complete executable test files. That can conceal real fallback behavior."
+    The prior exclusion skipped the WHOLE FILE for every governance meta-tooling /
+    test-proof file, not just its self-matching SQL_COALESCE_STYLE/IMPUTATION hits --
+    silently hiding any OR_LADDER, TERNARY, DICT_GET_DEFAULT, GETATTR_DEFAULT, or
+    EXCEPT_SUBSTITUTE that happened to also live in one of those files. Proves the
+    ACTUAL filter rule (the same _META_TOOLING_TEXT_ONLY_PATTERNS constant main() uses,
+    not a re-declared copy) on a file carrying BOTH shapes at once: a genuine OR_LADDER
+    is kept, a self-matching SQL string is filtered -- confirming the filter is scoped
+    to specific patterns, never the whole file."""
+    from tools.fallback_discovery import _META_TOOLING_TEXT_ONLY_PATTERNS
+
+    src = (
+        "def build(mkt_ctx):\n"
+        "    # A self-matching evidence string, same shape as the real governance files:\n"
+        "    _evidence = \"COALESCE(spot, 0) treats a missing reading as zero\"\n"
+        "    spot = mkt_ctx.spot or 100.0\n"
+        "    return spot, _evidence\n"
+    )
+    hits = scan_python("tools/apply_adjudication.py", src)
+    patterns = {h["pattern"] for h in hits}
+    assert "OR_LADDER" in patterns, "a real OR_LADDER must be discovered regardless of file"
+    assert "SQL_COALESCE_STYLE" in patterns, "the self-match must still exist pre-filter"
+
+    kept = [h for h in hits if h["pattern"] not in _META_TOOLING_TEXT_ONLY_PATTERNS]
+    kept_patterns = {h["pattern"] for h in kept}
+    assert "OR_LADDER" in kept_patterns, "the real finding must survive the filter"
+    assert "SQL_COALESCE_STYLE" not in kept_patterns, "the self-match must be filtered"
 
 
 def test_adjudication_target_validation_distinguishes_legacy_from_shifted():
