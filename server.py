@@ -615,10 +615,22 @@ def flatten_chain_contracts(c_json: dict) -> list[dict]:
     Single source: this was inline inside _fetch_state and is now shared with the
     terrain loop, so both consume the chain identically. Schwab CSV authority: reads
     chains.callExpDateMap.* / chains.putExpDateMap.* only; no derivation.
+
+    A malformed response (not a JSON object) is a vendor/parse anomaly, never a genuine
+    "this chain has zero contracts" answer -- every real call site fetches this from a
+    200-status HTTP response's own .json() immediately before calling this, so a non-dict
+    result here means the vendor body itself was not the expected shape. Every call site
+    already wraps this in try/except (or is a route handler where an uncaught error
+    becomes a real 500), so raising here surfaces the anomaly instead of a caller reading
+    an empty list as "confirmed, no contracts."
     """
-    out: list[dict] = []
     if not isinstance(c_json, dict):
-        return out
+        raise TypeError(
+            f"flatten_chain_contracts: expected a chain response dict, got "
+            f"{type(c_json).__name__} -- a malformed vendor body is not the same fact "
+            f"as a chain with zero contracts"
+        )
+    out: list[dict] = []
     for side_key in ("callExpDateMap", "putExpDateMap"):
         side_map = c_json.get(side_key) or {}
         if not isinstance(side_map, dict):
