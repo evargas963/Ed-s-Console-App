@@ -199,6 +199,38 @@ def test_meta_tooling_files_are_still_scanned_for_non_text_patterns():
     assert "SQL_COALESCE_STYLE" not in kept_patterns, "the self-match must be filtered"
 
 
+def test_except_substitute_exempts_bare_none_assignment_like_return_none():
+    """No-fallback lock repair (2026-09-18, PR #254 point 8 audit): `return None` on
+    failure was already exempted (an explicit UNAVAILABLE marker is never a candidate)
+    but a plain `x = None` assignment had no equivalent exemption -- the identical
+    disclosure idiom, just via assignment. Confirmed via audit that 15 of 25
+    EXCEPT_SUBSTITUTE NOT_PROVEN candidates were exactly this shape, most already
+    adjudicated (or heading toward) NOT_FALLBACK/'plausibly fine, needs a trace' --
+    the fix confirms that judgment architecturally rather than needing a trace per site."""
+    src_none = (
+        "def f(mkt_ctx):\n"
+        "    try:\n"
+        "        gex_magnitude = compute()\n"
+        "    except Exception:\n"
+        "        gex_magnitude = None\n"
+        "    return gex_magnitude\n"
+    )
+    assert scan_python("t.py", src_none) == [], "a bare None assignment must not be flagged"
+
+    src_real = (
+        "def g(mkt_ctx):\n"
+        "    try:\n"
+        "        gex_magnitude = compute()\n"
+        "    except Exception:\n"
+        "        gex_magnitude = 'negligible'\n"
+        "    return gex_magnitude\n"
+    )
+    hits = scan_python("t.py", src_real)
+    assert any(h["pattern"] == "EXCEPT_SUBSTITUTE" for h in hits), (
+        "a real fabricated-value substitution must still be flagged"
+    )
+
+
 def test_adjudication_target_validation_distinguishes_legacy_from_shifted():
     """apply_adjudication.py's own point-5 guard: a LEGACY-format (FB-NNNNN) id with no
     current match is the expected, benign steady state of a repair that deleted the

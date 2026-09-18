@@ -353,7 +353,21 @@ def scan_python(rel: str, src: str) -> list[dict]:
                         isinstance(stmt, ast.Return) and stmt.value is not None
                         and not (isinstance(stmt.value, ast.Constant) and stmt.value.value is None)
                     )
-                    substitute_assign = isinstance(stmt, (ast.Assign, ast.AugAssign))
+                    # No-fallback lock repair (2026-09-18, PR #254 point 8 audit): `return
+                    # None` on failure was already exempted above (an explicit
+                    # UNAVAILABLE marker is the mission's own required shape, never a
+                    # candidate) -- but a plain `x = None` assignment had no equivalent
+                    # exemption, flagging the identical "disclose failure honestly"
+                    # idiom as if it were a substitution. Confirmed via audit: 15 of 25
+                    # EXCEPT_SUBSTITUTE NOT_PROVEN candidates were exactly this shape
+                    # (e.g. market_state.py's `ms.gex_magnitude = None`, itself a
+                    # REPAIRED site from this same mission -- assigning None on failure
+                    # was the FIX, not a new violation). AugAssign (`+=` etc.) has no
+                    # literal-None equivalent to exempt (there is no meaningful "+= None").
+                    substitute_assign = isinstance(stmt, ast.Assign) and not (
+                        isinstance(stmt.value, ast.Constant) and stmt.value.value is None
+                    )
+                    substitute_assign = substitute_assign or isinstance(stmt, ast.AugAssign)
                     if substitute_return or substitute_assign:
                         target = stmt.value if substitute_return else (
                             stmt.targets[0] if isinstance(stmt, ast.Assign) else stmt.target)

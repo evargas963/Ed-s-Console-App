@@ -1,14 +1,41 @@
 # No-fallback mechanical lock — grouped production repair plan
 
-Generated from `reports/no_fallback_inventory.json`. **Status 2026-09-18 (post-JSON-SQL-
-registry discovery AND repair, PR #254 point 7 / original mission point 6):** current
-counts: 3 `REPAIRED`, 41 `NOT_FALLBACK`, **0 `FALLBACK`**, 1088 `NOT_PROVEN`, of 1132
-candidates (`REPAIRED + NOT_FALLBACK + FALLBACK + NOT_PROVEN == candidate_count`,
-checked mechanically by `tools/apply_adjudication.py`'s own invariant assertion — it
-refuses to write the inventory if this ever fails to hold). **Currently adjudicated
-FALLBACK: 0. NOT_PROVEN: 1088. Overall: still NOT_PROVEN** (1088 candidates remain
-unresolved) **— but the JSON-registry defect this discovery pass surfaced is now fully
-repaired, not merely rediscovered.**
+Generated from `reports/no_fallback_inventory.json`. **Status 2026-09-18 (post-detector-
+precision fix, PR #254 point 8 audit):** current counts: 3 `REPAIRED`, 39 `NOT_FALLBACK`,
+**0 `FALLBACK`**, 1073 `NOT_PROVEN`, of 1115 candidates
+(`REPAIRED + NOT_FALLBACK + FALLBACK + NOT_PROVEN == candidate_count`, checked
+mechanically by `tools/apply_adjudication.py`'s own invariant assertion — it refuses to
+write the inventory if this ever fails to hold). **Currently adjudicated FALLBACK: 0.
+NOT_PROVEN: 1073. Overall: still NOT_PROVEN** (1073 candidates remain unresolved) **—
+the JSON-registry defect PR #254 point 7 surfaced is fully repaired, and this pass
+additionally reduced NOT_PROVEN by 15 through a genuine discovery-precision fix (not by
+hiding anything — see below).**
+
+**Why candidate_count dropped from 1132 to 1115, and NOT_PROVEN from 1088 to 1073 —
+closing a real discovery-tool asymmetry, not narrowing scope (2026-09-18, found while
+auditing point 8's EXCEPT_SUBSTITUTE backlog):** the `EXCEPT_SUBSTITUTE` detector
+already exempted `return None` on a failure path from ever becoming a candidate (an
+explicit UNAVAILABLE marker is the mission's own required shape, never a substitution)
+— but had no equivalent exemption for the identical idiom expressed as a plain
+assignment, `x = None`. Audited the 25 NOT_PROVEN `EXCEPT_SUBSTITUTE` candidates
+directly: 15 were exactly this shape (`market_state.py`'s `ms.gex_magnitude = None`,
+`server.py`'s `_gamma_surface`/`_contract_admission`/`_vstatus = None`,
+`app/options/order_flow/streaming.py`'s `chain_db = None`, several
+`calibration/repair_canonical_1m_*.py` report-dict fields, `lstm_model.py`/
+`transformer_train.py`'s `best_state = None`, and others). Every one of these ids was
+ALREADY heading toward `NOT_FALLBACK` or a "plausibly fine, needs a downstream trace"
+`NOT_PROVEN` in their existing evidence text (e.g. "plausibly reads as 'not yet
+observed/computed' rather than a fabricated valid value") — the detector fix confirms
+that judgment architecturally instead of requiring a per-site trace for a pattern that
+is categorically safe by construction: `None` can never be mistaken for a genuinely
+computed value the way `"negligible"`/`0`/`[]` can. `AugAssign` (`+=` etc.) has no
+literal-None equivalent and was left fully in scope. No production code changed in this
+pass — only the discovery detector and the now-stale adjudication references to the 11
+ids that stopped being candidates entirely (their reasoning is preserved as comments at
+each retired `_mark()` call site, not deleted). Proof:
+`tests/test_fallback_discovery_fingerprint_identity.py::test_except_substitute_exempts_bare_none_assignment_like_return_none`
+(a bare `None` assignment is never flagged; a real substitution like `"negligible"`
+still is).
 
 **Why FALLBACK briefly went from 0 to 23, then back to 0 — a real, previously-invisible
 defect surfaced by closing a discovery gap, then genuinely repaired, not a regression

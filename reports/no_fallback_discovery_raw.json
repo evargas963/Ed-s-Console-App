@@ -29,7 +29,7 @@
   },
   "unscanned_unknown_extensions": [],
   "meta_tooling_excluded_from_scan": {
-    "tests/test_fallback_discovery_fingerprint_identity.py": 3,
+    "tests/test_fallback_discovery_fingerprint_identity.py": 4,
     "tests/test_fallback_discovery_json_sql_registry.py": 3,
     "tests/test_no_fallback_lock_v1.py": 9,
     "tools/apply_adjudication.py": 21,
@@ -388,7 +388,7 @@
     "reports/ui_transport/universal_card_fidelity_2026-07-09-rth-autonomous-day.json": 1,
     "reports/ui_transport/universal_card_fidelity_2026-07-10.json": 1
   },
-  "candidate_count": 1132,
+  "candidate_count": 1115,
   "candidates": [
     {
       "file": "active_bundle_contract.py",
@@ -809,34 +809,6 @@
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
       "fingerprint": "71f0a64dd83646b2024347a1a78c7f341ac8a2514e11a480e1498a05a5b74ff1",
       "id": "FB-71f0a64dd8"
-    },
-    {
-      "file": "app/options/order_flow/streaming.py",
-      "line": 896,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "chain_db = None",
-      "semantic_field_guess": "chain_db",
-      "context": "contract_matches_underlying",
-      "normalized_expr": "Assign(targets=[Name(id='chain_db', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "ae2ec7e3cd6c19569f261ed8a9683b7d7cc8ca3f7f26db26639abcaf1519d6c6",
-      "id": "FB-ae2ec7e3cd"
-    },
-    {
-      "file": "app/options/order_flow/streaming.py",
-      "line": 946,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "chain_db = None",
-      "semantic_field_guess": "chain_db",
-      "context": "_ensure_default_option_contract_for_ticker",
-      "normalized_expr": "Assign(targets=[Name(id='chain_db', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "0fcc76485aaacdc12f4ea6d4630685c830d5438f0dd69b5c6dea55bb089267b4",
-      "id": "FB-0fcc76485a"
     },
     {
       "file": "app/options/order_flow/streaming.py",
@@ -1313,20 +1285,6 @@
       "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
       "fingerprint": "e312cd299953098cf3c47110af63df713341ac283e105630e9656563f6083c44",
       "id": "FB-e312cd2999"
-    },
-    {
-      "file": "bar_rehydration_issue19_v1.py",
-      "line": 94,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "last_body = None",
-      "semantic_field_guess": "last_body",
-      "context": "_fetch_minute_window",
-      "normalized_expr": "Assign(targets=[Name(id='last_body', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "3f2bee783cd2a2caea2361885ac1440c46fb084f80c26483901e867faec6ebb7",
-      "id": "FB-3f2bee783c"
     },
     {
       "file": "bar_rehydration_issue19_v1.py",
@@ -2016,34 +1974,6 @@
     },
     {
       "file": "calibration/repair_canonical_1m_edge_carry_v1.py",
-      "line": 141,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "rep[\"tickers_touched\"] = None",
-      "semantic_field_guess": "tickers_touched",
-      "context": "run_repair",
-      "normalized_expr": "Assign(targets=[Subscript(value=Name(id='rep', ctx=Load()), slice=Constant(value='tickers_touched'), ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "36b658d2215a1dae42aa2e670b1bd1ec4df6ad4ba0663c572b1bb8f71fa2b21f",
-      "id": "FB-36b658d221"
-    },
-    {
-      "file": "calibration/repair_canonical_1m_edge_carry_v1.py",
-      "line": 142,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "rep[\"governed_outcome_refresh_tickers\"] = None",
-      "semantic_field_guess": "governed_outcome_refresh_tickers",
-      "context": "run_repair",
-      "normalized_expr": "Assign(targets=[Subscript(value=Name(id='rep', ctx=Load()), slice=Constant(value='governed_outcome_refresh_tickers'), ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "adce905a20020bce31f4b85c7c430a4c28c67f41f5a2d8d54df738122e836022",
-      "id": "FB-adce905a20"
-    },
-    {
-      "file": "calibration/repair_canonical_1m_edge_carry_v1.py",
       "line": 162,
       "language": "python",
       "pattern": "GETATTR_DEFAULT",
@@ -2055,48 +1985,6 @@
       "evidence": "getattr(obj, name, default) with a non-None default on a name matching a domain-semantic term",
       "fingerprint": "93ca20babaddfbad0ed1d075029e4150cc7f5a58bc123ee28668f72043a7e492",
       "id": "FB-93ca20baba"
-    },
-    {
-      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
-      "line": 162,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "rep[\"tickers_touched\"] = None",
-      "semantic_field_guess": "tickers_touched",
-      "context": "run_repair",
-      "normalized_expr": "Assign(targets=[Subscript(value=Name(id='rep', ctx=Load()), slice=Constant(value='tickers_touched'), ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "eb1589f63cfbdc5c21c7ec4d89544f336e0aaa2f0c501c3a592ecd4beb75e20b",
-      "id": "FB-eb1589f63c"
-    },
-    {
-      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
-      "line": 163,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "rep[\"governed_outcome_refresh_tickers\"] = None",
-      "semantic_field_guess": "governed_outcome_refresh_tickers",
-      "context": "run_repair",
-      "normalized_expr": "Assign(targets=[Subscript(value=Name(id='rep', ctx=Load()), slice=Constant(value='governed_outcome_refresh_tickers'), ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "8883ea5747bbebbffd736340040740b50a007c7acbb060dc06db94cc0ee1a519",
-      "id": "FB-8883ea5747"
-    },
-    {
-      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
-      "line": 164,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "rep[\"fill_outcomes_tickers\"] = None",
-      "semantic_field_guess": "fill_outcomes_tickers",
-      "context": "run_repair",
-      "normalized_expr": "Assign(targets=[Subscript(value=Name(id='rep', ctx=Load()), slice=Constant(value='fill_outcomes_tickers'), ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "9d1e6a5a4c28912f002727ce49712a305be897086dcb008e970f928026238bc0",
-      "id": "FB-9d1e6a5a4c"
     },
     {
       "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
@@ -3527,20 +3415,6 @@
       "id": "FB-cc5cba21dd"
     },
     {
-      "file": "lstm_model.py",
-      "line": 572,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "best_state = None",
-      "semantic_field_guess": "best_state",
-      "context": "train_lstm",
-      "normalized_expr": "Assign(targets=[Name(id='best_state', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "f8838482bf8645603c4c11b12057a87cdbb41ca1251d7d881ef0493d0d622509",
-      "id": "FB-f8838482bf"
-    },
-    {
       "file": "market_context.py",
       "line": 319,
       "language": "python",
@@ -3707,20 +3581,6 @@
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
       "fingerprint": "06507286fcf4130d4b019f103a1e2a0df4a2c5a52b99a3260c79830c68556c77",
       "id": "FB-06507286fc"
-    },
-    {
-      "file": "market_state.py",
-      "line": 1172,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "ms.gex_magnitude = None",
-      "semantic_field_guess": "gex_magnitude",
-      "context": "build_market_state",
-      "normalized_expr": "Assign(targets=[Attribute(value=Name(id='ms', ctx=Load()), attr='gex_magnitude', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "86886918dc1517035418bbbff19e54d82ad1d8aee5af2761886a24faa3f76929",
-      "id": "FB-86886918dc"
     },
     {
       "file": "market_state.py",
@@ -6734,20 +6594,6 @@
     },
     {
       "file": "server.py",
-      "line": 4868,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "_vstatus = None",
-      "semantic_field_guess": "_vstatus",
-      "context": "_logger_fetch_and_log",
-      "normalized_expr": "Assign(targets=[Name(id='_vstatus', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "565d3499ab6f7efea49639967225b84c7c4454cfa5499c31161c461ce5dc814e",
-      "id": "FB-565d3499ab"
-    },
-    {
-      "file": "server.py",
       "line": 5561,
       "language": "python",
       "pattern": "OR_LADDER",
@@ -7504,20 +7350,6 @@
     },
     {
       "file": "server.py",
-      "line": 13641,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "payload[\"_gamma_surface\"] = None",
-      "semantic_field_guess": "_gamma_surface",
-      "context": "_terrain_refresh_one",
-      "normalized_expr": "Assign(targets=[Subscript(value=Name(id='payload', ctx=Load()), slice=Constant(value='_gamma_surface'), ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "b5e185edfdb8814c849a2640010337e13231b88af4a97b7cf5511f3073f82620",
-      "id": "FB-b5e185edfd"
-    },
-    {
-      "file": "server.py",
       "line": 14510,
       "language": "python",
       "pattern": "OR_LADDER",
@@ -7683,20 +7515,6 @@
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
       "fingerprint": "64324c8df328abfcf87bb6c44408915ae92b8dd42b7ebedf0fd6a22c16fd5ca0",
       "id": "FB-64324c8df3"
-    },
-    {
-      "file": "server.py",
-      "line": 15792,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "_contract_admission = None",
-      "semantic_field_guess": "_contract_admission",
-      "context": "get_options_gamma_surface",
-      "normalized_expr": "Assign(targets=[Name(id='_contract_admission', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "86ded76db535f6d6fff99e1ccf8fcfaeb1016a72e38f3fb991632ea280230a51",
-      "id": "FB-86ded76db5"
     },
     {
       "file": "server.py",
@@ -13607,20 +13425,6 @@
       "id": "FB-c8644d8d5d"
     },
     {
-      "file": "tools/ingest_1m_to_staging.py",
-      "line": 145,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "last_body = None",
-      "semantic_field_guess": "last_body",
-      "context": "fetch_schwab_minute_window",
-      "normalized_expr": "Assign(targets=[Name(id='last_body', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "7f1f21763631c28b5e3b26563c3ce2a1a2ac6262162157b1ed747b1906c7ffbb",
-      "id": "FB-7f1f217636"
-    },
-    {
       "file": "tools/inspect_similar_set.py",
       "line": 99,
       "language": "python",
@@ -13927,20 +13731,6 @@
       "evidence": ".get(key, default) with a non-None default on a key matching a domain-semantic term",
       "fingerprint": "2d3fe94226a929940de843c19ce9b917137a84d19d1a4d5018a901e1ccfc6d8b",
       "id": "FB-2d3fe94226"
-    },
-    {
-      "file": "tools/liquidity_strike_ic_v1.py",
-      "line": 547,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "regime = None",
-      "semantic_field_guess": "regime",
-      "context": "run",
-      "normalized_expr": "Assign(targets=[Name(id='regime', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "3fa90055dc92b198298fd755bd8d0c956bb175b42da0bdc295dac20cb9679681",
-      "id": "FB-3fa90055dc"
     },
     {
       "file": "tools/liquidity_strike_ic_v1.py",
@@ -14669,20 +14459,6 @@
       "evidence": "conditional expression whose primary branch's name matches a domain-semantic term",
       "fingerprint": "8b2bab5d39ab65954d1fbec58b14c7a65ca0d4b772ddb4008044b936e50b5fe3",
       "id": "FB-8b2bab5d39"
-    },
-    {
-      "file": "tools/rth_completeness_check_v1.py",
-      "line": 208,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "vendor = None",
-      "semantic_field_guess": "vendor",
-      "context": "vendor_reconcile",
-      "normalized_expr": "Assign(targets=[Name(id='vendor', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "f788e300be470705df28dc63ae9be67c53778efc57ab08576a61c56b030c4bc9",
-      "id": "FB-f788e300be"
     },
     {
       "file": "tools/rth_completeness_check_v1.py",
@@ -15621,20 +15397,6 @@
       "evidence": "boolean-or ladder whose leading operand's name matches a domain-semantic term",
       "fingerprint": "ef5d8abed181c5ffdaf9d0c1552a2e0cb28c3acd1a8da0542f5afc05da821f6a",
       "id": "FB-ef5d8abed1"
-    },
-    {
-      "file": "transformer_train.py",
-      "line": 504,
-      "language": "python",
-      "pattern": "EXCEPT_SUBSTITUTE",
-      "snippet": "best_state = None",
-      "semantic_field_guess": "best_state",
-      "context": "train_transformer",
-      "normalized_expr": "Assign(targets=[Name(id='best_state', ctx=Store())], value=Constant(value=None))",
-      "adjudication": "NOT_PROVEN",
-      "evidence": "broad except handler returns/assigns a substitute value for a domain-semantic field instead of propagating/marking failure",
-      "fingerprint": "c6358fe6d317a92f6ef5268d941b28371a9dcba8e490e59786f48af48a3f5533",
-      "id": "FB-c6358fe6d3"
     },
     {
       "file": "v2_decision/a1_conformal_artifact_loader.py",

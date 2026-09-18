@@ -192,32 +192,40 @@ _mark(["FB-77cd99dc00-2", "FB-77cd99dc00"], "NOT_PROVEN",
 
 # ---------------------------------------------------------------------------
 # EXCEPT_SUBSTITUTE group
+#
+# No-fallback lock repair (2026-09-18, PR #254 point 8 audit): the discovery scanner's
+# EXCEPT_SUBSTITUTE detector exempted `return None` on failure from the start (an
+# explicit UNAVAILABLE marker is never a candidate) but had no equivalent exemption for
+# a plain `x = None` assignment -- the identical disclosure idiom, just via assignment
+# instead of return. Fixed in fallback_discovery.py (see _META_TOOLING_TEXT_ONLY_PATTERNS'
+# neighboring comment for the full empirical audit). Every id below that this fix retired
+# (no longer a candidate at all, so nothing to adjudicate) was ALREADY heading toward
+# NOT_FALLBACK or a "plausibly fine, needs a downstream trace" NOT_PROVEN -- the
+# detector fix confirms that judgment architecturally instead of requiring an individual
+# per-site trace for a pattern that is categorically safe (None can never be mistaken
+# for a computed value, unlike "negligible"/0/[] which all look like real answers).
 _mark(["FB-ca215923d9", "FB-cc26c6d515", "FB-54d8938517", "FB-cb77bdf68f", "FB-f4a5a4e72e", "FB-650c7e4a03", "FB-0ba3d519bb",
        "FB-eadbd2a07c", "FB-5e2a25200a", "FB-2001efdb83", "FB-524ff5c377", "FB-823dd06883", "FB-4dfeb14b85", "FB-01f80a9ce9",
-       "FB-e312cd2999", "FB-3f2bee783c", "FB-c8644d8d5d", "FB-7f1f217636"], "NOT_FALLBACK",
+       "FB-e312cd2999", "FB-c8644d8d5d"], "NOT_FALLBACK",
       "Except handler records/discloses the FAILURE ITSELF (an explicit error string, a "
       "named fail-closed/error status, an error counter, or a fail-closed object flag) "
       "rather than substituting a value that could be mistaken for a successful read -- "
       "exactly the disclosure behavior the mission requires, not a violation of it.",
       "none", "correct_failure_disclosure")
-_mark(["FB-b3df147452", "FB-ae2ec7e3cd", "FB-0fcc76485a", "FB-f8838482bf", "FB-c6358fe6d3", "FB-3fa90055dc", "FB-565d3499ab",
-       "FB-888d03613e"], "NOT_PROVEN",
-      "Except/init-time assignment to None or an empty sentinel that PLAUSIBLY reads as "
-      "'not yet observed/computed' rather than a fabricated valid value, but the downstream "
-      "consumer was not traced in this pass to confirm it is never treated as a genuine "
-      "reading.",
-      "Trace each downstream consumer to confirm None/empty is always checked and disclosed, "
-      "never silently used as a real value.",
+_mark(["FB-b3df147452", "FB-888d03613e"], "NOT_PROVEN",
+      "Except/init-time assignment to an empty sentinel (not a bare None -- e.g. an empty "
+      "collection/dict/string) that PLAUSIBLY reads as 'not yet observed/computed' rather "
+      "than a fabricated valid value, but the downstream consumer was not traced in this "
+      "pass to confirm it is never treated as a genuine reading. (This group formerly also "
+      "carried the bare-None-assignment ids; those are no longer candidates at all -- see "
+      "the EXCEPT_SUBSTITUTE group's own comment above.)",
+      "Trace each downstream consumer to confirm the empty sentinel is always checked and "
+      "disclosed, never silently used as a real value.",
       "needs_downstream_trace")
-_mark(["FB-86ded76db5", "FB-b5e185edfd"], "NOT_PROVEN",
-      "server.py sets an explicit None sentinel for gamma-surface/contract-admission state "
-      "on a code path this session's own prior work (RC-560..RC-564) established a "
-      "None-means-'not yet computed' convention for -- plausibly correct, but this is a "
-      "Cursor-overlap file and was not re-traced end-to-end in this pass; the existing "
-      "convention should be confirmed, not assumed, before clearing.",
-      "Confirm downstream consumers of _gamma_surface/_contract_admission never render None "
-      "as a live value (per the existing cell-state disclosure machinery).",
-      "needs_downstream_trace")
+# FB-86ded76db5 / FB-b5e185edfd (server.py _gamma_surface / _contract_admission = None)
+# retired by the EXCEPT_SUBSTITUTE detector's None-assignment exemption -- no longer
+# candidates. Their reasoning ("None-means-'not yet computed' convention... plausibly
+# correct") is exactly what the exemption now encodes architecturally.
 _mark(["FB-9956979046", "FB-ff0caec71d", "FB-7b736f8734"], "NOT_FALLBACK",
       "Algorithm/control-flow bookkeeping (a bisection midpoint, a static probe parameter "
       "list) -- not a semantic market-data field substitution at all; the scanner's broad "
@@ -282,10 +290,8 @@ _mark(["FB-bd0514159f", "FB-e3fe3d966a"], "NOT_PROVEN",
       "Trace what `tickers` holds at the moment the exception fires; if it is a stale prior "
       "value, disclose that explicitly rather than returning it as current.",
       "needs_downstream_trace")
-_mark(["FB-f788e300be"], "NOT_PROVEN",
-      "vendor = None inside an except in vendor_reconcile -- plausible 'not yet resolved' "
-      "sentinel, not independently traced downstream in this pass.",
-      "Trace downstream consumer.", "needs_downstream_trace")
+# FB-f788e300be (vendor = None inside an except in vendor_reconcile) retired by the
+# EXCEPT_SUBSTITUTE detector's None-assignment exemption -- no longer a candidate.
 _mark(["FB-413ed5e5b0"], "NOT_PROVEN",
       "arch_state = {} inside an except in run_once -- plausible 'no state yet' "
       "initialization vs. a real substitution; not independently traced in this pass.",
