@@ -155,6 +155,37 @@ def test_ages_from_native_timestamps():
     assert m["provenance"]["exchange_quote_ts"] == 1787233769.0
 
 
+def test_book_stale_is_true_past_the_freshness_boundary_but_status_still_ok():
+    """RC-REHAB-1 (Phase 2): a book aged past OF_TOP_OF_BOOK_FIELD_STALE_SEC is disclosed via
+    ages.book_stale, but its status must stay "ok" (a stale book is not the same as no book at
+    all -- this is exactly the LIVE/STALE/UNAVAILABLE distinction BookSnapshotObservation
+    exists to keep separate from "never saw a book"). book_time_ms=1787233769563 -> 1787233769.563s;
+    aging past the 25s boundary lands well after that."""
+    now_aged = 1787233769.563 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 1.0
+    m = ofe.compute_book_microstructure(_data(), now_ts=now_aged, ticker="STALEBOOK")
+    assert m["status"] == "ok", "a stale-but-present book must not read as no_book"
+    assert m["ages"]["book_stale"] is True
+    ofe._MICRO_STRUCTURAL_CACHE.pop("STALEBOOK", None)
+
+
+def test_book_stale_is_derived_from_the_one_typed_state_not_a_second_recomputation():
+    """Mutation test: perturb _extract_canonical_book's own staleness threshold check by
+    monkeypatching FreshnessState resolution would be too invasive; instead prove the
+    structural link directly -- book_stale must equal cb["book"].state is STALE for the SAME
+    now_ts, at both sides of the boundary, so there is exactly one verdict a future edit could
+    drift out of sync with only by changing this one place."""
+    import market_observation as mo
+
+    just_inside = 1787233769.563 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC - 1.0
+    just_outside = 1787233769.563 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 1.0
+    for now_ts, ticker in ((just_inside, "BOUND_IN"), (just_outside, "BOUND_OUT")):
+        data = _data()
+        cb = ofe._extract_canonical_book(data, now_ts=now_ts)
+        m = ofe.compute_book_microstructure(data, now_ts=now_ts, ticker=ticker)
+        assert m["ages"]["book_stale"] == (cb["book"].state is mo.FreshnessState.STALE)
+        ofe._MICRO_STRUCTURAL_CACHE.pop(ticker, None)
+
+
 def test_fail_closed_no_book():
     m = ofe.compute_book_microstructure({"content": []}, now_ts=1787233772.0)
     assert m["status"] == "no_book"

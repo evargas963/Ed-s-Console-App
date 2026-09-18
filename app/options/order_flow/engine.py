@@ -23,6 +23,8 @@ from typing import Any, Optional
 
 import math as _of_math
 
+from book_observation import BookLevel, BookSnapshotObservation
+from market_observation import FreshnessState
 from math_exposure import MISSING_GREEK_SENTINEL
 from l1_trade_observation import (
     canonical_tape_prints,
@@ -244,8 +246,6 @@ def _compute_book_imbalance(data: dict, depth: int) -> Optional[float]:
     compute_book_microstructure result. Kept for standalone/tests, consistent by construction.
     """
     cb = _extract_canonical_book(data)
-    if not cb["has_book"]:
-        return None
     return _book_imbalance_from_totals(
         _book_side_depth_total(cb["bid_levels"], depth),
         _book_side_depth_total(cb["ask_levels"], depth),
@@ -558,12 +558,37 @@ def _extract_canonical_book(data: dict, *, now_ts: Optional[float] = None) -> di
     bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
     mark, mark_leaf = _resolve_quote_mark(data)
+    book_time_ms = _safe_float(snapshot.get("BOOK_TIME")) if snapshot else None
+
+    # RC-REHAB-1 (Phase 2): a real staleness signal already exists (see `book_stale` in
+    # compute_book_microstructure below) but was computed separately, downstream, in a
+    # different dict a consumer could forget to check -- `has_book` itself was presence-only,
+    # with no way to disclose "aged out but was real" vs. "never seen a book at all". `book`
+    # below is now the ONE typed source for that distinction; `has_book` is removed rather
+    # than kept alongside it as a second, independently-true-by-convention boolean.
+    if snapshot is None:
+        book = BookSnapshotObservation.unavailable(source="schwab_streaming_book", received_ts=now)
+    else:
+        book_age_sec = (now - book_time_ms / 1000.0) if book_time_ms else None
+        book_state = (
+            FreshnessState.STALE
+            if book_age_sec is not None and book_age_sec > OF_TOP_OF_BOOK_FIELD_STALE_SEC
+            else FreshnessState.LIVE
+        )
+        book = BookSnapshotObservation(
+            bid_levels=tuple(BookLevel(p, v) for p, v in bid_levels),
+            ask_levels=tuple(BookLevel(p, v) for p, v in ask_levels),
+            state=book_state,
+            source="schwab_streaming_book",
+            book_time_ms=book_time_ms,
+            received_ts=now,
+        )
     return {
-        "has_book": snapshot is not None,
+        "book": book,
         "bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size,
         "bid_leaf": bid_leaf, "ask_leaf": ask_leaf,
         "bid_levels": bid_levels, "ask_levels": ask_levels,
-        "book_time_ms": _safe_float(snapshot.get("BOOK_TIME")) if snapshot else None,
+        "book_time_ms": book_time_ms,
         "mark": mark, "mark_leaf": mark_leaf,
     }
 
@@ -681,6 +706,7 @@ def _microstructure_structural(cb: dict) -> dict:
 
     # Depth ladder — totals aggregated ONCE per (side, depth); imbalance, slope and concentration
     # all reuse these SAME canonical totals. One aggregation authority (`_book_side_depth_total`).
+    book: BookSnapshotObservation = cb["book"]
     depth: dict[str, dict] = {}
     totals: dict[int, tuple[Optional[float], Optional[float]]] = {}
     for n in OF_MICRO_DEPTH_LADDER:
@@ -691,7 +717,7 @@ def _microstructure_structural(cb: dict) -> dict:
     deep_bt, deep_at = totals[OF_BOOK_DEPTH_DEEP]
 
     return {
-        "status": "ok" if cb["has_book"] else "no_book",
+        "status": "ok" if book.state is not FreshnessState.UNAVAILABLE else "no_book",
         "top_of_book": {"bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size},
         "crossed": crossed,
         "mid": mid,
@@ -721,7 +747,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "book_time_ms": cb["book_time_ms"],
             "n_bid_levels": len(bid_levels),
             "n_ask_levels": len(ask_levels),
-            "book_source": "schwab_streaming_book" if cb["has_book"] else "unavailable",
+            "book_source": "schwab_streaming_book" if book.state is not FreshnessState.UNAVAILABLE else "unavailable",
             "top_of_book_bid_leaf": cb["bid_leaf"],
             "top_of_book_ask_leaf": cb["ask_leaf"],
         },
@@ -796,7 +822,14 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
         # freshness boundary (OF_TOP_OF_BOOK_FIELD_STALE_SEC) this file already applies to
         # individual top-of-book fields, so there is one freshness number for this book, not
         # a second one invented on the client.
-        "book_stale": (book_age_sec is not None and book_age_sec > OF_TOP_OF_BOOK_FIELD_STALE_SEC),
+        #
+        # RC-REHAB-1 (Phase 2): derived from `cb["book"].state` (BookSnapshotObservation),
+        # computed by `_extract_canonical_book` using this SAME `now`/`book_time_ms` a moment
+        # ago -- not a second, independently-recomputed threshold check. Before this, book_stale
+        # and _extract_canonical_book's own has_book boolean were two separately-true-by-
+        # convention signals with nothing structurally tying them together; a future edit to
+        # one could silently drift from the other. Now there is exactly one staleness verdict.
+        "book_stale": cb["book"].state is FreshnessState.STALE,
     }
     return payload
 
