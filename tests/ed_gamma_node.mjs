@@ -30,7 +30,7 @@ function installShell(ticker) {
   G.beginSurfaceRequest(ticker, gen);
 }
 function withId(surf, ticker) {
-  return Object.assign({}, surf, { ticker: ticker, requested_ticker: ticker });
+  return Object.assign({}, surf, { ticker: ticker, requested_ticker: ticker, canonical_ticker: ticker });
 }
 installShell('SPY');
 
@@ -99,7 +99,7 @@ const cells = strikes.map((k, i) => ({ strike: k, gex: [1000 * (i + 1)],
   contracts: [{ call: 'SPY_C_' + k, put: 'SPY_P_' + k }] }));
 const surface = {
   available: true,
-  ticker: 'SPY', requested_ticker: 'SPY',
+  ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY',
   current_spot: 764,
   current_spot_state: 'live',
   spot: 764,
@@ -262,7 +262,7 @@ function makeQueryableHost() {
 const mixedHost = makeHost();
 const mixedSurface = {
   available: true, source: 'terrain_live_cache', live: true, stale: false,
-  ticker: 'SPY', requested_ticker: 'SPY', current_spot: 100, current_spot_state: 'live',
+  ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', current_spot: 100, current_spot_state: 'live',
   strikes: [90, 95, 100, 105, 110],
   expirations: [{ expiry: '2026-09-18', dte: 1, expired: false }],
   cells: [
@@ -322,23 +322,26 @@ G.renderSurface(rejectHost, { available: true, current_spot: 100, current_spot_s
 assert.ok(rejectHost.innerHTML.includes('Gamma surface unavailable'),
   'direct render without request context must reject');
 
-assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }), true);
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY' }), true);
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }), false, 'missing canonical_ticker');
 assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY' }), false, 'missing requested_ticker');
-assert.strictEqual(G.surfaceTickerAdmitted({ requested_ticker: 'SPY' }), false, 'missing payload ticker');
-assert.strictEqual(G.surfaceTickerAdmitted({ ticker: '$SPX', requested_ticker: 'SPX' }), false,
+assert.strictEqual(G.surfaceTickerAdmitted({ requested_ticker: 'SPY', canonical_ticker: 'SPY' }), false, 'missing payload ticker');
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: '$SPX', requested_ticker: 'SPX', canonical_ticker: '$SPX' }), false,
   'index alias drift must not be normalized on the client');
-assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPX', requested_ticker: '$SPX' }), false,
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPX', requested_ticker: '$SPX', canonical_ticker: 'SPX' }), false,
   'bare vs dollar index mismatch must reject');
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'QQQ', requested_ticker: 'SPY', canonical_ticker: 'SPY' }), false,
+  'payload ticker disagreeing with canonical_ticker rejects');
 const saved = global.window.EdShell;
 global.window.EdShell = { getState() { return { ticker: 'SPY' }; } };
-assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }), false,
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY' }), false,
   'missing getTickerGeneration rejects');
 global.window.EdShell = null;
-assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }), false,
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY' }), false,
   'missing EdShell identity authority rejects');
 global.window.EdShell = saved;
 G.beginSurfaceRequest('SPY', gen);
-assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY' }, 'QQQ', gen), false,
+assert.strictEqual(G.surfaceTickerAdmitted({ ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY' }, 'QQQ', gen), false,
   'request-ticker mismatch rejects');
 G.beginSurfaceRequest();
 const bypassHost = makeHost();

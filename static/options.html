@@ -334,7 +334,7 @@
     el.setAttribute('data-last-price', String(spotP.spot));
     el.setAttribute('data-last-price-native-ts', spotP.last_price_native_ts != null ? String(spotP.last_price_native_ts) : '');
     el.setAttribute('data-last-price-recv-ts', spotP.last_price_received_ts != null ? String(spotP.last_price_received_ts) : '');
-    el.setAttribute('data-spot-source', spotP.current_spot_source != null ? String(spotP.current_spot_source) : (spotP.spot_source != null ? String(spotP.spot_source) : ''));
+    el.setAttribute('data-spot-source', Object.prototype.hasOwnProperty.call(spotP, 'current_spot_source') && spotP.current_spot_source != null ? String(spotP.current_spot_source) : '');
     el.setAttribute('data-spot-generation', spotP.last_price_generation != null ? String(spotP.last_price_generation) : '');
   }
 

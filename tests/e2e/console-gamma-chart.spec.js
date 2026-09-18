@@ -56,7 +56,7 @@ async function intercept(page) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
     }
     let body = { available: false };
-    if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', requested_ticker: 'SPY', available: false, source: 'unavailable' };
+    if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: false, source: 'unavailable' };
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;

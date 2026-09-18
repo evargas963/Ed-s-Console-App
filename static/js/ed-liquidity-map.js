@@ -182,7 +182,8 @@
         last_price: isFinite(spot) ? spot : null,
         last_price_native_ts: levels && levels.last_price_native_ts,
         last_price_received_ts: levels && levels.last_price_received_ts,
-        source: levels && (levels.current_spot_source || levels.spot_source),
+        source: levels && Object.prototype.hasOwnProperty.call(levels, 'current_spot_source')
+          ? levels.current_spot_source : null,
         generation: gen
       });
     }

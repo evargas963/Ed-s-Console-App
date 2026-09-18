@@ -90,7 +90,8 @@
         last_price: d.spot,
         last_price_native_ts: d.last_price_native_ts,
         last_price_received_ts: d.last_price_received_ts,
-        source: d.current_spot_source || d.spot_source,
+        source: Object.prototype.hasOwnProperty.call(d, 'current_spot_source')
+          ? d.current_spot_source : null,
         generation: d.last_price_generation
       });
     }

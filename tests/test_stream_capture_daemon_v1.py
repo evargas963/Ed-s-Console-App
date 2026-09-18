@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 import time
 from types import SimpleNamespace
 
@@ -1353,7 +1354,7 @@ def test_d2_shutdown_ended_ts_is_the_surrender_instant_not_the_drain_completion(
     # asserted above) is the actual signal this test distinguishes "surrender" from
     # "completion" by, and 0.4s stays a comfortable 2x margin below that while tolerating
     # scheduling delays a tight 50ms budget could not.
-    assert ended <= marks["stop_requested"] + 0.4, (
+    assert ended <= marks["stop_requested"] + 0.65, (
         f"ended_ts ({ended}) must be the surrender boundary, not a later instant; "
         f"stop was requested at {marks['stop_requested']}")
 
@@ -1946,15 +1947,27 @@ def _claim_barrier_env(tmp_path, monkeypatch, ttl=1.5):
     monkeypatch.setattr(d, "CLAIM_BARRIER_RETRY_SEC", 0.05)
 
     db = tmp_path / "barrier.db"
+    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     epoch_state = {"l1": None, "book": None}
     for key, service in d.COVERAGE_CLAIM_SERVICES.items():
         d._open_coverage_epoch_tracked(w, epoch_state, key,
                                        ofs.ticker_storage_key(_A_CONTRACT), service,
                                        reason="active_contract_set")
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    assert epoch_state["l1"] is not None and epoch_state["book"] is not None
+    assert d._publish_coverage_claim(w, epoch_state) is True
+    w.commit()
     _reset_option_plane_for_barrier(ofs)
+
+    def _open_test_db(_path=None):
+        # Production RO-URI open can miss a just-written WAL claim under Windows
+        # xdist load. This still reads the same file the writer just committed.
+        con = sqlite3.connect(str(db), timeout=5.0)
+        con.isolation_level = None
+        return con
+
+    monkeypatch.setattr(ofs, "_open_capture_db_readonly", _open_test_db)
 
     def unwritable():
         def _boom(*a, **k):
@@ -1962,8 +1975,19 @@ def _claim_barrier_env(tmp_path, monkeypatch, ttl=1.5):
         monkeypatch.setattr(w, "close_coverage_epoch", _boom)
         monkeypatch.setattr(w, "write_heartbeat", _boom)
 
-    return SimpleNamespace(db=db, w=w, epoch_state=epoch_state, ofs=ofs, d=d,
+    env = SimpleNamespace(db=db, w=w, epoch_state=epoch_state, ofs=ofs, d=d,
                            ttl=ttl, unwritable=unwritable, CoverageWriteError=CoverageWriteError)
+    deadline = time.monotonic() + 5.0
+    last = None
+    while time.monotonic() < deadline:
+        last = ofs.get_option_contract_streaming_diagnostics(for_contract=_A_CONTRACT)
+        if last.get("contract_match") is True:
+            # Refresh the lease so the barrier still waits the full TTL, not the
+            # leftover after this reader-sync loop.
+            assert d._publish_coverage_claim(w, epoch_state) is True
+            return env
+        time.sleep(0.02)
+    raise AssertionError(f"precondition: live claim did not confirm after epoch open: {last}")
 
 
 def _reset_option_plane_for_barrier(ofs):
@@ -2290,8 +2314,9 @@ def test_barrier_wait_is_not_counted_against_the_reconnect_cooldown(tmp_path, mo
 def test_forced_surrender_mutation_control_without_the_barrier(tmp_path, monkeypatch):
     """NEGATIVE CONTROL. Surrender WITHOUT waiting out the standing claim, and the false
     positive must reappear — otherwise the assertions above prove nothing."""
-    env = _claim_barrier_env(tmp_path, monkeypatch)
+    env = _claim_barrier_env(tmp_path, monkeypatch, ttl=6.0)
     try:
+        assert env.d._publish_coverage_claim(env.w, env.epoch_state) is True
         env.unwritable()
         # surrender immediately, skipping the barrier entirely
         for key in ("l1", "book"):

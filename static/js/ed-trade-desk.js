@@ -461,7 +461,8 @@
           last_price: isFinite(spot) ? spot : null,
           last_price_native_ts: spotD && spotD.last_price_native_ts,
           last_price_received_ts: spotD && spotD.last_price_received_ts,
-          source: spotD && (spotD.current_spot_source || spotD.spot_source),
+          source: spotD && Object.prototype.hasOwnProperty.call(spotD, 'current_spot_source')
+            ? spotD.current_spot_source : null,
           generation: gen
         });
       }

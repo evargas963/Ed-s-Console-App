@@ -1081,34 +1081,27 @@
   function stampHeatScopeSpotIdentity(el, surface) {
     if (!el) return;
     var stamp = window.EdSpotIdentity && window.EdSpotIdentity.stamp;
-    var obs = {
+    if (!stamp) return;
+    stamp(el, {
       ticker: surface && surface.ticker != null ? surface.ticker : '',
       last_price: isFinite(canonicalCurrentSpot(surface)) ? canonicalCurrentSpot(surface) : '',
       last_price_native_ts: surface ? surface.last_price_native_ts : null,
       last_price_received_ts: surface ? surface.last_price_received_ts : null,
-      source: surface ? surface.current_spot_source : '',
+      source: surface && Object.prototype.hasOwnProperty.call(surface, 'current_spot_source')
+        ? surface.current_spot_source : null,
       generation: surface ? surface.current_spot_generation : null
-    };
-    if (stamp) stamp(el, obs);
-    else {
-      el.setAttribute('data-spot-ticker', obs.ticker != null ? String(obs.ticker) : '');
-      el.setAttribute('data-last-price', obs.last_price !== '' ? String(obs.last_price) : '');
-      el.setAttribute('data-last-price-native-ts', obs.last_price_native_ts != null ? String(obs.last_price_native_ts) : '');
-      el.setAttribute('data-last-price-recv-ts', obs.last_price_received_ts != null ? String(obs.last_price_received_ts) : '');
-      el.setAttribute('data-spot-source', obs.source != null ? String(obs.source) : '');
-      el.setAttribute('data-spot-generation', obs.generation != null ? String(obs.generation) : '');
-    }
+    });
   }
-  function spotIdentityFromSurface(surface, observedAt) {
+  function spotIdentityFromSurface(surface) {
     return {
       consumer: 'gamma-surface',
       ticker: surface && surface.ticker != null ? surface.ticker : null,
       last_price: isFinite(canonicalCurrentSpot(surface)) ? canonicalCurrentSpot(surface) : null,
       last_price_native_ts: surface ? surface.last_price_native_ts : null,
       last_price_received_ts: surface ? surface.last_price_received_ts : null,
-      source: surface ? (surface.current_spot_source || null) : null,
-      generation: surface && surface.current_spot_generation != null ? surface.current_spot_generation : null,
-      observation_time: observedAt != null ? observedAt : (Date.now() / 1000)
+      source: surface && Object.prototype.hasOwnProperty.call(surface, 'current_spot_source')
+        ? surface.current_spot_source : null,
+      generation: surface && surface.current_spot_generation != null ? surface.current_spot_generation : null
     };
   }
   function _nonEmptyString(v) {
@@ -1133,6 +1126,8 @@
     if (!_nonEmptyString(current) || current !== reqTicker) return false;
     if (!surface || typeof surface !== 'object') return false;
     if (!_nonEmptyString(surface.ticker)) return false;
+    if (!_nonEmptyString(surface.canonical_ticker)) return false;
+    if (surface.ticker !== surface.canonical_ticker) return false;
     if (typeof surface.requested_ticker !== 'string') return false;
     if (surface.requested_ticker !== reqTicker) return false;
     if (surface.requested_ticker !== current) return false;
@@ -1274,7 +1269,7 @@
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;   // superseded by a newer ticker -- that load renders instead
         if (stillCurrent(ticker)) renderSurface(host, {
-          ticker: ticker, requested_ticker: ticker, available: false,
+          ticker: ticker, requested_ticker: ticker, canonical_ticker: ticker, available: false,
           reason: 'no console serving /api/options/gamma-surface'
         });
       });

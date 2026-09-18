@@ -12,12 +12,18 @@
   function host() { return document.getElementById('deskRadarBody'); }
 
   function rowHtml(r) {
-    var live = r.spot_state === 'live' && r.spot_source === 'streaming_plane';
+    var current = r.current_spot != null ? r.current_spot : r.spot;
+    var hist = r.snapshot_spot;
+    var px = current != null ? Number(current).toFixed(2)
+      : (hist != null ? Number(hist).toFixed(2) + ' as-of' : '—');
+    var st = current != null
+      ? (r.current_spot_state || r.spot_state || 'live')
+      : (hist != null ? 'historical' : (r.spot_state || 'unavailable'));
     var gen = r.last_price_generation != null ? r.last_price_generation : '';
     return '<tr>' +
       '<td>' + esc(r.ticker) + '</td>' +
-      '<td data-last-price-gen="' + esc(gen) + '">' + (r.spot != null ? Number(r.spot).toFixed(2) : '—') + '</td>' +
-      '<td>' + esc(r.spot_state || (live ? 'live' : 'historical')) + '</td>' +
+      '<td data-last-price-gen="' + esc(gen) + '">' + px + '</td>' +
+      '<td>' + esc(st) + '</td>' +
       '<td>' + esc(r.contact || r.kind || r.wall_name || '—') + '</td>' +
       '<td>' + (gen !== '' ? esc(gen) : '—') + '</td>' +
       '</tr>';
@@ -38,12 +44,14 @@
     var current = (st().ticker || '').toUpperCase();
     var mine = rows.filter(function (r) { return String(r.ticker || '').toUpperCase() === current; })[0] || rows[0];
     if (mine && window.EdSpotIdentity && window.EdSpotIdentity.stamp) {
+      var currentPx = mine.current_spot != null ? mine.current_spot : mine.spot;
       window.EdSpotIdentity.stamp(h, {
         ticker: mine.ticker,
-        last_price: mine.spot,
+        last_price: currentPx,
         last_price_native_ts: mine.last_price_native_ts,
         last_price_received_ts: mine.last_price_received_ts,
-        source: mine.current_spot_source || mine.spot_source,
+        source: Object.prototype.hasOwnProperty.call(mine, 'current_spot_source')
+          ? mine.current_spot_source : null,
         generation: mine.last_price_generation
       });
     }

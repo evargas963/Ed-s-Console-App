@@ -14624,19 +14624,38 @@ def _radar_apply_plane_spot(t: dict) -> dict:
     """
     ticker = t.get("ticker") or ""
     plane_row = _lmp.get_quote(ticker)
+    out = dict(t)
+    if t.get("spot") is not None:
+        out["snapshot_spot"] = t.get("spot")
+        out["snapshot_spot_source"] = t.get("spot_source")
     if not (
         plane_row
         and _lmp.quote_is_fresh(plane_row)
         and _lmp.plane_spot_is_last_price(plane_row)
     ):
-        return t
-    out = dict(t)
-    native = plane_row.get("last_price_native_ts") or plane_row.get("last_price_received_ts")
+        # Snapshot as-of stays on snapshot_* only. current spot fields stay empty.
+        out["spot"] = None
+        out["current_spot"] = None
+        out["spot_source"] = None
+        out["current_spot_source"] = None
+        out["spot_state"] = "unavailable"
+        out["current_spot_state"] = "unavailable"
+        out["last_price_generation"] = None
+        out["last_price_native_ts"] = None
+        out["last_price_received_ts"] = None
+        return out
+    native = plane_row.get("last_price_native_ts")
+    received = plane_row.get("last_price_received_ts")
     out["spot"] = plane_row["spot"]
+    out["current_spot"] = plane_row["spot"]
     out["spot_source"] = SPOT_SOURCE_PLANE
+    out["current_spot_source"] = SPOT_SOURCE_PLANE
     out["spot_state"] = current_spot_state(SPOT_SOURCE_PLANE, ticker, as_of_ts=native)
-    out["spot_as_of_ts_utc"] = plane_row.get("last_price_native_ts")
+    out["current_spot_state"] = out["spot_state"]
+    out["spot_as_of_ts_utc"] = native
     out["last_price_generation"] = plane_row.get("last_price_generation")
+    out["last_price_native_ts"] = native
+    out["last_price_received_ts"] = received
     return out
 
 
@@ -16099,16 +16118,57 @@ def project_gamma_surface_update_expiry(prior_surface: dict, chain: list, spot: 
 
 
 def _stamp_gamma_ticker_identity(payload: dict, requested: str, canonical: str) -> dict:
-    """Echo the raw request ticker beside the canonical storage key.
+    """Validate producer identity, then stamp transport metadata.
 
-    Client admission exact-matches ``requested_ticker`` to the request string
-    and the current EdShell ticker. It must not reimplement ticker_storage_key.
+    ``ticker`` / ``canonical_ticker`` are the request's storage key only after
+    any producer ``ticker``/``symbol`` agrees with that key. A disagreement is
+    rejected — never relabeled. ``requested_ticker`` is the raw query string
+    and must already be a non-empty string; empty is not coerced.
     """
+    if not isinstance(requested, str) or requested.strip() == "":
+        raise ValueError("gamma identity: requested ticker is missing")
+    if not isinstance(canonical, str) or canonical.strip() == "":
+        raise ValueError("gamma identity: canonical ticker is missing")
+    req = requested.strip()
+    canon = canonical.strip()
     out = dict(payload) if isinstance(payload, dict) else {}
-    out["ticker"] = canonical
-    out["symbol"] = canonical
-    out["requested_ticker"] = (requested or "").strip()
+    producer = out.get("ticker")
+    if producer in (None, ""):
+        producer = out.get("symbol")
+    if producer not in (None, ""):
+        if ticker_storage_key(str(producer)) != canon:
+            raise ValueError(
+                "gamma identity: producer ticker "
+                f"{producer!r} disagrees with request canonical {canon!r}"
+            )
+    out["ticker"] = canon
+    out["symbol"] = canon
+    out["canonical_ticker"] = canon
+    out["requested_ticker"] = req
     return out
+
+
+def _gamma_identity_response(payload: dict, requested: str, canonical: str) -> JSONResponse:
+    """Stamp a gamma payload or return an explicit unavailable reject."""
+    try:
+        return JSONResponse(_stamp_gamma_ticker_identity(payload, requested, canonical))
+    except ValueError as exc:
+        reject = {
+            "available": False,
+            "source": "unavailable",
+            "live": False,
+            "stale": True,
+            "reason": str(exc),
+        }
+        try:
+            reject = _stamp_gamma_ticker_identity(
+                {**reject, "ticker": canonical, "symbol": canonical},
+                requested,
+                canonical,
+            )
+        except ValueError:
+            pass
+        return JSONResponse(reject)
 
 
 def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
@@ -16185,7 +16245,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
             log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
             _contract_admission = None
-        return JSONResponse(_stamp_gamma_ticker_identity({
+        return _gamma_identity_response({
             "ticker": tk, "symbol": tk, "available": _gamma_available,
             # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
             # reads surface.reason for the placeholder message; reusing it here means the
@@ -16236,7 +16296,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
                        "partition by native expirationDate -> compute_exposures_by_strike per expiry "
                        "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
-        }, ticker, tk))
+        }, ticker, tk)
 
     # Current Gamma may NEVER use banked_morning_reference (operator 2026-09-17).
     # Historical morning Gamma lives only on /api/exposure/history.
@@ -16246,7 +16306,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         if isinstance(cached, dict) and cached.get("source") == "banked_morning_reference":
             _GAMMA_SURFACE_CACHE.pop(tk, None)
         else:
-            return JSONResponse(_stamp_gamma_ticker_identity(cached, ticker, tk))
+            return _gamma_identity_response(cached, ticker, tk)
     # #1-A: separate the two truths the UI must not conflate.
     #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
     #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
@@ -16303,7 +16363,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                    "requested": _requested, "on_board": _on_board,
                    "reason": f"gamma-surface read failed: {e}"}
     _GAMMA_SURFACE_CACHE[tk] = (now, payload)
-    return JSONResponse(_stamp_gamma_ticker_identity(payload, ticker, tk))
+    return _gamma_identity_response(payload, ticker, tk)
 
 
 @app.get("/api/exposure/history")
@@ -17500,15 +17560,19 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
             row = _lmp.get_quote(t)
             if row and _lmp.quote_is_fresh(row) and _lmp.plane_spot_is_last_price(row):
                 out[t] = {
+                    "ticker": t,
                     "spot": row["spot"],
                     "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
                     "spot_state": current_spot_state(
                         SPOT_SOURCE_PLANE, t,
                         as_of_ts=row.get("last_price_native_ts") or row.get("last_price_received_ts") or row.get("exchange_quote_ts")),
                     "spot_source": SPOT_SOURCE_PLANE,
+                    "current_spot_source": SPOT_SOURCE_PLANE,
                     "chg_pct": resolve_chg_pct(t, row.get("chg_pct")),
                     "exchange_quote_ts": row.get("last_price_native_ts") or row.get("exchange_quote_ts"),
                     "last_price_generation": row.get("last_price_generation") or row.get("fast_generation_id"),
+                    "last_price_native_ts": row.get("last_price_native_ts"),
+                    "last_price_received_ts": row.get("last_price_received_ts"),
                 }
             else:
                 need_fetch.append(t)
@@ -17562,15 +17626,19 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
             if not _lmp.plane_spot_is_last_price(ingested):
                 continue
             out[t] = {
+                "ticker": t,
                 "spot": ingested["spot"],
                 "spot_disp": ingested.get("spot_disp") or f"{ingested['spot']:.2f}",
                 "spot_state": current_spot_state(
                     SPOT_SOURCE_QUOTE, t, as_of_ts=ingested.get("last_price_native_ts")
                 ),
                 "spot_source": SPOT_SOURCE_QUOTE,
+                "current_spot_source": SPOT_SOURCE_QUOTE,
                 "chg_pct": ingested.get("chg_pct"),
                 "exchange_quote_ts": ingested.get("last_price_native_ts"),
                 "last_price_generation": ingested.get("last_price_generation"),
+                "last_price_native_ts": ingested.get("last_price_native_ts"),
+                "last_price_received_ts": ingested.get("last_price_received_ts"),
             }
         return {"ok": True, "error": None, "quotes": out}
 

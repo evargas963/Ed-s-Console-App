@@ -636,6 +636,11 @@
     if (f) f.textContent = label;
     if (a) a.textContent = age;
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (age && age !== '—' ? ' · ' + age : '');
+    if (_lastHeaderIdentity) {
+      if (f) stampSpotIdentity(f, _lastHeaderIdentity);
+      if (a) stampSpotIdentity(a, _lastHeaderIdentity);
+      if (fresh) stampSpotIdentity(fresh, _lastHeaderIdentity);
+    }
   }
   // ---- header quote: PUSH via the canonical L1 SSE stream (/api/analytics/light/stream,
   //      event l1_projection), which already carries spot/bid/ask (planes/context_light.py).
@@ -651,18 +656,39 @@
     schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
     rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
   };
+  // Inventory-derived LAST_PRICE consumers. The ids here MUST equal every
+  // reports/whole_ui_live_inventory_v1.json instance with semantic LAST_PRICE.
   var LAST_PRICE_CONSUMERS = [
     { id: 'index.html#hPx', el: 'hPx' },
-    { id: 'index.html#klSpot', el: 'klSpot' },
+    { id: 'index.html#hFeed', el: 'hFeed' },
+    { id: 'index.html#hAge', el: 'hAge' },
+    { id: 'index.html.wl-px', sel: '.wl-px[data-wl-active="1"]' },
     { id: 'index.html#heatScope_current_spot', el: 'heatScope' },
+    { id: 'index.html#klSpot', el: 'klSpot' },
     { id: 'index.html#tdBody_spot', el: 'tdBody' },
     { id: 'index.html#liqmBody_spot', el: 'liqmBody' },
+    { id: 'index.html#chartBody.spot', el: 'chartBody' },
+    { id: 'index.html#aiCtxFresh', el: 'aiCtxFresh' },
     { id: 'index.html#deskRadarBody_spot', el: 'deskRadarBody' },
     { id: 'chart.html#liveSpot', el: 'lpIdentity' },
+    { id: 'chart.html#forces.current_spot', el: 'forces' },
     { id: 'exposure.html#currentSpot', el: 'currentSpot' },
+    { id: 'exposure.html#flow.current_spot', el: 'flowIdentity' },
     { id: 'options.html#m-spot', el: 'm-spot' }
   ];
   var _lastSseQuoteIdentity = null;
+  var _lastHeaderIdentity = null;
+  function lastPriceObservationFromPayload(p, tickerFallback) {
+    if (!p) return null;
+    return {
+      ticker: p.ticker != null ? p.ticker : (tickerFallback || ''),
+      last_price: (p.spot != null && !isNaN(Number(p.spot))) ? Number(p.spot) : null,
+      last_price_native_ts: p.last_price_native_ts != null ? Number(p.last_price_native_ts) : null,
+      last_price_received_ts: p.last_price_received_ts != null ? Number(p.last_price_received_ts) : null,
+      source: Object.prototype.hasOwnProperty.call(p, 'current_spot_source') ? p.current_spot_source : null,
+      generation: p.last_price_generation != null ? Number(p.last_price_generation) : null
+    };
+  }
   function stampSpotIdentity(el, obs) {
     if (!el || !obs) return;
     el.setAttribute('data-spot-ticker', obs.ticker != null ? String(obs.ticker) : '');
@@ -674,15 +700,7 @@
   }
   function stampHeaderSpotIdentity(el, q) {
     if (!el) return;
-    var last = (q.spot != null && !isNaN(Number(q.spot))) ? Number(q.spot) : null;
-    stampSpotIdentity(el, {
-      ticker: q.ticker != null ? q.ticker : (state.ticker || ''),
-      last_price: last,
-      last_price_native_ts: q.last_price_native_ts,
-      last_price_received_ts: q.last_price_received_ts,
-      source: q.current_spot_source != null ? q.current_spot_source : (q.quoteIngestion || ''),
-      generation: q.last_price_generation
-    });
+    stampSpotIdentity(el, lastPriceObservationFromPayload(q, state.ticker || ''));
   }
   function readSpotIdentity(el, consumer) {
     if (!el) return null;
@@ -712,40 +730,51 @@
   function captureSpotConsumers() {
     var consumers = [];
     var missing = [];
+    var absent = [];
     LAST_PRICE_CONSUMERS.forEach(function (row) {
-      var el = document.getElementById(row.el);
-      var obs = el ? readSpotIdentity(el, row.id) : null;
-      if (obs && obs.generation != null && obs.last_price != null) consumers.push(obs);
-      else missing.push(row.id);
+      var el = row.el ? document.getElementById(row.el) : document.querySelector(row.sel);
+      if (!el) { absent.push(row.id); return; }
+      var obs = readSpotIdentity(el, row.id);
+      consumers.push(obs);
+      if (!obs || obs.last_price == null || obs.generation == null || obs.source == null
+          || obs.ticker == null || obs.last_price_native_ts == null || obs.last_price_received_ts == null) {
+        missing.push(row.id);
+      }
     });
     if (_lastSseQuoteIdentity) consumers.push(Object.assign({ consumer: 'sse.live_quote' }, _lastSseQuoteIdentity));
-    else missing.push('sse.live_quote');
-    if (window.EdGamma && window.EdGamma.lastSpotIdentity) {
-      var surf = window.EdGamma.lastSpotIdentity();
-      if (surf) consumers.push(surf);
-    }
+    else { missing.push('sse.live_quote'); absent.push('sse.live_quote'); }
+    var complete = consumers.filter(function (c) {
+      return c && c.last_price != null && c.generation != null && c.source != null
+        && c.ticker != null && c.last_price_native_ts != null && c.last_price_received_ts != null;
+    });
+    var equal = complete.length > 0 && complete.length === consumers.length
+      && complete.slice(1).every(function (c) { return exactSpotIdentityEqual(complete[0], c); });
     return {
       ticker: state.ticker,
       generation: state.tickerGeneration,
       inventory: LAST_PRICE_CONSUMERS.map(function (r) { return r.id; }).concat(['sse.live_quote']),
       consumers: consumers,
-      missing: missing
+      complete: complete,
+      missing: missing,
+      absent: absent,
+      equal: equal
     };
   }
   function paintQuote(q) {
     var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
     if (px) {
-      var state = q.spotState || q.spot_state || '';
-      if (state === 'unavailable' || (q.spot == null && !q.spot_disp)) {
+      var spotState = q.spotState || q.spot_state || '';
+      if (spotState === 'unavailable' || (q.spot == null && !q.spot_disp)) {
         px.textContent = 'UNAVAILABLE';
       } else {
         px.textContent = q.spot_disp || fmt(q.spot);
-        if (state === 'stale') px.textContent += ' STALE';
+        if (spotState === 'stale') px.textContent += ' STALE';
       }
       var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
-      if (state) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + state;
+      if (spotState) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + spotState;
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
       stampHeaderSpotIdentity(px, q);
+      _lastHeaderIdentity = lastPriceObservationFromPayload(q, state.ticker || '');
     }
     if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
     if (chg) {  // formatting only — sign/value are canonical
@@ -769,12 +798,17 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called only
   // from pollWatchlistQuotes. A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct, spotState) {
+  function setWlRow(sym, spot, chgPct, spotState, ident) {
     var key = (sym || '').replace('$', '');
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]') || document.querySelector('.wl-px[data-wlpx="' + key + '"]');
     if (pe) {
       if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
       else pe.textContent = fmt(spot) + (spotState === 'stale' ? ' STALE' : '');
+      var active = String(sym || '').toUpperCase() === String(state.ticker || '').toUpperCase()
+        || String(key || '').toUpperCase() === String(state.ticker || '').replace('$', '').toUpperCase();
+      if (active) pe.setAttribute('data-wl-active', '1');
+      else pe.removeAttribute('data-wl-active');
+      if (ident) stampSpotIdentity(pe, ident);
     }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]') || document.querySelector('.wl-chg[data-wlchg="' + key + '"]');
     if (ce) {
@@ -834,7 +868,8 @@
         list.forEach(function (sym) {
           var row = quotes[sym];
           setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null,
-            row ? row.spot_state : 'unavailable');
+            row ? row.spot_state : 'unavailable',
+            row ? lastPriceObservationFromPayload(row, sym) : null);
         });
       })
       .catch(function () {
@@ -872,22 +907,15 @@
       if (ageMs == null && p.last_price_native_ts != null) {
         ageMs = Math.max(0, Math.round(Date.now() - Number(p.last_price_native_ts) * 1000));
       }
-      _lastSseQuoteIdentity = {
-        ticker: p.ticker != null ? p.ticker : state.ticker,
-        last_price: (p.spot != null && !isNaN(Number(p.spot))) ? Number(p.spot) : null,
-        last_price_native_ts: p.last_price_native_ts != null ? Number(p.last_price_native_ts) : null,
-        last_price_received_ts: p.last_price_received_ts != null ? Number(p.last_price_received_ts) : null,
-        source: p.current_spot_source || p.spot_source || p.quote_ingestion || p._quote_authority || null,
-        generation: p.last_price_generation != null ? Number(p.last_price_generation) : null
-      };
+      _lastSseQuoteIdentity = lastPriceObservationFromPayload(p, state.ticker);
       paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
-        chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
+        chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion,
         spotState: p.spot_state,
-        ticker: p.ticker || state.ticker,
+        ticker: p.ticker != null ? p.ticker : state.ticker,
         last_price_native_ts: p.last_price_native_ts,
         last_price_received_ts: p.last_price_received_ts,
         last_price_generation: p.last_price_generation,
-        current_spot_source: p.current_spot_source || p.spot_source,
+        current_spot_source: p.current_spot_source,
         feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
         feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'SPOT STALE' : 'SPOT LIVE'),
         ageLabel: ageMs != null ? ageMs + 'ms' : '—' });
@@ -977,7 +1005,7 @@
           last_price_native_ts: d.last_price_native_ts,
           last_price_received_ts: d.last_price_received_ts,
           last_price_generation: d.last_price_generation,
-          current_spot_source: d.current_spot_source || d.spot_source,
+          current_spot_source: d.current_spot_source,
           feedCls: (d.spot_state === 'unavailable' || d.spot_state === 'stale') ? 'stale' : '',
           feedLabel: d.spot_state === 'unavailable' ? 'UNAVAILABLE' : (d.spot_state === 'stale' ? 'SPOT STALE' : 'SPOT LIVE'),
           ageLabel: age });
@@ -1125,5 +1153,6 @@
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     setMeasure: setMeasure, getMeasure: function () { return state.measure; },
     getPlane: function () { return Object.assign({}, _plane); },
+    setView: setView,
     setMaximize: applyMaximize, toggleMaximize: toggleMaximize };
 })();

@@ -2124,18 +2124,24 @@ async function pollSpot() {
       const asOf = Number(j.spot_as_of_ts_utc) || 0;
       if (asOf && liveSpotAsOf && asOf < liveSpotAsOf) return;
       if (asOf) liveSpotAsOf = asOf;
-      liveSpotSource = j.spot_source != null ? String(j.spot_source) : null;
+      liveSpotSource = Object.prototype.hasOwnProperty.call(j, 'current_spot_source') && j.current_spot_source != null
+        ? String(j.current_spot_source) : null;
       liveSpot = Number(j.spot);
+      function stampStandalone(el) {
+        if (!el) return;
+        el.setAttribute('data-spot-ticker', j.ticker != null ? String(j.ticker) : tk);
+        el.setAttribute('data-last-price', String(liveSpot));
+        el.setAttribute('data-last-price-native-ts', j.last_price_native_ts != null ? String(j.last_price_native_ts) : '');
+        el.setAttribute('data-last-price-recv-ts', j.last_price_received_ts != null ? String(j.last_price_received_ts) : '');
+        el.setAttribute('data-spot-source', Object.prototype.hasOwnProperty.call(j, 'current_spot_source') && j.current_spot_source != null ? String(j.current_spot_source) : '');
+        el.setAttribute('data-spot-generation', j.last_price_generation != null ? String(j.last_price_generation) : '');
+      }
       var liveEl = document.getElementById('lpIdentity');
       if (liveEl) {
         liveEl.textContent = String(liveSpot);
-        liveEl.setAttribute('data-spot-ticker', j.ticker != null ? String(j.ticker) : tk);
-        liveEl.setAttribute('data-last-price', String(liveSpot));
-        liveEl.setAttribute('data-last-price-native-ts', j.last_price_native_ts != null ? String(j.last_price_native_ts) : '');
-        liveEl.setAttribute('data-last-price-recv-ts', j.last_price_received_ts != null ? String(j.last_price_received_ts) : '');
-        liveEl.setAttribute('data-spot-source', j.current_spot_source != null ? String(j.current_spot_source) : (liveSpotSource || ''));
-        liveEl.setAttribute('data-spot-generation', j.last_price_generation != null ? String(j.last_price_generation) : '');
+        stampStandalone(liveEl);
       }
+      stampStandalone(document.getElementById('forces'));
       noteSpotTick(liveSpot);
       // Age label + FORCES pill must tick with the binding, not wait for the 15s cycle.
       const _mage = document.getElementById('spotage');

@@ -69,6 +69,7 @@
 <div id="top">
   <input id="tk" value="SPY" spellcheck="false">
   <span id="currentSpot" hidden></span>
+  <span id="flowIdentity" hidden></span>
   <span id="livedot" title="feed state"></span>
   <span class="pill" id="scope-all">ALL</span>
   <span class="pill" id="scope-near" title="what the strikes endpoint serves — honest scopes only">&le;7 DTE</span>
@@ -371,18 +372,24 @@ async function pollSpot() {
     const asOf = Number(d.spot_as_of_ts_utc) || 0;
     if (asOf && liveSpotAsOf && asOf < liveSpotAsOf) return;
     if (asOf) liveSpotAsOf = asOf;
-    liveSpotSource = d.spot_source != null ? String(d.spot_source) : null;
+    liveSpotSource = Object.prototype.hasOwnProperty.call(d, 'current_spot_source') && d.current_spot_source != null
+      ? String(d.current_spot_source) : null;
     liveSpot = Number(d.spot); liveSpotTicker = tk;
+    function stampStandalone(el) {
+      if (!el) return;
+      el.setAttribute('data-spot-ticker', d.ticker != null ? String(d.ticker) : tk);
+      el.setAttribute('data-last-price', String(liveSpot));
+      el.setAttribute('data-last-price-native-ts', d.last_price_native_ts != null ? String(d.last_price_native_ts) : '');
+      el.setAttribute('data-last-price-recv-ts', d.last_price_received_ts != null ? String(d.last_price_received_ts) : '');
+      el.setAttribute('data-spot-source', Object.prototype.hasOwnProperty.call(d, 'current_spot_source') && d.current_spot_source != null ? String(d.current_spot_source) : '');
+      el.setAttribute('data-spot-generation', d.last_price_generation != null ? String(d.last_price_generation) : '');
+    }
     var curEl = document.getElementById('currentSpot');
     if (curEl) {
       curEl.textContent = String(liveSpot);
-      curEl.setAttribute('data-spot-ticker', d.ticker != null ? String(d.ticker) : tk);
-      curEl.setAttribute('data-last-price', String(liveSpot));
-      curEl.setAttribute('data-last-price-native-ts', d.last_price_native_ts != null ? String(d.last_price_native_ts) : '');
-      curEl.setAttribute('data-last-price-recv-ts', d.last_price_received_ts != null ? String(d.last_price_received_ts) : '');
-      curEl.setAttribute('data-spot-source', d.current_spot_source != null ? String(d.current_spot_source) : (liveSpotSource || ''));
-      curEl.setAttribute('data-spot-generation', d.last_price_generation != null ? String(d.last_price_generation) : '');
+      stampStandalone(curEl);
     }
+    stampStandalone(document.getElementById('flowIdentity'));
     const mt = Math.floor(Date.now() / 60000) * 60;
     const tipT = bars.length ? bars[bars.length - 1].t : 0;
     // # ui-mockup-ok: RC-202 — a forming candle needs a chart to form ON: with no real bars

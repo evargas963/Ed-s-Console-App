@@ -28,7 +28,7 @@ async function intercept(page) {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/levels')) body = LEVELS;
-    else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', requested_ticker: 'SPY', available: true, current_spot: 100, current_spot_state: 'live', spot: 100,
+    else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', requested_ticker: 'SPY', canonical_ticker: 'SPY', available: true, current_spot: 100, current_spot_state: 'live', spot: 100,
       source: 'terrain_live_cache', live: true, stale: false, expirations: [{ expiry: '2026-09-11', dte: 2 }],
       strikes: [100], cells: [{ strike: 100, gex: [1], contracts: [{ call: 'C100', put: 'P100' }] }] };
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[100, 1, 1]] } };

@@ -470,6 +470,19 @@
     });
     applyChartHighlight(host);
     wireChartInteraction(host, lo, hi);
+    var stamp = window.EdSpotIdentity && window.EdSpotIdentity.stamp;
+    if (stamp) {
+      var cur = terrain && terrain.current_spot != null ? Number(terrain.current_spot) : NaN;
+      stamp(host, {
+        ticker: terrain && terrain.ticker != null ? terrain.ticker : ticker(),
+        last_price: isFinite(cur) ? cur : null,
+        last_price_native_ts: terrain ? terrain.last_price_native_ts : null,
+        last_price_received_ts: terrain ? terrain.last_price_received_ts : null,
+        source: terrain && Object.prototype.hasOwnProperty.call(terrain, 'current_spot_source')
+          ? terrain.current_spot_source : null,
+        generation: terrain ? terrain.last_price_generation : null
+      });
+    }
   }
   function applyChartHighlight(host) {
     host = host || document.getElementById('chartBody'); if (!host) return;
