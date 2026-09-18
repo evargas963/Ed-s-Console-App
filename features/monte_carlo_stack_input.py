@@ -29,6 +29,20 @@ MONTE_CARLO_NON_CANONICAL_L1_KEYS = frozenset({
 class MonteCarloStackInputError(ValueError):
     """Canonical MVP row missing required fields or lineage mismatch for Monte Carlo."""
 
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+def typed_input_reason(exc: BaseException) -> str:
+    """Producer-assigned reason code, or UNCLASSIFIED. Does not read message text."""
+    if not hasattr(exc, "reason"):
+        return "UNCLASSIFIED"
+    reason = exc.reason
+    if isinstance(reason, str) and reason.strip():
+        return reason.strip()
+    return "UNCLASSIFIED"
+
 
 def resolve_monte_carlo_stack_inputs(
     inp: Any,
@@ -46,12 +60,14 @@ def resolve_monte_carlo_stack_inputs(
     spot = feats.get("price.spot")
     if spot is None:
         raise MonteCarloStackInputError(
-            "Monte Carlo blocked: canonical MVP price.spot is missing (no ad hoc inp.spot fallback)."
+            "Monte Carlo blocked: canonical MVP price.spot is missing (no ad hoc inp.spot fallback).",
+            reason="MISSING_CANONICAL_SPOT",
         )
     spot_f = float_positive_or_none(spot)
     if spot_f is None:
         raise MonteCarloStackInputError(
-            f"Monte Carlo blocked: canonical price.spot must be finite and > 0, got {spot!r}"
+            f"Monte Carlo blocked: canonical price.spot must be finite and > 0, got {spot!r}",
+            reason="INVALID_CANONICAL_SPOT",
         )
 
     raw = getattr(inp, "spot", None)
@@ -60,7 +76,8 @@ def resolve_monte_carlo_stack_inputs(
         if rf is not None and abs(rf - spot_f) / spot_f > REL_SPOT_TOL:
             raise MonteCarloStackInputError(
                 "Monte Carlo blocked: SignalInput.spot disagrees with canonical MVP price.spot "
-                f"(inp={rf!r}, canonical={spot_f!r})."
+                f"(inp={rf!r}, canonical={spot_f!r}).",
+                reason="LINEAGE_DISAGREEMENT",
             )
 
     # garch_sigma_bars: list pass-through; bar validation remains in monte_carlo.simulate.

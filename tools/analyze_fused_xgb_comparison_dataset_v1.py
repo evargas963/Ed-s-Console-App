@@ -21,19 +21,13 @@ from db import configure_sqlite_connection
 from lstm_data import STREAM_5M_LOOKBACK
 from ml_horizon import ML_HORIZON_SLUGS
 from timeframe_config import CANONICAL_TIMEFRAME
-
-# Strict prior v1 backfill shape (reference only — explains small-N bottleneck)
-from tools.legacy.horizon_7.backfill_fusion_policy_columns_v1 import GOV_WHERE as STRICT_GOV_WHERE
-
-
-def _policy_tickers(root: Path) -> list[str]:
-    p = root / "data" / "ticker_readiness_matrix_v1.json"
-    data = json.loads(p.read_text(encoding="utf-8"))
-    return sorted(
-        r["ticker"]
-        for r in data["tickers"]
-        if r.get("final_readiness_verdict") == "READY_GLOBAL_STANDARD" and r.get("policy_status") == "POLICY_ELIGIBLE"
-    )
+# Fallback lock repair (2026-09-17): the "strict prior v1 backfill shape" metric this file
+# used to compute via tools/legacy/horizon_7's own GOV_WHERE (requiring outcome_3c/8c/13c
+# IS NOT NULL) is removed, not relocated -- those columns were dropped in the Phase D3
+# schema drop (confirmed: zero references anywhere in db.py's current schema), so the query
+# would raise sqlite3.OperationalError (no such column) if ever run against a current
+# database. This was genuinely dead code, unlike _incomplete_fused_sql/_classify_failure
+# (relocated to tools/_fusion_backfill_shared.py) which were schema-agnostic.
 
 
 def _one(c: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
@@ -95,15 +89,6 @@ def main() -> int:
         + " OR ".join(f"fused_move_prob_{hz} IS NOT NULL" for hz in ML_HORIZON_SLUGS),
     )
 
-    allowed = _policy_tickers(ROOT)
-    ph = ",".join(["?"] * len(allowed))
-    strict_params = tuple(allowed) + (tf, prior)
-    strict_v1_shape = _one(
-        conn,
-        f"SELECT COUNT(*) FROM snapshots WHERE ticker IN ({ph}) AND {STRICT_GOV_WHERE}",
-        strict_params,
-    )
-
     all_7_move_and_lstm = _one(
         conn,
         f"SELECT COUNT(*) FROM snapshots WHERE timeframe = ? AND {lstm_sub} AND "
@@ -122,10 +107,8 @@ def main() -> int:
         "after_fused_move_prob_5c_non_null": fused_5c,
         "pred_move_any_horizon_non_null": pred_any,
         "fused_move_any_horizon_non_null": fused_any,
-        "strict_policy_gov_movement_all_horizons_shape": strict_v1_shape,
         "interpretation": {
             "lstm_gate": "Causal replay needs >=60 prior 1m snapshots per ticker (STREAM_5M_LOOKBACK).",
-            "strict_v1_bottleneck": "Policy tickers + full legacy GOV_WHERE + all outcome_move_* — shrinks eligible rows sharply.",
             "per_horizon_eval": "Comparable rows are counted per horizon; do not require all horizons at once.",
         },
     }

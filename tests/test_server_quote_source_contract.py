@@ -50,7 +50,7 @@ def test_rest_fast_quote_payload_exposes_field_sources(monkeypatch):
         "bid": "bidPrice",
         "ask": "askPrice",
         "mid": "schwab_quote_mark",
-        "spread": "schwab_bid_ask",
+        "spread": "bidPrice+askPrice",
         "quote_ts": "QUOTE_TIME_MILLIS",  # M6: exchange_quote_ts carries the quote clock here
         "carried_forward": False,
     }

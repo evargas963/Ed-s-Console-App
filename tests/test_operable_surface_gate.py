@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from calibration.schema import ensure_calibration_schema
 from tools.operable_surface_gate import (
     evaluate_operable_surface,
@@ -116,3 +118,54 @@ def test_attach_gap_gt59_fails_g3(tmp_path: Path) -> None:
     report = evaluate_operable_surface(db, now_utc=now)
     assert report["gates"]["G3_no_attach_gap_gt_59"] is False
     assert report["verdict"] == "OPERABLE_SURFACE_NOT_CLEAN"
+
+
+def test_no_fallback_lock_repair_2026_09_17_no_coalesce_left_in_gate_source() -> None:
+    """No-fallback lock repair: research_excluded's SQL default-on-NULL was provably-
+    redundant defensive code (this file's own _has_col guard means the column, once
+    queried, is always the NOT NULL DEFAULT 0 column
+    calibration/operable_surface_quarantine.py's ALTER TABLE statement creates -- NULL is
+    structurally impossible past that guard), and the two MAX/MIN aggregate default-on-NULL
+    calls are handled by this file's own pre-existing `float(x or 0.0)` Python-side guard on
+    the same read -- removing the SQL-level default changes nothing observable. Locks both
+    regressions structurally."""
+    import inspect
+
+    import tools.operable_surface_gate as gate_module
+
+    src = inspect.getsource(gate_module)
+    code_only = "\n".join(ln for ln in src.splitlines() if not ln.strip().startswith("#"))
+    assert "COALESCE(research_excluded" not in code_only
+    assert "COALESCE(MAX(" not in code_only
+    assert "COALESCE(MIN(" not in code_only
+    assert "research_excluded=1" in code_only
+    assert "research_excluded=0" in code_only
+
+
+def test_operable_filter_sql_no_coalesce_and_still_correct(tmp_path: Path) -> None:
+    from calibration.operable_surface_quarantine import operable_filter_sql
+
+    db = tmp_path / "g2.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    ensure_calibration_schema(conn)
+    # Column exists (ensure_calibration_schema creates it NOT NULL DEFAULT 0) -> real filter.
+    assert operable_filter_sql(conn) == "research_excluded=0"
+
+
+def test_operable_filter_sql_fails_closed_on_unmigrated_schema(tmp_path: Path) -> None:
+    """No-fallback lock repair (2026-09-18, PR #254 point 4): a database that has never
+    been migrated by ensure_calibration_schema has never had ANY row's research-
+    operability established -- silently degrading to '1=1' would assert 'every row is
+    operable' about data nobody has ever vetted. Must fail closed, not universally admit."""
+    from calibration.operable_surface_quarantine import (
+        CalibrationSchemaNotMigratedError,
+        operable_filter_sql,
+    )
+
+    bare = tmp_path / "bare.db"
+    bare_conn = sqlite3.connect(str(bare))
+    bare_conn.execute("CREATE TABLE calibration_decision_log (x INTEGER)")
+    with pytest.raises(CalibrationSchemaNotMigratedError):
+        operable_filter_sql(bare_conn)
+    bare_conn.close()

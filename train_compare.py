@@ -47,14 +47,22 @@ def _safe_stdout_ctx():
 
 
 def _compute_baseline(val_df, label_col: str):
+    # No-fallback lock (2026-09-17): rules_signal is pre-filtered to non-null above, but
+    # a value outside {long, short, wait} (unexpected/malformed) used to map to "flat"
+    # via fillna -- treating "we don't recognize this signal" the same as a genuine
+    # wait/flat reading, which could silently bias the baseline accuracy metric in
+    # either direction. Excluded from the metric entirely instead of guessed.
     rules_map = {"long": "up", "short": "down", "wait": "flat"}
     valid = val_df[label_col].notna() & val_df["rules_signal"].notna()
     df = val_df[valid].copy()
     if len(df) == 0:
         return 0.0
-    pred = df["rules_signal"].str.lower().map(rules_map).fillna("flat")
+    pred = df["rules_signal"].str.lower().map(rules_map)
+    mapped = pred.notna()
+    if not mapped.any():
+        return 0.0
     actual = df[label_col].str.lower()
-    return float((pred == actual).mean())
+    return float((pred[mapped] == actual[mapped]).mean())
 
 
 def _rel_artifacts(root: Path, basenames: list[str]) -> dict:

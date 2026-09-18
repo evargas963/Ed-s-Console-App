@@ -150,12 +150,20 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 
 def _aggregate_select_exprs(cols: set[str]) -> list[str]:
-    parts = ["COUNT(*)", "COALESCE(MAX(snapshot_id), 0)"]
+    # Fallback lock (2026-09-17): the SQL-level default-on-NULL for every MAX/SUM below is
+    # removed (operator ruling: no aggregate exemption survives). This function's ONLY
+    # consumer, compute_snapshots_training_fingerprint, concatenates every value into a
+    # change-detection fingerprint STRING -- an aggregate-over-zero-rows now contributes the
+    # token "None" instead of "0"/"0.0", which is still a distinct, deterministic,
+    # change-sensitive token (the fingerprint's only real contract). One harmless one-time
+    # fingerprint mismatch (and therefore one extra re-materialize) is expected on first
+    # deploy of this change, not a lasting defect.
+    parts = ["COUNT(*)", "MAX(snapshot_id)"]
     for odir, opt, _ in OUTCOME_BAR_SPECS:
         if odir in cols:
             parts.append(f"SUM(CASE WHEN {odir} IS NOT NULL THEN 1 ELSE 0 END)")
         if opt in cols:
-            parts.append(f"COALESCE(SUM(CAST({opt} AS REAL)), 0.0)")
+            parts.append(f"SUM(CAST({opt} AS REAL))")
     for dcol, mcol, vdcol, tmcol, legtcol, _, _slug in OUTCOME_MOVEMENT_V1_SPECS:
         if dcol in cols:
             parts.append(f"SUM(CASE WHEN {dcol} IS NOT NULL THEN 1 ELSE 0 END)")
@@ -164,14 +172,14 @@ def _aggregate_select_exprs(cols: set[str]) -> list[str]:
         if vdcol in cols:
             parts.append(f"SUM(CASE WHEN {vdcol} IS NOT NULL THEN 1 ELSE 0 END)")
         if tmcol in cols:
-            parts.append(f"COALESCE(SUM(CAST({tmcol} AS REAL)), 0.0)")
+            parts.append(f"SUM(CAST({tmcol} AS REAL))")
         if legtcol in cols:
-            parts.append(f"COALESCE(SUM(CAST({legtcol} AS REAL)), 0.0)")
+            parts.append(f"SUM(CAST({legtcol} AS REAL))")
     for c in ("vwap", "spot", "flow_imbalance", "smart_money_score"):
         if c in cols:
-            parts.append(f"COALESCE(SUM(CAST({c} AS REAL)), 0.0)")
+            parts.append(f"SUM(CAST({c} AS REAL))")
     if "horizon_outcome_schema_version" in cols:
-        parts.append("COALESCE(MAX(CAST(horizon_outcome_schema_version AS INTEGER)), 0)")
+        parts.append("MAX(CAST(horizon_outcome_schema_version AS INTEGER))")
     if "outcome_filled" in cols:
         parts.append(
             "SUM(CASE WHEN outcome_filled IS NOT NULL AND CAST(outcome_filled AS INTEGER) != 0 "

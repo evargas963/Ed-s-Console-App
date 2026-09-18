@@ -45,6 +45,7 @@ from typing import Any, Mapping
 from features.canonical_contract import validate_feature_contract_row
 from features.mvp_source_coercion import MvpFeatureSourceError
 from features.fusion_model_input import FusionModelInputError, validate_inference_snapshot_for_fusion_stack
+from features.monte_carlo_stack_input import typed_input_reason
 from features.xgb_model_input import CANONICAL_TO_XGB_TABULAR, MVP_LEGACY_KEYS
 
 # Re-export for callers documenting sequence length (single source in lstm_data).
@@ -79,6 +80,10 @@ _CANONICAL_NUMERIC_MASK_ORDER: tuple[str, ...] = (
 
 class LstmSequenceInputError(ValueError):
     """LSTM sequence preparation failed: invalid canonical data, contract, or history."""
+
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 class TransformerSequenceInputError(LstmSequenceInputError):
@@ -118,10 +123,12 @@ def _canonical_features_for_merged_row(merged_row: Mapping[str, Any]) -> dict[st
     try:
         cf = build_db_mvp_feature_row(dict(merged_row))
     except MvpFeatureSourceError as e:
-        raise LstmSequenceInputError(str(e)) from e
+        raise LstmSequenceInputError(str(e), reason="FEATURE_CONTRACT_INVALID") from e
     ok, errs = validate_feature_contract_row(cf)
     if not ok:
-        raise LstmSequenceInputError(f"invalid canonical feature row: {errs}")
+        raise LstmSequenceInputError(
+            f"invalid canonical feature row: {errs}", reason="FEATURE_CONTRACT_INVALID"
+        )
     return cf
 
 
@@ -298,7 +305,9 @@ def build_lstm_merged_windows(
         try:
             validate_inference_snapshot_for_fusion_stack(inference_snapshot_v1)
         except FusionModelInputError as e:
-            raise LstmSequenceInputError(str(e)) from e
+            raise LstmSequenceInputError(
+                str(e), reason=typed_input_reason(e)
+            ) from e
 
     last_ts = window[-1].get("ts_utc") if window else None
 
@@ -308,12 +317,14 @@ def build_lstm_merged_windows(
         try:
             cf = build_db_mvp_feature_row(d)
         except MvpFeatureSourceError as e:
-            raise LstmSequenceInputError(str(e)) from e
+            raise LstmSequenceInputError(str(e), reason="FEATURE_CONTRACT_INVALID") from e
         if inference_snapshot_v1 is not None and i == len(window) - 1:
             cf = inference_snapshot_v1["features"]
         ok, errs = validate_feature_contract_row(cf)
         if not ok:
-            raise LstmSequenceInputError(f"invalid canonical feature row: {errs}")
+            raise LstmSequenceInputError(
+                f"invalid canonical feature row: {errs}", reason="FEATURE_CONTRACT_INVALID"
+            )
         merged = merge_db_row_with_canonical_mvp(d, cf)
         merged_window.append(merged)
 
@@ -323,14 +334,16 @@ def build_lstm_merged_windows(
         try:
             cf = build_db_mvp_feature_row(d)
         except MvpFeatureSourceError as e:
-            raise LstmSequenceInputError(str(e)) from e
+            raise LstmSequenceInputError(str(e), reason="FEATURE_CONTRACT_INVALID") from e
         if inference_snapshot_v1 is not None and last_ts is not None and _ts_close(
             sn.get("ts_utc"), last_ts
         ):
             cf = inference_snapshot_v1["features"]
         ok, errs = validate_feature_contract_row(cf)
         if not ok:
-            raise LstmSequenceInputError(f"invalid canonical feature row: {errs}")
+            raise LstmSequenceInputError(
+                f"invalid canonical feature row: {errs}", reason="FEATURE_CONTRACT_INVALID"
+            )
         merged = merge_db_row_with_canonical_mvp(d, cf)
         merged_days.append(merged)
 
@@ -357,5 +370,7 @@ def build_transformer_merged_window(
             window, list(window), inference_snapshot_v1=inference_snapshot_v1
         )
     except LstmSequenceInputError as e:
-        raise TransformerSequenceInputError(str(e)) from e
+        raise TransformerSequenceInputError(
+            str(e), reason=typed_input_reason(e)
+        ) from e
     return merged_window

@@ -1425,21 +1425,29 @@ GREEK_BIAS_THRESHOLD    = 0.5
 
 def greek_bias(net_delta: float | None, charm_direction: str | None,
                put_call_oi_ratio: float | None,
-               dex_magnitude: str = "moderate",
-               charm_magnitude: str = "moderate") -> str:
+               dex_magnitude: str | None = None,
+               charm_magnitude: str | None = None) -> str:
+    # No-fallback lock (2026-09-17): a missing/unrecognized magnitude used to default to
+    # "moderate" (scale 0.7) here -- a specific, meaningful weight standing in for "we
+    # don't know how significant this exposure is." An unknown magnitude is not
+    # equivalent to a known moderate one; excluding that vote's contribution entirely is
+    # the honest behavior, matching a genuinely negligible (0.0) magnitude's own effect
+    # of contributing zero, but for the distinct reason of "not evaluated" rather than
+    # "evaluated and found negligible."
     MAG_SCALE = {"large": 1.0, "moderate": 0.7, "small": 0.3, "negligible": 0.0}
     score = 0.0
-    delta_scale = MAG_SCALE.get(dex_magnitude, 0.7)
-    if net_delta is not None and delta_scale > 0:
+    delta_scale = MAG_SCALE.get(dex_magnitude) if dex_magnitude is not None else None
+    if net_delta is not None and delta_scale is not None and delta_scale > 0:
         if net_delta > 0:
             score += GREEK_BIAS_DELTA_WEIGHT * delta_scale
         elif net_delta < 0:
             score -= GREEK_BIAS_DELTA_WEIGHT * delta_scale
-    charm_scale = MAG_SCALE.get(charm_magnitude, 0.7)
-    if charm_direction == "buying":
-        score += GREEK_BIAS_CHARM_WEIGHT * charm_scale
-    elif charm_direction == "selling":
-        score -= GREEK_BIAS_CHARM_WEIGHT * charm_scale
+    charm_scale = MAG_SCALE.get(charm_magnitude) if charm_magnitude is not None else None
+    if charm_scale is not None:
+        if charm_direction == "buying":
+            score += GREEK_BIAS_CHARM_WEIGHT * charm_scale
+        elif charm_direction == "selling":
+            score -= GREEK_BIAS_CHARM_WEIGHT * charm_scale
     if put_call_oi_ratio is not None:
         if put_call_oi_ratio > GREEK_BIAS_PCOI_BEARISH:
             score -= GREEK_BIAS_PCOI_WEIGHT

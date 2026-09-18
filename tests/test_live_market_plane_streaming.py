@@ -38,7 +38,7 @@ def test_record_from_level_one_equity_updates_plane():
     assert row["quote_ingestion"] == "schwab_streaming_level_one"
     assert abs(row["spot"] - 101.0) < 1e-6
     assert row["quote_source_detail"]["spot"] == "LAST_PRICE"
-    assert row["quote_source_detail"]["spread"] == "schwab_bid_ask"
+    assert row["quote_source_detail"]["spread"] == "BID_PRICE+ASK_PRICE"
     assert row["quote_source_detail"]["carried_forward"] is False
 
 

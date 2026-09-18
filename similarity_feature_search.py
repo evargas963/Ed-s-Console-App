@@ -77,7 +77,12 @@ WEIGHT_BAND_SCALARS: dict[str, float] = {
 
 
 def weights_for_band(band: str) -> dict[str, float]:
-    s = WEIGHT_BAND_SCALARS.get(band, 1.0)
+    if band not in WEIGHT_BAND_SCALARS:
+        raise ValueError(
+            f"weights_for_band: unknown weight band {band!r}; "
+            f"must be one of {sorted(WEIGHT_BAND_SCALARS)}"
+        )
+    s = WEIGHT_BAND_SCALARS[band]
     base = default_equal_weights()
     return {k: s for k in base}
 
@@ -139,7 +144,7 @@ def run_staged_shadow_search(
             for extra in extras:
                 esw = None
                 if extra:
-                    esw = {extra: WEIGHT_BAND_SCALARS.get("MEDIUM", 1.0)}
+                    esw = {extra: WEIGHT_BAND_SCALARS["MEDIUM"]}
                 if pn:
                     run = run_order_variant(
                         db,

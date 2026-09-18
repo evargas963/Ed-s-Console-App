@@ -368,8 +368,11 @@ def materialize_normalized_table(
         # Table is never globally wiped now, so snapshot_id always continues from the current max
         # (ids stay unique across per-ticker replaces; contiguity is not required for this derived table).
         for ticker in tickers:
+            # Fallback lock (2026-09-17): SQL-level default-on-NULL removed (operator
+            # ruling: no aggregate exemption survives) -- the Python-side guard on the next
+            # line already handles MAX-over-zero-rows identically.
             row_mx = conn.execute(
-                "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized"
+                "SELECT MAX(snapshot_id) FROM snapshots_1m_normalized"
             ).fetchone()
             next_sid = int(row_mx[0] if row_mx and row_mx[0] is not None else 0)
 

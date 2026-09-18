@@ -157,7 +157,33 @@ def offline_v2_knockout_snapshot_columns(column: str, model_family: str) -> list
 
 
 def validate_ablation_scoring_bundle_meta(meta: dict, family: str) -> tuple[bool, str]:
-    """Minimal on-disk bundle checks for offline ablation — not production contract drift."""
+    """Minimal on-disk bundle checks for offline ablation / live pre-train experiments —
+    a deliberately relaxed subset of model_contract.validate_artifact_contract's full
+    field set (label_config_version, feature_schema_version, etc. are NOT re-checked
+    here; this path exists precisely so bundles that don't match every strict field can
+    still be scored). This function is NOT ablation-only: ml_predict.py's real XGBoost
+    registry loader calls it instead of the full contract check whenever
+    unified_stack_bundle_relaxation_active() is True, which includes a live pre-train
+    experiment window on the actual serving path -- so a gap here is a real production
+    gap, not merely an offline-tooling one.
+
+    No-fallback lock (2026-09-17): impute_medians may be a deliberately empty dict for a
+    model trained under MISSINGNESS_CONTRACT_VERSION issue7_v2 (native XGBoost NaN
+    handling, no median fill) -- see ml_train.apply_xgb_imputation_matrix's docstring. A
+    PARTIAL dict (some but not all features covered) is still rejected as malformed.
+
+    CORRECTED 2026-09-18 (PR #254 point 6): accepting an EMPTY impute_medians dict here
+    used to require nothing beyond emptiness -- a bundle with an empty dict for ANY
+    reason (a training bug that crashed before populating it, a stale/foreign artifact,
+    a future contract nobody has defined yet) was silently treated as "deliberately
+    trained under issue7_v2's native-NaN design", the exact "empty accepted without
+    proof" gap. A FULLY POPULATED dict remains self-proving (every feature carries a
+    real numeric median regardless of any version stamp) and needs no extra check; only
+    the EMPTY-dict branch now additionally requires the meta's own
+    missingness_contract_version to equal model_contract.CURRENT_MISSINGNESS_CONTRACT_VERSION
+    -- reusing that single constant rather than re-deciding what "the current contract"
+    means in a second place.
+    """
     if not isinstance(meta, dict):
         return False, "meta is not a dict"
     fam = (family or "").strip().lower()
@@ -168,7 +194,18 @@ def validate_ablation_scoring_bundle_meta(meta: dict, family: str) -> tuple[bool
         imp = meta.get("impute_medians")
         if not isinstance(imp, dict):
             return False, "xgb impute_medians missing"
-        if not all(f in imp for f in feats):
+        if not imp:
+            from model_contract import CURRENT_MISSINGNESS_CONTRACT_VERSION
+
+            if meta.get("missingness_contract_version") != CURRENT_MISSINGNESS_CONTRACT_VERSION:
+                return (
+                    False,
+                    "xgb impute_medians is empty but missingness_contract_version "
+                    f"({meta.get('missingness_contract_version')!r}) does not prove this "
+                    f"bundle was trained under {CURRENT_MISSINGNESS_CONTRACT_VERSION!r} -- "
+                    "an empty dict alone cannot be trusted as a deliberate native-NaN design",
+                )
+        elif not all(f in imp for f in feats):
             return False, "xgb impute_medians incomplete"
     return True, ""
 

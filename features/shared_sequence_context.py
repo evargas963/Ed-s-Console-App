@@ -219,7 +219,8 @@ def transformer_window_chronological(
         from features.lstm_sequence_input import TransformerSequenceInputError
 
         raise TransformerSequenceInputError(
-            f"Transformer needs at least {seq_len} snapshots, got {len(ch)}"
+            f"Transformer needs at least {seq_len} snapshots, got {len(ch)}",
+            reason="INSUFFICIENT_HISTORY",
         )
     return list(ch[-seq_len:])
 

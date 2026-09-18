@@ -31,7 +31,9 @@ def record_schwab_http_response(resp, endpoint: str) -> None:
         return
     if ic != 429:
         return
-    ep = str(endpoint or "api")[:120]
+    if not endpoint:
+        raise ValueError("record_schwab_http_response: endpoint must be a non-empty identity label")
+    ep = str(endpoint)[:120]
     now = time.time()
     with _lock:
         _events.append((now, ic, ep))

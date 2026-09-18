@@ -62,7 +62,6 @@ def _cohort_tickers_and_bounds(db: EdDB) -> list[dict]:
                 CANONICAL_TIMEFRAME,
                 DERIVED_TIMEFRAME,
                 HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             ),
         ).fetchall()
     return [dict(r) for r in rows]

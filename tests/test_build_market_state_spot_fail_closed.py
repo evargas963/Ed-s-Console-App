@@ -14,10 +14,6 @@ def _mkt_ctx(**kwargs: object) -> MagicMock:
     ctx.qqq_chg_pct = kwargs.get("qqq_chg_pct")
     ctx.iwm_chg_pct = kwargs.get("iwm_chg_pct")
     ctx.vix = None
-    ctx.pcr = None
-    ctx.pcr_arrow = ""
-    ctx.pcr_color = ""
-    ctx.pcr_label = ""
     ctx.vix_regime = ""
     ctx.vix_color = ""
     ctx.vix_implication = ""

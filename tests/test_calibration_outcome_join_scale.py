@@ -88,14 +88,19 @@ def test_scale_exact_join_no_ambiguity_validate_passes(scale_join_db):
     conn = sqlite3.connect(str(scale_join_db))
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
-    n_nearest = conn.execute(
+    # No-fallback lock (2026-09-17): checks NULL and non-'exact' explicitly rather than
+    # IFNULL-folding NULL into a "safe" bucket -- with tol_sec=0.0, every successfully
+    # attached row must have a RECORDED exact join; an unrecorded outcome_join_method
+    # is not safe by default, it fails this assertion just like 'nearest_within_tol' would.
+    n_not_provably_exact = conn.execute(
         """
         SELECT COUNT(*) FROM calibration_decision_log
-        WHERE outcome_5c IS NOT NULL AND IFNULL(outcome_join_method,'') != 'exact'
+        WHERE outcome_5c IS NOT NULL
+          AND (outcome_join_method IS NULL OR outcome_join_method != 'exact')
         """
     ).fetchone()[0]
     conn.close()
-    assert n_nearest == 0
+    assert n_not_provably_exact == 0
 
     rep = analyze(scale_join_db)
     assert rep["calibration_row_count"] == N_MATCH + N_UNMATCHED

@@ -152,11 +152,16 @@ def run_repair(
             default_source=SYNTHETIC_INTERIOR_GRID_REPAIR_V1,
         )
     except Exception as e:
+        # No-fallback lock (2026-09-17): the underlying batch writer rolls back its
+        # single transaction on any exception, so these counts ARE durably zero --
+        # but reporting a bare 0 here is indistinguishable from "ran fine, nothing
+        # to touch," collapsing a crash into the same value as a genuine no-op
+        # outcome. None marks "not reported due to failure," distinct from either.
         rep["error"] = f"repair_failed_rollback:{e!r}"
-        rep["rows_upserted"] = 0
-        rep["tickers_touched"] = 0
-        rep["governed_outcome_refresh_tickers"] = 0
-        rep["fill_outcomes_tickers"] = 0
+        rep["rows_upserted"] = None
+        rep["tickers_touched"] = None
+        rep["governed_outcome_refresh_tickers"] = None
+        rep["fill_outcomes_tickers"] = None
         return rep
 
     rep["rows_upserted"] = n_written

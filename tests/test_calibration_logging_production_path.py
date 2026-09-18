@@ -410,17 +410,20 @@ def _seed_calibration_health_fixture(
     now_ts: float,
 ) -> None:
     """Populate calibration_decision_log + logging_universe for deterministic counter tests."""
+    # No-fallback lock (2026-09-17): logging_universe must be built via EdDB so this
+    # fixture matches the REAL production schema (db.py's CREATE TABLE has no `active`
+    # column -- eviction is DELETE-based). A hand-rolled fixture table that happened to
+    # add its own `active` column here would mask a production bug where the real
+    # schema's absent column made every enrolled-ticker count silently fail closed to 0.
+    _ = EdDB(db_path)
     conn = sqlite3.connect(str(db_path))
     configure_sqlite_connection(conn)
     try:
         ensure_calibration_schema(conn)
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS logging_universe ("
-            "ticker TEXT PRIMARY KEY, active INTEGER NOT NULL DEFAULT 1)"
-        )
         conn.executemany(
-            "INSERT OR REPLACE INTO logging_universe (ticker, active) VALUES (?, 1)",
-            [(f"FIX{i:02d}",) for i in range(enrolled_tickers)],
+            "INSERT OR REPLACE INTO logging_universe "
+            "(ticker, category, enrolled_ts_utc, last_seen_ts_utc) VALUES (?, 'core', ?, ?)",
+            [(f"FIX{i:02d}", now_ts, now_ts) for i in range(enrolled_tickers)],
         )
         lo_24 = now_ts - 86400.0
         lo_48 = now_ts - 2 * 86400.0
@@ -582,3 +585,110 @@ def test_calibration_rate_health_enrolled_override_deterministic(
     assert health["expected_per_24h"] == pytest.approx(
         20 * SESSION_MINUTES_RTH * EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER
     )
+
+
+def test_count_enrolled_tickers_against_real_production_schema(tmp_path: Path) -> None:
+    """
+    No-fallback lock repair (FB-00148): logging_universe has never had an `active`
+    column in db.py's real CREATE TABLE -- the prior query, which defaulted a missing
+    `active` value to 1 before comparing it, always raised sqlite3.OperationalError
+    against a real production database, silently swallowed by the broad except into a
+    fabricated "0 enrolled tickers" on every single call. This proves the repaired
+    query returns
+    the real row count against the actual EdDB-created schema, not a hand-rolled
+    fixture schema that happens to include the nonexistent column.
+    """
+    from calibration.writer import _count_enrolled_tickers
+
+    db_path = tmp_path / "enrolled_real_schema.db"
+    _ = EdDB(db_path)
+    conn = sqlite3.connect(str(db_path))
+    configure_sqlite_connection(conn)
+    conn.executemany(
+        "INSERT INTO logging_universe (ticker, category, enrolled_ts_utc, last_seen_ts_utc) "
+        "VALUES (?, 'core', 1.0, 1.0)",
+        [(f"T{i:02d}",) for i in range(7)],
+    )
+    conn.commit()
+    assert _count_enrolled_tickers(conn) == 7
+    conn.close()
+
+
+def test_count_enrolled_tickers_raises_not_swallows_on_query_failure(tmp_path: Path) -> None:
+    """No-fallback lock repair (2026-09-18, PR #254 point 5): a genuine query failure
+    (here: logging_universe doesn't exist at all) must propagate, not collapse to the
+    same 0 a confirmed-empty enrollment produces."""
+    from calibration.writer import _count_enrolled_tickers
+
+    conn = sqlite3.connect(str(tmp_path / "no_logging_universe.db"))
+    with pytest.raises(sqlite3.Error):
+        _count_enrolled_tickers(conn)
+    conn.close()
+
+
+def test_count_calibration_rows_between_raises_not_swallows_on_query_failure(tmp_path: Path) -> None:
+    from calibration.writer import _count_calibration_rows_between
+
+    conn = sqlite3.connect(str(tmp_path / "no_calibration_table.db"))
+    with pytest.raises(sqlite3.Error):
+        _count_calibration_rows_between(conn, lo_ts=0.0, hi_ts=1.0)
+    conn.close()
+
+
+def test_calibration_rate_health_discloses_enrolled_query_failure_not_a_fabricated_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """calibration_decision_log exists (table_present=True) but logging_universe does
+    not -- the OLD code silently reported enrolled_tickers=0 (identical to a confirmed-
+    empty universe) and warn=False (identical to 'measured and fine'). The repair must
+    surface enrolled_tickers=None, health_unknown=True, and a measurement_error, never
+    a real-looking 0 or a false all-clear."""
+    from calibration.writer import compute_calibration_rate_health
+
+    monkeypatch.setenv("ED_CALIBRATION_LOG", "1")
+    db_path = tmp_path / "cal_health_no_universe.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_calibration_schema(conn)
+    finally:
+        conn.close()
+
+    health = compute_calibration_rate_health(db_path, now_ts=1_800_000_000.0)
+    assert health["table_present"] is True
+    assert health["enrolled_tickers"] is None
+    assert health["expected_per_24h"] is None
+    assert health["health_unknown"] is True
+    assert health["measurement_error"] is not None
+    assert "enrolled_ticker_query_failed" in health["measurement_error"]
+    assert health["warn"] is False, (
+        "an unknown health state must never present as warn=False meaning "
+        "'measured and confirmed fine' -- health_unknown=True is the disclosure"
+    )
+
+
+def test_calibration_rate_health_never_warns_true_while_health_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even in a scenario that WOULD cross the warn threshold if the enrolled count
+    were known (a real logging gap), warn must stay False while health_unknown is True
+    -- 'we don't know' can never be silently promoted into either 'all clear' or a
+    confident alert; only a fully-measured state may set warn."""
+    from calibration.writer import compute_calibration_rate_health
+
+    monkeypatch.setenv("ED_CALIBRATION_LOG", "1")
+    db_path = tmp_path / "cal_health_gap_unknown.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_calibration_schema(conn)
+        # Zero decisions logged in the last 24h -- would be a clear WARN if enrolled
+        # were known and nonzero.
+    finally:
+        conn.close()
+
+    health = compute_calibration_rate_health(db_path, now_ts=1_800_000_000.0)
+    assert health["last_24h_count"] == 0
+    assert health["enrolled_tickers"] is None  # logging_universe absent
+    assert health["health_unknown"] is True
+    assert health["warn"] is False

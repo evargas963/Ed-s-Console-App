@@ -172,7 +172,7 @@ def load_rows(
     SELECT *
     FROM snapshots
     WHERE timeframe = '1m'
-      AND COALESCE(horizon_outcome_schema_version, 3) = 3
+      AND horizon_outcome_schema_version = 3
       AND outcome_1c IS NOT NULL AND outcome_1c_pts IS NOT NULL
       AND outcome_5c IS NOT NULL AND outcome_5c_pts IS NOT NULL
       AND outcome_15c IS NOT NULL AND outcome_15c_pts IS NOT NULL

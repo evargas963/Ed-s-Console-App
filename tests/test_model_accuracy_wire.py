@@ -151,7 +151,7 @@ def test_history_limit_respected(tmp_path: Path) -> None:
 # ───────────────────── Pass 5b — ops.html surface presence ─────────────────────
 
 
-def _insert_pred_row(db: EdDB, *, et_hour: int, et_minute: int, ts: float,
+def _insert_pred_row(db: EdDB, *, et_hour: int, et_minute: int | None, ts: float,
                      up: float, down: float, flat: float, outcome: str) -> None:
     with db._connect() as conn:
         conn.execute(
@@ -193,6 +193,26 @@ def test_compute_accuracy_rth_scope_and_baseline_fields(tmp_path: Path) -> None:
     empty = edb.compute_accuracy("SPY", "1m", model_version="missing", rth_only=True)
     assert empty["5c"]["total"] == 0 and empty["5c"]["accuracy"] is None
     assert empty["5c"]["scope"] == "rth_0930_1600_et"
+
+
+def test_compute_accuracy_rth_scope_excludes_null_et_minute(tmp_path: Path) -> None:
+    """No-fallback lock repair (2026-09-17): the RTH boundary check used to default a NULL
+    et_minute to :00 via SQL COALESCE, fabricating a specific wrong time-of-day and letting
+    that row silently enter (or be excluded from) the RTH scope based on a guess. A row with
+    a genuinely-unrecorded et_minute must now be excluded from the rth_only scope entirely
+    (SQL NULL arithmetic naturally fails the boundary comparison) rather than assumed to
+    have landed on the hour."""
+    edb = _new_db(tmp_path)
+    _insert_pred_row(edb, et_hour=10, et_minute=0, ts=1000.0,
+                     up=0.6, down=0.2, flat=0.2, outcome="up")
+    # et_minute=None: would land inside RTH if defaulted to :00 (10:00 ET), but its real
+    # minute is unrecorded -- must not be silently counted either way.
+    _insert_pred_row(edb, et_hour=10, et_minute=None, ts=1500.0,
+                     up=0.6, down=0.2, flat=0.2, outcome="up")
+    rth = edb.compute_accuracy("SPY", "1m", model_version="vtest", rth_only=True)
+    assert rth["5c"]["total"] == 1, (
+        "the NULL-et_minute row must be excluded from the RTH scope, not assumed to be :00"
+    )
 
 
 def test_server_accuracy_surfaces_are_rth_primary() -> None:

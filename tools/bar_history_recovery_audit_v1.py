@@ -71,7 +71,6 @@ def collect_bar_recovery_audit(conn: sqlite3.Connection, db_path: Path) -> dict:
                 CANONICAL_TIMEFRAME,
                 DERIVED_TIMEFRAME,
                 HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             ),
         ).fetchone()
     )
@@ -82,7 +81,6 @@ def collect_bar_recovery_audit(conn: sqlite3.Connection, db_path: Path) -> dict:
             (
                 CANONICAL_TIMEFRAME,
                 DERIVED_TIMEFRAME,
-                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                 HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             ),
         ).fetchone()["n"]
@@ -97,7 +95,6 @@ def collect_bar_recovery_audit(conn: sqlite3.Connection, db_path: Path) -> dict:
             CANONICAL_TIMEFRAME,
             DERIVED_TIMEFRAME,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
         ),
     ).fetchall()
     out["pin_neutral_by_timeframe"] = {r["timeframe"]: int(r["n"]) for r in rows_tf}
@@ -108,7 +105,6 @@ def collect_bar_recovery_audit(conn: sqlite3.Connection, db_path: Path) -> dict:
             CANONICAL_TIMEFRAME,
             DERIVED_TIMEFRAME,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
         ),
     ).fetchone()
     out["pin_neutral_ts_utc_bounds"] = dict(ts_bounds)
@@ -118,7 +114,6 @@ def collect_bar_recovery_audit(conn: sqlite3.Connection, db_path: Path) -> dict:
         (
             CANONICAL_TIMEFRAME,
             DERIVED_TIMEFRAME,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
         ),
     ).fetchall()
@@ -158,7 +153,6 @@ def collect_bar_recovery_audit(conn: sqlite3.Connection, db_path: Path) -> dict:
         (
             CANONICAL_TIMEFRAME,
             DERIVED_TIMEFRAME,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
         ),
     ).fetchone()

@@ -92,12 +92,22 @@ class OrderFlowState:
         asks = content_item.get("ASKS")
         if not bids or not asks:
             return
+        # A present-but-non-list BIDS/ASKS is a malformed vendor message, not a
+        # single-level book -- wrapping it as [bids] used to fabricate a valid-looking
+        # one-level book out of a shape the rest of this module never actually produces
+        # or expects. Reject the whole observation instead of coercing it.
+        if not isinstance(bids, list) or not isinstance(asks, list):
+            log.warning(
+                "push_book: malformed BIDS/ASKS shape for %s (BIDS=%s ASKS=%s) -- dropping",
+                symbol, type(bids).__name__, type(asks).__name__,
+            )
+            return
         sym = ticker_storage_key(symbol or content_item.get("key"))
         if not sym:
             return
         item = {
-            "BIDS": list(bids) if isinstance(bids, list) else [bids],
-            "ASKS": list(asks) if isinstance(asks, list) else [asks],
+            "BIDS": list(bids),
+            "ASKS": list(asks),
             "BOOK_TIME": content_item.get("BOOK_TIME"),
         }
         with self._lock:

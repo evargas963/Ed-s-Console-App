@@ -34,7 +34,7 @@ from calibration.phase6_edge_discovery_governed_v1 import HORIZONS, load_rows, _
 # ── Frozen protocol (Phase 6.5) ─────────────────────────────────────────────
 FROZEN = {
     "governed_predicate": (
-        "timeframe='1m' AND COALESCE(horizon_outcome_schema_version,3)=3 AND "
+        "timeframe='1m' AND horizon_outcome_schema_version=3 AND "
         "outcome_1c..outcome_60c AND outcome_*_pts all NOT NULL AND "
         "EXISTS price_bars_1m bar anchor at ts_utc (same as phase6 load_rows)"
     ),

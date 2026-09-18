@@ -54,6 +54,7 @@ from features.lstm_sequence_input import (
     TransformerSequenceInputError,
     build_transformer_merged_window,
 )
+from features.monte_carlo_stack_input import typed_input_reason
 from features.xgb_model_input import XgbInferenceInputError
 from features.parallel_stack_schema import (
     PARALLEL_STACK_SCHEMA_VERSION,
@@ -356,14 +357,16 @@ def _require_as_of_ts_utc_for_sequence_db(inference_snapshot_v1: dict | None) ->
     if not inference_snapshot_v1:
         raise LstmSequenceInputError(
             "LSTM/Transformer sequence inference requires inference_snapshot_v1 with as_of_ts "
-            "for causal DB history (EdDB.get_recent_snapshots(..., as_of_ts_utc=...))."
+            "for causal DB history (EdDB.get_recent_snapshots(..., as_of_ts_utc=...)).",
+            reason="ENVELOPE_INVALID",
         )
     ts = inference_snapshot_v1.get("as_of_ts")
     if ts is None:
         raise LstmSequenceInputError(
             "InferenceSnapshotV1.as_of_ts is required for LSTM/Transformer DB history "
             "(strict causal cutoff: only snapshots with ts_utc < as_of_ts are used from the DB; "
-            "the current bar MVP is merged from inference_snapshot_v1)."
+            "the current bar MVP is merged from inference_snapshot_v1).",
+            reason="ENVELOPE_INVALID",
         )
     return float(ts)
 
@@ -1409,7 +1412,8 @@ def _predict_lstm(
             )
             if not recent or len(recent) < STREAM_5M_LOOKBACK:
                 raise LstmSequenceInputError(
-                    f"LSTM needs at least {STREAM_5M_LOOKBACK} snapshots, got {len(recent or [])}"
+                    f"LSTM needs at least {STREAM_5M_LOOKBACK} snapshots, got {len(recent or [])}",
+                    reason="INSUFFICIENT_HISTORY",
                 )
             recent = list(reversed(recent))
             window = recent[-STREAM_5M_LOOKBACK:]
@@ -1429,7 +1433,9 @@ def _predict_lstm(
         try:
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)
         except ValueError as e:
-            raise LstmSequenceInputError(str(e)) from e
+            raise LstmSequenceInputError(
+                str(e), reason=typed_input_reason(e)
+            ) from e
 
         try:
             assert_lstm_encoder_checkpoint_compatible(checkpoint)
@@ -1786,7 +1792,9 @@ def _predict_transformer(
     try:
         _asof = _require_as_of_ts_utc_for_sequence_db(inference_snapshot_v1)
     except LstmSequenceInputError as e:
-        raise TransformerSequenceInputError(str(e)) from e
+        raise TransformerSequenceInputError(
+            str(e), reason=typed_input_reason(e)
+        ) from e
 
     try:
         import torch
@@ -1823,7 +1831,8 @@ def _predict_transformer(
             )
             if not recent or len(recent) < seq_len:
                 raise TransformerSequenceInputError(
-                    f"Transformer needs at least {seq_len} snapshots, got {len(recent or [])}"
+                    f"Transformer needs at least {seq_len} snapshots, got {len(recent or [])}",
+                    reason="INSUFFICIENT_HISTORY",
                 )
             recent = list(reversed(recent))
             window = recent[-seq_len:]
@@ -1853,7 +1862,9 @@ def _predict_transformer(
         try:
             ref_spot = canonical_reference_spot_from_merged_window(merged_window)
         except ValueError as e:
-            raise TransformerSequenceInputError(str(e)) from e
+            raise TransformerSequenceInputError(
+                str(e), reason=typed_input_reason(e)
+            ) from e
 
         snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
         seq = [
@@ -2289,13 +2300,21 @@ def _active_base_collapse_flags(ticker: str) -> set:
     cached = _collapse_flag_registry.get(rk)
     if cached is not None:
         return cached
-    # Best-effort: if the active bundle dir can't be resolved (e.g. strict-active-only with an
-    # incomplete bundle), fall back to "no collapse flags" — identical to prior combiner behavior.
+    # Fallback lock (2026-09-17): a failed read used to be cached as an empty set
+    # (_collapse_flag_registry[rk] = set()) INDISTINGUISHABLE from a genuinely-confirmed
+    # "checked, zero collapsed bases" result -- for the remaining lifetime of this process,
+    # every subsequent call for this (ticker, hz) silently reused that unproven "clean"
+    # verdict instead of ever retrying the read. Collapse flags exist to warn "don't trust
+    # this base's output"; caching a check-FAILURE as a check-PASS is exactly backward from
+    # the safety purpose of the flag. Only a SUCCESSFUL read is cached now; a failed read
+    # returns empty for this one call (unchanged immediate behavior — still best-effort, not
+    # a hard failure of the caller) but is retried on the next call rather than trusted
+    # forever.
     try:
         flags = read_stack_layer_collapse_flags(_model_dir_for_ticker(ticker), ticker, hz)
     except Exception as e:
         logger.debug("collapse-flag read skipped for %s: %s", ticker, e)
-        flags = set()
+        return set()
     _collapse_flag_registry[rk] = flags
     return flags
 

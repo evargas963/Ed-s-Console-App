@@ -154,8 +154,15 @@ def _iter_bids_levels(content_item: dict) -> list[tuple[float, float]]:
     bids = content_item.get("BIDS")
     if not bids:
         return []
+    # A present-but-non-list BIDS is a malformed vendor shape -- Schwab's documented
+    # streaming book format is always an array of level objects. Wrapping it as [bids]
+    # used to fabricate a fake one-level book out of any truthy value instead of
+    # disclosing the malformed shape (mirrors the same fix at push_book in state.py).
+    if not isinstance(bids, list):
+        log.warning("_iter_bids_levels: malformed BIDS shape %s -- dropping", type(bids).__name__)
+        return []
     out = []
-    for level in (bids if isinstance(bids, list) else [bids]):
+    for level in bids:
         if isinstance(level, dict):
             p = _safe_float(level.get("BID_PRICE"))
             v = _safe_float(level.get("TOTAL_VOLUME"))
@@ -178,8 +185,13 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
     asks = content_item.get("ASKS")
     if not asks:
         return []
+    # See the matching comment in _iter_bids_levels: a present-but-non-list ASKS is
+    # malformed, not a single-level book -- reject instead of fabricating one.
+    if not isinstance(asks, list):
+        log.warning("_iter_asks_levels: malformed ASKS shape %s -- dropping", type(asks).__name__)
+        return []
     out = []
-    for level in (asks if isinstance(asks, list) else [asks]):
+    for level in asks:
         if isinstance(level, dict):
             p = _safe_float(level.get("ASK_PRICE"))
             v = _safe_float(level.get("TOTAL_VOLUME"))
@@ -472,7 +484,15 @@ def _compute_spread(data: dict, *, now_ts: Optional[float] = None) -> dict[str, 
     if mark_p is not None and mark_p > 0:
         spread_frac = round(spread_pts / mark_p, 6)
         spread_frac_source = f"derived_bid_ask_fraction_schwab_mark_{mark_leaf or 'mark'}"
-    leaf_tag = bid_leaf or ask_leaf or "schwab_bid_ask"
+    # bid_leaf/ask_leaf are both guaranteed non-None here (bid_p/ask_p already confirmed
+    # non-None by the early return above, and _resolve_bid_ask_prices always sets a
+    # side's leaf whenever it sets that side's price). bid and ask can legitimately
+    # resolve from DIFFERENT tiers (e.g. bid from the streaming book, ask from a REST
+    # quote) -- picking only one leaf silently discarded whichever side's real source
+    # didn't win the `or`, and the "schwab_bid_ask" fallback was unreachable dead code
+    # standing in for a state that can't occur. Compose both, as spread_bid_leaf/
+    # spread_ask_leaf below already retain individually.
+    leaf_tag = f"{bid_leaf}+{ask_leaf}"
     return {
         "spread_pts": spread_pts,
         "spread_frac": spread_frac,
@@ -1055,16 +1075,32 @@ def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
 # INSTITUTIONAL FLOW PROXY
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[float] = None) -> Optional[float]:
+_BOOK_IMBALANCE_5_NOT_SUPPLIED = object()  # sentinel: distinguishes "caller never had a
+# canonical value to pass" from "the engine computed the canonical value and it IS None"
+
+
+def _compute_institutional_flow_proxy(
+    data: dict, *, book_imbalance_5: Optional[float] = _BOOK_IMBALANCE_5_NOT_SUPPLIED,
+) -> Optional[float]:
     """
     Proxy for institutional flow: large trades + options activity + book imbalance.
     Uses: tape (large LAST_SIZE), options flow, book imbalance.
     ONE CANONICAL PATH: the deep book imbalance is READ from the single canonical
     microstructure result (passed by the engine as `book_imbalance_5`), not re-walked here.
-    When called standalone without it, it falls back to the same canonical helper.
+
+    `None` and "not supplied" are different facts and must not share one sentinel: the
+    main engine always computes book_imbalance_5 via compute_book_microstructure BEFORE
+    calling this, so an explicit `book_imbalance_5=None` from that path means the canonical
+    value IS unavailable (e.g. no book) -- propagate None, never recompute a stand-in. Only
+    a caller that never had a canonical value to pass (the standalone/test usage this
+    parameter's default exists for) falls back to computing it here, via the SAME
+    canonical helper, not a divergent formula.
     """
     cum = _compute_cum_delta_proxy(data)
-    book_imb = book_imbalance_5 if book_imbalance_5 is not None else _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
+    if book_imbalance_5 is _BOOK_IMBALANCE_5_NOT_SUPPLIED:
+        book_imb = _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
+    else:
+        book_imb = book_imbalance_5
     opt_score, _, _, delta_w, _ = _compute_options_flow(data)
     components = []
     if cum is not None:

@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from calibration.schema import ensure_calibration_schema
 from research.structural_eval_v1 import runner
 from time_et import ET
 
@@ -109,13 +110,12 @@ def _fixture_db(tmp_path, n_days: int = 12, per_day: int = 60):
 
     db = tmp_path / "fixture.db"
     conn = sqlite3.connect(db)
-    conn.execute(
-        "CREATE TABLE calibration_decision_log ("
-        " ticker TEXT, decision_ts_utc REAL, model_outputs_json TEXT,"
-        " zone TEXT, regime_primary TEXT, nearest_above_dist REAL, nearest_below_dist REAL,"
-        " outcome_1c TEXT, outcome_5c TEXT, outcome_15c TEXT, outcome_60c TEXT,"
-        " calibration_trust TEXT, outcomes_attached_ts_utc REAL)"
-    )
+    # No-fallback lock repair (2026-09-18, PR #254 point 4): use the CANONICAL schema
+    # (ensure_calibration_schema) rather than a hand-rolled 13-column table -- the bare
+    # shape never occurs in production (db.py migrates research_excluded onto every
+    # real database) and was silently exercising operable_filter_sql's now-removed
+    # '1=1' degrade path instead of the real 'research_excluded=0' filter.
+    ensure_calibration_schema(conn)
     conn.execute(
         "CREATE TABLE price_bars_1m ("
         " ticker TEXT, bar_start_ts_utc REAL, bar_end_ts_utc REAL,"
@@ -158,7 +158,12 @@ def _fixture_db(tmp_path, n_days: int = 12, per_day: int = 60):
             days_done += 1
         day += timedelta(days=1)
     conn.executemany(
-        "INSERT INTO calibration_decision_log VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", cal_rows
+        "INSERT INTO calibration_decision_log ("
+        " ticker, decision_ts_utc, model_outputs_json,"
+        " zone, regime_primary, nearest_above_dist, nearest_below_dist,"
+        " outcome_1c, outcome_5c, outcome_15c, outcome_60c,"
+        " calibration_trust, outcomes_attached_ts_utc"
+        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", cal_rows
     )
     conn.executemany("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)", bar_rows)
     conn.commit()

@@ -102,6 +102,51 @@ def test_fill_outcomes_bar_based_anchor_matches_last_completed_bar(tmp_db: EdDB)
     assert abs(float(row["outcome_1c_pts"]) - pts) < 1e-6
 
 
+def test_fill_outcomes_unfilled_row_query_never_defaults_a_null_schema_version():
+    """No-fallback lock repair (2026-09-17, FB-00188/calibration_ml_governance): fill_outcomes'
+    unfilled-row query used to default an unset schema-version column to the current anchor
+    version via a SQL COALESCE, silently treating a NULL
+    (pre-migration/unrecorded) schema version -- a real, reachable state: the column is
+    added via a bare 'ALTER TABLE ... ADD COLUMN horizon_outcome_schema_version INTEGER'
+    (no DEFAULT) for any database upgraded from before the column existed, per db.py's own
+    NEW_COLUMNS migration list -- as CONFIRMED current-schema with no per-row proof.
+
+    A fresh EdDB always creates the table via CREATE TABLE with `NOT NULL DEFAULT 3` baked
+    in from the start (db.py:1414), so a NULL row cannot be constructed through the ORM in a
+    fresh test database -- exactly the gap between "freshly created" and "incrementally
+    upgraded from an older schema" this fallback existed to paper over. This test locks the
+    SQL text directly: the unfilled-row query must never re-introduce COALESCE around this
+    column, proven by reading fill_outcomes' own source rather than constructing the
+    hard-to-reach legacy-upgrade database state."""
+    import inspect
+
+    import db as _db_module
+
+    def _code_only(src: str) -> str:
+        # Strip comment lines first -- explanatory comments legitimately name the OLD
+        # pattern in prose; only the executable SQL text must never contain it.
+        return "\n".join(ln for ln in src.splitlines() if not ln.strip().startswith("#"))
+
+    # Every function this repair touched (db.py FB-00174/182/184/185/186/188).
+    targets = [
+        EdDB.fill_outcomes,
+        EdDB.refresh_all_governed_bar_anchor_outcomes_v1,
+        EdDB.fill_outcomes_pin_neutral_backfill_v1,
+        _db_module._snapshot_rows_affected_by_bar_mutations,
+    ]
+    for fn in targets:
+        code_only = _code_only(inspect.getsource(fn))
+        assert "COALESCE(horizon_outcome_schema_version" not in code_only, (
+            f"{fn.__qualname__} must never default a NULL/unrecorded schema version to the "
+            f"current anchor version -- a NULL row (a real reachable state on an "
+            f"ALTER TABLE-upgraded database) must be excluded from the match, not silently "
+            f"promoted"
+        )
+        assert "horizon_outcome_schema_version = ?" in code_only, (
+            f"{fn.__qualname__} lost its schema-version filter entirely"
+        )
+
+
 def test_fill_outcomes_live_batch_limit_caps_rows_per_call(tmp_db: EdDB, monkeypatch: pytest.MonkeyPatch):
     """Newest-first LIMIT bounds live fill_outcomes (no unbounded 14d scan)."""
     import db as dbmod

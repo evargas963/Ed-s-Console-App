@@ -95,3 +95,32 @@ def test_carry_basis_excludes_prior_synthetic_close(tmp_path: Path, monkeypatch)
     assert planned
     _tkr, _g, close = planned[0]
     assert close == 10.0
+
+
+def test_run_repair_failure_reports_none_not_zero_counts(tmp_path: Path, monkeypatch):
+    """
+    No-fallback lock repair (FB-00129/FB-00130): apply_repair_1m_bar_batch_writes rolls
+    back its single transaction on any exception, so rows_upserted/tickers_touched/
+    governed_outcome_refresh_tickers ARE durably zero on failure -- but a bare 0 there is
+    indistinguishable from "ran fine, nothing to touch." None marks the report fields as
+    not-reported-due-to-failure, distinct from either outcome.
+    """
+    from calibration import repair_canonical_1m_edge_carry_v1 as edge
+
+    db_path = tmp_path / "fail.db"
+    _seed_db(db_path)
+
+    monkeypatch.setattr(
+        edge, "_planned_edge_carries", lambda _db, _tz: [("SPY", 4000.0, 10.0)]
+    )
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("simulated batch-write failure")
+
+    monkeypatch.setattr(edge, "apply_repair_1m_bar_batch_writes", _boom)
+
+    rep = edge.run_repair(db_path, dry_run=False)
+    assert rep["error"].startswith("repair_failed_rollback:")
+    assert rep["rows_upserted"] is None
+    assert rep["tickers_touched"] is None
+    assert rep["governed_outcome_refresh_tickers"] is None

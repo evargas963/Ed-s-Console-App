@@ -172,7 +172,7 @@ def main() -> None:
             {"schema_version": x["v"], "n": int(x["n"])}
             for x in conn.execute(
                 """
-                SELECT COALESCE(horizon_outcome_schema_version, -1) AS v, COUNT(*) AS n
+                SELECT horizon_outcome_schema_version AS v, COUNT(*) AS n
                 FROM snapshots WHERE timeframe = ?
                 GROUP BY horizon_outcome_schema_version
                 """,
