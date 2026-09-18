@@ -1,5 +1,16 @@
 """Point 11: 1226 → 1125 must reconcile with a lineage row per removal/addition,
 and discovery completeness must fail when an executable fallback is omitted.
+
+FROZEN HISTORICAL PROOF, not a live invariant (2026-09-18, PR #254 point 9): both
+`prior` and `current` are loaded from PINNED git refs (see
+tools/reconcile_no_fallback_inventory_lineage.py's own module docstring for why) --
+never from the live, currently-evolving reports/no_fallback_inventory.json. Reading
+the live file here made this test permanently broken by every later legitimate
+discovery/adjudication change (it failed CI for exactly this reason: "current
+candidate_count 1115 != 1125", after further genuine progress moved the count past
+this one historical snapshot). Pinning both sides makes this a pure regression proof
+that the point-5 migration reconciled correctly, passing forever regardless of later,
+unrelated progress.
 """
 from __future__ import annotations
 
@@ -14,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def test_lineage_reconciles_1226_minus_101_to_1125():
     prior = L._load_prior()
-    current = json.loads((ROOT / "reports" / "no_fallback_inventory.json").read_text(encoding="utf-8"))
+    current = L._load_current()
     report = L.build_lineage(prior, current)
     assert report["prior_count"] == 1226
     assert report["current_count"] == 1125

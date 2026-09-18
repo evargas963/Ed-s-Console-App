@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Reconcile the 1226-candidate prior inventory against the current 1125-candidate
-inventory.
+"""Reconcile the 1226-candidate prior inventory against the 1125-candidate inventory
+that followed the point-5 fingerprint-identity migration.
 
 1226 - 1125 = 101 is the NET delta. Expression-level matching on
 (file, pattern, snippet, context) shows 115 removals and 14 additions
@@ -9,6 +9,18 @@ addition and refuses to write unless:
 
     prior - removals + additions == current
     removals - additions == 101
+
+FROZEN HISTORICAL PROOF, not a live invariant (2026-09-18, PR #254 point 9): both sides
+of this reconciliation are pinned to specific git refs, never read from the live,
+currently-evolving reports/no_fallback_inventory.json. This tool's job was to prove
+ONE specific transition (the point-5 migration) reconciled correctly; the codebase has
+legitimately continued adjudicating since then (1125 -> 1132 -> 1155 -> 1132 -> 1115 and
+counting), and re-deriving "current" from the live file made this test permanently
+broken by every later legitimate discovery/adjudication change -- it failed CI on SHA
+4c8e2520 for exactly this reason ("current candidate_count 1115 != 1125"), not because
+anything regressed. Pinning CURRENT_REF makes this a pure historical regression proof
+that passes forever regardless of later progress, while
+reports/no_fallback_inventory_lineage_1226_to_1125.json stands as the permanent record.
 """
 from __future__ import annotations
 
@@ -20,6 +32,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PRIOR_REF = "05cc3bf4"
+CURRENT_REF = "21468eb2"  # point-5 fingerprint-identity migration: candidate_count == 1125
 PRIOR_PATH = "reports/no_fallback_inventory.json"
 OUT_PATH = REPO / "reports" / "no_fallback_inventory_lineage_1226_to_1125.json"
 EXPECTED_PRIOR = 1226
@@ -42,17 +55,25 @@ def _key(c: dict) -> tuple[str, str, str, str]:
     )
 
 
-def _load_prior() -> dict:
+def _load_at_ref(ref: str, path: str = PRIOR_PATH) -> dict:
     r = subprocess.run(
-        ["git", "show", f"{PRIOR_REF}:{PRIOR_PATH}"],
+        ["git", "show", f"{ref}:{path}"],
         cwd=str(REPO),
         capture_output=True,
         text=True,
         timeout=60,
     )
     if r.returncode != 0:
-        raise SystemExit(f"git show {PRIOR_REF}:{PRIOR_PATH} failed: {r.stderr}")
+        raise SystemExit(f"git show {ref}:{path} failed: {r.stderr}")
     return json.loads(r.stdout)
+
+
+def _load_prior() -> dict:
+    return _load_at_ref(PRIOR_REF)
+
+
+def _load_current() -> dict:
+    return _load_at_ref(CURRENT_REF)
 
 
 def _removal_classification(old: dict) -> tuple[str, str]:
@@ -173,7 +194,7 @@ def build_lineage(prior: dict, current: dict) -> dict:
 
 def main() -> int:
     prior = _load_prior()
-    current = json.loads((REPO / PRIOR_PATH).read_text(encoding="utf-8"))
+    current = _load_current()
     report = build_lineage(prior, current)
     OUT_PATH.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps({
