@@ -25,6 +25,7 @@ import time
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
+from market_observation import FieldObservation, QuoteObservation
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +88,12 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     """
     Ingest one Schwab streaming LEVEL_ONE_EQUITY content row into the plane.
     Returns True if the stored row changed (new generation recorded).
+
+    Builds a market_observation.QuoteObservation as the single source of truth for this
+    tick, then stores QuoteObservation.to_legacy_dict()'s output -- the stored row shape is
+    unchanged (verified key-for-key against the prior hand-built dict), but every field's
+    provenance now flows through one typed, invariant-checked construction instead of
+    parallel ad hoc conditionals.
     """
     if not item or not isinstance(item, dict):
         return False
@@ -110,24 +117,41 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
             if isinstance(_prev_qsd, dict):
                 prev_spot_source = _prev_qsd.get("spot")
 
+    received_ts = time.time()
+
     # Current live spot is LAST_PRICE only. MARK is the vendor mid and may update
     # quote_mid; it must never become spot. A bid/ask-only tick keeps the prior
-    # LAST_PRICE rather than inventing a substitute.
+    # LAST_PRICE rather than inventing a substitute -- and is now explicitly marked STALE
+    # (RC-REHAB-1: this branch previously hardcoded carried_forward=False below, silently
+    # telling every consumer -- including server.py's card_freshness_v1 actionability
+    # verdict -- that a carried print was a fresh one).
     if last is not None:
-        spot_f = last
-        spot_source = "LAST_PRICE"
+        spot_obs = FieldObservation.live(last, source="LAST_PRICE", native_ts=None, received_ts=received_ts)
     elif (
         prev is not None
         and pspot is not None
         and pspot > 0
         and prev_spot_source == "LAST_PRICE"
     ):
-        spot_f = pspot
-        spot_source = "LAST_PRICE"
+        spot_obs = FieldObservation.stale(pspot, source="LAST_PRICE", native_ts=None, received_ts=received_ts)
     else:
         return False
-    bid_source = "BID_PRICE" if bid is not None else None
-    ask_source = "ASK_PRICE" if ask is not None else None
+
+    bid_obs = (
+        FieldObservation.live(bid, source="BID_PRICE", native_ts=None, received_ts=received_ts)
+        if bid is not None
+        else FieldObservation.unavailable(source="BID_PRICE", received_ts=received_ts)
+    )
+    ask_obs = (
+        FieldObservation.live(ask, source="ASK_PRICE", native_ts=None, received_ts=received_ts)
+        if ask is not None
+        else FieldObservation.unavailable(source="ASK_PRICE", received_ts=received_ts)
+    )
+    mark_obs = (
+        FieldObservation.live(mark, source="schwab_streaming_mark", native_ts=None, received_ts=received_ts)
+        if mark is not None
+        else FieldObservation.unavailable(source="schwab_streaming_mark", received_ts=received_ts)
+    )
 
     # exchange_quote_ts (set below) carries the EXCHANGE quote clock — Schwab
     # QUOTE_TIME_MILLIS in epoch seconds — NOT a server clock. The genuine server wall
@@ -137,6 +161,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     # quote_source_detail["quote_ts"] so a trade-time value is never aged as a quote time
     # without provenance. The name->value contract (exchange_quote_ts must never hold a
     # server wall clock) is machine-pinned by tools/check_schwab_market_field_semantics (M5).
+    # This clock is resolved fresh every tick from THIS tick's own raw payload, independent
+    # of whether spot was just carried forward above -- it must keep advancing on a
+    # bid/ask-only tick exactly as it always has (see QuoteObservation.quote_ts docstring).
     _qtm = _epoch_seconds_from_millis(item.get("QUOTE_TIME_MILLIS"))
     _ttm = _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
     if _qtm is not None:
@@ -148,7 +175,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     else:
         quote_ts = None
         quote_ts_clock = "unavailable"
-    new_sig = _plane_tuple_sig(spot_f, bid, ask)
+    new_sig = _plane_tuple_sig(spot_obs.value, bid, ask)
     prev_sig = _plane_tuple_sig(pspot, pbid, pask) if prev else None
     prev_quote_ts = (prev or {}).get("exchange_quote_ts")
     if (
@@ -158,64 +185,22 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     ):
         return False
 
-    spread_frac = None
-    quote_mid = None
-    mid_source = None
-    try:
-        if mark is not None:
-            mark_f = float(mark)
-            if mark_f > 0:
-                quote_mid = mark_f
-                mid_source = "schwab_streaming_mark"
-        if quote_mid is not None and bid is not None and ask is not None:
-            bf, af = float(bid), float(ask)
-            spread_frac = (af - bf) / quote_mid
-    except (TypeError, ValueError):
-        pass
-
-    server_received_ts = time.time()
-    out = {
-        "ticker": t,
-        "spot": float(spot_f),
-        "bid": float(bid) if bid is not None else None,
-        "ask": float(ask) if ask is not None else None,
-        "spot_disp": f"{float(spot_f):.2f}",
-        "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
-        "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
-        "quote_mid": quote_mid,
-        "mid_source": mid_source,
-        "spread": spread_frac,
-        "spread_pts": round(float(ask) - float(bid), 4) if bid is not None and ask is not None else None,
-        "spread_source": (
-            "derived_bid_ask_mid_fraction"
-            if spread_frac is not None and mid_source == "derived_bid_ask_mid"
-            else (
-                "derived_bid_ask_fraction_schwab_mark_denom"
-                if spread_frac is not None and mid_source == "schwab_streaming_mark"
-                else None
-            )
-        ),
-        "spread_pts_source": (
-            "derived_bid_ask_pts" if bid is not None and ask is not None else None
-        ),
-        "fast_generation_id": next_fast_generation(t),
-        "exchange_quote_ts": quote_ts,
-        "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
-        "server_received_ts": server_received_ts,
-        "quote_ingestion": "schwab_streaming_level_one",
-        "quote_source_detail": {
-            "spot": spot_source,
-            "bid": bid_source,
-            "ask": ask_source,
-            "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
-            "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
-            "quote_ts": quote_ts_clock,  # M6: which exchange clock exchange_quote_ts carries (QUOTE_TIME_MILLIS, or TRADE_TIME_MILLIS_proxy on fallback)
-            "carried_forward": False,
-            "previous_spot_available": pspot is not None,
-            "previous_bid_available": pbid is not None,
-            "previous_ask_available": pask is not None,
-        },
-    }
+    quote_obs = QuoteObservation(
+        ticker=t,
+        spot=spot_obs,
+        bid=bid_obs,
+        ask=ask_obs,
+        mark=mark_obs,
+        ingestion="schwab_streaming_level_one",
+        quote_ts=quote_ts,
+        quote_ts_clock=quote_ts_clock,
+        fast_generation_id=next_fast_generation(t),
+        server_received_ts=received_ts,
+        previous_spot_available=pspot is not None,
+        previous_bid_available=pbid is not None,
+        previous_ask_available=pask is not None,
+    )
+    out = quote_obs.to_legacy_dict()
     with _lock:
         _by_ticker[t] = out
     try:
