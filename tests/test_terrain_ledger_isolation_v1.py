@@ -30,6 +30,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 TRACKED_LEDGER = ROOT / "reports" / "terrain_quarantine_ledger.jsonl"
 
@@ -117,8 +119,32 @@ def test_external_writer_is_detected_truncated_back_and_failed(tmp_path):
         "        fh.write('{\"event\": \"zz-external-writer-probe\"}\\n')\n",
         encoding="utf-8")
 
-    inner = _run_inner(synthetic, watched)
-    out = (inner.stdout or "") + (inner.stderr or "")
+    # RC-565 follow-up (2026-09-18): under heavy `-n 8` load this inner subprocess's OWN
+    # pytest collection can crash on unrelated cross-process filesystem noise (MEASURED: a
+    # FileNotFoundError lstat-ing a temp directory that belongs to a DIFFERENT, unrelated
+    # xdist worker's PID -- confirmed not a bug in this firewall, since it happens before
+    # collection ever reaches this synthetic test). When that happens the inner run never
+    # got a chance to exercise the real scenario at all, so retrying is honest: it is not
+    # hiding a real firewall failure, only re-attempting a run that never actually tested
+    # anything. A genuine firewall failure (the write went through, or fired for some OTHER
+    # real reason) is NOT this signature and is never retried -- it fails immediately below.
+    for attempt in range(3):
+        inner = _run_inner(synthetic, watched)
+        out = (inner.stdout or "") + (inner.stderr or "")
+        collection_crashed = (
+            inner.returncode != 0
+            and "TERRAIN LEDGER LATE-IMPORT HOLE" not in out
+            and "ERROR collecting test session" in out
+        )
+        if not collection_crashed:
+            break
+        assert watched.read_bytes() == bytes_before, (
+            f"attempt {attempt + 1}: unrelated collection crash also left the watched "
+            "ledger changed -- this is no longer safely retryable:\n" + out)
+    else:
+        pytest.fail(
+            "the inner run's OWN pytest collection crashed on unrelated environment noise "
+            f"3 times in a row (never reached the firewall under test):\n{out}")
 
     assert watched.read_bytes() == bytes_before, (
         "the watched ledger was not restored byte-for-byte:\n" + out)
