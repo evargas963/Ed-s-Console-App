@@ -2751,7 +2751,7 @@ ROWS: tuple[Row, ...] = (
         # for a whole client-held watchlist (client.get_quotes), reusing the same
         # _parse_quote_node_session_fields parser and resolve_chg_pct authority every
         # other quote route shares -- not a second quote computation.
-        file='server.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
+        file='app/api/routes/market_data.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
         justification='Batched multi-symbol quote fetch (client.get_quotes) via safe_get_quotes.',
     ),
@@ -2870,7 +2870,7 @@ ROWS: tuple[Row, ...] = (
         justification='RETIRED (RC-213 B6, one-faucet-closeout-v1): serves a static 410 retirement notice pointing to /api/levels; makes no Schwab call and reads no leaf field. This row previously (incorrectly) still classified it SCHWAB_LEAF/quotes.quote.lastPrice from before the retirement -- corrected during the Phase 3 extraction that moved this function (RC-REHAB-1) after direct inspection of its current body.',
     ),
     Row(
-        file='server.py', derivation='get_spot', disposition='DERIVED',
+        file='app/api/routes/market_data.py', derivation='get_spot', disposition='DERIVED',
         producer_refs=('server.py:resolve_spot',),
         justification='Featherweight live spot via the single spot authority resolve_spot (RC-14); no direct leaf here.',
     ),
@@ -2980,12 +2980,12 @@ ROWS: tuple[Row, ...] = (
         justification='RC-514: capability verdict for /api/health, taken from the canonical client and the same _client cache get_client() uses.',
     ),
     Row(
-        file='server.py', derivation='sse_stream', disposition='ALLOWLISTED',
+        file='app/api/routes/sse.py', derivation='sse_stream', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (sse_stream).',
     ),
     Row(
-        file='server.py', derivation='sse_stream.event_generator', disposition='ALLOWLISTED',
+        file='app/api/routes/sse.py', derivation='sse_stream.event_generator', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (sse_stream.event_generator).',
     ),

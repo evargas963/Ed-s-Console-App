@@ -61,7 +61,7 @@ from planes.l1_decision_dependencies import warn_l1_payload_key_drift
 from planes.l1_fingerprint_material import build_l1_material_dict_for_fingerprint
 
 from fastapi import FastAPI, Query, HTTPException, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 # RC-REHAB-1 (Phase 3): the six get_desk_*/post_desk_materialize names are re-exported
@@ -264,6 +264,19 @@ from app.api.routes.market_data import (  # noqa: F401
     router as market_data_router,
     get_bars1m,
     get_forces,
+    get_spot,
+    api_watchlist_quotes,
+)
+# RC-REHAB-1 (Phase 3): seventeenth extraction slice -- the legacy full-market-state SSE
+# stream now lives in app/api/routes/sse.py (mounted below via app.include_router(sse_router)).
+# The SSE connection registry (_sse_lock/_sse_clients/_sse_subscribers) and _sse_conn_epoch
+# are also touched by server.py's own background SSE loops and stay there; _sse_conn_epoch
+# specifically is mutated through the server MODULE OBJECT (not a lazy value import), since a
+# bare `global` in the new file would silently bind to the wrong module's namespace -- see
+# app/api/routes/sse.py's own docstring.
+from app.api.routes.sse import (  # noqa: F401
+    router as sse_router,
+    sse_stream,
 )
 
 # ── App directory = same folder as this file ─────────────────────────────────
@@ -10702,6 +10715,7 @@ app.include_router(live_router)
 app.include_router(analytics_light_router)
 app.include_router(analytics_state_router)
 app.include_router(market_data_router)
+app.include_router(sse_router)
 
 # F09: serve the JS projection from time_et on every request. Registered BEFORE
 # the StaticFiles mount so a committed or leftover disk blob cannot become a
@@ -14682,57 +14696,6 @@ _spot_poll_inflight: dict[str, threading.Event] = {}
 SPOT_POLL_TTL_SEC = 1.25
 
 
-@app.get("/api/spot")
-def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Featherweight live spot for fast UI polling. The ONE price authority
-    (resolve_spot, RC-14) behind a 1.25s per-ticker cache — no chain, no model
-    stack, budget-bounded regardless of poll rate or viewer count.
-
-    Concurrent cache misses single-flight: one Schwab quote; waiters join and
-    reuse the TTL-fresh cached payload. Waiters never each call resolve_spot —
-    on timeout they re-contend for leadership or serve the last cache entry
-    (stale beats a quote stampede).
-    """
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
-    deadline = time.time() + 10.0
-    while True:
-        now = time.time()
-        with _spot_poll_lock:
-            hit = _spot_poll_cache.get(tk)
-            if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
-                return JSONResponse(hit[1])
-            leader = tk not in _spot_poll_inflight
-            if leader:
-                _spot_poll_inflight[tk] = threading.Event()
-            done = _spot_poll_inflight[tk]
-        if not leader:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                with _spot_poll_lock:
-                    hit = _spot_poll_cache.get(tk)
-                if hit:
-                    return JSONResponse(hit[1])  # stale > stampede
-                return JSONResponse(
-                    {"ticker": tk, "spot": None, "spot_source": None,
-                     "spot_as_of_ts_utc": None, "error": "spot_resolve_timeout"},
-                    status_code=504,
-                )
-            done.wait(timeout=remaining)
-            continue
-        try:
-            spot, source, ts = resolve_spot(tk)
-            payload = {"ticker": tk, "spot": spot, "spot_source": source,
-                       "spot_state": current_spot_state(source, tk),
-                       "spot_as_of_ts_utc": ts}
-            with _spot_poll_lock:
-                _spot_poll_cache[tk] = (time.time(), payload)
-            return JSONResponse(payload)
-        finally:
-            with _spot_poll_lock:
-                _spot_poll_inflight.pop(tk, None)
-            done.set()
-
-
 #: Trading days a daily scorecard may be old and still be quoted as a measurement. 1 = yesterday's
 #: run is current, the day before that is not. DERIVED from the artifact's own cadence: the job is
 #: daily, so anything older than one trading day means a run was MISSED, and a missed run is
@@ -14910,212 +14873,6 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
         "l1_sse_health_hint": "derived_enum",
     }
     return out
-
-
-#: No Schwab-documented batch-quote symbol ceiling exists anywhere in this repo (checked:
-#: schwab_client.py, schwab_field_dictionary*, tools/sync_schwab_field_dictionary.py).
-@app.get("/api/watchlist-quotes")
-async def api_watchlist_quotes(tickers: str = Query(default="")):
-    """
-    ONE batched Schwab quote read (client.get_quotes) for every row of a client-held
-    watchlist — not N sequential single-symbol polls, and not a second quote authority:
-    parsing (_parse_quote_node_session_fields) and chg_pct precedence (resolve_chg_pct)
-    are the exact same functions /api/fast-quote and /api/live/state use.
-
-    No numeric ticker-count cap: no Schwab-documented batch-size ceiling exists anywhere in
-    this repo to justify one (checked: schwab_client.py, schwab_field_dictionary*,
-    tools/sync_schwab_field_dictionary.py), and a real operator watchlist is nowhere near
-    any plausible vendor/transport limit — an invented number would be a product-shaped
-    guess dressed as a constraint (caught in review). A genuinely oversized request fails
-    honestly through the real failure paths below (ASGI/reverse-proxy URL-length rejection
-    before this handler even runs, or a real vendor HTTP error reported as such) instead of
-    a silently-guessed threshold.
-
-    Returns {"ok": bool, "error": str|None, "quotes": {SYMBOL: {spot, spot_disp, chg_pct,
-    exchange_quote_ts}}}. A symbol simply absent from `quotes` genuinely has no usable quote
-    right now (never fabricated) — that is a DIFFERENT fact from ok:false, which means the
-    WHOLE batch call failed (auth/vendor/transport) before any symbol could be evaluated.
-    Collapsing both into the same bare {} (this route's pre-review shape) made a live
-    console with zero current coverage indistinguishable from an offline one; the caller
-    could not tell "no data for these symbols right now" from "the vendor call never ran".
-    """
-    raw = [t.strip().upper() for t in (tickers or "").split(",") if t.strip()]
-    seen: list[str] = []
-    for t in raw:
-        if t not in seen:
-            seen.append(t)
-    if not seen:
-        return JSONResponse({"ok": True, "error": None, "quotes": {}})
-
-    def _build() -> dict:
-        from market_context import resolve_chg_pct
-
-        # Operator-reproduced defect (2026-09-14, spot 360 audit): this route called
-        # schwab_client.safe_get_quotes directly — a RAW vendor call outside
-        # _memoized_quote_response AND outside live_market_plane, the two places every other
-        # spot consumer in this file converges through. The docstring's claim ("not a second
-        # quote authority: parsing... are the exact same functions") was true for the PARSER,
-        # not for the QUOTE ITSELF — the watchlist's SPY row and the Gamma Chart's SPY spot
-        # could come from two genuinely different Schwab round-trips seconds apart. Every
-        # ticker with a FRESH plane row now reuses it (zero extra vendor calls, and
-        # guaranteed identical to what every other screen shows); only tickers the plane
-        # cannot currently answer get a real vendor fetch, and that fetch is recorded back
-        # into the plane so the next reader of that ticker — watchlist or otherwise — sees
-        # the SAME value this one just fetched.
-        out: dict = {}
-        need_fetch: list[str] = []
-        for t in seen:
-            row = _lmp.get_quote(t)
-            if row and _lmp.quote_is_fresh(row) and _lmp.plane_spot_is_last_price(row):
-                out[t] = {
-                    "spot": row["spot"],
-                    "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
-                    "spot_state": "live",
-                    "spot_source": SPOT_SOURCE_PLANE,
-                    "chg_pct": resolve_chg_pct(t, row.get("chg_pct")),
-                    "exchange_quote_ts": row.get("exchange_quote_ts"),
-                }
-            else:
-                need_fetch.append(t)
-        if not need_fetch:
-            return {"ok": True, "error": None, "quotes": out}
-
-        try:
-            client = get_client()
-        except HTTPException as he:
-            reason = "token_invalid" if _schwab_auth_http_unavailable(he) else "auth_unavailable"
-            log.warning("watchlist_quotes auth unavailable tickers=%s reason=%s", need_fetch, reason)
-            # Tickers the plane already answered are still real and still served — only the
-            # ones that needed a vendor call are missing, exactly like the batch-partial
-            # contract this route's own docstring already promises for a per-symbol miss.
-            return {"ok": bool(out), "error": None if out else reason, "quotes": out}
-        from schwab_client import safe_get_quotes
-
-        try:
-            resp = safe_get_quotes(client, need_fetch)
-        except Exception as e:
-            log.warning("watchlist_quotes batch fetch failed tickers=%s: %s", need_fetch, e)
-            return {"ok": bool(out), "error": None if out else "vendor_call_failed", "quotes": out}
-        if resp is None or getattr(resp, "status_code", None) != 200:
-            status = getattr(resp, "status_code", None)
-            log.warning("watchlist_quotes batch fetch non-200 tickers=%s status=%s", need_fetch, status)
-            return {"ok": bool(out), "error": None if out else f"vendor_http_{status}", "quotes": out}
-        try:
-            q_json = resp.json()
-        except Exception as e:
-            log.warning("watchlist_quotes batch response unparseable tickers=%s: %s", need_fetch, e)
-            return {"ok": bool(out), "error": None if out else "malformed_vendor_response", "quotes": out}
-        server_received_ts = time.time()
-        for t in need_fetch:
-            node = q_json.get(t) or q_json.get(t.upper()) or {}
-            if not node:
-                continue
-            pq = _parse_quote_node_session_fields(node)
-            spot = pq.get("spot")
-            if pq.get("spot_source") != "lastPrice" or spot is None:
-                continue
-            chg_pct = resolve_chg_pct(t, pq.get("chg_pct"))
-            out[t] = {
-                "spot": spot,
-                "spot_disp": f"{spot:.2f}",
-                "spot_state": "live",
-                "spot_source": SPOT_SOURCE_QUOTE,
-                "chg_pct": chg_pct,
-                "exchange_quote_ts": pq.get("quote_ts"),
-            }
-            # Record into the plane so this fetch becomes the ONE answer every other
-            # consumer (resolve_spot, the header, Tier C, L1) sees too, not a value only
-            # this route ever knew about.
-            _lmp.record_quote(t, {
-                "ticker": t, "spot": float(spot), "spot_disp": f"{spot:.2f}",
-                "chg_pct": chg_pct, "exchange_quote_ts": pq.get("quote_ts"),
-                "quote_time_source": "schwab_rest_quote" if pq.get("quote_ts") is not None else "unavailable",
-                "server_received_ts": server_received_ts,
-                "quote_ingestion": "rest_watchlist_batch",
-                "fast_generation_id": _lmp.next_fast_generation(t),
-                "quote_source_detail": {
-                    "spot": "LAST_PRICE",
-                    "carried_forward": False,
-                },
-            })
-        return {"ok": True, "error": None, "quotes": out}
-
-    loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
-    return JSONResponse(payload)
-
-
-@app.get("/api/stream")
-async def sse_stream(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    expiry: Optional[str] = Query(default=None),
-):
-    """
-    Server-Sent Events stream: pushes market state snapshots whenever fresh data is available.
-    Client connects with ?ticker=X&expiry=Y; server fetches that ticker periodically and pushes.
-    """
-    ticker = ticker.upper().strip()
-    expiry = expiry or None
-    key = (ticker, expiry)
-    # TICKER-PREVIEW-NO-ENROLL: an SSE stream connect is a VIEW subscription, not a track —
-    # touch last-seen only (offloaded; may do a SQLite write for an already-enrolled ticker).
-    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, ticker)
-
-    stream_route_t0 = time.perf_counter()
-
-    async def event_generator():
-        global _sse_conn_epoch
-        q = asyncio.Queue(maxsize=10)
-        with _sse_lock:
-            _sse_clients.append(q)
-            _sse_subscribers[key] = _sse_subscribers.get(key, 0) + 1
-            # T5.1: a new connection changes the audience — the epoch bump makes
-            # the next cadence fanout deliver the current bundle to this client
-            # even when its identity is otherwise already-broadcast.
-            _sse_conn_epoch += 1
-        # Immediate SSE comment chunk: first body bytes must not wait on q.get() (up to 30s) or
-        # some proxies/clients defer visible connection until first chunk — CONNECTING sticks.
-        yield ": ok\n\n"
-        log.info(
-            "sse_stream_first_yield ticker=%s expiry=%s ms_since_route_entry=%.2f",
-            ticker,
-            expiry,
-            (time.perf_counter() - stream_route_t0) * 1000.0,
-        )
-        try:
-            while True:
-                try:
-                    raw = await asyncio.wait_for(q.get(), timeout=30.0)
-                    if (
-                        isinstance(raw, tuple)
-                        and len(raw) == 2
-                        and raw[0] == "live_quote"
-                    ):
-                        yield f"event: live_quote\ndata: {json.dumps(raw[1])}\n\n"
-                    else:
-                        yield f"data: {json.dumps(raw)}\n\n"
-                except asyncio.TimeoutError:
-                    yield ": heartbeat\n\n"
-        except (GeneratorExit, asyncio.CancelledError):
-            pass
-        finally:
-            with _sse_lock:
-                if q in _sse_clients:
-                    _sse_clients.remove(q)
-                cnt = _sse_subscribers.get(key, 0) - 1
-                if cnt <= 0:
-                    _sse_subscribers.pop(key, None)
-                else:
-                    _sse_subscribers[key] = cnt
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 async def _broadcast_live_quote_sse_payloads() -> None:
