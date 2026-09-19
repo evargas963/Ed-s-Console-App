@@ -7905,6 +7905,54 @@ def _exposures_for_state(
     )
 
 
+class _GammaFlipAndVoidZonesForState(NamedTuple):
+    gamma_flip: Optional[float]
+    gamma_flip_conf: Any
+    gamma_flip_diag: Any
+    gamma_voids: list
+    atm_iv: Optional[float]
+    iv_direction: str
+    consensus_summary: Any
+
+
+def _gamma_flip_and_void_zones_for_state(
+    ticker: str,
+    contracts_use: list,
+    spot_f: float,
+    exposures: dict,
+    totals: list,
+    rows: list,
+) -> _GammaFlipAndVoidZonesForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, tenth slice): the Gamma Flip +
+    Void Zones phase, extracted verbatim -- also feeds the ATM-IV tracker (module-level
+    `_iv_tracker`, referenced directly as a server.py global exactly as the original
+    inline code did) and derives `consensus_summary` from the Exposures phase's own
+    `rows` output. No try/except in the original inline code -- an exception here still
+    propagates out of _fetch_state unchanged, exactly as before."""
+    gamma_flip, gamma_flip_conf, gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
+    gamma_voids = compute_gamma_void_zones(exposures, spot_f)
+    # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
+    # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).
+
+    # Feed ATM IV into tracker for direction detection (vanna context)
+    t0 = totals[0] if totals else None
+    atm_iv = getattr(t0, "atm_iv", None) if t0 else None
+    _iv_tracker.tick(ticker, atm_iv)
+    iv_direction = _iv_tracker.direction(ticker)
+
+    consensus_summary = rows[0] if rows else None
+
+    return _GammaFlipAndVoidZonesForState(
+        gamma_flip=gamma_flip,
+        gamma_flip_conf=gamma_flip_conf,
+        gamma_flip_diag=gamma_flip_diag,
+        gamma_voids=gamma_voids,
+        atm_iv=atm_iv,
+        iv_direction=iv_direction,
+        consensus_summary=consensus_summary,
+    )
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -8272,23 +8320,16 @@ def _fetch_state(
     totals = _exp.totals
     client = _exp.client
 
-    # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
-    # FIND-GAMMA-FLIP-METHOD-V1: canonical profile (gamma recomputed at hypothetical spot).
-    # The old cumulative-sum method was DISPROVED 2026-07-19 on a real SPY reference chain
-    # (corr 0.086, never crossed zero). The confidence flag is mandatory: a narrow chain
-    # misplaces the flip by ~3.6%, so it must never be presented as trustworthy.
-    _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
-    _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
-    # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
-    # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).
-
-    # Feed ATM IV into tracker for direction detection (vanna context)
-    _t0 = totals[0] if totals else None
-    _atm_iv = getattr(_t0, "atm_iv", None) if _t0 else None
-    _iv_tracker.tick(ticker, _atm_iv)
-    _iv_direction = _iv_tracker.direction(ticker)
-
-    consensus_summary = rows[0] if rows else None
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, tenth slice): extracted to
+    # _gamma_flip_and_void_zones_for_state (defined above).
+    _gfvz = _gamma_flip_and_void_zones_for_state(ticker, contracts_use, spot_f, exposures, totals, rows)
+    _gamma_flip = _gfvz.gamma_flip
+    _gamma_flip_conf = _gfvz.gamma_flip_conf
+    _gamma_flip_diag = _gfvz.gamma_flip_diag
+    _gamma_voids = _gfvz.gamma_voids
+    _atm_iv = _gfvz.atm_iv
+    _iv_direction = _gfvz.iv_direction
+    consensus_summary = _gfvz.consensus_summary
     _stage_marks.append(("exposures_key_levels", time.perf_counter()))
 
     # ── Charm — computed HERE, before build_market_state, so signals engine
