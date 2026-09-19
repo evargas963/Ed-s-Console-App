@@ -1,6 +1,14 @@
-# Analytics/State/Live Tier Boundaries — ownership map (pre-extraction)
+# Analytics/State/Live Tier Boundaries — ownership map
 
-**Status: PLANNING ONLY. No code has moved as a result of this document.**
+**Status UPDATE (post Tier A/L1/C-route-layer extraction):** all three tiers' route layers
+described below have since been extracted following exactly this document's recommended
+sequencing — Tier A → `app/api/routes/live.py`, Tier L1 → `app/api/routes/analytics_light.py`,
+Tier C's route layer → `app/api/routes/analytics_state.py` — completing server.py's entire
+route-based decomposition (zero `@app.get`/`@app.post` decorators remain in server.py). What
+follows below is kept as the historical planning record that justified that sequencing, plus
+the still-current map for point 4's harder work: `_fetch_state`'s own internal phase-by-phase
+decomposition, now IN PROGRESS (see the phase table's Status column) rather than merely
+planned.
 
 ## Why this document exists
 
@@ -130,39 +138,56 @@ move, exactly like every prior slice's caches/locks):
 well outside `_fetch_state` itself (the SSE broadcast loop, the background logger, the terrain
 loop's own freshness checks), so none of them can move with any extracted route body.
 
-## `_fetch_state`'s internal phase map (server.py:6963–10360, ~3,400 lines)
+## `_fetch_state`'s internal phase map
 
-This is the coarse structural map, built from the function's own section-banner comments (its
-existing convention — every phase is already marked). **This is not a byte-level dependency
-graph; treat it as a starting map for whoever attempts the next step, not a finished analysis.**
-Verify each phase's real inputs/outputs before moving anything.
+**Line numbers below are as originally mapped (server.py:6963–10360, ~3,400 lines) and drift
+with every unrelated edit elsewhere in the file — treat them as approximate/historical, not a
+live reference.** Re-locate `_fetch_state` (`grep -n "^def _fetch_state"`) before trusting any
+line number here. This is the coarse structural map, built from the function's own
+section-banner comments (its existing convention — every phase is already marked). **This is
+not a byte-level dependency graph.** Verify each phase's real inputs/outputs before extracting.
 
-| # | Phase (line, approx.) | What it does | Delegates to (already modular) or inline |
-|---|---|---|---|
-| 1 | Preamble, ticker canonicalization (6963) | `ticker_storage_key`, `_touch_tracked_ticker_view`, diag emit | inline (cheap) |
-| 2 | Chain + quote fetch in parallel (7009) | Schwab REST via gated executor pool | delegates: `_gated_safe_get_chain`, `_memoized_quote_response` |
-| 3 | Expiry selection (7196) | picks the working expiry from the chain | inline |
-| 4 | Exposures (7284) | GEX/DEX/vanna by strike | delegates: `math_exposure_core.compute_exposures_by_strike` |
-| 5 | Gamma flip + void zones (7387) | wall/flip selection | delegates: `math_levels.py` |
-| 6 | Charm (7406) | dealer charm by strike | delegates: `math_levels.compute_charm_by_strike` |
-| 7 | PCR (7469) | put/call ratio | inline (small) |
-| 8 | Market context, candle (7509–7544) | session label, last 1m candle | delegates: `market_context.py`, price_bars_1m read |
-| 9 | Price levels (7548) | VWAP/PDH/PDL/PDC/ORB | delegates: `liquidity_value_engine.py` |
-| 10 | Expected move (7616) | straddle + IV-based | delegates: `math_levels.py`/vol modules |
-| 11 | Volatility signals (7702) | IV skew, realized vol, ATR, rank/pctile | delegates: `volatility_regime.py` family |
-| 12 | GARCH forecast (7769) | vol forecast | delegates: dedicated GARCH module |
-| 13 | Order flow signals (7803) | from option volume + bid/ask size | delegates: `app/options/order_flow/*` (Tier C's own read, not the live L2 book) |
-| 14 | Predictive positioning §8 (7832) | signal layer | delegates: `signals.py`/`bayesian_fusion.py` |
-| 15 | Vol envelope, level density, sector strength (7980) | breadth/regime context | delegates: several `*_engine.py` modules |
-| 16 | Zone tracking (8120) | price zone state machine | inline + `market_state.py` |
-| 17 | DB counts + crosses (8154) | snapshot counters | delegates: `db.py` |
-| 18 | Build `MarketState` dataclass (8328) | assembles the typed observation | delegates: `market_state.build_market_state` |
-| 19 | V2 decision build, identity anchor (8484–8624) | the actual model stack + fusion + decision bundle | delegates: `v2_decision/*`, `ml_predict.py`, `bayesian_fusion.py`, `call_engine.py` |
-| 20 | Publish + persistence tail (8624) | writes decision, stamps generation | delegates: `decision_record.py`, `db.py` |
-| 21 | `log_only` early return (9475) | background-logger path stops here — no full API dict assembled | inline branch |
-| 22 | Full API response dict assembly (9502–10293) | ~35 more sub-sections re-reading/re-shaping the SAME already-computed values above for the JSON wire shape (key levels, terrain read, top drivers, synthetic forward, trade validation gate, call/put readiness, position sizing, model health dashboard, confluence, accuracy, fusion-calibration provenance) | inline shaping only — **no new computation**, this whole block reads fields already produced by phases 3–20 |
-| 23 | Level-cross detection (10293) | debounced level-touch logging | delegates: `db.detect_and_log_level_crosses` |
-| 24 | Terminal cache write (10327) | `_state_cache[key] = {...}` | inline (the seam) |
+| # | Phase (line, approx. at first mapping) | What it does | Delegates to (already modular) or inline | Status |
+|---|---|---|---|---|
+| 1 | Preamble, ticker canonicalization (6963) | `ticker_storage_key`, `_touch_tracked_ticker_view`, diag emit | inline (cheap) | not extracted |
+| 2 | Chain + quote fetch in parallel (7009) | Schwab REST via gated executor pool | delegates: `_gated_safe_get_chain`, `_memoized_quote_response` | not extracted |
+| 3 | Expiry selection (7196) | picks the working expiry from the chain | inline | not extracted |
+| 4 | Exposures (7284) | GEX/DEX/vanna by strike | delegates: `math_exposure_core.compute_exposures_by_strike` | not extracted |
+| 5 | Gamma flip + void zones (7387) | wall/flip selection | delegates: `math_levels.py` | not extracted |
+| 6 | Charm (7406) | dealer charm by strike | delegates: `math_levels.compute_charm_by_strike` | not extracted |
+| 7 | PCR (7469) | put/call ratio | inline (small) | not extracted |
+| 8 | Market context, candle (7509–7544) | session label, last 1m candle | delegates: `market_context.py`, price_bars_1m read | not extracted |
+| 9 | Price levels (7548) | VWAP/PDH/PDL/PDC/ORB | delegates: `liquidity_value_engine.py` | not extracted |
+| 10 | Expected move (7616) | straddle + IV-based | delegates: `math_levels.py`/vol modules | not extracted |
+| 11 | Volatility signals (7702) | IV skew, realized vol, ATR, rank/pctile | delegates: `volatility_regime.py` family | not extracted |
+| 12 | GARCH forecast (7769) | vol forecast | delegates: `compute_garch_forecast`/`blend_garch_sigma` | **EXTRACTED** — `_garch_sigma_bars_for_state(closes, atm_iv, realized_vol, spot_f) -> sigma_bars \| None`, defined immediately above `_fetch_state`; `_fetch_state` now calls it in one line. Verified byte-identical to the original inline chain, including the pre-existing swallowed-RuntimeError quirk (deliberately NOT fixed as part of this decomposition — see `tests/test_fetch_state_garch_phase_v1.py`). First slice of this phase-by-phase decomposition. |
+| 13 | Order flow signals (7803) | from option volume + bid/ask size | delegates: `app/options/order_flow/*` (Tier C's own read, not the live L2 book) | not extracted |
+| 14 | Predictive positioning §8 (7832) | signal layer | delegates: `signals.py`/`bayesian_fusion.py` | not extracted |
+| 15 | Vol envelope, level density, sector strength (7980) | breadth/regime context | delegates: several `*_engine.py` modules | not extracted |
+| 16 | Zone tracking (8120) | price zone state machine | inline + `market_state.py` | not extracted |
+| 17 | DB counts + crosses (8154) | snapshot counters | delegates: `db.py` | not extracted |
+| 18 | Build `MarketState` dataclass (8328) | assembles the typed observation | delegates: `market_state.build_market_state` | not extracted |
+| 19 | V2 decision build, identity anchor (8484–8624) | the actual model stack + fusion + decision bundle | delegates: `v2_decision/*`, `ml_predict.py`, `bayesian_fusion.py`, `call_engine.py` | not extracted |
+| 20 | Publish + persistence tail (8624) | writes decision, stamps generation | delegates: `decision_record.py`, `db.py` | not extracted |
+| 21 | `log_only` early return (9475) | background-logger path stops here — no full API dict assembled | inline branch | not extracted |
+| 22 | Full API response dict assembly (9502–10293) | ~35 more sub-sections re-reading/re-shaping the SAME already-computed values above for the JSON wire shape (key levels, terrain read, top drivers, synthetic forward, trade validation gate, call/put readiness, position sizing, model health dashboard, confluence, accuracy, fusion-calibration provenance) | inline shaping only — **no new computation**, this whole block reads fields already produced by phases 3–20 | not extracted |
+| 23 | Level-cross detection (10293) | debounced level-touch logging | delegates: `db.detect_and_log_level_crosses` | not extracted |
+| 24 | Terminal cache write (10327) | `_state_cache[key] = {...}` | inline (the seam) | not extracted |
+
+**Extraction pattern established by phase 12, to reuse for the rest:** (1) identify the phase's
+real inputs (values read from outer scope, unmodified since their own assignment) and real
+outputs (values the phase defines that are read afterward) by grepping the phase's variable
+names across the whole `_fetch_state` body, not just visually; (2) write a standalone function
+with those as explicit parameters/return value, placed immediately above `_fetch_state` so it
+can use every already-imported module-level name server.py already has; (3) preserve behavior
+byte-for-byte, including any pre-existing quirks — a decomposition is not the place to also fix
+something noticed along the way, no matter how tempting; (4) replace the inline block with a
+one-line call; (5) write a direct unit test proving the extracted function's output matches the
+original inline computation chain exactly (not just "returns something"), plus edge cases and
+an AST lock proving `_fetch_state` calls the new function exactly once and no longer contains a
+second, independent copy of the same computation; (6) run the full directly-relevant test batch
+plus ruff plus the institutional-correctness gate before committing, exactly like every route
+slice this session.
 
 **The single most important fact this map surfaces:** phases 1–20 are the real computation, almost
 entirely delegated to already-separate modules — `_fetch_state` itself is closer to an
@@ -189,13 +214,15 @@ background logger) that each need the same `ms_dict`, not an HTTP request/respon
    **stay in server.py, imported back lazily**, exactly like every prior slice's shared
    infrastructure — this route layer would be a genuinely clean, low-risk fourth extraction once
    Tier A and Tier L1 are done and the pattern is proven again on this file.
-4. **`_fetch_state` itself is NOT a route-extraction candidate at all** — it has no route decorator
-   of its own. If it is ever decomposed, that is a *phase-by-phase refactor* of one giant function
-   into named, independently testable steps (using the 24-phase map above as a starting outline),
-   not a file-move. That is real, careful, one-reviewed-section-at-a-time work — plausibly where
-   genuine speed gains live (parallelizing independent phases, caching phase 22's re-shaping
-   separately from phases 1–20's real compute, etc.) — and it is explicitly **out of scope for this
-   document**, which only establishes the map needed before anyone attempts it.
+4. **`_fetch_state` itself was never a route-extraction candidate** — it has no route decorator of
+   its own. Its decomposition is a *phase-by-phase refactor* of one giant function into named,
+   independently testable steps (using the phase table above as the outline), never a file-move,
+   and is now IN PROGRESS: phase 12 (GARCH forecast) is extracted as the first slice, proving the
+   pattern documented above the phase table. This is real, careful, one-reviewed-section-at-a-time
+   work — plausibly where genuine speed gains live (parallelizing independent phases, caching
+   phase 22's re-shaping separately from phases 1–20's real compute, etc.) — continue it the same
+   way: one phase per slice, behavior-preserving, with a direct test proving the match before
+   moving to the next.
 5. **Do not move `_schedule_analytics_recompute`/`_schedule_analytics_warm`/`_fetch_state` anywhere
    until phase 4 above is a deliberately planned, separately reviewed mission.** They are called
    from at least three places outside any HTTP route (the SSE background loop, the background

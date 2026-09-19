@@ -7070,6 +7070,60 @@ def carried_price_levels_match_snapshot(entry, pl_date, pl_generation, today: st
     return cached_gen == snap_gen and entry_gen_i == snap_gen
 
 
+def _garch_sigma_bars_for_state(
+    closes: list[float] | None,
+    atm_iv: Optional[float],
+    realized_vol: Optional[float],
+    spot_f: float,
+) -> Optional[list]:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, first slice): the GARCH Volatility
+    Forecast phase, extracted verbatim from _fetch_state with an explicit input/output
+    contract instead of reading/writing the enclosing function's locals. Behavior is
+    UNCHANGED, including the pre-existing quirk this phase's own comment already flags:
+    the RC-334 bar-mismatch RuntimeError is deliberately loud in wording ("must fail
+    loudly") but is still caught by this same try/except and only debug-logged, exactly
+    as it was inline -- not "fixed" here, since that would be an unreviewed behavior
+    change smuggled into a refactor, not a decomposition.
+
+    Returns per-bar sigma (monte_carlo.BAR_MINUTES units) or None on insufficient data,
+    a missing GARCH result, or any computation failure.
+    """
+    if not closes or len(closes) <= 20:
+        return None
+    try:
+        _garch_raw = compute_garch_forecast(closes, horizon=GARCH_HORIZON_BARS)
+        if not _garch_raw:
+            return None
+        from volatility_regime import vol_percent_to_decimal
+
+        _iv_dec = vol_percent_to_decimal(atm_iv)
+        _rv_dec = vol_percent_to_decimal(realized_vol)
+        # RC-334: closes are ONE-MINUTE closes — _candles_1m.get_bars above, and the
+        # realized-vol call on this same list passes bar_minutes=1.0 — so the GARCH
+        # sigmas are per-minute and the IV/RV terms must be de-annualized to the same
+        # minute. Monte Carlo then consumes this list DIRECTLY as per-bar sigma at
+        # monte_carlo.BAR_MINUTES, so a third party has to agree too. The interval is
+        # stated from the DATA, not borrowed from MC's constant, and the agreement is
+        # asserted: if MC's bar ever moves, this must fail loudly rather than keep
+        # feeding it minute sigmas under a five-minute name.
+        from monte_carlo import BAR_MINUTES as _MC_BAR_MINUTES
+
+        _GARCH_BAR_MINUTES = 1.0          # _candles_1m is one-minute by construction
+        if float(_MC_BAR_MINUTES) != _GARCH_BAR_MINUTES:
+            raise RuntimeError(
+                f"GARCH/Monte-Carlo bar mismatch: sigmas built on "
+                f"{_GARCH_BAR_MINUTES}-minute closes but monte_carlo.BAR_MINUTES is "
+                f"{_MC_BAR_MINUTES}. MC consumes these as per-bar sigma, so the "
+                f"units must match (RC-334).")
+        return blend_garch_sigma(
+            _garch_raw, _iv_dec, _rv_dec, spot_f,
+            bar_minutes=_GARCH_BAR_MINUTES,
+        )
+    except Exception as e:
+        log.debug(f"GARCH forecast calc: {e}")
+        return None
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -7877,38 +7931,10 @@ def _fetch_state(
             log.warning(_msg)
 
     # ── GARCH Volatility Forecast ─────────────────────────────────────────────
-    _garch_sigma_bars = None
-    try:
-        if _closes and len(_closes) > 20:
-            _garch_raw = compute_garch_forecast(_closes, horizon=GARCH_HORIZON_BARS)
-            if _garch_raw:
-                from volatility_regime import vol_percent_to_decimal
-
-                _iv_dec = vol_percent_to_decimal(_atm_iv)
-                _rv_dec = vol_percent_to_decimal(_realized_vol)
-                # RC-334: _closes are ONE-MINUTE closes — `_candles_1m.get_bars` above, and
-                # the realized-vol call on this same list passes bar_minutes=1.0 — so the
-                # GARCH sigmas are per-minute and the IV/RV terms must be de-annualized to
-                # the same minute. Monte Carlo then consumes this list DIRECTLY as per-bar
-                # sigma at monte_carlo.BAR_MINUTES, so a third party has to agree too. The
-                # interval is stated from the DATA, not borrowed from MC's constant, and the
-                # agreement is asserted: if MC's bar ever moves, this must fail loudly rather
-                # than keep feeding it minute sigmas under a five-minute name.
-                from monte_carlo import BAR_MINUTES as _MC_BAR_MINUTES
-
-                _GARCH_BAR_MINUTES = 1.0          # _candles_1m is one-minute by construction
-                if float(_MC_BAR_MINUTES) != _GARCH_BAR_MINUTES:
-                    raise RuntimeError(
-                        f"GARCH/Monte-Carlo bar mismatch: sigmas built on "
-                        f"{_GARCH_BAR_MINUTES}-minute closes but monte_carlo.BAR_MINUTES is "
-                        f"{_MC_BAR_MINUTES}. MC consumes these as per-bar sigma, so the "
-                        f"units must match (RC-334).")
-                _garch_sigma_bars = blend_garch_sigma(
-                    _garch_raw, _iv_dec, _rv_dec, spot_f,
-                    bar_minutes=_GARCH_BAR_MINUTES,
-                )
-    except Exception as e:
-        log.debug(f"GARCH forecast calc: {e}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, first slice): extracted to
+    # _garch_sigma_bars_for_state (defined just above this function) with an explicit
+    # input/output contract. Same computation, same exception handling, same result.
+    _garch_sigma_bars = _garch_sigma_bars_for_state(_closes, _atm_iv, _realized_vol, spot_f)
 
     # ── Order Flow Signals (from option volume + bid/ask size) ────────────────
     _vol_oi_ratio = {}
