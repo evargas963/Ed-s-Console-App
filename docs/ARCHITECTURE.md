@@ -244,6 +244,17 @@ temporary generated files        →       artifacts/EdWebConsole/temporary_outp
 development worktrees            →       Trading/worktrees/
 ```
 
+**`server.py` route decomposition (Phase 3, in progress):** twelve route groups have been
+extracted into `app/api/routes/` (desk, pages, ops, options, logger, terrain, diagnostics,
+streaming, order_flow, exposure, status) following the mechanical pattern this section's
+schematic calls for. The remaining `/api/analytics/*`, `/api/state`, `/api/live/*`, and
+`/api/fast-quote` territory is intentionally NOT yet extracted — it is built around
+`_fetch_state`, a single ~3,400-line orchestrator function that is the highest-risk code in the
+repository. Its ownership boundaries (four tiers: live quote plane, light context plane, full
+analytics pipeline, and the scheduling layer between them), shared module state, and a phase-by-
+phase internal map are documented in `docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md` — read that
+before touching any of those routes or `_fetch_state` itself.
+
 ---
 
 ## 3. Architectural direction of flow
