@@ -7091,6 +7091,23 @@ class _ExpectedMoveForState(NamedTuple):
     mc_iv_source: str
 
 
+def _bucket_total_oi(bucket: dict) -> Optional[float]:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition): promoted from a nested closure
+    defined inside _fetch_state's own Section-8 block to a module-level function. It has
+    no closure capture (reads only its own `bucket` parameter) and, before this promotion,
+    was already being called from a SECOND site much later in the same _fetch_state body
+    (the Level Density sub-phase) -- a nested def is only visible within the function it
+    is defined in, so extracting Section 8 into its own top-level function would have
+    made that second call site's reference unresolvable. One function, two callers, at
+    module level, exactly the "one producer" shape every other extracted phase already
+    has."""
+    call_oi = bucket.get("call_oi")
+    put_oi = bucket.get("put_oi")
+    if call_oi is None and put_oi is None:
+        return None
+    return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
+
+
 def _expected_move_for_state(
     now_et_dt,
     price_levels,
@@ -7198,6 +7215,193 @@ def _expected_move_for_state(
         kl_em_anchor=kl_em_anchor,
         mc_iv_level=mc_iv_level,
         mc_iv_source=mc_iv_source,
+    )
+
+
+class _PredictivePositioningForState(NamedTuple):
+    dpi: dict
+    hedging_flow: dict
+    gamma_gradient: Optional[float]
+    breakout_score: dict
+    pin_score_val: dict
+    vol_expansion: dict
+    void_factor: float
+    pin_strike: Optional[float]
+    regime_gamma_at_spot: Optional[float]
+
+
+def _predictive_positioning_for_state(
+    ticker: str,
+    exposures: dict,
+    cons_strikes: list,
+    spot_f: float,
+    charm_net: Optional[float],
+    gamma_voids: list,
+    iv_direction: str,
+) -> _PredictivePositioningForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, eighth slice): the Section 8
+    Predictive Positioning Signals phase (DPI, hedging flow, gamma gradient, breakout,
+    pin score, vol expansion, void factor, and the terrain-SSOT pin/regime reads that
+    also feed build_market_state), extracted verbatim.
+
+    Sweep Score is deliberately NOT part of this phase's output -- the original inline
+    code only pre-initializes `_sweep_score = {}` in this same banner scope (a
+    placeholder) and computes its REAL value in a LATER block that needs
+    ms.nearest_above_dist/ms.nearest_below_dist, only available after build_market_state
+    runs. `_fetch_state` keeps that pre-initializer itself, unmoved.
+
+    `_bucket_total_oi` was promoted to a module-level function (see its own docstring)
+    since a SECOND call site much later in _fetch_state's body (the Level Density
+    sub-phase) also needs it and a nested def would not have been visible there once
+    Section 8 became its own top-level function.
+
+    Pre-initialization ordering preserved deliberately (gamma-audit 2026-08-26 finding,
+    already documented at the original call site): pin_strike/regime_gamma_at_spot are
+    initialized to None BEFORE the try block, not inside it, so a raise anywhere earlier
+    in this phase still leaves them safely None for build_market_state to read rather
+    than raising NameError there instead -- this function preserves that same ordering.
+    """
+    dpi: dict = {}
+    hedging_flow: dict = {}
+    gamma_gradient: Optional[float] = None
+    breakout_score: dict = {}
+    pin_score_val: dict = {}
+    vol_expansion: dict = {}
+    void_factor = 0.0
+    pin_strike: Optional[float] = None
+    regime_gamma_at_spot: Optional[float] = None
+    try:
+        # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
+        sum_gex = float(aggregate_net_gex(exposures, cons_strikes) or 0.0)
+        sum_dex = 0.0
+        sum_oi = None
+        sum_vanna = 0.0
+        for bkt in exposures.values():
+            dex = bucket_metric(bkt, "net_dex_dollars")
+            if dex is not None:
+                sum_dex += dex
+            bucket_oi = _bucket_total_oi(bkt)
+            if bucket_oi is not None:
+                sum_oi = (sum_oi or 0.0) + bucket_oi
+            cv = bucket_metric(bkt, "call_vanna")
+            pv = bucket_metric(bkt, "put_vanna")
+            if cv is not None:
+                sum_vanna += cv
+            if pv is not None:
+                sum_vanna += pv
+
+        # 1. DPI
+        dpi = compute_dealer_pressure_index(sum_dex, sum_gex, sum_oi)
+
+        # 2. Hedging Flow Score — normalize inputs to -1..+1
+        max_gex = max(abs(sum_gex), 1.0)
+        max_dex = max(abs(sum_dex), 1.0)
+        max_charm = max(abs(charm_net), 1.0) if charm_net is not None else 1.0
+        max_vanna = max(abs(sum_vanna), 1.0)
+        charm_norm = (
+            charm_net / max_charm
+            if charm_net is not None and max_charm > 0
+            else None
+        )
+        hedging_flow = compute_hedging_flow_score(
+            net_gex_normalized=sum_gex / max_gex if max_gex > 0 else 0,
+            net_dex_normalized=sum_dex / max_dex if max_dex > 0 else 0,
+            charm_normalized=charm_norm,
+            vanna_normalized=sum_vanna / max_vanna if max_vanna > 0 else 0,
+        )
+
+        # 3. Gamma Gradient
+        gamma_gradient = compute_gamma_gradient(exposures, spot_f)
+
+        # 4. Breakout Score
+        gex_near_spot = 0.0
+        for k, b in exposures.items():
+            if abs(float(k) - spot_f) > GEX_NEAR_SPOT_RADIUS:
+                continue
+            ng = bucket_metric(b, "net_gex_1pct")
+            if ng is not None:
+                gex_near_spot += abs(ng)
+        void_factor = 0.0
+        for vz in (gamma_voids or []):
+            if vz.get("contains_spot"):
+                void_factor = 1.0
+                break
+            vz_dist = min(abs(vz.get("lower", spot_f) - spot_f), abs(vz.get("upper", spot_f) - spot_f))
+            void_factor = max(void_factor, max(0, 1.0 - vz_dist / VOID_DIST_FALLOFF))
+        try:
+            breakout_score = compute_breakout_score(gex_near_spot, gamma_gradient, void_factor)
+        except Exception as e:
+            log.warning(f"breakout_score failed: {e}")
+            breakout_score = {}
+
+        # 5. Pin Score — strike AND GEX/OI from the terrain SSOT book (RC-124/RC-292/RC-413).
+        # Never consensus_summary.net_gex_peak (analytics |net GEX$| peak) and never analytics
+        # `exposures` for magnitude at that strike. RC-292 rename: the terrain payload field
+        # is absolute_gamma_strike — the raw total-gamma concentration; pin_score grades it.
+        t_pin_snap = terrain_cache_get(ticker) or {}
+        pin_strike = (
+            t_pin_snap.get("absolute_gamma_strike")
+            if t_pin_snap and not t_pin_snap.get("levels_stale")
+            else None
+        )
+        gex_at_pin = None
+        oi_concentration = None
+        if pin_strike is not None and t_pin_snap and not t_pin_snap.get("levels_stale"):
+            try:
+                tg = t_pin_snap.get("absolute_gamma_gex_dollars")
+                toi = t_pin_snap.get("absolute_gamma_oi")
+                tbook = t_pin_snap.get("book_oi_total")
+                if tg is not None and toi is not None and tbook is not None:
+                    book_oi = float(tbook)
+                    gex_at_pin = float(tg)
+                    oi_concentration = (
+                        (float(toi) / book_oi) if book_oi > 0 else None
+                    )
+            except (TypeError, ValueError):
+                gex_at_pin = None
+                oi_concentration = None
+        try:
+            pin_score_val = compute_pin_score(gex_at_pin, oi_concentration)
+        except Exception as e:
+            log.warning(f"pin_score failed: {e}")
+            pin_score_val = {}
+
+        # Cursor-audit F9 / gamma audit: the dealer dampen/amplify REGIME sign, read from the SAME
+        # terrain SSOT snapshot as the pin above and on the SAME fail-closed terms. net_gex_at_spot
+        # IS gamma_at_spot over the wide multi-expiry book (terrain_engine) — the exact value the
+        # terrain card renders — so the Call/regime consumers and the card read ONE number and cannot
+        # disagree in sign. Sourcing it from the selected-expiry analytics diag (the first cut of this
+        # fix) could disagree, and a one-expiry slice is the wrong basis for a whole-book hedging
+        # claim. Missing or stale snapshot -> None -> every consumer withholds its regime claim.
+        regime_gamma_at_spot = (
+            t_pin_snap.get("net_gex_at_spot")
+            if t_pin_snap and not t_pin_snap.get("levels_stale")
+            else None
+        )
+
+        # 6. Vol Expansion Signal
+        iv_dir_num = 1.0 if iv_direction == "expanding" else -1.0 if iv_direction == "contracting" else 0.0
+        vol_expansion = compute_vol_expansion_signal(sum_gex, iv_dir_num, gamma_gradient)
+
+        # Sweep Score moved below: needs ms.nearest_above_dist / ms.nearest_below_dist
+        # which are only populated by build_market_state. The previous compute here read
+        # `getattr(ms, _wname, None) if 'ms' in dir() else None` — `ms` was undefined at
+        # this point in execution, so the loop always set _nearest_wall_dist=None and
+        # sweep_score was silently degraded every tick.
+
+    except Exception as e:
+        log.debug(f"Section 8 signals calc: {e}")
+
+    return _PredictivePositioningForState(
+        dpi=dpi,
+        hedging_flow=hedging_flow,
+        gamma_gradient=gamma_gradient,
+        breakout_score=breakout_score,
+        pin_score_val=pin_score_val,
+        vol_expansion=vol_expansion,
+        void_factor=void_factor,
+        pin_strike=pin_strike,
+        regime_gamma_at_spot=regime_gamma_at_spot,
     )
 
 
@@ -8184,152 +8388,24 @@ def _fetch_state(
     _iv_model_spread = _ofs.iv_model_spread
 
     # ── Section 8 — Predictive Positioning Signals ───────────────────────────
-    _dpi = {}
-    _hedging_flow = {}
-    _gamma_gradient = None
-    _breakout_score = {}
-    _pin_score_val = {}
-    _vol_expansion = {}
-    _sweep_score = {}
     # Sweep score post-build_market_state needs _void_factor even if Section 8 raised early.
-    _void_factor = 0.0
-    def _bucket_total_oi(_bkt: dict) -> float | None:
-        call_oi = _bkt.get("call_oi")
-        put_oi = _bkt.get("put_oi")
-        if call_oi is None and put_oi is None:
-            return None
-        return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
-
-    # Gamma-audit 2026-08-26 (latent NameError, found tracing the F9 regime source): the terrain-SSOT
-    # reads below live INSIDE this try, whose `except` only logs (server.py: "Section 8 signals calc")
-    # and sets no defaults. Any earlier raise in the block therefore left these names UNDEFINED, and
-    # the later build_market_state(absolute_gamma_strike=_pin_strike, net_gamma_at_spot=...) raised
-    # NameError — caught as a build_market_state crash, so ONE failed sub-computation blanked the
-    # ENTIRE market state instead of degrading a single field. Pre-initialized here so the block
-    # degrades field-wise and fail-closed (None = the consumer withholds its claim), never all-or-nothing.
-    _pin_strike = None
-    _regime_gamma_at_spot = None
-    try:
-        # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
-        _sum_gex = float(aggregate_net_gex(exposures, _cons_strikes) or 0.0)
-        _sum_dex = 0.0
-        _sum_oi = None
-        _sum_vanna = 0.0
-        for _bkt in exposures.values():
-            _dex = bucket_metric(_bkt, "net_dex_dollars")
-            if _dex is not None:
-                _sum_dex += _dex
-            _bucket_oi = _bucket_total_oi(_bkt)
-            if _bucket_oi is not None:
-                _sum_oi = (_sum_oi or 0.0) + _bucket_oi
-            _cv = bucket_metric(_bkt, "call_vanna")
-            _pv = bucket_metric(_bkt, "put_vanna")
-            if _cv is not None:
-                _sum_vanna += _cv
-            if _pv is not None:
-                _sum_vanna += _pv
-
-        # 1. DPI
-        _dpi = compute_dealer_pressure_index(_sum_dex, _sum_gex, _sum_oi)
-
-        # 2. Hedging Flow Score — normalize inputs to -1..+1
-        _max_gex = max(abs(_sum_gex), 1.0)
-        _max_dex = max(abs(_sum_dex), 1.0)
-        _max_charm = max(abs(_charm_net), 1.0) if _charm_net is not None else 1.0
-        _max_vanna = max(abs(_sum_vanna), 1.0)
-        _charm_norm = (
-            _charm_net / _max_charm
-            if _charm_net is not None and _max_charm > 0
-            else None
-        )
-        _hedging_flow = compute_hedging_flow_score(
-            net_gex_normalized=_sum_gex / _max_gex if _max_gex > 0 else 0,
-            net_dex_normalized=_sum_dex / _max_dex if _max_dex > 0 else 0,
-            charm_normalized=_charm_norm,
-            vanna_normalized=_sum_vanna / _max_vanna if _max_vanna > 0 else 0,
-        )
-
-        # 3. Gamma Gradient
-        _gamma_gradient = compute_gamma_gradient(exposures, spot_f)
-
-        # 4. Breakout Score
-        _gex_near_spot = 0.0
-        for k, b in exposures.items():
-            if abs(float(k) - spot_f) > GEX_NEAR_SPOT_RADIUS:
-                continue
-            _ng = bucket_metric(b, "net_gex_1pct")
-            if _ng is not None:
-                _gex_near_spot += abs(_ng)
-        _void_factor = 0.0
-        for _vz in (_gamma_voids or []):
-            if _vz.get("contains_spot"):
-                _void_factor = 1.0
-                break
-            _vz_dist = min(abs(_vz.get("lower", spot_f) - spot_f), abs(_vz.get("upper", spot_f) - spot_f))
-            _void_factor = max(_void_factor, max(0, 1.0 - _vz_dist / VOID_DIST_FALLOFF))
-        try:
-            _breakout_score = compute_breakout_score(_gex_near_spot, _gamma_gradient, _void_factor)
-        except Exception as e:
-            log.warning(f"breakout_score failed: {e}")
-            _breakout_score = {}
-
-        # 5. Pin Score — strike AND GEX/OI from the terrain SSOT book (RC-124/RC-292/RC-413).
-        # Never consensus_summary.net_gex_peak (analytics |net GEX$| peak) and never analytics
-        # `exposures` for magnitude at that strike. RC-292 rename: the terrain payload field
-        # is absolute_gamma_strike — the raw total-gamma concentration; pin_score grades it.
-        _t_pin_snap = terrain_cache_get(ticker) or {}
-        _pin_strike = (
-            _t_pin_snap.get("absolute_gamma_strike")
-            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
-            else None
-        )
-        _gex_at_pin = None
-        _oi_concentration = None
-        if _pin_strike is not None and _t_pin_snap and not _t_pin_snap.get("levels_stale"):
-            try:
-                _tg = _t_pin_snap.get("absolute_gamma_gex_dollars")
-                _toi = _t_pin_snap.get("absolute_gamma_oi")
-                _tbook = _t_pin_snap.get("book_oi_total")
-                if _tg is not None and _toi is not None and _tbook is not None:
-                    _book_oi = float(_tbook)
-                    _gex_at_pin = float(_tg)
-                    _oi_concentration = (
-                        (float(_toi) / _book_oi) if _book_oi > 0 else None
-                    )
-            except (TypeError, ValueError):
-                _gex_at_pin = None
-                _oi_concentration = None
-        try:
-            _pin_score_val = compute_pin_score(_gex_at_pin, _oi_concentration)
-        except Exception as e:
-            log.warning(f"pin_score failed: {e}")
-            _pin_score_val = {}
-
-        # Cursor-audit F9 / gamma audit: the dealer dampen/amplify REGIME sign, read from the SAME
-        # terrain SSOT snapshot as the pin above and on the SAME fail-closed terms. net_gex_at_spot
-        # IS gamma_at_spot over the wide multi-expiry book (terrain_engine) — the exact value the
-        # terrain card renders — so the Call/regime consumers and the card read ONE number and cannot
-        # disagree in sign. Sourcing it from the selected-expiry analytics diag (the first cut of this
-        # fix) could disagree, and a one-expiry slice is the wrong basis for a whole-book hedging
-        # claim. Missing or stale snapshot -> None -> every consumer withholds its regime claim.
-        _regime_gamma_at_spot = (
-            _t_pin_snap.get("net_gex_at_spot")
-            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
-            else None
-        )
-
-        # 6. Vol Expansion Signal
-        _iv_dir_num = 1.0 if _iv_direction == "expanding" else -1.0 if _iv_direction == "contracting" else 0.0
-        _vol_expansion = compute_vol_expansion_signal(_sum_gex, _iv_dir_num, _gamma_gradient)
-
-        # Sweep Score moved below: needs ms.nearest_above_dist / ms.nearest_below_dist
-        # which are only populated by build_market_state. The previous compute here read
-        # `getattr(ms, _wname, None) if 'ms' in dir() else None` — `ms` was undefined at
-        # this point in execution, so the loop always set _nearest_wall_dist=None and
-        # sweep_score was silently degraded every tick.
-
-    except Exception as e:
-        log.debug(f"Section 8 signals calc: {e}")
+    _sweep_score = {}
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, eighth slice): extracted to
+    # _predictive_positioning_for_state (defined above _price_levels_for_state).
+    # _bucket_total_oi was promoted to a module-level function -- the Level Density
+    # sub-phase far below still calls it via the same module-level name.
+    _pp = _predictive_positioning_for_state(
+        ticker, exposures, _cons_strikes, spot_f, _charm_net, _gamma_voids, _iv_direction,
+    )
+    _dpi = _pp.dpi
+    _hedging_flow = _pp.hedging_flow
+    _gamma_gradient = _pp.gamma_gradient
+    _breakout_score = _pp.breakout_score
+    _pin_score_val = _pp.pin_score_val
+    _vol_expansion = _pp.vol_expansion
+    _void_factor = _pp.void_factor
+    _pin_strike = _pp.pin_strike
+    _regime_gamma_at_spot = _pp.regime_gamma_at_spot
 
     # ── Volatility Envelope, Level Density, Sector Strength ──────────────────
     _vol_envelope = {}

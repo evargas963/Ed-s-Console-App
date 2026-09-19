@@ -75,17 +75,38 @@ def test_compute_sweep_score_called_after_build_market_state():
 
 
 def test_void_factor_default_hoisted_outside_section_8_try():
-    """_void_factor must be defined before the Section 8 try block (sweep_score post-build relies on it)."""
+    """_void_factor must always be a defined, real value in _fetch_state's own scope
+    (sweep_score post-build relies on it) regardless of whether Section 8's own
+    computation succeeds or fails.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, eighth slice): Section 8 moved out
+    of _fetch_state's own body into _predictive_positioning_for_state, a standalone
+    function with its OWN try/except that pre-initializes `void_factor = 0.0` before its
+    try block and never lets an exception escape -- so its return is unconditionally a
+    real _PredictivePositioningForState with a real void_factor float, never a raise.
+    _fetch_state now assigns `_void_factor = _pp.void_factor` as a bare, unconditional
+    statement right after that call (no try/except of its own needed around it, because
+    the callee already guarantees it cannot raise) -- a STRONGER version of the same
+    guarantee this test originally locked, just enforced one level down."""
+    import server
+
     src = _fetch_state_source()
-    # The default-init block above the Section 8 try must include _void_factor = 0.0.
-    # Look for the Section 8 marker, then the init block immediately below it.
     sec8 = src.find("Section 8 — Predictive Positioning Signals")
     assert sec8 > 0, "Section 8 header marker must remain"
-    init_window = src[sec8 : sec8 + 1500]
-    assert "_void_factor = 0.0" in init_window, (
-        "_void_factor = 0.0 must be initialized in the Section 8 default block "
-        "(before the try) so the post-build sweep_score still has a value when "
-        "Section 8 raises early"
+    call_window = src[sec8 : sec8 + 1500]
+    assert "_void_factor = _pp.void_factor" in call_window, (
+        "_fetch_state must unconditionally bind _void_factor from the extracted "
+        "phase's return value right after the Section 8 marker"
+    )
+    # The real guarantee: the extracted function itself pre-initializes void_factor
+    # before its own try block, exactly as _fetch_state's inline code used to.
+    pp_src = inspect.getsource(server._predictive_positioning_for_state)
+    pp_before_try = pp_src[: pp_src.find("\n    try:")]
+    assert "void_factor = 0.0" in pp_before_try, (
+        "_predictive_positioning_for_state must initialize void_factor = 0.0 BEFORE "
+        "its own try block, so a raise anywhere inside still returns a real float, "
+        "never an undefined name -- the exact NameError-prevention property this test "
+        "protects, now enforced one level down in the extracted function"
     )
 
 
