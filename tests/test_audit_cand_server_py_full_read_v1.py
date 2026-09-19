@@ -378,10 +378,13 @@ def test_no_mc_em_pre_bms_warning_log():
 
 # FIND-SERVERPY-13
 def test_recent_crosses_uses_named_constant():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): the
+    RECENT_CROSSES_DISPLAY_LIMIT call site moved from _fetch_state's own body into
+    _db_counts_and_crosses_for_state (defined above _fetch_state)."""
     import server
 
     assert server.RECENT_CROSSES_DISPLAY_LIMIT == 5
-    assert "RECENT_CROSSES_DISPLAY_LIMIT" in _fn_src("_fetch_state")
+    assert "RECENT_CROSSES_DISPLAY_LIMIT" in _fn_src("_db_counts_and_crosses_for_state")
 
 
 # FIND-SERVERPY-14

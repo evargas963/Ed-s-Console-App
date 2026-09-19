@@ -8084,6 +8084,66 @@ def _zone_tracking_for_state(ticker: str, consensus_summary) -> dict:
     return zt
 
 
+class _DbCountsAndCrossesForState(NamedTuple):
+    db_counts: dict
+    ceil_tests: int
+    floor_tests: int
+    recent_crosses: list
+
+
+def _db_counts_and_crosses_for_state(
+    ticker: str,
+    ed_db,
+    walls: list,
+) -> _DbCountsAndCrossesForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): the DB Counts
+    + Crosses phase, extracted verbatim. `ed_db` is passed as a parameter (it is
+    _fetch_state's own local `_ed_db = get_db() if _HAS_SIGNALS else None`, not a
+    module-level global). A DB query failure is caught and logged; every output stays at
+    its pre-initialized "no data" default, exactly as the original inline try/except did."""
+    if _diag_on():
+        _diag_step("pre_db_counts", ticker)
+    db_counts = {"total": 0, "filled": 0}
+    ceil_tests = floor_tests = 0
+    recent_crosses = []
+
+    if ed_db:
+        try:
+            db_counts = ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)
+            cgw = _f(getattr(walls[0], "call_gamma_wall", None)) if walls else None
+            pgw = _f(getattr(walls[0], "put_gamma_wall",  None)) if walls else None
+            if cgw:
+                ceil_result = ed_db.count_level_tests(ticker, "Call Gamma Wall", cgw)
+                ct = ceil_result.get("total")
+                ceil_tests = int(ct) if ct is not None else 0
+            if pgw:
+                floor_result = ed_db.count_level_tests(ticker, "Put Gamma Wall", pgw)
+                ft = floor_result.get("total")
+                floor_tests = int(ft) if ft is not None else 0
+            rc = ed_db.get_recent_crosses(ticker, n=RECENT_CROSSES_DISPLAY_LIMIT)
+            recent_cross_eval_wall_ts = time.time()
+            for c in rc:
+                bars_ago = int(
+                    (recent_cross_eval_wall_ts - c.get("ts_utc", 0)) / 60
+                )  # 1m bar cadence (canonical)
+                recent_crosses.append({
+                    "level_name": c.get("level_name"),
+                    "direction":  c.get("direction"),
+                    "bars_ago":   bars_ago,
+                })
+        except Exception as e:
+            log.warning(f"DB query failed: {e}")
+    if _diag_on():
+        _diag_done("db_counts", ticker)
+
+    return _DbCountsAndCrossesForState(
+        db_counts=db_counts,
+        ceil_tests=ceil_tests,
+        floor_tests=floor_tests,
+        recent_crosses=recent_crosses,
+    )
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -8749,41 +8809,13 @@ def _fetch_state(
     # _zone_tracking_for_state (defined above).
     zt = _zone_tracking_for_state(ticker, consensus_summary)
 
-    # ── DB counts + crosses ───────────────────────────────────────────────────
-    if _diag_on():
-        _diag_step("pre_db_counts", ticker)
-    db_counts  = {"total": 0, "filled": 0}
-    ceil_tests = floor_tests = 0
-    recent_crosses = []
-
-    if _ed_db:
-        try:
-            db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)
-            cgw = _f(getattr(walls[0], "call_gamma_wall", None)) if walls else None
-            pgw = _f(getattr(walls[0], "put_gamma_wall",  None)) if walls else None
-            if cgw:
-                _ceil = _ed_db.count_level_tests(ticker, "Call Gamma Wall", cgw)
-                _ct = _ceil.get("total")
-                ceil_tests = int(_ct) if _ct is not None else 0
-            if pgw:
-                _floor = _ed_db.count_level_tests(ticker, "Put Gamma Wall", pgw)
-                _ft = _floor.get("total")
-                floor_tests = int(_ft) if _ft is not None else 0
-            rc = _ed_db.get_recent_crosses(ticker, n=RECENT_CROSSES_DISPLAY_LIMIT)
-            recent_cross_eval_wall_ts = time.time()
-            for c in rc:
-                bars_ago = int(
-                    (recent_cross_eval_wall_ts - c.get("ts_utc", 0)) / 60
-                )  # 1m bar cadence (canonical)
-                recent_crosses.append({
-                    "level_name": c.get("level_name"),
-                    "direction":  c.get("direction"),
-                    "bars_ago":   bars_ago,
-                })
-        except Exception as e:
-            log.warning(f"DB query failed: {e}")
-    if _diag_on():
-        _diag_done("db_counts", ticker)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): extracted to
+    # _db_counts_and_crosses_for_state (defined above).
+    _dbcc = _db_counts_and_crosses_for_state(ticker, _ed_db, walls)
+    db_counts = _dbcc.db_counts
+    ceil_tests = _dbcc.ceil_tests
+    floor_tests = _dbcc.floor_tests
+    recent_crosses = _dbcc.recent_crosses
 
     # session_label already computed above — reuse it
     et_h = now_et.hour
