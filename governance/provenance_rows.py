@@ -2815,7 +2815,7 @@ ROWS: tuple[Row, ...] = (
         justification='Deterministic payoff plus the PHYSICAL terminal distribution for one candidate, as of the requested instant.',
     ),
     Row(
-        file='server.py', derivation='get_exposure_book', disposition='ALLOWLISTED',
+        file='app/api/routes/exposure.py', derivation='get_exposure_book', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-209: per-strike call/put GEX split, net DEX and volumes from the NEWEST banked wide chain, all through the shared exposure faucet.',
     ),
@@ -2825,12 +2825,12 @@ ROWS: tuple[Row, ...] = (
         justification='RC-UI-1: strike x expiry GEX$ surface (Options/Gamma heatmap). PREFERRED source is the LIVE terrain cache (current terrain-refresh contracts + live spot, bounded near-money window) — an in-memory read, no SQLite. This SQLite read is the FALLBACK ONLY: the banked morning wide reference (option_chain_morning_full), stale, not intraday, not proven complete. Both paths partition by native expirationDate and route each expiry slice through the shared compute_exposures_by_strike faucet; the endpoint owns no gamma/GEX math and is a projection of the one exposure producer.',
     ),
     Row(
-        file='server.py', derivation='get_exposure_flow', disposition='ALLOWLISTED',
+        file='app/api/routes/exposure.py', derivation='get_exposure_flow', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-208: serves banked option_chain_accrual frames for the latest banked session; reads rows this repo already persisted rather than re-deriving them.',
     ),
     Row(
-        file='server.py', derivation='get_exposure_history', disposition='ALLOWLISTED',
+        file='app/api/routes/exposure.py', derivation='get_exposure_history', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-209: per-day per-strike net GEX$ for the multi-day scroll-back, assembled from banked captures.',
     ),
