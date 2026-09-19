@@ -287,6 +287,15 @@ from app.api.routes.chain import (  # noqa: F401
     get_expiries,
     get_chain,
 )
+# RC-REHAB-1 (Phase 3): nineteenth extraction slice -- prediction_override/
+# prediction_override_clear now live in app/api/routes/prediction.py (mounted below via
+# app.include_router(prediction_router)). _pred_overrides has a reader used elsewhere in
+# server.py's decision pipeline and stays there, imported back lazily.
+from app.api.routes.prediction import (  # noqa: F401
+    router as prediction_router,
+    prediction_override,
+    prediction_override_clear,
+)
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
@@ -10729,6 +10738,7 @@ app.include_router(analytics_state_router)
 app.include_router(market_data_router)
 app.include_router(sse_router)
 app.include_router(chain_router)
+app.include_router(prediction_router)
 
 # F09: serve the JS projection from time_et on every request. Registered BEFORE
 # the StaticFiles mount so a committed or leftover disk blob cannot become a
@@ -15078,35 +15088,6 @@ async def _sse_background_loop() -> None:
 #: many strikes that population actually has — the vendor 502 was never about strike width
 #: alone, it was strike width MULTIPLIED across every expiry in an unwindowed request.
 COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
-
-
-@app.post("/api/prediction/override")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
-def prediction_override(ticker: str = Query(...), direction: str = Query(...), source: str = Query("user")):
-    """Set manual override for prediction direction. direction: up|flat|down. source: user|manual."""
-    ticker = ticker.upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL (Decision 3): setting a prediction override acts on an existing
-    # tracked symbol; it must not silently enroll a new one into the training roster.
-    _touch_tracked_ticker_view(ticker)
-    d = (direction or "").strip().lower()
-    if d not in ("up", "flat", "down"):
-        raise HTTPException(status_code=400, detail="direction must be up, flat, or down")
-    src = (source or "user").lower()
-    _pred_overrides[ticker] = {"direction": d, "source": src}
-    return JSONResponse({"ok": True, "ticker": ticker, "direction": d, "source": src})
-
-
-@app.post("/api/prediction/override/clear")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
-def prediction_override_clear(ticker: str = Query(...)):
-    """Clear prediction override for ticker."""
-    ticker = ticker.upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL (Decision 3): clearing an override must not enroll.
-    _touch_tracked_ticker_view(ticker)
-    if ticker in _pred_overrides:
-        del _pred_overrides[ticker]
-        return JSONResponse({"ok": True, "ticker": ticker, "cleared": True})
-    return JSONResponse({"ok": True, "ticker": ticker, "cleared": False})
 
 
 def _repo_git_head_sha() -> Optional[str]:
