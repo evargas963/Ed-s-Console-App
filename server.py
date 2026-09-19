@@ -7124,6 +7124,18 @@ def _garch_sigma_bars_for_state(
         return None
 
 
+def _pcr_val_for_state(totals: list) -> Optional[float]:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, second slice): the PCR (put/call
+    ratio) phase, extracted verbatim. Reads the open-interest-based PCR off the first
+    per-strike-bucket total row (`build_totals_rows`'s own `pcr_oi` field, computed by
+    math_exposure_core) -- no computation of its own, purely a read-through. Returns
+    None when `totals` is empty or the row has no `pcr_oi` value."""
+    if not totals:
+        return None
+    v = getattr(totals[0], "pcr_oi", None)
+    return float(v) if v is not None else None
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -7631,11 +7643,9 @@ def _fetch_state(
         log.warning(f"Charm: {ticker} 💥 EXCEPTION: {_ce}\n{traceback.format_exc()}")
 
     # ── PCR ──────────────────────────────────────────────────────────────────
-    pcr_val = None
-    if totals:
-        v = getattr(totals[0], "pcr_oi", None)
-        if v is not None:
-            pcr_val = float(v)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, second slice): extracted to
+    # _pcr_val_for_state (defined just above this function).
+    pcr_val = _pcr_val_for_state(totals)
 
     _stage_marks.append(("charm_pcr", time.perf_counter()))
 

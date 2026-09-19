@@ -155,7 +155,7 @@ not a byte-level dependency graph.** Verify each phase's real inputs/outputs bef
 | 4 | Exposures (7284) | GEX/DEX/vanna by strike | delegates: `math_exposure_core.compute_exposures_by_strike` | not extracted |
 | 5 | Gamma flip + void zones (7387) | wall/flip selection | delegates: `math_levels.py` | not extracted |
 | 6 | Charm (7406) | dealer charm by strike | delegates: `math_levels.compute_charm_by_strike` | not extracted |
-| 7 | PCR (7469) | put/call ratio | inline (small) | not extracted |
+| 7 | PCR (7469) | put/call ratio | inline (small) | **EXTRACTED** — `_pcr_val_for_state(totals) -> pcr_val \| None`, a pure read-through of `totals[0].pcr_oi` (no computation of its own). Second slice; see `tests/test_fetch_state_pcr_phase_v1.py`. |
 | 8 | Market context, candle (7509–7544) | session label, last 1m candle | delegates: `market_context.py`, price_bars_1m read | not extracted |
 | 9 | Price levels (7548) | VWAP/PDH/PDL/PDC/ORB | delegates: `liquidity_value_engine.py` | not extracted |
 | 10 | Expected move (7616) | straddle + IV-based | delegates: `math_levels.py`/vol modules | not extracted |
