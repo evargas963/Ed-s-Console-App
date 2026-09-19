@@ -2702,7 +2702,7 @@ ROWS: tuple[Row, ...] = (
         justification='REST tape proxy when stream unavailable.',
     ),
     Row(
-        file='server.py', derivation='api_live_plane', disposition='ALLOWLISTED',
+        file='app/api/routes/live.py', derivation='api_live_plane', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (api_live_plane).',
     ),
@@ -2742,7 +2742,7 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (debug_prediction).',
     ),
     Row(
-        file='server.py', derivation='fast_quote', disposition='ALLOWLISTED',
+        file='app/api/routes/live.py', derivation='fast_quote', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (fast_quote).',
     ),
@@ -2860,7 +2860,7 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_liquidity_snapshot).',
     ),
     Row(
-        file='server.py', derivation='get_live_state', disposition='ALLOWLISTED',
+        file='app/api/routes/live.py', derivation='get_live_state', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_live_state).',
     ),
