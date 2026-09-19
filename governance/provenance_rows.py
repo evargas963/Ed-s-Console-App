@@ -2950,12 +2950,12 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_universe).',
     ),
     Row(
-        file='server.py', derivation='post_streaming_active_option_contract', disposition='ALLOWLISTED',
+        file='app/api/routes/streaming.py', derivation='post_streaming_active_option_contract', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Subscribes LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract via the daemon signal file — mirrors post_streaming_active_ticker for the separate option-contract slot (post_streaming_active_option_contract).',
     ),
     Row(
-        file='server.py', derivation='post_streaming_active_ticker', disposition='ALLOWLISTED',
+        file='app/api/routes/streaming.py', derivation='post_streaming_active_ticker', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (post_streaming_active_ticker).',
     ),
