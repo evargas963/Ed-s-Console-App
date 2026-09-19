@@ -46,7 +46,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NamedTuple, Optional
 from dataclasses import asdict, dataclass
 
 import time_et as _time_et
@@ -7136,6 +7136,60 @@ def _pcr_val_for_state(totals: list) -> Optional[float]:
     return float(v) if v is not None else None
 
 
+class _OrderFlowSignalsForState(NamedTuple):
+    vol_oi_ratio: dict
+    flow_imb_norm: Optional[float]
+    flow_imb_source: str
+    smart_money: dict
+    iv_model_spread: dict
+
+
+def _order_flow_signals_for_state(
+    exposures: dict,
+    spot_f: float,
+    contracts_use: list,
+) -> _OrderFlowSignalsForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, third slice): the Order Flow
+    Signals phase (option volume + bid/ask size), extracted verbatim. Four independent
+    computations, each already delegated to its own module and each fail-closed to an
+    empty/None default on its own exception -- one signal's failure must never take
+    another down with it, exactly as the original inline try/except-per-call did."""
+    vol_oi_ratio: dict = {}
+    smart_money: dict = {}
+    iv_model_spread: dict = {}
+    try:
+        vol_oi_ratio = compute_volume_oi_ratio(exposures, spot_f)
+    except Exception as e:
+        log.debug(f"Order flow signals calc: {e}")
+    # RC-345 / F11 residual: ONE computation for the served number AND its label.
+    # The live path used to call compute_option_flow_imbalance independently for
+    # flow_imbalance_label while persisting flow_imbalance_normalized_with_fallback.
+    # MEASURED on current main: empty ATM book + call-heavy volume → number 0.6
+    # (source=volume) beside label "balanced" (book-only zero). Label is now a
+    # function of the same normalized value the wrapper returns.
+    flow_imb_norm: Optional[float] = None
+    flow_imb_source = "none"
+    try:
+        flow_imb_norm, flow_imb_source = flow_imbalance_normalized_with_fallback(exposures, spot_f)
+    except Exception as e:
+        log.warning(f"flow_imbalance (one-producer authority) failed: {e}")
+    try:
+        smart_money = compute_smart_money_signal(exposures, spot_f)
+    except Exception as e:
+        log.warning(f"smart_money_score failed: {e}")
+    try:
+        iv_model_spread = compute_iv_model_spread(contracts_use, spot_f)
+    except Exception as e:
+        log.debug(f"Order flow signals calc: {e}")
+    return _OrderFlowSignalsForState(
+        vol_oi_ratio=vol_oi_ratio,
+        flow_imb_norm=flow_imb_norm,
+        flow_imb_source=flow_imb_source,
+        smart_money=smart_money,
+        iv_model_spread=iv_model_spread,
+    )
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -7947,33 +8001,14 @@ def _fetch_state(
     _garch_sigma_bars = _garch_sigma_bars_for_state(_closes, _atm_iv, _realized_vol, spot_f)
 
     # ── Order Flow Signals (from option volume + bid/ask size) ────────────────
-    _vol_oi_ratio = {}
-    _smart_money = {}
-    _iv_model_spread = {}
-    try:
-        _vol_oi_ratio = compute_volume_oi_ratio(exposures, spot_f)
-    except Exception as e:
-        log.debug(f"Order flow signals calc: {e}")
-    # RC-345 / F11 residual: ONE computation for the served number AND its label.
-    # The live path used to call compute_option_flow_imbalance independently for
-    # flow_imbalance_label while persisting flow_imbalance_normalized_with_fallback.
-    # MEASURED on current main: empty ATM book + call-heavy volume → number 0.6
-    # (source=volume) beside label "balanced" (book-only zero). Label is now a
-    # function of the same normalized value the wrapper returns.
-    _flow_imb_norm = None
-    _flow_imb_source = "none"
-    try:
-        _flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback(exposures, spot_f)
-    except Exception as e:
-        log.warning(f"flow_imbalance (one-producer authority) failed: {e}")
-    try:
-        _smart_money = compute_smart_money_signal(exposures, spot_f)
-    except Exception as e:
-        log.warning(f"smart_money_score failed: {e}")
-    try:
-        _iv_model_spread = compute_iv_model_spread(contracts_use, spot_f)
-    except Exception as e:
-        log.debug(f"Order flow signals calc: {e}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, third slice): extracted to
+    # _order_flow_signals_for_state (defined just above this function).
+    _ofs = _order_flow_signals_for_state(exposures, spot_f, contracts_use)
+    _vol_oi_ratio = _ofs.vol_oi_ratio
+    _flow_imb_norm = _ofs.flow_imb_norm
+    _flow_imb_source = _ofs.flow_imb_source
+    _smart_money = _ofs.smart_money
+    _iv_model_spread = _ofs.iv_model_spread
 
     # ── Section 8 — Predictive Positioning Signals ───────────────────────────
     _dpi = {}

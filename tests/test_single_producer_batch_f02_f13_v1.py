@@ -459,7 +459,16 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     # F11 (reopened) SOURCE travels beside the value: the live server captures the source
     # book and emits flow_imbalance_source into the payload, so a consumer can tell 'book'
     # (bid/ask size) from 'volume' (call/put traded volume) — not a bare generic number.
-    assert "_flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback" in srv, (
+    #
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, third slice): this tuple-unpack
+    # capture moved out of _fetch_state's own body into _order_flow_signals_for_state, a
+    # standalone function where the local names dropped the "_fetch_state phase-scratch"
+    # underscore-prefix convention (flow_imb_norm/flow_imb_source, not
+    # _flow_imb_norm/_flow_imb_source) since they are now clean locals in their own small
+    # function, not scratch variables threaded through a 3,400-line body. _fetch_state
+    # itself still binds the result back to the underscore-prefixed names the rest of its
+    # body already reads (see the two assertions below, unchanged).
+    assert "flow_imb_norm, flow_imb_source = flow_imbalance_normalized_with_fallback" in srv, (
         "live server must capture the flow_imbalance SOURCE, not discard it (F11/RC-345)")
     assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in srv, (
         "the flow_imbalance source must reach the payload beside the value (F11/RC-345)")
