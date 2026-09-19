@@ -47,7 +47,7 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/health': ('OPS', None),
     '/api/internal/reload_models': ('OPS', None),
     '/api/level_crosses': ('CARRIER', None),
-    '/api/levels': ('PRODUCER', 'server.py:get_levels'),
+    '/api/levels': ('PRODUCER', 'app/api/routes/liquidity.py:get_levels'),
     '/api/liquidity-playbook-state': ('CARRIER', None),
     '/api/liquidity-snapshot': ('CARRIER', None),
     '/api/live/plane': ('PRODUCER', 'app/api/routes/live.py:api_live_plane'),

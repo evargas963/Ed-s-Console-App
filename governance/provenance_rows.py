@@ -2845,17 +2845,17 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_l1_diagnostics).',
     ),
     Row(
-        file='server.py', derivation='get_levels', disposition='DERIVED',
+        file='app/api/routes/liquidity.py', derivation='get_levels', disposition='DERIVED',
         producer_refs=('server.py:resolve_spot', 'server.py:_liquidity_live_1m_overlay_bars'),
         justification='The single levels contract, schema v1: id, price, family, evidence_tier, provenance and staleness for every served level. Assembles already-derived level producers; the gamma family is explicitly excluded from the Tier-B slice and served by /api/terrain until that migration completes, and the payload says so rather than omitting it silently.',
     ),
     Row(
-        file='server.py', derivation='get_liquidity_playbook_state', disposition='ALLOWLISTED',
+        file='app/api/routes/liquidity.py', derivation='get_liquidity_playbook_state', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_liquidity_playbook_state).',
     ),
     Row(
-        file='server.py', derivation='get_liquidity_snapshot', disposition='ALLOWLISTED',
+        file='app/api/routes/liquidity.py', derivation='get_liquidity_snapshot', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_liquidity_snapshot).',
     ),
