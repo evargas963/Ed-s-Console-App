@@ -916,9 +916,13 @@ def test_rc345_realized_vol_bar_minutes_is_required() -> None:
     bm = sig.parameters["bar_minutes"]
     assert bm.default is inspect.Parameter.empty, (
         "compute_realized_vol.bar_minutes must be REQUIRED, not defaulted (F17/RC-345)")
-    # the one production caller passes it explicitly
+    # the one production caller passes it explicitly. RC-REHAB-1 (Phase 4, _fetch_state
+    # decomposition, fourth slice): this call site moved out of _fetch_state's own body
+    # into _volatility_signals_for_state, where the local dropped the "_fetch_state
+    # phase-scratch" underscore prefix (closes, not _closes) as a clean local in its own
+    # small function.
     srv = _read("server.py")
-    assert "compute_realized_vol(_closes, bar_minutes=1.0)" in srv
+    assert "compute_realized_vol(closes, bar_minutes=1.0)" in srv
 
 
 # ---------------------------------------------------------------------- F24 signed dist to VWAP

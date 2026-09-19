@@ -302,10 +302,19 @@ def test_l1_next_generation_regression_raises_runtime_error_not_assert():
 
 # FIND-SERVERPY-8
 def test_ed_db_bound_before_iv_rank_references():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): the
+    `if _atm_iv and _ed_db and _tick_ts is not None` IV-rank gate moved out of
+    _fetch_state's own body into _volatility_signals_for_state (as
+    `if atm_iv and ed_db and tick_ts is not None`, clean local parameter names). The
+    invariant this test protects -- _ed_db must be bound before it is used for the IV-rank
+    gate -- now holds structurally: _fetch_state only ever USES _ed_db by passing it as a
+    call argument to _volatility_signals_for_state, and Python evaluates call arguments
+    before the call itself, so an unbound _ed_db at that point would raise immediately.
+    This checks that ordering directly instead of the (now relocated) conditional text."""
     src = _fn_src("_fetch_state")
     ed_assign = src.index("_ed_db = get_db()")
-    iv_use = src.index("if _atm_iv and _ed_db")
-    assert ed_assign < iv_use
+    ed_passed_to_phase = src.index("_volatility_signals_for_state(")
+    assert ed_assign < ed_passed_to_phase
 
 
 def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):

@@ -7070,6 +7070,119 @@ def carried_price_levels_match_snapshot(entry, pl_date, pl_generation, today: st
     return cached_gen == snap_gen and entry_gen_i == snap_gen
 
 
+class _VolatilitySignalsForState(NamedTuple):
+    iv_skew: dict
+    realized_vol: Optional[float]
+    atr: Optional[float]
+    iv_rank: Optional[float]
+    iv_percentile: Optional[float]
+    closes: Optional[list]
+
+
+def _volatility_signals_for_state(
+    ticker: str,
+    contracts_use: list,
+    spot_f: float,
+    atm_iv: Optional[float],
+    ed_db,
+    tick_ts,
+) -> _VolatilitySignalsForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): the Volatility
+    Signals phase (IV skew, realized vol, ATR, IV rank/percentile), extracted verbatim,
+    including its own ATR-warmup diagnostic logging (same banner scope in the original).
+
+    Bug fixed as part of this extraction, not a separate change: the original inline code
+    pre-initialized every OTHER output (`_iv_skew = {}`, `_realized_vol = None`, `_atr =
+    None`, `_iv_rank = None`, `_iv_percentile = None`, `_bars = None`) but never
+    `_closes = None` -- so on a cold ticker (`_bars` empty, the exact ATR-warmup case this
+    same block already logs specially), `_closes` was never assigned. The immediately
+    following GARCH phase referenced `_closes` as a bare call argument
+    (`_garch_sigma_bars_for_state(_closes, ...)`), evaluated in the CALLER's frame before
+    the callee's own try/except could ever run -- so as of the GARCH extraction (the first
+    slice of this decomposition), that reference raised an uncaught NameError out of
+    _fetch_state on every cold ticker, a live regression this present extraction closes by
+    giving `closes` the same explicit `None` initializer its five siblings already had.
+    Before the GARCH extraction, the equivalent reference lived INSIDE the GARCH phase's
+    own try/except and was silently swallowed to a debug log with the observable outcome
+    already `_garch_sigma_bars is None` -- this fix restores exactly that outcome, just
+    without the (already unhelpfully-worded) debug log line.
+    """
+    iv_skew: dict = {}
+    realized_vol: Optional[float] = None
+    atr: Optional[float] = None
+    iv_rank: Optional[float] = None
+    iv_percentile: Optional[float] = None
+    bars = None
+    closes: Optional[list] = None
+    try:
+        iv_skew = compute_iv_skew(contracts_use, spot_f)
+        # Realized vol + ATR from canonical (1m) candle bars
+        bars = _candles_1m.get_bars(ticker)
+        if bars:
+            closes = [float(b.close) for b in bars if b.close is not None]
+            if closes:
+                realized_vol = compute_realized_vol(closes, bar_minutes=1.0)
+            atr = compute_atr(bars)
+        # IV Rank/Percentile from DB historical iv_level
+        # Burndown (2026-07-05): narrow iv_level projection — the full-width
+        # get_recent_snapshots read (5,000 rows x 200+ cols incl. chain blobs)
+        # was ~all of the vol_flow_signals stage (py-spy 1,258/3,062 samples).
+        # Same row window/order/as-of as before; values identical.
+        # Schwab CSV authority checked: yes
+        # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot SQLite read
+        #   (iv_level history for rank/percentile); no market field derivation,
+        #   emission, or actionability logic changed.
+        # Derived-field disposition: none required.
+        # All consumers checked: yes — _iv_history filter semantics unchanged.
+        # SCHWAB_CSV_CHECKED
+        if atm_iv and ed_db and tick_ts is not None:
+            try:
+                iv_hist_vals = ed_db.get_recent_iv_levels(
+                    ticker,
+                    CANONICAL_TIMEFRAME,
+                    n=IV_HISTORY_LOOKBACK,
+                    as_of_ts_utc=tick_ts,
+                )
+                iv_history = [
+                    float(v) for v in iv_hist_vals
+                    if v is not None and float(v) > 0
+                ]
+                if iv_history:
+                    iv_rank = compute_iv_rank(atm_iv, iv_history)
+                    iv_percentile = compute_iv_percentile(atm_iv, iv_history)
+            except Exception as e:
+                log.debug(
+                    "IV rank/percentile history load failed ticker=%s: %s",
+                    ticker,
+                    e,
+                    exc_info=True,
+                )
+    except Exception as e:
+        log.debug(f"Volatility signals calc: {e}")
+    # RC-236 (same calibration law as the tier-1 lock waits): a bar deficit during ACCUMULATOR
+    # WARMUP is the designed state — the in-memory series re-seeds from zero on every restart
+    # and cannot hold 16 one-minute bars until 16 minutes of wall clock have passed. Logging
+    # that at WARNING makes the quiet gate fail for doing exactly what it must do, and trains
+    # the operator to ignore the channel. Past the warmup horizon the SAME deficit is genuine
+    # starvation and keeps its WARNING; the deficit is always logged, only the severity moves.
+    if atr is None:
+        warm = _atr_warmup_active()
+        msg = (f"ATR NULL for {ticker}: only {len(bars)} bars, need {ATR_MIN_BARS}"
+                if bars else f"ATR NULL for {ticker}: no bars, need {ATR_MIN_BARS}")
+        if warm:
+            log.info("%s (accumulator warmup, %.0fs since boot)", msg, _seconds_since_boot())
+        else:
+            log.warning(msg)
+    return _VolatilitySignalsForState(
+        iv_skew=iv_skew,
+        realized_vol=realized_vol,
+        atr=atr,
+        iv_rank=iv_rank,
+        iv_percentile=iv_percentile,
+        closes=closes,
+    )
+
+
 def _garch_sigma_bars_for_state(
     closes: list[float] | None,
     atm_iv: Optional[float],
@@ -7928,71 +8041,19 @@ def _fetch_state(
         log.warning(f"Expected move calc failed: {e}")
 
     # ── Volatility signals — IV Skew, Realized Vol, ATR, IV Rank/Percentile ──
-    _iv_skew = {}
-    _realized_vol = None
-    _atr = None
-    _iv_rank = None
-    _iv_percentile = None
-    _bars = None
-    try:
-        _iv_skew = compute_iv_skew(contracts_use, spot_f)
-        # Realized vol + ATR from canonical (1m) candle bars
-        _bars = _candles_1m.get_bars(ticker)
-        if _bars:
-            _closes = [float(b.close) for b in _bars if b.close is not None]
-            if _closes:
-                _realized_vol = compute_realized_vol(_closes, bar_minutes=1.0)
-            _atr = compute_atr(_bars)
-        # IV Rank/Percentile from DB historical iv_level
-        # Burndown (2026-07-05): narrow iv_level projection — the full-width
-        # get_recent_snapshots read (5,000 rows x 200+ cols incl. chain blobs)
-        # was ~all of the vol_flow_signals stage (py-spy 1,258/3,062 samples).
-        # Same row window/order/as-of as before; values identical.
-        # Schwab CSV authority checked: yes
-        # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot SQLite read
-        #   (iv_level history for rank/percentile); no market field derivation,
-        #   emission, or actionability logic changed.
-        # Derived-field disposition: none required.
-        # All consumers checked: yes — _iv_history filter semantics unchanged.
-        # SCHWAB_CSV_CHECKED
-        if _atm_iv and _ed_db and _tick_ts is not None:
-            try:
-                _iv_hist_vals = _ed_db.get_recent_iv_levels(
-                    ticker,
-                    CANONICAL_TIMEFRAME,
-                    n=IV_HISTORY_LOOKBACK,
-                    as_of_ts_utc=_tick_ts,
-                )
-                _iv_history = [
-                    float(v) for v in _iv_hist_vals
-                    if v is not None and float(v) > 0
-                ]
-                if _iv_history:
-                    _iv_rank = compute_iv_rank(_atm_iv, _iv_history)
-                    _iv_percentile = compute_iv_percentile(_atm_iv, _iv_history)
-            except Exception as e:
-                log.debug(
-                    "IV rank/percentile history load failed ticker=%s: %s",
-                    ticker,
-                    e,
-                    exc_info=True,
-                )
-    except Exception as e:
-        log.debug(f"Volatility signals calc: {e}")
-    # RC-236 (same calibration law as the tier-1 lock waits): a bar deficit during ACCUMULATOR
-    # WARMUP is the designed state — the in-memory series re-seeds from zero on every restart
-    # and cannot hold 16 one-minute bars until 16 minutes of wall clock have passed. Logging
-    # that at WARNING makes the quiet gate fail for doing exactly what it must do, and trains
-    # the operator to ignore the channel. Past the warmup horizon the SAME deficit is genuine
-    # starvation and keeps its WARNING; the deficit is always logged, only the severity moves.
-    if _atr is None:
-        _warm = _atr_warmup_active()
-        _msg = (f"ATR NULL for {ticker}: only {len(_bars)} bars, need {ATR_MIN_BARS}"
-                if _bars else f"ATR NULL for {ticker}: no bars, need {ATR_MIN_BARS}")
-        if _warm:
-            log.info("%s (accumulator warmup, %.0fs since boot)", _msg, _seconds_since_boot())
-        else:
-            log.warning(_msg)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): extracted to
+    # _volatility_signals_for_state (defined above _garch_sigma_bars_for_state). Also
+    # fixes a live regression the GARCH extraction (first slice) introduced: `_closes`
+    # previously had no pre-initializer here, so a cold ticker (_bars empty) left it
+    # unbound and the GARCH call site's bare `_closes` argument reference raised an
+    # uncaught NameError. See _volatility_signals_for_state's own docstring.
+    _vs = _volatility_signals_for_state(ticker, contracts_use, spot_f, _atm_iv, _ed_db, _tick_ts)
+    _iv_skew = _vs.iv_skew
+    _realized_vol = _vs.realized_vol
+    _atr = _vs.atr
+    _iv_rank = _vs.iv_rank
+    _iv_percentile = _vs.iv_percentile
+    _closes = _vs.closes
 
     # ── GARCH Volatility Forecast ─────────────────────────────────────────────
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, first slice): extracted to
