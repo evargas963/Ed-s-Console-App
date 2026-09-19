@@ -13799,6 +13799,12 @@ def _radar_fallback_recompute() -> list[dict] | None:
         # inline query took MAX(ts_utc) across BOTH timeframes, so a legacy 5m row could
         # shadow a newer-in-kind canonical 1m row (Bugbot 2026-07-20, confirmed).
         # _latest_chain_and_spot already encodes canonical-then-legacy, index-served.
+        # timeframe-scope-ok (reality-reconciliation audit, 2026-09-18): this DISTINCT
+        # enumerates ticker NAMES only, across both timeframes, never a timeframe-sensitive
+        # VALUE — a ticker whose only chain snapshot currently sits on a legacy 5m row must
+        # still surface here. Scoping to timeframe='1m' would silently drop it. Safe per
+        # docs/repo_wide_canonical_enforcement_v2.md's own "documented multi-timeframe-safe
+        # pattern" exception, since the real read is deferred to _latest_chain_and_spot above.
         tickers = [r["ticker"] for r in con.execute(
             "SELECT DISTINCT ticker FROM snapshots "
             "WHERE option_chain_json IS NOT NULL AND spot IS NOT NULL"
