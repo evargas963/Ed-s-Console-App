@@ -1,8 +1,12 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/calibration_master_report_v1.md`.
+
 # Calibration master report — v1
 
 **Scope:** Institutional calibration pipeline (Phases 1–5) for the Ed predictive stack.  
 **Canonical clock:** `1m` (`timeframe_config.CANONICAL_TIMEFRAME`).  
 **Distance contract:** Option A — non-negative `nearest_above_dist` / `nearest_below_dist`; direction by field name.
+
+**SUPERSEDED in part, and missing its own classification banner (reality-reconciliation audit, 2026-09-18):** this document read as standing architecture description with no "Historical Record" framing, the one file in this family without one, despite dating to 2026-04-11 like its siblings — banner added above. Its logging-layer claim (line ~47, write path `signals._maybe_append_calibration_log -> calibration.writer.append_calibration_decision`) is superseded: that function was removed by commit `ed8806fa` (2026-05-06); production logging is now the two-phase, execution-identity-gated write in `calibration/v2_live_logging.py`, called from `server.py`. The data-integrity, backfill, and calibration/decision sections below are unaffected by this specific correction.
 
 ---
 

@@ -9,6 +9,8 @@
 
 This report documents **observed** behavior from code inspection and the runs above. It does **not** prove production server behavior unless the server process sets `ED_CALIBRATION_LOG` the same way.
 
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** the write chain this report traces (`signals._maybe_append_calibration_log` -> `calibration.writer.append_calibration_decision`) was removed by commit `ed8806fa` (2026-05-06). Production calibration logging today is a two-phase, execution-identity-gated write: `signals.py::_build_calibration_payload` only builds the payload; the actual insert happens post-publish in `server.py` (~line 9262) via `calibration/v2_live_logging.py::append_live_v2_calibration_decision`, which additionally requires `execution_identity_sha256`/`decision_id` and refuses on a mismatched `colocated_snapshot_ts_utc`. The activation-flag mechanics below (`ED_CALIBRATION_LOG`, `calibration_logging_enabled()`) are unaffected and still accurate.
+
 ---
 
 ## A. Logging activation status
