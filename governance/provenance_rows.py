@@ -2707,12 +2707,12 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (api_live_plane).',
     ),
     Row(
-        file='server.py', derivation='api_order_flow_microstructure', disposition='DERIVED',
+        file='app/api/routes/order_flow.py', derivation='api_order_flow_microstructure', disposition='DERIVED',
         producer_refs=('live_market_plane.py:get_quote',),
         justification='Read-only ORDER_FLOW_MARKET_MICROSTRUCTURE_V1 endpoint serializing the canonical book microstructure computed by order_flow_engine.compute_book_microstructure; stamps the exchange quote clock from the live plane get_quote and never recomputes.',
     ),
     Row(
-        file='server.py', derivation='api_order_flow_options_microstructure', disposition='ALLOWLISTED',
+        file='app/api/routes/order_flow.py', derivation='api_order_flow_options_microstructure', disposition='ALLOWLISTED',
         allowlist_id='mega1_live_plane_state',
         justification="Same ORDER_FLOW_MARKET_MICROSTRUCTURE_V1 shape as api_order_flow_microstructure, for one option contract's live book. This row serializes over in-memory live-plane state; the actual computation it delegates to (order_flow_streaming.get_option_contract_book_microstructure -> order_flow_engine.compute_book_microstructure, never a second book-imbalance computation) lives in mega2-owned files and is registered + chain-closed there, not re-derived here.",
     ),
@@ -2920,7 +2920,7 @@ ROWS: tuple[Row, ...] = (
         justification='Operator field-inventory audit (2026-09-13): reads the persisted native LEVELONE_OPTIONS stream rows (stream_options_quotes_raw.native_json) directly for one contract symbol, oldest to newest. A tick counts as a trade print only when it carries its OWN LAST_PRICE and TRADE_TIME_MILLIS together (a partial tick can bump LAST_SIZE alone with no fresh price, and must not mint a null-priced trade row); de-dupes on (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE); static contract context (STRIKE_TYPE/CONTRACT_TYPE/EXPIRATION_*/MULTIPLIER/UNDERLYING) is carried forward from whichever prior tick last reported it, since the vendor does not repeat it on every partial update. classification is a mechanical BID_PRICE/ASK_PRICE comparison against that same ticks own quote, never an aggressor-side (buy/sell) inference (tests/test_options_flow_tape_v1.py).',
     ),
     Row(
-        file='server.py', derivation='get_order_flow_book_heatmap', disposition='DERIVED',
+        file='app/api/routes/order_flow.py', derivation='get_order_flow_book_heatmap', disposition='DERIVED',
         producer_refs=('app/options/order_flow/history.py:book_heatmap_for_ticker',),
         justification='Operator field-inventory audit (2026-09-13, "we do not have an order flow heatmap"): /api/order-flow/book-heatmap payload owner. Pure serializer over book_heatmap_for_ticker with a clamped minutes window [5,240]; no binning/aggregation of its own.',
     ),
