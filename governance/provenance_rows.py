@@ -2935,17 +2935,17 @@ ROWS: tuple[Row, ...] = (
         justification="Nested: sums the already-computed per-strike GEX$ and volume per side of the payload's OWN spot. One aggregator, one spot basis — the in-browser re-sum was killed because a client loop could straddle a different spot and broke silently on payload changes.",
     ),
     Row(
-        file='server.py', derivation='logger_remove', disposition='ALLOWLISTED',
+        file='app/api/routes/logger.py', derivation='logger_remove', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_remove).',
     ),
     Row(
-        file='server.py', derivation='logger_status', disposition='ALLOWLISTED',
+        file='app/api/routes/logger.py', derivation='logger_status', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_status).',
     ),
     Row(
-        file='server.py', derivation='logger_universe', disposition='ALLOWLISTED',
+        file='app/api/routes/logger.py', derivation='logger_universe', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_universe).',
     ),
