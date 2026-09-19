@@ -7953,6 +7953,95 @@ def _gamma_flip_and_void_zones_for_state(
     )
 
 
+class _CharmForState(NamedTuple):
+    charm_net: Optional[float]
+    charm_dir: Optional[str]
+    charm_toward: Optional[float]
+    charm_mag: Optional[float]
+    charm_drivers: list
+
+
+def _charm_for_state(
+    ticker: str,
+    contracts_use: list,
+    spot_f: float,
+    selected_exp: Optional[str],
+) -> _CharmForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, eleventh slice): the Charm phase
+    (dealer net charm + direction), extracted verbatim. Pre-initializes all five outputs
+    to their "unavailable" defaults BEFORE the try block -- an exception anywhere inside
+    (compute_net_charm itself, or the unavailable-log-level branch) is caught and logged,
+    never raised, leaving every field safely at its pre-initialized default, exactly as
+    the original inline try/except did."""
+    charm_net: Optional[float] = None
+    charm_dir: Optional[str] = None
+    charm_toward: Optional[float] = None
+    charm_mag: Optional[float] = None
+    charm_drivers: list = []
+    try:
+        from math_exposure import compute_net_charm
+        # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
+        # outcome, no operator-actionable signal (success and failure logs below carry it).
+        log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
+        # RC-345 / F18: charm measures the net-charm DIRECTION, not a target STRIKE. It must
+        # NOT borrow the net-GEX peak (a gamma quantity) as its drift target — that was a
+        # different-Greek substitution masquerading under the charm name. drift_toward is
+        # WITHHELD (governed absence); the net-GEX peak keeps its own field, net_gex_peak.
+        charm_raw = compute_net_charm(
+            contracts_use, spot_f, selected_exp, drift_toward_strike=None
+        )
+        charm_used = charm_raw.get("contracts_used", 0)
+        charm_err = charm_raw.get("error", "")
+        if charm_used > 0:
+            charm_net = charm_raw["net_charm_daily"]
+            charm_dir = charm_raw["charm_direction"]
+            charm_toward = charm_raw.get("drift_toward")
+            charm_mag = charm_raw.get("charm_magnitude")
+            # RC-85: the read of "top_drivers" is GONE. compute_net_charm has never emitted that
+            # key — it returns call_charm_daily, charm_direction, charm_magnitude, contracts_used,
+            # drift_toward, error, net_charm_daily, put_charm_daily (its duplicate `gamma_pin`
+            # alias was deleted by RC-302) — so
+            # `.get("top_drivers", [])` returned [] on every call since the line was written, and
+            # charm_top_drivers has been permanently empty. The default was the whole problem: []
+            # reads as "computed, no drivers found" when the truth is "never computed", so the
+            # name mismatch had no symptom. charm_drivers stays [] from its initialiser above,
+            # which is the same value WITHOUT the claim that a producer was consulted. Populating
+            # it needs compute_net_charm to actually rank the contributing strikes; that is a
+            # feature, not a rename, and it is not being smuggled in behind a default.
+            # RC-292: the log label must not call charm's (withheld) drift target a pin —
+            # a pin claim ships only as pin_candidate after qualification.
+            log.info(f"Charm: {ticker} ✅ net={charm_net:.0f} dir={charm_dir} mag={charm_mag} drift_toward={charm_toward} "
+                     f"({charm_used} contracts)")
+        else:
+            from math_exposure_core import charm_compute_unavailable_log_level
+
+            lvl = charm_compute_unavailable_log_level(charm_err)
+            if lvl == logging.DEBUG:
+                log_fn = log.debug
+            elif lvl == logging.INFO:
+                log_fn = log.info
+            else:
+                log_fn = log.warning
+            log_fn(
+                "Charm: %s ❌ 0 contracts matched. error='%s' input_contracts=%s exp=%s",
+                ticker,
+                charm_err,
+                len(contracts_use),
+                selected_exp,
+            )
+    except Exception as _ce:
+        import traceback
+        log.warning(f"Charm: {ticker} 💥 EXCEPTION: {_ce}\n{traceback.format_exc()}")
+
+    return _CharmForState(
+        charm_net=charm_net,
+        charm_dir=charm_dir,
+        charm_toward=charm_toward,
+        charm_mag=charm_mag,
+        charm_drivers=charm_drivers,
+    )
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -8332,68 +8421,16 @@ def _fetch_state(
     consensus_summary = _gfvz.consensus_summary
     _stage_marks.append(("exposures_key_levels", time.perf_counter()))
 
-    # ── Charm — computed HERE, before build_market_state, so signals engine
-    # receives real values. charm_direction uses raw strings "buying"/"selling"/"neutral"
-    # which is what signals.py expects for Greek bias scoring.
-    _charm_net    = None
-    _charm_dir    = None
-    _charm_toward = None
-    _charm_mag    = None
-    _charm_drivers = []
-    try:
-        from math_exposure import compute_net_charm
-        # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
-        # outcome, no operator-actionable signal (success and failure logs below carry it).
-        log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
-        # RC-345 / F18: charm measures the net-charm DIRECTION, not a target STRIKE. It must
-        # NOT borrow the net-GEX peak (a gamma quantity) as its drift target — that was a
-        # different-Greek substitution masquerading under the charm name. drift_toward is
-        # WITHHELD (governed absence); the net-GEX peak keeps its own field, net_gex_peak.
-        _charm_raw = compute_net_charm(
-            contracts_use, spot_f, selected_exp, drift_toward_strike=None
-        )
-        _charm_used = _charm_raw.get("contracts_used", 0)
-        _charm_err  = _charm_raw.get("error", "")
-        if _charm_used > 0:
-            _charm_net     = _charm_raw["net_charm_daily"]
-            _charm_dir     = _charm_raw["charm_direction"]
-            _charm_toward  = _charm_raw.get("drift_toward")
-            _charm_mag     = _charm_raw.get("charm_magnitude")
-            # RC-85: the read of "top_drivers" is GONE. compute_net_charm has never emitted that
-            # key — it returns call_charm_daily, charm_direction, charm_magnitude, contracts_used,
-            # drift_toward, error, net_charm_daily, put_charm_daily (its duplicate `gamma_pin`
-            # alias was deleted by RC-302) — so
-            # `.get("top_drivers", [])` returned [] on every call since the line was written, and
-            # charm_top_drivers has been permanently empty. The default was the whole problem: []
-            # reads as "computed, no drivers found" when the truth is "never computed", so the
-            # name mismatch had no symptom. _charm_drivers stays [] from its initialiser above,
-            # which is the same value WITHOUT the claim that a producer was consulted. Populating
-            # it needs compute_net_charm to actually rank the contributing strikes; that is a
-            # feature, not a rename, and it is not being smuggled in behind a default.
-            # RC-292: the log label must not call charm's (withheld) drift target a pin —
-            # a pin claim ships only as pin_candidate after qualification.
-            log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} drift_toward={_charm_toward} "
-                     f"({_charm_used} contracts)")
-        else:
-            from math_exposure_core import charm_compute_unavailable_log_level
-
-            _lvl = charm_compute_unavailable_log_level(_charm_err)
-            if _lvl == logging.DEBUG:
-                _log_fn = log.debug
-            elif _lvl == logging.INFO:
-                _log_fn = log.info
-            else:
-                _log_fn = log.warning
-            _log_fn(
-                "Charm: %s ❌ 0 contracts matched. error='%s' input_contracts=%s exp=%s",
-                ticker,
-                _charm_err,
-                len(contracts_use),
-                selected_exp,
-            )
-    except Exception as _ce:
-        import traceback
-        log.warning(f"Charm: {ticker} 💥 EXCEPTION: {_ce}\n{traceback.format_exc()}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, eleventh slice): extracted to
+    # _charm_for_state (defined above). Computed before build_market_state so signals
+    # engine receives real values; charm_direction uses raw strings
+    # "buying"/"selling"/"neutral" which is what signals.py expects for Greek bias scoring.
+    _charm = _charm_for_state(ticker, contracts_use, spot_f, selected_exp)
+    _charm_net = _charm.charm_net
+    _charm_dir = _charm.charm_dir
+    _charm_toward = _charm.charm_toward
+    _charm_mag = _charm.charm_mag
+    _charm_drivers = _charm.charm_drivers
 
     # ── PCR ──────────────────────────────────────────────────────────────────
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, second slice): extracted to
