@@ -2761,12 +2761,12 @@ ROWS: tuple[Row, ...] = (
         justification='Flattens the Schwab chain response into a contract list; single source shared by _fetch_state and the terrain loop.',
     ),
     Row(
-        file='server.py', derivation='get_analytics_light', disposition='ALLOWLISTED',
+        file='app/api/routes/analytics_light.py', derivation='get_analytics_light', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_analytics_light).',
     ),
     Row(
-        file='server.py', derivation='get_analytics_light_stream', disposition='ALLOWLISTED',
+        file='app/api/routes/analytics_light.py', derivation='get_analytics_light_stream', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_analytics_light_stream).',
     ),
