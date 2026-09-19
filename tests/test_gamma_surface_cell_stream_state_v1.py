@@ -497,14 +497,25 @@ def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path,
     # REST-only reference path (RC-UI-1 fallback) must never claim confirmed-live coverage --
     # "REST may bootstrap or recover the surface, but it cannot satisfy the LIVE state." Uses the
     # same real-tmp-sqlite-db pattern as tests/test_gamma_exposure_honest_absence_v1.py.
-    from time_et import now_et
+    #
+    # RC-REHAB-2 (2026-09-19): today_et used to come from the real wall clock, making this a
+    # time bomb whenever real "today" landed on a weekend/holiday -- is_trading_day_et correctly
+    # refuses a non-trading date as a morning reference, so the endpoint fell through to
+    # available=False before this test's own assertions about stream-state counts ever ran
+    # (MEASURED: real date is 2026-09-19, a Saturday). Freeze now_et to the same known trading
+    # weekday already used by test_gamma_exposure_honest_absence_v1.py for this identical fix.
+    from datetime import datetime as _dt
+
+    from time_et import ET
+    _FROZEN = _dt(2026, 7, 17, 10, 0, tzinfo=ET)
+    monkeypatch.setattr(server, "now_et", lambda: _FROZEN)
     tk = ticker_storage_key("ZZZTEST3")
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
     db = tmp_path / "morning.db"
-    today_et = now_et().strftime("%Y-%m-%d")
+    today_et = _FROZEN.strftime("%Y-%m-%d")
     _seed_morning_full(db, "ZZZTEST3", today_et, time.time() - 1800.0, _SPOT, json.dumps(_CONTRACTS))
     monkeypatch.setattr(server, "get_db", lambda: _FakeDB(db))
     try:

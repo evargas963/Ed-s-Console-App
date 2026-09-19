@@ -31,7 +31,7 @@ import server
 from math_exposure_core import compute_exposures_by_strike
 from server import get_options_gamma_surface, project_gamma_surface, ticker_storage_key
 from terrain_engine import _per_strike_rows
-from time_et import is_trading_day_et, now_et
+from time_et import ET, is_trading_day_et, now_et
 
 
 def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0, dte=5,
@@ -204,11 +204,25 @@ def test_a_prior_session_banked_chain_is_not_served_as_a_morning_reference(tmp_p
 
 def test_a_same_session_banked_chain_is_served_with_a_real_disclosed_age(tmp_path, monkeypatch):
     """The positive control: today's own banked capture IS a legitimate morning reference, and
-    must disclose a real elapsed-seconds age rather than a bare boolean stale/None."""
+    must disclose a real elapsed-seconds age rather than a bare boolean stale/None.
+
+    RC-REHAB-2 (2026-09-19): `today_et` used to be computed from the real wall clock
+    (`now_et()`), which made this test a time bomb the moment real "today" ever landed on a
+    weekend or holiday -- `is_trading_day_et` correctly refuses to treat a non-trading date as
+    a morning reference (that's the exact fail-closed behavior the module docstring's proof #3
+    describes), so `available` silently flipped to False whenever the suite happened to run on
+    a Saturday/Sunday (MEASURED: this is exactly what happened, real date is 2026-09-19, a
+    Saturday). Freeze `now_et` to a real, known trading weekday instead -- the same instant
+    already used successfully by test_charm_by_strike_v1.py/test_gamma_profile_v1.py/
+    test_terrain_engine_v1.py for this identical purpose."""
+    from datetime import datetime as _dt
+
+    _FROZEN = _dt(2026, 7, 17, 10, 0, tzinfo=ET)
+    monkeypatch.setattr(server, "now_et", lambda: _FROZEN)
     tk = ticker_storage_key("ZZTESTTODAY")
     _clear_gamma_surface(tk)
     db = tmp_path / "today.db"
-    today_et = now_et().strftime("%Y-%m-%d")
+    today_et = _FROZEN.strftime("%Y-%m-%d")
     captured_ts = time.time() - 1800.0   # captured 30 minutes ago
     _seed_morning_full(db, "ZZTESTTODAY", today_et, captured_ts, 101.5)
     monkeypatch.setattr(server, "get_db", lambda: _FakeDB(db))
