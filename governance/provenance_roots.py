@@ -81,7 +81,7 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/order-flow/options-microstructure': ('PRODUCER', 'app/api/routes/order_flow.py:api_order_flow_options_microstructure'),
     '/api/prediction/override': ('OPERATOR_INPUT', None),
     '/api/prediction/override/clear': ('OPERATOR_INPUT', None),
-    '/api/price-levels': ('PRODUCER', 'server.py:get_price_levels'),
+    '/api/price-levels': ('PRODUCER', 'app/api/routes/status.py:get_price_levels'),
     '/api/release/current': ('OPS', None),
     '/api/spot': ('PRODUCER', 'server.py:get_spot'),
     '/api/state': ('CARRIER', None),

@@ -2717,7 +2717,7 @@ ROWS: tuple[Row, ...] = (
         justification="Same ORDER_FLOW_MARKET_MICROSTRUCTURE_V1 shape as api_order_flow_microstructure, for one option contract's live book. This row serializes over in-memory live-plane state; the actual computation it delegates to (order_flow_streaming.get_option_contract_book_microstructure -> order_flow_engine.compute_book_microstructure, never a second book-imbalance computation) lives in mega2-owned files and is registered + chain-closed there, not re-derived here.",
     ),
     Row(
-        file='server.py', derivation='api_vol_observability', disposition='DERIVED',
+        file='app/api/routes/status.py', derivation='api_vol_observability', disposition='DERIVED',
         producer_refs=('market_context.py:fetch_market_context',),
         justification='Read-only VOL_OBSERVABILITY_V1 endpoint serializing already-fetched $VIX/$VXN/$RVX observations; native consumption stays FETCHED_UNCONSUMED (no money-path routing).',
     ),
@@ -2865,9 +2865,9 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_live_state).',
     ),
     Row(
-        file='server.py', derivation='get_price_levels', disposition='SCHWAB_LEAF',
-        schwab_leaf='quotes.quote.lastPrice',
-        justification='Schwab API wrapper or wire JSON ingest path.',
+        file='app/api/routes/status.py', derivation='get_price_levels', disposition='ALLOWLISTED',
+        allowlist_id='mega1_internal_helper',
+        justification='RETIRED (RC-213 B6, one-faucet-closeout-v1): serves a static 410 retirement notice pointing to /api/levels; makes no Schwab call and reads no leaf field. This row previously (incorrectly) still classified it SCHWAB_LEAF/quotes.quote.lastPrice from before the retirement -- corrected during the Phase 3 extraction that moved this function (RC-REHAB-1) after direct inspection of its current body.',
     ),
     Row(
         file='server.py', derivation='get_spot', disposition='DERIVED',
