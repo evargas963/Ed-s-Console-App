@@ -428,7 +428,9 @@ def test_terrain_not_ready_branch_carries_structured_state_too():
     five structured fields while SPY returned all five. A flag a consumer must parse English to
     find is not a flag, and absent is indistinguishable from healthy to every reader."""
     import re
-    src = (ROOT / "server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (Phase 3, seventh extraction slice): get_terrain (and this not-ready
+    # branch) moved out of server.py into app/api/routes/terrain.py.
+    src = (ROOT / "app" / "api" / "routes" / "terrain.py").read_text(encoding="utf-8")
     i = src.find('"error": ("terrain_not_ready: no wide-chain snapshot yet')
     assert i > 0, "the not-ready branch is gone"
     body = re.sub(r"#.*$", "", src[i:i + 900], flags=re.M)

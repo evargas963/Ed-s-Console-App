@@ -145,7 +145,6 @@ def test_server_recorder_call_is_statement_only_and_unconsumed():
     src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(src)
     record_calls = []
-    payload_calls = []
     parents: dict[ast.AST, ast.AST] = {}
     for node in ast.walk(tree):
         for child in ast.iter_child_nodes(node):
@@ -154,16 +153,30 @@ def test_server_recorder_call_is_statement_only_and_unconsumed():
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             if node.func.id == "record_market_vol_observation":
                 record_calls.append(node)
-            if node.func.id == "vol_observability_payload":
-                payload_calls.append(node)
     assert len(record_calls) == 1
     assert isinstance(parents[record_calls[0]], ast.Expr), (
         "recorder result must not be assigned/consumed"
     )
+    # RC-REHAB-1 (Phase 3, twelfth extraction slice): api_vol_observability moved out of
+    # server.py into app/api/routes/status.py, so vol_observability_payload's only call
+    # site now lives there instead.
+    status_src = (_REPO / "app" / "api" / "routes" / "status.py").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    status_tree = ast.parse(status_src)
+    status_parents: dict[ast.AST, ast.AST] = {}
+    for node in ast.walk(status_tree):
+        for child in ast.iter_child_nodes(node):
+            status_parents[child] = node
+    payload_calls = [
+        n for n in ast.walk(status_tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        and n.func.id == "vol_observability_payload"
+    ]
     assert len(payload_calls) == 1
-    fn = parents.get(payload_calls[0])
+    fn = status_parents.get(payload_calls[0])
     while fn is not None and not isinstance(fn, ast.FunctionDef):
-        fn = parents.get(fn)
+        fn = status_parents.get(fn)
     assert fn is not None and fn.name == "api_vol_observability", (
         "payload may only serve the read-only endpoint"
     )

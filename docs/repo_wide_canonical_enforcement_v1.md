@@ -2,6 +2,8 @@
 
 # Repo-wide canonical snapshot timeframe enforcement (v1)
 
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** superseded for policy wording by `docs/repo_wide_canonical_enforcement_v2.md` (v2's own line 5 states this explicitly). Worse, this v1 document self-graded PASS the same day its own proof sibling, `docs/repo_wide_canonical_enforcement_proof_v1.md`, measured **FAIL** with 11 enumerated violations against the identical tree — the two documents contradicted each other from day one, not from later drift. See `docs/repo_wide_canonical_enforcement_v2.md`'s own correction for what actually happened to this policy afterward (short version: it was never wired into any enforcement gate and has since lapsed).
+
 Hard gate: **no silent unscoped reads** of the multi-timeframe `snapshots` table for analytical or production metrics. Canonical live and calibration paths use **`timeframe_config.CANONICAL_TIMEFRAME`** (`'1m'`).
 
 ## A. Exact files changed

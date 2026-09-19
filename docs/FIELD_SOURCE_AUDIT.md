@@ -7,6 +7,8 @@
 **Primary reference:** `docs/SCHWAB_FIELD_REFERENCE.md`  
 **Observed catalog:** `schwab_field_inventory/schwab_field_dictionary.csv`
 
+**SUPERSEDED in part, correctly labeled Historical Record already (reality-reconciliation audit, 2026-09-18):** `schwab_field_inventory/README.md` marks this document retired under ED CONSOLE SLIMMING alongside `docs/SCHWAB_FIELD_REFERENCE.md` and `docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md`. This document names `chains.contract_fields()` as the normalization boundary throughout (§"Already Normalized By", the theta/rho promotion recommendations, the Tier 1 field list) — `chains.py` was deleted by commit `fb1e84c3` (2026-05-12), one week after this audit's own date, and the gap it flags is now closed through `market_state.py::_oe_chain_row_snapshot()` and the raw passthrough in `server.py::flatten_chain_contracts` instead — see `docs/SCHWAB_FIELD_REFERENCE.md`'s correction for detail. Separately, `order_flow_engine.py` (§"order_flow_engine.py") no longer exists as a top-level module (confirmed absent from the current tree); the described behavior now lives at `app/options/order_flow/engine.py`. The source-classification methodology and category definitions above (schwab_native_normalized / raw_fallback / derived / presentation_only) are unaffected by either correction and remain the doc's genuinely durable contribution.
+
 ---
 
 ## Purpose

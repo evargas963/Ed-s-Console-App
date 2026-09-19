@@ -1,4 +1,4 @@
-> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/_consolidation/restore/FULL_PRIMARY_HORIZON_RESTORE_MANIFEST.md`.
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `docs/_consolidation/restore/FULL_PRIMARY_HORIZON_RESTORE_MANIFEST.md`. (Corrected 2026-09-18, reality-reconciliation audit: this is a one-time restore plan/log with per-file SHA-256s and timestamps, zero prescriptive content — mislabeled "Policy Specification," relabeled to match its sibling `FULL_PRIMARY_HORIZON_AUDIT.md`.)
 
 # FULL PRIMARY-HORIZON RESTORE MANIFEST (PLAN ONLY)
 

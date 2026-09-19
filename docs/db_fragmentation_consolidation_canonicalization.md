@@ -1,7 +1,11 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/db_fragmentation_consolidation_canonicalization.md`.
+
 # Database Fragmentation, Consolidation, and Canonicalization
 
 **Date:** 2026-04-11  
 **Scope:** Full project SQLite inventory, authoritative-data proof vs `data/ed_console.db`, consolidation decision, canonical path hardening.
+
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** this report's §13 "FINAL RESULT: PASS" declares `data/ed_console.db` the sole authoritative production database. RC-533/RC-534 (commits `00d366a1`, `71111ebc`, 2026-09-07) replaced that single-file model with a two-permanent-database architecture: `db_authority.py`'s `PermanentDatabaseIdentity` now names both `ed_console` and `stream_capture` (`data/stream_capture.db`, currently 9.65GB and actively written — `stream_spine.py`: "raw streams write ONLY to stream_capture.db"). `docs/db_authority_enforcement_v2_global_closure.md` and `docs/db_authority_enforcement_final.md` carry the same correction for the enforcement mechanism this doc's §14 hardening section describes. `OPEN_ITEMS.md`'s own PA-5 item, "One canonical production DB authority," is still unchecked — the repo's own tracker never accepted this report's PASS as final either.
 
 ---
 

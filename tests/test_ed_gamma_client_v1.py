@@ -31,9 +31,28 @@ def test_ed_gamma_node_script():
 
 def test_gamma_surface_route_registered():
     import server as srv
+    from starlette.testclient import TestClient
 
-    paths = [getattr(route, "path", "") for route in srv.app.routes if hasattr(route, "path")]
-    assert "/api/options/gamma-surface" in paths
+    # RC-REHAB-1 (Phase 3, fifth extraction slice): /api/options/gamma-surface moved into
+    # app/api/routes/options.py, mounted via app.include_router(options_router). Same
+    # _IncludedRouter blind spot as the `/` check below (this FastAPI version gives an
+    # included router's routes no `.path` attribute on app.routes) -- a live request is what
+    # this assertion actually needs to prove, not a specific app.routes representation detail.
+    r = TestClient(srv.app).get("/api/options/gamma-surface?ticker=SPY")
+    assert r.status_code == 200 and r.json().get("ticker") == "SPY"
+
     # /console converged into `/` here (/console cutover, operator directive 2026-09-14) --
     # the dev route is gone, not aliased; the new console is served at `/` (see root()).
-    assert "/" in paths
+    #
+    # RC-REHAB-1 (Phase 3): `/` moved into app/api/routes/pages.py, mounted via
+    # app.include_router(pages_router). This FastAPI version does not flatten an included
+    # router's routes into plain Route objects on app.routes -- it wraps them in a
+    # fastapi.routing._IncludedRouter with no `.path` attribute -- so the naive `"/" in
+    # paths` check above can no longer see it (true for EVERY included router, including
+    # options_order_flow_router and desk_router mounted before this route moved; nothing
+    # previously checked one of their routes this same way). A live request is what this
+    # assertion actually needs to prove -- "the console is served at /", not "/ appears in
+    # a specific internal list shape" -- so it now asks the app directly instead of
+    # depending on an app.routes representation detail.
+    r = TestClient(srv.app).get("/")
+    assert r.status_code == 200 and "text/html" in r.headers.get("content-type", "")

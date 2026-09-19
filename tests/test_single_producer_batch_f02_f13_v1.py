@@ -143,7 +143,11 @@ def test_rc345_candle_direction_has_one_authority() -> None:
     srv3 = _read("server.py")
     assert "classify_direction as _classify_direction" in srv3, (
         "live server candle direction must be the dead-band authority (F10/RC-345)")
-    assert "_candle_dir  = _classify_direction(_bar_move" in srv3
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): this call site moved
+    # out of _fetch_state's own body into _candle_direction_for_state, where the local
+    # dropped the "_fetch_state phase-scratch" underscore prefix (candle_dir/bar_move, not
+    # _candle_dir/_bar_move) as a clean local in its own small function.
+    assert "candle_dir  = _classify_direction(bar_move" in srv3
     # No production site reconstructs candle direction with a strict close-vs-open sign.
     for mod in ("server.py", "snapshot_normalizer.py", "market_state.py"):
         mcode = "\n".join(l for l in _read(mod).splitlines() if not l.lstrip().startswith("#"))
@@ -459,7 +463,16 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     # F11 (reopened) SOURCE travels beside the value: the live server captures the source
     # book and emits flow_imbalance_source into the payload, so a consumer can tell 'book'
     # (bid/ask size) from 'volume' (call/put traded volume) — not a bare generic number.
-    assert "_flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback" in srv, (
+    #
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, third slice): this tuple-unpack
+    # capture moved out of _fetch_state's own body into _order_flow_signals_for_state, a
+    # standalone function where the local names dropped the "_fetch_state phase-scratch"
+    # underscore-prefix convention (flow_imb_norm/flow_imb_source, not
+    # _flow_imb_norm/_flow_imb_source) since they are now clean locals in their own small
+    # function, not scratch variables threaded through a 3,400-line body. _fetch_state
+    # itself still binds the result back to the underscore-prefixed names the rest of its
+    # body already reads (see the two assertions below, unchanged).
+    assert "flow_imb_norm, flow_imb_source = flow_imbalance_normalized_with_fallback" in srv, (
         "live server must capture the flow_imbalance SOURCE, not discard it (F11/RC-345)")
     assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in srv, (
         "the flow_imbalance source must reach the payload beside the value (F11/RC-345)")
@@ -690,9 +703,13 @@ def test_rc345_expected_move_quantities_are_distinct_and_single_source() -> None
     assert callable(compute_expected_move_straddle) and callable(compute_expected_move_iv)
 
     # Distinct producers wired to distinct names in the live path.
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventh slice): both call sites
+    # moved out of _fetch_state's own body into _expected_move_for_state, where the
+    # locals dropped the "_fetch_state phase-scratch" underscore prefix (em_straddle/
+    # em_iv, not _em_straddle/_em_iv) as clean locals in their own small function.
     srv = _read("server.py")
-    assert "_em_straddle = compute_expected_move_straddle(" in srv
-    assert "_em_iv = compute_expected_move_iv(" in srv
+    assert "em_straddle = compute_expected_move_straddle(" in srv
+    assert "em_iv = compute_expected_move_iv(" in srv
 
     # The MC excursion is the simulation quantity, single-source in monte_carlo.
     mc = _read("monte_carlo.py")
@@ -907,9 +924,13 @@ def test_rc345_realized_vol_bar_minutes_is_required() -> None:
     bm = sig.parameters["bar_minutes"]
     assert bm.default is inspect.Parameter.empty, (
         "compute_realized_vol.bar_minutes must be REQUIRED, not defaulted (F17/RC-345)")
-    # the one production caller passes it explicitly
+    # the one production caller passes it explicitly. RC-REHAB-1 (Phase 4, _fetch_state
+    # decomposition, fourth slice): this call site moved out of _fetch_state's own body
+    # into _volatility_signals_for_state, where the local dropped the "_fetch_state
+    # phase-scratch" underscore prefix (closes, not _closes) as a clean local in its own
+    # small function.
     srv = _read("server.py")
-    assert "compute_realized_vol(_closes, bar_minutes=1.0)" in srv
+    assert "compute_realized_vol(closes, bar_minutes=1.0)" in srv
 
 
 # ---------------------------------------------------------------------- F24 signed dist to VWAP

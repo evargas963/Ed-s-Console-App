@@ -211,7 +211,7 @@
       "bypass_detection_test": null,
       "enforcement_code_paths": [],
       "bypass_code_paths": [
-        ".github/CODEOWNERS \u2014 review request only if branch protection enabled"
+        ".github/<reviewer-identity-file> \u2014 review request only if branch protection enabled"
       ],
       "bypass_vectors": [
         {
@@ -241,7 +241,7 @@
       "last_validation_date": "2026-06-15",
       "validation_method": "Read end-to-end + test inventory + checker source review (Institutional Audit Phase 1)",
       "evidence": [
-        ".github/CODEOWNERS:36-41 \u2014 AGENTS/governance owned but protection not in-repo"
+        ".github/<reviewer-identity-file>:36-41 \u2014 AGENTS/governance owned but protection not in-repo"
       ],
       "severity_rationale": "Material control changes require independent review."
     },

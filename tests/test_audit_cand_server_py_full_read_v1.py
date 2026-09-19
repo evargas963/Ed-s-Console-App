@@ -272,16 +272,22 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
 
 # FIND-SERVERPY-6
 def test_price_levels_cache_sec_at_module_level():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixth slice): the Price Levels
+    phase (the carried-generation check, the LevelCarrierConflict handling, and the
+    try/except/else structure this test locks) moved out of _fetch_state's own body into
+    _price_levels_for_state. The invariants below are unchanged; only their source
+    location moved."""
     import server
 
     assert server.PRICE_LEVELS_CACHE_SEC == 15
-    src = _fn_src("_fetch_state")
-    assert "_PL_CACHE_SEC" not in src
-    assert "carried_price_levels_match_snapshot" in src
-    assert ">= PRICE_LEVELS_CACHE_SEC" not in src
-    assert "except _LevelCarrierConflict" in src
-    block = src[src.index("# ── Price levels"):src.index("# ── Expected Move")]
-    fail_arm = block[block.index("except Exception"):].split("else:", 1)[0]
+    fetch_state_src = _fn_src("_fetch_state")
+    price_levels_src = _fn_src("_price_levels_for_state")
+    assert "_PL_CACHE_SEC" not in fetch_state_src
+    assert "_PL_CACHE_SEC" not in price_levels_src
+    assert "carried_price_levels_match_snapshot" in price_levels_src
+    assert ">= PRICE_LEVELS_CACHE_SEC" not in price_levels_src
+    assert "except _LevelCarrierConflict" in price_levels_src
+    fail_arm = price_levels_src[price_levels_src.index("except Exception"):].split("else:", 1)[0]
     assert '["price_levels"]' not in fail_arm
     assert "PriceLevels()" in fail_arm
 
@@ -302,10 +308,19 @@ def test_l1_next_generation_regression_raises_runtime_error_not_assert():
 
 # FIND-SERVERPY-8
 def test_ed_db_bound_before_iv_rank_references():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): the
+    `if _atm_iv and _ed_db and _tick_ts is not None` IV-rank gate moved out of
+    _fetch_state's own body into _volatility_signals_for_state (as
+    `if atm_iv and ed_db and tick_ts is not None`, clean local parameter names). The
+    invariant this test protects -- _ed_db must be bound before it is used for the IV-rank
+    gate -- now holds structurally: _fetch_state only ever USES _ed_db by passing it as a
+    call argument to _volatility_signals_for_state, and Python evaluates call arguments
+    before the call itself, so an unbound _ed_db at that point would raise immediately.
+    This checks that ordering directly instead of the (now relocated) conditional text."""
     src = _fn_src("_fetch_state")
     ed_assign = src.index("_ed_db = get_db()")
-    iv_use = src.index("if _atm_iv and _ed_db")
-    assert ed_assign < iv_use
+    ed_passed_to_phase = src.index("_volatility_signals_for_state(")
+    assert ed_assign < ed_passed_to_phase
 
 
 def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
@@ -363,10 +378,13 @@ def test_no_mc_em_pre_bms_warning_log():
 
 # FIND-SERVERPY-13
 def test_recent_crosses_uses_named_constant():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): the
+    RECENT_CROSSES_DISPLAY_LIMIT call site moved from _fetch_state's own body into
+    _db_counts_and_crosses_for_state (defined above _fetch_state)."""
     import server
 
     assert server.RECENT_CROSSES_DISPLAY_LIMIT == 5
-    assert "RECENT_CROSSES_DISPLAY_LIMIT" in _fn_src("_fetch_state")
+    assert "RECENT_CROSSES_DISPLAY_LIMIT" in _fn_src("_db_counts_and_crosses_for_state")
 
 
 # FIND-SERVERPY-14

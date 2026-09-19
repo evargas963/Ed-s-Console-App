@@ -25,12 +25,26 @@ SERVER = Path(__file__).resolve().parent.parent / "server.py"
 SRC = SERVER.read_text(encoding="utf-8")
 TREE = ast.parse(SRC)
 
+# RC-REHAB-1 (Phase 3, seventh extraction slice): get_terrain/get_terrain_radar/
+# get_terrain_strikes moved out of server.py into app/api/routes/terrain.py. _producers()
+# below still only needs to scan server.py -- the one real (non-UNAVAILABLE) compute_terrain
+# call sites both remain there (the background terrain loop and _terrain_refresh_one) -- but
+# _fn/_calls_in must also be able to find a function that moved, since they answer questions
+# about a NAMED function's own body regardless of which file currently owns it.
+_TERRAIN_ROUTES = (
+    Path(__file__).resolve().parent.parent / "app" / "api" / "routes" / "terrain.py"
+)
+_TERRAIN_ROUTES_SRC = _TERRAIN_ROUTES.read_text(encoding="utf-8")
+_TERRAIN_ROUTES_TREE = ast.parse(_TERRAIN_ROUTES_SRC)
+_SOURCES = ((SRC, TREE), (_TERRAIN_ROUTES_SRC, _TERRAIN_ROUTES_TREE))
+
 
 def _fn(name: str) -> str:
-    for n in ast.walk(TREE):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
-            return ast.get_source_segment(SRC, n) or ""
-    raise AssertionError(f"{name} not found in server.py")
+    for src, tree in _SOURCES:
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
+                return ast.get_source_segment(src, n) or ""
+    raise AssertionError(f"{name} not found in server.py or app/api/routes/terrain.py")
 
 
 def _producers() -> list[tuple[int, str]]:
@@ -67,8 +81,12 @@ def _calls_in(name: str) -> set[str]:
     """Callee names actually INVOKED inside `name`. AST, not substring: the comment recording why
     the narrow-chain read was removed must not itself trip the lock, or the next person deletes
     the explanation to get green."""
-    node = next(n for n in ast.walk(TREE)
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
+    node = next(
+        n
+        for _src, tree in _SOURCES
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+    )
     return {c.func.id if isinstance(c.func, ast.Name) else getattr(c.func, "attr", "")
             for c in ast.walk(node) if isinstance(c, ast.Call)}
 

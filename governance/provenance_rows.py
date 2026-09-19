@@ -2422,6 +2422,16 @@ ROWS: tuple[Row, ...] = (
         justification='Day 1.5: spread_frac mark-denom only; composes quote+chain+pricehistory via schwab_client.',
     ),
     Row(
+        file='server.py', derivation='_exposures_for_state', disposition='DERIVED',
+        producer_refs=('schwab_client.py:safe_get_price_history',),
+        justification='RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): the candle-seed-on-stale-grid path (a nested _seed_candles closure) that used to call safe_get_price_history inline inside _fetch_state now calls it from this extracted Exposures-phase function instead; no new transport call, only relocated.',
+    ),
+    Row(
+        file='server.py', derivation='_candle_volume_for_state', disposition='DERIVED',
+        producer_refs=('schwab_client.py:safe_get_price_history',),
+        justification='RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): the price-history-fallback path (accumulator has no usable volume) that used to call safe_get_price_history inline inside _fetch_state now calls it from this extracted Candle-Volume-Resolution-phase function instead; no new transport call, only relocated.',
+    ),
+    Row(
         file='server.py', derivation='_fetch_state._post_publish_persistence_tail', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Relocated persistence/telemetry tail (FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1): snapshot INSERT + bars/outcomes + accuracy scans + calibration append, moved verbatim to run after the generated_at-stamping publish; writes persisted SQLite rows, no new Schwab wire read.',
@@ -2608,7 +2618,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='server.py', derivation='_radar_row', disposition='DERIVED',
-        producer_refs=('server.py:get_terrain_radar',),
+        producer_refs=('app/api/routes/terrain.py:get_terrain_radar',),
         justification='Projects already-computed terrain fields + ATR distances into a radar row; no new field read.',
     ),
     Row(
@@ -2702,22 +2712,22 @@ ROWS: tuple[Row, ...] = (
         justification='REST tape proxy when stream unavailable.',
     ),
     Row(
-        file='server.py', derivation='api_live_plane', disposition='ALLOWLISTED',
+        file='app/api/routes/live.py', derivation='api_live_plane', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (api_live_plane).',
     ),
     Row(
-        file='server.py', derivation='api_order_flow_microstructure', disposition='DERIVED',
+        file='app/api/routes/order_flow.py', derivation='api_order_flow_microstructure', disposition='DERIVED',
         producer_refs=('live_market_plane.py:get_quote',),
         justification='Read-only ORDER_FLOW_MARKET_MICROSTRUCTURE_V1 endpoint serializing the canonical book microstructure computed by order_flow_engine.compute_book_microstructure; stamps the exchange quote clock from the live plane get_quote and never recomputes.',
     ),
     Row(
-        file='server.py', derivation='api_order_flow_options_microstructure', disposition='ALLOWLISTED',
+        file='app/api/routes/order_flow.py', derivation='api_order_flow_options_microstructure', disposition='ALLOWLISTED',
         allowlist_id='mega1_live_plane_state',
         justification="Same ORDER_FLOW_MARKET_MICROSTRUCTURE_V1 shape as api_order_flow_microstructure, for one option contract's live book. This row serializes over in-memory live-plane state; the actual computation it delegates to (order_flow_streaming.get_option_contract_book_microstructure -> order_flow_engine.compute_book_microstructure, never a second book-imbalance computation) lives in mega2-owned files and is registered + chain-closed there, not re-derived here.",
     ),
     Row(
-        file='server.py', derivation='api_vol_observability', disposition='DERIVED',
+        file='app/api/routes/status.py', derivation='api_vol_observability', disposition='DERIVED',
         producer_refs=('market_context.py:fetch_market_context',),
         justification='Read-only VOL_OBSERVABILITY_V1 endpoint serializing already-fetched $VIX/$VXN/$RVX observations; native consumption stays FETCHED_UNCONSUMED (no money-path routing).',
     ),
@@ -2732,17 +2742,17 @@ ROWS: tuple[Row, ...] = (
         justification='Underlying last/mark/close from the chain payload; returns None rather than inventing a spot.',
     ),
     Row(
-        file='server.py', derivation='debug_charm', disposition='DERIVED',
+        file='app/api/routes/debug.py', derivation='debug_charm', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_chain',),
         justification='Schwab API wrapper or wire JSON ingest path.',
     ),
     Row(
-        file='server.py', derivation='debug_prediction', disposition='ALLOWLISTED',
+        file='app/api/routes/debug.py', derivation='debug_prediction', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (debug_prediction).',
     ),
     Row(
-        file='server.py', derivation='fast_quote', disposition='ALLOWLISTED',
+        file='app/api/routes/live.py', derivation='fast_quote', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (fast_quote).',
     ),
@@ -2751,7 +2761,7 @@ ROWS: tuple[Row, ...] = (
         # for a whole client-held watchlist (client.get_quotes), reusing the same
         # _parse_quote_node_session_fields parser and resolve_chg_pct authority every
         # other quote route shares -- not a second quote computation.
-        file='server.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
+        file='app/api/routes/market_data.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
         justification='Batched multi-symbol quote fetch (client.get_quotes) via safe_get_quotes.',
     ),
@@ -2761,27 +2771,27 @@ ROWS: tuple[Row, ...] = (
         justification='Flattens the Schwab chain response into a contract list; single source shared by _fetch_state and the terrain loop.',
     ),
     Row(
-        file='server.py', derivation='get_analytics_light', disposition='ALLOWLISTED',
+        file='app/api/routes/analytics_light.py', derivation='get_analytics_light', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_analytics_light).',
     ),
     Row(
-        file='server.py', derivation='get_analytics_light_stream', disposition='ALLOWLISTED',
+        file='app/api/routes/analytics_light.py', derivation='get_analytics_light_stream', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_analytics_light_stream).',
     ),
     Row(
-        file='server.py', derivation='get_analytics_state', disposition='ALLOWLISTED',
+        file='app/api/routes/analytics_state.py', derivation='get_analytics_state', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_analytics_state).',
     ),
     Row(
-        file='server.py', derivation='get_bars1m', disposition='DERIVED',
+        file='app/api/routes/market_data.py', derivation='get_bars1m', disposition='DERIVED',
         producer_refs=('server.py:_fetch_state',),
         justification='Serves canonical 1m OHLCV bars from the cached bars store; no direct chain leaf.',
     ),
     Row(
-        file='server.py', derivation='get_chain', disposition='DERIVED',
+        file='app/api/routes/chain.py', derivation='get_chain', disposition='DERIVED',
         producer_refs=('server.py:_latest_chain_and_spot',),
         justification='OPTIONS_ORDER_FLOW_V1 contract-selection surface: serializes the stored per-contract chain (symbol/putCall/strikePrice/bid/ask/greeks/OI/volume) verbatim from _latest_chain_and_spot, the SAME stored-chain reader terrain/radar/order-flow-microstructure already use — no new Schwab fetch, no reshaping.',
     ),
@@ -2791,102 +2801,106 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_client).',
     ),
     Row(
-        file='server.py', derivation='get_desk_brief', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (Phase 3): moved from server.py to app/api/routes/desk.py (first
+        # extraction slice of server.py's decomposition); server.py re-exports the name so
+        # existing callers keep working, but the real definition -- and this row's file ref --
+        # must point at where the function actually lives.
+        file='app/api/routes/desk.py', derivation='get_desk_brief', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='The newest research brief held at `as_of`, with each block aged against that instant rather than against now.',
     ),
     Row(
-        file='server.py', derivation='get_desk_dossier', disposition='ALLOWLISTED',
+        file='app/api/routes/desk.py', derivation='get_desk_dossier', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification="One name's measured structure as it stood at `as_of`, from the desk fact store.",
     ),
     Row(
-        file='server.py', derivation='get_desk_radar', disposition='ALLOWLISTED',
+        file='app/api/routes/desk.py', derivation='get_desk_radar', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Candidate structure as it stood at `as_of`, read from the desk fact store; the as-of bound is what keeps a replay honest.',
     ),
     Row(
-        file='server.py', derivation='get_desk_structure', disposition='ALLOWLISTED',
+        file='app/api/routes/desk.py', derivation='get_desk_structure', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Deterministic payoff plus the PHYSICAL terminal distribution for one candidate, as of the requested instant.',
     ),
     Row(
-        file='server.py', derivation='get_exposure_book', disposition='ALLOWLISTED',
+        file='app/api/routes/exposure.py', derivation='get_exposure_book', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-209: per-strike call/put GEX split, net DEX and volumes from the NEWEST banked wide chain, all through the shared exposure faucet.',
     ),
     Row(
-        file='server.py', derivation='get_options_gamma_surface', disposition='ALLOWLISTED',
+        file='app/api/routes/options.py', derivation='get_options_gamma_surface', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-UI-1: strike x expiry GEX$ surface (Options/Gamma heatmap). PREFERRED source is the LIVE terrain cache (current terrain-refresh contracts + live spot, bounded near-money window) — an in-memory read, no SQLite. This SQLite read is the FALLBACK ONLY: the banked morning wide reference (option_chain_morning_full), stale, not intraday, not proven complete. Both paths partition by native expirationDate and route each expiry slice through the shared compute_exposures_by_strike faucet; the endpoint owns no gamma/GEX math and is a projection of the one exposure producer.',
     ),
     Row(
-        file='server.py', derivation='get_exposure_flow', disposition='ALLOWLISTED',
+        file='app/api/routes/exposure.py', derivation='get_exposure_flow', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-208: serves banked option_chain_accrual frames for the latest banked session; reads rows this repo already persisted rather than re-deriving them.',
     ),
     Row(
-        file='server.py', derivation='get_exposure_history', disposition='ALLOWLISTED',
+        file='app/api/routes/exposure.py', derivation='get_exposure_history', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-209: per-day per-strike net GEX$ for the multi-day scroll-back, assembled from banked captures.',
     ),
     Row(
-        file='server.py', derivation='get_forces', disposition='ALLOWLISTED',
+        file='app/api/routes/market_data.py', derivation='get_forces', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-192/RC-199: per-side OI delta from the two newest banked trading-day chains, plus DEX and dealer-signed CHARM summed on the NEWER capture alone. Serves charm_book_scope and charm_error beside the numbers so a surface can state which book was summed and whether the charm failed (RC-288/RC-304).',
     ),
     Row(
-        file='server.py', derivation='get_l1_diagnostics', disposition='ALLOWLISTED',
+        file='app/api/routes/diagnostics.py', derivation='get_l1_diagnostics', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_l1_diagnostics).',
     ),
     Row(
-        file='server.py', derivation='get_levels', disposition='DERIVED',
+        file='app/api/routes/liquidity.py', derivation='get_levels', disposition='DERIVED',
         producer_refs=('server.py:resolve_spot', 'server.py:_liquidity_live_1m_overlay_bars'),
         justification='The single levels contract, schema v1: id, price, family, evidence_tier, provenance and staleness for every served level. Assembles already-derived level producers; the gamma family is explicitly excluded from the Tier-B slice and served by /api/terrain until that migration completes, and the payload says so rather than omitting it silently.',
     ),
     Row(
-        file='server.py', derivation='get_liquidity_playbook_state', disposition='ALLOWLISTED',
+        file='app/api/routes/liquidity.py', derivation='get_liquidity_playbook_state', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_liquidity_playbook_state).',
     ),
     Row(
-        file='server.py', derivation='get_liquidity_snapshot', disposition='ALLOWLISTED',
+        file='app/api/routes/liquidity.py', derivation='get_liquidity_snapshot', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_liquidity_snapshot).',
     ),
     Row(
-        file='server.py', derivation='get_live_state', disposition='ALLOWLISTED',
+        file='app/api/routes/live.py', derivation='get_live_state', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_live_state).',
     ),
     Row(
-        file='server.py', derivation='get_price_levels', disposition='SCHWAB_LEAF',
-        schwab_leaf='quotes.quote.lastPrice',
-        justification='Schwab API wrapper or wire JSON ingest path.',
+        file='app/api/routes/status.py', derivation='get_price_levels', disposition='ALLOWLISTED',
+        allowlist_id='mega1_internal_helper',
+        justification='RETIRED (RC-213 B6, one-faucet-closeout-v1): serves a static 410 retirement notice pointing to /api/levels; makes no Schwab call and reads no leaf field. This row previously (incorrectly) still classified it SCHWAB_LEAF/quotes.quote.lastPrice from before the retirement -- corrected during the Phase 3 extraction that moved this function (RC-REHAB-1) after direct inspection of its current body.',
     ),
     Row(
-        file='server.py', derivation='get_spot', disposition='DERIVED',
+        file='app/api/routes/market_data.py', derivation='get_spot', disposition='DERIVED',
         producer_refs=('server.py:resolve_spot',),
         justification='Featherweight live spot via the single spot authority resolve_spot (RC-14); no direct leaf here.',
     ),
     Row(
-        file='server.py', derivation='get_terrain', disposition='ALLOWLISTED',
+        file='app/api/routes/terrain.py', derivation='get_terrain', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_terrain); delegates all level math to terrain_engine.compute_terrain.',
     ),
     Row(
-        file='server.py', derivation='get_terrain_radar', disposition='ALLOWLISTED',
+        file='app/api/routes/terrain.py', derivation='get_terrain_radar', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Radar API handler: ranks cached terrain by proximity to the nearest wall; all level math is delegated to terrain_engine.',
     ),
     Row(
-        file='server.py', derivation='get_terrain_strikes', disposition='SCHWAB_LEAF',
+        file='app/api/routes/terrain.py', derivation='get_terrain_strikes', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.*.strikePrice',
         justification='Per-strike GEX$ endpoint: reads strikePrice/daysToExpiration/totalVolume from the chain.',
     ),
     Row(
-        file='server.py', derivation='get_terrain_strikes._per_strike', disposition='SCHWAB_LEAF',
+        file='app/api/routes/terrain.py', derivation='get_terrain_strikes._per_strike', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.*.daysToExpiration',
         justification='Nested: builds one per-strike row from the chain leaves; near/far split now via the canonical terrain_engine._dte_of (Cursor-audit F8, replacing the removed nested _dte).',
     ),
@@ -2896,17 +2910,17 @@ ROWS: tuple[Row, ...] = (
         justification='RC-UI-1 strike x expiry GEX surface (/api/options/gamma-surface payload owner): PURE projection - partitions the wide chain by native expirationDate through the existing selected-expiry slicer and runs the ONE exposure faucet per slice; every cell is that faucet net_gex_1pct, no exposure math of its own (tests/test_gamma_surface_projection_v1.py invariant I).',
     ),
     Row(
-        file='server.py', derivation='get_vanna_by_strike', disposition='DERIVED',
+        file='app/api/routes/options.py', derivation='get_vanna_by_strike', disposition='DERIVED',
         producer_refs=('math_exposure_core.py:compute_exposures_by_strike',),
         justification='Operator field-inventory audit (2026-09-13): /api/options/vanna-by-strike payload owner. Aggregates the live wide chain (every expiry) through the SAME canonical faucet the Gamma/DEX heatmaps already use and reads its own call_vanna/put_vanna accumulators (RC-211s exact BS-vanna faucet) straight off the per-strike bucket - net_vanna = call_vanna - put_vanna, the identical +call/-put dealer convention net_gex_1pct/net_charm_daily already use. No exposure math of its own (tests/test_vanna_charm_by_strike_v1.py).',
     ),
     Row(
-        file='server.py', derivation='get_charm_by_strike', disposition='DERIVED',
+        file='app/api/routes/options.py', derivation='get_charm_by_strike', disposition='DERIVED',
         producer_refs=('math_levels.py:compute_charm_by_strike',),
         justification='Operator field-inventory audit (2026-09-13): /api/options/charm-by-strike payload owner. Row-shapes the live wide chain through math_levels.compute_charm_by_strike, the SAME faucet /api/forces charm_below/charm_above already sum, for a per-strike bar chart. No charm math of its own (tests/test_vanna_charm_by_strike_v1.py).',
     ),
     Row(
-        file='server.py', derivation='get_options_tape', disposition='DERIVED',
+        file='app/api/routes/options.py', derivation='get_options_tape', disposition='DERIVED',
         producer_refs=('app/options/order_flow/history.py:tape_rows_for_symbol',),
         justification='Operator field-inventory audit (2026-09-13): /api/options/tape payload owner (the Options Flow tape). Resolves which contract(s) are currently desired for the ticker (the same identity _desired_stream_greeks_for_ticker already uses) and merges tape_rows_for_symbols own de-duplicated native trade-print rows newest-first. No trade/quote parsing of its own, and no aggressor-side (buy/sell) classification is ever produced anywhere on this path (tests/test_options_flow_tape_v1.py).',
     ),
@@ -2916,7 +2930,7 @@ ROWS: tuple[Row, ...] = (
         justification='Operator field-inventory audit (2026-09-13): reads the persisted native LEVELONE_OPTIONS stream rows (stream_options_quotes_raw.native_json) directly for one contract symbol, oldest to newest. A tick counts as a trade print only when it carries its OWN LAST_PRICE and TRADE_TIME_MILLIS together (a partial tick can bump LAST_SIZE alone with no fresh price, and must not mint a null-priced trade row); de-dupes on (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE); static contract context (STRIKE_TYPE/CONTRACT_TYPE/EXPIRATION_*/MULTIPLIER/UNDERLYING) is carried forward from whichever prior tick last reported it, since the vendor does not repeat it on every partial update. classification is a mechanical BID_PRICE/ASK_PRICE comparison against that same ticks own quote, never an aggressor-side (buy/sell) inference (tests/test_options_flow_tape_v1.py).',
     ),
     Row(
-        file='server.py', derivation='get_order_flow_book_heatmap', disposition='DERIVED',
+        file='app/api/routes/order_flow.py', derivation='get_order_flow_book_heatmap', disposition='DERIVED',
         producer_refs=('app/options/order_flow/history.py:book_heatmap_for_ticker',),
         justification='Operator field-inventory audit (2026-09-13, "we do not have an order flow heatmap"): /api/order-flow/book-heatmap payload owner. Pure serializer over book_heatmap_for_ticker with a clamped minutes window [5,240]; no binning/aggregation of its own.',
     ),
@@ -2926,32 +2940,32 @@ ROWS: tuple[Row, ...] = (
         justification='Operator field-inventory audit (2026-09-13): reads the persisted native NASDAQ_BOOK/NYSE_BOOK stream rows (stream_book_raw.native_json) directly for one underlying ticker, bins them into a time x price grid (cell = summed native BID_PRICE/ASK_PRICE TOTAL_VOLUME) — the historical, time-dimensioned counterpart to the live single-snapshot ladder api_order_flow_microstructure already serves from the SAME table. The window always ends at the latest row actually captured for this ticker, never wall-clock now, so a real prior session still renders honestly outside RTH. Fails closed (available:false + a plain reason) at every stage; never interpolates a cell between captured ticks.',
     ),
     Row(
-        file='server.py', derivation='get_terrain_strikes._side_sums', disposition='ALLOWLISTED',
+        file='app/api/routes/terrain.py', derivation='get_terrain_strikes._side_sums', disposition='ALLOWLISTED',
         allowlist_id='mega1_internal_helper',
         justification="Nested: sums the already-computed per-strike GEX$ and volume per side of the payload's OWN spot. One aggregator, one spot basis — the in-browser re-sum was killed because a client loop could straddle a different spot and broke silently on payload changes.",
     ),
     Row(
-        file='server.py', derivation='logger_remove', disposition='ALLOWLISTED',
+        file='app/api/routes/logger.py', derivation='logger_remove', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_remove).',
     ),
     Row(
-        file='server.py', derivation='logger_status', disposition='ALLOWLISTED',
+        file='app/api/routes/logger.py', derivation='logger_status', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_status).',
     ),
     Row(
-        file='server.py', derivation='logger_universe', disposition='ALLOWLISTED',
+        file='app/api/routes/logger.py', derivation='logger_universe', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_universe).',
     ),
     Row(
-        file='server.py', derivation='post_streaming_active_option_contract', disposition='ALLOWLISTED',
+        file='app/api/routes/streaming.py', derivation='post_streaming_active_option_contract', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Subscribes LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract via the daemon signal file — mirrors post_streaming_active_ticker for the separate option-contract slot (post_streaming_active_option_contract).',
     ),
     Row(
-        file='server.py', derivation='post_streaming_active_ticker', disposition='ALLOWLISTED',
+        file='app/api/routes/streaming.py', derivation='post_streaming_active_ticker', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (post_streaming_active_ticker).',
     ),
@@ -2976,12 +2990,12 @@ ROWS: tuple[Row, ...] = (
         justification='RC-514: capability verdict for /api/health, taken from the canonical client and the same _client cache get_client() uses.',
     ),
     Row(
-        file='server.py', derivation='sse_stream', disposition='ALLOWLISTED',
+        file='app/api/routes/sse.py', derivation='sse_stream', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (sse_stream).',
     ),
     Row(
-        file='server.py', derivation='sse_stream.event_generator', disposition='ALLOWLISTED',
+        file='app/api/routes/sse.py', derivation='sse_stream.event_generator', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (sse_stream.event_generator).',
     ),
@@ -3082,7 +3096,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='terrain_engine.py', derivation='wall_geometry_state', disposition='DERIVED',
-        producer_refs=('server.py:get_terrain', 'terrain_engine.py:compute_terrain'),
+        producer_refs=('app/api/routes/terrain.py:get_terrain', 'terrain_engine.py:compute_terrain'),
         justification='RC-130: answers whether a wall is in the configuration its support/resistance label claims (contains / breached / unknown) from spot and the wall strike; the UI renders NO behavioural claim without a positive state.',
     ),
     Row(

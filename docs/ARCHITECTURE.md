@@ -244,6 +244,19 @@ temporary generated files        →       artifacts/EdWebConsole/temporary_outp
 development worktrees            →       Trading/worktrees/
 ```
 
+**`server.py` route decomposition (Phase 3, route extraction COMPLETE):** every `@app.get`/
+`@app.post` route has been extracted into `app/api/routes/` (21 extraction slices; zero route
+decorators remain in server.py) following the mechanical pattern this section's schematic calls
+for. What remains in server.py is exactly what the boundary analysis called for keeping there:
+shared executors/caches/locks, background loops (SSE cadence, terrain refresh, the ticker
+logger), and `_fetch_state` — a single ~3,400-line orchestrator function that is the
+highest-risk code in the repository and was never a route-extraction candidate (no decorator of
+its own). Its ownership boundaries (four tiers: live quote plane, light context plane, full
+analytics pipeline, and the scheduling layer between them), shared module state, and a
+phase-by-phase internal decomposition (now IN PROGRESS — one phase extracted so far, the
+GARCH volatility forecast) are documented in `docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md` —
+read that before touching `_fetch_state` or continuing its decomposition.
+
 ---
 
 ## 3. Architectural direction of flow

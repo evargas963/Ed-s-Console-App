@@ -5,6 +5,8 @@
 **Date:** 2026-04-11  
 **Goal:** `calibration_decision_log.decision_ts_utc` must equal the same UTC instant as `snapshots.ts_utc` for that refresh — not `utc_ts()` at SQLite insert.
 
+**SUPERSEDED in part (reality-reconciliation audit, 2026-09-18):** this doc's write-path chain (`signals.py -> _maybe_append_calibration_log`) was removed by commit `ed8806fa` (2026-05-06); production logging is now the two-phase, execution-identity-gated write in `calibration/v2_live_logging.py`, called from `server.py`. The **timestamp-authority principle this doc proves survives**: `calibration/v2_live_logging.py::_decision_ts_utc_from_payload` still derives `decision_ts_utc` exclusively from `SignalInput.refresh_ts_utc`, never a second insert-time clock read — the finding below is still true, just enforced in a different function today.
+
 ---
 
 ## Timestamp source (authoritative)

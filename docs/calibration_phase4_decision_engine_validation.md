@@ -2,6 +2,8 @@
 
 # Phase 4 — Decision engine validation
 
+**SUPERSEDED in part (reality-reconciliation audit, 2026-09-18):** the script and output path in the next section (`python -m calibration.analyze_phase4 --db data/ed_console.db`, `models/calibration_runs/phase4_analysis_<unix_ts>.json`) still match current code verbatim. The analysis mechanism has grown substantially since this document was written and is no longer fully described here: `calibration/analyze_phase4.py` now imports `calibration.canonical_enforcement`, `calibration.db_guard`, `calibration.trust.TRUSTED_PREDICATE_SQL`, and `calibration.statistical_integrity` (none mentioned below), which gate every baseline/MHAP mean behind a minimum-sample-size check and now drive the script's exit code directly (`exit 0` only if `statistical_integrity.binary_pass`, confirmed at `analyze_phase4.py:407`). **§4 "False confidence" no longer exists as code** — `grep "false_confidence"` in the current script returns nothing; that specific flag was not carried forward into the statistical-integrity redesign. Sections 1-3's mechanism descriptions (final decision performance, MHAP alignment, baselines) remain structurally accurate for what they cover, just incomplete against the added gating.
+
 ## Script
 
 ```text

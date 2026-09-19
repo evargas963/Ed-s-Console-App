@@ -49,7 +49,11 @@ def test_the_chart_loads_the_module_and_stops_hand_writing_the_label():
 
 def test_the_server_still_serves_what_the_label_reads():
     """The other half of the seam. A label reading fields nobody serves renders nothing."""
-    ssrc = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
+    # RC-REHAB-1 (Phase 3, sixteenth extraction slice): get_forces moved out of server.py
+    # into app/api/routes/market_data.py.
+    ssrc = (ROOT / "app" / "api" / "routes" / "market_data.py").read_text(
+        encoding="utf-8", errors="replace"
+    )
     for key in ('"charm_book_scope"', '"charm_error"', '"newer_et_date"', '"older_et_date"'):
         assert key in ssrc, f"/api/forces no longer serves {key}"
 

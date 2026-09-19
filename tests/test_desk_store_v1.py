@@ -603,19 +603,29 @@ def test_latest_by_subject_reduces_in_sql_not_in_python(tmp_path):
 def test_materialize_is_not_reachable_by_a_speculative_get():
     """RC-172: a GET that rewrites tens of thousands of rows is fired by any link prefetch,
     crawler or preconnect — against a database that already has an open write-contention root
-    cause."""
+    cause.
+
+    RC-REHAB-1 (Phase 3): this route now lives in app/api/routes/desk.py, not server.py — the
+    source-text check moved with it. server.post_desk_materialize is still a valid re-export
+    (checked separately below), but its OWN module source is app.api.routes.desk's, so
+    inspect.getsource on the re-exported name already reads the real defining module.
+    """
     import inspect
 
     import server as s
+    from app.api.routes import desk as desk_routes
 
-    src = inspect.getsource(s)
+    src = inspect.getsource(desk_routes)
     i = src.find("def post_desk_materialize")
     assert i > 0
     decorator = src[max(0, i - 260):i]
-    assert '@app.post("/api/desk/materialize")' in decorator, (
+    assert '@router.post("/api/desk/materialize")' in decorator, (
         "the materialize route is not POST-only — a speculative GET can trigger a full rewrite"
     )
-    assert '@app.get("/api/desk/materialize")' not in src
+    assert '@router.get("/api/desk/materialize")' not in src
+    # server.post_desk_materialize must still resolve to the SAME function object — a stale
+    # re-export pointing at a copy, not the real route handler, would defeat this check's point.
+    assert s.post_desk_materialize is desk_routes.post_desk_materialize
 
 
 def test_payoff_refuses_a_non_positive_price():

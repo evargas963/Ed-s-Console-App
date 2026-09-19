@@ -23,7 +23,9 @@ def test_chart_has_no_charm_vote_lock_literals():
 
 
 def test_get_forces_docstring_serves_charm():
-    src = (REPO / "server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (Phase 3, sixteenth extraction slice): get_forces moved out of server.py
+    # into app/api/routes/market_data.py.
+    src = (REPO / "app" / "api" / "routes" / "market_data.py").read_text(encoding="utf-8")
     # Find get_forces block
     i = src.find("def get_forces")
     assert i > 0

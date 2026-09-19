@@ -4,6 +4,8 @@
 
 **FINAL: PASS**
 
+**SUPERSEDED in part (reality-reconciliation audit, 2026-09-18):** this validation assumes the same single-hop production path as v1 (`compute_signals` writing calibration synchronously), which commit `ed8806fa` (2026-05-06) replaced with a two-phase, execution-identity-gated write via `calibration/v2_live_logging.py` from `server.py` — see `docs/calibration_logging_production_validation_v1.md`'s correction for detail. **The uniqueness mechanism this doc validates is still exactly accurate today**: `calibration/writer.py` still defines `CALIBRATION_INSERT_IDEMPOTENT`, the `ON CONFLICT(ticker, decision_ts_utc) DO NOTHING` clause, and `calibration/schema.py` still enforces the `uq_calib_ticker_decision_ts_utc` unique index — only the "production validation" framing (which path calls the writer) is stale, not the duplicate-prevention contract itself.
+
 Pass gates:
 
 - Duplicate rows for the **same calibration decision identity** are **impossible** (enforced by SQLite UNIQUE + `ON CONFLICT DO NOTHING`, not timing assumptions).

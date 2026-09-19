@@ -15,7 +15,6 @@ semantic truth, and the suite never says otherwise.
 from __future__ import annotations
 
 import ast
-import json
 import re
 import sys
 from pathlib import Path
@@ -135,18 +134,11 @@ def test_every_root_with_a_producer_closes_and_the_open_list_is_exact():
     print(f"\nPROVENANCE: {rep['roots']} roots, {rep['closed']} closed, {len(rep['open'])} OPEN (NOT_PROVEN)")
 
 
-def test_the_card_contract_fields_are_roots_or_declared_exclusions():
-    """The card contract is a CONSUMER contract. Each emitted field points at a MarketState
-    root (its api_key); it never becomes a provenance authority of its own."""
-    card = json.loads((ROOT / "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8"))
-    bad = []
-    for f in card["fields"]:
-        key = f.get("provenance_root")
-        if key == "not_emitted" or key == "client_state":
-            continue
-        if key not in R.MARKET_STATE and key not in R.PAYLOAD_EXTRAS:
-            bad.append((f["field_name"], key))
-    assert bad == [], f"card fields whose provenance_root is not a root: {bad}"
+# REALITY-RECONCILIATION (2026-09-18): test_the_card_contract_fields_are_roots_or_declared_exclusions
+# retired along with reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json and
+# tools/run_universal_card_fidelity_runtime.py -- that JSON described ~29 UI card fields for a
+# card DOM confirmed absent from the current console (PRs #238/#252 rebuild), and was itself
+# purely descriptive (no runtime code read it; it was a test fixture, not a live contract).
 
 
 # ── transport invariant (ported from the retired mega1 suite) ─────────────────────────────

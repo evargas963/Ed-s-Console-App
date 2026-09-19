@@ -2,6 +2,8 @@
 
 # Pipeline completion report (movement inference + persistence)
 
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** this report's central schema claim — `ML_HORIZON_SLUGS` extended to 7 horizons — was reversed by the Phase D3 migration (commit `c9138251`, 2026-05-17). Current `ml_horizon.py` defines `ML_HORIZON_SLUGS = ALL_GOVERNED_HORIZONS = PRIMARY_DECISION_HORIZONS = ("1c","5c","15c","60c")`; `3c`/`8c`/`13c` are gone. `EdDB._migrate_schema()` still exists and still loops the same slug list (`db.py`), but that list is now 4 entries, not 7. The tools this report names (`tools/batch_backfill_movement_predictions_v1.py`, `tools/validate_movement_prediction_coverage_v1.py`) now live only under `tools/legacy/horizon_7/`, explicitly quarantined as "pre Phase D3." This report's own verdict was already **FAIL** (coverage gate not met) — it documents a failed, since-reversed intermediate stage of a mission that was later redesigned around 4 horizons, not the current pipeline.
+
 ## 1. Schema updates
 
 - `ml_horizon.ML_HORIZON_SLUGS` extended to `("1c","3c","5c","8c","13c","15c","60c")` so migrations and inference align with `ml_train.HORIZONS`.

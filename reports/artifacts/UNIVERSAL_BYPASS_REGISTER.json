@@ -657,7 +657,7 @@
           "reconciliation_state": "open"
         },
         {
-          "path": ".github/CODEOWNERS \u2014 review request only if branch protection enabled",
+          "path": ".github/<reviewer-identity-file> \u2014 review request only if branch protection enabled",
           "classification": "unacceptable",
           "audit_type": "none",
           "detection": "none",

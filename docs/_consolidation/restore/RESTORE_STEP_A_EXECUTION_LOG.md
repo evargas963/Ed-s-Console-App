@@ -1,4 +1,4 @@
-> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/_consolidation/restore/RESTORE_STEP_A_EXECUTION_LOG.md`.
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `docs/_consolidation/restore/RESTORE_STEP_A_EXECUTION_LOG.md`. (Corrected 2026-09-18, reality-reconciliation audit: this is a pure per-file SHA-256 backup/copy execution log, zero prescriptive content — mislabeled "Policy Specification," relabeled to match its sibling `FULL_PRIMARY_HORIZON_AUDIT.md`.)
 
 # RESTORE STEP A EXECUTION LOG
 

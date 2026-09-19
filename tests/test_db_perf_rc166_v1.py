@@ -145,7 +145,13 @@ def test_analytics_light_uses_dedicated_l1_pool_not_route_offload():
     """RC-166: /api/analytics/light must not share ed_route_offload with Tier C/stream."""
     import server as srv
 
-    src = Path(srv.__file__).read_text(encoding="utf-8")
+    # RC-REHAB-1 (Phase 3, fourteenth extraction slice): get_analytics_light moved out of
+    # server.py into app/api/routes/analytics_light.py. L1_LIGHT_EXECUTOR_MAX_WORKERS itself
+    # (checked below) stays in server.py.
+    analytics_light_path = (
+        Path(__file__).resolve().parent.parent / "app" / "api" / "routes" / "analytics_light.py"
+    )
+    src = analytics_light_path.read_text(encoding="utf-8")
     tree = ast.parse(src)
     light_fn = None
     for node in tree.body:
@@ -173,7 +179,10 @@ def test_analytics_light_uses_dedicated_l1_pool_not_route_offload():
     assert "run_in_executor(_get_fast_quote_executor()" not in text_chunk
     assert "run_in_executor(_get_route_offload_executor()" not in text_chunk
     assert srv.L1_LIGHT_EXECUTOR_MAX_WORKERS == 4
-    assert 'thread_name_prefix="ed_l1_light"' in src
+    # _get_l1_light_executor's own construction (the thread_name_prefix literal) lives in
+    # server.py, not in the moved route -- it has other callers and stayed put.
+    server_src = Path(srv.__file__).read_text(encoding="utf-8")
+    assert 'thread_name_prefix="ed_l1_light"' in server_src
 
 
 def test_rc243_bars_pool_is_sized_against_the_write_seam_not_the_api():

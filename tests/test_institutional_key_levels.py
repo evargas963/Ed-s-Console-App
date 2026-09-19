@@ -1,7 +1,10 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
 import inspect
+import math
+from datetime import datetime
 
+from time_et import ET
 from math_exposure_core import (
     aggregate_net_gex,
     bucket_metric_abs,
@@ -937,10 +940,23 @@ def test_volatility_points_are_signed_extremes_on_real_chain():
     assert lvp is not None
 
 
-def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
+def test_terrain_snapshot_v2_carries_net_gex_and_new_levels(monkeypatch):
     """Real seam: compute_terrain (the /api/terrain producer) on the real SPY chain
     must serve schema v2 with net_gex_at_spot ≡ flip_diag.gamma_at_spot and the new
-    levels agreeing with their pickers — the UI renders these fields directly."""
+    levels agreeing with their pickers — the UI renders these fields directly.
+
+    This fixture (real_spy_0dte_chain_with_poison.json) carries a UNIFORM
+    expirationDate of 2026-07-17T20:00:00Z baked into every contract. net_gex_at_spot
+    and flip_diag['gamma_at_spot'] both derive from compute_gamma_flip_v2's gamma
+    profile, which is time-to-expiry sensitive via time_et.time_to_expiry_years and
+    fails closed (empty profile, gamma_at_spot=None) once real wall-clock time passes
+    that date. Left unpinned, the equality assertion below degenerates to comparing
+    two independently-computed Nones (MEASURED: net_gex_at_spot=None, flip_diag
+    reason='empty_profile' against real 2026-09-18 wall clock) instead of exercising
+    the real recompute. Freeze `now` to mid-session on the fixture's own capture day so
+    the comparison is genuine (MEASURED under this freeze: net_gex_at_spot ==
+    -4855788963.56, gamma_flip=761.0)."""
+    monkeypatch.setattr("time_et.now_et", lambda: datetime(2026, 7, 17, 10, 0, tzinfo=ET))
     import json
     from pathlib import Path
 
@@ -959,6 +975,14 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
         assert fld in d, fld + " missing from terrain payload"
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
+    # RC-REHAB (test-fixture expiry rehab): the equality above must be between two real,
+    # non-degenerate numbers — not the vacuous None==None a fail-closed, expired-T profile
+    # would otherwise produce on this fixture.
+    assert d["net_gex_at_spot"] is not None and math.isfinite(d["net_gex_at_spot"]), (
+        "net_gex_at_spot degenerated to None — the gamma profile likely fell through the "
+        "time-to-expiry fail-closed path (expired fixture date), making the equality above "
+        "a vacuous None==None comparison instead of genuine math"
+    )
     exposures, _ = compute_exposures_by_strike(fx["chain"], spot=float(fx["spot"]), require_oi=True)
     strikes = sorted(exposures.keys())
     # engine strike list is filtered; pickers must agree when run on the same inputs

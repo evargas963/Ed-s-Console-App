@@ -62,28 +62,38 @@ def test_git_sha_stable_across_requests_regardless_of_repo(monkeypatch):
 def test_mechanical_lock_no_request_time_git_as_identity():
     """New-consumer lock: _repo_git_head_sha (request-time git) may feed ONLY
     the repository_state_now diagnostic inside api_build — no other function
-    in server.py may call it, so no code path can present request-time git as
-    process identity."""
-    src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    tree = ast.parse(src)
-    parents: dict[ast.AST, ast.AST] = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            parents[child] = node
+    anywhere in the app may call it, so no code path can present request-time
+    git as process identity."""
+    # RC-REHAB-1 (Phase 3, twelfth extraction slice): api_build moved out of
+    # server.py into app/api/routes/status.py; _repo_git_head_sha itself (the
+    # thing being locked down) stays in server.py. The invariant spans both
+    # files now, so both must be scanned for callers.
+    sources = [
+        _REPO / "server.py",
+        _REPO / "app" / "api" / "routes" / "status.py",
+    ]
+    callers: set[str] = set()
+    for path in sources:
+        src = path.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(src)
+        parents: dict[ast.AST, ast.AST] = {}
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                parents[child] = node
 
-    def enclosing_fn(node):
-        cur = parents.get(node)
-        while cur is not None and not isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            cur = parents.get(cur)
-        return cur.name if cur is not None else "<module>"
+        def enclosing_fn(node, parents=parents):
+            cur = parents.get(node)
+            while cur is not None and not isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                cur = parents.get(cur)
+            return cur.name if cur is not None else "<module>"
 
-    callers = sorted({
-        enclosing_fn(n)
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-        and n.func.id == "_repo_git_head_sha"
-    })
-    assert callers == ["api_build"], (
-        f"_repo_git_head_sha called outside api_build: {callers} — request-time "
+        callers |= {
+            enclosing_fn(n)
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            and n.func.id == "_repo_git_head_sha"
+        }
+    assert sorted(callers) == ["api_build"], (
+        f"_repo_git_head_sha called outside api_build: {sorted(callers)} — request-time "
         f"git must never masquerade as process identity"
     )

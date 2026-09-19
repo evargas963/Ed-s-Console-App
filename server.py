@@ -46,14 +46,13 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NamedTuple, Optional
 from dataclasses import asdict, dataclass
 
 import time_et as _time_et
 from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
                      is_trading_day_et)
 
-import html
 import hashlib
 import json
 import queue
@@ -61,11 +60,272 @@ import queue
 from planes.l1_decision_dependencies import warn_l1_payload_key_drift
 from planes.l1_fingerprint_material import build_l1_material_dict_for_fingerprint
 
-from fastapi import Body, FastAPI, Query, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+# RC-REHAB-1 (Phase 3): the six get_desk_*/post_desk_materialize names are re-exported
+# (not otherwise called in this file) so existing callers/tests that reference
+# server.get_desk_* keep working; the real definitions and route registration now live
+# in app/api/routes/desk.py (mounted below via app.include_router(desk_router)).
+from app.api.routes.desk import (  # noqa: F401
+    router as desk_router,
+    get_desk_radar,
+    get_desk_dossier,
+    get_desk_evidence,
+    get_desk_structure,
+    get_desk_brief,
+    post_desk_materialize,
+)
+# RC-REHAB-1 (Phase 3): same re-export rationale as the desk import above -- root/favicon/
+# guide_*/chart_page/exposure_page/options_page/desk_page now live in
+# app/api/routes/pages.py (mounted below via app.include_router(pages_router)).
+from app.api.routes.pages import (  # noqa: F401
+    router as pages_router,
+    root,
+    favicon,
+    guide_data_stewardship,
+    guide_training_and_maintenance,
+    guide_pipeline_quality,
+    chart_page,
+    exposure_page,
+    options_page,
+    desk_page,
+)
+# RC-REHAB-1 (Phase 3): third extraction slice -- ops_panel/api_ops_status/
+# api_level_crosses/api_ops_calibration_rowcount/api_ops_run/governance_visibility_page/
+# api_governance_panel/api_internal_reload_models/api_governance_manual_promote/
+# api_governance_manual_rollback/api_ops_run_sequence now live in app/api/routes/ops.py
+# (mounted below via app.include_router(ops_router)).
+from app.api.routes.ops import (  # noqa: F401
+    router as ops_router,
+    ops_panel,
+    api_ops_status,
+    api_level_crosses,
+    api_ops_calibration_rowcount,
+    api_ops_run,
+    governance_visibility_page,
+    api_governance_panel,
+    api_internal_reload_models,
+    api_governance_manual_promote,
+    api_governance_manual_rollback,
+    api_ops_run_sequence,
+)
 from app.api.routes.options_order_flow import router as options_order_flow_router
+# RC-REHAB-1 (Phase 3): fourth and fifth extraction slices -- get_vanna_by_strike/
+# get_charm_by_strike/get_options_tape/get_options_gamma_surface now live in
+# app/api/routes/options.py (mounted below via app.include_router(options_router)). Every
+# helper get_options_gamma_surface uses (_GAMMA_SURFACE_CACHE, terrain_cache_get, etc.) has
+# other callers still in server.py and stays here as shared infrastructure -- only the route
+# handler itself moved, importing them back lazily.
+from app.api.routes.options import (  # noqa: F401
+    router as options_router,
+    get_vanna_by_strike,
+    get_charm_by_strike,
+    get_options_tape,
+    get_options_gamma_surface,
+)
+# RC-REHAB-1 (Phase 3): sixth extraction slice -- logger_status/logger_universe/
+# logger_universe_by_category/logger_pin/logger_unpin/logger_add/logger_remove now live
+# in app/api/routes/logger.py (mounted below via app.include_router(logger_router)). Their
+# shared state (_logger_lock/_logger_tickers/_logger_stats/_logger_running), helpers
+# (_hydrate_logger_tickers_from_db/_register_tracked_ticker/_is_loggable_session/
+# _market_context_panel_auto_candidates/_user_persisted_enrollment_policy) and config
+# constants (CORE_TICKERS/LOG_INTERVAL/STAGGER_SECS/RTH_ONLY/PRE_MARKET_MINS/
+# LOGGER_BUFFER_MINS/MAX_PINNED_LOGGING_TICKERS/MAX_USER_PERSISTED_LOGGING_TICKERS) all
+# have other callers still in server.py and stay here as shared infrastructure -- only the
+# route handlers themselves moved, importing everything back lazily.
+from app.api.routes.logger import (  # noqa: F401
+    router as logger_router,
+    logger_status,
+    logger_universe,
+    logger_universe_by_category,
+    logger_pin,
+    logger_unpin,
+    logger_add,
+    logger_remove,
+)
+# RC-REHAB-1 (Phase 3): seventh extraction slice -- get_terrain_radar/
+# get_terrain_producer_diagnostics/post_terrain_quarantine_release/get_terrain_strikes/
+# get_terrain_scorecard/get_terrain now live in app/api/routes/terrain.py (mounted below via
+# app.include_router(terrain_router)). The background terrain-refresh loop still lives here
+# and shares mutable module state (locks, caches, quarantine dicts) and private helpers
+# (_reprice_cached_terrain, _radar_atr, etc.) with these routes -- all of that stays in
+# server.py as shared infrastructure and is imported back lazily by the moved handlers.
+from app.api.routes.terrain import (  # noqa: F401
+    router as terrain_router,
+    get_terrain_radar,
+    get_terrain_producer_diagnostics,
+    post_terrain_quarantine_release,
+    get_terrain_strikes,
+    get_terrain_scorecard,
+    get_terrain,
+)
+# RC-REHAB-1 (Phase 3): eighth extraction slice -- the five remaining /api/diagnostics/*
+# routes (l1, ticker-switch x2, sqlite-contention, chain-gate) now live in
+# app/api/routes/diagnostics.py (mounted below via app.include_router(diagnostics_router)).
+# Unlike terrain-producer (which moved with its own domain), these five span five unrelated
+# subsystems and share nothing with each other -- grouped only by URL namespace, same as
+# ops.py. Every dependency with other callers in server.py stays here, lazily imported.
+from app.api.routes.diagnostics import (  # noqa: F401
+    router as diagnostics_router,
+    get_l1_diagnostics,
+    post_ticker_switch_diagnostics,
+    get_ticker_switch_diagnostics,
+    get_sqlite_contention_diagnostics,
+    api_chain_gate_diagnostics,
+)
+# RC-REHAB-1 (Phase 3): ninth extraction slice -- the three /api/streaming/* routes now live
+# in app/api/routes/streaming.py (mounted below via app.include_router(streaming_router)).
+# Each offloads to server.py's shared fast-quote thread pool (_get_fast_quote_executor) and
+# reads the shared live-market-plane singleton (_lmp) -- both have other callers and stay
+# here, imported back lazily.
+from app.api.routes.streaming import (  # noqa: F401
+    router as streaming_router,
+    post_streaming_active_option_contract,
+    post_streaming_active_option_contracts,
+    post_streaming_active_ticker,
+)
+# RC-REHAB-1 (Phase 3): tenth extraction slice -- the three /api/order-flow/* routes now
+# live in app/api/routes/order_flow.py (mounted below via app.include_router(order_flow_router)).
+# Each is a thin serializer over app/options/order_flow/*.py with no book/imbalance math of
+# its own; _touch_tracked_ticker_view and _lmp have other callers in server.py and stay
+# here, imported back lazily.
+from app.api.routes.order_flow import (  # noqa: F401
+    router as order_flow_router,
+    get_order_flow_book_heatmap,
+    api_order_flow_microstructure,
+    api_order_flow_options_microstructure,
+)
+# RC-REHAB-1 (Phase 3): eleventh extraction slice -- the three /api/exposure/* routes now
+# live in app/api/routes/exposure.py (mounted below via app.include_router(exposure_router)).
+# Each route's own cache dict (_EXPOSURE_FLOW_CACHE/_EXPOSURE_BOOK_CACHE/
+# _EXPOSURE_HISTORY_CACHE) is private to that route but stays in server.py alongside
+# is_trading_day_et/get_db, which have other callers, and is imported back lazily.
+from app.api.routes.exposure import (  # noqa: F401
+    router as exposure_router,
+    get_exposure_flow,
+    get_exposure_book,
+    get_exposure_history,
+)
+# RC-REHAB-1 (Phase 3): twelfth extraction slice -- health/release/decision-lookup/build/
+# vol-observability/the retired price-levels stub now live in app/api/routes/status.py
+# (mounted below via app.include_router(status_router)). api_build reads
+# PROCESS_IDENTITY_V1, a singleton captured exactly once at THIS module's own import time
+# (see _capture_process_identity below) -- it stays here and is imported back lazily, along
+# with every other dependency that has other callers.
+from app.api.routes.status import (  # noqa: F401
+    router as status_router,
+    health,
+    api_release_current,
+    api_decision_by_id,
+    api_build,
+    api_vol_observability,
+    get_price_levels,
+)
+# RC-REHAB-1 (Phase 3): thirteenth extraction slice -- Tier A (see
+# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md), the instant live-quote-plane routes, now live
+# in app/api/routes/live.py (mounted below via app.include_router(live_router)). These depend
+# only on the already-modular live_market_plane singleton (_lmp) -- never on _fetch_state or
+# any Tier C state -- which is why this tier was the boundary doc's recommended first cut.
+from app.api.routes.live import (  # noqa: F401
+    router as live_router,
+    get_live_state,
+    api_live_plane,
+    fast_quote,
+)
+# RC-REHAB-1 (Phase 3): fourteenth extraction slice -- Tier L1 (see
+# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md), the light context plane routes, now live in
+# app/api/routes/analytics_light.py (mounted below via app.include_router(analytics_light_router)).
+# Both are thin dispatchers into the already-separate planes/ subsystem -- never into
+# _fetch_state or any Tier C state -- matching the boundary doc's recommended second cut.
+from app.api.routes.analytics_light import (  # noqa: F401
+    router as analytics_light_router,
+    get_analytics_light,
+    get_analytics_light_stream,
+)
+# RC-REHAB-1 (Phase 3): fifteenth extraction slice -- Tier C's route layer (see
+# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md), now lives in
+# app/api/routes/analytics_state.py (mounted below via app.include_router(analytics_state_router)).
+# These three routes never call _fetch_state inline -- _tier_c_analytics_json_response
+# (the stale-while-refresh cache view), _schedule_analytics_warm/_schedule_analytics_recompute
+# (the scheduling layer), and _fetch_state itself (the ~3,400-line compute core) all stay in
+# server.py per the boundary doc's explicit recommendation, imported back lazily.
+from app.api.routes.analytics_state import (  # noqa: F401
+    router as analytics_state_router,
+    get_analytics_state,
+    post_analytics_warm,
+    get_state,
+)
+# RC-REHAB-1 (Phase 3): sixteenth extraction slice -- get_bars1m/get_forces (simple,
+# self-contained banked-chain routes with no cross-tier coupling) now live in
+# app/api/routes/market_data.py (mounted below via app.include_router(market_data_router)).
+from app.api.routes.market_data import (  # noqa: F401
+    router as market_data_router,
+    get_bars1m,
+    get_forces,
+    get_spot,
+    api_watchlist_quotes,
+)
+# RC-REHAB-1 (Phase 3): seventeenth extraction slice -- the legacy full-market-state SSE
+# stream now lives in app/api/routes/sse.py (mounted below via app.include_router(sse_router)).
+# The SSE connection registry (_sse_lock/_sse_clients/_sse_subscribers) and _sse_conn_epoch
+# are also touched by server.py's own background SSE loops and stay there; _sse_conn_epoch
+# specifically is mutated through the server MODULE OBJECT (not a lazy value import), since a
+# bare `global` in the new file would silently bind to the wrong module's namespace -- see
+# app/api/routes/sse.py's own docstring.
+from app.api.routes.sse import (  # noqa: F401
+    router as sse_router,
+    sse_stream,
+)
+# RC-REHAB-1 (Phase 3): eighteenth extraction slice -- get_expiries/get_chain now live in
+# app/api/routes/chain.py (mounted below via app.include_router(chain_router)).
+# COMPLETENESS_BASIS_STRIKE_RANGE_ALL has another caller in server.py and stays there,
+# imported back lazily along with every other shared dependency.
+from app.api.routes.chain import (  # noqa: F401
+    router as chain_router,
+    get_expiries,
+    get_chain,
+)
+# RC-REHAB-1 (Phase 3): nineteenth extraction slice -- prediction_override/
+# prediction_override_clear now live in app/api/routes/prediction.py (mounted below via
+# app.include_router(prediction_router)). _pred_overrides has a reader used elsewhere in
+# server.py's decision pipeline and stays there, imported back lazily.
+from app.api.routes.prediction import (  # noqa: F401
+    router as prediction_router,
+    prediction_override,
+    prediction_override_clear,
+)
+# RC-REHAB-1 (Phase 3): twentieth extraction slice -- get_levels/get_liquidity_snapshot/
+# get_liquidity_playbook_state now live in app/api/routes/liquidity.py (mounted below via
+# app.include_router(liquidity_router)). Every private helper these routes use
+# (_build_raw_levels_used, _liquidity_live_1m_overlay_bars, _liquidity_fusion_from_cache,
+# _liquidity_zone_tradeable_fields) was verified to have at least one other real caller in
+# server.py's Phase 2A canonical-levels machinery and stays there, imported back lazily.
+from app.api.routes.liquidity import (  # noqa: F401
+    router as liquidity_router,
+    get_levels,
+    get_liquidity_snapshot,
+    get_liquidity_playbook_state,
+)
+# RC-REHAB-1 (Phase 3): twenty-first (final route) extraction slice -- debug_charm/
+# debug_prediction now live in app/api/routes/debug.py, and get_accuracy in
+# app/api/routes/accuracy.py (both mounted below). debug_prediction is the ONE route that
+# calls _fetch_state directly and synchronously, by design (see
+# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md) -- _fetch_state itself stays in server.py.
+# Every other shared dependency (chain-fetch helpers, the accuracy cache, get_db) has other
+# callers and stays here too, imported back lazily. This closes out server.py's entire
+# @app.get/@app.post route surface -- everything remaining in server.py from here is
+# shared infrastructure, background loops, and _fetch_state's own not-yet-decomposed body.
+from app.api.routes.debug import (  # noqa: F401
+    router as debug_router,
+    debug_charm,
+    debug_prediction,
+)
+from app.api.routes.accuracy import (  # noqa: F401
+    router as accuracy_router,
+    get_accuracy,
+)
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
@@ -232,8 +492,12 @@ from schwab_client import (
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
 from math_exposure import (
-    MISSING_GREEK_SENTINEL,
-    gamma_is_plausible,
+    # RC-REHAB-1 (Phase 3): both names' only caller, debug_charm, moved to
+    # app/api/routes/debug.py, which imports them back lazily via `from server import
+    # MISSING_GREEK_SENTINEL, gamma_is_plausible` -- they must stay bound here as that
+    # re-export surface.
+    MISSING_GREEK_SENTINEL,  # noqa: F401
+    gamma_is_plausible,  # noqa: F401
     _f,
     compute_exposures_by_strike,
     build_summary_rows,
@@ -271,7 +535,10 @@ from market_context import (
     _derive_session,
 )
 from market_state import MarketVolContextV1, build_market_state, derive_zone
-from vol_observability import record_market_vol_observation, vol_observability_payload
+from vol_observability import record_market_vol_observation, vol_observability_payload  # noqa: F401
+# RC-REHAB-1 (Phase 3): vol_observability_payload's only caller, api_vol_observability, moved
+# to app/api/routes/status.py, which imports it back lazily via `from server import
+# vol_observability_payload` -- the name must stay bound here as that re-export surface.
 from ml_horizon import PRIMARY_DECISION_HORIZONS, SECONDARY_SUPPORT_HORIZONS
 from realized_contract_eval import serialize_option_chain_for_eval, build_replay_context_payload
 from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh, persist_stamped_decision
@@ -2028,7 +2295,13 @@ def _card_freshness_trust_reason(
     *,
     active_ticker: str,
 ) -> Optional[str]:
-    """Mirror analyticsCardTrustGate / tools.run_universal_card_fidelity_runtime (read-only)."""
+    """Card freshness/trust verdict for card_freshness_v1 (read-only).
+
+    REALITY-RECONCILIATION (2026-09-18): this docstring used to say it "mirrors"
+    analyticsCardTrustGate (static/index.html) and tools.run_universal_card_fidelity_runtime --
+    both retired (the JS function is confirmed absent from the current console; the tool and its
+    tests were deleted as orphaned). This IS the live implementation now, not a mirror of one.
+    """
     if not isinstance(md, dict):
         return "no_payload"
     incoming = str(md.get("ticker") or "").strip().upper()
@@ -3792,7 +4065,11 @@ from calibration.option_chain_morning_full import (
     # terrain loop's contention guard. The guard now owns TERRAIN_CONTENTION_*, and the archive
     # keeps MORNING_* to itself, so neither can move the other by accident again.
     accrual_window as gex_accrual_window,
-    latest_accrual_rows,
+    # RC-REHAB-1 (Phase 3): latest_accrual_rows' only caller, get_terrain_strikes, moved to
+    # app/api/routes/terrain.py, which imports it back lazily via `from server import
+    # latest_accrual_rows` -- the name must stay bound here as that re-export surface even
+    # though nothing in server.py's own body calls it directly anymore.
+    latest_accrual_rows,  # noqa: F401
     persist_chain_accrual,
     SOURCE_WIDE as GEX_SOURCE_WIDE,
     et_date_and_mins as gex_et_date_and_mins,
@@ -3803,7 +4080,10 @@ from calibration.option_chain_morning_full import (
 from calibration.complete_chain_capture import (
     eligible_near_term_expiries,
     has_complete_chain_capture_today,
-    latest_complete_chain_capture,
+    # RC-REHAB-1 (Phase 3): latest_complete_chain_capture's only caller, get_chain, moved to
+    # app/api/routes/chain.py, which imports it back lazily via `from server import
+    # latest_complete_chain_capture` -- the name must stay bound here as that re-export surface.
+    latest_complete_chain_capture,  # noqa: F401
     next_capture_batch,
     persist_complete_chain_capture,
 )
@@ -6790,6 +7070,1242 @@ def carried_price_levels_match_snapshot(entry, pl_date, pl_generation, today: st
     return cached_gen == snap_gen and entry_gen_i == snap_gen
 
 
+class _VolatilitySignalsForState(NamedTuple):
+    iv_skew: dict
+    realized_vol: Optional[float]
+    atr: Optional[float]
+    iv_rank: Optional[float]
+    iv_percentile: Optional[float]
+    closes: Optional[list]
+
+
+class _ExpectedMoveForState(NamedTuple):
+    em_straddle: dict
+    em_iv: dict
+    em_progress: dict
+    em_up: Optional[float]
+    em_lo: Optional[float]
+    em_band_source: str
+    kl_em_anchor: str
+    mc_iv_level: Optional[float]
+    mc_iv_source: str
+
+
+def _bucket_total_oi(bucket: dict) -> Optional[float]:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition): promoted from a nested closure
+    defined inside _fetch_state's own Section-8 block to a module-level function. It has
+    no closure capture (reads only its own `bucket` parameter) and, before this promotion,
+    was already being called from a SECOND site much later in the same _fetch_state body
+    (the Level Density sub-phase) -- a nested def is only visible within the function it
+    is defined in, so extracting Section 8 into its own top-level function would have
+    made that second call site's reference unresolvable. One function, two callers, at
+    module level, exactly the "one producer" shape every other extracted phase already
+    has."""
+    call_oi = bucket.get("call_oi")
+    put_oi = bucket.get("put_oi")
+    if call_oi is None and put_oi is None:
+        return None
+    return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
+
+
+def _expected_move_for_state(
+    now_et_dt,
+    price_levels,
+    contracts_use: list,
+    spot_f: float,
+    atm_iv: Optional[float],
+) -> _ExpectedMoveForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventh slice): the Expected Move
+    phase (ATM straddle + IV-based EM, progress, and the KL/MC anchor resolution), extracted
+    verbatim. `em_band_source` is computed but has no downstream reader anywhere in
+    server.py -- a pre-existing fact, not something narrowed by this extraction; kept in
+    the return contract for behavior fidelity rather than silently dropped."""
+    em_straddle = {"straddle": None, "em_pts": None, "upper": None, "lower": None}
+    em_iv = {"em_pts": None, "upper": None, "lower": None}
+    em_progress = {
+        "progress_pct": None,
+        "breached": None,
+        "direction": None,
+        "severity": None,
+    }
+    em_up = None
+    em_lo = None
+    em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
+    from time_et import hours_until_session_close_et as _hours_until_close
+    hours_rem = _hours_until_close(now_et_dt) or 0.0
+    kl_em_anchor = "unavailable"
+    mc_iv_level = None
+    mc_iv_source = "unavailable"
+
+    try:
+        today_open = getattr(price_levels, "today_open", None)
+
+        # ATM straddle: find ATM call + put mark from chain
+        # single source: reject NaN via the finite reader (raw float() admitted NaN into
+        # the strike set, corrupting sorting and the ATM-strike nearest-neighbour pick).
+        from numeric_contract import float_finite_or_none as _fin
+        all_strikes = sorted({
+            sp
+            for ct in contracts_use
+            if (sp := _fin(ct.get("strikePrice"))) is not None
+        })
+        if all_strikes and spot_f > 0:
+            atm_k = min(all_strikes, key=lambda k: abs(k - spot_f))
+            atm_calls = [
+                ct
+                for ct in contracts_use
+                if str(ct.get("putCall", "")).upper() == "CALL"
+                and (sp := _f(ct.get("strikePrice"))) is not None
+                and abs(sp - atm_k) < 0.01
+            ]
+            atm_puts = [
+                ct
+                for ct in contracts_use
+                if str(ct.get("putCall", "")).upper() == "PUT"
+                and (sp := _f(ct.get("strikePrice"))) is not None
+                and abs(sp - atm_k) < 0.01
+            ]
+            c_mark = _f(atm_calls[0].get("mark")) if atm_calls else None
+            p_mark = _f(atm_puts[0].get("mark")) if atm_puts else None
+
+            if c_mark and p_mark and today_open:
+                em_straddle = compute_expected_move_straddle(c_mark, p_mark, today_open)
+
+        # IV-based EM (shrinks through the day)
+        if atm_iv and atm_iv > 0 and spot_f > 0 and hours_rem > 0:
+            em_iv = compute_expected_move_iv(spot_f, atm_iv, hours_rem)
+
+        # EM progress (use straddle EM if available, fall back to IV) — no synthetic 6.5h session fill.
+        # RC-345 / F06: the operator-facing EM band is ONE of two economically distinct
+        # methodologies — STRADDLE_IMPLIED (market ATM straddle premium) or IV_MODEL
+        # (spot x IV x sqrt(T)). Record WHICH produced the band so no consumer treats the
+        # generic em_up/em_lo as method-agnostic or silently mistakes one for the other.
+        if em_straddle.get("upper") is not None and em_straddle.get("lower") is not None:
+            em_up, em_lo, em_band_source = (
+                em_straddle.get("upper"), em_straddle.get("lower"), "STRADDLE_IMPLIED")
+        elif em_iv.get("upper") is not None and em_iv.get("lower") is not None:
+            em_up, em_lo, em_band_source = (
+                em_iv.get("upper"), em_iv.get("lower"), "IV_MODEL")
+        else:
+            em_up, em_lo, em_band_source = None, None, "unavailable"
+        if em_up and em_lo and today_open:
+            em_progress = compute_em_progress(spot_f, today_open, em_up, em_lo)
+
+        from math_volatility import resolve_kl_em_anchor, resolve_mc_iv_for_kl_em_anchor
+
+        kl_em_anchor = resolve_kl_em_anchor(em_straddle, em_iv)
+        mc_iv_level, mc_iv_source = resolve_mc_iv_for_kl_em_anchor(
+            kl_em_anchor=kl_em_anchor,
+            atm_iv=atm_iv,
+            spot=spot_f,
+            em_straddle=em_straddle,
+            hours_remaining=hours_rem,
+        )
+
+    except Exception as e:
+        log.warning(f"Expected move calc failed: {e}")
+
+    return _ExpectedMoveForState(
+        em_straddle=em_straddle,
+        em_iv=em_iv,
+        em_progress=em_progress,
+        em_up=em_up,
+        em_lo=em_lo,
+        em_band_source=em_band_source,
+        kl_em_anchor=kl_em_anchor,
+        mc_iv_level=mc_iv_level,
+        mc_iv_source=mc_iv_source,
+    )
+
+
+class _PredictivePositioningForState(NamedTuple):
+    dpi: dict
+    hedging_flow: dict
+    gamma_gradient: Optional[float]
+    breakout_score: dict
+    pin_score_val: dict
+    vol_expansion: dict
+    void_factor: float
+    pin_strike: Optional[float]
+    regime_gamma_at_spot: Optional[float]
+
+
+def _predictive_positioning_for_state(
+    ticker: str,
+    exposures: dict,
+    cons_strikes: list,
+    spot_f: float,
+    charm_net: Optional[float],
+    gamma_voids: list,
+    iv_direction: str,
+) -> _PredictivePositioningForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, eighth slice): the Section 8
+    Predictive Positioning Signals phase (DPI, hedging flow, gamma gradient, breakout,
+    pin score, vol expansion, void factor, and the terrain-SSOT pin/regime reads that
+    also feed build_market_state), extracted verbatim.
+
+    Sweep Score is deliberately NOT part of this phase's output -- the original inline
+    code only pre-initializes `_sweep_score = {}` in this same banner scope (a
+    placeholder) and computes its REAL value in a LATER block that needs
+    ms.nearest_above_dist/ms.nearest_below_dist, only available after build_market_state
+    runs. `_fetch_state` keeps that pre-initializer itself, unmoved.
+
+    `_bucket_total_oi` was promoted to a module-level function (see its own docstring)
+    since a SECOND call site much later in _fetch_state's body (the Level Density
+    sub-phase) also needs it and a nested def would not have been visible there once
+    Section 8 became its own top-level function.
+
+    Pre-initialization ordering preserved deliberately (gamma-audit 2026-08-26 finding,
+    already documented at the original call site): pin_strike/regime_gamma_at_spot are
+    initialized to None BEFORE the try block, not inside it, so a raise anywhere earlier
+    in this phase still leaves them safely None for build_market_state to read rather
+    than raising NameError there instead -- this function preserves that same ordering.
+    """
+    dpi: dict = {}
+    hedging_flow: dict = {}
+    gamma_gradient: Optional[float] = None
+    breakout_score: dict = {}
+    pin_score_val: dict = {}
+    vol_expansion: dict = {}
+    void_factor = 0.0
+    pin_strike: Optional[float] = None
+    regime_gamma_at_spot: Optional[float] = None
+    try:
+        # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
+        sum_gex = float(aggregate_net_gex(exposures, cons_strikes) or 0.0)
+        sum_dex = 0.0
+        sum_oi = None
+        sum_vanna = 0.0
+        for bkt in exposures.values():
+            dex = bucket_metric(bkt, "net_dex_dollars")
+            if dex is not None:
+                sum_dex += dex
+            bucket_oi = _bucket_total_oi(bkt)
+            if bucket_oi is not None:
+                sum_oi = (sum_oi or 0.0) + bucket_oi
+            cv = bucket_metric(bkt, "call_vanna")
+            pv = bucket_metric(bkt, "put_vanna")
+            if cv is not None:
+                sum_vanna += cv
+            if pv is not None:
+                sum_vanna += pv
+
+        # 1. DPI
+        dpi = compute_dealer_pressure_index(sum_dex, sum_gex, sum_oi)
+
+        # 2. Hedging Flow Score — normalize inputs to -1..+1
+        max_gex = max(abs(sum_gex), 1.0)
+        max_dex = max(abs(sum_dex), 1.0)
+        max_charm = max(abs(charm_net), 1.0) if charm_net is not None else 1.0
+        max_vanna = max(abs(sum_vanna), 1.0)
+        charm_norm = (
+            charm_net / max_charm
+            if charm_net is not None and max_charm > 0
+            else None
+        )
+        hedging_flow = compute_hedging_flow_score(
+            net_gex_normalized=sum_gex / max_gex if max_gex > 0 else 0,
+            net_dex_normalized=sum_dex / max_dex if max_dex > 0 else 0,
+            charm_normalized=charm_norm,
+            vanna_normalized=sum_vanna / max_vanna if max_vanna > 0 else 0,
+        )
+
+        # 3. Gamma Gradient
+        gamma_gradient = compute_gamma_gradient(exposures, spot_f)
+
+        # 4. Breakout Score
+        gex_near_spot = 0.0
+        for k, b in exposures.items():
+            if abs(float(k) - spot_f) > GEX_NEAR_SPOT_RADIUS:
+                continue
+            ng = bucket_metric(b, "net_gex_1pct")
+            if ng is not None:
+                gex_near_spot += abs(ng)
+        void_factor = 0.0
+        for vz in (gamma_voids or []):
+            if vz.get("contains_spot"):
+                void_factor = 1.0
+                break
+            vz_dist = min(abs(vz.get("lower", spot_f) - spot_f), abs(vz.get("upper", spot_f) - spot_f))
+            void_factor = max(void_factor, max(0, 1.0 - vz_dist / VOID_DIST_FALLOFF))
+        try:
+            breakout_score = compute_breakout_score(gex_near_spot, gamma_gradient, void_factor)
+        except Exception as e:
+            log.warning(f"breakout_score failed: {e}")
+            breakout_score = {}
+
+        # 5. Pin Score — strike AND GEX/OI from the terrain SSOT book (RC-124/RC-292/RC-413).
+        # Never consensus_summary.net_gex_peak (analytics |net GEX$| peak) and never analytics
+        # `exposures` for magnitude at that strike. RC-292 rename: the terrain payload field
+        # is absolute_gamma_strike — the raw total-gamma concentration; pin_score grades it.
+        t_pin_snap = terrain_cache_get(ticker) or {}
+        pin_strike = (
+            t_pin_snap.get("absolute_gamma_strike")
+            if t_pin_snap and not t_pin_snap.get("levels_stale")
+            else None
+        )
+        gex_at_pin = None
+        oi_concentration = None
+        if pin_strike is not None and t_pin_snap and not t_pin_snap.get("levels_stale"):
+            try:
+                tg = t_pin_snap.get("absolute_gamma_gex_dollars")
+                toi = t_pin_snap.get("absolute_gamma_oi")
+                tbook = t_pin_snap.get("book_oi_total")
+                if tg is not None and toi is not None and tbook is not None:
+                    book_oi = float(tbook)
+                    gex_at_pin = float(tg)
+                    oi_concentration = (
+                        (float(toi) / book_oi) if book_oi > 0 else None
+                    )
+            except (TypeError, ValueError):
+                gex_at_pin = None
+                oi_concentration = None
+        try:
+            pin_score_val = compute_pin_score(gex_at_pin, oi_concentration)
+        except Exception as e:
+            log.warning(f"pin_score failed: {e}")
+            pin_score_val = {}
+
+        # Cursor-audit F9 / gamma audit: the dealer dampen/amplify REGIME sign, read from the SAME
+        # terrain SSOT snapshot as the pin above and on the SAME fail-closed terms. net_gex_at_spot
+        # IS gamma_at_spot over the wide multi-expiry book (terrain_engine) — the exact value the
+        # terrain card renders — so the Call/regime consumers and the card read ONE number and cannot
+        # disagree in sign. Sourcing it from the selected-expiry analytics diag (the first cut of this
+        # fix) could disagree, and a one-expiry slice is the wrong basis for a whole-book hedging
+        # claim. Missing or stale snapshot -> None -> every consumer withholds its regime claim.
+        regime_gamma_at_spot = (
+            t_pin_snap.get("net_gex_at_spot")
+            if t_pin_snap and not t_pin_snap.get("levels_stale")
+            else None
+        )
+
+        # 6. Vol Expansion Signal
+        iv_dir_num = 1.0 if iv_direction == "expanding" else -1.0 if iv_direction == "contracting" else 0.0
+        vol_expansion = compute_vol_expansion_signal(sum_gex, iv_dir_num, gamma_gradient)
+
+        # Sweep Score moved below: needs ms.nearest_above_dist / ms.nearest_below_dist
+        # which are only populated by build_market_state. The previous compute here read
+        # `getattr(ms, _wname, None) if 'ms' in dir() else None` — `ms` was undefined at
+        # this point in execution, so the loop always set _nearest_wall_dist=None and
+        # sweep_score was silently degraded every tick.
+
+    except Exception as e:
+        log.debug(f"Section 8 signals calc: {e}")
+
+    return _PredictivePositioningForState(
+        dpi=dpi,
+        hedging_flow=hedging_flow,
+        gamma_gradient=gamma_gradient,
+        breakout_score=breakout_score,
+        pin_score_val=pin_score_val,
+        vol_expansion=vol_expansion,
+        void_factor=void_factor,
+        pin_strike=pin_strike,
+        regime_gamma_at_spot=regime_gamma_at_spot,
+    )
+
+
+def _price_levels_for_state(
+    ticker: str,
+    client,
+    q_json: dict,
+    now_et_dt,
+    cache_key: tuple,
+):
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixth slice): the Price Levels
+    phase, extracted verbatim. Carries the SAME canonical snapshot /api/levels serializes
+    (via canonical_price_level_snapshot + carried_price_levels_match_snapshot's generation
+    check -- never a wall-clock TTL, which previously let this cache disagree with
+    /api/levels's own generation) and mutates the shared `_state_cache[cache_key]` entry on
+    a real fetch -- the exact side effect the original inline block had. `_state_cache` is
+    a server.py module-level dict, referenced directly here exactly as _fetch_state itself
+    references it, not passed as a parameter (matching the treatment already given to
+    other module-level singletons like `_candles_1m` in earlier slices of this
+    decomposition).
+    """
+    from liquidity_value_engine import LevelCarrierConflict as _LevelCarrierConflict
+    today_date_str = now_et_dt.strftime("%Y-%m-%d")
+    pl_snap = canonical_price_level_snapshot(ticker)
+    pl_bucket = _state_cache.get(cache_key, {})
+    pl_cache_entry = pl_bucket.get("price_levels")
+    pl_cache_date  = pl_bucket.get("pl_date", "")
+    pl_cache_gen   = pl_bucket.get("pl_generation")
+
+    if carried_price_levels_match_snapshot(
+        pl_cache_entry, pl_cache_date, pl_cache_gen, today_date_str, pl_snap,
+    ):
+        return pl_cache_entry
+
+    try:
+        price_levels = fetch_price_levels(
+            client, symbol=ticker, quote_raw=q_json,
+            level_snapshot=pl_snap,
+        )
+        if price_levels.error:
+            log.warning(f"PriceLevels: {ticker} partial error: {price_levels.error}")
+        from liquidity_value_engine import (
+            SESSION_VWAP_RTH_PRODUCER_FAILURE,
+            classify_session_vwap_presence,
+        )
+        vwap_status = classify_session_vwap_presence(
+            vwap=price_levels.vwap,
+            session_date=now_et_dt.date(),
+            now_et_dt=now_et_dt,
+            session_rth_positive_volume_bars=int(
+                getattr(price_levels, "session_rth_positive_volume_bars", 0) or 0
+            ),
+        )
+        if vwap_status == SESSION_VWAP_RTH_PRODUCER_FAILURE:
+            log.warning(
+                "PriceLevels: %s RTH producer failure — %s same-session RTH volume bars "
+                "but canonical session VWAP is None (generation=%s)",
+                ticker,
+                getattr(price_levels, "session_rth_positive_volume_bars", 0),
+                getattr(price_levels, "level_generation", None),
+            )
+        elif price_levels.vwap is not None:
+            log.debug(f"PriceLevels: {ticker} VWAP={price_levels.vwap:.2f} bars={price_levels.bars_today}")
+        else:
+            log.debug(
+                "PriceLevels: %s session VWAP expected-absent (bars_today=%s rth_vol_bars=%s)",
+                ticker, price_levels.bars_today,
+                getattr(price_levels, "session_rth_positive_volume_bars", 0),
+            )
+    except _LevelCarrierConflict:
+        raise
+    except Exception as e:
+        log.warning(f"PriceLevels: {ticker} FAILED: {e}")
+        price_levels = PriceLevels()
+    else:
+        sc = _state_cache.get(cache_key, {})
+        sc["price_levels"] = price_levels
+        sc["pl_date"]      = today_date_str
+        sc["pl_generation"] = getattr(pl_snap, "generation", None)
+        sc["pl_mono"]      = time.monotonic()
+        _state_cache[cache_key] = sc
+    return price_levels
+
+
+class _CandleDirectionForState(NamedTuple):
+    candle_dir: Optional[str]
+    candle_body: Optional[float]
+    c_open: Optional[float]
+    c_high: Optional[float]
+    c_low: Optional[float]
+    c_close: Optional[float]
+    c_range: Optional[float]
+
+
+def _candle_direction_for_state(ticker: str) -> _CandleDirectionForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): the Candle
+    Direction + Body phase, extracted verbatim. Reads the last COMPLETED 1m bar (not a
+    30s tick delta) to classify bar direction and OHLC/range.
+
+    NOTE for anyone extracting a LATER phase near this one: _fetch_state reassigns
+    c_open/c_high/c_low/c_close/c_range again further down its own body, from the
+    forming/live bar under a different branch -- this function only ever produces the
+    FIRST assignment (from the last completed bar), exactly as the original inline block
+    did. That later reassignment is untouched by this extraction.
+    """
+    candle_dir: Optional[str] = None
+    candle_body: Optional[float] = None
+    c_open = c_high = c_low = c_close = None
+    c_range: Optional[float] = None
+    completed_bars_now = _candles_1m.get_bars(ticker)
+    if completed_bars_now:
+        lb = completed_bars_now[-1]
+        lb_open  = lb.open
+        lb_high  = lb.high
+        lb_low   = lb.low
+        lb_close = lb.close
+        try:
+            if lb_open is not None:
+                c_open = float(lb_open)
+            if lb_high is not None:
+                c_high = float(lb_high)
+            if lb_low is not None:
+                c_low = float(lb_low)
+            if lb_close is not None:
+                c_close = float(lb_close)
+            if c_high is not None and c_low is not None:
+                c_range = round(c_high - c_low, 4)
+        except (TypeError, ValueError):
+            pass
+        if lb_open and lb_close and float(lb_open) > 0:
+            bar_move    = round(float(lb_close) - float(lb_open), 4)
+            candle_dir  = _classify_direction(bar_move, float(lb_open))
+            candle_body = abs(bar_move)
+    return _CandleDirectionForState(
+        candle_dir=candle_dir,
+        candle_body=candle_body,
+        c_open=c_open,
+        c_high=c_high,
+        c_low=c_low,
+        c_close=c_close,
+        c_range=c_range,
+    )
+
+
+def _volatility_signals_for_state(
+    ticker: str,
+    contracts_use: list,
+    spot_f: float,
+    atm_iv: Optional[float],
+    ed_db,
+    tick_ts,
+) -> _VolatilitySignalsForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): the Volatility
+    Signals phase (IV skew, realized vol, ATR, IV rank/percentile), extracted verbatim,
+    including its own ATR-warmup diagnostic logging (same banner scope in the original).
+
+    Bug fixed as part of this extraction, not a separate change: the original inline code
+    pre-initialized every OTHER output (`_iv_skew = {}`, `_realized_vol = None`, `_atr =
+    None`, `_iv_rank = None`, `_iv_percentile = None`, `_bars = None`) but never
+    `_closes = None` -- so on a cold ticker (`_bars` empty, the exact ATR-warmup case this
+    same block already logs specially), `_closes` was never assigned. The immediately
+    following GARCH phase referenced `_closes` as a bare call argument
+    (`_garch_sigma_bars_for_state(_closes, ...)`), evaluated in the CALLER's frame before
+    the callee's own try/except could ever run -- so as of the GARCH extraction (the first
+    slice of this decomposition), that reference raised an uncaught NameError out of
+    _fetch_state on every cold ticker, a live regression this present extraction closes by
+    giving `closes` the same explicit `None` initializer its five siblings already had.
+    Before the GARCH extraction, the equivalent reference lived INSIDE the GARCH phase's
+    own try/except and was silently swallowed to a debug log with the observable outcome
+    already `_garch_sigma_bars is None` -- this fix restores exactly that outcome, just
+    without the (already unhelpfully-worded) debug log line.
+    """
+    iv_skew: dict = {}
+    realized_vol: Optional[float] = None
+    atr: Optional[float] = None
+    iv_rank: Optional[float] = None
+    iv_percentile: Optional[float] = None
+    bars = None
+    closes: Optional[list] = None
+    try:
+        iv_skew = compute_iv_skew(contracts_use, spot_f)
+        # Realized vol + ATR from canonical (1m) candle bars
+        bars = _candles_1m.get_bars(ticker)
+        if bars:
+            closes = [float(b.close) for b in bars if b.close is not None]
+            if closes:
+                realized_vol = compute_realized_vol(closes, bar_minutes=1.0)
+            atr = compute_atr(bars)
+        # IV Rank/Percentile from DB historical iv_level
+        # Burndown (2026-07-05): narrow iv_level projection — the full-width
+        # get_recent_snapshots read (5,000 rows x 200+ cols incl. chain blobs)
+        # was ~all of the vol_flow_signals stage (py-spy 1,258/3,062 samples).
+        # Same row window/order/as-of as before; values identical.
+        # Schwab CSV authority checked: yes
+        # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot SQLite read
+        #   (iv_level history for rank/percentile); no market field derivation,
+        #   emission, or actionability logic changed.
+        # Derived-field disposition: none required.
+        # All consumers checked: yes — _iv_history filter semantics unchanged.
+        # SCHWAB_CSV_CHECKED
+        if atm_iv and ed_db and tick_ts is not None:
+            try:
+                iv_hist_vals = ed_db.get_recent_iv_levels(
+                    ticker,
+                    CANONICAL_TIMEFRAME,
+                    n=IV_HISTORY_LOOKBACK,
+                    as_of_ts_utc=tick_ts,
+                )
+                iv_history = [
+                    float(v) for v in iv_hist_vals
+                    if v is not None and float(v) > 0
+                ]
+                if iv_history:
+                    iv_rank = compute_iv_rank(atm_iv, iv_history)
+                    iv_percentile = compute_iv_percentile(atm_iv, iv_history)
+            except Exception as e:
+                log.debug(
+                    "IV rank/percentile history load failed ticker=%s: %s",
+                    ticker,
+                    e,
+                    exc_info=True,
+                )
+    except Exception as e:
+        log.debug(f"Volatility signals calc: {e}")
+    # RC-236 (same calibration law as the tier-1 lock waits): a bar deficit during ACCUMULATOR
+    # WARMUP is the designed state — the in-memory series re-seeds from zero on every restart
+    # and cannot hold 16 one-minute bars until 16 minutes of wall clock have passed. Logging
+    # that at WARNING makes the quiet gate fail for doing exactly what it must do, and trains
+    # the operator to ignore the channel. Past the warmup horizon the SAME deficit is genuine
+    # starvation and keeps its WARNING; the deficit is always logged, only the severity moves.
+    if atr is None:
+        warm = _atr_warmup_active()
+        msg = (f"ATR NULL for {ticker}: only {len(bars)} bars, need {ATR_MIN_BARS}"
+                if bars else f"ATR NULL for {ticker}: no bars, need {ATR_MIN_BARS}")
+        if warm:
+            log.info("%s (accumulator warmup, %.0fs since boot)", msg, _seconds_since_boot())
+        else:
+            log.warning(msg)
+    return _VolatilitySignalsForState(
+        iv_skew=iv_skew,
+        realized_vol=realized_vol,
+        atr=atr,
+        iv_rank=iv_rank,
+        iv_percentile=iv_percentile,
+        closes=closes,
+    )
+
+
+def _garch_sigma_bars_for_state(
+    closes: list[float] | None,
+    atm_iv: Optional[float],
+    realized_vol: Optional[float],
+    spot_f: float,
+) -> Optional[list]:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, first slice): the GARCH Volatility
+    Forecast phase, extracted verbatim from _fetch_state with an explicit input/output
+    contract instead of reading/writing the enclosing function's locals. Behavior is
+    UNCHANGED, including the pre-existing quirk this phase's own comment already flags:
+    the RC-334 bar-mismatch RuntimeError is deliberately loud in wording ("must fail
+    loudly") but is still caught by this same try/except and only debug-logged, exactly
+    as it was inline -- not "fixed" here, since that would be an unreviewed behavior
+    change smuggled into a refactor, not a decomposition.
+
+    Returns per-bar sigma (monte_carlo.BAR_MINUTES units) or None on insufficient data,
+    a missing GARCH result, or any computation failure.
+    """
+    if not closes or len(closes) <= 20:
+        return None
+    try:
+        _garch_raw = compute_garch_forecast(closes, horizon=GARCH_HORIZON_BARS)
+        if not _garch_raw:
+            return None
+        from volatility_regime import vol_percent_to_decimal
+
+        _iv_dec = vol_percent_to_decimal(atm_iv)
+        _rv_dec = vol_percent_to_decimal(realized_vol)
+        # RC-334: closes are ONE-MINUTE closes — _candles_1m.get_bars above, and the
+        # realized-vol call on this same list passes bar_minutes=1.0 — so the GARCH
+        # sigmas are per-minute and the IV/RV terms must be de-annualized to the same
+        # minute. Monte Carlo then consumes this list DIRECTLY as per-bar sigma at
+        # monte_carlo.BAR_MINUTES, so a third party has to agree too. The interval is
+        # stated from the DATA, not borrowed from MC's constant, and the agreement is
+        # asserted: if MC's bar ever moves, this must fail loudly rather than keep
+        # feeding it minute sigmas under a five-minute name.
+        from monte_carlo import BAR_MINUTES as _MC_BAR_MINUTES
+
+        _GARCH_BAR_MINUTES = 1.0          # _candles_1m is one-minute by construction
+        if float(_MC_BAR_MINUTES) != _GARCH_BAR_MINUTES:
+            raise RuntimeError(
+                f"GARCH/Monte-Carlo bar mismatch: sigmas built on "
+                f"{_GARCH_BAR_MINUTES}-minute closes but monte_carlo.BAR_MINUTES is "
+                f"{_MC_BAR_MINUTES}. MC consumes these as per-bar sigma, so the "
+                f"units must match (RC-334).")
+        return blend_garch_sigma(
+            _garch_raw, _iv_dec, _rv_dec, spot_f,
+            bar_minutes=_GARCH_BAR_MINUTES,
+        )
+    except Exception as e:
+        log.debug(f"GARCH forecast calc: {e}")
+        return None
+
+
+def _pcr_val_for_state(totals: list) -> Optional[float]:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, second slice): the PCR (put/call
+    ratio) phase, extracted verbatim. Reads the open-interest-based PCR off the first
+    per-strike-bucket total row (`build_totals_rows`'s own `pcr_oi` field, computed by
+    math_exposure_core) -- no computation of its own, purely a read-through. Returns
+    None when `totals` is empty or the row has no `pcr_oi` value."""
+    if not totals:
+        return None
+    v = getattr(totals[0], "pcr_oi", None)
+    return float(v) if v is not None else None
+
+
+class _OrderFlowSignalsForState(NamedTuple):
+    vol_oi_ratio: dict
+    flow_imb_norm: Optional[float]
+    flow_imb_source: str
+    smart_money: dict
+    iv_model_spread: dict
+
+
+def _order_flow_signals_for_state(
+    exposures: dict,
+    spot_f: float,
+    contracts_use: list,
+) -> _OrderFlowSignalsForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, third slice): the Order Flow
+    Signals phase (option volume + bid/ask size), extracted verbatim. Four independent
+    computations, each already delegated to its own module and each fail-closed to an
+    empty/None default on its own exception -- one signal's failure must never take
+    another down with it, exactly as the original inline try/except-per-call did."""
+    vol_oi_ratio: dict = {}
+    smart_money: dict = {}
+    iv_model_spread: dict = {}
+    try:
+        vol_oi_ratio = compute_volume_oi_ratio(exposures, spot_f)
+    except Exception as e:
+        log.debug(f"Order flow signals calc: {e}")
+    # RC-345 / F11 residual: ONE computation for the served number AND its label.
+    # The live path used to call compute_option_flow_imbalance independently for
+    # flow_imbalance_label while persisting flow_imbalance_normalized_with_fallback.
+    # MEASURED on current main: empty ATM book + call-heavy volume → number 0.6
+    # (source=volume) beside label "balanced" (book-only zero). Label is now a
+    # function of the same normalized value the wrapper returns.
+    flow_imb_norm: Optional[float] = None
+    flow_imb_source = "none"
+    try:
+        flow_imb_norm, flow_imb_source = flow_imbalance_normalized_with_fallback(exposures, spot_f)
+    except Exception as e:
+        log.warning(f"flow_imbalance (one-producer authority) failed: {e}")
+    try:
+        smart_money = compute_smart_money_signal(exposures, spot_f)
+    except Exception as e:
+        log.warning(f"smart_money_score failed: {e}")
+    try:
+        iv_model_spread = compute_iv_model_spread(contracts_use, spot_f)
+    except Exception as e:
+        log.debug(f"Order flow signals calc: {e}")
+    return _OrderFlowSignalsForState(
+        vol_oi_ratio=vol_oi_ratio,
+        flow_imb_norm=flow_imb_norm,
+        flow_imb_source=flow_imb_source,
+        smart_money=smart_money,
+        iv_model_spread=iv_model_spread,
+    )
+
+
+class _ExposuresForState(NamedTuple):
+    spot_f: float
+    tick_ts: Optional[float]
+    bars_5m_count: int
+    bars_1m_count: int
+    exposures: dict
+    diag: Any
+    cons_strikes: list
+    gamma_strikes: list
+    institutional_pin: Optional[float]
+    rows: list
+    walls: list
+    totals: list
+    client: Any
+
+
+def _exposures_for_state(
+    ticker: str,
+    client,
+    spot,
+    contracts_use: list,
+    parsed_quote_time,
+    parsed_trade_time,
+    total_vol,
+    log_only: bool,
+    chain_priority: bool,
+) -> _ExposuresForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): the Exposures phase
+    (candle tick feed + seed-from-history + GEX/DEX/vanna by strike + summary/wall/totals
+    rows), extracted verbatim from _fetch_state's body. Callers must have already handled
+    the `spot is None` guard -- this function assumes a real, non-None spot.
+
+    `client` is returned rather than only consumed: the original inline code rebinds
+    _fetch_state's own `client` local via `client = get_client()` inside the candle-seed
+    try block (get_client() is a cached singleton in practice, so this is normally a
+    no-op, but the rebinding is preserved exactly so _fetch_state's downstream `client`
+    reads -- e.g. the Price Levels phase -- see the identical value the original inline
+    code would have produced).
+    """
+    spot_f = float(spot)
+
+    # Feed tick into candle accumulators
+    tick_ts = parsed_quote_time or parsed_trade_time
+
+    # Seed candles from Schwab price history when the canonical 1m grid is stale —
+    # first visit OR a gap since the last completed bar (background-logged tickers
+    # are polled ~1×/15min; tick-built bars alone leave the outcome grid ~94% empty).
+    # Canonical (1m) drives snapshot/state; 5m remains derived context.
+    _seed_ref_ts = float(tick_ts) if tick_ts is not None else time.time()
+    if _candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS):
+        def _seed_candles(freq_min: int) -> None:
+            resp = safe_get_price_history(client, ticker, frequency_minutes=freq_min, period_days=1)
+            if resp and resp.status_code == 200:
+                payload = resp.json()
+                if "candles" not in payload:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
+                    )
+                raw_bars = payload["candles"]
+                if freq_min == 5:
+                    _candles_5m.seed(ticker, raw_bars)
+                    log.info("Seeded %s 5m candles: %d bars from price history", ticker, len(raw_bars))
+                else:
+                    _candles_1m.seed(ticker, raw_bars)
+                    log.info("Seeded %s 1m candles: %d bars from price history", ticker, len(raw_bars))
+
+        try:
+            client = get_client()
+            if _log_only_inline_leaf_fetches(log_only):
+                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1: background
+                # log_only seeds run sequentially inline — identical calls,
+                # identical consumption, no shared-pool occupancy.
+                _seed_candles(5)
+                _seed_candles(1)
+            else:
+                # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
+                # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
+                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: dedicated leaf pool.
+                # UI_05 residual: priority recomputes seed on the priority
+                # leaf lane (same selection as the chain/quote leg).
+                _seed_pool = (
+                    _get_priority_leaf_executor()
+                    if chain_priority
+                    else _get_recompute_leaf_executor()
+                )
+                _f5 = _seed_pool.submit(_seed_candles, 5)
+                _f1 = _seed_pool.submit(_seed_candles, 1)
+                _f5.result(timeout=45)
+                _f1.result(timeout=45)
+        except Exception as e:
+            log.debug("Candle seeding failed for %s: %s", ticker, e)
+
+    if tick_ts is not None:
+        _candles_5m.tick(ticker, spot_f, tick_ts, total_volume=total_vol)
+        _candles_1m.tick(ticker, spot_f, tick_ts, total_volume=total_vol)
+
+    bars_5m_count = len(_candles_5m.get_bars(ticker))
+    bars_1m_count = len(_candles_1m.get_bars(ticker))
+    log.info(f"Candles: {ticker} 5m={bars_5m_count} bars, 1m={bars_1m_count} bars")
+
+    exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
+    from math_exposure_core import key_level_strikes_with_gamma
+    cons_strikes = sorted(float(k) for k in exposures.keys())
+    gamma_strikes = key_level_strikes_with_gamma(exposures) or cons_strikes
+    institutional_pin = (
+        pick_net_gex_peak_strike(exposures, gamma_strikes, institutional=True)
+        if gamma_strikes
+        else None
+    )
+
+    rows = build_summary_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
+    walls = build_walls_rows(exposures, spot_f)
+    # RC-420: CONSENSUS gamma/delta wall strikes are terrain SSOT (wide chain).
+    # Selected-expiry analytics must not occupy walls[0] while kl_* paints terrain.
+    from math_levels import consensus_walls_bind_terrain_ssot
+    walls = consensus_walls_bind_terrain_ssot(walls, terrain_cache_get(ticker) or {})
+    totals = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
+
+    return _ExposuresForState(
+        spot_f=spot_f,
+        tick_ts=tick_ts,
+        bars_5m_count=bars_5m_count,
+        bars_1m_count=bars_1m_count,
+        exposures=exposures,
+        diag=diag,
+        cons_strikes=cons_strikes,
+        gamma_strikes=gamma_strikes,
+        institutional_pin=institutional_pin,
+        rows=rows,
+        walls=walls,
+        totals=totals,
+        client=client,
+    )
+
+
+class _GammaFlipAndVoidZonesForState(NamedTuple):
+    gamma_flip: Optional[float]
+    gamma_flip_conf: Any
+    gamma_flip_diag: Any
+    gamma_voids: list
+    atm_iv: Optional[float]
+    iv_direction: str
+    consensus_summary: Any
+
+
+def _gamma_flip_and_void_zones_for_state(
+    ticker: str,
+    contracts_use: list,
+    spot_f: float,
+    exposures: dict,
+    totals: list,
+    rows: list,
+) -> _GammaFlipAndVoidZonesForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, tenth slice): the Gamma Flip +
+    Void Zones phase, extracted verbatim -- also feeds the ATM-IV tracker (module-level
+    `_iv_tracker`, referenced directly as a server.py global exactly as the original
+    inline code did) and derives `consensus_summary` from the Exposures phase's own
+    `rows` output. No try/except in the original inline code -- an exception here still
+    propagates out of _fetch_state unchanged, exactly as before."""
+    gamma_flip, gamma_flip_conf, gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
+    gamma_voids = compute_gamma_void_zones(exposures, spot_f)
+    # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
+    # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).
+
+    # Feed ATM IV into tracker for direction detection (vanna context)
+    t0 = totals[0] if totals else None
+    atm_iv = getattr(t0, "atm_iv", None) if t0 else None
+    _iv_tracker.tick(ticker, atm_iv)
+    iv_direction = _iv_tracker.direction(ticker)
+
+    consensus_summary = rows[0] if rows else None
+
+    return _GammaFlipAndVoidZonesForState(
+        gamma_flip=gamma_flip,
+        gamma_flip_conf=gamma_flip_conf,
+        gamma_flip_diag=gamma_flip_diag,
+        gamma_voids=gamma_voids,
+        atm_iv=atm_iv,
+        iv_direction=iv_direction,
+        consensus_summary=consensus_summary,
+    )
+
+
+class _CharmForState(NamedTuple):
+    charm_net: Optional[float]
+    charm_dir: Optional[str]
+    charm_toward: Optional[float]
+    charm_mag: Optional[float]
+    charm_drivers: list
+
+
+def _charm_for_state(
+    ticker: str,
+    contracts_use: list,
+    spot_f: float,
+    selected_exp: Optional[str],
+) -> _CharmForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, eleventh slice): the Charm phase
+    (dealer net charm + direction), extracted verbatim. Pre-initializes all five outputs
+    to their "unavailable" defaults BEFORE the try block -- an exception anywhere inside
+    (compute_net_charm itself, or the unavailable-log-level branch) is caught and logged,
+    never raised, leaving every field safely at its pre-initialized default, exactly as
+    the original inline try/except did."""
+    charm_net: Optional[float] = None
+    charm_dir: Optional[str] = None
+    charm_toward: Optional[float] = None
+    charm_mag: Optional[float] = None
+    charm_drivers: list = []
+    try:
+        from math_exposure import compute_net_charm
+        # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
+        # outcome, no operator-actionable signal (success and failure logs below carry it).
+        log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
+        # RC-345 / F18: charm measures the net-charm DIRECTION, not a target STRIKE. It must
+        # NOT borrow the net-GEX peak (a gamma quantity) as its drift target — that was a
+        # different-Greek substitution masquerading under the charm name. drift_toward is
+        # WITHHELD (governed absence); the net-GEX peak keeps its own field, net_gex_peak.
+        charm_raw = compute_net_charm(
+            contracts_use, spot_f, selected_exp, drift_toward_strike=None
+        )
+        charm_used = charm_raw.get("contracts_used", 0)
+        charm_err = charm_raw.get("error", "")
+        if charm_used > 0:
+            charm_net = charm_raw["net_charm_daily"]
+            charm_dir = charm_raw["charm_direction"]
+            charm_toward = charm_raw.get("drift_toward")
+            charm_mag = charm_raw.get("charm_magnitude")
+            # RC-85: the read of "top_drivers" is GONE. compute_net_charm has never emitted that
+            # key — it returns call_charm_daily, charm_direction, charm_magnitude, contracts_used,
+            # drift_toward, error, net_charm_daily, put_charm_daily (its duplicate `gamma_pin`
+            # alias was deleted by RC-302) — so
+            # `.get("top_drivers", [])` returned [] on every call since the line was written, and
+            # charm_top_drivers has been permanently empty. The default was the whole problem: []
+            # reads as "computed, no drivers found" when the truth is "never computed", so the
+            # name mismatch had no symptom. charm_drivers stays [] from its initialiser above,
+            # which is the same value WITHOUT the claim that a producer was consulted. Populating
+            # it needs compute_net_charm to actually rank the contributing strikes; that is a
+            # feature, not a rename, and it is not being smuggled in behind a default.
+            # RC-292: the log label must not call charm's (withheld) drift target a pin —
+            # a pin claim ships only as pin_candidate after qualification.
+            log.info(f"Charm: {ticker} ✅ net={charm_net:.0f} dir={charm_dir} mag={charm_mag} drift_toward={charm_toward} "
+                     f"({charm_used} contracts)")
+        else:
+            from math_exposure_core import charm_compute_unavailable_log_level
+
+            lvl = charm_compute_unavailable_log_level(charm_err)
+            if lvl == logging.DEBUG:
+                log_fn = log.debug
+            elif lvl == logging.INFO:
+                log_fn = log.info
+            else:
+                log_fn = log.warning
+            log_fn(
+                "Charm: %s ❌ 0 contracts matched. error='%s' input_contracts=%s exp=%s",
+                ticker,
+                charm_err,
+                len(contracts_use),
+                selected_exp,
+            )
+    except Exception as _ce:
+        import traceback
+        log.warning(f"Charm: {ticker} 💥 EXCEPTION: {_ce}\n{traceback.format_exc()}")
+
+    return _CharmForState(
+        charm_net=charm_net,
+        charm_dir=charm_dir,
+        charm_toward=charm_toward,
+        charm_mag=charm_mag,
+        charm_drivers=charm_drivers,
+    )
+
+
+def _zone_tracking_for_state(ticker: str, consensus_summary) -> dict:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, twelfth slice): the Zone
+    Tracking phase, extracted verbatim. Reads/writes the module-level `_zone_tracker`
+    singleton directly (referenced as a server.py global exactly as _fetch_state itself
+    does, not passed as a parameter) and returns the updated per-ticker zone-tracker dict.
+
+    zone_since_bars_1m = execution-layer recency (canonical 1m bars) — primary for
+    models/features. zone_since_bars_5m = structure-layer recency (derived 5m bars) —
+    for structure context only. Tracked independently so there is no mixed-clock
+    dependency."""
+    bias_sig = (consensus_summary.bias_signal if consensus_summary else "") or ""
+    nd_raw = (consensus_summary.net_delta if consensus_summary else None)
+    cur_zone = derive_zone(bias_sig, nd_raw)
+
+    zone_bars_1m = _candles_1m.get_bars(ticker)
+    zone_bars_5m = _candles_5m.get_bars(ticker)
+    latest_bar_ts_1m = zone_bars_1m[-1].ts if zone_bars_1m else 0.0
+    latest_bar_ts_5m = zone_bars_5m[-1].ts if zone_bars_5m else 0.0
+
+    zt = _zone_tracker.get(ticker, {
+        "zone": cur_zone, "prev_zone": cur_zone,
+        "since_bars_1m": 0, "since_bars_5m": 0,
+        "last_bar_ts_1m": 0.0, "last_bar_ts_5m": 0.0,
+    })
+    if cur_zone != zt["zone"]:
+        zt["prev_zone"]      = zt["zone"]
+        zt["zone"]           = cur_zone
+        zt["since_bars_1m"]  = 0
+        zt["since_bars_5m"]  = 0
+        zt["last_bar_ts_1m"] = latest_bar_ts_1m
+        zt["last_bar_ts_5m"] = latest_bar_ts_5m
+    else:
+        if latest_bar_ts_1m > zt.get("last_bar_ts_1m", 0.0):
+            zt["since_bars_1m"]  += 1
+            zt["last_bar_ts_1m"]  = latest_bar_ts_1m
+        if latest_bar_ts_5m > zt.get("last_bar_ts_5m", 0.0):
+            zt["since_bars_5m"]  += 1
+            zt["last_bar_ts_5m"]  = latest_bar_ts_5m
+    _zone_tracker[ticker] = zt
+    return zt
+
+
+class _DbCountsAndCrossesForState(NamedTuple):
+    db_counts: dict
+    ceil_tests: int
+    floor_tests: int
+    recent_crosses: list
+
+
+def _db_counts_and_crosses_for_state(
+    ticker: str,
+    ed_db,
+    walls: list,
+) -> _DbCountsAndCrossesForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): the DB Counts
+    + Crosses phase, extracted verbatim. `ed_db` is passed as a parameter (it is
+    _fetch_state's own local `_ed_db = get_db() if _HAS_SIGNALS else None`, not a
+    module-level global). A DB query failure is caught and logged; every output stays at
+    its pre-initialized "no data" default, exactly as the original inline try/except did."""
+    if _diag_on():
+        _diag_step("pre_db_counts", ticker)
+    db_counts = {"total": 0, "filled": 0}
+    ceil_tests = floor_tests = 0
+    recent_crosses = []
+
+    if ed_db:
+        try:
+            db_counts = ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)
+            cgw = _f(getattr(walls[0], "call_gamma_wall", None)) if walls else None
+            pgw = _f(getattr(walls[0], "put_gamma_wall",  None)) if walls else None
+            if cgw:
+                ceil_result = ed_db.count_level_tests(ticker, "Call Gamma Wall", cgw)
+                ct = ceil_result.get("total")
+                ceil_tests = int(ct) if ct is not None else 0
+            if pgw:
+                floor_result = ed_db.count_level_tests(ticker, "Put Gamma Wall", pgw)
+                ft = floor_result.get("total")
+                floor_tests = int(ft) if ft is not None else 0
+            rc = ed_db.get_recent_crosses(ticker, n=RECENT_CROSSES_DISPLAY_LIMIT)
+            recent_cross_eval_wall_ts = time.time()
+            for c in rc:
+                bars_ago = int(
+                    (recent_cross_eval_wall_ts - c.get("ts_utc", 0)) / 60
+                )  # 1m bar cadence (canonical)
+                recent_crosses.append({
+                    "level_name": c.get("level_name"),
+                    "direction":  c.get("direction"),
+                    "bars_ago":   bars_ago,
+                })
+        except Exception as e:
+            log.warning(f"DB query failed: {e}")
+    if _diag_on():
+        _diag_done("db_counts", ticker)
+
+    return _DbCountsAndCrossesForState(
+        db_counts=db_counts,
+        ceil_tests=ceil_tests,
+        floor_tests=floor_tests,
+        recent_crosses=recent_crosses,
+    )
+
+
+def _order_flow_data_for_state(
+    ticker: str,
+    q_json: dict,
+    c_json: dict,
+    now_et: datetime,
+) -> dict:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourteenth slice): the Order Flow
+    Engine input assembly phase, extracted verbatim -- builds the full Claude proxy field
+    set (quote/extended/regular/fundamental/reference + chain expDateMaps + underlying +
+    1m candles + optional live streaming content) and updates the REST Cum Delta
+    accumulator (module-level `_rest_cum_delta`/`_rest_cum_delta_session`, referenced
+    directly via _update_rest_cum_delta exactly as the original inline code did).
+
+    Any exception building the field set is caught and logged, leaving order_flow_data at
+    whatever partial state it reached (never raises); a missing
+    app.options.order_flow.state module (ImportError) silently skips the live-content
+    merge, exactly as the original inline nested try/except did."""
+    if _diag_on():
+        _diag_step("pre_order_flow_data", ticker)
+    order_flow_data: dict = {}
+    try:
+        q_node = q_json.get(ticker.upper()) or q_json.get(ticker) or q_json
+        if isinstance(q_node, dict):
+            order_flow_data["quote"] = q_node.get("quote") or {}
+            order_flow_data["extended"] = q_node.get("extended") or {}
+            order_flow_data["regular"] = q_node.get("regular") or {}
+            order_flow_data["fundamental"] = q_node.get("fundamental") or {}
+            order_flow_data["reference"] = q_node.get("reference") or {}
+        else:
+            order_flow_data["quote"] = {}
+            order_flow_data["extended"] = {}
+            order_flow_data["regular"] = {}
+            order_flow_data["fundamental"] = {}
+            order_flow_data["reference"] = {}
+        # Reuse parsed chain JSON — second c_resp.json() reparsed the full payload every tick.
+        order_flow_data["callExpDateMap"] = c_json.get("callExpDateMap") or {}
+        order_flow_data["putExpDateMap"] = c_json.get("putExpDateMap") or {}
+        order_flow_data["underlying"] = c_json.get("underlying") or {}
+        # Order flow candles: 1m only (execution-aligned). No 5m fallback, no 5m aggregation.
+        bars_1m = _candles_1m.get_bars(ticker)
+        order_flow_data["candles"] = [
+            {
+                "open": b.open, "high": b.high, "low": b.low, "close": b.close,
+                "volume": getattr(b, "volume", 0.0),
+                "datetime": int(getattr(b, "ts", 0) * 1000),
+            }
+            for b in (bars_1m or [])
+        ]
+        # Merge live streaming data (book + tape) if available
+        try:
+            if _diag_on():
+                _diag_step("pre_get_content_for_symbol", ticker)
+            from app.options.order_flow.state import get_content_for_symbol
+            live_content = get_content_for_symbol(ticker)
+            if _diag_on():
+                _diag_done("get_content_for_symbol", ticker)
+            if live_content:
+                order_flow_data["content"] = live_content
+        except ImportError:
+            pass
+    except Exception as _ofd_e:
+        log.debug(f"Order flow data build: {_ofd_e}")
+
+    # REST fallback: Cum Delta accumulator (polling-based) when streamer has no tape.
+    # Update each poll; inject into ms after build_market_state if engine returns None.
+    quote_for_cum = dict(order_flow_data.get("extended") or {})
+    quote_for_cum.update(order_flow_data.get("quote") or {})
+    _update_rest_cum_delta(ticker, quote_for_cum, now_et)
+
+    return order_flow_data
+
+
+def _candle_volume_for_state(ticker: str, client) -> Optional[float]:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): the Candle
+    Volume Resolution phase, extracted verbatim.
+
+    A pre-existing quirk preserved, not fixed: the original inline banner comment says
+    "priority: 1) Price history primary, 2) accumulator secondary", but the actual code
+    order tries the accumulator FIRST (this function's first block), price history SECOND
+    (only when the accumulator had no usable volume), then re-checks the accumulator a
+    THIRD time with the IDENTICAL condition as the first check -- since `completed_for_vol`
+    never changes between the first and third check, that third block is unreachable dead
+    code whenever the first block already failed. Preserved verbatim for behavior fidelity."""
+    completed_for_vol = _candles_1m.get_bars(ticker)
+
+    c_vol = None
+    if completed_for_vol:
+        raw_vol = getattr(completed_for_vol[-1], "volume", None)
+        if raw_vol is not None:
+            try:
+                v = float(raw_vol)
+                if v > 0:
+                    c_vol = v
+            except (TypeError, ValueError):
+                pass
+    # Price history fetch only when accumulator has no usable volume (avoid duplicate Schwab RTT).
+    if c_vol is None and ticker:
+        try:
+            resp_ph = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
+            if (not resp_ph or resp_ph.status_code != 200 or not resp_ph.json().get("candles")) and ticker.startswith("$"):
+                resp_ph = safe_get_price_history(client, ticker[1:], frequency_minutes=1, period_days=1)
+            if resp_ph and resp_ph.status_code == 200:
+                payload_ph = resp_ph.json()
+                if "candles" not in payload_ph:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp_ph.status_code})"
+                    )
+                ph_candles = payload_ph["candles"]
+                if ph_candles and completed_for_vol:
+                    last_ts = getattr(completed_for_vol[-1], "ts", None)
+
+                    def _ph_candle_ts_sec(bar: dict) -> Optional[float]:
+                        dt = bar.get("datetime")
+                        if dt is None:
+                            return None
+                        try:
+                            dt_f = float(dt)
+                        except (TypeError, ValueError):
+                            return None
+                        if dt_f <= 0:
+                            return None
+                        return dt_f / 1000.0 if dt_f > 1e10 else dt_f
+
+                    timed = [b for b in ph_candles if _ph_candle_ts_sec(b) is not None]
+                    if last_ts is not None and timed:
+                        best = min(timed, key=lambda b: abs(_ph_candle_ts_sec(b) - last_ts))
+                    elif timed:
+                        best = timed[-1]
+                    else:
+                        best = ph_candles[-1]
+                    ph_vol = best.get("volume")
+                    if ph_vol is not None:
+                        try:
+                            v = float(ph_vol)
+                            if v > 0:
+                                c_vol = v
+                        except (TypeError, ValueError):
+                            pass
+                if c_vol is None and ph_candles:
+                    v = ph_candles[-1].get("volume")
+                    if v is not None:
+                        try:
+                            vf = float(v)
+                            if vf > 0:
+                                c_vol = vf
+                        except (TypeError, ValueError):
+                            pass
+        except Exception as _ph_e:
+            log.debug(f"Price history volume for {ticker}: {_ph_e}")
+    # 2. Accumulator secondary — WebSocket TOTAL_VOLUME or REST quote delta
+    if c_vol is None and completed_for_vol:
+        raw_vol = getattr(completed_for_vol[-1], "volume", None)
+        if raw_vol is not None:
+            try:
+                v = float(raw_vol)
+                if v > 0:
+                    c_vol = v
+            except (TypeError, ValueError):
+                pass
+    return c_vol
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -7135,173 +8651,55 @@ def _fetch_state(
             },
             "server_ts": time.time(),
         })
-    spot_f    = float(spot)
-
-    # Feed tick into candle accumulators
-    _tick_ts = parsed_quote_time or parsed_trade_time
-
-    # Seed candles from Schwab price history when the canonical 1m grid is stale —
-    # first visit OR a gap since the last completed bar (background-logged tickers
-    # are polled ~1×/15min; tick-built bars alone leave the outcome grid ~94% empty).
-    # Canonical (1m) drives snapshot/state; 5m remains derived context.
-    _seed_ref_ts = float(_tick_ts) if _tick_ts is not None else time.time()
-    if _candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS):
-        def _seed_candles(freq_min: int) -> None:
-            resp = safe_get_price_history(client, ticker, frequency_minutes=freq_min, period_days=1)
-            if resp and resp.status_code == 200:
-                payload = resp.json()
-                if "candles" not in payload:
-                    raise ValueError(
-                        f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
-                    )
-                raw_bars = payload["candles"]
-                if freq_min == 5:
-                    _candles_5m.seed(ticker, raw_bars)
-                    log.info("Seeded %s 5m candles: %d bars from price history", ticker, len(raw_bars))
-                else:
-                    _candles_1m.seed(ticker, raw_bars)
-                    log.info("Seeded %s 1m candles: %d bars from price history", ticker, len(raw_bars))
-
-        try:
-            client = get_client()
-            if _log_only_inline_leaf_fetches(log_only):
-                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1: background
-                # log_only seeds run sequentially inline — identical calls,
-                # identical consumption, no shared-pool occupancy.
-                _seed_candles(5)
-                _seed_candles(1)
-            else:
-                # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
-                # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
-                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: dedicated leaf pool.
-                # UI_05 residual: priority recomputes seed on the priority
-                # leaf lane (same selection as the chain/quote leg).
-                _seed_pool = (
-                    _get_priority_leaf_executor()
-                    if _chain_priority
-                    else _get_recompute_leaf_executor()
-                )
-                _f5 = _seed_pool.submit(_seed_candles, 5)
-                _f1 = _seed_pool.submit(_seed_candles, 1)
-                _f5.result(timeout=45)
-                _f1.result(timeout=45)
-        except Exception as e:
-            log.debug("Candle seeding failed for %s: %s", ticker, e)
-
-    if _tick_ts is not None:
-        _candles_5m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
-        _candles_1m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
-
-    _bars_5m_count = len(_candles_5m.get_bars(ticker))
-    _bars_1m_count = len(_candles_1m.get_bars(ticker))
-    log.info(f"Candles: {ticker} 5m={_bars_5m_count} bars, 1m={_bars_1m_count} bars")
-
-    exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
-    from math_exposure_core import key_level_strikes_with_gamma
-    _cons_strikes = sorted(float(k) for k in exposures.keys())
-    _gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes
-    _institutional_pin = (
-        pick_net_gex_peak_strike(exposures, _gamma_strikes, institutional=True)
-        if _gamma_strikes
-        else None
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): extracted to
+    # _exposures_for_state (defined above). `client` is reassigned from the return value
+    # because the candle-seed path may rebind it via get_client() -- preserved exactly as
+    # the original inline rebinding did (get_client() is a cached singleton in practice).
+    _exp = _exposures_for_state(
+        ticker, client, spot, contracts_use, parsed_quote_time, parsed_trade_time,
+        _total_vol, log_only, _chain_priority,
     )
+    spot_f = _exp.spot_f
+    _tick_ts = _exp.tick_ts
+    _bars_5m_count = _exp.bars_5m_count
+    _bars_1m_count = _exp.bars_1m_count
+    exposures = _exp.exposures
+    diag = _exp.diag
+    _cons_strikes = _exp.cons_strikes
+    _gamma_strikes = _exp.gamma_strikes
+    _institutional_pin = _exp.institutional_pin
+    rows = _exp.rows
+    walls = _exp.walls
+    totals = _exp.totals
+    client = _exp.client
 
-    rows      = build_summary_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
-    walls     = build_walls_rows(exposures, spot_f)
-    # RC-420: CONSENSUS gamma/delta wall strikes are terrain SSOT (wide chain).
-    # Selected-expiry analytics must not occupy walls[0] while kl_* paints terrain.
-    from math_levels import consensus_walls_bind_terrain_ssot
-    walls = consensus_walls_bind_terrain_ssot(walls, terrain_cache_get(ticker) or {})
-    totals    = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
-
-    # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
-    # FIND-GAMMA-FLIP-METHOD-V1: canonical profile (gamma recomputed at hypothetical spot).
-    # The old cumulative-sum method was DISPROVED 2026-07-19 on a real SPY reference chain
-    # (corr 0.086, never crossed zero). The confidence flag is mandatory: a narrow chain
-    # misplaces the flip by ~3.6%, so it must never be presented as trustworthy.
-    _gamma_flip, _gamma_flip_conf, _gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
-    _gamma_voids = compute_gamma_void_zones(exposures, spot_f)
-    # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
-    # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).
-
-    # Feed ATM IV into tracker for direction detection (vanna context)
-    _t0 = totals[0] if totals else None
-    _atm_iv = getattr(_t0, "atm_iv", None) if _t0 else None
-    _iv_tracker.tick(ticker, _atm_iv)
-    _iv_direction = _iv_tracker.direction(ticker)
-
-    consensus_summary = rows[0] if rows else None
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, tenth slice): extracted to
+    # _gamma_flip_and_void_zones_for_state (defined above).
+    _gfvz = _gamma_flip_and_void_zones_for_state(ticker, contracts_use, spot_f, exposures, totals, rows)
+    _gamma_flip = _gfvz.gamma_flip
+    _gamma_flip_conf = _gfvz.gamma_flip_conf
+    _gamma_flip_diag = _gfvz.gamma_flip_diag
+    _gamma_voids = _gfvz.gamma_voids
+    _atm_iv = _gfvz.atm_iv
+    _iv_direction = _gfvz.iv_direction
+    consensus_summary = _gfvz.consensus_summary
     _stage_marks.append(("exposures_key_levels", time.perf_counter()))
 
-    # ── Charm — computed HERE, before build_market_state, so signals engine
-    # receives real values. charm_direction uses raw strings "buying"/"selling"/"neutral"
-    # which is what signals.py expects for Greek bias scoring.
-    _charm_net    = None
-    _charm_dir    = None
-    _charm_toward = None
-    _charm_mag    = None
-    _charm_drivers = []
-    try:
-        from math_exposure import compute_net_charm
-        # Per-tick diagnostic — demoted from INFO: fires every refresh regardless of
-        # outcome, no operator-actionable signal (success and failure logs below carry it).
-        log.debug(f"Charm: {ticker} calling compute_net_charm with {len(contracts_use)} contracts, exp={selected_exp}")
-        # RC-345 / F18: charm measures the net-charm DIRECTION, not a target STRIKE. It must
-        # NOT borrow the net-GEX peak (a gamma quantity) as its drift target — that was a
-        # different-Greek substitution masquerading under the charm name. drift_toward is
-        # WITHHELD (governed absence); the net-GEX peak keeps its own field, net_gex_peak.
-        _charm_raw = compute_net_charm(
-            contracts_use, spot_f, selected_exp, drift_toward_strike=None
-        )
-        _charm_used = _charm_raw.get("contracts_used", 0)
-        _charm_err  = _charm_raw.get("error", "")
-        if _charm_used > 0:
-            _charm_net     = _charm_raw["net_charm_daily"]
-            _charm_dir     = _charm_raw["charm_direction"]
-            _charm_toward  = _charm_raw.get("drift_toward")
-            _charm_mag     = _charm_raw.get("charm_magnitude")
-            # RC-85: the read of "top_drivers" is GONE. compute_net_charm has never emitted that
-            # key — it returns call_charm_daily, charm_direction, charm_magnitude, contracts_used,
-            # drift_toward, error, net_charm_daily, put_charm_daily (its duplicate `gamma_pin`
-            # alias was deleted by RC-302) — so
-            # `.get("top_drivers", [])` returned [] on every call since the line was written, and
-            # charm_top_drivers has been permanently empty. The default was the whole problem: []
-            # reads as "computed, no drivers found" when the truth is "never computed", so the
-            # name mismatch had no symptom. _charm_drivers stays [] from its initialiser above,
-            # which is the same value WITHOUT the claim that a producer was consulted. Populating
-            # it needs compute_net_charm to actually rank the contributing strikes; that is a
-            # feature, not a rename, and it is not being smuggled in behind a default.
-            # RC-292: the log label must not call charm's (withheld) drift target a pin —
-            # a pin claim ships only as pin_candidate after qualification.
-            log.info(f"Charm: {ticker} ✅ net={_charm_net:.0f} dir={_charm_dir} mag={_charm_mag} drift_toward={_charm_toward} "
-                     f"({_charm_used} contracts)")
-        else:
-            from math_exposure_core import charm_compute_unavailable_log_level
-
-            _lvl = charm_compute_unavailable_log_level(_charm_err)
-            if _lvl == logging.DEBUG:
-                _log_fn = log.debug
-            elif _lvl == logging.INFO:
-                _log_fn = log.info
-            else:
-                _log_fn = log.warning
-            _log_fn(
-                "Charm: %s ❌ 0 contracts matched. error='%s' input_contracts=%s exp=%s",
-                ticker,
-                _charm_err,
-                len(contracts_use),
-                selected_exp,
-            )
-    except Exception as _ce:
-        import traceback
-        log.warning(f"Charm: {ticker} 💥 EXCEPTION: {_ce}\n{traceback.format_exc()}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, eleventh slice): extracted to
+    # _charm_for_state (defined above). Computed before build_market_state so signals
+    # engine receives real values; charm_direction uses raw strings
+    # "buying"/"selling"/"neutral" which is what signals.py expects for Greek bias scoring.
+    _charm = _charm_for_state(ticker, contracts_use, spot_f, selected_exp)
+    _charm_net = _charm.charm_net
+    _charm_dir = _charm.charm_dir
+    _charm_toward = _charm.charm_toward
+    _charm_mag = _charm.charm_mag
+    _charm_drivers = _charm.charm_drivers
 
     # ── PCR ──────────────────────────────────────────────────────────────────
-    pcr_val = None
-    if totals:
-        v = getattr(totals[0], "pcr_oi", None)
-        if v is not None:
-            pcr_val = float(v)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, second slice): extracted to
+    # _pcr_val_for_state (defined just above this function).
+    pcr_val = _pcr_val_for_state(totals)
 
     _stage_marks.append(("charm_pcr", time.perf_counter()))
 
@@ -7341,471 +8739,93 @@ def _fetch_state(
     prev_spot = _state_cache.get(_cache_key, {}).get("spot_f")
 
     # ── Candle direction + body from last COMPLETED 1m bar (canonical) ─────────
-    # Use real OHLC (close - open) of the last completed bar, not a 30s tick
-    # delta. Accumulator tick() was already called above.
-    _candle_dir  = None
-    _candle_body = None
-    _c_open = _c_high = _c_low = _c_close = None
-    _c_range = None
-    _completed_bars_now = _candles_1m.get_bars(ticker)
-    if _completed_bars_now:
-        _lb = _completed_bars_now[-1]
-        _lb_open  = _lb.open
-        _lb_high  = _lb.high
-        _lb_low   = _lb.low
-        _lb_close = _lb.close
-        try:
-            if _lb_open is not None:
-                _c_open = float(_lb_open)
-            if _lb_high is not None:
-                _c_high = float(_lb_high)
-            if _lb_low is not None:
-                _c_low = float(_lb_low)
-            if _lb_close is not None:
-                _c_close = float(_lb_close)
-            if _c_high is not None and _c_low is not None:
-                _c_range = round(_c_high - _c_low, 4)
-        except (TypeError, ValueError):
-            pass
-        if _lb_open and _lb_close and float(_lb_open) > 0:
-            _bar_move    = round(float(_lb_close) - float(_lb_open), 4)
-            _candle_dir  = _classify_direction(_bar_move, float(_lb_open))
-            _candle_body = abs(_bar_move)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): extracted to
+    # _candle_direction_for_state (defined above _volatility_signals_for_state). NOTE:
+    # _c_open/_c_high/_c_low/_c_close/_c_range are REASSIGNED again later in this function
+    # from the forming/live bar under a different branch -- untouched by this extraction.
+    _cd = _candle_direction_for_state(ticker)
+    _candle_dir = _cd.candle_dir
+    _candle_body = _cd.candle_body
+    _c_open = _cd.c_open
+    _c_high = _cd.c_high
+    _c_low = _cd.c_low
+    _c_close = _cd.c_close
+    _c_range = _cd.c_range
     # ── Global market context (PCR update if we have fresh data) ─────────────
     if pcr_val is not None:
         mkt_ctx.pcr = pcr_val
 
     # ── Price levels ──────────────────────────────────────────────────────────
-    # Carry the SAME canonical snapshot /api/levels serializes. Reuse the carried
-    # PriceLevels object only while its level_generation matches that snapshot.
-    # A wall-clock TTL (PRICE_LEVELS_CACHE_SEC) is not a generation identity:
-    # it let /api/state keep generation N (or an empty PriceLevels() after a
-    # swallowed fetch failure) while /api/levels had already materialized N+1.
-    from liquidity_value_engine import LevelCarrierConflict as _LevelCarrierConflict
-    _today_date_str = now_et.strftime("%Y-%m-%d")
-    _pl_snap = canonical_price_level_snapshot(ticker)
-    _pl_bucket = _state_cache.get(_cache_key, {})
-    _pl_cache_entry = _pl_bucket.get("price_levels")
-    _pl_cache_date  = _pl_bucket.get("pl_date", "")
-    _pl_cache_gen   = _pl_bucket.get("pl_generation")
-
-    if carried_price_levels_match_snapshot(
-        _pl_cache_entry, _pl_cache_date, _pl_cache_gen, _today_date_str, _pl_snap,
-    ):
-        price_levels = _pl_cache_entry
-    else:
-        try:
-            price_levels = fetch_price_levels(
-                client, symbol=ticker, quote_raw=q_json,
-                level_snapshot=_pl_snap,
-            )
-            if price_levels.error:
-                log.warning(f"PriceLevels: {ticker} partial error: {price_levels.error}")
-            from liquidity_value_engine import (
-                SESSION_VWAP_RTH_PRODUCER_FAILURE,
-                classify_session_vwap_presence,
-            )
-            _vwap_status = classify_session_vwap_presence(
-                vwap=price_levels.vwap,
-                session_date=now_et.date(),
-                now_et_dt=now_et,
-                session_rth_positive_volume_bars=int(
-                    getattr(price_levels, "session_rth_positive_volume_bars", 0) or 0
-                ),
-            )
-            if _vwap_status == SESSION_VWAP_RTH_PRODUCER_FAILURE:
-                log.warning(
-                    "PriceLevels: %s RTH producer failure — %s same-session RTH volume bars "
-                    "but canonical session VWAP is None (generation=%s)",
-                    ticker,
-                    getattr(price_levels, "session_rth_positive_volume_bars", 0),
-                    getattr(price_levels, "level_generation", None),
-                )
-            elif price_levels.vwap is not None:
-                log.debug(f"PriceLevels: {ticker} VWAP={price_levels.vwap:.2f} bars={price_levels.bars_today}")
-            else:
-                log.debug(
-                    "PriceLevels: %s session VWAP expected-absent (bars_today=%s rth_vol_bars=%s)",
-                    ticker, price_levels.bars_today,
-                    getattr(price_levels, "session_rth_positive_volume_bars", 0),
-                )
-        except _LevelCarrierConflict:
-            raise
-        except Exception as e:
-            log.warning(f"PriceLevels: {ticker} FAILED: {e}")
-            price_levels = PriceLevels()
-        else:
-            _sc = _state_cache.get(_cache_key, {})
-            _sc["price_levels"] = price_levels
-            _sc["pl_date"]      = _today_date_str
-            _sc["pl_generation"] = getattr(_pl_snap, "generation", None)
-            _sc["pl_mono"]      = time.monotonic()
-            _state_cache[_cache_key] = _sc
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixth slice): extracted to
+    # _price_levels_for_state (defined above). Still reads/writes the shared
+    # _state_cache directly (module-level dict), exactly as the original inline block did.
+    price_levels = _price_levels_for_state(ticker, client, q_json, now_et, _cache_key)
     _stage_marks.append(("progressive_publish_price_levels", time.perf_counter()))
 
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
-    _em_straddle = {"straddle": None, "em_pts": None, "upper": None, "lower": None}
-    _em_iv = {"em_pts": None, "upper": None, "lower": None}
-    _em_progress = {
-        "progress_pct": None,
-        "breached": None,
-        "direction": None,
-        "severity": None,
-    }
-    _em_up = None
-    _em_lo = None
-    _em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
-    from time_et import hours_until_session_close_et as _hours_until_close
-    _hours_rem = _hours_until_close(now_et) or 0.0
-    _kl_em_anchor = "unavailable"
-    _mc_iv_level = None
-    _mc_iv_source = "unavailable"
-
-    try:
-        _today_open = getattr(price_levels, "today_open", None)
-
-        # ATM straddle: find ATM call + put mark from chain
-        # single source: reject NaN via the finite reader (raw float() admitted NaN into
-        # the strike set, corrupting sorting and the ATM-strike nearest-neighbour pick).
-        from numeric_contract import float_finite_or_none as _fin
-        _all_strikes = sorted({
-            sp
-            for ct in contracts_use
-            if (sp := _fin(ct.get("strikePrice"))) is not None
-        })
-        if _all_strikes and spot_f > 0:
-            _atm_k = min(_all_strikes, key=lambda k: abs(k - spot_f))
-            _atm_calls = [
-                ct
-                for ct in contracts_use
-                if str(ct.get("putCall", "")).upper() == "CALL"
-                and (sp := _f(ct.get("strikePrice"))) is not None
-                and abs(sp - _atm_k) < 0.01
-            ]
-            _atm_puts = [
-                ct
-                for ct in contracts_use
-                if str(ct.get("putCall", "")).upper() == "PUT"
-                and (sp := _f(ct.get("strikePrice"))) is not None
-                and abs(sp - _atm_k) < 0.01
-            ]
-            _c_mark = _f(_atm_calls[0].get("mark")) if _atm_calls else None
-            _p_mark = _f(_atm_puts[0].get("mark")) if _atm_puts else None
-
-            if _c_mark and _p_mark and _today_open:
-                _em_straddle = compute_expected_move_straddle(_c_mark, _p_mark, _today_open)
-
-        # IV-based EM (shrinks through the day)
-        if _atm_iv and _atm_iv > 0 and spot_f > 0 and _hours_rem > 0:
-            _em_iv = compute_expected_move_iv(spot_f, _atm_iv, _hours_rem)
-
-        # EM progress (use straddle EM if available, fall back to IV) — no synthetic 6.5h session fill.
-        # RC-345 / F06: the operator-facing EM band is ONE of two economically distinct
-        # methodologies — STRADDLE_IMPLIED (market ATM straddle premium) or IV_MODEL
-        # (spot x IV x sqrt(T)). Record WHICH produced the band so no consumer treats the
-        # generic _em_up/_em_lo as method-agnostic or silently mistakes one for the other.
-        if _em_straddle.get("upper") is not None and _em_straddle.get("lower") is not None:
-            _em_up, _em_lo, _em_band_source = (
-                _em_straddle.get("upper"), _em_straddle.get("lower"), "STRADDLE_IMPLIED")
-        elif _em_iv.get("upper") is not None and _em_iv.get("lower") is not None:
-            _em_up, _em_lo, _em_band_source = (
-                _em_iv.get("upper"), _em_iv.get("lower"), "IV_MODEL")
-        else:
-            _em_up, _em_lo, _em_band_source = None, None, "unavailable"
-        if _em_up and _em_lo and _today_open:
-            _em_progress = compute_em_progress(spot_f, _today_open, _em_up, _em_lo)
-
-        from math_volatility import resolve_kl_em_anchor, resolve_mc_iv_for_kl_em_anchor
-
-        _kl_em_anchor = resolve_kl_em_anchor(_em_straddle, _em_iv)
-        _mc_iv_level, _mc_iv_source = resolve_mc_iv_for_kl_em_anchor(
-            kl_em_anchor=_kl_em_anchor,
-            atm_iv=_atm_iv,
-            spot=spot_f,
-            em_straddle=_em_straddle,
-            hours_remaining=_hours_rem,
-        )
-
-    except Exception as e:
-        log.warning(f"Expected move calc failed: {e}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventh slice): extracted to
+    # _expected_move_for_state (defined above _price_levels_for_state).
+    _em = _expected_move_for_state(now_et, price_levels, contracts_use, spot_f, _atm_iv)
+    _em_straddle = _em.em_straddle
+    _em_iv = _em.em_iv
+    _em_progress = _em.em_progress
+    _em_up = _em.em_up
+    _em_lo = _em.em_lo
+    _em_band_source = _em.em_band_source
+    _kl_em_anchor = _em.kl_em_anchor
+    _mc_iv_level = _em.mc_iv_level
+    _mc_iv_source = _em.mc_iv_source
 
     # ── Volatility signals — IV Skew, Realized Vol, ATR, IV Rank/Percentile ──
-    _iv_skew = {}
-    _realized_vol = None
-    _atr = None
-    _iv_rank = None
-    _iv_percentile = None
-    _bars = None
-    try:
-        _iv_skew = compute_iv_skew(contracts_use, spot_f)
-        # Realized vol + ATR from canonical (1m) candle bars
-        _bars = _candles_1m.get_bars(ticker)
-        if _bars:
-            _closes = [float(b.close) for b in _bars if b.close is not None]
-            if _closes:
-                _realized_vol = compute_realized_vol(_closes, bar_minutes=1.0)
-            _atr = compute_atr(_bars)
-        # IV Rank/Percentile from DB historical iv_level
-        # Burndown (2026-07-05): narrow iv_level projection — the full-width
-        # get_recent_snapshots read (5,000 rows x 200+ cols incl. chain blobs)
-        # was ~all of the vol_flow_signals stage (py-spy 1,258/3,062 samples).
-        # Same row window/order/as-of as before; values identical.
-        # Schwab CSV authority checked: yes
-        # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot SQLite read
-        #   (iv_level history for rank/percentile); no market field derivation,
-        #   emission, or actionability logic changed.
-        # Derived-field disposition: none required.
-        # All consumers checked: yes — _iv_history filter semantics unchanged.
-        # SCHWAB_CSV_CHECKED
-        if _atm_iv and _ed_db and _tick_ts is not None:
-            try:
-                _iv_hist_vals = _ed_db.get_recent_iv_levels(
-                    ticker,
-                    CANONICAL_TIMEFRAME,
-                    n=IV_HISTORY_LOOKBACK,
-                    as_of_ts_utc=_tick_ts,
-                )
-                _iv_history = [
-                    float(v) for v in _iv_hist_vals
-                    if v is not None and float(v) > 0
-                ]
-                if _iv_history:
-                    _iv_rank = compute_iv_rank(_atm_iv, _iv_history)
-                    _iv_percentile = compute_iv_percentile(_atm_iv, _iv_history)
-            except Exception as e:
-                log.debug(
-                    "IV rank/percentile history load failed ticker=%s: %s",
-                    ticker,
-                    e,
-                    exc_info=True,
-                )
-    except Exception as e:
-        log.debug(f"Volatility signals calc: {e}")
-    # RC-236 (same calibration law as the tier-1 lock waits): a bar deficit during ACCUMULATOR
-    # WARMUP is the designed state — the in-memory series re-seeds from zero on every restart
-    # and cannot hold 16 one-minute bars until 16 minutes of wall clock have passed. Logging
-    # that at WARNING makes the quiet gate fail for doing exactly what it must do, and trains
-    # the operator to ignore the channel. Past the warmup horizon the SAME deficit is genuine
-    # starvation and keeps its WARNING; the deficit is always logged, only the severity moves.
-    if _atr is None:
-        _warm = _atr_warmup_active()
-        _msg = (f"ATR NULL for {ticker}: only {len(_bars)} bars, need {ATR_MIN_BARS}"
-                if _bars else f"ATR NULL for {ticker}: no bars, need {ATR_MIN_BARS}")
-        if _warm:
-            log.info("%s (accumulator warmup, %.0fs since boot)", _msg, _seconds_since_boot())
-        else:
-            log.warning(_msg)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): extracted to
+    # _volatility_signals_for_state (defined above _garch_sigma_bars_for_state). Also
+    # fixes a live regression the GARCH extraction (first slice) introduced: `_closes`
+    # previously had no pre-initializer here, so a cold ticker (_bars empty) left it
+    # unbound and the GARCH call site's bare `_closes` argument reference raised an
+    # uncaught NameError. See _volatility_signals_for_state's own docstring.
+    _vs = _volatility_signals_for_state(ticker, contracts_use, spot_f, _atm_iv, _ed_db, _tick_ts)
+    _iv_skew = _vs.iv_skew
+    _realized_vol = _vs.realized_vol
+    _atr = _vs.atr
+    _iv_rank = _vs.iv_rank
+    _iv_percentile = _vs.iv_percentile
+    _closes = _vs.closes
 
     # ── GARCH Volatility Forecast ─────────────────────────────────────────────
-    _garch_sigma_bars = None
-    try:
-        if _closes and len(_closes) > 20:
-            _garch_raw = compute_garch_forecast(_closes, horizon=GARCH_HORIZON_BARS)
-            if _garch_raw:
-                from volatility_regime import vol_percent_to_decimal
-
-                _iv_dec = vol_percent_to_decimal(_atm_iv)
-                _rv_dec = vol_percent_to_decimal(_realized_vol)
-                # RC-334: _closes are ONE-MINUTE closes — `_candles_1m.get_bars` above, and
-                # the realized-vol call on this same list passes bar_minutes=1.0 — so the
-                # GARCH sigmas are per-minute and the IV/RV terms must be de-annualized to
-                # the same minute. Monte Carlo then consumes this list DIRECTLY as per-bar
-                # sigma at monte_carlo.BAR_MINUTES, so a third party has to agree too. The
-                # interval is stated from the DATA, not borrowed from MC's constant, and the
-                # agreement is asserted: if MC's bar ever moves, this must fail loudly rather
-                # than keep feeding it minute sigmas under a five-minute name.
-                from monte_carlo import BAR_MINUTES as _MC_BAR_MINUTES
-
-                _GARCH_BAR_MINUTES = 1.0          # _candles_1m is one-minute by construction
-                if float(_MC_BAR_MINUTES) != _GARCH_BAR_MINUTES:
-                    raise RuntimeError(
-                        f"GARCH/Monte-Carlo bar mismatch: sigmas built on "
-                        f"{_GARCH_BAR_MINUTES}-minute closes but monte_carlo.BAR_MINUTES is "
-                        f"{_MC_BAR_MINUTES}. MC consumes these as per-bar sigma, so the "
-                        f"units must match (RC-334).")
-                _garch_sigma_bars = blend_garch_sigma(
-                    _garch_raw, _iv_dec, _rv_dec, spot_f,
-                    bar_minutes=_GARCH_BAR_MINUTES,
-                )
-    except Exception as e:
-        log.debug(f"GARCH forecast calc: {e}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, first slice): extracted to
+    # _garch_sigma_bars_for_state (defined just above this function) with an explicit
+    # input/output contract. Same computation, same exception handling, same result.
+    _garch_sigma_bars = _garch_sigma_bars_for_state(_closes, _atm_iv, _realized_vol, spot_f)
 
     # ── Order Flow Signals (from option volume + bid/ask size) ────────────────
-    _vol_oi_ratio = {}
-    _smart_money = {}
-    _iv_model_spread = {}
-    try:
-        _vol_oi_ratio = compute_volume_oi_ratio(exposures, spot_f)
-    except Exception as e:
-        log.debug(f"Order flow signals calc: {e}")
-    # RC-345 / F11 residual: ONE computation for the served number AND its label.
-    # The live path used to call compute_option_flow_imbalance independently for
-    # flow_imbalance_label while persisting flow_imbalance_normalized_with_fallback.
-    # MEASURED on current main: empty ATM book + call-heavy volume → number 0.6
-    # (source=volume) beside label "balanced" (book-only zero). Label is now a
-    # function of the same normalized value the wrapper returns.
-    _flow_imb_norm = None
-    _flow_imb_source = "none"
-    try:
-        _flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback(exposures, spot_f)
-    except Exception as e:
-        log.warning(f"flow_imbalance (one-producer authority) failed: {e}")
-    try:
-        _smart_money = compute_smart_money_signal(exposures, spot_f)
-    except Exception as e:
-        log.warning(f"smart_money_score failed: {e}")
-    try:
-        _iv_model_spread = compute_iv_model_spread(contracts_use, spot_f)
-    except Exception as e:
-        log.debug(f"Order flow signals calc: {e}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, third slice): extracted to
+    # _order_flow_signals_for_state (defined just above this function).
+    _ofs = _order_flow_signals_for_state(exposures, spot_f, contracts_use)
+    _vol_oi_ratio = _ofs.vol_oi_ratio
+    _flow_imb_norm = _ofs.flow_imb_norm
+    _flow_imb_source = _ofs.flow_imb_source
+    _smart_money = _ofs.smart_money
+    _iv_model_spread = _ofs.iv_model_spread
 
     # ── Section 8 — Predictive Positioning Signals ───────────────────────────
-    _dpi = {}
-    _hedging_flow = {}
-    _gamma_gradient = None
-    _breakout_score = {}
-    _pin_score_val = {}
-    _vol_expansion = {}
-    _sweep_score = {}
     # Sweep score post-build_market_state needs _void_factor even if Section 8 raised early.
-    _void_factor = 0.0
-    def _bucket_total_oi(_bkt: dict) -> float | None:
-        call_oi = _bkt.get("call_oi")
-        put_oi = _bkt.get("put_oi")
-        if call_oi is None and put_oi is None:
-            return None
-        return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
-
-    # Gamma-audit 2026-08-26 (latent NameError, found tracing the F9 regime source): the terrain-SSOT
-    # reads below live INSIDE this try, whose `except` only logs (server.py: "Section 8 signals calc")
-    # and sets no defaults. Any earlier raise in the block therefore left these names UNDEFINED, and
-    # the later build_market_state(absolute_gamma_strike=_pin_strike, net_gamma_at_spot=...) raised
-    # NameError — caught as a build_market_state crash, so ONE failed sub-computation blanked the
-    # ENTIRE market state instead of degrading a single field. Pre-initialized here so the block
-    # degrades field-wise and fail-closed (None = the consumer withholds its claim), never all-or-nothing.
-    _pin_strike = None
-    _regime_gamma_at_spot = None
-    try:
-        # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
-        _sum_gex = float(aggregate_net_gex(exposures, _cons_strikes) or 0.0)
-        _sum_dex = 0.0
-        _sum_oi = None
-        _sum_vanna = 0.0
-        for _bkt in exposures.values():
-            _dex = bucket_metric(_bkt, "net_dex_dollars")
-            if _dex is not None:
-                _sum_dex += _dex
-            _bucket_oi = _bucket_total_oi(_bkt)
-            if _bucket_oi is not None:
-                _sum_oi = (_sum_oi or 0.0) + _bucket_oi
-            _cv = bucket_metric(_bkt, "call_vanna")
-            _pv = bucket_metric(_bkt, "put_vanna")
-            if _cv is not None:
-                _sum_vanna += _cv
-            if _pv is not None:
-                _sum_vanna += _pv
-
-        # 1. DPI
-        _dpi = compute_dealer_pressure_index(_sum_dex, _sum_gex, _sum_oi)
-
-        # 2. Hedging Flow Score — normalize inputs to -1..+1
-        _max_gex = max(abs(_sum_gex), 1.0)
-        _max_dex = max(abs(_sum_dex), 1.0)
-        _max_charm = max(abs(_charm_net), 1.0) if _charm_net is not None else 1.0
-        _max_vanna = max(abs(_sum_vanna), 1.0)
-        _charm_norm = (
-            _charm_net / _max_charm
-            if _charm_net is not None and _max_charm > 0
-            else None
-        )
-        _hedging_flow = compute_hedging_flow_score(
-            net_gex_normalized=_sum_gex / _max_gex if _max_gex > 0 else 0,
-            net_dex_normalized=_sum_dex / _max_dex if _max_dex > 0 else 0,
-            charm_normalized=_charm_norm,
-            vanna_normalized=_sum_vanna / _max_vanna if _max_vanna > 0 else 0,
-        )
-
-        # 3. Gamma Gradient
-        _gamma_gradient = compute_gamma_gradient(exposures, spot_f)
-
-        # 4. Breakout Score
-        _gex_near_spot = 0.0
-        for k, b in exposures.items():
-            if abs(float(k) - spot_f) > GEX_NEAR_SPOT_RADIUS:
-                continue
-            _ng = bucket_metric(b, "net_gex_1pct")
-            if _ng is not None:
-                _gex_near_spot += abs(_ng)
-        _void_factor = 0.0
-        for _vz in (_gamma_voids or []):
-            if _vz.get("contains_spot"):
-                _void_factor = 1.0
-                break
-            _vz_dist = min(abs(_vz.get("lower", spot_f) - spot_f), abs(_vz.get("upper", spot_f) - spot_f))
-            _void_factor = max(_void_factor, max(0, 1.0 - _vz_dist / VOID_DIST_FALLOFF))
-        try:
-            _breakout_score = compute_breakout_score(_gex_near_spot, _gamma_gradient, _void_factor)
-        except Exception as e:
-            log.warning(f"breakout_score failed: {e}")
-            _breakout_score = {}
-
-        # 5. Pin Score — strike AND GEX/OI from the terrain SSOT book (RC-124/RC-292/RC-413).
-        # Never consensus_summary.net_gex_peak (analytics |net GEX$| peak) and never analytics
-        # `exposures` for magnitude at that strike. RC-292 rename: the terrain payload field
-        # is absolute_gamma_strike — the raw total-gamma concentration; pin_score grades it.
-        _t_pin_snap = terrain_cache_get(ticker) or {}
-        _pin_strike = (
-            _t_pin_snap.get("absolute_gamma_strike")
-            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
-            else None
-        )
-        _gex_at_pin = None
-        _oi_concentration = None
-        if _pin_strike is not None and _t_pin_snap and not _t_pin_snap.get("levels_stale"):
-            try:
-                _tg = _t_pin_snap.get("absolute_gamma_gex_dollars")
-                _toi = _t_pin_snap.get("absolute_gamma_oi")
-                _tbook = _t_pin_snap.get("book_oi_total")
-                if _tg is not None and _toi is not None and _tbook is not None:
-                    _book_oi = float(_tbook)
-                    _gex_at_pin = float(_tg)
-                    _oi_concentration = (
-                        (float(_toi) / _book_oi) if _book_oi > 0 else None
-                    )
-            except (TypeError, ValueError):
-                _gex_at_pin = None
-                _oi_concentration = None
-        try:
-            _pin_score_val = compute_pin_score(_gex_at_pin, _oi_concentration)
-        except Exception as e:
-            log.warning(f"pin_score failed: {e}")
-            _pin_score_val = {}
-
-        # Cursor-audit F9 / gamma audit: the dealer dampen/amplify REGIME sign, read from the SAME
-        # terrain SSOT snapshot as the pin above and on the SAME fail-closed terms. net_gex_at_spot
-        # IS gamma_at_spot over the wide multi-expiry book (terrain_engine) — the exact value the
-        # terrain card renders — so the Call/regime consumers and the card read ONE number and cannot
-        # disagree in sign. Sourcing it from the selected-expiry analytics diag (the first cut of this
-        # fix) could disagree, and a one-expiry slice is the wrong basis for a whole-book hedging
-        # claim. Missing or stale snapshot -> None -> every consumer withholds its regime claim.
-        _regime_gamma_at_spot = (
-            _t_pin_snap.get("net_gex_at_spot")
-            if _t_pin_snap and not _t_pin_snap.get("levels_stale")
-            else None
-        )
-
-        # 6. Vol Expansion Signal
-        _iv_dir_num = 1.0 if _iv_direction == "expanding" else -1.0 if _iv_direction == "contracting" else 0.0
-        _vol_expansion = compute_vol_expansion_signal(_sum_gex, _iv_dir_num, _gamma_gradient)
-
-        # Sweep Score moved below: needs ms.nearest_above_dist / ms.nearest_below_dist
-        # which are only populated by build_market_state. The previous compute here read
-        # `getattr(ms, _wname, None) if 'ms' in dir() else None` — `ms` was undefined at
-        # this point in execution, so the loop always set _nearest_wall_dist=None and
-        # sweep_score was silently degraded every tick.
-
-    except Exception as e:
-        log.debug(f"Section 8 signals calc: {e}")
+    _sweep_score = {}
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, eighth slice): extracted to
+    # _predictive_positioning_for_state (defined above _price_levels_for_state).
+    # _bucket_total_oi was promoted to a module-level function -- the Level Density
+    # sub-phase far below still calls it via the same module-level name.
+    _pp = _predictive_positioning_for_state(
+        ticker, exposures, _cons_strikes, spot_f, _charm_net, _gamma_voids, _iv_direction,
+    )
+    _dpi = _pp.dpi
+    _hedging_flow = _pp.hedging_flow
+    _gamma_gradient = _pp.gamma_gradient
+    _breakout_score = _pp.breakout_score
+    _pin_score_val = _pp.pin_score_val
+    _vol_expansion = _pp.vol_expansion
+    _void_factor = _pp.void_factor
+    _pin_strike = _pp.pin_strike
+    _regime_gamma_at_spot = _pp.regime_gamma_at_spot
 
     # ── Volatility Envelope, Level Density, Sector Strength ──────────────────
     _vol_envelope = {}
@@ -7947,214 +8967,31 @@ def _fetch_state(
         log.debug(f"Envelope/density/sector calc: {e}")
     _stage_marks.append(("vol_flow_signals", time.perf_counter()))
 
-    # ── Zone tracking ─────────────────────────────────────────────────────────
-    # zone_since_bars_1m = execution-layer recency (canonical 1m bars) — primary for models/features.
-    # zone_since_bars_5m = structure-layer recency (derived 5m bars) — for structure context only.
-    # We track both independently so there is no mixed-clock dependency.
-    bias_sig = (consensus_summary.bias_signal if consensus_summary else "") or ""
-    nd_raw   = (consensus_summary.net_delta   if consensus_summary else None)
-    cur_zone = derive_zone(bias_sig, nd_raw)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, twelfth slice): extracted to
+    # _zone_tracking_for_state (defined above).
+    zt = _zone_tracking_for_state(ticker, consensus_summary)
 
-    _zone_bars_1m = _candles_1m.get_bars(ticker)
-    _zone_bars_5m = _candles_5m.get_bars(ticker)
-    _latest_bar_ts_1m = _zone_bars_1m[-1].ts if _zone_bars_1m else 0.0
-    _latest_bar_ts_5m = _zone_bars_5m[-1].ts if _zone_bars_5m else 0.0
-
-    zt = _zone_tracker.get(ticker, {
-        "zone": cur_zone, "prev_zone": cur_zone,
-        "since_bars_1m": 0, "since_bars_5m": 0,
-        "last_bar_ts_1m": 0.0, "last_bar_ts_5m": 0.0,
-    })
-    if cur_zone != zt["zone"]:
-        zt["prev_zone"]      = zt["zone"]
-        zt["zone"]           = cur_zone
-        zt["since_bars_1m"]  = 0
-        zt["since_bars_5m"]  = 0
-        zt["last_bar_ts_1m"] = _latest_bar_ts_1m
-        zt["last_bar_ts_5m"] = _latest_bar_ts_5m
-    else:
-        if _latest_bar_ts_1m > zt.get("last_bar_ts_1m", 0.0):
-            zt["since_bars_1m"]  += 1
-            zt["last_bar_ts_1m"]  = _latest_bar_ts_1m
-        if _latest_bar_ts_5m > zt.get("last_bar_ts_5m", 0.0):
-            zt["since_bars_5m"]  += 1
-            zt["last_bar_ts_5m"]  = _latest_bar_ts_5m
-    _zone_tracker[ticker] = zt
-
-    # ── DB counts + crosses ───────────────────────────────────────────────────
-    if _diag_on():
-        _diag_step("pre_db_counts", ticker)
-    db_counts  = {"total": 0, "filled": 0}
-    ceil_tests = floor_tests = 0
-    recent_crosses = []
-
-    if _ed_db:
-        try:
-            db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)
-            cgw = _f(getattr(walls[0], "call_gamma_wall", None)) if walls else None
-            pgw = _f(getattr(walls[0], "put_gamma_wall",  None)) if walls else None
-            if cgw:
-                _ceil = _ed_db.count_level_tests(ticker, "Call Gamma Wall", cgw)
-                _ct = _ceil.get("total")
-                ceil_tests = int(_ct) if _ct is not None else 0
-            if pgw:
-                _floor = _ed_db.count_level_tests(ticker, "Put Gamma Wall", pgw)
-                _ft = _floor.get("total")
-                floor_tests = int(_ft) if _ft is not None else 0
-            rc = _ed_db.get_recent_crosses(ticker, n=RECENT_CROSSES_DISPLAY_LIMIT)
-            recent_cross_eval_wall_ts = time.time()
-            for c in rc:
-                bars_ago = int(
-                    (recent_cross_eval_wall_ts - c.get("ts_utc", 0)) / 60
-                )  # 1m bar cadence (canonical)
-                recent_crosses.append({
-                    "level_name": c.get("level_name"),
-                    "direction":  c.get("direction"),
-                    "bars_ago":   bars_ago,
-                })
-        except Exception as e:
-            log.warning(f"DB query failed: {e}")
-    if _diag_on():
-        _diag_done("db_counts", ticker)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): extracted to
+    # _db_counts_and_crosses_for_state (defined above).
+    _dbcc = _db_counts_and_crosses_for_state(ticker, _ed_db, walls)
+    db_counts = _dbcc.db_counts
+    ceil_tests = _dbcc.ceil_tests
+    floor_tests = _dbcc.floor_tests
+    recent_crosses = _dbcc.recent_crosses
 
     # session_label already computed above — reuse it
     et_h = now_et.hour
     et_m = now_et.minute
     mins_to_close = max(0.0, RTH_CLOSE_MINS - (et_h * 60 + et_m))
 
-    # Candle volume from last completed 1m bar (canonical) for build_market_state + snapshot
-    _c_vol = None
-    _completed_for_vol = _candles_1m.get_bars(ticker)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourteenth slice): extracted to
+    # _order_flow_data_for_state (defined above).
+    _order_flow_data = _order_flow_data_for_state(ticker, q_json, c_json, now_et)
 
-    # Order Flow Engine input — full Claude proxy field set from current fetches
-    if _diag_on():
-        _diag_step("pre_order_flow_data", ticker)
-    _order_flow_data = {}
-    try:
-        _q_node = q_json.get(ticker.upper()) or q_json.get(ticker) or q_json
-        if isinstance(_q_node, dict):
-            _order_flow_data["quote"] = _q_node.get("quote") or {}
-            _order_flow_data["extended"] = _q_node.get("extended") or {}
-            _order_flow_data["regular"] = _q_node.get("regular") or {}
-            _order_flow_data["fundamental"] = _q_node.get("fundamental") or {}
-            _order_flow_data["reference"] = _q_node.get("reference") or {}
-        else:
-            _order_flow_data["quote"] = {}
-            _order_flow_data["extended"] = {}
-            _order_flow_data["regular"] = {}
-            _order_flow_data["fundamental"] = {}
-            _order_flow_data["reference"] = {}
-        # Reuse parsed chain JSON — second c_resp.json() reparsed the full payload every tick.
-        _order_flow_data["callExpDateMap"] = c_json.get("callExpDateMap") or {}
-        _order_flow_data["putExpDateMap"] = c_json.get("putExpDateMap") or {}
-        _order_flow_data["underlying"] = c_json.get("underlying") or {}
-        # Order flow candles: 1m only (execution-aligned). No 5m fallback, no 5m aggregation.
-        _bars_1m = _candles_1m.get_bars(ticker)
-        _order_flow_data["candles"] = [
-            {
-                "open": b.open, "high": b.high, "low": b.low, "close": b.close,
-                "volume": getattr(b, "volume", 0.0),
-                "datetime": int(getattr(b, "ts", 0) * 1000),
-            }
-            for b in (_bars_1m or [])
-        ]
-        # Merge live streaming data (book + tape) if available
-        try:
-            if _diag_on():
-                _diag_step("pre_get_content_for_symbol", ticker)
-            from app.options.order_flow.state import get_content_for_symbol
-            _live_content = get_content_for_symbol(ticker)
-            if _diag_on():
-                _diag_done("get_content_for_symbol", ticker)
-            if _live_content:
-                _order_flow_data["content"] = _live_content
-        except ImportError:
-            pass
-    except Exception as _ofd_e:
-        log.debug(f"Order flow data build: {_ofd_e}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): extracted to
+    # _candle_volume_for_state (defined above).
+    _c_vol = _candle_volume_for_state(ticker, client)
 
-    # REST fallback: Cum Delta accumulator (polling-based) when streamer has no tape.
-    # Update each poll; inject into ms after build_market_state if engine returns None.
-    _quote_for_cum = dict(_order_flow_data.get("extended") or {})
-    _quote_for_cum.update(_order_flow_data.get("quote") or {})
-    _update_rest_cum_delta(ticker, _quote_for_cum, now_et)
-
-    # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary)
-    # Use 1m price history to match canonical (1m) bar timestamps.
-    _c_vol = None
-    if _completed_for_vol:
-        _raw_vol = getattr(_completed_for_vol[-1], "volume", None)
-        if _raw_vol is not None:
-            try:
-                v = float(_raw_vol)
-                if v > 0:
-                    _c_vol = v
-            except (TypeError, ValueError):
-                pass
-    # Price history fetch only when accumulator has no usable volume (avoid duplicate Schwab RTT).
-    if _c_vol is None and ticker:
-        try:
-            resp_ph = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
-            if (not resp_ph or resp_ph.status_code != 200 or not resp_ph.json().get("candles")) and ticker.startswith("$"):
-                resp_ph = safe_get_price_history(client, ticker[1:], frequency_minutes=1, period_days=1)
-            if resp_ph and resp_ph.status_code == 200:
-                payload_ph = resp_ph.json()
-                if "candles" not in payload_ph:
-                    raise ValueError(
-                        f"Schwab pricehistory response missing 'candles' key (status={resp_ph.status_code})"
-                    )
-                ph_candles = payload_ph["candles"]
-                if ph_candles and _completed_for_vol:
-                    last_ts = getattr(_completed_for_vol[-1], "ts", None)
-
-                    def _ph_candle_ts_sec(bar: dict) -> Optional[float]:
-                        dt = bar.get("datetime")
-                        if dt is None:
-                            return None
-                        try:
-                            dt_f = float(dt)
-                        except (TypeError, ValueError):
-                            return None
-                        if dt_f <= 0:
-                            return None
-                        return dt_f / 1000.0 if dt_f > 1e10 else dt_f
-
-                    timed = [b for b in ph_candles if _ph_candle_ts_sec(b) is not None]
-                    if last_ts is not None and timed:
-                        best = min(timed, key=lambda b: abs(_ph_candle_ts_sec(b) - last_ts))
-                    elif timed:
-                        best = timed[-1]
-                    else:
-                        best = ph_candles[-1]
-                    ph_vol = best.get("volume")
-                    if ph_vol is not None:
-                        try:
-                            v = float(ph_vol)
-                            if v > 0:
-                                _c_vol = v
-                        except (TypeError, ValueError):
-                            pass
-                if _c_vol is None and ph_candles:
-                    v = ph_candles[-1].get("volume")
-                    if v is not None:
-                        try:
-                            vf = float(v)
-                            if vf > 0:
-                                _c_vol = vf
-                        except (TypeError, ValueError):
-                            pass
-        except Exception as _ph_e:
-            log.debug(f"Price history volume for {ticker}: {_ph_e}")
-    # 2. Accumulator secondary — WebSocket TOTAL_VOLUME or REST quote delta
-    if _c_vol is None and _completed_for_vol:
-        _raw_vol = getattr(_completed_for_vol[-1], "volume", None)
-        if _raw_vol is not None:
-            try:
-                v = float(_raw_vol)
-                if v > 0:
-                    _c_vol = v
-            except (TypeError, ValueError):
-                pass
     # ── Build MarketState ─────────────────────────────────────────────────────
     _stage_marks.append(("db_reads_orderflow_input", time.perf_counter()))
     if _diag_on():
@@ -10475,6 +11312,27 @@ async def _app_lifespan(app):
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
 app.include_router(options_order_flow_router)
+app.include_router(desk_router)
+app.include_router(pages_router)
+app.include_router(ops_router)
+app.include_router(options_router)
+app.include_router(logger_router)
+app.include_router(terrain_router)
+app.include_router(diagnostics_router)
+app.include_router(streaming_router)
+app.include_router(order_flow_router)
+app.include_router(exposure_router)
+app.include_router(status_router)
+app.include_router(live_router)
+app.include_router(analytics_light_router)
+app.include_router(analytics_state_router)
+app.include_router(market_data_router)
+app.include_router(sse_router)
+app.include_router(chain_router)
+app.include_router(prediction_router)
+app.include_router(liquidity_router)
+app.include_router(debug_router)
+app.include_router(accuracy_router)
 
 # F09: serve the JS projection from time_et on every request. Registered BEFORE
 # the StaticFiles mount so a committed or leftover disk blob cannot become a
@@ -10518,548 +11376,15 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 # ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
-def root():
-    html_path = static_dir / "index.html"
-    if not html_path.exists():
-        return HTMLResponse("<h1>static/index.html not found</h1>", status_code=404)
-    # Avoid stale shell JS after edits (browser disk cache of "/" was masking localForce→force fix).
-    return HTMLResponse(
-        content=html_path.read_text(encoding="utf-8"),
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate",
-            "Pragma": "no-cache",
-        },
-    )
+# RC-REHAB-1 (Phase 3): /, /favicon.ico, and /guide/* moved to app/api/routes/pages.py
+# (second extraction slice, same pattern as desk.py -- see that module's docstring).
 
 
-@app.get("/favicon.ico", include_in_schema=False)
-def favicon():
-    """Browsers request this automatically; without a route they log 404 (harmless but noisy)."""
-    return Response(status_code=204)
-
-
-@app.get("/guide/data-stewardship", response_class=HTMLResponse)
-def guide_data_stewardship():
-    """Serve DATA_STEWARDSHIP.md in the browser (king / jewels / guards + runbook)."""
-    md_path = Path(APP_DIR) / "DATA_STEWARDSHIP.md"
-    if not md_path.exists():
-        return HTMLResponse(
-            "<p>DATA_STEWARDSHIP.md not found in app directory.</p>",
-            status_code=404,
-        )
-    raw = md_path.read_text(encoding="utf-8")
-    body = html.escape(raw)
-    page = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Data stewardship &amp; ops — Ed Console</title>
-  <style>
-    body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0c0f; color: #e5e7eb;
-            margin: 0; padding: 24px; line-height: 1.55; font-size: 14px; }}
-    .wrap {{ max-width: 52rem; margin: 0 auto; }}
-    a {{ color: #60a5fa; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    pre {{ white-space: pre-wrap; word-break: break-word; font-size: 13px;
-           background: #111418; border: 1px solid #252c36; padding: 16px; border-radius: 8px; }}
-    .nav {{ margin-bottom: 20px; font-size: 13px; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="nav"><a href="/">&larr; Back to console</a></div>
-    <pre>{body}</pre>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(page)
-
-
-@app.get("/guide/training-and-maintenance", response_class=HTMLResponse)
-def guide_training_and_maintenance():
-    md_path = Path(APP_DIR) / "TRAINING_AND_MAINTENANCE.md"
-    if not md_path.exists():
-        return HTMLResponse(
-            "<p>TRAINING_AND_MAINTENANCE.md not found in app directory.</p>",
-            status_code=404,
-        )
-    raw = md_path.read_text(encoding="utf-8")
-    body = html.escape(raw)
-    page = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Training &amp; maintenance — Ed Console</title>
-  <style>
-    body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0c0f; color: #e5e7eb;
-            margin: 0; padding: 24px; line-height: 1.55; font-size: 14px; }}
-    .wrap {{ max-width: 52rem; margin: 0 auto; }}
-    a {{ color: #60a5fa; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    pre {{ white-space: pre-wrap; word-break: break-word; font-size: 13px;
-           background: #111418; border: 1px solid #252c36; padding: 16px; border-radius: 8px; }}
-    .nav {{ margin-bottom: 20px; font-size: 13px; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="nav">
-      <a href="/">&larr; Back to console</a>
-      · <a href="/guide/data-stewardship">Data stewardship</a>
-      · <a href="/guide/pipeline-quality">Pipeline quality (TQM)</a>
-      · <a href="/ops">Run tasks</a>
-    </div>
-    <pre>{body}</pre>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(page)
-
-
-@app.get("/guide/pipeline-quality", response_class=HTMLResponse)
-def guide_pipeline_quality():
-    """TQM-style checkpoints: ingest throttles, audits, normalized layer, readiness."""
-    md_path = Path(APP_DIR) / "PIPELINE_QUALITY.md"
-    if not md_path.exists():
-        return HTMLResponse(
-            "<p>PIPELINE_QUALITY.md not found in app directory.</p>",
-            status_code=404,
-        )
-    raw = md_path.read_text(encoding="utf-8")
-    body = html.escape(raw)
-    page = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pipeline quality (TQM) — Ed Console</title>
-  <style>
-    body {{ font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0c0f; color: #e5e7eb;
-            margin: 0; padding: 24px; line-height: 1.55; font-size: 14px; }}
-    .wrap {{ max-width: 52rem; margin: 0 auto; }}
-    a {{ color: #60a5fa; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    pre {{ white-space: pre-wrap; word-break: break-word; font-size: 13px;
-           background: #111418; border: 1px solid #252c36; padding: 16px; border-radius: 8px; }}
-    .nav {{ margin-bottom: 20px; font-size: 13px; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="nav">
-      <a href="/">&larr; Back to console</a>
-      · <a href="/guide/data-stewardship">Data stewardship</a>
-      · <a href="/guide/training-and-maintenance">Training &amp; maintenance</a>
-      · <a href="/ops">Run tasks</a>
-    </div>
-    <pre>{body}</pre>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(page)
-
-
-@app.get("/ops", response_class=HTMLResponse)
-def ops_panel():
-    """Interactive maintenance/training launcher (requires ED_OPS_RUNNER for actions)."""
-    p = static_dir / "ops.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/ops.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"))
-
-
-@app.get("/api/ops/status")
-def api_ops_status():
-    from ops_runner import allow_remote, is_ops_runner_enabled, jobs_public_list, sequences_public_list
-
-    return JSONResponse(
-        {
-            "runner_enabled": is_ops_runner_enabled(),
-            "allow_remote": allow_remote(),
-            "jobs": jobs_public_list(),
-            "sequences": sequences_public_list(),
-        }
-    )
-
-
-@app.get("/api/level_crosses")
-def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | None = None,
-                            level_value: float | None = None, lookback_hours: float = 6.5):
-    """Pass 4 — read consumer for level_crosses table.
-
-    Two modes:
-      * ``ticker`` only -> last ``n`` crosses (recent breach log).
-      * ``ticker`` + ``level_name`` + ``level_value`` -> directional test count
-        within ``lookback_hours`` (Decision Command "third test of ceiling"
-        pattern, served by db.count_level_tests).
-    """
-    edb = get_db()
-    try:
-        if level_name is not None and level_value is not None:
-            counts = edb.count_level_tests(
-                ticker=ticker,
-                level_name=level_name,
-                level_value=float(level_value),
-                lookback_hours=float(lookback_hours),
-            )
-            return JSONResponse({"ok": True, "mode": "test_count", "ticker": ticker,
-                                 "level_name": level_name, "level_value": float(level_value),
-                                 "lookback_hours": float(lookback_hours), **counts})
-        # RC-88: COLLAPSE COINCIDENT CROSSINGS. Price crossing one strike writes one row per
-        # NAMED level sitting there, and the producer's debounce is keyed on level_name, so it
-        # cannot see that eight names share a value. MEASURED 2026-07-27: 4,747 of 8,108 stored
-        # rows (58.5%) share a (ticker, ts_utc, level_value) with another; IWM 295.0 wrote 8 rows
-        # for a single tick. The chart asks for n=8, so one coincident crossing filled every slot
-        # and hid every other event. That several concepts coincide is real information — it is
-        # carried in `level_names` — but it is ONE crossing, not eight. Collapsed at the READ
-        # boundary so the stored history stays intact for anything that needs per-level rows.
-        raw = edb.get_recent_crosses(ticker=ticker, n=max(int(n) * 8, 64))
-        merged: list[dict] = []
-        seen: dict[tuple, dict] = {}
-        for r in raw:
-            key = (r.get("ts_utc"), r.get("level_value"), r.get("direction"))
-            hit = seen.get(key)
-            if hit is None:
-                row = dict(r)
-                row["level_names"] = [r.get("level_name")]
-                row["coincident_levels"] = 1
-                seen[key] = row
-                merged.append(row)
-                continue
-            nm = r.get("level_name")
-            if nm and nm not in hit["level_names"]:
-                hit["level_names"].append(nm)
-                hit["coincident_levels"] = len(hit["level_names"])
-                # One event, one name on screen: say what it is rather than picking one arbitrarily.
-                hit["level_name"] = f"{len(hit['level_names'])} levels @ {r.get('level_value')}"
-        return JSONResponse({"ok": True, "mode": "recent", "ticker": ticker,
-                             "n": int(n), "crosses": merged[:int(n)],
-                             "collapsed_from": len(raw)})
-    except Exception as exc:  # pragma: no cover — defensive ops surface
-        log.warning("api_level_crosses failed ticker=%s: %s", ticker, exc)
-        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
-
-
-@app.get("/api/ops/calibration_rowcount")
-def api_ops_calibration_rowcount():
-    """Pass 3 — forward-only calibration_decision_log rate health.
-
-    Surfaces last-24h vs prior-24h vs expected row counts so an
-    ED_CALIBRATION_LOG=1 environment with a silent gap (DB lock, gate-chain
-    bug, schema mismatch, etc.) becomes immediately visible on /ops. Without
-    this counter, the Apr 12 - May 5 calibration gap went 24 days
-    undetected. Reader for calibration_decision_log.
-    """
-    from calibration.writer import compute_calibration_rate_health
-    from db import DB_PATH as _calibration_db_path
-
-    try:
-        health = compute_calibration_rate_health(_calibration_db_path)
-    except Exception as exc:  # pragma: no cover — defensive ops surface
-        log.warning("calibration rowcount health probe failed: %s", exc)
-        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
-    if health.get("warn"):
-        log.warning(
-            "calibration_decision_log rate WARN: last_24h=%d expected=%.0f ratio=%.2f (threshold=%.2f)",
-            health.get("last_24h_count", 0),
-            health.get("expected_per_24h", 0.0),
-            health.get("ratio") or 0.0,  # silent-zero-ok: log.warning argument only — the same line already prints last_24h and expected, so a 0.00 ratio cannot be mistaken for a measurement
-            health.get("warn_ratio", 0.0),
-        )
-    return JSONResponse({"ok": True, **health})
-
-
-@app.post("/api/ops/run")
-def api_ops_run(request: Request, payload: dict = Body(...)):
-    from ops_runner import (
-        client_may_trigger,
-        is_ops_runner_enabled,
-        run_job,
-    )
-
-    if not is_ops_runner_enabled():
-        return JSONResponse(
-            status_code=403,
-            content={
-                "ok": False,
-                "error": "Ops runner disabled. Set ED_OPS_RUNNER=1 and restart the server.",
-            },
-        )
-    host = request.client.host if request.client else None
-    if not client_may_trigger(host):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "ok": False,
-                "error": "Ops runs are restricted to localhost. Use ED_OPS_ALLOW_REMOTE=1 if intentional (risky).",
-            },
-        )
-    job_id = (payload or {}).get("job_id")
-    if not job_id or not isinstance(job_id, str):
-        return JSONResponse(status_code=400, content={"ok": False, "error": "body needs { job_id }"})
-    return JSONResponse(run_job(job_id.strip()))
-
-
-@app.get("/governance", response_class=HTMLResponse)
-def governance_visibility_page():
-    """Architecture governance panel (read-only; manual actions gated on server)."""
-    p = static_dir / "governance.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/governance.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"))
-
-
-@app.get("/api/governance/panel")
-def api_governance_panel(
-    ticker: str = Query("SPY", description="Ticker symbol"),
-    horizon: str = Query("1c", description="ML horizon slug"),
-    emit_notifications: bool = Query(
-        False,
-        description="When true, run notification delivery emit; use false for routine refresh to avoid duplicate sinks",
-    ),
-    include_live_drift: bool = Query(True, description="Include live drift monitoring in panel payload"),
-):
-    from pathlib import Path
-
-    from arch_competition.governance_visibility import build_governance_panel_payload
-
-    model_dir = Path(APP_DIR) / "models"
-    return JSONResponse(
-        build_governance_panel_payload(
-            model_dir,
-            horizon,
-            ticker,
-            include_live_drift=include_live_drift,
-            emit_notification_delivery=emit_notifications,
-        )
-    )
-
-
-@app.post("/api/internal/reload_models")
-def api_internal_reload_models(request: Request, payload: dict = Body(default={})):
-    """Evict in-memory model registries for promoted (ticker, horizon) tuples (PR4 P3-10)."""
-    from arch_competition.live_model_reload import RELOAD_SCHEMA_VERSION
-    from arch_competition.scheduler_auto_promote_policy import console_reload_token
-    from ml_predict import invalidate_model_registry
-
-    host = request.client.host if request.client else None
-    if host not in ("127.0.0.1", "::1", "localhost"):
-        return JSONResponse(
-            status_code=403,
-            content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "non-loopback client forbidden"},
-        )
-    expected_tok = console_reload_token()
-    if expected_tok:
-        got = (request.headers.get("X-Reload-Token") or "").strip()
-        if got != expected_tok:
-            return JSONResponse(
-                status_code=403,
-                content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "invalid or missing X-Reload-Token"},
-            )
-
-    body = payload or {}
-    reloads = body.get("reloads")
-    if not isinstance(reloads, list):
-        return JSONResponse(
-            status_code=400,
-            content={"schema_version": RELOAD_SCHEMA_VERSION, "error": "reloads must be a list"},
-        )
-
-    results: list[dict] = []
-    partial = False
-    for item in reloads:
-        if not isinstance(item, dict):
-            partial = True
-            results.append({"succeeded": False, "error": "invalid reload item"})
-            continue
-        ticker = str(item.get("ticker") or "").strip().upper()
-        hz = str(item.get("horizon") or item.get("ml_horizon_slug") or "").strip().lower()
-        if not ticker or not hz:
-            partial = True
-            results.append(
-                {
-                    "ticker": ticker or None,
-                    "horizon": hz or None,
-                    "succeeded": False,
-                    "error": "ticker and horizon required",
-                }
-            )
-            continue
-        try:
-            ok = invalidate_model_registry(ticker, hz)
-            results.append({"ticker": ticker, "horizon": hz, "succeeded": bool(ok)})
-            if not ok:
-                partial = True
-        except Exception as e:
-            partial = True
-            results.append(
-                {"ticker": ticker, "horizon": hz, "succeeded": False, "error": str(e)}
-            )
-
-    return JSONResponse(
-        {
-            "schema_version": RELOAD_SCHEMA_VERSION,
-            "results": results,
-            "partial_failure": partial,
-        }
-    )
-
-
-@app.post("/api/governance/manual-promote")
-def api_governance_manual_promote(request: Request, payload: dict = Body(...)):
-    from pathlib import Path
-
-    from arch_competition.exceptions import ManualGovernanceError
-    from arch_competition.governance_visibility import (
-        client_may_run_governance_action,
-        is_governance_ui_actions_enabled,
-    )
-    from arch_competition.manual_control import manual_promote_to_active_explicit
-
-    if not is_governance_ui_actions_enabled():
-        return JSONResponse(
-            status_code=403,
-            content={
-                "ok": False,
-                "error": "Governance UI actions disabled. Set ED_GOVERNANCE_UI_ACTIONS=1 and restart the server.",
-            },
-        )
-    host = request.client.host if request.client else None
-    if not client_may_run_governance_action(host):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "ok": False,
-                "error": "Governance actions are restricted to localhost unless ED_GOVERNANCE_ALLOW_REMOTE=1.",
-            },
-        )
-    body = payload or {}
-    ticker = (body.get("ticker") or "").strip().upper()
-    hz = (body.get("horizon") or body.get("ml_horizon_slug") or "1c").strip().lower()
-    target = (body.get("target_architecture") or "").strip().lower()
-    op = (body.get("operator_id") or "").strip()
-    intent = (body.get("manual_intent") or "").strip()   # external-key-ok: operator HTTP POST body
-    if not ticker or target not in ("cascade", "parallel") or not op or not intent:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "ok": False,
-                "error": "Expected ticker, horizon, target_architecture (cascade|parallel), operator_id, manual_intent",
-            },
-        )
-    model_dir = Path(APP_DIR) / "models"
-    try:
-        result = manual_promote_to_active_explicit(
-            model_dir,
-            ticker,
-            hz,
-            target_architecture=target,
-            operator_id=op,
-            manual_intent=intent,
-        )
-        return JSONResponse({"ok": True, "result": result})
-    except ManualGovernanceError as e:
-        return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
-    except Exception as e:
-        log.exception("api_governance_manual_promote: %s", e)
-        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
-
-
-@app.post("/api/governance/manual-rollback")
-def api_governance_manual_rollback(request: Request, payload: dict = Body(...)):
-    from pathlib import Path
-
-    from arch_competition.exceptions import ManualGovernanceError
-    from arch_competition.governance_visibility import (
-        client_may_run_governance_action,
-        is_governance_ui_actions_enabled,
-    )
-    from arch_competition.manual_control import manual_rollback_to_checkpoint_explicit
-
-    if not is_governance_ui_actions_enabled():
-        return JSONResponse(
-            status_code=403,
-            content={
-                "ok": False,
-                "error": "Governance UI actions disabled. Set ED_GOVERNANCE_UI_ACTIONS=1 and restart the server.",
-            },
-        )
-    host = request.client.host if request.client else None
-    if not client_may_run_governance_action(host):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "ok": False,
-                "error": "Governance actions are restricted to localhost unless ED_GOVERNANCE_ALLOW_REMOTE=1.",
-            },
-        )
-    body = payload or {}
-    ticker = (body.get("ticker") or "").strip().upper()
-    hz = (body.get("horizon") or body.get("ml_horizon_slug") or "1c").strip().lower()
-    op = (body.get("operator_id") or "").strip()
-    intent = (body.get("manual_intent") or "").strip()
-    ck = body.get("checkpoint_id")
-    if not ticker or not op or not intent:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "ok": False,
-                "error": "Expected ticker, horizon, operator_id, manual_intent",
-            },
-        )
-    model_dir = Path(APP_DIR) / "models"
-    try:
-        result = manual_rollback_to_checkpoint_explicit(
-            model_dir,
-            ticker,
-            hz,
-            operator_id=op,
-            manual_intent=intent,
-            checkpoint_id=str(ck).strip() if ck else None,
-        )
-        return JSONResponse({"ok": True, "result": result})
-    except ManualGovernanceError as e:
-        return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
-    except Exception as e:
-        log.exception("api_governance_manual_rollback: %s", e)
-        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
-
-
-@app.post("/api/ops/run-sequence")
-def api_ops_run_sequence(request: Request, payload: dict = Body(...)):
-    from ops_runner import (
-        client_may_trigger,
-        is_ops_runner_enabled,
-        run_sequence,
-    )
-
-    if not is_ops_runner_enabled():
-        return JSONResponse(
-            status_code=403,
-            content={
-                "ok": False,
-                "error": "Ops runner disabled. Set ED_OPS_RUNNER=1 and restart the server.",
-            },
-        )
-    host = request.client.host if request.client else None
-    if not client_may_trigger(host):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "ok": False,
-                "error": "Ops runs are restricted to localhost. Use ED_OPS_ALLOW_REMOTE=1 if intentional (risky).",
-            },
-        )
-    seq_id = (payload or {}).get("sequence_id")
-    if not seq_id or not isinstance(seq_id, str):
-        return JSONResponse(
-            status_code=400,
-            content={"ok": False, "error": "body needs { sequence_id }"},
-        )
-    return JSONResponse(run_sequence(seq_id.strip(), stop_on_error=True))
+# RC-REHAB-1 (Phase 3): ops_panel/api_ops_status/api_level_crosses/
+# api_ops_calibration_rowcount/api_ops_run/governance_visibility_page/
+# api_governance_panel/api_internal_reload_models/api_governance_manual_promote/
+# api_governance_manual_rollback/api_ops_run_sequence moved to app/api/routes/ops.py
+# (third extraction slice, same pattern as desk.py/pages.py).
 
 
 def _tier_c_analytics_json_response(
@@ -11220,32 +11545,6 @@ def _resolve_ticker_param(
     """Canonical query param is ``ticker``; ``symbol`` is a documented alias (audit/diag scripts)."""
     raw = (symbol if symbol is not None and str(symbol).strip() else ticker) or DEFAULT_TICKER
     return str(raw).upper().strip()
-
-
-@app.get("/api/live/state")
-async def get_live_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    symbol: Optional[str] = Query(default=None),
-    expiry: Optional[str] = Query(default=None),
-):
-    """
-    Tier A — instant live quote plane + session + identity. No chain, exposures, DB, news, or heavy compute.
-    Primary driver for responsive UI; use GET /api/analytics/state for full analytical bundle.
-    """
-    t = _resolve_ticker_param(ticker, symbol)
-    # SWITCH-LATENCY FIX: this route is async, so ANY blocking work here stalls the whole
-    # event loop (all SSE streams, the fast-quote poll, every other request) until it
-    # returns — the root cause of slow ticker switches. Both _register_tracked_ticker
-    # (persists the symbol to the SQLite logging_universe — a DB write that contends with
-    # the live logger/retrain) and _tier_a_live_state_dict (blocking Schwab REST + retry on
-    # a cold ticker) must run OFF the loop. Offload to the thread pool, like /api/fast-quote.
-    def _build():
-        # TICKER-PREVIEW-NO-ENROLL: live-state view touches last-seen only, never enrolls.
-        _touch_tracked_ticker_view(t)
-        return _tier_a_live_state_dict(t, expiry)
-    loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
-    return JSONResponse(payload)
 
 
 # ── TERRAIN COLLECTION LOOP ──────────────────────────────────────────────────
@@ -14277,6 +14576,12 @@ def _radar_fallback_recompute() -> list[dict] | None:
         # inline query took MAX(ts_utc) across BOTH timeframes, so a legacy 5m row could
         # shadow a newer-in-kind canonical 1m row (Bugbot 2026-07-20, confirmed).
         # _latest_chain_and_spot already encodes canonical-then-legacy, index-served.
+        # timeframe-scope-ok (reality-reconciliation audit, 2026-09-18): this DISTINCT
+        # enumerates ticker NAMES only, across both timeframes, never a timeframe-sensitive
+        # VALUE — a ticker whose only chain snapshot currently sits on a legacy 5m row must
+        # still surface here. Scoping to timeframe='1m' would silently drop it. Safe per
+        # docs/repo_wide_canonical_enforcement_v2.md's own "documented multi-timeframe-safe
+        # pattern" exception, since the real read is deferred to _latest_chain_and_spot above.
         tickers = [r["ticker"] for r in con.execute(
             "SELECT DISTINCT ticker FROM snapshots "
             "WHERE option_chain_json IS NOT NULL AND spot IS NOT NULL"
@@ -14311,48 +14616,6 @@ def _radar_fallback_recompute() -> list[dict] | None:
             "levels_source": LEVELS_SOURCE_STORED_CHAIN,
         })
     return out
-
-
-@app.get("/api/terrain/radar")
-def get_terrain_radar(limit: int = Query(default=12, ge=1, le=60)):
-    """Air-traffic radar: ONLY tickers currently in the operator's airspace.
-
-    A 51-row grid is a list, not a radar. A controller tracks the aircraft that are
-    actually in the sector, so a ticker earns a slot only by doing something:
-      * sitting at a wall (within RADAR_NEAR_PCT)
-      * having broken a wall with acceptance
-      * an unambiguous regime with a wall within RADAR_WATCH_PCT
-    Everything mid-box and quiet is deliberately invisible. Untrusted tickers are never
-    ranked as if their levels were real -- they are reported separately as blind spots.
-    """
-    # Coerced so the handler is callable directly in tests, not only over HTTP
-    # (FastAPI passes a Query object when the default is used outside a request).
-    try:
-        max_rows = int(limit)
-    except (TypeError, ValueError):
-        max_rows = 12
-
-    rows: list[dict] = []
-    blind = 0
-    cached = _terrain_snapshots_for_radar()
-    for t in cached:
-        spot = t.get("spot")
-        if t.get("confidence") != "TRUSTED" or not spot:
-            blind += 1
-            continue
-        atr = _radar_atr(t.get("ticker"))
-        if not atr.daily:
-            blind += 1                    # no scale means no ring; never guess one
-            continue
-        contact = _radar_contact(t, spot, atr)
-        if contact is not None:
-            rows.append(contact)
-
-    rows.sort(key=lambda r: r["_sort"])
-    for r in rows:
-        r.pop("_sort", None)
-    return {"rows": rows[:max_rows], "tracked": len(rows), "scanned": len(cached),
-            "blind_spots": blind, "near_pct": RADAR_NEAR_PCT, "watch_pct": RADAR_WATCH_PCT}
 
 
 #: Gamma profiles for cached tickers, keyed by ticker. Kept beside the payload cache so a
@@ -14426,305 +14689,11 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     return out
 
 
-@app.get("/api/diagnostics/terrain-producer")
-def get_terrain_producer_diagnostics():
-    """RC-148: the producer's own state, readable. Until this existed, `_terrain_refresh_last_error`
-    was reachable only through one dead branch and the console had NO way to answer "why is this
-    ticker not refreshing" — the question that cost a session on $SPX (RC-126) and another on
-    RTY/XXT. Read-only, no Schwab call, no model stack."""
-    with _terrain_skip_lock:
-        skips = dict(_terrain_skipped_reason)
-    with _terrain_quarantine_lock:
-        quar = {k: dict(v) for k, v in _terrain_quarantine.items()}
-        avoided = dict(_terrain_quarantine_skips)
-    return JSONResponse({
-        "last_error": dict(_terrain_refresh_last_error),
-        "consecutive_failures": dict(_terrain_consecutive_fails),
-        "quarantined": quar,
-        "fetches_avoided_by_quarantine": avoided,
-        "skipped_this_cycle": skips,
-        "cache_size": terrain_cache_size(),
-        "stale_after_sec": TERRAIN_STALE_AFTER_SEC,
-        "refresh_sec": TERRAIN_REFRESH_SEC,
-        "hard_fail_threshold": TERRAIN_QUARANTINE_HARD_FAILS,
-        "ledger_path": str(TERRAIN_QUARANTINE_LEDGER),
-    })
-
-
-@app.post("/api/terrain/quarantine/release")
-def post_terrain_quarantine_release(ticker: str = Query(...)):
-    """Operator re-admission — the ONLY exit from a permanent hold, and it is logged.
-
-    A quarantine with no way back is a deletion the operator never approved, so this exists in
-    the same commit as the quarantine itself rather than as a follow-up.
-    """
-    return JSONResponse(terrain_quarantine_release(ticker))
-
-
-# ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
-# Feeds the /chart sidebar: today's per-strike dealer gamma + traded volume, plus
-# the PRIOR wide capture's bars (the day-over-day migration ghosts), each in three
-# expiry scopes (all / near<=7DTE / far). Sources are STORED chains only (wide
-# morning capture preferred, live narrow chain as fallback) — read-only, no Schwab
-# call, no model stack. Bar heights use the same exposure math as terrain.
-@app.get("/api/terrain/strikes")
-def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
-    # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
-    # viewing"): _note_gamma_surface_demand was only ever called from
-    # get_options_gamma_surface (the Heatmap grid's own route) -- GEX-by-Strike, the
-    # Positioning Migration panel, and the Chart view all read THIS route instead and never
-    # registered that anyone was watching. A ticker viewed only through one of those three
-    # screens could never reach _terrain_loop's `_previewed` set, so it never got a live
-    # refresh attempt regardless of enrollment. Every screen that shows this ticker's live
-    # terrain-derived data must register the same demand signal, not just one of them.
-    _note_gamma_surface_demand(tk)
-
-    def _per_strike(contracts: list, spot: float) -> dict:
-        def _scope(cts: list) -> list:
-            if not cts:
-                return []
-            exposures, _diag = _cebs(cts, spot=spot, require_oi=True)
-            vol_by_k: dict[float, float] = {}
-            # SINGLE SOURCE: totalVolume read through the canonical non-negative reader so
-            # the REST aggregation drops NaN/±inf (raw float() used to admit them, poisoning
-            # the sum) and reads 0/negatives identically to the exposure and order-flow paths.
-            from numeric_contract import (
-                float_finite_or_none as _fin,
-                float_nonnegative_or_none as _vol_read,
-            )
-            for ct in cts:
-                # single source: reject NaN strike (raw float() let a NaN become a dict key)
-                k = _fin(ct.get("strikePrice"))
-                if k is None:
-                    continue
-                v = _vol_read(ct.get("totalVolume"))
-                if v:
-                    vol_by_k[k] = vol_by_k.get(k, 0.0) + v
-            out = []
-            for k, b in exposures.items():
-                # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): net_gex_1pct/
-                # call_gamma/put_gamma are pre-initialized to a real 0.0 by _strike_bucket, so
-                # bucket_metric/total_gamma_raw_at_strike returned a real float (never None)
-                # even for a strike where every contract failed the OI gate -- Schwab's SPX
-                # feed currently reports openInterest=0/stuck for every contract, so this drew
-                # a $0 bar indistinguishable from a strike genuinely measured at flat gamma.
-                # has_oi (math_exposure_core.py's own canonical signal) is checked FIRST, before
-                # either metric read, so a no-OI strike is skipped the same way RC-276's
-                # gamma-resolves-nowhere case already is below -- one exclusion rule, not two.
-                if not (isinstance(b, dict) and b.get("has_oi")):
-                    continue
-                g = bucket_metric(b, "net_gex_1pct")
-                if g is None:
-                    g = total_gamma_raw_at_strike(b)
-                if g is None:
-                    # RC-276: the second copy of the terrain_engine:202 bar RC-274 removed. A
-                    # strike whose gamma resolves nowhere drew a bar at 0.0, indistinguishable
-                    # from a strike measured at flat gamma on the surface used to read dealer
-                    # positioning. Hidden here because server.py was allowlisted wholesale.
-                    continue
-                out.append([round(float(k), 2), round(float(g), 1),
-                            int(vol_by_k.get(float(k), 0))])
-            out.sort(key=lambda r: r[0])
-            return out
-
-        # Cursor-audit F8: unknown DTE must belong to NEITHER near nor far, not silently to far.
-        # This endpoint carried its own near/far splitter with the old 999.0 sentinel — a duplicate
-        # of the RC-290-fixed canonical _dte_of, which drops an unreadable DTE from BOTH sides. With
-        # 999.0 a parse-failed 0-DTE was rendered in the prior-day MONTHLY+ (far) chip and omitted
-        # from the ≤7DTE (near) chip. Use the ONE canonical splitter so the two can't diverge again.
-        from terrain_engine import _dte_of
-        near = [c for c in contracts if (d := _dte_of(c)) is not None and d <= 7]
-        far = [c for c in contracts if (d := _dte_of(c)) is not None and d > 7]
-        return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
-
-    import sqlite3 as _sq
-    today_src, prior_src = None, None
-    today, prior = None, None
-    spot_used = None
-    today_age_sec = None
-    # RC-146: bound BEFORE the try. `_snap` was assigned only inside the try body yet read
-    # unconditionally in the response dict below — a raising terrain_cache_get took the
-    # logged-and-swallowed path and then killed the endpoint with NameError on the way out,
-    # turning a degraded panel into a 500. Absence must degrade, never explode.
-    _snap: dict = {}
-    # RC-68 SINGLE SOURCE FOR TODAY'S PER-STRIKE DATA: the LIVE terrain snapshot.
-    # This panel used to render from option_chain_morning_full — MEASURED 2026-07-27 11:31 ET:
-    # a 09:47 capture served at 11:31 understated session volume by 281 percent (1,095,874 shown
-    # vs 4,176,672 live), ~500K missing on strike 740 alone, while the walls beside it moved on
-    # the 60s loop. Two clocks, one story. The terrain loop already computes this exact map from
-    # a live wide chain every cycle (terrain_engine._per_strike_map) — it was simply discarded.
-    # Reading it here costs ZERO additional vendor calls. The archive is demoted to the
-    # prior-day ghost, which is the one thing it is genuinely correct for.
-    try:
-        _snap = terrain_cache_get(tk) or {}
-        _ps = _snap.get("_per_strike") or {}
-        # RC-79: the terrain loop hands over FINISHED rows ({all,near,far} of
-        # [strike, net_gex_1pct$, volume]) and they are served as-is. This previously rebuilt
-        # synthetic contract dicts out of them and pushed those back through
-        # compute_exposures_by_strike(require_oi=True) — the synthetics had no open interest, so
-        # every row was rejected and the panel rendered EMPTY on a live, 7-second-old snapshot.
-        # Data that is already computed is never recomputed from a lossy reconstruction of its
-        # own inputs.
-        if isinstance(_ps, dict) and _ps.get("all"):
-            today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
-            spot_used = _snap.get("spot")
-            _cts_utc = _snap.get("computed_ts_utc")
-            today_age_sec = round(time.time() - float(_cts_utc), 1) if _cts_utc else None
-            today_src = "terrain_live_cache"
-    except Exception as e:
-        log.debug("terrain strikes live read failed %s: %s", tk, e)
-    # RC-162 — THE BANK'S FIRST READER. RC-159 built the accrual writer and RC-161 made the
-    # producer universal, but nothing ever read it: with a cold, thin or stale live cache the
-    # Chart painted NOTHING while this session's own gamma and volume sat in the DB. Banking is
-    # not rendering, and a bank with no reader satisfies no operator intent.
-    #
-    # This is a DECLARED SECOND SOURCE, not a silent one, and it is bounded three ways so it
-    # cannot become the RC-68 failure again (a 09:47 archive served at 11:31 under a live label):
-    #   1. It serves only when the live snapshot is ABSENT or older than TERRAIN_STALE_AFTER_SEC.
-    #   2. It serves only rows banked TODAY, and only if they are NEWER than what live has.
-    #   3. It stamps its own source and age, so no consumer can mistake it for the live cache.
-    # The prior-day morning_full archive is untouched and still serves ONLY the ghost — a bank
-    # row is this session's own wide book, which is exactly what the archive is not.
-    try:
-        _live_ts = float(_snap.get("computed_ts_utc") or 0.0) if isinstance(_snap, dict) else 0.0  # silent-zero-ok: epoch-0 ancient sentinel — an undated snapshot must lose every freshness comparison
-        _live_stale = (today is None) or (
-            _live_ts <= 0.0) or ((time.time() - _live_ts) > TERRAIN_STALE_AFTER_SEC)
-        if _live_stale:
-            _bank = latest_accrual_rows(get_db().db_path, tk)
-            if _bank and _bank.get("rows") and _bank["ts_utc"] > _live_ts:
-                # `near`/`far` stay EMPTY on purpose: the bank holds the `all` scope only, and
-                # inventing a DTE split it never measured would be a fabricated level. The scope
-                # chips render empty and say so rather than showing `all` under another name.
-                today = {"all": _bank["rows"], "near": [], "far": []}
-                spot_used = _bank.get("spot") if _bank.get("spot") is not None else spot_used
-                today_age_sec = round(time.time() - _bank["ts_utc"], 1)
-                today_src = f"accrual_bank:{_bank['et_minute']:04d}et"
-    except Exception as e:
-        log.debug("terrain strikes accrual fallback failed %s: %s", tk, e)
-    try:
-        db = get_db()
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            rows = con.execute(
-                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
-                "WHERE ticker=? ORDER BY et_date DESC LIMIT 2", (tk,)).fetchall()
-        finally:
-            con.close()
-        if rows:
-            # ONE FAUCET FOR TODAY. The archive is NOT a fallback for today's per-strike data —
-            # a fallback IS a second faucet, and it is exactly how a 09:47 capture ended up
-            # rendering at 11:31 under the label "TODAY'S OPTION VOLUME". If the live terrain
-            # snapshot is absent (cold start), `today` stays empty and today_source stays None so
-            # the panel can say so: absence reads as absence, never as a stale substitute.
-            # The archive serves ONLY the prior-day ghost, which is what it is genuinely correct
-            # for — yesterday's close does not change.
-            _prior_row = rows[1] if len(rows) > 1 else (rows[0] if today_src else None)
-            if _prior_row is not None:
-                d1, s1, c1 = _prior_row
-                prior = _per_strike(json.loads(c1), float(s1))
-                prior_src = f"wide_capture:{d1}"
-    except Exception as e:
-        log.debug("terrain strikes wide read failed %s: %s", tk, e)
-    # The narrow-snapshot fallback is REMOVED (RC-68). It was the third faucet for one field:
-    # the same panel could be fed by the live cache, the morning archive, or a stored narrow
-    # chain — three different widths and three different clocks — with nothing on screen saying
-    # which. If the live snapshot is absent the panel renders empty and says so.
-    live_spot, live_src, _ts = resolve_spot(tk)
-    _payload_spot = live_spot if live_spot is not None else spot_used
-
-    # STRIP kill (one-faucet-closeout-v1): per-side GEX/OV sums are computed HERE, against
-    # the exact spot this payload serves — the chart strip used to re-derive them in the
-    # browser from the same rows (a second aggregation site that breaks silently when the
-    # payload changes, and can straddle a different spot than the server's). One aggregator.
-    def _side_sums(rows, s):
-        from numeric_contract import float_finite_or_none, float_nonnegative_or_none
-        if not rows or s is None:
-            return None
-        gb = ga = vb = va = 0.0
-        for r in rows:
-            # RC-276: the third copy. A row with no gamma used to add 0.0 to a side sum, which
-            # is not neutral -- it drags the below/above comparison toward whichever side holds
-            # the unmeasured strikes. Absence is dropped, not counted as flat.
-            k = float_finite_or_none(r[0])
-            g = float_finite_or_none(r[1])
-            v = float_nonnegative_or_none(r[2])
-            if k is None or g is None or v is None:
-                continue
-            if k < s:
-                gb += g; vb += v
-            elif k > s:
-                ga += g; va += v
-        return {"gex_below": round(gb, 1), "gex_above": round(ga, 1),
-                "vol_below": int(vb), "vol_above": int(va),
-                "spot_basis": float(s)}
-
-    return JSONResponse({
-        "ticker": tk, "spot": _payload_spot,
-        "spot_source": live_src,
-        "today": today or {"all": [], "near": [], "far": []},
-        "today_side_sums": _side_sums((today or {}).get("all"), _payload_spot),
-        "today_source": today_src,
-        # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
-        # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
-        "today_age_sec": today_age_sec,
-        # RC-91: PROVENANCE IS NOT FRESHNESS. single_faucet_provenance passes here — one declared
-        # source, no fallback — while the panel served levels 90 MINUTES old under a
-        # `terrain_live_cache` label, because the terrain loop stops at the background-logging
-        # window (16:30 ET) and nothing said so. Naming the right source proves only that the
-        # right tap was opened, never that anything is still coming out of it.
-        **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk),
-        "prior": prior or {"all": [], "near": [], "far": []},
-        "prior_source": prior_src,
-    })
-
-
 # ── CR-03 pre-work (operator directive 2026-07-22 "we have plenty of time"):
 # the chart-first screen v0 at /chart reads canonical 1m bars via this endpoint.
 # Read-only, index-served (ticker+timeframe named — the idx_snap lesson applies to
 # price_bars_1m equally), no Schwab call, no model stack. The WS transport replaces
 # the page's polling when CR-CAP clears; this endpoint stays as the history hydrator.
-@app.get("/api/bars1m")
-def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
-               limit: int = Query(default=780, ge=1, le=3000)):
-    """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts."""
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
-    import sqlite3 as _sq
-    try:
-        db = get_db()
-    except Exception:
-        return JSONResponse({"ticker": tk, "bars": [], "error": "db unavailable"})
-    con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-    try:
-        rows = con.execute(
-            "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
-            "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?", (tk, int(limit)),
-        ).fetchall()
-    finally:
-        con.close()
-    bars = [{"t": r[0], "o": r[1], "h": r[2], "l": r[3], "c": r[4], "v": r[5]}
-            for r in reversed(rows)]
-    if not bars:
-        # RC-484 (2026-08-25): a PREVIEWED (typed-in, not enrolled) ticker banks no
-        # price_bars_1m — RC-69 made _bars_loop the only banked writer and it serves
-        # enrolled tickers only — so its chart stayed empty all session (measured:
-        # CRWV 2026-08-13, 127 snapshots, 0 bars). Fall through to the live
-        # accumulator's COMPLETED bars, read-only and clearly tagged: display feed,
-        # not a second banked producer (nothing is written).
-        try:
-            acc = _candles_1m.get_bars(tk)
-        except Exception:
-            acc = []
-        bars = [{"t": float(b.ts), "o": float(b.open), "h": float(b.high),
-                 "l": float(b.low), "c": float(b.close),
-                 "v": (float(b.volume) if getattr(b, "volume", None) is not None else None)}
-                for b in list(acc)[-int(limit):]]
-        if bars:
-            return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars),
-                                 "source": "live_accumulator_unbanked"})
-    return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
 
 
 def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None]:
@@ -14757,161 +14726,6 @@ def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None
     return contracts, float(spot)
 
 
-@app.get("/api/options/vanna-by-strike")
-def get_vanna_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Per-strike dealer VANNA exposure (operator field-inventory audit, 2026-09-13): the
-    SAME canonical faucet (math_exposure_core.compute_exposures_by_strike) the Gamma/DEX
-    heatmaps already use, aggregated across every expiry in the live wide chain (Vanna has
-    no per-expiry SURFACE yet — see the Multi-Map subview's own note — so this is the
-    aggregate-by-strike tier the Key Levels 'AGG $ ONLY' badge already discloses, not a
-    narrower or different computation). net_vanna = call_vanna - put_vanna, the SAME
-    +call/-put dealer-book convention net_gex_1pct and net_charm_daily already use (RC-211's
-    exact BS-vanna faucet, math_levels.bs_vanna, independently FD-verified)."""
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-    from numeric_contract import float_finite_or_none as _fin
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    _touch_tracked_ticker_view(tk)
-    contracts, spot = _live_terrain_contracts_and_spot(tk)
-    if not contracts:
-        return JSONResponse({"ticker": tk, "available": False,
-                             "reason": "no live wide chain cached yet for this ticker"})
-    exposures, _diag = _cebs(contracts, spot=spot, require_oi=True)
-    rows = []
-    for k, b in exposures.items():
-        # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): call_vanna/put_vanna
-        # are pre-initialized to a real 0.0 by _strike_bucket, so a strike where every contract
-        # failed the OI gate returned (0.0, 0.0) here -- neither None, so the `cv is None and
-        # pv is None` check never caught it and the row rendered a fabricated net_vanna of 0.0.
-        # has_oi (math_exposure_core.py's own canonical signal) is the real gate.
-        if not b.get("has_oi"):
-            continue
-        cv, pv = b.get("call_vanna"), b.get("put_vanna")
-        if cv is None and pv is None:
-            continue
-        net = _fin(cv or 0.0) - _fin(pv or 0.0) if (_fin(cv) is not None or _fin(pv) is not None) else None
-        if net is None:
-            continue
-        rows.append([round(float(k), 2), round(net, 2)])
-    rows.sort(key=lambda r: r[0])
-    return JSONResponse({
-        "ticker": tk, "available": True, "spot": spot, "rows": rows,
-        "method": ("live wide chain -> compute_exposures_by_strike (same faucet the Gamma/"
-                   "DEX heatmaps use) -> net_vanna = call_vanna - put_vanna, aggregated "
-                   "across every expiry (no per-expiry surface yet)"),
-    })
-
-
-@app.get("/api/options/charm-by-strike")
-def get_charm_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Per-strike dealer CHARM exposure (operator field-inventory audit, 2026-09-13): the
-    SAME canonical faucet (math_levels.compute_charm_by_strike, the exact function
-    /api/forces's charm_below/charm_above already sum) applied to the live wide chain, row-
-    shaped for a strike bar chart the same way /api/terrain/strikes already is. Units:
-    delta-shares decaying per day (RC-179 dealer convention: +call/-put)."""
-    from math_levels import compute_charm_by_strike as _ccs
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    _touch_tracked_ticker_view(tk)
-    contracts, spot = _live_terrain_contracts_and_spot(tk)
-    if not contracts:
-        return JSONResponse({"ticker": tk, "available": False,
-                             "reason": "no live wide chain cached yet for this ticker"})
-    per_ch = _ccs(contracts, spot)
-    rows = sorted(
-        [round(float(k), 2), round(float(b["net_charm"]), 4)]
-        for k, b in per_ch.items() if b.get("net_charm") is not None
-    )
-    return JSONResponse({
-        "ticker": tk, "available": bool(rows), "spot": spot, "rows": rows,
-        "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
-        "method": ("live wide chain -> math_levels.compute_charm_by_strike (the same faucet "
-                   "/api/forces's charm_below/charm_above already sum) -> net_charm = "
-                   "call_charm - put_charm per strike, delta-shares/day"),
-    })
-
-
-@app.get("/api/options/tape")
-def get_options_tape(ticker: str = Query(default=DEFAULT_TICKER),
-                     contract: Optional[str] = Query(default=None),
-                     limit: int = Query(default=100)):
-    """Discrete option TRADE prints (operator field-inventory audit, 2026-09-13) — the
-    Options Flow tape, locked to the operator's own required schema: Time/Symbol/Expiry/
-    Type/Strike/Bid x Size/Ask x Size/Trade/Size/Premium/Volume/OI/IV/Delta/provenance.
-    Sourced from app.options.order_flow.history.tape_rows_for_symbol, which reads the
-    ALREADY-CAPTURED native LEVELONE_OPTIONS ticks in stream_options_quotes_raw verbatim —
-    no new capture, no derived/estimated field, no fabricated buy/sell aggressor side.
-
-    `contract`, when given, scopes to exactly that vendor symbol. Otherwise scopes to every
-    CURRENTLY DESIRED contract for `ticker` (the primary + additional option contracts the
-    operator has actually selected — the same identity `_desired_stream_greeks_for_ticker`
-    already resolves for the gamma-surface overlay), merged newest-first and capped at
-    `limit` across the whole merge, not per-contract."""
-    from app.options.order_flow.streaming import (
-        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
-    from app.options.order_flow.history import tape_rows_for_symbol
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    try:
-        bounded_limit = max(1, min(500, int(limit)))
-    except (TypeError, ValueError):
-        bounded_limit = 100
-
-    if contract:
-        symbols = [contract]
-    else:
-        candidates = list(get_active_option_contracts())
-        primary = get_active_option_contract()
-        if primary:
-            candidates.append(primary)
-        seen: set[str] = set()
-        symbols = []
-        for sym in candidates:
-            if sym and sym not in seen and contract_matches_underlying(sym, tk):
-                seen.add(sym)
-                symbols.append(sym)
-
-    if not symbols:
-        return JSONResponse({"ticker": tk, "available": False, "rows": [],
-                             "reason": "no active/additional option contract selected for this ticker"})
-
-    rows: list[dict] = []
-    for sym in symbols:
-        rows.extend(tape_rows_for_symbol(sym, since_ts=0.0, limit=bounded_limit))
-    rows.sort(key=lambda r: r["ts_recv"], reverse=True)
-    rows = rows[:bounded_limit]
-    return JSONResponse({
-        "ticker": tk, "available": bool(rows), "symbols": symbols, "rows": rows,
-        "reason": None if rows else "no trade prints captured yet for the selected contract(s)",
-        "method": ("stream_options_quotes_raw (native LEVELONE_OPTIONS capture, already "
-                   "retained) -> tape_rows_for_symbol (de-duplicated genuine trade prints, "
-                   "context carried forward) -> merged newest-first across every currently "
-                   "desired contract for this ticker"),
-    })
-
-
-@app.get("/api/order-flow/book-heatmap")
-def get_order_flow_book_heatmap(ticker: str = Query(default=DEFAULT_TICKER),
-                                minutes: float = Query(default=60.0)):
-    """Historical book-depth heatmap for the underlying ticker's own NASDAQ/NYSE book (operator
-    field-inventory audit, 2026-09-13: "we don't have an order flow heatmap"). SERIALIZER, not a
-    second producer: delegates entirely to app.options.order_flow.history.book_heatmap_for_ticker,
-    which bins the SAME persisted stream_book_raw rows the live /api/order-flow/microstructure
-    ladder already reads into a time x price grid. Genuinely historical (a real time axis), which
-    the live ladder's one-snapshot view cannot show. The window always ends at the latest row
-    actually captured for this ticker, never wall-clock now — see that function's own docstring
-    for why. `minutes` is clamped to [5, 240] to bound one request's cost."""
-    from app.options.order_flow.history import book_heatmap_for_ticker
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    try:
-        bounded_minutes = max(5.0, min(240.0, float(minutes)))
-    except (TypeError, ValueError):
-        bounded_minutes = 60.0
-    payload = book_heatmap_for_ticker(tk, minutes=bounded_minutes)
-    return JSONResponse(payload)
-
-
 #: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
 #: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
 #: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the
@@ -14919,223 +14733,14 @@ def get_order_flow_book_heatmap(ticker: str = Query(default=DEFAULT_TICKER),
 _FORCES_CACHE: dict = {}
 
 
-@app.get("/api/forces")
-def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
-    bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
-    boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
-    DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
-    2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
-    spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
-    """
-    import sqlite3 as _sq
-
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-    from math_levels import compute_charm_by_strike as _ccs
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    now = time.time()
-    hit = _FORCES_CACHE.get(tk)
-    if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
-    payload: dict = {"ticker": tk, "available": False,
-                     "reason": "fewer than 2 banked wide captures for this ticker"}
-    try:
-        db = get_db()
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            # RC-193: pull a wider candidate window and keep only trading ET dates —
-            # ORDER BY et_date DESC LIMIT 2 silently preferred Sunday stock.
-            cand = con.execute(
-                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
-                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
-        finally:
-            con.close()
-        rows = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:2]
-        if len(rows) >= 2:
-            (d1, s1, c1), (d0, s0, c0) = rows[0], rows[1]
-            per1 = _cebs(json.loads(c1), spot=float(s1))[0]
-            per0 = _cebs(json.loads(c0), spot=float(s0))[0]
-
-            def _g(v: dict, k: str) -> float:
-                x = v.get(k)
-                return float(x) if x is not None else 0.0
-
-            oi1 = {k: _g(v, "call_oi") + _g(v, "put_oi") for k, v in per1.items()}
-            oi0 = {k: _g(v, "call_oi") + _g(v, "put_oi") for k, v in per0.items()}
-            spot1 = float(s1)
-            # RC-199: CHARM below/above from the NEWER banked wide chain (full book).
-            # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
-            charm_below = charm_above = None
-            charm_err = None
-            try:
-                chain1 = json.loads(c1)
-                contracts = chain1 if isinstance(chain1, list) else (
-                    (chain1.get("contracts") if isinstance(chain1, dict) else None) or [])
-                per_ch = _ccs(contracts, spot1) if contracts else {}
-                if not per_ch:
-                    charm_err = "charm_by_strike empty on newer banked chain"
-                else:
-                    # RC-276: a strike with no net_charm is not a strike with zero charm.
-                    # Summed as 0.0 it silently tilted the below/above pair the Exposure tab
-                    # renders as dealer charm pressure.
-                    from numeric_contract import float_finite_or_none as _fin_ch
-
-                    def _ch(v: dict) -> float | None:
-                        return _fin_ch(v.get("net_charm"))
-
-                    charm_below = round(sum(
-                        c for c in (_ch(v) for k, v in per_ch.items() if k < spot1)
-                        if c is not None), 4)
-                    charm_above = round(sum(
-                        c for c in (_ch(v) for k, v in per_ch.items() if k > spot1)
-                        if c is not None), 4)
-            except Exception as _ce:
-                charm_err = str(_ce)[:120]
-            payload = {
-                "ticker": tk, "available": True,
-                "doi_below": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k < spot1)),
-                "doi_above": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k > spot1)),
-                "dex_below_dollars": round(sum(
-                    _g(v, "net_dex_dollars") for k, v in per1.items() if k < spot1)),
-                "dex_above_dollars": round(sum(
-                    _g(v, "net_dex_dollars") for k, v in per1.items() if k > spot1)),
-                "charm_below": charm_below,
-                "charm_above": charm_above,
-                # RC-288: DERIVED from the chain actually summed, not asserted. This was the
-                # string literal "full_chain_banked", and static/exposure.html hardcodes the
-                # same literal as its fallback — a label identical on both sides of the wire
-                # can never disagree with itself, so it could not detect the one thing it
-                # exists for. It matters because the repo computes charm two ways:
-                # compute_net_charm on ONE selected expiry, compute_charm_by_strike on the
-                # whole book. Counting the distinct expiries in `contracts` reports which
-                # book these numbers came from and changes if the producer ever changes.
-                "charm_book_scope": _charm_book_scope(contracts),
-                "charm_error": charm_err,
-                "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
-                "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "
-                           "DEX = net_dex_dollars side sums on the newer capture; "
-                           "CHARM = dealer-signed net_charm side sums on the newer capture"),
-            }
-    except Exception as e:
-        payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
-    _FORCES_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
-
-
 #: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
 #: per-strike exposure time series the console has.
 _EXPOSURE_FLOW_CACHE: dict = {}
 
 
-@app.get("/api/exposure/flow")
-def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
-    """RC-208: serve option_chain_accrual frames for the latest banked session so the
-    Exposure tab paints per-minute Pika/Barney structure, the intraday King path, and
-    volume-delta bubbles at the minute they happened. per_strike_json served verbatim
-    ([[strike, gex_dollars, session_volume], ...]; MEASURED: SPY 07-31 = 133 frames, ET
-    minutes 556-975), spot-windowed ±5%. 5-min cache like /api/forces."""
-    import sqlite3 as _sq
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    now = time.time()
-    hit = _EXPOSURE_FLOW_CACHE.get(tk)
-    if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
-    payload: dict = {"ticker": tk, "available": False,
-                     "reason": "no banked accrual frames for this ticker"}
-    try:
-        db = get_db()
-        frames: list[dict] = []
-        latest = None
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            latest = con.execute(
-                "SELECT MAX(et_date) FROM option_chain_accrual WHERE ticker=?", (tk,),
-            ).fetchone()
-            if latest and latest[0]:
-                for ts, m, spot, psj in con.execute(
-                        "SELECT ts_utc, et_minute, spot, per_strike_json "
-                        "FROM option_chain_accrual WHERE ticker=? AND et_date=? "
-                        "ORDER BY ts_utc", (tk, latest[0])):
-                    try:
-                        rows2 = json.loads(psj)
-                    except (ValueError, TypeError):
-                        continue
-                    sp = float(spot) if spot is not None else None
-                    if sp:
-                        rows2 = [r for r in rows2 if abs(float(r[0]) - sp) <= sp * 0.05]
-                    frames.append({"t": int(float(ts) // 60) * 60, "m": int(m),
-                                   "spot": sp, "rows": rows2})
-        finally:
-            con.close()
-        if frames:
-            payload = {"ticker": tk, "available": True, "et_date": latest[0],
-                       "n_frames": len(frames), "frames": frames,
-                       "method": ("option_chain_accrual per_strike_json verbatim "
-                                  "[[strike, gex_dollars, session_volume]...], "
-                                  "spot-windowed ±5%, latest banked session")}
-    except Exception as e:
-        payload = {"ticker": tk, "available": False, "reason": f"flow read failed: {e}"}
-    _EXPOSURE_FLOW_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
-
-
 #: RC-209: Split·DEX and multi-day structure were gated ONLY by missing endpoints.
 _EXPOSURE_BOOK_CACHE: dict = {}
 _EXPOSURE_HISTORY_CACHE: dict = {}
-
-
-@app.get("/api/exposure/book")
-def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
-    """RC-209: per-strike call/put GEX split + net DEX + volumes from the NEWEST banked wide
-    chain — turns the Exposure tab's Split·DEX pill live. Vendor convention researched this
-    turn (FlashAlpha): green = call side, red = put side. 5-min cache."""
-    import sqlite3 as _sq
-
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    now = time.time()
-    hit = _EXPOSURE_BOOK_CACHE.get(tk)
-    if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
-    payload: dict = {"ticker": tk, "available": False, "reason": "no banked wide chain"}
-    try:
-        db = get_db()
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            cand = con.execute(
-                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
-                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
-        finally:
-            con.close()
-        rows_t = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:1]
-        if rows_t:
-            d1, s1, c1 = rows_t[0]
-            spot1 = float(s1)
-            per, _diag = _cebs(json.loads(c1), spot=spot1)
-
-            def _f(v: dict, k: str) -> float:
-                x = v.get(k)
-                return float(x) if x is not None else 0.0
-
-            out_rows = [
-                [k, round(_f(v, "call_gex_1pct")), round(_f(v, "put_gex_1pct")),
-                 round(_f(v, "net_dex_dollars")),
-                 round(_f(v, "call_volume")), round(_f(v, "put_volume"))]
-                for k, v in sorted(per.items())
-                if abs(float(k) - spot1) <= spot1 * 0.05
-            ]
-            payload = {"ticker": tk, "available": True, "et_date": d1, "spot": spot1,
-                       "rows": out_rows,
-                       "method": ("newest banked wide chain -> compute_exposures_by_strike; "
-                                  "[strike, call_gex_1pct, put_gex_1pct, net_dex_dollars, "
-                                  "call_volume, put_volume], ±5% spot window")}
-    except Exception as e:
-        payload = {"ticker": tk, "available": False, "reason": f"book read failed: {e}"}
-    _EXPOSURE_BOOK_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
 
 
 # RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. A PROJECTION over the
@@ -15698,253 +15303,6 @@ def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> d
     return out
 
 
-@app.get("/api/options/gamma-surface")
-def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
-    faucet compute_exposures_by_strike.
-
-    Source order is deliberate. PREFERRED is the LIVE surface: _terrain_refresh_one (the single
-    levels producer) projects it each cycle from the same live wide chain + live spot it already
-    fetches, and caches it (source=terrain_live_cache). FALLBACK is the banked MORNING wide chain,
-    used only when the live cache is cold and labelled a reference (live=false, stale=true) — a
-    morning snapshot is never presented as intraday. Exposes chain/spot as-of, source, and
-    stale/degraded so the UI can fail stale visibly."""
-    import sqlite3 as _sq
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    now = time.time()
-    _note_gamma_surface_demand(tk)   # mark viewed -> the terrain loop will project this ticker's surface
-
-    # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
-    live = terrain_cache_get(tk)
-    surf = (live or {}).get("_gamma_surface")
-    if live and surf:
-        # ONE freshness authority: terrain_staleness (RC-424) already merged onto the cache by
-        # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
-        stale = bool(live.get("levels_stale"))
-        strikes = surf.get("strikes") or []
-        # Operator directive (2026-09-14, live SPX reproduction): a surface with real strikes/
-        # contracts but zero cells carrying usable open interest is NOT "available" in any
-        # sense an operator cares about -- `available` now reflects project_gamma_surface's
-        # own gamma_available signal (computed from the SAME per-cell _has_data gate the grid
-        # itself renders from), not merely "did the live cache have a surface object at all".
-        _gamma_available = surf.get("gamma_available", True)
-        # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
-        # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
-        # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
-        # _terrain_refresh_one/refresh_gamma_surface_from_stream).
-        #
-        # Audit finding #6 (2026-09-16), FIXED: `stream_confirmed_live` used to mean "at least
-        # one cell is live" (true with 1 of hundreds), and the field the UI actually rendered
-        # a "LIVE" label from (this response's own `source`/`live` above) required NO per-cell
-        # coverage at all -- a trader could see "LIVE" over a mostly stale/unavailable grid.
-        # `stream_confirmed_live` is REMOVED (dead, misleadingly named, never consumed) and
-        # replaced by `stream_coverage`, the ONE coverage verdict
-        # (_gamma_surface_coverage_summary) with exact live/partial/stale/rejected/unavailable
-        # counts and percentages, and `meets_live_requirement` gating the ONLY honest "LIVE"
-        # claim: 100% of cells carrying a real contract identity, not source-path identity or
-        # one live cell.
-        _coverage = _gamma_surface_coverage_summary(surf)
-        try:
-            # Independent-review finding (2026-09-16, follow-up mandate item 1): "expose the
-            # exact admitted, active, pending and rejected contracts" — a symbol-level
-            # accounting, distinct from the per-cell disclosure above. Best-effort: a
-            # diagnostic field must never take down the surface it is attached to.
-            _contract_admission = _option_contract_admission_summary(tk)
-        except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
-            log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
-            _contract_admission = None
-        return JSONResponse({
-            "ticker": tk, "symbol": tk, "available": _gamma_available,
-            # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
-            # reads surface.reason for the placeholder message; reusing it here means the
-            # existing frontend contract picks this up with no client-side change required.
-            "reason": None if _gamma_available else surf.get("gamma_unavailable_reason"),
-            "source": "terrain_live_cache", "live": True, "stale": stale,
-            "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
-            "stream_coverage": _coverage,
-            "contract_admission": _contract_admission,
-            "degraded": live.get("levels_stale_reason") if stale else None,
-            # ONE spot faucet (operator directive, 2026-09-15): prefer the spot stamped
-            # directly ON THIS SURFACE (by _terrain_refresh_one's REST cycle OR the eager
-            # per-tick refresh_gamma_surface_from_stream, whichever produced this exact
-            # surface_seq generation) over the top-level terrain payload's own spot fields --
-            # the eager path can legitimately publish a NEWER resolve_spot value than the
-            # REST cycle's own `live.get("spot")` without the top-level fields having caught
-            # up, and this surface's own cells were computed from ITS stamp, not the top
-            # level's. Falls back to the top-level fields only for a surface predating this
-            # stamp (never expected in production, kept for defensive compatibility).
-            "spot": surf.get("spot", live.get("spot")),
-            "spot_source": surf.get("spot_source", live.get("spot_source")),
-            "chain_as_of_ts_utc": live.get("computed_ts_utc"),
-            "spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc", live.get("spot_as_of_ts_utc")),
-            "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
-            "refresh_active": live.get("levels_refresh_active"),
-            "chain_basis": live.get("chain_basis"),
-            # coverage: the live terrain chain is strike_count-bounded (near-money), NOT the full
-            # strike_range=ALL book — disclosed so the heatmap is never presented as a complete chain.
-            "complete": False,
-            "coverage": {
-                "window": "live_near_money", "chain_basis": live.get("chain_basis"),
-                "strike_count": len(strikes),
-                "strike_min": (strikes[0] if strikes else None),
-                "strike_max": (strikes[-1] if strikes else None),
-                "expiry_count": len(surf.get("expirations") or []),
-                "note": ("near-money LIVE window (strike_count-bounded terrain chain) — NOT the "
-                         "full strike_range=ALL book. Proven-complete captures are per-expiry "
-                         "(complete_chain_captures), not exposed by this surface"),
-            },
-            **_stamp_surface_session(surf, reference_date=None),
-            "provenance": {
-                "producer": "math_exposure_core.compute_exposures_by_strike",
-                "source": "live_terrain_wide_chain (_terrain_refresh_one, strike_count-width basis)",
-                "classification": "DERIVED", "cell_metric": "net_gex_1pct",
-                "spot_basis": "live_resolve_spot",
-            },
-            "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
-                       "partition by native expirationDate -> compute_exposures_by_strike per expiry "
-                       "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
-        })
-
-    # ---- FALLBACK: banked MORNING wide chain — REFERENCE ONLY, never presented as intraday ----
-    hit = _GAMMA_SURFACE_CACHE.get(tk)
-    if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
-    # #1-A: separate the two truths the UI must not conflate.
-    #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
-    #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
-    #               the board's own lock (_ticker_on_terrain_board), NOT inferred from "a cached
-    #               snapshot happens to exist". A stale snapshot is not proof of current membership.
-    #   WARMING   = requested AND on the board AND the terrain producer can refresh THIS ticker right
-    #               now — reusing terrain_staleness's canonical output merged onto `live`
-    #               (levels_refresh_active, not quarantined, not paused). No copied scheduler policy.
-    # A ticker not on the board is REQUESTED but NOT WARMING and no next refresh can occur for it —
-    # the UI must say collection is not active for this symbol, never "awaiting next refresh".
-    _requested = _gamma_surface_wanted(tk)
-    _on_board = _ticker_on_terrain_board(tk)
-    _warming = (_requested and _on_board and bool(live) and bool(live.get("levels_refresh_active"))
-                and not live.get("levels_quarantined") and not live.get("levels_paused_on_purpose"))
-    payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                     "live": False, "stale": True, "warming": _warming,
-                     "requested": _requested, "on_board": _on_board,
-                     "reason": "no live terrain surface and no banked wide chain"}
-    try:
-        db = get_db()
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            cand = con.execute(
-                "SELECT et_date, spot, chain_json, ts_utc FROM option_chain_morning_full "
-                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
-        finally:
-            con.close()
-        # Operator directive (2026-09-14, SPX persisted-fallback hardening): a "morning
-        # reference" that silently reaches back past today's session is not a morning
-        # reference at all -- it is an unlabeled multi-day-old snapshot wearing the same
-        # "banked_morning_reference" name as a genuine same-day one. Require the row's own
-        # et_date to equal THIS session's ET date; anything older falls through to the
-        # explicit "unavailable" payload above rather than being served as if it were today's.
-        _today_et = now_et().strftime("%Y-%m-%d")
-        rows_t = [r for r in cand if r[0] and str(r[0]) == _today_et and is_trading_day_et(str(r[0]))][:1]
-        if not rows_t and any(r[0] and is_trading_day_et(str(r[0])) for r in cand):
-            payload["reason"] = ("no live terrain surface; a banked wide chain exists but is "
-                                  "from a prior session (not today's ET date) -- not served as "
-                                  "a morning reference to avoid presenting stale data as current")
-        if rows_t:
-            et_date, s1, c1, ts1 = rows_t[0]
-            spot1 = float(s1)
-            surface = project_gamma_surface(json.loads(c1), spot1)
-            # Always-live heatmap mandate (2026-09-15): a banked-morning reference has no stream
-            # overlay input at all -- every leg on every cell stamps 'unavailable' UNLESS the
-            # daemon is already, independently, requesting that leg's contract (a genuine
-            # 'pending' -- the caller is honestly waiting on the vendor, not merely looking at a
-            # never-subscribed contract), consistent with "REST may bootstrap or recover the
-            # surface, but it cannot satisfy LIVE".
-            from app.options.order_flow.streaming import is_option_producer_daemon_available
-            _stamp_gamma_surface_cell_stream_state(
-                surface, {}, set(), None, set(_desired_option_symbols_for_ticker(tk)),
-                daemon_available=is_option_producer_daemon_available())
-            _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
-            payload = {
-                "ticker": tk, "symbol": tk, "available": True,
-                "source": "banked_morning_reference", "live": False, "stale": True,
-                "cell_stream_state_counts": _gamma_surface_cell_state_counts(surface),
-                "stream_coverage": _gamma_surface_coverage_summary(surface),
-                "warming": _warming, "requested": _requested, "on_board": _on_board,
-                "degraded": ("live terrain surface unavailable — showing banked morning wide "
-                             "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
-                "et_date": et_date, "spot": spot1,
-                "chain_as_of_ts_utc": ts1, "spot_as_of_ts_utc": ts1, "age_sec": _age_sec,
-                "chain_basis": "banked_morning", "complete": False,
-                "coverage": {"window": "banked_morning_wide", "strike_count": len(surface.get("strikes") or []),
-                             "note": ("banked morning wide reference — strike-count bounded, not intraday "
-                                      "and not proven complete (not strike_range=ALL)")},
-                **_stamp_surface_session(surface, reference_date=str(et_date)),
-                "provenance": {
-                    "producer": "math_exposure_core.compute_exposures_by_strike",
-                    "source": "newest_banked_wide_chain:option_chain_morning_full",
-                    "classification": "DERIVED", "cell_metric": "net_gex_1pct",
-                    "spot_basis": "captured_morning_spot",
-                },
-                "method": ("REFERENCE: newest banked MORNING wide chain -> per-expiry "
-                           "compute_exposures_by_strike; morning spot/Greeks, not intraday"),
-            }
-    except Exception as e:  # fail-closed to explicit unavailability
-        payload = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                   "live": False, "stale": True, "warming": _warming,
-                   "requested": _requested, "on_board": _on_board,
-                   "reason": f"gamma-surface read failed: {e}"}
-    _GAMMA_SURFACE_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
-
-
-@app.get("/api/exposure/history")
-def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
-    """RC-209 (operator: multi-day scroll-back goes live): per-day per-strike net GEX$ for
-    EVERY banked session, so scrolled-back days paint THEIR OWN structure under their own
-    candles. ±5% of each day's spot; 10-min cache (the bank changes nightly)."""
-    import sqlite3 as _sq
-
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    now = time.time()
-    hit = _EXPOSURE_HISTORY_CACHE.get(tk)
-    if hit and now - hit[0] < 600.0:
-        return JSONResponse(hit[1])
-    payload: dict = {"ticker": tk, "available": False, "reason": "no banked sessions"}
-    try:
-        db = get_db()
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            cand = con.execute(
-                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
-                "WHERE ticker=? ORDER BY et_date", (tk,)).fetchall()
-        finally:
-            con.close()
-        days = []
-        for d0, s0, c0 in cand:
-            if not d0 or not is_trading_day_et(str(d0)):
-                continue
-            sp = float(s0)
-            per, _diag = _cebs(json.loads(c0), spot=sp)
-            rws = []
-            for k, v in sorted(per.items()):
-                if abs(float(k) - sp) > sp * 0.05:
-                    continue
-                x = v.get("net_gex_1pct")
-                rws.append([k, round(float(x) if x is not None else 0.0)])
-            if rws:
-                days.append({"date": d0, "spot": sp, "rows": rws})
-        if days:
-            payload = {"ticker": tk, "available": True, "n_days": len(days), "days": days,
-                       "method": ("every banked session -> compute_exposures_by_strike "
-                                  "net_gex_1pct per strike, ±5% of that day's spot")}
-    except Exception as e:
-        payload = {"ticker": tk, "available": False, "reason": f"history read failed: {e}"}
-    _EXPOSURE_HISTORY_CACHE[tk] = (now, payload)
-    return JSONResponse(payload)
-
-
 #: /api/spot upstream guard (operator 2026-07-23: "spot needs to be the fastest
 #: polling"). Every resolve_spot is a REAL Schwab REST quote against the shared
 #: ~120 req/min budget, so the endpoint caches per ticker for a short TTL — all
@@ -15953,57 +15311,6 @@ _spot_poll_cache: dict[str, tuple[float, dict]] = {}
 _spot_poll_lock = threading.Lock()
 _spot_poll_inflight: dict[str, threading.Event] = {}
 SPOT_POLL_TTL_SEC = 1.25
-
-
-@app.get("/api/spot")
-def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Featherweight live spot for fast UI polling. The ONE price authority
-    (resolve_spot, RC-14) behind a 1.25s per-ticker cache — no chain, no model
-    stack, budget-bounded regardless of poll rate or viewer count.
-
-    Concurrent cache misses single-flight: one Schwab quote; waiters join and
-    reuse the TTL-fresh cached payload. Waiters never each call resolve_spot —
-    on timeout they re-contend for leadership or serve the last cache entry
-    (stale beats a quote stampede).
-    """
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
-    deadline = time.time() + 10.0
-    while True:
-        now = time.time()
-        with _spot_poll_lock:
-            hit = _spot_poll_cache.get(tk)
-            if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
-                return JSONResponse(hit[1])
-            leader = tk not in _spot_poll_inflight
-            if leader:
-                _spot_poll_inflight[tk] = threading.Event()
-            done = _spot_poll_inflight[tk]
-        if not leader:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                with _spot_poll_lock:
-                    hit = _spot_poll_cache.get(tk)
-                if hit:
-                    return JSONResponse(hit[1])  # stale > stampede
-                return JSONResponse(
-                    {"ticker": tk, "spot": None, "spot_source": None,
-                     "spot_as_of_ts_utc": None, "error": "spot_resolve_timeout"},
-                    status_code=504,
-                )
-            done.wait(timeout=remaining)
-            continue
-        try:
-            spot, source, ts = resolve_spot(tk)
-            payload = {"ticker": tk, "spot": spot, "spot_source": source,
-                       "spot_state": current_spot_state(source, tk),
-                       "spot_as_of_ts_utc": ts}
-            with _spot_poll_lock:
-                _spot_poll_cache[tk] = (time.time(), payload)
-            return JSONResponse(payload)
-        finally:
-            with _spot_poll_lock:
-                _spot_poll_inflight.pop(tk, None)
-            done.set()
 
 
 #: Trading days a daily scorecard may be old and still be quoted as a measurement. 1 = yesterday's
@@ -16051,98 +15358,8 @@ def scorecard_trading_day_age(generated_utc: object) -> int | None:
     return age
 
 
-@app.get("/api/terrain/scorecard")
-def get_terrain_scorecard():
-    """Coach copy's measured numbers, LIVE from the latest daily scorecard.
-
-    Operator 2026-07-23: "will the coach be updated as we self-test?" — the
-    tooltip hold-rates were frozen into the page the night they were measured.
-    Now the UI reads them from reports/terrain_backtest_latest.json, so every
-    daily scorecard run updates what the coach is allowed to claim.
-
-    FAIL-CLOSED ON STALE AS WELL AS ABSENT (RC-78). This previously refused a
-    missing or malformed report and served an out-of-date one, while claiming in
-    this very docstring that it "never" served a stale rate — and it was found
-    serving hold-rates 111.6 hours (4.6 days) old under the coach's "Measured on
-    our own history". Age is a precondition to serve, not a footnote to display:
-    a date printed beside a number does not stop the number being read. Past the
-    budget the figures are WITHHELD and the reason is published, so the coach
-    says "measuring" instead of quoting a four-day-old measurement.
-
-    The budget counts TRADING days, so Friday's scorecard is still current on
-    Monday and stale on Tuesday. A wall-clock budget would condemn every
-    scorecard each weekend and teach the operator to ignore the warning."""
-    p = _artifact_reports_dir() / "terrain_backtest_latest.json"    # RC-523: artifacts root
-    try:
-        rep = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return JSONResponse({})
-    gen = rep.get("generated_utc")
-    age = scorecard_trading_day_age(gen)
-    if age is None or age > SCORECARD_MAX_TRADING_DAY_AGE:
-        return JSONResponse({
-            "generated_utc": gen,
-            "stale": True,
-            "age_trading_days": age,
-            "max_trading_days": SCORECARD_MAX_TRADING_DAY_AGE,
-            "stale_reason": (
-                "scorecard has not been regenerated" if age is None
-                else f"scorecard is {age} trading day(s) old"
-            ),
-        })
-    return JSONResponse({
-        "generated_utc": gen,
-        "stale": False,
-        "age_trading_days": age,
-        "wall_hold_trusted": rep.get("wall_hold_trusted"),
-        "weighting_scorecard": rep.get("weighting_scorecard"),
-        "pdca": rep.get("pdca"),
-    })
-
-
-@app.get("/chart", response_class=HTMLResponse)
-def chart_page():
-    """CR-03 screen-1 v0 — chart-first view (candles + terrain bands + coach)."""
-    p = static_dir / "chart.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/chart.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-
-@app.get("/exposure", response_class=HTMLResponse)
-def exposure_page():
-    """RC-200 (re-landed with RC-210) — the Exposure Overlay tab: dealer positioning on
-    price (operator #1 project, LIVE order 2026-08-02)."""
-    p = static_dir / "exposure.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/exposure.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-
-@app.get("/options", response_class=HTMLResponse)
-def options_page():
-    """OPTIONS_ORDER_FLOW_V1 UI/consumer wiring: chain + contract-selection + live
-    order-flow microstructure for one option contract. Reads GET /api/chain (contract
-    listing), POST /api/streaming/active-option-contract (subscribe), GET /api/order-flow/
-    options-microstructure (live book + freshness/health) — no new endpoints, no client-
-    side second producer."""
-    p = static_dir / "options.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/options.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-
-@app.get("/desk", response_class=HTMLResponse)
-def desk_page():
-    """Desk — research, candidates and book, replayable at an earlier knowledge time."""
-    p = static_dir / "desk.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/desk.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+# RC-REHAB-1 (Phase 3): /chart, /exposure, /options, and /desk (the page shells) moved to
+# app/api/routes/pages.py alongside /, /favicon.ico, and /guide/* (second extraction slice).
 
 
 # RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):
@@ -16151,195 +15368,11 @@ def desk_page():
 # transitional dual-serving period -- /console is gone, not aliased.
 
 
-@app.get("/api/desk/radar")
-def get_desk_radar(as_of: float = Query(default=0.0), limit: int = Query(default=60)):
-    """Candidate structure as it stood at `as_of` (epoch seconds; 0 = now).
-
-    The whole point of the parameter is that moving it BACKWARD must remove rows. Filtering
-    happens on knowledge time inside `desk_store.radar_rows`, never on event time — see the
-    module docstring for the six-day FINRA lag that makes the distinction load-bearing.
-    """
-    import desk_store
-    from db import DB_PATH as _desk_db
-
-    at = float(as_of) if as_of and as_of > 0 else time.time()
-    try:
-        payload = desk_store.radar_rows(_desk_db, at, limit=max(1, min(int(limit), 500)))
-    except Exception as e:  # absence reaches the surface as absence, never as zeros
-        return {"as_of_utc": at, "rows": [], "n_total": 0, "error": f"{type(e).__name__}: {e}"}
-    payload["server_now_utc"] = time.time()
-    payload["is_replay"] = bool(as_of and as_of > 0)
-    return payload
-
-
-@app.get("/api/desk/dossier")
-def get_desk_dossier(ticker: str = Query(default=DEFAULT_TICKER),
-                     as_of: float = Query(default=0.0)):
-    """One name's measured structure, as it stood at `as_of`."""
-    import desk_store
-    from db import DB_PATH as _desk_db
-
-    at = float(as_of) if as_of and as_of > 0 else time.time()
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    try:
-        payload = desk_store.dossier(_desk_db, tk, at)
-    except Exception as e:
-        return {"subject": tk, "as_of_utc": at, "error": f"{type(e).__name__}: {e}",
-                "missing": ["request failed"]}
-    payload["server_now_utc"] = time.time()
-    payload["is_replay"] = bool(as_of and as_of > 0)
-    return payload
-
-
-@app.get("/api/desk/evidence")
-def get_desk_evidence(as_of: float = Query(default=0.0)):
-    """The study scoreboard, read from reports/ rather than retyped.
-
-    RC-172: honours the replay clock. A scoreboard generated after the instant being replayed is
-    refused with its reason — on a tab whose premise is judging a screen by what was knowable,
-    the surface that adjudicates claims cannot be the one reading the future.
-    """
-    import desk_store
-
-    at = float(as_of) if as_of and as_of > 0 else time.time()
-    try:
-        return desk_store.evidence_rows(APP_DIR, at)
-    except Exception as e:
-        return {"rows": [], "empty_reason": f"{type(e).__name__}: {e}"}
-
-
-@app.get("/api/desk/structure")
-def get_desk_structure(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    horizon_sessions: int = Query(default=5),
-    long_strike: float = Query(default=0.0),
-    short_strike: float = Query(default=0.0),
-    long_price: float = Query(default=0.0),
-    short_price: float = Query(default=0.0),
-    contracts: int = Query(default=1),
-    as_of: float = Query(default=0.0),
-):
-    """Deterministic payoff plus the PHYSICAL terminal distribution.
-
-    The risk-neutral half is refused, not approximated — see `desk_store` for the reason, which
-    is stated once so every surface refuses in the same words.
-    """
-    import desk_store
-    from db import DB_PATH as _desk_db
-
-    at = float(as_of) if as_of and as_of > 0 else time.time()
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    out: dict = {"subject": tk, "as_of_utc": at}
-    try:
-        # Live LAST_PRICE only when this is a current request. A historical as_of
-        # keeps the as-of bar close and must not receive today's live print.
-        live_spot = None
-        if not (as_of and as_of > 0):
-            live_spot, _, _ = resolve_spot(tk)
-        out["distribution"] = desk_store.terminal_distribution(
-            _desk_db, tk, at, horizon_sessions=max(1, min(int(horizon_sessions), 60)),
-            spot=live_spot)
-    except Exception as e:
-        out["distribution"] = {"available": False, "reason": f"{type(e).__name__}: {e}"}
-    if long_strike > 0 and short_strike > 0:
-        try:
-            payoff = desk_store.vertical_spread(
-                long_strike, short_strike, long_price, short_price,
-                contracts=max(1, int(contracts)))
-            out["payoff"] = payoff
-            out["pop"] = desk_store.probability_of_profit(
-                out["distribution"], payoff["breakeven"])
-        except desk_store.DeskFactError as e:
-            out["payoff_error"] = str(e)
-    out["server_now_utc"] = time.time()
-    return out
-
-
-@app.get("/api/desk/brief")
-def get_desk_brief(as_of: float = Query(default=0.0)):
-    """The newest research brief we held at `as_of`, blocks aged against that instant."""
-    import desk_store
-    from db import DB_PATH as _desk_db
-
-    at = float(as_of) if as_of and as_of > 0 else time.time()
-    try:
-        brief = desk_store.latest_brief(_desk_db, at)
-    except Exception as e:
-        return {"brief": None, "empty_reason": f"{type(e).__name__}: {e}"}
-    if brief is None:
-        return {"brief": None, "as_of_utc": at, "empty_reason": (
-            "no research brief has been ingested — the Brief is a publish target and nothing "
-            "has published to it yet")}
-    return {"brief": brief, "as_of_utc": at, "empty_reason": None}
-
-
-@app.post("/api/desk/materialize")
-def post_desk_materialize():
-    """Rebuild the fact store from tables this repo already fills. Idempotent.
-
-    RC-172: this was a GET. A GET that rewrites tens of thousands of rows against a 25 GB
-    database is fired by anything that speculatively fetches a URL — a link prefetch, a crawler,
-    a browser preconnect, an operator refreshing a saved tab — and this database already has an
-    open root cause for write contention (RC-166). POST is the fix: the method now matches what
-    the call actually does.
-    """
-    import desk_store
-    from db import DB_PATH as _desk_db
-
-    t0 = time.time()
-    try:
-        res = desk_store.materialize_all(_desk_db)
-    except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    return {"ok": True, "elapsed_sec": round(time.time() - t0, 2), "counts": res}
-
-
-@app.get("/api/terrain")
-def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Terrain payload — levels only, NO model stack.
-
-    Deliberately separate from /api/state: that path runs the full pipeline (chain +
-    greeks + xgb/lstm/transformer x 4 horizons + fusion + decision bundle), which is why
-    background collection had to be throttled to keep it responsive. Terrain is ~5 ms of
-    math on the same chain, so it never needs to compete for that budget.
-    """
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
-    cached = terrain_cache_get(tk)
-    if cached is None:
-        # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
-        # _latest_chain_and_spot(), the most recent NARROW stored snapshot chain, while the
-        # terrain loop computed from a WIDE chain sized by the resolve_chain_strike_count
-        # faucet. Wall and flip selection depends on how much of the wing is present, so the
-        # two disagreed: MEASURED 2026-07-27, /api/terrain?ticker=SPY alternated between
-        # call=750/put=740/flip=746.59 and call=739/put=736/flip=739.80 within ten seconds
-        # while spot moved four cents. The operator was reading two different sets of trade
-        # levels from one endpoint. A second producer is a second faucet even when both write
-        # the same cache key — the provenance audit only ever saw the read side.
-        #
-        # So on a miss the endpoint drives THE producer instead of imitating it, and if that
-        # cannot deliver, the terrain reads UNAVAILABLE. Absence reads as absence; it never
-        # reads as a narrower chain's answer.
-        _terrain_refresh_one(tk, priority=True)
-        cached = terrain_cache_get(tk)
-    if cached is not None:
-        # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
-        return _reprice_cached_terrain(cached, tk)
-    spot, spot_source, spot_ts = resolve_spot(tk)
-    _why = _terrain_refresh_last_error.get(tk)
-    return compute_terrain(tk, None, spot).to_dict() | {
-        "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-        # RC-126: not_ready carries its REASON when the producer has one — an eternal
-        # unexplained shrug is how $SPX stayed dark for a session.
-        "error": ("terrain_not_ready: no wide-chain snapshot yet for this ticker"
-                  + (f" (last refresh error: {_why})" if _why else "")),
-        # RC-151: and it carries the STRUCTURED state too. The cached branch above spreads
-        # terrain_staleness while this one shipped only a prose `error` string, so
-        # levels_failing / levels_quarantined were absent on /api/terrain for precisely the
-        # tickers that were failing — MEASURED 2026-07-30 12:08 ET: RTY returned [] structured
-        # fields while SPY returned all five. A flag a consumer must parse English to discover
-        # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
-        **terrain_staleness(None, tk),
-    }
+# RC-REHAB-1 (Phase 3): the six /api/desk/* routes that used to live here (radar, dossier,
+# evidence, structure, brief, materialize) were extracted to app/api/routes/desk.py and are
+# mounted via app.include_router(desk_router) above — this was the first proof-of-concept
+# slice of server.py's decomposition, chosen because every handler was already a thin
+# adapter over desk_store with no dependency on this file's shared mutable state.
 
 
 def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None, float | None]:
@@ -16401,56 +15434,6 @@ def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None, floa
         return None, None, None
 
 
-@app.get("/api/analytics/light")
-async def get_analytics_light(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    expiry: Optional[str] = Query(default=None),
-    force: bool = Query(
-        default=False,
-        description="Explicit full L1 recompute (default: read authoritative _l1_snapshot_cache + L0 overlay).",
-    ),
-):
-    """
-    L1 context plane — reads authoritative _l1_snapshot_cache by default; full compute on cold miss,
-    serve-age expiry, or force=true. Materiality-gated rebuilds run on quote/L2 hooks only.
-    """
-    t = ticker.upper().strip()
-    from planes.l1_events import notify_ticker_expiry_changed
-
-    # RC-166: L1 assembly runs on ed_l1_light (not ed_route_offload). logging_universe
-    # touch is fire-and-forget on the route pool so a SQLITE wait cannot hold the L1
-    # response (L1 itself is memory-only; _pipeline_ms never included that wait).
-    route_t0 = time.perf_counter()
-    submit_ts = time.perf_counter()
-    try:
-        _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
-    except Exception:
-        log.debug("analytics_light: touch_seen submit failed ticker=%s", t, exc_info=True)
-
-    def _build():
-        return notify_ticker_expiry_changed(t, expiry, force=force)
-
-    loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_l1_light_executor(), _build)
-    after_exec = time.perf_counter()
-    await_ms = (after_exec - submit_ts) * 1000.0
-    total_ms = (after_exec - route_t0) * 1000.0
-    log.info(
-        "analytics_light_route_done ticker=%s await_executor_ms=%.2f route_total_ms=%.2f "
-        "pipeline_ms=%s",
-        t,
-        await_ms,
-        total_ms,
-        (payload or {}).get("_pipeline_ms") if isinstance(payload, dict) else None,
-    )
-    # Shallow copy so route timing fields never mutate the authoritative L1 cache object.
-    out = dict(payload) if isinstance(payload, dict) else payload
-    if isinstance(out, dict):
-        out["_route_await_executor_ms"] = round(await_ms, 2)
-        out["_route_total_ms"] = round(total_ms, 2)
-    return JSONResponse(out)
-
-
 def _sse_event_name_for_envelope(env) -> str:
     """The wire `event:` name for one /api/analytics/light/stream envelope. Every existing L1
     envelope omits `_sse_event_name` and gets "l1_projection" exactly as before this function
@@ -16458,311 +15441,6 @@ def _sse_event_name_for_envelope(env) -> str:
     sets it, to "gamma_surface_seq". A small pure function (not inlined in the generator) so it
     is directly unit-testable without driving the async generator/SSE connection."""
     return env.get("_sse_event_name", "l1_projection") if isinstance(env, dict) else "l1_projection"
-
-
-@app.get("/api/analytics/light/stream")
-async def get_analytics_light_stream(
-    request: Request,
-    ticker: str = Query(default=DEFAULT_TICKER),
-    expiry: Optional[str] = Query(default=None),
-):
-    """
-    Server-Sent Events for L1: pushes when _project_l1 completes for this scope (generation advances).
-    Payload matches GET /api/analytics/light (uses _l1_http_get_projection — no duplicate compute path).
-    """
-    t = ticker.upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
-    # touch last-seen only. Fire-and-forget (RC-166): do not block SSE setup on SQLite.
-    try:
-        _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
-    except Exception:
-        log.debug("analytics_light_stream: touch_seen submit failed ticker=%s", t, exc_info=True)
-    exp_key = expiry if expiry is not None else "__auto__"
-    key = (t, exp_key)
-    q, rs_key = _l1_light_sse_try_reserve(request, key)
-
-    async def event_generator():
-        yield ": ok\n\n"
-        try:
-            while True:
-                try:
-                    env = await asyncio.wait_for(q.get(), timeout=30.0)
-                    # RC-UI-2 (independent-review finding, 2026-09-12): this connection/queue/
-                    # dispatch pipe is entirely generic (see _l1_light_sse_dispatch_loop's own
-                    # docstring — it scope-matches and forwards the raw env, nothing L1-specific)
-                    # except the wire event name — see _sse_event_name_for_envelope.
-                    yield f"event: {_sse_event_name_for_envelope(env)}\ndata: {json.dumps(env, default=str)}\n\n"
-                except asyncio.TimeoutError:
-                    yield ": heartbeat\n\n"
-        finally:
-            _l1_light_sse_release(q, key, rs_key)
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@app.get("/api/analytics/state")
-async def get_analytics_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    symbol: Optional[str] = Query(default=None),
-    expiry: Optional[str] = Query(default=None),
-    force: bool = Query(default=False),
-):
-    """
-    Tier C — full analytical pipeline (_fetch_state): chain, exposures, fusion, DB, news, model health.
-    Not required for first paint; cache-first when TTL allows.
-    """
-    t = _resolve_ticker_param(ticker, symbol)
-    # SWITCH-LATENCY FIX: async route — the handler is stale-while-refresh (light), but it
-    # calls _register_tracked_ticker (SQLite write) on entry, which blocks the event loop
-    # during DB contention. Offload it; the heavy recompute it schedules already runs on
-    # its own thread pool.
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        _get_fast_quote_executor(),
-        lambda: _tier_c_analytics_json_response(t, expiry, force, "rest_analytics"),
-    )
-
-
-@app.post("/api/analytics/warm")
-async def post_analytics_warm(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    symbol: Optional[str] = Query(default=None),
-    expiry: Optional[str] = Query(default=None),
-):
-    """
-    UI-MAXIMIZE — schedule Tier C background recompute + ML artifact prewarm (non-blocking).
-    Client fires on ticker switch / typeahead; does not await _fetch_state completion.
-    """
-    t = _resolve_ticker_param(ticker, symbol)
-
-    def _warm():
-        _touch_tracked_ticker_view(t)
-        return _schedule_analytics_warm(t, expiry, "client_warm_post", prewarm_models=True)
-
-    loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_route_offload_executor(), _warm)
-    return JSONResponse(payload)
-
-
-@app.get("/api/state")
-# SWITCH-LATENCY FIX: sync def → Starlette runs it in its worker threadpool, off the
-# event loop (this handler does blocking Tier C work and no await).
-def get_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    symbol: Optional[str] = Query(default=None),
-    expiry: Optional[str] = Query(default=None),
-    force: bool = Query(default=False),
-):
-    """
-    Deprecated alias for GET /api/analytics/state (Tier C full bundle).
-    Prefer /api/live/state + /api/analytics/state for real-time UX.
-    Query ``ticker=`` (preferred) or ``symbol=`` (alias).
-    """
-    return _tier_c_analytics_json_response(
-        _resolve_ticker_param(ticker, symbol), expiry, force, update_source="rest_poll_legacy"
-    )
-
-
-@app.get("/api/live/plane")
-def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Diagnostics: Layer A row + streaming health — no Schwab REST quote call."""
-    t = (ticker or DEFAULT_TICKER).upper().strip()
-    row = _lmp.get_quote(t)
-    base = dict(row) if row else {}
-    try:
-        from app.options.order_flow.streaming import get_streaming_diagnostics, get_plane_authority_for_ticker
-
-        base.update(get_streaming_diagnostics())
-        base["plane_quote_authority"] = get_plane_authority_for_ticker(t)
-    except Exception:
-        base["plane_quote_authority"] = "rest_only"
-    base["streaming_fallback_explicit"] = base.get("plane_quote_authority") == "rest_fallback_explicit"
-    try:
-        from app.options.order_flow.state import get_stream_chg_pct, get_top_of_book_sizes
-
-        _scp = get_stream_chg_pct(t)
-        if _scp is not None:
-            base["stream_chg_pct"] = _scp
-        base.update(get_top_of_book_sizes(t))
-    except Exception as e:
-        log.warning(
-            "app.options.order_flow.state merge failed for /api/state ticker=%s: %s",
-            t,
-            e,
-            exc_info=True,
-        )
-    return JSONResponse(base)
-
-
-@app.get("/api/order-flow/microstructure")
-def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Canonical L2 book microstructure (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
-    spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
-    liquidity concentration, wall_candidates, and ages — every field classified
-    NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
-    app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries the
-    engine's already-computed structural state for the current book (memoized per ticker +
-    BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
-    renders, never recomputes."""
-    t = (ticker or DEFAULT_TICKER).upper().strip()
-    # VIEW endpoint: touch last-seen only, never enroll (RC-160 ticker-scope discipline).
-    _touch_tracked_ticker_view(t)
-    data: dict = {}
-    try:
-        from app.options.order_flow.state import get_content_for_symbol
-        _content = get_content_for_symbol(t)
-        if _content:
-            data["content"] = _content
-    except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
-        log.debug("microstructure content build failed for %s: %s", t, e)
-    _row = _lmp.get_quote(t)
-    if _row and _row.get("exchange_quote_ts") is not None:
-        data["exchange_quote_ts"] = _row.get("exchange_quote_ts")
-    from app.options.order_flow.engine import compute_book_microstructure
-    # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
-    payload = compute_book_microstructure(data, ticker=t)
-    payload["ticker"] = t
-    return JSONResponse(payload)
-
-
-@app.get("/api/order-flow/options-microstructure")
-def api_order_flow_options_microstructure(contract: str = Query(...)):
-    """Same canonical L2 book microstructure as /api/order-flow/microstructure, for one
-    OPTION CONTRACT's live book. SERIALIZER, not a second producer: delegates to
-    app.options.order_flow.streaming.get_option_contract_book_microstructure, which delegates
-    to the SAME app.options.order_flow.engine.compute_book_microstructure the equity route reads — no
-    parallel book-imbalance computation for options. `contract` MUST be a chain response's
-    own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route does not
-    construct or validate that format, it only serializes whatever content has been
-    replayed for the literal string given. No ticker-roster touch here — a contract symbol
-    is not a ticker and does not participate in that enrollment concept."""
-    c = (contract or "").strip()
-    if not c:
-        return JSONResponse({"error": "contract is required"}, status_code=400)
-    from app.options.order_flow.streaming import (
-        get_option_contract_book_microstructure,
-        get_option_contract_streaming_diagnostics,
-    )
-    payload = get_option_contract_book_microstructure(c)
-    payload["contract"] = c
-    try:
-        # PR214 merge blocker 1A: the diagnostics are bound to the CONTRACT BEING
-        # QUERIED, not to whatever contract the plane happens to be streaming. Without
-        # `c` this attached the globally-active contract's health verbatim to a book
-        # computed for a different contract, so a response could read `contract: A`
-        # beside `streaming_healthy: true` that belonged entirely to B. The book above
-        # is still served truthfully (replayed content for A is real and is not
-        # discarded); only the LIVE HEALTH claim is bound and fails closed on mismatch.
-        payload["streaming_plane"] = get_option_contract_streaming_diagnostics(for_contract=c)
-    except Exception:  # diagnostics are informational only — never fail the book payload for them
-        payload["streaming_plane"] = {}
-    return JSONResponse(payload)
-@app.post("/api/streaming/active-option-contract")
-async def post_streaming_active_option_contract(payload: dict = Body(default={})):
-    """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract (dynamic; replaces
-    prior subscription). Mirrors /api/streaming/active-ticker exactly, for the SEPARATE
-    option-contract slot (an equity ticker and an option contract on that same underlying
-    can be watched at once — see app/options/order_flow/streaming.py's module docstring)."""
-    c = str(payload.get("contract") or "").strip()
-    if not c:
-        return JSONResponse({"ok": False, "error": "contract is required"}, status_code=400)
-
-    # PR214 premerge gap 2: take the command's generation HERE, at admission, before the
-    # body is offloaded to the executor. Ordering must reflect the order the operator's
-    # commands ARRIVED, not the order their thread-pool bodies happen to finish -- an
-    # A admitted first but delayed must not overwrite a B admitted later that already
-    # wrote. The browser token cannot cover this: it only suppresses a stale RESPONSE.
-    from app.options.order_flow.streaming import (
-        StaleOptionCommandError,
-        begin_option_contract_command,
-    )
-    generation = begin_option_contract_command()
-
-    def _apply():
-        from app.options.order_flow.streaming import (
-            set_active_option_contract,
-            get_option_contract_streaming_diagnostics,
-        )
-
-        ok = set_active_option_contract(c, command_generation=generation)
-        # PR214 merge blocker 1A: bind the acknowledgement's health to the contract
-        # THIS request asked for, so a client that validates the ack cannot be handed
-        # a healthy-looking plane belonging to a different contract.
-        diag = get_option_contract_streaming_diagnostics(for_contract=c)
-        return {"ok": ok, "contract": c, "command_generation": generation, **diag}
-    try:
-        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
-    except StaleOptionCommandError as e:
-        # A superseded command is NOT the current authority. 409 Conflict, ok:false --
-        # the client must not treat this as a successful subscription of `c`.
-        return JSONResponse({"ok": False, "error": str(e), "contract": c,
-                             "superseded": True, "command_generation": generation},
-                            status_code=409)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e), "contract": c}, status_code=500)
-    return JSONResponse(out)
-
-
-@app.post("/api/streaming/active-option-contracts")
-async def post_streaming_active_option_contracts(payload: dict = Body(default={})):
-    """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to a SET of ADDITIONAL option contracts,
-    beside the one primary contract /api/streaming/active-option-contract manages (RC-UI-3,
-    2026-09-12 multi-contract coverage). Mirrors that endpoint's generation-guarded write
-    exactly, on its own independent generation counter -- see
-    app.options.order_flow.streaming.set_active_option_contracts."""
-    raw = payload.get("contracts")
-    contracts = [str(s).strip() for s in raw] if isinstance(raw, list) else []
-    contracts = [c for c in contracts if c]
-
-    from app.options.order_flow.streaming import (
-        StaleOptionCommandError,
-        begin_option_contracts_command,
-    )
-    generation = begin_option_contracts_command()
-
-    def _apply():
-        from app.options.order_flow.streaming import set_active_option_contracts
-        ok = set_active_option_contracts(contracts, command_generation=generation)
-        return {"ok": ok, "contracts": contracts, "command_generation": generation}
-    try:
-        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
-    except StaleOptionCommandError as e:
-        return JSONResponse({"ok": False, "error": str(e), "contracts": contracts,
-                             "superseded": True, "command_generation": generation},
-                            status_code=409)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e), "contracts": contracts}, status_code=500)
-    return JSONResponse(out)
-
-
-@app.post("/api/streaming/active-ticker")
-async def post_streaming_active_ticker(payload: dict = Body(default={})):
-    """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""
-    t = (payload.get("ticker") or DEFAULT_TICKER)
-    t = str(t).upper().strip()
-    # SWITCH-LATENCY FIX (critical): set_streaming_active_ticker blocks on fut.result(timeout=30)
-    # while it does 6 websocket re-subscribe round-trips, and this endpoint fires on EVERY ticker
-    # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
-    # 30s per switch. Offload the whole blocking block to the thread pool; the loop stays free.
-    def _apply():
-        from app.options.order_flow.streaming import set_streaming_active_ticker, get_streaming_diagnostics, get_plane_authority_for_ticker
-
-        ok = set_streaming_active_ticker(t)
-        _lmp.reset_sse_push_cursor(t)
-        diag = get_streaming_diagnostics()
-        return {"ok": ok, "ticker": t, **diag, "plane_quote_authority": get_plane_authority_for_ticker(t)}
-    try:
-        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e), "ticker": t}, status_code=500)
-    return JSONResponse(out)
 
 
 def _l1_sse_light_diag_payload() -> dict[str, Any]:
@@ -16812,431 +15490,6 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
         "l1_sse_health_hint": "derived_enum",
     }
     return out
-
-
-@app.get("/api/diagnostics/l1")
-def get_l1_diagnostics():
-    """
-    L1 operational metrics: build counts, reason histogram, cache hits/skips, policy constants.
-    For live validation and tuning materiality / TTL without log scraping.
-    """
-    from planes.l1_runtime import (
-        L1_CACHE_ENTRY_TTL_SEC,
-        L1_HTTP_SERVE_MAX_AGE_SEC,
-        L1_MAX_CACHE_SCOPES,
-        L1_OF_MIN_COMPUTE_INTERVAL_SEC,
-        L1_OF_PROBE_FORCE_REFRESH_SEC,
-        L1_ORDER_FLOW_STALE_SEC,
-    )
-    from planes.l1_cache_lifecycle import l1_cache_invariants
-    from planes.l1_operational import build_l1_operational_assessment
-
-    bt = int(_l1_instrumentation["l1_build_total"])
-    # RC-291: divide by builds whose timing was MEASURED, not by all builds. Dividing a sum
-    # that excludes unmeasured builds by a count that includes them understates the average
-    # and can hold it under the warn threshold — measured at 24.7 ms for a true 26.0 ms.
-    bt_measured = int(_l1_instrumentation["l1_build_ms_measured"])
-    avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt_measured)
-    reasons = {str(k): int(v) for k, v in _l1_instrumentation["l1_build_by_reason"].items()}
-    uptime_sec = max(0.0, time.monotonic() - _l1_diag_start_mono)
-    operational = build_l1_operational_assessment(
-        # RC-293: the TRUE build count drives the rate alarm; the TIMED count drives the
-        # latency average. RC-291 passed bt_measured as l1_build_total, which fixed the
-        # average and made builds_per_min report timed builds — a true 500/min read as
-        # 100/min and graded healthy. Two questions, two inputs.
-        l1_build_total=bt,
-        timing_sample_count=bt_measured,
-        l1_build_ms_sum=float(_l1_instrumentation["l1_build_ms_sum"]),
-        reasons=reasons,
-        l1_http_cache_hit_total=int(_l1_instrumentation["l1_http_cache_hit_total"]),
-        l1_quote_material_skip_total=int(_l1_instrumentation["l1_quote_material_skip_total"]),
-        l1_cache_eviction_total=int(_l1_instrumentation["l1_cache_eviction_total"]),
-        l1_of_quote_hook_engine_total=int(_l1_instrumentation["l1_of_quote_hook_engine_total"]),
-        l1_of_quote_hook_reuse_total=int(_l1_instrumentation["l1_of_quote_hook_reuse_total"]),
-        cache_scope_count=len(_l1_snapshot_cache),
-        l1_max_cache_scopes=L1_MAX_CACHE_SCOPES,
-        uptime_sec=uptime_sec,
-    )
-    sample = []
-    for k, v in list(_l1_snapshot_cache.items())[:64]:
-        inst = v.get("l1_instrumentation") or {}
-        sample.append(
-            {
-                "scope": {"ticker": k[0], "expiry": k[1]},
-                "as_of_ts": v.get("as_of_ts"),
-                "l1_build_reason_last": inst.get("l1_build_reason"),
-            }
-        )
-    now_diag = time.time()
-    from planes.l1_thresholds import resolve_l1_materiality_engine
-
-    row_spy = _lmp.get_quote("SPY") or {}
-    ctx_spy = _l1_adaptive_materiality_context("SPY", row_spy, now_diag)
-    res_spy = resolve_l1_materiality_engine("SPY", context=ctx_spy)
-    row_penny = {"spot": 4.5, "spread": 0.002}
-    ctx_penny = _l1_adaptive_materiality_context("XYZ", row_penny, now_diag)
-    res_penny = resolve_l1_materiality_engine("XYZ", context=ctx_penny)
-    l1_adaptive_materiality = {
-        "l1_materiality_engine_schema_version": 1,
-        "sample_spy_adaptive": res_spy.as_dict(),
-        "sample_penny_equity_adaptive": res_penny.as_dict(),
-        "context_inputs_spy": {
-            "session_label": ctx_spy.session_label,
-            "vix_level": ctx_spy.vix_level,
-            "spot": ctx_spy.spot,
-            "spread_frac": ctx_spy.spread_frac,
-        },
-        "context_inputs_penny_sample": {
-            "session_label": ctx_penny.session_label,
-            "vix_level": ctx_penny.vix_level,
-            "spot": ctx_penny.spot,
-            "spread_frac": ctx_penny.spread_frac,
-        },
-        "static_defaults_reference": resolve_l1_materiality_engine("SPY", context=None).as_dict(),
-    }
-
-    return JSONResponse(
-        {
-            "ed_l1": {
-                "schema_version": 2,
-                "l1_diag_uptime_sec": round(uptime_sec, 4),
-                "l1_build_total": bt,
-                "l1_build_ms_avg": round(avg_ms, 4),
-                "l1_build_ms_sum": float(_l1_instrumentation["l1_build_ms_sum"]),
-                "l1_build_by_reason": reasons,
-                "l1_http_cache_hit_total": int(_l1_instrumentation["l1_http_cache_hit_total"]),
-                "l1_quote_material_skip_total": int(_l1_instrumentation["l1_quote_material_skip_total"]),
-                "l1_cache_eviction_total": int(_l1_instrumentation["l1_cache_eviction_total"]),
-                "l1_cache_eviction_ttl_total": int(_l1_instrumentation["l1_cache_eviction_ttl_total"]),
-                "l1_cache_eviction_cap_total": int(_l1_instrumentation["l1_cache_eviction_cap_total"]),
-                "l1_cache_reconcile_lru_pruned_total": int(_l1_instrumentation["l1_cache_reconcile_lru_pruned_total"]),
-                "l1_cache_reconcile_lru_backfilled_total": int(
-                    _l1_instrumentation["l1_cache_reconcile_lru_backfilled_total"]
-                ),
-                "l1_cache_lifecycle": l1_cache_invariants(_l1_snapshot_cache, _l1_scope_lru),
-                "l1_of_quote_hook_engine_total": int(_l1_instrumentation["l1_of_quote_hook_engine_total"]),
-                "l1_of_quote_hook_reuse_total": int(_l1_instrumentation["l1_of_quote_hook_reuse_total"]),
-                "l1_cache_scope_count": len(_l1_snapshot_cache),
-                "l1_lru_order_len": len(_l1_scope_lru),
-                "policy": {
-                    "L1_CACHE_ENTRY_TTL_SEC": L1_CACHE_ENTRY_TTL_SEC,
-                    "L1_HTTP_SERVE_MAX_AGE_SEC": L1_HTTP_SERVE_MAX_AGE_SEC,
-                    "L1_MAX_CACHE_SCOPES": L1_MAX_CACHE_SCOPES,
-                    "L1_ORDER_FLOW_STALE_SEC": L1_ORDER_FLOW_STALE_SEC,
-                    "L1_OF_MIN_COMPUTE_INTERVAL_SEC": L1_OF_MIN_COMPUTE_INTERVAL_SEC,
-                    "L1_OF_PROBE_FORCE_REFRESH_SEC": L1_OF_PROBE_FORCE_REFRESH_SEC,
-                },
-                "cached_scopes_sample": sample,
-                "operational": operational,
-                "l1_adaptive_materiality": l1_adaptive_materiality,
-                "l1_sse_light": _l1_sse_light_diag_payload(),
-            }
-        }
-    )
-
-
-@app.post("/api/diagnostics/ticker-switch")
-def post_ticker_switch_diagnostics(payload: dict = Body(default={})):
-    """Ingest client ticker-switch timing records into in-memory ring buffer."""
-    from ticker_switch_diagnostics import record_switch_event
-
-    record_switch_event(payload if isinstance(payload, dict) else {})
-    return JSONResponse({"ok": True})
-
-
-@app.get("/api/diagnostics/ticker-switch")
-def get_ticker_switch_diagnostics(limit: int = Query(50, ge=1, le=200)):
-    """Recent ticker-switch timing events (newest first)."""
-    from ticker_switch_diagnostics import get_recent_events
-
-    return JSONResponse({"events": get_recent_events(limit), "buffer_max": 100})
-
-
-@app.get("/api/diagnostics/sqlite-contention")
-def get_sqlite_contention_diagnostics():
-    """
-    Tier-1 SQLite lock-wait / busy / locked counters (process-local).
-
-    For operator trust audits — does not change retry policy. See Card Trust Contract §8.
-    """
-    from db import sqlite_contention_metrics_snapshot
-    from verification.db_sqlite_contention_impact_audit import (
-        build_db_contention_operator_surface,
-    )
-
-    metrics = sqlite_contention_metrics_snapshot()
-    return JSONResponse(
-        {
-            **metrics,
-            "operator": build_db_contention_operator_surface(metrics),
-        }
-    )
-
-
-@app.get("/api/fast-quote")
-async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
-    """
-    Fast lane: latest equity quote fields only. Independent fast_generation_id / exchange_quote_ts.
-    Does not return chain, fusion, or decision data.
-    """
-    ticker = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX etc., ONE authority
-    route_t0 = time.perf_counter()
-    asyncio_thread = threading.current_thread().name
-    log.info(
-        "fast_quote_route_enter ticker=%s asyncio_thread=%s",
-        ticker,
-        asyncio_thread,
-    )
-    loop = asyncio.get_event_loop()
-    submit_ts = time.perf_counter()
-    # SWITCH-LATENCY FIX: _register_tracked_ticker persists to the SQLite logging_universe
-    # (a DB write); keep it off the event loop alongside the quote fetch.
-    def _reg_and_fetch():
-        # TICKER-PREVIEW-NO-ENROLL: fast-quote view touches last-seen only, never enrolls.
-        _touch_tracked_ticker_view(ticker)
-        return _fetch_fast_quote_payload(ticker)
-    try:
-        payload = await loop.run_in_executor(_get_quote_hot_executor(), _reg_and_fetch)
-        after_exec = time.perf_counter()
-        log.info(
-            "fast_quote_route_done ticker=%s asyncio_thread=%s route_total_ms=%.2f await_executor_ms=%.2f",
-            ticker,
-            asyncio_thread,
-            (after_exec - route_t0) * 1000.0,
-            (after_exec - submit_ts) * 1000.0,
-        )
-        return JSONResponse(payload)
-    except HTTPException as he:
-        if _schwab_auth_http_unavailable(he):
-            stale = _lmp.get_quote(ticker)
-            if _plane_fast_quote_has_spot(stale):
-                return JSONResponse(_stale_fast_quote_carried_forward(stale, ticker))
-            return JSONResponse(
-                status_code=401,
-                content=_fast_quote_token_invalid_payload(str(he.detail or "")),
-            )
-        if he.status_code >= 400:
-            log.warning("Fast quote HTTP %s for %s: %s", he.status_code, ticker, he.detail)
-        raise
-    except Exception as e:
-        from schwab_client import SchwabAuthError, _is_token_error
-
-        if _is_token_error(e) or isinstance(e, SchwabAuthError):
-            stale = _lmp.get_quote(ticker)
-            if _plane_fast_quote_has_spot(stale):
-                return JSONResponse(_stale_fast_quote_carried_forward(stale, ticker))
-            return JSONResponse(
-                status_code=401,
-                content=_fast_quote_token_invalid_payload(str(e)),
-            )
-        log.error(f"Fast quote failed for {ticker}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-#: No Schwab-documented batch-quote symbol ceiling exists anywhere in this repo (checked:
-#: schwab_client.py, schwab_field_dictionary*, tools/sync_schwab_field_dictionary.py).
-@app.get("/api/watchlist-quotes")
-async def api_watchlist_quotes(tickers: str = Query(default="")):
-    """
-    ONE batched Schwab quote read (client.get_quotes) for every row of a client-held
-    watchlist — not N sequential single-symbol polls, and not a second quote authority:
-    parsing (_parse_quote_node_session_fields) and chg_pct precedence (resolve_chg_pct)
-    are the exact same functions /api/fast-quote and /api/live/state use.
-
-    No numeric ticker-count cap: no Schwab-documented batch-size ceiling exists anywhere in
-    this repo to justify one (checked: schwab_client.py, schwab_field_dictionary*,
-    tools/sync_schwab_field_dictionary.py), and a real operator watchlist is nowhere near
-    any plausible vendor/transport limit — an invented number would be a product-shaped
-    guess dressed as a constraint (caught in review). A genuinely oversized request fails
-    honestly through the real failure paths below (ASGI/reverse-proxy URL-length rejection
-    before this handler even runs, or a real vendor HTTP error reported as such) instead of
-    a silently-guessed threshold.
-
-    Returns {"ok": bool, "error": str|None, "quotes": {SYMBOL: {spot, spot_disp, chg_pct,
-    exchange_quote_ts}}}. A symbol simply absent from `quotes` genuinely has no usable quote
-    right now (never fabricated) — that is a DIFFERENT fact from ok:false, which means the
-    WHOLE batch call failed (auth/vendor/transport) before any symbol could be evaluated.
-    Collapsing both into the same bare {} (this route's pre-review shape) made a live
-    console with zero current coverage indistinguishable from an offline one; the caller
-    could not tell "no data for these symbols right now" from "the vendor call never ran".
-    """
-    raw = [t.strip().upper() for t in (tickers or "").split(",") if t.strip()]
-    seen: list[str] = []
-    for t in raw:
-        if t not in seen:
-            seen.append(t)
-    if not seen:
-        return JSONResponse({"ok": True, "error": None, "quotes": {}})
-
-    def _build() -> dict:
-        from market_context import resolve_chg_pct
-
-        # Operator-reproduced defect (2026-09-14, spot 360 audit): this route called
-        # schwab_client.safe_get_quotes directly — a RAW vendor call outside
-        # _memoized_quote_response AND outside live_market_plane, the two places every other
-        # spot consumer in this file converges through. The docstring's claim ("not a second
-        # quote authority: parsing... are the exact same functions") was true for the PARSER,
-        # not for the QUOTE ITSELF — the watchlist's SPY row and the Gamma Chart's SPY spot
-        # could come from two genuinely different Schwab round-trips seconds apart. Every
-        # ticker with a FRESH plane row now reuses it (zero extra vendor calls, and
-        # guaranteed identical to what every other screen shows); only tickers the plane
-        # cannot currently answer get a real vendor fetch, and that fetch is recorded back
-        # into the plane so the next reader of that ticker — watchlist or otherwise — sees
-        # the SAME value this one just fetched.
-        out: dict = {}
-        need_fetch: list[str] = []
-        for t in seen:
-            row = _lmp.get_quote(t)
-            if row and _lmp.quote_is_fresh(row) and _lmp.plane_spot_is_last_price(row):
-                out[t] = {
-                    "spot": row["spot"],
-                    "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
-                    "spot_state": "live",
-                    "spot_source": SPOT_SOURCE_PLANE,
-                    "chg_pct": resolve_chg_pct(t, row.get("chg_pct")),
-                    "exchange_quote_ts": row.get("exchange_quote_ts"),
-                }
-            else:
-                need_fetch.append(t)
-        if not need_fetch:
-            return {"ok": True, "error": None, "quotes": out}
-
-        try:
-            client = get_client()
-        except HTTPException as he:
-            reason = "token_invalid" if _schwab_auth_http_unavailable(he) else "auth_unavailable"
-            log.warning("watchlist_quotes auth unavailable tickers=%s reason=%s", need_fetch, reason)
-            # Tickers the plane already answered are still real and still served — only the
-            # ones that needed a vendor call are missing, exactly like the batch-partial
-            # contract this route's own docstring already promises for a per-symbol miss.
-            return {"ok": bool(out), "error": None if out else reason, "quotes": out}
-        from schwab_client import safe_get_quotes
-
-        try:
-            resp = safe_get_quotes(client, need_fetch)
-        except Exception as e:
-            log.warning("watchlist_quotes batch fetch failed tickers=%s: %s", need_fetch, e)
-            return {"ok": bool(out), "error": None if out else "vendor_call_failed", "quotes": out}
-        if resp is None or getattr(resp, "status_code", None) != 200:
-            status = getattr(resp, "status_code", None)
-            log.warning("watchlist_quotes batch fetch non-200 tickers=%s status=%s", need_fetch, status)
-            return {"ok": bool(out), "error": None if out else f"vendor_http_{status}", "quotes": out}
-        try:
-            q_json = resp.json()
-        except Exception as e:
-            log.warning("watchlist_quotes batch response unparseable tickers=%s: %s", need_fetch, e)
-            return {"ok": bool(out), "error": None if out else "malformed_vendor_response", "quotes": out}
-        server_received_ts = time.time()
-        for t in need_fetch:
-            node = q_json.get(t) or q_json.get(t.upper()) or {}
-            if not node:
-                continue
-            pq = _parse_quote_node_session_fields(node)
-            spot = pq.get("spot")
-            if pq.get("spot_source") != "lastPrice" or spot is None:
-                continue
-            chg_pct = resolve_chg_pct(t, pq.get("chg_pct"))
-            out[t] = {
-                "spot": spot,
-                "spot_disp": f"{spot:.2f}",
-                "spot_state": "live",
-                "spot_source": SPOT_SOURCE_QUOTE,
-                "chg_pct": chg_pct,
-                "exchange_quote_ts": pq.get("quote_ts"),
-            }
-            # Record into the plane so this fetch becomes the ONE answer every other
-            # consumer (resolve_spot, the header, Tier C, L1) sees too, not a value only
-            # this route ever knew about.
-            _lmp.record_quote(t, {
-                "ticker": t, "spot": float(spot), "spot_disp": f"{spot:.2f}",
-                "chg_pct": chg_pct, "exchange_quote_ts": pq.get("quote_ts"),
-                "quote_time_source": "schwab_rest_quote" if pq.get("quote_ts") is not None else "unavailable",
-                "server_received_ts": server_received_ts,
-                "quote_ingestion": "rest_watchlist_batch",
-                "fast_generation_id": _lmp.next_fast_generation(t),
-                "quote_source_detail": {
-                    "spot": "LAST_PRICE",
-                    "carried_forward": False,
-                },
-            })
-        return {"ok": True, "error": None, "quotes": out}
-
-    loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
-    return JSONResponse(payload)
-
-
-@app.get("/api/stream")
-async def sse_stream(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    expiry: Optional[str] = Query(default=None),
-):
-    """
-    Server-Sent Events stream: pushes market state snapshots whenever fresh data is available.
-    Client connects with ?ticker=X&expiry=Y; server fetches that ticker periodically and pushes.
-    """
-    ticker = ticker.upper().strip()
-    expiry = expiry or None
-    key = (ticker, expiry)
-    # TICKER-PREVIEW-NO-ENROLL: an SSE stream connect is a VIEW subscription, not a track —
-    # touch last-seen only (offloaded; may do a SQLite write for an already-enrolled ticker).
-    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, ticker)
-
-    stream_route_t0 = time.perf_counter()
-
-    async def event_generator():
-        global _sse_conn_epoch
-        q = asyncio.Queue(maxsize=10)
-        with _sse_lock:
-            _sse_clients.append(q)
-            _sse_subscribers[key] = _sse_subscribers.get(key, 0) + 1
-            # T5.1: a new connection changes the audience — the epoch bump makes
-            # the next cadence fanout deliver the current bundle to this client
-            # even when its identity is otherwise already-broadcast.
-            _sse_conn_epoch += 1
-        # Immediate SSE comment chunk: first body bytes must not wait on q.get() (up to 30s) or
-        # some proxies/clients defer visible connection until first chunk — CONNECTING sticks.
-        yield ": ok\n\n"
-        log.info(
-            "sse_stream_first_yield ticker=%s expiry=%s ms_since_route_entry=%.2f",
-            ticker,
-            expiry,
-            (time.perf_counter() - stream_route_t0) * 1000.0,
-        )
-        try:
-            while True:
-                try:
-                    raw = await asyncio.wait_for(q.get(), timeout=30.0)
-                    if (
-                        isinstance(raw, tuple)
-                        and len(raw) == 2
-                        and raw[0] == "live_quote"
-                    ):
-                        yield f"event: live_quote\ndata: {json.dumps(raw[1])}\n\n"
-                    else:
-                        yield f"data: {json.dumps(raw)}\n\n"
-                except asyncio.TimeoutError:
-                    yield ": heartbeat\n\n"
-        except (GeneratorExit, asyncio.CancelledError):
-            pass
-        finally:
-            with _sse_lock:
-                if q in _sse_clients:
-                    _sse_clients.remove(q)
-                cnt = _sse_subscribers.get(key, 0) - 1
-                if cnt <= 0:
-                    _sse_subscribers.pop(key, None)
-                else:
-                    _sse_subscribers[key] = cnt
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 async def _broadcast_live_quote_sse_payloads() -> None:
@@ -17402,27 +15655,6 @@ async def _sse_background_loop() -> None:
             log.warning(f"SSE background loop error: {e}", exc_info=True)
 
 
-@app.get("/api/expiries")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
-def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
-    ticker = ticker.upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
-    _touch_tracked_ticker_view(ticker)
-    # Use any cached (ticker, expiry) entry — expiries list is same for all
-    cached = next(
-        (v for (t, e), v in _state_cache.items() if t == ticker and v.get("ms_dict")),
-        None
-    )
-    if cached:
-        return JSONResponse({"expiries": cached["ms_dict"].get("expiries", [])})
-    try:
-        return JSONResponse({"expiries": _fetch_expiries_light(ticker)})
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 #: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed, round 2): a
 #: fixed strike_count is NEVER proof of completeness — it is by definition a BOUND (N
 #: strikes above/below ATM), and MEASURED live 2026-08-30 it silently truncated a real
@@ -17452,476 +15684,6 @@ def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
 COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 
 
-@app.get("/api/chain")
-def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
-              expiry: Optional[str] = Query(default=None)):
-    """CONTRACT-SELECTION surface: the COMPLETE real vendor contract set for one ticker and
-    one expiry — every strike Schwab actually lists, not a bounded analytical window — so a
-    UI can let an operator pick one option contract and pass its `symbol` straight to POST
-    /api/streaming/active-option-contract or GET /api/order-flow/options-microstructure —
-    the same "chain response's own symbol field, never constructed" rule those two routes
-    already document.
-
-    COMPLETE, separate from the bounded analytical chain views: fetches LIVE, scoped to
-    exactly one expiry, through _gated_safe_get_chain — the SAME single, rate-limited,
-    coalesced chain-fetch faucet every other chain read in this file already uses (RC-59/
-    RC-127/Cursor-audit F2's chain_width_single_faucet invariant) — using
-    `strike_range="ALL"` (see COMPLETENESS_BASIS_STRIKE_RANGE_ALL's comment above for the
-    measured proof this is genuinely complete, not merely wide), never a bare strike_count
-    bound, and never a second per-contract parsing path (reuses flatten_chain_contracts/
-    resolve_spot verbatim, same as every other chain consumer). Every native Schwab field
-    is served AS-IS — nothing here rounds, filters, or reconstructs a strike from assumed
-    spacing; fractional strikes (.50/.25/...) survive exactly as the vendor sent them.
-
-    `expiry` optional: defaults to the ticker's nearest listed expiry (the SAME
-    _fetch_expiries_light faucet /api/expiries uses). `scope.kind` states EXACTLY what was
-    served, THREE tiers, honestly distinguished — a caller must never mistake a narrower
-    tier for the complete live one:
-      1. 'complete_single_expiry' — a live strike_range=ALL fetch succeeded AND the
-         vendor's own returned_expiries matched the requested expiry EXACTLY (never
-         claimed on a mismatch — see the expiry_scope_mismatch tier below). Also PERSISTS
-         this proven-complete capture (calibration/complete_chain_capture.py) — a fully
-         independent table from the bounded analytical snapshots, so completeness has a
-         durable record, not just a live-request-shaped promise.
-      2. 'expiry_scope_mismatch' — the vendor's response did not exactly match the
-         requested expiry (e.g. returned a different or additional expiry). The contracts
-         actually returned are still served (never silently dropped — real data), but
-         completeness for the REQUESTED expiry is explicitly NOT claimed.
-      3. 'persisted_complete_capture_fallback' — no live fetch this request (error/
-         timeout/mismatch), but a PRIOR complete_single_expiry capture exists for this
-         exact ticker+expiry; served with its captured_age_sec so staleness is visible.
-      4. 'stored_analytical_snapshot_fallback' — last resort: the bounded, gamma/terrain-
-         tuned snapshot this endpoint originally served, explicitly labeled as NOT proven
-         complete. status='no_chain' if even this has nothing."""
-    t = ticker.upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL: listing a chain is a VIEW — touch last-seen only.
-    _touch_tracked_ticker_view(t)
-
-    resolved_expiry = (expiry or "").strip()[:10] or None
-    if resolved_expiry is None:
-        try:
-            exps = _fetch_expiries_light(t)
-            resolved_expiry = exps[0] if exps else None
-        except Exception as e:
-            log.debug("chain: expiry resolution failed for %s: %s", t, e)
-
-    if resolved_expiry is not None:
-        try:
-            d = date.fromisoformat(resolved_expiry)
-            client = get_client()
-            c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-                client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
-            if c_resp is not None and c_resp.status_code == 200:
-                # This fetch's OWN as-of instant -- captured the moment the vendor's response
-                # is in hand, before any overlay -- is the correct `newer_than_ts` baseline.
-                _rest_fetch_ts = time.time()
-                c_json = c_resp.json()
-                spot, _spot_source, _spot_as_of = resolve_spot(t, chain_json=c_json)
-                contracts = flatten_chain_contracts(c_json)
-                # SCOPE CHECK, not defensive-only: never trust the request alone to
-                # guarantee the response's own expirationDate matches what was actually
-                # asked for — a mismatch here is the difference between claiming and
-                # proving completeness for the REQUESTED expiry.
-                returned_exps = sorted({
-                    str(c.get("expirationDate") or "")[:10]
-                    for c in contracts if isinstance(c, dict) and c.get("expirationDate")
-                })
-                # Independent-review finding (2026-09-13), REPRODUCED: this route always
-                # returned the vendor REST chain's own `totalVolume`/greeks verbatim, even
-                # though a real streamed tick for the SAME contract can already be sitting in
-                # app.options.order_flow.state, correctly advanced (proven by a controlled
-                # SQLite-replay+OrderFlowState reproduction) -- it simply never reached here.
-                # `_gamma_surface_contracts_with_stream_overlay` is the SAME faucet
-                # refresh_gamma_surface_from_stream already uses to freshen the terrain/
-                # gamma-surface path (ONE overlay mechanism, not a second one for Chain).
-                #
-                # A FOURTH independent review (2026-09-13), REPRODUCED: the first fix passed
-                # `newer_than_ts=None` here, reasoning "this fetch has no PRIOR REST-baseline
-                # timestamp to compare against" -- false. This fetch IS itself a REST baseline
-                # with its own as-of instant (`_rest_fetch_ts` above); passing None disabled
-                # the entire ordering guard `overlay_streamed_contract_fields` exists to
-                # enforce, leaving only the absolute `max_staleness_sec` bound -- which cannot
-                # tell "newer than this REST read" from "merely recent". Controlled
-                # reproduction: a streamed TOTAL_VOLUME=111 observed BEFORE this REST fetch
-                # (which itself returned totalVolume=333) still overlaid onto the response,
-                # replacing the newer REST value with the older streamed one, because nothing
-                # compared the streamed observation's timestamp against this fetch's own.
-                # Fixed by passing this fetch's own instant as `newer_than_ts`, the same
-                # precedence rule every other overlay call site in this file already applies.
-                #
-                # The OVERLAID result is for the RESPONSE only -- `persist_complete_chain_capture`
-                # below stores the PRE-overlay `contracts`, so the durable "complete REST
-                # capture" record (tier 1's own contract: a proven, complete, live REST read)
-                # is never silently blended with streamed fields it cannot itself timestamp.
-                response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-                    t, contracts, newer_than_ts=_rest_fetch_ts)
-                if returned_exps == [resolved_expiry]:
-                    try:
-                        persist_complete_chain_capture(
-                            get_db().db_path, ticker=t, expiry=resolved_expiry,
-                            contracts=contracts, spot=spot,
-                            completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL)
-                    except Exception as e:
-                        log.warning("chain: complete-capture persist failed for %s %s: %s",
-                                   t, resolved_expiry, e)
-                    return JSONResponse({
-                        "ticker": t, "spot": spot, "expiry": resolved_expiry,
-                        "contracts": response_contracts, "status": "ok" if response_contracts else "no_chain",
-                        "stream_overlay_contracts": overlay_n,
-                        "scope": {"kind": "complete_single_expiry",
-                                 "requested_expiry": resolved_expiry,
-                                 "returned_expiries": returned_exps,
-                                 "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
-                    })
-                log.warning("chain: expiry scope mismatch for %s — requested %s, vendor "
-                           "returned %s; NOT claiming completeness", t, resolved_expiry,
-                           returned_exps)
-                if response_contracts:
-                    return JSONResponse({
-                        "ticker": t, "spot": spot, "expiry": resolved_expiry,
-                        "contracts": response_contracts, "status": "ok",
-                        "stream_overlay_contracts": overlay_n,
-                        "scope": {"kind": "expiry_scope_mismatch",
-                                 "requested_expiry": resolved_expiry,
-                                 "returned_expiries": returned_exps,
-                                 "note": "vendor response did not match the requested "
-                                         "expiry exactly — served as-is for "
-                                         "transparency, NOT proven complete for the "
-                                         "requested expiry"},
-                    })
-                # No contracts at all for the mismatch case — fall through to the
-                # persisted/stored tiers below rather than returning an empty response.
-            else:
-                log.warning("chain: live fetch non-200 for %s expiry %s, falling back",
-                           t, resolved_expiry)
-        except Exception as e:
-            log.warning("chain: live fetch failed for %s expiry %s (%s), falling back",
-                       t, resolved_expiry, e)
-
-        try:
-            cap = latest_complete_chain_capture(get_db().db_path, t, resolved_expiry)
-        except Exception as e:
-            cap = None
-            log.debug("chain: persisted-capture read failed for %s %s: %s",
-                     t, resolved_expiry, e)
-        if cap:
-            # Same overlay faucet as the live tiers above, bounded here by the capture's
-            # OWN as-of (a streamed field only overlays a banked capture when it is
-            # genuinely newer than that specific capture, not merely "recent").
-            cap_contracts, cap_overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-                t, cap["contracts"], newer_than_ts=cap["ts_utc"])
-            return JSONResponse({
-                "ticker": t, "spot": cap["spot"], "expiry": resolved_expiry,
-                "contracts": cap_contracts, "status": "ok",
-                "stream_overlay_contracts": cap_overlay_n,
-                "scope": {"kind": "persisted_complete_capture_fallback",
-                         "requested_expiry": resolved_expiry,
-                         "completeness_basis": cap["completeness_basis"],
-                         "captured_ts": cap["ts_utc"],
-                         "captured_age_sec": round(time.time() - cap["ts_utc"], 1),
-                         "note": "a prior COMPLETE capture — not fetched live this "
-                                 "request, staleness stated above"},
-            })
-
-    contracts, spot, stored_ts = _latest_chain_and_spot(t)
-    if not contracts:
-        return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [],
-                            "status": "no_chain",
-                            "scope": {"kind": "stored_analytical_snapshot_fallback"}})
-    stored_expiry = None
-    for ct in contracts:
-        if isinstance(ct, dict) and ct.get("expirationDate"):
-            stored_expiry = str(ct["expirationDate"])[:10]
-            break
-    # A FOURTH independent review (2026-09-13), REPRODUCED: same newer_than_ts=None ordering
-    # bug as the live-fetch tier above, here against a STORED snapshot's own row ts_utc
-    # (now returned by _latest_chain_and_spot) instead of a live fetch's instant.
-    contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-        t, contracts, newer_than_ts=stored_ts)
-    return JSONResponse({
-        "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,
-        "stream_overlay_contracts": overlay_n,
-        "status": "ok",
-        "scope": {"kind": "stored_analytical_snapshot_fallback",
-                 "note": "bounded analytical snapshot, NOT proven complete — live "
-                         "complete-chain fetch and any persisted capture were both "
-                         "unavailable this request"},
-    })
-
-
-@app.get("/api/logger/status")
-def logger_status():
-    """Return background logger status — which tickers are being logged and their stats."""
-    with _logger_lock:
-        tickers = list(_logger_tickers)
-        stats   = dict(_logger_stats)
-        running = _logger_running
-
-    db_rows: dict[str, dict] = {}
-    if _HAS_SIGNALS:
-        try:
-            for row in get_db().logging_universe_list_rows():
-                db_rows[ticker_storage_key(row.get("ticker"))] = row  # RC-345/F25: canonical join key
-        except Exception as e:
-            log.debug("logger_status DB join: %s", e)
-
-    now = time.time()
-    result = []
-    for t in tickers:
-        s = stats.get(t, {})
-        last_logged = s.get("last_logged")
-        dbr = db_rows.get(t, {})
-        enroll = dbr.get("enrollment_source") or ("core_bootstrap" if t in CORE_TICKERS else None)
-        result.append({
-            "ticker":       t,
-            "core":         t in CORE_TICKERS,
-            "category":     dbr.get("category") or ("core" if t in CORE_TICKERS else "unknown"),
-            "enrollment_source": enroll,
-            "enrolled_ts_utc": dbr.get("enrolled_ts_utc"),
-            "last_seen_ts_utc": dbr.get("last_seen_ts_utc"),
-            "last_background_log_ts_utc": dbr.get("last_background_log_ts_utc"),
-            "count":        s.get("count", 0),
-            "last_logged":  last_logged,
-            "secs_ago":     round(now - last_logged, 0) if last_logged else None,
-            "last_error":   s.get("last_error"),
-            "source":       s.get("source", "—"),
-            "eligible_background_log": _is_loggable_session(),
-        })
-
-    orphan_tickers: list[str] = []
-    if _HAS_SIGNALS:
-        try:
-            orphan_tickers = get_db().logging_universe_snapshot_ticker_orphans()
-        except Exception as e:
-            log.debug("logger_status orphan scan: %s", e)
-
-    return JSONResponse({
-        "running":       running,
-        "interval_secs": LOG_INTERVAL,
-        "stagger_secs":  STAGGER_SECS,
-        "rth_only":      RTH_ONLY,
-        "session_gate":  {
-            "premarket_start_et_minute": PRE_MARKET_MINS,
-            "buffer_end_et_minute": LOGGER_BUFFER_MINS,
-            "loggable_now": _is_loggable_session(),
-        },
-        "max_user_persisted_symbols": MAX_USER_PERSISTED_LOGGING_TICKERS,
-        "user_persisted_enrollment_policy": _user_persisted_enrollment_policy(),
-        "max_pinned_symbols": MAX_PINNED_LOGGING_TICKERS,
-        "core_tickers":  CORE_TICKERS,
-        "tickers":       result,
-        "snapshot_tickers_orphaned_from_logging_universe": orphan_tickers,
-        "snapshot_orphan_count": len(orphan_tickers),
-    })
-
-
-@app.get("/api/logger/universe")
-def logger_universe():
-    """Issue 22 hardened — auditable logging_universe with eviction_status per row."""
-    if not _HAS_SIGNALS:
-        raise HTTPException(status_code=503, detail="database logging not available")
-    try:
-        db = get_db()
-        rows = db.logging_universe_list_rows_audit()
-        protected = db.logging_universe_protected_tickers()
-        candidates = db.logging_universe_eviction_candidates_fifo()
-        evictions = db.logging_universe_recent_evictions(limit=30)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    with _logger_lock:
-        in_memory = list(_logger_tickers)
-    return JSONResponse(
-        {
-            "schema": "logging_universe_audit_v2",
-            "rth_only": RTH_ONLY,
-            "session_gate_loggable_now": _is_loggable_session(),
-            "premarket_start_et_minute": PRE_MARKET_MINS,
-            "buffer_end_et_minute": LOGGER_BUFFER_MINS,
-            "max_user_persisted_symbols": MAX_USER_PERSISTED_LOGGING_TICKERS,
-            "user_persisted_enrollment_policy": _user_persisted_enrollment_policy(),
-            "max_pinned_symbols": MAX_PINNED_LOGGING_TICKERS,
-            "core_tickers": CORE_TICKERS,
-            "symbols_in_memory_logger_cycle": in_memory,
-            "protected_symbols": protected,
-            "eviction_candidates_fifo_user_persisted": candidates,
-            "recent_evictions": evictions,
-            "logging_universe_rows": rows,
-        }
-    )
-
-
-@app.get("/api/logger/universe/by-category")
-def logger_universe_by_category(
-    category: str = Query(..., description="core | pinned | user_persisted"),
-):
-    if not _HAS_SIGNALS:
-        raise HTTPException(status_code=503, detail="database logging not available")
-    c = (category or "").strip().lower()
-    if c not in ("core", "pinned", "user_persisted"):
-        raise HTTPException(status_code=400, detail="category must be core, pinned, or user_persisted")
-    try:
-        rows = [
-            r
-            for r in get_db().logging_universe_list_rows_audit()
-            if (r.get("category") or "").lower() == c
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    return JSONResponse({"category": c, "rows": rows, "count": len(rows)})
-
-
-@app.post("/api/logger/pin")
-def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core only)")):
-    if not _HAS_SIGNALS:
-        raise HTTPException(status_code=503, detail="database logging not available")
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical pin identity (matches enrollment + dedup)
-    if not t or len(t) > 10:
-        raise HTTPException(status_code=400, detail="invalid ticker")
-    if t in CORE_TICKERS:
-        raise HTTPException(status_code=400, detail="core symbols are already protected; pin not applicable")
-    db = get_db()
-    is_already_pinned = any(
-        ticker_storage_key(r.get("ticker")) == t and r.get("category") == "pinned"  # RC-345/F25: canonical pin-dedup
-        for r in db.logging_universe_list_rows()
-    )
-    if (
-        not is_already_pinned
-        and db.logging_universe_pinned_count() >= MAX_PINNED_LOGGING_TICKERS
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail=f"max pinned symbols ({MAX_PINNED_LOGGING_TICKERS}) reached — unpin one first",
-        )
-    now = time.time()
-    db.logging_universe_upsert_pinned(t, "api_logger_pin", now)
-    _hydrate_logger_tickers_from_db()
-    with _logger_lock:
-        all_t = list(_logger_tickers)
-    return JSONResponse({"ok": True, "ticker": t, "all_tickers": all_t})
-
-
-@app.post("/api/logger/unpin")
-def logger_unpin(ticker: str = Query(...)):
-    if not _HAS_SIGNALS:
-        raise HTTPException(status_code=503, detail="database logging not available")
-    t = ticker.upper().strip()
-    db = get_db()
-    ok = db.logging_universe_unpin_to_user_persisted(t, time.time())
-    if not ok:
-        raise HTTPException(status_code=400, detail="symbol is not pinned")
-    _hydrate_logger_tickers_from_db()
-    with _logger_lock:
-        all_t = list(_logger_tickers)
-    return JSONResponse({"ok": True, "ticker": t, "all_tickers": all_t})
-
-
-@app.post("/api/logger/add")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
-def logger_add(ticker: str = Query(..., description="Ticker to add to background logger")):
-    """Manually add a ticker to the background logger."""
-    ticker = ticker.upper().strip()
-    if not ticker or len(ticker) > 10:
-        raise HTTPException(status_code=400, detail="Invalid ticker")
-    added = _register_tracked_ticker(ticker, enrollment_source="api_logger_add")
-    with _logger_lock:
-        tickers = list(_logger_tickers)
-    return JSONResponse({"added": added, "ticker": ticker, "all_tickers": tickers})
-
-
-@app.post("/api/logger/remove")
-def logger_remove(ticker: str = Query(..., description="Ticker to remove from logger")):
-    """Remove a non-core ticker from the background logger and durable logging_universe."""
-    ticker = ticker.upper().strip()
-    if ticker in CORE_TICKERS:
-        raise HTTPException(status_code=400, detail=f"{ticker} is a core ticker and cannot be removed")
-    panel_auto = frozenset(_market_context_panel_auto_candidates())
-    if ticker in panel_auto:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"{ticker} is auto-enrolled from the market cross-panel (see market_context.py) "
-                "and cannot be removed via /api/logger/remove"
-            ),
-        )
-    db_removed = False
-    if _HAS_SIGNALS:
-        try:
-            db_removed = get_db().logging_universe_remove_non_core(ticker)
-        except Exception as e:
-            log.warning("logging_universe_remove_non_core: %s", e)
-    with _logger_lock:
-        if ticker in _logger_tickers:
-            _logger_tickers.remove(ticker)
-            removed = True
-        else:
-            removed = False
-        tickers = list(_logger_tickers)
-    return JSONResponse(
-        {
-            "removed": removed,
-            "db_removed": db_removed,
-            "ticker": ticker,
-            "all_tickers": tickers,
-        }
-    )
-
-
-@app.post("/api/prediction/override")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
-def prediction_override(ticker: str = Query(...), direction: str = Query(...), source: str = Query("user")):
-    """Set manual override for prediction direction. direction: up|flat|down. source: user|manual."""
-    ticker = ticker.upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL (Decision 3): setting a prediction override acts on an existing
-    # tracked symbol; it must not silently enroll a new one into the training roster.
-    _touch_tracked_ticker_view(ticker)
-    d = (direction or "").strip().lower()
-    if d not in ("up", "flat", "down"):
-        raise HTTPException(status_code=400, detail="direction must be up, flat, or down")
-    src = (source or "user").lower()
-    _pred_overrides[ticker] = {"direction": d, "source": src}
-    return JSONResponse({"ok": True, "ticker": ticker, "direction": d, "source": src})
-
-
-@app.post("/api/prediction/override/clear")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
-def prediction_override_clear(ticker: str = Query(...)):
-    """Clear prediction override for ticker."""
-    ticker = ticker.upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL (Decision 3): clearing an override must not enroll.
-    _touch_tracked_ticker_view(ticker)
-    if ticker in _pred_overrides:
-        del _pred_overrides[ticker]
-        return JSONResponse({"ok": True, "ticker": ticker, "cleared": True})
-    return JSONResponse({"ok": True, "ticker": ticker, "cleared": False})
-
-
-@app.get("/api/health")
-def health():
-    with _logger_lock:
-        running = _logger_running
-        n       = len(_logger_tickers)
-    # RC-514 / docs/ARCHITECTURE.md section 4: application availability and capability
-    # availability are separate, so `status` answers "is the app alive" and never folds a
-    # vendor outage into it. The capability verdict comes from schwab_capability_state(),
-    # which asks the canonical client -- credentials, CI gate AND token state -- rather than
-    # the credential gate alone, so health cannot advertise a Schwab that could not serve a
-    # quote. Failure to answer reports UNAVAILABLE: unmeasurable is not ok (RC-57).
-    try:
-        schwab_status, schwab_reason = schwab_capability_state()
-    except Exception as exc:  # noqa: BLE001 - health must answer, and never optimistically
-        schwab_status, schwab_reason = "UNAVAILABLE", f"{type(exc).__name__}: {exc}"
-    capability: dict[str, object] = {"schwab": schwab_status}
-    if schwab_reason:
-        capability["schwab_reason"] = schwab_reason
-    return {
-        "status": "ok",
-        "time": datetime.now().isoformat(),
-        "logger_running": running,
-        "logger_tickers": n,
-        "capabilities": capability,
-    }
-
-
 def _repo_git_head_sha() -> Optional[str]:
     """Best-effort repo tip for runtime-vs-disk checks (Meet-or-Exceed cycle)."""
     import subprocess
@@ -17939,39 +15701,6 @@ def _repo_git_head_sha() -> Optional[str]:
         return sha or None
     except (OSError, subprocess.SubprocessError):
         return None
-
-
-@app.get("/api/release/current")
-def api_release_current():
-    """Current process release object (I-25)."""
-    from release_object import get_current_release, validate_release_for_emission
-
-    release = get_current_release(required=False)
-    ok, reason = validate_release_for_emission(release)
-    if not ok:
-        return JSONResponse({"ok": False, "reason": reason, "release": release}, status_code=503)
-    return {"ok": True, "release": release}
-
-
-@app.get("/api/decision/{decision_id}")
-def api_decision_by_id(decision_id: str):
-    """Retrieve immutable production decision by decision_id (I-31)."""
-    if not _HAS_SIGNALS:
-        return JSONResponse({"ok": False, "error": "db_unavailable"}, status_code=503)
-    from decision_record import get_production_decision_by_id, reconstruction_complete
-    from db import DB_PATH
-
-    payload = get_production_decision_by_id(decision_id, DB_PATH)
-    if payload is None:
-        return JSONResponse({"ok": False, "error": "not_found", "decision_id": decision_id}, status_code=404)
-    complete, missing = reconstruction_complete(payload)
-    return {
-        "ok": True,
-        "decision_id": decision_id,
-        "reconstruction_complete": complete,
-        "missing_fields": missing,
-        "decision": payload,
-    }
 
 
 # ── BUILD_IDENTITY_PROCESS_DRIFT_V1 — immutable process-start identity ───────
@@ -18118,95 +15847,6 @@ def _capture_process_identity() -> ProcessIdentityV1:
 PROCESS_IDENTITY_V1: ProcessIdentityV1 = _capture_process_identity()
 
 
-@app.get("/api/build")
-def api_build():
-    """Build/identity surface (BUILD_IDENTITY consumer semantics, operator-
-    approved 2026-07-10).
-
-    ``git_sha`` == ``process_identity.startup_git_sha``: the code identity the
-    RUNNING process loaded, stable for the process lifetime. Request-time
-    repository state lives ONLY under ``repository_state_now.repo_head_now``
-    (it drifts when HEAD moves and is never process identity). ``code_drift``
-    reports explicitly when the checkout has moved past the running process.
-    Mechanical lock: tests/test_build_identity_semantics.py forbids new code
-    from sourcing process identity from request-time git.
-    """
-    from release_object import get_current_release
-
-    release = get_current_release(required=False)
-    repo_head_now = _repo_git_head_sha()
-    identity = asdict(PROCESS_IDENTITY_V1)
-    startup_sha = identity.get("startup_git_sha")
-    return {
-        "git_sha": startup_sha,  # PROCESS IDENTITY (startup capture) — never request-time git
-        "contract": "meet_or_exceed_v1",
-        "release_id": release.get("release_id") if release else None,
-        "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
-        "ui_maximize_panel_warm_tickers": list(UI_MAXIMIZE_PANEL_WARM_TICKERS),
-        "process_identity": identity,
-        "repository_state_now": {"repo_head_now": repo_head_now},
-        "code_drift": {
-            "repo_moved_past_process": bool(
-                startup_sha and repo_head_now and startup_sha != repo_head_now
-            ),
-            "running_code": startup_sha,
-            "checked_out_code": repo_head_now,
-        },
-        "git_sha_semantics": "startup_process_identity",  # deprecation notice for request-time readers
-        # Operator directive (2026-09-15, canonical input-validity rules, THIRD pass):
-        # "Database hydrate/flush failures must be observable and fail honestly; they may not
-        # be swallowed at debug level while the product implies restart durability." Empty
-        # dict means every hydrate/flush this process has attempted succeeded (or none has
-        # been attempted yet) -- a non-empty entry is a real, named degradation to
-        # in-memory-only-this-session for that ticker, never silent.
-        "gamma_last_valid_persistence_errors": dict(_LAST_VALID_GEX_CELLS_ERRORS),
-    }
-
-
-@app.get("/api/vol-observability")
-def api_vol_observability(ticker: Optional[str] = Query(default=None)):
-    """VOL_OBSERVABILITY_V1: read-only projection of the per-cycle vol-index
-    observations ($VIX consumed; $VXN/$RVX FETCHED_UNCONSUMED) plus the
-    ratified ticker-class mapping candidate. Never feeds the money path."""
-    return vol_observability_payload(ticker)
-
-
-@app.get("/api/diagnostics/chain-gate")
-def api_chain_gate_diagnostics():
-    """Read-only chain-gate observability: slots, waits, coalescing, breaker."""
-    with _chain_inflight_lock:
-        # Keys are (ticker, strike_count); render as SPY@20 for operators.
-        inflight = sorted(
-            f"{k[0]}@{k[1]}" if isinstance(k, tuple) and len(k) == 2 else str(k)
-            for k in _chain_inflight
-        )
-    return {
-        "gate": _schwab_chain_fetch_gate.snapshot(),
-        "inflight_tickers": inflight,
-        "acquire_timeout_sec": CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC,
-        "fail_open_timeout_count": _chain_fetch_gate_timeout_count,
-        "breaker_cooldown_sec": CHAIN_GATE_BREAKER_COOLDOWN_SEC,
-        "breaker_failure_threshold": CHAIN_GATE_BREAKER_FAILURE_THRESHOLD,
-    }
-
-
-@app.get("/api/price-levels")
-def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
-    """RETIRED (RC-213 B6, one-faucet-closeout-v1): /api/levels is the ONE levels surface.
-
-    This route measured ZERO client consumers (census 2026-08-03) and was the second HTTP
-    producer for the level families. It hard-fails with a pointer rather than aliasing —
-    an alias is a second name for one faucet and second names are how duals grow back.
-    The compute path is untouched: _fetch_state still uses fetch_price_levels internally
-    (which delegates every family to the liquidity_value_engine authorities)."""
-    return JSONResponse({
-        "error": "retired",
-        "detail": "/api/price-levels is retired (RC-213 B6). Use /api/levels — the single "
-                  "levels contract (id/price/family/provenance/staleness per level).",
-        "replacement": f"/api/levels?ticker={(ticker or DEFAULT_TICKER).upper().strip()}",
-    }, status_code=410)
-
-
 def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]:
     """Resolve the ONE bar input for the canonical snapshot: accumulator, else banked.
 
@@ -18304,67 +15944,6 @@ def canonical_price_level_snapshot(ticker: str):
         tk, session_date, bars_norm, bar_source=bar_source,
         config=PlaybookConfig(), degraded=degraded,
     )
-
-
-@app.get("/api/levels")
-# Phase 2A (operator 2026-08-08): /api/levels is the canonical SERVING CONTRACT for the
-# one materialized PriceLevelSnapshot — it serializes, it does not compute. Every other
-# surface (liquidity-snapshot, market_context, /api/state, ML features, persistence,
-# chart) carries the values out of the same snapshot object and generation.
-def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
-    import time as _time
-
-    from liquidity_value_engine import carry_snapshot_levels
-
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    served_ts = _time.time()
-    spot, spot_source, spot_ts = resolve_spot(tk)
-    snap = canonical_price_level_snapshot(tk)
-    # Register this surface against the runtime carrier contract: if any other carrier
-    # already shipped a different value/generation/provenance for this generation, the
-    # disagreement raises here instead of reaching two screens (RC-262 pattern).
-    carry_snapshot_levels(snap, "api.levels")
-
-    levels: list[dict] = []
-    for lid, value in snap.levels.items():
-        row = value.to_contract_dict()
-        as_of = value.as_of_ts_utc
-        row["staleness"] = {
-            "as_of_ts_utc": as_of,
-            "age_sec": None if as_of is None else round(served_ts - as_of, 1),
-            "stale_after_sec": None,
-            "stale": False,
-            "reason": f"carried from canonical snapshot generation {snap.generation}",
-        }
-        levels.append(row)
-
-    families_absent = list(snap.families_absent)
-    for fam, why in (
-        ("gamma", "Phase 2A slice excludes gamma — served by /api/terrain until migration"),
-        ("expected_move", "Phase 2A slice excludes EM — served by /api/state until migration"),
-    ):
-        families_absent.append({"family": fam, "reason": why})
-
-    return JSONResponse({
-        "ticker": tk,
-        "schema_version": 1,
-        "served_ts_utc": served_ts,
-        "spot": spot,
-        "spot_source": spot_source,
-        "spot_as_of_ts_utc": spot_ts,
-        "generation": snap.generation,
-        "snapshot_as_of_ts_utc": snap.as_of_ts_utc,
-        "bar_source": snap.bar_source,
-        "levels": levels,
-        # The VWAP curve and its σ bands, CARRIED. chart.html and exposure.html each
-        # used to accumulate their own from /api/bars1m — two more VWAPs for one
-        # session, drawn beside a level neither of them agreed with.
-        # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
-        "vwap_series": [list(row) for row in snap.vwap_series],
-        "families_absent": families_absent,
-        "degraded": list(snap.degraded),
-    })
 
 
 def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
@@ -18529,497 +16108,3 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     zp["tradeable_score"] = liquidity_zone_tradeable_score(
         n_tags=len(tags), n_opt=n_opt, inside=inside, dist_pen=dist_pen, spot=sf
     )
-
-
-@app.get("/api/liquidity-snapshot")
-# SWITCH-LATENCY FIX: sync def → threadpool. This fires on every ticker switch (client
-# setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
-# no await, so as async it stalled the event loop on each switch.
-def get_liquidity_snapshot(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
-    snapshot: str = Query(
-        default="premarket",
-        description="live | premarket | opening | midday | afternoon. live = rolling cutoff (now ET) + optional options fusion",
-    ),
-    expiry: Optional[str] = Query(default=None, description="Expiry YYYY-MM-DD for fusion with cached /api/state walls"),
-    fusion: bool = Query(default=True, description="When snapshot=live, merge options walls from state cache (needs expiry)"),
-):
-    """Return liquidity & value playbook snapshot (zones, summary, raw_levels) for ticker/session.
-    Uses PlaybookConfig(clustering_mode='percent'). ``live`` uses min(now,RTH close) cutoff; checkpoints unchanged."""
-    try:
-        from polling_adapter import fetch_bars_via_schwab_for_session
-        from liquidity_value_engine import build_live_snapshot, generate_liquidity_value_snapshot
-        from liquidity_models import SnapshotType, PlaybookConfig
-
-        session_date = date or now_et().strftime("%Y-%m-%d")
-        ticker_upper = ticker.upper().strip()
-        # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
-        _touch_tracked_ticker_view(ticker_upper)
-        client = get_client()
-        from datetime import date as date_type
-
-        session_date_obj = date_type.fromisoformat(session_date)
-        bars = fetch_bars_via_schwab_for_session(
-            client, ticker_upper, session_date_obj, include_extended_hours=True
-        )
-        if not bars:
-            return JSONResponse(
-                {"error": f"No bar data for {ticker_upper} on {session_date}"},
-                status_code=404,
-            )
-        config = PlaybookConfig(clustering_mode="percent", max_zone_width=2.0)
-        snap_raw = snapshot.lower().strip()
-        fusion_status = "n/a"
-        spot_for_zones: Optional[float] = None
-        extra: list[tuple[float, str]] = []
-        bar_merge_note = "schwab"
-
-        if snap_raw == "live":
-            today_ld = now_et().date()
-            if session_date_obj == today_ld:
-                from liquidity_value_engine import merge_schwab_bars_with_live_overlay
-
-                _ov = _liquidity_live_1m_overlay_bars(ticker_upper)
-                if _ov:
-                    bars = merge_schwab_bars_with_live_overlay(bars, _ov)
-                    bar_merge_note = "schwab+live_1m_overlay"
-
-        if snap_raw == "live":
-            extra = []
-            if fusion and expiry:
-                extra, fusion_status = _liquidity_fusion_from_cache(ticker_upper, expiry)
-            elif fusion and not expiry:
-                fusion_status = "no_expiry"
-            else:
-                fusion_status = "disabled"
-            # RC spot-360-audit (2026-09-14, live RTH reproduction): spot_for_zones used to come
-            # from _state_cache (the /api/state cache -- last-write-wins, NO freshness gate) via
-            # _liquidity_fusion_from_cache / _liquidity_spot_from_cache_any_expiry: a THIRD spot
-            # producer next to resolve_spot()/live_market_plane. Reproduced live: this route
-            # served 759.725 off a cache entry 1061s (17.7 min) old while the header read 760.13
-            # at the same instant. resolve_spot() is THE spot authority for every other consumer
-            # in this file (RC-14); zone scoring must read the same one, not a stale side-cache
-            # keyed off whichever (ticker, expiry) /api/state happened to be called for last.
-            spot_for_zones, _, _ = resolve_spot(ticker_upper)
-            _extra_for_build = list(extra) if fusion else []
-            if spot_for_zones is not None and fusion:
-                _extra_for_build.append((spot_for_zones, "SPOT_LIVE"))
-            # Phase 2A: this endpoint CARRIES the canonical snapshot; it does not compute
-            # the Phase 2A families. MEASURED before this change, same instant, same
-            # ticker: /api/levels overnight 773.3975/773.3975 vs this endpoint
-            # 773.40/772.55 — one concept, two bar inputs, two answers on two screens.
-            _canon = None
-            if session_date_obj == now_et().date():
-                from liquidity_value_engine import carry_snapshot_levels
-                _canon = canonical_price_level_snapshot(ticker_upper)
-                carry_snapshot_levels(_canon, "api.liquidity_snapshot")
-            out = build_live_snapshot(
-                ticker_upper,
-                bars,
-                session_date_obj,
-                config,
-                extra_levels=_extra_for_build if fusion else None,
-                spot=spot_for_zones,
-                canonical=_canon,
-            )
-            # MEASURED 2026-09-11: this used to reassign spot_for_zones itself to the VWAP
-            # value and report it as spot_used_for_scoring below -- but build_live_snapshot
-            # was ALREADY called with spot=None on this path (the reassignment happens after
-            # the call), so that field claimed a spot was used for scoring when neither a real
-            # spot NOR this VWAP number actually was. A VWAP price is a different financial
-            # quantity than spot; reporting it under a field named "spot" is exactly the
-            # fabricated-default this codebase's own law forbids ("no fabricated defaults, no
-            # silent fallbacks"). Absence now stays absent under that name; the VWAP estimate,
-            # when available, is reported under its own honestly-named field instead.
-            spot_estimate_vwap_fallback = None
-            if spot_for_zones is None:
-                _rv = (out.raw_levels or {}).get("vwap")
-                if _rv is not None:
-                    try:
-                        spot_estimate_vwap_fallback = float(_rv)
-                    except (TypeError, ValueError):
-                        spot_estimate_vwap_fallback = None
-        else:
-            out = generate_liquidity_value_snapshot(
-                ticker=ticker_upper,
-                bars_dataframe=bars,
-                session_date=session_date,
-                snapshot_type=SnapshotType(snap_raw),
-                config=config,
-            )
-        snapshot_val = out.snapshot_type.value
-        zones_payload = []
-        for z in out.zones:
-            w = z.zone_high - z.zone_low
-            merged = len(z.source_tags)
-            zp = {
-                "zone_type": z.zone_type.value,
-                "zone_class": z.zone_class,
-                "zone_low": z.zone_low,
-                "zone_high": z.zone_high,
-                "zone_mid": z.zone_mid,
-                "zone_width": round(w, 4),
-                "source_levels": z.source_levels,
-                "source_tags": z.source_tags,
-                "confluence_score": z.confluence_score,
-                "merged_levels_count": merged,
-                "interpretation_notes": z.interpretation_notes or "",
-                "first_snapshot": snapshot_val,
-                "last_snapshot": snapshot_val,
-                "persistence": 1,
-            }
-            if snap_raw == "live":
-                _liquidity_zone_tradeable_fields(zp, spot_for_zones)
-            zones_payload.append(zp)
-        if snap_raw == "live":
-            zones_payload.sort(
-                key=lambda x: (
-                    x["distance_to_spot"] is None,
-                    x["distance_to_spot"] if x["distance_to_spot"] is not None else 1e9,
-                    -x.get("tradeable_score", 0),
-                )
-            )
-        result = {
-            "ticker": out.ticker,
-            "symbol": ticker_upper,
-            "session_date": out.session_date,
-            "snapshot_type": snapshot_val,
-            "zones": zones_payload,
-            "summary": None,
-            "raw_levels": out.raw_levels,
-            "raw_levels_used": _build_raw_levels_used(out.raw_levels, snapshot_val),
-        }
-        if snap_raw == "live":
-            result["fusion"] = fusion_status
-            result["bar_merge"] = bar_merge_note
-            result["as_of_cutoff_et"] = (out.raw_levels or {}).get("cutoff_et")
-            result["expiry_used_for_fusion"] = expiry.strip() if expiry else None
-            result["spot_used_for_scoring"] = spot_for_zones
-            # Honest, separately-named -- see the comment above the assignment: this is VWAP,
-            # a different financial quantity than spot, not a value spot_used_for_scoring may
-            # silently stand in for.
-            result["spot_estimate_vwap_fallback"] = spot_estimate_vwap_fallback
-            # Phase 2A carriage stamp: which snapshot generation these level values ARE.
-            # Two carriers that agree on the number but not on the generation are still
-            # two answers — the generation travels so the skew is visible, never silent.
-            result["level_generation"] = _canon.generation if _canon is not None else None
-            result["level_semantic_scope"] = (out.raw_levels or {}).get("semantic_scope")
-            result["level_snapshot_as_of_ts_utc"] = (
-                _canon.as_of_ts_utc if _canon is not None else None)
-            result["level_bar_source"] = _canon.bar_source if _canon is not None else None
-        if out.summary:
-            result["summary"] = {
-                "value_state": out.summary.value_state,
-                "vwap_relation": out.summary.vwap_relation,
-                "auction_interpretation": out.summary.auction_interpretation,
-                "notes": out.summary.notes,
-            }
-        return result
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    except HTTPException as e:
-        # MEASURED 2026-09-11: get_client() raises HTTPException(503, ...) when Schwab auth is
-        # genuinely unavailable -- a real, distinct, already-correct classification (missing/
-        # invalid credentials is not "the server is broken"). The blanket `except Exception`
-        # below caught it too, along with everything else, and re-issued it as a bare 500 with
-        # only the message text -- discarding the status code FastAPI's own exception handling
-        # would otherwise have propagated correctly. Preserve it instead of replacing it.
-        return JSONResponse({"error": e.detail}, status_code=e.status_code)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/api/liquidity-playbook-state")
-# SWITCH-LATENCY FIX: sync def → threadpool (blocking Schwab bar fetch, no await).
-def get_liquidity_playbook_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
-):
-    """Return full PlaybookState with all four snapshots (premarket, opening, midday, afternoon).
-    Each snapshot uses only data through its cutoff time (no lookahead)."""
-    try:
-        from polling_adapter import fetch_bars_via_schwab_for_session
-        from liquidity_value_engine import generate_playbook_state, playbook_state_to_dict
-        from liquidity_models import PlaybookConfig
-
-        session_date = date or now_et().strftime("%Y-%m-%d")
-        ticker_upper = ticker.upper().strip()
-        # TICKER-PREVIEW-NO-ENROLL: playbook-state is a VIEW — touch last-seen only.
-        _touch_tracked_ticker_view(ticker_upper)
-        client = get_client()
-        from datetime import date as date_type
-        session_date_obj = date_type.fromisoformat(session_date)
-        bars = fetch_bars_via_schwab_for_session(
-            client, ticker_upper, session_date_obj, include_extended_hours=True
-        )
-        if not bars:
-            return JSONResponse(
-                {"error": f"No bar data for {ticker_upper} on {session_date}"},
-                status_code=404,
-            )
-        state = generate_playbook_state(
-            ticker=ticker_upper,
-            bars_dataframe=bars,
-            session_date=session_date,
-            config=PlaybookConfig(clustering_mode="percent", max_zone_width=2.0),
-        )
-        return playbook_state_to_dict(state)
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/api/debug/charm")
-# SWITCH-LATENCY FIX: sync def → threadpool (blocking chain fetch, no await).
-def debug_charm(ticker: str = DEFAULT_TICKER):
-    """Diagnose why charm is not computing."""
-    try:
-        ticker = ticker_storage_key(ticker or DEFAULT_TICKER)   # Cursor-audit F1: bare "SPX" -> "$SPX"
-        # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
-        _touch_tracked_ticker_view(ticker)
-        from math_exposure import compute_net_charm
-
-        cl       = get_client()
-        # RC-59: charm IS level math — the debug view must see the same width the product
-        # computes on, or it debugs a different chain than the one that produced the number.
-        # Cursor-audit A1: and the same index DATE bound — without to_date this fetched the full
-        # multi-year $SPX book (no cap) and 502'd on the budget, unlike the product's bounded path.
-        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker),
-                                  to_date=_chain_to_date_for(ticker, None))
-        if c_resp is None or c_resp.status_code != 200:
-            return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
-        chain_json = c_resp.json()
-        contracts = flatten_chain_contracts(chain_json)
-        raw_cts = contracts
-
-        # Sample first contract raw fields
-        first_raw = raw_cts[0] if raw_cts else {}
-        raw_keys  = list(first_raw.keys())
-
-        # Check expiration fields
-        sample_exp  = [ct.get("expirationDate") for ct in contracts[:5]]
-        sample_dte  = [ct.get("daysToExpiration") for ct in contracts[:5]]
-
-        # Schwab uses -999.0 as a "missing greek" sentinel. The has_* counters
-        # below reflect contracts with USABLE greeks/IV (sentinel-aware: not
-        # None, not -999.0, finite) so this debug surface honestly diagnoses
-        # why charm is or isn't computing.
-        usable_gamma = 0
-        usable_delta = 0
-        usable_theta = 0
-        usable_vega = 0
-        usable_iv = 0
-        sentinel_gamma = 0
-        has_oi = 0
-        from numeric_contract import float_finite_or_none as _fin
-        for ct in contracts:
-            # single source: canonical finite reader for every greek. Raw float() admitted
-            # NaN (the counts were already NaN-safe via inline isfinite gates, now folded
-            # into the reader); MISSING_GREEK_SENTINEL is finite, survives the read, and is
-            # excluded explicitly — behaviour-identical, one fewer finite-check faucet.
-            _g = _fin(ct.get("gamma"))
-            _d = _fin(ct.get("delta"))
-            if gamma_is_plausible(_g, _d):
-                usable_gamma += 1
-            if ct.get("gamma") == MISSING_GREEK_SENTINEL:
-                sentinel_gamma += 1
-            if _d is not None and _d != MISSING_GREEK_SENTINEL:
-                usable_delta += 1
-            _t = _fin(ct.get("theta"))
-            if _t is not None and _t != MISSING_GREEK_SENTINEL:
-                usable_theta += 1
-            _v = _fin(ct.get("vega"))
-            if _v is not None and _v != MISSING_GREEK_SENTINEL:
-                usable_vega += 1
-            _iv = _fin(ct.get("volatility"))
-            if _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL:
-                usable_iv += 1
-            if ct.get("openInterest"):
-                has_oi += 1
-
-        # What expiries exist?
-        expiries     = _expiries_from_contracts(contracts)
-        selected_exp = _default_expiry(expiries, ticker)
-
-        # Try charm with all contracts, no filter
-        # ONE spot faucet: LAST_PRICE only via resolve_spot. Chain underlyingPrice is
-        # never current live spot. If LAST_PRICE is missing this diagnostic fails closed.
-        spot, spot_source, spot_ts = resolve_spot(ticker, chain_json=chain_json)
-        if spot is None or spot <= 0:
-            return {"error": f"no spot available (resolve_spot) for {ticker}"}
-        charm_all = compute_net_charm(contracts, spot, selected_exp or "")
-
-        return {
-            "spot": spot,
-            "spot_source": spot_source,
-            "spot_as_of_ts_utc": spot_ts,
-            "total_contracts": len(contracts),
-            "has_gamma": usable_gamma,
-            "has_delta": usable_delta,
-            "has_theta": usable_theta,
-            "has_vega": usable_vega,
-            "has_iv": usable_iv,
-            "gamma_sentinel_count": sentinel_gamma,
-            "has_oi": has_oi,
-            "raw_keys_sample": raw_keys[:20],
-            "sample_expirationDate": sample_exp,
-            "sample_daysToExpiration": sample_dte,
-            "expiries_found": expiries[:10],
-            "selected_exp": selected_exp,
-            "charm_result": charm_all,
-        }
-    except Exception as e:
-        import traceback
-        return {"error": str(e), "trace": traceback.format_exc()}
-
-
-@app.get("/api/accuracy")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
-def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Return prediction accuracy for a ticker.
-
-    Returns cached results if available (updated every ~10 min),
-    otherwise computes fresh. Also returns accuracy history for charting.
-    """
-    ticker = (ticker or DEFAULT_TICKER).upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL: accuracy is a VIEW — touch last-seen only.
-    _touch_tracked_ticker_view(ticker)
-
-    db = get_db() if _HAS_SIGNALS else None
-    if not db:
-        return {"error": "Database not connected"}
-
-    # Use cache if fresh enough
-    _serving_version = _current_pred_model_version(ticker)
-    cached = _accuracy_cache.get(ticker, {})
-    if cached and time.time() - cached.get("ts", 0) < ACCURACY_INTERVAL:
-        results = cached["results"]
-        all_hours = cached.get("all_hours")
-    else:
-        try:
-            # RTH-scoped is the trading-relevance primary; all-hours is audit
-            # context (operator decision 2026-07-06). Empty RTH scope fails
-            # closed (accuracy None) — never widened to all-hours silently.
-            results = db.compute_accuracy(
-                ticker, CANONICAL_TIMEFRAME, model_version=_serving_version,
-                rth_only=True,
-            )
-            all_hours = db.compute_accuracy(
-                ticker, CANONICAL_TIMEFRAME, model_version=_serving_version,
-                rth_only=False,
-            )
-            _accuracy_cache[ticker] = {
-                "ts": time.time(), "results": results, "all_hours": all_hours,
-            }
-        except Exception as e:
-            return {"error": str(e)}
-
-        # Pass 5a: persist accuracy snapshot per horizon when value
-        # meaningfully changed vs last logged row (db.maybe_log_model_accuracy
-        # handles the dedup epsilon). Throttled by the existing 10-min
-        # ACCURACY_INTERVAL cache above — at most one INSERT per ticker per
-        # horizon per ~10min.
-        for _hz, _hz_res in (results or {}).items():
-            if not isinstance(_hz_res, dict):
-                continue
-            try:
-                _new_id = db.maybe_log_model_accuracy(
-                    ticker=ticker,
-                    timeframe=CANONICAL_TIMEFRAME,
-                    model_version=_serving_version,
-                    horizon=_hz,
-                    total_predictions=int(_hz_res.get("total", 0) or 0),  # silent-zero-ok: a COUNT of rows returned — no rows is genuinely zero predictions, not an unmeasured quantity
-                    correct_direction=_hz_res.get("correct"),
-                    accuracy_pct=_hz_res.get("accuracy"),
-                )
-                if _new_id is not None:
-                    log.info(
-                        "model_accuracy ticker=%s horizon=%s acc=%s%% n=%s",
-                        ticker, _hz,
-                        _hz_res.get("accuracy"),
-                        _hz_res.get("total"),
-                    )
-            except Exception as _mae:
-                log.debug("log_model_accuracy ticker=%s hz=%s failed: %s", ticker, _hz, _mae)
-
-    # Fetch history via Pass 5a reader (get_model_accuracy_history).
-    history: list[dict] = []
-    try:
-        from ml_horizon import PRIMARY_DECISION_HORIZONS
-        for _hz in PRIMARY_DECISION_HORIZONS:
-            rows = db.get_model_accuracy_history(
-                ticker=ticker,
-                timeframe=CANONICAL_TIMEFRAME,
-                model_version=_serving_version,
-                horizon=_hz,
-                limit=int(ACCURACY_HISTORY_LIMIT),
-            )
-            history.extend(rows)
-    except Exception:
-        history = []
-
-    return {
-        "ticker": ticker,
-        "model_version": _serving_version,
-        # Trading-relevance primary: RTH-scoped, with per-horizon baseline +
-        # edge fields so raw accuracy cannot read as edge.
-        "accuracy_scope": "rth_0930_1600_et",
-        "current": _trader_accuracy_subset(results),
-        # Audit context only — measured over every session the logger ran.
-        "all_hours": _trader_accuracy_subset(all_hours or {}),
-        "history": history,
-    }
-
-
-@app.get("/api/debug/prediction")
-# SWITCH-LATENCY FIX: sync def → threadpool (blocking full _fetch_state, no await).
-def debug_prediction(ticker: str = DEFAULT_TICKER):
-    """Show exactly what the prediction engine is querying — non-production debug surface (R-011)."""
-    if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):
-        raise HTTPException(status_code=404, detail="debug endpoints disabled")
-    try:
-        state = _fetch_state(ticker, expiry=None, update_source="debug_endpoint")
-        zone = state.get("zone", "?")
-        vwap_side = state.get("vwap_side", "?")
-        bias = state.get("bias_signal", "?")
-        pin = state.get("pin_strength", "?")
-        nd = state.get("net_delta", "?")
-        ng = state.get("net_gamma", "?")
-        gex_mag = state.get("gex_magnitude", "?")
-        dex_mag = state.get("dex_magnitude", "?")
-        samples = state.get("samples_used", "?")
-        model_note = state.get("model_note", "?")
-        session_bkt = state.get("session_bucket", "?")
-        vix_bkt = state.get("vix_bucket", "?")
-
-        # Count snapshots per zone in DB
-        zone_counts = {}
-        if _HAS_SIGNALS:
-            db = get_db()
-            if db:
-                zone_counts = db.get_zone_distribution(ticker, CANONICAL_TIMEFRAME)
-
-        return {
-            "current_query": {
-                "zone": zone,
-                "vwap_side": vwap_side,
-                "session_bucket": session_bkt,
-                "vix_bucket": vix_bkt,
-                "bias_signal": bias,
-                "pin_strength": pin,
-                "net_delta": nd,
-                "net_gamma": ng,
-                "gex_magnitude": gex_mag,
-                "dex_magnitude": dex_mag,
-            },
-            "prediction_result": {
-                "samples_used": samples,
-                "model_note": model_note,
-            },
-            "db_zone_distribution": zone_counts,
-        }
-    except Exception as e:
-        import traceback
-        return {"error": str(e), "trace": traceback.format_exc()}

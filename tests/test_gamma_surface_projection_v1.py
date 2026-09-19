@@ -13,6 +13,7 @@ expirationDate, so which underlying a slice came from is immaterial to the ident
 test (cell == faucet on the slice; per-expiry additivity; expiry isolation); nothing about the
 rows is invented.
 """
+import datetime
 import inspect
 import json
 from pathlib import Path
@@ -26,8 +27,21 @@ from server import (
     _per_strike_view_update_expiry,
 )
 from math_exposure_core import compute_exposures_by_strike
+from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
+
+# RC-REHAB-2 (2026-09-18): both real captures' baked-in expirationDate stamps (CRWD
+# 2026-09-18T20:00:00Z, CDE 2026-09-04T20:00:00Z) are now in the past relative to real
+# wall-clock time. bs_vanna's T comes from time_et.time_to_expiry_years, fail-closed at
+# T<=0 -- correct production behaviour, but it silently collapsed
+# test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex
+# to comparing two independently-computed 0.0s (call_vanna/put_vanna are pre-initialized to
+# 0.0 and simply never get overwritten once T<=0), the same vacuous-pass defect fixed in
+# tests/test_vanna_charm_by_strike_v1.py. Freezing `now` to an instant inside BOTH captures'
+# windows (well before either's expirationDate) restores the test to proving real per-
+# contract vanna math instead of a degenerate zero-equals-zero comparison.
+_FROZEN_NOW = datetime.datetime(2026, 9, 2, 14, 30, tzinfo=ET)
 
 
 def _real(name: str) -> dict:
@@ -299,10 +313,12 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
     assert checked > 20
 
 
-def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex():
+def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex(monkeypatch):
+    monkeypatch.setattr("time_et.now_et", lambda: _FROZEN_NOW)
     chain = _chain()
     surface = project_gamma_surface(chain, SPOT)
     checked = 0
+    nonzero = 0
     for exp in (E1, E2):
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
@@ -321,7 +337,13 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
             expected = bucket["call_vanna"] - bucket["put_vanna"]
             assert abs(row["vanna"][col] - expected) < 0.1
             checked += 1
+            if expected != 0.0:
+                nonzero += 1
     assert checked > 20
+    # RC-REHAB-2: with `now` frozen inside both captures' own windows every contract has T > 0,
+    # so this must exercise REAL per-contract vanna math, not every strike silently collapsing
+    # to a vacuous 0.0-matches-0.0 comparison (which is what two expired chains give).
+    assert nonzero > 20
 
 
 def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_totals():
