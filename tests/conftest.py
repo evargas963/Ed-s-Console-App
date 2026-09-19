@@ -64,6 +64,9 @@ os.environ["ED_TERRAIN_QUARANTINE_LEDGER"] = str(
 os.environ["ED_GATE_CACHE_DISABLE"] = "1"
 
 
+_wave_lock = None  # RC-565: held only by the controller/serial process, only for a heavy run
+
+
 def pytest_configure(config) -> None:
     """The import-time runtime boundary holds in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
@@ -72,6 +75,32 @@ def pytest_configure(config) -> None:
 
     assert _PYTEST_RUNTIME_ROOT in canonical_console_db_path().parents
     assert _PYTEST_RUNTIME_ROOT in canonical_stream_db_path().parents
+
+    # RC-565: refuse a second concurrent HEAVY wave on this machine (see
+    # tools/verification_wave_lock.py for the full incident history and rationale).
+    # `workerinput` exists only inside an xdist WORKER process -- the gate belongs to the
+    # controller (or a plain serial run) exactly once per invocation, never once per worker.
+    if hasattr(config, "workerinput"):
+        return
+    from tools.verification_wave_lock import (
+        WaveLock, is_heavy_wave, override_requested, refusal_message,
+    )
+
+    numprocesses = getattr(config.option, "numprocesses", None)
+    if not is_heavy_wave(numprocesses) or override_requested():
+        return
+    global _wave_lock
+    _wave_lock = WaveLock()
+    if not _wave_lock.try_acquire():
+        _wave_lock = None
+        pytest.exit(refusal_message(str(config.rootpath)), returncode=2)
+
+
+def pytest_unconfigure(config) -> None:
+    global _wave_lock
+    if _wave_lock is not None:
+        _wave_lock.release()
+        _wave_lock = None
 
 
 @pytest.fixture(scope="session", autouse=True)
