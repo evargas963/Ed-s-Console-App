@@ -244,6 +244,19 @@ from app.api.routes.analytics_light import (  # noqa: F401
     get_analytics_light,
     get_analytics_light_stream,
 )
+# RC-REHAB-1 (Phase 3): fifteenth extraction slice -- Tier C's route layer (see
+# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md), now lives in
+# app/api/routes/analytics_state.py (mounted below via app.include_router(analytics_state_router)).
+# These three routes never call _fetch_state inline -- _tier_c_analytics_json_response
+# (the stale-while-refresh cache view), _schedule_analytics_warm/_schedule_analytics_recompute
+# (the scheduling layer), and _fetch_state itself (the ~3,400-line compute core) all stay in
+# server.py per the boundary doc's explicit recommendation, imported back lazily.
+from app.api.routes.analytics_state import (  # noqa: F401
+    router as analytics_state_router,
+    get_analytics_state,
+    post_analytics_warm,
+    get_state,
+)
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
@@ -10679,6 +10692,7 @@ app.include_router(exposure_router)
 app.include_router(status_router)
 app.include_router(live_router)
 app.include_router(analytics_light_router)
+app.include_router(analytics_state_router)
 
 # F09: serve the JS projection from time_et on every request. Registered BEFORE
 # the StaticFiles mount so a committed or leftover disk blob cannot become a
@@ -14981,69 +14995,6 @@ def _sse_event_name_for_envelope(env) -> str:
     sets it, to "gamma_surface_seq". A small pure function (not inlined in the generator) so it
     is directly unit-testable without driving the async generator/SSE connection."""
     return env.get("_sse_event_name", "l1_projection") if isinstance(env, dict) else "l1_projection"
-
-
-@app.get("/api/analytics/state")
-async def get_analytics_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    symbol: Optional[str] = Query(default=None),
-    expiry: Optional[str] = Query(default=None),
-    force: bool = Query(default=False),
-):
-    """
-    Tier C — full analytical pipeline (_fetch_state): chain, exposures, fusion, DB, news, model health.
-    Not required for first paint; cache-first when TTL allows.
-    """
-    t = _resolve_ticker_param(ticker, symbol)
-    # SWITCH-LATENCY FIX: async route — the handler is stale-while-refresh (light), but it
-    # calls _register_tracked_ticker (SQLite write) on entry, which blocks the event loop
-    # during DB contention. Offload it; the heavy recompute it schedules already runs on
-    # its own thread pool.
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        _get_fast_quote_executor(),
-        lambda: _tier_c_analytics_json_response(t, expiry, force, "rest_analytics"),
-    )
-
-
-@app.post("/api/analytics/warm")
-async def post_analytics_warm(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    symbol: Optional[str] = Query(default=None),
-    expiry: Optional[str] = Query(default=None),
-):
-    """
-    UI-MAXIMIZE — schedule Tier C background recompute + ML artifact prewarm (non-blocking).
-    Client fires on ticker switch / typeahead; does not await _fetch_state completion.
-    """
-    t = _resolve_ticker_param(ticker, symbol)
-
-    def _warm():
-        _touch_tracked_ticker_view(t)
-        return _schedule_analytics_warm(t, expiry, "client_warm_post", prewarm_models=True)
-
-    loop = asyncio.get_event_loop()
-    payload = await loop.run_in_executor(_get_route_offload_executor(), _warm)
-    return JSONResponse(payload)
-
-
-@app.get("/api/state")
-# SWITCH-LATENCY FIX: sync def → Starlette runs it in its worker threadpool, off the
-# event loop (this handler does blocking Tier C work and no await).
-def get_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
-    symbol: Optional[str] = Query(default=None),
-    expiry: Optional[str] = Query(default=None),
-    force: bool = Query(default=False),
-):
-    """
-    Deprecated alias for GET /api/analytics/state (Tier C full bundle).
-    Prefer /api/live/state + /api/analytics/state for real-time UX.
-    Query ``ticker=`` (preferred) or ``symbol=`` (alias).
-    """
-    return _tier_c_analytics_json_response(
-        _resolve_ticker_param(ticker, symbol), expiry, force, update_source="rest_poll_legacy"
-    )
 
 
 def _l1_sse_light_diag_payload() -> dict[str, Any]:

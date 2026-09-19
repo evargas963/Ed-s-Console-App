@@ -2771,7 +2771,7 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_analytics_light_stream).',
     ),
     Row(
-        file='server.py', derivation='get_analytics_state', disposition='ALLOWLISTED',
+        file='app/api/routes/analytics_state.py', derivation='get_analytics_state', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_analytics_state).',
     ),
