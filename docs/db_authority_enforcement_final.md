@@ -2,6 +2,8 @@
 
 # DB authority enforcement — final report
 
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** despite the "Policy Specification" classification above, the enforcement mechanism this report documents is gone. §2's claim that `ED_CONSOLE_DB` is an accepted override, guarded by `assert_ed_console_db_env_resolves_safely()`, describes code that commit `00d366a1` (2026-09-07, "fix: unify database authority and backups") deleted entirely — `assert_ed_console_db_env_resolves_safely` has zero references anywhere in the current repo. Current `db.py::_resolve_console_db_path` (~line 322) instead hard-refuses if `ED_CONSOLE_DB` or `ED_DB_PATH` is set at all, in any form: `raise RuntimeError("ambient console database overrides are disabled...")`. `classify_db_path()` no longer checks `is_canonical_db_path()` either (commit `71111ebc`); it now checks `permanent_database_identity(rp) is not None` against the two-permanent-database model (`ed_console` + `stream_capture`) described in `docs/db_fragmentation_consolidation_canonicalization.md`'s correction. The CLI-guard half this report describes (`calibration.db_guard`, `register_allow_noncanonical_flag`, `require_canonical_db_target`) is unaffected and still accurate — only the env-override policy in §2 is stale.
+
 ## 1. Executive result
 
 **FINAL RESULT: FAIL** (strict global closure criteria)

@@ -2,6 +2,8 @@
 
 # DB authority enforcement — v2 global closure
 
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** this "global closure" describes `db._resolve_console_db_path() -> ED_CONSOLE_DB or db_authority.canonical_console_db_path()` as the resolver chain. RC-533/RC-534 (commits `00d366a1`, `71111ebc`, 2026-09-07) changed this: `ED_CONSOLE_DB` is no longer an accepted override at all — setting it (or `ED_DB_PATH`) now raises `RuntimeError` unconditionally. See `docs/db_authority_enforcement_final.md`'s correction for the same mechanism change. Separately, this closure's scope is now architecturally incomplete: `db_authority.py` names two permanent production databases (`ed_console`, `stream_capture`), and `data/stream_capture.db` (9.65GB, actively written) is a second production data store this "global closure" never covers — see `docs/db_fragmentation_consolidation_canonicalization.md`'s correction. RC-552 (2026-09-11/13) later found and fixed a case where the enforced merge gate itself had accidentally imported `db_authority`/`runtime_layout` at module scope — i.e., even the governance surface around this closure kept accumulating exactly the kind of unaudited coupling this document claims was globally eliminated. `OPEN_ITEMS.md`'s PA-5 item, "One canonical production DB authority," remains unchecked today. The file-remediation claims below (§6.A: no stray executable `ed_console.db` literals outside docstrings/CLI help text) were independently re-verified and are still accurate — only the resolver-chain and single-database-scope claims above are stale.
+
 ## 1. Executive result
 
 **FINAL RESULT: PASS**
