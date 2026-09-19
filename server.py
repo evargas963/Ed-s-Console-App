@@ -2074,7 +2074,13 @@ def _card_freshness_trust_reason(
     *,
     active_ticker: str,
 ) -> Optional[str]:
-    """Mirror analyticsCardTrustGate / tools.run_universal_card_fidelity_runtime (read-only)."""
+    """Card freshness/trust verdict for card_freshness_v1 (read-only).
+
+    REALITY-RECONCILIATION (2026-09-18): this docstring used to say it "mirrors"
+    analyticsCardTrustGate (static/index.html) and tools.run_universal_card_fidelity_runtime --
+    both retired (the JS function is confirmed absent from the current console; the tool and its
+    tests were deleted as orphaned). This IS the live implementation now, not a mirror of one.
+    """
     if not isinstance(md, dict):
         return "no_payload"
     incoming = str(md.get("ticker") or "").strip().upper()
