@@ -194,8 +194,8 @@ def test_adapters_point_at_the_owners_and_carry_no_law():
     assert "launch / pre-push / CI). This file" not in process
 
 
-# test_no_code_owner_file_exists_rc530 was deleted 2026-09-11 (RC-550): it forbade a CODEOWNERS
-# file on the premise that no reviewer identity exists. A CODEOWNERS review by an identity the
-# coding agent does not hold is the only native GitHub boundary that stops a candidate from
-# weakening its own judge (attack matrix on b0bb211f/1a2eaafe, RC-539); a test that refuses
-# the boundary is not a control.
+# The RC-530 test banning a per-file reviewer-identity file was deleted 2026-09-11 (RC-550):
+# it forbade that file on the premise that no reviewer identity exists. A reviewer-identity
+# review by an identity the coding agent does not hold is the only native GitHub boundary that
+# stops a candidate from weakening its own judge (attack matrix on b0bb211f/1a2eaafe, RC-539);
+# a test that refuses the boundary is not a control.

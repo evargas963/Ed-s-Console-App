@@ -2896,8 +2896,8 @@ def check_collect_window_single_law() -> list[Violation]:
 # RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
 # and their callees are retired - governance/retired_checks.md. Roster demotions are
 # caught by the delta-gate roster comparison + declared-retirement manifest; hook-wiring
-# changes are reviewed by the operator at merge (RC-475 — the CODEOWNERS equivalence the
-# retirement rows cited was superseded when the authority model was torn down).
+# changes are reviewed by the operator at merge (RC-475 — the reviewer-identity-file
+# equivalence the retirement rows cited was superseded when the authority model was torn down).
 
 
 def check_admission_evidence_resolves() -> list[Violation]:
@@ -3009,7 +3009,7 @@ def check_decision_path_wired() -> list[Violation]:
 
 # claude_cursor_guard_parity RETIRED (declared governance/retired_checks.md 2026-08-24;
 # executed in the SIMPLICITY REHAB): hook parity is an operator merge-review property
-# (RC-475 superseded the CODEOWNERS equivalence the row cited). The
+# (RC-475 superseded the reviewer-identity-file equivalence the row cited). The
 # declared-but-still-enforced state this replaces was itself the manifest lying — the
 # defect class RC-468's seam exists to catch.
 
@@ -3061,7 +3061,7 @@ def check_collect_datasheet_staged() -> list[Violation]:
 
 # RC-470: check_honesty_guard_wired retired (governance/retired_checks.md) - an
 # unwiring of the hook files is reviewed by the operator at merge (RC-475 superseded
-# the CODEOWNERS equivalence the row cited). The honesty guard itself stays on Stop.
+# the reviewer-identity-file equivalence the row cited). The honesty guard itself stays on Stop.
 
 
 #: RC-212 (operator law 2026-08-02: "tighten up the one faucet mechanical lock so this
@@ -3207,7 +3207,7 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 # RC-470: check_writer_no_drift retired (governance/retired_checks.md). Measured before
 # retiring: the commit hook never ran this check (RC-406); CI deliberately set no role
 # (RC-396); it fired only in local verification shells. 2026-08-24 teardown: the whole
-# writer/role machinery (writer_drift_lock, CODEOWNERS, ED_AGENT_ROLE) was then removed
+# writer/role machinery (writer_drift_lock, a reviewer-identity file, ED_AGENT_ROLE) was then removed
 # with Architecture A — authority changes are approved by the operator's word in chat
 # (RC-475), with required CI as the machine gate at merge.
 
