@@ -7770,6 +7770,141 @@ def _order_flow_signals_for_state(
     )
 
 
+class _ExposuresForState(NamedTuple):
+    spot_f: float
+    tick_ts: Optional[float]
+    bars_5m_count: int
+    bars_1m_count: int
+    exposures: dict
+    diag: Any
+    cons_strikes: list
+    gamma_strikes: list
+    institutional_pin: Optional[float]
+    rows: list
+    walls: list
+    totals: list
+    client: Any
+
+
+def _exposures_for_state(
+    ticker: str,
+    client,
+    spot,
+    contracts_use: list,
+    parsed_quote_time,
+    parsed_trade_time,
+    total_vol,
+    log_only: bool,
+    chain_priority: bool,
+) -> _ExposuresForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): the Exposures phase
+    (candle tick feed + seed-from-history + GEX/DEX/vanna by strike + summary/wall/totals
+    rows), extracted verbatim from _fetch_state's body. Callers must have already handled
+    the `spot is None` guard -- this function assumes a real, non-None spot.
+
+    `client` is returned rather than only consumed: the original inline code rebinds
+    _fetch_state's own `client` local via `client = get_client()` inside the candle-seed
+    try block (get_client() is a cached singleton in practice, so this is normally a
+    no-op, but the rebinding is preserved exactly so _fetch_state's downstream `client`
+    reads -- e.g. the Price Levels phase -- see the identical value the original inline
+    code would have produced).
+    """
+    spot_f = float(spot)
+
+    # Feed tick into candle accumulators
+    tick_ts = parsed_quote_time or parsed_trade_time
+
+    # Seed candles from Schwab price history when the canonical 1m grid is stale —
+    # first visit OR a gap since the last completed bar (background-logged tickers
+    # are polled ~1×/15min; tick-built bars alone leave the outcome grid ~94% empty).
+    # Canonical (1m) drives snapshot/state; 5m remains derived context.
+    _seed_ref_ts = float(tick_ts) if tick_ts is not None else time.time()
+    if _candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS):
+        def _seed_candles(freq_min: int) -> None:
+            resp = safe_get_price_history(client, ticker, frequency_minutes=freq_min, period_days=1)
+            if resp and resp.status_code == 200:
+                payload = resp.json()
+                if "candles" not in payload:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
+                    )
+                raw_bars = payload["candles"]
+                if freq_min == 5:
+                    _candles_5m.seed(ticker, raw_bars)
+                    log.info("Seeded %s 5m candles: %d bars from price history", ticker, len(raw_bars))
+                else:
+                    _candles_1m.seed(ticker, raw_bars)
+                    log.info("Seeded %s 1m candles: %d bars from price history", ticker, len(raw_bars))
+
+        try:
+            client = get_client()
+            if _log_only_inline_leaf_fetches(log_only):
+                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1: background
+                # log_only seeds run sequentially inline — identical calls,
+                # identical consumption, no shared-pool occupancy.
+                _seed_candles(5)
+                _seed_candles(1)
+            else:
+                # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
+                # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
+                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: dedicated leaf pool.
+                # UI_05 residual: priority recomputes seed on the priority
+                # leaf lane (same selection as the chain/quote leg).
+                _seed_pool = (
+                    _get_priority_leaf_executor()
+                    if chain_priority
+                    else _get_recompute_leaf_executor()
+                )
+                _f5 = _seed_pool.submit(_seed_candles, 5)
+                _f1 = _seed_pool.submit(_seed_candles, 1)
+                _f5.result(timeout=45)
+                _f1.result(timeout=45)
+        except Exception as e:
+            log.debug("Candle seeding failed for %s: %s", ticker, e)
+
+    if tick_ts is not None:
+        _candles_5m.tick(ticker, spot_f, tick_ts, total_volume=total_vol)
+        _candles_1m.tick(ticker, spot_f, tick_ts, total_volume=total_vol)
+
+    bars_5m_count = len(_candles_5m.get_bars(ticker))
+    bars_1m_count = len(_candles_1m.get_bars(ticker))
+    log.info(f"Candles: {ticker} 5m={bars_5m_count} bars, 1m={bars_1m_count} bars")
+
+    exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
+    from math_exposure_core import key_level_strikes_with_gamma
+    cons_strikes = sorted(float(k) for k in exposures.keys())
+    gamma_strikes = key_level_strikes_with_gamma(exposures) or cons_strikes
+    institutional_pin = (
+        pick_net_gex_peak_strike(exposures, gamma_strikes, institutional=True)
+        if gamma_strikes
+        else None
+    )
+
+    rows = build_summary_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
+    walls = build_walls_rows(exposures, spot_f)
+    # RC-420: CONSENSUS gamma/delta wall strikes are terrain SSOT (wide chain).
+    # Selected-expiry analytics must not occupy walls[0] while kl_* paints terrain.
+    from math_levels import consensus_walls_bind_terrain_ssot
+    walls = consensus_walls_bind_terrain_ssot(walls, terrain_cache_get(ticker) or {})
+    totals = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
+
+    return _ExposuresForState(
+        spot_f=spot_f,
+        tick_ts=tick_ts,
+        bars_5m_count=bars_5m_count,
+        bars_1m_count=bars_1m_count,
+        exposures=exposures,
+        diag=diag,
+        cons_strikes=cons_strikes,
+        gamma_strikes=gamma_strikes,
+        institutional_pin=institutional_pin,
+        rows=rows,
+        walls=walls,
+        totals=totals,
+        client=client,
+    )
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -8115,84 +8250,27 @@ def _fetch_state(
             },
             "server_ts": time.time(),
         })
-    spot_f    = float(spot)
-
-    # Feed tick into candle accumulators
-    _tick_ts = parsed_quote_time or parsed_trade_time
-
-    # Seed candles from Schwab price history when the canonical 1m grid is stale —
-    # first visit OR a gap since the last completed bar (background-logged tickers
-    # are polled ~1×/15min; tick-built bars alone leave the outcome grid ~94% empty).
-    # Canonical (1m) drives snapshot/state; 5m remains derived context.
-    _seed_ref_ts = float(_tick_ts) if _tick_ts is not None else time.time()
-    if _candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS):
-        def _seed_candles(freq_min: int) -> None:
-            resp = safe_get_price_history(client, ticker, frequency_minutes=freq_min, period_days=1)
-            if resp and resp.status_code == 200:
-                payload = resp.json()
-                if "candles" not in payload:
-                    raise ValueError(
-                        f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
-                    )
-                raw_bars = payload["candles"]
-                if freq_min == 5:
-                    _candles_5m.seed(ticker, raw_bars)
-                    log.info("Seeded %s 5m candles: %d bars from price history", ticker, len(raw_bars))
-                else:
-                    _candles_1m.seed(ticker, raw_bars)
-                    log.info("Seeded %s 1m candles: %d bars from price history", ticker, len(raw_bars))
-
-        try:
-            client = get_client()
-            if _log_only_inline_leaf_fetches(log_only):
-                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1: background
-                # log_only seeds run sequentially inline — identical calls,
-                # identical consumption, no shared-pool occupancy.
-                _seed_candles(5)
-                _seed_candles(1)
-            else:
-                # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
-                # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
-                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: dedicated leaf pool.
-                # UI_05 residual: priority recomputes seed on the priority
-                # leaf lane (same selection as the chain/quote leg).
-                _seed_pool = (
-                    _get_priority_leaf_executor()
-                    if _chain_priority
-                    else _get_recompute_leaf_executor()
-                )
-                _f5 = _seed_pool.submit(_seed_candles, 5)
-                _f1 = _seed_pool.submit(_seed_candles, 1)
-                _f5.result(timeout=45)
-                _f1.result(timeout=45)
-        except Exception as e:
-            log.debug("Candle seeding failed for %s: %s", ticker, e)
-
-    if _tick_ts is not None:
-        _candles_5m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
-        _candles_1m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
-
-    _bars_5m_count = len(_candles_5m.get_bars(ticker))
-    _bars_1m_count = len(_candles_1m.get_bars(ticker))
-    log.info(f"Candles: {ticker} 5m={_bars_5m_count} bars, 1m={_bars_1m_count} bars")
-
-    exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
-    from math_exposure_core import key_level_strikes_with_gamma
-    _cons_strikes = sorted(float(k) for k in exposures.keys())
-    _gamma_strikes = key_level_strikes_with_gamma(exposures) or _cons_strikes
-    _institutional_pin = (
-        pick_net_gex_peak_strike(exposures, _gamma_strikes, institutional=True)
-        if _gamma_strikes
-        else None
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): extracted to
+    # _exposures_for_state (defined above). `client` is reassigned from the return value
+    # because the candle-seed path may rebind it via get_client() -- preserved exactly as
+    # the original inline rebinding did (get_client() is a cached singleton in practice).
+    _exp = _exposures_for_state(
+        ticker, client, spot, contracts_use, parsed_quote_time, parsed_trade_time,
+        _total_vol, log_only, _chain_priority,
     )
-
-    rows      = build_summary_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
-    walls     = build_walls_rows(exposures, spot_f)
-    # RC-420: CONSENSUS gamma/delta wall strikes are terrain SSOT (wide chain).
-    # Selected-expiry analytics must not occupy walls[0] while kl_* paints terrain.
-    from math_levels import consensus_walls_bind_terrain_ssot
-    walls = consensus_walls_bind_terrain_ssot(walls, terrain_cache_get(ticker) or {})
-    totals    = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
+    spot_f = _exp.spot_f
+    _tick_ts = _exp.tick_ts
+    _bars_5m_count = _exp.bars_5m_count
+    _bars_1m_count = _exp.bars_1m_count
+    exposures = _exp.exposures
+    diag = _exp.diag
+    _cons_strikes = _exp.cons_strikes
+    _gamma_strikes = _exp.gamma_strikes
+    _institutional_pin = _exp.institutional_pin
+    rows = _exp.rows
+    walls = _exp.walls
+    totals = _exp.totals
+    client = _exp.client
 
     # ── Gamma Flip + Void Zones ───────────────────────────────────────────────
     # FIND-GAMMA-FLIP-METHOD-V1: canonical profile (gamma recomputed at hypothetical spot).
