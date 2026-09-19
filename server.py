@@ -8216,6 +8216,96 @@ def _order_flow_data_for_state(
     return order_flow_data
 
 
+def _candle_volume_for_state(ticker: str, client) -> Optional[float]:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): the Candle
+    Volume Resolution phase, extracted verbatim.
+
+    A pre-existing quirk preserved, not fixed: the original inline banner comment says
+    "priority: 1) Price history primary, 2) accumulator secondary", but the actual code
+    order tries the accumulator FIRST (this function's first block), price history SECOND
+    (only when the accumulator had no usable volume), then re-checks the accumulator a
+    THIRD time with the IDENTICAL condition as the first check -- since `completed_for_vol`
+    never changes between the first and third check, that third block is unreachable dead
+    code whenever the first block already failed. Preserved verbatim for behavior fidelity."""
+    completed_for_vol = _candles_1m.get_bars(ticker)
+
+    c_vol = None
+    if completed_for_vol:
+        raw_vol = getattr(completed_for_vol[-1], "volume", None)
+        if raw_vol is not None:
+            try:
+                v = float(raw_vol)
+                if v > 0:
+                    c_vol = v
+            except (TypeError, ValueError):
+                pass
+    # Price history fetch only when accumulator has no usable volume (avoid duplicate Schwab RTT).
+    if c_vol is None and ticker:
+        try:
+            resp_ph = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
+            if (not resp_ph or resp_ph.status_code != 200 or not resp_ph.json().get("candles")) and ticker.startswith("$"):
+                resp_ph = safe_get_price_history(client, ticker[1:], frequency_minutes=1, period_days=1)
+            if resp_ph and resp_ph.status_code == 200:
+                payload_ph = resp_ph.json()
+                if "candles" not in payload_ph:
+                    raise ValueError(
+                        f"Schwab pricehistory response missing 'candles' key (status={resp_ph.status_code})"
+                    )
+                ph_candles = payload_ph["candles"]
+                if ph_candles and completed_for_vol:
+                    last_ts = getattr(completed_for_vol[-1], "ts", None)
+
+                    def _ph_candle_ts_sec(bar: dict) -> Optional[float]:
+                        dt = bar.get("datetime")
+                        if dt is None:
+                            return None
+                        try:
+                            dt_f = float(dt)
+                        except (TypeError, ValueError):
+                            return None
+                        if dt_f <= 0:
+                            return None
+                        return dt_f / 1000.0 if dt_f > 1e10 else dt_f
+
+                    timed = [b for b in ph_candles if _ph_candle_ts_sec(b) is not None]
+                    if last_ts is not None and timed:
+                        best = min(timed, key=lambda b: abs(_ph_candle_ts_sec(b) - last_ts))
+                    elif timed:
+                        best = timed[-1]
+                    else:
+                        best = ph_candles[-1]
+                    ph_vol = best.get("volume")
+                    if ph_vol is not None:
+                        try:
+                            v = float(ph_vol)
+                            if v > 0:
+                                c_vol = v
+                        except (TypeError, ValueError):
+                            pass
+                if c_vol is None and ph_candles:
+                    v = ph_candles[-1].get("volume")
+                    if v is not None:
+                        try:
+                            vf = float(v)
+                            if vf > 0:
+                                c_vol = vf
+                        except (TypeError, ValueError):
+                            pass
+        except Exception as _ph_e:
+            log.debug(f"Price history volume for {ticker}: {_ph_e}")
+    # 2. Accumulator secondary — WebSocket TOTAL_VOLUME or REST quote delta
+    if c_vol is None and completed_for_vol:
+        raw_vol = getattr(completed_for_vol[-1], "volume", None)
+        if raw_vol is not None:
+            try:
+                v = float(raw_vol)
+                if v > 0:
+                    c_vol = v
+            except (TypeError, ValueError):
+                pass
+    return c_vol
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -8894,90 +8984,14 @@ def _fetch_state(
     et_m = now_et.minute
     mins_to_close = max(0.0, RTH_CLOSE_MINS - (et_h * 60 + et_m))
 
-    # Candle volume from last completed 1m bar (canonical) for build_market_state + snapshot
-    _c_vol = None
-    _completed_for_vol = _candles_1m.get_bars(ticker)
-
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourteenth slice): extracted to
     # _order_flow_data_for_state (defined above).
     _order_flow_data = _order_flow_data_for_state(ticker, q_json, c_json, now_et)
 
-    # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary)
-    # Use 1m price history to match canonical (1m) bar timestamps.
-    _c_vol = None
-    if _completed_for_vol:
-        _raw_vol = getattr(_completed_for_vol[-1], "volume", None)
-        if _raw_vol is not None:
-            try:
-                v = float(_raw_vol)
-                if v > 0:
-                    _c_vol = v
-            except (TypeError, ValueError):
-                pass
-    # Price history fetch only when accumulator has no usable volume (avoid duplicate Schwab RTT).
-    if _c_vol is None and ticker:
-        try:
-            resp_ph = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
-            if (not resp_ph or resp_ph.status_code != 200 or not resp_ph.json().get("candles")) and ticker.startswith("$"):
-                resp_ph = safe_get_price_history(client, ticker[1:], frequency_minutes=1, period_days=1)
-            if resp_ph and resp_ph.status_code == 200:
-                payload_ph = resp_ph.json()
-                if "candles" not in payload_ph:
-                    raise ValueError(
-                        f"Schwab pricehistory response missing 'candles' key (status={resp_ph.status_code})"
-                    )
-                ph_candles = payload_ph["candles"]
-                if ph_candles and _completed_for_vol:
-                    last_ts = getattr(_completed_for_vol[-1], "ts", None)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): extracted to
+    # _candle_volume_for_state (defined above).
+    _c_vol = _candle_volume_for_state(ticker, client)
 
-                    def _ph_candle_ts_sec(bar: dict) -> Optional[float]:
-                        dt = bar.get("datetime")
-                        if dt is None:
-                            return None
-                        try:
-                            dt_f = float(dt)
-                        except (TypeError, ValueError):
-                            return None
-                        if dt_f <= 0:
-                            return None
-                        return dt_f / 1000.0 if dt_f > 1e10 else dt_f
-
-                    timed = [b for b in ph_candles if _ph_candle_ts_sec(b) is not None]
-                    if last_ts is not None and timed:
-                        best = min(timed, key=lambda b: abs(_ph_candle_ts_sec(b) - last_ts))
-                    elif timed:
-                        best = timed[-1]
-                    else:
-                        best = ph_candles[-1]
-                    ph_vol = best.get("volume")
-                    if ph_vol is not None:
-                        try:
-                            v = float(ph_vol)
-                            if v > 0:
-                                _c_vol = v
-                        except (TypeError, ValueError):
-                            pass
-                if _c_vol is None and ph_candles:
-                    v = ph_candles[-1].get("volume")
-                    if v is not None:
-                        try:
-                            vf = float(v)
-                            if vf > 0:
-                                _c_vol = vf
-                        except (TypeError, ValueError):
-                            pass
-        except Exception as _ph_e:
-            log.debug(f"Price history volume for {ticker}: {_ph_e}")
-    # 2. Accumulator secondary — WebSocket TOTAL_VOLUME or REST quote delta
-    if _c_vol is None and _completed_for_vol:
-        _raw_vol = getattr(_completed_for_vol[-1], "volume", None)
-        if _raw_vol is not None:
-            try:
-                v = float(_raw_vol)
-                if v > 0:
-                    _c_vol = v
-            except (TypeError, ValueError):
-                pass
     # ── Build MarketState ─────────────────────────────────────────────────────
     _stage_marks.append(("db_reads_orderflow_input", time.perf_counter()))
     if _diag_on():
