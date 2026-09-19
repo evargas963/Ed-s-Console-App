@@ -8042,6 +8042,48 @@ def _charm_for_state(
     )
 
 
+def _zone_tracking_for_state(ticker: str, consensus_summary) -> dict:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, twelfth slice): the Zone
+    Tracking phase, extracted verbatim. Reads/writes the module-level `_zone_tracker`
+    singleton directly (referenced as a server.py global exactly as _fetch_state itself
+    does, not passed as a parameter) and returns the updated per-ticker zone-tracker dict.
+
+    zone_since_bars_1m = execution-layer recency (canonical 1m bars) — primary for
+    models/features. zone_since_bars_5m = structure-layer recency (derived 5m bars) —
+    for structure context only. Tracked independently so there is no mixed-clock
+    dependency."""
+    bias_sig = (consensus_summary.bias_signal if consensus_summary else "") or ""
+    nd_raw = (consensus_summary.net_delta if consensus_summary else None)
+    cur_zone = derive_zone(bias_sig, nd_raw)
+
+    zone_bars_1m = _candles_1m.get_bars(ticker)
+    zone_bars_5m = _candles_5m.get_bars(ticker)
+    latest_bar_ts_1m = zone_bars_1m[-1].ts if zone_bars_1m else 0.0
+    latest_bar_ts_5m = zone_bars_5m[-1].ts if zone_bars_5m else 0.0
+
+    zt = _zone_tracker.get(ticker, {
+        "zone": cur_zone, "prev_zone": cur_zone,
+        "since_bars_1m": 0, "since_bars_5m": 0,
+        "last_bar_ts_1m": 0.0, "last_bar_ts_5m": 0.0,
+    })
+    if cur_zone != zt["zone"]:
+        zt["prev_zone"]      = zt["zone"]
+        zt["zone"]           = cur_zone
+        zt["since_bars_1m"]  = 0
+        zt["since_bars_5m"]  = 0
+        zt["last_bar_ts_1m"] = latest_bar_ts_1m
+        zt["last_bar_ts_5m"] = latest_bar_ts_5m
+    else:
+        if latest_bar_ts_1m > zt.get("last_bar_ts_1m", 0.0):
+            zt["since_bars_1m"]  += 1
+            zt["last_bar_ts_1m"]  = latest_bar_ts_1m
+        if latest_bar_ts_5m > zt.get("last_bar_ts_5m", 0.0):
+            zt["since_bars_5m"]  += 1
+            zt["last_bar_ts_5m"]  = latest_bar_ts_5m
+    _zone_tracker[ticker] = zt
+    return zt
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -8703,39 +8745,9 @@ def _fetch_state(
         log.debug(f"Envelope/density/sector calc: {e}")
     _stage_marks.append(("vol_flow_signals", time.perf_counter()))
 
-    # ── Zone tracking ─────────────────────────────────────────────────────────
-    # zone_since_bars_1m = execution-layer recency (canonical 1m bars) — primary for models/features.
-    # zone_since_bars_5m = structure-layer recency (derived 5m bars) — for structure context only.
-    # We track both independently so there is no mixed-clock dependency.
-    bias_sig = (consensus_summary.bias_signal if consensus_summary else "") or ""
-    nd_raw   = (consensus_summary.net_delta   if consensus_summary else None)
-    cur_zone = derive_zone(bias_sig, nd_raw)
-
-    _zone_bars_1m = _candles_1m.get_bars(ticker)
-    _zone_bars_5m = _candles_5m.get_bars(ticker)
-    _latest_bar_ts_1m = _zone_bars_1m[-1].ts if _zone_bars_1m else 0.0
-    _latest_bar_ts_5m = _zone_bars_5m[-1].ts if _zone_bars_5m else 0.0
-
-    zt = _zone_tracker.get(ticker, {
-        "zone": cur_zone, "prev_zone": cur_zone,
-        "since_bars_1m": 0, "since_bars_5m": 0,
-        "last_bar_ts_1m": 0.0, "last_bar_ts_5m": 0.0,
-    })
-    if cur_zone != zt["zone"]:
-        zt["prev_zone"]      = zt["zone"]
-        zt["zone"]           = cur_zone
-        zt["since_bars_1m"]  = 0
-        zt["since_bars_5m"]  = 0
-        zt["last_bar_ts_1m"] = _latest_bar_ts_1m
-        zt["last_bar_ts_5m"] = _latest_bar_ts_5m
-    else:
-        if _latest_bar_ts_1m > zt.get("last_bar_ts_1m", 0.0):
-            zt["since_bars_1m"]  += 1
-            zt["last_bar_ts_1m"]  = _latest_bar_ts_1m
-        if _latest_bar_ts_5m > zt.get("last_bar_ts_5m", 0.0):
-            zt["since_bars_5m"]  += 1
-            zt["last_bar_ts_5m"]  = _latest_bar_ts_5m
-    _zone_tracker[ticker] = zt
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, twelfth slice): extracted to
+    # _zone_tracking_for_state (defined above).
+    zt = _zone_tracking_for_state(ticker, consensus_summary)
 
     # ── DB counts + crosses ───────────────────────────────────────────────────
     if _diag_on():
