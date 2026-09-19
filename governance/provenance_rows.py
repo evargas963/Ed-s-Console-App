@@ -2608,7 +2608,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='server.py', derivation='_radar_row', disposition='DERIVED',
-        producer_refs=('server.py:get_terrain_radar',),
+        producer_refs=('app/api/routes/terrain.py:get_terrain_radar',),
         justification='Projects already-computed terrain fields + ATR distances into a radar row; no new field read.',
     ),
     Row(
@@ -2875,22 +2875,22 @@ ROWS: tuple[Row, ...] = (
         justification='Featherweight live spot via the single spot authority resolve_spot (RC-14); no direct leaf here.',
     ),
     Row(
-        file='server.py', derivation='get_terrain', disposition='ALLOWLISTED',
+        file='app/api/routes/terrain.py', derivation='get_terrain', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_terrain); delegates all level math to terrain_engine.compute_terrain.',
     ),
     Row(
-        file='server.py', derivation='get_terrain_radar', disposition='ALLOWLISTED',
+        file='app/api/routes/terrain.py', derivation='get_terrain_radar', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Radar API handler: ranks cached terrain by proximity to the nearest wall; all level math is delegated to terrain_engine.',
     ),
     Row(
-        file='server.py', derivation='get_terrain_strikes', disposition='SCHWAB_LEAF',
+        file='app/api/routes/terrain.py', derivation='get_terrain_strikes', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.*.strikePrice',
         justification='Per-strike GEX$ endpoint: reads strikePrice/daysToExpiration/totalVolume from the chain.',
     ),
     Row(
-        file='server.py', derivation='get_terrain_strikes._per_strike', disposition='SCHWAB_LEAF',
+        file='app/api/routes/terrain.py', derivation='get_terrain_strikes._per_strike', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.*.daysToExpiration',
         justification='Nested: builds one per-strike row from the chain leaves; near/far split now via the canonical terrain_engine._dte_of (Cursor-audit F8, replacing the removed nested _dte).',
     ),
@@ -2930,7 +2930,7 @@ ROWS: tuple[Row, ...] = (
         justification='Operator field-inventory audit (2026-09-13): reads the persisted native NASDAQ_BOOK/NYSE_BOOK stream rows (stream_book_raw.native_json) directly for one underlying ticker, bins them into a time x price grid (cell = summed native BID_PRICE/ASK_PRICE TOTAL_VOLUME) — the historical, time-dimensioned counterpart to the live single-snapshot ladder api_order_flow_microstructure already serves from the SAME table. The window always ends at the latest row actually captured for this ticker, never wall-clock now, so a real prior session still renders honestly outside RTH. Fails closed (available:false + a plain reason) at every stage; never interpolates a cell between captured ticks.',
     ),
     Row(
-        file='server.py', derivation='get_terrain_strikes._side_sums', disposition='ALLOWLISTED',
+        file='app/api/routes/terrain.py', derivation='get_terrain_strikes._side_sums', disposition='ALLOWLISTED',
         allowlist_id='mega1_internal_helper',
         justification="Nested: sums the already-computed per-strike GEX$ and volume per side of the payload's OWN spot. One aggregator, one spot basis — the in-browser re-sum was killed because a client loop could straddle a different spot and broke silently on payload changes.",
     ),
@@ -3086,7 +3086,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='terrain_engine.py', derivation='wall_geometry_state', disposition='DERIVED',
-        producer_refs=('server.py:get_terrain', 'terrain_engine.py:compute_terrain'),
+        producer_refs=('app/api/routes/terrain.py:get_terrain', 'terrain_engine.py:compute_terrain'),
         justification='RC-130: answers whether a wall is in the configuration its support/resistance label claims (contains / breached / unknown) from spot and the wall strike; the UI renders NO behavioural claim without a positive state.',
     ),
     Row(
