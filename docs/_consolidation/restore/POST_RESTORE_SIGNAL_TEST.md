@@ -1,4 +1,4 @@
-> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/_consolidation/restore/POST_RESTORE_SIGNAL_TEST.md`.
+> **Classification:** Historical Record | **Scope:** Point-in-time audit artifact `docs/_consolidation/restore/POST_RESTORE_SIGNAL_TEST.md`. (Corrected 2026-09-18, reality-reconciliation audit: this is a one-time signal-generation smoke test result log, zero prescriptive content — mislabeled "Policy Specification," relabeled to match its sibling `FULL_PRIMARY_HORIZON_AUDIT.md`.)
 
 # Post-Restore Signal Test
 
