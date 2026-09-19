@@ -52,27 +52,42 @@ def served_pages(repo: Path | None = None) -> list[str]:
     (governance/provenance_roots.py, reconciled with server.py by tests/test_provenance_v1.py)
     resolved to the `static/*.html` literal their handler reads. The router is the authority;
     a file under static/ that no route serves is not a page. Unresolvable => raise: a gate
-    that cannot name its population must not report a clean run over an invented one."""
+    that cannot name its population must not report a clean run over an invented one.
+
+    RC-REHAB-1 (Phase 3): server.py's route table is being decomposed into per-domain router
+    modules under app/api/routes/ (desk.py, pages.py, ops.py, ...), each mounted via
+    app.include_router(...) -- a PAGE route stops being findable by a server.py-only AST scan
+    the moment it moves (this is the same fix already applied to
+    governance/provenance_inventory.py:served_routes for the analogous route-classification
+    gate). Scanning server.py plus every app/api/routes/*.py module, discovered by directory
+    listing rather than a maintained file list, means a future extraction stays covered
+    automatically instead of reopening this same LookupError.
+    """
     import ast
     root = repo or REPO
     ns: dict = {}
     exec(compile((root / "governance" / "provenance_roots.py").read_text(encoding="utf-8"), "provenance_roots", "exec"), ns)
     page_routes = {r for r, (cls, _p) in ns["ROUTES"].items() if cls == "PAGE"}
+    files = [root / "server.py"]
+    routes_dir = root / "app" / "api" / "routes"
+    if routes_dir.is_dir():
+        files += sorted(p for p in routes_dir.glob("*.py") if p.name != "__init__.py")
     pages: set[str] = set()
-    for node in ast.parse((root / "server.py").read_text(encoding="utf-8", errors="replace")).body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if not any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("get", "post")
-                   and d.args and isinstance(d.args[0], ast.Constant) and d.args[0].value in page_routes
-                   for d in node.decorator_list):
-            continue
-        for c in ast.walk(node):
-            if isinstance(c, ast.Constant) and isinstance(c.value, str) and c.value.endswith(".html"):
-                rel = c.value.replace("\\", "/")
-                if "static/" in rel:
-                    pages.add(rel[rel.index("static/"):])
-                elif "/" not in rel:
-                    pages.add(f"static/{rel}")
+    for path in files:
+        for node in ast.parse(path.read_text(encoding="utf-8", errors="replace")).body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("get", "post")
+                       and d.args and isinstance(d.args[0], ast.Constant) and d.args[0].value in page_routes
+                       for d in node.decorator_list):
+                continue
+            for c in ast.walk(node):
+                if isinstance(c, ast.Constant) and isinstance(c.value, str) and c.value.endswith(".html"):
+                    rel = c.value.replace("\\", "/")
+                    if "static/" in rel:
+                        pages.add(rel[rel.index("static/"):])
+                    elif "/" not in rel:
+                        pages.add(f"static/{rel}")
     if not pages:
         raise LookupError("no PAGE route resolves to a static HTML file")
     return sorted(p for p in pages if (root / p).is_file())

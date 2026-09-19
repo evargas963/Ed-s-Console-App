@@ -218,10 +218,14 @@ def test_count_level_tests_reads_what_detector_wrote(tmp_path: Path) -> None:
 # single coincident crossing filled every slot and hid every other event.
 
 def test_coincident_crossings_collapse_to_one_event(tmp_path):
-    """Eight names on one strike is ONE crossing, and the endpoint must say so."""
+    """Eight names on one strike is ONE crossing, and the endpoint must say so.
+
+    RC-REHAB-1 (Phase 3): api_level_crosses moved from server.py to
+    app/api/routes/ops.py (third extraction slice) -- the source-text scan moved with it.
+    """
     import ast
     from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parent.parent / "app" / "api" / "routes" / "ops.py").read_text(encoding="utf-8")
     seg = ""
     for node in ast.walk(ast.parse(src)):
         if isinstance(node, ast.FunctionDef) and node.name == "api_level_crosses":
@@ -240,10 +244,13 @@ def test_coincident_crossings_collapse_to_one_event(tmp_path):
 
 def test_collapse_keys_on_price_event_not_level_name():
     """The merge key must be the market event (ts, value, direction). Keying on level_name would
-    reproduce exactly the producer-side bug this fixes."""
+    reproduce exactly the producer-side bug this fixes.
+
+    RC-REHAB-1 (Phase 3): api_level_crosses moved to app/api/routes/ops.py.
+    """
     import ast
     from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parent.parent / "app" / "api" / "routes" / "ops.py").read_text(encoding="utf-8")
     seg = next(ast.get_source_segment(src, n) for n in ast.walk(ast.parse(src))
                if isinstance(n, ast.FunctionDef) and n.name == "api_level_crosses")
     assert 'r.get("ts_utc"), r.get("level_value"), r.get("direction")' in seg, (
