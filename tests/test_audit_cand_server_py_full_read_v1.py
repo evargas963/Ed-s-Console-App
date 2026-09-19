@@ -272,16 +272,22 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
 
 # FIND-SERVERPY-6
 def test_price_levels_cache_sec_at_module_level():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixth slice): the Price Levels
+    phase (the carried-generation check, the LevelCarrierConflict handling, and the
+    try/except/else structure this test locks) moved out of _fetch_state's own body into
+    _price_levels_for_state. The invariants below are unchanged; only their source
+    location moved."""
     import server
 
     assert server.PRICE_LEVELS_CACHE_SEC == 15
-    src = _fn_src("_fetch_state")
-    assert "_PL_CACHE_SEC" not in src
-    assert "carried_price_levels_match_snapshot" in src
-    assert ">= PRICE_LEVELS_CACHE_SEC" not in src
-    assert "except _LevelCarrierConflict" in src
-    block = src[src.index("# ── Price levels"):src.index("# ── Expected Move")]
-    fail_arm = block[block.index("except Exception"):].split("else:", 1)[0]
+    fetch_state_src = _fn_src("_fetch_state")
+    price_levels_src = _fn_src("_price_levels_for_state")
+    assert "_PL_CACHE_SEC" not in fetch_state_src
+    assert "_PL_CACHE_SEC" not in price_levels_src
+    assert "carried_price_levels_match_snapshot" in price_levels_src
+    assert ">= PRICE_LEVELS_CACHE_SEC" not in price_levels_src
+    assert "except _LevelCarrierConflict" in price_levels_src
+    fail_arm = price_levels_src[price_levels_src.index("except Exception"):].split("else:", 1)[0]
     assert '["price_levels"]' not in fail_arm
     assert "PriceLevels()" in fail_arm
 

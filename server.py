@@ -7079,6 +7079,87 @@ class _VolatilitySignalsForState(NamedTuple):
     closes: Optional[list]
 
 
+def _price_levels_for_state(
+    ticker: str,
+    client,
+    q_json: dict,
+    now_et_dt,
+    cache_key: tuple,
+):
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixth slice): the Price Levels
+    phase, extracted verbatim. Carries the SAME canonical snapshot /api/levels serializes
+    (via canonical_price_level_snapshot + carried_price_levels_match_snapshot's generation
+    check -- never a wall-clock TTL, which previously let this cache disagree with
+    /api/levels's own generation) and mutates the shared `_state_cache[cache_key]` entry on
+    a real fetch -- the exact side effect the original inline block had. `_state_cache` is
+    a server.py module-level dict, referenced directly here exactly as _fetch_state itself
+    references it, not passed as a parameter (matching the treatment already given to
+    other module-level singletons like `_candles_1m` in earlier slices of this
+    decomposition).
+    """
+    from liquidity_value_engine import LevelCarrierConflict as _LevelCarrierConflict
+    today_date_str = now_et_dt.strftime("%Y-%m-%d")
+    pl_snap = canonical_price_level_snapshot(ticker)
+    pl_bucket = _state_cache.get(cache_key, {})
+    pl_cache_entry = pl_bucket.get("price_levels")
+    pl_cache_date  = pl_bucket.get("pl_date", "")
+    pl_cache_gen   = pl_bucket.get("pl_generation")
+
+    if carried_price_levels_match_snapshot(
+        pl_cache_entry, pl_cache_date, pl_cache_gen, today_date_str, pl_snap,
+    ):
+        return pl_cache_entry
+
+    try:
+        price_levels = fetch_price_levels(
+            client, symbol=ticker, quote_raw=q_json,
+            level_snapshot=pl_snap,
+        )
+        if price_levels.error:
+            log.warning(f"PriceLevels: {ticker} partial error: {price_levels.error}")
+        from liquidity_value_engine import (
+            SESSION_VWAP_RTH_PRODUCER_FAILURE,
+            classify_session_vwap_presence,
+        )
+        vwap_status = classify_session_vwap_presence(
+            vwap=price_levels.vwap,
+            session_date=now_et_dt.date(),
+            now_et_dt=now_et_dt,
+            session_rth_positive_volume_bars=int(
+                getattr(price_levels, "session_rth_positive_volume_bars", 0) or 0
+            ),
+        )
+        if vwap_status == SESSION_VWAP_RTH_PRODUCER_FAILURE:
+            log.warning(
+                "PriceLevels: %s RTH producer failure — %s same-session RTH volume bars "
+                "but canonical session VWAP is None (generation=%s)",
+                ticker,
+                getattr(price_levels, "session_rth_positive_volume_bars", 0),
+                getattr(price_levels, "level_generation", None),
+            )
+        elif price_levels.vwap is not None:
+            log.debug(f"PriceLevels: {ticker} VWAP={price_levels.vwap:.2f} bars={price_levels.bars_today}")
+        else:
+            log.debug(
+                "PriceLevels: %s session VWAP expected-absent (bars_today=%s rth_vol_bars=%s)",
+                ticker, price_levels.bars_today,
+                getattr(price_levels, "session_rth_positive_volume_bars", 0),
+            )
+    except _LevelCarrierConflict:
+        raise
+    except Exception as e:
+        log.warning(f"PriceLevels: {ticker} FAILED: {e}")
+        price_levels = PriceLevels()
+    else:
+        sc = _state_cache.get(cache_key, {})
+        sc["price_levels"] = price_levels
+        sc["pl_date"]      = today_date_str
+        sc["pl_generation"] = getattr(pl_snap, "generation", None)
+        sc["pl_mono"]      = time.monotonic()
+        _state_cache[cache_key] = sc
+    return price_levels
+
+
 class _CandleDirectionForState(NamedTuple):
     candle_dir: Optional[str]
     candle_body: Optional[float]
@@ -7929,71 +8010,10 @@ def _fetch_state(
         mkt_ctx.pcr = pcr_val
 
     # ── Price levels ──────────────────────────────────────────────────────────
-    # Carry the SAME canonical snapshot /api/levels serializes. Reuse the carried
-    # PriceLevels object only while its level_generation matches that snapshot.
-    # A wall-clock TTL (PRICE_LEVELS_CACHE_SEC) is not a generation identity:
-    # it let /api/state keep generation N (or an empty PriceLevels() after a
-    # swallowed fetch failure) while /api/levels had already materialized N+1.
-    from liquidity_value_engine import LevelCarrierConflict as _LevelCarrierConflict
-    _today_date_str = now_et.strftime("%Y-%m-%d")
-    _pl_snap = canonical_price_level_snapshot(ticker)
-    _pl_bucket = _state_cache.get(_cache_key, {})
-    _pl_cache_entry = _pl_bucket.get("price_levels")
-    _pl_cache_date  = _pl_bucket.get("pl_date", "")
-    _pl_cache_gen   = _pl_bucket.get("pl_generation")
-
-    if carried_price_levels_match_snapshot(
-        _pl_cache_entry, _pl_cache_date, _pl_cache_gen, _today_date_str, _pl_snap,
-    ):
-        price_levels = _pl_cache_entry
-    else:
-        try:
-            price_levels = fetch_price_levels(
-                client, symbol=ticker, quote_raw=q_json,
-                level_snapshot=_pl_snap,
-            )
-            if price_levels.error:
-                log.warning(f"PriceLevels: {ticker} partial error: {price_levels.error}")
-            from liquidity_value_engine import (
-                SESSION_VWAP_RTH_PRODUCER_FAILURE,
-                classify_session_vwap_presence,
-            )
-            _vwap_status = classify_session_vwap_presence(
-                vwap=price_levels.vwap,
-                session_date=now_et.date(),
-                now_et_dt=now_et,
-                session_rth_positive_volume_bars=int(
-                    getattr(price_levels, "session_rth_positive_volume_bars", 0) or 0
-                ),
-            )
-            if _vwap_status == SESSION_VWAP_RTH_PRODUCER_FAILURE:
-                log.warning(
-                    "PriceLevels: %s RTH producer failure — %s same-session RTH volume bars "
-                    "but canonical session VWAP is None (generation=%s)",
-                    ticker,
-                    getattr(price_levels, "session_rth_positive_volume_bars", 0),
-                    getattr(price_levels, "level_generation", None),
-                )
-            elif price_levels.vwap is not None:
-                log.debug(f"PriceLevels: {ticker} VWAP={price_levels.vwap:.2f} bars={price_levels.bars_today}")
-            else:
-                log.debug(
-                    "PriceLevels: %s session VWAP expected-absent (bars_today=%s rth_vol_bars=%s)",
-                    ticker, price_levels.bars_today,
-                    getattr(price_levels, "session_rth_positive_volume_bars", 0),
-                )
-        except _LevelCarrierConflict:
-            raise
-        except Exception as e:
-            log.warning(f"PriceLevels: {ticker} FAILED: {e}")
-            price_levels = PriceLevels()
-        else:
-            _sc = _state_cache.get(_cache_key, {})
-            _sc["price_levels"] = price_levels
-            _sc["pl_date"]      = _today_date_str
-            _sc["pl_generation"] = getattr(_pl_snap, "generation", None)
-            _sc["pl_mono"]      = time.monotonic()
-            _state_cache[_cache_key] = _sc
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixth slice): extracted to
+    # _price_levels_for_state (defined above). Still reads/writes the shared
+    # _state_cache directly (module-level dict), exactly as the original inline block did.
+    price_levels = _price_levels_for_state(ticker, client, q_json, now_et, _cache_key)
     _stage_marks.append(("progressive_publish_price_levels", time.perf_counter()))
 
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
