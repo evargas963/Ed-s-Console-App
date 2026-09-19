@@ -4,7 +4,7 @@
 
 This document traces the **live** feature path for `compute_signals` → decision/calibration logging, proves **no lookahead** in the **empirical similarity** and **inference snapshot** cutoffs, and records **residual** risks outside that fix.
 
-Checklist: **A** files · **B** path · **C** safe · **D** suspect · **E** fixes · **F** risks · **G** PASS/FAIL.
+**SUPERSEDED for §F item 1 (reality-reconciliation audit, 2026-09-18):** the residual risk this document records — `ml_predict.get_recent_snapshots` lacking an `as_of_ts_utc` cutoff — has since been closed, per its own sibling `docs/feature_leakage_full_validation_v2.md`'s explicit note that this document "is superseded for `get_recent_snapshots` by code in `db.py` + `ml_predict.py`." Confirmed directly: `db.py::EdDB.get_recent_snapshots` now takes `as_of_ts_utc: Optional[float] = None` and applies the same `AND ts_utc < ?` cutoff as `get_similar_setups`; `ml_predict.py`'s `_predict_lstm`/`_predict_transformer` (and `transformer_model.py`) all compute and pass `as_of_ts_utc` into it. The rest of this document (§A-§E, §G's PASS verdict) remains accurate — only the §F.1 residual-risk item is stale, and it is a closed gap, not a still-open one.
 
 ---
 
