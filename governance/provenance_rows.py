@@ -2840,7 +2840,7 @@ ROWS: tuple[Row, ...] = (
         justification='RC-192/RC-199: per-side OI delta from the two newest banked trading-day chains, plus DEX and dealer-signed CHARM summed on the NEWER capture alone. Serves charm_book_scope and charm_error beside the numbers so a surface can state which book was summed and whether the charm failed (RC-288/RC-304).',
     ),
     Row(
-        file='server.py', derivation='get_l1_diagnostics', disposition='ALLOWLISTED',
+        file='app/api/routes/diagnostics.py', derivation='get_l1_diagnostics', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_l1_diagnostics).',
     ),
