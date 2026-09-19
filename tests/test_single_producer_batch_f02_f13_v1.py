@@ -703,9 +703,13 @@ def test_rc345_expected_move_quantities_are_distinct_and_single_source() -> None
     assert callable(compute_expected_move_straddle) and callable(compute_expected_move_iv)
 
     # Distinct producers wired to distinct names in the live path.
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventh slice): both call sites
+    # moved out of _fetch_state's own body into _expected_move_for_state, where the
+    # locals dropped the "_fetch_state phase-scratch" underscore prefix (em_straddle/
+    # em_iv, not _em_straddle/_em_iv) as clean locals in their own small function.
     srv = _read("server.py")
-    assert "_em_straddle = compute_expected_move_straddle(" in srv
-    assert "_em_iv = compute_expected_move_iv(" in srv
+    assert "em_straddle = compute_expected_move_straddle(" in srv
+    assert "em_iv = compute_expected_move_iv(" in srv
 
     # The MC excursion is the simulation quantity, single-source in monte_carlo.
     mc = _read("monte_carlo.py")

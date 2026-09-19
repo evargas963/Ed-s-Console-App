@@ -7079,6 +7079,128 @@ class _VolatilitySignalsForState(NamedTuple):
     closes: Optional[list]
 
 
+class _ExpectedMoveForState(NamedTuple):
+    em_straddle: dict
+    em_iv: dict
+    em_progress: dict
+    em_up: Optional[float]
+    em_lo: Optional[float]
+    em_band_source: str
+    kl_em_anchor: str
+    mc_iv_level: Optional[float]
+    mc_iv_source: str
+
+
+def _expected_move_for_state(
+    now_et_dt,
+    price_levels,
+    contracts_use: list,
+    spot_f: float,
+    atm_iv: Optional[float],
+) -> _ExpectedMoveForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventh slice): the Expected Move
+    phase (ATM straddle + IV-based EM, progress, and the KL/MC anchor resolution), extracted
+    verbatim. `em_band_source` is computed but has no downstream reader anywhere in
+    server.py -- a pre-existing fact, not something narrowed by this extraction; kept in
+    the return contract for behavior fidelity rather than silently dropped."""
+    em_straddle = {"straddle": None, "em_pts": None, "upper": None, "lower": None}
+    em_iv = {"em_pts": None, "upper": None, "lower": None}
+    em_progress = {
+        "progress_pct": None,
+        "breached": None,
+        "direction": None,
+        "severity": None,
+    }
+    em_up = None
+    em_lo = None
+    em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
+    from time_et import hours_until_session_close_et as _hours_until_close
+    hours_rem = _hours_until_close(now_et_dt) or 0.0
+    kl_em_anchor = "unavailable"
+    mc_iv_level = None
+    mc_iv_source = "unavailable"
+
+    try:
+        today_open = getattr(price_levels, "today_open", None)
+
+        # ATM straddle: find ATM call + put mark from chain
+        # single source: reject NaN via the finite reader (raw float() admitted NaN into
+        # the strike set, corrupting sorting and the ATM-strike nearest-neighbour pick).
+        from numeric_contract import float_finite_or_none as _fin
+        all_strikes = sorted({
+            sp
+            for ct in contracts_use
+            if (sp := _fin(ct.get("strikePrice"))) is not None
+        })
+        if all_strikes and spot_f > 0:
+            atm_k = min(all_strikes, key=lambda k: abs(k - spot_f))
+            atm_calls = [
+                ct
+                for ct in contracts_use
+                if str(ct.get("putCall", "")).upper() == "CALL"
+                and (sp := _f(ct.get("strikePrice"))) is not None
+                and abs(sp - atm_k) < 0.01
+            ]
+            atm_puts = [
+                ct
+                for ct in contracts_use
+                if str(ct.get("putCall", "")).upper() == "PUT"
+                and (sp := _f(ct.get("strikePrice"))) is not None
+                and abs(sp - atm_k) < 0.01
+            ]
+            c_mark = _f(atm_calls[0].get("mark")) if atm_calls else None
+            p_mark = _f(atm_puts[0].get("mark")) if atm_puts else None
+
+            if c_mark and p_mark and today_open:
+                em_straddle = compute_expected_move_straddle(c_mark, p_mark, today_open)
+
+        # IV-based EM (shrinks through the day)
+        if atm_iv and atm_iv > 0 and spot_f > 0 and hours_rem > 0:
+            em_iv = compute_expected_move_iv(spot_f, atm_iv, hours_rem)
+
+        # EM progress (use straddle EM if available, fall back to IV) — no synthetic 6.5h session fill.
+        # RC-345 / F06: the operator-facing EM band is ONE of two economically distinct
+        # methodologies — STRADDLE_IMPLIED (market ATM straddle premium) or IV_MODEL
+        # (spot x IV x sqrt(T)). Record WHICH produced the band so no consumer treats the
+        # generic em_up/em_lo as method-agnostic or silently mistakes one for the other.
+        if em_straddle.get("upper") is not None and em_straddle.get("lower") is not None:
+            em_up, em_lo, em_band_source = (
+                em_straddle.get("upper"), em_straddle.get("lower"), "STRADDLE_IMPLIED")
+        elif em_iv.get("upper") is not None and em_iv.get("lower") is not None:
+            em_up, em_lo, em_band_source = (
+                em_iv.get("upper"), em_iv.get("lower"), "IV_MODEL")
+        else:
+            em_up, em_lo, em_band_source = None, None, "unavailable"
+        if em_up and em_lo and today_open:
+            em_progress = compute_em_progress(spot_f, today_open, em_up, em_lo)
+
+        from math_volatility import resolve_kl_em_anchor, resolve_mc_iv_for_kl_em_anchor
+
+        kl_em_anchor = resolve_kl_em_anchor(em_straddle, em_iv)
+        mc_iv_level, mc_iv_source = resolve_mc_iv_for_kl_em_anchor(
+            kl_em_anchor=kl_em_anchor,
+            atm_iv=atm_iv,
+            spot=spot_f,
+            em_straddle=em_straddle,
+            hours_remaining=hours_rem,
+        )
+
+    except Exception as e:
+        log.warning(f"Expected move calc failed: {e}")
+
+    return _ExpectedMoveForState(
+        em_straddle=em_straddle,
+        em_iv=em_iv,
+        em_progress=em_progress,
+        em_up=em_up,
+        em_lo=em_lo,
+        em_band_source=em_band_source,
+        kl_em_anchor=kl_em_anchor,
+        mc_iv_level=mc_iv_level,
+        mc_iv_source=mc_iv_source,
+    )
+
+
 def _price_levels_for_state(
     ticker: str,
     client,
@@ -8017,90 +8139,18 @@ def _fetch_state(
     _stage_marks.append(("progressive_publish_price_levels", time.perf_counter()))
 
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
-    _em_straddle = {"straddle": None, "em_pts": None, "upper": None, "lower": None}
-    _em_iv = {"em_pts": None, "upper": None, "lower": None}
-    _em_progress = {
-        "progress_pct": None,
-        "breached": None,
-        "direction": None,
-        "severity": None,
-    }
-    _em_up = None
-    _em_lo = None
-    _em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
-    from time_et import hours_until_session_close_et as _hours_until_close
-    _hours_rem = _hours_until_close(now_et) or 0.0
-    _kl_em_anchor = "unavailable"
-    _mc_iv_level = None
-    _mc_iv_source = "unavailable"
-
-    try:
-        _today_open = getattr(price_levels, "today_open", None)
-
-        # ATM straddle: find ATM call + put mark from chain
-        # single source: reject NaN via the finite reader (raw float() admitted NaN into
-        # the strike set, corrupting sorting and the ATM-strike nearest-neighbour pick).
-        from numeric_contract import float_finite_or_none as _fin
-        _all_strikes = sorted({
-            sp
-            for ct in contracts_use
-            if (sp := _fin(ct.get("strikePrice"))) is not None
-        })
-        if _all_strikes and spot_f > 0:
-            _atm_k = min(_all_strikes, key=lambda k: abs(k - spot_f))
-            _atm_calls = [
-                ct
-                for ct in contracts_use
-                if str(ct.get("putCall", "")).upper() == "CALL"
-                and (sp := _f(ct.get("strikePrice"))) is not None
-                and abs(sp - _atm_k) < 0.01
-            ]
-            _atm_puts = [
-                ct
-                for ct in contracts_use
-                if str(ct.get("putCall", "")).upper() == "PUT"
-                and (sp := _f(ct.get("strikePrice"))) is not None
-                and abs(sp - _atm_k) < 0.01
-            ]
-            _c_mark = _f(_atm_calls[0].get("mark")) if _atm_calls else None
-            _p_mark = _f(_atm_puts[0].get("mark")) if _atm_puts else None
-
-            if _c_mark and _p_mark and _today_open:
-                _em_straddle = compute_expected_move_straddle(_c_mark, _p_mark, _today_open)
-
-        # IV-based EM (shrinks through the day)
-        if _atm_iv and _atm_iv > 0 and spot_f > 0 and _hours_rem > 0:
-            _em_iv = compute_expected_move_iv(spot_f, _atm_iv, _hours_rem)
-
-        # EM progress (use straddle EM if available, fall back to IV) — no synthetic 6.5h session fill.
-        # RC-345 / F06: the operator-facing EM band is ONE of two economically distinct
-        # methodologies — STRADDLE_IMPLIED (market ATM straddle premium) or IV_MODEL
-        # (spot x IV x sqrt(T)). Record WHICH produced the band so no consumer treats the
-        # generic _em_up/_em_lo as method-agnostic or silently mistakes one for the other.
-        if _em_straddle.get("upper") is not None and _em_straddle.get("lower") is not None:
-            _em_up, _em_lo, _em_band_source = (
-                _em_straddle.get("upper"), _em_straddle.get("lower"), "STRADDLE_IMPLIED")
-        elif _em_iv.get("upper") is not None and _em_iv.get("lower") is not None:
-            _em_up, _em_lo, _em_band_source = (
-                _em_iv.get("upper"), _em_iv.get("lower"), "IV_MODEL")
-        else:
-            _em_up, _em_lo, _em_band_source = None, None, "unavailable"
-        if _em_up and _em_lo and _today_open:
-            _em_progress = compute_em_progress(spot_f, _today_open, _em_up, _em_lo)
-
-        from math_volatility import resolve_kl_em_anchor, resolve_mc_iv_for_kl_em_anchor
-
-        _kl_em_anchor = resolve_kl_em_anchor(_em_straddle, _em_iv)
-        _mc_iv_level, _mc_iv_source = resolve_mc_iv_for_kl_em_anchor(
-            kl_em_anchor=_kl_em_anchor,
-            atm_iv=_atm_iv,
-            spot=spot_f,
-            em_straddle=_em_straddle,
-            hours_remaining=_hours_rem,
-        )
-
-    except Exception as e:
-        log.warning(f"Expected move calc failed: {e}")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventh slice): extracted to
+    # _expected_move_for_state (defined above _price_levels_for_state).
+    _em = _expected_move_for_state(now_et, price_levels, contracts_use, spot_f, _atm_iv)
+    _em_straddle = _em.em_straddle
+    _em_iv = _em.em_iv
+    _em_progress = _em.em_progress
+    _em_up = _em.em_up
+    _em_lo = _em.em_lo
+    _em_band_source = _em.em_band_source
+    _kl_em_anchor = _em.kl_em_anchor
+    _mc_iv_level = _em.mc_iv_level
+    _mc_iv_source = _em.mc_iv_source
 
     # ── Volatility signals — IV Skew, Realized Vol, ATR, IV Rank/Percentile ──
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): extracted to
