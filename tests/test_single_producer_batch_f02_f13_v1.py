@@ -143,7 +143,11 @@ def test_rc345_candle_direction_has_one_authority() -> None:
     srv3 = _read("server.py")
     assert "classify_direction as _classify_direction" in srv3, (
         "live server candle direction must be the dead-band authority (F10/RC-345)")
-    assert "_candle_dir  = _classify_direction(_bar_move" in srv3
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): this call site moved
+    # out of _fetch_state's own body into _candle_direction_for_state, where the local
+    # dropped the "_fetch_state phase-scratch" underscore prefix (candle_dir/bar_move, not
+    # _candle_dir/_bar_move) as a clean local in its own small function.
+    assert "candle_dir  = _classify_direction(bar_move" in srv3
     # No production site reconstructs candle direction with a strict close-vs-open sign.
     for mod in ("server.py", "snapshot_normalizer.py", "market_state.py"):
         mcode = "\n".join(l for l in _read(mod).splitlines() if not l.lstrip().startswith("#"))

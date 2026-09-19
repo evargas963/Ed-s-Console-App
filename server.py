@@ -7079,6 +7079,66 @@ class _VolatilitySignalsForState(NamedTuple):
     closes: Optional[list]
 
 
+class _CandleDirectionForState(NamedTuple):
+    candle_dir: Optional[str]
+    candle_body: Optional[float]
+    c_open: Optional[float]
+    c_high: Optional[float]
+    c_low: Optional[float]
+    c_close: Optional[float]
+    c_range: Optional[float]
+
+
+def _candle_direction_for_state(ticker: str) -> _CandleDirectionForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): the Candle
+    Direction + Body phase, extracted verbatim. Reads the last COMPLETED 1m bar (not a
+    30s tick delta) to classify bar direction and OHLC/range.
+
+    NOTE for anyone extracting a LATER phase near this one: _fetch_state reassigns
+    c_open/c_high/c_low/c_close/c_range again further down its own body, from the
+    forming/live bar under a different branch -- this function only ever produces the
+    FIRST assignment (from the last completed bar), exactly as the original inline block
+    did. That later reassignment is untouched by this extraction.
+    """
+    candle_dir: Optional[str] = None
+    candle_body: Optional[float] = None
+    c_open = c_high = c_low = c_close = None
+    c_range: Optional[float] = None
+    completed_bars_now = _candles_1m.get_bars(ticker)
+    if completed_bars_now:
+        lb = completed_bars_now[-1]
+        lb_open  = lb.open
+        lb_high  = lb.high
+        lb_low   = lb.low
+        lb_close = lb.close
+        try:
+            if lb_open is not None:
+                c_open = float(lb_open)
+            if lb_high is not None:
+                c_high = float(lb_high)
+            if lb_low is not None:
+                c_low = float(lb_low)
+            if lb_close is not None:
+                c_close = float(lb_close)
+            if c_high is not None and c_low is not None:
+                c_range = round(c_high - c_low, 4)
+        except (TypeError, ValueError):
+            pass
+        if lb_open and lb_close and float(lb_open) > 0:
+            bar_move    = round(float(lb_close) - float(lb_open), 4)
+            candle_dir  = _classify_direction(bar_move, float(lb_open))
+            candle_body = abs(bar_move)
+    return _CandleDirectionForState(
+        candle_dir=candle_dir,
+        candle_body=candle_body,
+        c_open=c_open,
+        c_high=c_high,
+        c_low=c_low,
+        c_close=c_close,
+        c_range=c_range,
+    )
+
+
 def _volatility_signals_for_state(
     ticker: str,
     contracts_use: list,
@@ -7852,36 +7912,18 @@ def _fetch_state(
     prev_spot = _state_cache.get(_cache_key, {}).get("spot_f")
 
     # ── Candle direction + body from last COMPLETED 1m bar (canonical) ─────────
-    # Use real OHLC (close - open) of the last completed bar, not a 30s tick
-    # delta. Accumulator tick() was already called above.
-    _candle_dir  = None
-    _candle_body = None
-    _c_open = _c_high = _c_low = _c_close = None
-    _c_range = None
-    _completed_bars_now = _candles_1m.get_bars(ticker)
-    if _completed_bars_now:
-        _lb = _completed_bars_now[-1]
-        _lb_open  = _lb.open
-        _lb_high  = _lb.high
-        _lb_low   = _lb.low
-        _lb_close = _lb.close
-        try:
-            if _lb_open is not None:
-                _c_open = float(_lb_open)
-            if _lb_high is not None:
-                _c_high = float(_lb_high)
-            if _lb_low is not None:
-                _c_low = float(_lb_low)
-            if _lb_close is not None:
-                _c_close = float(_lb_close)
-            if _c_high is not None and _c_low is not None:
-                _c_range = round(_c_high - _c_low, 4)
-        except (TypeError, ValueError):
-            pass
-        if _lb_open and _lb_close and float(_lb_open) > 0:
-            _bar_move    = round(float(_lb_close) - float(_lb_open), 4)
-            _candle_dir  = _classify_direction(_bar_move, float(_lb_open))
-            _candle_body = abs(_bar_move)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): extracted to
+    # _candle_direction_for_state (defined above _volatility_signals_for_state). NOTE:
+    # _c_open/_c_high/_c_low/_c_close/_c_range are REASSIGNED again later in this function
+    # from the forming/live bar under a different branch -- untouched by this extraction.
+    _cd = _candle_direction_for_state(ticker)
+    _candle_dir = _cd.candle_dir
+    _candle_body = _cd.candle_body
+    _c_open = _cd.c_open
+    _c_high = _cd.c_high
+    _c_low = _cd.c_low
+    _c_close = _cd.c_close
+    _c_range = _cd.c_range
     # ── Global market context (PCR update if we have fresh data) ─────────────
     if pcr_val is not None:
         mkt_ctx.pcr = pcr_val
