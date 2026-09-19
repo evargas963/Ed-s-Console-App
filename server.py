@@ -60,7 +60,7 @@ import queue
 from planes.l1_decision_dependencies import warn_l1_payload_key_drift
 from planes.l1_fingerprint_material import build_l1_material_dict_for_fingerprint
 
-from fastapi import FastAPI, Query, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -308,6 +308,24 @@ from app.api.routes.liquidity import (  # noqa: F401
     get_liquidity_snapshot,
     get_liquidity_playbook_state,
 )
+# RC-REHAB-1 (Phase 3): twenty-first (final route) extraction slice -- debug_charm/
+# debug_prediction now live in app/api/routes/debug.py, and get_accuracy in
+# app/api/routes/accuracy.py (both mounted below). debug_prediction is the ONE route that
+# calls _fetch_state directly and synchronously, by design (see
+# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md) -- _fetch_state itself stays in server.py.
+# Every other shared dependency (chain-fetch helpers, the accuracy cache, get_db) has other
+# callers and stays here too, imported back lazily. This closes out server.py's entire
+# @app.get/@app.post route surface -- everything remaining in server.py from here is
+# shared infrastructure, background loops, and _fetch_state's own not-yet-decomposed body.
+from app.api.routes.debug import (  # noqa: F401
+    router as debug_router,
+    debug_charm,
+    debug_prediction,
+)
+from app.api.routes.accuracy import (  # noqa: F401
+    router as accuracy_router,
+    get_accuracy,
+)
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
@@ -474,8 +492,12 @@ from schwab_client import (
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
 from math_exposure import (
-    MISSING_GREEK_SENTINEL,
-    gamma_is_plausible,
+    # RC-REHAB-1 (Phase 3): both names' only caller, debug_charm, moved to
+    # app/api/routes/debug.py, which imports them back lazily via `from server import
+    # MISSING_GREEK_SENTINEL, gamma_is_plausible` -- they must stay bound here as that
+    # re-export surface.
+    MISSING_GREEK_SENTINEL,  # noqa: F401
+    gamma_is_plausible,  # noqa: F401
     _f,
     compute_exposures_by_strike,
     build_summary_rows,
@@ -10752,6 +10774,8 @@ app.include_router(sse_router)
 app.include_router(chain_router)
 app.include_router(prediction_router)
 app.include_router(liquidity_router)
+app.include_router(debug_router)
+app.include_router(accuracy_router)
 
 # F09: serve the JS projection from time_et on every request. Registered BEFORE
 # the StaticFiles mount so a committed or leftover disk blob cannot become a
@@ -15527,257 +15551,3 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     zp["tradeable_score"] = liquidity_zone_tradeable_score(
         n_tags=len(tags), n_opt=n_opt, inside=inside, dist_pen=dist_pen, spot=sf
     )
-
-
-@app.get("/api/debug/charm")
-# SWITCH-LATENCY FIX: sync def → threadpool (blocking chain fetch, no await).
-def debug_charm(ticker: str = DEFAULT_TICKER):
-    """Diagnose why charm is not computing."""
-    try:
-        ticker = ticker_storage_key(ticker or DEFAULT_TICKER)   # Cursor-audit F1: bare "SPX" -> "$SPX"
-        # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
-        _touch_tracked_ticker_view(ticker)
-        from math_exposure import compute_net_charm
-
-        cl       = get_client()
-        # RC-59: charm IS level math — the debug view must see the same width the product
-        # computes on, or it debugs a different chain than the one that produced the number.
-        # Cursor-audit A1: and the same index DATE bound — without to_date this fetched the full
-        # multi-year $SPX book (no cap) and 502'd on the budget, unlike the product's bounded path.
-        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker),
-                                  to_date=_chain_to_date_for(ticker, None))
-        if c_resp is None or c_resp.status_code != 200:
-            return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
-        chain_json = c_resp.json()
-        contracts = flatten_chain_contracts(chain_json)
-        raw_cts = contracts
-
-        # Sample first contract raw fields
-        first_raw = raw_cts[0] if raw_cts else {}
-        raw_keys  = list(first_raw.keys())
-
-        # Check expiration fields
-        sample_exp  = [ct.get("expirationDate") for ct in contracts[:5]]
-        sample_dte  = [ct.get("daysToExpiration") for ct in contracts[:5]]
-
-        # Schwab uses -999.0 as a "missing greek" sentinel. The has_* counters
-        # below reflect contracts with USABLE greeks/IV (sentinel-aware: not
-        # None, not -999.0, finite) so this debug surface honestly diagnoses
-        # why charm is or isn't computing.
-        usable_gamma = 0
-        usable_delta = 0
-        usable_theta = 0
-        usable_vega = 0
-        usable_iv = 0
-        sentinel_gamma = 0
-        has_oi = 0
-        from numeric_contract import float_finite_or_none as _fin
-        for ct in contracts:
-            # single source: canonical finite reader for every greek. Raw float() admitted
-            # NaN (the counts were already NaN-safe via inline isfinite gates, now folded
-            # into the reader); MISSING_GREEK_SENTINEL is finite, survives the read, and is
-            # excluded explicitly — behaviour-identical, one fewer finite-check faucet.
-            _g = _fin(ct.get("gamma"))
-            _d = _fin(ct.get("delta"))
-            if gamma_is_plausible(_g, _d):
-                usable_gamma += 1
-            if ct.get("gamma") == MISSING_GREEK_SENTINEL:
-                sentinel_gamma += 1
-            if _d is not None and _d != MISSING_GREEK_SENTINEL:
-                usable_delta += 1
-            _t = _fin(ct.get("theta"))
-            if _t is not None and _t != MISSING_GREEK_SENTINEL:
-                usable_theta += 1
-            _v = _fin(ct.get("vega"))
-            if _v is not None and _v != MISSING_GREEK_SENTINEL:
-                usable_vega += 1
-            _iv = _fin(ct.get("volatility"))
-            if _iv is not None and _iv > 0 and _iv != MISSING_GREEK_SENTINEL:
-                usable_iv += 1
-            if ct.get("openInterest"):
-                has_oi += 1
-
-        # What expiries exist?
-        expiries     = _expiries_from_contracts(contracts)
-        selected_exp = _default_expiry(expiries, ticker)
-
-        # Try charm with all contracts, no filter
-        # ONE spot faucet: LAST_PRICE only via resolve_spot. Chain underlyingPrice is
-        # never current live spot. If LAST_PRICE is missing this diagnostic fails closed.
-        spot, spot_source, spot_ts = resolve_spot(ticker, chain_json=chain_json)
-        if spot is None or spot <= 0:
-            return {"error": f"no spot available (resolve_spot) for {ticker}"}
-        charm_all = compute_net_charm(contracts, spot, selected_exp or "")
-
-        return {
-            "spot": spot,
-            "spot_source": spot_source,
-            "spot_as_of_ts_utc": spot_ts,
-            "total_contracts": len(contracts),
-            "has_gamma": usable_gamma,
-            "has_delta": usable_delta,
-            "has_theta": usable_theta,
-            "has_vega": usable_vega,
-            "has_iv": usable_iv,
-            "gamma_sentinel_count": sentinel_gamma,
-            "has_oi": has_oi,
-            "raw_keys_sample": raw_keys[:20],
-            "sample_expirationDate": sample_exp,
-            "sample_daysToExpiration": sample_dte,
-            "expiries_found": expiries[:10],
-            "selected_exp": selected_exp,
-            "charm_result": charm_all,
-        }
-    except Exception as e:
-        import traceback
-        return {"error": str(e), "trace": traceback.format_exc()}
-
-
-@app.get("/api/accuracy")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
-def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
-    """Return prediction accuracy for a ticker.
-
-    Returns cached results if available (updated every ~10 min),
-    otherwise computes fresh. Also returns accuracy history for charting.
-    """
-    ticker = (ticker or DEFAULT_TICKER).upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL: accuracy is a VIEW — touch last-seen only.
-    _touch_tracked_ticker_view(ticker)
-
-    db = get_db() if _HAS_SIGNALS else None
-    if not db:
-        return {"error": "Database not connected"}
-
-    # Use cache if fresh enough
-    _serving_version = _current_pred_model_version(ticker)
-    cached = _accuracy_cache.get(ticker, {})
-    if cached and time.time() - cached.get("ts", 0) < ACCURACY_INTERVAL:
-        results = cached["results"]
-        all_hours = cached.get("all_hours")
-    else:
-        try:
-            # RTH-scoped is the trading-relevance primary; all-hours is audit
-            # context (operator decision 2026-07-06). Empty RTH scope fails
-            # closed (accuracy None) — never widened to all-hours silently.
-            results = db.compute_accuracy(
-                ticker, CANONICAL_TIMEFRAME, model_version=_serving_version,
-                rth_only=True,
-            )
-            all_hours = db.compute_accuracy(
-                ticker, CANONICAL_TIMEFRAME, model_version=_serving_version,
-                rth_only=False,
-            )
-            _accuracy_cache[ticker] = {
-                "ts": time.time(), "results": results, "all_hours": all_hours,
-            }
-        except Exception as e:
-            return {"error": str(e)}
-
-        # Pass 5a: persist accuracy snapshot per horizon when value
-        # meaningfully changed vs last logged row (db.maybe_log_model_accuracy
-        # handles the dedup epsilon). Throttled by the existing 10-min
-        # ACCURACY_INTERVAL cache above — at most one INSERT per ticker per
-        # horizon per ~10min.
-        for _hz, _hz_res in (results or {}).items():
-            if not isinstance(_hz_res, dict):
-                continue
-            try:
-                _new_id = db.maybe_log_model_accuracy(
-                    ticker=ticker,
-                    timeframe=CANONICAL_TIMEFRAME,
-                    model_version=_serving_version,
-                    horizon=_hz,
-                    total_predictions=int(_hz_res.get("total", 0) or 0),  # silent-zero-ok: a COUNT of rows returned — no rows is genuinely zero predictions, not an unmeasured quantity
-                    correct_direction=_hz_res.get("correct"),
-                    accuracy_pct=_hz_res.get("accuracy"),
-                )
-                if _new_id is not None:
-                    log.info(
-                        "model_accuracy ticker=%s horizon=%s acc=%s%% n=%s",
-                        ticker, _hz,
-                        _hz_res.get("accuracy"),
-                        _hz_res.get("total"),
-                    )
-            except Exception as _mae:
-                log.debug("log_model_accuracy ticker=%s hz=%s failed: %s", ticker, _hz, _mae)
-
-    # Fetch history via Pass 5a reader (get_model_accuracy_history).
-    history: list[dict] = []
-    try:
-        from ml_horizon import PRIMARY_DECISION_HORIZONS
-        for _hz in PRIMARY_DECISION_HORIZONS:
-            rows = db.get_model_accuracy_history(
-                ticker=ticker,
-                timeframe=CANONICAL_TIMEFRAME,
-                model_version=_serving_version,
-                horizon=_hz,
-                limit=int(ACCURACY_HISTORY_LIMIT),
-            )
-            history.extend(rows)
-    except Exception:
-        history = []
-
-    return {
-        "ticker": ticker,
-        "model_version": _serving_version,
-        # Trading-relevance primary: RTH-scoped, with per-horizon baseline +
-        # edge fields so raw accuracy cannot read as edge.
-        "accuracy_scope": "rth_0930_1600_et",
-        "current": _trader_accuracy_subset(results),
-        # Audit context only — measured over every session the logger ran.
-        "all_hours": _trader_accuracy_subset(all_hours or {}),
-        "history": history,
-    }
-
-
-@app.get("/api/debug/prediction")
-# SWITCH-LATENCY FIX: sync def → threadpool (blocking full _fetch_state, no await).
-def debug_prediction(ticker: str = DEFAULT_TICKER):
-    """Show exactly what the prediction engine is querying — non-production debug surface (R-011)."""
-    if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):
-        raise HTTPException(status_code=404, detail="debug endpoints disabled")
-    try:
-        state = _fetch_state(ticker, expiry=None, update_source="debug_endpoint")
-        zone = state.get("zone", "?")
-        vwap_side = state.get("vwap_side", "?")
-        bias = state.get("bias_signal", "?")
-        pin = state.get("pin_strength", "?")
-        nd = state.get("net_delta", "?")
-        ng = state.get("net_gamma", "?")
-        gex_mag = state.get("gex_magnitude", "?")
-        dex_mag = state.get("dex_magnitude", "?")
-        samples = state.get("samples_used", "?")
-        model_note = state.get("model_note", "?")
-        session_bkt = state.get("session_bucket", "?")
-        vix_bkt = state.get("vix_bucket", "?")
-
-        # Count snapshots per zone in DB
-        zone_counts = {}
-        if _HAS_SIGNALS:
-            db = get_db()
-            if db:
-                zone_counts = db.get_zone_distribution(ticker, CANONICAL_TIMEFRAME)
-
-        return {
-            "current_query": {
-                "zone": zone,
-                "vwap_side": vwap_side,
-                "session_bucket": session_bkt,
-                "vix_bucket": vix_bkt,
-                "bias_signal": bias,
-                "pin_strength": pin,
-                "net_delta": nd,
-                "net_gamma": ng,
-                "gex_magnitude": gex_mag,
-                "dex_magnitude": dex_mag,
-            },
-            "prediction_result": {
-                "samples_used": samples,
-                "model_note": model_note,
-            },
-            "db_zone_distribution": zone_counts,
-        }
-    except Exception as e:
-        import traceback
-        return {"error": str(e), "trace": traceback.format_exc()}

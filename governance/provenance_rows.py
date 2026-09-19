@@ -2732,12 +2732,12 @@ ROWS: tuple[Row, ...] = (
         justification='Underlying last/mark/close from the chain payload; returns None rather than inventing a spot.',
     ),
     Row(
-        file='server.py', derivation='debug_charm', disposition='DERIVED',
+        file='app/api/routes/debug.py', derivation='debug_charm', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_chain',),
         justification='Schwab API wrapper or wire JSON ingest path.',
     ),
     Row(
-        file='server.py', derivation='debug_prediction', disposition='ALLOWLISTED',
+        file='app/api/routes/debug.py', derivation='debug_prediction', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (debug_prediction).',
     ),
