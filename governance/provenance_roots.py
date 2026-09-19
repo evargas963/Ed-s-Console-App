@@ -20,7 +20,7 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/analytics/warm': ('OPERATOR_INPUT', None),
     '/api/bars1m': ('PRODUCER', 'app/api/routes/market_data.py:get_bars1m'),
     '/api/build': ('OPS', None),
-    '/api/chain': ('PRODUCER', 'server.py:get_chain'),
+    '/api/chain': ('PRODUCER', 'app/api/routes/chain.py:get_chain'),
     '/api/debug/charm': ('DIAGNOSTIC', None),
     '/api/debug/prediction': ('DIAGNOSTIC', None),
     '/api/decision/{decision_id}': ('CARRIER', None),

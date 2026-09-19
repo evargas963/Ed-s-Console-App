@@ -2781,7 +2781,7 @@ ROWS: tuple[Row, ...] = (
         justification='Serves canonical 1m OHLCV bars from the cached bars store; no direct chain leaf.',
     ),
     Row(
-        file='server.py', derivation='get_chain', disposition='DERIVED',
+        file='app/api/routes/chain.py', derivation='get_chain', disposition='DERIVED',
         producer_refs=('server.py:_latest_chain_and_spot',),
         justification='OPTIONS_ORDER_FLOW_V1 contract-selection surface: serializes the stored per-contract chain (symbol/putCall/strikePrice/bid/ask/greeks/OI/volume) verbatim from _latest_chain_and_spot, the SAME stored-chain reader terrain/radar/order-flow-microstructure already use — no new Schwab fetch, no reshaping.',
     ),
