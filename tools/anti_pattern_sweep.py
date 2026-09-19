@@ -372,7 +372,6 @@ CAPS_PREFIX_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("math_levels.py", "structural window index default (non-price)"),
     ("market_data_adapter.py", "Schwab timestamp key alias (datetime vs timestamp) not numeric default"),
     ("smoke_predict_active.py", "smoke test CLI"),
-    ("ticker_readiness_lookup.py", "readiness lookup API envelope"),
     ("verify_snapshot_pipeline.py", "snapshot pipeline verification counters"),
     ("xgboost_model.py", "XGB model prob triplet defaults when partial dict"),
 )

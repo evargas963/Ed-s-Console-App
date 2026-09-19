@@ -1,4 +1,17 @@
-> **Classification:** Policy Specification | **Scope:** Technical documentation `docs/UNIVERSAL_TICKER_READINESS_ENFORCEMENT_V1.md`.
+> **Classification:** SUPERSEDED (reality-reconciliation audit, 2026-09-18) — see the notice immediately below before reading anything past it. | **Scope:** Technical documentation `docs/UNIVERSAL_TICKER_READINESS_ENFORCEMENT_V1.md`.
+
+# Universal ticker readiness enforcement — v1 (RETIRED)
+
+**This entire document is stale and does not describe how universal ticker support is actually enforced today. If you are here looking for that, stop reading this file and go to `AGENTS.md`'s RC-160 section plus `tools/universal_scope_lock.py` instead — that is the real, live, currently-enforced mechanism.**
+
+What this document describes never survived. It's a per-ticker model-training/inference/policy readiness system (`data_status`, `training_status`, `artifact_status`, `inference_status`, `evaluation_status`, `calibration_status`, `policy_status`, `final_readiness_verdict`), sourced from `data/ticker_readiness_matrix_v1.json` and `data/required_model_inventory_v1.json`, enforced by `tools/enforce_universal_ticker_readiness_v1.py`. None of that exists in the current tree:
+- `data/ticker_readiness_matrix_v1.json`, `data/required_model_inventory_v1.json`, `data/new_ticker_onboarding_rules_v1.json`, `data/ticker_readiness_lookup_v1.json` — all absent.
+- `tools/enforce_universal_ticker_readiness_v1.py` now lives only under `tools/legacy/horizon_7/`, whose own README says outright: "Legacy 7-horizon era tools (quarantined)... target the pre-Phase D3 snapshot schema (`outcome_3c`/`outcome_8c`/`outcome_13c`...). Do not run against post-D3 databases." (Same Phase D3 retirement, commit `c9138251`, already tracked for the other movement/horizon docs in this family.)
+- The one surviving code helper this document's §8 describes, `ticker_readiness_lookup.py`, has zero real callers anywhere in the repo and always returns `None`/`{}` (it reads a JSON file that doesn't exist) — retired alongside this document in the same commit as this correction.
+
+The **real, live, currently-enforced RC-160 mechanism** this document should have been superseded by, but never mentions, is `tools/universal_scope_lock.py` + `check_universal_ticker_scope` (registered enforced in `tools/check_institutional_correctness.py`): two structural rules — no SPY-only ticker default in `tools/liquidity_*.py`/experiment scripts, and no SPY-gated feature branch in `static/chart.html`. Described accurately in `AGENTS.md`, nowhere else.
+
+Everything below this line is historical description of the retired system only.
 
 ## 1. Universal ticker contract
 
