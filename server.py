@@ -8315,6 +8315,147 @@ def _candle_volume_for_state(ticker: str, client) -> Optional[float]:
     return c_vol
 
 
+class _VolEnvelopeAndSectorForState(NamedTuple):
+    vol_ctx: MarketVolContextV1
+    vol_envelope: dict
+    level_density: dict
+    sector_strength: dict
+    index_strength: dict
+    spy_strength: dict
+    iwm_deep: dict
+
+
+def _vol_envelope_and_sector_for_state(
+    ticker: str,
+    spot_f: float,
+    atr,
+    walls: list,
+    mkt_ctx,
+    cache_key,
+) -> _VolEnvelopeAndSectorForState:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): the Volatility
+    Envelope, Level Density, and Sector Strength phase, extracted verbatim.
+
+    vol_ctx's own computation (VIX tracker tick, MarketVolContextV1 construction,
+    record_market_vol_observation) is DELIBERATELY kept OUTSIDE the try/except that
+    wraps envelope/density/sector-strength/iwm-deep, exactly as the original inline
+    code did: vol_ctx must be bound on every path that reaches build_market_state /
+    the persistence tail / ms_dict -- a swallowed envelope exception must degrade
+    envelope fields only, never unbind the vol context (a NameError there would break
+    the whole serve cycle)."""
+    vol_envelope: dict = {}
+    level_density: dict = {}
+    sector_strength: dict = {}
+    index_strength: dict = {}
+    spy_strength: dict = {}
+    iwm_deep: dict = {}
+
+    vol_prev_published_vix = _state_cache.get(cache_key, {}).get("vix")
+    vol_vix_now = None
+    if getattr(mkt_ctx, "vix", None) is not None:
+        try:
+            vol_vix_now = float(mkt_ctx.vix)
+            _vix_tracker.tick(vol_vix_now)
+        except (TypeError, ValueError):
+            vol_vix_now = None
+    vol_ctx = MarketVolContextV1(
+        market_iv_level=vol_vix_now,
+        market_iv_change=(
+            round(vol_vix_now - float(vol_prev_published_vix), 4)
+            if vol_vix_now is not None and vol_prev_published_vix is not None
+            else None
+        ),
+        market_iv_direction=(_vix_tracker.direction if vol_vix_now is not None else None),
+        quality_status=("VALID" if vol_vix_now is not None else "UNAVAILABLE"),
+        as_of_ts=time.time(),
+    )
+    record_market_vol_observation(mkt_ctx, vol_ctx)
+    try:
+        vol_envelope = compute_volatility_envelope(spot_f, atr)
+
+        # Build levels dict for density check
+        # RC-432: density is a live congestion read. It must count the SAME terrain-bound
+        # walls and terrain flip the KL table paints.
+        all_levels: dict = {}
+        t_dens = terrain_cache_get(ticker) or {}
+        dens_fresh = bool(t_dens) and not t_dens.get("levels_stale")
+        if dens_fresh and t_dens.get("absolute_gamma_strike") is not None:
+            all_levels["absolute_gamma_strike"] = float(t_dens["absolute_gamma_strike"])
+        w0 = walls[0] if walls else None
+        if w0 is not None:
+            for dn, attr_name in (
+                ("call_gamma_wall", "call_gamma_wall"),
+                ("put_gamma_wall", "put_gamma_wall"),
+                ("call_delta_wall", "call_delta_wall"),
+                ("put_delta_wall", "put_delta_wall"),
+            ):
+                dv = getattr(w0, attr_name, None)
+                if dv is not None:
+                    all_levels[dn] = float(dv)
+        if dens_fresh and t_dens.get("gamma_flip") is not None:
+            all_levels["gamma_flip"] = float(t_dens["gamma_flip"])
+        # RC-433 / F06: density counts the SAME EM band KL paints (terrain IV_SIGMA_1D =
+        # spot ± implied_1d_move.points).
+        if dens_fresh:
+            em_move = t_dens.get("implied_1d_move") or {}
+            em_pts = em_move.get("points")
+            em_spot = t_dens.get("spot")
+            if em_pts is not None and em_spot is not None:
+                all_levels["em_upper"] = float(em_spot) + float(em_pts)
+                all_levels["em_lower"] = float(em_spot) - float(em_pts)
+        level_density = compute_level_density(all_levels, spot_f)
+
+        # Sector strength — 3 groups
+        # Group 1: Indices (SPY, QQQ, IWM)
+        idx_data = {}
+        for ik, ig in [('SPY', mkt_ctx.spy_chg_pct), ('QQQ', mkt_ctx.qqq_chg_pct), ('IWM', mkt_ctx.iwm_chg_pct)]:
+            if ig is not None: idx_data[ik] = float(ig)
+        index_strength = compute_sector_strength(idx_data)
+
+        # Group 2: SPY top holdings (from mkt_ctx.constituents)
+        spy_holdings = {}
+        for cq in getattr(mkt_ctx, 'constituents', []):
+            sym = getattr(cq, 'symbol', '').upper()
+            chg = getattr(cq, 'chg_pct', None)
+            if sym and chg is not None:
+                spy_holdings[sym] = float(chg)
+        spy_strength = compute_sector_strength(spy_holdings)
+
+        # Group 3: IWM sector proxies (from mkt_ctx.iwm_sectors)
+        sector_data = {}
+        for sq in getattr(mkt_ctx, 'iwm_sectors', []):
+            sym = getattr(sq, 'symbol', '').upper()
+            chg = getattr(sq, 'chg_pct', None)
+            if sym and chg is not None:
+                sector_data[sym] = float(chg)
+        sector_strength = compute_sector_strength(sector_data)
+
+        vix_dir_for_confluence = vol_ctx.market_iv_direction
+        iwm_deep = compute_iwm_confluence(
+            spy_chg=mkt_ctx.spy_chg_pct,
+            qqq_chg=mkt_ctx.qqq_chg_pct,
+            iwm_chg=mkt_ctx.iwm_chg_pct,
+            kre_chg=sector_data.get('KRE'),
+            xbi_chg=sector_data.get('XBI'),
+            psci_chg=sector_data.get('PSCI'),
+            xrt_chg=sector_data.get('XRT'),
+            vix_level=vol_ctx.market_iv_level,
+            vix_direction=vix_dir_for_confluence,
+        )
+    except Exception as e:
+        log.debug(f"Envelope/density/sector calc: {e}")
+
+    return _VolEnvelopeAndSectorForState(
+        vol_ctx=vol_ctx,
+        vol_envelope=vol_envelope,
+        level_density=level_density,
+        sector_strength=sector_strength,
+        index_strength=index_strength,
+        spy_strength=spy_strength,
+        iwm_deep=iwm_deep,
+    )
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -8836,24 +8977,8 @@ def _fetch_state(
     _pin_strike = _pp.pin_strike
     _regime_gamma_at_spot = _pp.regime_gamma_at_spot
 
-    # ── Volatility Envelope, Level Density, Sector Strength ──────────────────
-    _vol_envelope = {}
-    _level_density = {}
-    _sector_strength = {}
-    _index_strength = {}
-    _spy_strength = {}
-    _iwm_deep = {}
-    # VOL_INPUT_CONTRACT 1.0.0 (lane V1): compute the market-vol context
-    # ONCE per cycle. The tracker ticks exactly once here — the previous
-    # per-surface ticks (confluence / snapshot / ms_dict) re-ticked the
-    # SAME value, forcing direction to "flat" after the first tick, and
-    # each surface recomputed vs-prev independently (MSD-001 divergence).
-    # All downstream surfaces consume this one frozen struct. Deliberately
-    # OUTSIDE the envelope/density/sector try: vol_ctx must be bound on every
-    # path that reaches build_market_state / the persistence tail / ms_dict —
-    # a swallowed envelope exception must degrade envelope fields only, never
-    # unbind the vol context (NameError = broken serve cycle).
-    #
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): extracted to
+    # _vol_envelope_and_sector_for_state (defined above).
     # Schwab CSV authority checked: yes
     # CSV row(s): quotes.$VIX.lastPrice — market_iv_level source primitive: the
     #   macro $VIX quote fetched in market_context.fetch_market_context via
@@ -8868,112 +8993,14 @@ def _fetch_state(
     #   confluence, vix_bucket all consume this one frozen vol_ctx (MSD-001
     #   parity locks in tests/test_market_context_fetch_fail_closed.py).
     # SCHWAB_CSV_CHECKED
-    _vol_prev_published_vix = _state_cache.get(_cache_key, {}).get("vix")
-    _vol_vix_now = None
-    if getattr(mkt_ctx, "vix", None) is not None:
-        try:
-            _vol_vix_now = float(mkt_ctx.vix)
-            _vix_tracker.tick(_vol_vix_now)
-        except (TypeError, ValueError):
-            _vol_vix_now = None
-    vol_ctx = MarketVolContextV1(
-        market_iv_level=_vol_vix_now,
-        market_iv_change=(
-            round(_vol_vix_now - float(_vol_prev_published_vix), 4)
-            if _vol_vix_now is not None and _vol_prev_published_vix is not None
-            else None
-        ),
-        market_iv_direction=(_vix_tracker.direction if _vol_vix_now is not None else None),
-        quality_status=("VALID" if _vol_vix_now is not None else "UNAVAILABLE"),
-        as_of_ts=time.time(),
-    )
-    # VOL_OBSERVABILITY_V1 (V2 prerequisite, read-only): record the per-cycle
-    # vol-index observations. Statement-only, never assigned, never consumed
-    # by this pipeline — native-index consumption stays NOT_APPROVED.
-    record_market_vol_observation(mkt_ctx, vol_ctx)
-    try:
-        _vol_envelope = compute_volatility_envelope(spot_f, _atr)
-
-        # Build levels dict for density check
-        # RC-432: density is a live congestion read. It must count the SAME terrain-bound
-        # walls and terrain flip the KL table paints. Pre-fix used selected-expiry
-        # `_gamma_flip` and `locals().get('_cgw')` — those wall names are assigned hundreds
-        # of lines later, so density silently counted pin/EM only and labeled "clear"
-        # while a terrain put wall sat inside the radius (PROVEN on SPY fixture: spot
-        # 743.88, put wall 745.0 → clear vs light).
-        _all_levels = {}
-        _t_dens = terrain_cache_get(ticker) or {}
-        _dens_fresh = bool(_t_dens) and not _t_dens.get("levels_stale")
-        if _dens_fresh and _t_dens.get("absolute_gamma_strike") is not None:
-            _all_levels["absolute_gamma_strike"] = float(_t_dens["absolute_gamma_strike"])
-        _w0 = walls[0] if walls else None
-        if _w0 is not None:
-            for _dn, _attr in (
-                ("call_gamma_wall", "call_gamma_wall"),
-                ("put_gamma_wall", "put_gamma_wall"),
-                ("call_delta_wall", "call_delta_wall"),
-                ("put_delta_wall", "put_delta_wall"),
-            ):
-                _dv = getattr(_w0, _attr, None)
-                if _dv is not None:
-                    _all_levels[_dn] = float(_dv)
-        if _dens_fresh and _t_dens.get("gamma_flip") is not None:
-            _all_levels["gamma_flip"] = float(_t_dens["gamma_flip"])
-        # RC-433 / F06: density counts the SAME EM band KL paints (terrain IV_SIGMA_1D =
-        # spot ± implied_1d_move.points). Pre-fix injected remaining-risk straddle/IV_MODEL
-        # bands, which often sit inside the 3pt radius while the operator KL band is the wider
-        # 1σ day move — congestion labeled "moderate" from a band the KL table does not show.
-        # Remaining-risk EM stays on SignalInput / em_progress.
-        if _dens_fresh:
-            _em_move = _t_dens.get("implied_1d_move") or {}
-            _em_pts = _em_move.get("points")
-            _em_spot = _t_dens.get("spot")
-            if _em_pts is not None and _em_spot is not None:
-                _all_levels["em_upper"] = float(_em_spot) + float(_em_pts)
-                _all_levels["em_lower"] = float(_em_spot) - float(_em_pts)
-        _level_density = compute_level_density(_all_levels, spot_f)
-
-        # Sector strength — 3 groups
-        # Group 1: Indices (SPY, QQQ, IWM)
-        _idx_data = {}
-        for _ik, _ig in [('SPY', mkt_ctx.spy_chg_pct), ('QQQ', mkt_ctx.qqq_chg_pct), ('IWM', mkt_ctx.iwm_chg_pct)]:
-            if _ig is not None: _idx_data[_ik] = float(_ig)
-        _index_strength = compute_sector_strength(_idx_data)
-
-        # Group 2: SPY top holdings (from mkt_ctx.constituents)
-        _spy_holdings = {}
-        for _cq in getattr(mkt_ctx, 'constituents', []):
-            _sym = getattr(_cq, 'symbol', '').upper()
-            _chg = getattr(_cq, 'chg_pct', None)
-            if _sym and _chg is not None:
-                _spy_holdings[_sym] = float(_chg)
-        _spy_strength = compute_sector_strength(_spy_holdings)
-
-        # Group 3: IWM sector proxies (from mkt_ctx.iwm_sectors)
-        _sector_data = {}
-        for _sq in getattr(mkt_ctx, 'iwm_sectors', []):
-            _sym = getattr(_sq, 'symbol', '').upper()
-            _chg = getattr(_sq, 'chg_pct', None)
-            if _sym and _chg is not None:
-                _sector_data[_sym] = float(_chg)
-        _sector_strength = compute_sector_strength(_sector_data)
-
-        # VOL_INPUT_CONTRACT 1.0.0: confluence consumes the same per-cycle
-        # context as every other surface (computed above, outside this try).
-        _vix_dir_for_confluence = vol_ctx.market_iv_direction
-        _iwm_deep = compute_iwm_confluence(
-            spy_chg=mkt_ctx.spy_chg_pct,
-            qqq_chg=mkt_ctx.qqq_chg_pct,
-            iwm_chg=mkt_ctx.iwm_chg_pct,
-            kre_chg=_sector_data.get('KRE'),
-            xbi_chg=_sector_data.get('XBI'),
-            psci_chg=_sector_data.get('PSCI'),
-            xrt_chg=_sector_data.get('XRT'),
-            vix_level=vol_ctx.market_iv_level,
-            vix_direction=_vix_dir_for_confluence,
-        )
-    except Exception as e:
-        log.debug(f"Envelope/density/sector calc: {e}")
+    _ves = _vol_envelope_and_sector_for_state(ticker, spot_f, _atr, walls, mkt_ctx, _cache_key)
+    vol_ctx = _ves.vol_ctx
+    _vol_envelope = _ves.vol_envelope
+    _level_density = _ves.level_density
+    _sector_strength = _ves.sector_strength
+    _index_strength = _ves.index_strength
+    _spy_strength = _ves.spy_strength
+    _iwm_deep = _ves.iwm_deep
     _stage_marks.append(("vol_flow_signals", time.perf_counter()))
 
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, twelfth slice): extracted to

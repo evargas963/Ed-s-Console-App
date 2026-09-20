@@ -1280,11 +1280,16 @@ def test_rc345_operator_em_band_carries_its_methodology() -> None:
     assert "_em_band_source" in srv and "STRADDLE_IMPLIED" in srv and "IV_MODEL" in srv
     assert '_em_up = _em_straddle.get("upper") or _em_iv.get("upper")' not in srv
     # RC-433: density congestion must bind terrain IV_SIGMA_1D, not remaining-risk binders.
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
+    # from _fetch_state's own inline body into _vol_envelope_and_sector_for_state, and its
+    # local variable names dropped their underscore-prefix scratch-var spelling in the
+    # process (_all_levels -> all_levels, _level_density -> level_density). The marker text
+    # below matches the new spelling/location; the invariant itself is unchanged.
     dens = srv.split("# Build levels dict for density check", 1)[1].split(
-        "_level_density = compute_level_density", 1
+        "level_density = compute_level_density", 1
     )[0]
     dens_code = "\n".join(
-        ln for ln in dens.split("_all_levels = {}", 1)[1].splitlines()
+        ln for ln in dens.split("all_levels: dict = {}", 1)[1].splitlines()
         if ln.strip() and not ln.lstrip().startswith("#")
     )
     assert "implied_1d_move" in dens_code
