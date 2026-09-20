@@ -8490,6 +8490,63 @@ def _post_build_sweep_score_for_state(ms, atr, candle_body, void_factor) -> dict
     return sweep_score
 
 
+def _additive_context_for_state(
+    ms,
+    ticker: str,
+    ed_db,
+    spot_f: float,
+    c_open,
+    c_high,
+    c_low,
+    c_close,
+    c_vol,
+    flow_imb_norm,
+    atr,
+    c_range,
+    candle_body,
+) -> None:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, eighteenth slice): the Additive
+    Context phase (liquidity behavior + news/sentiment, both non-authoritative),
+    extracted verbatim. Mutates `ms` in place (`ms.liquidity_behavior`,
+    `ms.news_context`) -- there is no separate return value, exactly matching the
+    original inline code's own side-effect-only shape. `ed_db` is a parameter (it is
+    _fetch_state's own local `_ed_db`, not a module global).
+
+    Two fully independent try/except blocks, each failing closed to None on its own
+    exception without affecting the other -- a liquidity-behavior failure must never
+    take down news_context, and vice versa, exactly as the original inline code did."""
+    try:
+        from institutional_behavior import compute_liquidity_behavior_row
+        ms.liquidity_behavior = compute_liquidity_behavior_row(
+            spot=spot_f,
+            candle_open=c_open,
+            candle_high=c_high,
+            candle_low=c_low,
+            candle_close=c_close,
+            candle_volume=c_vol,
+            flow_imbalance=flow_imb_norm,
+            net_gamma=ms.net_gamma,
+            atr=atr,
+            candle_range_pts=c_range,
+            candle_body_pts=candle_body,
+        )
+    except Exception as e:
+        log.debug("liquidity_behavior: %s", e)
+        ms.liquidity_behavior = None
+    try:
+        from news_sentiment import refresh_and_context_for_ui
+
+        news_throttle = float(os.environ.get("ED_NEWS_THROTTLE_SEC", "90"))
+        ms.news_context = refresh_and_context_for_ui(
+            ticker.upper(),
+            db=ed_db,
+            throttle_sec=news_throttle,
+        )
+    except Exception as e:
+        log.debug("news_context: %s", e)
+        ms.news_context = None
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -9176,37 +9233,12 @@ def _fetch_state(
         ms.cum_delta_proxy = _rest_cum_delta[ticker]
         log.debug("Cum Delta: REST proxy (polling-based)")
 
-    # ── Additive context: liquidity behavior + news/sentiment (non-authoritative) ──
-    try:
-        from institutional_behavior import compute_liquidity_behavior_row
-        ms.liquidity_behavior = compute_liquidity_behavior_row(
-            spot=spot_f,
-            candle_open=_c_open,
-            candle_high=_c_high,
-            candle_low=_c_low,
-            candle_close=_c_close,
-            candle_volume=_c_vol,
-            flow_imbalance=_flow_imb_norm,
-            net_gamma=ms.net_gamma,
-            atr=_atr,
-            candle_range_pts=_c_range,
-            candle_body_pts=_candle_body,
-        )
-    except Exception as _lb_e:
-        log.debug("liquidity_behavior: %s", _lb_e)
-        ms.liquidity_behavior = None
-    try:
-        from news_sentiment import refresh_and_context_for_ui
-
-        _news_throttle = float(os.environ.get("ED_NEWS_THROTTLE_SEC", "90"))
-        ms.news_context = refresh_and_context_for_ui(
-            ticker.upper(),
-            db=_ed_db,
-            throttle_sec=_news_throttle,
-        )
-    except Exception as _nc_e:
-        log.debug("news_context: %s", _nc_e)
-        ms.news_context = None
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, eighteenth slice): extracted to
+    # _additive_context_for_state (defined above). Mutates `ms` in place, no return value.
+    _additive_context_for_state(
+        ms, ticker, _ed_db, spot_f, _c_open, _c_high, _c_low, _c_close, _c_vol,
+        _flow_imb_norm, _atr, _c_range, _candle_body,
+    )
     _stage_marks.append(("context_news", time.perf_counter()))
 
     # ── V2 decision build (pre-publish) ──────────────────────────────────────
