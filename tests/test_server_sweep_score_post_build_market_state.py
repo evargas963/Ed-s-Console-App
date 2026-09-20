@@ -57,21 +57,32 @@ def test_no_dead_ms_in_dir_defensive_guard_in_fetch_state():
 
 
 def test_compute_sweep_score_called_after_build_market_state():
-    """compute_sweep_score(... must execute strictly after the ms = build_market_state(...) line."""
+    """compute_sweep_score(... must execute strictly after the ms = build_market_state(...) line.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventeenth slice): the sweep-score
+    computation moved out of _fetch_state's own body into
+    _post_build_sweep_score_for_state(ms, ...), which takes `ms` as its first
+    parameter -- a STRONGER version of this guarantee than the original offset-based
+    text check: Python cannot bind an argument to a name that does not yet exist, so
+    _fetch_state's own call site is structurally incapable of running before
+    `ms = build_market_state(...)`, not merely textually positioned after it."""
     src = _fetch_state_source()
-    # Single compute_sweep_score call site (the post-build one). Multiple is allowed as long as the
-    # last one comes after build_market_state — but the prior dead-feed call was the only site, so
-    # any single site must be post-build.
-    sweep_calls = [i for i in range(len(src)) if src.startswith("compute_sweep_score(", i)]
-    assert sweep_calls, "_fetch_state must call compute_sweep_score at least once"
+    call_calls = [i for i in range(len(src)) if src.startswith("_post_build_sweep_score_for_state(", i)]
+    assert call_calls, "_fetch_state must call _post_build_sweep_score_for_state at least once"
     build_idx = src.find("build_market_state(")
     assert build_idx > 0, "_fetch_state must call build_market_state"
-    # Every compute_sweep_score(...) call must appear after build_market_state(...
-    for pos in sweep_calls:
+    for pos in call_calls:
         assert pos > build_idx, (
-            "compute_sweep_score must be called AFTER build_market_state "
+            "_post_build_sweep_score_for_state must be called AFTER build_market_state "
             f"(found call at offset {pos} but build_market_state at {build_idx})"
         )
+    # The real computation still happens, just one level down.
+    import server
+    import inspect as _inspect
+    pp_src = _inspect.getsource(server._post_build_sweep_score_for_state)
+    assert "compute_sweep_score(" in pp_src, (
+        "_post_build_sweep_score_for_state must call compute_sweep_score"
+    )
 
 
 def test_void_factor_default_hoisted_outside_section_8_try():
@@ -111,14 +122,19 @@ def test_void_factor_default_hoisted_outside_section_8_try():
 
 
 def test_post_build_sweep_block_reads_real_ms_attrs():
-    """The new sweep block must read ms.nearest_above_dist / ms.nearest_below_dist directly."""
-    src = _fetch_state_source()
-    # Find the post-build sweep section by header text used in the fix.
-    marker = "Section 8 (post-build) — Sweep Score"
-    assert marker in src, "post-build sweep section marker must exist"
-    deferred = _strip_hash_comments(src.split(marker, 1)[1][:1500])
-    assert "nearest_above_dist" in deferred
-    assert "nearest_below_dist" in deferred
-    assert "getattr(ms," in deferred or "getattr(ms ," in deferred
-    # The defensive `'ms' in dir()` pattern must NOT appear in the new block.
-    assert "'ms' in dir()" not in deferred
+    """The sweep-score computation must read ms.nearest_above_dist /
+    ms.nearest_below_dist directly.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventeenth slice): this block
+    moved out of _fetch_state's own body into _post_build_sweep_score_for_state,
+    which takes `ms` as an explicit parameter (defined above _fetch_state) -- checked
+    against that function's own source now, not a text window inside _fetch_state."""
+    import inspect
+    import server
+
+    pp_src = _strip_hash_comments(inspect.getsource(server._post_build_sweep_score_for_state))
+    assert "nearest_above_dist" in pp_src
+    assert "nearest_below_dist" in pp_src
+    assert "getattr(ms," in pp_src or "getattr(ms ," in pp_src
+    # The defensive `'ms' in dir()` pattern must NOT appear in the new function.
+    assert "'ms' in dir()" not in pp_src

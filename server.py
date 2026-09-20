@@ -8456,6 +8456,40 @@ def _vol_envelope_and_sector_for_state(
     )
 
 
+def _post_build_sweep_score_for_state(ms, atr, candle_body, void_factor) -> dict:
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventeenth slice): the Sweep
+    Score phase, extracted verbatim. Must run AFTER build_market_state -- ms.
+    nearest_above_dist / ms.nearest_below_dist are populated by build_market_state
+    from walls + price_levels, and are not available any earlier (this is the fix for
+    FIND-SERVER-SWEEP-DEAD-FEED: a defunct dir()-membership guard on the name ms used
+    to run this computation before ms existed at all, always evaluating False and
+    silently degrading sweep_score to empty on every tick -- see
+    tests/test_server_sweep_score_post_build_market_state.py).
+
+    Fails closed to {} (the pre-initialized default the caller already holds) on any
+    exception, logged at debug -- never raises."""
+    sweep_score: dict = {}
+    try:
+        nearest_wall_dist = None
+        for wname in ("nearest_above_dist", "nearest_below_dist"):
+            wd = getattr(ms, wname, None)
+            if wd is None:
+                continue
+            try:
+                wd_abs = abs(float(wd))
+            except (TypeError, ValueError):
+                continue
+            if nearest_wall_dist is None or wd_abs < nearest_wall_dist:
+                nearest_wall_dist = wd_abs
+        momentum = 0.0
+        if atr and atr > 0 and candle_body:
+            momentum = min(1.0, abs(candle_body) / atr)
+        sweep_score = compute_sweep_score(nearest_wall_dist, void_factor, momentum) or {}
+    except Exception as e:
+        log.debug("sweep_score post build_market_state: %s", e)
+    return sweep_score
+
+
 def _fetch_state(
     ticker: str,
     expiry: Optional[str],
@@ -9130,27 +9164,11 @@ def _fetch_state(
     if _diag_on():
         _diag_done("build_market_state", ticker)
 
-    # ── Section 8 (post-build) — Sweep Score reads ms.nearest_above_dist/nearest_below_dist ──
-    # build_market_state populates these from walls + price_levels. Computing here (not in the
-    # Section 8 try block above) is the only point at which the inputs are actually available.
-    try:
-        _nearest_wall_dist = None
-        for _wname in ("nearest_above_dist", "nearest_below_dist"):
-            _wd = getattr(ms, _wname, None)
-            if _wd is None:
-                continue
-            try:
-                _wd_abs = abs(float(_wd))
-            except (TypeError, ValueError):
-                continue
-            if _nearest_wall_dist is None or _wd_abs < _nearest_wall_dist:
-                _nearest_wall_dist = _wd_abs
-        _momentum = 0.0
-        if _atr and _atr > 0 and _candle_body:
-            _momentum = min(1.0, abs(_candle_body) / _atr)
-        _sweep_score = compute_sweep_score(_nearest_wall_dist, _void_factor, _momentum) or {}
-    except Exception as _ss_e:
-        log.debug("sweep_score post build_market_state: %s", _ss_e)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventeenth slice): extracted to
+    # _post_build_sweep_score_for_state (defined above). Must run AFTER build_market_state
+    # -- ms.nearest_above_dist/nearest_below_dist are populated by build_market_state from
+    # walls + price_levels, the only point at which those inputs are actually available.
+    _sweep_score = _post_build_sweep_score_for_state(ms, _atr, _candle_body, _void_factor)
 
     # REST fallback: when streamer has no tape, inject polling-based cum_delta.
     # Streamer value takes precedence when available.
