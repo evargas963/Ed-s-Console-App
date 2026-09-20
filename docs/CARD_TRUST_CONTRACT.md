@@ -1,10 +1,22 @@
-> **Classification:** Governing Contract | **Scope:** Operator-facing card truth, freshness, and evidence hierarchy
+> **Classification:** RETIRED — historical design record only, not governing. **Scope (as originally written, now obsolete):** Operator-facing card truth, freshness, and evidence hierarchy for the pre-rebuild `static/index.html` UI.
 
 # Card Trust Contract
 
-**Status:** Governing target for card, fusion, histogram, transport, and explainability work.  
-**Binding on:** All future UI card semantics, explainability chips, fusion/histogram policy, and market-session tradeability changes.  
-**Non-binding on:** Current production behavior until a named fix branch explicitly implements a section marked *target future*.
+**RETIRED 2026-09-20 (RC-REHAB-1 reality-reconciliation audit).** This document describes the pre-rebuild `static/index.html` card UI — horizon chips (`#tf-signal-1c/5c/15c/60c`), `resolveCardTrustGate`/`analyticsCardTrustGate`/`engineTradeableSetup`/`paintTradePlanCard`/`renderTimeframeSignalRow`, the T0–T4 latency/freshness/scheduling lanes (`window.__edMoneyPathLatency`, `scheduleMoneyPathRender`, `acceptMoneyPathPayload`, `money_path_snapshot`), and the declarative registry `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json` (§15–22 below). Following the Ed Console UI rebuild (PR #238, PR #252; merged 2026-09-17), **none of this exists anymore**:
+
+- Every function, DOM selector, and `window.*` hook this document names — `resolveCardTrustGate`, `engineTradeableSetup`, `paintTradePlanCard`, `renderTimeframeSignalRow`, `hasOperatorCardMirrorFields`, `paintExecutionStateChip`, every `tf-signal-*`/`dr-freshness-pill`/`dr-lane-stale-chip` selector, `window.__edMoneyPathLatency` and all `raf_*`/`monotonic_*`/`money_path_snapshot_*` fields on it — has **zero occurrences** anywhere in the current frontend (checked across every file in `static/*.html` and `static/js/*.js`, including the rebuilt `desk.html`).
+- The registry this contract calls its "machine-readable source of truth," `reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json`, is **deleted** (retired as confirmed-dead, commit `f75257b6`).
+- Both "mechanical lock" tests cited in §15 — `tests/test_universal_card_fidelity_runtime.py` and `tests/test_issue18_ui_contract.py` — are **deleted**.
+
+This was the reality-reconciliation mission's own first flagged lead: *"CARD_TRUST_CONTRACT.md describes a UI that doesn't exist post-rebuild."* Confirmed here in full, not just the two citations an earlier pass caught.
+
+**Preserved below, unedited, as a historical design record** — the trust/freshness/evidence-hierarchy *concepts* (forecast-vs-tape conflict, fusion-vs-histogram disagreement, fail-closed staleness, reason classes) may still be worth carrying into a new contract for the rebuilt UI, but that contract does not exist today and is not written here. **Nothing below this banner should be read as describing current behavior, cited as binding, or used as a "mechanical lock" reference — every code/file citation past this point is stale.**
+
+---
+
+**Original status line (superseded):** Governing target for card, fusion, histogram, transport, and explainability work.
+**Original binding claim (superseded):** All future UI card semantics, explainability chips, fusion/histogram policy, and market-session tradeability changes.
+**Original non-binding note (superseded):** Current production behavior until a named fix branch explicitly implements a section marked *target future*.
 
 ---
 
