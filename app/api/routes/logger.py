@@ -14,6 +14,17 @@ router = APIRouter()
 @router.get("/api/logger/status")
 def logger_status():
     """Return background logger status — which tickers are being logged and their stats."""
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` is deliberately NOT in this
+    # `from server import (...)` tuple. `get_db` is only bound in server's module
+    # namespace when the `db` import succeeded at server.py's own top-level load
+    # (_HAS_SIGNALS gates on exactly that). A blanket `from server import (..., get_db)`
+    # eagerly resolves EVERY listed name at function-entry, so if `_HAS_SIGNALS` is
+    # False, that import statement itself raises ImportError before the `if
+    # _HAS_SIGNALS:` guards below ever run -- making those guards dead code for this
+    # exact failure mode. `import server as _server` defers `get_db`'s resolution to an
+    # attribute access inside the already-`if _HAS_SIGNALS:`-guarded block, where it is
+    # only ever touched once we know it exists.
+    import server as _server
     from server import (
         _HAS_SIGNALS,
         _is_loggable_session,
@@ -30,7 +41,6 @@ def logger_status():
         PRE_MARKET_MINS,
         RTH_ONLY,
         STAGGER_SECS,
-        get_db,
         log,
     )
 
@@ -42,7 +52,7 @@ def logger_status():
     db_rows: dict[str, dict] = {}
     if _HAS_SIGNALS:
         try:
-            for row in get_db().logging_universe_list_rows():
+            for row in _server.get_db().logging_universe_list_rows():
                 db_rows[ticker_storage_key(row.get("ticker"))] = row  # RC-345/F25: canonical join key
         except Exception as e:
             log.debug("logger_status DB join: %s", e)
@@ -73,7 +83,7 @@ def logger_status():
     orphan_tickers: list[str] = []
     if _HAS_SIGNALS:
         try:
-            orphan_tickers = get_db().logging_universe_snapshot_ticker_orphans()
+            orphan_tickers = _server.get_db().logging_universe_snapshot_ticker_orphans()
         except Exception as e:
             log.debug("logger_status orphan scan: %s", e)
 
@@ -100,6 +110,11 @@ def logger_status():
 @router.get("/api/logger/universe")
 def logger_universe():
     """Issue 22 hardened — auditable logging_universe with eviction_status per row."""
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` tuple -- see logger_status's identical fix comment
+    # above for why. Resolved via `_server.get_db()` only after the `_HAS_SIGNALS`
+    # guard below has already passed.
+    import server as _server
     from server import (
         _HAS_SIGNALS,
         _is_loggable_session,
@@ -112,13 +127,12 @@ def logger_universe():
         MAX_USER_PERSISTED_LOGGING_TICKERS,
         PRE_MARKET_MINS,
         RTH_ONLY,
-        get_db,
     )
 
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
     try:
-        db = get_db()
+        db = _server.get_db()
         rows = db.logging_universe_list_rows_audit()
         protected = db.logging_universe_protected_tickers()
         candidates = db.logging_universe_eviction_candidates_fifo()
@@ -151,7 +165,10 @@ def logger_universe():
 def logger_universe_by_category(
     category: str = Query(..., description="core | pinned | user_persisted"),
 ):
-    from server import _HAS_SIGNALS, get_db
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` statement -- see logger_status's fix comment above.
+    import server as _server
+    from server import _HAS_SIGNALS
 
     if not _HAS_SIGNALS:
         raise HTTPException(status_code=503, detail="database logging not available")
@@ -161,7 +178,7 @@ def logger_universe_by_category(
     try:
         rows = [
             r
-            for r in get_db().logging_universe_list_rows_audit()
+            for r in _server.get_db().logging_universe_list_rows_audit()
             if (r.get("category") or "").lower() == c
         ]
     except Exception as e:
@@ -171,14 +188,25 @@ def logger_universe_by_category(
 
 @router.post("/api/logger/pin")
 def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core only)")):
+    # RC-REHAB-1 (route-extraction audit fix): `import server as _server` gives two
+    # independent fixes. (1) `get_db` is excluded from the eager `from server import
+    # (...)` tuple below -- it is only bound in server's module namespace when the
+    # signals/db import succeeded at server.py's own top-level load, and a blanket
+    # import eagerly resolving it would raise ImportError before the `_HAS_SIGNALS`
+    # guard ever runs, making that guard dead code. `_server.get_db()` defers
+    # resolution to after the guard passes. (2) the post-hydrate read below resolves
+    # the module's CURRENT global rather than a stale name bound at function entry --
+    # _hydrate_logger_tickers_from_db() reassigns `_logger_tickers` to a new list
+    # object rather than mutating it in place, so `from server import _logger_tickers`
+    # would keep pointing at the pre-hydrate list, silently omitting the ticker just
+    # pinned from this call's own response.
+    import server as _server
     from server import (
         _HAS_SIGNALS,
         _hydrate_logger_tickers_from_db,
         _logger_lock,
-        _logger_tickers,
         CORE_TICKERS,
         MAX_PINNED_LOGGING_TICKERS,
-        get_db,
     )
 
     if not _HAS_SIGNALS:
@@ -188,7 +216,7 @@ def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core onl
         raise HTTPException(status_code=400, detail="invalid ticker")
     if t in CORE_TICKERS:
         raise HTTPException(status_code=400, detail="core symbols are already protected; pin not applicable")
-    db = get_db()
+    db = _server.get_db()
     is_already_pinned = any(
         ticker_storage_key(r.get("ticker")) == t and r.get("category") == "pinned"  # RC-345/F25: canonical pin-dedup
         for r in db.logging_universe_list_rows()
@@ -205,27 +233,41 @@ def logger_pin(ticker: str = Query(..., description="Symbol to pin (non-core onl
     db.logging_universe_upsert_pinned(t, "api_logger_pin", now)
     _hydrate_logger_tickers_from_db()
     with _logger_lock:
-        all_t = list(_logger_tickers)
+        all_t = list(_server._logger_tickers)
     return JSONResponse({"ok": True, "ticker": t, "all_tickers": all_t})
 
 
 @router.post("/api/logger/unpin")
 def logger_unpin(ticker: str = Query(...)):
+    # RC-REHAB-1 (route-extraction audit fix): three defects from the original
+    # mechanical move, all real. (1) `_HAS_SIGNALS` was dropped entirely -- every
+    # sibling route gates on it before calling get_db(). (2) even adding that guard
+    # back is not enough on its own: `get_db` must also be excluded from the eager
+    # `from server import (...)` tuple, since it is only bound in server's module
+    # namespace when the signals/db import succeeded, and a blanket import eagerly
+    # resolving it raises ImportError before any guard ever runs -- this is why every
+    # OTHER logger route in this file needed the identical fix even though most of
+    # them already had the guard text present. (3) the same stale-list bug as
+    # logger_pin: `import server as _server` replaces `from server import
+    # _logger_tickers` so the post-hydrate read resolves the reassigned module global
+    # instead of the list object captured at function entry.
+    import server as _server
     from server import (
+        _HAS_SIGNALS,
         _hydrate_logger_tickers_from_db,
         _logger_lock,
-        _logger_tickers,
-        get_db,
     )
 
+    if not _HAS_SIGNALS:
+        raise HTTPException(status_code=503, detail="database logging not available")
     t = ticker.upper().strip()
-    db = get_db()
+    db = _server.get_db()
     ok = db.logging_universe_unpin_to_user_persisted(t, time.time())
     if not ok:
         raise HTTPException(status_code=400, detail="symbol is not pinned")
     _hydrate_logger_tickers_from_db()
     with _logger_lock:
-        all_t = list(_logger_tickers)
+        all_t = list(_server._logger_tickers)
     return JSONResponse({"ok": True, "ticker": t, "all_tickers": all_t})
 
 
@@ -247,13 +289,16 @@ def logger_add(ticker: str = Query(..., description="Ticker to add to background
 @router.post("/api/logger/remove")
 def logger_remove(ticker: str = Query(..., description="Ticker to remove from logger")):
     """Remove a non-core ticker from the background logger and durable logging_universe."""
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` tuple -- see logger_status's fix comment above. It is
+    # only ever touched inside the `if _HAS_SIGNALS:` block below.
+    import server as _server
     from server import (
         _HAS_SIGNALS,
         _logger_lock,
         _logger_tickers,
         _market_context_panel_auto_candidates,
         CORE_TICKERS,
-        get_db,
         log,
     )
 
@@ -272,7 +317,7 @@ def logger_remove(ticker: str = Query(..., description="Ticker to remove from lo
     db_removed = False
     if _HAS_SIGNALS:
         try:
-            db_removed = get_db().logging_universe_remove_non_core(ticker)
+            db_removed = _server.get_db().logging_universe_remove_non_core(ticker)
         except Exception as e:
             log.warning("logging_universe_remove_non_core: %s", e)
     with _logger_lock:

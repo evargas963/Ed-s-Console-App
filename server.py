@@ -7668,9 +7668,18 @@ def _garch_sigma_bars_for_state(
     Returns per-bar sigma (monte_carlo.BAR_MINUTES units) or None on insufficient data,
     a missing GARCH result, or any computation failure.
     """
-    if not closes or len(closes) <= 20:
-        return None
     try:
+        # RC-REHAB-1 (route-extraction/decomposition audit fix): this guard originally
+        # sat BEFORE the try (as `if not closes or len(closes) <= 20: return None`).
+        # The pre-existing inline code had it INSIDE the try (`if _closes and
+        # len(_closes) > 20:`), so an exception evaluating the predicate itself (e.g. a
+        # `closes` whose __bool__/__len__ raised) was swallowed to this function's fail-
+        # closed None, not propagated. Moved back inside to restore that exact coverage
+        # -- currently unreachable in practice since the caller guarantees closes is
+        # None-or-list, but the extraction claimed byte-for-byte fidelity and this was
+        # the one place it wasn't.
+        if not closes or len(closes) <= 20:
+            return None
         _garch_raw = compute_garch_forecast(closes, horizon=GARCH_HORIZON_BARS)
         if not _garch_raw:
             return None
@@ -8984,13 +8993,20 @@ def _fetch_state(
     et_m = now_et.minute
     mins_to_close = max(0.0, RTH_CLOSE_MINS - (et_h * 60 + et_m))
 
+    # RC-REHAB-1 (route-extraction/decomposition audit fix): _candle_volume_for_state
+    # is called BEFORE _order_flow_data_for_state, restoring the original inline
+    # ordering. Both read the module-level `_candles_1m` singleton (mutated by the
+    # streamer thread); the original code snapshotted `_candles_1m.get_bars(ticker)`
+    # for candle-volume resolution before building order-flow data. The fifteenth
+    # slice's own extraction inverted that order, which is a no-op single-threaded but
+    # could resolve one bar newer across a rollover under concurrent streaming writes --
+    # undisclosed at the time. Order restored; neither function depends on the other's
+    # output, so this is a pure reordering with no other effect.
+    _c_vol = _candle_volume_for_state(ticker, client)
+
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourteenth slice): extracted to
     # _order_flow_data_for_state (defined above).
     _order_flow_data = _order_flow_data_for_state(ticker, q_json, c_json, now_et)
-
-    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): extracted to
-    # _candle_volume_for_state (defined above).
-    _c_vol = _candle_volume_for_state(ticker, client)
 
     # ── Build MarketState ─────────────────────────────────────────────────────
     _stage_marks.append(("db_reads_orderflow_input", time.perf_counter()))
