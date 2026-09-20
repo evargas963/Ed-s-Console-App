@@ -21,6 +21,16 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     Returns cached results if available (updated every ~10 min),
     otherwise computes fresh. Also returns accuracy history for charting.
     """
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` is deliberately NOT in this
+    # `from server import (...)` tuple. `get_db` is only bound in server's module
+    # namespace when the `db` import succeeded at server.py's own top-level load
+    # (_HAS_SIGNALS gates on exactly that). A blanket `from server import (..., get_db)`
+    # eagerly resolves EVERY listed name at function-entry, so if `_HAS_SIGNALS` is
+    # False, that import statement itself raises ImportError before the `if
+    # _HAS_SIGNALS` conditional below ever runs -- making the conditional dead code for
+    # this exact failure mode. `import server as _server` defers `get_db`'s resolution
+    # to an attribute access at the point of use, after `_HAS_SIGNALS` is known.
+    import server as _server
     from server import (
         ACCURACY_HISTORY_LIMIT,
         ACCURACY_INTERVAL,
@@ -30,7 +40,6 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
         _current_pred_model_version,
         _touch_tracked_ticker_view,
         _trader_accuracy_subset,
-        get_db,
         log,
     )
 
@@ -38,7 +47,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     # TICKER-PREVIEW-NO-ENROLL: accuracy is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(ticker)
 
-    db = get_db() if _HAS_SIGNALS else None
+    db = _server.get_db() if _HAS_SIGNALS else None
     if not db:
         return {"error": "Database not connected"}
 

@@ -83,6 +83,13 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
       4. 'stored_analytical_snapshot_fallback' — last resort: the bounded, gamma/terrain-
          tuned snapshot this endpoint originally served, explicitly labeled as NOT proven
          complete. status='no_chain' if even this has nothing."""
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` deliberately excluded from this
+    # `from server import (...)` tuple -- see logger.py's identical fix comment for why
+    # a blanket import eagerly resolving `get_db` raises ImportError before either
+    # try/except below (persist-capture, persisted-capture read) ever gets a chance to
+    # run, turning both into dead code for that failure mode. `import server as
+    # _server` defers resolution to each call site, already inside its own try/except.
+    import server as _server
     from server import (
         COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
         _fetch_expiries_light,
@@ -92,7 +99,6 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
         _touch_tracked_ticker_view,
         flatten_chain_contracts,
         get_client,
-        get_db,
         latest_complete_chain_capture,
         log,
         persist_complete_chain_capture,
@@ -164,7 +170,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                 if returned_exps == [resolved_expiry]:
                     try:
                         persist_complete_chain_capture(
-                            get_db().db_path, ticker=t, expiry=resolved_expiry,
+                            _server.get_db().db_path, ticker=t, expiry=resolved_expiry,
                             contracts=contracts, spot=spot,
                             completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL)
                     except Exception as e:
@@ -205,7 +211,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
                        t, resolved_expiry, e)
 
         try:
-            cap = latest_complete_chain_capture(get_db().db_path, t, resolved_expiry)
+            cap = latest_complete_chain_capture(_server.get_db().db_path, t, resolved_expiry)
         except Exception as e:
             cap = None
             log.debug("chain: persisted-capture read failed for %s %s: %s",

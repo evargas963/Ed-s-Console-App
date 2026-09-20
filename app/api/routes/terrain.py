@@ -130,11 +130,17 @@ def post_terrain_quarantine_release(ticker: str = Query(...)):
 @router.get("/api/terrain/strikes")
 def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     from math_exposure_core import compute_exposures_by_strike as _cebs
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` deliberately excluded from
+    # this `from server import (...)` tuple -- see logger.py's identical fix comment
+    # for why a blanket import eagerly resolving `get_db` raises ImportError before
+    # either try/except below (the accrual-bank fallback, the wide-chain read) ever
+    # gets a chance to run. `import server as _server` defers resolution to each call
+    # site, already inside its own try/except.
+    import server as _server
     from server import (
         TERRAIN_STALE_AFTER_SEC,
         _note_gamma_surface_demand,
         bucket_metric,
-        get_db,
         latest_accrual_rows,
         log,
         resolve_spot,
@@ -265,7 +271,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
         _live_stale = (today is None) or (
             _live_ts <= 0.0) or ((time.time() - _live_ts) > TERRAIN_STALE_AFTER_SEC)
         if _live_stale:
-            _bank = latest_accrual_rows(get_db().db_path, tk)
+            _bank = latest_accrual_rows(_server.get_db().db_path, tk)
             if _bank and _bank.get("rows") and _bank["ts_utc"] > _live_ts:
                 # `near`/`far` stay EMPTY on purpose: the bank holds the `all` scope only, and
                 # inventing a DTE split it never measured would be a fabricated level. The scope
@@ -277,7 +283,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     except Exception as e:
         log.debug("terrain strikes accrual fallback failed %s: %s", tk, e)
     try:
-        db = get_db()
+        db = _server.get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
         try:
             rows = con.execute(

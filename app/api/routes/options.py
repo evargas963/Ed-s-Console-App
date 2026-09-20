@@ -170,7 +170,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     terrain_cache_get, _gamma_surface_coverage_summary, _option_contract_admission_summary,
     _gamma_surface_cell_state_counts, _stamp_surface_session, _GAMMA_SURFACE_CACHE,
     _gamma_surface_wanted, _ticker_on_terrain_board, _desired_option_symbols_for_ticker,
-    _stamp_gamma_surface_cell_stream_state, project_gamma_surface, get_db, now_et,
+    _stamp_gamma_surface_cell_stream_state, project_gamma_surface, get_db (via `import server
+    as _server` / `_server.get_db()`, see the route-extraction audit fix comment below), now_et,
     is_trading_day_et) is imported lazily from server -- every one has multiple OTHER callers
     still in server.py (verified before this move: none is exclusive to this route), so they
     stay there as shared infrastructure. Importing now_et/is_trading_day_et from server rather
@@ -179,6 +180,13 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     name up via server.now_et at call time, not a separately-bound direct import."""
     import sqlite3 as _sq
 
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` deliberately excluded from
+    # this `from server import (...)` tuple -- see logger.py's identical fix comment
+    # for why a blanket import eagerly resolving `get_db` raises ImportError before
+    # the try/except around the banked-fallback read below (this route's own
+    # designed DB-failure handling) ever gets a chance to run. `import server as
+    # _server` defers resolution to the point of use, already inside that try.
+    import server as _server
     from server import (
         _desired_option_symbols_for_ticker,
         _gamma_surface_cell_state_counts,
@@ -190,7 +198,6 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         _stamp_gamma_surface_cell_stream_state,
         _stamp_surface_session,
         _ticker_on_terrain_board,
-        get_db,
         is_trading_day_et,
         now_et,
         project_gamma_surface,
@@ -315,7 +322,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                      "requested": _requested, "on_board": _on_board,
                      "reason": "no live terrain surface and no banked wide chain"}
     try:
-        db = get_db()
+        db = _server.get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
         try:
             cand = con.execute(

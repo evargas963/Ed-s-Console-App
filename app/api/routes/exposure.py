@@ -26,7 +26,15 @@ def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
     ([[strike, gex_dollars, session_volume], ...]; MEASURED: SPY 07-31 = 133 frames, ET
     minutes 556-975), spot-windowed ±5%. 5-min cache like /api/forces."""
     import sqlite3 as _sq
-    from server import _EXPOSURE_FLOW_CACHE, get_db
+
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` tuple -- see logger.py's identical fix comment. The
+    # blanket import sits BEFORE the try/except below, so it would raise ImportError
+    # (when `_HAS_SIGNALS` is False) before that try/except -- this route's own
+    # designed fallback for a DB failure -- ever runs. `import server as _server`
+    # defers resolution to the point of use, already inside the try.
+    import server as _server
+    from server import _EXPOSURE_FLOW_CACHE
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -36,7 +44,7 @@ def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "no banked accrual frames for this ticker"}
     try:
-        db = get_db()
+        db = _server.get_db()
         frames: list[dict] = []
         latest = None
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
@@ -80,7 +88,12 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
     import sqlite3 as _sq
 
     from math_exposure_core import compute_exposures_by_strike as _cebs
-    from server import _EXPOSURE_BOOK_CACHE, get_db, is_trading_day_et
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` tuple -- see get_exposure_flow's identical fix
+    # comment above for why the blanket import defeats this route's own try/except
+    # DB-failure fallback below.
+    import server as _server
+    from server import _EXPOSURE_BOOK_CACHE, is_trading_day_et
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -89,7 +102,7 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
         return JSONResponse(hit[1])
     payload: dict = {"ticker": tk, "available": False, "reason": "no banked wide chain"}
     try:
-        db = get_db()
+        db = _server.get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
         try:
             cand = con.execute(
@@ -133,7 +146,12 @@ def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
     import sqlite3 as _sq
 
     from math_exposure_core import compute_exposures_by_strike as _cebs
-    from server import _EXPOSURE_HISTORY_CACHE, get_db, is_trading_day_et
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` tuple -- see get_exposure_flow's identical fix
+    # comment above for why the blanket import defeats this route's own try/except
+    # DB-failure fallback below.
+    import server as _server
+    from server import _EXPOSURE_HISTORY_CACHE, is_trading_day_et
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -142,7 +160,7 @@ def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
         return JSONResponse(hit[1])
     payload: dict = {"ticker": tk, "available": False, "reason": "no banked sessions"}
     try:
-        db = get_db()
+        db = _server.get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
         try:
             cand = con.execute(

@@ -139,7 +139,13 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
 # SWITCH-LATENCY FIX: sync def → threadpool (blocking full _fetch_state, no await).
 def debug_prediction(ticker: str = DEFAULT_TICKER):
     """Show exactly what the prediction engine is querying — non-production debug surface (R-011)."""
-    from server import _HAS_SIGNALS, _fetch_state, CANONICAL_TIMEFRAME, get_db
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` statement -- see logger.py's identical fix comment.
+    # A blanket import resolving `get_db` eagerly would raise ImportError before the
+    # `if _HAS_SIGNALS:` guard below ever runs. `import server as _server` defers
+    # resolution to after that guard has already passed.
+    import server as _server
+    from server import _HAS_SIGNALS, _fetch_state, CANONICAL_TIMEFRAME
 
     if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):
         raise HTTPException(status_code=404, detail="debug endpoints disabled")
@@ -161,7 +167,7 @@ def debug_prediction(ticker: str = DEFAULT_TICKER):
         # Count snapshots per zone in DB
         zone_counts = {}
         if _HAS_SIGNALS:
-            db = get_db()
+            db = _server.get_db()
             if db:
                 zone_counts = db.get_zone_distribution(ticker, CANONICAL_TIMEFRAME)
 

@@ -25,12 +25,19 @@ router = APIRouter()
 def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
                limit: int = Query(default=780, ge=1, le=3000)):
     """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts."""
-    from server import _candles_1m, get_db
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` tuple -- see logger.py's identical fix comment. The
+    # blanket import happens BEFORE the try/except below, so it would raise
+    # ImportError (when `_HAS_SIGNALS` is False) before that try/except -- this
+    # route's own designed "db unavailable" fallback -- ever runs. `import server as
+    # _server` defers resolution to the point of use, already inside the try.
+    import server as _server
+    from server import _candles_1m
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     import sqlite3 as _sq
     try:
-        db = get_db()
+        db = _server.get_db()
     except Exception:
         return JSONResponse({"ticker": tk, "bars": [], "error": "db unavailable"})
     con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
@@ -77,7 +84,12 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
 
     from math_exposure_core import compute_exposures_by_strike as _cebs
     from math_levels import compute_charm_by_strike as _ccs
-    from server import _charm_book_scope, _FORCES_CACHE, get_db, is_trading_day_et
+    # RC-REHAB-1 (route-extraction audit fix): `get_db` excluded from the eager
+    # `from server import (...)` tuple -- see get_bars1m's identical fix comment
+    # above for why the blanket import defeats this route's own try/except
+    # DB-failure fallback below.
+    import server as _server
+    from server import _charm_book_scope, _FORCES_CACHE, is_trading_day_et
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -87,7 +99,7 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "fewer than 2 banked wide captures for this ticker"}
     try:
-        db = get_db()
+        db = _server.get_db()
         con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
         try:
             # RC-193: pull a wider candidate window and keep only trading ET dates —
