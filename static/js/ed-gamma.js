@@ -261,6 +261,20 @@
   // the owner key by ticker lets EdStream's existing union mechanism (already built for
   // Strike Detail vs Heatmap coexistence) also keep distinct tickers' demand from
   // clobbering each other.
+  //
+  // Every call site passes `_pendingTicker` first, falling back to `surface.ticker` only
+  // when `_pendingTicker` is unset (CI E2E finding, 2026-09-21, caught by
+  // console-gamma-heatmap.spec.js's "view superseded" test): the ESTABLISHING call
+  // (inside renderSurface) originally keyed off `surface.ticker` -- the API response's
+  // OWN echoed identity -- while the LEAVING/SWITCHING call (inside load()) keys off
+  // `_pendingTicker` -- the REQUESTED ticker. These are the same value in the common case
+  // (the API echoes back whatever ticker it was asked for), but a fixture (or a real
+  // canonical-identity divergence, e.g. an alias resolving to a different echoed root) can
+  // make them differ -- and when they do, the leaving call clears a DIFFERENT owner key
+  // than the one demand was ever established under, so EdStream's union never actually
+  // changes and no new request is ever sent at all (not merely a wrong ownerKey string --
+  // a silently swallowed clear). `_pendingTicker` is the single source of truth every
+  // other call site in this module already keys off; establishing calls now match it.
   function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || 'SPY'); }
 
   // ---- render the grid from a canonical surface payload (no math) ----
@@ -280,7 +294,7 @@
       // contracts subscribed indefinitely. Every exit from this function states demand,
       // including "none" -- same discipline Strike Detail's renderStrike already applies.
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
-        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(surface && surface.ticker));
+        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || (surface && surface.ticker)));
       }
       ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from a prior available render
       // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
@@ -382,7 +396,7 @@
     if (filterMissing) {
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         ++_demandGen;
-        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(surface.ticker));
+        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || surface.ticker));
       }
       _demandStateByCol = {}; _demandSymbolsByCol = {};
       _lastSurface = surface;
@@ -489,7 +503,7 @@
     if (window.EdStream && window.EdStream.setAdditionalContracts) {
       var myDemandGen = ++_demandGen;
       demandedCols.forEach(function (c) { _demandStateByCol[c] = frontDemand.length ? 'pending' : 'none'; });
-      window.EdStream.setAdditionalContracts(frontDemand, _heatmapOwnerKey(surface.ticker)).then(function (res) {
+      window.EdStream.setAdditionalContracts(frontDemand, _heatmapOwnerKey(_pendingTicker || surface.ticker)).then(function (res) {
         if (myDemandGen !== _demandGen) return;   // superseded by a newer demand call
         if (!frontDemand.length) {
           demandedCols.forEach(function (c) { _demandStateByCol[c] = 'none'; });
