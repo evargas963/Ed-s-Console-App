@@ -31,7 +31,7 @@ def test_run_bundle_script_exists():
 
 @pytest.mark.skipif(
     not (ROOT / "data" / "movement_target_phase5_discrimination_v1.json").is_file(),
-    reason="evaluation JSON not generated in this workspace",
+    reason="PRODUCTION-DATA-ONLY: evaluation JSON not generated in this workspace",
 )
 def test_phase5_json_has_label_statistics_when_present():
     data = json.loads((ROOT / "data" / "movement_target_phase5_discrimination_v1.json").read_text(encoding="utf-8"))
@@ -42,6 +42,6 @@ def test_phase5_json_has_label_statistics_when_present():
 def test_json_no_invalid_nan_literals_in_phase6_sample():
     p = ROOT / "data" / "movement_target_phase6_edge_v1.json"
     if not p.is_file():
-        pytest.skip("phase6 json missing")
+        pytest.skip("PRODUCTION-DATA-ONLY: phase6 json missing")
     raw = p.read_text(encoding="utf-8")
     assert "NaN" not in raw

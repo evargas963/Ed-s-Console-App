@@ -84,10 +84,10 @@ def _numeric_leaves_from_chains(db: str, per_ticker: int = 40) -> dict[str, tupl
 def test_vendor_fields_covers_every_numeric_contract_leaf():
     db = _pick_db()
     if db is None:
-        pytest.skip("no snapshots DB present (CI); reconciliation guard runs where data exists")
+        pytest.skip("PRODUCTION-DATA-ONLY: no snapshots DB present (CI); reconciliation guard runs where data exists")
     counts = _numeric_leaves_from_chains(db)
     if not counts:
-        pytest.skip("no option chains found in snapshots DB")
+        pytest.skip("PRODUCTION-DATA-ONLY: no option chains found in snapshots DB")
     # a numeric leaf = key whose values are overwhelmingly numeric (>=10x non-numeric)
     numeric_leaves = {k for k, (num, nonnum) in counts.items() if num > 0 and num >= 10 * max(1, nonnum)}
     known = set(VENDOR_FIELDS) | set(EXCLUDED_NUMERIC_LEAVES)

@@ -93,7 +93,7 @@ def test_edge_validation_stub_fails_strict_alpha_same_as_always_long(tmp_path: P
     alpha claim when the model has produced no real edge over the naive always-long baseline."""
     db = Path(__file__).resolve().parents[1] / "data" / "calibration_accumulation_validation.db"
     if not db.is_file():
-        pytest.skip("run python -m calibration.run_production_accumulation_validation first")
+        pytest.skip("PRODUCTION-DATA-ONLY: run python -m calibration.run_production_accumulation_validation first")
     rep = analyze_edge(db)
     assert rep["pass_gates"]["aggregate_n_sufficient"] is True
     assert rep["pass_gates"]["ev_mean_actual_gt_mean_random_mix"] is True

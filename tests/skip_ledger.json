@@ -1,0 +1,12 @@
+[
+  {
+    "file": "tests/test_delta_adds_no_debt_v1.py",
+    "reason_contains": "this sandbox account cannot create symlinks",
+    "covered_elsewhere": "CI's ubuntu-latest runner can create symlinks; this test runs for real there. The skip is a local Windows-sandbox-account limitation only."
+  },
+  {
+    "file": "tests/test_ml_feature_schema_parity.py",
+    "reason_contains": "compound ablation survivors void",
+    "covered_elsewhere": "Self-aware staleness guard (compound_survivors_voided()): refuses to test against a stale ablation leaf manifest rather than reporting a false pass. Re-ablating the manifest un-skips it; this is not a coverage gap."
+  }
+]

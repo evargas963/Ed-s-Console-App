@@ -73,7 +73,7 @@ def test_production_db_has_governed_pred_1c_when_expected() -> None:
     Default/CI: a greenfield data/ed_console.db (schema only, or absent) skips this gate --
     file presence is not production history, and the operator runs the hard audit explicitly."""
     if not CANONICAL_DB.is_file():
-        pytest.skip("canonical DB not present in workspace")
+        pytest.skip("PRODUCTION-DATA-ONLY: canonical DB not present in workspace")
 
     n = _governed_pred_1c_count(CANONICAL_DB)
 
@@ -109,7 +109,7 @@ def test_freshest_snapshot_row_with_pred_1c_readable() -> None:
     ).fetchone()
     conn.close()
     if row is None:
-        pytest.skip("no governed pred_1c rows in local DB yet")
+        pytest.skip("PRODUCTION-DATA-ONLY: no governed pred_1c rows in local DB yet")
     assert all(x is not None for x in row[2:5])
 
 
@@ -119,7 +119,7 @@ def test_governed_pred_1c_subset_of_governed_total_on_current_schema() -> None:
     pred_1c predicate silently drifting apart (e.g. one gains a horizon column the other
     doesn't check), which no single-count smoke test can see."""
     if not CANONICAL_DB.is_file():
-        pytest.skip("canonical DB not present in workspace")
+        pytest.skip("PRODUCTION-DATA-ONLY: canonical DB not present in workspace")
     conn = sqlite3.connect(str(CANONICAL_DB))
     governed_predicate = """
         s.timeframe = '1m'
