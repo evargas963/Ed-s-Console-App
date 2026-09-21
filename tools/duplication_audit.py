@@ -62,6 +62,21 @@ class Finding:
 ACCEPTED: dict[str, str] = {
     "D-FILE:reports/daily_scoreboard/latest.html":
         "latest-pointer convention: a dated snapshot plus a stable filename",
+    # 2026-09-21: traced the full producer/consumer chain by hand (not a name-pattern
+    # guess). ONE producer -- call_engine.py:2090 `validation_summary=gate_result.get(
+    # "summary", "")`, the trade-validation gate's own computed text. Every other site is a
+    # plain carry of that same string, never a recompute: market_state.py:1575 onto
+    # MarketState, server.py (twice) into the live snapshots row, decision_record.py into
+    # production_decision_records (an explicitly IMMUTABLE audit-trail table, per its own
+    # module docstring: "for blind reconstruction"), calibration/writer.py into a
+    # calibration table (truncated to 2000 chars for storage, not re-derived). One producer,
+    # several consumers each persisting their own point-in-time copy for a genuinely
+    # different purpose (live state / immutable audit / calibration dataset) is the
+    # sanctioned RC-325 "consumer carries, never recomputes" shape, not a duplicated fact.
+    "D-DBCOL:validation_summary":
+        "one producer (call_engine.py gate_result.summary), traced end to end; every other "
+        "site carries the already-computed string into its own table for a distinct purpose "
+        "(live state, immutable decision audit, calibration) -- never recomputed",
 }
 
 
@@ -423,6 +438,27 @@ def scan_db_columns() -> list[Finding]:
     # only domain quantities matter; structural ids repeat by design
     STRUCTURAL = {"id", "rowid", "ts", "created_at", "updated_at", "symbol",
                   "ticker", "date", "session", "as_of", "source", "kind"}
+    # 2026-09-21: the flat STRUCTURAL set only matched the EXACT bare names above, so this
+    # repo's own real column-naming convention fell straight through it -- MEASURED: 12 of
+    # 27 "active" findings were timestamp columns spelled with this repo's actual _utc/_et/
+    # _recv qualifier suffixes (ts_utc, ts_et, ts_recv, date_et, created_at_utc,
+    # ingested_at_utc, fetched_at) or identity/foreign-key columns (decision_id, snapshot_id,
+    # execution_identity_sha256, release_id, git_sha) that link rows across related tables
+    # BY DESIGN, the same "structural, expected to repeat" class bare "id"/"ts" already get
+    # exempted for. Every table needs a timestamp; a foreign key is supposed to appear in
+    # both tables it joins. Neither is a duplicated FACT the way a re-derived domain value
+    # would be. Pattern-based (not a longer literal list) so a NEW column spelled with this
+    # repo's own naming convention is caught automatically, not missed until someone remembers
+    # to add it -- RC-72's own documented lesson about vocabulary-list exemptions.
+    _STRUCTURAL_TS_RE = re.compile(
+        r"^(\w+_)?(ts|date|time|created_at|updated_at|fetched_at|ingested_at|received_at)"
+        r"(_(utc|et|recv|local))?$")
+    _STRUCTURAL_ID_RE = re.compile(r"_(id|sha256|sha|uuid|hash)$")
+
+    def is_structural(col: str) -> bool:
+        return (col in STRUCTURAL or bool(_STRUCTURAL_TS_RE.match(col))
+                or bool(_STRUCTURAL_ID_RE.search(col)))
+
     MIRROR = ("_staging", "_quarantine", "_archive", "_backup", "_tmp", "_new")
 
     def is_mirror_set(tables: set[str]) -> bool:
@@ -445,7 +481,7 @@ def scan_db_columns() -> list[Finding]:
 
     out = []
     for col, tables in sorted(cols.items()):
-        if len(tables) < 2 or col in STRUCTURAL:
+        if len(tables) < 2 or is_structural(col):
             continue
         f = Finding("D-DBCOL", f"D-DBCOL:{col}",
                     f"column {col!r} defined in {len(tables)} tables",
@@ -542,7 +578,15 @@ def main(argv: list[str] | None = None) -> int:
     findings: list[Finding] = []
     for kind in kinds:
         for f in SCANNERS[kind]():
-            f.accepted = ACCEPTED.get(f.ident, "")
+            # 2026-09-21: this used to be an unconditional `f.accepted = ACCEPTED.get(...)`,
+            # which REPLACED whatever reasoning the scanner itself had already set -- MEASURED:
+            # scan_db_columns()'s own mirror-set exemption (a real docstring, a real algorithm,
+            # 9 correct findings on this tree) was silently discarded on every real CLI run,
+            # because none of its idents are keys in the global ACCEPTED dict. An inert
+            # instrument that LOOKS like it fires is the exact RC-76/84/87/90 class this repo
+            # has already been bitten by. A scanner's own reason now wins; ACCEPTED only fills
+            # in when the scanner did not already give one.
+            f.accepted = f.accepted or ACCEPTED.get(f.ident, "")
             findings.append(f)
 
     live = [f for f in findings if not f.accepted]
