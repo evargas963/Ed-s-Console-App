@@ -167,6 +167,154 @@ def test_a_batch_with_one_qualifying_row_among_several_reports_that_rows_ts(tmp_
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# _prefetch_option_l1_batch (2026-09-21, live-RTH finding): _feed_loop used to call
+# _replay_option_contract_rows once per desired contract, each issuing its OWN SQL query --
+# MEASURED against the live production capture DB: 1.55s for 910 contracts, already 3x the
+# 0.5s poll interval, and the live server's own gamma-surface age_sec climbed past 70s with
+# zero cells reaching 'live' state despite abundant fresh Schwab data (902/910 META contracts
+# ticked within the prior 30 seconds). These tests prove the batched replacement is correct
+# (same rows delivered, same semantics) AND that it is actually O(1) queries, not O(N), at a
+# realistic scale -- a call-count assertion, not merely "the new code runs".
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _counting_execute(con):
+    """List of every SQL statement text con actually runs from this point on.
+    sqlite3.Connection.execute is a read-only C-level attribute (cannot be monkeypatched
+    directly on the instance) -- set_trace_callback is the sanctioned way to observe every
+    statement a connection executes, including ones issued via cursor.execute internally."""
+    calls: list = []
+    con.set_trace_callback(lambda sql: calls.append(sql))
+    return calls
+
+
+def test_prefetch_batch_returns_new_rows_for_two_symbols_in_one_query(tmp_path, monkeypatch):
+    other = "QQQ   260820C00500000"
+    db = _reset(tmp_path, monkeypatch)
+    now = time.time()
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=now - 1.0)
+    _write_option_l1_row(db, other, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.02), ts_recv=now - 1.0)
+    con = ofs._open_capture_db_readonly(db)
+    # seed both cursors as if each had already been replayed once, at an EARLIER (but still
+    # recent, within OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC) ts_recv -- a hardcoded historical
+    # constant here would be a real-clock/test-fixture mismatch, since the batch floor is
+    # computed against actual wall-clock time.time(), not any fixture-relative concept.
+    ofs._option_l1_cursor[_SPY_CONTRACT] = (now - 5.0, 0)
+    ofs._option_l1_cursor[other] = (now - 5.0, 0)
+    calls = _counting_execute(con)
+    out = ofs._prefetch_option_l1_batch(con, [_SPY_CONTRACT, other])
+    con.close()
+    assert len(calls) == 1, "one shared query must cover both symbols, not one query each"
+    assert len(out[_SPY_CONTRACT]) == 1 and out[_SPY_CONTRACT][0][1] == now - 1.0
+    assert len(out[other]) == 1 and out[other][0][1] == now - 1.0
+
+
+def test_prefetch_batch_excludes_symbols_with_no_cursor_yet(tmp_path, monkeypatch):
+    """A symbol on its first tick (never replayed before) has no cursor -- it must be
+    entirely ABSENT from the returned dict (not an empty list), so the caller correctly
+    falls back to _replay_option_contract_rows's own snapshot-tail query for it, instead of
+    treating 'never checked' as 'checked, nothing new'."""
+    db = _reset(tmp_path, monkeypatch)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=1700000000.0)
+    con = ofs._open_capture_db_readonly(db)
+    out = ofs._prefetch_option_l1_batch(con, [_SPY_CONTRACT])
+    con.close()
+    assert _SPY_CONTRACT not in out
+
+
+def test_prefetch_batch_excludes_far_behind_stragglers_from_the_shared_floor(tmp_path, monkeypatch):
+    """A symbol whose cursor is older than OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC (e.g. cursor
+    (0.0, 0) from a first-tick snapshot that found zero rows) must not drag the shared
+    query's floor back to epoch for every OTHER symbol in the batch -- it is excluded from
+    the batch instead, left for its own per-symbol catch-up."""
+    other = "QQQ   260820C00500000"
+    db = _reset(tmp_path, monkeypatch)
+    now = time.time()
+    _write_option_l1_row(db, other, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.02), ts_recv=now - 1.0)
+    con = ofs._open_capture_db_readonly(db)
+    ofs._option_l1_cursor[_SPY_CONTRACT] = (0.0, 0)   # straggler: never ticked, epoch cursor
+    ofs._option_l1_cursor[other] = (now - 5.0, 0)      # normal, recent cursor
+    calls = _counting_execute(con)
+    out = ofs._prefetch_option_l1_batch(con, [_SPY_CONTRACT, other])
+    con.close()
+    assert _SPY_CONTRACT not in out, "the straggler must be excluded, not included with []"
+    assert other in out and len(out[other]) == 1
+    # the shared query's floor must be bounded near `other`'s cursor, not epoch -- confirmed
+    # indirectly: exactly one query ran and it found other's row (a floor of 0.0 would still
+    # find it, but would also mean scanning from epoch across the whole table for every
+    # batched symbol, which this exclusion prevents happening at all for the straggler)
+    assert len(calls) == 1
+
+
+def test_prefetch_batch_at_realistic_scale_is_one_query_not_n(tmp_path, monkeypatch):
+    """Direct regression lock against the measured live defect: at N=900 desired contracts
+    (RC-UI-3's uncapped 'additional contracts' mandate, the real scale that broke this),
+    the batched prefetch must issue exactly ONE query, not up to 900."""
+    db = _reset(tmp_path, monkeypatch)
+    now = time.time()
+    symbols = [f"META  260820C{700000 + i:08d}" for i in range(900)]
+    for i, sym in enumerate(symbols):
+        _write_option_l1_row(db, sym, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=now - 1.0)
+        ofs._option_l1_cursor[sym] = (now - 5.0, 0)
+    con = ofs._open_capture_db_readonly(db)
+    calls = _counting_execute(con)
+    out = ofs._prefetch_option_l1_batch(con, symbols)
+    con.close()
+    assert len(calls) == 1, f"expected 1 query for 900 symbols, got {len(calls)}"
+    assert len(out) == 900
+    assert all(len(rows) == 1 for rows in out.values()), "every symbol's new row must be delivered"
+
+
+def test_replay_uses_prefetched_l1_verbatim_and_issues_no_l1_query(tmp_path, monkeypatch):
+    """When prefetched_l1 is given, _replay_option_contract_rows must use it directly instead
+    of running its own per-symbol L1 query -- the whole point of the batched prefetch."""
+    db = _reset(tmp_path, monkeypatch)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.07), ts_recv=1700000005.0)
+    con = ofs._open_capture_db_readonly(db)
+    ofs._option_l1_cursor[_SPY_CONTRACT] = (1700000000.0, 0)   # already known, not first-tick
+    row = con.execute(
+        "SELECT rowid, ts_recv, native_json FROM stream_options_quotes_raw WHERE symbol = ?",
+        (_SPY_CONTRACT,)).fetchall()
+    calls = _counting_execute(con)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT, prefetched_l1=row)
+    l1_queries = [c for c in calls if "stream_options_quotes_raw" in c]
+    con.close()
+    assert not l1_queries, "prefetched_l1 must be used verbatim, no separate L1 query issued"
+    assert result == 1700000005.0
+    assert ofls.get_stream_greeks(_SPY_CONTRACT)["gamma"] == 0.07
+
+
+def test_replay_prefetched_empty_list_means_checked_nothing_new_not_a_requery(tmp_path, monkeypatch):
+    """An explicit [] from the batch (this symbol WAS checked, nothing qualified) must be
+    honored as-is, never triggering a second, redundant per-symbol query."""
+    db = _reset(tmp_path, monkeypatch)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.09), ts_recv=1700000005.0)
+    con = ofs._open_capture_db_readonly(db)
+    ofs._option_l1_cursor[_SPY_CONTRACT] = (1700000000.0, 0)
+    calls = _counting_execute(con)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT, prefetched_l1=[])
+    l1_queries = [c for c in calls if "stream_options_quotes_raw" in c]
+    con.close()
+    assert not l1_queries
+    assert result is None
+    # the real row (gamma=0.09) must NOT have been picked up -- an empty prefetch is honored,
+    # not silently bypassed by a fallback query that would have found it
+    assert "gamma" not in (ofls.get_stream_greeks(_SPY_CONTRACT) or {})
+
+
+def test_replay_with_no_prefetched_l1_falls_back_to_the_original_per_symbol_query(tmp_path, monkeypatch):
+    """prefetched_l1=None (the default) must preserve the exact original behavior -- every
+    existing direct caller of this function (including every test above it in this file) is
+    unaffected by the batched prefetch's existence."""
+    db = _reset(tmp_path, monkeypatch)
+    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.11), ts_recv=1700000005.0)
+    con = ofs._open_capture_db_readonly(db)
+    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
+    con.close()
+    assert result == 1700000005.0
+    assert ofls.get_stream_greeks(_SPY_CONTRACT)["gamma"] == 0.11
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Independent-review finding (2026-09-12), performance-assurance critique: the coalescing
 # fix above was justified in comments by a fixed "~3.1s per call, 9.3s for three calls"
 # figure, with no reproducible benchmark in the repo to back it, and the tests above only
@@ -384,8 +532,8 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
         replayed = []
         real_replay = ofs._replay_option_contract_rows
 
-        def _spy_replay(con, sym):
-            result = real_replay(con, sym)
+        def _spy_replay(con, sym, **kwargs):
+            result = real_replay(con, sym, **kwargs)
             replayed.append(sym)
             return result
         monkeypatch.setattr(ofs, "_replay_option_contract_rows", _spy_replay)
@@ -548,8 +696,8 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
         replayed = []
         real_replay = ofs._replay_option_contract_rows
 
-        def _spy_replay(con, sym):
-            result = real_replay(con, sym)
+        def _spy_replay(con, sym, **kwargs):
+            result = real_replay(con, sym, **kwargs)
             replayed.append(sym)
             return result
         monkeypatch.setattr(ofs, "_replay_option_contract_rows", _spy_replay)
@@ -679,8 +827,8 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
         replayed = []
         real_replay = ofs._replay_option_contract_rows
 
-        def _spy_replay(con, sym):
-            result = real_replay(con, sym)
+        def _spy_replay(con, sym, **kwargs):
+            result = real_replay(con, sym, **kwargs)
             replayed.append(sym)
             return result
         monkeypatch.setattr(ofs, "_replay_option_contract_rows", _spy_replay)
@@ -778,8 +926,8 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
         replayed = []
         real_replay = ofs._replay_option_contract_rows
 
-        def _spy_replay(con, sym):
-            result = real_replay(con, sym)
+        def _spy_replay(con, sym, **kwargs):
+            result = real_replay(con, sym, **kwargs)
             replayed.append(sym)
             return result
         monkeypatch.setattr(ofs, "_replay_option_contract_rows", _spy_replay)
