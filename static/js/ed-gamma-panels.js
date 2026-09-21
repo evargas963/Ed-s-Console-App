@@ -77,9 +77,16 @@
     : { trigger: function () { loadLevelsImpl(ticker()); }, reset: function () {} };
   function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d) {
-    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];   // klPcr: analytics plane, own reader below
+    // klPcr: analytics plane, own reader below. 2026-09-21 field audit: these fields were
+    // already computed and already served by THIS SAME /api/terrain response (confirmed
+    // against the live network payload) but never bound to the DOM -- the compute cost and
+    // test coverage were real, the render was not. No new endpoint, no new computation.
+    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klMaxPain', 'klPin',
+      'klVannaAgg', 'klCharmWalls', 'klGsf', 'klGrc', 'klDeltaWalls', 'klKeyDeltaStrike',
+      'klBookOi', 'klZeroDte', 'klRr25', 'klDexNet', 'klImpliedMove', 'klNet', 'klRegime'];
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
+      txt('klPinBlockers', ''); txt('klGsfState', '');
       txt('klSrc', d && d.error ? 'terrain not ready' : 'offline');
       return;
     }
@@ -89,6 +96,31 @@
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));
     txt('klPeak', px(d.net_gex_peak));
+    txt('klMaxPain', px(d.max_pain));
+    // Pin candidate is absolute_gamma_strike PUBLISHED as a pin claim only once it clears
+    // regime/proximity/DTE qualification (RC-292) -- distinct from the raw klAbs strike above,
+    // which shows regardless of qualification. None + blockers discloses WHY, not just that.
+    txt('klPin', px(d.pin_candidate));
+    var blockers = Array.isArray(d.pin_candidate_blockers) ? d.pin_candidate_blockers : [];
+    txt('klPinBlockers', (d.pin_candidate == null && blockers.length) ? ' (' + blockers.join(', ') + ')' : '');
+    var vanna = d.vanna_agg || {};
+    txt('klVannaAgg', vanna.net_vanna_dollars_per_volpt == null ? '—' : usd(vanna.net_vanna_dollars_per_volpt));
+    var cw = px(d.call_charm_wall), pw = px(d.put_charm_wall);
+    txt('klCharmWalls', (cw === '—' && pw === '—') ? '—' : (cw + ' / ' + pw));
+    txt('klGsf', px(d.gsf));
+    txt('klGsfState', d.gsf_state === 'BELOW_SUPPORT' ? ' (BELOW SUPPORT)' : '');
+    txt('klGrc', px(d.grc));
+    var cdw = px(d.call_delta_wall), pdw = px(d.put_delta_wall);
+    txt('klDeltaWalls', (cdw === '—' && pdw === '—') ? '—' : (cdw + ' / ' + pdw));
+    txt('klKeyDeltaStrike', px(d.key_delta_strike));
+    txt('klBookOi', d.book_oi_total == null ? '—' : fmtVol(d.book_oi_total));
+    txt('klZeroDte', d.zero_dte_gamma_share_pct == null ? '—' : Number(d.zero_dte_gamma_share_pct).toFixed(1) + '%');
+    var rr = d.rr_25d || {};
+    txt('klRr25', rr.rr_pts == null ? '—' : (Number(rr.rr_pts) >= 0 ? '+' : '') + Number(rr.rr_pts).toFixed(2) + ' pts (' + rr.dte + 'd)');
+    var dex = d.dex_dollars || {};
+    txt('klDexNet', dex.net_dex == null ? '—' : usd(dex.net_dex));
+    var em = d.implied_1d_move || {};
+    txt('klImpliedMove', em.points == null ? '—' : '±' + Number(em.points).toFixed(2));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)
     var net = document.getElementById('klNet');
     if (net) {
