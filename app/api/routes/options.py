@@ -259,7 +259,15 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
             # reads surface.reason for the placeholder message; reusing it here means the
             # existing frontend contract picks this up with no client-side change required.
-            "reason": None if _gamma_available else surf.get("gamma_unavailable_reason"),
+            # Acceptance-test fix (2026-09-20): every real producer sets gamma_available and
+            # gamma_unavailable_reason together (_gamma_surface_unavailable_reason) -- so
+            # `"gamma_available" not in surf` means the SAME malformed/incomplete surface the
+            # fail-closed default above already detected, and surf.get("gamma_unavailable_reason")
+            # would silently read back None instead of naming what actually happened.
+            "reason": None if _gamma_available else (
+                surf.get("gamma_unavailable_reason") if "gamma_available" in surf
+                else "surface incomplete or malformed: no availability signal was computed this cycle"
+            ),
             "source": "terrain_live_cache", "live": True, "stale": stale,
             "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
             "stream_coverage": _coverage,
