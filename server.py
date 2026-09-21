@@ -12009,41 +12009,59 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     # Explicit literal assignments, deliberately not a loop: the orphan-key detector (RC-84)
     # counts literal write sites, and a loop-driven write made three honest reads look
     # writerless. Verbosity is the price of a detector that can actually see the writer.
+    # NAMING CONSOLIDATION (2026-09-21): a field audit found _fetch_state's payload and
+    # /api/terrain's own response independently re-serializing the SAME terrain-cache values
+    # under DIFFERENT names (kl_gsf vs gsf; kl_dex_net vs net_dex, word order flipped;
+    # kl_zero_dte_share vs zero_dte_gamma_share_pct, abbreviated) with nothing keeping the two
+    # in sync -- which is exactly why the UI wiring this same audit did (Key Levels panel)
+    # took real investigation to trace, per field, instead of being a literal string match.
+    # `absolute_gamma_strike` (RC-292/RC-417, below) already established the right pattern
+    # once, with its own comment explaining why: keep this payload's own kl_-prefixed
+    # convention, AND carry the source's own bare name verbatim beside it, so a reader (or a
+    # script) checking "does ms_dict have what /api/terrain calls X" is a literal key lookup
+    # forever, not a re-investigation. Applied here to every OTHER direct, untransformed
+    # terrain value in this block. Three fields (kl_hvl, kl_gamma_flip_confidence,
+    # kl_levels_from_computed_ts) keep ONLY their kl_ name deliberately -- each has its own
+    # comment explaining a real, reviewed reason (a historical relabel, or disambiguating a
+    # vaguer terrain-side name); left untouched, not overlooked. Destructured sub-fields
+    # (kl_rr25_pts/dte, kl_doi_*) carry the whole source dict too (rr_25d, delta_oi_walls)
+    # rather than one alias per flattened leaf.
     _g = (lambda k: t.get(k)) if fresh else (lambda k: None)
-    md["kl_call_gamma_wall"] = _g("call_wall")
-    md["kl_put_gamma_wall"] = _g("put_wall")
-    md["kl_gamma_flip"] = _g("gamma_flip")
-    md["kl_absolute_gamma_strike"] = _g("absolute_gamma_strike")
-    md["kl_absolute_gamma_strength_pct"] = _g("absolute_gamma_strength_pct")
-    # RC-292 operator disposition: the pin CLAIM ships only after regime/proximity/DTE/
-    # liquidity/completeness qualification (terrain_engine.qualify_pin_candidate); the
-    # blocker names ship beside it so absence renders with its reason, never a bare dash.
-    md["kl_pin_candidate"] = _g("pin_candidate")
-    md["kl_pin_candidate_blockers"] = _g("pin_candidate_blockers")
+    md["kl_call_gamma_wall"] = md["call_wall"] = _g("call_wall")
+    md["kl_put_gamma_wall"] = md["put_wall"] = _g("put_wall")
+    md["kl_gamma_flip"] = md["gamma_flip"] = _g("gamma_flip")
     # RC-292/RC-417: payload `absolute_gamma_strike` is the same SSOT total-gamma value as
     # kl_absolute_gamma_strike (top-level key kept so the terrain- and analytics-payload
     # shapes agree, and so any resurrected analytics writer of this name is overwritten by
     # the SSOT here). Analytics consensus_summary.net_gex_peak is pick_net_gex_peak_strike
     # (selected-expiry |net GEX$| peak) and must never occupy this key. MEASURED on the
     # real SPY 0DTE fixture: total-gamma concentration 745 vs net peak 743.
-    md["absolute_gamma_strike"] = md["kl_absolute_gamma_strike"]
+    md["kl_absolute_gamma_strike"] = md["absolute_gamma_strike"] = _g("absolute_gamma_strike")
+    md["kl_absolute_gamma_strength_pct"] = md["absolute_gamma_strength_pct"] = _g("absolute_gamma_strength_pct")
+    # RC-292 operator disposition: the pin CLAIM ships only after regime/proximity/DTE/
+    # liquidity/completeness qualification (terrain_engine.qualify_pin_candidate); the
+    # blocker names ship beside it so absence renders with its reason, never a bare dash.
+    md["kl_pin_candidate"] = md["pin_candidate"] = _g("pin_candidate")
+    md["kl_pin_candidate_blockers"] = md["pin_candidate_blockers"] = _g("pin_candidate_blockers")
     md["kl_hvl"] = _g("net_gex_peak")
     # RC-354: GSF/GRC ride the same SSOT terrain book (one profile, one producer). The
     # STATE ships beside the prices so the UI can render BELOW SUPPORT as a verdict, never
     # a dash that reads like "unknown" when the truth is "support is already gone".
-    md["kl_gsf"] = _g("gsf")
-    md["kl_grc"] = _g("grc")
-    md["kl_gsf_state"] = _g("gsf_state")
+    md["kl_gsf"] = md["gsf"] = _g("gsf")
+    md["kl_grc"] = md["grc"] = _g("grc")
+    md["kl_gsf_state"] = md["gsf_state"] = _g("gsf_state")
     md["kl_gsf_state_disp"] = "BELOW SUPPORT" if _g("gsf_state") == "BELOW_SUPPORT" else None
     # RC-357: 0DTE share of the gamma book — level persistence, same SSOT terrain book.
-    md["kl_zero_dte_share"] = _g("zero_dte_gamma_share_pct")
+    md["kl_zero_dte_share"] = md["zero_dte_gamma_share_pct"] = _g("zero_dte_gamma_share_pct")
     # RC-358: 25Δ risk reversal — skew steepness; flattened for the payload, fail-closed.
     _rr = _g("rr_25d") or {}
+    md["rr_25d"] = _rr
     md["kl_rr25_pts"] = _rr.get("rr_pts") if isinstance(_rr, dict) else None
     md["kl_rr25_dte"] = _rr.get("dte") if isinstance(_rr, dict) else None
     # RC-359: ΔOI walls — fresh vs stale positioning; None until two sessions are banked.
     _doi = _g("delta_oi_walls") or {}
     _doi_ok = isinstance(_doi, dict)
+    md["delta_oi_walls"] = _doi
     md["kl_doi_call_strike"] = _doi.get("call_build_strike") if _doi_ok else None
     md["kl_doi_call_oi"] = _doi.get("call_build_doi") if _doi_ok else None
     md["kl_doi_put_strike"] = _doi.get("put_build_strike") if _doi_ok else None
@@ -12052,21 +12070,23 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     md["kl_doi_unwind_oi"] = _doi.get("unwind_doi") if _doi_ok else None
     # RC-361: aggregate dealer DEX $ — directional inventory beside the GEX-per-1% row.
     _dex = _g("dex_dollars") or {}
+    md["dex_dollars"] = _dex
     md["kl_dex_net"] = _dex.get("net_dex") if isinstance(_dex, dict) else None
     # RC-362: aggregate dealer vanna $ per vol-pt — the IV-driven hedge-flow size.
     _vna = _g("vanna_agg") or {}
+    md["vanna_agg"] = _vna
     md["kl_vanna_net_dollars"] = _vna.get("net_vanna_dollars_per_volpt") if isinstance(_vna, dict) else None
-    md["kl_max_pain"] = _g("max_pain")
-    md["kl_call_delta_wall"] = _g("call_delta_wall")
-    md["kl_put_delta_wall"] = _g("put_delta_wall")
+    md["kl_max_pain"] = md["max_pain"] = _g("max_pain")
+    md["kl_call_delta_wall"] = md["call_delta_wall"] = _g("call_delta_wall")
+    md["kl_put_delta_wall"] = md["put_delta_wall"] = _g("put_delta_wall")
     # v23: the flip's CONFIDENCE rides the same book as the flip's STRIKE — it was still
     # analytics-written while the strike was terrain's, a half-dual book.
     md["kl_gamma_flip_confidence"] = _g("confidence")
     # RC-130: the geometry state travels WITH the wall value it qualifies — as of the same
     # terrain generation (kl_levels_from_computed_ts). A wall value without its state let
     # the KL table caption "support" on a put wall sitting above spot.
-    md["kl_call_wall_state"] = _g("call_wall_state")
-    md["kl_put_wall_state"] = _g("put_wall_state")
+    md["kl_call_wall_state"] = md["call_wall_state"] = _g("call_wall_state")
+    md["kl_put_wall_state"] = md["put_wall_state"] = _g("put_wall_state")
     # v23 Lock-3 drift visibility: which terrain generation stamped these values — the KL
     # table and the terrain cards can only differ by generation skew, and now it is visible.
     md["kl_levels_from_computed_ts"] = _g("computed_ts_utc")

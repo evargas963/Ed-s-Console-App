@@ -202,6 +202,60 @@ def test_absent_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
     assert "withheld" in md["kl_levels_source"]
 
 
+def test_fresh_terrain_also_writes_the_bare_terrain_name_beside_the_kl_prefix(monkeypatch):
+    """NAMING CONSOLIDATION (2026-09-21): a field audit found _fetch_state's payload
+    re-serializing terrain-cache values under invented names (kl_gsf vs /api/terrain's own
+    'gsf', kl_dex_net vs 'net_dex' reversed) with nothing keeping the two in sync -- which
+    was the actual reason those fields took real investigation to trace instead of a literal
+    string match. ms_dict must now carry BOTH the kl_-prefixed name (payload convention) and
+    the source's own bare name (so "does ms_dict have what /api/terrain calls X" is a literal
+    key lookup), for every direct, untransformed terrain value."""
+    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
+                   "absolute_gamma_strike": 741.0, "absolute_gamma_strength_pct": 32.5,
+                   "pin_candidate": 741.0, "pin_candidate_blockers": [],
+                   "net_gex_peak": 735.0, "max_pain": 742.0,
+                   "gsf": 730.0, "grc": 752.0, "gsf_state": "TRUSTED",
+                   "zero_dte_gamma_share_pct": 18.5,
+                   "call_delta_wall": 748.0, "put_delta_wall": 738.0,
+                   "call_wall_state": "TRUSTED", "put_wall_state": "TRUSTED",
+                   "rr_25d": {"rr_pts": -1.2, "dte": 5},
+                   "delta_oi_walls": {"call_build_strike": 750.0},
+                   "dex_dollars": {"net_dex": 1_200_000.0},
+                   "vanna_agg": {"net_vanna_dollars_per_volpt": -300_000.0},
+                   "levels_stale": False}, monkeypatch)
+    # bare aliases match /api/terrain's own field names exactly, and equal their kl_ sibling
+    for bare, kl in (
+        ("call_wall", "kl_call_gamma_wall"), ("put_wall", "kl_put_gamma_wall"),
+        ("gamma_flip", "kl_gamma_flip"), ("absolute_gamma_strike", "kl_absolute_gamma_strike"),
+        ("absolute_gamma_strength_pct", "kl_absolute_gamma_strength_pct"),
+        ("pin_candidate", "kl_pin_candidate"),
+        ("pin_candidate_blockers", "kl_pin_candidate_blockers"),
+        ("gsf", "kl_gsf"), ("grc", "kl_grc"), ("gsf_state", "kl_gsf_state"),
+        ("zero_dte_gamma_share_pct", "kl_zero_dte_share"),
+        ("max_pain", "kl_max_pain"),
+        ("call_delta_wall", "kl_call_delta_wall"), ("put_delta_wall", "kl_put_delta_wall"),
+        ("call_wall_state", "kl_call_wall_state"), ("put_wall_state", "kl_put_wall_state"),
+    ):
+        assert bare in md, f"bare alias {bare!r} is missing from the payload"
+        assert md[bare] == md[kl], f"{bare!r} disagrees with its own kl-prefixed sibling {kl!r}"
+    # whole nested source dicts also carry their own bare name, not just a flattened leaf
+    assert md["rr_25d"] == {"rr_pts": -1.2, "dte": 5}
+    assert md["delta_oi_walls"] == {"call_build_strike": 750.0}
+    assert md["dex_dollars"] == {"net_dex": 1_200_000.0}
+    assert md["vanna_agg"] == {"net_vanna_dollars_per_volpt": -300_000.0}
+
+
+def test_stale_terrain_blanks_the_bare_aliases_too(monkeypatch):
+    """The bare-name aliases share the SAME _g() fail-closed accessor as their kl_-prefixed
+    sibling -- a stale terrain cache must blank both, not leak a value through the new name."""
+    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gsf": 730.0, "grc": 752.0,
+                   "levels_stale": True}, monkeypatch)
+    for bare in ("call_wall", "put_wall", "gamma_flip", "absolute_gamma_strike",
+                 "pin_candidate", "gsf", "grc", "gsf_state", "max_pain",
+                 "call_delta_wall", "put_delta_wall", "call_wall_state", "put_wall_state"):
+        assert md.get(bare) is None, f"{bare!r} survived a stale terrain via its bare alias"
+
+
 def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
     """RC-292: analytics net-GEX peak (743 on the SPY 0DTE fixture) must not survive overlay.
 
