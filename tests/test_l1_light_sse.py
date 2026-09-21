@@ -132,8 +132,9 @@ def test_fanout_only_matching_scope():
 
 def test_light_stream_route_registered():
     import server as srv
+    from tests.conftest import all_registered_route_paths
 
-    paths = [getattr(r, "path", "") for r in srv.app.routes if hasattr(r, "path")]
+    paths = all_registered_route_paths(srv.app.routes)
     assert "/api/analytics/light/stream" in paths
 
 

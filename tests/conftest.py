@@ -322,6 +322,31 @@ def most_recent_completed_session_et() -> date:
     return day
 
 
+def all_registered_route_paths(routes) -> list[str]:
+    """Every registered path on `app.routes`, including ones added via `include_router`.
+
+    2026-09-21: a newer FastAPI/Starlette wraps each `app.include_router(...)` call's
+    routes in a `fastapi.routing._IncludedRouter` object that has no `.path` attribute of
+    its own -- only the app's OWN top-level routes (openapi/docs/redoc, static mounts) do.
+    Three tests independently wrote `[getattr(r, "path", "") for r in app.routes if
+    hasattr(r, "path")]`, which silently filtered out every route this app actually
+    registers through the 20 `include_router` calls in server.py -- MEASURED: 93 real
+    paths exist, that filter sees 6. The real object is recoverable via
+    `route.original_router.routes`, which is what this walks recursively (so a router
+    nested inside another router, if that shape is ever introduced, is still found).
+    """
+    out: list[str] = []
+    for r in routes:
+        path = getattr(r, "path", None)
+        if path is not None:
+            out.append(path)
+            continue
+        original = getattr(r, "original_router", None)
+        if original is not None and hasattr(original, "routes"):
+            out.extend(all_registered_route_paths(original.routes))
+    return out
+
+
 @pytest.fixture
 def fresh_ablation_static_lock_index():
     """Opt-in reset for tests that mutate manifest/DB/spec inputs or fake the index builder."""
