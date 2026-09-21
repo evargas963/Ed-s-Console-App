@@ -250,6 +250,19 @@
     }
   }
 
+  // Every heatmap streamed-contract demand call below is keyed 'heatmap:<ticker>', not a
+  // single shared 'heatmap' slot (2026-09-21, universal-ticker-scope fix, operator mandate:
+  // "all tickers need to work... we are ticker agnostic... everything needs to work
+  // universally"). Before this, EVERY ticker's heatmap demand shared one owner key in
+  // EdStream's union (see ed-stream.js _additionalDemandByOwner), so viewing ticker B's
+  // heatmap silently overwrote ticker A's still-legitimate streamed-contract demand --
+  // reproduced live: after switching to META, SPY's gamma-surface showed 0/1330 cells with
+  // any stream freshness and fell back to a 4.8-day-old banked morning reference. Scoping
+  // the owner key by ticker lets EdStream's existing union mechanism (already built for
+  // Strike Detail vs Heatmap coexistence) also keep distinct tickers' demand from
+  // clobbering each other.
+  function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || 'SPY'); }
+
   // ---- render the grid from a canonical surface payload (no math) ----
   function renderSurface(host, surface) {
     // Independent-review finding (2026-09-12, state-authority review): "actual Schwab
@@ -267,7 +280,7 @@
       // contracts subscribed indefinitely. Every exit from this function states demand,
       // including "none" -- same discipline Strike Detail's renderStrike already applies.
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
-        window.EdStream.setAdditionalContracts([], 'heatmap');
+        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(surface && surface.ticker));
       }
       ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from a prior available render
       // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
@@ -369,7 +382,7 @@
     if (filterMissing) {
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         ++_demandGen;
-        window.EdStream.setAdditionalContracts([], 'heatmap');
+        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(surface.ticker));
       }
       _demandStateByCol = {}; _demandSymbolsByCol = {};
       _lastSurface = surface;
@@ -476,7 +489,7 @@
     if (window.EdStream && window.EdStream.setAdditionalContracts) {
       var myDemandGen = ++_demandGen;
       demandedCols.forEach(function (c) { _demandStateByCol[c] = frontDemand.length ? 'pending' : 'none'; });
-      window.EdStream.setAdditionalContracts(frontDemand, 'heatmap').then(function (res) {
+      window.EdStream.setAdditionalContracts(frontDemand, _heatmapOwnerKey(surface.ticker)).then(function (res) {
         if (myDemandGen !== _demandGen) return;   // superseded by a newer demand call
         if (!frontDemand.length) {
           demandedCols.forEach(function (c) { _demandStateByCol[c] = 'none'; });
@@ -972,7 +985,7 @@
       .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;   // superseded by a newer ticker -- that load renders instead
-        if (stillCurrent(ticker)) renderSurface(host, { available: false, reason: 'no console serving /api/options/gamma-surface' });
+        if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: 'no console serving /api/options/gamma-surface' });
       });
   }
   var _pendingTicker = null;
@@ -984,16 +997,27 @@
     if (!host) return;
     var st = (window.EdShell && window.EdShell.getState()) || {};
     if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
-      // Leaving the heatmap: its own streamed-contract demand (see renderSurface) must not
-      // keep the last-viewed ticker's contracts subscribed forever once nobody is looking.
-      // Runs immediately -- never coalesced behind an in-flight/hung surface fetch.
+      // Leaving the heatmap: clear demand for whichever ticker was last shown HERE
+      // specifically (never any other ticker's demand -- see _heatmapOwnerKey). Runs
+      // immediately -- never coalesced behind an in-flight/hung surface fetch.
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
-        window.EdStream.setAdditionalContracts([], 'heatmap');
+        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));
       }
       ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from the view just left
+      _pendingTicker = null;
       return;
     }
-    _pendingTicker = st.ticker || 'SPY';
+    var nextTicker = st.ticker || 'SPY';
+    if (_pendingTicker && _pendingTicker !== nextTicker
+        && window.EdStream && window.EdStream.setAdditionalContracts) {
+      // Switching ticker WITHIN the heatmap view: the ticker just left is no longer being
+      // watched here -- release its own demand (2026-09-21) so coverage does not grow
+      // unbounded across every ticker ever browsed to in one session; a different ticker
+      // still shown in another panel (Strike Detail, etc.) keeps its own separate owner key
+      // and is completely unaffected.
+      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));
+    }
+    _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);
   }
 

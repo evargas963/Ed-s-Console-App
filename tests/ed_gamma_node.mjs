@@ -120,4 +120,34 @@ G.renderSurface(host2, { ...surface, strikes: [100, 200, 300], cells: [
 const rowStrikes2 = [...host2.innerHTML.matchAll(/data-strike="(\d+)"/g)].map((m) => Number(m[1]));
 assert.deepStrictEqual(rowStrikes2, [300, 200, 100]);
 
+// ---- G: heatmap streamed-contract demand is keyed per ticker, never a single shared
+// 'heatmap' slot (2026-09-21, universal-ticker-scope fix). Reproduced live before this fix:
+// viewing META's heatmap silently evicted SPY's already-active option-contract streaming
+// (EdStream's union is keyed by ownerKey -- see ed-stream.js _additionalDemandByOwner --
+// and every ticker previously shared the literal string 'heatmap'). Proven here against the
+// REAL renderSurface, not source text: two different tickers' renders must produce two
+// DIFFERENT ownerKey strings, so EdStream unions them instead of one replacing the other.
+const demandCalls = [];
+global.window.EdStream = {
+  setAdditionalContracts: (symbols, ownerKey) => {
+    demandCalls.push({ symbols: symbols.slice(), ownerKey });
+    return Promise.resolve({ accepted: true, contracts: symbols });
+  },
+};
+const spySurface = { ...surface, ticker: 'SPY' };
+const metaSurface = { ...surface, ticker: 'META' };
+G.renderSurface(makeHost(), spySurface);
+G.renderSurface(makeHost(), metaSurface);
+const ownerKeys = demandCalls.map((c) => c.ownerKey);
+assert.ok(ownerKeys.some((k) => k === 'heatmap:SPY'), 'SPY render never demanded under heatmap:SPY');
+assert.ok(ownerKeys.some((k) => k === 'heatmap:META'), 'META render never demanded under heatmap:META');
+assert.strictEqual(new Set(ownerKeys).size > 1, true,
+  'SPY and META renders used the SAME ownerKey -- one ticker would silently evict the other');
+
+// an unavailable result for one ticker must clear ONLY that ticker's own slot
+demandCalls.length = 0;
+G.renderSurface(makeHost(), { available: false, ticker: 'SPY' });
+assert.deepStrictEqual(demandCalls, [{ symbols: [], ownerKey: 'heatmap:SPY' }],
+  'an unavailable SPY surface must clear heatmap:SPY only, not some other/shared key');
+
 console.log('ed_gamma: all assertions passed');
