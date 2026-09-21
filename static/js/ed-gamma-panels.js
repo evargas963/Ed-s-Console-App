@@ -83,7 +83,8 @@
     // test coverage were real, the render was not. No new endpoint, no new computation.
     var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klMaxPain', 'klPin',
       'klVannaAgg', 'klCharmWalls', 'klGsf', 'klGrc', 'klDeltaWalls', 'klKeyDeltaStrike',
-      'klBookOi', 'klZeroDte', 'klRr25', 'klDexNet', 'klImpliedMove', 'klNet', 'klRegime'];
+      'klBookOi', 'klDoiBuild', 'klDoiUnwind', 'klZeroDte', 'klRr25', 'klDexNet',
+      'klImpliedMove', 'klNet', 'klRegime'];
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
       txt('klPinBlockers', ''); txt('klGsfState', '');
@@ -114,6 +115,17 @@
     txt('klDeltaWalls', (cdw === '—' && pdw === '—') ? '—' : (cdw + ' / ' + pdw));
     txt('klKeyDeltaStrike', px(d.key_delta_strike));
     txt('klBookOi', d.book_oi_total == null ? '—' : fmtVol(d.book_oi_total));
+    // RC-359: overnight positioning BUILD (defend) vs UNWIND (fade), banked day-over-day from
+    // the same terrain exposures book (math_exposure_core.compute_delta_oi_walls). None on
+    // both sides means the diff cannot exist yet (only one session banked) -- shown honestly
+    // as "banking", never as a fabricated zero.
+    var doi = d.delta_oi_walls || {};
+    var doiCall = doi.call_build_strike == null ? null : px(doi.call_build_strike) + ' (' + fmtVol(doi.call_build_doi) + ')';
+    var doiPut = doi.put_build_strike == null ? null : px(doi.put_build_strike) + ' (' + fmtVol(doi.put_build_doi) + ')';
+    txt('klDoiBuild', (doiCall == null && doiPut == null) ? (d.delta_oi_walls ? '—' : 'banking') : (doiCall || '—') + ' / ' + (doiPut || '—'));
+    // unwind_doi is always <= 0 by contract (math_exposure_core.compute_delta_oi_walls); fmtVol
+    // strips sign via Math.abs, so the minus is restored explicitly rather than silently lost.
+    txt('klDoiUnwind', doi.unwind_strike == null ? (d.delta_oi_walls ? '—' : 'banking') : px(doi.unwind_strike) + ' (-' + fmtVol(doi.unwind_doi) + ')');
     txt('klZeroDte', d.zero_dte_gamma_share_pct == null ? '—' : Number(d.zero_dte_gamma_share_pct).toFixed(1) + '%');
     var rr = d.rr_25d || {};
     txt('klRr25', rr.rr_pts == null ? '—' : (Number(rr.rr_pts) >= 0 ? '+' : '') + Number(rr.rr_pts).toFixed(2) + ' pts (' + rr.dte + 'd)');
