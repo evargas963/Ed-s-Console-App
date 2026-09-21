@@ -86,6 +86,47 @@ def _run_inner(test_file: Path, watched: Path) -> subprocess.CompletedProcess[st
     )
 
 
+def _run_inner_with_crash_retry(
+    test_file: Path,
+    watched: Path,
+    bytes_before: bytes,
+    *,
+    unless_marker: str | None = None,
+) -> tuple[subprocess.CompletedProcess[str], str]:
+    """RC-565 follow-up (2026-09-18): under heavy `-n 8` load this inner subprocess's OWN
+    pytest collection can crash on unrelated cross-process filesystem noise (MEASURED: a
+    FileNotFoundError lstat-ing a temp directory that belongs to a DIFFERENT, unrelated
+    xdist worker's PID -- confirmed not a bug in either firewall layer, since it happens
+    before collection ever reaches the synthetic test). When that happens the inner run
+    never got a chance to exercise the real scenario at all, so retrying is honest: it is
+    not hiding a real firewall result, only re-attempting a run that never actually tested
+    anything. A genuine firewall result (the real scenario ran, whether it passed or failed
+    for its own reason) is never this signature and is never retried. `unless_marker`, when
+    given, is a second, stricter guard: a string that can ONLY appear once the real scenario
+    ran, so its presence rules out a crash-retry even if the collection-error text also
+    happens to appear somewhere in the same output. Shared by both layers below (this test
+    and `test_external_writer_is_detected_truncated_back_and_failed`) so the retry
+    semantics stay identical rather than drifting between two hand-written copies."""
+    out = ""
+    inner: subprocess.CompletedProcess[str]
+    for attempt in range(3):
+        inner = _run_inner(test_file, watched)
+        out = (inner.stdout or "") + (inner.stderr or "")
+        collection_crashed = (
+            inner.returncode != 0
+            and (unless_marker is None or unless_marker not in out)
+            and "ERROR collecting test session" in out
+        )
+        if not collection_crashed:
+            return inner, out
+        assert watched.read_bytes() == bytes_before, (
+            f"attempt {attempt + 1}: unrelated collection crash also left the watched "
+            "ledger changed -- this is no longer safely retryable:\n" + out)
+    pytest.fail(
+        "the inner run's OWN pytest collection crashed on unrelated environment noise "
+        f"3 times in a row (never reached the real scenario under test):\n{out}")
+
+
 def test_late_server_import_is_prevented_by_the_env_kill_switch(tmp_path):
     """Layer 1: the late import binds the env override, the write lands in tmp, the
     watched file never changes, and the inner test PASSES (prevention, not detection)."""
@@ -94,8 +135,7 @@ def test_late_server_import_is_prevented_by_the_env_kill_switch(tmp_path):
     synthetic = tmp_path / "test_zz_late_import_synthetic.py"
     synthetic.write_text(_LATE_IMPORT_TEST, encoding="utf-8")
 
-    inner = _run_inner(synthetic, watched)
-    out = (inner.stdout or "") + (inner.stderr or "")
+    inner, out = _run_inner_with_crash_retry(synthetic, watched, bytes_before)
 
     assert watched.read_bytes() == bytes_before, (
         "the watched terrain ledger changed — the env kill-switch did not bind:\n" + out)
@@ -119,32 +159,8 @@ def test_external_writer_is_detected_truncated_back_and_failed(tmp_path):
         "        fh.write('{\"event\": \"zz-external-writer-probe\"}\\n')\n",
         encoding="utf-8")
 
-    # RC-565 follow-up (2026-09-18): under heavy `-n 8` load this inner subprocess's OWN
-    # pytest collection can crash on unrelated cross-process filesystem noise (MEASURED: a
-    # FileNotFoundError lstat-ing a temp directory that belongs to a DIFFERENT, unrelated
-    # xdist worker's PID -- confirmed not a bug in this firewall, since it happens before
-    # collection ever reaches this synthetic test). When that happens the inner run never
-    # got a chance to exercise the real scenario at all, so retrying is honest: it is not
-    # hiding a real firewall failure, only re-attempting a run that never actually tested
-    # anything. A genuine firewall failure (the write went through, or fired for some OTHER
-    # real reason) is NOT this signature and is never retried -- it fails immediately below.
-    for attempt in range(3):
-        inner = _run_inner(synthetic, watched)
-        out = (inner.stdout or "") + (inner.stderr or "")
-        collection_crashed = (
-            inner.returncode != 0
-            and "TERRAIN LEDGER LATE-IMPORT HOLE" not in out
-            and "ERROR collecting test session" in out
-        )
-        if not collection_crashed:
-            break
-        assert watched.read_bytes() == bytes_before, (
-            f"attempt {attempt + 1}: unrelated collection crash also left the watched "
-            "ledger changed -- this is no longer safely retryable:\n" + out)
-    else:
-        pytest.fail(
-            "the inner run's OWN pytest collection crashed on unrelated environment noise "
-            f"3 times in a row (never reached the firewall under test):\n{out}")
+    inner, out = _run_inner_with_crash_retry(
+        synthetic, watched, bytes_before, unless_marker="TERRAIN LEDGER LATE-IMPORT HOLE")
 
     assert watched.read_bytes() == bytes_before, (
         "the watched ledger was not restored byte-for-byte:\n" + out)

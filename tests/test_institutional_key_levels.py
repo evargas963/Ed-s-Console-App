@@ -511,8 +511,12 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     assert "D-Inflection" not in nearest
     assert "Call OI Wall" not in nearest
     srv = Path("server.py").read_text(encoding="utf-8")
-    dens = srv.split("# Build levels dict for density check", 1)[1].split("_level_density", 1)[0]
-    dens_body = dens.split("_all_levels = {}", 1)[1]
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
+    # into _vol_envelope_and_sector_for_state, and its local names dropped their
+    # underscore-prefix scratch-var spelling (_all_levels -> all_levels, _level_density ->
+    # level_density) in the process.
+    dens = srv.split("# Build levels dict for density check", 1)[1].split("level_density", 1)[0]
+    dens_body = dens.split("all_levels: dict = {}", 1)[1]
     assert 'getattr(consensus_summary, "oi_center"' not in dens_body
     assert "'gamma_inflection'" not in dens_body
     assert "'call_oi_wall'" not in dens_body
@@ -520,7 +524,7 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     # Assert on dens_body only — historical comments may still name the dead locals pattern.
     assert "if _gamma_flip:" not in dens_body
     assert "locals().get(" not in dens_body
-    assert "_w0" in dens_body
+    assert "w0" in dens_body
     assert 'get("gamma_flip")' in dens_body
     ce = Path("call_engine.py").read_text(encoding="utf-8")
     rdy = ce.split("_nearest_dist = None", 1)[1].split("_level_prox =", 1)[0]
@@ -567,13 +571,16 @@ def test_level_density_uses_terrain_bound_walls_not_dead_locals():
     assert fixed["density_label"] == "light"
     assert fixed["count"] == 1
     src = Path("server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
+    # into _vol_envelope_and_sector_for_state, dropping its underscore-prefix scratch-var
+    # spelling (_all_levels -> all_levels, _level_density -> level_density, _w0 -> w0).
     dens = src.split("# Build levels dict for density check", 1)[1].split(
-        "_level_density = compute_level_density", 1
+        "level_density = compute_level_density", 1
     )[0]
-    body = dens.split("_all_levels = {}", 1)[1]
+    body = dens.split("all_levels: dict = {}", 1)[1]
     assert "locals().get(" not in body
     assert "if _gamma_flip:" not in body
-    assert "_w0" in body
+    assert "w0" in body
     assert 'get("gamma_flip")' in dens
 
 
@@ -621,10 +628,13 @@ def test_level_density_uses_terrain_iv_sigma_em_not_remaining_risk_em():
     assert fixed["density_label"] == "light"
     assert "em_upper" not in (fixed["level_names"] or [])
     # Source lock: dens body binds implied_1d_move, not `_em_up`.
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block
+    # moved into _vol_envelope_and_sector_for_state, dropping its underscore-prefix
+    # scratch-var spelling (_all_levels -> all_levels, _level_density -> level_density).
     dens = Path("server.py").read_text(encoding="utf-8").split(
         "# Build levels dict for density check", 1
-    )[1].split("_level_density = compute_level_density", 1)[0]
-    body = dens.split("_all_levels = {}", 1)[1]
+    )[1].split("level_density = compute_level_density", 1)[0]
+    body = dens.split("all_levels: dict = {}", 1)[1]
     assert "implied_1d_move" in body
     assert "if _em_up:" not in body
     # Executable dens lines only — comments may name the retired remaining-risk binders.
@@ -635,8 +645,10 @@ def test_level_density_uses_terrain_iv_sigma_em_not_remaining_risk_em():
     code = "\n".join(code_lines)
     assert "_em_up" not in code
     assert "_em_band_source" not in code
-    assert 'em_upper"] = float(_em_spot) + float(_em_pts)' in code or (
-        "em_upper" in code and "_em_pts" in code and "_em_spot" in code
+    # RC-REHAB-1 (sixteenth slice): em_spot/em_pts dropped their underscore-prefix
+    # scratch-var spelling in the same move as all_levels/level_density above.
+    assert 'em_upper"] = float(em_spot) + float(em_pts)' in code or (
+        "em_upper" in code and "em_pts" in code and "em_spot" in code
     )
 
 

@@ -633,9 +633,16 @@ def test_every_batch_vendor_quote_read_goes_through_one_call_site():
     consumer for the exact same ticker at the exact same instant. Same discipline, same
     reasoning, the sibling function this lock's own docstring should have covered from the
     start: exactly one raw call site, and it must record what it fetches into the plane
-    (proven behaviourally by test_watchlist_quotes_records_a_fresh_fetch_into_the_plane)."""
+    (proven behaviourally by test_watchlist_quotes_records_a_fresh_fetch_into_the_plane).
+
+    RC-REHAB-1 (Phase 3, route-extraction, seventeenth slice, predating this decomposition
+    session): /api/watchlist-quotes -- and with it, this call site -- moved out of
+    server.py into app/api/routes/market_data.py well before this lock was last verified;
+    this test was never updated for that move and had been silently checking an empty
+    file ever since (0 matches, not 1) until the full suite finally caught it here."""
     from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    src = (root / "app" / "api" / "routes" / "market_data.py").read_text(encoding="utf-8")
     sites = [ln.strip() for ln in src.splitlines()
              if "safe_get_quotes" in ln
              and "def safe_get_quotes" not in ln
@@ -645,4 +652,14 @@ def test_every_batch_vendor_quote_read_goes_through_one_call_site():
         f"{len(sites)} references to the raw batch vendor fetch — exactly one disciplined "
         f"call site (the one that checks the plane first and records its results back into "
         f"it) may call schwab_client.safe_get_quotes: {sites}"
+    )
+    # Also confirm the OLD location is genuinely clean, not just relocated-and-duplicated.
+    server_src = (root / "server.py").read_text(encoding="utf-8")
+    server_sites = [ln.strip() for ln in server_src.splitlines()
+                    if "safe_get_quotes" in ln
+                    and "def safe_get_quotes" not in ln
+                    and "import safe_get_quotes" not in ln
+                    and not ln.strip().startswith("#")]
+    assert server_sites == [], (
+        f"server.py must not carry a second, duplicate raw batch vendor fetch: {server_sites}"
     )

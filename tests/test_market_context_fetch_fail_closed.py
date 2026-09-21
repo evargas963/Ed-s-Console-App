@@ -362,11 +362,20 @@ def test_three_surfaces_consume_the_one_context():
 
 
 def test_vol_context_bound_outside_any_try():
-    """vol_ctx must be bound unconditionally in _fetch_state — never inside a
-    try whose handler swallows and continues. Caught 2026-07-10: the binding
-    lived inside the envelope/density/sector try (except Exception:
-    log.debug), so any swallowed exception there left vol_ctx unbound and the
-    later build_market_state(vol_ctx=vol_ctx) call died with NameError."""
+    """vol_ctx must be bound unconditionally — never inside a try whose handler
+    swallows and continues. Caught 2026-07-10: the binding lived inside the
+    envelope/density/sector try (except Exception: log.debug), so any
+    swallowed exception there left vol_ctx unbound and the later
+    build_market_state(vol_ctx=vol_ctx) call died with NameError.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth + nineteenth
+    slices): this construction moved into _vol_envelope_and_sector_for_state
+    (module-level), and _fetch_state now unpacks its result
+    (`vol_ctx = _ves.vol_ctx`) unconditionally right after the call -- a SECOND
+    real binding, both of which must independently be unconditional. A third
+    apparent "binding" is _VolEnvelopeAndSectorForState's own NamedTuple field
+    annotation (`vol_ctx: MarketVolContextV1`, an AnnAssign with no value) --
+    not a real runtime assignment, excluded here."""
     tree = _ast.parse((_REPO / "server.py").read_text(encoding="utf-8", errors="replace"))
     parents: dict[_ast.AST, _ast.AST] = {}
     for node in _ast.walk(tree):
@@ -375,18 +384,20 @@ def test_vol_context_bound_outside_any_try():
     bindings = [
         n for n in _ast.walk(tree)
         if isinstance(n, _ast.Name) and n.id == "vol_ctx" and isinstance(n.ctx, _ast.Store)
+        and not isinstance(parents.get(n), _ast.AnnAssign)
     ]
-    assert len(bindings) == 1, f"expected exactly one vol_ctx binding, got {len(bindings)}"
-    cur: _ast.AST = bindings[0]
-    enclosing: list[str] = []
-    while cur in parents:
-        cur = parents[cur]
-        if isinstance(cur, (_ast.Try, _ast.If, _ast.For, _ast.While)):
-            enclosing.append(f"{type(cur).__name__}@{cur.lineno}")
-    assert enclosing == [], (
-        f"vol_ctx binding is conditional/swallowable (inside {enclosing}) — "
-        f"it must execute on every path that reaches its consumers"
-    )
+    assert len(bindings) == 2, f"expected exactly two real vol_ctx bindings, got {len(bindings)}"
+    for b in bindings:
+        cur: _ast.AST = b
+        enclosing: list[str] = []
+        while cur in parents:
+            cur = parents[cur]
+            if isinstance(cur, (_ast.Try, _ast.If, _ast.For, _ast.While)):
+                enclosing.append(f"{type(cur).__name__}@{cur.lineno}")
+        assert enclosing == [], (
+            f"vol_ctx binding at line {b.lineno} is conditional/swallowable (inside "
+            f"{enclosing}) — it must execute on every path that reaches its consumers"
+        )
 
 
 def test_canonical_signal_input_construction_lock(repo_index):

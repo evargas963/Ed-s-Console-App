@@ -359,9 +359,14 @@ def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
 
 # FIND-SERVERPY-9
 def test_pressure_label_unavailable_when_no_dpi_or_hedging_flow():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): this
+    field derivation moved from _fetch_state's own body into
+    _post_publish_persistence_tail, promoted to a module-level function."""
     src = _fn_src("_fetch_state")
     assert '_pressure_label_live = "neutral"' not in src
-    assert "unavailable_no_dpi_or_hedging_flow_direction" in src
+    tail_src = _fn_src("_post_publish_persistence_tail")
+    assert '_pressure_label_live = "neutral"' not in tail_src
+    assert "unavailable_no_dpi_or_hedging_flow_direction" in tail_src
 
 
 # FIND-SERVERPY-11

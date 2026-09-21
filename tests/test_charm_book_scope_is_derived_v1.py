@@ -55,11 +55,21 @@ def test_an_unreadable_chain_reports_unknown_not_confidence():
 
 
 def test_the_label_is_no_longer_a_literal_at_the_producer():
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert '"charm_book_scope": "full_chain_banked"' not in src, (
+    """RC-REHAB-1 (Phase 3, route-extraction, predating this decomposition
+    session): the producer moved out of server.py into
+    app/api/routes/market_data.py well before this lock was last verified --
+    caught here by running the full suite rather than a curated batch. Checked
+    server.py stays clean of BOTH the hardcoded literal and a duplicate
+    producer, and that the real producer moved, not vanished."""
+    server_src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    assert '"charm_book_scope": "full_chain_banked"' not in server_src, (
         "the book label is a hardcoded string again — it cannot disagree with itself, so "
         "it cannot detect a change of book")
-    assert '"charm_book_scope": _charm_book_scope(' in src
+    market_data_src = (REPO / "app" / "api" / "routes" / "market_data.py").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert '"charm_book_scope": "full_chain_banked"' not in market_data_src
+    assert '"charm_book_scope": _charm_book_scope(' in market_data_src
 
 
 def test_the_expiry_field_alias_is_honoured():

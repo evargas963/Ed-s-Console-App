@@ -96,7 +96,11 @@ def test_the_two_quantities_no_longer_share_one_input():
 
 
 def test_the_caller_passes_both_counts():
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    """RC-REHAB-1 (Phase 3, route-extraction, predating this decomposition
+    session): this caller moved out of server.py into
+    app/api/routes/diagnostics.py well before this lock was last verified --
+    caught here by running the full suite rather than a curated batch."""
+    src = (REPO / "app" / "api" / "routes" / "diagnostics.py").read_text(encoding="utf-8", errors="replace")
     assert "l1_build_total=bt," in src, "the true build count is no longer sent"
     assert "timing_sample_count=bt_measured," in src, "the timed count is no longer sent"
 

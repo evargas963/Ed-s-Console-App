@@ -68,7 +68,11 @@ def test_an_unmeasured_build_does_not_dilute_the_latency_average():
 
 
 def test_the_average_divides_by_the_measured_count_not_the_build_count():
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    """RC-REHAB-1 (Phase 3, route-extraction, predating this decomposition
+    session): this computation moved out of server.py into
+    app/api/routes/diagnostics.py well before this lock was last verified --
+    caught here by running the full suite rather than a curated batch."""
+    src = (REPO / "app" / "api" / "routes" / "diagnostics.py").read_text(encoding="utf-8", errors="replace")
     assert 'l1_build_ms_measured' in src, "the measured-timing counter is gone"
     assert 'avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt_measured)' in src
     assert 'avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt)' not in src, (

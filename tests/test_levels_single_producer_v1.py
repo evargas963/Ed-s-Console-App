@@ -240,7 +240,10 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     assert 'getattr(consensus_summary, "net_gex_peak"' not in src
     # RC-420: CONSENSUS gamma/delta walls bind to the same terrain cache (folded
     # into this reader so the source-text census stays 266).
-    i_walls = src.index("walls     = build_walls_rows")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): this assignment
+    # moved into _exposures_for_state, where its manually-aligned spacing (extra
+    # padding spaces before "=") was normalized to a single space.
+    i_walls = src.index("walls = build_walls_rows")
     walls_chunk = src[i_walls:i_walls + 700]
     assert "consensus_walls_bind_terrain_ssot" in walls_chunk
     assert "terrain_cache_get" in walls_chunk
