@@ -511,7 +511,7 @@ from math_exposure import (
     compute_iv_rank, compute_iv_percentile, compute_volatility_envelope,
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
-    compute_gamma_flip_v2, compute_gamma_void_zones, compute_level_density, gamma_at_price,
+    compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, total_gamma_raw_at_strike,
@@ -7646,8 +7646,30 @@ def _gamma_flip_and_void_zones_for_state(
     `_iv_tracker`, referenced directly as a server.py global exactly as the original
     inline code did) and derives `consensus_summary` from the Exposures phase's own
     `rows` output. No try/except in the original inline code -- an exception here still
-    propagates out of _fetch_state unchanged, exactly as before."""
-    gamma_flip, gamma_flip_conf, gamma_flip_diag = compute_gamma_flip_v2(contracts_use, spot_f)
+    propagates out of _fetch_state unchanged, exactly as before.
+
+    RC-569 (2026-09-21, live-RTH finding): `gamma_flip` here used to be an independent
+    compute_gamma_flip_v2(contracts_use, ...) call -- contracts_use is the SELECTED-EXPIRY
+    slice, the exact narrow-chain basis the RC-33/v23 terrain-SSOT migration already
+    rejected for the live-UI-facing kl_gamma_flip field ("one terrain, one chain" -- see
+    the "Terrain read: single source of truth" comment elsewhere in this file). That
+    migration fixed the field consumers actually render but missed this one, which feeds
+    ONLY the background snapshot logger (snapshots.gamma_inflection) -- so the live UI was
+    never wrong, but every historical/ML snapshot row was computed by a second, narrower,
+    already-rejected producer. REPRODUCED live: terrain reported gamma_flip=None for META
+    (flip_diag: 'no_zero_crossing_regime_still_defined' -- gamma stays positive across the
+    whole 560-940 examined window, a real absence, not a gap) while this function's own
+    narrow-chain call returned a confident-looking 720.0 for the SAME ticker, same instant.
+    Now reads the SAME terrain SSOT snapshot every other migrated field here uses, fail-
+    closed to None on a missing or stale snapshot -- never a second computation."""
+    _flip_snap = terrain_cache_get(ticker) or {}
+    gamma_flip = (
+        _flip_snap.get("gamma_flip")
+        if _flip_snap and not _flip_snap.get("levels_stale")
+        else None
+    )
+    gamma_flip_conf = None
+    gamma_flip_diag = _flip_snap.get("flip_diag") if _flip_snap else None
     gamma_voids = compute_gamma_void_zones(exposures, spot_f)
     # RC-134: analytics compute_hvl / compute_max_pain deleted here — they only fed dead
     # Tier-C kwargs that never wrote payload keys (SSOT is terrain overlay).

@@ -13,6 +13,8 @@ compute_gamma_flip_v2/compute_gamma_void_zones/_iv_tracker chain.
 """
 from __future__ import annotations
 
+import time
+
 import server as srv
 
 
@@ -36,6 +38,13 @@ def _build_exposures_rows_walls_totals(contracts, spot_f):
 
 
 def test_full_pipeline_matches_the_original_computation_chain():
+    """RC-569 (2026-09-21): gamma_flip/gamma_flip_conf/gamma_flip_diag no longer come from
+    an independent compute_gamma_flip_v2(contracts_use, ...) call on the SELECTED-EXPIRY
+    slice -- that was a second, narrower producer than the live-UI-facing terrain SSOT
+    (RC-33/v23 already migrated kl_gamma_flip away from exactly this narrow-chain basis;
+    this logging-only phase was the one path that migration missed). With no terrain
+    snapshot cached for this synthetic ticker, gamma_flip/diag must fail closed to None --
+    never fall back to re-deriving a second, disagreeing answer from contracts_use."""
     contracts = _fixture_contracts()
     spot_f = 100.5
     ticker = "ZZZ_GFVZ_MATCH"
@@ -43,19 +52,71 @@ def test_full_pipeline_matches_the_original_computation_chain():
 
     result = srv._gamma_flip_and_void_zones_for_state(ticker, contracts, spot_f, exposures, totals, rows)
 
-    expected_flip, expected_conf, expected_diag = srv.compute_gamma_flip_v2(contracts, spot_f)
     expected_voids = srv.compute_gamma_void_zones(exposures, spot_f)
     t0 = totals[0] if totals else None
     expected_atm_iv = getattr(t0, "atm_iv", None) if t0 else None
     expected_cs = rows[0] if rows else None
 
-    assert result.gamma_flip == expected_flip
-    assert result.gamma_flip_conf == expected_conf
+    assert result.gamma_flip is None, "no terrain snapshot cached -- must fail closed, not recompute"
+    assert result.gamma_flip_conf is None
+    assert result.gamma_flip_diag is None
     assert result.gamma_voids == expected_voids
     assert result.atm_iv == expected_atm_iv
     assert result.atm_iv is not None, "fixture must produce a real ATM IV, not a degenerate None"
     assert result.consensus_summary == expected_cs
     assert result.consensus_summary is not None
+
+
+def test_gamma_flip_reads_the_terrain_ssot_snapshot_when_one_is_cached():
+    """The positive case: with a real (non-stale) terrain snapshot cached for this ticker,
+    gamma_flip/diag come from THAT snapshot verbatim -- never a second, independent
+    compute_gamma_flip_v2 call on the narrower contracts_use slice, even though that slice
+    is available and was the OLD source. Proven by giving the snapshot a flip value the
+    fixture's own narrow-chain computation would not independently produce."""
+    contracts = _fixture_contracts()
+    spot_f = 100.5
+    ticker = "ZZZ_GFVZ_TERRAIN_HIT"
+    tk = srv.ticker_storage_key(ticker)
+    exposures, rows, _walls, totals = _build_exposures_rows_walls_totals(contracts, spot_f)
+
+    sentinel_flip = 999.5   # a value the fixture's own narrow-chain compute would never produce
+    sentinel_diag = {"reason": "test_sentinel_no_real_crossing"}
+    srv._terrain_cache[tk] = {
+        "gamma_flip": sentinel_flip, "flip_diag": sentinel_diag,
+        "computed_ts_utc": time.time(),   # fresh -- terrain_cache_get derives levels_stale from this
+    }
+    try:
+        result = srv._gamma_flip_and_void_zones_for_state(ticker, contracts, spot_f, exposures, totals, rows)
+    finally:
+        srv._terrain_cache.pop(tk, None)
+
+    assert result.gamma_flip == sentinel_flip
+    assert result.gamma_flip_diag == sentinel_diag
+    assert result.gamma_flip_conf is None, (
+        "narrow-analytics confidence was already retired for the live path (v23) -- "
+        "this logging-only phase must not resurrect it"
+    )
+
+
+def test_gamma_flip_fails_closed_on_a_stale_terrain_snapshot():
+    """A cached-but-stale terrain snapshot must be treated the same as no snapshot at all --
+    never served as if it were current."""
+    contracts = _fixture_contracts()
+    spot_f = 100.5
+    ticker = "ZZZ_GFVZ_TERRAIN_STALE"
+    tk = srv.ticker_storage_key(ticker)
+    exposures, rows, _walls, totals = _build_exposures_rows_walls_totals(contracts, spot_f)
+
+    srv._terrain_cache[tk] = {
+        "gamma_flip": 123.0, "flip_diag": {},
+        "computed_ts_utc": time.time() - 3600.0,   # an hour old -- terrain_staleness must call this stale
+    }
+    try:
+        result = srv._gamma_flip_and_void_zones_for_state(ticker, contracts, spot_f, exposures, totals, rows)
+    finally:
+        srv._terrain_cache.pop(tk, None)
+
+    assert result.gamma_flip is None
 
 
 def test_atm_iv_tick_feeds_the_shared_iv_tracker_and_direction_reflects_it():
