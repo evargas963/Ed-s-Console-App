@@ -1392,6 +1392,32 @@ def check_one_producer() -> list[Violation]:
     return out
 
 
+def check_field_naming_consistency() -> list[Violation]:
+    """RC-292 — a registered field's canonical serialization NAME is the only one used.
+
+    check_one_producer proves a field is COMPUTED in one place; it is silent about the KEY
+    that computed value is written under. GSF/GRC were each computed in exactly one place
+    and still shipped on the payload under two independent, undocumented names (`kl_gsf` and
+    `gsf`) with nothing keeping the two in sync, until this session's naming-consolidation
+    fix (2026-09-21) merged them. A field opts into this gate by declaring BOTH `source_key`
+    and `serialized_as` in governance/computation_registry.json; every assignment in a
+    declared payload surface that pulls a registered source_key and writes it to a target key
+    outside that field's serialized_as list is a violation — fresh, undocumented naming
+    drift of a value this repo already has exactly one producer for.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_field_naming_consistency import naming_violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / "governance" / "computation_registry.json", 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_field_naming_consistency.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
 def check_single_stream_authority() -> list[Violation]:
     """SINGLE-STREAM-AUTHORITY (2026-08-30) — exactly one production Schwab StreamClient
     constructor, repo-wide. app/options/order_flow/streaming.py used to open a second, independent
@@ -3370,6 +3396,11 @@ CHECKS = [
     # because an unregistered gate enforces nothing — it sat at zero registrations while
     # being reported as a lock.
     ("one_producer", check_one_producer, True),
+    # RC-292 (2026-09-21): a registered field's canonical serialization NAME is the only one
+    # used — one_producer above proves a value is COMPUTED once, this proves it is WRITTEN
+    # under one name. ENFORCED because the kl_gsf/gsf duplication it closes was live and
+    # undocumented in this repo until the same session that built this gate fixed it.
+    ("field_naming_consistency", check_field_naming_consistency, True),
     # OPTIONS_ORDER_FLOW_V1 Phase 1-3 (2026-08-30): exactly one production Schwab
     # StreamClient constructor, repo-wide. ENFORCED — mutation-tested
     # (tests/test_single_stream_authority_v1.py), not a design-review-only script.
