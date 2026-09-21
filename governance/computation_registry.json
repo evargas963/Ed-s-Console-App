@@ -55,6 +55,22 @@
                      "TODAY_POC", "TODAY_VAH", "TODAY_VAL"],
       "evidence": "Phase 2A (5609617d). Enforced separately and at computation level by tools/phase2a_level_lock.py, which Cursor has proven bypassable via compute_session_vwap_series, direct formulas, and recomputation inside build_live_snapshot — so this entry is DECLARED, not proven.",
       "status": "DECLARED_NOT_YET_COLLAPSED"
+    },
+    "gamma_support_floor": {
+      "producer": "math_levels.py:compute_gamma_support_levels",
+      "kind": "derived",
+      "formula": "GSF = highest strike s < spot where N(s) <= phi * N(spot) on the repriced net-GEX profile N (the SAME materialized profile the gamma flip/regime use, RC-345 one-profile rule); phi = GSF_PHI = 0.5. Fail-closed to None (state=BELOW_SUPPORT) when N(spot) is already at/below eps = GSF_EPS_FRAC * max(|N|).",
+      "computation_inputs": ["profile", "spot", "phi", "eps_frac"],
+      "evidence": "2026-09-21: repo-wide search (git-tracked, non-test/tool/research files) for compute_gamma_support_levels, and bare 'gsf'/'grc'/'gamma_support' tokens, found exactly two hits: math_levels.py (the producer, whose own docstring self-identifies 'RC-354: Gamma Support Floor (GSF) + Gamma Resistance Ceiling (GRC) -- ONE producer') and terrain_engine.py, which calls it once (line 764) and carries the result into its own dataclass fields (gsf/grc/gsf_state) -- a consumer carrying the value, not a second computation. GSF_PHI and GSF_EPS_FRAC, the function's own threshold constants, are each defined exactly once, immediately above the producer, ruling out a parallel implementation with different parameters. No AST pass was run (unlike the GEX$/1pct entry, which needed one to disambiguate a false match) because the plain-text search already came back with exactly one hit outside the declared producer, and that hit is a structural carry, not a competing derivation.",
+      "status": "SINGLE_SOURCE"
+    },
+    "gamma_resistance_ceiling": {
+      "producer": "math_levels.py:compute_gamma_support_levels",
+      "kind": "derived",
+      "formula": "GRC = lowest strike s > spot where N(s) <= phi * N(spot) on the SAME repriced net-GEX profile GSF uses -- one function call returns both levels together, never computed separately. phi = GSF_PHI = 0.5, same fail-closed rule as GSF.",
+      "computation_inputs": ["profile", "spot", "phi", "eps_frac"],
+      "evidence": "2026-09-21: repo-wide search (git-tracked, non-test/tool/research files) for compute_gamma_support_levels, and bare 'gsf'/'grc'/'gamma_support' tokens, found exactly two hits: math_levels.py (the producer, whose own docstring self-identifies 'RC-354: Gamma Support Floor (GSF) + Gamma Resistance Ceiling (GRC) -- ONE producer') and terrain_engine.py, which calls it once (line 764) and carries the result into its own dataclass fields (gsf/grc/gsf_state) -- a consumer carrying the value, not a second computation. GSF_PHI and GSF_EPS_FRAC, the function's own threshold constants, are each defined exactly once, immediately above the producer, ruling out a parallel implementation with different parameters. No AST pass was run (unlike the GEX$/1pct entry, which needed one to disambiguate a false match) because the plain-text search already came back with exactly one hit outside the declared producer, and that hit is a structural carry, not a competing derivation.",
+      "status": "SINGLE_SOURCE"
     }
   }
 }
