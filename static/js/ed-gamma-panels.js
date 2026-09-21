@@ -570,10 +570,21 @@
   // subscription stayed active forever -- nothing ever told the plural endpoint that
   // demand had ended. Every path out of renderStrike must state the additional-contract
   // demand for the current render, including "none".
+  // ownerKey is 'strike:<ticker>' (2026-09-21, universal-ticker-scope fix, same class of
+  // defect and same fix pattern as the heatmap's _heatmapOwnerKey): a single shared
+  // 'default' owner meant switching tickers here silently clobbered whatever the PREVIOUS
+  // ticker's Strike Detail selection had demanded, exactly like the heatmap's shared
+  // 'heatmap' key did. The ticker just left is explicitly released so demand does not grow
+  // unbounded across every ticker ever selected in one session.
+  var _lastStrikeOwnerTicker = null;
   function _setAdditionalContractsDemand(symbols) {
-    if (window.EdStream && window.EdStream.setAdditionalContracts) {
-      window.EdStream.setAdditionalContracts(symbols || []);
+    if (!(window.EdStream && window.EdStream.setAdditionalContracts)) return;
+    var tk = ticker();
+    if (_lastStrikeOwnerTicker && _lastStrikeOwnerTicker !== tk) {
+      window.EdStream.setAdditionalContracts([], 'strike:' + _lastStrikeOwnerTicker);
     }
+    _lastStrikeOwnerTicker = tk;
+    window.EdStream.setAdditionalContracts(symbols || [], 'strike:' + tk);
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
