@@ -23,8 +23,10 @@ from stream_spine import (
     quote_msg,
     read_active_option_contract_signal,
     read_active_option_contracts_signal,
+    read_active_ticker_roster_signal,
     read_active_ticker_signal,
     write_active_option_contract_signal,
+    write_active_ticker_roster_signal,
     write_active_ticker_signal,
 )
 
@@ -366,6 +368,64 @@ def test_active_ticker_signal_write_is_atomic_replace(tmp_path):
     assert not p.with_suffix(p.suffix + ".tmp").exists()
     write_active_ticker_signal("QQQ", path=p)
     assert read_active_ticker_signal(path=p) == "QQQ"
+
+
+def test_active_ticker_roster_signal_round_trips(tmp_path):
+    """UNIVERSAL (2026-09-21): the daemon's book-depth roster, PLURAL, not one active
+    ticker. Same round-trip contract as the singular signal, extended to a set."""
+    p = tmp_path / "stream_active_ticker_roster.json"
+    write_active_ticker_roster_signal(["spy", "qqq", "iwm"], path=p)
+    assert read_active_ticker_roster_signal(path=p) == ["IWM", "QQQ", "SPY"]
+
+
+def test_active_ticker_roster_signal_absent_is_empty_not_a_guess(tmp_path):
+    """A missing/corrupt roster signal must mean 'no requested roster', never a stale-
+    cache guess or an exception that could crash the daemon's poll loop -- same
+    fail-closed discipline as every other signal in this module."""
+    p = tmp_path / "does_not_exist.json"
+    assert read_active_ticker_roster_signal(path=p) == []
+    p.write_text("{not json", encoding="utf-8")
+    assert read_active_ticker_roster_signal(path=p) == []
+
+
+@pytest.mark.parametrize("body", ["[]", "null", "42", '"just a string"', "true"])
+def test_active_ticker_roster_signal_malformed_root_is_empty_not_raise(tmp_path, body):
+    p = tmp_path / "malformed_roster.json"
+    p.write_text(body, encoding="utf-8")
+    assert read_active_ticker_roster_signal(path=p) == []
+
+
+def test_active_ticker_roster_signal_non_list_value_is_empty(tmp_path):
+    """A well-formed object root whose value for the key is not a list must also fail
+    closed to [], not raise or guess."""
+    p = tmp_path / "bad_roster_value.json"
+    p.write_text('{"tickers": "SPY"}', encoding="utf-8")
+    assert read_active_ticker_roster_signal(path=p) == []
+
+
+def test_active_ticker_roster_signal_write_is_atomic_replace(tmp_path):
+    p = tmp_path / "stream_active_ticker_roster.json"
+    write_active_ticker_roster_signal(["SPY"], path=p)
+    assert not p.with_suffix(p.suffix + ".tmp").exists()
+    write_active_ticker_roster_signal(["QQQ", "IWM"], path=p)
+    assert read_active_ticker_roster_signal(path=p) == ["IWM", "QQQ"]
+
+
+def test_active_ticker_roster_signal_clears_on_empty_list(tmp_path):
+    """Passing an empty list is a real, meaningful request (drop all book depth), never
+    silently ignored -- matches the documented contract of the option-contracts plural
+    signal this one is modeled on."""
+    p = tmp_path / "stream_active_ticker_roster.json"
+    write_active_ticker_roster_signal(["SPY", "QQQ"], path=p)
+    assert read_active_ticker_roster_signal(path=p) == ["QQQ", "SPY"]
+    write_active_ticker_roster_signal([], path=p)
+    assert read_active_ticker_roster_signal(path=p) == []
+
+
+def test_active_ticker_roster_signal_deduplicates_and_normalizes(tmp_path):
+    p = tmp_path / "stream_active_ticker_roster.json"
+    write_active_ticker_roster_signal(["spy", "SPY", " qqq ", ""], path=p)
+    assert read_active_ticker_roster_signal(path=p) == ["QQQ", "SPY"]
 
 
 def test_health_states_progress_running_degraded_stale():

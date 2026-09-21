@@ -3144,6 +3144,20 @@ _anchor_quote_lane_refresh_counts: dict[str, int] = {
     "errors": 0,
 }
 
+#: UNIVERSAL BOOK DEPTH (2026-09-21, operator mandate: "we are ticker agnostic. everything
+#: needs to work universally"). The capture daemon's NASDAQ_BOOK/NYSE_BOOK subscription used
+#: to follow a single "active UI ticker" signal -- book depth for whoever the UI happened to
+#: be showing, none for the other 57 enrolled tickers. This loop instead keeps the daemon's
+#: FULL requested roster signal (stream_spine.write_active_ticker_roster_signal) in sync with
+#: the authoritative enrolled universe (db.logging_universe_authoritative_tickers, the same
+#: source scheduler_user_tickers.py already treats as the ONE enrollment authority), so every
+#: enrolled ticker gets live book depth, not just one. 60s cadence matches this file's other
+#: anchor-refresh loops; a roster ADD/DROP (an operator enrolling or evicting a ticker) is
+#: picked up on the daemon's own ~1s poll of the signal file once this loop next writes it.
+TICKER_ROSTER_SIGNAL_REFRESH_POLL_SEC: float = 60.0
+_ticker_roster_signal_refresh_stop = threading.Event()
+_ticker_roster_signal_refresh_counts: dict[str, int] = {"writes": 0, "errors": 0}
+
 
 def _anchor_quote_lane_needs_refresh(row: Optional[dict], now: float) -> bool:
     """Ticker-agnostic lane-staleness predicate: absent row, missing ts, or old ts."""
@@ -3187,6 +3201,37 @@ def _anchor_quote_lane_refresh_loop() -> None:
             _run_anchor_quote_lane_refresh_once()
         except Exception as e:
             log.warning("anchor quote lane refresh loop error: %s", e)
+
+
+def _run_ticker_roster_signal_refresh_once() -> int:
+    """Write the current enrolled roster to the daemon's book-depth signal file. Returns
+    the roster size written, or -1 on a DB-bound read failure (distinct from "0 enrolled",
+    matching load_user_scheduler_tickers's own None-vs-empty contract -- a DB hiccup must
+    never be written as an empty roster, which would silently drop book depth for every
+    enrolled ticker rather than leaving the daemon on its last-known-good signal)."""
+    from scheduler_user_tickers import load_user_scheduler_tickers
+    from stream_spine import write_active_ticker_roster_signal
+
+    tickers = load_user_scheduler_tickers()
+    if tickers is None:
+        _ticker_roster_signal_refresh_counts["errors"] += 1
+        return -1
+    write_active_ticker_roster_signal(tickers)
+    _ticker_roster_signal_refresh_counts["writes"] += 1
+    return len(tickers)
+
+
+def _ticker_roster_signal_refresh_loop() -> None:
+    """Daemon: keep the capture daemon's book-depth roster signal synced to the
+    authoritative enrolled universe (UNIVERSAL ticker scope, 2026-09-21 operator mandate)."""
+    while not _ticker_roster_signal_refresh_stop.wait(TICKER_ROSTER_SIGNAL_REFRESH_POLL_SEC):
+        if _analytics_bg_shutdown:
+            continue
+        try:
+            _run_ticker_roster_signal_refresh_once()
+        except Exception as e:
+            _ticker_roster_signal_refresh_counts["errors"] += 1
+            log.warning("ticker roster signal refresh loop error: %s", e)
 
 
 def _sse_viewer_cache_ttl(ticker: str, expiry: Optional[str]) -> float:
@@ -11234,6 +11279,21 @@ async def _app_lifespan(app):
         ANCHOR_QUOTE_LANE_MAX_AGE_SEC,
     )
 
+    _ticker_roster_signal_refresh_stop.clear()
+    threading.Thread(
+        target=_ticker_roster_signal_refresh_loop,
+        name="ed_ticker_roster_signal_refresh",
+        daemon=True,
+    ).start()
+    _run_ticker_roster_signal_refresh_once()  # write once at startup; do not wait a full
+                                              # poll interval for the daemon to get book
+                                              # depth for anyone
+    log.info(
+        "ticker roster signal refresh loop started (poll=%ss) -- universal book depth, "
+        "not a single active ticker",
+        TICKER_ROSTER_SIGNAL_REFRESH_POLL_SEC,
+    )
+
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
@@ -11248,6 +11308,7 @@ async def _app_lifespan(app):
     _arm_shutdown_watchdog()
     _session_open_anchor_warm_stop.set()
     _anchor_quote_lane_refresh_stop.set()
+    _ticker_roster_signal_refresh_stop.set()
     _shutdown_analytics_executor(wait=True)
     # Live-plane feed task (reads the canonical capture daemon's DB — no Schwab socket
     # of its own to close here since single-stream-authority root fix 2026-08-30).

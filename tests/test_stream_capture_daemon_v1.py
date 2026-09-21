@@ -15,9 +15,9 @@ from stream_spine import (
     HealthRegistry,
     MessageBus,
     read_active_option_contract_signal,
-    read_active_ticker_signal,
+    read_active_ticker_roster_signal,
     write_active_option_contract_signal,
-    write_active_ticker_signal,
+    write_active_ticker_roster_signal,
 )
 from app.market_data.schwab.streaming.capture import (
     CHART_FIELDS,
@@ -58,26 +58,26 @@ def _isolated_desired_state_signals(tmp_path, monkeypatch):
     import app.market_data.schwab.streaming.capture as _d
 
     option_sig = tmp_path / "stream_active_option_contract.json"
-    ticker_sig = tmp_path / "stream_active_ticker.json"
+    ticker_sig = tmp_path / "stream_active_ticker_roster.json"
     this_module = _sys.modules[__name__]
 
     # Bind the originals off stream_spine, NOT off this module's globals: the globals are
     # what is being replaced, so a lambda that looked them up would call itself.
     real_write_opt = _spine.write_active_option_contract_signal
-    real_write_tkr = _spine.write_active_ticker_signal
+    real_write_tkr = _spine.write_active_ticker_roster_signal
     real_read_opt = _spine.read_active_option_contract_signal
-    real_read_tkr = _spine.read_active_ticker_signal
+    real_read_tkr = _spine.read_active_ticker_roster_signal
 
     # `{"path": default, **kw}` — the per-test path is only a DEFAULT. A caller that
     # already passes an explicit `path=` (a test doing its own finer-grained isolation)
     # still wins; swallowing it would silently redirect that test's signal file.
     monkeypatch.setattr(this_module, "write_active_option_contract_signal",
                         lambda c, **kw: real_write_opt(c, **{"path": option_sig, **kw}))
-    monkeypatch.setattr(this_module, "write_active_ticker_signal",
+    monkeypatch.setattr(this_module, "write_active_ticker_roster_signal",
                         lambda t, **kw: real_write_tkr(t, **{"path": ticker_sig, **kw}))
     monkeypatch.setattr(_d, "read_active_option_contract_signal",
                         lambda **kw: real_read_opt(**{"path": option_sig, **kw}))
-    monkeypatch.setattr(_d, "read_active_ticker_signal",
+    monkeypatch.setattr(_d, "read_active_ticker_roster_signal",
                         lambda **kw: real_read_tkr(**{"path": ticker_sig, **kw}))
 
 
@@ -168,46 +168,77 @@ class _FakeStream:
         self.calls.append(("nyse_unsub", tuple(syms)))
 
 
-def test_apply_active_ticker_book_subs_switches_symbol(tmp_path, monkeypatch):
-    """PHASE 4-G shape: the daemon must subscribe book depth for whatever ticker the
-    server signals, and unsubscribe the one it replaces — never both at once."""
-    p = tmp_path / "stream_active_ticker.json"
-    write_active_ticker_signal("QQQ", path=p)
-    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_ticker_signal",
-                        lambda: read_active_ticker_signal(path=p))
+def test_apply_active_ticker_book_subs_diffs_the_roster(tmp_path, monkeypatch):
+    """UNIVERSAL (2026-09-21, operator mandate: "we are ticker agnostic. everything needs
+    to work universally"): the daemon holds book depth for the FULL requested roster, not
+    one active ticker. A roster change is a real SET DIFF -- dropped members unsub,
+    added members sub, members present in BOTH sides are touched by neither call."""
+    p = tmp_path / "stream_active_ticker_roster.json"
+    write_active_ticker_roster_signal(["SPY", "QQQ"], path=p)
+    monkeypatch.setattr(
+        "app.market_data.schwab.streaming.capture.read_active_ticker_roster_signal",
+        lambda: read_active_ticker_roster_signal(path=p))
     stream = _FakeStream()
 
     async def go():
-        new_cur = await _apply_active_ticker_book_subs(stream, "SPY")
-        assert new_cur == "QQQ"
-        assert ("nasdaq_unsub", ("SPY",)) in stream.calls
-        assert ("nyse_unsub", ("SPY",)) in stream.calls
+        new_cur = await _apply_active_ticker_book_subs(stream, frozenset({"SPY", "NVDA"}))
+        assert new_cur == frozenset({"SPY", "QQQ"})
+        assert ("nasdaq_unsub", ("NVDA",)) in stream.calls
+        assert ("nyse_unsub", ("NVDA",)) in stream.calls
         assert ("nasdaq_sub", ("QQQ",)) in stream.calls
         assert ("nyse_sub", ("QQQ",)) in stream.calls
+        # SPY is in both the old and new roster -- it must be touched by NEITHER call,
+        # proving this is a diff, not an unsub-everything-then-resub-everything sweep.
+        assert not any("SPY" in c[1] for c in stream.calls)
     asyncio.run(go())
 
 
 def test_apply_active_ticker_book_subs_no_change_is_a_no_op(monkeypatch):
-    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_ticker_signal", lambda: "SPY")
+    monkeypatch.setattr(
+        "app.market_data.schwab.streaming.capture.read_active_ticker_roster_signal",
+        lambda: ["SPY", "QQQ", "IWM"])
     stream = _FakeStream()
 
     async def go():
-        new_cur = await _apply_active_ticker_book_subs(stream, "SPY")
-        assert new_cur == "SPY"
+        new_cur = await _apply_active_ticker_book_subs(stream, frozenset({"SPY", "QQQ", "IWM"}))
+        assert new_cur == frozenset({"SPY", "QQQ", "IWM"})
         assert stream.calls == []
     asyncio.run(go())
 
 
 def test_apply_active_ticker_book_subs_first_activation_has_no_unsub(monkeypatch):
-    """No current ticker yet (daemon just started, no viewer active) -> subscribe only,
-    never an unsub call for a symbol that was never subscribed."""
-    monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_ticker_signal", lambda: "SPY")
+    """No roster yet (daemon just started) -> subscribe only, never an unsub call for a
+    symbol that was never subscribed."""
+    monkeypatch.setattr(
+        "app.market_data.schwab.streaming.capture.read_active_ticker_roster_signal",
+        lambda: ["SPY", "QQQ", "IWM"])
     stream = _FakeStream()
 
     async def go():
-        new_cur = await _apply_active_ticker_book_subs(stream, None)
-        assert new_cur == "SPY"
+        new_cur = await _apply_active_ticker_book_subs(stream, frozenset())
+        assert new_cur == frozenset({"SPY", "QQQ", "IWM"})
         assert all(c[0] not in ("nasdaq_unsub", "nyse_unsub") for c in stream.calls)
+    asyncio.run(go())
+
+
+def test_apply_active_ticker_book_subs_covers_a_large_roster_not_just_one(monkeypatch):
+    """The actual defect this session found and fixed: book depth used to be capped at
+    ONE symbol regardless of enrollment size. Proves the fix holds for something closer
+    to the real enrolled universe (58 tickers, measured live 2026-09-21), not just a
+    2-3 symbol toy case -- a fix that only worked for a small N would not have caught the
+    original single-symbol ceiling either."""
+    roster = [f"TCK{i}" for i in range(58)]
+    monkeypatch.setattr(
+        "app.market_data.schwab.streaming.capture.read_active_ticker_roster_signal",
+        lambda: roster)
+    stream = _FakeStream()
+
+    async def go():
+        new_cur = await _apply_active_ticker_book_subs(stream, frozenset())
+        assert new_cur == frozenset(roster)
+        assert len(new_cur) == 58
+        subbed = {sym for call in stream.calls if call[0] == "nasdaq_sub" for sym in call[1]}
+        assert subbed == frozenset(roster), "every enrolled ticker must get book depth, not a subset"
     asyncio.run(go())
 
 
@@ -477,22 +508,23 @@ def test_schwab_connect_registers_book_handlers_every_time():
 
 def test_schwab_connect_reapplies_active_book_ticker_after_reconnect():
     """PHASE 4-F: a fresh StreamClient (post half-open recycle) carries NO subscriptions
-    — the active UI viewer's book depth must be re-applied on THIS connect, not wait for
-    the next 1s poll tick to notice an unchanged signal file and do nothing."""
+    — the FULL enrolled roster's book depth must be re-applied on THIS connect, not wait
+    for the next 1s poll tick to notice an unchanged signal file and do nothing. UNIVERSAL
+    (2026-09-21): the whole roster, not one active ticker."""
     import app.market_data.schwab.streaming.capture as d
 
     async def go(monkeypatch):
         _install_fake_schwab_streaming(monkeypatch)
         bus, health, stats, stop = MessageBus(), HealthRegistry(), CaptureStats(), asyncio.Event()
         stream, task, _cs = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
-                                                    active_book_ticker="QQQ")
+                                                    active_book_roster=frozenset({"QQQ", "IWM"}))
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        assert ("nasdaq_sub", ("QQQ",)) in stream.calls
-        assert ("nyse_sub", ("QQQ",)) in stream.calls
+        assert ("nasdaq_sub", ("IWM", "QQQ")) in stream.calls
+        assert ("nyse_sub", ("IWM", "QQQ")) in stream.calls
 
     import pytest as _pt
     mp = _pt.MonkeyPatch()
@@ -546,7 +578,7 @@ def test_reconnect_replaces_stream_not_both_at_once():
         except asyncio.CancelledError:
             pass
         stream2, task2, _cs2 = await d._schwab_connect(SimpleNamespace(client=object()), ["SPY"], bus, health, stats, stop,
-                                                       active_book_ticker="SPY")
+                                                       active_book_roster=frozenset({"SPY"}))
         task2.cancel()
         try:
             await task2
@@ -1163,7 +1195,7 @@ def test_1c_a_stale_book_poll_tick_cannot_mutate_after_a_recycle(tmp_path, monke
     monkeypatch.setattr(m, "STATUS_LOOP_INTERVAL_SEC", 0.02)
     gate = asyncio.Event()
     monkeypatch.setattr(m, "stream_needs_recycle", _one_shot_recycle(gate))
-    write_active_ticker_signal("SPY")
+    write_active_ticker_roster_signal(["SPY"])
     write_active_option_contract_signal(_A_CONTRACT)
     captured = {}
 
@@ -1172,7 +1204,7 @@ def test_1c_a_stale_book_poll_tick_cannot_mutate_after_a_recycle(tmp_path, monke
             lambda: any(e[0] == "VENDOR nasdaq_book_subs" and e[1] == 1
                         for e in _LifecycleStream.events),
             what="generation 1 to subscribe the SPY book")
-        write_active_ticker_signal("QQQ")
+        write_active_ticker_roster_signal(["QQQ"])
         await asyncio.wait_for(_LifecycleStream.parked.wait(), timeout=25)
         gate.set()
         await _await_event(lambda: len(_LifecycleStream.generations) >= 2,

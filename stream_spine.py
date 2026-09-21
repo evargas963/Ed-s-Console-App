@@ -479,6 +479,34 @@ def read_active_option_contracts_signal(
     return _read_json_list_signal("contract_symbols", path=dest)
 
 
+def default_active_ticker_roster_signal_path(db_path: Path | str | None = None) -> Path:
+    """PLURAL companion to default_active_ticker_signal_path (2026-09-21, operator mandate:
+    universal ticker scope binds book depth too, not only quotes -- "we are ticker agnostic.
+    everything needs to work universally", following the exact RC-UI-3 precedent that moved
+    option-contract streaming past its own single-contract ceiling). A SEPARATE file/key from
+    the singular active-ticker signal, not a shape change to it: the UI's "currently viewed"
+    ticker keeps its own unchanged singular signal (used for L1 replay ordering only); this
+    plural signal carries the FULL enrolled roster the daemon should hold NASDAQ_BOOK/
+    NYSE_BOOK for, independent of whatever the UI happens to be displaying."""
+    return resolve_stream_db_path(db_path).with_name("stream_active_ticker_roster.json")
+
+
+def write_active_ticker_roster_signal(
+    tickers: "list[str]", *, path: Path | None = None,
+) -> None:
+    """The server's write of the FULL enrolled roster the daemon should hold book depth
+    for -- universal, not "the one ticker someone is currently looking at". Passing an
+    empty list clears the roster (book depth drops to none, never a guessed default)."""
+    dest = path if path is not None else default_active_ticker_roster_signal_path()
+    _write_json_list_signal("tickers", tickers, path=dest)
+
+
+def read_active_ticker_roster_signal(*, path: Path | None = None) -> "list[str]":
+    """The daemon's read of the server's full requested book-depth roster."""
+    dest = path if path is not None else default_active_ticker_roster_signal_path()
+    return _read_json_list_signal("tickers", path=dest)
+
+
 def print_msg(*, symbol: str, price=None, size=None, exchange=None, conditions=None,
               trade_ts_ms=None, src: str, ts_recv: float | None = None) -> dict:
     return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
