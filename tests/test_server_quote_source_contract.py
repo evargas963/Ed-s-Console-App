@@ -262,12 +262,17 @@ def test_tier_a_live_state_falls_through_to_rest_when_the_plane_row_is_stale(mon
     """Operator-reproduced defect (2026-09-14, spot 360 audit): this gate used to trust ANY
     plane row with a spot, however old -- if the streaming websocket silently stalled, the
     header kept painting that stopped price as live forever, with no fallback, while
-    resolve_spot()'s own plane leg (same _CARD_FRESHNESS_V1_QUOTE_STALE_SEC boundary) would
-    already have fallen through to a fresher REST quote -- reopening the header-vs-terrain
-    divergence from the other direction."""
+    resolve_spot()'s own plane leg (the same ~30s freshness boundary) would already have
+    fallen through to a fresher REST quote -- reopening the header-vs-terrain divergence
+    from the other direction.
+
+    2026-09-21: was `server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0` -- that constant was
+    deleted along with the confirmed-dead card_freshness_v1 system; this test only ever
+    borrowed its value as a convenient "definitely stale" duration, unrelated to that system.
+    Replaced with the literal it evaluated to."""
     import time as _t
 
-    stale_row = {"spot": 999.0, "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0)}
+    stale_row = {"spot": 999.0, "server_received_ts": _t.time() - 35.0}
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: dict(stale_row))
     monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
     monkeypatch.setattr(server, "get_client", lambda: object())

@@ -1,7 +1,8 @@
 """RC-565: a second concurrent HEAVY verification wave on this machine must be refused, not
-silently allowed to corrupt a sibling worktree's run the way RC-517 measured (43 minutes of
-blind waiting + fifteen state-bound failures). A LIGHT run (no -n, or a small -n) must never
-be gated at all -- that is the overwhelming majority of runs during iterative development.
+silently allowed to corrupt a sibling worktree's run the way this row's own history measured
+(43 minutes of blind waiting + fifteen state-bound failures). A LIGHT run (no -n, or a small
+-n) must never be gated at all -- that is the overwhelming majority of runs during iterative
+development.
 
 ISOLATION: every subprocess spawned here is pinned to a PRIVATE, per-test wave directory via
 ED_TEST_VERIFICATION_WAVE_DIR (tools/verification_wave_lock.py's own injection point) --
@@ -90,7 +91,11 @@ def test_a_second_heavy_wave_is_refused_while_the_first_runs(tmp_path):
         out = second.stdout + second.stderr
         assert second.returncode == 2, f"the second wave was not refused:\n{out}"
         assert "VERIFICATION WAVE COLLISION" in out, out
-        assert "RC-517" in out, out
+        # 2026-09-21: was "RC-517" -- that citation pointed at a never-merged sibling
+        # branch's own ticket rows (fixed as a phantom-pointer defect this session); the
+        # refusal message now points at this repo's own RC-565 row, which carries the
+        # full incident history in governance/root_cause_log.md.
+        assert "RC-565" in out, out
     finally:
         first.wait(timeout=60)
     assert first.returncode == 0, first.stdout.read() if first.stdout else ""

@@ -169,14 +169,19 @@ def test_resolve_spot_falls_through_when_the_plane_row_is_stale(monkeypatch) -> 
     """A plane row this old is no longer meaningfully "streaming" -- serving a stopped
     stream as live would just move the divergence to the opposite direction (header frozen
     on an old tick, terrain correctly moving on). Falling through to the REST leg is more
-    honest and keeps every consumer converged on the same, still-live number."""
+    honest and keeps every consumer converged on the same, still-live number.
+
+    2026-09-21: was `server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0` -- that constant was
+    deleted along with the confirmed-dead card_freshness_v1 system; this test only ever
+    borrowed its value as a convenient "definitely stale" duration. Replaced with the
+    literal it evaluated to."""
     import time as _t
 
     import live_market_plane as L
 
     tk = "ZZPLANESTALE"
     L._by_ticker[tk] = {"spot": 700.42,
-                         "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0),
+                         "server_received_ts": _t.time() - 35.0,
                          "exchange_quote_ts": 1_800_000_000.0,
                          "quote_source_detail": {"spot": "LAST_PRICE"}}
     try:

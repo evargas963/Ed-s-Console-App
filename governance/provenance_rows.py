@@ -3180,11 +3180,6 @@ ROWS: tuple[Row, ...] = (
         justification='Stamps analytics_stale / pending / refresh flags from the in-process cache clock (RC-532).',
     ),
     Row(
-        file='server.py', derivation='_attach_card_freshness_v1_block', disposition='ALLOWLISTED',
-        allowlist_id='analytics_cache_state',
-        justification='Card freshness block derived from the same cache clock (RC-532).',
-    ),
-    Row(
         file='governed_stack_contract.py', derivation='resolve_guest_anchor_for_ticker', disposition='ALLOWLISTED',
         allowlist_id='mega4_governed_stack_contract',
         justification='Guest-anchor route from the governed stack contract (authoritative-ticker set, anchor affiliation); None when the ticker is authoritative.',

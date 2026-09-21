@@ -10,6 +10,8 @@
 
 This was the reality-reconciliation mission's own first flagged lead: *"CARD_TRUST_CONTRACT.md describes a UI that doesn't exist post-rebuild."* Confirmed here in full, not just the two citations an earlier pass caught.
 
+**UPDATE 2026-09-21:** the backend half is now also gone, not just the frontend. `card_freshness_v1`, `operator_card_actionable`, `operator_card_trust_state`, `operator_stale_reason_codes`, and `operator_actionability_reason` (the "S2B-1 operator mirrors" §373 below describes as feeding `resolveCardTrustGate`) were confirmed to have zero consumers anywhere — not the deleted frontend, not any other Python code, not a database column — and were removed from `server.py` along with the `_attach_card_freshness_v1_block`/`_card_freshness_trust_reason`/`_card_freshness_trust_state` functions that computed them. This was found while auditing why a much larger set of `_fetch_state` output fields (of which these were five) has no live consumer; see that investigation's own record for the full context. Nothing in this document was ever partially alive — it is retired end to end, server and client both.
+
 **Preserved below, unedited, as a historical design record** — the trust/freshness/evidence-hierarchy *concepts* (forecast-vs-tape conflict, fusion-vs-histogram disagreement, fail-closed staleness, reason classes) may still be worth carrying into a new contract for the rebuilt UI, but that contract does not exist today and is not written here. **Nothing below this banner should be read as describing current behavior, cited as binding, or used as a "mechanical lock" reference — every code/file citation past this point is stale.**
 
 ---

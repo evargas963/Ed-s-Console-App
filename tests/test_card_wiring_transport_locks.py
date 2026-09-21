@@ -496,40 +496,11 @@ def test_accuracy_callers_use_serving_model_version() -> None:
 
 
 # ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
-
-
-def test_completed_fetch_broadcast_attaches_operator_mirrors() -> None:
-    """The completed-fetch broadcast path must attach the same actionability block
-    REST and SSE cache-fanout attach — otherwise an SSE-fed card can paint
-    actionable in a fresh-bundle/stale-quote window where REST clients are withheld."""
-    outer = _find_function(SERVER_TREE, "_schedule_analytics_recompute")
-    assert outer is not None, "server._schedule_analytics_recompute not found"
-    inner = _find_function(outer, "_work")
-    assert inner is not None, "_schedule_analytics_recompute._work not found"
-    assert "_attach_card_freshness_v1_block" in _called_names(inner), (
-        "completed-fetch broadcast no longer attaches card_freshness_v1 / "
-        "operator_card_* mirrors — SSE/REST actionability parity regressed."
-    )
-
-
-def test_attach_block_stamps_operator_mirrors_functionally() -> None:
-    """Functional half of lock 4: the attach block must stamp the S2B-1 mirrors."""
-    import server
-
-    md: dict = {"ticker": "SPY", "mhap_rows": [], "analytics_stale": False}
-    server._attach_card_freshness_v1_block(
-        md,
-        ticker="SPY",
-        now=1_000_000.0,
-        analytics_ttl_sec=5.0,
-        tier_c_cache_stale_serve=False,
-        plane_quote=None,
-    )
-    assert md.get("operator_card_actionable") is False  # mhap_missing → withheld
-    assert isinstance(md.get("operator_stale_reason_codes"), list)
-    assert md.get("operator_actionability_reason")
-    cf = md.get("card_freshness_v1")
-    assert isinstance(cf, dict) and cf.get("card_trust_state")
+# REMOVED 2026-09-21: card_freshness_v1 / operator_card_* mirrors and the
+# _attach_card_freshness_v1_block function they locked are confirmed dead --
+# CARD_TRUST_CONTRACT.md's resolveCardTrustGate, the sole intended consumer,
+# does not exist anywhere in the rebuilt frontend, and neither field has any
+# other Python-side reader or database column.
 
 
 # ── Locks 2 + 3 — client source guards ────────────────────────────────────
