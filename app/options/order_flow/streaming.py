@@ -28,6 +28,7 @@ server.py): `start_order_flow_stream` / `stop_order_flow_stream` /
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import sqlite3
@@ -496,7 +497,72 @@ def _replay_new_rows(con: sqlite3.Connection, ticker: str) -> None:
         _book_cursor[ticker] = 0.0
 
 
-def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) -> "float | None":
+#: Safety bound for _prefetch_option_l1_batch's shared query window (2026-09-21, live-RTH
+#: finding): a symbol whose own L1 cursor is older than this is excluded from the ONE shared
+#: batched query and falls back to its own per-symbol incremental query instead -- this keeps
+#: the shared query's `ts_recv > ?` floor from ever collapsing toward epoch. A symbol whose
+#: first-tick snapshot found zero rows gets cursor (0.0, 0); without this bound, a single such
+#: symbol in the batch would drag the shared floor back to 0.0 for EVERY symbol, turning one
+#: cheap query into a near-full-table scan of stream_options_quotes_raw.
+OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC = 120.0
+
+
+def _prefetch_option_l1_batch(con: sqlite3.Connection,
+                               contract_symbols: "list[str]") -> "dict[str, list[tuple]]":
+    """ONE query's worth of new stream_options_quotes_raw L1 rows for every symbol in
+    `contract_symbols` that already has an L1 cursor, grouped by symbol -- the batched
+    replacement for `_feed_loop` calling `_replay_option_contract_rows`'s own per-symbol L1
+    query once per contract, every poll tick.
+
+    MEASURED 2026-09-21 (live-RTH finding, root cause of "gamma heatmap doesn't render all
+    cells... it used to"): 910 sequential per-symbol queries (RC-UI-3's uncapped 'additional
+    contracts' mandate removed the old 240-contract ceiling that had kept this loop's own cost
+    proportionally small) took 1.55s in an isolated read-only measurement against this exact
+    live capture DB -- already 3x the 0.5s poll interval -- and substantially longer under the
+    live server's real concurrent DB write load plus 910 separate run_in_executor thread-pool
+    dispatches: the live gamma-surface's own `age_sec` climbed past 70s and never refreshed
+    across a 24-second observation window. By the time a tick was actually processed,
+    GAMMA_SURFACE_STREAM_STALENESS_SEC (10s) had already elapsed for nearly every contract
+    regardless of how fresh the underlying Schwab data genuinely was, collapsing the heatmap's
+    live cell count toward zero even with abundant fresh data arriving (902 of META's ~910
+    contracts ticked within the prior 30 seconds at the time of measurement). This is the SAME
+    architectural mistake RC-560 already fixed once for the DAEMON's own vendor-facing SUBSCRIBE
+    calls ("a design proven safe at N=1 was never re-examined at N=100+") recurring in a SIBLING
+    mechanism -- this console-side replay loop -- that was never re-examined for the same scale.
+
+    A symbol still on its first tick (no cursor yet), or whose cursor has fallen further behind
+    than OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC, is excluded here and left to its existing per-symbol
+    query in `_replay_option_contract_rows` -- both are one-time or rare-straggler costs, never
+    the routine per-tick cost this function fixes. A batched symbol with zero new rows still
+    gets an explicit `[]` entry (so the caller can tell "checked via batch, nothing new" from
+    "not batched, still needs its own query" -- see `_replay_option_contract_rows`'s
+    `prefetched_l1` parameter)."""
+    known = [s for s in dict.fromkeys(contract_symbols) if s in _option_l1_cursor]
+    out: "dict[str, list[tuple]]" = {}
+    if not known:
+        return out
+    floor_ts = time.time() - OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC
+    batched = [s for s in known if _option_l1_cursor[s][0] >= floor_ts]
+    for s in batched:
+        out[s] = []
+    if not batched:
+        return out
+    min_ts, min_rowid = min(_option_l1_cursor[s] for s in batched)
+    placeholders = ",".join("?" for _ in batched)
+    rows = con.execute(
+        f"SELECT rowid, ts_recv, symbol, native_json FROM stream_options_quotes_raw "
+        f"WHERE symbol IN ({placeholders}) AND (ts_recv > ? OR (ts_recv = ? AND rowid > ?)) "
+        f"ORDER BY ts_recv, rowid",
+        (*batched, min_ts, min_ts, min_rowid)).fetchall()
+    for rowid, ts_recv, sym, native_json in rows:
+        cur_ts, cur_rowid = _option_l1_cursor.get(sym, (0.0, 0))
+        if ts_recv > cur_ts or (ts_recv == cur_ts and rowid > cur_rowid):
+            out.setdefault(sym, []).append((rowid, ts_recv, native_json))
+    return out
+
+
+def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str, *,
+                                  prefetched_l1: "list[tuple] | None" = None) -> "float | None":
     """Same replay shape as _replay_new_rows, for the one option CONTRACT this feed is
     tracking. LEVELONE_OPTIONS rows read via push_level_one and OPTIONS_BOOK rows via
     push_book — app.options.order_flow.state's functions are symbol-generic (they read Schwab's
@@ -508,6 +574,12 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
 
     First tick is a snapshot tail so a late UI bind hydrates the current book instead
     of walking every OPTIONS_BOOK row ever stored for the contract.
+
+    `prefetched_l1` (2026-09-21), when given (even an empty list), is used verbatim in place of
+    this function's own per-symbol L1 query -- the batched result from
+    `_prefetch_option_l1_batch`, already filtered to rows newer than this symbol's own cursor.
+    `None` (the default) preserves the exact original per-symbol-query behavior unchanged, so
+    every existing direct caller (including this file's own tests) is unaffected.
 
     Returns the freshest ts_recv among this call's own L1 rows that carried GAMMA/DELTA/
     OPEN_INTEREST/TOTAL_VOLUME/VOLUME (None if none did) -- the CALLER (_feed_loop) is
@@ -522,6 +594,8 @@ def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str) 
             "WHERE symbol = ? ORDER BY ts_recv DESC, rowid DESC LIMIT ?",
             (contract_symbol, FIRST_TICK_L1_LIMIT)).fetchall()
         rows = list(reversed(rows))
+    elif prefetched_l1 is not None:
+        rows = prefetched_l1
     else:
         cursor_ts, cursor_rowid = _option_l1_cursor[contract_symbol]
         rows = con.execute(
@@ -792,10 +866,21 @@ async def _feed_loop() -> None:
                     # ticker regardless of which symbol names the call). No captured event is
                     # lost: every row for every contract still updates OrderFlowState inside
                     # _replay_option_contract_rows, unconditionally, exactly as before.
+                    # 2026-09-21 (live-RTH finding): one shared query for every symbol's new
+                    # L1 rows instead of contracts_to_replay separate per-symbol queries --
+                    # see _prefetch_option_l1_batch's own docstring for the measured cost this
+                    # replaces (1.55s+ per poll tick against a 910-contract set, well over the
+                    # 0.5s budget). _replay_option_contract_rows still runs once per symbol
+                    # (book-cursor bookkeeping is unchanged and stays per-symbol, its coverage
+                    # is small), but it now consumes already-fetched rows instead of querying.
+                    prefetched_l1_batch = await loop.run_in_executor(
+                        executor, _prefetch_option_l1_batch, con, contracts_to_replay)
                     qualifying: list[tuple[str, float]] = []
                     for sym in contracts_to_replay:
                         ts = await loop.run_in_executor(
-                            executor, _replay_option_contract_rows, con, sym)
+                            executor, functools.partial(
+                                _replay_option_contract_rows, con, sym,
+                                prefetched_l1=prefetched_l1_batch.get(sym)))
                         if ts is not None:
                             qualifying.append((sym, ts))
                     if qualifying and _streamed_greeks_hook is not None:
