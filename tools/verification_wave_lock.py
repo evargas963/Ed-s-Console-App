@@ -1,13 +1,16 @@
 """RC-565: refuse a second concurrent HEAVY verification wave on this machine.
 
-Successor to RC-517/518/519 (branch claude/institutional-e2e-enforcement, retired along
-with the rest of that branch's RC-516 boundary campaign -- see governance/root_cause_log.md
-and the operator's 2026-09-18 decision to pick this specific gap back up as fresh work). The
-original incident (RC-517's own commit message): a rerun launched beside an already-running
-8-worker pytest-full wave produced 43 minutes of blind waiting on buffered output and fifteen
-state-bound failures from concurrent worktree mutation -- this machine runs a dozen-plus
-linked worktrees against the SAME repository, so two independent full-suite runs starting at
-once is a normal, repeatable operating pattern here, not an edge case.
+Successor to the prior `claude/institutional-e2e-enforcement` branch's concurrency-admission
+work, which was retired unmerged (its lease/admission mechanism never landed on main, and its
+own ticket rows exist only on that branch, not in this repo's governance/root_cause_log.md --
+citing them here would be a pointer that resolves to nothing). See this repo's OWN RC-565 row
+in governance/root_cause_log.md for the full, verified history: the original incident (a
+rerun launched beside an already-running 8-worker pytest-full wave, producing 43 minutes of
+blind waiting on buffered output and fifteen state-bound failures from concurrent worktree
+mutation) and the operator's 2026-09-18 decision to pick this specific gap back up as fresh
+work. This machine runs a dozen-plus linked worktrees against the SAME repository, so two
+independent full-suite runs starting at once is a normal, repeatable operating pattern here,
+not an edge case.
 
 This is a NEW build against the current seams, not a port: the old branch's lease code hooked
 into launch/admission seams (`admit_heavy_launch`, `evidence_identity_hash`) that no longer
@@ -86,8 +89,9 @@ def refusal_message(rootdir: str) -> str:
         "VERIFICATION WAVE COLLISION (RC-565): a heavy (>= "
         f"{HEAVY_WORKER_THRESHOLD}-worker) pytest run is already in progress on this "
         f"machine -- held by {held_by}. Starting a second one here in {rootdir} is the exact "
-        "incident RC-517 measured: 43 minutes of blind waiting plus fifteen false failures "
-        "from concurrent worktree mutation. Wait for the other run to finish, or set "
+        "incident this row's own history (governance/root_cause_log.md, RC-565) measured: "
+        "43 minutes of blind waiting plus fifteen false failures from concurrent worktree "
+        "mutation. Wait for the other run to finish, or set "
         f"{_OVERRIDE_ENV}=1 if you are deliberately running two waves at once and accept the "
         "risk of cross-run interference."
     )

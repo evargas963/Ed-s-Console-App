@@ -1588,16 +1588,28 @@ _RC_CITATION_GRANDFATHERED = frozenset(f"RC-{i}" for i in range(1, 30))
 #: backticked span that is prose rather than a command still fails.
 _RC_CITATION_RE = re.compile(
     r"`[^`]*(SELECT |COUNT\(|SUM\(|PRAGMA |pytest|python |node |tools/|\.py"
-    r"|curl |urllib|http://127\.0\.0\.1|https?://localhost)[^`]*`", re.I
+    r"|curl |urllib|http://127\.0\.0\.1|https?://localhost|gh )[^`]*`", re.I
 )
+#: RC-REHAB-1 (2026-09-20): `gh run view <id> --log-failed` / `gh api ...` are already used
+#: as reproducible citations 8 times elsewhere in this same log (CI-run and GitHub-API
+#: lookups are exactly as re-runnable as a SQL query or a pytest invocation) but "gh " was
+#: never a recognized keyword here -- this checker's own blind spot, not a missing citation
+#: in the rows it was blocking.
 #: A numeric CLAIM — a bare digit run, optionally with a unit. Dates and RC ids are excluded
 #: by the callers stripping them, so "2026-07-20" does not read as three claims.
 _RC_NUMBER_RE = re.compile(r"\b\d[\d,.]*\s*(?:GB|MB|KB|s|ms|%|x|rows|files|strikes|tests)?\b")
 #: Digit-carrying tokens that are NOT a numeric finding: a date (full or year-month), a record
-#: id (`RC-43`, `O-09`, `INF-1`, `REQ-7`) and an issue number. THE one definition, stripped by
-#: both numeric-claim rules before the numbers on a line are counted (RC-548: `O-09` and
-#: `INF-1` were counted as two findings by the staged-claims rule).
-_NON_FINDING_TOKENS = re.compile(r"\d{4}-\d{2}(?:-\d{2})?|\b[A-Z][A-Z0-9]{0,7}-\d+\b|#\d+")
+#: id (`RC-43`, `O-09`, `INF-1`, `REQ-7`), an issue number, and a bare parenthesized why-chain
+#: step marker (`(1)`, `(2)` ... `(5)`). THE one definition, stripped by both numeric-claim
+#: rules before the numbers on a line are counted (RC-548: `O-09` and `INF-1` were counted as
+#: two findings by the staged-claims rule; RC-REHAB-1 2026-09-20: RC-359's own standard
+#: `(1) ... -> (2) ... -> (3) ...` why-chain format -- used by every row in this log -- was
+#: itself counted as 5 numeric claims, tripping the reproducible-command rule on a row with
+#: NO actual measured quantity at all. A bare `(N)` with no unit immediately after is the
+#: log's own step-numbering convention, not a claim; a real measurement in parens still has a
+#: unit inside, e.g. `(15%)`, which this pattern does not match (the digits must be the whole
+#: parenthesized content).
+_NON_FINDING_TOKENS = re.compile(r"\d{4}-\d{2}(?:-\d{2})?|\b[A-Z][A-Z0-9]{0,7}-\d+\b|#\d+|\(\d{1,2}\)")
 _RC_CITATION_MIN_NUMBERS = 3
 
 

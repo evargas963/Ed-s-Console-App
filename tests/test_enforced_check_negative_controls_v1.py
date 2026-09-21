@@ -259,6 +259,62 @@ def test_citation_check_accepts_the_repos_live_probe_forms(tmp_path, monkeypatch
         )
 
 
+def test_citation_check_accepts_a_gh_cli_citation(tmp_path, monkeypatch):
+    """RC-REHAB-1 (2026-09-20): `gh run view <id> --log-failed` / `gh api ...` are used as
+    reproducible citations 8 times elsewhere in this repo's real root_cause_log.md, but "gh "
+    was never a recognized keyword here — the checker's own blind spot blocked evidence shaped
+    exactly like the RC-125 live-probe law this rule was built to accept."""
+    from tools import check_institutional_correctness as M
+    (tmp_path / "governance").mkdir()
+    log = tmp_path / "governance" / "root_cause_log.md"
+    monkeypatch.setattr(M, "REPO", tmp_path)
+
+    log.write_text(_citation_row(
+        "Reproduce with `gh run view 31859275082 --log-failed`."
+    ) + "\n", encoding="utf-8")
+    assert M.check_rc_numeric_claims_cite_a_command() == [], (
+        "a gh CLI citation was rejected — the keyword gap regressed"
+    )
+
+
+def test_citation_check_does_not_count_the_why_chains_own_step_numbering(tmp_path, monkeypatch):
+    """RC-359 (real row, 2026-09-20): a why-chain using this log's own standard
+    `(1) ... -> (2) ... -> (3) ...` step format contributed 5 false "numeric claims" from its
+    own list markers alone, tripping this rule on a row with NO actual measured quantity —
+    (1)-(5) are structural, not evidence. A genuine measurement in parens still carries a unit
+    inside, e.g. `(15%)`, which must still count; only a BARE digit-only parenthesized token
+    is exempt."""
+    from tools import check_institutional_correctness as M
+    (tmp_path / "governance").mkdir()
+    log = tmp_path / "governance" / "root_cause_log.md"
+    monkeypatch.setattr(M, "REPO", tmp_path)
+
+    why_chain_only_step_markers = (
+        "(1) first link -> (2) second link -> (3) third link -> (4) fourth link -> "
+        "(5) ROOT: TERMINAL, no real measurement anywhere in this chain"
+    )
+    log.write_text(
+        "| RC-901 | OPEN | 2026-07-28 | 2026-07-28 | desc | "
+        f"{why_chain_only_step_markers} | PLAN: still needs 2 sessions before it can ship. |\n",
+        encoding="utf-8",
+    )
+    assert M.check_rc_numeric_claims_cite_a_command() == [], (
+        "the why-chain's own (1)/(2)/(3) step numbering is being counted as a numeric claim"
+    )
+
+    # A real measurement inside parens, WITH a unit, must still be caught -- three genuine
+    # findings (not chain markers) to clear _RC_CITATION_MIN_NUMBERS on its own merits.
+    log.write_text(
+        "| RC-902 | OPEN | 2026-07-28 | 2026-07-28 | desc | "
+        "(1) first link -> (2) second link -> a real finding of (15%) drift across 42 tickers "
+        "over 3 sessions with no citation -> (3) ROOT: TERMINAL | PLAN: fix it. |\n",
+        encoding="utf-8",
+    )
+    assert len(M.check_rc_numeric_claims_cite_a_command()) == 1, (
+        "a real parenthesized measurement with a unit was wrongly exempted"
+    )
+
+
 def test_closed_row_must_ship_its_code_controls():
     """RC-137/RC-139/RC-526: a closure must not assert a repair with no repairing code.
 
