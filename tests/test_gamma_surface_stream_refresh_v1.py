@@ -334,6 +334,97 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
         assert server._terrain_cache[TK]["_contracts_rest"] == _CONTRACTS
 
 
+def test_a_streamed_tick_also_refreshes_key_levels_fast_no_rth_required(monkeypatch):
+    """RC-570 (2026-09-21, live-RTH finding/operator demand): a streamed tick used to refresh
+    ONLY _gamma_surface/_per_strike (the heatmap grid), leaving gamma_flip/call_wall/put_wall/
+    absolute_gamma_strike/net_gex_peak -- everything the Key Levels panel shows -- frozen at
+    whatever the last ~60s REST cycle computed. This is the direct, synthetic proof the
+    operator demanded: inject one fake tick through the EXACT SAME code path a real Schwab
+    tick would take, and prove BOTH that Key Levels' own fields update from it AND that this
+    happens fast -- correctness and speed proven here, in a test, with no dependency on RTH.
+    What RTH separately proves is a CAPACITY question (does Schwab keep sending ticks fast
+    enough under real load), never a correctness question -- that distinction is the whole
+    point of this test existing."""
+    baseline_ts = time.time() - 10.0
+    _put_rest_baseline(computed_ts_utc=baseline_ts)
+    with server._terrain_cache_lock:
+        # The REST baseline seeded above never set gamma_flip/walls (only a bare gamma
+        # surface) -- start from an explicit "old/absent" sentinel so a pass proves this
+        # call actually WROTE a fresh value, not that one was already sitting there.
+        server._terrain_cache[TK]["gamma_flip"] = "SENTINEL_STALE_VALUE"
+        server._terrain_cache[TK]["call_wall"] = "SENTINEL_STALE_VALUE"
+
+    now = time.time()
+    streamed = {"gamma": 0.5, "gamma_ts_recv": now, "delta": 0.9, "delta_ts_recv": now,
+                "open_interest": 99999.0, "open_interest_ts_recv": now}
+    monkeypatch.setattr(
+        "app.options.order_flow.state.get_stream_greeks",
+        lambda sym: streamed if sym == _CONTRACT_SYMBOL else None)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
+
+    t0 = time.monotonic()
+    status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
+    elapsed_sec = time.monotonic() - t0
+    assert status == "ok"
+    # PROOF OF SPEED: this is the exact same computation path _terrain_refresh_one's own
+    # 60s REST cycle takes, but triggered by one tick instead of a timer. A generous but
+    # real budget -- production runs this on a real chain in well under a second; 5s leaves
+    # wide margin for a slow CI runner while still proving "fast", not "eventually".
+    assert elapsed_sec < 5.0, (
+        f"tick-to-Key-Levels-update took {elapsed_sec:.2f}s -- too slow to call this live"
+    )
+
+    overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed})
+    assert n == 1
+    expected_terrain = server.compute_terrain(TK, overlaid, _SPOT).to_dict()
+
+    with server._terrain_cache_lock:
+        cached = dict(server._terrain_cache[TK])
+
+    # PROOF OF CORRECTNESS: Key Levels' own fields moved off the sentinel and match the
+    # SAME canonical terrain_engine.compute_terrain the REST cycle uses -- never a second,
+    # divergent formula (the exact class of bug RC-569, immediately above this one in the
+    # ledger, already fixed for the background logger's own independent call).
+    assert cached["gamma_flip"] != "SENTINEL_STALE_VALUE"
+    assert cached["call_wall"] != "SENTINEL_STALE_VALUE"
+    assert cached["gamma_flip"] == expected_terrain["gamma_flip"]
+    assert cached["call_wall"] == expected_terrain["call_wall"]
+    assert cached["put_wall"] == expected_terrain["put_wall"]
+    assert cached["absolute_gamma_strike"] == expected_terrain["absolute_gamma_strike"]
+    assert cached["net_gex_peak"] == expected_terrain["net_gex_peak"]
+    # computed_ts_utc must advance to THIS tick's instant, not stay pinned to the stale
+    # REST baseline_ts -- a reader checking freshness must see this really is new.
+    assert cached["computed_ts_utc"] > baseline_ts
+
+    # The heatmap's own existing per-tick contract (unchanged by this fix) still holds too --
+    # proving this addition is additive, not a regression of the behavior already proven above.
+    assert cached["_gamma_surface"]["stream_overlay_symbols"] == [_CONTRACT_SYMBOL]
+
+
+def test_key_levels_refresh_is_best_effort_a_terrain_failure_never_blocks_the_heatmap(monkeypatch):
+    """The heatmap/per-strike publication must succeed even if the new Key Levels refresh
+    step raises -- this is an ADDITIONAL consumer of already-computed data, never a new
+    precondition for the surface update that already worked before this fix existed."""
+    _put_rest_baseline(computed_ts_utc=time.time() - 10.0)
+    now = time.time()
+    streamed = {"gamma": 0.5, "gamma_ts_recv": now, "delta": 0.9, "delta_ts_recv": now,
+                "open_interest": 99999.0, "open_interest_ts_recv": now}
+    monkeypatch.setattr(
+        "app.options.order_flow.state.get_stream_greeks",
+        lambda sym: streamed if sym == _CONTRACT_SYMBOL else None)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
+    monkeypatch.setattr(server, "compute_terrain", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
+    assert status == "ok"
+    with server._terrain_cache_lock:
+        cached = server._terrain_cache[TK]
+    assert cached["_gamma_surface"]["stream_overlay_symbols"] == [_CONTRACT_SYMBOL]
+    # No Key Levels fields were written from the failed call -- degrades to "wait for the
+    # next REST cycle", never to a partial/corrupt terrain write.
+    assert "gamma_flip" not in cached or cached.get("gamma_flip") is None
+
+
 def test_a_second_tick_with_a_moved_spot_forces_a_full_recompute_not_a_stale_splice(monkeypatch):
     """Independent-review finding (2026-09-16, follow-up mandate): net_gex_1pct/dex/vanna
     are functions of spot -- a streamed tick that also carries a genuinely NEW resolved spot
