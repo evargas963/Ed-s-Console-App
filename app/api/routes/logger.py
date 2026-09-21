@@ -67,16 +67,16 @@ def logger_status():
         result.append({
             "ticker":       t,
             "core":         t in CORE_TICKERS,
-            "category":     dbr.get("category") or ("core" if t in CORE_TICKERS else "unknown"),
+            "category":     dbr.get("category") or ("core" if t in CORE_TICKERS else "unknown"),  # caps-ok: internal logging_universe DB-row categorization (server bookkeeping), not a Schwab/market field
             "enrollment_source": enroll,
             "enrolled_ts_utc": dbr.get("enrolled_ts_utc"),
             "last_seen_ts_utc": dbr.get("last_seen_ts_utc"),
             "last_background_log_ts_utc": dbr.get("last_background_log_ts_utc"),
-            "count":        s.get("count", 0),
+            "count":        s.get("count", 0),  # caps-ok: an in-memory per-ticker log counter that hasn't ticked yet is genuinely zero, not an unmeasured Schwab field
             "last_logged":  last_logged,
             "secs_ago":     round(now - last_logged, 0) if last_logged else None,
             "last_error":   s.get("last_error"),
-            "source":       s.get("source", "—"),
+            "source":       s.get("source", "—"),  # caps-ok: internal stats display field ("—" = no source recorded yet), not a market value
             "eligible_background_log": _is_loggable_session(),
         })
 

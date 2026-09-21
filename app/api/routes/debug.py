@@ -49,13 +49,13 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker),
                                   to_date=_chain_to_date_for(ticker, None))
         if c_resp is None or c_resp.status_code != 200:
-            return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
+            return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}  # caps-ok: diagnostic ERROR-MESSAGE text only (the string embedded in a failure report), not a market value; c_resp is already known falsy/non-200 here so no real status_code is being hidden
         chain_json = c_resp.json()
         contracts = flatten_chain_contracts(chain_json)
         raw_cts = contracts
 
         # Sample first contract raw fields
-        first_raw = raw_cts[0] if raw_cts else {}
+        first_raw = raw_cts[0] if raw_cts else {}  # caps-ok: diagnostic sampling placeholder (used only to list .keys() for display below); an empty contract list has no sample to show, not a fabricated contract
         raw_keys  = list(first_raw.keys())
 
         # Check expiration fields
@@ -147,22 +147,26 @@ def debug_prediction(ticker: str = DEFAULT_TICKER):
     import server as _server
     from server import _HAS_SIGNALS, _fetch_state, CANONICAL_TIMEFRAME
 
-    if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):
+    if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):  # caps-ok: env-var config read is the endpoint's own feature-flag gate itself, not a Schwab/market field default
         raise HTTPException(status_code=404, detail="debug endpoints disabled")
     try:
         state = _fetch_state(ticker, expiry=None, update_source="debug_endpoint")
-        zone = state.get("zone", "?")
-        vwap_side = state.get("vwap_side", "?")
-        bias = state.get("bias_signal", "?")
-        pin = state.get("pin_strength", "?")
-        nd = state.get("net_delta", "?")
-        ng = state.get("net_gamma", "?")
-        gex_mag = state.get("gex_magnitude", "?")
-        dex_mag = state.get("dex_magnitude", "?")
-        samples = state.get("samples_used", "?")
-        model_note = state.get("model_note", "?")
-        session_bkt = state.get("session_bucket", "?")
-        vix_bkt = state.get("vix_bucket", "?")
+        # Operator-facing DIAGNOSTIC DISPLAY fields only, gated behind
+        # ED_ALLOW_DEBUG_ENDPOINTS above and never consumed by a decision path — "?"
+        # means "field absent from this state" for human inspection, not a claim that
+        # the underlying market/model value equals zero, flat, or unknown.
+        zone = state.get("zone", "?")  # caps-ok: gated debug display field, see comment above
+        vwap_side = state.get("vwap_side", "?")  # caps-ok: gated debug display field, see comment above
+        bias = state.get("bias_signal", "?")  # caps-ok: gated debug display field, see comment above
+        pin = state.get("pin_strength", "?")  # caps-ok: gated debug display field, see comment above
+        nd = state.get("net_delta", "?")  # caps-ok: gated debug display field, see comment above
+        ng = state.get("net_gamma", "?")  # caps-ok: gated debug display field, see comment above
+        gex_mag = state.get("gex_magnitude", "?")  # caps-ok: gated debug display field, see comment above
+        dex_mag = state.get("dex_magnitude", "?")  # caps-ok: gated debug display field, see comment above
+        samples = state.get("samples_used", "?")  # caps-ok: gated debug display field, see comment above
+        model_note = state.get("model_note", "?")  # caps-ok: gated debug display field, see comment above
+        session_bkt = state.get("session_bucket", "?")  # caps-ok: gated debug display field, see comment above
+        vix_bkt = state.get("vix_bucket", "?")  # caps-ok: gated debug display field, see comment above
 
         # Count snapshots per zone in DB
         zone_counts = {}

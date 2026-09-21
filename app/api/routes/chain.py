@@ -27,12 +27,19 @@ def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
     # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(ticker)
     # Use any cached (ticker, expiry) entry — expiries list is same for all
+    # CAPS audit fix (2026-09-20): the full ms_dict assembly unconditionally sets
+    # ms_dict["expiries"] (server.py), so this key is only ever absent on a minimal
+    # PENDING shell (a cold-cache placeholder written before the real computation
+    # lands) or another malformed entry — defaulting to [] would silently report
+    # "confirmed zero expiries" for a ticker that is actually still computing.
+    # Require the real key to fall through to the live low-latency fetch instead.
     cached = next(
-        (v for (t, e), v in _state_cache.items() if t == ticker and v.get("ms_dict")),
+        (v for (t, e), v in _state_cache.items()
+         if t == ticker and v.get("ms_dict") and "expiries" in v["ms_dict"]),
         None
     )
     if cached:
-        return JSONResponse({"expiries": cached["ms_dict"].get("expiries", [])})
+        return JSONResponse({"expiries": cached["ms_dict"]["expiries"]})
     try:
         return JSONResponse({"expiries": _fetch_expiries_light(ticker)})
     except HTTPException:

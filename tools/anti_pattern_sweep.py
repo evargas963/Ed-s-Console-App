@@ -59,7 +59,15 @@ class VariantSpec:
 VARIANTS: tuple[VariantSpec, ...] = (
     VariantSpec(
         "GET_WITH_DEFAULT",
-        re.compile(r"""\.get\(\s*['"][^'"]+['"]\s*,\s*(?!None\b)([^)]+)\)"""),
+        # CAPS audit fix (2026-09-20): the lookahead used to be `\s*(?!None\b)` -- since
+        # `\s*` is greedy but backtracks, a genuine `.get(key, None)` (real, honest
+        # missingness) could still match: the engine backtracks `\s*` to zero-width,
+        # checks the lookahead at a position where a SPACE (not "N") comes next, the
+        # lookahead trivially succeeds, and the true `None` default is silently
+        # misclassified as a fabricated one. The lookahead itself now tolerates the
+        # same leading whitespace so it always sees what the value actually is,
+        # regardless of how far `\s*` backtracks.
+        re.compile(r"""\.get\(\s*['"][^'"]+['"]\s*,\s*(?!\s*None\b)([^)]+)\)"""),
         "dict.get(key, default) where default is not None",
     ),
     VariantSpec(
@@ -91,8 +99,14 @@ VARIANTS: tuple[VariantSpec, ...] = (
     ),
     VariantSpec(
         "GETATTR_DEFAULT",
+        # CAPS audit fix (2026-09-20): same backtracking bug as GET_WITH_DEFAULT above --
+        # `getattr(obj, "field", None)`, a genuine "absence has a type" default, was
+        # silently misclassified as a fabricated default because `\s*` could backtrack
+        # to zero-width before the `(?!None\b)` lookahead ran, letting a stray space
+        # hide the real `None` from the check. Widened the lookahead to tolerate that
+        # same leading whitespace so it always sees the true value.
         re.compile(
-            r"""getattr\(\s*[^,]+,\s*['"][^'"]+['"]\s*,\s*(?!None\b)"""
+            r"""getattr\(\s*[^,]+,\s*['"][^'"]+['"]\s*,\s*(?!\s*None\b)"""
         ),
         "getattr(obj, field, default) where default is not None",
     ),

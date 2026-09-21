@@ -267,7 +267,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     # The prior-day morning_full archive is untouched and still serves ONLY the ghost — a bank
     # row is this session's own wide book, which is exactly what the archive is not.
     try:
-        _live_ts = float(_snap.get("computed_ts_utc") or 0.0) if isinstance(_snap, dict) else 0.0  # silent-zero-ok: epoch-0 ancient sentinel — an undated snapshot must lose every freshness comparison
+        _live_ts = float(_snap.get("computed_ts_utc") or 0.0) if isinstance(_snap, dict) else 0.0  # silent-zero-ok: epoch-0 ancient sentinel — an undated snapshot must lose every freshness comparison  # caps-ok: same epoch-0-ancient-sentinel reasoning as the silent-zero-ok marker — forces "stale", never a fabricated fresh timestamp
         _live_stale = (today is None) or (
             _live_ts <= 0.0) or ((time.time() - _live_ts) > TERRAIN_STALE_AFTER_SEC)
         if _live_stale:

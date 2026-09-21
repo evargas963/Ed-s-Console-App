@@ -237,7 +237,7 @@ def get_liquidity_snapshot(
                 key=lambda x: (
                     x["distance_to_spot"] is None,
                     x["distance_to_spot"] if x["distance_to_spot"] is not None else 1e9,
-                    -x.get("tradeable_score", 0),
+                    -x.get("tradeable_score", 0),  # caps-ok: sort-key fallback only; _liquidity_zone_tradeable_fields unconditionally sets tradeable_score on every zp under the same `snap_raw == "live"` gate this sort itself runs under, so the default is an unreachable defensive fallback, not a real substitution
                 )
             )
         result = {

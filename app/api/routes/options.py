@@ -221,7 +221,14 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         # sense an operator cares about -- `available` now reflects project_gamma_surface's
         # own gamma_available signal (computed from the SAME per-cell _has_data gate the grid
         # itself renders from), not merely "did the live cache have a surface object at all".
-        _gamma_available = surf.get("gamma_available", True)
+        # CAPS audit fix (2026-09-20): every real producer of a gamma surface
+        # (project_gamma_surface and its refresh-path siblings in server.py) always
+        # sets gamma_available as a computed bool (cells_with_data > 0) -- this key is
+        # only ever missing on a malformed/incomplete surface. Defaulting to True in
+        # that case would silently claim availability the surface cannot back up
+        # (fabricating a "LIVE" signal a trader would act on); fail closed to False
+        # instead, matching every other absence-has-a-type default in this file.
+        _gamma_available = surf.get("gamma_available", False)  # caps-ok: fail-closed default (see comment above) -- False, never a fabricated True claim of availability
         # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
         # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
         # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
@@ -267,10 +274,10 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             # up, and this surface's own cells were computed from ITS stamp, not the top
             # level's. Falls back to the top-level fields only for a surface predating this
             # stamp (never expected in production, kept for defensive compatibility).
-            "spot": surf.get("spot", live.get("spot")),
-            "spot_source": surf.get("spot_source", live.get("spot_source")),
+            "spot": surf.get("spot", live.get("spot")),  # caps-ok: prefer-real-A-fallback-to-real-B (see comment above) -- both sides are real measured terrain values, never a fabricated placeholder
+            "spot_source": surf.get("spot_source", live.get("spot_source")),  # caps-ok: same prefer-real-A-fallback-to-real-B chain as "spot" above
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
-            "spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc", live.get("spot_as_of_ts_utc")),
+            "spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc", live.get("spot_as_of_ts_utc")),  # caps-ok: same prefer-real-A-fallback-to-real-B chain as "spot" above
             "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
             "refresh_active": live.get("levels_refresh_active"),
             "chain_basis": live.get("chain_basis"),
@@ -356,7 +363,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             _stamp_gamma_surface_cell_stream_state(
                 surface, {}, set(), None, set(_desired_option_symbols_for_ticker(tk)),
                 daemon_available=is_option_producer_daemon_available())
-            _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
+            _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None  # caps-ok: absence-has-a-type default (None, never a fabricated numeric age) when the timestamp is genuinely missing
             payload = {
                 "ticker": tk, "symbol": tk, "available": True,
                 "source": "banked_morning_reference", "live": False, "stale": True,

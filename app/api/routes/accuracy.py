@@ -54,7 +54,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     # Use cache if fresh enough
     _serving_version = _current_pred_model_version(ticker)
     cached = _accuracy_cache.get(ticker, {})
-    if cached and time.time() - cached.get("ts", 0) < ACCURACY_INTERVAL:
+    if cached and time.time() - cached.get("ts", 0) < ACCURACY_INTERVAL:  # caps-ok: internal cache-freshness clock only, not a Schwab/market field; a missing "ts" epoch-0 defaults to maximally stale (forces recompute), never a fabricated fresh timestamp
         results = cached["results"]
         all_hours = cached.get("all_hours")
     else:
@@ -90,7 +90,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
                     timeframe=CANONICAL_TIMEFRAME,
                     model_version=_serving_version,
                     horizon=_hz,
-                    total_predictions=int(_hz_res.get("total", 0) or 0),  # silent-zero-ok: a COUNT of rows returned — no rows is genuinely zero predictions, not an unmeasured quantity
+                    total_predictions=int(_hz_res.get("total", 0) or 0),  # silent-zero-ok: a COUNT of rows returned — no rows is genuinely zero predictions, not an unmeasured quantity  # caps-ok: same reasoning as the silent-zero-ok marker above — a COUNT's honest zero, not a fabricated default for an unmeasured Schwab field
                     correct_direction=_hz_res.get("correct"),
                     accuracy_pct=_hz_res.get("accuracy"),
                 )
