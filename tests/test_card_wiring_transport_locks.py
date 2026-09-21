@@ -109,10 +109,20 @@ def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
     """Lane-4 (2026-07-05): upsert_1m_bars measured 8,090.8ms of the synchronous
     db_snapshot_write_accuracy stage while its result is never read by the live
     payload. It must run ONLY inside the ordered background task (upsert before
-    fill_outcomes, single-worker executor) — never inline in _fetch_state."""
+    fill_outcomes, single-worker executor) — never inline in _fetch_state.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): the
+    background task's owner, _post_publish_persistence_tail, was promoted from a
+    nested closure inside _fetch_state to a module-level function -- found
+    directly at module scope now, not as a descendant of _fetch_state's own
+    AST node. The invariants themselves (no bars write on the render path,
+    fill_outcomes ordered inside the background task, submitted to the
+    fill-outcomes executor) are unchanged; only where each is checked moved."""
     fn = _find_function(SERVER_TREE, "_fetch_state")
     assert fn is not None, "server._fetch_state not found"
-    bg = _find_function(fn, "_bg_persist_bars_then_fill_outcomes")
+    tail = _find_function(SERVER_TREE, "_post_publish_persistence_tail")
+    assert tail is not None, "server._post_publish_persistence_tail not found"
+    bg = _find_function(tail, "_bg_persist_bars_then_fill_outcomes")
     assert bg is not None, (
         "_bg_persist_bars_then_fill_outcomes not found — bars persistence has "
         "been moved out of the ordered background task (lane-4 regression)."
@@ -123,16 +133,17 @@ def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
     # SPY on-screen bar lag 3.1 min vs QQQ/IWM 19.1 min off-screen, all three with ~1.0 min
     # snapshot lag; 39.8% of snapshots unlabelled for want of forward bars). `_bars_loop` is now
     # the ONE writer of price_bars_1m. This lock now guards that the render path does NOT write
-    # bars, and that outcome labelling stays offloaded and ordered.
+    # bars, and that outcome labelling stays offloaded and ordered. Checked across both
+    # _fetch_state and the (now-separate) persistence tail -- neither may write bars.
     upsert_lines = [
         n.lineno
-        for n in ast.walk(fn)
+        for n in list(ast.walk(fn)) + list(ast.walk(tail))
         if isinstance(n, ast.Call)
         and isinstance(n.func, ast.Attribute)
         and n.func.attr == "upsert_1m_bars"
     ]
     assert not upsert_lines, (
-        f"RC-69 regression: _fetch_state persists 1m bars at server.py:{upsert_lines} - bar "
+        f"RC-69 regression: bars persisted at server.py:{upsert_lines} - bar "
         f"collection is coupled to the viewport again."
     )
     # Ordering inside the task: bars durable before labels advance.
@@ -147,8 +158,8 @@ def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
     # The old upsert-before-fill ordering assertion is retired with the bars write itself:
     # bars are now durable ahead of any render because `_bars_loop` persists them continuously
     # and independently, rather than racing a per-render background task.
-    assert "_get_db_fill_outcomes_executor" in _called_names(fn), (
-        "_fetch_state no longer submits to the fill-outcomes executor"
+    assert "_get_db_fill_outcomes_executor" in _called_names(tail), (
+        "the persistence tail no longer submits to the fill-outcomes executor"
     )
 
 
@@ -235,17 +246,24 @@ def test_fetch_state_iv_history_uses_narrow_projection() -> None:
     FULL-WIDTH snapshot rows (200+ cols incl. option_chain_json blobs) per tick
     per ticker to read one float each — 1,258/3,062 py-spy samples; the narrow
     twin measured 152x faster with identical values against the live DB. The
-    hot loop must never regress to the full-width read for IV history."""
-    fn = _find_function(SERVER_TREE, "_fetch_state")
-    assert fn is not None, "server._fetch_state not found"
+    hot loop must never regress to the full-width read for IV history.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice, predating this
+    session's visible portion): the IV rank/percentile block moved out of
+    _fetch_state's own body into _volatility_signals_for_state well before this
+    lock was last verified; checked against that function's own source now,
+    caught here by running the full suite rather than a curated batch."""
+    fn = _find_function(SERVER_TREE, "_volatility_signals_for_state")
+    assert fn is not None, "server._volatility_signals_for_state not found"
     calls = _called_names(fn)
     assert "get_recent_iv_levels" in calls, (
-        "_fetch_state no longer uses the narrow iv_level projection — the IV "
-        "rank/percentile path regressed to a full-width snapshot read."
+        "_volatility_signals_for_state no longer uses the narrow iv_level "
+        "projection — the IV rank/percentile path regressed to a full-width "
+        "snapshot read."
     )
     seg = ast.get_source_segment(SERVER_SRC, fn) or ""
     idx = seg.find("IV Rank/Percentile")
-    assert idx != -1, "IV rank/percentile block not found in _fetch_state"
+    assert idx != -1, "IV rank/percentile block not found in _volatility_signals_for_state"
     block = seg[idx : idx + 1500]
     assert "get_recent_iv_levels(" in block, "narrow projection call missing from IV block"
     assert "get_recent_snapshots(" not in block, (
@@ -384,10 +402,19 @@ def test_snapshot_minute_gate_atomic_reserve_and_durable_probe(tmp_path, monkeyp
 
 def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
     """Both production insert sites must pass the db handle to the gate and
-    release the reservation when the insert path fails."""
+    release the reservation when the insert path fails.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    _post_publish_persistence_tail (which consumes the reservation and releases
+    it on failure) was promoted to a module-level function -- checked against
+    its own source segment now; the reservation TAKEN at the pre-publish
+    identity anchor is still inside _fetch_state's own body, unaffected."""
     fn = _find_function(SERVER_TREE, "_fetch_state")
     assert fn is not None
     seg = ast.get_source_segment(SERVER_SRC, fn) or ""
+    tail = _find_function(SERVER_TREE, "_post_publish_persistence_tail")
+    assert tail is not None, "server._post_publish_persistence_tail not found"
+    tail_seg = ast.get_source_segment(SERVER_SRC, tail) or ""
     # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: the reservation is taken at
     # the pre-publish identity anchor (same key: ticker + refresh ts, same db
     # handle) and the tail consumes it — the durable-probe db handle and the
@@ -395,11 +422,11 @@ def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
     assert "_snapshot_row_insert_allowed(ticker, _refresh_ts_utc, db=_ed_db)" in seg, (
         "_fetch_state gate call lost the durable-probe db handle"
     )
-    assert "_do_insert = _xid_do_snapshot_insert" in seg, (
+    assert "_do_insert = _xid_do_snapshot_insert" in tail_seg, (
         "the persistence tail must consume the hoisted reservation"
     )
-    assert "_snapshot_row_insert_release(ticker, _snap_ts)" in seg, (
-        "_fetch_state no longer releases a failed reservation"
+    assert "_snapshot_row_insert_release(ticker, _snap_ts)" in tail_seg, (
+        "the persistence tail no longer releases a failed reservation"
     )
     assert "db=get_db()" in SERVER_SRC and "_snapshot_row_insert_release(t, snap_ts)" in SERVER_SRC, (
         "base money-path capture site lost the durable probe or failure release"
@@ -413,13 +440,17 @@ def test_offhours_snapshot_writes_gated_rc48() -> None:
     authority time_et.is_capturable_session: the SSE _fetch_state insert skips +
     releases the reservation when it is False, and the base logger's
     _is_loggable_session ANDs it in so its minute-window is no longer
-    weekday/holiday-blind (the leak that mislabeled 27,681 weekend rows 'rth')."""
+    weekday/holiday-blind (the leak that mislabeled 27,681 weekend rows 'rth').
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): the
+    off-hours insert-skip gate lives inside _post_publish_persistence_tail now
+    (promoted to a module-level function), not _fetch_state's own body."""
     assert "is_capturable_session" in SERVER_SRC, "server lost the single capture authority import"
-    fs = _find_function(SERVER_TREE, "_fetch_state")
-    assert fs is not None
-    fs_seg = ast.get_source_segment(SERVER_SRC, fs) or ""
-    assert "elif not is_capturable_session():" in fs_seg, (
-        "SSE _fetch_state off-hours capture gate (RC-48) missing"
+    tail = _find_function(SERVER_TREE, "_post_publish_persistence_tail")
+    assert tail is not None, "server._post_publish_persistence_tail not found"
+    tail_seg = ast.get_source_segment(SERVER_SRC, tail) or ""
+    assert "elif not is_capturable_session():" in tail_seg, (
+        "off-hours capture gate (RC-48) missing from the persistence tail"
     )
     ils = _find_function(SERVER_TREE, "_is_loggable_session")
     assert ils is not None

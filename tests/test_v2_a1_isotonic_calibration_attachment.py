@@ -171,8 +171,18 @@ def test_server_imports_isotonic_attachment_helper():
 
 
 def test_server_logging_path_invokes_isotonic_attachment_after_conformal():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): the
+    original end-of-window marker ("from calibration.v2_live_logging") lived
+    inside _post_publish_persistence_tail, now promoted to a module-level
+    function defined BEFORE _fetch_state -- an unqualified source.index() for
+    it now finds an EARLIER position than the window's start, producing an
+    invalid (empty) slice. This phase itself (stamp/attach/build) was not
+    touched by that promotion; re-bounded using the identity-anchor banner
+    that still immediately follows it inside _fetch_state's own body."""
     source = _server_source()
-    window = source[source.index("_v2_logging_ms_dict = _ms_to_dict(ms)") : source.index("from calibration.v2_live_logging")]
+    window = source[source.index("_v2_logging_ms_dict = _ms_to_dict(ms)") : source.index(
+        "EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor"
+    )]
 
     conformal_idx = window.index("attach_a1_conformal_artifact_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)")
     isotonic_idx = window.index("attach_a1_isotonic_calibration_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)")

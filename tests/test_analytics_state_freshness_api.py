@@ -1236,8 +1236,14 @@ def _fetch_state_ast():
         n for n in ast.walk(tree)
         if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state"
     )
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    # _post_publish_persistence_tail was promoted from a nested closure inside
+    # _fetch_state to a module-level function (61 free variables, symtable-verified,
+    # now threaded as explicit keyword-only parameters). It is looked up at module
+    # scope (tree.body) here, not via ast.walk(fetch), since it is no longer a
+    # descendant of the _fetch_state FunctionDef node.
     tail = next(
-        n for n in ast.walk(fetch)
+        n for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
     )
     return fetch, tail
@@ -1249,7 +1255,10 @@ def test_fix_b_publish_precedes_persistence_tail_source_lock():
     defined before but executed after the publish."""
     src = _fetch_state_source()
     i_pub = src.index('"generated_at": _gen_ts')
-    i_full_call = src.index("_post_publish_persistence_tail(_next_ver")
+    # RC-REHAB-1 (nineteenth slice): the full-path call is now multi-line
+    # (`_post_publish_persistence_tail(\n        _next_ver, ...`) since it passes 61
+    # keyword-only arguments -- the exact old single-line substring no longer exists.
+    i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
     i_tail_def = src.index("def _post_publish_persistence_tail(")
     i_snap_mark = src.index('_stage_marks.append(("db_snapshot_write_accuracy"')
     i_cal_mark = src.index('_stage_marks.append(("v2_calibration_logging"')
@@ -1274,12 +1283,17 @@ def test_fix_b_payload_shape_keys_still_served():
 def test_fix_b_once_per_cycle_call_sites():
     """Once-per-cycle: exactly one tail def; exactly two mutually-exclusive call
     sites (log_only pre-return, full-path post-publish); exactly one calibration
-    append inside the tail."""
+    append inside the tail.
+
+    RC-REHAB-1 (nineteenth slice): the tail def is module-level, so its own single
+    definition is checked directly against the module tree (not ast.walk(fetch));
+    the two CALL SITES are still inside _fetch_state's own body, checked there."""
     import ast
 
+    tree = ast.parse(_fetch_state_source())
     fetch, tail = _fetch_state_ast()
     defs = [
-        n for n in ast.walk(fetch)
+        n for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
     ]
     assert len(defs) == 1
@@ -1296,10 +1310,13 @@ def test_fix_b_once_per_cycle_call_sites():
     ]
     assert len(appends) == 1
     # The log_only branch returns before the full path can reach the second call.
+    # RC-REHAB-1 (nineteenth slice): both call sites are now multi-line (61 keyword
+    # args each) -- matched on their unique opening substring, not the full old
+    # single-line call.
     src = _fetch_state_source()
-    i_log_only_call = src.index("_post_publish_persistence_tail(None, _v2_decision_for_response)")
+    i_log_only_call = src.index('_post_publish_persistence_tail(\n        None, _v2_decision_for_response')
     i_log_only_return = src.index("return {}", i_log_only_call)
-    i_full_call = src.index("_post_publish_persistence_tail(_next_ver")
+    i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
     assert i_log_only_call < i_log_only_return < i_full_call
 
 
@@ -1321,10 +1338,13 @@ def test_fix_b_failure_visibility_counters_wired():
 
 def test_fix_b_v2_decision_parity_served_equals_logged():
     """v2_decision parity: the full-path tail call passes the SERVED object
-    (ms_dict['v2_decision']); the log_only path passes the built decision."""
+    (ms_dict['v2_decision']); the log_only path passes the built decision.
+
+    RC-REHAB-1 (nineteenth slice): both call sites are now multi-line (61 keyword
+    args each) -- matched on the still-exact positional-argument substring."""
     src = _fetch_state_source()
-    assert '_post_publish_persistence_tail(_next_ver, ms_dict["v2_decision"])' in src
-    assert "_post_publish_persistence_tail(None, _v2_decision_for_response)" in src
+    assert '_post_publish_persistence_tail(\n        _next_ver, ms_dict["v2_decision"],' in src
+    assert '_post_publish_persistence_tail(\n        None, _v2_decision_for_response,' in src
     assert "v2_decision=v2_decision_for_log," in src
 
 
@@ -1332,22 +1352,35 @@ def test_fix_b_tail_never_touches_state_cache():
     """Isolation lock: the tail never references _state_cache, and the prev-vix
     capture holds structurally (VOL_INPUT_CONTRACT 1.0.0 renamed it to
     _vol_prev_published_vix; the old exact-string anchor was brittle):
-    (a) exactly one capture binding exists in _fetch_state;
-    (b) it reads _state_cache.get(_cache_key, ...).get("vix") — the prior
+    (a) exactly one capture binding exists;
+    (b) it reads _state_cache.get(cache_key, ...).get("vix") — the prior
         published cache entry under the exact cycle key, no other source;
     (c) it precedes every dict-literal _state_cache[_cache_key] publish that
         carries a "vix" key, so this cycle's publish can never contaminate
-        the previous-value calculation."""
+        the previous-value calculation.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): the prev-vix
+    capture moved from _fetch_state's own body into _vol_envelope_and_sector_for_state
+    (a module-level function, like the persistence tail below), and its scratch-var
+    name dropped its underscore prefix (_vol_prev_published_vix -> vol_prev_published_vix,
+    _cache_key -> cache_key, the function's own parameter). Checked against that
+    function's own AST node directly, from the SAME parsed tree as _fetch_state so the
+    line-number ordering check below still compares real, comparable positions."""
     import ast
 
+    tree = ast.parse(_fetch_state_source())
     fetch, tail = _fetch_state_ast()
+    vol_fn = next(
+        n for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == "_vol_envelope_and_sector_for_state"
+    )
     names = {s.id for s in ast.walk(tail) if isinstance(s, ast.Name)}
     assert "_state_cache" not in names
 
     captures = [
-        node for node in ast.walk(fetch)
+        node for node in ast.walk(vol_fn)
         if isinstance(node, ast.Assign) and any(
-            isinstance(t, ast.Name) and t.id == "_vol_prev_published_vix"
+            isinstance(t, ast.Name) and t.id == "vol_prev_published_vix"
             for t in node.targets
         )
     ]
@@ -1363,7 +1396,7 @@ def test_fix_b_tail_never_touches_state_cache():
     assert isinstance(inner.func.value, ast.Name)
     assert inner.func.value.id == "_state_cache", "prev vix must come from the state cache"
     assert any(
-        isinstance(a, ast.Name) and a.id == "_cache_key" for a in inner.args
+        isinstance(a, ast.Name) and a.id == "cache_key" for a in inner.args
     ), "prev vix must read the exact per-cycle cache key"
 
     publishes = [
@@ -1450,7 +1483,16 @@ def test_step1_shutdown_inline_branch_preserved():
 
 def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
     """AST lock: _get_recompute_leaf_executor is called only inside _fetch_state
-    (the chain/quote and seed submit blocks) — never by handlers or other code."""
+    (the chain/quote submit block) or _exposures_for_state (the candle-seed submit
+    block, extracted from _fetch_state's own body) — never by handlers or other code.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): the candle-seed
+    leaf-pool selection moved out of _fetch_state's own body into
+    _exposures_for_state. This test's own literal expectation was never updated
+    when that slice landed (caught later, during the nineteenth slice's broader
+    verification sweep) -- the underlying invariant (leaf-executor calls stay
+    inside _fetch_state's own decomposition, never leak into route handlers or
+    unrelated code) still holds; only the accepted caller set needed widening."""
     import ast
 
     tree = ast.parse(_fetch_state_source())
@@ -1463,8 +1505,11 @@ def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
                         and node.name != "_get_recompute_leaf_executor"):
                     callers.append(node.name)
     # Nested walk double-counts under enclosing defs; the set must be exactly
-    # _fetch_state (call sites live directly in its body, not in nested defs).
-    assert set(callers) == {"_fetch_state"}, f"unexpected callers: {sorted(set(callers))}"
+    # _fetch_state + _exposures_for_state (call sites live directly in their own
+    # bodies, not in further-nested defs).
+    assert set(callers) == {"_fetch_state", "_exposures_for_state"}, (
+        f"unexpected callers: {sorted(set(callers))}"
+    )
     src = _fetch_state_source()
     # Call sites only (the bare substring also matches the def line).
     # UI_05 residual: both sites are now conditional expressions selecting the
@@ -1529,12 +1574,18 @@ def test_step2_concurrent_recomputes_do_not_deadlock():
 
 def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
     """Source lock: both nested-submit sites bind the leaf pool; the route pool
-    is no longer referenced by either block."""
+    is no longer referenced by either block.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): the candle-seed
+    site moved into _exposures_for_state, where its own parameter dropped the
+    `_fetch_state`-scratch-variable underscore prefix (`_chain_priority` ->
+    `chain_priority`) -- counted together with the chain/quote site's original
+    spelling, still inside _fetch_state itself, rather than one literal pattern."""
     src = _fetch_state_source()
     # UI_05 residual: both leaf sites select the bounded PRIORITY leaf lane
     # for operator-priority recomputes and the shared leaf pool otherwise —
     # the route pool stays banned at both sites.
-    assert src.count("if _chain_priority") >= 2
+    assert src.count("if _chain_priority") + src.count("if chain_priority") >= 2
     assert src.count("else _get_recompute_leaf_executor()") == 2
     assert src.count("_get_priority_leaf_executor()") >= 2
     assert "_cq_pool = _get_route_offload_executor()" not in src
@@ -1668,8 +1719,18 @@ def test_post_publish_last_error_wired_at_both_failure_branches():
 
 
 def test_tail_mkt_ctx_nonlocal_rebind_restored():
-    """The confluence-completion rebind targets _fetch_state's mkt_ctx (nonlocal),
-    matching the pre-relocation inline binding; the completion call remains."""
+    """The confluence-completion rebind targets mkt_ctx; the completion call remains.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    _post_publish_persistence_tail was promoted from a nested closure to a
+    module-level function, so `mkt_ctx` is now a plain keyword-only PARAMETER
+    rather than a `nonlocal`-declared name -- a `nonlocal` statement in a
+    module-level (non-nested) function is a SyntaxError, so its absence here is
+    required, not a regression. The reassignment itself is an ordinary local
+    rebind now (parameters are always bound before the function body runs, so
+    the UnboundLocalError class this used to guard against cannot occur for a
+    parameter); verified it is NOT returned to the caller because nothing in
+    _fetch_state reads mkt_ctx again after either of the tail's two call sites."""
     import ast
 
     _fetch, tail = _fetch_state_ast()
@@ -1677,7 +1738,12 @@ def test_tail_mkt_ctx_nonlocal_rebind_restored():
     for node in ast.walk(tail):
         if isinstance(node, ast.Nonlocal):
             declared.update(node.names)
-    assert "mkt_ctx" in declared
+    assert declared == set(), (
+        "a module-level function must not declare `nonlocal` at all -- it would "
+        "be a SyntaxError with no enclosing function scope to bind to"
+    )
+    tail_params = {a.arg for a in tail.args.args + tail.args.kwonlyargs}
+    assert "mkt_ctx" in tail_params, "mkt_ctx must be threaded in as an explicit parameter"
     src = _fetch_state_source()
     assert "mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)" in src
 
@@ -1685,8 +1751,20 @@ def test_tail_mkt_ctx_nonlocal_rebind_restored():
 def test_tail_no_unbound_shadow_of_fetch_state_locals():
     """Relocation-class lock: no name stored in the tail may shadow a
     _fetch_state-level binding AND be read at-or-before its first tail store
-    without a nonlocal declaration (the mkt_ctx UnboundLocalError class).
-    Comprehension targets are scope-isolated in py3 and excluded."""
+    without a nonlocal declaration OR being one of the tail's own parameters
+    (the mkt_ctx UnboundLocalError class). Comprehension targets are
+    scope-isolated in py3 and excluded.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): the tail
+    is now a module-level function with all 61 former free variables threaded in
+    as explicit parameters. A parameter is ALWAYS bound before the function body
+    executes, so the specific bug class this test protects against (a nested
+    closure reading a name before Python's compile-time scope inference has
+    given it a local binding, without `nonlocal`) is structurally impossible for
+    a plain function's own parameters -- there is no "first store point" for a
+    parameter inside the body to be read-before. Parameter names are exempted
+    from the offender check for exactly this reason, alongside `nonlocals` (now
+    always empty for a module-level function) and comprehension targets."""
     import ast
 
     fetch, tail = _fetch_state_ast()
@@ -1703,6 +1781,8 @@ def test_tail_no_unbound_shadow_of_fetch_state_locals():
     for node in ast.walk(tail):
         if isinstance(node, ast.Nonlocal):
             nonlocals.update(node.names)
+    tail_params = {a.arg for a in tail.args.args + tail.args.kwonlyargs}
+    nonlocals |= tail_params
 
     def _stores_and_loads(fn):
         stores: dict[str, int] = {}

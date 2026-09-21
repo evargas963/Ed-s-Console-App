@@ -515,12 +515,28 @@ def test_stamp_decision_bundle_respects_anchored_decision_id(monkeypatch):
 def test_server_model_derived_snapshot_write_is_anchor_guarded():
     """Recurrence lock: the server's model-derived snapshot insert must sit
     behind the execution-identity anchor (refused-write skip path present),
-    and the quote-only lightweight path must NOT create identities."""
+    and the quote-only lightweight path must NOT create identities.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    _post_publish_persistence_tail (which owns `_xid_refused` and the insert) was
+    promoted to a module-level function defined BEFORE _fetch_state -- so its
+    definition now sits at a smaller file offset than the anchor code, which
+    still lives inside _fetch_state's own body. Raw text-position comparison no
+    longer reflects EXECUTION order once definition and call sites diverge in the
+    file. Split into what each half actually claims: the anchor must precede the
+    tail's CALL SITE (true execution-order claim, checked against _fetch_state's
+    own body), and the refuse-check must precede the insert WITHIN the tail's own
+    body (a same-function ordering claim, unaffected by the promotion)."""
     src = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
     i_anchor = src.index("anchor_production_execution as _xid_anchor")
-    i_refuse = src.index("if _xid_refused:")
-    i_model_insert = src.index("_ed_db.insert_snapshot(_snap)")
-    assert i_anchor < i_refuse < i_model_insert
+    i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
+    assert i_anchor < i_full_call, "anchor must precede the tail's full-path call site"
+    tail_start = src.index("def _post_publish_persistence_tail(")
+    tail_end = src.index("def _fetch_state(", tail_start)
+    tail_src = src[tail_start:tail_end]
+    i_refuse = tail_src.index("if _xid_refused:")
+    i_model_insert = tail_src.index("_ed_db.insert_snapshot(_snap)")
+    assert i_refuse < i_model_insert, "refuse-check must precede the insert within the tail"
     assert "EXECUTION_IDENTITY_REFUSED" in src
     # quote-only path (lightweight builder) carries no identity wiring
     i_light = src.index("build_lightweight_snapshot_row_from_quote")
@@ -591,13 +607,18 @@ def _server_text() -> str:
 def test_server_anchor_precedes_finalize_and_log_only_tail():
     """Source-ordering lock (RED on pre-fix main): the ONE identity anchor site
     must execute before the log_only early return AND the production-decision
-    finalize; the post-publish tail must only consume the anchored pair."""
+    finalize; the post-publish tail must only consume the anchored pair.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    _post_publish_persistence_tail was promoted from a nested closure to a
+    module-level function (defined BEFORE _fetch_state now, not after the anchor
+    site inside it), and its call sites are multi-line (61 keyword-only args)."""
     text = _server_text()
     anchor_at = text.index(
         "EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor"
     )
     log_only_tail_at = text.index(
-        "_post_publish_persistence_tail(None, _v2_decision_for_response)"
+        '_post_publish_persistence_tail(\n        None, _v2_decision_for_response'
     )
     finalize_at = text.index("_finalize_production_decision(ms_dict, _decision_route)")
     assert anchor_at < log_only_tail_at, "anchor must precede the log_only tail call"
@@ -605,7 +626,10 @@ def test_server_anchor_precedes_finalize_and_log_only_tail():
     # Exactly one anchor call site, and it is NOT inside the persistence tail.
     assert text.count("anchor_production_execution as _xid_anchor") == 1
     tail_start = text.index("def _post_publish_persistence_tail(")
-    tail_end = text.index("def _fv(v):", tail_start)
+    # The tail is now module-level, defined immediately before _fetch_state -- that is
+    # its own true boundary now, not the "def _fv(v):" nested helper that used to
+    # follow it inside _fetch_state's own body.
+    tail_end = text.index("def _fetch_state(", tail_start)
     assert "anchor_production_execution" not in text[tail_start:tail_end], (
         "the persistence tail must consume the pre-anchored pair, never anchor"
     )

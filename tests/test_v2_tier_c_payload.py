@@ -21,13 +21,29 @@ def test_tier_c_attaches_v2_decision_after_decision_bundle_stamp():
 
 
 def test_tier_c_single_phase_calibration_write_after_v2_before_log_only_return():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    append_live_v2_calibration_decision now lives inside
+    _post_publish_persistence_tail, promoted to a module-level function
+    (defined BEFORE _fetch_state in the file, so a forward text search from the
+    v2-build site inside _fetch_state can no longer find it there). Re-derived
+    as an execution-order claim instead: v2 decision built, THEN the tail is
+    called on the log_only path (which is where the calibration write actually
+    executes for that path), THEN the log_only return -- and the write call
+    itself still lives inside the tail's own body."""
     server_source = (ROOT / "server.py").read_text(encoding="utf-8")
 
     v2_idx = server_source.index("_v2_decision_for_response = build_module_a_a1_decision")
-    write_idx = server_source.index("append_live_v2_calibration_decision(", v2_idx)
-    log_only_idx = server_source.index("if log_only:", write_idx)
+    log_only_tail_call_idx = server_source.index(
+        '_post_publish_persistence_tail(\n        None, _v2_decision_for_response', v2_idx
+    )
+    log_only_return_idx = server_source.index("return {}", log_only_tail_call_idx)
+    assert v2_idx < log_only_tail_call_idx < log_only_return_idx
 
-    assert v2_idx < write_idx < log_only_idx
+    tail_start = server_source.index("def _post_publish_persistence_tail(")
+    tail_end = server_source.index("def _fetch_state(", tail_start)
+    assert "append_live_v2_calibration_decision(" in server_source[tail_start:tail_end], (
+        "the persistence tail no longer performs the calibration write"
+    )
 
 
 def test_tier_c_imports_module_a_a1_adapter():
