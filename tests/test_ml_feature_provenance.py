@@ -388,10 +388,18 @@ def test_meta_basis_manifest_wired_at_both_meta_train_sites():
     import inspect
 
     import ml_scheduler
+    import ml_scheduler_meta_stack
 
+    # RC-REHAB-1 (2026-09-22): _write_meta_training_basis_manifest's definition moved to
+    # ml_scheduler_meta_stack.py (slice 4 of the ml_scheduler.py decomposition); the two
+    # call sites (inside train_parallel_candidate/train_cascade_candidate) have not moved
+    # and still read from ml_scheduler.py's own physical source.
     src = inspect.getsource(ml_scheduler)
+    manifest_src = inspect.getsource(ml_scheduler_meta_stack)
     dumps = src.count('pickle.dump(meta_mdl, f)')
-    manifests = src.count('_write_meta_training_basis_manifest(')
+    manifests = src.count('_write_meta_training_basis_manifest(') + manifest_src.count(
+        '_write_meta_training_basis_manifest('
+    )
     # def + 2 call sites
     assert dumps == 2, f"expected exactly 2 meta pickle dumps, found {dumps}"
     assert manifests >= 3, "both meta dump sites must write the basis manifest"
