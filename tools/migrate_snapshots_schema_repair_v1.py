@@ -32,14 +32,40 @@ REQUIRED_INDEXES = {
         "ON snapshots(ticker, timeframe, outcome_filled) WHERE outcome_filled = 0"
     ),
     "idx_snap_ts": "CREATE INDEX IF NOT EXISTS idx_snap_ts ON snapshots(ts_utc)",
-    # RC spot/gamma-360-audit (2026-09-14): get_similar_setups' tiers 1-4 without this index
-    # fall back to a full ticker+timeframe SCAN plus a temp b-tree sort (measured live: 5.7s
-    # on a 72k-row sample, 2ms with it -- see db.py's own copy of this comment for the full
-    # live-RTH reproduction). Declared here too so a schema repair run against a drifted DB
-    # never silently drops this performance fix by rebuilding indexes from an older list.
+    # RC spot/gamma-360-audit (2026-09-14): get_similar_setups' tiers 1-3 (zone AND vwap_side
+    # both fixed) without this index fall back to a full ticker+timeframe SCAN plus a temp
+    # b-tree sort (measured live: 5.7s on a 72k-row sample, 2ms with it -- see db.py's own copy
+    # of this comment for the full live-RTH reproduction). Declared here too so a schema repair
+    # run against a drifted DB never silently drops this performance fix by rebuilding indexes
+    # from an older list.
+    # CORRECTION (RC-REHAB-1, 2026-09-22): this comment previously claimed "tiers 1-4" -- tier 4
+    # (zone only, vwap_side dropped) does NOT actually benefit from this index. Using just its
+    # (ticker, timeframe, zone) prefix for tier 4's WHERE would still require SQLite to sort the
+    # matches by ts_utc separately (this index's own ts_utc ordering is only valid within one
+    # fixed vwap_side), so the planner instead picks idx_snap_ticker_tf_ts (sort-free) and scans
+    # every ticker+timeframe row filtering zone row-by-row -- cheap when most rows match zone,
+    # catastrophic when few/none do. MEASURED live on SPY (76,957 1m rows, 39,812 with
+    # outcome_1c IS NOT NULL, easily the largest of any tracked ticker): a single tier-4 probe
+    # took 1,227ms for this reason alone, reached on nearly every real call since tiers 1-3's
+    # narrower match is rare. idx_snap_similarity_zone_only (below) closes this specific gap.
     "idx_snap_similarity_zone_vwap": (
         "CREATE INDEX IF NOT EXISTS idx_snap_similarity_zone_vwap "
         "ON snapshots(ticker, timeframe, zone, vwap_side, ts_utc) WHERE outcome_1c IS NOT NULL"
+    ),
+    "idx_snap_similarity_zone_only": (
+        "CREATE INDEX IF NOT EXISTS idx_snap_similarity_zone_only "
+        "ON snapshots(ticker, timeframe, zone, ts_utc) WHERE outcome_1c IS NOT NULL"
+    ),
+    # RC-REHAB-1 (2026-09-22): get_avg_move ("What the Data Says" avg/median point move,
+    # same hot path as get_similar_setups above) filters WHERE outcome_1c_pts IS NOT NULL --
+    # a different column from idx_snap_similarity_zone_vwap's own partial-index predicate
+    # (outcome_1c IS NOT NULL). SQLite cannot use that index for a query it cannot prove is a
+    # subset of, even though the two columns are in practice always set together -- confirmed
+    # live: same idx_snap_ticker_tf_ts scan-until-exhausted fallback as the tier-4 defect
+    # above. MEASURED: 2,332ms for a single call matching zero rows; 107ms with this index.
+    "idx_snap_avg_move_zone_vwap": (
+        "CREATE INDEX IF NOT EXISTS idx_snap_avg_move_zone_vwap "
+        "ON snapshots(ticker, timeframe, zone, vwap_side, ts_utc) WHERE outcome_1c_pts IS NOT NULL"
     ),
 }
 

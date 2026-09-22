@@ -1448,13 +1448,16 @@ class EdDB:
                 WHERE outcome_filled = 0;
             CREATE INDEX IF NOT EXISTS idx_snap_ts
                 ON snapshots(ts_utc);
-            -- idx_snap_similarity_zone_vwap (get_similar_setups' hot-path index) is created
-            -- further down, guarded, after the legacy-column ALTER TABLE migration -- NOT
-            -- here. This executescript's own CREATE TABLE above already carries zone/vwap_side
-            -- for a fresh DB, but a pre-existing snapshots table missing either column made
-            -- this CREATE INDEX IF NOT EXISTS raise sqlite3.OperationalError: no such column:
-            -- zone and abort _init_db entirely (caught live by
-            -- test_migration_issue4_clears_v2_labels' minimal legacy fixture).
+            -- idx_snap_similarity_zone_vwap, idx_snap_similarity_zone_only, and
+            -- idx_snap_avg_move_zone_vwap (get_similar_setups' and get_avg_move's own
+            -- hot-path indexes -- see each index's own comment further down for why all
+            -- three exist) are created further down, guarded, after the legacy-column
+            -- ALTER TABLE migration -- NOT here. This executescript's own CREATE TABLE above
+            -- already carries zone/vwap_side for a fresh DB, but a pre-existing snapshots
+            -- table missing either column made this CREATE INDEX IF NOT EXISTS raise
+            -- sqlite3.OperationalError: no such column: zone and abort _init_db entirely
+            -- (caught live by test_migration_issue4_clears_v2_labels' minimal legacy
+            -- fixture).
 
             -- ── Level cross events ────────────────────────────────────────────
             CREATE TABLE IF NOT EXISTS level_crosses (
@@ -2982,6 +2985,57 @@ class EdDB:
                     "CREATE INDEX IF NOT EXISTS idx_snap_similarity_zone_vwap "
                     "ON snapshots(ticker, timeframe, zone, vwap_side, ts_utc) "
                     "WHERE outcome_1c IS NOT NULL"
+                )
+        except sqlite3.OperationalError:
+            pass  # zone/vwap_side not present on this schema
+
+        # RC-REHAB-1 (2026-09-22): idx_snap_similarity_zone_vwap (above) covers get_similar_setups'
+        # tiers 1-3 (zone AND vwap_side both fixed) but not tier 4 (zone only, vwap_side dropped --
+        # "zone + vwap_side (drop all distance criteria)" -> "zone only (drop vwap_side)" in that
+        # function's own tier docstring). MEASURED live: EXPLAIN QUERY PLAN showed SQLite choosing
+        # idx_snap_ticker_tf_ts (ticker, timeframe, ts_utc) for the tier-4 query instead -- it
+        # satisfies ORDER BY ts_utc DESC directly with no extra sort, but has no index support for
+        # zone at all, so it has to scan every ticker+timeframe row (in ts_utc order) filtering zone
+        # row-by-row until it finds n_similar matches or exhausts the partition. On SPY specifically
+        # (76,957 total 1m rows / 39,812 with outcome_1c IS NOT NULL, by far the largest of any
+        # tracked ticker) a single tier-4 probe measured 1,227ms for this reason alone -- reached on
+        # essentially every call, since tiers 1-3's much narrower zone+vwap_side+distance match is
+        # rare. Confirmed live with a matching index present: the identical query dropped to 31.6ms
+        # (a real zone value ran in 2.15ms) -- SQLite correctly switches to a SEARCH using this index
+        # (ticker=? AND timeframe=? AND zone=?), satisfying both the filter and the ORDER BY from the
+        # index's own trailing ts_utc column, eliminating the scan-until-give-up entirely. Tier 4 is
+        # a REJECTED-or-selected probe like every other tier -- this changes only how fast SQLite
+        # finds the SAME rows tier 4's query has always asked for, never which rows.
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_snap_similarity_zone_only "
+                    "ON snapshots(ticker, timeframe, zone, ts_utc) "
+                    "WHERE outcome_1c IS NOT NULL"
+                )
+        except sqlite3.OperationalError:
+            pass  # zone not present on this schema
+
+        # RC-REHAB-1 (2026-09-22, same live-RTH trace as the two indexes above):
+        # get_avg_move ("What the Data Says" avg/median point move) runs its own zone+
+        # vwap_side query on the SAME hot path as get_similar_setups (compute_prediction_core
+        # calls both back to back), but filters WHERE outcome_1c_pts IS NOT NULL -- a
+        # DIFFERENT column from idx_snap_similarity_zone_vwap's own partial-index predicate
+        # (outcome_1c IS NOT NULL). SQLite cannot prove one column's null-ness from the
+        # other's (even though they are in practice always set together), so that index is
+        # unusable for this query no matter how well it otherwise matches -- confirmed live:
+        # EXPLAIN QUERY PLAN showed the same idx_snap_ticker_tf_ts scan-until-exhausted
+        # fallback as the tier-4 defect above. MEASURED: 2,332ms for a single call matching
+        # zero rows; 107ms with a matching index. A new index (not reusing/widening the
+        # existing one) is the safe fix here -- changing the query's own filter column to
+        # match the existing index would be a real behavioral bet on a column-equivalence
+        # assumption never verified end-to-end; a dedicated index carries no such risk.
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_snap_avg_move_zone_vwap "
+                    "ON snapshots(ticker, timeframe, zone, vwap_side, ts_utc) "
+                    "WHERE outcome_1c_pts IS NOT NULL"
                 )
         except sqlite3.OperationalError:
             pass  # zone/vwap_side not present on this schema
