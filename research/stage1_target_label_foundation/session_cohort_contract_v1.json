@@ -35,7 +35,7 @@
     "status": "OPEN — documented, NOT fixed in Stage 1 (fix would change production accuracy/audit surfaces; requires a separate authorized mission)",
     "principle_violated": "one authority (ts_utc, DST-aware) is declared and the stored-clock SQL RTH filter is DEPRECATED (ml_data_common.rth_where_clause), yet live audit/accuracy cohorts still filter RTH on the skew-prone stored columns and a stored session label is fed back as a feature",
     "contradiction_sites": [
-      {"site": "db.py:4417-4420", "surface": "EdDB.compute_accuracy rth_clause (operator-facing, rth_only=True 2026-07-06)", "defect": "selects RTH on stored (et_hour*60+et_minute); EST-skewed pre-COH-I-A rows drop/leak a ~1h band during EDT"},
+      {"site": "db_model_accuracy.py:51-54", "surface": "EdDB.compute_accuracy rth_clause (operator-facing, rth_only=True 2026-07-06; moved out of db.py in a db.py decomposition slice, RC-REHAB-1 2026-09-22)", "defect": "selects RTH on stored (et_hour*60+et_minute); EST-skewed pre-COH-I-A rows drop/leak a ~1h band during EDT"},
       {"site": "audit_model_readiness.py:29-34", "surface": "RTH_WHERE (model-readiness audit)", "defect": "same stored-clock RTH selection + weekday from stored ts_et string"},
       {"site": "math_volatility.py:96-104", "surface": "session_bucket feature (XGB_CAT_COLS, fusion_model_input)", "defect": "computed from stored clock; buckets every out-of-session minute to 'morning'"}
     ],

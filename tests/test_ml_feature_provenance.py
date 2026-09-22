@@ -390,16 +390,18 @@ def test_meta_basis_manifest_wired_at_both_meta_train_sites():
     import ml_scheduler
     import ml_scheduler_meta_stack
     import ml_scheduler_parallel_train
+    import ml_scheduler_cascade_train
 
     # RC-REHAB-1 (2026-09-22): _write_meta_training_basis_manifest's definition moved to
     # ml_scheduler_meta_stack.py (slice 4 of the ml_scheduler.py decomposition); the
     # train_parallel_candidate call site (one of the two meta dump sites) moved to
-    # ml_scheduler_parallel_train.py (slice 5); train_cascade_candidate's call site has
-    # not moved and still reads from ml_scheduler.py's own physical source.
+    # ml_scheduler_parallel_train.py (slice 5); the train_cascade_candidate call site
+    # (the other meta dump site) moved to ml_scheduler_cascade_train.py (final slice).
     src = inspect.getsource(ml_scheduler)
     manifest_src = inspect.getsource(ml_scheduler_meta_stack)
     parallel_src = inspect.getsource(ml_scheduler_parallel_train)
-    all_src = src + manifest_src + parallel_src
+    cascade_src = inspect.getsource(ml_scheduler_cascade_train)
+    all_src = src + manifest_src + parallel_src + cascade_src
     dumps = all_src.count('pickle.dump(meta_mdl, f)')
     manifests = all_src.count('_write_meta_training_basis_manifest(')
     # def + 2 call sites

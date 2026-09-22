@@ -2058,8 +2058,12 @@ def test_rc340_every_scheduler_xgb_route_uses_the_canonical_row_preparer():
     import inspect as _inspect
 
     import ml_scheduler as _sched
+    import ml_scheduler_cascade_train as _sched_cascade
 
-    src = _inspect.getsource(_sched)
+    # RC-REHAB-1 (2026-09-22): all 5 engineer_single_snapshot call sites this locks were in
+    # the cascade-training cluster, which moved to ml_scheduler_cascade_train.py (final
+    # slice of the ml_scheduler.py decomposition) -- same code, different file.
+    src = _inspect.getsource(_sched) + "\n" + _inspect.getsource(_sched_cascade)
     tree = _ast.parse(src)
     bare = []
     total = 0

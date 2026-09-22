@@ -32,7 +32,10 @@ _REQUIRED_SCHEDULER = (
     (REPO_ROOT / "ml_scheduler.py", "run_survivor_edge_probe"),
     (REPO_ROOT / "ml_scheduler.py", "ensure_survivor_retrain_incumbent_reset_at_run_start"),
     (REPO_ROOT / "ml_scheduler.py", "run_survivor_stack_refit_backtest"),
-    (REPO_ROOT / "ml_scheduler.py", "load_parallel_cascade_bridge"),
+    # RC-REHAB-1 (2026-09-22): load_parallel_cascade_bridge's call site moved to
+    # ml_scheduler_cascade_train.py (final slice of the ml_scheduler.py decomposition,
+    # inside train_cascade_candidate) -- same code, different file.
+    (REPO_ROOT / "ml_scheduler_cascade_train.py", "load_parallel_cascade_bridge"),
 )
 
 # parallel→cascade single-pass bridge

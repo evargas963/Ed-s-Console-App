@@ -1,7 +1,7 @@
 """Causal label reconstruction contract + mechanical lookahead guards (research-only).
 
 This module RE-IMPLEMENTS the production fixed-horizon label formula (proven by
-audit: db._apply_bar_based_outcome_updates / horizon_outcomes.py) from an
+audit: db_snapshots._apply_bar_based_outcome_updates / horizon_outcomes.py) from an
 immutable list of 1-minute bars, so that:
 
   * every label reconstructs deterministically from source-row identity alone

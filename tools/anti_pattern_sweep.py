@@ -308,7 +308,12 @@ CAPS_PREFIX_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("app/options/order_flow/engine.py", "Schwab print time_millis sort/cutoff"),
     ("snapshot_normalizer.py", "materialize row-count audit"),
     ("market_state.py", "wall-score audit diff derived metrics"),
-    ("db.py", "SQL COUNT aggregate int coercion"),
+    # RC-REHAB-1 (2026-09-22): db.py's blanket exemption retired -- every hit it was
+    # hiding has been individually reviewed and either fixed or given its own
+    # `# caps-ok:` marker (see db.py decomposition commits). A blanket file exemption
+    # that has never been individually reviewed is exactly the failure mode this
+    # allowlist shape was already documented as wrong for; db.py had carried it
+    # unreviewed since before this decomposition started.
     ("server.py", "L1/SSE instrumentation timestamps and volume deltas"),
     ("monte_carlo.py", "MC output dict serialization of derived sim metrics"),
     ("live_vs_replay_validation.py", "replay validation row counts"),

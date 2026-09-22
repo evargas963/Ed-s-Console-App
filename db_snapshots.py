@@ -9,26 +9,53 @@ get_avg_move, count_snapshots).
 SnapshotOutcomesMixin is mixed into EdDB (db.py), exactly like slices 1-2's mixins: every
 method here already assumed self._connect()/self._tier1_snapshot_write() from the host class.
 
-MONKEYPATCH SAFETY (read before editing): _apply_bar_based_outcome_updates,
-_refresh_governed_outcomes_after_bar_mutation, _fill_outcomes_latency_log,
-FILL_OUTCOMES_LIVE_BATCH_LIMIT, LIVE_BARS_REUPSERT_OVERLAP_SEC, similarity_labeled_counts,
-similarity_tier_stop_viable, and similarity_empirically_viable all stay defined in db.py
-itself (not moved) and are referenced here ONLY via ``db.<name>`` module-attribute access
-(a lazy ``import db`` inside each method that needs one), never a bound ``from db import
-X`` name. tests/test_db_perf_rc166_v1.py monkeypatches db_mod._refresh_governed_outcomes_
-after_bar_mutation directly on the module object to prove a real concurrency contract (the
-tier-1 write lock is released before the governed-outcome refresh runs); tests/test_horizon_
-bar_outcomes.py does the same to FILL_OUTCOMES_LIVE_BATCH_LIMIT. A bound import here would
-silently defeat both monkeypatches -- verified empirically, not assumed, before this file
-was written (see the RC-REHAB-1 slice-3 commit message for the reproduction).
+MONKEYPATCH SAFETY (read before editing): FILL_OUTCOMES_LIVE_BATCH_LIMIT and
+LIVE_BARS_REUPSERT_OVERLAP_SEC (constants) stay defined in db.py itself and are referenced
+here ONLY via ``db.<name>`` module-attribute access (a lazy ``import db`` inside each method
+that needs one), never a bound ``from db import X`` name. tests/test_horizon_bar_outcomes.py
+monkeypatches db_mod.FILL_OUTCOMES_LIVE_BATCH_LIMIT directly on the module object. A bound
+import here would silently defeat it.
+
+RC-REHAB-1 (2026-09-22) follow-up: similarity_labeled_counts, similarity_tier_stop_viable,
+and similarity_empirically_viable moved OUT of db.py entirely, into similarity_audit.py
+(zero EdDB coupling; similarity_audit.py already owned the SIMILARITY_*_OUTCOME_COLUMNS
+constants and MIN_SAMPLES_STATISTICAL they consume -- db.py's copies were a "mirror to avoid
+circular import" split, per similarity_audit.py's old docstring). get_similar_setups (the
+only caller here) now imports them by plain bound name from similarity_audit at this file's
+top, same as query_context_for_similarity and its siblings above -- no lazy `import db`
+needed, since neither similarity_audit.py nor this file's relationship to it is circular,
+and no test monkeypatches these three (verified repo-wide before removing the lazy access).
+
+RC-REHAB-1 (2026-09-22) follow-up: _tf_seconds, _snapshot_update_key,
+_fill_outcomes_latency_log, _row_has_nonnull, _already_filled,
+_snapshot_rows_affected_by_bar_mutations, _snapshot_row_atr,
+_apply_bar_based_outcome_updates, and _refresh_governed_outcomes_after_bar_mutation moved
+INTO this file from db.py (they were left behind in the original slice-3 extraction with
+no individual review of whether each one genuinely needed to stay). Of these, only
+_refresh_governed_outcomes_after_bar_mutation is monkeypatch-sensitive --
+tests/test_db_perf_rc166_v1.py does `db_mod._refresh_governed_outcomes_after_bar_mutation =
+_wrapped_refresh`, a direct attribute assignment on the db module object (not
+monkeypatch.setattr/patch() -- a distinct style from the FILL_OUTCOMES_LIVE_BATCH_LIMIT
+case above, verified by reading the test itself, not a single-line grep, which does not
+reliably catch this assignment style or multi-line monkeypatch.setattr(...) calls, both
+missed earlier in this same decomposition). db.py re-exports
+_refresh_governed_outcomes_after_bar_mutation so the module attribute the test patches
+still exists; this file's own two callers of it (upsert_1m_bars,
+refresh_governed_outcomes_for_mutated_bar_starts) still reach it via a lazy `import db` so
+the patched value is what actually runs, even though the function is now defined in this
+same file -- a same-file bare-name call would resolve through this file's own globals,
+which the test's `db_mod.` patch never touches. The other 8 functions are called by bare
+name like any other same-file helper -- verified via repo-wide monkeypatch search
+(including the direct-attribute-assignment style) before making that call, not assumed.
 """
 from __future__ import annotations
 
+import bisect
 import logging
 import threading
 import time as _wall_time
 from dataclasses import asdict
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     # Type-hint only -- a plain top-level `from db import SnapshotRow` would be a real
@@ -44,9 +71,18 @@ from horizon_outcomes import (
     OUTCOME_BAR_SPECS,
     OUTCOME_MOVEMENT_V1_SPECS,
     AUTHORITATIVE_1M_SOURCE,
+    forward_bar_start_utc,
+    bar_complete_by_utc,
+)
+from movement_target_threshold import (
+    directional_and_move_labels_v2,
+    invalid_for_dir_target,
+    load_movement_thresholds_by_horizon_v1,
+    threshold_move_pts_for_slug,
 )
 from time_et import is_collect_window_bar_end_ts_utc
 from math_exposure import (
+    classify_direction_pts as _classify_direction_per_horizon,
     dist_bucket as _dist_bucket,
     bucket_lo as _bucket_lo,
     bucket_hi as _bucket_hi,
@@ -62,9 +98,374 @@ from similarity_audit import (
     tier_stop_weak_horizons,
     weakest_tracked_horizons,
     widening_summary_from_tiers,
+    similarity_labeled_counts,
+    similarity_tier_stop_viable,
+    similarity_empirically_viable,
 )
 
 log = logging.getLogger(__name__)
+
+
+# ── Bar-mutation / outcome-refresh helpers (RC-REHAB-1, db.py decomposition follow-up) ──
+# Moved from db.py, where they were left behind in the original slice-3 extraction. Only
+# _refresh_governed_outcomes_after_bar_mutation is monkeypatch-sensitive
+# (tests/test_db_perf_rc166_v1.py does `db_mod._refresh_governed_outcomes_after_bar_mutation
+# = _wrapped_refresh`, a direct attribute assignment on the db module object, not
+# monkeypatch.setattr/patch() -- verified by reading the test, not a single-line grep, which
+# missed this exact style earlier in this decomposition). The other 8 are plain functions
+# with no monkeypatch hazard and are called by bare name below like any other same-file
+# helper. db.py re-exports _refresh_governed_outcomes_after_bar_mutation so the module
+# attribute the test patches still exists; this file's own callers of it keep going through
+# a lazy `import db` so the patched value is what actually runs (see this file's top-of-file
+# docstring, updated for this move).
+
+def _tf_seconds(timeframe: str) -> float:
+    """Return seconds per candle for a given timeframe string."""
+    mapping = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
+    return mapping.get(timeframe, 300)
+
+
+def _snapshot_update_key(row) -> tuple[str, int | None]:
+    """
+    UPDATE key for governed snapshot outcomes — `snapshot_id` only (Stage A2b).
+
+    After snapshots schema repair (O-39), `rowid` must not substitute for application
+    identity. Missing or invalid `snapshot_id` returns ("snapshot_id", None); callers
+    must skip and log (see `_apply_bar_based_outcome_updates`).
+    """
+    try:
+        snap_id = row["snapshot_id"]
+    except (KeyError, IndexError, TypeError):
+        snap_id = None
+    if snap_id is not None:
+        try:
+            sid = int(snap_id)
+        except (TypeError, ValueError):
+            return "snapshot_id", None
+        if sid > 0:
+            return "snapshot_id", sid
+    return "snapshot_id", None
+
+
+def _fill_outcomes_latency_log(exec_ms: float) -> tuple[int | None, str | None]:
+    """Classify fill_outcomes wall time → (logging level, tier label).
+
+    SLA: >=5s and >=10s are WARNING (operator quiet-window FAIL). 1s+ is INFO.
+    Live path must stay under SLA via FILL_OUTCOMES_LIVE_BATCH_LIMIT — not by
+    demoting multi-second runs to INFO.
+    """
+    if exec_ms >= 10_000.0:
+        return logging.WARNING, "10s+"
+    if exec_ms >= 5_000.0:
+        return logging.WARNING, "5s+"
+    if exec_ms >= 1_000.0:
+        return logging.INFO, "1s+"
+    return None, None
+
+
+def _row_has_nonnull(row, col: str) -> bool | None:
+    """True/False if *col* present on *row*; None if the column is absent (fallback)."""
+    try:
+        return row[col] is not None
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _already_filled(conn, row_key_col: str, row_key: int, col: str) -> bool:
+    row = conn.execute(
+        f"SELECT {col} FROM snapshots WHERE {row_key_col} = ?", (row_key,)
+    ).fetchone()
+    return row is not None and row[0] is not None
+
+
+def _snapshot_rows_affected_by_bar_mutations(
+    conn,
+    tkr: str,
+    changed_bar_starts: set[float],
+    tz: float,
+) -> list:
+    """
+    Snapshots whose BAR_ANCHOR_V1 outcomes depend on any bar whose bar_start_ts_utc
+    is in changed_bar_starts (anchor bar or forward label bar for any governed horizon).
+    """
+    if not changed_bar_starts:
+        return []
+    bar_end_rows = conn.execute(
+        """
+        SELECT bar_end_ts_utc, close FROM price_bars_1m
+        WHERE ticker = ? AND bar_end_ts_utc <= ?
+        ORDER BY bar_end_ts_utc ASC
+        """,
+        (tkr, tz),
+    ).fetchall()
+    bar_ends = [float(r["bar_end_ts_utc"]) for r in bar_end_rows]
+    out: list = []
+    for row in conn.execute(
+        """
+        SELECT snapshot_id, ts_utc, atr FROM snapshots
+        WHERE ticker = ? AND timeframe = ?
+          AND COALESCE(horizon_outcome_schema_version, ?) = ?
+          AND ts_utc < ?
+        """,
+        (
+            tkr,
+            CANONICAL_TIMEFRAME,
+            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+            tz,
+        ),
+    ):
+        t_snap = float(row["ts_utc"])
+        anch_idx = bisect.bisect_right(bar_ends, t_snap) - 1
+        if anch_idx < 0:
+            continue
+        anchor_bar_start = bar_ends[anch_idx] - 60.0
+        if anchor_bar_start in changed_bar_starts:
+            out.append(row)
+            continue
+        for _, _, n_min in OUTCOME_BAR_SPECS:
+            if forward_bar_start_utc(t_snap, n_min) in changed_bar_starts:
+                out.append(row)
+                break
+    return out
+
+
+def _snapshot_row_atr(row) -> Optional[float]:
+    try:
+        v = row["atr"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    if v is None:
+        return None
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return x if x > 0 else None
+
+
+def _apply_bar_based_outcome_updates(
+    conn,
+    *,
+    tz: float,
+    unfilled_rows,
+    bar_ends: list[float],
+    bar_end_closes: list[float],
+    close_by_start: dict[float, float],
+    force_refresh: bool = False,
+) -> int:
+    """
+    Shared bar-anchor outcome write path (Issue 4). Used by live fill_outcomes
+    (rolling snapshot window) and historical pin_neutral repair (explicit snapshot sets).
+
+    When force_refresh=True, recomputes all governed horizon columns from current
+    price_bars_1m (used after authoritative bar mutation so stored labels cannot drift).
+
+    Also writes movement-target columns: outcome_dir_*, outcome_move_*, valid_dir_*,
+    threshold_move_* (and duplicate outcome_move_thr_pts_* for backward compatibility).
+
+    Returns count of UPDATE statements executed.
+    """
+    _outcome_cols = [s[0] for s in OUTCOME_BAR_SPECS]
+    _mcfg = load_movement_thresholds_by_horizon_v1()
+    n_exec = 0
+    for row in unfilled_rows:
+        row_key_col, row_key = _snapshot_update_key(row)
+        if row_key is None:
+            try:
+                ts_u = float(row["ts_utc"])
+            except (KeyError, IndexError, TypeError, ValueError):
+                ts_u = None
+            try:
+                raw_sid = row["snapshot_id"]
+            except (KeyError, IndexError, TypeError):
+                raw_sid = None
+            log.warning(
+                "governed_outcome_skip_missing_snapshot_id ts_utc=%r snapshot_id=%r",
+                ts_u,
+                raw_sid,
+            )
+            continue
+        t_snap = float(row["ts_utc"])
+        anch_idx = bisect.bisect_right(bar_ends, t_snap) - 1
+        if anch_idx < 0:
+            continue
+        anchor_close = bar_end_closes[anch_idx]
+        atr_v = _snapshot_row_atr(row)
+
+        if force_refresh:
+            updates: dict = {}
+            for odir, opt, n_min in OUTCOME_BAR_SPECS:
+                spec = next(s for s in OUTCOME_MOVEMENT_V1_SPECS if s[5] == n_min)
+                dcol, mcol, vdcol, tmcol, legtcol, _nm, slug = spec
+                b_start = forward_bar_start_utc(t_snap, n_min)
+                if not bar_complete_by_utc(b_start, tz):
+                    updates[odir] = None
+                    updates[opt] = None
+                    updates[dcol] = None
+                    updates[mcol] = None
+                    updates[vdcol] = None
+                    updates[tmcol] = None
+                    updates[legtcol] = None
+                    continue
+                fwd_close = close_by_start.get(float(b_start))
+                if fwd_close is None:
+                    updates[odir] = None
+                    updates[opt] = None
+                    updates[dcol] = None
+                    updates[mcol] = None
+                    updates[vdcol] = None
+                    updates[tmcol] = None
+                    updates[legtcol] = None
+                    continue
+                pts_move = fwd_close - anchor_close
+                thr = threshold_move_pts_for_slug(
+                    slug, anchor_close=anchor_close, atr=atr_v, cfg=_mcfg
+                )
+                updates[odir] = _classify_direction_per_horizon(pts_move, thr)
+                updates[opt] = round(pts_move, 4)
+                dir_ok = not invalid_for_dir_target(slug, _mcfg)
+                dlab, mlab, vdi = directional_and_move_labels_v2(
+                    pts_move, thr, dir_allowed=dir_ok
+                )
+                updates[dcol] = dlab
+                updates[mcol] = mlab
+                updates[vdcol] = int(vdi)
+                updates[tmcol] = round(thr, 8)
+                updates[legtcol] = round(thr, 8)
+            all_filled = all(updates.get(c) is not None for c in _outcome_cols)
+            updates["outcome_filled"] = 1 if all_filled else 0  # caps-ok: all_filled is a real bool from all(), never missing -- bool-to-int coercion for SQLite storage (no native BOOLEAN type)
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            conn.execute(
+                f"UPDATE snapshots SET {set_clause} WHERE {row_key_col} = ?",
+                list(updates.values()) + [row_key],
+            )
+            n_exec += 1
+            continue
+
+        updates = {}
+        for odir, opt, n_min in OUTCOME_BAR_SPECS:
+            spec = next(s for s in OUTCOME_MOVEMENT_V1_SPECS if s[5] == n_min)
+            dcol, mcol, vdcol, tmcol, legtcol, _nm, slug = spec
+            odir_filled = _row_has_nonnull(row, odir)
+            if odir_filled is None:
+                odir_filled = _already_filled(conn, row_key_col, row_key, odir)
+            if odir_filled:
+                vd_filled = _row_has_nonnull(row, vdcol)
+                if vd_filled is None:
+                    ex_v = conn.execute(
+                        f"SELECT {vdcol} FROM snapshots WHERE {row_key_col} = ?",
+                        (row_key,),
+                    ).fetchone()
+                    vd_filled = ex_v is not None and ex_v[0] is not None
+                if vd_filled:
+                    continue
+            b_start = forward_bar_start_utc(t_snap, n_min)
+            if not bar_complete_by_utc(b_start, tz):
+                continue
+            fwd_close = close_by_start.get(float(b_start))
+            if fwd_close is None:
+                continue
+            pts_move = fwd_close - anchor_close
+            thr = threshold_move_pts_for_slug(
+                slug, anchor_close=anchor_close, atr=atr_v, cfg=_mcfg
+            )
+            updates[odir] = _classify_direction_per_horizon(pts_move, thr)
+            updates[opt] = round(pts_move, 4)
+            dir_ok = not invalid_for_dir_target(slug, _mcfg)
+            dlab, mlab, vdi = directional_and_move_labels_v2(
+                pts_move, thr, dir_allowed=dir_ok
+            )
+            updates[dcol] = dlab
+            updates[mcol] = mlab
+            updates[vdcol] = int(vdi)
+            updates[tmcol] = round(thr, 8)
+            updates[legtcol] = round(thr, 8)
+
+        if not updates:
+            continue
+
+        # Prefer prefetched outcome cols on *row* (live fill_outcomes batch path).
+        existing_vals: dict[str, Any] = {}
+        need_select = False
+        for c in _outcome_cols:
+            present = _row_has_nonnull(row, c)
+            if present is None:
+                need_select = True
+                break
+            existing_vals[c] = row[c] if present else None
+        if need_select:
+            _outcome_dir_cols = ", ".join(_outcome_cols)
+            existing = conn.execute(
+                f"""
+                SELECT {_outcome_dir_cols}
+                FROM snapshots WHERE {row_key_col} = ?
+                """,
+                (row_key,),
+            ).fetchone()
+            existing_vals = {c: existing[c] for c in _outcome_cols}
+        all_filled = all(updates.get(c) or existing_vals.get(c) for c in _outcome_cols)
+        if all_filled:
+            updates["outcome_filled"] = 1
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        conn.execute(
+            f"UPDATE snapshots SET {set_clause} WHERE {row_key_col} = ?",
+            list(updates.values()) + [row_key],
+        )
+        n_exec += 1
+    return n_exec
+
+
+def _refresh_governed_outcomes_after_bar_mutation(
+    conn,
+    *,
+    tkr: str,
+    changed_bar_starts: set[float],
+    tz: float,
+) -> int:
+    """
+    Recompute BAR_ANCHOR_V1 snapshot outcomes for rows affected by mutated 1m bars.
+    Must run in the same SQLite transaction/connection as the bar upsert.
+    """
+    affected = _snapshot_rows_affected_by_bar_mutations(conn, tkr, changed_bar_starts, tz)
+    if not affected:
+        return 0
+    _max_fwd_min = max(s[2] for s in OUTCOME_BAR_SPECS)
+    _bar_start_upper = tz + float(_max_fwd_min) * 60.0 + 120.0
+    min_snap_ts = min(float(r["ts_utc"]) for r in affected)
+    bar_low = min_snap_ts - 5000.0
+
+    close_by_start: dict[float, float] = {}
+    for r in conn.execute(
+        """
+        SELECT bar_start_ts_utc, close FROM price_bars_1m
+        WHERE ticker = ? AND bar_start_ts_utc >= ? AND bar_start_ts_utc <= ?
+        """,
+        (tkr, bar_low, _bar_start_upper),
+    ).fetchall():
+        close_by_start[float(r["bar_start_ts_utc"])] = float(r["close"])
+
+    bar_end_rows = conn.execute(
+        """
+        SELECT bar_end_ts_utc, close FROM price_bars_1m
+        WHERE ticker = ? AND bar_start_ts_utc >= ? AND bar_end_ts_utc <= ?
+        ORDER BY bar_end_ts_utc ASC
+        """,
+        (tkr, bar_low, tz),
+    ).fetchall()
+    bar_ends = [float(r["bar_end_ts_utc"]) for r in bar_end_rows]
+    bar_end_closes = [float(r["close"]) for r in bar_end_rows]
+
+    return _apply_bar_based_outcome_updates(
+        conn,
+        tz=tz,
+        unfilled_rows=affected,
+        bar_ends=bar_ends,
+        bar_end_closes=bar_end_closes,
+        close_by_start=close_by_start,
+        force_refresh=True,
+    )
 
 
 class SnapshotOutcomesMixin:
@@ -425,7 +826,7 @@ class SnapshotOutcomesMixin:
                     ),
                 ).fetchall()
 
-                db._apply_bar_based_outcome_updates(
+                _apply_bar_based_outcome_updates(
                     conn,
                     tz=tz,
                     unfilled_rows=unfilled,
@@ -441,7 +842,7 @@ class SnapshotOutcomesMixin:
         _db_s = str(self.db_path)
         # Honest SLA: 5s+/10s+ remain WARNING (quiet-window FAIL). Perf fix is the
         # live batch + N+1 cut above — do not demote severity to greenwash 23s runs.
-        _level, _tier = db._fill_outcomes_latency_log(_exec_ms)
+        _level, _tier = _fill_outcomes_latency_log(_exec_ms)
         if _level is logging.WARNING:
             log.warning(
                 "sqlite_bg_write_slow op=fill_outcomes tier=%s ticker=%s exec_ms=%.1f "
@@ -468,8 +869,6 @@ class SnapshotOutcomesMixin:
         Use after bulk bar repairs or before governed-dataset certification when labels must
         match authoritative closes. Live upsert_1m_bars already refreshes affected snapshots.
         """
-        import db  # module-attribute access only -- see this file's own docstring
-
         tz = float(_wall_time.time())
         _max_fwd_min = max(s[2] for s in OUTCOME_BAR_SPECS)
         _bar_start_upper = tz + float(_max_fwd_min) * 60.0 + 120.0
@@ -535,7 +934,7 @@ class SnapshotOutcomesMixin:
                 ).fetchall()
                 bar_ends = [float(r["bar_end_ts_utc"]) for r in bar_end_rows]
                 bar_end_closes = [float(r["close"]) for r in bar_end_rows]
-                n = db._apply_bar_based_outcome_updates(
+                n = _apply_bar_based_outcome_updates(
                     conn,
                     tz=tz,
                     unfilled_rows=rows,
@@ -594,8 +993,6 @@ class SnapshotOutcomesMixin:
         so repair does not extend labels into non-canonical snapshot metadata used by Issue 19.
         Labeling still uses ``price_bars_1m`` (same bar grid as ``fill_outcomes``).
         """
-        import db  # module-attribute access only -- see this file's own docstring
-
         tz = float(_wall_time.time())
         _max_fwd_min = max(s[2] for s in OUTCOME_BAR_SPECS)
         bar_pad = float(_max_fwd_min) * 60.0 + 120.0
@@ -690,7 +1087,7 @@ class SnapshotOutcomesMixin:
                     if dry_run:
                         tickers_touched.append(t_key)
                         continue
-                    n = db._apply_bar_based_outcome_updates(
+                    n = _apply_bar_based_outcome_updates(
                         conn,
                         tz=tz,
                         unfilled_rows=trows,
@@ -831,7 +1228,6 @@ class SnapshotOutcomesMixin:
         two blobs dominate row width. Default False is byte-identical for every
         other caller (audit / replay / verification tools keep full rows).
         """
-        import db  # module-attribute access only -- see this file's own docstring
 
         timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_similar_setups")
         ticker = ticker_storage_key(ticker)
@@ -903,10 +1299,10 @@ class SnapshotOutcomesMixin:
             if return_trace and trace is not None:
                 trace["chosen_tier"] = tier_num
                 trace["final_similar_count"] = len(out)
-                trace["final_labeled_counts"] = db.similarity_labeled_counts(out)
+                trace["final_labeled_counts"] = similarity_labeled_counts(out)
                 fc = trace["final_labeled_counts"]
-                ftsv = db.similarity_tier_stop_viable(fc)
-                fatv = db.similarity_empirically_viable(fc)
+                ftsv = similarity_tier_stop_viable(fc)
+                fatv = similarity_empirically_viable(fc)
                 trace["final_empirically_viable"] = ftsv
                 trace["final_all_tracked_viable"] = fatv
                 trace["final_selected_tier"] = tier_num
@@ -938,8 +1334,8 @@ class SnapshotOutcomesMixin:
                 # CAPS finding (2026-09-22): both functions already guard `if not
                 # labeled_by_col: return False` internally -- the `if c else False` wrapper
                 # was fully redundant, never changed the result.
-                tsv = db.similarity_tier_stop_viable(c)
-                atv = db.similarity_empirically_viable(c)
+                tsv = similarity_tier_stop_viable(c)
+                atv = similarity_empirically_viable(c)
                 entry: dict = {
                     "tier": tier_num,
                     "constraint_definition": structured_constraints_for_tier(tier_num, _query_ctx),
@@ -958,8 +1354,8 @@ class SnapshotOutcomesMixin:
         def _maybe_return_tier(rows_raw, tier_num: int):
             """Return this tier if it satisfies full empirical viability; else record trace and continue."""
             out_dicts = [dict(r) for r in rows_raw]
-            counts = db.similarity_labeled_counts(out_dicts)
-            viable = db.similarity_tier_stop_viable(counts)
+            counts = similarity_labeled_counts(out_dicts)
+            viable = similarity_tier_stop_viable(counts)
             _append_tier(tier_num, len(rows_raw), viable, counts=counts)
             if viable:
                 log.debug(
@@ -1116,8 +1512,8 @@ class SnapshotOutcomesMixin:
             """, _p5).fetchall()
 
             out5 = [dict(r) for r in rows]
-            c5 = db.similarity_labeled_counts(out5)
-            v5 = db.similarity_tier_stop_viable(c5)
+            c5 = similarity_labeled_counts(out5)
+            v5 = similarity_tier_stop_viable(c5)
             _append_tier(
                 5,
                 len(rows),
@@ -1127,7 +1523,7 @@ class SnapshotOutcomesMixin:
             )
             if trace is not None:
                 trace["tier5_empirically_viable"] = v5
-                trace["tier5_all_tracked_viable"] = db.similarity_empirically_viable(c5)
+                trace["tier5_all_tracked_viable"] = similarity_empirically_viable(c5)
                 if not v5:
                     trace["tier5_note"] = (
                         "Tier-stop columns (1c/5c/15c) may still be sparse; "

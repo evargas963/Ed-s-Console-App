@@ -23,8 +23,16 @@ _STORED_CLOCK_RTH = re.compile(
 
 # the known contradiction sites (contract-pinned); the detector proves they still
 # match the stored-clock pattern and that the canonical ts_utc filter exists.
+# RC-REHAB-1 (2026-09-22): EdDB.compute_accuracy's rth_clause (the site the contract
+# describes as "db.py:4417-4420") moved to db_model_accuracy.py in an earlier db.py
+# decomposition slice, before this comment was ever updated -- masked until now because
+# db.py's market_session also matched this regex coincidentally (a second, unrelated
+# stored-clock computation on live wall-clock input, not stored/DST-skewed data) and kept
+# this list's "db.py" entry passing by accident. market_session moved to time_et.py this
+# session; with it gone, db.py has zero real hits, exposing the staleness. Follow the real
+# site (compute_accuracy) to where it lives now.
 KNOWN_SITES = (
-    "db.py",
+    "db_model_accuracy.py",
     "audit_model_readiness.py",
 )
 

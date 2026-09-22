@@ -3,7 +3,10 @@ Issue 21 — structured audit, validation, and export helpers for tier-driven si
 
 Read-only / deterministic utilities. Does not change selection policy (Issue 19).
 
-Column tuples mirror db.py (SIMILARITY_*_OUTCOME_COLUMNS) — keep in sync.
+This is the single owner of the SIMILARITY_*_OUTCOME_COLUMNS column tuples and the
+labeled-count / tier-stop / empirical-viability readiness checks that operate on them
+(similarity_labeled_counts / similarity_tier_stop_viable / similarity_empirically_viable,
+moved from db.py -- RC-REHAB-1). db.py re-exports them for its own external callers.
 
 Feature contract (adaptive shadow baseline audit): baseline_feature_contract_v1().
 """
@@ -12,8 +15,6 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from math_exposure import MIN_SAMPLES_STATISTICAL, bucket_hi, bucket_lo, dist_bucket
-
-# ── Mirror db.py Issue 19 (avoid circular import) ─────────────────────────────
 from ml_horizon import PRIMARY_DECISION_HORIZONS
 
 SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS: tuple[str, ...] = tuple(
@@ -24,6 +25,39 @@ SIMILARITY_TIER_STOP_OUTCOME_COLUMNS: tuple[str, ...] = (
     "outcome_5c",
     "outcome_15c",
 )
+
+
+# RC-REHAB-1 (2026-09-22): moved from db.py (db.py decomposition) -- these 3 functions
+# already consumed SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS / SIMILARITY_TIER_STOP_OUTCOME_COLUMNS
+# / MIN_SAMPLES_STATISTICAL from this module and similarity_audit.py's own docstring, so
+# moving them here consolidates the "mirror db.py to avoid circular import" split this
+# module's docstring used to describe into one real owner; db.py now consumes db_snapshots.py
+# reads db.similarity_labeled_counts(...) etc lazily only because db_snapshots.py is imported
+# by db.py before these were defined in db.py -- with the real definitions here, that lazy
+# indirection is no longer needed and db_snapshots.py imports these by plain name instead.
+def similarity_labeled_counts(rows: list) -> dict[str, int]:
+    """Labeled direction counts per horizon (same rule as prediction_engine._count_labeled)."""
+    out: dict[str, int] = {}
+    for col in SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS:
+        out[col] = sum(1 for r in rows if r.get(col) in ("up", "down", "flat"))
+    return out
+
+
+def similarity_tier_stop_viable(labeled_by_col: dict[str, int]) -> bool:
+    """True iff tiers 1–4 may stop: 1c / 5c / 15c each have enough labeled rows."""
+    if not labeled_by_col:
+        return False
+    return all(
+        labeled_by_col.get(col, 0) >= MIN_SAMPLES_STATISTICAL
+        for col in SIMILARITY_TIER_STOP_OUTCOME_COLUMNS
+    )
+
+
+def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
+    """True iff every tracked empirical column has enough labeled rows (full histogram set)."""
+    if not labeled_by_col:
+        return False
+    return all(n >= MIN_SAMPLES_STATISTICAL for n in labeled_by_col.values())
 
 
 def baseline_feature_contract_v1() -> dict[str, Any]:

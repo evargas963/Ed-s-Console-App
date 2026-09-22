@@ -227,7 +227,7 @@ def main() -> None:
                 _atr = float(row["atr"]) if row["atr"] is not None else None
             except (TypeError, ValueError):
                 _atr = None
-            # Mirror the production writer (db._apply_bar_based_outcome_updates): per-horizon
+            # Mirror the production writer (db_snapshots._apply_bar_based_outcome_updates): per-horizon
             # ATR-scaled threshold, not a fixed 0.05% cut, or this recompute reports false mismatches.
             _thr = threshold_move_pts_for_slug("5c", anchor_close=ac, atr=_atr, cfg=_mcfg)
             exp = classify_direction_pts(fc - ac, _thr)

@@ -1759,9 +1759,10 @@ ROWS: tuple[Row, ...] = (
                        'ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='_train_cascade', disposition='ALLOWLISTED',
+        file='ml_scheduler_cascade_train.py', derivation='_train_cascade', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Inner cascade training helper: delegates to train_all cascade training functions on caller-supplied historical DB shim. Mega4 internal; no direct Schwab wire derivation.',
+        justification='Inner cascade training helper: delegates to train_all cascade training functions on caller-supplied historical DB shim. Mega4 internal; no direct Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (final slice of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
         file='ml_scheduler_parallel_train.py', derivation='_train_parallel', disposition='ALLOWLISTED',
@@ -1785,9 +1786,10 @@ ROWS: tuple[Row, ...] = (
         justification='Nested loop body for start_background_scheduler: sleeps until next scheduled run then invokes run_once. Mega4 internal; no direct Schwab wire derivation.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='train_cascade_candidate', disposition='ALLOWLISTED',
+        file='ml_scheduler_cascade_train.py', derivation='train_cascade_candidate', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Cascade candidate training orchestrator: takes db_path, calls _load_rth_rows_for_ticker for SQLite reads, fits cascade architecture ML stack layers + meta, persists artifacts. No direct Schwab wire derivation.',
+        justification='Cascade candidate training orchestrator: takes db_path, calls _load_rth_rows_for_ticker for SQLite reads, fits cascade architecture ML stack layers + meta, persists artifacts. No direct Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (final slice of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
         file='ml_scheduler_parallel_train.py', derivation='train_parallel_candidate', disposition='ALLOWLISTED',

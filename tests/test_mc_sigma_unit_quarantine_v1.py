@@ -42,7 +42,9 @@ from monte_carlo import (  # noqa: E402
 #: column, exactly what this census requires of a new reader). Measured 2026-08-25.
 READER_CENSUS = frozenset({
     "bayesian_fusion.py",
-    "db.py",
+    "db_models.py",  # RC-REHAB-1 (2026-09-22): db.py's SnapshotRow dataclass (including its
+    # mc_sigma_value field declaration) moved here verbatim (db.py decomposition) -- same
+    # already-reviewed field-declaration mention, not a new reader, no row classification.
     "db_schema.py",  # RC-REHAB-1 (2026-09-21): db.py's _init_schema/_migrate_schema moved
     # here verbatim (slice 2 of the db.py decomposition) -- same already-reviewed
     # column-add mention (mc_sigma_value REAL), not a new reader, no row classification.

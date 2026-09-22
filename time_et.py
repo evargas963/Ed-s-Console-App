@@ -127,8 +127,15 @@ def et_date_str_from_ts_utc(ts_utc: float) -> str:
 
 
 def build_ts_et_from_ts_utc(ts_utc: float) -> str:
-    """Display ts_et string from UTC epoch (DST-aware), matching db.build_ts_et format."""
+    """Display ts_et string from UTC epoch (DST-aware), matching build_ts_et's format."""
     dt = datetime.fromtimestamp(float(ts_utc), tz=timezone.utc).astimezone(ET)
+    return dt.strftime("%Y-%m-%d %H:%M:%S ET")
+
+
+def build_ts_et(dt: "datetime | None" = None) -> str:
+    """Display ts_et string from a datetime (defaults to now_et()). Moved from db.py
+    (RC-REHAB-1) to sit beside its ts_utc-based sibling, build_ts_et_from_ts_utc."""
+    dt = dt or now_et()
     return dt.strftime("%Y-%m-%d %H:%M:%S ET")
 
 
@@ -298,6 +305,36 @@ def is_trading_day_et(et_date: str) -> bool:
     if wd >= 5:
         return False
     return session_close_mins_for_et_date(s) is not None
+
+
+def market_session(et_hour: int, et_minute: int, *, et_date: str) -> str:
+    """Classify an ET clock reading as a market session. With `et_date`, the CALENDAR decides first.
+
+    Moved from db.py (RC-REHAB-1) to sit beside its RTH_START_MINS/RTH_END_MINS/
+    is_trading_day_et authority instead of aliasing them across a module boundary.
+
+    RC-278: this returned "rth" for 10:00 on a Saturday, because minutes-since-midnight is not a
+    session test — on five days in seven the two questions happen to agree. Every row this
+    labelled fed `market_session` into `snapshots` and into the training filters, so a weekend
+    reading entered the sample wearing the same label as a real one.
+
+    RC-281: `et_date` is REQUIRED, not optional. It was optional for one commit and Cursor's
+    audit measured the hole — `market_session(10, 0)` still returned "rth" on a Saturday, so
+    the next caller could silently reintroduce weekend RTH labels and the training
+    contamination of RC-54/57/58. Cursor confirmed no production caller omits it, so
+    requiring it costs nothing and closes the reintroduction path. Without the date this
+    function cannot know whether a session exists at all, and it must not guess.
+    """
+    if not is_trading_day_et(str(et_date)):
+        return "closed"
+    mins = et_hour * 60 + et_minute
+    if mins < RTH_START_MINS:    # before 9:30
+        return "premarket"
+    elif mins < RTH_END_MINS:    # before 4:00pm
+        return "rth"
+    elif mins < 1200:            # before 8:00pm (extended-hours end)
+        return "afterhours"
+    return "closed"
 
 
 def is_capturable_session(now: "datetime | None" = None) -> bool:

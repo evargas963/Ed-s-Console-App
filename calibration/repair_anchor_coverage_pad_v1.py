@@ -8,7 +8,7 @@ For each affected ticker, inserts exactly **one** canonical 1m bar with:
   OHLC = first real bar's close (carry) for that ticker
 
 This guarantees EXISTS(bar_end <= ts) for every snapshot at or after that minute for pre-history rows
-(anchor = last completed bar <= ts; see db._apply_bar_based_outcome_updates bisect on bar_ends).
+(anchor = last completed bar <= ts; see db_snapshots._apply_bar_based_outcome_updates bisect on bar_ends).
 
 Does not replace real Schwab history; tags source for audit.
 

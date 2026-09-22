@@ -243,15 +243,21 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     dbcode = "\n".join(ln for ln in dbsrc.splitlines() if not ln.lstrip().startswith("#"))
     assert "ACCURACY_RTH_START_MIN: int = 570" not in dbcode, (
         "db.py re-hardcodes 570 for the RTH window; it must alias time_et (F09/RC-345).")
-    assert "_RTH_START_MINS_AUTH" in dbsrc
-    # F09 (reopened): db.market_session must NOT re-hardcode 570/960 either — it aliases the
-    # authority; and it is calendar-aware (is_trading_day_et decides first).
-    seg = dbsrc[dbsrc.index("def market_session("):]
+    # RC-REHAB-1 (2026-09-22): market_session moved from db.py into time_et.py itself (zero
+    # EdDB coupling; time_et.py is the RTH_START_MINS/RTH_END_MINS/is_trading_day_et authority
+    # it consumes). db.py now re-exports it unmodified -- check the real definition's source,
+    # not db.py's re-export shell, which no longer contains the function body at all.
+    assert "market_session" in dbsrc, "db.py must re-export market_session (F09/RC-345)"
+    tesrc = _read("time_et.py")
+    # F09 (reopened): market_session must NOT re-hardcode 570/960 — it uses the authority
+    # constants directly (same file now, no alias needed); and it is calendar-aware
+    # (is_trading_day_et decides first).
+    seg = tesrc[tesrc.index("def market_session("):]
     seg = seg[: seg.index("\ndef ", 1)]
     segcode = "\n".join(ln for ln in seg.splitlines() if not ln.lstrip().startswith("#"))
     assert "< 570" not in segcode and "< 960" not in segcode, (
-        "db.market_session re-hardcodes the RTH boundary; alias time_et (F09/RC-345).")
-    assert "_RTH_START_MINS_AUTH" in segcode and "is_trading_day_et" in segcode
+        "time_et.market_session re-hardcodes the RTH boundary (F09/RC-345).")
+    assert "RTH_START_MINS" in segcode and "is_trading_day_et" in segcode
     # F09 (reopened): the LSTM no-ts_utc fallback is calendar-aware (is_trading_day_et on the
     # row's ET date) or fails closed — never a silent clock-only RTH.
     lstm_fb = lstm[lstm.index("def extract_rth_snapshots"):]
@@ -871,7 +877,9 @@ def test_rc345_atr_denominator_is_fully_classified(repo_index) -> None:
     from math_volatility import compute_atr
 
     assert callable(compute_atr)
-    db = _read("db.py")
+    # RC-REHAB-1 (2026-09-22): _snapshot_row_atr moved to db_snapshots.py (db.py
+    # decomposition follow-up), same code, different file.
+    db = _read("db_snapshots.py")
     seg = db[db.index("def _snapshot_row_atr"):]
     seg = seg[: seg.index("\ndef ", 1)]
     assert 'row["atr"]' in seg and "for " not in seg.split("return")[0], (
@@ -957,13 +965,17 @@ def test_rc345_movement_target_threshold_one_selector() -> None:
     from movement_target_threshold import threshold_move_pts_for_slug
 
     assert callable(threshold_move_pts_for_slug)
-    for mod in ("db.py", "horizon_outcomes.py"):
+    # RC-REHAB-1 (2026-09-22): the bar-mutation/outcome-refresh consumer moved from db.py to
+    # db_snapshots.py (single-producer extraction, ONE FAUCET); horizon_outcomes.py documents
+    # the contract in prose. Check the real consumer, not db.py's re-export shell.
+    for mod in ("db_snapshots.py", "horizon_outcomes.py"):
         assert "threshold_move_pts_for_slug" in _read(mod), (
             f"{mod} must consume the one threshold selector (F29/RC-345)")
     # no local ATR-threshold reconstruction in the outcome path
-    dbcode = "\n".join(l for l in _read("db.py").splitlines() if not l.lstrip().startswith("#"))
-    assert not re.search(r"thr\s*=\s*[0-9.]+\s*\*\s*atr", dbcode), (
-        "db.py reconstructs a local ATR threshold; use the one selector (F29/RC-345)")
+    for mod in ("db.py", "db_snapshots.py"):
+        code = "\n".join(l for l in _read(mod).splitlines() if not l.lstrip().startswith("#"))
+        assert not re.search(r"thr\s*=\s*[0-9.]+\s*\*\s*atr", code), (
+            f"{mod} reconstructs a local ATR threshold; use the one selector (F29/RC-345)")
 
 
 # ------------------------------------------------------------------- F36 signal-layer VWAP anchor

@@ -137,6 +137,9 @@ def test_fusion_overlay_mvp_rejected():
 
 def test_scheduler_train_cascade_uses_same_feature_cache_key_family():
     """train_cascade_candidate uses compute_feature_cache_key / feature_cache_dir like parallel."""
-    text = (ROOT / "ml_scheduler.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-22): train_cascade_candidate moved to
+    # ml_scheduler_cascade_train.py (final slice of the ml_scheduler.py decomposition) --
+    # same code, different file.
+    text = (ROOT / "ml_scheduler_cascade_train.py").read_text(encoding="utf-8")
     assert "def train_cascade_candidate" in text
     assert "compute_feature_cache_key" in text and "feature_cache_dir" in text
