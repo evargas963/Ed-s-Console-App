@@ -1163,7 +1163,9 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
         "charm must not borrow the net-GEX peak as its target (F18/RC-345)")
 
     # F22 accuracy: no `or 0` fabrication — rows with a missing pred triplet are SKIPPED.
-    _dbc_for_f22 = _read("db.py")
+    # RC-REHAB-1 (2026-09-22): compute_accuracy moved to db_model_accuracy.py (slice 4 of
+    # the db.py decomposition) -- same code, different file.
+    _dbc_for_f22 = _read("db.py") + _read("db_model_accuracy.py")
     assert "row[f\"pred_{horizon}_up_prob\"]   or 0" not in _dbc_for_f22, (
         "accuracy must not fabricate a pred from `or 0` (F22/RC-345)")
     assert "if _pu is None or _pd is None or _pf is None:" in _dbc_for_f22
@@ -1180,7 +1182,9 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
     # RC-REHAB-1 (2026-09-21): _init_schema/_migrate_schema moved to db_schema.py (slice 2
     # of the db.py decomposition) -- both the schema DDL and the migration column-add list
     # this checks now live there, same code, different file.
-    dbsrc = _read("db.py") + _read("db_schema.py")
+    # RC-REHAB-1 (2026-09-22): compute_accuracy moved to db_model_accuracy.py (slice 4) --
+    # the F22 argmax-authority check below now needs that file too.
+    dbsrc = _read("db.py") + _read("db_schema.py") + _read("db_model_accuracy.py")
     assert "flow_imbalance_source   TEXT" in dbsrc and '("flow_imbalance_source",   "TEXT")' in dbsrc
     assert "flow_imbalance_source=_flow_imb_source" in _read("server.py"), (
         "the source must be persisted on the snapshot row (F11/RC-345)")
