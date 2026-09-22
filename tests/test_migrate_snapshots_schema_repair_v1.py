@@ -300,7 +300,8 @@ def test_post_apply_indexes_and_analyze_exist(tmp_path: Path) -> None:
         index_names = {r["name"] for r in conn.execute("PRAGMA index_list(snapshots)").fetchall()}
         assert {
             "idx_snap_ticker_tf_ts", "idx_snap_outcome_unfilled", "idx_snap_ts",
-            "idx_snap_similarity_zone_vwap",
+            "idx_snap_similarity_zone_vwap", "idx_snap_similarity_zone_only",
+            "idx_snap_avg_move_zone_vwap",
         } <= index_names
         assert conn.execute("SELECT COUNT(*) FROM sqlite_stat1 WHERE tbl = 'snapshots'").fetchone()[0] >= 1
 
