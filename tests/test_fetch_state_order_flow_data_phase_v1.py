@@ -16,6 +16,7 @@ from __future__ import annotations
 from unittest import mock
 
 import server as srv
+import server_state_order_flow as sof
 from time_et import now_et as _eastern_now
 
 
@@ -112,7 +113,10 @@ def test_rest_cum_delta_is_updated_from_merged_quote_and_extended():
     q_json = {ticker: {"quote": {"bidPrice": 1.0}, "extended": {"lastPrice": 2.0}, "regular": {}, "fundamental": {}, "reference": {}}}
     c_json = {"callExpDateMap": {}, "putExpDateMap": {}, "underlying": {}}
 
-    with mock.patch.object(srv, "_update_rest_cum_delta") as mock_update:
+    # RC-REHAB-1 (2026-09-22): _order_flow_data_for_state now lives in
+    # server_state_order_flow.py alongside _update_rest_cum_delta and resolves it as a
+    # bare module-local name -- patching srv._update_rest_cum_delta would be a no-op.
+    with mock.patch.object(sof, "_update_rest_cum_delta") as mock_update:
         srv._order_flow_data_for_state(ticker, q_json, c_json, now_et)
     assert mock_update.call_count == 1
     called_ticker, called_quote, called_now = mock_update.call_args[0]

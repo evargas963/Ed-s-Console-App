@@ -2718,7 +2718,7 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_tier_c_analytics_json_response).',
     ),
     Row(
-        file='server.py', derivation='_update_rest_cum_delta', disposition='DERIVED',
+        file='server_state_order_flow.py', derivation='_update_rest_cum_delta', disposition='DERIVED',
         producer_refs=('server.py:_safe_float_quote',),
         justification='REST tape proxy when stream unavailable.',
     ),

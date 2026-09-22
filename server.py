@@ -3530,10 +3530,11 @@ async def _broadcast_snapshot(data: dict) -> None:
     except Exception as e:
         log.warning(f"SSE broadcast failed: {e}", exc_info=True)
 
-# REST fallback: Cum Delta proxy (polling-based) when streamer unavailable.
-# Accumulates per ticker, resets at open. Streamer value takes precedence.
-_rest_cum_delta: dict = {}        # ticker -> running sum
-_rest_cum_delta_session: Optional[str] = None  # ET date "YYYY-MM-DD"
+# RC-REHAB-1 (2026-09-22): REST Cum Delta accumulator state + its updater + its sole
+# caller (_order_flow_data_for_state) moved to server_state_order_flow.py as one unit.
+# _rest_cum_delta re-imported here (same dict object, mutations shared by reference) for
+# _fetch_state's own direct read site further below.
+from server_state_order_flow import _rest_cum_delta  # noqa: F401
 
 # User prediction override — per ticker: {direction, source}
 # direction: "up" | "flat" | "down", source: "user" | "manual"
@@ -5726,39 +5727,10 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     }
 
 
-def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float | None:
-    """
-    Update and return REST-based cum_delta accumulator for ticker.
-    Resets at 9:30 ET on RTH open (not midnight). Pre-market trades do not carry into RTH.
-    """
-    global _rest_cum_delta, _rest_cum_delta_session
-    try:
-        hour, minute = now_et.hour, now_et.minute
-        mins = hour * 60 + minute
-        in_rth = RTH_OPEN_MINS <= mins < RTH_CLOSE_MINS and now_et.weekday() < 5
-        date_str = now_et.strftime("%Y-%m-%d")
-        session_key = date_str if in_rth else f"{date_str}-premarket"
-        if session_key != _rest_cum_delta_session:
-            _rest_cum_delta.clear()
-            _rest_cum_delta_session = session_key
-    except Exception as e:
-        log.debug(f"REST cum_delta session check failed: {e}")
-    last_price = _safe_float_quote(quote.get("lastPrice"))
-    last_size = _safe_float_quote(quote.get("lastSize"))
-    bid_price = _safe_float_quote(quote.get("bidPrice"))
-    ask_price = _safe_float_quote(quote.get("askPrice"))
-    if last_price is None or last_size is None or last_size <= 0:
-        return _rest_cum_delta.get(ticker)
-    delta = 0.0
-    if ask_price is not None and last_price >= ask_price:
-        delta = last_size
-    elif bid_price is not None and last_price <= bid_price:
-        delta = -last_size
-    cur = _rest_cum_delta.get(ticker)
-    if cur is None:
-        cur = 0.0
-    _rest_cum_delta[ticker] = cur + delta
-    return _rest_cum_delta[ticker]
+# RC-REHAB-1 (2026-09-22): moved to server_state_order_flow.py along with its private
+# module-level state (_rest_cum_delta/_rest_cum_delta_session) and its sole caller
+# (_order_flow_data_for_state).
+from server_state_order_flow import _update_rest_cum_delta  # noqa: F401
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7402,77 +7374,9 @@ def _db_counts_and_crosses_for_state(
     )
 
 
-def _order_flow_data_for_state(
-    ticker: str,
-    q_json: dict,
-    c_json: dict,
-    now_et: datetime,
-) -> dict:
-    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourteenth slice): the Order Flow
-    Engine input assembly phase, extracted verbatim -- builds the full Claude proxy field
-    set (quote/extended/regular/fundamental/reference + chain expDateMaps + underlying +
-    1m candles + optional live streaming content) and updates the REST Cum Delta
-    accumulator (module-level `_rest_cum_delta`/`_rest_cum_delta_session`, referenced
-    directly via _update_rest_cum_delta exactly as the original inline code did).
-
-    Any exception building the field set is caught and logged, leaving order_flow_data at
-    whatever partial state it reached (never raises); a missing
-    app.options.order_flow.state module (ImportError) silently skips the live-content
-    merge, exactly as the original inline nested try/except did."""
-    if _diag_on():
-        _diag_step("pre_order_flow_data", ticker)
-    order_flow_data: dict = {}
-    try:
-        q_node = q_json.get(ticker.upper()) or q_json.get(ticker) or q_json
-        if isinstance(q_node, dict):
-            order_flow_data["quote"] = q_node.get("quote") or {}
-            order_flow_data["extended"] = q_node.get("extended") or {}
-            order_flow_data["regular"] = q_node.get("regular") or {}
-            order_flow_data["fundamental"] = q_node.get("fundamental") or {}
-            order_flow_data["reference"] = q_node.get("reference") or {}
-        else:
-            order_flow_data["quote"] = {}
-            order_flow_data["extended"] = {}
-            order_flow_data["regular"] = {}
-            order_flow_data["fundamental"] = {}
-            order_flow_data["reference"] = {}
-        # Reuse parsed chain JSON — second c_resp.json() reparsed the full payload every tick.
-        order_flow_data["callExpDateMap"] = c_json.get("callExpDateMap") or {}
-        order_flow_data["putExpDateMap"] = c_json.get("putExpDateMap") or {}
-        order_flow_data["underlying"] = c_json.get("underlying") or {}
-        # Order flow candles: 1m only (execution-aligned). No 5m fallback, no 5m aggregation.
-        bars_1m = _candles_1m.get_bars(ticker)
-        order_flow_data["candles"] = [
-            {
-                "open": b.open, "high": b.high, "low": b.low, "close": b.close,
-                "volume": getattr(b, "volume", 0.0),
-                "datetime": int(getattr(b, "ts", 0) * 1000),
-            }
-            for b in (bars_1m or [])
-        ]
-        # Merge live streaming data (book + tape) if available
-        try:
-            if _diag_on():
-                _diag_step("pre_get_content_for_symbol", ticker)
-            from app.options.order_flow.state import get_content_for_symbol
-            live_content = get_content_for_symbol(ticker)
-            if _diag_on():
-                _diag_done("get_content_for_symbol", ticker)
-            if live_content:
-                order_flow_data["content"] = live_content
-        except ImportError:
-            pass
-    except Exception as _ofd_e:
-        log.debug(f"Order flow data build: {_ofd_e}")
-
-    # REST fallback: Cum Delta accumulator (polling-based) when streamer has no tape.
-    # Update each poll; inject into ms after build_market_state if engine returns None.
-    quote_for_cum = dict(order_flow_data.get("extended") or {})
-    quote_for_cum.update(order_flow_data.get("quote") or {})
-    _update_rest_cum_delta(ticker, quote_for_cum, now_et)
-
-    return order_flow_data
-
+# RC-REHAB-1 (2026-09-22): order-flow-data assembly phase moved to
+# server_state_order_flow.py, along with the REST Cum Delta accumulator it drives.
+from server_state_order_flow import _order_flow_data_for_state  # noqa: F401
 
 # RC-REHAB-1 (2026-09-22): candle-volume phase moved to server_state_candles.py.
 from server_state_candles import _candle_volume_for_state  # noqa: F401
