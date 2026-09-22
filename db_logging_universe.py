@@ -604,7 +604,13 @@ class LoggingUniverseMixin:
             row = conn.execute(
                 "SELECT COUNT(*) FROM logging_universe WHERE category = 'pinned'"
             ).fetchone()
-            return int(row[0] or 0)
+            # CAPS finding (2026-09-21, db.py decomposition audit): `or 0` here was dead --
+            # COUNT(*) with no GROUP BY always returns exactly one row and never NULL, so the
+            # fallback could never fire. Removed rather than allowlisted: the gate is right
+            # that a silent-zero fallback on a value that CAN be absent is a real hazard
+            # elsewhere; here the value provably cannot be absent, so the honest fix is to
+            # stop writing code that looks like it might be.
+            return int(row[0])
 
     def logging_universe_snapshot_ticker_orphans(self) -> list[str]:
         """Distinct snapshot tickers (canonical timeframe) with no logging_universe row.
@@ -1002,7 +1008,9 @@ class LoggingUniverseMixin:
             row = conn.execute(
                 "SELECT COUNT(*) FROM logging_universe WHERE category = 'user_persisted'"
             ).fetchone()
-            return int(row[0] or 0)
+            # See logging_universe_pinned_count's identical comment: COUNT(*) with no
+            # GROUP BY is never NULL, so `or 0` was dead code, not a real absence guard.
+            return int(row[0])
 
     def logging_universe_oldest_user_persisted_ticker(self) -> Optional[str]:
         """Must match eviction FIFO head — single deterministic eviction victim."""
