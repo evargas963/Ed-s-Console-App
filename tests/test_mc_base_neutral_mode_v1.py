@@ -96,7 +96,13 @@ def _run_stack(*, layers: dict, spot: float = 450.0, iv: float = 0.2):
         return real_simulate(**kwargs)
 
     inf_v1 = _minimal_inf_v1(spot)
-    with patch("features.inference_snapshot.build_inference_snapshot_v1_from_signal_input",
+    # RC-REHAB-1 (2026-09-22): LIVE_MODEL_STACK_ENABLED now defaults to False (operator
+    # directive -- the live ML/MC stack is legacy, off by default). This whole file proves
+    # the STACK'S OWN behavior when genuinely running (real inference wiring, real
+    # monte_carlo.simulate), so every test here explicitly re-enables it for its own call --
+    # that behavior is still correct code, just no longer the default.
+    with patch.object(signals, "LIVE_MODEL_STACK_ENABLED", True), \
+        patch("features.inference_snapshot.build_inference_snapshot_v1_from_signal_input",
                return_value=inf_v1), \
         patch("prediction_engine.build_fusion_model_overlay_for_stack",
               return_value={"ticker": "SPY"}), \
@@ -171,6 +177,32 @@ def test_ml_unavailable_mc_still_runs_and_is_explicitly_base_neutral():
     assert r.mc.assumptions["per_bar_drift"] == 0.0, "neutral mode must carry exactly zero drift"
     assert r.bundle["mc_conditioned"] is False
     assert r.bundle["unified_stack_team_ok"] is False
+
+
+# ── PROOF 1b (RC-REHAB-1, 2026-09-22): LIVE_MODEL_STACK_ENABLED=False (the real default)
+# skips BOTH run_unified_stack_ml_once and monte_carlo.simulate entirely -- neither the ML
+# models nor Monte Carlo run at all, distinct from PROOF 1 above (a genuine ML failure,
+# where MC still runs in base_neutral mode). Operator directive: the live model stack is
+# legacy and consumed by nothing today; Monte Carlo is reserved for a future portfolio-
+# analysis wiring, not needed live right now either. ──────────────────────────────────────
+def test_live_model_stack_disabled_skips_both_ml_and_monte_carlo_entirely():
+    import signals
+
+    with patch.object(signals, "LIVE_MODEL_STACK_ENABLED", False), \
+        patch("ml_predict.run_unified_stack_ml_once") as rbm, \
+        patch("monte_carlo.simulate") as sim:
+        xgb_out, lstm_out, transformer_out, mc_out, ml_bundle = signals._run_model_stack(
+            _inp(), _rules(),
+            SimpleNamespace(primary="unknown", confidence="low"),
+            db=MagicMock(), inference_snapshot_v1=_minimal_inf_v1())
+
+    rbm.assert_not_called()
+    sim.assert_not_called()
+    for leg in (xgb_out, lstm_out, transformer_out):
+        assert leg.available is False
+    assert mc_out.available is False
+    assert mc_out.model_version == "live_model_stack_disabled"
+    assert ml_bundle["model_outputs"] is None
 
 
 # ── PROOF 2: ML available/authorized -> MC runs CONDITIONED as intended ───────────────────────
