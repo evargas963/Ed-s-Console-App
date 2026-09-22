@@ -125,7 +125,7 @@ def test_no_rth_where_clause_callers_repo_wide(repo_index):
 def test_issue14_rowcount_proof_diagnostic_only_docstring():
     import ast
 
-    path = Path(__file__).resolve().parents[1] / "tools/_issue14_rowcount_proof.py"
+    path = Path(__file__).resolve().parents[1] / "tools/legacy/_issue14_rowcount_proof.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     doc = ast.get_docstring(tree) or ""
     assert _ISSUE14_DIAGNOSTIC_BANNER in doc

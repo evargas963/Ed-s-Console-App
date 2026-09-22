@@ -11313,7 +11313,7 @@ TERRAIN_STRIKE_COUNT_MIN: int = 20
 #: strikeCount=200 at the 2026-07-20 open; 100 was observed working the same session.
 #: A ticker whose requirement exceeds this is fetched at the ceiling and honestly reports
 #: LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
-#: RAISED 100 -> 120, MEASURED 2026-07-26 by `python tools/probe_chain_depth_v1.py` against the
+#: RAISED 100 -> 120, MEASURED 2026-07-26 by `python tools/legacy/probe_chain_depth_v1.py` against the
 #: live vendor (the previous 100 was an ASSUMPTION: 200 had 502'd and nothing between was tried).
 #: Ladder result: SPY 120 OK / 150 -> HTTP 502; QQQ 120 OK / 150 -> 502; IWM OK to 250 (saturates
 #: at 246 distinct strikes = its whole chain). 120 is therefore the highest UNIVERSALLY safe
@@ -11333,7 +11333,7 @@ _strike_geometry_lock = threading.Lock()
 #: ticker -> distinct expiry count, learned the same way (guarded by the same lock).
 _strike_expiry_count: dict[str, int] = {}
 
-#: RC-63 — the vendor's REAL limit, MEASURED 2026-07-26 (`python tools/probe_chain_depth_v1.py`).
+#: RC-63 — the vendor's REAL limit, MEASURED 2026-07-26 (`python tools/legacy/probe_chain_depth_v1.py`).
 #: Schwab caps the number of CONTRACTS in a chain response, not strikeCount: SPY returned 8,118
 #: contracts at strikeCount=120 and HTTP 502 at 150; QQQ 7,894 at 120 then 502; $SPX 502'd at 80
 #: with only 60 working (6,950 contracts) purely because it lists 55 expiries vs SPY's 35; IWM
