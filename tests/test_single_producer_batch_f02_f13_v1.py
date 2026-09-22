@@ -1177,7 +1177,10 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
     # F11: flow_imbalance_source is PERSISTED (SnapshotRow field + schema column + write).
     from db import SnapshotRow
     assert "flow_imbalance_source" in SnapshotRow.__dataclass_fields__
-    dbsrc = _read("db.py")
+    # RC-REHAB-1 (2026-09-21): _init_schema/_migrate_schema moved to db_schema.py (slice 2
+    # of the db.py decomposition) -- both the schema DDL and the migration column-add list
+    # this checks now live there, same code, different file.
+    dbsrc = _read("db.py") + _read("db_schema.py")
     assert "flow_imbalance_source   TEXT" in dbsrc and '("flow_imbalance_source",   "TEXT")' in dbsrc
     assert "flow_imbalance_source=_flow_imb_source" in _read("server.py"), (
         "the source must be persisted on the snapshot row (F11/RC-345)")
