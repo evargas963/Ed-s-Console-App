@@ -3070,19 +3070,28 @@ def check_collect_datasheet_staged() -> list[Violation]:
 
     RC-REHAB-1 (2026-09-22): _init_schema (every CREATE TABLE for the console DB) moved from
     db.py to db_schema.py (slice 2, db.py decomposition). db_schema.py added to targets so a
-    future new table there is not silently invisible to this gate -- db.py kept in the list too
-    (harmless: it no longer has any CREATE TABLE of its own, so it just never matches).
+    future new table there is not silently invisible to this gate -- but that same move meant
+    EVERY existing table now appears added in db_schema.py's own diff (a brand-new file), which
+    would have falsely flagged all of them as new. Fixed by also scanning the FULL staged diff
+    (every staged file, not just the DDL-carrying ones) for removed CREATE TABLE lines: a table
+    added in one file and removed in another within the same staged change is a MOVE, not a new
+    table, and is excluded. Verified against this exact slice-2/3 diff shape before landing.
     """
     staged = _git_output_lines(["diff", "--cached", "--name-only"])
     if staged is None:
         return []
     try:
-        from tools.find_prove_locks import collect_datasheet_violations, new_table_names_in_diff
+        from tools.find_prove_locks import (
+            collect_datasheet_violations, new_table_names_in_diff, removed_table_names_in_diff,
+        )
     except ImportError:
-        from find_prove_locks import collect_datasheet_violations, new_table_names_in_diff  # type: ignore
+        from find_prove_locks import (  # type: ignore
+            collect_datasheet_violations, new_table_names_in_diff, removed_table_names_in_diff,
+        )
+    all_staged = [s.strip().replace("\\", "/") for s in staged if s.strip()]
     targets = [
-        s.strip().replace("\\", "/") for s in staged
-        if s.strip().replace("\\", "/") in ("db.py", "db_schema.py") or s.strip().replace("\\", "/").startswith("calibration/")
+        s for s in all_staged
+        if s in ("db.py", "db_schema.py") or s.startswith("calibration/")
     ]
     if not targets:
         return []
@@ -3090,6 +3099,13 @@ def check_collect_datasheet_staged() -> list[Violation]:
     for rel in targets:
         diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
         tables |= new_table_names_in_diff(diff)
+    if not tables:
+        return []
+    removed: set[str] = set()
+    for rel in all_staged:
+        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+        removed |= removed_table_names_in_diff(diff)
+    tables -= removed
     if not tables:
         return []
     out: list[Violation] = []
