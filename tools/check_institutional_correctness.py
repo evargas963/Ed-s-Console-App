@@ -1835,26 +1835,38 @@ def check_sqlite_wal_contract() -> list[Violation]:
     (WAL/NORMAL), but ad-hoc connects can skip both. VALIDATED: AST/source
     contract on db.py — configure_sqlite_connection body + every
     sqlite3.connect(…, timeout=…) site.
+
+    RC-REHAB-1 (2026-09-22): configure_sqlite_connection's body (the PRAGMA/
+    busy_timeout content) moved to db_sqlite_utils.py in the db.py decomposition
+    -- zero EdDB coupling, ~70 external callers already treated it as standalone.
+    db.py's own sqlite3.connect(...) call sites (EdDB._connect, EdDB.get_db_stats)
+    stayed in db.py and are still checked there; the PRAGMA/busy_timeout content
+    check follows configure_sqlite_connection to its real home.
     """
     out: list[Violation] = []
-    path = REPO / "db.py"
+    db_path = REPO / "db.py"
+    utils_path = REPO / "db_sqlite_utils.py"
     try:
-        src = path.read_text(encoding="utf-8")
+        db_src = db_path.read_text(encoding="utf-8")
     except OSError as e:
-        return [Violation(path, 0, f"cannot read db.py: {e}")]
-    if "PRAGMA journal_mode=WAL" not in src:
-        out.append(Violation(path, 0, "configure_sqlite_connection missing PRAGMA journal_mode=WAL"))
-    if "PRAGMA synchronous=NORMAL" not in src:
-        out.append(Violation(path, 0, "configure_sqlite_connection missing PRAGMA synchronous=NORMAL"))
-    if "busy_timeout" not in src:
-        out.append(Violation(path, 0, "configure_sqlite_connection missing busy_timeout pragma"))
+        return [Violation(db_path, 0, f"cannot read db.py: {e}")]
+    try:
+        utils_src = utils_path.read_text(encoding="utf-8")
+    except OSError as e:
+        return [Violation(utils_path, 0, f"cannot read db_sqlite_utils.py: {e}")]
+    if "PRAGMA journal_mode=WAL" not in utils_src:
+        out.append(Violation(utils_path, 0, "configure_sqlite_connection missing PRAGMA journal_mode=WAL"))
+    if "PRAGMA synchronous=NORMAL" not in utils_src:
+        out.append(Violation(utils_path, 0, "configure_sqlite_connection missing PRAGMA synchronous=NORMAL"))
+    if "busy_timeout" not in utils_src:
+        out.append(Violation(utils_path, 0, "configure_sqlite_connection missing busy_timeout pragma"))
     # Every sqlite3.connect in db.py must pass timeout= (no default 5s lock storms).
-    for i, line in enumerate(src.splitlines(), 1):
+    for i, line in enumerate(db_src.splitlines(), 1):
         if "sqlite3.connect(" not in line:
             continue
         if "timeout=" not in line:
             out.append(Violation(
-                path, i,
+                db_path, i,
                 "sqlite3.connect without timeout= — require timeout>=30.0 "
                 "(multi-agent / async lock storm class)"))
     return out
@@ -2642,9 +2654,7 @@ def _measured_claims_cite_evidence_own_violations() -> list[Violation]:
     out: list[Violation] = []
     for rel in targets:
         path = REPO / rel
-        try:
-            whole = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
+        if not path.is_file():
             continue
         diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
         for ln in diff:
