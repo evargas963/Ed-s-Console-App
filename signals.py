@@ -509,6 +509,18 @@ def _compute_display_wall_clock_mc_excursions(
     """
     keys = ("mc_efe_5m", "mc_eae_5m", "mc_efe_15m", "mc_eae_15m")
     out: dict[str, Optional[float]] = {k: None for k in keys}
+    if not LIVE_MODEL_STACK_ENABLED:
+        # RC-REHAB-1 (2026-09-22, live-RTH trace, follow-up): a SECOND, independent
+        # monte_carlo.simulate() call site -- missed by the first LIVE_MODEL_STACK_ENABLED
+        # pass in _run_model_stack, because this one lives in a completely different
+        # function with no obvious name tie to "the model stack" (it is display-only, for
+        # the Key Levels 5m/15m rows). MEASURED live after deploying the first gate: SPY's
+        # signals_engine_build_market_state stage was STILL taking 20-65+ seconds in
+        # steady state, not the near-zero expected -- this uncounted second simulate()
+        # call, run unconditionally on every tick regardless of the first gate, was why.
+        # Same fail-closed shape this function already returns for a blocked input above;
+        # never reached via a real simulate() call when disabled.
+        return out
     if mc_context_error is not None or not isinstance(mc_spot_ctx, dict):
         return out
     spot = float_positive_or_none(mc_spot_ctx.get("spot"))
