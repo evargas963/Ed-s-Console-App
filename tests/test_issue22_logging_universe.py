@@ -281,6 +281,42 @@ def test_issue22_scheduler_json_migration_idempotent(tmp_path):
     assert b["status"] == "already_completed"
 
 
+def test_legacy_and_scheduler_migrations_route_through_the_guarded_connect(tmp_path, monkeypatch):
+    """RC-573 (audit finding during db.py decomposition, 2026-09-21): both one-time JSON
+    migrations used to open a raw sqlite3.connect() instead of self._connect() -- every OTHER
+    write path in EdDB goes through self._connect(), which installs the production DROP/DETACH
+    authorizer guard (db_safety.maybe_install_sql_guard_on_connection). The two migrations had
+    silently NO structural-safety net. Proof: self._connect is spied, not stubbed (the real
+    connection still opens and the migration still runs for real), so a regression back to a
+    bare sqlite3.connect() call fails this test even though the migration's own return value
+    would look identical either way."""
+    calls = []
+    dbp = tmp_path / "guard_route.db"
+    edb = EdDB(dbp)
+    real_connect = edb._connect
+    monkeypatch.setattr(edb, "_connect", lambda **kw: (calls.append(1), real_connect(**kw))[1])
+
+    primary = tmp_path / "legacy_tickers.json"
+    primary.write_text(json.dumps(["zza"]), encoding="utf-8")
+    r1 = edb.logging_universe_migrate_legacy_json_file(
+        primary_path=primary,
+        archive_path=tmp_path / "legacy_tickers.json.archived",
+        core_tickers=["SPY"],
+    )
+    assert r1["status"] == "imported"
+    assert calls, "logging_universe_migrate_legacy_json_file did not route its connection through self._connect()"
+
+    calls.clear()
+    sched = tmp_path / "user_sched.json"
+    sched.write_text(json.dumps({"tickers": ["zzb"]}), encoding="utf-8")
+    r2 = edb.logging_universe_migrate_scheduler_companion_json(
+        primary_path=sched,
+        archive_path=tmp_path / "user_sched.json.archived",
+    )
+    assert r2["status"] == "imported"
+    assert calls, "logging_universe_migrate_scheduler_companion_json did not route its connection through self._connect()"
+
+
 def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
     """TEST_SYSTEM_REHAB_V2 final remediation: logger_universe/
     logger_universe_by_category are plain sync handlers with no auth/middleware/

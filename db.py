@@ -2328,9 +2328,14 @@ class EdDB:
         now = _wall_time.time()
 
         def _body() -> dict:
-            conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-            conn.row_factory = sqlite3.Row
-            configure_sqlite_connection(conn)
+            # Was a raw sqlite3.connect() (audit finding, RC-573): every other write path in
+            # this class routes through self._connect(), which also installs the production
+            # DROP/DETACH authorizer guard (db_safety.maybe_install_sql_guard_on_connection) --
+            # this one-time migration silently had no structural-safety net. self._connect()
+            # is a drop-in replacement (same row_factory + configure_sqlite_connection this
+            # already did manually); BEGIN IMMEDIATE/commit/rollback/close stay explicit below,
+            # unchanged from the manual-transaction control this method deliberately wants.
+            conn = self._connect(timeout_sec=30.0)
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 seen: set[str] = set()
@@ -2445,9 +2450,9 @@ class EdDB:
         now = _wall_time.time()
 
         def _body() -> dict:
-            conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-            conn.row_factory = sqlite3.Row
-            configure_sqlite_connection(conn)
+            # Was a raw sqlite3.connect() (audit finding, RC-573) -- see the identical fix's
+            # comment in logging_universe_migrate_legacy_json_file just above.
+            conn = self._connect(timeout_sec=30.0)
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 n = 0
