@@ -2438,9 +2438,9 @@ ROWS: tuple[Row, ...] = (
         justification='RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): the candle-seed-on-stale-grid path (a nested _seed_candles closure) that used to call safe_get_price_history inline inside _fetch_state now calls it from this extracted Exposures-phase function instead; no new transport call, only relocated.',
     ),
     Row(
-        file='server.py', derivation='_candle_volume_for_state', disposition='DERIVED',
+        file='server_state_candles.py', derivation='_candle_volume_for_state', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_price_history',),
-        justification='RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): the price-history-fallback path (accumulator has no usable volume) that used to call safe_get_price_history inline inside _fetch_state now calls it from this extracted Candle-Volume-Resolution-phase function instead; no new transport call, only relocated.',
+        justification='RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): the price-history-fallback path (accumulator has no usable volume) that used to call safe_get_price_history inline inside _fetch_state now calls it from this extracted Candle-Volume-Resolution-phase function instead; no new transport call, only relocated. RC-REHAB-1 (2026-09-22, module extraction): moved again, out of server.py into its own module.',
     ),
     Row(
         file='server.py', derivation='_post_publish_persistence_tail', disposition='ALLOWLISTED',

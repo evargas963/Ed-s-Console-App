@@ -16,6 +16,8 @@ from types import SimpleNamespace
 from unittest import mock
 
 import server as srv
+import server_state_candles as sc
+from math_exposure import compute_sweep_score
 
 
 def test_full_pipeline_matches_the_original_computation_chain():
@@ -23,7 +25,7 @@ def test_full_pipeline_matches_the_original_computation_chain():
     result = srv._post_build_sweep_score_for_state(ms, 2.0, 1.5, 0.3)
 
     expected_momentum = min(1.0, abs(1.5) / 2.0)
-    expected = srv.compute_sweep_score(5.0, 0.3, expected_momentum) or {}
+    expected = compute_sweep_score(5.0, 0.3, expected_momentum) or {}
     assert result == expected
     assert result, "fixture must produce a real, non-degenerate sweep score"
 
@@ -32,7 +34,7 @@ def test_nearest_wall_dist_picks_the_smaller_of_the_two_distances():
     ms = SimpleNamespace(nearest_above_dist=12.0, nearest_below_dist=3.0)
     result = srv._post_build_sweep_score_for_state(ms, 2.0, 1.5, 0.3)
     expected_momentum = min(1.0, abs(1.5) / 2.0)
-    expected = srv.compute_sweep_score(3.0, 0.3, expected_momentum) or {}
+    expected = compute_sweep_score(3.0, 0.3, expected_momentum) or {}
     assert result == expected
 
 
@@ -40,14 +42,14 @@ def test_missing_ms_attrs_yield_none_wall_dist_but_still_computes():
     ms = SimpleNamespace()
     result = srv._post_build_sweep_score_for_state(ms, 2.0, 1.5, 0.3)
     expected_momentum = min(1.0, abs(1.5) / 2.0)
-    expected = srv.compute_sweep_score(None, 0.3, expected_momentum) or {}
+    expected = compute_sweep_score(None, 0.3, expected_momentum) or {}
     assert result == expected
 
 
 def test_zero_or_none_atr_yields_zero_momentum():
     ms = SimpleNamespace(nearest_above_dist=5.0, nearest_below_dist=8.0)
     result = srv._post_build_sweep_score_for_state(ms, 0.0, 1.5, 0.3)
-    expected = srv.compute_sweep_score(5.0, 0.3, 0.0) or {}
+    expected = compute_sweep_score(5.0, 0.3, 0.0) or {}
     assert result == expected
 
     result2 = srv._post_build_sweep_score_for_state(ms, None, 1.5, 0.3)
@@ -56,7 +58,7 @@ def test_zero_or_none_atr_yields_zero_momentum():
 
 def test_exception_anywhere_in_the_phase_fails_closed_to_empty_dict():
     ms = SimpleNamespace(nearest_above_dist=5.0, nearest_below_dist=8.0)
-    with mock.patch.object(srv, "compute_sweep_score", side_effect=RuntimeError("boom")):
+    with mock.patch.object(sc, "compute_sweep_score", side_effect=RuntimeError("boom")):
         result = srv._post_build_sweep_score_for_state(ms, 2.0, 1.5, 0.3)
     assert result == {}
 

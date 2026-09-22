@@ -140,7 +140,10 @@ def test_rc345_candle_direction_has_one_authority() -> None:
     # serve semantic. snapshot_normalizer's strict-sign was a backfill-only shadow (MEASURED
     # 19.1% label delta on 372 stored bars) now aligned, so train = backfill = live = replay.
     # Prove BOTH producers delegate to the one authority and no strict-sign shadow survives.
-    srv3 = _read("server.py")
+    # RC-REHAB-1 (2026-09-22, module extraction): _candle_direction_for_state moved out of
+    # server.py entirely into server_state_candles.py; check the real source, not server.py's
+    # re-export shell.
+    srv3 = _read("server_state_candles.py")
     assert "classify_direction as _classify_direction" in srv3, (
         "live server candle direction must be the dead-band authority (F10/RC-345)")
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): this call site moved
@@ -149,7 +152,7 @@ def test_rc345_candle_direction_has_one_authority() -> None:
     # _candle_dir/_bar_move) as a clean local in its own small function.
     assert "candle_dir  = _classify_direction(bar_move" in srv3
     # No production site reconstructs candle direction with a strict close-vs-open sign.
-    for mod in ("server.py", "snapshot_normalizer.py", "market_state.py"):
+    for mod in ("server.py", "server_state_candles.py", "snapshot_normalizer.py", "market_state.py"):
         mcode = "\n".join(l for l in _read(mod).splitlines() if not l.lstrip().startswith("#"))
         assert '"up" if c > o' not in mcode and "'up' if" not in mcode, (
             f"{mod} has a strict-sign candle-direction shadow (F10/RC-345)")

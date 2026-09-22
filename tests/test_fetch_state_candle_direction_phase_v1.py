@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import server as srv
+from math_exposure import classify_direction as _classify_direction
 
 
 def _with_bars(*bars):
@@ -28,7 +29,7 @@ def test_bullish_bar_classifies_up_with_correct_ohlc_and_range():
         result = srv._candle_direction_for_state("SPY")
 
     expected_move = round(101.5 - 100.0, 4)
-    expected_dir = srv._classify_direction(expected_move, 100.0)
+    expected_dir = _classify_direction(expected_move, 100.0)
     assert result.candle_dir == expected_dir
     assert result.candle_body == abs(expected_move)
     assert result.c_open == 100.0
