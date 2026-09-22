@@ -67,12 +67,24 @@ def _private_copy(tmp_path: Path) -> Path:
 
 
 def _run_inner(test_file: Path, watched: Path) -> subprocess.CompletedProcess[str]:
+    # RC-565 (already root-caused and fixed once in this repo, reapplied here since this
+    # branch forked before that fix merged -- see tests/test_full_suite_output_sink_v1.py's
+    # own _hermetic_args helper, MEASURED against this identical crash 2026-09-08): pinning
+    # --rootdir to the repo root while `test_file` lives under `tmp_path` (i.e. %TEMP%)
+    # makes pytest infer a common-ancestor rootdir far above both, whose top-level collector
+    # then walks every directory in between -- including %TEMP% itself, where concurrent
+    # xdist workers are constantly creating/deleting their own ed-pytest-gw*-* runtime roots
+    # (tests/conftest.py's tempfile.mkdtemp, called at conftest import time). A sibling
+    # worker's directory vanishing mid-listing crashes collection with FileNotFoundError.
+    # Pinning --rootdir to the target file's own directory avoids the ancestor walk
+    # entirely; `cwd` stays the repo root (needed for `-p tests.conftest` to resolve via
+    # sys.path) and is unaffected by this change.
     return subprocess.run(
         [
             sys.executable, "-m", "pytest", str(test_file), "-q",
             "-p", "tests.conftest",          # the REAL repo conftest, not a copy
             "-p", "no:cacheprovider",
-            "--rootdir", str(ROOT),
+            "--rootdir", str(test_file.parent),
         ],
         cwd=str(ROOT),
         capture_output=True,
