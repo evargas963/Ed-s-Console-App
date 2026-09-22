@@ -39,7 +39,10 @@ _REQUIRED_SCHEDULER = (
 _REQUIRED_BRIDGE = (
     (REPO_ROOT / "training_cache.py", "PARALLEL_CASCADE_BRIDGE_NPZ_NAME"),
     (REPO_ROOT / "ml_scheduler.py", "_xgb_probs_aligned_to_lstm_dataset"),
-    (REPO_ROOT / "ml_scheduler.py", "save_parallel_cascade_bridge"),
+    # RC-REHAB-1 (2026-09-22): save_parallel_cascade_bridge's call site moved to
+    # ml_scheduler_parallel_train.py (slice 5 of the ml_scheduler.py decomposition) --
+    # same code, different file.
+    (REPO_ROOT / "ml_scheduler_parallel_train.py", "save_parallel_cascade_bridge"),
 )
 
 

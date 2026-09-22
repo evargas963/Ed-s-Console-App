@@ -2209,7 +2209,10 @@ def test_rc344_production_train_ticker_callers_forward_db_identity():
 
     repo = Path(__file__).resolve().parent.parent
     offenders = []
-    for rel in ("ml_scheduler.py", "train_all.py", "ml_train.py"):
+    # RC-REHAB-1 (2026-09-22): two of ml_scheduler.py's train_ticker call sites moved to
+    # ml_scheduler_parallel_train.py (slice 5 of the ml_scheduler.py decomposition); the
+    # remaining two (cascade cluster) are still in ml_scheduler.py itself.
+    for rel in ("ml_scheduler.py", "ml_scheduler_parallel_train.py", "train_all.py", "ml_train.py"):
         tree = _ast.parse((repo / rel).read_text(encoding="utf-8"))
         for node in _ast.walk(tree):
             if (isinstance(node, _ast.Call)

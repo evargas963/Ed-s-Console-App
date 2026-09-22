@@ -1764,9 +1764,10 @@ ROWS: tuple[Row, ...] = (
         justification='Inner cascade training helper: delegates to train_all cascade training functions on caller-supplied historical DB shim. Mega4 internal; no direct Schwab wire derivation.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='_train_parallel', disposition='ALLOWLISTED',
+        file='ml_scheduler_parallel_train.py', derivation='_train_parallel', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Inner parallel training helper: delegates to train_all training functions on caller-supplied historical DB shim. Mega4 internal; no direct Schwab wire derivation.',
+        justification='Inner parallel training helper: delegates to train_all training functions on caller-supplied historical DB shim. Mega4 internal; no direct Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 5 of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
         file='ml_scheduler.py', derivation='run_once', disposition='ALLOWLISTED',
@@ -1789,9 +1790,10 @@ ROWS: tuple[Row, ...] = (
         justification='Cascade candidate training orchestrator: takes db_path, calls _load_rth_rows_for_ticker for SQLite reads, fits cascade architecture ML stack layers + meta, persists artifacts. No direct Schwab wire derivation.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='train_parallel_candidate', disposition='ALLOWLISTED',
+        file='ml_scheduler_parallel_train.py', derivation='train_parallel_candidate', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Parallel candidate training orchestrator: takes db_path, calls _load_rth_rows_for_ticker for SQLite reads, fits xgb / lstm / transformer ML stack layers + meta, persists artifacts. No direct Schwab wire derivation.',
+        justification='Parallel candidate training orchestrator: takes db_path, calls _load_rth_rows_for_ticker for SQLite reads, fits xgb / lstm / transformer ML stack layers + meta, persists artifacts. No direct Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 5 of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
         file='ml_train.py', derivation='load_data', disposition='ALLOWLISTED',
