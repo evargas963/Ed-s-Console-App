@@ -104,7 +104,11 @@ def test_governed_refresh_runs_after_tier1_lock_release(tmp_path):
     ed.fill_outcomes("SPY", CF, t_snap + 5000.0)
 
     # Source-level: refresh call site is OUTSIDE the nested _do that runs under tier-1.
-    src = Path(db_mod.__file__).read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-22): upsert_1m_bars (and _post_unlock_refresh, its own nested
+    # closure) moved from db.py to db_snapshots.py (slice 3 of the db.py decomposition) --
+    # same code, different file, so the source check follows it there.
+    import db_snapshots
+    src = Path(db_mod.__file__).read_text(encoding="utf-8") + Path(db_snapshots.__file__).read_text(encoding="utf-8")
     # The post-unlock call uses _post_unlock_refresh and sits after _tier1_snapshot_write return.
     assert "_post_unlock_refresh" in src
     assert "post-unlock governed outcome refresh" in src

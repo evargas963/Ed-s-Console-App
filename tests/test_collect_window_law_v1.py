@@ -176,21 +176,25 @@ def test_the_enrolment_fallback_counts_sessions_not_days():
 
 
 def test_institutional_check_fires_when_the_law_is_unplugged(tmp_path, monkeypatch):
-    """Negative control on the static check: strip the seam gate from a shadow db.py and the
-    check must SCREAM (green-and-inert is byte-identical to green-and-working, RC-95)."""
+    """Negative control on the static check: strip the seam gate from a shadow db_snapshots.py
+    and the check must SCREAM (green-and-inert is byte-identical to green-and-working, RC-95).
+
+    RC-REHAB-1 (2026-09-22): upsert_1m_bars (the seam) moved from db.py to db_snapshots.py
+    (slice 3, db.py decomposition); the shadowed file follows the seam, not the file it used
+    to live in."""
     import importlib
 
     m = importlib.import_module("tools.check_institutional_correctness")
     assert m.check_collect_window_single_law() == [], "baseline must be clean before injection"
 
-    real_db = (REPO / "db.py").read_text(encoding="utf-8", errors="replace")
+    real_db = (REPO / "db_snapshots.py").read_text(encoding="utf-8", errors="replace")
     stripped = real_db.replace("is_collect_window_bar_end_ts_utc", "GONE_GATE")
-    shadow = tmp_path / "db.py"
+    shadow = tmp_path / "db_snapshots.py"
     shadow.write_text(stripped, encoding="utf-8")
     real_read = Path.read_text
 
-    def fake_read(self, *a, **k):  # only the db.py read is shadowed
-        if self.name == "db.py" and self.parent == REPO:
+    def fake_read(self, *a, **k):  # only the db_snapshots.py read is shadowed
+        if self.name == "db_snapshots.py" and self.parent == REPO:
             return stripped
         return real_read(self, *a, **k)
 

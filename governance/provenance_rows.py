@@ -3235,13 +3235,16 @@ ROWS: tuple[Row, ...] = (
         justification='Right Now micro-regime card from SignalInput candles + MVP features.',
     ),
     Row(
-        file='db.py', derivation='EdDB.get_avg_move', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (2026-09-22): get_avg_move moved from db.py's EdDB to
+        # db_snapshots.py's SnapshotOutcomesMixin (slice 3, db.py decomposition) -- same
+        # function, relocated, not a new derivation.
+        file='db_snapshots.py', derivation='SnapshotOutcomesMixin.get_avg_move', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Average-move statistics from persisted console rows (prediction empirical histograms).',
     ),
     Row(
         file='prediction_engine.py', derivation='compute_prediction_core', disposition='DERIVED',
-        producer_refs=('market_state.py:build_market_state', 'db.py:EdDB.get_avg_move', 'regime_engine.py:classify_regime', 'signals.py:production_fusion_payload_for_stack', 'rules_engine.py:compute_rules', 'math_probabilities.py:compute_percentile_range', 'signals.py:canonical_forecast_from_fusion', 'multi_horizon_ml_bundle.py:build_multi_horizon_ml_fusion_bundle', 'features/inference_snapshot.py:build_inference_snapshot_v1_from_signal_input',),
+        producer_refs=('market_state.py:build_market_state', 'db_snapshots.py:SnapshotOutcomesMixin.get_avg_move', 'regime_engine.py:classify_regime', 'signals.py:production_fusion_payload_for_stack', 'rules_engine.py:compute_rules', 'math_probabilities.py:compute_percentile_range', 'signals.py:canonical_forecast_from_fusion', 'multi_horizon_ml_bundle.py:build_multi_horizon_ml_fusion_bundle', 'features/inference_snapshot.py:build_inference_snapshot_v1_from_signal_input',),
         justification='Hot-path prediction card (the object MH + The Call consume); compute_prediction wraps it with UI enrichment.',
     ),
     Row(

@@ -2878,20 +2878,24 @@ def check_collect_window_single_law() -> list[Violation]:
     Rule (static, three clauses):
     1. `time_et.py` defines the authority (`COLLECT_WINDOW_START_MINS`, `COLLECT_WINDOW_END_MINS`,
        `is_collect_window_bar_end_ts_utc`).
-    2. `db.py`'s `upsert_1m_bars` calls the authority before appending rows.
-    3. No tracked .py outside `db.py` INSERTs into `price_bars_1m` directly — every writer goes
-       through the seam, or declares `# collect-window-ok: <reason>` on the INSERT line.
+    2. `db_snapshots.py`'s `upsert_1m_bars` calls the authority before appending rows.
+    3. No tracked .py outside `db_snapshots.py` INSERTs into `price_bars_1m` directly — every
+       writer goes through the seam, or declares `# collect-window-ok: <reason>` on the INSERT line.
 
     HOW VALIDATED: prototyped before registering — clause 3 walked the tree and found the only
-    direct INSERT sites are `db.py` itself and test fixtures under `tests/` (fixtures build
-    read-side scenarios and are exempt by path); clauses 1–2 fail when either symbol is renamed
-    or the call removed (checked by string mutation during development). Negative control:
+    direct INSERT sites are `db_snapshots.py` itself and test fixtures under `tests/` (fixtures
+    build read-side scenarios and are exempt by path); clauses 1–2 fail when either symbol is
+    renamed or the call removed (checked by string mutation during development). Negative control:
     `tests/test_collect_window_law_v1.py` names this check and injects a violating write.
     Escapes: `# collect-window-ok: <reason>`.
+
+    RC-REHAB-1 (2026-09-22): upsert_1m_bars moved from db.py to db_snapshots.py (slice 3, db.py
+    decomposition) -- the seam this law gates moved with it. Re-pointed here, not re-derived:
+    the law and its enforcement are unchanged, only the file that carries the seam.
     """
     out: list[Violation] = []
     te = REPO / "time_et.py"
-    dbp = REPO / "db.py"
+    dbp = REPO / "db_snapshots.py"
     te_src = te.read_text(encoding="utf-8", errors="replace") if te.exists() else ""
     db_src = dbp.read_text(encoding="utf-8", errors="replace") if dbp.exists() else ""
     for sym in ("COLLECT_WINDOW_START_MINS", "COLLECT_WINDOW_END_MINS",
@@ -2904,7 +2908,7 @@ def check_collect_window_single_law() -> list[Violation]:
                              "the ONE write seam for price_bars_1m has lost the operator law"))
     for rel in sorted(_tracked_py_files() or []):
         rel = rel.replace("\\", "/")
-        if rel in ("db.py", "tools/check_institutional_correctness.py") \
+        if rel in ("db.py", "db_snapshots.py", "tools/check_institutional_correctness.py") \
                 or rel.startswith("tests/") or rel.startswith("governance/"):
             continue
         py = REPO / rel
@@ -3058,11 +3062,16 @@ def check_collect_datasheet_staged() -> list[Violation]:
     WHAT WAS OBSERVED: new tables could land without motivation/composition documentation —
     BCBS 239 / FAIR data-provenance gap on schema migrations.
 
-    Rule: staged diff adding CREATE TABLE in db.py or calibration/*.py must ship a datasheet YAML
-    with motivation, composition, collection, recommended_uses. Existing tables grandfathered
-    (diff-scoped only).
+    Rule: staged diff adding CREATE TABLE in db.py, db_schema.py, or calibration/*.py must ship
+    a datasheet YAML with motivation, composition, collection, recommended_uses. Existing tables
+    grandfathered (diff-scoped only).
 
     HOW VALIDATED: tests/test_find_prove_locks_v1.py injects table without datasheet -> BLOCK.
+
+    RC-REHAB-1 (2026-09-22): _init_schema (every CREATE TABLE for the console DB) moved from
+    db.py to db_schema.py (slice 2, db.py decomposition). db_schema.py added to targets so a
+    future new table there is not silently invisible to this gate -- db.py kept in the list too
+    (harmless: it no longer has any CREATE TABLE of its own, so it just never matches).
     """
     staged = _git_output_lines(["diff", "--cached", "--name-only"])
     if staged is None:
@@ -3073,7 +3082,7 @@ def check_collect_datasheet_staged() -> list[Violation]:
         from find_prove_locks import collect_datasheet_violations, new_table_names_in_diff  # type: ignore
     targets = [
         s.strip().replace("\\", "/") for s in staged
-        if s.strip().replace("\\", "/") in ("db.py",) or s.strip().replace("\\", "/").startswith("calibration/")
+        if s.strip().replace("\\", "/") in ("db.py", "db_schema.py") or s.strip().replace("\\", "/").startswith("calibration/")
     ]
     if not targets:
         return []

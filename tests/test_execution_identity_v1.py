@@ -566,7 +566,11 @@ def test_write_path_universe_inventory(repo_index):
                 continue
             writers.add(rel.name if in_root else f"calibration/{rel.name}")
     known = {
-        "db.py",                      # insert_snapshot (guarded; quote-only N/A)
+        "db.py",                      # SnapshotRow/EdDB itself (schema, class def)
+        "db_snapshots.py",            # RC-REHAB-1 (2026-09-22): insert_snapshot moved here
+                                       # from db.py (slice 3 of the db.py decomposition) --
+                                       # same guarded/quote-only-N/A write, relocated, not
+                                       # a new write path.
         "server.py",                  # anchored model-derived + quote-only paths
         "decision_record.py",         # identity-carrying decision records
         "live_decision_bundle.py",    # stamp + persist passthrough
