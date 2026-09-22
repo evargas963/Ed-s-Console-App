@@ -1722,9 +1722,10 @@ ROWS: tuple[Row, ...] = (
         justification='Inference on canonical features; no Schwab wire ingest.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='_diagnostic_db_tickers_not_enrolled', disposition='ALLOWLISTED',
+        file='ml_scheduler_rth_data.py', derivation='_diagnostic_db_tickers_not_enrolled', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; returns tickers in the DB that are not in the configured enrolled universe (diagnostic). Mega4 internal SQLite read; no Schwab wire derivation.',
+        justification='Opens SQLite read on caller-supplied db_path; returns tickers in the DB that are not in the configured enrolled universe (diagnostic). Mega4 internal SQLite read; no Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 2 of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
         file='ml_scheduler.py', derivation='_evaluate_cascade_on_full_rth', disposition='ALLOWLISTED',
@@ -1737,14 +1738,16 @@ ROWS: tuple[Row, ...] = (
         justification='Parallel-architecture evaluator: takes db_path, calls _load_rth_rows_for_ticker for SQLite reads, runs ML stack layer inference on each RTH row, computes realized metrics. Mega4 orchestrator; no direct Schwab wire derivation.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='_get_tickers_with_rth_data', disposition='ALLOWLISTED',
+        file='ml_scheduler_rth_data.py', derivation='_get_tickers_with_rth_data', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; returns the set of tickers with RTH snapshots in the canonical timeframe. Mega4 internal SQLite read; no Schwab wire derivation.',
+        justification='Opens SQLite read on caller-supplied db_path; returns the set of tickers with RTH snapshots in the canonical timeframe. Mega4 internal SQLite read; no Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 2 of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='_load_rth_rows_for_ticker', disposition='ALLOWLISTED',
+        file='ml_scheduler_rth_data.py', derivation='_load_rth_rows_for_ticker', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; loads RTH snapshot rows for a ticker into the training pipeline. Mega4 internal SQLite read; no Schwab wire derivation.',
+        justification='Opens SQLite read on caller-supplied db_path; loads RTH snapshot rows for a ticker into the training pipeline. Mega4 internal SQLite read; no Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 2 of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
         file='ml_scheduler_support.py', derivation='_strict_off_for_candidate_inference', disposition='DERIVED',
