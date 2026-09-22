@@ -39,7 +39,11 @@ def _e2e_server_env(poison_root: Path) -> dict[str, str]:
         env=env,
         capture_output=True,
         text=True,
-        timeout=30,
+        # RC-REHAB-1 (2026-09-22): 30s cut it close under a heavy `-n 8` outer suite where
+        # this process competes with many CPU-bound siblings for a scheduling slot -- this
+        # is process-spawn + tiny-script-eval time, not real work, so a longer ceiling only
+        # adds margin under contention without masking a genuine hang.
+        timeout=90,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     doc = json.loads(result.stdout.strip().splitlines()[-1])
@@ -138,7 +142,9 @@ def test_e2e_boundary_blocks_an_inherited_valid_token_from_building_a_client(tmp
         env=server_env,
         capture_output=True,
         text=True,
-        timeout=30,
+        # RC-REHAB-1 (2026-09-22): see _e2e_server_env's node subprocess for why 30s is a
+        # tight margin under a heavy `-n 8` outer suite -- same reasoning here.
+        timeout=90,
     )
 
     assert child.returncode == 0, child.stdout + child.stderr
@@ -175,7 +181,9 @@ def test_e2e_signal_writes_cannot_touch_poisoned_parent_signals(tmp_path):
         env=server_env,
         capture_output=True,
         text=True,
-        timeout=30,
+        # RC-REHAB-1 (2026-09-22): see _e2e_server_env's node subprocess for why 30s is a
+        # tight margin under a heavy `-n 8` outer suite -- same reasoning here.
+        timeout=90,
     )
     assert child.returncode == 0, child.stdout + child.stderr
     paths = json.loads(child.stdout.strip())

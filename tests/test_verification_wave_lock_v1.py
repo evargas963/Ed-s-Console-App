@@ -62,12 +62,20 @@ def _spawn_heavy(wave_dir: Path, extra_env: dict | None = None) -> subprocess.Po
 def _run(wave_dir: Path, args: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "pytest", *args, "-p", "no:cacheprovider"],
-        cwd=str(ROOT), capture_output=True, text=True, timeout=60,
+        cwd=str(ROOT), capture_output=True, text=True,
+        # RC-REHAB-1 (2026-09-22): this spawns its OWN 8-worker pytest run, nested inside
+        # an outer suite that is itself already `-n 8` -- 16+ concurrent workers competing
+        # for CPU is genuinely slower to get scheduled than a quiet machine, and 60s was a
+        # tight margin (MEASURED: test_the_override_env_var_lets_a_second_wave_through
+        # failed once under full-suite load, passed cleanly on every other run including a
+        # second full-suite run immediately after -- consistent with a timing margin issue,
+        # not a logic defect in the override path itself).
+        timeout=150,
         env={**os.environ, "ED_TEST_VERIFICATION_WAVE_DIR": str(wave_dir), **(extra_env or {})},
     )
 
 
-def _wait_for_heavy_to_start(proc: subprocess.Popen, wave_dir: Path, timeout: float = 30.0) -> None:
+def _wait_for_heavy_to_start(proc: subprocess.Popen, wave_dir: Path, timeout: float = 60.0) -> None:
     """Poll until the (isolated) wave lock's info file exists, rather than a fixed sleep --
     avoids a flaky race on a loaded machine."""
     info_path = wave_dir / "ed_console_verification_wave.info.json"
@@ -97,7 +105,9 @@ def test_a_second_heavy_wave_is_refused_while_the_first_runs(tmp_path):
         # full incident history in governance/root_cause_log.md.
         assert "RC-565" in out, out
     finally:
-        first.wait(timeout=60)
+        # RC-REHAB-1 (2026-09-22): matches _run's timeout increase -- this "first" process is
+        # itself an 8-worker pytest run, nested inside an already-heavy outer suite.
+        first.wait(timeout=150)
     assert first.returncode == 0, first.stdout.read() if first.stdout else ""
 
 
@@ -111,7 +121,9 @@ def test_the_override_env_var_lets_a_second_wave_through(tmp_path):
                       extra_env={"ED_ALLOW_CONCURRENT_VERIFICATION_WAVES": "1"})
         assert second.returncode == 0, second.stdout + second.stderr
     finally:
-        first.wait(timeout=60)
+        # RC-REHAB-1 (2026-09-22): matches _run's timeout increase -- this "first" process is
+        # itself an 8-worker pytest run, nested inside an already-heavy outer suite.
+        first.wait(timeout=150)
 
 
 def test_a_light_run_is_never_gated_even_beside_a_live_heavy_wave(tmp_path):
@@ -124,14 +136,18 @@ def test_a_light_run_is_never_gated_even_beside_a_live_heavy_wave(tmp_path):
         assert light.returncode == 0, light.stdout + light.stderr
         assert "VERIFICATION WAVE COLLISION" not in (light.stdout + light.stderr)
     finally:
-        first.wait(timeout=60)
+        # RC-REHAB-1 (2026-09-22): matches _run's timeout increase -- this "first" process is
+        # itself an 8-worker pytest run, nested inside an already-heavy outer suite.
+        first.wait(timeout=150)
 
 
 def test_the_lock_releases_so_a_later_heavy_wave_can_proceed(tmp_path):
     wave_dir = tmp_path / "wave"
     wave_dir.mkdir()
     first = _spawn_heavy(wave_dir)
-    first.wait(timeout=60)
+    # RC-REHAB-1 (2026-09-22): matches _run's timeout increase -- this "first" process is
+    # itself an 8-worker pytest run, nested inside an already-heavy outer suite.
+    first.wait(timeout=150)
     assert first.returncode == 0
 
     second = _run(wave_dir, [_LIGHT_TARGET, "-n", "8", "-q"])

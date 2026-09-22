@@ -69,12 +69,27 @@ def _private_copy(tmp_path: Path) -> Path:
 
 
 def _run_inner(test_file: Path, watched: Path) -> subprocess.CompletedProcess[str]:
+    # RC-REHAB-1 (2026-09-22): --rootdir must be the TARGET FILE's own directory, not the
+    # repo root. test_full_suite_output_sink_v1.py's _hermetic_args already proved this
+    # exact mechanism (MEASURED 2026-09-08): --rootdir=ROOT with a target file under
+    # %TEMP% makes pytest infer a common-ancestor rootdir far above both (often the user's
+    # home directory), and its top-level Dir collector then WALKS every directory between
+    # that ancestor and the target -- including %TEMP% itself, where concurrent xdist
+    # workers are constantly creating/deleting their own ed-pytest-gw*-* runtime roots.
+    # That walk is the collection-crash source this file's own _run_inner_with_crash_retry
+    # was built around (RC-565/RC-565 follow-up): a sibling worker's directory vanishing
+    # mid-listing raises FileNotFoundError during collection, unrelated to either firewall
+    # layer. Pinning --rootdir to test_file.parent (tmp_path, where the synthetic test
+    # already lives) means collection starts there directly and never walks %TEMP%'s
+    # broader structure at all -- fixing the race at its source instead of only retrying
+    # around it. cwd stays the repo root (`-p tests.conftest` resolves via sys.path/cwd,
+    # not rootdir, so this does not affect which conftest loads).
     return subprocess.run(
         [
             sys.executable, "-m", "pytest", str(test_file), "-q",
             "-p", "tests.conftest",          # the REAL repo conftest, not a copy
             "-p", "no:cacheprovider",
-            "--rootdir", str(ROOT),
+            "--rootdir", str(test_file.parent),
         ],
         cwd=str(ROOT),
         capture_output=True,

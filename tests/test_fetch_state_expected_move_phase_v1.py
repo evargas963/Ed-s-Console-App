@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 import server as srv
 from time_et import ET
+from math_exposure import compute_expected_move_straddle, compute_expected_move_iv
 
 NOW = datetime(2026, 9, 21, 14, 0, tzinfo=ET)  # Monday RTH, hours remain until close
 
@@ -33,7 +34,7 @@ def test_straddle_takes_priority_and_matches_the_original_computation_chain():
     ]
     result = srv._expected_move_for_state(NOW, price_levels, contracts, 450.0, 18.5)
 
-    expected_straddle = srv.compute_expected_move_straddle(3.5, 3.2, 448.0)
+    expected_straddle = compute_expected_move_straddle(3.5, 3.2, 448.0)
     assert result.em_straddle == expected_straddle
     assert result.em_band_source == "STRADDLE_IMPLIED"
     assert result.em_up == expected_straddle["upper"]
@@ -52,7 +53,7 @@ def test_falls_back_to_iv_model_when_no_contracts_available():
     assert result.em_straddle == {"straddle": None, "em_pts": None, "upper": None, "lower": None}
     assert result.em_band_source == "IV_MODEL"
     hours_rem = hours_until_session_close_et(NOW) or 0.0
-    expected_iv = srv.compute_expected_move_iv(450.0, 18.5, hours_rem)
+    expected_iv = compute_expected_move_iv(450.0, 18.5, hours_rem)
     assert result.em_iv == expected_iv
     assert result.em_up == result.em_iv["upper"]
 

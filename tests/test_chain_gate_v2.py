@@ -144,11 +144,24 @@ def test_two_different_tickers_run_concurrently(monkeypatch):
 
 
 def test_same_ticker_requests_coalesce_single_fetch(monkeypatch):
+    """RC-REHAB-1 (2026-09-22): a fixed 0.05s sleep between thread starts, hoping it was
+    enough wall-clock time for the first thread to reach _chain_inflight registration
+    before the next thread's lookup, is a real flake under heavy parallel CPU contention
+    (MEASURED: failed once under `-n 8` full-suite load, passed cleanly alone and under a
+    narrower parallel run -- confirmed unrelated to any code change, a pre-existing test
+    design issue). Fixed to a proper synchronization primitive instead of a timing guess:
+    _gated_safe_get_chain's owner thread registers in _chain_inflight (a prerequisite,
+    synchronous step) BEFORE it ever calls safe_get_chain, so waiting for _slow_chain to
+    actually start executing (an Event set at its very first line, before the sleep that
+    simulates fetch latency) is a hard guarantee the registration has already happened --
+    deterministic regardless of scheduler delay, not a hopeful timing margin."""
     gate = _fresh_gate(monkeypatch)
     calls = {"n": 0}
+    owner_started = threading.Event()
 
     def _slow_chain(client, ticker, **kwargs):
         calls["n"] += 1
+        owner_started.set()
         time.sleep(0.3)
         return f"RESP_{ticker}"
 
@@ -159,9 +172,12 @@ def test_same_ticker_requests_coalesce_single_fetch(monkeypatch):
         results.append(srv._gated_safe_get_chain(None, "ZZCO", strike_count=5))
 
     threads = [threading.Thread(target=_go) for _ in range(3)]
-    for t in threads:
+    threads[0].start()
+    assert owner_started.wait(timeout=10), (
+        "the owner thread never reached its fetch call -- coalescing cannot be proven"
+    )
+    for t in threads[1:]:
         t.start()
-        time.sleep(0.05)  # ensure the first registers as owner
     for t in threads:
         t.join(timeout=10)
     assert calls["n"] == 1, "duplicate same-ticker requests must coalesce"

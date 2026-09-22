@@ -455,7 +455,11 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     'normalized' (NULL when ATM book was ~0, later filled by backfill's volume fallback): two
     producers for one column and a train/serve skew."""
     srv = _read("server.py")
-    assert "flow_imbalance_normalized_with_fallback" in srv, (
+    # RC-REHAB-1 (2026-09-22, module extraction): _order_flow_signals_for_state (the real
+    # caller of flow_imbalance_normalized_with_fallback) moved out of server.py entirely
+    # into server_state_signals.py -- check the real source, not server.py's re-export shell.
+    ss = _read("server_state_signals.py")
+    assert "flow_imbalance_normalized_with_fallback" in ss, (
         "live server must persist flow_imbalance via the one fallback authority")
     assert 'flow_imbalance=_flow_imbalance.get("normalized")' not in srv, (
         "live server still persists the book-only value; it must use the wrapper (F11/RC-345)")
@@ -481,7 +485,7 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     # function, not scratch variables threaded through a 3,400-line body. _fetch_state
     # itself still binds the result back to the underscore-prefixed names the rest of its
     # body already reads (see the two assertions below, unchanged).
-    assert "flow_imb_norm, flow_imb_source = flow_imbalance_normalized_with_fallback" in srv, (
+    assert "flow_imb_norm, flow_imb_source = flow_imbalance_normalized_with_fallback" in ss, (
         "live server must capture the flow_imbalance SOURCE, not discard it (F11/RC-345)")
     assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in srv, (
         "the flow_imbalance source must reach the payload beside the value (F11/RC-345)")
@@ -489,8 +493,11 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     # second book-only compute. MEASURED: empty ATM book + call-heavy volume
     # used to publish 0.6 / volume beside label="balanced".
     srv_code = "\n".join(ln for ln in srv.splitlines() if not ln.lstrip().startswith("#"))
+    ss_code = "\n".join(ln for ln in ss.splitlines() if not ln.lstrip().startswith("#"))
     assert "compute_option_flow_imbalance(" not in srv_code, (
         "live server must not independently compute the book-only kernel (F11)")
+    assert "compute_option_flow_imbalance(" not in ss_code, (
+        "server_state_signals must not independently compute the book-only kernel (F11)")
     assert "flow_imbalance_label_from_normalized(_flow_imb_norm)" in srv, (
         "flow_imbalance_label must be a function of the wrapper number (F11)")
     from math_probabilities import (
@@ -540,6 +547,11 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
     pytest.importorskip("fastapi")
     import server as srv
     from math_probabilities import compute_option_flow_imbalance
+    # RC-REHAB-1 (2026-09-22, module extraction): _order_flow_signals_for_state (the real
+    # caller) moved out of server.py into server_state_signals.py, but this reference call
+    # doesn't need to follow it -- math_exposure is the same source server_state_signals.py
+    # itself imports from.
+    from math_exposure import flow_imbalance_normalized_with_fallback
     from starlette.testclient import TestClient
     from time_et import rth_clock_js_source
 
@@ -551,7 +563,7 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         }
     }
     book = compute_option_flow_imbalance(exposures, 100.0)
-    val, src = srv.flow_imbalance_normalized_with_fallback(exposures, 100.0)
+    val, src = flow_imbalance_normalized_with_fallback(exposures, 100.0)
     label = srv.flow_imbalance_label_from_normalized(val)
     assert src == "volume" and val == 0.6
     assert label == "strong_call_demand"
@@ -716,7 +728,9 @@ def test_rc345_expected_move_quantities_are_distinct_and_single_source() -> None
     # moved out of _fetch_state's own body into _expected_move_for_state, where the
     # locals dropped the "_fetch_state phase-scratch" underscore prefix (em_straddle/
     # em_iv, not _em_straddle/_em_iv) as clean locals in their own small function.
-    srv = _read("server.py")
+    # RC-REHAB-1 (2026-09-22, module extraction): _expected_move_for_state moved again,
+    # out of server.py entirely into server_state_signals.py.
+    srv = _read("server_state_signals.py")
     assert "em_straddle = compute_expected_move_straddle(" in srv
     assert "em_iv = compute_expected_move_iv(" in srv
 
@@ -726,7 +740,7 @@ def test_rc345_expected_move_quantities_are_distinct_and_single_source() -> None
         "the Monte-Carlo expected excursion must be computed in exactly one place (F06/RC-345)")
 
     # Neither market/IV EM formula is duplicated outside its authority.
-    for mod in ("server.py", "terrain_engine.py", "market_state.py"):
+    for mod in ("server.py", "server_state_signals.py", "terrain_engine.py", "market_state.py"):
         body = _read(mod)
         assert "def compute_expected_move_iv" not in body
         assert "def compute_expected_move_straddle" not in body
@@ -1174,9 +1188,17 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
 
     # F18: charm_drift_toward is WITHHELD — server no longer feeds the net-GEX peak as the
     # charm target (a different-Greek substitution).
+    # RC-REHAB-1 (2026-09-22, module extraction): _charm_for_state (the real call site)
+    # moved out of server.py entirely into server_state_signals.py; check both so a
+    # regression in either place is still caught.
     srv18 = _read("server.py")
-    assert "drift_toward_strike=None" in srv18 and "drift_toward_strike=_institutional_pin" not in srv18, (
+    ss18 = _read("server_state_signals.py")
+    assert "drift_toward_strike=None" in ss18, (
         "charm must not borrow the net-GEX peak as its target (F18/RC-345)")
+    assert (
+        "drift_toward_strike=_institutional_pin" not in srv18
+        and "drift_toward_strike=_institutional_pin" not in ss18
+    ), "charm must not borrow the net-GEX peak as its target (F18/RC-345)"
 
     # F22 accuracy: no `or 0` fabrication — rows with a missing pred triplet are SKIPPED.
     # RC-REHAB-1 (2026-09-22): compute_accuracy moved to db_model_accuracy.py (slice 4 of
@@ -1299,8 +1321,13 @@ def test_rc345_operator_em_band_carries_its_methodology() -> None:
     kl = srv[srv.index('md["kl_em_upper"] = round'):]
     kl = kl[:900]
     assert "kl_em_source" in kl, "kl_em_source must be emitted with kl_em_upper (F06/RC-345)"
-    # the diagnostic straddle/iv path still records its own source too
-    assert "_em_band_source" in srv and "STRADDLE_IMPLIED" in srv and "IV_MODEL" in srv
+    # the diagnostic straddle/iv path still records its own source too. RC-REHAB-1
+    # (2026-09-22, module extraction): the STRADDLE_IMPLIED/IV_MODEL literals moved out of
+    # server.py entirely into server_state_signals.py along with _expected_move_for_state;
+    # _em_band_source = _em.em_band_source (the rebind) stayed in server.py's own
+    # _fetch_state body, unaffected.
+    ss = _read("server_state_signals.py")
+    assert "_em_band_source" in srv and "STRADDLE_IMPLIED" in ss and "IV_MODEL" in ss
     assert '_em_up = _em_straddle.get("upper") or _em_iv.get("upper")' not in srv
     # RC-433: density congestion must bind terrain IV_SIGMA_1D, not remaining-risk binders.
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
