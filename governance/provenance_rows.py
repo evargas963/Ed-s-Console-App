@@ -1747,9 +1747,11 @@ ROWS: tuple[Row, ...] = (
         justification='Opens SQLite read on caller-supplied db_path; loads RTH snapshot rows for a ticker into the training pipeline. Mega4 internal SQLite read; no Schwab wire derivation.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='_strict_off_for_candidate_inference', disposition='DERIVED',
+        file='ml_scheduler_support.py', derivation='_strict_off_for_candidate_inference', disposition='DERIVED',
         producer_refs=('market_state.py:build_market_state',),
-        justification='Inference on canonical features; no Schwab wire ingest.',
+        justification='Inference on canonical features; no Schwab wire ingest. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 1 of the '
+                       'ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
         file='ml_scheduler.py', derivation='_train_cascade', disposition='ALLOWLISTED',
