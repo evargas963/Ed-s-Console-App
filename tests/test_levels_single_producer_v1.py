@@ -109,8 +109,25 @@ def test_levels_producers_are_enumerated_and_declared():
     vendor per symbol measured a 40.5s cold sweep that always timed out. It never feeds
     /api/terrain. It is a KNOWN width inconsistency across radar rows, tracked in RC-80, not an
     accident this test should silently permit.
+
+    refresh_gamma_surface_from_stream and refresh_gamma_surface_from_spot_tick are declared
+    (RC-570, 2026-09-21): the per-tick eager-refresh hooks that keep Key Levels live between
+    REST cycles. Unlike RC-80's original bug (two producers reading two DIFFERENT-WIDTH chains
+    — a wide REST fetch vs a narrow stored snapshot), these two never fetch or select their own
+    chain: they call compute_terrain on `overlaid`, which is `_terrain_refresh_one`'s OWN most
+    recent `_contracts_rest` baseline (the exact same width/contract set) with only individual
+    contracts' GAMMA/DELTA/OPEN_INTEREST freshened from a live tick — never a narrower or
+    independently-selected chain. Both are further guarded by the SAME compare-and-swap
+    generation check (`_contracts_rest_computed_ts`) the heatmap overlay already used before
+    RC-570: if a newer REST cycle lands mid-computation, the tick-driven result is discarded
+    ("stale_baseline_superseded"), never published over it. This is the identical formula on
+    the identical baseline chain at a fresher instant — a faster CADENCE for the one faucet,
+    not a second faucet with its own idea of the chain.
     """
-    declared = {"_terrain_refresh_one", "_radar_fallback_recompute"}
+    declared = {
+        "_terrain_refresh_one", "_radar_fallback_recompute",
+        "refresh_gamma_surface_from_stream", "refresh_gamma_surface_from_spot_tick",
+    }
     found = {fn for _, fn in _producers()}
     assert found == declared, (
         f"the set of level producers changed: {sorted(found)} != {sorted(declared)}. "
