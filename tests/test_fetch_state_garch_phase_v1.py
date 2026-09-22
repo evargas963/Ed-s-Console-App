@@ -16,6 +16,8 @@ from __future__ import annotations
 import random
 
 import server as srv
+import server_state_volatility as sv
+from math_exposure import compute_garch_forecast, blend_garch_sigma
 
 
 def _synthetic_closes(n: int = 61, seed: int = 42, start: float = 450.0) -> list[float]:
@@ -39,8 +41,8 @@ def test_matches_the_original_inline_computation_chain_exactly():
 
     result = srv._garch_sigma_bars_for_state(closes, atm_iv, realized_vol, spot_f)
 
-    garch_raw = srv.compute_garch_forecast(closes, horizon=srv.GARCH_HORIZON_BARS)
-    expected = srv.blend_garch_sigma(
+    garch_raw = compute_garch_forecast(closes, horizon=srv.GARCH_HORIZON_BARS)
+    expected = blend_garch_sigma(
         garch_raw,
         vol_percent_to_decimal(atm_iv),
         vol_percent_to_decimal(realized_vol),
@@ -92,7 +94,10 @@ def test_a_garch_or_blend_failure_is_swallowed_to_none_not_raised(monkeypatch):
     def _boom(*_a, **_kw):
         raise RuntimeError("synthetic GARCH failure")
 
-    monkeypatch.setattr(srv, "compute_garch_forecast", _boom)
+    # RC-REHAB-1 (2026-09-22): _garch_sigma_bars_for_state moved to server_state_volatility
+    # (module extraction) -- it now resolves compute_garch_forecast/blend_garch_sigma via
+    # that module's own bound-name import, not server's, so the patch target moves with it.
+    monkeypatch.setattr(sv, "compute_garch_forecast", _boom)
     closes = _synthetic_closes()
     # Must not raise -- the original inline block never let a GARCH failure escape into
     # the rest of _fetch_state's pipeline.
@@ -102,9 +107,9 @@ def test_a_garch_or_blend_failure_is_swallowed_to_none_not_raised(monkeypatch):
 def test_a_none_garch_raw_result_returns_none_without_calling_blend(monkeypatch):
     """Mirrors the original `if _garch_raw:` guard -- a falsy compute_garch_forecast
     result must short-circuit before blend_garch_sigma is ever called."""
-    monkeypatch.setattr(srv, "compute_garch_forecast", lambda *_a, **_kw: None)
+    monkeypatch.setattr(sv, "compute_garch_forecast", lambda *_a, **_kw: None)
     blend_called = []
-    monkeypatch.setattr(srv, "blend_garch_sigma", lambda *_a, **_kw: blend_called.append(1))
+    monkeypatch.setattr(sv, "blend_garch_sigma", lambda *_a, **_kw: blend_called.append(1))
     closes = _synthetic_closes()
     result = srv._garch_sigma_bars_for_state(closes, 18.5, 15.0, closes[-1])
     assert result is None

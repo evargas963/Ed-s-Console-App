@@ -936,9 +936,10 @@ def test_rc345_realized_vol_bar_minutes_is_required() -> None:
     # decomposition, fourth slice): this call site moved out of _fetch_state's own body
     # into _volatility_signals_for_state, where the local dropped the "_fetch_state
     # phase-scratch" underscore prefix (closes, not _closes) as a clean local in its own
-    # small function.
-    srv = _read("server.py")
-    assert "compute_realized_vol(closes, bar_minutes=1.0)" in srv
+    # small function. RC-REHAB-1 (2026-09-22, module extraction): that function moved again,
+    # out of server.py entirely into server_state_volatility.py.
+    vol = _read("server_state_volatility.py")
+    assert "compute_realized_vol(closes, bar_minutes=1.0)" in vol
 
 
 # ---------------------------------------------------------------------- F24 signed dist to VWAP

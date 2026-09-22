@@ -252,16 +252,23 @@ def test_fetch_state_iv_history_uses_narrow_projection() -> None:
     session's visible portion): the IV rank/percentile block moved out of
     _fetch_state's own body into _volatility_signals_for_state well before this
     lock was last verified; checked against that function's own source now,
-    caught here by running the full suite rather than a curated batch."""
-    fn = _find_function(SERVER_TREE, "_volatility_signals_for_state")
-    assert fn is not None, "server._volatility_signals_for_state not found"
+    caught here by running the full suite rather than a curated batch.
+
+    RC-REHAB-1 (2026-09-22, module extraction): _volatility_signals_for_state moved
+    again, out of server.py entirely into server_state_volatility.py -- checked against
+    that module's own source, not SERVER_TREE (which no longer contains this function's
+    body, only a re-export import)."""
+    vol_src = (ROOT / "server_state_volatility.py").read_text(encoding="utf-8")
+    vol_tree = ast.parse(vol_src)
+    fn = _find_function(vol_tree, "_volatility_signals_for_state")
+    assert fn is not None, "server_state_volatility._volatility_signals_for_state not found"
     calls = _called_names(fn)
     assert "get_recent_iv_levels" in calls, (
         "_volatility_signals_for_state no longer uses the narrow iv_level "
         "projection — the IV rank/percentile path regressed to a full-width "
         "snapshot read."
     )
-    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
+    seg = ast.get_source_segment(vol_src, fn) or ""
     idx = seg.find("IV Rank/Percentile")
     assert idx != -1, "IV rank/percentile block not found in _volatility_signals_for_state"
     block = seg[idx : idx + 1500]

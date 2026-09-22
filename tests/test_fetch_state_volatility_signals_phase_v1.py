@@ -25,6 +25,8 @@ from types import SimpleNamespace
 from unittest import mock
 
 import server as srv
+import server_state_volatility as sv
+from math_exposure import compute_realized_vol, compute_atr
 
 
 class _FakeAccumulator:
@@ -71,8 +73,8 @@ def test_warm_ticker_matches_the_original_inline_computation_chain():
         )
 
     expected_closes = [float(b.close) for b in bars if b.close is not None]
-    expected_realized_vol = srv.compute_realized_vol(expected_closes, bar_minutes=1.0)
-    expected_atr = srv.compute_atr(bars)
+    expected_realized_vol = compute_realized_vol(expected_closes, bar_minutes=1.0)
+    expected_atr = compute_atr(bars)
 
     assert result.closes == expected_closes
     assert result.realized_vol == expected_realized_vol
@@ -99,15 +101,19 @@ def test_iv_rank_and_percentile_require_atm_iv_and_db_and_tick_ts():
         # All present -- the DB read must actually run (the wiring's job); the real
         # rank/percentile math has its own coverage elsewhere and is stubbed here so this
         # test isn't coupled to compute_iv_rank's internal sample-size threshold.
-        with mock.patch.object(srv, "compute_iv_rank", return_value=42.0), \
-             mock.patch.object(srv, "compute_iv_percentile", return_value=77.0):
+        # RC-REHAB-1 (2026-09-22): _volatility_signals_for_state moved to
+        # server_state_volatility (module extraction) -- it resolves compute_iv_rank/
+        # compute_iv_percentile/compute_iv_skew via that module's own bound-name import,
+        # not server's, so the patch target moves with it.
+        with mock.patch.object(sv, "compute_iv_rank", return_value=42.0), \
+             mock.patch.object(sv, "compute_iv_percentile", return_value=77.0):
             r4 = srv._volatility_signals_for_state("SPY", [], 450.0, 18.0, fake_db, 123.0)
         assert fake_db.get_recent_iv_levels.called, "the DB history read must run when all three gates pass"
         assert r4.iv_rank == 42.0 and r4.iv_percentile == 77.0
 
 
 def test_a_volatility_calc_failure_is_swallowed_to_defaults_not_raised():
-    with mock.patch.object(srv, "compute_iv_skew", side_effect=RuntimeError("synthetic")):
+    with mock.patch.object(sv, "compute_iv_skew", side_effect=RuntimeError("synthetic")):
         result = srv._volatility_signals_for_state("SPY", [{"strike": 450}], 450.0, 18.0, None, None)
     assert result.iv_skew == {}
     assert result.atr is None

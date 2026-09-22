@@ -549,16 +549,21 @@ def test_shutdown_bound_check_screams_on_an_unarmed_lifespan_and_a_pytest_blind_
 
 def test_sqlite_wal_check_screams_on_a_default_timeout_connect_and_a_missing_pragma(tmp_path, monkeypatch):
     """Concurrent writers on a DELETE-mode DB with the 5 s default lock storm; every connect in
-    db.py must pass timeout= and the helper must set WAL/NORMAL/busy_timeout."""
-    bad = ("def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA synchronous=NORMAL')\n"
-           "    conn.execute('PRAGMA busy_timeout=30000')\n\nconn = sqlite3.connect(str(path))\n")
-    M = _tree(tmp_path, monkeypatch, {"db.py": bad})
+    db.py must pass timeout= and the helper (db_sqlite_utils.py, since RC-REHAB-1's db.py
+    decomposition moved configure_sqlite_connection there) must set WAL/NORMAL/busy_timeout."""
+    bad_utils = (
+        "def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA synchronous=NORMAL')\n"
+        "    conn.execute('PRAGMA busy_timeout=30000')\n")
+    bad_db = "conn = sqlite3.connect(str(path))\n"
+    M = _tree(tmp_path, monkeypatch, {"db.py": bad_db, "db_sqlite_utils.py": bad_utils})
     msgs = [v.msg for v in M.check_sqlite_wal_contract()]
     assert any("journal_mode=WAL" in m for m in msgs) and any("without timeout=" in m for m in msgs)
-    good = ("def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA journal_mode=WAL')\n"
-            "    conn.execute('PRAGMA synchronous=NORMAL')\n    conn.execute('PRAGMA busy_timeout=30000')\n\n"
-            "conn = sqlite3.connect(str(path), timeout=30.0)\n")
-    (tmp_path / "db.py").write_text(good, encoding="utf-8")
+    good_utils = (
+        "def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA journal_mode=WAL')\n"
+        "    conn.execute('PRAGMA synchronous=NORMAL')\n    conn.execute('PRAGMA busy_timeout=30000')\n")
+    good_db = "conn = sqlite3.connect(str(path), timeout=30.0)\n"
+    (tmp_path / "db.py").write_text(good_db, encoding="utf-8")
+    (tmp_path / "db_sqlite_utils.py").write_text(good_utils, encoding="utf-8")
     assert M.check_sqlite_wal_contract() == []
 
 

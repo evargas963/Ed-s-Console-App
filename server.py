@@ -390,9 +390,9 @@ def install_ed_server_file_sink(
     """
     path = Path(log_path) if log_path is not None else ED_SERVER_LOG_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    root = logging.getLogger()
+    root_logger = logging.getLogger()
     abs_target = str(path.resolve())
-    for h in list(root.handlers):
+    for h in list(root_logger.handlers):
         if isinstance(h, logging.FileHandler):
             try:
                 existing = str(Path(getattr(h, "baseFilename", "")).resolve())
@@ -405,9 +405,9 @@ def install_ed_server_file_sink(
     handler.setFormatter(
         _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=False)
     )
-    root.addHandler(handler)
-    if root.level == logging.NOTSET or root.level > level:
-        root.setLevel(level)
+    root_logger.addHandler(handler)
+    if root_logger.level == logging.NOTSET or root_logger.level > level:
+        root_logger.setLevel(level)
     return handler
 
 
@@ -418,11 +418,11 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     handler.setFormatter(
         _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=use_ansi)
     )
-    root = logging.getLogger()
-    for h in list(root.handlers):
-        root.removeHandler(h)
-    root.addHandler(handler)
-    root.setLevel(level)
+    root_logger = logging.getLogger()
+    for h in list(root_logger.handlers):
+        root_logger.removeHandler(h)
+    root_logger.addHandler(handler)
+    root_logger.setLevel(level)
     # t6/RC-232 board (quiet-gate finding, root-caused): `import server` under pytest
     # attached this SAME live-log file sink, so TEST-emitted warnings (the deliberate
     # ZZQD/ZZQE failure fixtures, fresh-DB migration notices) appended to logs/ed_server.log
@@ -507,9 +507,7 @@ from math_exposure import (
     vix_bucket as _vix_bucket,
     classify_direction as _classify_direction,
     compute_expected_move_straddle, compute_expected_move_iv,
-    compute_em_progress, compute_iv_skew, compute_realized_vol, compute_atr,
-    compute_iv_rank, compute_iv_percentile, compute_volatility_envelope,
-    compute_garch_forecast, blend_garch_sigma,
+    compute_em_progress, compute_volatility_envelope,
     compute_iv_model_spread,
     compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
@@ -3722,27 +3720,12 @@ GEX_NEAR_SPOT_RADIUS: float = 2.0   # strikes within $2 of spot are "near spot"
 # Void factor distance falloff
 VOID_DIST_FALLOFF:   float = 5.0    # $5 from void edge → factor decays to 0
 
-# GARCH horizon — DERIVED from the governed horizons, never a literal (RC-334).
-#
-# This was `13  # ~1hr RTH`, a comment that was true when BAR_MINUTES was 5 and false after
-# the 2026-07-08 realignment to BAR_MINUTES=1, where 13 bars is 13 minutes. Monte Carlo only
-# uses the GARCH sigmas when it receives at least `horizon_bars` of them and otherwise falls
-# back to the flat IV/RV blend WITHOUT saying so, so the shortfall did not surface as an
-# error — it surfaced as a different volatility model. MEASURED against
-# `horizon_slug_to_mc_bars`: 1c->1 and 5c->5 were covered, while 15c->15 and 60c->60 — half
-# of ALL_GOVERNED_HORIZONS — plus the 15-minute Key Levels display row never used GARCH at
-# all. Sizing this from the horizon set means adding a horizon cannot silently un-GARCH it.
-def _garch_horizon_bars() -> int:
-    from governed_stack_contract import horizon_slug_to_mc_bars
-    from ml_horizon import ALL_GOVERNED_HORIZONS
-
-    return max(horizon_slug_to_mc_bars(s) for s in ALL_GOVERNED_HORIZONS)
-
-
-GARCH_HORIZON_BARS:  int   = _garch_horizon_bars()   # 60 bars = the longest governed horizon
-
-# IV history lookback for IV rank / percentile
-IV_HISTORY_LOOKBACK: int   = 5000   # max rows pulled from DB for IV rank calc
+# GARCH_HORIZON_BARS / IV_HISTORY_LOOKBACK moved to server_state_volatility.py along with
+# the functions that use them (RC-REHAB-1, 2026-09-22, _fetch_state decomposition) -- both
+# are referenced only inside that module's own functions, so server.py doesn't need to
+# import them itself. ATR_MIN_BARS moved too, but server.py's own ATR_WARMUP_HORIZON_SEC
+# (below) needs it at module-load time, before the functions' later re-export would run.
+from server_state_volatility import ATR_MIN_BARS  # noqa: E402
 
 # Parity residual minimum to display synthetic forward
 PARITY_RESID_MIN:    float = 0.10   # ignore residuals smaller than 10 cents
@@ -5847,7 +5830,7 @@ _l1_diag_start_mono = time.monotonic()
 #: RC-236: minimum 1m bars the ATR needs, and the warmup horizon during which a deficit is the
 #: designed state rather than a defect. One bar per minute means the accumulator cannot beat the
 #: clock; the horizon carries a small margin for the first partial minute and re-seed latency.
-ATR_MIN_BARS: int = 16
+#: ATR_MIN_BARS itself moved to server_state_volatility.py (imported above, module top).
 ATR_WARMUP_HORIZON_SEC: float = float(ATR_MIN_BARS + 4) * 60.0
 
 
@@ -6779,15 +6762,6 @@ def carried_price_levels_match_snapshot(entry, pl_date, pl_generation, today: st
     return cached_gen == snap_gen and entry_gen_i == snap_gen
 
 
-class _VolatilitySignalsForState(NamedTuple):
-    iv_skew: dict
-    realized_vol: Optional[float]
-    atr: Optional[float]
-    iv_rank: Optional[float]
-    iv_percentile: Optional[float]
-    closes: Optional[list]
-
-
 class _ExpectedMoveForState(NamedTuple):
     em_straddle: dict
     em_iv: dict
@@ -7255,183 +7229,23 @@ def _candle_direction_for_state(ticker: str) -> _CandleDirectionForState:
     )
 
 
-def _volatility_signals_for_state(
-    ticker: str,
-    contracts_use: list,
-    spot_f: float,
-    atm_iv: Optional[float],
-    ed_db,
-    tick_ts,
-) -> _VolatilitySignalsForState:
-    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): the Volatility
-    Signals phase (IV skew, realized vol, ATR, IV rank/percentile), extracted verbatim,
-    including its own ATR-warmup diagnostic logging (same banner scope in the original).
+# RC-REHAB-1 (2026-09-22): volatility-signals phase moved to server_state_volatility.py
+# (first real module-level slice of the _fetch_state decomposition -- prior pass only
+# split same-file functions, this moves the code out). Re-exported for the existing
+# module-attribute test callers (srv._volatility_signals_for_state etc in
+# tests/test_fetch_state_volatility_signals_phase_v1.py and others). GARCH_HORIZON_BARS/
+# IV_HISTORY_LOOKBACK re-exported too -- external callers verified: tests/
+# test_fetch_state_garch_phase_v1.py (srv.GARCH_HORIZON_BARS) and tests/
+# test_audit_cand_server_py_full_read_v1.py (`from server import ... IV_HISTORY_LOOKBACK`).
+from server_state_volatility import (  # noqa: F401
+    _VolatilitySignalsForState,
+    _volatility_signals_for_state,
+    _garch_sigma_bars_for_state,
+    _pcr_val_for_state,
+    GARCH_HORIZON_BARS,
+    IV_HISTORY_LOOKBACK,
+)
 
-    Bug fixed as part of this extraction, not a separate change: the original inline code
-    pre-initialized every OTHER output (`_iv_skew = {}`, `_realized_vol = None`, `_atr =
-    None`, `_iv_rank = None`, `_iv_percentile = None`, `_bars = None`) but never
-    `_closes = None` -- so on a cold ticker (`_bars` empty, the exact ATR-warmup case this
-    same block already logs specially), `_closes` was never assigned. The immediately
-    following GARCH phase referenced `_closes` as a bare call argument
-    (`_garch_sigma_bars_for_state(_closes, ...)`), evaluated in the CALLER's frame before
-    the callee's own try/except could ever run -- so as of the GARCH extraction (the first
-    slice of this decomposition), that reference raised an uncaught NameError out of
-    _fetch_state on every cold ticker, a live regression this present extraction closes by
-    giving `closes` the same explicit `None` initializer its five siblings already had.
-    Before the GARCH extraction, the equivalent reference lived INSIDE the GARCH phase's
-    own try/except and was silently swallowed to a debug log with the observable outcome
-    already `_garch_sigma_bars is None` -- this fix restores exactly that outcome, just
-    without the (already unhelpfully-worded) debug log line.
-    """
-    iv_skew: dict = {}
-    realized_vol: Optional[float] = None
-    atr: Optional[float] = None
-    iv_rank: Optional[float] = None
-    iv_percentile: Optional[float] = None
-    bars = None
-    closes: Optional[list] = None
-    try:
-        iv_skew = compute_iv_skew(contracts_use, spot_f)
-        # Realized vol + ATR from canonical (1m) candle bars
-        bars = _candles_1m.get_bars(ticker)
-        if bars:
-            closes = [float(b.close) for b in bars if b.close is not None]
-            if closes:
-                realized_vol = compute_realized_vol(closes, bar_minutes=1.0)
-            atr = compute_atr(bars)
-        # IV Rank/Percentile from DB historical iv_level
-        # Burndown (2026-07-05): narrow iv_level projection — the full-width
-        # get_recent_snapshots read (5,000 rows x 200+ cols incl. chain blobs)
-        # was ~all of the vol_flow_signals stage (py-spy 1,258/3,062 samples).
-        # Same row window/order/as-of as before; values identical.
-        # Schwab CSV authority checked: yes
-        # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot SQLite read
-        #   (iv_level history for rank/percentile); no market field derivation,
-        #   emission, or actionability logic changed.
-        # Derived-field disposition: none required.
-        # All consumers checked: yes — _iv_history filter semantics unchanged.
-        # SCHWAB_CSV_CHECKED
-        if atm_iv and ed_db and tick_ts is not None:
-            try:
-                iv_hist_vals = ed_db.get_recent_iv_levels(
-                    ticker,
-                    CANONICAL_TIMEFRAME,
-                    n=IV_HISTORY_LOOKBACK,
-                    as_of_ts_utc=tick_ts,
-                )
-                iv_history = [
-                    float(v) for v in iv_hist_vals
-                    if v is not None and float(v) > 0
-                ]
-                if iv_history:
-                    iv_rank = compute_iv_rank(atm_iv, iv_history)
-                    iv_percentile = compute_iv_percentile(atm_iv, iv_history)
-            except Exception as e:
-                log.debug(
-                    "IV rank/percentile history load failed ticker=%s: %s",
-                    ticker,
-                    e,
-                    exc_info=True,
-                )
-    except Exception as e:
-        log.debug(f"Volatility signals calc: {e}")
-    # RC-236 (same calibration law as the tier-1 lock waits): a bar deficit during ACCUMULATOR
-    # WARMUP is the designed state — the in-memory series re-seeds from zero on every restart
-    # and cannot hold 16 one-minute bars until 16 minutes of wall clock have passed. Logging
-    # that at WARNING makes the quiet gate fail for doing exactly what it must do, and trains
-    # the operator to ignore the channel. Past the warmup horizon the SAME deficit is genuine
-    # starvation and keeps its WARNING; the deficit is always logged, only the severity moves.
-    if atr is None:
-        warm = _atr_warmup_active()
-        msg = (f"ATR NULL for {ticker}: only {len(bars)} bars, need {ATR_MIN_BARS}"
-                if bars else f"ATR NULL for {ticker}: no bars, need {ATR_MIN_BARS}")
-        if warm:
-            log.info("%s (accumulator warmup, %.0fs since boot)", msg, _seconds_since_boot())
-        else:
-            log.warning(msg)
-    return _VolatilitySignalsForState(
-        iv_skew=iv_skew,
-        realized_vol=realized_vol,
-        atr=atr,
-        iv_rank=iv_rank,
-        iv_percentile=iv_percentile,
-        closes=closes,
-    )
-
-
-def _garch_sigma_bars_for_state(
-    closes: list[float] | None,
-    atm_iv: Optional[float],
-    realized_vol: Optional[float],
-    spot_f: float,
-) -> Optional[list]:
-    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, first slice): the GARCH Volatility
-    Forecast phase, extracted verbatim from _fetch_state with an explicit input/output
-    contract instead of reading/writing the enclosing function's locals. Behavior is
-    UNCHANGED, including the pre-existing quirk this phase's own comment already flags:
-    the RC-334 bar-mismatch RuntimeError is deliberately loud in wording ("must fail
-    loudly") but is still caught by this same try/except and only debug-logged, exactly
-    as it was inline -- not "fixed" here, since that would be an unreviewed behavior
-    change smuggled into a refactor, not a decomposition.
-
-    Returns per-bar sigma (monte_carlo.BAR_MINUTES units) or None on insufficient data,
-    a missing GARCH result, or any computation failure.
-    """
-    try:
-        # RC-REHAB-1 (route-extraction/decomposition audit fix): this guard originally
-        # sat BEFORE the try (as `if not closes or len(closes) <= 20: return None`).
-        # The pre-existing inline code had it INSIDE the try (`if _closes and
-        # len(_closes) > 20:`), so an exception evaluating the predicate itself (e.g. a
-        # `closes` whose __bool__/__len__ raised) was swallowed to this function's fail-
-        # closed None, not propagated. Moved back inside to restore that exact coverage
-        # -- currently unreachable in practice since the caller guarantees closes is
-        # None-or-list, but the extraction claimed byte-for-byte fidelity and this was
-        # the one place it wasn't.
-        if not closes or len(closes) <= 20:
-            return None
-        _garch_raw = compute_garch_forecast(closes, horizon=GARCH_HORIZON_BARS)
-        if not _garch_raw:
-            return None
-        from volatility_regime import vol_percent_to_decimal
-
-        _iv_dec = vol_percent_to_decimal(atm_iv)
-        _rv_dec = vol_percent_to_decimal(realized_vol)
-        # RC-334: closes are ONE-MINUTE closes — _candles_1m.get_bars above, and the
-        # realized-vol call on this same list passes bar_minutes=1.0 — so the GARCH
-        # sigmas are per-minute and the IV/RV terms must be de-annualized to the same
-        # minute. Monte Carlo then consumes this list DIRECTLY as per-bar sigma at
-        # monte_carlo.BAR_MINUTES, so a third party has to agree too. The interval is
-        # stated from the DATA, not borrowed from MC's constant, and the agreement is
-        # asserted: if MC's bar ever moves, this must fail loudly rather than keep
-        # feeding it minute sigmas under a five-minute name.
-        from monte_carlo import BAR_MINUTES as _MC_BAR_MINUTES
-
-        _GARCH_BAR_MINUTES = 1.0          # _candles_1m is one-minute by construction
-        if float(_MC_BAR_MINUTES) != _GARCH_BAR_MINUTES:
-            raise RuntimeError(
-                f"GARCH/Monte-Carlo bar mismatch: sigmas built on "
-                f"{_GARCH_BAR_MINUTES}-minute closes but monte_carlo.BAR_MINUTES is "
-                f"{_MC_BAR_MINUTES}. MC consumes these as per-bar sigma, so the "
-                f"units must match (RC-334).")
-        return blend_garch_sigma(
-            _garch_raw, _iv_dec, _rv_dec, spot_f,
-            bar_minutes=_GARCH_BAR_MINUTES,
-        )
-    except Exception as e:
-        log.debug(f"GARCH forecast calc: {e}")
-        return None
-
-
-def _pcr_val_for_state(totals: list) -> Optional[float]:
-    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, second slice): the PCR (put/call
-    ratio) phase, extracted verbatim. Reads the open-interest-based PCR off the first
-    per-strike-bucket total row (`build_totals_rows`'s own `pcr_oi` field, computed by
-    math_exposure_core) -- no computation of its own, purely a read-through. Returns
-    None when `totals` is empty or the row has no `pcr_oi` value."""
-    if not totals:
-        return None
-    v = getattr(totals[0], "pcr_oi", None)
-    return float(v) if v is not None else None
 
 
 class _OrderFlowSignalsForState(NamedTuple):
@@ -9634,10 +9448,6 @@ def _fetch_state(
             update_source=update_source,
         )
 
-    # ── Market context ────────────────────────────────────────────────────────
-    prev_pcr  = _state_cache.get(_cache_key, {}).get("pcr_val")
-    prev_spot = _state_cache.get(_cache_key, {}).get("spot_f")
-
     # ── Candle direction + body from last COMPLETED 1m bar (canonical) ─────────
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): extracted to
     # _candle_direction_for_state (defined above _volatility_signals_for_state). NOTE:
@@ -10213,7 +10023,8 @@ def _fetch_state(
     }
 
     # ── Key level prices (wall values not on MarketState dataclass fields) ────
-    w0 = walls[0] if walls else None
+    # RC-128 cleanup: w0 binding deleted -- it fed only the Tier-C kl_ writes the comment
+    # below already documents as removed (same pattern as the RC-128 note at server.py:2848).
     cs = consensus_summary
 
     def _fv(v):

@@ -326,7 +326,11 @@ def test_ed_db_bound_before_iv_rank_references():
 def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
     """Flow: hoisted _ed_db must be bound before IV rank block (FIND-8)."""
     import server
-    from server import CANONICAL_TIMEFRAME, IV_HISTORY_LOOKBACK, compute_iv_rank
+    from server import CANONICAL_TIMEFRAME, IV_HISTORY_LOOKBACK
+    # RC-REHAB-1 (2026-09-22): compute_iv_rank was never re-exported from server.py --
+    # only used internally by _volatility_signals_for_state, which moved to
+    # server_state_volatility.py and resolves it via its own math_exposure import.
+    from math_exposure import compute_iv_rank
 
     mock_db = MagicMock()
     mock_db.get_recent_snapshots.return_value = [
