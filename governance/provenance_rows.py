@@ -1728,14 +1728,16 @@ ROWS: tuple[Row, ...] = (
                        'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 2 of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='_evaluate_cascade_on_full_rth', disposition='ALLOWLISTED',
+        file='ml_scheduler_rth_eval.py', derivation='_evaluate_cascade_on_full_rth', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Cascade-architecture evaluator: same db_path → _load_rth_rows_for_ticker SQLite read → cascade ML stack layer inference + realized metrics. Mega4 orchestrator; no direct Schwab wire derivation.',
+        justification='Cascade-architecture evaluator: same db_path → _load_rth_rows_for_ticker SQLite read → cascade ML stack layer inference + realized metrics. Mega4 orchestrator; no direct Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 3 of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
-        file='ml_scheduler.py', derivation='_evaluate_parallel_on_full_rth', disposition='ALLOWLISTED',
+        file='ml_scheduler_rth_eval.py', derivation='_evaluate_parallel_on_full_rth', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Parallel-architecture evaluator: takes db_path, calls _load_rth_rows_for_ticker for SQLite reads, runs ML stack layer inference on each RTH row, computes realized metrics. Mega4 orchestrator; no direct Schwab wire derivation.',
+        justification='Parallel-architecture evaluator: takes db_path, calls _load_rth_rows_for_ticker for SQLite reads, runs ML stack layer inference on each RTH row, computes realized metrics. Mega4 orchestrator; no direct Schwab wire derivation. '
+                       'RC-REHAB-1 (2026-09-22): moved from ml_scheduler.py (slice 3 of the ml_scheduler.py decomposition), same code, different file.',
     ),
     Row(
         file='ml_scheduler_rth_data.py', derivation='_get_tickers_with_rth_data', disposition='ALLOWLISTED',
