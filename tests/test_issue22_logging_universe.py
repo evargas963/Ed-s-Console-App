@@ -722,11 +722,13 @@ def test_f25_lu_write_identity_mutation_killed():
     assert ("SPX".upper().strip()) != ("$SPX".upper().strip())  # 'SPX' != '$SPX' -> would split
 
     # Source guard: the live enrollment read/update/delete/touch consume the authority, not .upper()
+    # RC-REHAB-1 (db.py decomposition, 2026-09-21): this code moved from db.py to
+    # db_logging_universe.py's LoggingUniverseMixin (mixed into EdDB) -- same guarantee, new file.
     from pathlib import Path as _P
-    src = (_P(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
+    src = (_P(__file__).resolve().parent.parent / "db_logging_universe.py").read_text(encoding="utf-8")
     for needle in (
         "t = ticker_storage_key(ticker)  # RC-345/F25",           # unpin/remove/touch
         "ticker_storage_key(r[0]) for r in rows",                 # canonical reads
         "def logging_universe_migrate_canonical_ticker_identity",  # migration exists
     ):
-        assert needle in src, f"db.py logging_universe missing canonical routing: {needle!r}"
+        assert needle in src, f"db_logging_universe.py missing canonical routing: {needle!r}"
