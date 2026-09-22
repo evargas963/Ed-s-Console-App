@@ -77,6 +77,33 @@ def canonical_forward_probs_for_display(
     return canonical.probability_up, canonical.probability_down, canonical.probability_flat
 
 
+#: RC-REHAB-1 (2026-09-22, operator directive): the live model stack (XGBoost/LSTM/
+#: Transformer inference + Monte Carlo path simulation, run synchronously per horizon for
+#: every tracked ticker on every analytics cycle) is legacy -- the operator does not
+#: consume its output today and confirmed neither the ML models nor Monte Carlo/Bayesian
+#: fusion are needed right now ("this is for way later... kept for future expansion to
+#: help with portfolio analysis"). MEASURED live during this session: this stage
+#: (`signals_engine_build_market_state`) was consistently the single largest cost in the
+#: whole _fetch_state pipeline, 12-68 seconds per ticker, run through a 4-worker pool
+#: shared by 58 tracked tickers -- the dominant contributor to "analytics recompute
+#: exceeded staleness budget" warnings and a real, measured drag on the live UI's overall
+#: responsiveness (SQLite write contention, CPU contention competing with the streaming
+#: overlay path). Off by default; set ED_LIVE_MODEL_STACK_ENABLED=1 to restore it (e.g.
+#: once Monte Carlo is genuinely wired into portfolio analysis).
+#:
+#: The kill switch is scoped to the two GENUINELY expensive calls only
+#: (run_unified_stack_ml_once's model inference, monte_carlo.simulate's path generation)
+#: -- bayesian_fusion.fuse and the surrounding orchestration keep running unchanged,
+#: cheap/deterministic math over now-unavailable inputs, so every existing downstream
+#: consumer (the hard `fusion is not None` invariant in _compute_signals_impl, the
+#: "The Call" decision policy, every UI availability badge) sees EXACTLY the same shape
+#: it already handles today whenever the stack genuinely fails -- the same fail-closed
+#: path this codebase already relies on, made the permanent state instead of an outage.
+LIVE_MODEL_STACK_ENABLED = os.environ.get("ED_LIVE_MODEL_STACK_ENABLED", "").strip().lower() in (
+    "1", "true", "yes",
+)
+
+
 def _unavailable_model_namespace():
     """Fail-closed placeholder when a unified-stack ML layer fusion branch is missing or failed."""
     from types import SimpleNamespace
@@ -657,7 +684,15 @@ def _run_model_stack(
 
     _spk = stack_probs_bundle_key()
     ml_bundle: dict[str, Any] = {"model_outputs": None, _spk: None}
-    try:
+    if not LIVE_MODEL_STACK_ENABLED:
+        # See LIVE_MODEL_STACK_ENABLED's own comment above: same fallback shape the
+        # except branch below produces for a genuine failure -- run_unified_stack_ml_once
+        # is never called at all, so this is a clean skip, never a false "failed" log.
+        _fallback = _unavailable_model_namespace()
+        xgb_out = lstm_out = transformer_out = _fallback
+        ml_bundle = {"model_outputs": None, _spk: None, "movement_head_probs": {}}
+    else:
+      try:
         if _don():
             _dstep("model_stack_ml_models", ticker)
         from types import SimpleNamespace
@@ -694,7 +729,7 @@ def _run_model_stack(
             transformer_out = _unavailable_model_namespace()
         if _don():
             _ddone("ml_models", ticker)
-    except Exception as e:
+      except Exception as e:
         from features.fusion_model_input import FusionModelInputError
         from features.lstm_sequence_input import LstmSequenceInputError, TransformerSequenceInputError
         from features.xgb_model_input import XgbInferenceInputError
@@ -742,7 +777,18 @@ def _run_model_stack(
             unified_stack_team_can_authorize,
         )
 
-        if mc_context_error is not None:
+        if not LIVE_MODEL_STACK_ENABLED:
+            # See LIVE_MODEL_STACK_ENABLED's own comment above: skip the actual path
+            # simulation (monte_carlo.simulate) entirely -- same disclosed-unavailable
+            # shape already used for a blocked/failed run below, just never reached via
+            # a real simulate() call.
+            from monte_carlo import MonteCarloOutput
+
+            mc_out = MonteCarloOutput(
+                available=False,
+                model_version="live_model_stack_disabled",
+            )
+        elif mc_context_error is not None:
             from monte_carlo import MonteCarloOutput
 
             mc_out = MonteCarloOutput(
