@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from datetime import date, timedelta
 from pathlib import Path
 
 import server
@@ -19,6 +20,23 @@ _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
 _SPOT = float(_REAL["spot"])
 _CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
+# The captured fixture's every contract shares one expirationDate, frozen at capture time
+# ("2026-09-18T20:00:00.000+00:00"). math_levels._contract_inputs computes time-to-expiry from
+# REAL wall-clock now_et() with no injection point reachable through server.get_charm_by_strike
+# (an HTTP route, no `now` parameter) -- once real time passes that captured date, t_years <= 0
+# and EVERY contract fails closed, so `available` silently flips to False (REPRODUCED
+# 2026-09-21: real time had already passed it). This test proves the WIRING (see module
+# docstring), not the math, so the exact date doesn't matter -- only that it stays in the
+# future. Shift every contract's own expirationDate forward by the same delta that would put
+# the ORIGINAL capture date 30 days out from today, preserving the captured Greeks/OI/IV
+# (and the time-of-day/timezone suffix) untouched.
+_ORIG_EXPIRY = "2026-09-18"
+_SHIFT_DAYS = (date.today() + timedelta(days=30) - date.fromisoformat(_ORIG_EXPIRY)).days
+for _ct in _CONTRACTS:
+    _exp = _ct.get("expirationDate") or ""
+    if _exp.startswith(_ORIG_EXPIRY):
+        _new_date = (date.fromisoformat(_ORIG_EXPIRY) + timedelta(days=_SHIFT_DAYS)).isoformat()
+        _ct["expirationDate"] = _new_date + _exp[len(_ORIG_EXPIRY):]
 TK = server.ticker_storage_key("CRWD")
 
 # RC-REHAB-2: this fixture's chain (real_crwd_complete_chain_quarter.json) was captured

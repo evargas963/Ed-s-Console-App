@@ -266,21 +266,19 @@ def test_bs_vanna_matches_finite_difference_and_gamma_identity(K_, T, sigma, lab
 
 def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
     """RC-211: put-call parity kills any call/put vanna split — same strike/expiry/IV must
-    aggregate the SAME per-contract vanna into both bucket sides (splits come from OI only).
-
-    RC-REHAB-1: expirationDate was hardcoded to a literal "2026-09-18" -- 30 days out when
-    this test was written, but a fixed calendar date, not a fixed OFFSET. Real time caught up
-    to it: compute_exposures_by_strike derives T from time_et.time_to_expiry_years(expirationDate,
-    now=<actual wall clock>), so once "today" reached the hardcoded date, T collapsed to ~0 and
-    every vanna in this test silently computed to 0.0 -- not a production bug (verified: the
-    same inputs with a genuinely future date compute a correct, non-zero, call==put vanna).
-    Computed relative to today so this test cannot expire a second time."""
-    import datetime
+    aggregate the SAME per-contract vanna into both bucket sides (splits come from OI only)."""
+    from datetime import date, timedelta
 
     from math_exposure_core import compute_exposures_by_strike
 
-    future_expiry = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
-    base = {"strikePrice": 100.0, "expirationDate": future_expiry, "gamma": 0.05,
+    # compute_exposures_by_strike's vanna faucet reads REAL wall-clock time
+    # (time_et.now_et(), no injection point) to compute time-to-expiration -- a HARDCODED
+    # expirationDate here would rot the instant real time passes it (T <= 0 silently skips
+    # vanna entirely, exactly the "call vanna did not compute" failure this test exists to
+    # catch -- REPRODUCED 2026-09-21: the prior hardcoded "2026-09-18" had already elapsed).
+    # Always 30 real days out instead.
+    expiry = (date.today() + timedelta(days=30)).isoformat()
+    base = {"strikePrice": 100.0, "expirationDate": expiry, "gamma": 0.05,
             "delta": 0.5, "volatility": 20.0, "openInterest": 100, "multiplier": 100,
             "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,
             "totalVolume": 10}

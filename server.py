@@ -9569,7 +9569,12 @@ def _fetch_state(
     client = _exp.client
 
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, tenth slice): extracted to
-    # _gamma_flip_and_void_zones_for_state (defined above).
+    # _gamma_flip_and_void_zones_for_state (defined above), which already carries the
+    # RC-569 fix (reads the terrain SSOT snapshot instead of an independent
+    # compute_gamma_flip_v2 call on the narrow selected-expiry chain) verbatim -- see
+    # that function's own docstring. origin/main independently ported the same RC-569
+    # fix onto the pre-decomposition inline code; this decomposed call supersedes it,
+    # not a second implementation of the fix.
     _gfvz = _gamma_flip_and_void_zones_for_state(ticker, contracts_use, spot_f, exposures, totals, rows)
     _gamma_flip = _gfvz.gamma_flip
     _gamma_flip_conf = _gfvz.gamma_flip_conf
@@ -13614,7 +13619,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             if new_terrain_fields is not None:
                 payload.update(new_terrain_fields)
                 payload["computed_ts_utc"] = applied_ts
-            # RC-570 follow-up (operator directive, 2026-09-21: "this live fix applied to
+            # RC-571 follow-up (operator directive, 2026-09-21: "this live fix applied to
             # the app repo wide... i better not find out you only made targeted fixes"):
             # /api/options/vanna-by-strike and /api/options/charm-by-strike
             # (_live_terrain_contracts_and_spot) read `_contracts_rest`/`_contracts_rest_spot`
@@ -14862,7 +14867,7 @@ def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None
     duplicate authority: the value traces to exactly one resolve_spot() call, never a second
     computation.
 
-    RC-570 follow-up (2026-09-21): prefers `_contracts_overlaid`/`_contracts_overlaid_spot`
+    RC-571 follow-up (2026-09-21): prefers `_contracts_overlaid`/`_contracts_overlaid_spot`
     -- refresh_gamma_surface_from_stream's own per-tick-freshened contracts, the SAME ones
     the heatmap/Key Levels now read live -- over the REST-cycle-only `_contracts_rest`, so
     Vanna/Charm-by-strike are no longer the one pair of panels still bound exclusively to
