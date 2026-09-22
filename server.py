@@ -11277,9 +11277,20 @@ async def get_live_state(
 # full model stack and would otherwise compete with the live UI.
 #
 # Terrain does not run the model stack. Measured: ~5 ms of math per ticker plus one chain
-# call each, i.e. ~31 req/min against a ~120 req/min Schwab budget. So terrain gets its
-# OWN loop, is never gated on operator mode, and cannot be starved by inference work.
-TERRAIN_REFRESH_SEC: float = 60.0
+# call each.
+#
+# RC-570 (2026-09-21, operator directive): the prior 60.0 was throttled against a "~120
+# req/min Schwab budget" this comment cited without distinguishing WHICH Schwab budget --
+# the operator's explicit correction: that ceiling governs trade/order (two-way) execution
+# calls, not read-only market-data polling, and this loop has never placed a trade. Holding
+# a live market-data UI to a trading rate limit was the wrong model, not a real constraint.
+# Lowered to run the loop back-to-back with only a minimal floor -- ACTUAL fetch latency
+# (network + vendor response time), not an artificial policy pause, is now what paces this
+# loop. If Schwab's real market-data limit turns out to be lower than assumed here, that
+# will surface as observable 429/502s on THIS loop's own chain calls (see
+# _persist_universal_complete_chain/_gated_safe_get_chain's existing status handling) --
+# a measured fact to revisit, not a reason to keep guessing conservatively today.
+TERRAIN_REFRESH_SEC: float = 5.0
 # Match the 2-slot Schwab chain gate. 4 workers × 200-strike payloads queued ~51 tickers
 # and starved the operator card (gate timeouts, Tier-C partial/STALE) at the open.
 TERRAIN_WORKERS: int = 2
@@ -13211,6 +13222,28 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             new_surface["stream_overlay_computed_ts_utc"] = applied_ts
             if ts_recv:
                 new_surface["stream_overlay_receipt_to_computed_ms"] = round((applied_ts - ts_recv) * 1000.0, 1)
+        # RC-570 (2026-09-21, live-RTH finding): this function used to refresh ONLY
+        # `_gamma_surface`/`_per_strike` on every qualifying tick -- Key Levels'
+        # own fields (gamma_flip, call_wall, put_wall, absolute_gamma_strike,
+        # net_gex_peak, gsf/grc, and everything else terrain_engine.compute_terrain
+        # produces) stayed frozen at whatever the last ~60s REST cycle
+        # (_terrain_refresh_one) computed, even while the heatmap cells right next to
+        # them updated per-tick. The operator's own words: "all tickers need to work...
+        # everything needs to work universally" and the explicit demand that the UI
+        # actually be live, not just the heatmap grid. Same canonical faucet
+        # (terrain_engine.compute_terrain) the REST cycle already uses, on the SAME
+        # freshly-overlaid contracts + resolved spot this function already computed for
+        # the surface -- no second exposure formula, no second vendor call, just a
+        # second CONSUMER of data already in hand. Best-effort: a failure here degrades
+        # to "Key Levels waits for the next REST cycle," never to no heatmap update at
+        # all -- the surface/per-strike publication below does not depend on this
+        # succeeding.
+        new_terrain_fields: dict | None = None
+        try:
+            _terrain_snap = compute_terrain(tk, overlaid, spot)
+            new_terrain_fields = _terrain_snap.to_dict()
+        except Exception as _terr_e:  # institutional-swallow-ok: never load-bearing
+            log.debug("eager terrain refresh skipped for %s: %s", tk, _terr_e)
         with _terrain_cache_lock:
             payload = _terrain_cache.get(tk)
             if payload is None:      # evicted/replaced between the read above and now
@@ -13228,6 +13261,21 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             payload["_per_strike"] = new_per_strike
             payload["_per_strike_expiry_raw"] = new_per_strike_by_expiry
             payload["_per_strike_expiry_raw_generation"] = read_generation
+            if new_terrain_fields is not None:
+                payload.update(new_terrain_fields)
+                payload["computed_ts_utc"] = applied_ts
+            # RC-571 follow-up (operator directive, 2026-09-21: "this live fix applied to
+            # the app repo wide... i better not find out you only made targeted fixes"):
+            # /api/options/vanna-by-strike and /api/options/charm-by-strike
+            # (_live_terrain_contracts_and_spot) read `_contracts_rest`/`_contracts_rest_spot`
+            # -- the RAW REST baseline -- and NEVER this function's tick-overlaid contracts,
+            # so those two panels stayed bound to the REST cycle no matter how fast options
+            # ticked, even after gamma_flip/walls/heatmap all went live above. Persisting the
+            # SAME `overlaid`/`spot` this call already computed (never a second computation)
+            # so those endpoints can prefer it too.
+            payload["_contracts_overlaid"] = overlaid
+            payload["_contracts_overlaid_spot"] = spot
+            payload["_contracts_overlaid_computed_ts_utc"] = applied_ts
         return "ok"
     except Exception as e:  # never let a best-effort freshening take the feed loop down
         log.debug("refresh_gamma_surface_from_stream failed for %s: %s", contract_symbol, e)
@@ -13330,6 +13378,21 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
         new_per_strike_by_expiry: dict = {}
         new_per_strike = _per_strike_view_from_contracts(
             overlaid, spot, by_expiry_out=new_per_strike_by_expiry)
+        # RC-570 (2026-09-21, operator directive: "this live fix applied to the app repo
+        # wide... i better not find out you only made targeted fixes"): this function is
+        # refresh_gamma_surface_from_stream's own documented SYMMETRIC SIBLING (same
+        # trigger shape, different signal) and carried the IDENTICAL gap -- Key Levels
+        # (gamma_flip/walls/pin/etc.) never refreshed on a spot tick either, even though a
+        # moving underlying invalidates every dollar value on that panel too (GEX scales
+        # by spot SQUARED, per this function's own docstring). Same canonical faucet, same
+        # freshly-overlaid contracts and spot this call already computed for the surface --
+        # no second exposure formula, no second vendor call.
+        new_terrain_fields: dict | None = None
+        try:
+            _terrain_snap = compute_terrain(tk, overlaid, spot)
+            new_terrain_fields = _terrain_snap.to_dict()
+        except Exception as _terr_e:  # institutional-swallow-ok: never load-bearing
+            log.debug("eager terrain refresh (spot tick) skipped for %s: %s", tk, _terr_e)
         with _terrain_cache_lock:
             payload = _terrain_cache.get(tk)
             if payload is None:
@@ -13341,6 +13404,15 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
             payload["_per_strike"] = new_per_strike
             payload["_per_strike_expiry_raw"] = new_per_strike_by_expiry
             payload["_per_strike_expiry_raw_generation"] = read_generation
+            if new_terrain_fields is not None:
+                payload.update(new_terrain_fields)
+                payload["computed_ts_utc"] = applied_ts
+            # Same Vanna/Charm-by-strike fix as refresh_gamma_surface_from_stream: persist
+            # the overlaid contracts so _live_terrain_contracts_and_spot can prefer them
+            # over the REST-only baseline for THIS trigger path too.
+            payload["_contracts_overlaid"] = overlaid
+            payload["_contracts_overlaid_spot"] = spot
+            payload["_contracts_overlaid_computed_ts_utc"] = applied_ts
         return "ok"
     except Exception as e:  # never let a best-effort freshening take the feed loop down
         log.debug("refresh_gamma_surface_from_spot_tick failed for %s: %s", ticker, e)
@@ -14769,11 +14841,24 @@ def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None
     "historical spot stamped on a completed surface may remain provenance" carve-out, not a
     duplicate authority: the value traces to exactly one resolve_spot() call, never a second
     computation.
+
+    RC-571 follow-up (2026-09-21): prefers `_contracts_overlaid`/`_contracts_overlaid_spot`
+    -- refresh_gamma_surface_from_stream's own per-tick-freshened contracts, the SAME ones
+    the heatmap/Key Levels now read live -- over the REST-cycle-only `_contracts_rest`, so
+    Vanna/Charm-by-strike are no longer the one pair of panels still bound exclusively to
+    the REST floor while everything else derived from this same cache went live. Both
+    fields are written together, from the same call, exactly like `_contracts_rest`/
+    `_contracts_rest_spot` always have been -- one generation, never a chain/spot mismatch.
+    Falls back to `_contracts_rest`/`_contracts_rest_spot` whenever no tick has overlaid
+    this ticker yet (a cold cache, or one with no actively-streamed contract) -- the
+    existing REST-only behavior, unchanged for that case.
     """
     with _terrain_cache_lock:
         payload = _terrain_cache.get(tk) or {}
-        contracts = payload.get("_contracts_rest")
-        spot = payload.get("_contracts_rest_spot")
+        contracts = payload.get("_contracts_overlaid") or payload.get("_contracts_rest")
+        spot = payload.get("_contracts_overlaid_spot")
+        if spot is None:
+            spot = payload.get("_contracts_rest_spot")
     if not contracts or spot is None:
         return None, None
     return contracts, float(spot)

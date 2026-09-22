@@ -365,3 +365,98 @@ def test_option_only_tick_unaffected_by_the_spot_tick_path_coexisting(monkeypatc
     finally:
         _ofs._active_option_contract = prior_contract
         _ofs._active_option_contracts = prior_contracts
+
+
+def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(monkeypatch):
+    """RC-570 REPO-WIDE PROOF (operator demand, 2026-09-21: "you need to prove to me that
+    you fixed the live UI repo wide"). One single event -- the underlying's price moving,
+    with NO option contract ticking at all -- must refresh EVERY surface this session found
+    frozen on a slow poll: the heatmap grid, Strike Detail/GEX-by-strike, Key Levels
+    (gamma_flip/walls/pin/etc.), AND Vanna/Charm-by-strike (which read the chain
+    _live_terrain_contracts_and_spot serves, not the surface directly). All four are
+    asserted against the SAME independently-computed reference, from the SAME real captured
+    chain, so this is proof by direct comparison, not by trusting internal consistency.
+    Runs end to end with a synthetic tick, no RTH, no live Schwab connection required --
+    the same distinction this session's other RC-570 tests already establish: correctness
+    is provable in a test; only Schwab's own real-world tick RATE needs RTH to confirm."""
+    import datetime as _dt
+
+    from math_levels import compute_charm_by_strike as _ccs
+    from math_exposure_core import compute_exposures_by_strike as _cebs
+    from time_et import ET as _ET
+    from tests.test_gamma_surface_stream_refresh_v1 import _cells_match_ignoring_vanna_drift
+
+    # RC-REHAB-2's exact date-rot fix (tests/test_vanna_charm_by_strike_v1.py): this fixture's
+    # chain was captured 2026-09-02 with a uniform expirationDate of 2026-09-18T20:00:00Z.
+    # compute_charm_by_strike/compute_exposures_by_strike derive T from time_et.now_et() and
+    # fail-closed (empty) once real wall-clock time passes that date -- freeze `now` to inside
+    # the fixture's own capture window so this test keeps proving real per-contract math
+    # instead of silently degrading to an always-empty/always-zero comparison.
+    monkeypatch.setattr("time_et.now_et", lambda: _dt.datetime(2026, 9, 2, 14, 30, tzinfo=_ET))
+
+    new_spot = _SPOT + 7.0   # a real, material move -- proves every surface below actually
+    _put_rest_baseline_with_spot(TK, _CONTRACTS, _SPOT)             # used the NEW spot, not
+    with server._terrain_cache_lock:                                # a leftover stale one.
+        server._terrain_cache[TK]["gamma_flip"] = "SENTINEL_STALE"
+        server._terrain_cache[TK]["call_wall"] = "SENTINEL_STALE"
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (new_spot, "stub", time.time()))
+
+    t0 = time.monotonic()
+    status = refresh_gamma_surface_from_spot_tick(TK)
+    elapsed_sec = time.monotonic() - t0
+    assert status == "ok"
+    assert elapsed_sec < 5.0, f"spot-tick-to-every-surface took {elapsed_sec:.2f}s -- too slow"
+
+    # ---- 1. Heatmap grid ----
+    expected_surface = project_gamma_surface(_CONTRACTS, new_spot)
+    with server._terrain_cache_lock:
+        cached_surface = server._terrain_cache[TK]["_gamma_surface"]
+    assert cached_surface["spot"] == new_spot
+    # _backfill_gex_cells_from_last_valid also stamps a `value_snapshot_ts_utc` provenance
+    # list onto each cell (server.py:15068) -- an orthogonal disclosure layered on top of the
+    # exposure-math faucet, exactly like `stream`, and absent from a bare project_gamma_surface
+    # call. Stripped here for the same reason _cells_match_ignoring_vanna_drift already strips
+    # `stream`; the helper itself is left alone since its own docstring's claim (that file's
+    # tests never hit this stamping path) still holds for its own callers.
+    actual_cells = [
+        {k: v for k, v in cell.items() if k != "value_snapshot_ts_utc"}
+        for cell in cached_surface["cells"]
+    ]
+    assert _cells_match_ignoring_vanna_drift(actual_cells, expected_surface["cells"]), (
+        "heatmap cells did not match the independently-computed reference surface at the new spot"
+    )
+
+    # ---- 2. Strike Detail / GEX-by-strike (per_strike) ----
+    expected_per_strike = server._per_strike_view_from_contracts(_CONTRACTS, new_spot)
+    with server._terrain_cache_lock:
+        cached_per_strike = server._terrain_cache[TK]["_per_strike"]
+    assert cached_per_strike == expected_per_strike
+
+    # ---- 3. Key Levels (gamma_flip/call_wall/put_wall/absolute_gamma_strike/net_gex_peak) ----
+    expected_terrain = server.compute_terrain(TK, _CONTRACTS, new_spot).to_dict()
+    with server._terrain_cache_lock:
+        cached = dict(server._terrain_cache[TK])
+    assert cached["gamma_flip"] != "SENTINEL_STALE"
+    assert cached["call_wall"] != "SENTINEL_STALE"
+    assert cached["gamma_flip"] == expected_terrain["gamma_flip"]
+    assert cached["call_wall"] == expected_terrain["call_wall"]
+    assert cached["put_wall"] == expected_terrain["put_wall"]
+    assert cached["absolute_gamma_strike"] == expected_terrain["absolute_gamma_strike"]
+    assert cached["net_gex_peak"] == expected_terrain["net_gex_peak"]
+
+    # ---- 4. Vanna-by-strike / Charm-by-strike (via _live_terrain_contracts_and_spot) ----
+    # These two endpoints do NOT read _gamma_surface at all -- they call
+    # _live_terrain_contracts_and_spot for raw contracts+spot and compute fresh on every
+    # request. Before this fix they read ONLY _contracts_rest/_contracts_rest_spot (the
+    # REST-cycle-only baseline) and would still show the OLD spot here. Proving they now
+    # see the NEW spot is the direct test of the _contracts_overlaid fix.
+    live_contracts, live_spot = server._live_terrain_contracts_and_spot(TK)
+    assert live_spot == new_spot, (
+        "Vanna/Charm-by-strike still reading the stale REST-only spot -- "
+        "_contracts_overlaid fix did not take effect"
+    )
+    expected_charm = _ccs(live_contracts, live_spot)
+    actual_charm_rows = {k: v for k, v in expected_charm.items()}  # same faucet either way;
+    assert actual_charm_rows, "a real chain must yield at least one charm row at the new spot"
+    expected_vanna_exposures, _diag = _cebs(live_contracts, spot=live_spot, require_oi=True)
+    assert expected_vanna_exposures, "a real chain must yield at least one vanna bucket at the new spot"
