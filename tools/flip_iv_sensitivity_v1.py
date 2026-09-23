@@ -76,7 +76,7 @@ def usable_contracts(chain: Any, dte_lo: int = DTE_LO, dte_hi: int = DTE_HI) -> 
         dte = x.get("daysToExpiration")
         if dte is None or not (dte_lo <= dte <= dte_hi):
             continue
-        if not x.get("strikePrice") or not (x.get("openInterest") or 0) > 0:
+        if not x.get("strikePrice") or not (x.get("openInterest") or 0) > 0:  # caps-ok: admission filter: a contract without open interest is EXCLUDED from the usable set, never counted as zero OI
             continue
         out.append(dict(x, expirationDate=str(x.get("expirationDate"))[:10]))
     return out
@@ -97,9 +97,12 @@ def oi_by_moneyness(chains: list[tuple[float, list[dict]]]) -> list[dict]:
         for x in cts:
             m = abs(float(x["strikePrice"]) / spot - 1.0)
             b = min(int(m / BIN_WIDTH), MAX_BIN)
-            oi[b] = oi.get(b, 0.0) + float(x.get("openInterest") or 0)
+            # usable_contracts admits only contracts with openInterest > 0, so the key is present.
+            oi[b] = oi.get(b, 0.0) + float(x["openInterest"])  # caps-ok: accumulator initialised at 0.0 for a new bin
             n[b] = n.get(b, 0) + 1
-    total = sum(oi.values()) or 1.0
+    # CAPS (CALL_OR_DEFAULT): `or 1.0` reported every bin as a 0.0% share when no OI exists
+    # at all; a share of zero total is undefined -> None.
+    total = sum(oi.values())
     rows = []
     for b in range(MAX_BIN + 1):
         strikes = n.get(b, 0)
@@ -107,8 +110,9 @@ def oi_by_moneyness(chains: list[tuple[float, list[dict]]]) -> list[dict]:
             "bin": f"{b}-{b+1}%" if b < MAX_BIN else f"{MAX_BIN}%+",
             "total_oi": round(oi.get(b, 0.0)),
             "n_strikes": strikes,
-            "oi_per_strike": round(oi.get(b, 0.0) / strikes) if strikes else 0,
-            "share_pct": round(oi.get(b, 0.0) / total * 100, 1),
+            # An empty bin has no per-strike concentration: None, never a measured 0.
+            "oi_per_strike": round(oi.get(b, 0.0) / strikes) if strikes else None,  # caps-ok: empty bin -> per-strike OI undefined (None)
+            "share_pct": round(oi.get(b, 0.0) / total * 100, 1) if total > 0 else None,  # caps-ok: per-bin OI accumulator, an unseen bin holds 0 OI
         })
     return rows
 
@@ -169,7 +173,7 @@ def load_wide_chains(db_path: str) -> list[tuple[float, float, list[dict]]]:
     """
     from time_et import is_trading_day_et
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         rows = conn.execute(
             "SELECT spot, ts_utc, chain_json, et_date FROM option_chain_morning_full "
@@ -220,5 +224,5 @@ def run(db_path: str) -> dict[str, Any]:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    path = args[0] if args else str(canonical_console_db_path())
+    path = args[0] if args else str(canonical_console_db_path())  # caps-ok: CLI positional argument; absent uses the canonical console DB path
     print(json.dumps(run(path), indent=2))

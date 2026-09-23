@@ -133,7 +133,7 @@ def git_subcommand(cmd: str) -> tuple[str, list[str]]:
     of the same syntax reuses this instead of re-deriving it — ONE FAUCET.
     """
     toks = [t.strip("\"'") for t in _tokens(shell_executed_part(cmd or ""))]
-    gi = next((i for i, t in enumerate(toks)
+    gi = next((i for i, t in enumerate(toks)  # caps-ok: next(..., -1) sentinel index; the very next line `if gi < 0: return "", []` handles "no git token" explicitly
                if Path(t).name.lower() in ("git", "git.exe")), -1)
     if gi < 0:
         return "", []
@@ -179,7 +179,7 @@ def _prod_forbidden_git_reason(cmd: str) -> str | None:
             return None                  # return-to-main recovery is sanctioned
         if creates:
             return f"`git {sub} -b` creates/moves onto a new branch"
-        return f"`git {sub} {refs[0] if refs else ''}`".rstrip() + " moves the checkout off main"
+        return f"`git {sub} {refs[0] if refs else ''}`".rstrip() + " moves the checkout off main"  # caps-ok: display-only message text: when no ref was given the f-string renders nothing and rstrip() trims it; not data
     if sub in ("merge", "pull"):
         ff = "--ff-only" in args
         refs = [a for a in args if not a.startswith("-")]

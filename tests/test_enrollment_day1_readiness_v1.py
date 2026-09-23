@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+import app.api.routes.market_data
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -118,7 +119,7 @@ def test_bars1m_falls_through_to_live_accumulator_for_unbanked_ticker(tmp_path, 
 
     monkeypatch.setattr(srv, "get_db", lambda: _StubDB())
     monkeypatch.setattr(srv, "_candles_1m", _Acc())
-    resp = srv.get_bars1m(ticker="PREV", limit=780)
+    resp = app.api.routes.market_data.get_bars1m(ticker="PREV", limit=780)
     body = json.loads(resp.body)
     assert body["n"] == 3 and body["source"] == "live_accumulator_unbanked"
     assert body["bars"][0]["o"] == 1.0 and body["bars"][-1]["c"] == 1.5

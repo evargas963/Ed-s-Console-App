@@ -263,7 +263,8 @@ def test_panel_recent_audit_actions_are_ticker_scoped_only(tmp_path: Path):
         include_live_drift=False,
         emit_notification_delivery=False,
     )
-    assert all(str(a.get("ticker", "")).upper() == "SPY" for a in p["recent_audit_actions"])
+    assert p["recent_audit_actions"], "an empty list would make the scope check below vacuous"
+    assert all(str(a["ticker"]).upper() == "SPY" for a in p["recent_audit_actions"])
 
 
 def test_rollback_checkpoint_skips_corrupt_manifest_uses_valid_remaining(

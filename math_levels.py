@@ -522,7 +522,7 @@ def build_totals_rows(
         nd = (cd - pd) if cd is not None and pd is not None else None
         noi = (coi - poi) if coi is not None and poi is not None else None
 
-        pcr = (poi / coi) if coi is not None and coi > 0 and poi is not None else None
+        pcr = (poi / coi) if coi is not None and coi > 0 and poi is not None else None  # caps-ok: put/call OI ratio is None (not computable) when either OI leg is missing or call OI is 0 -- the else branch is the honest absence, no value is fabricated
 
         # ATM IV + skew proxy
         atm = _spot_atm_strike(sset, spot)
@@ -1355,7 +1355,7 @@ def compute_gamma_flip_v2(
     # measurably ~1.4% of spot off was presented as trustworthy — the defect the operator flagged.
     covers_regime = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
     covers_level = lo <= spot * (1.0 - trusted_span_pct) and hi >= spot * (1.0 + trusted_span_pct)
-    covers = covers_level          # TRUSTED is earned by the LEVEL span, never the fetch width
+    # TRUSTED is earned by the LEVEL span, never the fetch width.
     _verdict = (GAMMA_FLIP_TRUSTED if covers_level
                 else GAMMA_FLIP_LEVEL_APPROX if covers_regime
                 else GAMMA_FLIP_NARROW)

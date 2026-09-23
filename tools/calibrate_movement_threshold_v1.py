@@ -54,7 +54,7 @@ def main() -> None:
     max_rows = int(args.max_rows)
     fetch_limit = max(max_rows * _RTH_FETCH_OVERSAMPLE, max_rows)
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     configure_sqlite_connection(conn)
     sql = f"""
     SELECT ts_utc, {pts_col} AS pts, atr, spot

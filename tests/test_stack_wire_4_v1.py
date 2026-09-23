@@ -107,8 +107,11 @@ def test_classify_stack_health_single_producer(repo_index):
             if "def classify_stack_health" in line:
                 continue
             call_sites.append(f"{rel}:{i}")
-    # Single-producer contract: exactly ONE production call site, and it lives in
-    # server.py. The exact line is not pinned — line-number pins rot every time
-    # server.py grows above the call site (2026-06-10: pin said 2084, site at 2614).
+    # Single-producer contract: exactly ONE production call site. The exact line is
+    # not pinned — line-number pins rot every time the owning file grows above the
+    # call site (2026-06-10: pin said 2084, site at 2614). RC-REHAB-1 (2026-09-23,
+    # module extraction, twenty-eighth slice): the call site's owning function,
+    # _attach_stack_runtime_and_governance, moved out of server.py entirely, into
+    # stack_runtime_governance.py -- the file pin moved with it.
     assert len(call_sites) == 1, call_sites
-    assert call_sites[0].startswith("server.py:"), call_sites
+    assert call_sites[0].startswith("stack_runtime_governance.py:"), call_sites

@@ -69,7 +69,7 @@ def _overlap_fraction(baseline_ids: set[Any], other_ids: set[Any]) -> dict[str, 
         return {"jaccard": 1.0, "recall_of_baseline_in_other": None, "intersection": 0}
     inter = len(baseline_ids & other_ids)
     union = len(baseline_ids | other_ids)
-    jaccard = inter / union if union else 0.0
+    jaccard = inter / union  # union > 0: the both-empty case returned above
     recall = inter / len(baseline_ids) if baseline_ids else None
     return {
         "jaccard": round(jaccard, 6),
@@ -396,8 +396,10 @@ def run_feature_impact_audit(
                 {
                     "from_tier": int(p["tier"]),
                     "to_tier": int(n["tier"]),
-                    "row_count_delta": int(n.get("row_count_after_query_limit", 0))
-                    - int(p.get("row_count_after_query_limit", 0)),
+                    # db_snapshots._append_tier writes row_count_after_query_limit on every tier
+                    # entry; a missing one raises instead of fabricating a 0-row tier delta.
+                    "row_count_delta": int(n["row_count_after_query_limit"])
+                    - int(p["row_count_after_query_limit"]),
                     "relaxed_features": n.get("relaxed_vs_previous_tier") or [],
                 }
             )
@@ -443,7 +445,11 @@ def _readiness_verdict(
     widening_deltas: list[dict[str, Any]],
 ) -> tuple[str, list[str]]:
     rationale: list[str] = []
-    chosen = int(trace.get("chosen_tier") or 0)
+    # None = the trace recorded no chosen tier; it is not tier 0 and cannot be judged against max tier.
+    chosen_raw = trace.get("chosen_tier")
+    chosen = int(chosen_raw) if chosen_raw is not None else None
+    if chosen is None:
+        rationale.append("Trace carries no chosen_tier — widening depth for this anchor is unmeasured.")
     if not baseline_metrics["tier_stop_viable"]:
         rationale.append(
             "Baseline limited pool fails tier-stop viability — data/sparsity issue for this anchor; "
@@ -451,7 +457,7 @@ def _readiness_verdict(
         )
         return "investigate_before_shadow", rationale
 
-    if chosen >= 5:
+    if chosen is not None and chosen >= 5:
         rationale.append(
             "Production reached max tier (broadest pool) — high widening; adaptive shadow should "
             "treat feature sensitivity as elevated."
@@ -465,8 +471,8 @@ def _readiness_verdict(
                 "may compress pools sharply; bucket granularity is a known sensitivity."
             )
 
-    ortho_zone = next((a for a in ablations if a["ablation_id"] == "orthogonal_t1_drop_zone"), None)
-    ortho_vwap = next((a for a in ablations if a["ablation_id"] == "orthogonal_t1_drop_vwap"), None)
+    ortho_zone = next((a for a in ablations if a["ablation_id"] == "orthogonal_t1_drop_zone"), None)  # caps-ok: lookup; None (ablation not run) skips the asymmetry check below via `if ortho_zone and ortho_vwap`
+    ortho_vwap = next((a for a in ablations if a["ablation_id"] == "orthogonal_t1_drop_vwap"), None)  # caps-ok: lookup; None (ablation not run) skips the asymmetry check below via `if ortho_zone and ortho_vwap`
     if ortho_zone and ortho_vwap:
         rz = ortho_zone["metrics"]["row_count"]
         rw = ortho_vwap["metrics"]["row_count"]

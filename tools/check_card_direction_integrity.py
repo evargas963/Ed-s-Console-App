@@ -60,7 +60,7 @@ from tools.replay_money_path_probe import probe_snapshot_row, rth_window_utc
 
 
 def _connect_ro(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -163,7 +163,7 @@ def _fusion_triplets_from_cal(cal_row: Optional[sqlite3.Row]) -> dict[str, dict[
     try:
         _mo = cal_row["model_outputs_json"]
         mo = decode_json_blob(_mo) if _mo else {}
-        by_hz = (mo.get("stack_probs_bundle") or {}).get("multi_horizon_ml_fusion_bundle", {}).get(
+        by_hz = (mo.get("stack_probs_bundle") or {}).get("multi_horizon_ml_fusion_bundle", {}).get(  # caps-ok: a calibration row without the fusion bundle yields no by_horizon blocks, and every horizon triplet below is then None (absence kept), never a fabricated probability
             "by_horizon", {}
         )
     except (json.JSONDecodeError, TypeError, OSError):   # OSError: gzip.BadGzipFile
@@ -491,9 +491,9 @@ def run_direction_integrity_audit(
     if not db_path.is_file():
         raise FileNotFoundError(f"DB not found: {db_path}")
 
-    os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-key")
-    os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-secret")
-    os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")
+    os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-key")  # caps-ok: import-time config placeholder so this read-only audit can import server helpers offline; no Schwab call is made and the value is never data
+    os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-secret")  # caps-ok: import-time config placeholder so this read-only audit can import server helpers offline; no Schwab call is made and the value is never data
+    os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")  # caps-ok: import-time config placeholder so this read-only audit can import server helpers offline; no Schwab call is made and the value is never data
 
     obs = base_ticker_observability_report(day=day, tickers=tickers, db_path=db_path)
     ticker_blocks = {
@@ -535,7 +535,8 @@ def run_direction_integrity_audit(
             "decline_intervals_found": len(all_intervals),
             "tickers_with_decline": sorted({iv["ticker"] for iv in all_intervals}),
             "long_during_decline_total_samples": sum(
-                block.get("long_during_decline_samples") or 0 for block in ticker_blocks.values()
+                # audit_ticker's single return always writes this count
+                block["long_during_decline_samples"] for block in ticker_blocks.values()
             ),
         },
         "data_limitations": {
@@ -546,7 +547,7 @@ def run_direction_integrity_audit(
                 "observability_status": next(
                     (
                         row.get("coverage_status")
-                        for row in obs.get("tickers", [])
+                        for row in obs["tickers"]  # base_ticker_observability_report always writes tickers
                         if row.get("ticker") == t
                     ),
                     None,
@@ -564,7 +565,7 @@ def format_markdown(report: dict[str, Any]) -> str:
         f"# Card direction integrity — {report['meta']['date']}",
         "",
         f"DB: `{report['meta']['db_path']}`",
-        f"Min decline window: {report['meta'].get('min_decline_minutes', '—')} minutes",
+        f"Min decline window: {report['meta'].get('min_decline_minutes', '—')} minutes",  # caps-ok: markdown display placeholder for an older report without the field; never parsed back
         "",
         "## Summary",
         "",
@@ -575,7 +576,7 @@ def format_markdown(report: dict[str, Any]) -> str:
         "## Base ticker observability",
         "",
     ]
-    for row in report.get("base_ticker_observability", {}).get("tickers") or []:
+    for row in report["base_ticker_observability"]["tickers"]:  # written by build_report from base_ticker_observability_report
         lines.append(
             f"- **{row['ticker']}**: {row.get('coverage_status')} — "
             f"norm_rows={row.get('normalized_count_rth')} cal_rows={row.get('calibration_decision_count_rth')} "
@@ -609,7 +610,7 @@ def format_markdown(report: dict[str, Any]) -> str:
         lines.append(f"- Primary: **{ans.get('primary_classification')}**")
         lines.append(f"- Payloads fresh in decline: {block.get('payloads_fresh_in_decline')}")
         lines.append(f"- LONG-during-decline samples: {block.get('long_during_decline_samples')}")
-        lines.append(f"- Horizon 1c hit rate: {(block.get('horizon_metrics') or {}).get('1c', {}).get('direction_hit_rate')}")
+        lines.append(f"- Horizon 1c hit rate: {(block.get('horizon_metrics') or {}).get('1c', {}).get('direction_hit_rate')}")  # caps-ok: markdown display: a block without horizon metrics prints None for the hit rate (absence shown, not a number)
         lines.append(f"- Classifications: {block.get('classification_counts')}")
         if ans.get("note"):
             lines.append(f"- Note: {ans.get('note')}")

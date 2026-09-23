@@ -44,16 +44,7 @@ from calibration.statistical_integrity import (
 
 log = logging.getLogger(__name__)
 
-try:
-    from db import configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.configure_sqlite_connection not available — using no-op stub: %s",
-        e,
-    )
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 from db import get_snapshot_sql
 
@@ -98,7 +89,9 @@ def _phase4_attach_statistical_integrity(out: dict[str, Any]) -> None:
         if g and not g.get("sufficient_sample"):
             insufficient[key] = insufficient.get(key, 0) + 1
 
-    for row in out.get("decision_performance_from_log", {}).values():
+    # analyze() initialises decision_performance_from_log; index directly so a dropped section
+    # raises instead of reporting zero insufficient signal buckets.
+    for row in out["decision_performance_from_log"].values():
         _inc(row.get("sample_gate"), "decision_signal_buckets")
     mh = out.get("mhap_alignment") or {}
     _inc(mh.get("aligned_mean_gate"), "mhap_aligned")
@@ -123,7 +116,7 @@ def _phase4_attach_statistical_integrity(out: dict[str, Any]) -> None:
         "binary_pass": bool(leak_ok),
     }
     if not leak_ok:
-        out.setdefault("notes", []).append(
+        out["notes"].append(
             "statistical_integrity: defensive leak check failed — inspect sample_gate fields."
         )
 
@@ -143,7 +136,7 @@ def analyze(db_path: Path) -> dict[str, Any]:
         out["statistical_integrity"] = {"binary_pass": False, "error": "db missing"}
         return out
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
@@ -353,15 +346,13 @@ def analyze(db_path: Path) -> dict[str, Any]:
             source_tables=["snapshots"],
             labeled_sample_count=len(snap),
             excluded_by_reason={
-                "snapshots_1m_unlabeled_outcome_5c": snap_counts.get(
-                    "snapshots_rows_excluded_unlabeled_1m", 0
-                ),
-                "snapshots_rows_non_1m_in_db_ignored": snap_counts.get(
-                    "snapshots_rows_non_canonical_timeframe_in_db", 0
-                ),
+                "snapshots_1m_unlabeled_outcome_5c": snap_counts["snapshots_rows_excluded_unlabeled_1m"],
+                "snapshots_rows_non_1m_in_db_ignored": snap_counts[
+                    "snapshots_rows_non_canonical_timeframe_in_db"
+                ],
                 "cap_excluded_over_200k_labeled": max(
                     0,
-                    snap_counts.get("snapshots_rows_1m_labeled_outcome_5c", 0) - len(snap),
+                    snap_counts["snapshots_rows_1m_labeled_outcome_5c"] - len(snap),
                 ),
             },
         ),
@@ -399,12 +390,12 @@ def main() -> int:
         json.dumps(
             {
                 "wrote": str(outp),
-                "binary_pass": data.get("statistical_integrity", {}).get("binary_pass"),
+                "binary_pass": data["statistical_integrity"]["binary_pass"],
             },
             indent=2,
         )
     )
-    return 0 if data.get("statistical_integrity", {}).get("binary_pass") else 3
+    return 0 if data["statistical_integrity"]["binary_pass"] else 3
 
 
 if __name__ == "__main__":

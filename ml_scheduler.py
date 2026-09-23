@@ -21,10 +21,8 @@ from __future__ import annotations
 import os
 import sys
 import json
-import sqlite3
 import logging
 import threading
-from contextlib import contextmanager
 from pathlib import Path
 
 # RC-345/F25: the trainer/scheduler writes artifact filenames and enrollment identity —
@@ -33,9 +31,6 @@ from pathlib import Path
 # the DB storage key. No local .upper() second faucet for artifact/enrollment identity.
 from instrument_identity import ticker_storage_key
 
-# RC-340: THE row-enrichment authority for every engineer_single_snapshot call in this
-# module — five cascade/bridge routes previously fed RAW rows (cf_* -> 0.0, dgex -> NaN).
-from ml_data_common import prepare_row_for_xgb_features
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, Set
 import argparse
@@ -56,2440 +51,88 @@ TRAINING_REPORT_PATH = MODEL_DIR / "training_report.jsonl"
 RUN_AT_HOUR = 16
 RUN_AT_MINUTE = 15
 
-from numeric_contract import direction_from_normalized_triplet
 from time_et import ET
 
 log = logging.getLogger("ml_scheduler")
 
 from ml_horizon import (
     DEFAULT_ML_HORIZON_SLUG,
-    DEFAULT_TRAINING_LABEL_COLUMN,
     normalize_ml_horizon_slug,
     outcome_column,
     target_definition as horizon_target_definition,
 )
 
 
-def scheduler_arch_state_path(ml_horizon_slug: str) -> Path:
-    su = normalize_ml_horizon_slug(ml_horizon_slug)
-    if su == DEFAULT_ML_HORIZON_SLUG:
-        return ARCH_STATE_PATH
-    return MODEL_DIR / f"arch_state_{su}.json"
-
-
-def scheduler_active_root(ml_horizon_slug: str) -> Path:
-    from active_bundle_contract import scheduler_active_root as _contract_root
-
-    return _contract_root(MODEL_DIR, ml_horizon_slug)
-
-
-def _infer_slug_from_target_column(target_column: str) -> str:
-    col = (target_column or "").strip().lower()
-    if col.startswith("outcome_"):
-        return normalize_ml_horizon_slug(col[len("outcome_") :])
-    return DEFAULT_ML_HORIZON_SLUG
-
-
-def _now_et() -> datetime:
-    from time_et import now_et
-
-    return now_et()
-
-
-def _scheduler_auto_promote_to_active() -> bool:
-    from arch_competition.scheduler_integration import scheduler_auto_promote_to_active_enabled
-
-    return scheduler_auto_promote_to_active_enabled()
-
-
-def _scheduler_skip_parallel_train() -> bool:
-    """Operator: ED_ML_SCHEDULER_SKIP_PARALLEL_TRAIN=1 — train/eval cascade only; keep parallel artifacts."""
-    return os.environ.get("ED_ML_SCHEDULER_SKIP_PARALLEL_TRAIN", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
-
-
-@contextmanager
-def _strict_off_for_candidate_inference():
-    """Temporarily disable strict-active-only resolution for candidate model inference."""
-    key = "ED_XGB_STRICT_ACTIVE_ONLY"
-    prior = os.environ.get(key)
-    os.environ[key] = "0"
-    try:
-        yield
-    finally:
-        if prior is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = prior
-
-
-def _append_training_report(report: dict):
-    """Append a per-ticker training report line to training_report.jsonl."""
-    report["timestamp"] = _now_et().strftime("%Y-%m-%d %H:%M:%S ET")
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    with open(TRAINING_REPORT_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(report) + "\n")
-
-
-def _governed_report_fields(governed_slice: Optional[dict[str, Any]]) -> dict[str, Any]:
-    blocked: list[Any] = []
-    promotion_decision = None
-    governed_failed_closed = False
-    if isinstance(governed_slice, dict):
-        governed_failed_closed = bool(governed_slice.get("failed_closed"))
-        promotion_decision = governed_slice.get("latest_promotion_decision")
-        if governed_failed_closed:
-            err = governed_slice.get("error")
-            blocked = [{"code": "governed_failed_closed", "detail": str(err) if err is not None else ""}]
-        else:
-            flags = governed_slice.get("blocked_promotion_flags")
-            if isinstance(flags, list):
-                blocked = list(flags)
-    return {
-        "governed_failed_closed": governed_failed_closed,
-        "promotion_decision": promotion_decision,
-        "blocked_promotion_flags": blocked,
-    }
-
-
-def _apply_pr2_report_fields(
-    report: dict[str, Any],
-    *,
-    outcome: str,
-    horizon: str,
-    artifact_complete: bool,
-    consecutive_cache_skips: int,
-    governed_slice: Optional[dict[str, Any]],
-) -> None:
-    report["outcome"] = outcome
-    report["horizon"] = horizon
-    report["artifact_complete"] = artifact_complete
-    report["consecutive_cache_skips"] = consecutive_cache_skips
-    report.update(_governed_report_fields(governed_slice))
-
-
-def _resolve_ticker_outcome(
-    *,
-    ticker: str,
-    horizon: str,
-    skip_governed_eval: bool,
-    governed_slice: Optional[dict[str, Any]],
-    parallel_skip: bool,
-    cascade_skip: bool,
-    promoted: bool,
-    consecutive_cache_skips: int,
-    auto_exec_result: Optional[dict[str, Any]] = None,
-) -> tuple[str, int]:
-    from training_outcome import TrainingOutcome, is_training_anchor_ticker
-    from training_pipeline_status import (
-        bump_cache_skip_streak,
-        get_cache_skip_cap,
-        reset_cache_skip_streak,
-    )
-
-    if skip_governed_eval:
-        from training_outcome import is_training_anchor_ticker
-
-        if is_training_anchor_ticker(ticker):
-            return TrainingOutcome.eval_failed.value, consecutive_cache_skips
-        return TrainingOutcome.promote_skipped.value, consecutive_cache_skips
-
-    if isinstance(governed_slice, dict) and governed_slice.get("failed_closed"):
-        return TrainingOutcome.eval_failed.value, consecutive_cache_skips
-
-    if isinstance(auto_exec_result, dict):
-        if auto_exec_result.get("skipped_reason") == "verify_failed":
-            return TrainingOutcome.verify_failed.value, consecutive_cache_skips
-        if auto_exec_result.get("executed"):
-            reset_cache_skip_streak(ticker, horizon)
-            return TrainingOutcome.promote_ok.value, 0
-        would_promote = bool(
-            isinstance(governed_slice, dict)
-            and governed_slice.get("would_promote_challenger")
-            and not governed_slice.get("failed_closed")
-        )
-        if would_promote and not auto_exec_result.get("executed"):
-            if parallel_skip and cascade_skip:
-                streak = bump_cache_skip_streak(ticker, horizon)
-                cap = get_cache_skip_cap()
-                if streak > cap:
-                    return TrainingOutcome.cache_skip_streak_exceeded.value, streak
-                return TrainingOutcome.cache_skipped.value, streak
-            reset_cache_skip_streak(ticker, horizon)
-            return TrainingOutcome.promote_skipped.value, 0
-
-    if parallel_skip and cascade_skip:
-        streak = bump_cache_skip_streak(ticker, horizon)
-        cap = get_cache_skip_cap()
-        if streak > cap:
-            return TrainingOutcome.cache_skip_streak_exceeded.value, streak
-        return TrainingOutcome.cache_skipped.value, streak
-
-    reset_cache_skip_streak(ticker, horizon)
-    if promoted:
-        return TrainingOutcome.promote_ok.value, 0
-    return TrainingOutcome.trained.value, 0
-
-
-def _is_market_day(dt: datetime) -> bool:
-    if dt.weekday() >= 5:
-        return False
-    md = (dt.month, dt.day)
-    holidays = [
-        (1, 1), (1, 20), (2, 17), (4, 18), (5, 26),
-        (6, 19), (7, 4), (9, 1), (11, 27), (12, 25),
-    ]
-    return md not in holidays
-
-
-def _wait_until_1615():
-    now = _now_et()
-    target = now.replace(hour=RUN_AT_HOUR, minute=RUN_AT_MINUTE, second=0, microsecond=0)
-    if now >= target:
-        return
-    import time
-    time.sleep(min((target - now).total_seconds(), 86400))
-
-
-def _training_ticker_union(
-    db_path: str | None = None,
-    timeframe: str | None = None,
-    *,
-    label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
-) -> list[str]:
-    """Authoritative enrollment only: EdDB.logging_universe (see scheduler_user_tickers).
-
-    db_path / timeframe / label_column are unused here; kept for call-site stability.
-    RTH-labeled rows in snapshots determine whether training *runs* per ticker, not *membership*.
-    """
-    try:
-        from scheduler_user_tickers import load_user_scheduler_tickers_or_empty
-
-        tickers = load_user_scheduler_tickers_or_empty()
-    except Exception:
-        tickers = []
-    return sorted({t for t in tickers if t and not str(t).startswith("$")})
-
-
-def _get_tickers_with_rth_data(
-    db_path: str, timeframe: str = None, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
-) -> list[str]:
-    from ml_data_common import is_rth_ts_utc, training_base_where_clause
-    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
-    _tf = timeframe or CANONICAL_TIMEFRAME
-    if _tf != CANONICAL_TIMEFRAME:
-        raise ValueError(
-            f"_get_tickers_with_rth_data: canonical 1m only; got timeframe={_tf!r}"
-        )
-    table = SNAPSHOT_TABLE_1M
-    conn = sqlite3.connect(db_path)
-    where = training_base_where_clause(label_column, include_ticker=False)
-    rows = conn.execute(
-        f"SELECT ticker, ts_utc FROM {table} WHERE {where} ORDER BY ticker",
-        (_tf,),
-    ).fetchall()
-    conn.close()
-    tickers: set[str] = set()
-    for r in rows:
-        tkr = r[0]
-        if not tkr or str(tkr).startswith("$"):
-            continue
-        try:
-            if is_rth_ts_utc(float(r[1])):
-                tickers.add(tkr)
-        except (TypeError, ValueError):
-            continue
-    return sorted(tickers)
-
-
-def _diagnostic_db_tickers_not_enrolled(
-    db_path: str,
-    enrolled: list[str],
-    *,
-    timeframe: str | None = None,
-    label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
-) -> list[str]:
-    """Non-authoritative: tickers with labeled RTH rows but not in logging_universe."""
-    try:
-        have = _get_tickers_with_rth_data(
-            db_path, timeframe=timeframe, label_column=label_column
-        )
-    except Exception:
-        return []
-    # RC-345/F25: enrollment identity through the one authority — enrolled 'SPX' and
-    # DB-stored '$SPX' must compare equal, not diverge under bare .upper().
-    e = {ticker_storage_key(x) for x in enrolled if x}
-    return sorted({t for t in have if ticker_storage_key(t) not in e})
-
-
-def _load_rth_rows_for_ticker(
-    db_path: str, ticker: str, timeframe: str = None, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
-) -> list[dict]:
-    from ml_data_common import filter_ts_utc_list_to_rth, training_base_where_clause
-    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
-    _tf = timeframe or CANONICAL_TIMEFRAME
-    if _tf != CANONICAL_TIMEFRAME:
-        raise ValueError(
-            f"_load_rth_rows_for_ticker: canonical 1m only; got timeframe={_tf!r}"
-        )
-    table = SNAPSHOT_TABLE_1M
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    where = training_base_where_clause(label_column, include_ticker=False)
-    rows = conn.execute(
-        f"""
-        SELECT * FROM {table}
-        WHERE ticker = ? AND {where}
-        ORDER BY ts_utc ASC
-        """,
-        (ticker, _tf),
-    ).fetchall()
-    conn.close()
-    out: list[dict] = []
-    for r in rows:
-        d = dict(r)
-        try:
-            if filter_ts_utc_list_to_rth([float(d["ts_utc"])]):
-                out.append(d)
-        except (TypeError, ValueError, KeyError):
-            continue
-    return out
-
-
-def _empty_realized_metrics(n_rows: int) -> dict[str, Any]:
-    from realized_contract_eval import SKIP_RATE_FAIL_THRESHOLD, SKIP_RATE_WARNING_THRESHOLD
-
-    # ECON-01 (2026-07-11): the empty shape mirrors the denominator-first
-    # aggregate — no tradeable rows were evaluated, so execution economics are
-    # unmeasurable (skip_rate None), not "100% skipped".
-    return {
-        "eval_pnl_realized_contract": None,
-        "total_pnl_dollars": None,
-        "avg_pnl_dollars": None,
-        "median_pnl_dollars": None,
-        "win_rate": None,
-        "avg_win": None,
-        "avg_loss": None,
-        "expectancy": None,
-        "total_signals": 0,
-        "skipped_trade_count": 0,
-        "valid_trade_count": 0,
-        "skip_rate": None,
-        "universe_rows_total": n_rows,
-        "non_decision_row_counts": {},
-        "decision_no_trade_rows": 0,
-        "tradeable_signal_rows": 0,
-        "execution_economics_measurable": False,
-        "skip_reason_counts": {},
-        "skip_reason_counts_coarse": {},
-        "skip_rate_by_reason": {},
-        "skip_rate_warning_threshold": SKIP_RATE_WARNING_THRESHOLD,
-        "skip_rate_fail_threshold": SKIP_RATE_FAIL_THRESHOLD,
-        "skip_rate_warning_flag": False,
-        "skip_rate_fail_flag": False,
-        "evaluation_quality_degraded": False,
-        "same_bar_conflict_trade_count": 0,
-        "chain_selection_quality": {},
-    }
-
-
-def _eval_hist_db_for_labeled_rows(
-    db_path: str,
-    ticker: str,
-    rows: list[dict],
-):
-    """Preload causal 1m history for offline RTH eval (parallel/cascade arch competition)."""
-    from train_all import preload_historical_db_for_eval
-    from lstm_data import STREAM_5M_LOOKBACK, STREAM_1M_LOOKBACK
-
-    _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
-    if not _tss:
-        return None
-    max_ts = max(_tss)
-    min_ts = min(_tss)
-    buffer_sec = float(STREAM_5M_LOOKBACK + STREAM_1M_LOOKBACK + 30) * 60.0
-    return preload_historical_db_for_eval(
-        db_path,
-        ticker,
-        max_ts,
-        min_ts_utc=max(0.0, min_ts - buffer_sec),
-    )
-
-
-def _evaluate_parallel_on_full_rth(
-    db_path: str,
-    ticker: str,
-    model_dir: Path,
-    *,
-    allowed_et_dates: Optional[Set[str]] = None,
-    target_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
-    return_detail: bool = False,
-    max_eval_rows: Optional[int] = None,
-) -> tuple[float, float, int, Optional[float], dict[str, Any]] | tuple:
-    """Run parallel ensemble on full RTH data (or only ET dates in allowed_et_dates if set).
-
-    Returns accuracy, balanced_accuracy, n_rows_scored, log_loss, realized_contract_metrics (see realized_contract_eval).
-    If ``return_detail`` is True, appends a dict with prob_rows, y_true, rows_used for arch_competition eval.
-    When ``max_eval_rows`` is set, only the most recent N labeled rows are scored (fast gates).
-    """
-    rows = _load_rth_rows_for_ticker(db_path, ticker, label_column=target_column)
-    if allowed_et_dates is not None:
-        rows = [r for r in rows if r.get("ts_et") and str(r["ts_et"])[:10] in allowed_et_dates]
-    if max_eval_rows is not None and int(max_eval_rows) > 0 and len(rows) > int(max_eval_rows):
-        rows = rows[-int(max_eval_rows) :]
-    if len(rows) < 10:
-        out = (0.0, 0.0, len(rows), None, _empty_realized_metrics(len(rows)))
-        if return_detail:
-            return out + ({"prob_rows": [], "y_true": [], "rows_used": []},)
-        return out
-
-    try:
-        import ml_predict as mp
-        import numpy as np
-        from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss
-        from realized_contract_eval import evaluate_realized_contract_trades_for_rows
-        from timeframe_config import SNAPSHOT_TABLE_1M
-
-        orig_dir = mp.MODEL_DIR
-        hz_slug = _infer_slug_from_target_column(target_column)
-        htok = mp.set_ml_infer_horizon_slug(hz_slug)
-        try:
-            with _strict_off_for_candidate_inference():
-                mp.MODEL_DIR = model_dir
-                mp.reset_caches()
-
-                preds: list[int] = []
-                y_true: list[int] = []
-                prob_rows: list[list[float]] = []
-                rows_used: list[dict] = []
-                from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
-                from features.training_canonical_input import normalize_pandas_sql_null_row_dict
-
-                hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
-
-                skip_stats = {
-                    "rows_total": len(rows),
-                    "missing_hist_db": 0,
-                    "xgb_unavailable": 0,
-                    "lstm_unavailable": 0,
-                    "transformer_unavailable": 0,
-                    "ensemble_failed": 0,
-                    "scored_full_triplet": 0,
-                    "nonfinite_triplet": 0,
-                }
-
-                for row in rows:
-                    yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
-                    row_db = normalize_pandas_sql_null_row_dict(row)
-                    ts_utc = row_db.get("ts_utc")
-                    inf_v1 = build_inference_snapshot_v1_from_db_row(
-                        ticker=ticker,
-                        expiry=None,
-                        as_of_ts=float(ts_utc) if ts_utc is not None else None,
-                        db_row=row_db,
-                    )
-                    if ts_utc is None or hist_db is None:
-                        if hist_db is None:
-                            skip_stats["missing_hist_db"] += 1
-                        continue
-                    try:
-                        xgb_p = mp._predict_xgb(inf_v1, ticker, fusion_feature_overlay=row_db)
-                    except Exception as _xgb_e:
-                        skip_stats["xgb_unavailable"] += 1
-                        log.debug(
-                            "%s parallel eval row: XGB unavailable at ts=%s (%s)",
-                            ticker,
-                            ts_utc,
-                            _xgb_e,
-                        )
-                        continue
-                    if xgb_p is None:
-                        skip_stats["xgb_unavailable"] += 1
-                        continue
-                    try:
-                        lstm_p = mp._predict_lstm(
-                            ticker,
-                            hist_db,
-                            inference_snapshot_v1=inf_v1,
-                            parallel_runtime=True,
-                        )
-                    except Exception as _lstm_e:
-                        skip_stats["lstm_unavailable"] += 1
-                        log.debug(
-                            "%s parallel eval row: LSTM unavailable at ts=%s (%s)",
-                            ticker,
-                            ts_utc,
-                            _lstm_e,
-                        )
-                        continue
-                    if not lstm_p:
-                        skip_stats["lstm_unavailable"] += 1
-                        continue
-                    try:
-                        tr_p = mp._predict_transformer(
-                            ticker,
-                            hist_db,
-                            inference_snapshot_v1=inf_v1,
-                            parallel_runtime=True,
-                        )
-                    except Exception as _tr_e:
-                        skip_stats["transformer_unavailable"] += 1
-                        log.debug(
-                            "%s parallel eval row: Transformer unavailable at ts=%s (%s)",
-                            ticker,
-                            ts_utc,
-                            _tr_e,
-                        )
-                        continue
-                    if not tr_p:
-                        skip_stats["transformer_unavailable"] += 1
-                        continue
-                    result = mp._ensemble_parallel_probs(ticker, xgb_p, lstm_p, tr_p)
-                    if not result:
-                        skip_stats["ensemble_failed"] += 1
-                        continue
-                    skip_stats["scored_full_triplet"] += 1
-                    pu, pd, pf = (
-                        float(result.get("up", 0.33)),
-                        float(result.get("down", 0.33)),
-                        float(result.get("flat", 0.34)),
-                    )
-                    s = pu + pd + pf
-                    if s > 0:
-                        pu, pd, pf = pu / s, pd / s, pf / s
-                    dom = direction_from_normalized_triplet(pu, pd, pf)
-                    if dom is None:
-                        # RC-363 WITHHELD: non-finite probability leg — skip the row so
-                        # it never corrupts preds/y_true/log_loss alignment.
-                        skip_stats["nonfinite_triplet"] += 1
-                        continue
-                    prob_rows.append([pu, pd, pf])
-                    preds.append({"up": 0, "down": 1, "flat": 2}[dom])
-                    y_true.append(yt)
-                    rows_used.append(row_db)
-
-            n = len(preds)
-            if n < 10:
-                log.warning(
-                    "%s parallel eval triplet starvation: scored=%d need>=10 skip_stats=%s",
-                    ticker,
-                    n,
-                    skip_stats,
-                )
-                out = (0.0, 0.0, n, None, _empty_realized_metrics(len(rows_used)))
-                if return_detail:
-                    return out + (
-                        {
-                            "prob_rows": prob_rows,
-                            "y_true": y_true,
-                            "rows_used": rows_used,
-                            "skip_stats": skip_stats,
-                        },
-                    )
-                return out
-            acc = float(accuracy_score(y_true, preds))
-            bal = float(balanced_accuracy_score(y_true, preds))
-            ll = float(
-                log_loss(y_true, np.array(prob_rows, dtype=np.float64), labels=[0, 1, 2])
-            )
-            try:
-                realized = evaluate_realized_contract_trades_for_rows(
-                    db_path,
-                    ticker,
-                    "parallel",
-                    rows_used,
-                    snapshot_table=SNAPSHOT_TABLE_1M,
-                )
-            except Exception as _re:
-                log.warning("Parallel realized contract eval failed %s: %s", ticker, _re)
-                realized = _empty_realized_metrics(len(rows_used))
-            detail = {
-                "prob_rows": prob_rows,
-                "y_true": y_true,
-                "rows_used": rows_used,
-                "skip_stats": skip_stats,
-            }
-            if return_detail:
-                return acc, bal, n, ll, realized, detail
-            return acc, bal, n, ll, realized
-        finally:
-            mp.MODEL_DIR = orig_dir
-            mp.reset_caches()
-            mp.reset_ml_infer_horizon_slug(htok)
-    except Exception as e:
-        log.warning("Parallel eval failed for %s: %s", ticker, e)
-        out = (0.0, 0.0, 0, None, _empty_realized_metrics(0))
-        if return_detail:
-            return out + ({"prob_rows": [], "y_true": [], "rows_used": []},)
-        return out
-
-
-def _evaluate_cascade_on_full_rth(
-    db_path: str,
-    ticker: str,
-    model_dir: Path,
-    *,
-    allowed_et_dates: Optional[Set[str]] = None,
-    target_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
-    return_detail: bool = False,
-) -> tuple[float, float, int, Optional[float], dict[str, Any]] | tuple:
-    """Cascade: Transformer probabilities vs target_column; returns log_loss and realized_contract_metrics.
-
-    If ``return_detail`` is True, appends prob_rows / y_true / rows_used for arch_competition.
-    """
-    rows = _load_rth_rows_for_ticker(db_path, ticker, label_column=target_column)
-    if allowed_et_dates is not None:
-        rows = [r for r in rows if r.get("ts_et") and str(r["ts_et"])[:10] in allowed_et_dates]
-    if len(rows) < 10:
-        out = (0.0, 0.0, len(rows), None, _empty_realized_metrics(len(rows)))
-        if return_detail:
-            return out + ({"prob_rows": [], "y_true": [], "rows_used": []},)
-        return out
-
-    try:
-        import ml_predict as mp
-        import numpy as np
-        from sklearn.metrics import accuracy_score, balanced_accuracy_score, log_loss
-        from realized_contract_eval import evaluate_realized_contract_trades_for_rows
-        from timeframe_config import SNAPSHOT_TABLE_1M
-
-        orig_dir = mp.MODEL_DIR
-        hz_slug = _infer_slug_from_target_column(target_column)
-        htok = mp.set_ml_infer_horizon_slug(hz_slug)
-        try:
-            with _strict_off_for_candidate_inference():
-                mp.MODEL_DIR = model_dir
-                mp.reset_caches()
-
-                preds: list[int] = []
-                y_true: list[int] = []
-                prob_rows: list[list[float]] = []
-                rows_used: list[dict] = []
-                from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
-                from features.training_canonical_input import normalize_pandas_sql_null_row_dict
-
-                hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
-
-                for row in rows:
-                    row_db = normalize_pandas_sql_null_row_dict(row)
-                    ts_utc = row_db.get("ts_utc")
-                    if ts_utc is None or hist_db is None:
-                        continue
-                    inf_v1 = build_inference_snapshot_v1_from_db_row(
-                        ticker=ticker,
-                        expiry=None,
-                        as_of_ts=float(ts_utc),
-                        db_row=row_db,
-                    )
-                    try:
-                        tr_p = mp._predict_transformer(
-                            ticker, hist_db, inference_snapshot_v1=inf_v1
-                        )
-                    except Exception as _tr_e:
-                        log.debug(
-                            "%s cascade eval row: Transformer unavailable at ts=%s (%s)",
-                            ticker,
-                            ts_utc,
-                            _tr_e,
-                        )
-                        continue
-                    if not tr_p:
-                        continue
-                    pu = float(tr_p.get("up", 0.33))
-                    pd = float(tr_p.get("down", 0.33))
-                    pf = float(tr_p.get("flat", 0.34))
-                    s = pu + pd + pf
-                    if s > 0:
-                        pu, pd, pf = pu / s, pd / s, pf / s
-                    dom = direction_from_normalized_triplet(pu, pd, pf)
-                    if dom is None:
-                        # RC-363 WITHHELD: non-finite probability leg — skip the row so
-                        # it never corrupts preds/y_true/log_loss alignment.
-                        continue
-                    prob_rows.append([pu, pd, pf])
-                    yt = {"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2)
-                    y_true.append(yt)
-                    preds.append({"up": 0, "down": 1, "flat": 2}[dom])
-                    rows_used.append(row_db)
-
-            n = len(preds)
-            if n < 10:
-                out = (0.0, 0.0, n, None, _empty_realized_metrics(len(rows_used)))
-                if return_detail:
-                    return out + ({"prob_rows": prob_rows, "y_true": y_true, "rows_used": rows_used},)
-                return out
-            acc = float(accuracy_score(y_true, preds))
-            bal = float(balanced_accuracy_score(y_true, preds))
-            ll = float(
-                log_loss(y_true, np.array(prob_rows, dtype=np.float64), labels=[0, 1, 2])
-            )
-            try:
-                realized = evaluate_realized_contract_trades_for_rows(
-                    db_path,
-                    ticker,
-                    "cascade",
-                    rows_used,
-                    snapshot_table=SNAPSHOT_TABLE_1M,
-                )
-            except Exception as _re:
-                log.warning("Cascade realized contract eval failed %s: %s", ticker, _re)
-                realized = _empty_realized_metrics(len(rows_used))
-            detail = {"prob_rows": prob_rows, "y_true": y_true, "rows_used": rows_used}
-            if return_detail:
-                return acc, bal, n, ll, realized, detail
-            return acc, bal, n, ll, realized
-        finally:
-            mp.MODEL_DIR = orig_dir
-            mp.reset_caches()
-            mp.reset_ml_infer_horizon_slug(htok)
-    except Exception as e:
-        log.warning("Cascade eval failed for %s: %s", ticker, e)
-        out = (0.0, 0.0, 0, None, _empty_realized_metrics(0))
-        if return_detail:
-            return out + ({"prob_rows": [], "y_true": [], "rows_used": []},)
-        return out
-
-
-def _meta_ml_layer_triplet(layer_name: str, probs, collapsed) -> list:
-    """One unified-stack ML layer's ``[up, down, flat]`` contribution to the meta-training vector.
-
-    CLOSEOUT #3: a layer flagged ``val_single_class_collapse`` is degenerate (all-flat); treat
-    it as absent and substitute the neutral filler so the meta LogisticRegression never learns
-    to trust it. Empty ``collapsed`` with present ``probs`` reproduces the prior assembly
-    byte-for-byte (``[probs.get(c, 0.333) for c in up/down/flat]``).
-    """
-    if layer_name in collapsed or not probs:
-        return [0.333, 0.333, 0.334]
-    return [probs.get(c, 0.333) for c in ("up", "down", "flat")]
-
-
-def _assemble_meta_ml_layer_prob_vectors(
-    model_dir: Path,
-    ticker: str,
-    db_path: str,
-    rows_df: Any,
-    target_column: str,
-    hz: str,
-) -> tuple[list, list]:
-    """Assemble parallel meta-learner [xgb|lstm|transformer] prob vectors + labels by running
-    the xgb/lstm/transformer layers in ``model_dir`` over the rows in ``rows_df``.
-
-    Used both for the in-sample fallback (``model_dir`` = deployed ``out_dir``, rows = full
-    training df) and for each OOF fold (``model_dir`` = a fold dir trained on strictly-earlier
-    sessions, rows = the held-out fold) — Workstream B2.
-    """
-    import ml_predict as mp
-    from ml_predict import _predict_xgb, _predict_lstm, _predict_transformer
-    from features.fusion_model_input import meta_tabular_vector_from_overlay
-    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
-    from features.training_canonical_input import records_for_mvp_from_dataframe
-
-    X_meta: list = []
-    y_meta: list = []
-    orig_mp_dir = mp.MODEL_DIR
-    htok_meta = mp.set_ml_infer_horizon_slug(hz)
-    try:
-        with _strict_off_for_candidate_inference():
-            mp.MODEL_DIR = model_dir
-            mp.reset_caches()
-            rows = records_for_mvp_from_dataframe(rows_df)
-            hist_db = _eval_hist_db_for_labeled_rows(db_path, ticker, rows)
-            # B3+ collapse guard (CLOSEOUT #3): bases flagged val_single_class_collapse in
-            # model_dir are degenerate (all-flat); substitute the neutral filler so the meta
-            # LR never learns to trust them. Empty set => identical to prior assembly.
-            collapsed = mp.read_stack_layer_collapse_flags(model_dir, ticker, hz)
-            for row in rows:
-                inf_v1 = build_inference_snapshot_v1_from_db_row(
-                    ticker=ticker, expiry=None, as_of_ts=row.get("ts_utc"), db_row=row,
-                )
-                xgb_p = _predict_xgb(inf_v1, ticker, fusion_feature_overlay=row)
-                lstm_p = tr_p = None
-                ts_utc = row.get("ts_utc")
-                if ts_utc and hist_db is not None:
-                    try:
-                        lstm_p = _predict_lstm(ticker, hist_db, inference_snapshot_v1=inf_v1)
-                    except Exception as _lstm_e:
-                        log.debug("%s meta row: LSTM unavailable at ts=%s (%s)", ticker, ts_utc, _lstm_e)
-                        lstm_p = None
-                    try:
-                        tr_p = _predict_transformer(ticker, hist_db, inference_snapshot_v1=inf_v1)
-                    except Exception as _tr_e:
-                        log.debug("%s meta row: Transformer unavailable at ts=%s (%s)", ticker, ts_utc, _tr_e)
-                        tr_p = None
-                if xgb_p is None:
-                    continue
-                vec = (
-                    _meta_ml_layer_triplet("xgb", xgb_p, collapsed)
-                    + _meta_ml_layer_triplet("lstm", lstm_p, collapsed)
-                    + _meta_ml_layer_triplet("transformer", tr_p, collapsed)
-                    + meta_tabular_vector_from_overlay(row)
-                )
-                X_meta.append(vec)
-                y_meta.append({"up": 0, "down": 1, "flat": 2}.get(row.get(target_column), 2))
-    finally:
-        mp.MODEL_DIR = orig_mp_dir
-        mp.reset_caches()
-        mp.reset_ml_infer_horizon_slug(htok_meta)
-    return X_meta, y_meta
-
-
-def _train_parallel_ml_stack_layers_into(
-    temp_dir: Path,
-    ticker: str,
-    db_path: str,
-    allowed_et_dates: Set[str],
-    *,
-    data_fp: Optional[dict],
-    hz: str,
-) -> bool:
-    """Train XGB + LSTM + Transformer (parallel ML stack layers) on ``allowed_et_dates`` into
-    ``temp_dir`` for OOF meta-learner prob generation (Workstream B2). ``bypass_cache``/
-    ``bypass_torch_resume`` always on — the fold's date subset has a different fingerprint
-    than the full-data feature cache. Returns True when at least XGB is present
-    (LSTM/Transformer degrade gracefully in assembly via the 0.333 fallback)."""
-    from ml_train import load_data, train_ticker
-    from lstm_model import train_lstm
-    from lstm_data import build_lstm_dataset
-    from transformer_train import train_transformer, prepare_transformer_data
-
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    df = load_data(db_path, ticker=ticker, allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz)
-    if len(df) == 0:
-        return False
-    train_ticker(
-        ticker, df, model_dir=temp_dir, current_data_fingerprint=data_fp, ml_horizon_slug=hz,
-        db_path=db_path,  # RC-344/F35: same DB as load_data above
-    )
-    ds = build_lstm_dataset(
-        tickers=[ticker], db_path=Path(db_path), allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz,
-    )
-    if ds is not None and getattr(ds, "n_samples", 0) > 0:
-        train_lstm(
-            dataset=ds, db_path=db_path, ticker=ticker, model_dir=temp_dir, data_fp=data_fp,
-            architecture="parallel", bypass_torch_resume=True, ml_horizon_slug=hz,
-        )
-    Xp, yp, daysp, tickp, nfp = prepare_transformer_data(
-        db_path, ticker, allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz,
-    )
-    if Xp is not None and len(yp) > 0:
-        train_transformer(
-            db_path=db_path, ticker=ticker, model_dir=temp_dir,
-            preloaded_sequences=(Xp, yp, daysp, tickp, nfp), allowed_et_dates=allowed_et_dates,
-            data_fp=data_fp, architecture="parallel", bypass_torch_resume=True, ml_horizon_slug=hz,
-        )
-    return (temp_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl").exists()
-
-
-def _write_meta_training_basis_manifest(
-    out_dir: Path,
-    ticker: str,
-    hz: str,
-    *,
-    architecture: str,
-    basis: str,
-    n_rows: int,
-) -> Path:
-    """ML-PIPE-V2 Phase 3 (2026-07-11): the meta learner's training BASIS must
-    travel with the artifact. Before this manifest, ``meta_basis`` was only a
-    log line — an in-sample-fallback-trained meta pickle was byte-identical to
-    an expanding-window-OOF one for every downstream consumer (serving, eval,
-    promotion), so base-model overfit inherited via the fallback could never be
-    distinguished from governed OOF evidence. ``oof_governed`` is the
-    machine-readable gate field: False for every in-sample basis.
-
-    Schwab CSV authority checked: yes
-    CSV row(s): NO_SCHWAB_EQUIVALENT — training-provenance manifest only; no
-      market field read, derived, or emitted by this lane (meta inputs are the
-      already-persisted stack probabilities and snapshot overlay columns).
-    Derived-field disposition: none required (no derivation touched).
-    All consumers checked: yes — read_meta_training_basis_manifest is the only
-      reader; meta pickle contents and serving paths are byte-identical.
-    SCHWAB_CSV_CHECKED"""
-    manifest = {
-        "artifact": f"meta_{ticker_storage_key(ticker)}_{hz}.pkl",
-        "ticker": ticker_storage_key(ticker),
-        "horizon_slug": hz,
-        "architecture": architecture,
-        "meta_training_basis": basis,
-        "oof_governed": basis == "expanding_window_oof",
-        "n_training_rows": int(n_rows),
-        "written_at_epoch": time.time(),
-        "schema": "META_TRAINING_BASIS_MANIFEST_V1",
-    }
-    out_path = out_dir / f"meta_{ticker_storage_key(ticker)}_{hz}_training_manifest.json"
-    out_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8", newline="\n")
-    return out_path
-
-
-def read_meta_training_basis_manifest(
-    out_dir: Path, ticker: str, hz: str
-) -> Optional[dict]:
-    """Read META_TRAINING_BASIS_MANIFEST_V1 for a bundle's meta artifact.
-
-    Returns None when absent (pre-manifest legacy bundle). Downstream promotion
-    / predictive-validity surfaces MUST treat ``oof_governed is not True`` as
-    not-OOF-governed evidence (legacy absence never upgrades to governed)."""
-    p = Path(out_dir) / f"meta_{ticker_storage_key(ticker)}_{hz}_training_manifest.json"
-    if not p.is_file():
-        return None
-    try:
-        doc = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return doc if isinstance(doc, dict) else None
-
-
-def _train_parallel_meta_oof(
-    out_dir: Path,
-    ticker: str,
-    db_path: str,
-    df: Any,
-    oof_universe_days: list,
-    target_column: str,
-    hz: str,
-    *,
-    data_fp: Optional[dict],
-) -> tuple[list, list, str]:
-    """Build the parallel meta-learner's training matrix from EXPANDING-WINDOW OUT-OF-FOLD
-    base predictions (Workstream B2). For each fold the ML stack layers are trained on
-    strictly-earlier sessions into a temp dir and scored on the held-out fold, so the meta
-    never sees in-sample base probs. The deployed base artifacts in ``out_dir`` are untouched
-    (they stay full-data trained). Falls back to in-sample assembly when no folds can be
-    formed (too few sessions) or OOF yields < 10 usable rows. Returns (X_meta, y_meta, basis)."""
-    import shutil
-    import tempfile
-
-    from ml_train import load_data
-    from training_cache import expanding_window_oof_folds
-
-    folds = expanding_window_oof_folds(oof_universe_days)
-    if not folds:
-        X_meta, y_meta = _assemble_meta_ml_layer_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
-        return X_meta, y_meta, "in_sample_no_folds"
-
-    X_meta: list = []
-    y_meta: list = []
-    tmp_root = Path(tempfile.mkdtemp(prefix=f"oof_par_{ticker}_{hz}_"))
-    try:
-        for fi, (tr_days, oof_days) in enumerate(folds):
-            fold_dir = tmp_root / f"fold{fi}"
-            if not _train_parallel_ml_stack_layers_into(
-                fold_dir, ticker, db_path, set(tr_days), data_fp=data_fp, hz=hz,
-            ):
-                log.warning("%s parallel meta OOF: fold %d ML stack train incomplete — skip", ticker, fi)
-                continue
-            df_oof = load_data(db_path, ticker=ticker, allowed_et_dates=set(oof_days), ml_horizon_slug=hz)
-            if len(df_oof) == 0:
-                continue
-            fx, fy = _assemble_meta_ml_layer_prob_vectors(fold_dir, ticker, db_path, df_oof, target_column, hz)
-            X_meta.extend(fx)
-            y_meta.extend(fy)
-    finally:
-        shutil.rmtree(tmp_root, ignore_errors=True)
-
-    if len(X_meta) < 10:
-        log.warning(
-            "%s parallel meta: OOF produced %d usable rows (<10) — in-sample fallback", ticker, len(X_meta),
-        )
-        X_meta, y_meta = _assemble_meta_ml_layer_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
-        return X_meta, y_meta, "in_sample_fallback"
-    return X_meta, y_meta, "expanding_window_oof"
-
-
-def train_parallel_candidate(
-    ticker: str,
-    db_path: str,
-    out_dir: Path,
-    *,
-    bypass_cache: bool = False,
-    data_fp: Optional[dict] = None,
-    code_fp: str = "",
-    scheduler_cache_key: str = "",
-    feature_cache_key: Optional[str] = None,
-    allowed_et_dates: Optional[set] = None,
-    prior_manifest: Optional[dict] = None,
-    ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
-) -> dict[str, Any]:
-    """Train XGB, LSTM, Transformer, Meta into out_dir (production or compare)."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    target_column = outcome_column(hz)
-
-    from training_cache import (
-        db_training_fingerprint,
-        compute_training_code_fingerprint,
-        compute_feature_cache_key,
-        feature_cache_dir,
-        load_lstm_feature_cache,
-        save_lstm_feature_cache,
-        load_transformer_parallel_cache,
-        save_transformer_parallel_cache,
-        min_ts_utc_for_last_n_rth_sessions,
-    )
-    from training_cache_policy import (
-        ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
-        ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE,
-    )
-    from ml_train import load_data, train_ticker
-    from lstm_model import train_lstm
-    from lstm_data import build_lstm_dataset
-    from transformer_train import train_transformer, prepare_transformer_data
-    import pickle
-    from sklearn.linear_model import LogisticRegression
-    import numpy as np
-
-    used_feature_cache = False
-    if data_fp is None:
-        data_fp = db_training_fingerprint(db_path, ticker, label_column=target_column)
-    if not code_fp:
-        code_fp = compute_training_code_fingerprint()
-    fk_computed = compute_feature_cache_key(ticker, data_fp, code_fp, target_column=target_column)
-    if feature_cache_key is not None:
-        from features.training_canonical_input import TrainingCanonicalInputError
-
-        if feature_cache_key != fk_computed:
-            raise TrainingCanonicalInputError(
-                "feature_cache_key override does not match computed shared key for this data/code/horizon"
-            )
-        fk = feature_cache_key
-    else:
-        fk = fk_computed
-    fdir = feature_cache_dir(fk)
-
-    if allowed_et_dates is not None:
-        min_ts_tab = None
-        min_ts_seq = None
-        sequence_allowed_dates = allowed_et_dates
-    else:
-        min_ts_tab = min_ts_utc_for_last_n_rth_sessions(
-            db_path, ticker, ROLLING_WINDOW_RTH_SESSIONS_TABULAR, label_column=target_column,
-        )
-        min_ts_seq = min_ts_utc_for_last_n_rth_sessions(
-            db_path, ticker, ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE, label_column=target_column,
-        )
-        sequence_allowed_dates = None
-        if ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE > 0:
-            from training_cache import db_distinct_rth_et_dates_for_ticker
-
-            _seq_dates = db_distinct_rth_et_dates_for_ticker(
-                db_path, ticker, label_column=target_column,
-            )
-            _ns = int(ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE)
-            if len(_seq_dates) >= _ns:
-                sequence_allowed_dates = set(_seq_dates[-_ns:])
-            elif _seq_dates:
-                sequence_allowed_dates = set(_seq_dates)
-
-    prior_fp = (prior_manifest or {}).get("data_fingerprint") if prior_manifest else None
-
-    df = load_data(
-        db_path,
-        ticker=ticker,
-        min_ts_utc=min_ts_tab,
-        allowed_et_dates=allowed_et_dates,
-        ml_horizon_slug=hz,
-    )
-    if len(df) == 0:
-        return {
-            "used_feature_cache": False,
-            "used_cascade_tensor_cache": False,
-            "warm_resume": {},
-        }
-    train_ticker(
-        ticker,
-        df,
-        model_dir=out_dir,
-        prior_data_fingerprint=prior_fp,
-        current_data_fingerprint=data_fp,
-        ml_horizon_slug=hz,
-        db_path=db_path,  # RC-344/F35: same DB as load_data
-    )
-
-    # LSTM tensors: load from feature cache or build + save
-    ds = None
-    if not bypass_cache:
-        ds = load_lstm_feature_cache(fdir, ticker, data_fp, fk)
-    if ds is None:
-        ds = build_lstm_dataset(
-            tickers=[ticker],
-            db_path=Path(db_path),
-            min_ts_utc=min_ts_seq,
-            allowed_et_dates=sequence_allowed_dates,
-            ml_horizon_slug=hz,
-        )
-        if ds.n_samples > 0 and not bypass_cache:
-            save_lstm_feature_cache(fdir, ticker, data_fp, fk, ds)
-    else:
-        used_feature_cache = True
-        log.info("%s parallel: LSTM feature cache hit (%s)", ticker, fk[:12])
-
-    try:
-        from training_cache import save_parallel_cascade_bridge
-
-        xgb_pkl = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl"
-        xgb_meta_p = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json"
-        if (
-            ds is not None
-            and getattr(ds, "n_samples", 0) >= 10
-            and xgb_pkl.is_file()
-            and xgb_meta_p.is_file()
-            and not bypass_cache
-        ):
-            with open(xgb_pkl, "rb") as f:
-                _bridge_xgb = pickle.load(f)
-            with open(xgb_meta_p, encoding="utf-8") as f:
-                _bridge_meta = json.load(f)
-            _aligned_probs = _xgb_probs_aligned_to_lstm_dataset(
-                ds,
-                ticker,
-                db_path,
-                _bridge_xgb,
-                _bridge_meta,
-                hz,
-                min_ts_utc=min_ts_seq,
-                allowed_et_dates=sequence_allowed_dates,
-            )
-            if _aligned_probs is not None and _aligned_probs.shape[0] == ds.n_samples:
-                save_parallel_cascade_bridge(
-                    fdir,
-                    ticker,
-                    data_fp,
-                    fk,
-                    _aligned_probs,
-                    xgb_pkl,
-                    xgb_meta_p,
-                )
-            else:
-                log.warning(
-                    "%s parallel: parallel→cascade bridge not saved (alignment failed)",
-                    ticker,
-                )
-    except Exception as _bridge_exc:
-        log.warning("%s parallel: parallel→cascade bridge save error: %s", ticker, _bridge_exc)
-
-    lstm_rr = {}
-    if ds is not None and getattr(ds, "n_samples", 0) > 0:
-        lr = train_lstm(
-            dataset=ds,
-            db_path=db_path,
-            ticker=ticker,
-            model_dir=out_dir,
-            scheduler_cache_key=scheduler_cache_key or None,
-            data_fp=data_fp,
-            architecture="parallel",
-            bypass_torch_resume=bypass_cache,
-            ml_horizon_slug=hz,
-        )
-        lstm_rr = {"lstm_warm_resume": lr.warm_resume_used, "lstm_warm_resume_detail": lr.warm_resume_detail}
-    else:
-        lr = train_lstm(
-            db_path=db_path,
-            ticker=ticker,
-            model_dir=out_dir,
-            scheduler_cache_key=scheduler_cache_key or None,
-            data_fp=data_fp,
-            architecture="parallel",
-            bypass_torch_resume=bypass_cache,
-            ml_horizon_slug=hz,
-        )
-        lstm_rr = {"lstm_warm_resume": lr.warm_resume_used, "lstm_warm_resume_detail": lr.warm_resume_detail}
-
-    # Transformer parallel: load cached raw sequences or build + save
-    preloaded = None
-    if not bypass_cache:
-        preloaded = load_transformer_parallel_cache(fdir, ticker, data_fp, fk)
-    tr_rr = {}
-    if preloaded is None:
-        X, y, days, tickers_arr, n_features = prepare_transformer_data(
-            db_path,
-            ticker,
-            min_ts_utc=min_ts_seq,
-            allowed_et_dates=sequence_allowed_dates,
-            ml_horizon_slug=hz,
-        )
-        if X is not None and len(y) > 0:
-            if not bypass_cache:
-                save_transformer_parallel_cache(
-                    fdir, ticker, data_fp, fk, X, y, days, tickers_arr, n_features
-                )
-            tr = train_transformer(
-                db_path=db_path,
-                ticker=ticker,
-                model_dir=out_dir,
-                preloaded_sequences=(X, y, days, tickers_arr, n_features),
-                allowed_et_dates=allowed_et_dates,
-                scheduler_cache_key=scheduler_cache_key or None,
-                data_fp=data_fp,
-                architecture="parallel",
-                bypass_torch_resume=bypass_cache,
-                ml_horizon_slug=hz,
-            )
-            tr_rr = {
-                "transformer_warm_resume": tr.warm_resume_used,
-                "transformer_warm_resume_detail": tr.warm_resume_detail,
-            }
-        else:
-            tr = train_transformer(
-                db_path=db_path,
-                ticker=ticker,
-                model_dir=out_dir,
-                allowed_et_dates=allowed_et_dates,
-                scheduler_cache_key=scheduler_cache_key or None,
-                data_fp=data_fp,
-                architecture="parallel",
-                bypass_torch_resume=bypass_cache,
-                ml_horizon_slug=hz,
-            )
-            tr_rr = {
-                "transformer_warm_resume": tr.warm_resume_used,
-                "transformer_warm_resume_detail": tr.warm_resume_detail,
-            }
-    else:
-        used_feature_cache = True
-        log.info("%s parallel: Transformer feature cache hit (%s)", ticker, fk[:12])
-        tr = train_transformer(
-            db_path=db_path,
-            ticker=ticker,
-            model_dir=out_dir,
-            preloaded_sequences=preloaded,
-            allowed_et_dates=allowed_et_dates,
-            scheduler_cache_key=scheduler_cache_key or None,
-            data_fp=data_fp,
-            architecture="parallel",
-            bypass_torch_resume=bypass_cache,
-            ml_horizon_slug=hz,
-        )
-        tr_rr = {
-            "transformer_warm_resume": tr.warm_resume_used,
-            "transformer_warm_resume_detail": tr.warm_resume_detail,
-        }
-
-    # Meta-learner (parallel stacker). Workstream B2: train the meta on EXPANDING-WINDOW
-    # OUT-OF-FOLD base predictions so it never sees in-sample base probs; the deployed
-    # XGB/LSTM/Transformer trained above stay full-data (only the stacker's TRAINING
-    # features become out-of-fold). Falls back to in-sample assembly when too few sessions
-    # exist for folds. The meta is resolved by ml_predict from this candidate dir's flat
-    # artifacts (xgb_SPY_<hz>.pkl, lstm_SPY_<hz>.pt, transformer_SPY_<hz>.pt).
-    if allowed_et_dates is not None:
-        oof_universe_days = sorted(set(allowed_et_dates))
-    else:
-        from training_cache import db_distinct_rth_et_dates_for_ticker
-
-        oof_universe_days = db_distinct_rth_et_dates_for_ticker(
-            db_path, ticker, label_column=target_column
-        )
-    X_meta, y_meta, meta_basis = _train_parallel_meta_oof(
-        out_dir, ticker, db_path, df, oof_universe_days, target_column, hz, data_fp=data_fp,
-    )
-    if len(X_meta) >= 10:
-        meta_mdl = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
-        meta_mdl.fit(np.array(X_meta), np.array(y_meta))
-        with open(out_dir / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl", "wb") as f:
-            pickle.dump(meta_mdl, f)
-        _write_meta_training_basis_manifest(
-            out_dir, ticker, hz, architecture="parallel", basis=meta_basis, n_rows=len(X_meta),
-        )
-        log.info(
-            "%s parallel meta trained on %d rows (basis=%s)", ticker, len(X_meta), meta_basis,
-        )
-
-    warm_resume = {**lstm_rr, **tr_rr}
-    return {
-        "used_feature_cache": used_feature_cache,
-        "used_cascade_tensor_cache": False,
-        "warm_resume": warm_resume,
-    }
-
-
-def _train_parallel(
-    ticker: str,
-    db_path: str,
-    *,
-    out_dir: Optional[Path] = None,
-    allowed_et_dates: Optional[Set[str]] = None,
-    bypass_cache: bool = False,
-    data_fp: Optional[dict] = None,
-    code_fp: str = "",
-    scheduler_cache_key: str = "",
-    feature_cache_key: Optional[str] = None,
-    prior_manifest: Optional[dict] = None,
-    ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
-) -> dict[str, Any]:
-    """Production entry: same as nightly scheduler; optional out_dir / allowed_et_dates for compare tooling."""
-    dest = out_dir if out_dir is not None else PARALLEL_DIR / ticker_storage_key(ticker)  # RC-345/F25
-    return train_parallel_candidate(
-        ticker,
-        db_path,
-        dest,
-        bypass_cache=bypass_cache,
-        data_fp=data_fp,
-        code_fp=code_fp,
-        scheduler_cache_key=scheduler_cache_key,
-        feature_cache_key=feature_cache_key,
-        allowed_et_dates=allowed_et_dates,
-        prior_manifest=prior_manifest,
-        ml_horizon_slug=ml_horizon_slug,
-    )
-
-
-def _oof_day_to_fold_map(folds: list) -> dict:
-    """Map each OOF (held-out) session day to its fold index (Workstream B2, commit 2).
-
-    Seed-block days — present only in fold 0's train set and never as an OOF block — are
-    ABSENT from the map; the cascade excludes them from stacker training (no in-sample row).
-    Every mapped day belongs to a fold whose train sessions are strictly earlier than that
-    day (guaranteed by ``expanding_window_oof_folds``)."""
-    m: dict = {}
-    for fi, (_train_days, oof_days) in enumerate(folds):
-        for d in oof_days:
-            m[d] = fi
-    return m
-
-
-def _train_cascade_xgb_lstm_into(
-    temp_dir: Path,
-    ticker: str,
-    db_path: str,
-    allowed_et_dates: Set[str],
-    *,
-    data_fp: Optional[dict],
-    hz: str,
-) -> bool:
-    """Train XGB + cascade-LSTM on exactly ``allowed_et_dates`` into ``temp_dir`` for OOF
-    base-prob generation feeding the cascade transformer (Workstream B2, commit 2).
-
-    Mirrors the deployed cascade's XGB→LSTM steps: the fold LSTM consumes the fold XGB's
-    in-sample probs over the fold's OWN train sessions (the cost-bounded design the operator
-    locked — K=3, no nested per-fold OOF inside the LSTM; the LSTM's own honesty is B3's
-    temporal holdout). ``bypass`` cache/resume always on (the fold's date subset has a
-    different fingerprint than the full-data cache). Returns True when both XGB + LSTM
-    artifacts exist."""
-    import json
-    import pickle
-
-    import numpy as np
-
-    from ml_train import load_data, train_ticker, engineer_single_snapshot
-    from lstm_model import train_lstm
-    from lstm_data import (
-        build_lstm_dataset, extract_rth_snapshots, STREAM_5M_LOOKBACK, TARGET_CLASSES,
-        canonical_reference_spot_from_sequence_window_first_bar,
-    )
-    from timeframe_config import CANONICAL_TIMEFRAME
-
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    hz = normalize_ml_horizon_slug(hz)
-    label_col = outcome_column(hz)
-    df = load_data(db_path, ticker=ticker, allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz)
-    if len(df) == 0:
-        return False
-    train_ticker(ticker, df, model_dir=temp_dir, current_data_fingerprint=data_fp,
-                 ml_horizon_slug=hz, db_path=db_path)  # RC-344/F35
-    xgb_path = temp_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl"
-    if not xgb_path.exists():
-        return False
-    with open(xgb_path, "rb") as f:
-        xgb_model = pickle.load(f)
-    with open(temp_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json") as f:
-        xgb_meta = json.load(f)
-
-    days_data = extract_rth_snapshots(
-        ticker, timeframe=CANONICAL_TIMEFRAME, db_path=Path(db_path),
-        require_outcome=True, allowed_et_dates=allowed_et_dates, target_column=label_col,
-        model_family="xgb", horizon_slug=hz,  # cascade: snapshot feeds XGB-prob generation
-    )
-    xgb_probs_list: list = []
-    for _day, snapshots in sorted(days_data.items()):
-        if len(snapshots) < STREAM_5M_LOOKBACK:
-            continue
-        for end_idx in range(STREAM_5M_LOOKBACK, len(snapshots)):
-            window = snapshots[end_idx - STREAM_5M_LOOKBACK:end_idx]
-            current = window[-1]
-            if current.get(label_col) not in TARGET_CLASSES:
-                continue
-            # RC-318: this gate exists ONLY to mirror build_lstm_dataset's window eligibility
-            # (xgb_probs_list must align 1:1 with ds samples, checked below). The old
-            # `_safe_float(first) or _safe_float(current)` form used a last-bar fallback the
-            # canonical producer forbids and let NaN through — any divergence silently broke
-            # the alignment and discarded the cascade probs. Use the SAME canonical drop.
-            try:
-                canonical_reference_spot_from_sequence_window_first_bar(window)
-            except ValueError:
-                continue
-            X_row = engineer_single_snapshot(
-                prepare_row_for_xgb_features(current),  # RC-340 (no cache var in this scope)
-                xgb_meta.get("category_maps", {}), xgb_meta.get("features", []),
-                xgb_meta.get("vol_medians", {}), ticker,
-            )
-            if X_row is None:
-                continue
-            xgb_probs_list.append(xgb_model.predict_proba(X_row.values.astype(np.float64))[0])
-
-    ds = build_lstm_dataset(
-        tickers=[ticker], db_path=Path(db_path), allowed_et_dates=allowed_et_dates, ml_horizon_slug=hz,
-    )
-    if ds is None or getattr(ds, "n_samples", 0) < 10:
-        return False
-    if len(xgb_probs_list) == ds.n_samples:
-        train_lstm(
-            dataset=ds, db_path=db_path, ticker=ticker, model_dir=temp_dir,
-            xgb_probs=np.array(xgb_probs_list[: ds.n_samples], dtype=np.float32),
-            data_fp=data_fp, architecture="cascade", bypass_torch_resume=True, ml_horizon_slug=hz,
-        )
-    else:
-        train_lstm(
-            dataset=ds, db_path=db_path, ticker=ticker, model_dir=temp_dir, data_fp=data_fp,
-            architecture="cascade", bypass_torch_resume=True, ml_horizon_slug=hz,
-        )
-    return (temp_dir / f"lstm_{ticker_storage_key(ticker)}_{hz}.pt").exists()
-
-
-def _build_in_sample_cascade_xgb_lstm_tensor(
-    model_dir: Path,
-    ticker: str,
-    db_path: str,
-    allowed_et_dates: Set[str],
-    *,
-    hz: str,
-) -> Optional[Any]:
-    """Build in-sample [xgb|lstm] prob vectors for cascade transformer training on ``model_dir``."""
-    import json
-    import pickle
-
-    import numpy as np
-    import torch
-
-    from lstm_model import align_lstm_norm_stats, apply_normalization, load_lstm
-    from lstm_data import (
-        CONFLUENCE_FEATURES,
-        STREAM_1M_LOOKBACK,
-        STREAM_5M_LOOKBACK,
-        TARGET_CLASSES,
-        canonical_reference_spot_from_sequence_window_first_bar,
-        encode_snapshot_1m,
-        encode_snapshot_5m,
-        extract_rth_snapshots,
-        micro_reference_spot_from_window,
-    )
-    from ml_data_common import confluence_features_for_bar
-    from ml_train import engineer_single_snapshot
-    from features.training_canonical_input import training_snapshot_for_sequence_encode
-    from transformer_train import SEQUENCE_LENGTH
-    from timeframe_config import CANONICAL_TIMEFRAME
-
-    _conf_cache: dict = {}          # RC-332: one canonical-history pool per (ticker, UTC day)
-    hz = normalize_ml_horizon_slug(hz)
-    label_col = outcome_column(hz)
-    t = ticker_storage_key(ticker)
-    xgb_path = model_dir / f"xgb_{t}_{hz}.pkl"
-    xgb_meta_path = model_dir / f"xgb_{t}_{hz}_meta.json"
-    if not xgb_path.is_file() or not xgb_meta_path.is_file():
-        return None
-    with open(xgb_path, "rb") as f:
-        xgb_model = pickle.load(f)
-    with open(xgb_meta_path, encoding="utf-8") as f:
-        xgb_meta = json.load(f)
-    lstm_model, lstm_ckpt = load_lstm(model_dir=model_dir, ticker=ticker, ml_horizon_slug=hz)
-    if lstm_model is None or lstm_ckpt is None:
-        return None
-    lstm_model.eval()
-
-    _cascade_hist = max(int(SEQUENCE_LENGTH), int(STREAM_5M_LOOKBACK))
-    days_lstm = extract_rth_snapshots(
-        ticker,
-        timeframe=CANONICAL_TIMEFRAME,
-        db_path=Path(db_path),
-        require_outcome=True,
-        allowed_et_dates=allowed_et_dates,
-        target_column=label_col,
-        model_family="lstm",
-        horizon_slug=hz,
-    )
-    days_xgb = extract_rth_snapshots(
-        ticker,
-        timeframe=CANONICAL_TIMEFRAME,
-        db_path=Path(db_path),
-        require_outcome=True,
-        allowed_et_dates=allowed_et_dates,
-        target_column=label_col,
-        model_family="xgb",
-        horizon_slug=hz,
-    )
-    vectors: list = []
-    for _day_key, snapshots in sorted(days_lstm.items()):
-        snapshots_xgb = days_xgb.get(_day_key)
-        if not snapshots_xgb or len(snapshots_xgb) != len(snapshots):
-            log.warning(
-                "%s cascade tensor: xgb/lstm day %s row count mismatch (%s vs %s); skip day",
-                ticker,
-                _day_key,
-                len(snapshots_xgb or ()),
-                len(snapshots),
-            )
-            continue
-        if len(snapshots) < _cascade_hist:
-            continue
-        for end_idx in range(_cascade_hist, len(snapshots)):
-            window = snapshots[end_idx - SEQUENCE_LENGTH : end_idx]
-            current_lstm = window[-1]
-            if current_lstm.get(label_col) not in TARGET_CLASSES:
-                continue
-            try:
-                canonical_reference_spot_from_sequence_window_first_bar(window)
-            except ValueError:
-                continue
-            current_xgb = snapshots_xgb[end_idx - 1]
-            X_row = engineer_single_snapshot(
-                prepare_row_for_xgb_features(current_xgb, cache=_conf_cache),  # RC-340
-                xgb_meta.get("category_maps", {}),
-                xgb_meta.get("features", []),
-                xgb_meta.get("vol_medians", {}),
-                ticker,
-            )
-            if X_row is None:
-                continue
-            xgb_p = xgb_model.predict_proba(X_row.values.astype(np.float64))[0]
-
-            lstm_window = snapshots[end_idx - STREAM_5M_LOOKBACK : end_idx]
-            try:
-                lstm_ref = canonical_reference_spot_from_sequence_window_first_bar(lstm_window)
-            except ValueError:
-                continue
-            seq_5m = [
-                encode_snapshot_5m(training_snapshot_for_sequence_encode(s), lstm_ref)
-                for s in lstm_window
-            ]
-            micro = lstm_window[-STREAM_1M_LOOKBACK:]
-            # RC-318: single typed-absence producer (None/NaN/<=0 tested -> validated lstm_ref).
-            micro_ref = micro_reference_spot_from_window(micro, lstm_ref)
-            seq_1m = [
-                encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
-                for s in micro
-            ]
-            # RC-332: cf_* history is the single authority's population, not this lane's
-            # flattened RTH-filtered days. Flattening days_lstm produced a THIRD population
-            # shape for one feature name, and the linear ts_et scan it needed to locate the
-            # bar was O(n) per row on top of that. Both go away: the lane supplies the bar,
-            # the authority owns the history.
-            conf = confluence_features_for_bar(
-                ticker, current_lstm.get("ts_utc"), str(db_path), cache=_conf_cache)
-            conf_vec = np.array([conf[k] for k in CONFLUENCE_FEATURES], dtype=np.float32)
-            conf_vec = np.hstack([conf_vec, xgb_p]).astype(np.float32)
-
-            mask_5m = np.array(lstm_ckpt.get("mask_5m", [True] * len(seq_5m[0])))
-            mask_1m = np.array(lstm_ckpt.get("mask_1m", [True] * len(seq_1m[0])))
-            mask_conf = np.array(lstm_ckpt.get("mask_conf", [True] * len(conf_vec)))
-            X_5m = np.array([seq_5m], dtype=np.float32)
-            X_1m = np.array([seq_1m], dtype=np.float32)
-            if len(mask_5m) == X_5m.shape[2]:
-                X_5m = X_5m[:, :, mask_5m]
-            if len(mask_1m) == X_1m.shape[2]:
-                X_1m = X_1m[:, :, mask_1m]
-            X_conf = np.array([conf_vec], dtype=np.float32)
-            if len(mask_conf) == len(conf_vec):
-                X_conf = X_conf[:, mask_conf]
-            norm = lstm_ckpt.get("norm_stats", {})
-            if norm:
-                aligned = align_lstm_norm_stats(norm, mask_5m, mask_1m, mask_conf)
-                if aligned is None:
-                    log.warning("%s cascade fold tensor: LSTM norm_stats / mask mismatch; skip row", ticker)
-                    continue
-                X_5m, X_1m, X_conf = apply_normalization(X_5m, X_1m, X_conf, aligned)
-            X_5m = np.nan_to_num(X_5m, nan=0.0)
-            X_1m = np.nan_to_num(X_1m, nan=0.0)
-            X_conf = np.nan_to_num(X_conf, nan=0.0)
-            try:
-                from arch_competition.stack_bundle_eval_v1 import (
-                    ablation_survivors_training_enabled,
-                    zero_ablated_sequence_channels_for_model,
-                )
-                from lstm_data import (
-                    ENCODED_FEATURES_1M,
-                    ENCODED_FEATURES_5M,
-                    FEATURES_1M,
-                    FEATURES_5M,
-                )
-
-                if ablation_survivors_training_enabled():
-                    X_5m, X_1m = zero_ablated_sequence_channels_for_model(
-                        X_5m,
-                        X_1m,
-                        mask_5m,
-                        mask_1m,
-                        model_family="lstm",
-                        horizon_slug=hz,
-                        features_5m=FEATURES_5M,
-                        features_1m=FEATURES_1M,
-                        encoded_features_5m=ENCODED_FEATURES_5M,
-                        encoded_features_1m=ENCODED_FEATURES_1M,
-                    )
-            except Exception as exc:
-                log.warning("%s cascade tensor: LSTM ablation channel zero failed: %s", ticker, exc)
-                continue
-            with torch.no_grad():
-                logits = lstm_model(
-                    torch.from_numpy(X_1m).float(),
-                    torch.from_numpy(X_5m).float(),
-                    torch.from_numpy(X_conf).float(),
-                )
-                lstm_p = torch.softmax(logits, dim=-1).squeeze().numpy()
-            vectors.append(np.concatenate([xgb_p, lstm_p]))
-    if len(vectors) < 10:
-        return None
-    return np.array(vectors, dtype=np.float32)
-
-
-def _train_cascade_ml_stack_layers_into(
-    temp_dir: Path,
-    ticker: str,
-    db_path: str,
-    allowed_et_dates: Set[str],
-    *,
-    data_fp: Optional[dict],
-    hz: str,
-) -> bool:
-    """Train full cascade stack (XGB, cascade-LSTM, cascade-Transformer) on ``allowed_et_dates``.
-
-    Used for OOF meta-learner folds: each fold trains on strictly-earlier sessions; the meta
-    stacker scores held-out rows via ``_assemble_meta_ml_layer_prob_vectors`` against the fold dir.
-    """
-    from lstm_data import STREAM_5M_LOOKBACK
-    from transformer_train import SEQUENCE_LENGTH, prepare_transformer_data, train_transformer
-
-    if not _train_cascade_xgb_lstm_into(
-        temp_dir, ticker, db_path, allowed_et_dates, data_fp=data_fp, hz=hz,
-    ):
-        return False
-    xgb_lstm = _build_in_sample_cascade_xgb_lstm_tensor(
-        temp_dir, ticker, db_path, allowed_et_dates, hz=hz,
-    )
-    if xgb_lstm is None:
-        return False
-    preload_tf = prepare_transformer_data(
-        db_path,
-        ticker,
-        allowed_et_dates=allowed_et_dates,
-        min_snapshots_before_sample=max(int(SEQUENCE_LENGTH), int(STREAM_5M_LOOKBACK)),
-        ml_horizon_slug=hz,
-    )
-    Xp, yp, daysp, tickp, nfp = preload_tf
-    if Xp is None or yp is None or len(yp) < 10:
-        return False
-    if len(xgb_lstm) != len(yp):
-        log.warning(
-            "%s cascade fold: xgb_lstm row mismatch %d vs %d — skip fold",
-            ticker,
-            len(xgb_lstm),
-            len(yp),
-        )
-        return False
-    train_transformer(
-        db_path=db_path,
-        ticker=ticker,
-        model_dir=temp_dir,
-        xgb_lstm_probs=xgb_lstm,
-        preloaded_sequences=(Xp, yp, daysp, tickp, nfp),
-        allowed_et_dates=allowed_et_dates,
-        data_fp=data_fp,
-        architecture="cascade",
-        bypass_torch_resume=True,
-        ml_horizon_slug=hz,
-    )
-    return (temp_dir / f"transformer_{ticker_storage_key(ticker)}_{hz}.pt").exists()
-
-
-def _train_cascade_meta_oof(
-    out_dir: Path,
-    ticker: str,
-    db_path: str,
-    df: Any,
-    oof_universe_days: list,
-    target_column: str,
-    hz: str,
-    *,
-    data_fp: Optional[dict],
-) -> tuple[list, list, str]:
-    """Build cascade meta-learner training matrix from expanding-window OOF ML stack layer predictions."""
-    import shutil
-    import tempfile
-
-    from ml_train import load_data
-    from training_cache import expanding_window_oof_folds
-
-    folds = expanding_window_oof_folds(oof_universe_days)
-    if not folds:
-        X_meta, y_meta = _assemble_meta_ml_layer_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
-        return X_meta, y_meta, "in_sample_no_folds"
-
-    X_meta: list = []
-    y_meta: list = []
-    tmp_root = Path(tempfile.mkdtemp(prefix=f"oof_cas_meta_{ticker}_{hz}_"))
-    try:
-        for fi, (tr_days, oof_days) in enumerate(folds):
-            fold_dir = tmp_root / f"fold{fi}"
-            if not _train_cascade_ml_stack_layers_into(
-                fold_dir, ticker, db_path, set(tr_days), data_fp=data_fp, hz=hz,
-            ):
-                log.warning("%s cascade meta OOF: fold %d ML stack train incomplete — skip", ticker, fi)
-                continue
-            df_oof = load_data(db_path, ticker=ticker, allowed_et_dates=set(oof_days), ml_horizon_slug=hz)
-            if len(df_oof) == 0:
-                continue
-            fx, fy = _assemble_meta_ml_layer_prob_vectors(fold_dir, ticker, db_path, df_oof, target_column, hz)
-            X_meta.extend(fx)
-            y_meta.extend(fy)
-    finally:
-        shutil.rmtree(tmp_root, ignore_errors=True)
-
-    if len(X_meta) < 10:
-        log.warning(
-            "%s cascade meta: OOF produced %d usable rows (<10) — in-sample fallback", ticker, len(X_meta),
-        )
-        X_meta, y_meta = _assemble_meta_ml_layer_prob_vectors(out_dir, ticker, db_path, df, target_column, hz)
-        return X_meta, y_meta, "in_sample_fallback"
-    return X_meta, y_meta, "expanding_window_oof"
-
-
-def _xgb_probs_aligned_to_lstm_dataset(
-    ds,
-    ticker: str,
-    db_path: str,
-    xgb_model,
-    xgb_meta: dict,
-    ml_horizon_slug: str,
-    *,
-    min_ts_utc: Optional[float] = None,
-    allowed_et_dates: Optional[set] = None,
-) -> Optional[Any]:
-    """Build XGB predict_proba rows in exact LSTMDataset sample order (mirror build_lstm_dataset)."""
-    import numpy as np
-    from ml_train import engineer_single_snapshot
-    from lstm_data import (
-        extract_rth_snapshots,
-        STREAM_5M_LOOKBACK,
-        TARGET_CLASSES,
-        canonical_reference_spot_from_sequence_window_first_bar,
-    )
-    from ml_horizon import outcome_column
-    from timeframe_config import CANONICAL_TIMEFRAME
-
-    if ds is None or getattr(ds, "n_samples", 0) <= 0:
-        return None
-    hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    label_col = outcome_column(hz)
-    _db = Path(db_path)
-    days_data = extract_rth_snapshots(
-        ticker,
-        timeframe=CANONICAL_TIMEFRAME,
-        db_path=_db,
-        require_outcome=True,
-        allowed_et_dates=allowed_et_dates,
-        min_ts_utc=min_ts_utc,
-        target_column=label_col,
-        skip_normalized_sync=True,
-        model_family="lstm",
-        horizon_slug=hz,
-    )
-    snap_index: dict[tuple[str, str], dict] = {}
-    for day_key, snapshots in sorted(days_data.items()):
-        n_snaps = len(snapshots)
-        if n_snaps < STREAM_5M_LOOKBACK:
-            continue
-        for end_idx in range(STREAM_5M_LOOKBACK, n_snaps):
-            window = snapshots[end_idx - STREAM_5M_LOOKBACK : end_idx]
-            current = window[-1]
-            if min_ts_utc is not None:
-                cts = current.get("ts_utc")
-                if cts is None or float(cts) < float(min_ts_utc):
-                    continue
-            target_str = current.get(label_col)
-            if target_str is None or target_str not in TARGET_CLASSES:
-                continue
-            try:
-                canonical_reference_spot_from_sequence_window_first_bar(window)
-            except ValueError:
-                continue
-            ts_et = str(current.get("ts_et", ""))
-            snap_index[(str(day_key), ts_et)] = current
-
-    probs: list[np.ndarray] = []
-    days = getattr(ds, "days", []) or []
-    timestamps = getattr(ds, "timestamps", []) or []
-    if len(days) != ds.n_samples or len(timestamps) != ds.n_samples:
-        log.warning(
-            "%s bridge alignment: ds metadata length mismatch days=%d ts=%d n=%d",
-            ticker,
-            len(days),
-            len(timestamps),
-            ds.n_samples,
-        )
-        return None
-    for day_key, ts_et in zip(days, timestamps):
-        current = snap_index.get((str(day_key), str(ts_et)))
-        if current is None:
-            log.warning(
-                "%s bridge alignment: missing snapshot for day=%s ts_et=%s",
-                ticker,
-                day_key,
-                ts_et,
-            )
-            return None
-        X_row = engineer_single_snapshot(
-            prepare_row_for_xgb_features(current),  # RC-340
-            xgb_meta.get("category_maps", {}),
-            xgb_meta.get("features", []),
-            xgb_meta.get("vol_medians", {}),
-            ticker,
-        )
-        if X_row is None:
-            log.warning("%s bridge alignment: engineer_single_snapshot failed", ticker)
-            return None
-        probs.append(xgb_model.predict_proba(X_row.values.astype(np.float64))[0])
-    return np.array(probs, dtype=np.float32)
-
-
-def train_cascade_candidate(
-    ticker: str,
-    db_path: str,
-    out_dir: Path,
-    *,
-    bypass_cache: bool = False,
-    data_fp: Optional[dict] = None,
-    code_fp: str = "",
-    scheduler_cache_key: str = "",
-    feature_cache_key: Optional[str] = None,
-    allowed_et_dates: Optional[set] = None,
-    prior_manifest: Optional[dict] = None,
-    ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
-    parallel_out: Optional[Path] = None,
-) -> dict[str, Any]:
-    """Train XGB→LSTM(_XGB)→Transformer(_XGB+LSTM) into out_dir."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    hz = normalize_ml_horizon_slug(ml_horizon_slug)
-    label_col = outcome_column(hz)
-    days_data: dict | None = None
-
-    from training_cache import (
-        db_training_fingerprint,
-        compute_training_code_fingerprint,
-        compute_feature_cache_key,
-        feature_cache_dir,
-        load_lstm_feature_cache,
-        save_lstm_feature_cache,
-        load_cascade_transformer_tensor_cache,
-        save_cascade_transformer_tensor_cache,
-        min_ts_utc_for_last_n_rth_sessions,
-        load_parallel_cascade_bridge,
-        copy_parallel_xgb_artifacts_to_cascade,
-    )
-    from training_cache_policy import (
-        ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
-        ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE,
-    )
-    from ml_train import load_data, train_ticker, engineer_single_snapshot
-    from lstm_model import train_lstm, load_lstm
-    from features.training_canonical_input import training_snapshot_for_sequence_encode
-    from lstm_data import (
-        build_lstm_dataset,
-        extract_rth_snapshots,
-        encode_snapshot_5m,
-        encode_snapshot_1m,
-        STREAM_5M_LOOKBACK,
-        STREAM_1M_LOOKBACK,
-        CONFLUENCE_FEATURES,
-        TARGET_CLASSES,
-        canonical_reference_spot_from_sequence_window_first_bar,
-        micro_reference_spot_from_window,
-    )
-    from ml_data_common import confluence_features_for_bar
-
-    _conf_cache: dict = {}          # RC-332: one canonical-history pool per (ticker, UTC day)
-    from transformer_train import train_transformer, prepare_transformer_data, SEQUENCE_LENGTH
-    import pickle
-    import numpy as np
-    import torch
-
-    _db = Path(db_path)
-
-    used_feature_cache = False
-    used_cascade_tensor_cache = False
-    used_parallel_cascade_bridge = False
-    if data_fp is None:
-        data_fp = db_training_fingerprint(db_path, ticker, label_column=label_col)
-    if not code_fp:
-        code_fp = compute_training_code_fingerprint()
-    fk_computed = compute_feature_cache_key(ticker, data_fp, code_fp, target_column=label_col)
-    if feature_cache_key is not None:
-        from features.training_canonical_input import TrainingCanonicalInputError
-
-        if feature_cache_key != fk_computed:
-            raise TrainingCanonicalInputError(
-                "feature_cache_key override does not match computed shared key for this data/code/horizon"
-            )
-        fk = feature_cache_key
-    else:
-        fk = fk_computed
-    fdir = feature_cache_dir(fk)
-
-    if allowed_et_dates is not None:
-        min_ts_tab = None
-        min_ts_seq = None
-    else:
-        min_ts_tab = min_ts_utc_for_last_n_rth_sessions(
-            db_path, ticker, ROLLING_WINDOW_RTH_SESSIONS_TABULAR, label_column=label_col,
-        )
-        min_ts_seq = min_ts_utc_for_last_n_rth_sessions(
-            db_path, ticker, ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE, label_column=label_col,
-        )
-    _cascade_hist = max(int(SEQUENCE_LENGTH), int(STREAM_5M_LOOKBACK))
-
-    def _ts_ok(snap) -> bool:
-        if min_ts_seq is None:
-            return True
-        cts = snap.get("ts_utc")
-        return cts is not None and float(cts) >= float(min_ts_seq)
-
-    prior_fp = (prior_manifest or {}).get("data_fingerprint") if prior_manifest else None
-
-    # Step 1: XGB — reuse parallel weights + aligned probs when same-run bridge is available.
-    bridge_probs: Optional[np.ndarray] = None
-    if not bypass_cache:
-        bridge_probs = load_parallel_cascade_bridge(fdir, ticker, data_fp, fk)
-    xgb_probs_list: list = []
-    xgb_model = None
-    xgb_meta: dict = {}
-    df = None
-
-    if (
-        bridge_probs is not None
-        and parallel_out is not None
-        and copy_parallel_xgb_artifacts_to_cascade(parallel_out, out_dir, ticker, horizon_suffix=hz)
-    ):
-        xgb_path = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl"
-        xgb_meta_path = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json"
-        with open(xgb_path, "rb") as f:
-            xgb_model = pickle.load(f)
-        with open(xgb_meta_path) as f:
-            xgb_meta = json.load(f)
-        xgb_probs_list = bridge_probs.tolist()
-        used_parallel_cascade_bridge = True
-        log.info(
-            "%s cascade: parallel→cascade bridge hit — skip XGB retrain + prob rescan (%d rows)",
-            ticker,
-            bridge_probs.shape[0],
-        )
-        df = load_data(
-            db_path,
-            ticker=ticker,
-            min_ts_utc=min_ts_tab,
-            allowed_et_dates=allowed_et_dates,
-            ml_horizon_slug=hz,
-        )
-        if len(df) == 0:
-            return {
-                "used_feature_cache": False,
-                "used_cascade_tensor_cache": False,
-                "used_parallel_cascade_bridge": used_parallel_cascade_bridge,
-                "warm_resume": {},
-            }
-    else:
-        df = load_data(
-            db_path,
-            ticker=ticker,
-            min_ts_utc=min_ts_tab,
-            allowed_et_dates=allowed_et_dates,
-            ml_horizon_slug=hz,
-        )
-        if len(df) == 0:
-            return {
-                "used_feature_cache": False,
-                "used_cascade_tensor_cache": False,
-                "used_parallel_cascade_bridge": False,
-                "warm_resume": {},
-            }
-        train_ticker(
-            ticker,
-            df,
-            model_dir=out_dir,
-            prior_data_fingerprint=prior_fp,
-            current_data_fingerprint=data_fp,
-            ml_horizon_slug=hz,
-            db_path=db_path,  # RC-344/F35: same DB as load_data
-        )
-
-        xgb_path = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl"
-        xgb_meta_path = out_dir / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json"
-        if not xgb_path.exists():
-            return {
-                "used_feature_cache": False,
-                "used_cascade_tensor_cache": False,
-                "used_parallel_cascade_bridge": False,
-                "warm_resume": {},
-            }
-        with open(xgb_path, "rb") as f:
-            xgb_model = pickle.load(f)
-        with open(xgb_meta_path) as f:
-            xgb_meta = json.load(f)
-
-        from timeframe_config import CANONICAL_TIMEFRAME
-        days_data = extract_rth_snapshots(
-            ticker,
-            timeframe=CANONICAL_TIMEFRAME,
-            db_path=_db,
-            require_outcome=True,
-            allowed_et_dates=allowed_et_dates,
-            target_column=label_col,
-            model_family="xgb", horizon_slug=hz,  # cascade: snapshot feeds XGB-prob generation
-        )
-
-        for day_key, snapshots in sorted(days_data.items()):
-            n_snaps = len(snapshots)
-            if n_snaps < STREAM_5M_LOOKBACK:
-                continue
-            for end_idx in range(STREAM_5M_LOOKBACK, n_snaps):
-                window = snapshots[end_idx - STREAM_5M_LOOKBACK:end_idx]
-                current = window[-1]
-                if not _ts_ok(current):
-                    continue
-                target_str = current.get(label_col)
-                if target_str is None or target_str not in TARGET_CLASSES:
-                    continue
-                # RC-318: eligibility gate mirrors build_lstm_dataset's canonical window drop
-                # exactly (xgb_probs_list must align 1:1 with ds.n_samples, checked below).
-                # The old two-step _safe_float form used the forbidden last-bar fallback and
-                # let NaN through — either way silently breaking the cascade alignment.
-                try:
-                    canonical_reference_spot_from_sequence_window_first_bar(window)
-                except ValueError:
-                    continue
-                X_row = engineer_single_snapshot(
-                    prepare_row_for_xgb_features(current, cache=_conf_cache),  # RC-340
-                    xgb_meta.get("category_maps", {}),
-                    xgb_meta.get("features", []),
-                    xgb_meta.get("vol_medians", {}), ticker,
-                )
-                if X_row is None:
-                    continue
-                probs = xgb_model.predict_proba(X_row.values.astype(np.float64))[0]
-                xgb_probs_list.append(probs)
-
-    ds = None
-    if not bypass_cache:
-        ds = load_lstm_feature_cache(fdir, ticker, data_fp, fk)
-    if ds is None:
-        ds = build_lstm_dataset(
-            tickers=[ticker],
-            db_path=_db,
-            min_ts_utc=min_ts_seq,
-            allowed_et_dates=allowed_et_dates,
-            ml_horizon_slug=hz,
-        )
-        if ds.n_samples > 0 and not bypass_cache:
-            save_lstm_feature_cache(fdir, ticker, data_fp, fk, ds)
-    else:
-        used_feature_cache = True
-        log.info("%s cascade: LSTM feature cache hit (%s)", ticker, fk[:12])
-
-    lstm_rr: dict[str, Any] = {}
-    if ds.n_samples < 10:
-        return {
-            "used_feature_cache": used_feature_cache,
-            "used_cascade_tensor_cache": False,
-            "warm_resume": lstm_rr,
-        }
-    if len(xgb_probs_list) != ds.n_samples:
-        prob_count_mismatch = len(xgb_probs_list) - ds.n_samples
-        log.warning(
-            "%s: LSTM cascade — xgb_probs mismatch %d vs %d (prob_count_mismatch=%d), falling back to parallel LSTM",
-            ticker,
-            len(xgb_probs_list),
-            ds.n_samples,
-            prob_count_mismatch,
-        )
-        lr = train_lstm(
-            dataset=ds,
-            db_path=db_path,
-            ticker=ticker,
-            model_dir=out_dir,
-            scheduler_cache_key=scheduler_cache_key or None,
-            data_fp=data_fp,
-            architecture="cascade",
-            bypass_torch_resume=bypass_cache,
-            ml_horizon_slug=hz,
-        )
-    else:
-        xgb_probs = np.array(xgb_probs_list[: ds.n_samples], dtype=np.float32)
-        lr = train_lstm(
-            dataset=ds,
-            db_path=db_path,
-            ticker=ticker,
-            model_dir=out_dir,
-            xgb_probs=xgb_probs,
-            scheduler_cache_key=scheduler_cache_key or None,
-            data_fp=data_fp,
-            architecture="cascade",
-            bypass_torch_resume=bypass_cache,
-            ml_horizon_slug=hz,
-        )
-    lstm_rr = {"lstm_warm_resume": lr.warm_resume_used, "lstm_warm_resume_detail": lr.warm_resume_detail}
-
-    preload_tf = prepare_transformer_data(
-        db_path,
-        ticker,
-        min_ts_utc=min_ts_seq,
-        min_snapshots_before_sample=_cascade_hist,
-        allowed_et_dates=allowed_et_dates,
-        ml_horizon_slug=hz,
-    )
-    Xp, yp, daysp, tickp, nfp = preload_tf
-    if Xp is None or yp is None or len(yp) < 10:
-        return {
-            "used_feature_cache": used_feature_cache,
-            "used_cascade_tensor_cache": False,
-            "warm_resume": lstm_rr,
-        }
-
-    lstm_pt_path = out_dir / f"lstm_{ticker_storage_key(ticker)}_{hz}.pt"
-
-    # Workstream B2 (commit 2) — train the cascade TRANSFORMER (final stacker) on EXPANDING-
-    # WINDOW OUT-OF-FOLD [xgb|lstm] ML layer predictions. Each kept row is scored by xgb/lstm layers
-    # trained ONLY on strictly-earlier sessions (fold models); seed-block rows (no earlier
-    # fold) are excluded so the stacker never sees an in-sample base prob. The deployed
-    # XGB/LSTM in out_dir stay full-data trained — only the transformer's TRAINING features
-    # and row set become out-of-fold. The intermediate LSTM-over-XGB feature inside each
-    # base trainer stays in-sample to its own train split (cost-bounded K=3 design; the LSTM's
-    # own honesty is B3's temporal holdout).
-    from training_cache import expanding_window_oof_folds
-
-    if allowed_et_dates is not None:
-        _oof_universe_days = sorted(set(allowed_et_dates))
-    else:
-        from training_cache import db_distinct_rth_et_dates_for_ticker
-
-        _oof_universe_days = db_distinct_rth_et_dates_for_ticker(
-            db_path, ticker, label_column=label_col
-        )
-    _oof_folds = expanding_window_oof_folds(_oof_universe_days)
-    use_oof = bool(_oof_folds)
-
-    xgb_lstm = None
-    if not use_oof and not bypass_cache:
-        xgb_lstm = load_cascade_transformer_tensor_cache(
-            fdir, ticker, data_fp, fk, code_fp, xgb_meta_path, lstm_pt_path
-        )
-        if xgb_lstm is not None and xgb_lstm.shape[0] != len(yp):
-            log.info("%s: cascade tensor cache row mismatch %d vs %d — rebuild",
-                     ticker, xgb_lstm.shape[0], len(yp))
-            xgb_lstm = None
-
-    if xgb_lstm is None:
-        import json as _json
-        import shutil as _shutil
-        import tempfile as _tempfile
-
-        lstm_model, lstm_ckpt = load_lstm(
-            model_dir=out_dir, ticker=ticker, ml_horizon_slug=hz,
-        )
-        if lstm_model is None:
-            return {
-                "used_feature_cache": used_feature_cache,
-                "used_cascade_tensor_cache": False,
-                "warm_resume": lstm_rr,
-            }
-        lstm_model.eval()
-
-        if days_data is None:
-            from timeframe_config import CANONICAL_TIMEFRAME
-
-            days_data = extract_rth_snapshots(
-                ticker,
-                timeframe=CANONICAL_TIMEFRAME,
-                db_path=_db,
-                require_outcome=True,
-                allowed_et_dates=allowed_et_dates,
-                target_column=label_col,
-                model_family="transformer",
-                horizon_slug=hz,
-            )
-
-        def _assemble_cascade_rows(select_models):
-            """Single ordered pass over sorted(days_data) — order MUST match
-            prepare_transformer_data so the result aligns positionally to (Xp, yp).
-            ``select_models(day_key) -> (xgb_m, xgb_meta_m, lstm_m, lstm_ckpt_m, keep)``.
-            Returns (vectors, keep_mask): one entry per emitted row; keep=False rows still
-            carry a real vector (computed with deployed models) to preserve positional
-            alignment, then the caller filters them out."""
-            vectors: list = []
-            keeps: list = []
-            for day_key, snapshots in sorted(days_data.items()):
-                if len(snapshots) < _cascade_hist:
-                    continue
-                xm, xmeta_m, lm, lck, keep = select_models(day_key)
-                for end_idx in range(_cascade_hist, len(snapshots)):
-                    window = snapshots[end_idx - SEQUENCE_LENGTH:end_idx]
-                    current = window[-1]
-                    if not _ts_ok(current):
-                        continue
-                    if current.get(label_col) not in TARGET_CLASSES:
-                        continue
-                    try:
-                        canonical_reference_spot_from_sequence_window_first_bar(window)
-                    except ValueError:
-                        continue
-                    X_row = engineer_single_snapshot(
-                        prepare_row_for_xgb_features(current, cache=_conf_cache),  # RC-340
-                        xmeta_m.get("category_maps", {}),
-                        xmeta_m.get("features", []),
-                        xmeta_m.get("vol_medians", {}), ticker,
-                    )
-                    if X_row is None:
-                        continue
-                    xgb_p = xm.predict_proba(X_row.values.astype(np.float64))[0]
-
-                    lstm_window = snapshots[end_idx - STREAM_5M_LOOKBACK:end_idx]
-                    try:
-                        lstm_ref = canonical_reference_spot_from_sequence_window_first_bar(lstm_window)
-                    except ValueError:
-                        continue
-                    seq_5m = [
-                        encode_snapshot_5m(training_snapshot_for_sequence_encode(s), lstm_ref)
-                        for s in lstm_window
-                    ]
-                    micro = lstm_window[-STREAM_1M_LOOKBACK:]
-                    # RC-318: single typed-absence producer (None/NaN/<=0 -> validated lstm_ref).
-                    micro_ref = micro_reference_spot_from_window(micro, lstm_ref)
-                    seq_1m = [
-                        encode_snapshot_1m(training_snapshot_for_sequence_encode(s), micro_ref)
-                        for s in micro
-                    ]
-                    # RC-332: same rewire as the parallel path above — one population
-                    # authority for cf_*, and the O(n) ts_et scan disappears with it.
-                    conf = confluence_features_for_bar(
-                        ticker, current.get("ts_utc"), str(db_path), cache=_conf_cache)
-                    conf_vec = np.array([conf[k] for k in CONFLUENCE_FEATURES], dtype=np.float32)
-                    conf_vec = np.hstack([conf_vec, xgb_p]).astype(np.float32)
-
-                    mask_5m = np.array(lck.get("mask_5m", [True] * len(seq_5m[0])))
-                    mask_1m = np.array(lck.get("mask_1m", [True] * len(seq_1m[0])))
-                    mask_conf = np.array(lck.get("mask_conf", [True] * len(conf_vec)))
-                    X_5m = np.array([seq_5m], dtype=np.float32)
-                    X_1m = np.array([seq_1m], dtype=np.float32)
-                    if len(mask_5m) == X_5m.shape[2]:
-                        X_5m = X_5m[:, :, mask_5m]
-                    if len(mask_1m) == X_1m.shape[2]:
-                        X_1m = X_1m[:, :, mask_1m]
-                    X_conf = np.array([conf_vec], dtype=np.float32)
-                    if len(mask_conf) == len(conf_vec):
-                        X_conf = X_conf[:, mask_conf]
-                    norm = lck.get("norm_stats", {})
-                    if norm:
-                        from lstm_model import align_lstm_norm_stats, apply_normalization
-
-                        aligned = align_lstm_norm_stats(norm, mask_5m, mask_1m, mask_conf)
-                        if aligned is None:
-                            log.warning(
-                                "%s cascade tensor: LSTM norm_stats / mask mismatch; skip row",
-                                ticker,
-                            )
-                            continue
-                        X_5m, X_1m, X_conf = apply_normalization(X_5m, X_1m, X_conf, aligned)
-                    X_5m = np.nan_to_num(X_5m, nan=0.0)
-                    X_1m = np.nan_to_num(X_1m, nan=0.0)
-                    X_conf = np.nan_to_num(X_conf, nan=0.0)
-                    with torch.no_grad():
-                        logits = lm(
-                            torch.from_numpy(X_1m).float(),
-                            torch.from_numpy(X_5m).float(),
-                            torch.from_numpy(X_conf).float(),
-                        )
-                        lstm_p = torch.softmax(logits, dim=-1).squeeze().numpy()
-                    vectors.append(np.concatenate([xgb_p, lstm_p]))
-                    keeps.append(bool(keep))
-            return vectors, keeps
-
-        def _deployed_selector(_day_key):
-            return (xgb_model, xgb_meta, lstm_model, lstm_ckpt, True)
-
-        # Build per-fold ML stack layers (OOF). Each fold trains XGB+LSTM on strictly-earlier
-        # sessions; its held-out block's rows are scored by that fold (out-of-sample).
-        oof_tmp_root = None
-        fold_models: dict = {}
-        day_to_fold: dict = {}
-        if use_oof:
-            from lstm_model import load_lstm as _load_lstm_fold
-
-            oof_tmp_root = Path(_tempfile.mkdtemp(prefix=f"oof_cas_{ticker}_{hz}_"))
-            day_to_fold = _oof_day_to_fold_map(_oof_folds)
-            for fi, (tr_days, oof_days) in enumerate(_oof_folds):
-                fdir_fold = oof_tmp_root / f"fold{fi}"
-                if not _train_cascade_xgb_lstm_into(
-                    fdir_fold, ticker, db_path, set(tr_days), data_fp=data_fp, hz=hz,
-                ):
-                    log.warning("%s cascade OOF: fold %d base train incomplete — skip", ticker, fi)
-                    continue
-                try:
-                    with open(fdir_fold / f"xgb_{ticker_storage_key(ticker)}_{hz}.pkl", "rb") as f:
-                        _xm = pickle.load(f)
-                    with open(fdir_fold / f"xgb_{ticker_storage_key(ticker)}_{hz}_meta.json") as f:
-                        _xmeta = _json.load(f)
-                    _lm, _lck = _load_lstm_fold(model_dir=fdir_fold, ticker=ticker, ml_horizon_slug=hz)
-                except Exception as _fe:  # noqa: BLE001 — fold load is best-effort; row degrades to seed
-                    log.warning("%s cascade OOF: fold %d artifact load failed (%s)", ticker, fi, _fe)
-                    continue
-                if _lm is None:
-                    continue
-                _lm.eval()
-                fold_models[fi] = (_xm, _xmeta, _lm, _lck)
-            if not fold_models:
-                log.warning("%s cascade OOF: no usable fold models — in-sample fallback", ticker)
-                use_oof = False
-                _shutil.rmtree(oof_tmp_root, ignore_errors=True)
-                oof_tmp_root = None
-
-        if use_oof:
-            def _oof_selector(day_key):
-                fi = day_to_fold.get(day_key)
-                if fi is None or fi not in fold_models:
-                    # Seed-block day (no earlier fold) or a fold that failed to train ->
-                    # excluded from the transformer's training set (keep=False).
-                    return (xgb_model, xgb_meta, lstm_model, lstm_ckpt, False)
-                xm, xmeta_m, lm, lck = fold_models[fi]
-                return (xm, xmeta_m, lm, lck, True)
-
-            vectors, keeps = _assemble_cascade_rows(_oof_selector)
-            if oof_tmp_root is not None:
-                _shutil.rmtree(oof_tmp_root, ignore_errors=True)
-                oof_tmp_root = None
-        else:
-            vectors, keeps = _assemble_cascade_rows(_deployed_selector)
-
-        if len(vectors) < 10:
-            return {
-                "used_feature_cache": used_feature_cache,
-                "used_cascade_tensor_cache": False,
-                "warm_resume": lstm_rr,
-            }
-        xgb_lstm = np.array(vectors, dtype=np.float32)
-
-        if use_oof:
-            keep_arr = np.array(keeps, dtype=bool)
-            if len(keep_arr) == len(yp) and int(keep_arr.sum()) >= 10:
-                Xp = Xp[keep_arr]
-                yp = yp[keep_arr]
-                daysp = daysp[keep_arr]
-                tickp = tickp[keep_arr]
-                xgb_lstm = xgb_lstm[keep_arr]
-                log.info(
-                    "%s cascade: transformer trains on %d OUT-OF-FOLD rows (of %d; seed block excluded)",
-                    ticker, int(keep_arr.sum()), len(keep_arr),
-                )
-            else:
-                # Misaligned with prepare_transformer_data, or too few OOF rows: rebuild a clean
-                # in-sample matrix (deployed models, all rows) rather than feed a mixed
-                # in-sample/OOF array. Disclosed degrade to in-sample cascade.
-                log.warning(
-                    "%s cascade OOF: assembled %d rows vs %d sequences (OOF kept %d) — in-sample fallback",
-                    ticker, len(keep_arr), len(yp), int(keep_arr.sum()),
-                )
-                vectors, _keeps2 = _assemble_cascade_rows(_deployed_selector)
-                xgb_lstm = np.array(vectors, dtype=np.float32)
-        elif not bypass_cache:
-            save_cascade_transformer_tensor_cache(
-                fdir, ticker, data_fp, fk, code_fp, xgb_meta_path, lstm_pt_path, xgb_lstm
-            )
-    else:
-        used_cascade_tensor_cache = True
-        log.info("%s cascade: Transformer tensor cache hit (%s)", ticker, fk[:12])
-
-    tr = train_transformer(
-        db_path=db_path,
-        ticker=ticker,
-        model_dir=out_dir,
-        xgb_lstm_probs=xgb_lstm,
-        preloaded_sequences=(Xp, yp, daysp, tickp, nfp),
-        allowed_et_dates=allowed_et_dates,
-        scheduler_cache_key=scheduler_cache_key or None,
-        data_fp=data_fp,
-        architecture="cascade",
-        bypass_torch_resume=bypass_cache,
-        ml_horizon_slug=hz,
-    )
-
-    # Meta-learner (cascade stacker). Same OOF contract as parallel meta: train on expanding-
-    # window out-of-fold base predictions from cascade checkpoints in each fold dir; deployed
-    # XGB/LSTM/Transformer above stay full-data trained.
-    from sklearn.linear_model import LogisticRegression
-
-    if allowed_et_dates is not None:
-        meta_oof_universe_days = sorted(set(allowed_et_dates))
-    else:
-        from training_cache import db_distinct_rth_et_dates_for_ticker
-
-        meta_oof_universe_days = db_distinct_rth_et_dates_for_ticker(
-            db_path, ticker, label_column=label_col
-        )
-    X_meta, y_meta, meta_basis = _train_cascade_meta_oof(
-        out_dir, ticker, db_path, df, meta_oof_universe_days, label_col, hz, data_fp=data_fp,
-    )
-    if len(X_meta) >= 10:
-        meta_mdl = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
-        meta_mdl.fit(np.array(X_meta), np.array(y_meta))
-        with open(out_dir / f"meta_{ticker_storage_key(ticker)}_{hz}.pkl", "wb") as f:
-            pickle.dump(meta_mdl, f)
-        _write_meta_training_basis_manifest(
-            out_dir, ticker, hz, architecture="cascade", basis=meta_basis, n_rows=len(X_meta),
-        )
-        log.info(
-            "%s cascade meta trained on %d rows (basis=%s)", ticker, len(X_meta), meta_basis,
-        )
-
-    warm_resume = {
-        **lstm_rr,
-        "transformer_warm_resume": tr.warm_resume_used,
-        "transformer_warm_resume_detail": tr.warm_resume_detail,
-    }
-    return {
-        "used_feature_cache": used_feature_cache,
-        "used_cascade_tensor_cache": used_cascade_tensor_cache,
-        "used_parallel_cascade_bridge": used_parallel_cascade_bridge,
-        "warm_resume": warm_resume,
-    }
-
-
-def _train_cascade(
-    ticker: str,
-    db_path: str,
-    *,
-    out_dir: Optional[Path] = None,
-    allowed_et_dates: Optional[Set[str]] = None,
-    bypass_cache: bool = False,
-    data_fp: Optional[dict] = None,
-    code_fp: str = "",
-    scheduler_cache_key: str = "",
-    feature_cache_key: Optional[str] = None,
-    prior_manifest: Optional[dict] = None,
-    ml_horizon_slug: str = DEFAULT_ML_HORIZON_SLUG,
-    parallel_out: Optional[Path] = None,
-) -> dict[str, Any]:
-    """Production entry: same as nightly scheduler; optional out_dir / allowed_et_dates for compare tooling."""
-    dest = out_dir if out_dir is not None else CASCADE_DIR / ticker_storage_key(ticker)  # RC-345/F25
-    return train_cascade_candidate(
-        ticker,
-        db_path,
-        dest,
-        bypass_cache=bypass_cache,
-        data_fp=data_fp,
-        code_fp=code_fp,
-        scheduler_cache_key=scheduler_cache_key,
-        feature_cache_key=feature_cache_key,
-        allowed_et_dates=allowed_et_dates,
-        prior_manifest=prior_manifest,
-        ml_horizon_slug=ml_horizon_slug,
-        parallel_out=parallel_out,
-    )
+from ml_scheduler_support import (
+    scheduler_arch_state_path,
+    scheduler_active_root,
+    _now_et,
+    _scheduler_auto_promote_to_active,
+    _scheduler_skip_parallel_train,
+    _append_training_report,
+    _apply_pr2_report_fields,
+    _resolve_ticker_outcome,
+    _is_market_day,
+    _wait_until_1615,
+)
+
+
+from ml_scheduler_rth_data import (
+    _training_ticker_union,
+    _get_tickers_with_rth_data,  # noqa: F401 -- re-export: tests monkeypatch this on the
+                                 # ml_scheduler module directly (test_issue22_logging_universe.py)
+    _diagnostic_db_tickers_not_enrolled,
+    _load_rth_rows_for_ticker,  # noqa: F401 -- re-export: tests monkeypatch this on the
+                                # ml_scheduler module directly (test_arch_competition_eval_runner.py)
+    _empty_realized_metrics,
+    _eval_hist_db_for_labeled_rows,  # noqa: F401 -- re-export: tests monkeypatch this on the
+                                     # ml_scheduler module directly (test_arch_competition_eval_runner.py)
+)
+
+
+from ml_scheduler_rth_eval import (
+    _evaluate_parallel_on_full_rth,
+    _evaluate_cascade_on_full_rth,
+)
+from ml_scheduler_meta_stack import (
+    _meta_ml_layer_triplet,
+    _assemble_meta_ml_layer_prob_vectors,
+    _write_meta_training_basis_manifest,  # noqa: F401 -- re-export: several tests do
+                                          # `from ml_scheduler import _write_meta_training_basis_manifest`
+                                          # (test_arch_competition_auto_promote.py, test_manual_governance.py,
+                                          # test_ml_feature_provenance.py, test_post_promote_verify_and_rollback.py)
+    read_meta_training_basis_manifest,  # noqa: F401 -- re-export: external caller
+                                        # arch_competition/promotion_execution.py imports
+                                        # `from ml_scheduler import read_meta_training_basis_manifest`
+)
+
+
+from ml_scheduler_parallel_train import (
+    _train_parallel_ml_stack_layers_into,
+    _train_parallel_meta_oof,  # noqa: F401 -- re-export: tests call this directly via
+                               # ml_scheduler._train_parallel_meta_oof (tests/test_oof_stacker.py)
+    train_parallel_candidate,  # noqa: F401 -- re-export: external caller train_compare.py
+                               # does `from ml_scheduler import train_parallel_candidate`
+    _train_parallel,
+)
+
+
+from ml_scheduler_cascade_train import (
+    _oof_day_to_fold_map,  # noqa: F401 -- re-export: tests call this directly via
+                           # ml_scheduler._oof_day_to_fold_map (tests/test_oof_stacker.py)
+    _train_cascade_xgb_lstm_into,  # noqa: F401 -- re-export: tests call this directly via
+                                   # ml_scheduler._train_cascade_xgb_lstm_into (tests/test_oof_stacker.py)
+    _build_in_sample_cascade_xgb_lstm_tensor,  # noqa: F401 -- re-export: tests do
+                                               # `from ml_scheduler import _build_in_sample_cascade_xgb_lstm_tensor`
+                                               # (tests/test_ml_feature_schema_parity.py)
+    _train_cascade_ml_stack_layers_into,
+    _train_cascade_meta_oof,  # noqa: F401 -- re-export: tests call this directly via
+                              # ml_scheduler._train_cascade_meta_oof (tests/test_oof_stacker.py)
+    _xgb_probs_aligned_to_lstm_dataset,  # noqa: F401 -- re-export: ml_scheduler_parallel_train.py's
+                                         # train_parallel_candidate reaches this lazily via
+                                         # ml_scheduler._xgb_probs_aligned_to_lstm_dataset
+    _train_cascade,
+)
 
 
 def _artifact_paths_relative(out_dir: Path, ticker: str, *, horizon_suffix: str = DEFAULT_ML_HORIZON_SLUG) -> dict[str, str]:
@@ -2512,6 +155,21 @@ def aggregate_all_horizons_exit_code(per_horizon_exit_codes) -> int:
     for code in per_horizon_exit_codes:
         agg |= int(code)
     return agg
+
+
+# CAPS RC-REHAB-1: evaluation fields a run manifest must carry before its cached metrics may
+# stand in for a fresh evaluation. build_manifest always writes all three; a manifest that
+# lacks one used to be read as accuracy 0.0 / n_rows 0 -- numbers that then drove the
+# parallel-vs-cascade promotion comparison and were re-persisted as if measured.
+_REQUIRED_MANIFEST_EVAL_KEYS = ("eval_accuracy", "balanced_accuracy", "n_rows")
+
+
+def _manifest_eval_complete(manifest: Any) -> bool:
+    """True when ``manifest['evaluation']`` carries every required metric (non-None)."""
+    if not isinstance(manifest, dict):
+        return False
+    ev = manifest.get("evaluation")
+    return isinstance(ev, dict) and all(ev.get(k) is not None for k in _REQUIRED_MANIFEST_EVAL_KEYS)
 
 
 def run_once(
@@ -2553,7 +211,7 @@ def run_once(
         log.warning("DB not found at %s", DB_PATH)
         return {"exit_code": 1, "ticker_outcomes": [], "ml_horizon": hz_sched, "skipped": True}
 
-    _gate_skip = os.environ.get("ED_ML_SCHEDULER_SKIP_PRE_TRAIN_GATE", "").strip().lower()
+    _gate_skip = os.environ.get("ED_ML_SCHEDULER_SKIP_PRE_TRAIN_GATE", "").strip().lower()  # caps-ok: operator env opt-out; unset ("") means the pre-train DB health gate RUNS -- only an explicit 1/true/yes skips it
     if _gate_skip not in ("1", "true", "yes"):
         try:
             from db_health_audit import run_audit
@@ -2877,7 +535,7 @@ def run_once(
             from timeframe_config import CANONICAL_TIMEFRAME
 
             data_fp = db_training_fingerprint(DB_PATH, ticker, label_column=target_column)
-            if int(data_fp.get("row_count") or 0) < 1:
+            if int(data_fp.get("row_count") or 0) < 1:  # caps-ok: fail-closed skip gate -- an absent/None row_count is treated as "no labeled rows" so the ticker is NOT trained; no count is persisted from this
                 log.info(
                     "%s: skip — no RTH labeled rows for %s in snapshots_1m_normalized (needed for training)",
                     ticker,
@@ -2944,14 +602,25 @@ def run_once(
                         ticker,
                     )
                     continue
-                pe = parallel_man.get("evaluation") or {}
-                ce = cascade_man.get("evaluation") or {}
-                if not pe or not ce:
+                if not (_manifest_eval_complete(parallel_man) and _manifest_eval_complete(cascade_man)):
                     log.warning(
-                        "%s: --promote-from-manifests skipped (evaluation missing)",
+                        "%s: --promote-from-manifests skipped (evaluation missing or incomplete: "
+                        "need %s in both manifests)",
+                        ticker,
+                        ", ".join(_REQUIRED_MANIFEST_EVAL_KEYS),
+                    )
+                    continue
+                if not parallel_man.get("trained_at") or not cascade_man.get("trained_at"):
+                    # CAPS RC-REHAB-1: trained_at used to default to THIS run's timestamp,
+                    # laundering an unknown training time into a fresh one (which then made
+                    # the artifacts look young to the next run's max-age cache check).
+                    log.warning(
+                        "%s: --promote-from-manifests skipped (manifest trained_at missing)",
                         ticker,
                     )
                     continue
+                pe = parallel_man["evaluation"]
+                ce = cascade_man["evaluation"]
                 mf_hz = normalize_ml_horizon_slug(
                     parallel_man.get("ml_horizon_suffix") or cascade_man.get("ml_horizon_suffix") or hz_sched
                 )
@@ -2994,8 +663,8 @@ def run_once(
                         ticker, "cascade", data_fp, code_fp, target_column=_tc_promo,
                     )
                 )
-                par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0)
-                cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0)
+                par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0)  # caps-ok: run counter -- a manifest that never recorded a skip streak has had zero consecutive skips; 0 only delays the forced-retrain cap, it asserts no market value
+                cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0)  # caps-ok: run counter, same zero-skips-recorded semantics as the parallel streak
                 par_skip_reason = "promote_from_manifests_only"
                 cas_skip_reason = "promote_from_manifests_only"
                 par_retrain_reason = None
@@ -3006,9 +675,10 @@ def run_once(
                 cascade_skip = True
                 evp = pe
                 evc = ce
-                parallel_acc = float(evp.get("eval_accuracy", 0.0))
-                parallel_bal = float(evp.get("balanced_accuracy", 0.0))
-                n_rows = int(evp.get("n_rows", 0))
+                # Required keys verified by _manifest_eval_complete above -- read directly.
+                parallel_acc = float(evp["eval_accuracy"])
+                parallel_bal = float(evp["balanced_accuracy"])
+                n_rows = int(evp["n_rows"])
                 parallel_ll = evp.get("eval_log_loss")
                 if parallel_ll is not None:
                     parallel_ll = float(parallel_ll)
@@ -3016,9 +686,9 @@ def run_once(
                 parallel_realized_metrics = (
                     dict(_prm) if isinstance(_prm, dict) else _empty_realized_metrics(n_rows)
                 )
-                cascade_acc = float(evc.get("eval_accuracy", 0.0))
-                cascade_bal = float(evc.get("balanced_accuracy", 0.0))
-                n_cascade_rows = int(evc.get("n_rows", 0))
+                cascade_acc = float(evc["eval_accuracy"])
+                cascade_bal = float(evc["balanced_accuracy"])
+                n_cascade_rows = int(evc["n_rows"])
                 cascade_ll = evc.get("eval_log_loss")
                 if cascade_ll is not None:
                     cascade_ll = float(cascade_ll)
@@ -3030,14 +700,17 @@ def run_once(
                 par_skipped_eval = True
                 cas_skipped_train = True
                 cas_skipped_eval = True
-                par_used_fc = bool(parallel_man.get("used_feature_cache", False))
-                par_used_ctc = bool(parallel_man.get("used_cascade_tensor_cache", False))
-                pm_trained_at = str(parallel_man.get("trained_at", run_ts))
+                # CAPS RC-REHAB-1: provenance is carried forward verbatim -- a flag the prior
+                # manifest did not record stays None (unknown) in the rewritten manifest
+                # instead of being asserted False; trained_at is verified present above.
+                par_used_fc = parallel_man.get("used_feature_cache")
+                par_used_ctc = parallel_man.get("used_cascade_tensor_cache")
+                pm_trained_at = str(parallel_man["trained_at"])
                 par_warm_resume = parallel_man.get("warm_resume") or {}
-                cas_used_fc = bool(cascade_man.get("used_feature_cache", False))
-                cas_used_ctc = bool(cascade_man.get("used_cascade_tensor_cache", False))
-                cas_used_bridge = bool(cascade_man.get("used_parallel_cascade_bridge", False))
-                cm_trained_at = str(cascade_man.get("trained_at", run_ts))
+                cas_used_fc = cascade_man.get("used_feature_cache")
+                cas_used_ctc = cascade_man.get("used_cascade_tensor_cache")
+                cas_used_bridge = cascade_man.get("used_parallel_cascade_bridge")
+                cm_trained_at = str(cascade_man["trained_at"])
                 cas_warm_resume = cascade_man.get("warm_resume") or {}
                 log.info(
                     "%s: skip train (%s)",
@@ -3048,8 +721,8 @@ def run_once(
                 parallel_man = load_run_manifest(parallel_out) if not bypass_cache else None
                 cascade_man = load_run_manifest(cascade_out) if not bypass_cache else None
 
-                par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0) if parallel_man else 0
-                cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0) if cascade_man else 0
+                par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0) if parallel_man else 0  # caps-ok: run counter -- no manifest (or none recorded) = zero consecutive skips so far; feeds only the forced-retrain cap
+                cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0) if cascade_man else 0  # caps-ok: run counter, same zero-skips-so-far semantics as the parallel streak
                 par_inhibit = (
                     not bypass_cache
                     and not force_retrain
@@ -3092,6 +765,14 @@ def run_once(
                     horizon_suffix=hz_sched,
                 )
                 parallel_skip = par_elig
+                if parallel_skip and not _manifest_eval_complete(parallel_man):
+                    # CAPS RC-REHAB-1: a cache hit reuses the manifest's evaluation instead of
+                    # re-evaluating; without a complete evaluation there is nothing real to
+                    # reuse, so it is a cache MISS (train + eval), never a 0.0-accuracy hit.
+                    parallel_skip = False
+                    par_skip_reason = None
+                    par_retrain_reason = "manifest_evaluation_incomplete"
+                    par_miss_reason = "evaluation_missing"
 
                 cas_elig, cas_skip_reason, cas_retrain_reason, cas_miss_reason = full_skip_eligible(
                     cascade_man,
@@ -3108,6 +789,12 @@ def run_once(
                     horizon_suffix=hz_sched,
                 )
                 cascade_skip = cas_elig
+                if cascade_skip and not _manifest_eval_complete(cascade_man):
+                    # CAPS RC-REHAB-1: same rule as the parallel side above.
+                    cascade_skip = False
+                    cas_skip_reason = None
+                    cas_retrain_reason = "manifest_evaluation_incomplete"
+                    cas_miss_reason = "evaluation_missing"
 
             if not skip_train:
                 parallel_ll: Optional[float] = None
@@ -3119,10 +806,14 @@ def run_once(
 
             if not skip_train and parallel_skip:
                 log.info("%s: parallel scheduler cache hit — skip train + eval (key=%s…)", ticker, parallel_key[:12])
-                evp = parallel_man.get("evaluation") or {}
-                parallel_acc = float(evp.get("eval_accuracy", 0.0))
-                parallel_bal = float(evp.get("balanced_accuracy", 0.0))
-                n_rows = int(evp.get("n_rows", 0))
+                # Cache hit implies _manifest_eval_complete (checked at eligibility) and a
+                # parseable trained_at (full_skip_eligible refuses a skip without one), so both
+                # are read directly. used_* provenance flags are carried verbatim (None if the
+                # prior manifest never recorded them), never asserted False.
+                evp = parallel_man["evaluation"]
+                parallel_acc = float(evp["eval_accuracy"])
+                parallel_bal = float(evp["balanced_accuracy"])
+                n_rows = int(evp["n_rows"])
                 parallel_ll = evp.get("eval_log_loss")
                 _prm = evp.get("realized_contract_metrics")
                 parallel_realized_metrics = (
@@ -3132,9 +823,9 @@ def run_once(
                     parallel_ll = float(parallel_ll)
                 par_skipped_train = True
                 par_skipped_eval = True
-                par_used_fc = bool(parallel_man.get("used_feature_cache", False))
-                par_used_ctc = bool(parallel_man.get("used_cascade_tensor_cache", False))
-                pm_trained_at = str(parallel_man.get("trained_at", run_ts))
+                par_used_fc = parallel_man.get("used_feature_cache")
+                par_used_ctc = parallel_man.get("used_cascade_tensor_cache")
+                pm_trained_at = str(parallel_man["trained_at"])
                 par_warm_resume = parallel_man.get("warm_resume") or {}
             elif not skip_train and _scheduler_skip_parallel_train():
                 log.info(
@@ -3152,10 +843,17 @@ def run_once(
                 )
                 par_skipped_train = True
                 par_skipped_eval = False
-                par_used_fc = bool((parallel_man or {}).get("used_feature_cache", False))
-                par_used_ctc = bool((parallel_man or {}).get("used_cascade_tensor_cache", False))
-                pm_trained_at = str((parallel_man or {}).get("trained_at", run_ts))
-                par_warm_resume = (parallel_man or {}).get("warm_resume") or {}
+                # CAPS RC-REHAB-1: these artifacts were NOT trained this run, so their training
+                # provenance comes only from the prior manifest. Without one (bypass_cache /
+                # first run) it is unknown -> None, never "trained now" (run_ts) or False; a
+                # None trained_at makes the next run's full_skip_eligible refuse the skip
+                # ("manifest_trained_at_unavailable") instead of trusting an invented age.
+                _pm = parallel_man if isinstance(parallel_man, dict) else {}
+                par_used_fc = _pm.get("used_feature_cache")
+                par_used_ctc = _pm.get("used_cascade_tensor_cache")
+                _pm_ta = _pm.get("trained_at")
+                pm_trained_at = str(_pm_ta) if _pm_ta else None
+                par_warm_resume = _pm.get("warm_resume") or {}
             elif not skip_train:
                 log.info("%s: Training parallel...", ticker)
                 archive_candidate_directory_before_train(parallel_out, MODEL_DIR, "parallel", ticker)
@@ -3179,17 +877,20 @@ def run_once(
                 )
                 par_skipped_train = False
                 par_skipped_eval = False
-                par_used_fc = bool(par_ret.get("used_feature_cache", False))
-                par_used_ctc = bool(par_ret.get("used_cascade_tensor_cache", False))
+                # CAPS RC-REHAB-1: train_parallel_candidate returns both flags on every path
+                # (train_compare.py already indexes them) -- read directly, no False default.
+                par_used_fc = bool(par_ret["used_feature_cache"])
+                par_used_ctc = bool(par_ret["used_cascade_tensor_cache"])
                 pm_trained_at = run_ts
                 par_warm_resume = par_ret.get("warm_resume") or {}
 
             if not skip_train and cascade_skip:
                 log.info("%s: cascade scheduler cache hit — skip train + eval (key=%s…)", ticker, cascade_key[:12])
-                evc = cascade_man.get("evaluation") or {}
-                cascade_acc = float(evc.get("eval_accuracy", 0.0))
-                cascade_bal = float(evc.get("balanced_accuracy", 0.0))
-                n_cascade_rows = int(evc.get("n_rows", 0))
+                # Same cache-hit contract as the parallel side (eval complete, trained_at present).
+                evc = cascade_man["evaluation"]
+                cascade_acc = float(evc["eval_accuracy"])
+                cascade_bal = float(evc["balanced_accuracy"])
+                n_cascade_rows = int(evc["n_rows"])
                 cascade_ll = evc.get("eval_log_loss")
                 _crm = evc.get("realized_contract_metrics")
                 cascade_realized_metrics = (
@@ -3199,10 +900,10 @@ def run_once(
                     cascade_ll = float(cascade_ll)
                 cas_skipped_train = True
                 cas_skipped_eval = True
-                cas_used_fc = bool(cascade_man.get("used_feature_cache", False))
-                cas_used_ctc = bool(cascade_man.get("used_cascade_tensor_cache", False))
-                cas_used_bridge = bool(cascade_man.get("used_parallel_cascade_bridge", False))
-                cm_trained_at = str(cascade_man.get("trained_at", run_ts))
+                cas_used_fc = cascade_man.get("used_feature_cache")
+                cas_used_ctc = cascade_man.get("used_cascade_tensor_cache")
+                cas_used_bridge = cascade_man.get("used_parallel_cascade_bridge")
+                cm_trained_at = str(cascade_man["trained_at"])
                 cas_warm_resume = cascade_man.get("warm_resume") or {}
             elif not skip_train:
                 log.info("%s: Training cascade...", ticker)
@@ -3228,9 +929,14 @@ def run_once(
                 )
                 cas_skipped_train = False
                 cas_skipped_eval = False
-                cas_used_fc = bool(cas_ret.get("used_feature_cache", False))
-                cas_used_ctc = bool(cas_ret.get("used_cascade_tensor_cache", False))
-                cas_used_bridge = bool(cas_ret.get("used_parallel_cascade_bridge", False))
+                # CAPS RC-REHAB-1: train_cascade_candidate returns used_feature_cache and
+                # used_cascade_tensor_cache on every path (read directly). Two of its early
+                # returns (LSTM stage: too few samples / prob-length mismatch) omit
+                # used_parallel_cascade_bridge even when the bridge WAS used for the XGB stage,
+                # so an absent key is UNKNOWN (None), not False.
+                cas_used_fc = bool(cas_ret["used_feature_cache"])
+                cas_used_ctc = bool(cas_ret["used_cascade_tensor_cache"])
+                cas_used_bridge = cas_ret.get("used_parallel_cascade_bridge")
                 cm_trained_at = run_ts
                 cas_warm_resume = cas_ret.get("warm_resume") or {}
 
@@ -3259,8 +965,10 @@ def run_once(
                     "error": "partial_candidate_bundle",
                     "failed_closed": True,
                     "issues": {
-                        "parallel": _par_bundle_chk.get("issues", []),
-                        "cascade": _cas_bundle_chk.get("issues", []),
+                        # check_active_bundle_complete always returns `issues` (its contract);
+                        # an `[]` default would have reported "no issues" for a failed bundle.
+                        "parallel": _par_bundle_chk["issues"],
+                        "cascade": _cas_bundle_chk["issues"],
                     },
                 }
             else:
@@ -3509,7 +1217,7 @@ def run_once(
                 report["governed_competition"] = governed_slice
 
             arch_key = ticker_storage_key(ticker)  # RC-345/F25: arch_state writer key == canonical identity (reader in server.py matches)
-            prior_arch = arch_state.get(arch_key, {}).get("active_architecture", "none")
+            prior_arch = arch_state.get(arch_key, {}).get("active_architecture", "none")  # caps-ok: "none" is the repo-wide "no architecture active" sentinel (same as promotion_execution / manual_control); a ticker absent from arch_state has never been promoted
             new_arch = prior_arch
             if promoted and auto_exec_result.get("target_architecture"):
                 new_arch = auto_exec_result["target_architecture"]
@@ -3630,8 +1338,8 @@ def run_once(
             except Exception as _em_e:
                 log.warning("eval_metrics_store: %s", _em_e)
 
-            par_skip_streak_next = (par_streak_prev + 1) if parallel_skip else 0
-            cas_skip_streak_next = (cas_streak_prev + 1) if cascade_skip else 0
+            par_skip_streak_next = (par_streak_prev + 1) if parallel_skip else 0  # caps-ok: counter reset -- a run that trained breaks the consecutive-skip streak, so 0 is the true new count
+            cas_skip_streak_next = (cas_streak_prev + 1) if cascade_skip else 0  # caps-ok: counter reset -- a run that trained breaks the consecutive-skip streak, so 0 is the true new count
 
             par_sha = compute_artifact_sha256_map(
                 parallel_out, parallel_artifact_basenames(ticker, horizon_suffix=hz_sched),
@@ -3869,7 +1577,7 @@ def start_background_scheduler() -> None:
 
     from arch_competition.scheduler_auto_promote_policy import scheduler_nightly_all_horizons_enabled
 
-    single_hz = os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG)
+    single_hz = os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG)  # caps-ok: operator env config with the documented default horizon slug (DEFAULT_ML_HORIZON_SLUG)
 
     def _run_scheduled_nightly() -> None:
         if scheduler_nightly_all_horizons_enabled():
@@ -3886,7 +1594,9 @@ def start_background_scheduler() -> None:
                     promote_from_manifests_only=False,
                     ml_horizon_slug=str(_hz),
                 )
-                code = int(summary.get("exit_code", 0))
+                # CAPS RC-REHAB-1: every run_once return carries exit_code; a `0` default
+                # would have reported a malformed summary as a successful horizon.
+                code = int(summary["exit_code"])
                 agg_exit |= code
                 log.info(
                     "ML scheduler background: finished horizon %s (exit=%s)",
@@ -3977,7 +1687,7 @@ if __name__ == "__main__":
     ap.add_argument(
         "--horizon",
         type=str,
-        default=os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG),
+        default=os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG),  # caps-ok: argparse default from operator env, falling back to the documented DEFAULT_ML_HORIZON_SLUG
         help="ML horizon slug for this scheduler run (1c, 5c, 15c, 60c). Non-1c promotes to models/active_{slug}/.",
     )
     ap.add_argument(
@@ -4006,7 +1716,7 @@ if __name__ == "__main__":
         for _hz in ALL_GOVERNED_HORIZONS:
             log.info("ml_scheduler --all-horizons: starting horizon %s", _hz)
             summary = run_once(
-                wait=False if run_now else args.wait,
+                wait=False if run_now else args.wait,  # caps-ok: CLI flag logic -- --run-now means "do not wait for the 16:15 slot", otherwise honour --wait
                 force_retrain=args.force_retrain,
                 bypass_cache=args.bypass_cache,
                 allow_non_market_day=run_now,
@@ -4014,11 +1724,11 @@ if __name__ == "__main__":
                 preflip_candidate_root=_preflip_root,
                 ml_horizon_slug=str(_hz),
             )
-            agg_exit = aggregate_all_horizons_exit_code((agg_exit, summary.get("exit_code", 0)))
+            agg_exit = aggregate_all_horizons_exit_code((agg_exit, summary["exit_code"]))  # required: run_once always returns exit_code (CAPS RC-REHAB-1, was a success-by-default 0)
             log.info("ml_scheduler --all-horizons: finished horizon %s (exit=%s)", _hz, summary.get("exit_code"))
         sys.exit(agg_exit)
     summary = run_once(
-        wait=False if run_now else args.wait,
+        wait=False if run_now else args.wait,  # caps-ok: CLI flag logic -- --run-now means "do not wait for the 16:15 slot", otherwise honour --wait
         force_retrain=args.force_retrain,
         bypass_cache=args.bypass_cache,
         allow_non_market_day=run_now,
@@ -4026,4 +1736,4 @@ if __name__ == "__main__":
         preflip_candidate_root=_preflip_root,
         ml_horizon_slug=str(args.horizon),
     )
-    sys.exit(int(summary.get("exit_code", 0)))
+    sys.exit(int(summary["exit_code"]))  # required: run_once always returns exit_code (CAPS RC-REHAB-1, was a success-by-default 0)

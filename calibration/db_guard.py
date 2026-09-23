@@ -27,7 +27,7 @@ def require_canonical_db_target(
 ) -> None:
     cli_require_canonical_or_ack(
         Path(args.db).resolve(),
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: callers that never register --allow-noncanonical-db (e.g. calibration/validate_logging.py) have not opted in; False keeps the strict canonical-only guard
         tool_name=tool_name,
         write_capable=write_capable,
     )

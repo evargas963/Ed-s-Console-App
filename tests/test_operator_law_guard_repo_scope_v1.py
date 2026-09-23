@@ -545,7 +545,7 @@ def _moving_ref_offenders(text, label):
             continue
         if "negative_control" not in node.name:
             continue
-        end = getattr(node, "end_lineno", node.lineno) or node.lineno
+        end = node.end_lineno
         for num in range(node.lineno, min(end, len(lines)) + 1):
             line = lines[num - 1]
             if line.lstrip().startswith("#") or "moving-ref-ok" in line:

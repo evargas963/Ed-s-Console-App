@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
+import app.api.routes.diagnostics
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -209,7 +210,7 @@ def test_diagnostics_exposes_lifecycle_and_invariants(l1_cache_clean):
 
     srv._l1_snapshot_cache[("DX", "e")] = _minimal_snap(time.time())
     srv._l1_touch_scope(("DX", "e"))
-    ed = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
+    ed = json.loads(app.api.routes.diagnostics.get_l1_diagnostics().body)["ed_l1"]
     assert ed["l1_cache_lifecycle"]["keys_match"] is True
     assert "l1_cache_eviction_ttl_total" in ed
     assert "l1_cache_eviction_cap_total" in ed

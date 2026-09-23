@@ -7,7 +7,7 @@ sys.path.insert(0, str(ROOT))
 from db import DB_PATH
 
 p = DB_PATH
-c = sqlite3.connect(str(p))
+c = sqlite3.connect(str(p), timeout=30.0)
 
 
 def cols(tbl):

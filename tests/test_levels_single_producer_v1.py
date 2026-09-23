@@ -20,21 +20,38 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import calibration.option_chain_morning_full as ocmf
+import gamma_surface_state
+import app.api.routes.liquidity
+import app.api.routes.status
+import app.api.routes.terrain
+import terrain_loop
+import terrain_state
 
 SERVER = Path(__file__).resolve().parent.parent / "server.py"
 SRC = SERVER.read_text(encoding="utf-8")
 TREE = ast.parse(SRC)
 
+# The producer census and the named-function lookups scan the WHOLE console process -- the
+# static import closure of server.py (tests/console_runtime.py) -- not a hand-kept file list.
+# The old list (server.py + three modules) missed any producer that moved into a new module:
+# a single-producer lock is only as wide as the code it can see.
+from tests.console_runtime import console_runtime_sources
+
+_SOURCES = tuple((src, tree) for _path, src, tree in console_runtime_sources())
+
 
 def _fn(name: str) -> str:
-    for n in ast.walk(TREE):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
-            return ast.get_source_segment(SRC, n) or ""
-    raise AssertionError(f"{name} not found in server.py")
+    for src, tree in _SOURCES:
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
+                return ast.get_source_segment(src, n) or ""
+    raise AssertionError(f"{name} not found anywhere in the console runtime")
 
 
 def _producers() -> list[tuple[int, str]]:
-    """(line, enclosing function) for every compute_terrain call fed REAL contracts.
+    """(line, enclosing function) for every compute_terrain call fed REAL contracts, across
+    the whole console runtime (_SOURCES).
 
     `compute_terrain(tk, None, ...)` is the UNAVAILABLE constructor — it computes no levels from
     data and is therefore not a producer."""
@@ -51,7 +68,7 @@ def _producers() -> list[tuple[int, str]]:
         visit_AsyncFunctionDef = visit_FunctionDef
 
         def visit_Call(self, n):
-            nm = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")
+            nm = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")  # caps-ok: AST duck typing: a Call.func that is neither Name nor Attribute has no name, and '' never matches compute_terrain
             if nm == "compute_terrain":
                 second = n.args[1] if len(n.args) > 1 else None
                 is_unavailable = isinstance(second, ast.Constant) and second.value is None
@@ -59,7 +76,8 @@ def _producers() -> list[tuple[int, str]]:
                     out.append((n.lineno, self.fn or "<module>"))
             self.generic_visit(n)
 
-    V().visit(TREE)
+    for _src, tree in _SOURCES:
+        V().visit(tree)
     return out
 
 
@@ -67,9 +85,13 @@ def _calls_in(name: str) -> set[str]:
     """Callee names actually INVOKED inside `name`. AST, not substring: the comment recording why
     the narrow-chain read was removed must not itself trip the lock, or the next person deletes
     the explanation to get green."""
-    node = next(n for n in ast.walk(TREE)
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
-    return {c.func.id if isinstance(c.func, ast.Name) else getattr(c.func, "attr", "")
+    node = next(
+        n
+        for _src, tree in _SOURCES
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+    )
+    return {c.func.id if isinstance(c.func, ast.Name) else getattr(c.func, "attr", "")  # caps-ok: AST duck typing: a Call.func that is neither Name nor Attribute has no name; '' in the callee set matches no real producer name
             for c in ast.walk(node) if isinstance(c, ast.Call)}
 
 
@@ -150,7 +172,7 @@ def _overlay(cache_entry, monkeypatch):
             )
     else:
         entry = None
-    monkeypatch.setattr(S, "_terrain_cache",
+    monkeypatch.setattr(terrain_state, "_terrain_cache",
                         {"SPY": entry} if entry is not None else {})
     md = {"kl_call_gamma_wall": 111.0, "kl_put_gamma_wall": 222.0, "kl_gamma_flip": 333.0,
           "kl_absolute_gamma_strike": 444.0, "kl_hvl": 555.0, "kl_max_pain": 666.0,
@@ -201,6 +223,60 @@ def test_absent_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
     assert "withheld" in md["kl_levels_source"]
 
 
+def test_fresh_terrain_also_writes_the_bare_terrain_name_beside_the_kl_prefix(monkeypatch):
+    """NAMING CONSOLIDATION (2026-09-21): a field audit found _fetch_state's payload
+    re-serializing terrain-cache values under invented names (kl_gsf vs /api/terrain's own
+    'gsf', kl_dex_net vs 'net_dex' reversed) with nothing keeping the two in sync -- which
+    was the actual reason those fields took real investigation to trace instead of a literal
+    string match. ms_dict must now carry BOTH the kl_-prefixed name (payload convention) and
+    the source's own bare name (so "does ms_dict have what /api/terrain calls X" is a literal
+    key lookup), for every direct, untransformed terrain value."""
+    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
+                   "absolute_gamma_strike": 741.0, "absolute_gamma_strength_pct": 32.5,
+                   "pin_candidate": 741.0, "pin_candidate_blockers": [],
+                   "net_gex_peak": 735.0, "max_pain": 742.0,
+                   "gsf": 730.0, "grc": 752.0, "gsf_state": "TRUSTED",
+                   "zero_dte_gamma_share_pct": 18.5,
+                   "call_delta_wall": 748.0, "put_delta_wall": 738.0,
+                   "call_wall_state": "TRUSTED", "put_wall_state": "TRUSTED",
+                   "rr_25d": {"rr_pts": -1.2, "dte": 5},
+                   "delta_oi_walls": {"call_build_strike": 750.0},
+                   "dex_dollars": {"net_dex": 1_200_000.0},
+                   "vanna_agg": {"net_vanna_dollars_per_volpt": -300_000.0},
+                   "levels_stale": False}, monkeypatch)
+    # bare aliases match /api/terrain's own field names exactly, and equal their kl_ sibling
+    for bare, kl in (
+        ("call_wall", "kl_call_gamma_wall"), ("put_wall", "kl_put_gamma_wall"),
+        ("gamma_flip", "kl_gamma_flip"), ("absolute_gamma_strike", "kl_absolute_gamma_strike"),
+        ("absolute_gamma_strength_pct", "kl_absolute_gamma_strength_pct"),
+        ("pin_candidate", "kl_pin_candidate"),
+        ("pin_candidate_blockers", "kl_pin_candidate_blockers"),
+        ("gsf", "kl_gsf"), ("grc", "kl_grc"), ("gsf_state", "kl_gsf_state"),
+        ("zero_dte_gamma_share_pct", "kl_zero_dte_share"),
+        ("max_pain", "kl_max_pain"),
+        ("call_delta_wall", "kl_call_delta_wall"), ("put_delta_wall", "kl_put_delta_wall"),
+        ("call_wall_state", "kl_call_wall_state"), ("put_wall_state", "kl_put_wall_state"),
+    ):
+        assert bare in md, f"bare alias {bare!r} is missing from the payload"
+        assert md[bare] == md[kl], f"{bare!r} disagrees with its own kl-prefixed sibling {kl!r}"
+    # whole nested source dicts also carry their own bare name, not just a flattened leaf
+    assert md["rr_25d"] == {"rr_pts": -1.2, "dte": 5}
+    assert md["delta_oi_walls"] == {"call_build_strike": 750.0}
+    assert md["dex_dollars"] == {"net_dex": 1_200_000.0}
+    assert md["vanna_agg"] == {"net_vanna_dollars_per_volpt": -300_000.0}
+
+
+def test_stale_terrain_blanks_the_bare_aliases_too(monkeypatch):
+    """The bare-name aliases share the SAME _g() fail-closed accessor as their kl_-prefixed
+    sibling -- a stale terrain cache must blank both, not leak a value through the new name."""
+    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gsf": 730.0, "grc": 752.0,
+                   "levels_stale": True}, monkeypatch)
+    for bare in ("call_wall", "put_wall", "gamma_flip", "absolute_gamma_strike",
+                 "pin_candidate", "gsf", "grc", "gsf_state", "max_pain",
+                 "call_delta_wall", "put_delta_wall", "call_wall_state", "put_wall_state"):
+        assert md.get(bare) is None, f"{bare!r} survived a stale terrain via its bare alias"
+
+
 def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
     """RC-292: analytics net-GEX peak (743 on the SPY 0DTE fixture) must not survive overlay.
 
@@ -210,7 +286,7 @@ def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
     import time
 
     import server as S
-    monkeypatch.setattr(S, "_terrain_cache", {
+    monkeypatch.setattr(terrain_state, "_terrain_cache", {
         "SPY": {
             "absolute_gamma_strike": 745.0,
             "absolute_gamma_strength_pct": 59.4,
@@ -224,8 +300,12 @@ def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
 
 def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     src = SERVER.read_text(encoding="utf-8")
-    i = src.index("# 5. Pin Score")
-    chunk = src[i:i + 1400]
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-first slice): the "# 5. Pin
+    # Score" block moved with _predictive_positioning_for_state into
+    # server_state_predictive_positioning.py.
+    pp_src = (SERVER.parent / "server_state_predictive_positioning.py").read_text(encoding="utf-8")
+    i = pp_src.index("# 5. Pin Score")
+    chunk = pp_src[i:i + 1400]
     assert "terrain_cache_get" in chunk
     assert "getattr(consensus_summary" not in chunk
     assert "absolute_gamma_gex_dollars" in chunk
@@ -234,13 +314,23 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     assert "exposures.get(float(_pin_strike)" not in chunk
     assert "_pin_bkt" not in chunk
     assert "total_gamma_raw_at_strike" not in chunk
-    assert "gamma_pin=_ssot_gamma_pin" in src
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the SnapshotRow
+    # construction site (gamma_pin=_ssot_gamma_pin) moved with _post_publish_persistence_tail
+    # into server_state_persistence_tail.py.
+    tail_src = (SERVER.parent / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    assert "gamma_pin=_ssot_gamma_pin" in tail_src
     assert 'getattr(consensus_summary, "gamma_pin"' not in src
     assert 'getattr(consensus_summary, "net_gex_peak"' not in src
     # RC-420: CONSENSUS gamma/delta walls bind to the same terrain cache (folded
     # into this reader so the source-text census stays 266).
-    i_walls = src.index("walls     = build_walls_rows")
-    walls_chunk = src[i_walls:i_walls + 700]
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): this assignment
+    # moved into _exposures_for_state, where its manually-aligned spacing (extra
+    # padding spaces before "=") was normalized to a single space.
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the function
+    # itself moved out of server.py into server_state_exposures.py.
+    exp_src = (SERVER.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    i_walls = exp_src.index("walls = build_walls_rows")
+    walls_chunk = exp_src[i_walls:i_walls + 700]
     assert "consensus_walls_bind_terrain_ssot" in walls_chunk
     assert "terrain_cache_get" in walls_chunk
     assert walls_chunk.find("consensus_walls_bind_terrain_ssot") < walls_chunk.find("build_totals_rows")
@@ -281,8 +371,8 @@ def _ssot_writes_outside_overlay(src: str) -> list[tuple[int, str]]:
     import re as _re
     lines = src.splitlines()
     try:
-        i0 = next(n for n, l in enumerate(lines, 1) if "def _terrain_kl_overlay" in l)
-        i1 = next(n for n, l in enumerate(lines[i0:], i0 + 1)
+        i0 = next(n for n, l in enumerate(lines, 1) if "def _terrain_kl_overlay" in l)  # caps-ok: scanner false positive: next() has NO default; StopIteration is caught on purpose three lines below
+        i1 = next(n for n, l in enumerate(lines[i0:], i0 + 1)  # caps-ok: scanner false positive: next() has NO default; StopIteration is caught on purpose two lines below
                   if l.startswith("def ") or l.startswith("async def "))
     except StopIteration:
         i0, i1 = -1, -1
@@ -444,7 +534,7 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
 
-    resp = srv.get_levels(ticker="SPY")
+    resp = app.api.routes.liquidity.get_levels(ticker="SPY")
     payload = json.loads(bytes(resp.body))
 
     assert payload["schema_version"] == 1
@@ -496,15 +586,15 @@ def test_multi_faucet_census_tool_emits_and_finds_known_duals(tmp_path, monkeypa
     payload = json.loads((tmp_path / "census.json").read_text(encoding="utf-8"))
     concepts = {f["concept"]: f for f in payload["findings"]}
 
-    vwap = next(f for c, f in concepts.items() if c.startswith("vwap"))
-    assert "TIERB_DONE" in vwap.get("status", "")
+    vwap = next(f for c, f in concepts.items() if c.startswith("vwap"))  # caps-ok: scanner false positive: next() here has NO default argument; a missing census concept raises StopIteration and fails the test
+    assert "TIERB_DONE" in vwap["status"]
     assert len(vwap["producers"]) >= 2
-    clocks = next(f for c, f in concepts.items() if c.startswith("clocks"))
+    clocks = next(f for c, f in concepts.items() if c.startswith("clocks"))  # caps-ok: scanner false positive: next() here has NO default argument; a missing census concept raises StopIteration and fails the test
     assert len(clocks["producers"]) >= 2
-    charm = next(f for c, f in concepts.items() if c.startswith("charm"))
+    charm = next(f for c, f in concepts.items() if c.startswith("charm"))  # caps-ok: scanner false positive: next() here has NO default argument; a missing census concept raises StopIteration and fails the test
     assert "bs_" in str(charm["producers"]) and "compute_net_charm" in str(charm["producers"])
-    prior = next(f for c, f in concepts.items() if c.startswith("prior_day"))
-    assert "PHASE1_DONE" in prior.get("status", "")
+    prior = next(f for c, f in concepts.items() if c.startswith("prior_day"))  # caps-ok: scanner false positive: next() here has NO default argument; a missing census concept raises StopIteration and fails the test
+    assert "PHASE1_DONE" in prior["status"]
 
     md = (tmp_path / "census.md").read_text(encoding="utf-8")
     assert "pattern gone" not in md, "census cites a producer line that no longer exists"
@@ -562,19 +652,21 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
 
     import server as srv
 
-    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
+    monkeypatch.setattr(terrain_loop, "terrain_cache_get", lambda tk: {
         "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
                         "near": [], "far": []},
         "spot": 100.0, "computed_ts_utc": 1.0,
     })
     monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
     # RC-441: computed_ts_utc=1.0 forces the RC-162 stale-path accrual-bank read
-    # (server.get_terrain_strikes -> latest_accrual_rows). Without stubbing it, this "unit"
+    # (app/api/routes/terrain.py:get_terrain_strikes -> latest_accrual_rows). Without stubbing it, this "unit"
     # test calls latest_accrual_rows against the live DB, so `today` is silently overridden by
     # whatever real SPY rows exist — the test then passes on an empty DB but fails on a
     # populated one (env-dependent, non-hermetic). Stub it so the fixture stays authoritative.
-    monkeypatch.setattr(srv, "latest_accrual_rows", lambda *a, **k: None)
-    resp = srv.get_terrain_strikes(ticker="SPY")
+    # the route imports latest_accrual_rows from its real home at call time -- stub THAT
+    # (a stub on server's old re-export never reached the route: RC-441 hermeticity was lost)
+    monkeypatch.setattr(ocmf, "latest_accrual_rows", lambda *a, **k: None)
+    resp = app.api.routes.terrain.get_terrain_strikes(ticker="SPY")
     payload = json.loads(bytes(resp.body))
     ss = payload["today_side_sums"]
     assert ss["gex_below"] == 10.0 and ss["gex_above"] == -4.0
@@ -595,23 +687,25 @@ def test_terrain_strikes_registers_viewing_demand(monkeypatch):
 
     import server as srv
 
-    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
+    monkeypatch.setattr(terrain_loop, "terrain_cache_get", lambda tk: {
         "_per_strike": {"all": [], "near": [], "far": []}, "spot": 100.0, "computed_ts_utc": 1.0,
     })
     monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
-    monkeypatch.setattr(srv, "latest_accrual_rows", lambda *a, **k: None)
+    # the route imports latest_accrual_rows from its real home at call time -- stub THAT
+    # (a stub on server's old re-export never reached the route: RC-441 hermeticity was lost)
+    monkeypatch.setattr(ocmf, "latest_accrual_rows", lambda *a, **k: None)
     tk = srv.ticker_storage_key("ZZDEMANDONLY")
-    srv._gamma_surface_demand.pop(tk, None)
+    gamma_surface_state._gamma_surface_demand.pop(tk, None)
     try:
-        assert srv._gamma_surface_wanted(tk) is False, "must start with no recorded demand"
-        resp = srv.get_terrain_strikes(ticker="ZZDEMANDONLY")
+        assert gamma_surface_state._gamma_surface_wanted(tk) is False, "must start with no recorded demand"
+        resp = app.api.routes.terrain.get_terrain_strikes(ticker="ZZDEMANDONLY")
         json.loads(bytes(resp.body))   # a real, well-formed response — not the point of this test
-        assert srv._gamma_surface_wanted(tk) is True, (
+        assert gamma_surface_state._gamma_surface_wanted(tk) is True, (
             "GET /api/terrain/strikes must register viewing demand for its ticker, the same as "
             "/api/options/gamma-surface already does -- otherwise the terrain loop never learns "
             "anyone is watching a ticker that only this route serves")
     finally:
-        srv._gamma_surface_demand.pop(tk, None)
+        gamma_surface_state._gamma_surface_demand.pop(tk, None)
 
 
 def test_chart_level_titles_carry_session_scope_and_vendor_basis():
@@ -692,9 +786,8 @@ def test_price_levels_route_retired_410():
     """B6: the second HTTP surface hard-fails with a pointer — never a silent alias."""
     import json
 
-    import server as srv
 
-    resp = srv.get_price_levels(ticker="SPY")
+    resp = app.api.routes.status.get_price_levels(ticker="SPY")
     assert resp.status_code == 410
     payload = json.loads(bytes(resp.body))
     assert payload["error"] == "retired" and "/api/levels" in payload["replacement"]
@@ -702,18 +795,30 @@ def test_price_levels_route_retired_410():
 
 def test_state_level_family_serves_raw_not_rounded():
     """PDH_PRECISION: the state payload's level family uses the raw finite reader, never
-    the 2dp _fv — /api/levels and state must serve the same digits."""
-    import re as _re
-    for field in ("pdh", "pdl", "pdc", "vwap", "orb_high", "orb_low",
-                  "today_poc", "today_vah", "today_val",
-                  "pd_poc", "pd_vah", "pd_val",
-                  "overnight_high", "overnight_low", "orb_midpoint",
-                  "vwap_p1", "vwap_m1", "vwap_p2", "vwap_m2"):
-        m = _re.search(rf'ms_dict\["{field}"\]\s*=\s*(\w+)\(', _SERVER_SRC)
-        assert m, f"state no longer serves {field}"
-        assert m.group(1) == "_raw_level", (
-            f"state serves {field} through {m.group(1)} — the 2dp precision faucet is back"
-        )
+    the 2dp _fv — /api/levels and state must serve the same digits.
+
+    RC-REHAB-1 (thirty-third slice): executed, not string-matched -- the payload projection
+    (server_state_payload.py) is driven with a 3-decimal value for every level field and must
+    serve it unrounded."""
+    from types import SimpleNamespace
+
+    import server_state_payload as P
+
+    fields = ("pdh", "pdl", "pdc", "vwap", "orb_high", "orb_low",
+              "today_poc", "today_vah", "today_val",
+              "pd_poc", "pd_vah", "pd_val",
+              "overnight_high", "overnight_low", "orb_midpoint",
+              "vwap_p1", "vwap_m1", "vwap_p2", "vwap_m2")
+    assert set(fields) <= set(P._RAW_PRICE_LEVEL_FIELDS), "a level field fell out of the payload"
+    pl = SimpleNamespace(**{f: 748.895 for f in fields})
+    em = SimpleNamespace(em_straddle={}, em_iv={}, em_progress={})
+    vs = SimpleNamespace(iv_skew={}, realized_vol=None, atr=None, iv_rank=None, iv_percentile=None)
+    pp = SimpleNamespace(dpi={}, hedging_flow={}, gamma_gradient=None, breakout_score={},
+                         pin_score_val={}, vol_expansion={})
+    out: dict = {}
+    P._signal_fields(out, price_levels=pl, em=em, vs=vs, pp=pp, sweep_score={})
+    for f in fields:
+        assert out[f] == 748.895, f"state serves {f} as {out[f]!r} — the 2dp precision faucet is back"
 
 
 def test_domain_faucet_registry_negative_control():
@@ -809,7 +914,7 @@ def test_api_levels_truncated_accumulator_falls_through_to_banked(monkeypatch, t
         db_path = str(dbf)
     monkeypatch.setattr(srv, "get_db", lambda: _Db())
 
-    payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
+    payload = json.loads(bytes(app.api.routes.liquidity.get_levels(ticker="SPY").body))
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     assert by_id["PDL"]["price"] == 749.59, (
         "truncated accumulator served its partial min — the t12 fallthrough is dead"
@@ -828,7 +933,7 @@ def test_api_levels_registered_in_faucet_registry():
     reg = json.loads((Path(__file__).resolve().parent.parent / "governance" /
                       "level_faucets.json").read_text(encoding="utf-8"))
     assert "/api/levels" in reg["level_domain_producers"]
-    assert "levels-tierb-session-collapse-v1" in reg.get("operator_quote", ""), (
+    assert "levels-tierb-session-collapse-v1" in reg["operator_quote"], (
         "adding a producer requires the operator_quote in the registry (RC-212)"
     )
 

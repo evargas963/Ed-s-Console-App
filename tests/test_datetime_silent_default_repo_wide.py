@@ -1,4 +1,4 @@
-"""Fail-closed: production code must not use .get('datetime', 0) silent synthesis."""
+"""Fail-closed: production code must not use .get('datetime', 0) silent synthesis."""  # caps-ok: scanner false positive: module docstring naming the forbidden pattern
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def test_no_datetime_default_zero_in_production_py(repo_index):
         for i, line in enumerate(text.splitlines(), start=1):
             if _DATETIME_DEFAULT_ZERO.search(line):
                 hits.append(f"{rel_posix}:{i}:{line.strip()}")
-    assert hits == [], f".get('datetime', 0) remains in production code: {hits}"
+    assert hits == [], f".get('datetime', 0) remains in production code: {hits}"  # caps-ok: scanner false positive: assertion message naming the forbidden pattern
 
 
 def test_fetch_price_levels_skips_candle_missing_datetime():

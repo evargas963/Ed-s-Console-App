@@ -107,7 +107,7 @@ def main() -> int:
         if ap.is_file():
             doc = json.loads(ap.read_text(encoding="utf-8"))
             bt = doc.get("by_ticker") or {}
-            first = next(iter(bt.values()), {})
+            first = next(iter(bt.values()), {})  # caps-ok: fail-closed - an empty by_ticker yields {}, so every want_key is reported missing and arch_eval_proof_keys FAILS
             missing = [k for k in want_keys if k not in first]
             ok("arch_eval_proof_keys", f"missing={missing} path={ap}", len(missing) == 0)
         else:

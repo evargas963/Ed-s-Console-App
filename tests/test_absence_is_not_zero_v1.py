@@ -1,7 +1,7 @@
 """RC-274 — a missing measurement must not be stored, summed, or drawn as the number zero.
 
 WHAT WAS MEASURED (2026-08-06). `test_no_schwab_leaf_zero_injection_repo_wide` had been
-failing with 13 production hits of the `float(x or 0.0)` family. Nine were harmless: a
+failing with 13 production hits of the `float(x or 0.0)` family. Nine were harmless: a  # caps-ok: scanner false positive: module docstring naming the anti-pattern family this file guards against
 `<= 0` or RTH guard rejected the fabricated zero on the very next line. Four were not, and
 those four are what this file drives:
 
@@ -40,6 +40,7 @@ if str(REPO) not in sys.path:
 import desk_store as DS  # noqa: E402
 import terrain_engine as TE  # noqa: E402
 from liquidity_models import volume_profile_poc_vah_val  # noqa: E402
+import app.api.routes.terrain
 
 
 def _facts(db: Path) -> list[sqlite3.Row]:
@@ -72,7 +73,7 @@ def _finra_db(tmp_path: Path, short_volume) -> Path:
 def test_null_short_volume_writes_no_fact_rather_than_a_zero_ratio(tmp_path):
     """FINRA not reporting is not the same fact as nobody selling short.
 
-    The old line divided `float(short_volume or 0.0)` by total and published 0.0 under tier
+    The old line divided `float(short_volume or 0.0)` by total and published 0.0 under tier  # caps-ok: scanner false positive: docstring quoting the removed production line
     "MEASURED" -- a short interest of exactly zero for a name that trades a million shares.
     """
     db = _finra_db(tmp_path, None)
@@ -139,7 +140,7 @@ def test_a_real_strike_count_is_still_written(tmp_path):
 def test_a_null_close_contributes_no_dollars_and_does_not_crash(tmp_path):
     """The two absences used to behave differently two characters apart.
 
-    `float(r["close"] or 0.0) * float(r["volume"])` silently deflated the day's turnover when
+    `float(r["close"] or 0.0) * float(r["volume"])` silently deflated the day's turnover when  # caps-ok: scanner false positive: docstring quoting the removed production line
     the close was NULL, and raised TypeError when the volume was. Same absence, two outcomes.
     Neither is a measurement; both must now skip the bar.
     """
@@ -250,7 +251,7 @@ def test_the_desk_ui_renders_an_unknown_age_as_a_dash():
 
 
 def test_put_brief_returns_a_real_rowid(tmp_path):
-    """`int(cur.lastrowid or 0)` handed back a handle that resolves to no row."""
+    """`int(cur.lastrowid or 0)` handed back a handle that resolves to no row."""  # caps-ok: scanner false positive: docstring quoting the removed production line
     db = tmp_path / "b2.db"
     rowid = DS.put_brief(db, et_date="2026-08-06", generated_utc=time.time(), title="t",
                          producer="p", blocks=[{"as_of_utc": time.time(), "text": "x"}],
@@ -300,8 +301,8 @@ def test_the_per_line_escape_demands_an_actual_reason():
     sys.path.insert(0, str(REPO / "tests"))
     import test_ohlcv_schwab_first as G
 
-    bare = 'x = float(a.get("b") or 0.0)  # silent-zero-ok:'
-    with_reason = 'x = float(a.get("b") or 0.0)  # silent-zero-ok: absent means no rows counted'
+    bare = 'x = float(a.get("b") or 0.0)  # silent-zero-ok:'  # caps-ok: scanner false positive: string fixture fed to the silent-zero detector to prove a reasonless escape is still flagged
+    with_reason = 'x = float(a.get("b") or 0.0)  # silent-zero-ok: absent means no rows counted'  # caps-ok: scanner false positive: string fixture fed to the silent-zero detector to prove a reasoned escape is honoured
     assert any(G._line_counts_as_violation(bare, s) for s in G.SILENT_ZERO_PATTERN_FAMILY), (
         "a reasonless escape suppressed the finding")
     assert not any(G._line_counts_as_violation(with_reason, s)
@@ -314,10 +315,9 @@ def test_the_server_strike_row_builder_draws_no_bar_for_unknown_gamma():
     Driven through the real endpoint helper rather than asserted about the source text,
     because the source text was what the allowlist was hiding.
     """
-    import server as srv
 
-    src = inspect.getsource(srv.get_terrain_strikes)
-    assert "round(float(g or 0.0), 1)" not in src, (
+    src = inspect.getsource(app.api.routes.terrain.get_terrain_strikes)
+    assert "round(float(g or 0.0), 1)" not in src, (  # caps-ok: scanner false positive: literal the test asserts is ABSENT from get_terrain_strikes
         "the per-strike row builder fabricates a 0.0 gamma bar again")
     assert "if g is None:" in src and "continue" in src
 
@@ -355,8 +355,8 @@ def test_the_cumulative_counter_site_states_why_it_is_exempt():
     import server as srv
 
     src = inspect.getsource(srv._CandleAccumulator)
-    assert 'cur["v"] = (cur.get("v") or 0.0) + vol_delta' in src
-    line = next(ln for ln in src.splitlines() if 'cur["v"] = (cur.get("v") or 0.0)' in ln)
+    assert 'cur["v"] = (cur.get("v") or 0.0) + vol_delta' in src  # caps-ok: scanner false positive: literal located in server._CandleAccumulator source to check its silent-zero-ok reason
+    line = next(ln for ln in src.splitlines() if 'cur["v"] = (cur.get("v") or 0.0)' in ln)  # caps-ok: scanner false positive: literal used to find the accumulator line in inspected source (next() without default raises if absent)
     assert "silent-zero-ok:" in line and "CUMULATIVE" in line, (
         "the accumulator no longer says why its `or 0.0` is correct, so the next sweep "
         "will judge it by shape and break it again")
@@ -367,5 +367,5 @@ def test_the_silent_zero_pattern_is_still_detectable():
     sys.path.insert(0, str(REPO / "tests"))
     import test_ohlcv_schwab_first as G
 
-    assert any(G._line_counts_as_violation('tot = float(r["total_volume"] or 0.0)', spec)
+    assert any(G._line_counts_as_violation('tot = float(r["total_volume"] or 0.0)', spec)  # caps-ok: scanner false positive: string fixture proving the silent-zero detector still fires
                for spec in G.SILENT_ZERO_PATTERN_FAMILY)

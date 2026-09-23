@@ -236,7 +236,8 @@ def issue19_coverage_at_scale(
     t2_non = sum(1 for x in per if x["tier2_count"] > 0)
     t1_empty = [x for x in per if x["tier1_count"] == 0]
     rescued = sum(1 for x in t1_empty if x["tier2_count"] > 0)
-    tier2_rescue_rate = (rescued / len(t1_empty)) if t1_empty else 0.0
+    # Rates/means over an empty population are undefined: None, never a measured 0.0.
+    tier2_rescue_rate = round(rescued / len(t1_empty), 6) if t1_empty else None  # caps-ok: no tier1-empty anchors means the rescue rate is undefined, reported as None
 
     s1 = [x["tier1_count"] for x in per]
     s2 = [x["tier2_count"] for x in per]
@@ -294,13 +295,15 @@ def issue19_coverage_at_scale(
             out[k] = {
                 "anchors": v["anchors"],
                 "tier1_nonempty": v["tier1_nonempty"],
-                "tier1_nonempty_rate": round(v["tier1_nonempty"] / v["anchors"], 6) if v["anchors"] else 0.0,
+                # A bucket exists only once an anchor was appended, so anchors >= 1 and
+                # c1/c2 are non-empty: no empty-population branch is needed.
+                "tier1_nonempty_rate": round(v["tier1_nonempty"] / v["anchors"], 6),
                 "tier2_nonempty": v["tier2_nonempty"],
-                "tier2_nonempty_rate": round(v["tier2_nonempty"] / v["anchors"], 6) if v["anchors"] else 0.0,
-                "mean_tier1_pool": round(statistics.mean(c1), 4) if c1 else 0.0,
-                "median_tier1_pool": float(statistics.median(c1)) if c1 else 0.0,
-                "mean_tier2_pool": round(statistics.mean(c2), 4) if c2 else 0.0,
-                "median_tier2_pool": float(statistics.median(c2)) if c2 else 0.0,
+                "tier2_nonempty_rate": round(v["tier2_nonempty"] / v["anchors"], 6),
+                "mean_tier1_pool": round(statistics.mean(c1), 4),
+                "median_tier1_pool": float(statistics.median(c1)),
+                "mean_tier2_pool": round(statistics.mean(c2), 4),
+                "median_tier2_pool": float(statistics.median(c2)),
             }
         return out
 
@@ -308,16 +311,16 @@ def issue19_coverage_at_scale(
         "schema": "issue19_option_a_coverage_at_scale_v1",
         "anchors_total": n_anchor,
         "tier1_nonempty_count": t1_non,
-        "tier1_nonempty_rate": round(t1_non / n_anchor, 6) if n_anchor else 0.0,
+        "tier1_nonempty_rate": round(t1_non / n_anchor, 6) if n_anchor else None,  # caps-ok: zero anchors -> rate undefined, reported as None
         "tier2_nonempty_count": t2_non,
-        "tier2_nonempty_rate": round(t2_non / n_anchor, 6) if n_anchor else 0.0,
+        "tier2_nonempty_rate": round(t2_non / n_anchor, 6) if n_anchor else None,  # caps-ok: zero anchors -> rate undefined, reported as None
         "tier1_empty_count": len(t1_empty),
         "tier2_rescue_count_among_tier1_empty": rescued,
-        "tier2_rescue_rate_among_tier1_empty": round(tier2_rescue_rate, 6),
-        "mean_tier1_pool_size": round(statistics.mean(s1), 4) if s1 else 0.0,
-        "median_tier1_pool_size": float(statistics.median(s1)) if s1 else 0.0,
-        "mean_tier2_pool_size": round(statistics.mean(s2), 4) if s2 else 0.0,
-        "median_tier2_pool_size": float(statistics.median(s2)) if s2 else 0.0,
+        "tier2_rescue_rate_among_tier1_empty": tier2_rescue_rate,
+        "mean_tier1_pool_size": round(statistics.mean(s1), 4) if s1 else None,  # caps-ok: zero anchors -> mean undefined, reported as None
+        "median_tier1_pool_size": float(statistics.median(s1)) if s1 else None,  # caps-ok: zero anchors -> median undefined, reported as None
+        "mean_tier2_pool_size": round(statistics.mean(s2), 4) if s2 else None,  # caps-ok: zero anchors -> mean undefined, reported as None
+        "median_tier2_pool_size": float(statistics.median(s2)) if s2 else None,  # caps-ok: zero anchors -> median undefined, reported as None
         "per_anchor": per,
         "breakdown_by_ticker": _finalize(by_ticker),
         "breakdown_by_zone": _finalize(by_zone),

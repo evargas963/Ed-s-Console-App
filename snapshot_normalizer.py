@@ -585,7 +585,9 @@ def run_full_materialization(db_path: Path = DB_PATH) -> dict[str, Any]:
     return {
         "materialize": mat,
         "validate": val,
-        "success": mat.get("errors") == [] and val.get("ok", False),
+        # Both keys are always initialised by their producers; a missing one must raise
+        # rather than decide success.
+        "success": mat["errors"] == [] and bool(val["ok"]),
     }
 
 
@@ -636,7 +638,7 @@ def backfill_price_action_columns(
                 )
             ]
             bar_ends = [b["bar_end_ts_utc"] for b in bars]
-            null_filter = f" AND {pa_cols[0]} IS NULL" if only_null else ""
+            null_filter = f" AND {pa_cols[0]} IS NULL" if only_null else ""  # caps-ok: scanner false positive — selects an optional SQL WHERE fragment from the only_null flag; "" means "no extra filter", not a data value
             snaps = conn.execute(
                 f"SELECT snapshot_id, ts_utc, vwap FROM snapshots WHERE ticker = ?{null_filter}"
                 " ORDER BY ts_utc ASC",
@@ -779,8 +781,8 @@ if __name__ == "__main__":
         print("  errors:", r["materialize"]["errors"])
     _print_ingestion_context(
         db,
-        int(r["materialize"].get("raw_rows") or 0),
-        int(r["materialize"].get("normalized_rows") or 0),
+        int(r["materialize"]["raw_rows"]),
+        int(r["materialize"]["normalized_rows"]),
     )
 
     print("\nValidation:")
@@ -789,6 +791,6 @@ if __name__ == "__main__":
     print("  checks:", v["checks"])
     if v["errors"]:
         print("  errors:", v["errors"])
-    print("\nPer-ticker 1m row counts:", v.get("per_ticker_counts", {}))
+    print("\nPer-ticker 1m row counts:", v["per_ticker_counts"])
 
     sys.exit(0 if r["success"] else 1)

@@ -186,7 +186,10 @@ def build_live_drift_monitoring_payload(
         }
         return out
 
-    if normalize_ml_horizon_slug(str(manifest.get("ml_horizon_slug", ""))) != hz:
+    # normalize_ml_horizon_slug("") returns the DEFAULT slug ("1c"), so the old `.get(..., "")`
+    # let a manifest with no horizon pass as a 1c baseline. Absent now counts as a mismatch.
+    _manifest_hz = manifest.get("ml_horizon_slug")
+    if _manifest_hz is None or normalize_ml_horizon_slug(str(_manifest_hz)) != hz:
         out["error"] = "evaluation manifest horizon mismatch"
         out["live_drift_summary"] = {"state": "error", "reason_code": REASON_HORIZON_MISMATCH}
         out["signals"].append(
@@ -394,9 +397,12 @@ def build_live_drift_monitoring_payload(
         "decay_note": "older evaluations reduce promotion confidence; re-run governed eval for fresh gates",
     }
 
-    regime_base = manifest.get("calibration_summary", {}).get("regime_conditional_ece") or {}
+    # An absent calibration_summary / regime_conditional_ece stays None and the summary reads
+    # "unavailable" -- it used to become {} under state "ok", presenting a missing baseline as healthy.
+    _cal = manifest.get("calibration_summary")
+    regime_base = _cal.get("regime_conditional_ece") if isinstance(_cal, dict) else None
     out["regime_shift_summary"] = {
-        "state": "ok",
+        "state": "ok" if regime_base is not None else "unavailable",
         "baseline_regime_conditional_ece": regime_base,
         "recent_comparison": None,
         "note": "recent regime comparison requires recent-slice evaluation",

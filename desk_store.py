@@ -135,7 +135,7 @@ class DeskFactError(ValueError):
 def _connect(db_path: str | Path, *, read_only: bool = False) -> sqlite3.Connection:
     p = str(db_path)
     if read_only:
-        con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=15.0)
+        con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=30.0)
     else:
         con = sqlite3.connect(p, timeout=30.0)
         con.execute("PRAGMA journal_mode=WAL")
@@ -1189,7 +1189,11 @@ def probability_of_profit(dist: Mapping[str, Any], breakeven: float,
     d = dist["density"]
     lo, width, counts = float(d["lo"]), float(d["bin_width"]), list(d["counts"])
     hi = float(d["hi"])
-    total = sum(counts) or 1
+    total = sum(counts)
+    if total <= 0:
+        # CAPS (CALL_OR_DEFAULT): `sum(counts) or 1` turned an empty density into a measured
+        # 0.0 probability; with no mass there is no probability to report.
+        return None
     hit = 0
     for i, c in enumerate(counts):
         centre = lo + (i + 0.5) * width

@@ -107,9 +107,15 @@ def predict(snapshot: dict, direction_hint: str = "flat") -> XGBoostOutput:
             snapshot, tkr, None, inference_snapshot_v1=inf_v1
         )
 
-        up   = probs_1c.get("up", 0.33)
-        down = probs_1c.get("down", 0.33)
-        flat = probs_1c.get("flat", 0.34)
+        # All three class probabilities must be present (same gate the live stack uses,
+        # ml_predict._require_direction_probability_triplet) — a missing class is never
+        # filled with a 0.33 prior and served as an available model read.
+        from ml_predict import _require_direction_probability_triplet
+
+        _tri = _require_direction_probability_triplet(probs_1c)
+        if _tri is None:
+            return _fallback("predict_direction returned an incomplete probability triplet")
+        up, down, flat = _tri
 
         # Dominant class
         probs = {"up": up, "down": down, "flat": flat}

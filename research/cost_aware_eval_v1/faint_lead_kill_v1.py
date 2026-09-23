@@ -73,9 +73,22 @@ def _eval_xy(
     day_nets: dict[str, list[float]] = {}
     for d, v in zip(out_dates, nets):
         day_nets.setdefault(d, []).append(float(v))
-    arr = np.asarray(nets, dtype=np.float64) if nets else np.asarray([0.0])
-    mean_net = float(arr.mean()) if len(nets) else 0.0
+    if not nets:
+        # Zero scored OOS rows: no mean, no CI, no verdict. The old [0.0] stand-in array and
+        # [0,0] CI turned an empty study into a "measured" KILL at mean 0.0 bp.
+        return {
+            "n_scored": 0,
+            "n_trades": 0,
+            "mean_net_bp": None,
+            "bootstrap_ci95_mean_net_bp": None,
+            "cost_round_trip_bp": COST,
+            "verdict": "UNDER_SAMPLED",
+        }
+    arr = np.asarray(nets, dtype=np.float64)
+    mean_net = float(arr.mean())
     ci = _day_bootstrap_ci(day_nets, B, SEED)
+    if ci is None:
+        raise RuntimeError("_eval_xy: non-empty nets but no dated days (dates misaligned)")
     kill = mean_net <= 0.0 or (ci[0] <= 0.0 <= ci[1])
     return {
         "n_scored": len(nets),
@@ -97,7 +110,7 @@ def _load_l1_with_js(db: Path, ticker: str, hz: str):
         f"FROM snapshots_1m_normalized "
         f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL"
     )
-    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = c.execute(q, (ticker,)).fetchall()
     c.close()
     ends, closes = _load_closes(db, ticker)
@@ -121,7 +134,7 @@ def _load_l1_with_js(db: Path, ticker: str, hz: str):
         dates.append(_et_date(float(ts)))
         js.append(j)
     return (
-        np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 3)),
+        np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 3)),  # caps-ok: zero-row design matrix of the correct width (no values invented); with no rows no fold trains, nets stays empty and _eval_xy returns verdict UNDER_SAMPLED
         ys,
         dates,
         np.asarray(js, dtype=np.int64),
@@ -142,7 +155,7 @@ def _load_of_with_js(db: Path, ticker: str, hz: str):
         f"SELECT ts_utc, {label}, {cols} FROM snapshots_1m_normalized "
         f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL"
     )
-    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = c.execute(q, (ticker,)).fetchall()
     c.close()
     ends, closes = _load_closes(db, ticker)
@@ -161,7 +174,7 @@ def _load_of_with_js(db: Path, ticker: str, hz: str):
         dates.append(_et_date(ts))
         js.append(j)
     return (
-        np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, len(FEATS))),
+        np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, len(FEATS))),  # caps-ok: zero-row design matrix of the correct width (no values invented); with no rows no fold trains, nets stays empty and _eval_xy returns verdict UNDER_SAMPLED
         ys,
         dates,
         np.asarray(js, dtype=np.int64),
@@ -190,6 +203,7 @@ def main() -> int:
             "verdict": "ECONOMIC_KILL" if all(v == "KILL" for v in verdicts) else "MIXED",
             "n_kill": verdicts.count("KILL"),
             "n_survive": verdicts.count("SURVIVE_ECONOMIC"),
+            "n_under_sampled": verdicts.count("UNDER_SAMPLED"),
         },
     }
     out = Path("reports/fp19_faint_lead_kill_latest.json")
@@ -197,8 +211,10 @@ def main() -> int:
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"fp19 — {report['summary']['verdict']}")
     for k, v in cells.items():
+        mn = v["mean_net_bp"]
+        mn_txt = f"{mn:.4f}" if mn is not None else "n/a"
         print(
-            f"  {k}: mean_net_bp={v['mean_net_bp']:.4f} ci={v['bootstrap_ci95_mean_net_bp']} "
+            f"  {k}: mean_net_bp={mn_txt} ci={v['bootstrap_ci95_mean_net_bp']} "
             f"trades={v['n_trades']} -> {v['verdict']}"
         )
     print("report:", out)

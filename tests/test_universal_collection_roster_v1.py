@@ -20,6 +20,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from db import EdDB  # noqa: E402
+import chain_width
 
 
 def test_panel_auto_enters_the_background_roster(monkeypatch, tmp_path):
@@ -58,10 +59,10 @@ def test_index_book_width_is_fixed_and_date_bounded_under_budget():
     import server as srv
 
     w = srv.resolve_chain_strike_count("$SPX")
-    assert w == srv.INDEX_CHAIN_STRIKE_COUNT
+    assert w == chain_width.INDEX_CHAIN_STRIKE_COUNT
     # The 45-day horizon bounds SPX to ~34 expiries; even a conservative 55 stays under budget.
-    assert w * 2 * 55 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET, (
-        f"index width {w} x 55 expiries blows the {srv.SCHWAB_CHAIN_CONTRACT_BUDGET} budget")
+    assert w * 2 * 55 <= chain_width.SCHWAB_CHAIN_CONTRACT_BUDGET, (
+        f"index width {w} x 55 expiries blows the {chain_width.SCHWAB_CHAIN_CONTRACT_BUDGET} budget")
     # The index date bound is set; equities fetch the full book (None).
     assert srv._chain_to_date_for("$SPX") is not None
     assert srv._chain_to_date_for("$VIX") is not None
@@ -88,7 +89,7 @@ def test_bare_index_root_gets_index_protections_f1():
 
     for bare, dollar in (("SPX", "$SPX"), ("RUT", "$RUT"), ("VIX", "$VIX"), ("NDX", "$NDX")):
         assert ticker_storage_key(bare) == dollar
-        assert srv.resolve_chain_strike_count(bare) == srv.INDEX_CHAIN_STRIKE_COUNT, (
+        assert srv.resolve_chain_strike_count(bare) == chain_width.INDEX_CHAIN_STRIKE_COUNT, (
             f"bare {bare} bypassed the fixed index width")
         assert srv._chain_to_date_for(bare) is not None, f"bare {bare} bypassed the index date bound"
         assert srv._chain_to_date_for(bare) == srv._chain_to_date_for(dollar)
@@ -109,7 +110,7 @@ def test_far_selected_index_expiry_is_single_expiry_window_f2():
     # RC-496: faucets return datetime.date objects (not ISO strings) — what schwab-py wants.
     assert srv._chain_to_date_for("$SPX", far) == date.fromisoformat(far)
     assert srv._chain_from_date_for("$SPX", far) == date.fromisoformat(far)
-    assert srv.INDEX_CHAIN_STRIKE_COUNT * 2 * 1 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET
+    assert chain_width.INDEX_CHAIN_STRIKE_COUNT * 2 * 1 <= chain_width.SCHWAB_CHAIN_CONTRACT_BUDGET
     # auto path / no expiry: open near end (Schwab defaults to today), bounded far end (horizon)
     assert srv._chain_from_date_for("$SPX", None) is None
     assert srv._chain_from_date_for("$SPX") is None
@@ -179,6 +180,7 @@ def test_logger_quarantines_permanently_refused_symbol_f4(monkeypatch):
     returns 'skipped:quarantined' and issues NO vendor call. A 5xx (transient) must stay a soft
     backoff, never a permanent quarantine (fail-closed classification)."""
     import server as srv
+    import terrain_quarantine
     from fastapi import HTTPException
     from instrument_identity import ticker_storage_key
 
@@ -187,27 +189,27 @@ def test_logger_quarantines_permanently_refused_symbol_f4(monkeypatch):
     monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)
 
     def _reset():
-        srv._terrain_quarantine.pop(tk, None)
-        srv._terrain_consecutive_fails.pop(tk, None)
+        terrain_quarantine._terrain_quarantine.pop(tk, None)
+        terrain_quarantine._terrain_consecutive_fails.pop(tk, None)
 
     # 404 (permanent symbol refusal) -> hard -> quarantined after the threshold
     _reset()
     monkeypatch.setattr(srv, "_fetch_state",
                         lambda *a, **k: (_ for _ in ()).throw(
                             HTTPException(status_code=502, detail="Chain fetch failed [vendor_status=404]")))
-    for _ in range(srv.TERRAIN_QUARANTINE_HARD_FAILS):
+    for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
         assert srv._logger_fetch_and_log(sym).startswith("error:")
     assert srv._logger_fetch_and_log(sym) == "skipped:quarantined", "a 404 symbol must stop being requested"
-    assert srv.terrain_quarantine_reason(sym).startswith("QUARANTINED")
+    assert terrain_quarantine.terrain_quarantine_reason(sym).startswith("QUARANTINED")
 
     # 503 (transient venue error) -> soft -> backoff, NEVER a permanent quarantine
     _reset()
     monkeypatch.setattr(srv, "_fetch_state",
                         lambda *a, **k: (_ for _ in ()).throw(
                             HTTPException(status_code=502, detail="Chain fetch failed [vendor_status=503]")))
-    for _ in range(srv.TERRAIN_QUARANTINE_HARD_FAILS):
+    for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
         srv._logger_fetch_and_log(sym)
-    assert not srv.terrain_quarantine_reason(sym).startswith("QUARANTINED"), (
+    assert not terrain_quarantine.terrain_quarantine_reason(sym).startswith("QUARANTINED"), (
         "a 5xx transient error must be a soft backoff, not a permanent quarantine")
     _reset()
 

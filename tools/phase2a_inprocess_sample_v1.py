@@ -32,6 +32,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 from db_authority import canonical_console_db_path
+import app.api.routes.liquidity
 
 #: The console DB the live server reads. This was named explicitly because ED_AGENT_ROLE
 #: used to route db.DB_PATH to a per-agent side DB holding none of the banked bars, which
@@ -70,8 +71,8 @@ def main(argv: list[str] | None = None) -> int:
     judged = 0
     failed = 0
     for i in range(1, args.rounds + 1):
-        lv = _body(srv.get_levels(ticker=args.ticker))
-        lq = _body(srv.get_liquidity_snapshot(
+        lv = _body(app.api.routes.liquidity.get_levels(ticker=args.ticker))
+        lq = _body(app.api.routes.liquidity.get_liquidity_snapshot(
             ticker=args.ticker, date=None, snapshot="live", expiry=None, fusion=True))
         a, gen_a = _levels_side(lv)
         b, gen_b = _liquidity_side(lq)

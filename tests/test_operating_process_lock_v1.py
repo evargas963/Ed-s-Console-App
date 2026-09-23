@@ -123,10 +123,13 @@ def test_index_parity_passes_when_clean(tmp_path, monkeypatch):
 
 
 def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
-    """LOCK-2 (RC-231): soft tree-destructive git against product scope BLOCKS.
+    """LOCK-2 (RC-231): soft tree-destructive git BLOCKS on any path of the repo.
 
-    The guard's own static inventory (PRODUCT_WIPE_PROTECTED) is the only thing that can
-    satisfy it — no mission scope, no grant file (both gone, 2026-08-24 teardown)."""
+    RC-REHAB-1 (2026-09-23): the reach used to be a static 13-path inventory
+    (PRODUCT_WIPE_PROTECTED), so every module it did not name -- all ~50 the server.py
+    decomposition created, and any new file -- was wipeable by `git restore <file>`. The last
+    four commands below passed silently before; the list is gone and the class rule refuses
+    every non-safe form on any path."""
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
     for cmd in ("git restore -- static/chart.html",
                 "git checkout -- server.py",
@@ -134,7 +137,11 @@ def test_reset_guard_blocks_destructive_git_on_product(monkeypatch, tmp_path):
                 "git checkout -- math_exposure_core.py",
                 "git clean -fd static/",
                 "git reset --hard",
-                "git stash"):
+                "git stash",
+                "git restore server_state_quote.py",
+                "git restore -- app/api/routes/terrain.py",
+                "git stash push -- terrain_kl_overlay.py",
+                "git reset -- brand_new_module.py"):
         assert OPL.reset_guard_violations(cmd), f"reset guard silent on: {cmd}"
 
 

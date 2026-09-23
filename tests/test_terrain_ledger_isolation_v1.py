@@ -30,6 +30,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 TRACKED_LEDGER = ROOT / "reports" / "terrain_quarantine_ledger.jsonl"
 
@@ -44,15 +46,16 @@ from pathlib import Path
 
 def test_mid_test_server_import_cannot_bind_the_tracked_ledger():
     import server                                     # LATE import: after fixture setup
+    import terrain_quarantine                         # the ledger's home (RC-REHAB-1 slice 40)
 
     override = os.environ.get("ED_TERRAIN_QUARANTINE_LEDGER")
     assert override, "conftest must set the ledger kill-switch before any server import"
-    assert str(server.TERRAIN_QUARANTINE_LEDGER) == override, (
-        f"server bound {server.TERRAIN_QUARANTINE_LEDGER}, not the env override")
-    for _ in range(server.TERRAIN_QUARANTINE_HARD_FAILS):
-        server._note_terrain_failure(
+    assert str(terrain_quarantine.TERRAIN_QUARANTINE_LEDGER) == override, (
+        f"terrain_quarantine bound {terrain_quarantine.TERRAIN_QUARANTINE_LEDGER}, not the env override")
+    for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
+        terrain_quarantine._note_terrain_failure(
             "ZZLATEIMPORT", "synthetic hard rejection (isolation prover)", "hard")
-    entry = server.terrain_quarantine_state("ZZLATEIMPORT")
+    entry = terrain_quarantine.terrain_quarantine_state("ZZLATEIMPORT")
     assert entry.get("permanent") is True, entry
     text = Path(override).read_text(encoding="utf-8") if Path(override).exists() else ""
     assert "ZZLATEIMPORT" in text, "the quarantine write did not land in the override file"
@@ -67,18 +70,21 @@ def _private_copy(tmp_path: Path) -> Path:
 
 
 def _run_inner(test_file: Path, watched: Path) -> subprocess.CompletedProcess[str]:
-    # RC-565 (already root-caused and fixed once in this repo, reapplied here since this
-    # branch forked before that fix merged -- see tests/test_full_suite_output_sink_v1.py's
-    # own _hermetic_args helper, MEASURED against this identical crash 2026-09-08): pinning
-    # --rootdir to the repo root while `test_file` lives under `tmp_path` (i.e. %TEMP%)
-    # makes pytest infer a common-ancestor rootdir far above both, whose top-level collector
-    # then walks every directory in between -- including %TEMP% itself, where concurrent
-    # xdist workers are constantly creating/deleting their own ed-pytest-gw*-* runtime roots
-    # (tests/conftest.py's tempfile.mkdtemp, called at conftest import time). A sibling
-    # worker's directory vanishing mid-listing crashes collection with FileNotFoundError.
-    # Pinning --rootdir to the target file's own directory avoids the ancestor walk
-    # entirely; `cwd` stays the repo root (needed for `-p tests.conftest` to resolve via
-    # sys.path) and is unaffected by this change.
+    # RC-REHAB-1 (2026-09-22): --rootdir must be the TARGET FILE's own directory, not the
+    # repo root. test_full_suite_output_sink_v1.py's _hermetic_args already proved this
+    # exact mechanism (MEASURED 2026-09-08): --rootdir=ROOT with a target file under
+    # %TEMP% makes pytest infer a common-ancestor rootdir far above both (often the user's
+    # home directory), and its top-level Dir collector then WALKS every directory between
+    # that ancestor and the target -- including %TEMP% itself, where concurrent xdist
+    # workers are constantly creating/deleting their own ed-pytest-gw*-* runtime roots.
+    # That walk is the collection-crash source this file's own _run_inner_with_crash_retry
+    # was built around (RC-565/RC-565 follow-up): a sibling worker's directory vanishing
+    # mid-listing raises FileNotFoundError during collection, unrelated to either firewall
+    # layer. Pinning --rootdir to test_file.parent (tmp_path, where the synthetic test
+    # already lives) means collection starts there directly and never walks %TEMP%'s
+    # broader structure at all -- fixing the race at its source instead of only retrying
+    # around it. cwd stays the repo root (`-p tests.conftest` resolves via sys.path/cwd,
+    # not rootdir, so this does not affect which conftest loads).
     return subprocess.run(
         [
             sys.executable, "-m", "pytest", str(test_file), "-q",
@@ -96,6 +102,47 @@ def _run_inner(test_file: Path, watched: Path) -> subprocess.CompletedProcess[st
     )
 
 
+def _run_inner_with_crash_retry(
+    test_file: Path,
+    watched: Path,
+    bytes_before: bytes,
+    *,
+    unless_marker: str | None = None,
+) -> tuple[subprocess.CompletedProcess[str], str]:
+    """RC-565 follow-up (2026-09-18): under heavy `-n 8` load this inner subprocess's OWN
+    pytest collection can crash on unrelated cross-process filesystem noise (MEASURED: a
+    FileNotFoundError lstat-ing a temp directory that belongs to a DIFFERENT, unrelated
+    xdist worker's PID -- confirmed not a bug in either firewall layer, since it happens
+    before collection ever reaches the synthetic test). When that happens the inner run
+    never got a chance to exercise the real scenario at all, so retrying is honest: it is
+    not hiding a real firewall result, only re-attempting a run that never actually tested
+    anything. A genuine firewall result (the real scenario ran, whether it passed or failed
+    for its own reason) is never this signature and is never retried. `unless_marker`, when
+    given, is a second, stricter guard: a string that can ONLY appear once the real scenario
+    ran, so its presence rules out a crash-retry even if the collection-error text also
+    happens to appear somewhere in the same output. Shared by both layers below (this test
+    and `test_external_writer_is_detected_truncated_back_and_failed`) so the retry
+    semantics stay identical rather than drifting between two hand-written copies."""
+    out = ""
+    inner: subprocess.CompletedProcess[str]
+    for attempt in range(3):
+        inner = _run_inner(test_file, watched)
+        out = (inner.stdout or "") + (inner.stderr or "")
+        collection_crashed = (
+            inner.returncode != 0
+            and (unless_marker is None or unless_marker not in out)
+            and "ERROR collecting test session" in out
+        )
+        if not collection_crashed:
+            return inner, out
+        assert watched.read_bytes() == bytes_before, (
+            f"attempt {attempt + 1}: unrelated collection crash also left the watched "
+            "ledger changed -- this is no longer safely retryable:\n" + out)
+    pytest.fail(
+        "the inner run's OWN pytest collection crashed on unrelated environment noise "
+        f"3 times in a row (never reached the real scenario under test):\n{out}")
+
+
 def test_late_server_import_is_prevented_by_the_env_kill_switch(tmp_path):
     """Layer 1: the late import binds the env override, the write lands in tmp, the
     watched file never changes, and the inner test PASSES (prevention, not detection)."""
@@ -104,8 +151,7 @@ def test_late_server_import_is_prevented_by_the_env_kill_switch(tmp_path):
     synthetic = tmp_path / "test_zz_late_import_synthetic.py"
     synthetic.write_text(_LATE_IMPORT_TEST, encoding="utf-8")
 
-    inner = _run_inner(synthetic, watched)
-    out = (inner.stdout or "") + (inner.stderr or "")
+    inner, out = _run_inner_with_crash_retry(synthetic, watched, bytes_before)
 
     assert watched.read_bytes() == bytes_before, (
         "the watched terrain ledger changed — the env kill-switch did not bind:\n" + out)
@@ -129,8 +175,8 @@ def test_external_writer_is_detected_truncated_back_and_failed(tmp_path):
         "        fh.write('{\"event\": \"zz-external-writer-probe\"}\\n')\n",
         encoding="utf-8")
 
-    inner = _run_inner(synthetic, watched)
-    out = (inner.stdout or "") + (inner.stderr or "")
+    inner, out = _run_inner_with_crash_retry(
+        synthetic, watched, bytes_before, unless_marker="TERRAIN LEDGER LATE-IMPORT HOLE")
 
     assert watched.read_bytes() == bytes_before, (
         "the watched ledger was not restored byte-for-byte:\n" + out)

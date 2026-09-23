@@ -146,7 +146,7 @@ def main() -> int:
         "AND pr.timeframe = ? AND pr.ts_utc < snapshots.ts_utc) >= ?"
     )
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn, busy_timeout_ms=120000)
 

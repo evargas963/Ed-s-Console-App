@@ -9,6 +9,8 @@
 
 **See also:** `docs/SCHWAB_FIELD_REFERENCE.md` (live inventory counts and canonical dictionary layout).
 
+**SUPERSEDED, retired (reality-reconciliation audit, 2026-09-18):** `schwab_field_inventory/README.md` already marks this document retired under ED CONSOLE SLIMMING; confirmed why. Its declared runtime boundary, `chains.contract_fields()`, was deleted by commit `fb1e84c3` ("Encode Schwab Field Precedence Principle... the chains.py / helper-removal architectural redesign", 2026-05-12) — one week after this audit's own creation date. Zero references to `contract_fields(` remain anywhere in the current codebase. The field-promotion this audit calls for (theta, rho, quoteTimeInLong, theoreticalOptionValue, option OHLC, and the rest of its named field list) **is implemented today**, just not through the boundary this doc names — `market_state.py::_oe_chain_row_snapshot()` carries every one of those fields verbatim, and the raw passthrough (`server.py::flatten_chain_contracts`) preserves the full unfiltered Schwab dict besides. Its proposed A2 theta source-priority fix is also implemented, in `v2_decision/a2_option_expression.py::_theta()`, in an evolved form.
+
 ---
 
 ## Purpose

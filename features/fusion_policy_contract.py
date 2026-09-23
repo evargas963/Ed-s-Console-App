@@ -90,8 +90,8 @@ def fusion_payload_to_policy_columns(hz: str, fusion: Any) -> dict[str, Any]:
     columns are None (not fabricated from 1/3 placeholders or ``or 0.0`` coercion).
     """
     avail = fusion_has_tradable_direction(fusion)
-    dom = str(getattr(fusion, "dominant_direction", "?") or "?") if fusion is not None else "?"
-    fconf = str(getattr(fusion, "fusion_confidence", "?") or "?") if fusion is not None else "?"
+    dom = str(getattr(fusion, "dominant_direction", "?") or "?") if fusion is not None else "?"  # caps-ok: "?" is the unknown marker inside the fused_stack_status audit TEXT only; the sole reader (fusion_replay_grade_v1) matches "fusion_ok"/"fusion_unavailable", never dir=
+    fconf = str(getattr(fusion, "fusion_confidence", "?") or "?") if fusion is not None else "?"  # caps-ok: "?" unknown marker inside the fused_stack_status audit text only; never parsed back as a confidence
     status = _stack_status(fusion, avail=avail, dom=dom, fconf=fconf)[:FUSION_STACK_STATUS_MAX_CHARS]
 
     tri = _fusion_triplet(fusion)

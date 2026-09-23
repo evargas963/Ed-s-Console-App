@@ -406,11 +406,11 @@ Probe scripts under `<TEMP>/rcprobe/` were transient session scripts; each probe
 
 ## RC-453 — DEFECT_ABSENT
 
-**Defect (as originally measured):** Privilege hard-coded to vendor names (current_agent_role default cursor, cursor-only role-flip checks, agent-writable enforcement surfaces, CODEOWNERS over the money path)
+**Defect (as originally measured):** Privilege hard-coded to vendor names (current_agent_role default cursor, cursor-only role-flip checks, agent-writable enforcement surfaces, a reviewer-identity file over the money path)
 
-**Probe (re-runnable):** scratchpad/probe_rc_batch.py: import tools.writer_drift_lock (expect failure); os.path.exists('CODEOWNERS'); 'ED_AGENT_ROLE' in .claude/settings.json text; hasattr(operating_process_lock, 'current_agent_role'/'pm_status_field_violations'/'is_enforcement_surface')
+**Probe (re-runnable):** scratchpad/probe_rc_batch.py: import tools.writer_drift_lock (expect failure); no reviewer-identity file present at any GitHub-read location; 'ED_AGENT_ROLE' in .claude/settings.json text; hasattr(operating_process_lock, 'current_agent_role'/'pm_status_field_violations'/'is_enforcement_surface')
 
-**Observed on current tree:** tools.writer_drift_lock raises ModuleNotFoundError; CODEOWNERS absent; ED_AGENT_ROLE not in .claude/settings.json; current_agent_role, pm_status_field_violations and is_enforcement_surface all absent from operating_process_lock — no vendor-keyed privilege code path can execute
+**Observed on current tree:** tools.writer_drift_lock raises ModuleNotFoundError; reviewer-identity file absent; ED_AGENT_ROLE not in .claude/settings.json; current_agent_role, pm_status_field_violations and is_enforcement_surface all absent from operating_process_lock — no vendor-keyed privilege code path can execute
 
 **Note:** Closure is teardown-by-removal: the vendor-role machinery was deleted wholesale (54e766dc), so the probe is executed absence (failed import, absent attrs) rather than corrected behavior — there is no role machinery left to be vendor-biased.
 

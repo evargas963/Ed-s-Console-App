@@ -93,21 +93,23 @@ def _rows(con: sqlite3.Connection, ticker: str) -> list[dict]:
             "dt": dt,
             "datetime": int(float(ts) * 1000),
             "open": float(o), "high": float(h), "low": float(l),
-            "close": float(c), "volume": float(v or 0.0),
+            "close": float(c), "volume": None if v is None else float(v),
             "min_of_day": dt.hour * 60 + dt.minute,
         })
     return out
 
 
-def _session_atr(sb: list[dict]) -> float:
+def _session_atr(sb: list[dict]) -> float | None:
+    """Median 1m range; None when no bar has a range (ATR unmeasurable, callers skip)."""
     ranges = [b["high"] - b["low"] for b in sb if b["high"] > b["low"]]
-    return statistics.median(ranges) if ranges else 0.0
+    return statistics.median(ranges) if ranges else None
 
 
-def _causal_atr(sb: list[dict], i: int) -> float:
+def _causal_atr(sb: list[dict], i: int) -> float | None:
+    """Trailing-30-bar median range; None when unmeasurable (callers skip the event)."""
     window = sb[max(0, i - 30):i] or sb[: max(1, min(30, i + 1))]
     ranges = [b["high"] - b["low"] for b in window if b["high"] > b["low"]]
-    return statistics.median(ranges) if ranges else 0.0
+    return statistics.median(ranges) if ranges else None
 
 
 def _triple_barrier(
@@ -117,13 +119,13 @@ def _triple_barrier(
     direction: int,
     zone_lo: float,
     zone_hi: float,
-    atr: float,
+    atr: float | None,
     horizon: int | None,
     k: float = K_ATR,
 ) -> dict:
     """direction +1 support bounce; -1 resistance bounce. Costs ABSENT.
-    horizon=None → score until last session bar (EOD)."""
-    if atr <= 0 or i >= len(sb) - 1:
+    horizon=None → score until last session bar (EOD). atr=None (unmeasurable) → unlabeled."""
+    if atr is None or atr <= 0 or i >= len(sb) - 1:
         return {"label": None, "reward_risk": None}
     entry = sb[i]["close"]
     width = max(zone_hi - zone_lo, 1e-9)
@@ -537,7 +539,7 @@ def _touch_hold_events(
             if inside and armed[zi]:
                 armed[zi] = False
                 atr = _causal_atr(sb, i)
-                if atr <= 0:
+                if atr is None or atr <= 0:
                     continue
                 y = CLOSE_THROUGH_ATR * atr
                 end = min(len(sb) - 1, i + horizon_min)
@@ -673,7 +675,7 @@ def _random_levels_uniform(
 def run(tickers: list[str]) -> dict:
     t0 = time.time()
     rnd = random.Random(SEED)
-    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30.0)
 
     mf_counts = _morning_full_counts(con, tickers)
     obs = _load_obs_chains(con, tickers)
@@ -739,7 +741,7 @@ def run(tickers: list[str]) -> dict:
             level_presence[k] = level_presence.get(k, 0) + 1
         conf = str(got.get("confidence") or "UNKNOWN")
         conf_counts[conf] += 1
-        faucet = str(meta.get("faucet") or "unknown")
+        faucet = str(meta["faucet"])  # _load_obs_chains sets "faucet" on every obs entry
         faucet_counts[faucet] += 1
         regime = got.get("regime")
         if regime:
@@ -754,7 +756,7 @@ def run(tickers: list[str]) -> dict:
                 mf_level_presence[k] = mf_level_presence.get(k, 0) + 1
 
         atr = _session_atr(sb)
-        if atr <= 0:
+        if atr is None or atr <= 0:
             continue
         half = WIDTH_ATR_FRAC * atr
         rth_lo = min(b["low"] for b in sb)
@@ -991,10 +993,10 @@ def run(tickers: list[str]) -> dict:
             edge = rs["hold_rate"] - ps["hold_rate"]
         by_regime_hold[reg] = {"real": rs, "placebo": ps, "hold_rate_edge": edge}
 
-    long_n_days = regime_day_counts.get("LONG_GAMMA", 0)
-    short_n_days = regime_day_counts.get("SHORT_GAMMA", 0)
-    mf_long = mf_regime_day_counts.get("LONG_GAMMA", 0)
-    mf_short = mf_regime_day_counts.get("SHORT_GAMMA", 0)
+    long_n_days = regime_day_counts.get("LONG_GAMMA", 0)  # caps-ok: day counter (defaultdict(int) tally at the recon loop); no LONG_GAMMA day observed is a true count of 0; .get avoids inserting the key into the reported dict
+    short_n_days = regime_day_counts.get("SHORT_GAMMA", 0)  # caps-ok: day counter tally; zero SHORT_GAMMA days observed is a true count
+    mf_long = mf_regime_day_counts.get("LONG_GAMMA", 0)  # caps-ok: morning_full day counter tally; zero LONG_GAMMA days is a true count
+    mf_short = mf_regime_day_counts.get("SHORT_GAMMA", 0)  # caps-ok: morning_full day counter tally; zero SHORT_GAMMA days is a true count
 
     limits_4 = []
     if any(not mf_counts[tk]["meets_ops_target_20"] for tk in tickers):
@@ -1230,7 +1232,7 @@ def _markdown(res: dict) -> str:
         f"- Sessions scored: **{s['n_sessions_scored']}** "
         f"(obs available: {json.dumps(s['obs_days_available'])})",
         f"- Date range: `{s['date_min']}` → `{s['date_max']}`",
-        f"- Faucet mix: `{json.dumps(s.get('faucet_counts', {}))}`",
+        f"- Faucet mix: `{json.dumps(s['faucet_counts'])}`",
         f"- Seed: `{res['seed']}` · Runtime: {res['runtime_sec']}s",
         "- Costs: **ABSENT** · No lookahead (obs ≤10:15; score after 10:15 ET)",
         "",

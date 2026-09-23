@@ -110,7 +110,7 @@ def _rules():
 
 
 def test_regime_engine_no_zone_since_bars_or_zero_pattern():
-    assert "(inp.zone_since_bars_1m or inp.zone_since_bars) or 0" not in REGIME_ENGINE
+    assert "(inp.zone_since_bars_1m or inp.zone_since_bars) or 0" not in REGIME_ENGINE  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT
 
 
 def test_classify_returns_unknown_when_all_scores_zero():

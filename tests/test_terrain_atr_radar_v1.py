@@ -21,6 +21,11 @@ from terrain_atr import (
     atr_distance,
     ring_for,
 )
+import flip_drift_log  # noqa: E402
+import terrain_capture  # noqa: E402
+import app.api.routes.market_data
+import chain_width
+import terrain_radar
 
 
 def test_rings_are_ordered_and_distinct() -> None:
@@ -87,9 +92,8 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
     calls its handler directly, so this is the established pattern here."""
     import json
 
-    import server as srv
 
-    body = json.loads(srv.get_bars1m(ticker="SPY", limit=5).body)
+    body = json.loads(app.api.routes.market_data.get_bars1m(ticker="SPY", limit=5).body)
     assert body["ticker"] == "SPY" and isinstance(body["bars"], list)
     if body["bars"]:
         row = body["bars"][-1]
@@ -106,7 +110,7 @@ def test_chart_page_route_serves_static_chart_html():
     r = client.get("/chart")
     assert r.status_code == 200
     assert "terrain on price" in r.text
-    assert "no-store" in r.headers.get("cache-control", ""), (
+    assert "no-store" in r.headers["cache-control"], (
         "chart shell must never be browser-cached (stale-JS class, RC on 2026-07-22)")
 
 
@@ -114,8 +118,6 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
     """Flip-drift row (register, due 2026-07-31): each terrain compute appends one
     JSONL row; flip=None is absence and appends nothing. Drives the REAL logger."""
     import json as _json
-
-    import server as srv
 
     # RC-58: the timestamp must be a REAL trading session. The question this log answers is
     # INTRADAY flip drift, and its first week was 784 of 784 rows from one SUNDAY window (spot
@@ -125,13 +127,13 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
     NON_TRADING_TS = 1784383200.0          # Sat 2026-07-18 10:00 ET
 
     p = tmp_path / "flip_drift_log.jsonl"
-    monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", p)
-    srv._log_flip_drift("SPY", {"gamma_flip": 745.25, "spot": 746.1,
+    monkeypatch.setattr(flip_drift_log, "_FLIP_DRIFT_LOG_PATH", p)
+    flip_drift_log._log_flip_drift("SPY", {"gamma_flip": 745.25, "spot": 746.1,
                                 "confidence": "TRUSTED",
                                 "computed_ts_utc": RTH_TS})
-    srv._log_flip_drift("QQQ", {"gamma_flip": None, "spot": 500.0})
+    flip_drift_log._log_flip_drift("QQQ", {"gamma_flip": None, "spot": 500.0})
     # Market-closed computes must NOT be logged — they manufacture a false "flip is stable".
-    srv._log_flip_drift("IWM", {"gamma_flip": 222.0, "spot": 223.0,
+    flip_drift_log._log_flip_drift("IWM", {"gamma_flip": 222.0, "spot": 223.0,
                                 "confidence": "TRUSTED",
                                 "computed_ts_utc": NON_TRADING_TS})
     lines = p.read_text(encoding="utf-8").strip().splitlines()
@@ -148,9 +150,13 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     from types import SimpleNamespace
 
     import server as srv
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
+    # moved to terrain_refresh.py, which imports compute_terrain directly (module-level,
+    # not lazily via `import server`), so it must be patched on its real home.
+    import terrain_refresh
 
     calls: list = []
-    real = srv._log_flip_drift
+    real = flip_drift_log._log_flip_drift
 
     def _spy(tk, payload):
         calls.append((tk, payload.get("gamma_flip")))
@@ -162,11 +168,11 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     # assertion would pass or fail depending on the day the suite happens to run (RC-58).
     import time_et as _te
     monkeypatch.setattr(_te, "is_tradable_session_ts_utc", lambda _ts: True)
-    monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
-    monkeypatch.setattr(srv, "_log_flip_drift", _spy)
+    monkeypatch.setattr(flip_drift_log, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
+    monkeypatch.setattr(flip_drift_log, "_log_flip_drift", _spy)
     monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_universal_capture_wanted", lambda _tk: (False, None))
-    monkeypatch.setattr(srv, "_terrain_strike_count", lambda _tk: 20)
+    monkeypatch.setattr(terrain_capture, "_universal_capture_wanted", lambda _tk: (False, None))
+    monkeypatch.setattr(chain_width, "_terrain_strike_count", lambda _tk: 20)
 
     class _Resp:
         status_code = 200
@@ -186,16 +192,16 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
         def to_dict(self):
             return {"gamma_flip": 99.5, "spot": 100.0, "confidence": "TRUSTED"}
 
-    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _Snap())
-    monkeypatch.setattr(srv, "_radar_atr", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
+    monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *_a, **_k: _Snap())
+    monkeypatch.setattr(terrain_radar, "_radar_atr", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
 
-    out = srv._terrain_refresh_one("SPY")
+    out = terrain_refresh._terrain_refresh_one("SPY")
     assert out == "ok:TRUSTED"
     assert calls == [("SPY", 99.5)], "logger must run on the terrain refresh seam"
     assert (tmp_path / "flip.jsonl").is_file()
 
     # Fail-soft: non-numeric flip would raise inside float() — terrain must stay ok:
-    monkeypatch.setattr(srv, "_log_flip_drift", real)
+    monkeypatch.setattr(flip_drift_log, "_log_flip_drift", real)
 
     class _BadSnap:
         confidence = "TRUSTED"
@@ -204,8 +210,8 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
         def to_dict(self):
             return {"gamma_flip": object(), "spot": 100.0, "confidence": "TRUSTED"}
 
-    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _BadSnap())
-    out2 = srv._terrain_refresh_one("SPY")
+    monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *_a, **_k: _BadSnap())
+    out2 = terrain_refresh._terrain_refresh_one("SPY")
     assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
 
 
@@ -216,7 +222,6 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
     import threading as th
     import time as _t
 
-    import server as srv
 
     started = th.Event()
     release = th.Event()
@@ -228,12 +233,12 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
         release.wait(10)
         return [{"ticker": "ZZZ", "spot": 10.0}]
 
-    monkeypatch.setattr(srv, "_radar_fallback_recompute", _slow_recompute)
-    monkeypatch.setattr(srv, "_radar_fallback_cache", (0.0, [{"ticker": "OLD", "spot": 1.0}]))
-    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_recompute", _slow_recompute)
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_cache", (0.0, [{"ticker": "OLD", "spot": 1.0}]))
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_inflight", False)
 
-    out1 = srv._terrain_snapshots_for_radar()
-    out2 = srv._terrain_snapshots_for_radar()
+    out1 = terrain_radar._terrain_snapshots_for_radar()
+    out2 = terrain_radar._terrain_snapshots_for_radar()
     # returned while the recompute is still parked on `release` -> proven non-blocking:
     # an inline path could only return ZZZ (or wait); OLD in hand proves the memo served
     assert any(m.get("ticker") == "OLD" for m in out1)
@@ -243,18 +248,18 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
     release.set()
     deadline = _t.time() + 30
     while _t.time() < deadline:
-        if srv._radar_fallback_cache[1] and \
-           srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ":
+        if terrain_radar._radar_fallback_cache[1] and \
+           terrain_radar._radar_fallback_cache[1][0].get("ticker") == "ZZZ":
             break
         _t.sleep(0.02)
-    assert srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ", \
+    assert terrain_radar._radar_fallback_cache[1][0].get("ticker") == "ZZZ", \
         "background result must land in the memo"
 
     # None keeps the previous memo (DB hiccup must not wipe the scope)
-    monkeypatch.setattr(srv, "_radar_fallback_recompute", lambda: None)
-    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
-    srv._radar_fallback_refresh_worker()
-    assert srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ"
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_recompute", lambda: None)
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_inflight", False)
+    terrain_radar._radar_fallback_refresh_worker()
+    assert terrain_radar._radar_fallback_cache[1][0].get("ticker") == "ZZZ"
 
     # Fresh empty memo is a legitimate result — must NOT re-kick the sweep
     kicks = {"n": 0}
@@ -263,10 +268,10 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
         kicks["n"] += 1
         return []
 
-    monkeypatch.setattr(srv, "_radar_fallback_recompute", _count_recompute)
-    monkeypatch.setattr(srv, "_radar_fallback_cache", (_t.time(), []))
-    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
-    srv._terrain_snapshots_for_radar()
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_recompute", _count_recompute)
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_cache", (_t.time(), []))
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_inflight", False)
+    terrain_radar._terrain_snapshots_for_radar()
     assert kicks["n"] == 0, "fresh empty memo must not re-stampede the fallback"
 
 
@@ -292,14 +297,14 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
         return (123.45, "test_quote", 1.0)
 
     monkeypatch.setattr(srv, "resolve_spot", _fake)
-    srv._spot_poll_cache.clear()
-    srv._spot_poll_inflight.clear()
+    app.api.routes.market_data._spot_poll_cache.clear()
+    app.api.routes.market_data._spot_poll_inflight.clear()
 
     results: list = []
     slock = th.Lock()
 
     def _call():
-        resp = srv.get_spot(ticker="SPY")
+        resp = app.api.routes.market_data.get_spot(ticker="SPY")
         body = _json.loads(resp.body.decode("utf-8"))
         with slock:
             results.append(body.get("spot"))
@@ -316,11 +321,11 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
     assert results == [123.45] * 4
     assert calls["n"] == 1, f"concurrent misses must single-flight, got {calls['n']}"
 
-    resp2 = srv.get_spot(ticker="SPY")
+    resp2 = app.api.routes.market_data.get_spot(ticker="SPY")
     assert _json.loads(resp2.body.decode("utf-8"))["spot"] == 123.45
     assert calls["n"] == 1, "TTL hit must not resolve again"
-    srv._spot_poll_cache.clear()
-    srv._spot_poll_inflight.clear()
+    app.api.routes.market_data._spot_poll_cache.clear()
+    app.api.routes.market_data._spot_poll_inflight.clear()
 
 
 def test_spot_endpoint_shape_single_authority():
@@ -333,9 +338,8 @@ def test_spot_endpoint_shape_single_authority():
     directly, so the direct seam is the established pattern for this endpoint."""
     import json
 
-    import server as srv
 
-    body = json.loads(srv.get_spot(ticker="SPY").body)
+    body = json.loads(app.api.routes.market_data.get_spot(ticker="SPY").body)
     assert body["ticker"] == "SPY"
     assert set(body) == {"ticker", "spot", "spot_source", "spot_state", "spot_as_of_ts_utc"}
 
@@ -400,7 +404,11 @@ def _scorecard_body(tmp_path, monkeypatch, generated_utc):
         }), encoding="utf-8")
     monkeypatch.setattr(srv, "APP_DIR", str(tmp_path), raising=True)
     # RC-523: the scorecard is read from the ARTIFACTS root, not APP_DIR.
-    monkeypatch.setattr(srv, "_artifact_reports_dir", lambda: tmp_path / "reports", raising=True)
+    # RC-REHAB-1: /api/terrain/scorecard imports reports_dir from runtime_layout (its real
+    # home), not through server -- point the authority itself at tmp.
+    import runtime_layout
+
+    monkeypatch.setattr(runtime_layout, "reports_dir", lambda: tmp_path / "reports", raising=True)
     r = TestClient(srv.app).get("/api/terrain/scorecard")
     assert r.status_code == 200
     return r.json()

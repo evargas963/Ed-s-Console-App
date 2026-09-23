@@ -10,8 +10,11 @@ whatever the actual data produces.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
+import pytest
+import time_et
 from math_levels import (
     GAMMA_FLIP_LEVEL_APPROX,
     GAMMA_FLIP_NARROW,
@@ -21,6 +24,21 @@ from math_levels import (
 from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
 
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
+
+
+@pytest.fixture(autouse=True)
+def _pin_now_to_fixture_session(monkeypatch):
+    # RC-REHAB-3: the fixture is a REAL 0DTE SPY chain captured 2026-07-17 with a UNIFORM
+    # expirationDate baked into every contract. time_et.time_to_expiry_years fails closed
+    # (T<=0) once real wall-clock time passes that date, which silently collapsed the whole
+    # gamma-profile/flip recompute to an "empty_profile" GAMMA_FLIP_UNAVAILABLE verdict --
+    # NOT the narrow-chain span gate this file's tests actually mean to exercise (MEASURED:
+    # replaying this fixture at real "now" gives confidence=UNAVAILABLE via reason
+    # "empty_profile"; pinned to the fixture's own capture session it gives the genuine
+    # LOW_CONFIDENCE_NARROW_CHAIN verdict with a real interpolated flip=761.0). Pin the clock
+    # to mid-session on the fixture's own expiry day, matching test_charm_by_strike_v1.py and
+    # test_gamma_profile_v1.py, which already do this for the same fixture.
+    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 7, 17, 10, 0, tzinfo=time_et.ET))
 
 
 def _real_chain() -> tuple[list, float]:
@@ -99,7 +117,7 @@ def test_posture_is_never_issued_without_a_supportable_at_spot_sign() -> None:
     elif snap.confidence == GAMMA_FLIP_LEVEL_APPROX:
         # the middle tier MAY issue a posture — but must never present the level as placed
         assert snap.regime != "UNAVAILABLE"
-        assert "APPROXIMATE" in " ".join(getattr(snap, "lines", []) or []), (
+        assert "APPROXIMATE" in " ".join(snap.lines), (
             "LEVEL_APPROX issued a regime without disclosing the flip level is approximate")
 
 
@@ -109,12 +127,29 @@ def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
     ~±1.3% (< the ±5% trust floor), so compute_terrain must fail closed to
     STAND_ASIDE — exactly the state the removed /api/analytics/state duplicate
     produced. One terrain source of truth keeps this fail-closed backstop.
+
+    RC-REHAB-3: `confidence != GAMMA_FLIP_TRUSTED` also holds when the fixture's baked-in
+    expiry has simply gone stale (GAMMA_FLIP_UNAVAILABLE via an empty gamma profile) --
+    that would pass here even if the actual narrow-SPAN gate this test claims to guard were
+    completely broken. With `now` pinned to the fixture's own live session (module fixture
+    above), the profile genuinely computes and the SPAN gate is what fires; assert that
+    specific tier plus a real, non-degenerate flip so a broken span gate cannot hide behind
+    an expired clock again.
     """
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot)
     assert snap.confidence != GAMMA_FLIP_TRUSTED
     assert snap.regime == "UNAVAILABLE"
     assert snap.posture == "STAND_ASIDE"
+    assert snap.confidence == GAMMA_FLIP_NARROW, (
+        f"expected the narrow-SPAN gate specifically (GAMMA_FLIP_NARROW), got "
+        f"{snap.confidence!r} -- with time pinned live this must not degrade to "
+        f"GAMMA_FLIP_UNAVAILABLE via an empty profile, which would mask the span gate"
+    )
+    assert snap.gamma_flip is not None and snap.flip_diag.get("reason") != "empty_profile", (
+        "the gamma flip must be a genuine interpolated value on this live 0DTE session, "
+        "not an empty-profile degeneration standing in for the narrow-chain verdict"
+    )
 
 
 def test_payload_is_json_serialisable() -> None:
@@ -284,15 +319,23 @@ def _bucket_for_pin(exposures: dict, pin: float) -> dict | None:
     return None
 
 
+def _bucket_oi(bucket: dict) -> float | None:
+    """OI of the contracts that cleared the OI gate at one strike; None when neither side did.
+    A side whose call_oi/put_oi is None had no contract clear the gate, so it adds none."""
+    co, po = bucket.get("call_oi"), bucket.get("put_oi")
+    if co is None and po is None:
+        return None
+    return (float(co) if co is not None else 0.0) + (float(po) if po is not None else 0.0)
+
+
 def _book_oi(exposures: dict) -> float | None:
     total = None
     for v in exposures.values():
         if not isinstance(v, dict):
             continue
-        co, po = v.get("call_oi"), v.get("put_oi")
-        if co is None and po is None:
+        add = _bucket_oi(v)
+        if add is None:
             continue
-        add = (float(co) if co is not None else 0.0) + (float(po) if po is not None else 0.0)
         total = (total or 0.0) + add
     return total
 
@@ -335,14 +378,14 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     extra = []
     for c in chain:
         try:
-            if float(c.get("strikePrice") or 0) != float(pin):
+            if float(c["strikePrice"]) != float(pin):
                 continue
         except (TypeError, ValueError):
             continue
         d = dict(c)
-        d["daysToExpiration"] = int(c.get("daysToExpiration") or 0) + 30
+        d["daysToExpiration"] = int(c["daysToExpiration"]) + 30
         d["expirationDate"] = "2026-08-16"
-        d["openInterest"] = float(c.get("openInterest") or 0) + 50_000
+        d["openInterest"] = float(c["openInterest"]) + 50_000
         extra.append(d)
     assert extra, "the pin strike must exist on the captured chain"
     wide = chain + extra
@@ -357,9 +400,9 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     sel_gex = total_gex_dollars_at_strike(sb)
     assert wide_gex != sel_gex
     assert terrain.absolute_gamma_gex_dollars == wide_gex
-    assert terrain.absolute_gamma_oi != (
-        (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
-    )
+    sel_pin_oi = _bucket_oi(sb)
+    assert sel_pin_oi is not None, "the selected-expiry pin strike must carry real OI"
+    assert terrain.absolute_gamma_oi != sel_pin_oi
     wide_score = compute_pin_score(
         terrain.absolute_gamma_gex_dollars,
         (terrain.absolute_gamma_oi / terrain.book_oi_total)
@@ -368,10 +411,7 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     )
     sel_score = compute_pin_score(
         sel_gex,
-        (
-            (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
-            / _book_oi(sel_ex)
-        )
+        (sel_pin_oi / _book_oi(sel_ex))
         if _book_oi(sel_ex)
         else None,
     )

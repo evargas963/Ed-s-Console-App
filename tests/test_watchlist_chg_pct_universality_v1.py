@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import market_context as mc
+import tier_a_live_state
 
 
 def test_extract_pct_change_prefers_net_percent_change():
@@ -114,7 +115,7 @@ def test_live_state_rest_backfill_survives_merge_into_state(monkeypatch):
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _FakeResp())
 
-    out = srv._tier_a_live_state_dict(ticker, None)
+    out = tier_a_live_state._tier_a_live_state_dict(ticker, None)
     assert out["chg_pct"] == 7.77, (
         f"REST backfill (7.77) was overwritten by the plane overlay's stale chg_pct=None "
         f"-- got {out['chg_pct']!r}"
@@ -188,7 +189,7 @@ def test_chg_pct_backfill_is_the_shared_authority_for_live_state_and_l1(monkeypa
     import inspect
     import server as srv
 
-    assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._tier_a_live_state_dict)
+    assert "_chg_pct_with_rest_backfill" in inspect.getsource(tier_a_live_state._tier_a_live_state_dict)
     assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._project_l1)
     assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._l1_http_get_projection)
 
@@ -238,7 +239,7 @@ def test_watchlist_quotes_route_reports_auth_failure_distinctly(monkeypatch):
     try:
         monkeypatch.setattr(srv, "get_client", _raise_auth_unavailable)
         with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(tks)})
+            r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(tks)})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
             assert r.status_code == 200  # the route itself succeeds; failure is IN the payload
             body = r.json()
             assert body["ok"] is False
@@ -262,7 +263,7 @@ def test_watchlist_quotes_route_success_shape(monkeypatch):
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
     with TestClient(srv.app) as client:
-        r = client.get("/api/watchlist-quotes", params={"tickers": "ZZZTEST"})
+        r = client.get("/api/watchlist-quotes", params={"tickers": "ZZZTEST"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         body = r.json()
         assert body["ok"] is True
         assert body["error"] is None
@@ -295,7 +296,7 @@ def test_watchlist_quotes_reuses_a_fresh_plane_row_with_no_vendor_call(monkeypat
     try:
         monkeypatch.setattr("schwab_client.safe_get_quotes", _boom)
         with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": tk})
+            r = client.get("/api/watchlist-quotes", params={"tickers": tk})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         body = r.json()
         assert called["n"] == 0
         assert body["ok"] is True
@@ -326,7 +327,7 @@ def test_watchlist_quotes_records_a_fresh_fetch_into_the_plane(monkeypatch):
         monkeypatch.setattr(srv, "get_client", lambda: object())
         monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
         with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": tk})
+            r = client.get("/api/watchlist-quotes", params={"tickers": tk})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         body = r.json()
         assert body["quotes"][tk]["spot"] == 61.5
         plane_row = L.get_quote(tk)
@@ -360,6 +361,6 @@ def test_watchlist_quotes_route_no_invented_count_cap(monkeypatch):
     monkeypatch.setattr("schwab_client.safe_get_quotes", _fake_safe_get_quotes)
     many = ["T{}".format(i) for i in range(600)]
     with TestClient(srv.app) as client:
-        r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(many)})
+        r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(many)})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r.status_code == 200
         assert len(requested["tickers"]) == 600  # nothing silently dropped

@@ -33,7 +33,7 @@ def _expected_volume_by_strike() -> dict[float, int]:
     out: dict[float, int] = {}
     for c in CHAIN:
         k = float(c["strikePrice"])
-        out[k] = out.get(k, 0) + int(c.get("totalVolume") or 0)
+        out[k] = out.get(k, 0) + int(c["totalVolume"])
     return out
 
 
@@ -82,10 +82,15 @@ def test_per_strike_map_is_stamped_with_its_own_age():
 def test_endpoint_reads_the_live_cache_and_has_no_today_fallback():
     """The strikes endpoint must take TODAY from the live terrain cache only. Both former
     fallbacks (morning archive, narrow snapshot chain) are gone — a fallback is a second faucet."""
+    # RC-REHAB-1 (Phase 3, seventh extraction slice): get_terrain_strikes moved out of
+    # server.py into app/api/routes/terrain.py.
+    terrain_routes_src = (ROOT / "app" / "api" / "routes" / "terrain.py").read_text(
+        encoding="utf-8"
+    )
     seg = ""
-    for n in ast.walk(ast.parse(SERVER_SRC)):
+    for n in ast.walk(ast.parse(terrain_routes_src)):
         if isinstance(n, ast.FunctionDef) and n.name == "get_terrain_strikes":
-            seg = ast.get_source_segment(SERVER_SRC, n) or ""
+            seg = ast.get_source_segment(terrain_routes_src, n) or ""
     assert seg, "get_terrain_strikes not found"
     assert "terrain_cache_get(" in seg, "endpoint no longer reads the live terrain cache"
     assert '"terrain_live_cache"' in seg, "today_source no longer declares the live faucet"
@@ -97,8 +102,16 @@ def test_endpoint_reads_the_live_cache_and_has_no_today_fallback():
 
 
 def test_terrain_loop_publishes_the_map_into_the_cache():
-    """The endpoint can only be live if the loop actually puts the map where it looks."""
-    assert '"_per_strike"' in SERVER_SRC, (
+    """The endpoint can only be live if the loop actually puts the map where it looks.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): the terrain loop's
+    own producer, _terrain_refresh_one, moved out of server.py entirely, into
+    terrain_refresh.py -- checked there instead (this assertion previously kept
+    passing by coincidence, via refresh_gamma_surface_from_stream/spot_tick's OWN
+    "_per_strike" writes, which were still in server.py until the twenty-seventh
+    slice moved them to gamma_surface_eager_refresh.py too)."""
+    terrain_refresh_src = (ROOT / "terrain_refresh.py").read_text(encoding="utf-8")
+    assert '"_per_strike"' in terrain_refresh_src, (
         "the terrain loop no longer publishes the per-strike map into the cache, so the endpoint "
         "would render an empty panel"
     )

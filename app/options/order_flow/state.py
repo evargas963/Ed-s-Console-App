@@ -284,8 +284,8 @@ class OrderFlowState:
         with self._lock:
             book = self._book.get(sym)
             tape = self._tape.get(sym)
-            bl = len(book) if book else 0
-            tl = len(tape) if tape else 0
+            bl = len(book) if book else 0  # caps-ok: count of buffered book events; no buffer for the symbol means zero events stored, a true count
+            tl = len(tape) if tape else 0  # caps-ok: count of buffered tape prints; no buffer for the symbol means zero prints stored, a true count
             last_ms = tape[-1].get("TRADE_TIME_MILLIS") if tape else None
             top = self._top.get(sym)
             tb = top.get("BID_PRICE") if top else None

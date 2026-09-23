@@ -34,7 +34,7 @@ def _load_rows(db: Path, ticker: str, hz: str):
         f"FROM snapshots_1m_normalized "
         f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL"
     )
-    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = c.execute(q, (ticker,)).fetchall()
     c.close()
     xs, ys, dates = [], [], []

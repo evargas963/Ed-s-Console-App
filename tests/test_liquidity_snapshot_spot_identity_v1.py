@@ -9,6 +9,7 @@ import json
 import server as srv
 import liquidity_value_engine as lve
 from liquidity_models import SnapshotType, Zone, ZoneType
+import app.api.routes.liquidity
 
 
 class _FakeSnapshotOutput:
@@ -46,7 +47,7 @@ def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(monk
     under its own honestly-named field instead."""
     _wire_common(monkeypatch, raw_levels={"vwap": 123.45, "cutoff_et": "2020-01-02T10:00:00"})
     # a date far from "today" so the canonical-carry branch (which needs a live DB row) is skipped
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
+    resp = app.api.routes.liquidity.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
     body = json.loads(resp.body) if hasattr(resp, "body") else resp
     assert body["spot_used_for_scoring"] is None
     assert body["spot_estimate_vwap_fallback"] == 123.45
@@ -66,7 +67,7 @@ def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_th
         source_tags=["GAMMA_WALL"],
     )
     _wire_common(monkeypatch, raw_levels={"vwap": 123.45}, zones=[zone])
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
+    resp = app.api.routes.liquidity.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
     body = json.loads(resp.body) if hasattr(resp, "body") else resp
     assert len(body["zones"]) == 1
     z = body["zones"][0]
@@ -95,7 +96,7 @@ def test_spot_used_for_scoring_reports_the_real_cached_spot_when_available(monke
         lambda *a, **k: [{"open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}])
     fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", {"vwap": 123.45})
     monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry="2020-01-03", fusion=True)
+    resp = app.api.routes.liquidity.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry="2020-01-03", fusion=True)
     body = json.loads(resp.body) if hasattr(resp, "body") else resp
     assert body["spot_used_for_scoring"] == 456.78
     assert body["spot_estimate_vwap_fallback"] is None
@@ -110,7 +111,7 @@ def test_schwab_auth_unavailable_propagates_503_not_a_generic_500(monkeypatch):
     def _raise_auth_unavailable():
         raise HTTPException(status_code=503, detail="Schwab auth failed: token_invalid")
     monkeypatch.setattr(srv, "get_client", _raise_auth_unavailable)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
+    resp = app.api.routes.liquidity.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
     assert resp.status_code == 503
     body = json.loads(resp.body)
     assert "token_invalid" in body["error"] or "Schwab auth failed" in body["error"]
@@ -122,5 +123,5 @@ def test_an_unrelated_crash_still_reports_500(monkeypatch):
     def _boom():
         raise RuntimeError("something actually broke")
     monkeypatch.setattr(srv, "get_client", _boom)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
+    resp = app.api.routes.liquidity.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
     assert resp.status_code == 500

@@ -274,7 +274,7 @@ def rolling_horizon_log_loss(
         sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
         params.extend(tickers)
     acc: dict[str, dict[str, float]] = {hz: {"n": 0.0, "nll_sum": 0.0} for hz in HORIZON_SLUGS}
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         for row in conn.execute(sql, params):
@@ -532,19 +532,19 @@ def _build_eligible_grid(
     tickers = sorted(set(roster) | set(tallies) | set(by_ticker_scored))
     for tk in tickers:
         t_tal = tallies.get(tk)
-        rows_today = t_tal["n_rows_total"] if t_tal else 0
+        rows_today = t_tal["n_rows_total"] if t_tal else 0  # caps-ok: _production_tallies creates an entry for every ticker with >=1 log row in the window; no entry is a measured zero rows today
         cells: dict[str, Any] = {}
         for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG):
             scored_cell = (by_ticker_scored.get(tk) or {}).get(hz)
-            n_pred = scored_cell["n_pred"] if scored_cell else 0
-            n_scored = scored_cell["n_scored"] if scored_cell else 0
+            n_pred = scored_cell["n_pred"] if scored_cell else 0  # caps-ok: score loop creates a (ticker, horizon) cell on its first prediction; no cell is a measured zero predictions
+            n_scored = scored_cell["n_scored"] if scored_cell else 0  # caps-ok: no (ticker, horizon) cell means zero predictions, hence zero scored; not_scored_reason explains why
             rec: dict[str, Any] = {
                 "eligibility": "ELIGIBLE" if tk in roster or roster_source != "logging_universe" else "OBSERVED_ONLY",
                 "n_pred": n_pred,
                 "n_scored": n_scored,
                 "n_unscored": n_pred - n_scored,
-                "n_outcome_pending": (t_tal["hz"][hz]["n_outcome_pending"] if t_tal else 0),
-                "n_fusion_unavailable": (t_tal["hz"][hz]["n_fusion_unavailable"] if t_tal else 0),
+                "n_outcome_pending": (t_tal["hz"][hz]["n_outcome_pending"] if t_tal else 0),  # caps-ok: no tallies entry = zero log rows for this ticker today, so zero rows can be outcome-pending
+                "n_fusion_unavailable": (t_tal["hz"][hz]["n_fusion_unavailable"] if t_tal else 0),  # caps-ok: no tallies entry = zero log rows for this ticker today, so zero rows can lack fusion
                 "rows_today": rows_today,
             }
             if n_scored > 0:
@@ -586,10 +586,12 @@ def _coverage_diagnostics(
     tickers_with_rows = sorted(t for t, v in tallies.items() if v["n_rows_total"] > 0)
     zero = sorted(t for t in roster if t not in tickers_with_rows)
     hz_cov: dict[str, Any] = {}
-    denom = len(grid) or 1
+    # CAPS (CALL_OR_DEFAULT): `len(grid) or 1` reported an EMPTY grid as 0% coverage; the
+    # share of an empty grid is undefined -> None.
+    denom = len(grid)
     for hz in (*HORIZON_SLUGS, ALL_CARD_SLUG):
         scored = sum(1 for cells in grid.values() if cells[hz]["score_status"] == "SCORED")
-        hz_cov[hz] = {"tickers_scored": scored, "pct_of_grid": scored / denom}
+        hz_cov[hz] = {"tickers_scored": scored, "pct_of_grid": (scored / denom) if denom else None}
     return {
         "roster_source": roster_source,
         "eligible_tickers": len(roster),
@@ -1186,7 +1188,7 @@ def validate_display_contracts() -> list[str]:
     # Coverage denominator = eligible decisions; scored = LONG+SHORT eligible.
     if m["trade_call_coverage"] != (m["n_long"] + m["n_short"]) / m["n_eligible_decisions"]:
         errors.append("behavior: coverage denominator is not eligible decisions")
-    if "coverage" not in TRADE_CALL_DISPLAY_CONTRACT.get("coverage_requirement", ""):
+    if "coverage" not in TRADE_CALL_DISPLAY_CONTRACT.get("coverage_requirement", ""):  # caps-ok: self-check fails closed; a missing coverage_requirement key yields "" and appends the lacks-coverage error
         errors.append("governed contract text lacks the coverage requirement")
     # Zero scored calls -> no accuracy, fail-closed presentation.
     z = _all_card_trade_metrics([dict(rows[2])])
@@ -1287,7 +1289,7 @@ def build_daily_scoreboard(
     if run_backfill:
         backfill_stats = backfill(Path(db_path), tol_sec=BACKFILL_JOIN_TOL_SEC)
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     ensure_calibration_schema(conn)
 
@@ -1578,7 +1580,9 @@ def classify_actionability_rows(
                 if (
                     ann.get("ticker") == r["ticker"]
                     and ann.get("state") in ACTIONABILITY_STATES
-                    and float(ann.get("ts_lo", 0.0)) <= ts < float(ann.get("ts_hi", 0.0))
+                    # load_harness_annotations always sets both bounds; a bound-less annotation
+                    # must raise, not become an epoch-0-based window that paints history.
+                    and float(ann["ts_lo"]) <= ts < float(ann["ts_hi"])
                 ):
                     ann_state = str(ann["state"])
                     break
@@ -1663,7 +1667,7 @@ def build_actionability_report(
     """Report-only actionability segmentation of the date's decision rows."""
     budget = read_freshness_budget_sec(server_py)
     annotations, harness_files = load_harness_annotations(et_date, ui_transport_dir)
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     ensure_calibration_schema(conn)
     try:
@@ -1775,32 +1779,37 @@ def render_html(scoreboard: dict[str, Any]) -> str:
     # SAME section as accuracy; zero calls never display a misleading number.
     ac = scoreboard.get("all_card") or {}
     if ac:
-        comb = ac.get("combined_trade_calls") or {}
-        n_calls = int(comb.get("n_scored") or 0)
-        pres = ac.get("accuracy_presentation") or {}
+        # _all_card_trade_metrics always emits combined_trade_calls / accuracy_presentation;
+        # index them so a malformed all_card raises instead of rendering "no scored calls".
+        comb = ac["combined_trade_calls"]
+        n_calls = int(comb["n_scored"])
+        pres = ac["accuracy_presentation"]
         validity = ac.get("target_threshold_validity") or {}
         # DEFECT-C: the sample/coverage status LEADS; a bare percentage never
         # opens the governed unit. DEFECT-B: target/threshold validity renders
         # INSIDE the same unit, prominently, before any accuracy number.
-        if n_calls > 0 and pres.get("decision_valid"):
+        if n_calls > 0:
+            # n_scored > 0 => _wilson_ci returned a (lo, hi) pair.
+            ci_lo, ci_hi = comb["wilson_95ci"]
+        if n_calls > 0 and pres["decision_valid"]:
             acc_txt = (
-                f"accuracy {_fmt_pct(comb.get('accuracy'))} (95% CI"
-                f" {_fmt_pct((comb.get('wilson_95ci') or [None, None])[0])}–"
-                f"{_fmt_pct((comb.get('wilson_95ci') or [None, None])[1])})"
+                f"accuracy {_fmt_pct(comb['accuracy'])} (95% CI"
+                f" {_fmt_pct(ci_lo)}–"
+                f"{_fmt_pct(ci_hi)})"
             )
         elif n_calls > 0:
             acc_txt = (
-                f"descriptive-only accuracy {_fmt_pct(comb.get('accuracy'))} (95% CI"
-                f" {_fmt_pct((comb.get('wilson_95ci') or [None, None])[0])}–"
-                f"{_fmt_pct((comb.get('wilson_95ci') or [None, None])[1])}) — NOT decision-valid"
+                f"descriptive-only accuracy {_fmt_pct(comb['accuracy'])} (95% CI"
+                f" {_fmt_pct(ci_lo)}–"
+                f"{_fmt_pct(ci_hi)}) — NOT decision-valid"
             )
         else:
             acc_txt = "no scored trade calls — accuracy not applicable"
         warn_txt = ", ".join(ac.get("warnings") or []) or "none"
         sections.append(f"<h2>{tcc['display_name']}</h2>")
         sections.append(
-            f"<p><b>Target/threshold validity:</b> {validity.get('statement', 'validity unknown')}.</p>"
-            f"<p><b>{pres.get('leading_text', 'sample status unknown')}.</b></p>"
+            f"<p><b>Target/threshold validity:</b> {validity.get('statement', 'validity unknown')}.</p>"  # caps-ok: HTML-only text; target_threshold_validity is attached by build_daily_scoreboard, and an all_card rendered without it must SAY validity is unknown, never imply validity
+            f"<p><b>{pres['leading_text']}.</b></p>"
             f"<p>{tcc['wait_treatment']}. {tcc['comparison_restriction']}.</p>"
             f"<p>Eligible decisions: {ac.get('n_eligible_decisions')};"
             f" LONG {ac.get('n_long')} / SHORT {ac.get('n_short')} / WAIT {ac.get('n_wait')};"

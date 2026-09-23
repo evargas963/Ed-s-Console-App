@@ -49,8 +49,12 @@ def movement_threshold_pts_v1(
     ac = float(anchor_close)
     if ac <= 0:
         return 1e-9
-    floor_frac = float(pr.get("min_fraction_of_anchor", 0.0005))
-    k_atr = float(pr.get("atr_multiplier", 0.5))  # fake-default-ok: config parameter (ATR multiplier from the threshold policy), not data absence
+    # CAPS RC-REHAB-1: both parameters are REQUIRED. The old key-level defaults (0.0005 /
+    # 0.5) were NOT the calibrated values (calibration/movement_target_threshold_v1.json and
+    # load_legacy_atr_params' own fallback both say 0.0008 / 0.55), so a params dict missing a
+    # key silently labelled moves with an uncalibrated threshold.
+    floor_frac = float(pr["min_fraction_of_anchor"])
+    k_atr = float(pr["atr_multiplier"])
     t_pct = ac * floor_frac
     t_atr = 0.0
     if atr is not None:
@@ -90,7 +94,7 @@ def threshold_move_pts_for_slug(
 def invalid_for_dir_target(slug: str, cfg: dict[str, Any] | None = None) -> bool:
     cfg = cfg or load_movement_thresholds_by_horizon_v1()
     hz = (cfg.get("horizons") or {}).get(slug) or {}
-    return bool(hz.get("invalid_for_dir_target", False))
+    return bool(hz.get("invalid_for_dir_target", False))  # caps-ok: opt-in exclusion flag in the by-horizon calibration JSON (every shipped horizon states it explicitly); a horizon that does not set it has not been ruled invalid, so the directional target stays enabled
 
 
 def directional_and_move_labels_v2(

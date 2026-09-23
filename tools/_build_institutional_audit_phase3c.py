@@ -41,7 +41,7 @@ def _run_pytest(path: str) -> dict:
     cmd = [sys.executable, "-m", "pytest", path, "-q"]
     proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
     tail = (proc.stdout or proc.stderr or "").strip().splitlines()
-    return {"exit_code": proc.returncode, "summary": tail[-1] if tail else "", "command": " ".join(cmd)}
+    return {"exit_code": proc.returncode, "summary": tail[-1] if tail else "", "command": " ".join(cmd)}  # caps-ok: display summary line only; the verdict is carried by exit_code, and an empty pytest output yields an empty summary (adv_count stays 0 passed)
 
 
 def _reconcile_bypass_path(path: str, control_id: str) -> tuple[str, str | None]:
@@ -87,13 +87,13 @@ def reconcile_bypass_register(register: dict) -> dict:
     }
     total = 0
     for entry in register.get("entries") or []:
-        cid = entry.get("control_id", "")
+        cid = entry.get("control_id", "")  # caps-ok: fail-toward-open: an entry without a control id matches none of the control-specific closure rules, so its bypasses stay open
         implemented = entry.get("adversarial_tests_implemented") or []
         for bp in entry.get("bypass_paths") or []:
-            state, evidence = _reconcile_bypass_path(str(bp.get("path", "")), cid)
+            state, evidence = _reconcile_bypass_path(str(bp.get("path", "")), cid)  # caps-ok: fail-closed: an empty bypass path matches no closure pattern and _reconcile_bypass_path returns 'open'
             if state == "open" and implemented:
                 for test in implemented:
-                    if test and test.split("::")[0] in str(bp.get("path", "")):
+                    if test and test.split("::")[0] in str(bp.get("path", "")):  # caps-ok: an empty bypass path cannot contain a test path, so no test can close it
                         state = "closed_by_adversarial_test"
                         evidence = test
                         break
@@ -139,7 +139,7 @@ def reconcile_decision_path_registry(registry: dict) -> dict:
     routes_with_gaps: list[str] = []
 
     for row in registry.get("routes") or []:
-        rid = row.get("route_id", "")
+        rid = row.get("route_id", "")  # caps-ok: fail-closed: a route without an id has no inventory evidence and is classified still_unproven (listed in routes_with_gaps)
         evidence = ROUTE_INVENTORY_EVIDENCE.get(rid)
         if evidence:
             state = str(evidence["enforcement_state"])
@@ -160,7 +160,7 @@ def reconcile_decision_path_registry(registry: dict) -> dict:
             row["enforcement_state"] = "still_unproven_with_reason"
             routes_with_gaps.append(rid)
 
-        state = row.get("enforcement_state", "")
+        state = row.get("enforcement_state", "")  # caps-ok: every branch above writes enforcement_state; an unrecognised value counts toward no proven/blocked bucket
         if state == "proven_gated":
             summary["routes_proven_gated"] += 1
         elif state == "blocked":
@@ -177,7 +177,9 @@ def reconcile_decision_path_registry(registry: dict) -> dict:
     registry["route_universality"] = {
         "proven": False,
         "label": "partial runtime enforcement — priority routes only (Phase 3B/3C)",
-        "mandatory_controls": registry.get("route_universality", {}).get("mandatory_controls", []),
+        # phase2.build_decision_path_registry always declares the mandatory controls; carrying
+        # them strictly keeps a registry without them from reading as "no controls required".
+        "mandatory_controls": registry["route_universality"]["mandatory_controls"],
         "trade_impacting_routes": sum(
             1 for r in registry.get("routes") or [] if r.get("trade_impacting")
         ),
@@ -215,7 +217,7 @@ def _blind_reconstruction_with_source(phase2) -> dict:
     source = "unknown"
     sample_route = None
     if DB_PATH.is_file():
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
         try:
             ensure_production_decision_schema(conn)
             row = conn.execute(
@@ -281,8 +283,9 @@ def main() -> int:
         "routes_still_unproven": inv.get("routes_still_unproven"),
         "bypasses_total": recon.get("bypass_paths_total"),
         "bypasses_closed": (
-            int(recon.get("closed_by_runtime_gate", 0))
-            + int(recon.get("closed_by_adversarial_test", 0))
+            # reconcile_bypass_register always writes both counts (via **counts)
+            int(recon["closed_by_runtime_gate"])
+            + int(recon["closed_by_adversarial_test"])
         ),
         "bypasses_partially_mitigated": recon.get("partially_mitigated"),
         "bypasses_open": recon.get("open"),

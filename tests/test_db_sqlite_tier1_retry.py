@@ -102,7 +102,7 @@ def test_sqlite_contention_lock_wait_recorded(tier1_db):
     t = threading.Thread(target=blocker, name="tier1-blocker")
     t.start()
     assert hold.wait(timeout=2.0)
-    before = int(sqlite_contention_metrics_snapshot().get("sqlite_lock_wait_count", 0))
+    before = int(sqlite_contention_metrics_snapshot()["sqlite_lock_wait_count"])
     out = tier1_db._tier1_snapshot_write("insert_snapshot", "SPY", lambda: "ok")
     release.set()
     t.join(timeout=2.0)
@@ -110,7 +110,7 @@ def test_sqlite_contention_lock_wait_recorded(tier1_db):
     snap = sqlite_contention_metrics_snapshot()
     assert snap["sqlite_lock_wait_count"] > before
     assert snap["sqlite_lock_wait_max_ms"] > 0
-    assert "insert_snapshot" in snap.get("operations_affected", {})
+    assert "insert_snapshot" in snap["operations_affected"]
 
 
 def _run_timed_lock_wait(tier1_db, hold_sec: float):
@@ -169,10 +169,10 @@ def test_sqlite_contention_database_locked_counted(tier1_db, monkeypatch):
 
     monkeypatch.setattr("db.SQLITE_BUSY_MAX_RETRIES", 1)
     monkeypatch.setattr("db._wall_time.sleep", lambda _s: None)
-    before = int(sqlite_contention_metrics_snapshot().get("sqlite_database_locked_count", 0))
+    before = int(sqlite_contention_metrics_snapshot()["sqlite_database_locked_count"])
     with pytest.raises(sqlite3.OperationalError):
         tier1_db._tier1_snapshot_write("insert_snapshot", "QQQ", fn)
-    after = int(sqlite_contention_metrics_snapshot().get("sqlite_database_locked_count", 0))
+    after = int(sqlite_contention_metrics_snapshot()["sqlite_database_locked_count"])
     assert after >= before + 1
 
 
@@ -245,7 +245,7 @@ def test_report_flags_ui_degraded_state_missing():
         log_paths=[],
         db_path=None,
     )
-    assert "UI_DEGRADED_STATE_MISSING" in report.get("classifications", [])
+    assert "UI_DEGRADED_STATE_MISSING" in report["classifications"]
 
 
 def test_no_contention_operator_status_ok():
@@ -542,7 +542,7 @@ def test_sqlite_contention_diagnostics_route_includes_operator():
     itself, not something the routing layer supplies."""
     import json
 
-    from server import get_sqlite_contention_diagnostics
+    from app.api.routes.diagnostics import get_sqlite_contention_diagnostics
 
     body = json.loads(get_sqlite_contention_diagnostics().body)
     assert "operator" in body

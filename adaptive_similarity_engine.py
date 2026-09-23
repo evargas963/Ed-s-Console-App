@@ -154,6 +154,22 @@ def _fetch_issue19_tier1_candidate_rows(
     return [dict(r) for r in rows]
 
 
+def _recency_tiebreak_key(row: dict[str, Any]) -> tuple[bool, float, bool, float]:
+    """Tie-break among EQUAL scores: newer ts_utc first, then higher snapshot_id.
+
+    A row with no ts_utc / snapshot_id sorts after every row that has one (explicit
+    None-last), instead of being assigned a fabricated epoch-0 time / id 0.
+    """
+    ts = row.get("ts_utc")
+    sid = row.get("snapshot_id")
+    return (
+        ts is None,
+        -float(ts) if ts is not None else 0.0,
+        sid is None,
+        -float(sid) if sid is not None else 0.0,
+    )
+
+
 def _adaptive_v2_score_row(
     row: dict[str, Any],
     anchor_ctx: dict[str, Any],
@@ -308,13 +324,7 @@ def run_adaptive_shadow_v2(
             adjacent_credit=adjacent_credit,
         )
         scored.append((final, row, cdict))
-    scored.sort(
-        key=lambda x: (
-            -x[0],
-            -float(x[1].get("ts_utc") or 0),
-            -(x[1].get("snapshot_id") or 0),
-        )
-    )
+    scored.sort(key=lambda x: (-x[0], *_recency_tiebreak_key(x[1])))
     top = scored[:n_similar]
     sel_rows = [t[1] for t in top]
     scores = [t[0] for t in top]
@@ -414,16 +424,18 @@ def _score_row(
 ) -> tuple[float, dict[str, float]]:
     """Normalized score in [0,1] and per-feature contributions (pre-normalization)."""
     triples: list[tuple[str, float, float]] = []
+    # `weights` is always the full default_equal_weights() key set merged with any caller
+    # overrides (run_weighted_selection), so every structural weight is indexed strictly.
     if "zone" not in relaxed:
-        w = weights.get("zone", 1.0)
+        w = weights["zone"]
         m = 1.0 if (row.get("zone") == anchor.get("zone")) else 0.0
         triples.append(("zone", w, m))
     if "vwap_side" not in relaxed:
-        w = weights.get("vwap_side", 1.0)
+        w = weights["vwap_side"]
         m = 1.0 if (row.get("vwap_side") == anchor.get("vwap_side")) else 0.0
         triples.append(("vwap_side", w, m))
     if "above_bucket" not in relaxed:
-        w = weights.get("above_bucket", 1.0)
+        w = weights["above_bucket"]
         m = _bucket_adjacency_score(
             row.get("nearest_above_dist"),
             anchor.get("nearest_above_dist_raw"),
@@ -431,7 +443,7 @@ def _score_row(
         )
         triples.append(("above_bucket", w, m))
     if "below_bucket" not in relaxed:
-        w = weights.get("below_bucket", 1.0)
+        w = weights["below_bucket"]
         m = _bucket_adjacency_score(
             row.get("nearest_below_dist"),
             anchor.get("nearest_below_dist_raw"),
@@ -469,7 +481,7 @@ def _score_distribution(scores: list[float]) -> dict[str, Any]:
     n = len(s)
     mean = sum(s) / n
     var = sum((x - mean) ** 2 for x in s) / n
-    std = math.sqrt(var) if n else 0.0
+    std = math.sqrt(var)  # n > 0 guaranteed (empty scores returned above)
 
     def _pct(p: float) -> float:
         i = int(p * (n - 1))
@@ -521,13 +533,15 @@ def _overlap_metrics(ids_a: set[Any], ids_b: set[Any]) -> dict[str, Any]:
         return {"jaccard": 1.0, "recall_vs_a": 1.0, "precision_vs_a": 1.0, "intersection": 0}
     inter = len(ids_a & ids_b)
     union = len(ids_a | ids_b)
-    jacc = inter / union if union else 0.0
-    rec = inter / len(ids_a) if ids_a else 0.0
-    prec = inter / len(ids_b) if ids_b else 0.0
+    jacc = inter / union  # union > 0: the both-empty case returned above
+    # Recall is undefined when A is empty, precision when B is empty: None, not a 0.0 that
+    # reads as "measured zero overlap" (tools/adaptive_shadow_report flags recall < 0.25).
+    rec = inter / len(ids_a) if ids_a else None  # caps-ok: None (undefined) when A is empty
+    prec = inter / len(ids_b) if ids_b else None  # caps-ok: None (undefined) when B is empty
     return {
         "jaccard": round(jacc, 6),
-        "recall_vs_a": round(rec, 6),
-        "precision_vs_a": round(prec, 6),
+        "recall_vs_a": round(rec, 6) if rec is not None else None,
+        "precision_vs_a": round(prec, 6) if prec is not None else None,
         "intersection": inter,
     }
 
@@ -572,7 +586,9 @@ def run_weighted_selection(
     extra_soft_weights: Optional[dict[str, float]] = None,
 ) -> AdaptiveShadowRun:
     ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical snapshots/similarity identity
-    w = dict(weights or default_equal_weights())
+    # Explicit contract: a structural feature the caller does not weight takes the equal weight
+    # (default_equal_weights); the merge makes that the ONE place the default lives.
+    w = {**default_equal_weights(), **(weights or {})}
     anchor = query_context_for_similarity(
         ticker=ticker,
         timeframe=timeframe,
@@ -603,7 +619,7 @@ def run_weighted_selection(
             extra_soft_weights=extra_soft_weights,
         )
         scored.append((sc, row, contrib))
-    scored.sort(key=lambda x: (-x[0], -float(x[1].get("ts_utc") or 0), -(x[1].get("snapshot_id") or 0)))
+    scored.sort(key=lambda x: (-x[0], *_recency_tiebreak_key(x[1])))
 
     top = scored[:n_similar]
     sel_rows = [t[1] for t in top]
@@ -665,7 +681,7 @@ def run_baseline_control(
         selected_rows=list(rows),
         scores=[1.0] * len(rows),
         row_contributions=[{"heuristic": 1.0} for _ in rows],
-        score_distribution=_score_distribution([1.0] * len(rows) if rows else []),
+        score_distribution=_score_distribution([1.0] * len(rows)),  # [] when no rows -> all-None distribution
         candidate_pool_size=-1,
         weights_used=default_equal_weights(),
         relaxed_features=[],

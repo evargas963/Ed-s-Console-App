@@ -117,8 +117,10 @@ def _signal_metrics(move_probs: list[float], dir_up_probs: list[float], y_move: 
         sig += 1
         if y_move[i] == 1 and ((signal == 1 and y_up[i] == 1) or (signal == -1 and y_up[i] == 0)):
             wins += 1
-    signal_rate = (sig / n) if n else 0.0
-    no_trade_rate = 1.0 - signal_rate if n else 1.0
+    # Empty sample: rates are undefined (NaN, like hit_rate below) so _classify_winner votes
+    # INCONCLUSIVE instead of scoring a fabricated 0% vs 0% tie as FUSED_EQUAL.
+    signal_rate = (sig / n) if n else float("nan")
+    no_trade_rate = (1.0 - signal_rate) if n else float("nan")  # caps-ok: scanner false positive: the else-branch is NaN (undefined on an empty sample); the 1.0 is the complement arithmetic of a measured signal_rate
     hit_rate = (wins / sig) if sig else float("nan")
     baseline = float(statistics.fmean(y_move)) if y_move else float("nan")
     edge_delta = (hit_rate - baseline) if sig and not math.isnan(baseline) else float("nan")
@@ -159,7 +161,7 @@ def main() -> int:
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="run_final_fused_vs_xgb_comparison_v1", write_capable=False)
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 
@@ -284,7 +286,8 @@ def main() -> int:
             if r["xgb_dir_up"] is not None
             and r["fused_dir_up"] is not None
             and r["outcome_dir"] in ("up", "down")
-            and int(r["valid_dir"] or 0) == 1
+            and r["valid_dir"] is not None
+            and int(r["valid_dir"]) == 1
         ]
         xgb_move_9 = [float(r["xgb_move"]) for r in rows_phase9]
         fused_move_9 = [float(r["fused_move"]) for r in rows_phase9]
@@ -398,7 +401,8 @@ def main() -> int:
     }
 
     # Verdict is about validity/completeness/honesty of the comparison.
-    valid_intersection = all(final_intersection.get(h, {}).get("rows", 0) > 0 for h in ML_HORIZON_SLUGS)
+    # The horizon loop above assigns final_intersection[hz] for every ML_HORIZON_SLUGS entry.
+    valid_intersection = all(final_intersection[h]["rows"] > 0 for h in ML_HORIZON_SLUGS)
     has_phase8 = all("winner" in phase8.get(h, {}) for h in ML_HORIZON_SLUGS)
     has_phase9 = all("winner" in phase9.get(h, {}) for h in ML_HORIZON_SLUGS)
     honest = winner_overall in {"FUSED_BETTER", "FUSED_EQUAL", "XGB_BETTER", "MIXED", "INCONCLUSIVE"}

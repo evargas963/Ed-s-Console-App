@@ -1,3 +1,5 @@
+> **Classification:** Historical Record | **Scope:** Completed analysis or validation `docs/repo_wide_canonical_enforcement_proof_v1.md`.
+
 # Repo-wide canonical snapshot enforcement — verification proof (v1)
 
 **Date:** 2026-04-09  

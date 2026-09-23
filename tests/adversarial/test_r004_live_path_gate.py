@@ -32,7 +32,7 @@ def test_r004_wrong_price_quarantines_no_decision_id(release_ready, tmp_path, mo
     out = srv._finalize_production_decision(ms, "server._fetch_state")
     assert out.get("decision_id") is None
     assert out.get("decision_gate_blocked") is True
-    assert (out.get("market_data_quarantine") or {}).get("active") is True
+    assert out["market_data_quarantine"]["active"] is True
     assert get_production_decision_by_id("fake", db_path) is None
 
 

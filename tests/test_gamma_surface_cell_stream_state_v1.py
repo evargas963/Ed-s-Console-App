@@ -18,14 +18,14 @@ import time
 from pathlib import Path
 
 import server
-from server import (
-    _stamp_gamma_surface_cell_stream_state,
-    _gamma_surface_cell_state_counts,
-    get_options_gamma_surface,
-    refresh_gamma_surface_from_stream,
-    project_gamma_surface,
-    ticker_storage_key,
-)
+from app.api.routes.options import get_options_gamma_surface
+from gamma_surface_eager_refresh import refresh_gamma_surface_from_stream
+from gamma_surface_projection import project_gamma_surface
+from instrument_identity import ticker_storage_key
+from gamma_surface_state import _stamp_gamma_surface_cell_stream_state, _gamma_surface_cell_state_counts
+import gamma_surface_state
+import terrain_state
+import app.api.routes.options
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -189,20 +189,20 @@ def test_cell_state_counts_tallies_across_cells_and_columns():
 # ---------------------------------------------------------------------------
 
 def _clear_cache():
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(TK, None)
 
 
 def _put_rest_baseline(*, computed_ts_utc=None):
     ts = time.time() if computed_ts_utc is None else computed_ts_utc
-    with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[TK] = {
             "_contracts_rest": _CONTRACTS, "_contracts_rest_spot": _SPOT,
             "_contracts_rest_computed_ts": ts,
             "_gamma_surface": project_gamma_surface(_CONTRACTS, _SPOT),
             "computed_ts_utc": ts,
         }
-    server._gamma_surface_seq.pop(TK, None)
+    gamma_surface_state._gamma_surface_seq.pop(TK, None)
 
 
 def _drain_l1_sse_thread_queue():
@@ -237,8 +237,8 @@ def test_eager_refresh_marks_the_ticking_contracts_own_cell_live(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
-    with server._terrain_cache_lock:
-        cells = server._terrain_cache[TK]["_gamma_surface"]["cells"]
+    with terrain_state._terrain_cache_lock:
+        cells = terrain_state._terrain_cache[TK]["_gamma_surface"]["cells"]
 
     found_live = False
     for cell in cells:
@@ -263,7 +263,8 @@ def test_rest_only_cycle_marks_desired_contract_stale_never_live(monkeypatch):
 
     # Drive it through the same code path _terrain_refresh_one uses for stamping, without a
     # live vendor fetch: call the overlay + stamp directly, matching server.py's own sequence.
-    from server import _gamma_surface_contracts_with_stream_overlay, _desired_stream_greeks_for_ticker
+    from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
+    from gamma_surface_state import _desired_stream_greeks_for_ticker
     overlaid, n, overlay_syms = _gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS, newer_than_ts=time.time())
     assert n == 0   # too stale to overlay at all
     surface = project_gamma_surface(overlaid, _SPOT)
@@ -275,7 +276,8 @@ def test_rest_only_cycle_marks_desired_contract_stale_never_live(monkeypatch):
 
 def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch):
     import app.options.order_flow.streaming as _ofs
-    from server import _gamma_surface_contracts_with_stream_overlay, _desired_stream_greeks_for_ticker
+    from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
+    from gamma_surface_state import _desired_stream_greeks_for_ticker
     _put_rest_baseline(computed_ts_utc=time.time())
     _ofs._active_option_contract = None   # coverage genuinely ended -- no longer desired at all
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: None)
@@ -305,8 +307,8 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
             "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
     _stamp_gamma_surface_cell_stream_state(surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"})
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
@@ -316,9 +318,9 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
         assert d["stream_coverage"]["live_pct"] == 100.0
         assert d["cell_stream_state_counts"]["live"] == 1
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
@@ -328,8 +330,8 @@ def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
             "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
     _stamp_gamma_surface_cell_stream_state(surf, {}, set())   # never desired
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
@@ -337,9 +339,9 @@ def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
         assert d["stream_coverage"]["live_pct"] == 0.0
         assert d["cell_stream_state_counts"]["unavailable"] == 1
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverage():
@@ -358,8 +360,8 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
     # visible cells is live, the other merely 'stale'.
     _stamp_gamma_surface_cell_stream_state(
         surf, {"X": {"gamma_ts_recv": time.time()}, "Y": {"gamma_ts_recv": time.time() - 999}}, {"X"})
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
@@ -371,9 +373,9 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
             "one live cell out of two must NOT satisfy the LIVE requirement"
         )
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live():
@@ -392,22 +394,22 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
     # X is live-streaming; Y has been requested (desired) but never ticked.
     _stamp_gamma_surface_cell_stream_state(
         surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"})
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         cov = d["stream_coverage"]
         assert cov["total_visible_cells"] == 2
         assert cov["live"] == 1 and cov["pending"] == 1
-        assert cov.get("unavailable", 0) == 0, "the pending leg must not also be counted as unavailable"
+        assert cov["unavailable"] == 0, "the pending leg must not also be counted as unavailable"
         assert cov["meets_live_requirement"] is False, (
             "a pending (not-yet-confirmed) cell must NOT satisfy the LIVE requirement")
         assert d["cell_stream_state_counts"]["pending"] == 1
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
@@ -427,21 +429,21 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
     # X is live-streaming; Y is desired but the daemon itself is confirmed unreachable.
     _stamp_gamma_surface_cell_stream_state(
         surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"}, daemon_available=False)
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         cov = d["stream_coverage"]
         assert cov["live"] == 1 and cov["daemon_unavailable"] == 1
-        assert cov.get("pending", 0) == 0, "a daemon-down symbol must not also count as pending"
-        assert cov.get("unavailable", 0) == 0, "a daemon-down symbol must not also count as unavailable"
+        assert cov["pending"] == 0, "a daemon-down symbol must not also count as pending"
+        assert cov["unavailable"] == 0, "a daemon-down symbol must not also count as unavailable"
         assert cov["meets_live_requirement"] is False
         assert d["cell_stream_state_counts"]["daemon_unavailable"] == 1
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
@@ -456,8 +458,8 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
     _stamp_gamma_surface_cell_stream_state(surf, {}, set(), {"BADSYM": "RuntimeError: refused"})
     assert surf["cells"][0]["stream"][0]["state"] == "rejected"
     assert surf["cells"][0]["stream"][0]["call"]["rejected_reason"] == "RuntimeError: refused"
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
@@ -465,9 +467,9 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
         assert d["stream_coverage"]["rejected"] == 1
         assert d["stream_coverage"]["meets_live_requirement"] is False
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 class _FakeDB:
@@ -497,14 +499,30 @@ def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path,
     # REST-only reference path (RC-UI-1 fallback) must never claim confirmed-live coverage --
     # "REST may bootstrap or recover the surface, but it cannot satisfy the LIVE state." Uses the
     # same real-tmp-sqlite-db pattern as tests/test_gamma_exposure_honest_absence_v1.py.
-    from time_et import now_et
+    #
+    # RC-REHAB-2 (2026-09-19): today_et used to come from the real wall clock, making this a
+    # time bomb whenever real "today" landed on a weekend/holiday -- is_trading_day_et correctly
+    # refuses a non-trading date as a morning reference, so the endpoint fell through to
+    # available=False before this test's own assertions about stream-state counts ever ran
+    # (MEASURED: real date is 2026-09-19, a Saturday). Freeze now_et to the same known trading
+    # weekday already used by test_gamma_exposure_honest_absence_v1.py for this identical fix.
+    from datetime import datetime as _dt
+
+    from time_et import ET
+    _FROZEN = _dt(2026, 7, 17, 10, 0, tzinfo=ET)
+    monkeypatch.setattr(server, "now_et", lambda: _FROZEN)
+    # RC-REHAB-1: the gamma-surface route imports now_et from time_et (its real home), not
+    # through server -- freeze the authority itself.
+    import time_et
+
+    monkeypatch.setattr(time_et, "now_et", lambda: _FROZEN)
     tk = ticker_storage_key("ZZZTEST3")
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
     db = tmp_path / "morning.db"
-    today_et = now_et().strftime("%Y-%m-%d")
+    today_et = _FROZEN.strftime("%Y-%m-%d")
     _seed_morning_full(db, "ZZZTEST3", today_et, time.time() - 1800.0, _SPOT, json.dumps(_CONTRACTS))
     monkeypatch.setattr(server, "get_db", lambda: _FakeDB(db))
     try:
@@ -514,6 +532,6 @@ def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path,
         assert d["cell_stream_state_counts"]["live"] == 0
         assert d["cell_stream_state_counts"]["unavailable"] > 0
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)

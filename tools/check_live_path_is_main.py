@@ -71,7 +71,7 @@ class GitProbeFailed(RuntimeError):
         self.probe = " ".join(args)
         self.rc = rc
         # git's fatals carry a multi-line usage hint; the first line is the reason.
-        self.err = (err or "").splitlines()[0] if err else ""
+        self.err = (err or "").splitlines()[0] if err else ""  # caps-ok: message text only; git gave no stderr, and rc carries the failure
 
 
 def _git(*args: str) -> str:

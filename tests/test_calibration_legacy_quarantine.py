@@ -78,9 +78,9 @@ def test_phase3_excludes_legacy_from_labeled_sample(tmp_path):
     conn.close()
 
     out = analyze_phase3(db_path)
-    prov = out.get("provenance") or {}
-    assert prov.get("excluded_by_reason", {}).get("legacy_rows_excluded_from_study_dataset", 0) >= 1
-    assert out.get("calibration_rows", 0) == 0
+    prov = out["provenance"]
+    assert prov["excluded_by_reason"]["legacy_rows_excluded_from_study_dataset"] >= 1
+    assert out["calibration_rows"] == 0
 
 
 def test_join_validate_counts_trusted_only_by_default(tmp_path):

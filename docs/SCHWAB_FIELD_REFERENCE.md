@@ -9,6 +9,8 @@
 
 **See also:** `docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md` (option-chain normalization vs `chains.contract_fields()`).
 
+**SUPERSEDED, retired (reality-reconciliation audit, 2026-09-18):** `schwab_field_inventory/README.md` marks this document retired under ED CONSOLE SLIMMING alongside `docs/SCHWAB_FIELD_NORMALIZATION_AUDIT.md`. Same root cause: `chains.py` (and its `contract_fields()`) was deleted by commit `fb1e84c3`, 2026-05-12, one week after this document's own creation date — zero references remain anywhere in the current codebase. The gap this document's "Required Next Steps" flags (theta/rho missing from normalization) is empirically closed today, through a different mechanism than the one this doc names: `server.py::flatten_chain_contracts` does an unrestricted `dict(ct)` passthrough of every raw Schwab field including `theta`/`rho`, and `market_state.py::_oe_chain_row_snapshot()` explicitly carries `theta`/`rho`/`quoteTimeInLong`/`theoreticalOptionValue` and the full field list this doc asks to be promoted, verbatim. `realized_contract_eval.serialize_option_chain_for_eval()` (line 178's flagged omission) now also does a generic passthrough (`dict(ct)` minus `raw`), so it no longer drops `theta` either. The "Live Inventory" section below (what Schwab actually sends) is unaffected by this correction and remains a useful reference; only the `chains.contract_fields()`-based normalization gap and "Required Next Steps" are stale.
+
 ---
 
 ## Live Inventory

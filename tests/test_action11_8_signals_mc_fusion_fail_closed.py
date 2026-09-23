@@ -11,13 +11,13 @@ ROOT = Path(__file__).resolve().parent.parent
 SIGNALS = (ROOT / "signals.py").read_text(encoding="utf-8")
 
 _FORBIDDEN_SIGNALS_PATTERNS = (
-    'getattr(mc_out, "directional_bias", None) or 0.0',
-    'getattr(mc_out, "tail_risk", None) or 0.0',
+    'getattr(mc_out, "directional_bias", None) or 0.0',  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from signals.py
+    'getattr(mc_out, "tail_risk", None) or 0.0',  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from signals.py
     '(exp or 0) >= (cont or 0)',
-    '(exp if is_expansion else cont) or 0',
-    'getattr(fusion, "dominant_outcome", "unknown")',
-    'getattr(fusion, "dominant_probability", 0.0)',
-    'getattr(fusion, "model_agreement", 0.0)',
+    '(exp if is_expansion else cont) or 0',  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from signals.py
+    'getattr(fusion, "dominant_outcome", "unknown")',  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from signals.py
+    'getattr(fusion, "dominant_probability", 0.0)',  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from signals.py
+    'getattr(fusion, "model_agreement", 0.0)',  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from signals.py
 )
 
 

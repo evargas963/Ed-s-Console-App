@@ -152,6 +152,19 @@ def bucket_metric_abs(bucket: dict, key: str) -> float | None:
     return abs(v) if v is not None else None
 
 
+def bucket_total_oi(bucket: dict) -> float | None:
+    """Call + put open interest of one exposure bucket; None when neither leg reports OI.
+
+    RC-REHAB-1 (2026-09-23): moved here from server.py (`_bucket_total_oi`) beside the other
+    bucket readers. Its callers are server_state_predictive_positioning (DPI denominator)
+    and server_state_payload (the no-gamma-void diagnostic); server.py no longer calls it."""
+    call_oi = bucket.get("call_oi")
+    put_oi = bucket.get("put_oi")
+    if call_oi is None and put_oi is None:
+        return None
+    return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
+
+
 # ── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -176,6 +189,15 @@ class ExposureDiagnostics:
 
 
 # ── Exposure primitives ──────────────────────────────────────────────────────
+
+# Spot-dependent bucket fields: None (not computable) when compute_exposures_by_strike runs
+# without a spot price.
+_DOLLAR_BUCKET_KEYS = (
+    "call_dex_dollars", "put_dex_dollars", "net_dex_dollars",
+    "call_gex_1pct", "put_gex_1pct", "net_gex_1pct",
+    "call_oi_dollars", "put_oi_dollars", "total_oi_dollars",
+)
+
 
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
@@ -229,10 +251,14 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # Option-chain order flow (Schwab: bidSize, askSize, totalVolume per leg)
             "call_volume": None,
             "put_volume": None,
-            "call_bid_size": 0.0,
-            "call_ask_size": 0.0,
-            "put_bid_size": 0.0,
-            "put_ask_size": 0.0,
+            # CAPS RC-REHAB-1: None until a leg actually reports a size (same contract as
+            # call_volume/put_volume above) -- a strike whose legs all omitted bidSize has an
+            # UNKNOWN resting size, not a measured 0. Every reader goes through bucket_metric,
+            # which already returns None for a None field.
+            "call_bid_size": None,
+            "call_ask_size": None,
+            "put_bid_size": None,
+            "put_ask_size": None,
         }
     return exposures_by_strike[strike]
 
@@ -304,17 +330,21 @@ def compute_exposures_by_strike(
                 prev = b.get("call_volume")
                 b["call_volume"] = vol if prev is None else float(prev) + vol
             if bsz is not None:
-                b["call_bid_size"] = b.get("call_bid_size", 0.0) + bsz
+                prev = b["call_bid_size"]
+                b["call_bid_size"] = bsz if prev is None else float(prev) + bsz
             if asz is not None:
-                b["call_ask_size"] = b.get("call_ask_size", 0.0) + asz
+                prev = b["call_ask_size"]
+                b["call_ask_size"] = asz if prev is None else float(prev) + asz
         else:
             if vol is not None:
                 prev = b.get("put_volume")
                 b["put_volume"] = vol if prev is None else float(prev) + vol
             if bsz is not None:
-                b["put_bid_size"] = b.get("put_bid_size", 0.0) + bsz
+                prev = b["put_bid_size"]
+                b["put_bid_size"] = bsz if prev is None else float(prev) + bsz
             if asz is not None:
-                b["put_ask_size"] = b.get("put_ask_size", 0.0) + asz
+                prev = b["put_ask_size"]
+                b["put_ask_size"] = asz if prev is None else float(prev) + asz
 
         if oi is None:
             missing += 1
@@ -409,10 +439,17 @@ def compute_exposures_by_strike(
     for strike, b in exposures.items():
         b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
         b["net_delta"] = b["call_delta"] + b["put_delta"]
-        # Dollarized net fields (remain 0.0 if spot is None)
-        b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) + b.get("put_dex_dollars", 0.0)
-        b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
-        b["total_oi_dollars"] = b.get("call_oi_dollars", 0.0) + b.get("put_oi_dollars", 0.0)
+        # Dollarized fields need a spot price. CAPS RC-REHAB-1: they used to "remain 0.0 if
+        # spot is None" -- a fabricated $0 book indistinguishable from a real flat one. Without
+        # spot they are now None (not computable); with spot the per-side keys are always
+        # initialised by _strike_bucket, so they are read directly (no default).
+        if spot is None:
+            for _dk in _DOLLAR_BUCKET_KEYS:
+                b[_dk] = None
+            continue
+        b["net_dex_dollars"] = b["call_dex_dollars"] + b["put_dex_dollars"]
+        b["net_gex_1pct"] = b["call_gex_1pct"] - b["put_gex_1pct"]
+        b["total_oi_dollars"] = b["call_oi_dollars"] + b["put_oi_dollars"]
 
     note = "OK"
     if used == 0:
@@ -717,11 +754,19 @@ def compute_delta_oi_walls(
     d_call: dict[float, float] = {}
     d_put: dict[float, float] = {}
     for k, (c, p) in today.items():
-        pc, pp = prev.get(k, (0.0, 0.0))
-        if c is not None:
-            d_call[k] = float(c) - float(pc or 0.0)  # silent-zero-ok: RC-369 — a strike absent from yesterday's banked book had NO positioning; the diff from a true 0 baseline IS the build, not injected absence
-        if p is not None:
-            d_put[k] = float(p) - float(pp or 0.0)  # silent-zero-ok: RC-369 — same true-zero baseline for the put side
+        # RC-369: a strike ABSENT from yesterday's banked book had no positioning -> a true
+        # 0.0 baseline. A strike PRESENT yesterday whose side was banked as None had OI
+        # UNKNOWN, not zero (CAPS RC-REHAB-1: the old `pc or 0.0` turned that unknown into a
+        # 0 baseline and reported the whole of today's OI as a phantom build) -> that side
+        # has no computable diff and is skipped.
+        if k in prev:
+            pc, pp = prev[k]
+        else:
+            pc, pp = 0.0, 0.0
+        if c is not None and pc is not None:
+            d_call[k] = float(c) - float(pc)
+        if p is not None and pp is not None:
+            d_put[k] = float(p) - float(pp)
     out: dict[str, float | None] = {
         "call_build_strike": None, "call_build_doi": None,
         "put_build_strike": None, "put_build_doi": None,

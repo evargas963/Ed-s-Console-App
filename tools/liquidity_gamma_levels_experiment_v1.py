@@ -79,21 +79,23 @@ def _rows(con: sqlite3.Connection, ticker: str) -> list[dict]:
             "dt": dt,
             "datetime": int(float(ts) * 1000),
             "open": float(o), "high": float(h), "low": float(l),
-            "close": float(c), "volume": float(v or 0.0),
+            "close": float(c), "volume": None if v is None else float(v),
             "min_of_day": dt.hour * 60 + dt.minute,
         })
     return out
 
 
-def _session_atr(sb: list[dict]) -> float:
+def _session_atr(sb: list[dict]) -> float | None:
+    """Median 1m range; None when no bar has a range (ATR unmeasurable, callers skip)."""
     ranges = [b["high"] - b["low"] for b in sb if b["high"] > b["low"]]
-    return statistics.median(ranges) if ranges else 0.0
+    return statistics.median(ranges) if ranges else None
 
 
-def _causal_atr(sb: list[dict], i: int) -> float:
+def _causal_atr(sb: list[dict], i: int) -> float | None:
+    """Trailing-30-bar median range; None when unmeasurable (event left unlabeled)."""
     window = sb[max(0, i - 30):i] or sb[: max(1, min(30, i + 1))]
     ranges = [b["high"] - b["low"] for b in window if b["high"] > b["low"]]
-    return statistics.median(ranges) if ranges else 0.0
+    return statistics.median(ranges) if ranges else None
 
 
 def _triple_barrier(
@@ -103,12 +105,13 @@ def _triple_barrier(
     direction: int,
     zone_lo: float,
     zone_hi: float,
-    atr: float,
+    atr: float | None,
     horizon: int = HORIZON_MIN,
     k: float = K_ATR,
 ) -> dict:
-    """direction +1 = bounce UP (support); -1 = bounce DOWN (resistance). Costs ABSENT."""
-    if atr <= 0 or i >= len(sb) - 1:
+    """direction +1 = bounce UP (support); -1 = bounce DOWN (resistance). Costs ABSENT.
+    atr=None (unmeasurable) → unlabeled."""
+    if atr is None or atr <= 0 or i >= len(sb) - 1:
         return {"label": None, "reward_risk": None}
     entry = sb[i]["close"]
     width = max(zone_hi - zone_lo, 1e-9)
@@ -434,7 +437,7 @@ def _scan_placebo(
 def run(tickers: list[str]) -> dict:
     t0 = time.time()
     rnd = random.Random(SEED)
-    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30.0)
 
     obs = _load_obs_chains(con, tickers)
     coverage = {tk: 0 for tk in tickers}
@@ -489,14 +492,14 @@ def run(tickers: list[str]) -> dict:
             level_presence[k] = level_presence.get(k, 0) + 1
         conf = str(got.get("confidence") or "UNKNOWN")
         conf_counts[conf] += 1
-        faucet = str(meta.get("faucet") or "unknown")
+        faucet = str(meta["faucet"])  # _load_obs_chains sets "faucet" on every obs entry
         faucet_counts[faucet] += 1
         regime = got.get("regime")
         if regime:
             regime_day_counts[regime] += 1
 
         atr = _session_atr(sb)
-        if atr <= 0:
+        if atr is None or atr <= 0:
             continue
         half = WIDTH_ATR_FRAC * atr
         day_rows.append({
@@ -703,7 +706,7 @@ def _markdown(res: dict) -> str:
         f"(obs available: {json.dumps(s['obs_days_available'])})",
         f"- Date range: `{s['date_min']}` → `{s['date_max']}`",
         f"- Source: prefer morning_full, else snapshots@10:00 ET → `{res['source']['recompute']}`",
-        f"- Faucet mix: `{json.dumps(s.get('faucet_counts', {}))}`",
+        f"- Faucet mix: `{json.dumps(s['faucet_counts'])}`",
         f"- Levels: {', '.join(res['source']['levels'])}",
         f"- Labels: triple-barrier bounce, horizon={res['label']['horizon_min']}m, "
         f"k={res['label']['k_atr']}×ATR, half-width={res['label']['width_atr_frac']}×ATR, "
@@ -740,7 +743,7 @@ def _markdown(res: dict) -> str:
         f"- Level presence (ticker-days): `{json.dumps(s['level_presence_days'])}`",
         f"- Confidence: `{json.dumps(s['confidence_counts'])}`",
         f"- Regime days: `{json.dumps(s['regime_day_counts'])}`",
-        f"- Faucets: `{json.dumps(s.get('faucet_counts', {}))}`",
+        f"- Faucets: `{json.dumps(s['faucet_counts'])}`",
         "",
         "## Verdicts",
         "",
@@ -765,7 +768,7 @@ def _markdown(res: dict) -> str:
         f"edge={_fmt_rate(gr['win_rate_edge'])}.",
         f"3. **Regime split:** {ga.get('regime_note') or 'see by_regime table'}",
         f"4. **GAMMA_FLIP:** present on "
-        f"{s['level_presence_days'].get('GAMMA_FLIP', 0)} ticker-days "
+        f"{s['level_presence_days']['GAMMA_FLIP']} ticker-days "
         f"(morning_full TRUSTED) but **0 post-10:15 touches** in this sample "
         f"(flip typically sits outside the day's traded range). Not invented; "
         f"not scored as a touch event.",

@@ -35,6 +35,7 @@ import ast
 import datetime
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -74,7 +75,7 @@ def _enclosing_func_span(tree: ast.AST, line: int) -> tuple[int, int] | None:
     best: tuple[int, int] | None = None
     for n in ast.walk(tree):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            lo, hi = n.lineno, getattr(n, "end_lineno", n.lineno)
+            lo, hi = n.lineno, getattr(n, "end_lineno", n.lineno)  # caps-ok: ast.parse on 3.8+ always sets end_lineno on FunctionDef; the fallback only narrows the span to the def line, never widens it
             if lo <= line <= hi and (best is None or lo > best[0]):
                 best = (lo, hi)
     return best
@@ -103,41 +104,51 @@ def check_single_spot_authority() -> list[Violation]:
     RC-14: four independent spot sources existed (live quote, chain underlying,
     price_bars close, stored snapshot) and each consumer picked one, so the terrain card
     and the console header showed different prices for the same ticker at the same moment.
-    `server.resolve_spot()` is now the single authority; this forbids reintroducing a
-    second faucet.
+    `resolve_spot()` is now the single authority; this forbids reintroducing a second faucet.
+
+    SCOPE (RC-REHAB-1, 2026-09-23): EVERY production .py file, by AST. The first version
+    read three named files (server.py, terrain_engine.py, live_market_plane.py) by line text,
+    so a direct chain_underlying_spot() call in any module the server.py decomposition
+    created -- or in any new module -- was invisible, and the rule text itself would have
+    matched as a violation had its own file been scanned. AST reads calls, not strings.
+    Also new: a SECOND `def resolve_spot` anywhere is a second authority and is flagged, and
+    a missing one fails closed instead of guarding nothing.
     """
     out: list[Violation] = []
-    banned = ("chain_underlying_spot(",)
-    allowed_lines = ("def chain_underlying_spot",)
-    for rel in ("server.py", "terrain_engine.py"):
-        f = REPO / rel
-        if not f.exists():
-            continue
-        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), start=1):
-            stripped = line.strip()
-            if any(b in stripped for b in banned) and not any(a in stripped for a in allowed_lines):
-                out.append(Violation(f, n,
+    authorities: list[tuple[Path, ast.AST]] = []
+    for path, tree in _production_asts():
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "resolve_spot":
+                authorities.append((path, node))
+            elif isinstance(node, ast.Call) and _call_name(node) == "chain_underlying_spot":
+                out.append(Violation(path, node.lineno,
                                      "spot must be read through resolve_spot() - the single "
                                      "authority (RC-14). Do not call chain_underlying_spot directly."))
-    server_txt = (REPO / "server.py").read_text(encoding="utf-8")
-    rs_start = server_txt.find("def resolve_spot(")
-    if rs_start < 0:
-        out.append(Violation(REPO / "server.py", 1, "resolve_spot is missing"))
-    else:
-        rs_end = server_txt.find("\ndef ", rs_start + 1)
-        rs_body = server_txt[rs_start:rs_end if rs_end > 0 else None]
-        for needle, why in (
-            ("_spot_from_stored(", "resolve_spot must not promote snapshots.spot to current live spot"),
-            ("chain_underlying_spot(", "resolve_spot must not promote chain underlying to current live spot"),
-        ):
-            if needle in rs_body:
-                out.append(Violation(REPO / "server.py", server_txt[:rs_start].count("\n") + 1, why))
-    plane = REPO / "live_market_plane.py"
-    if plane.exists():
-        for n, line in enumerate(plane.read_text(encoding="utf-8").splitlines(), start=1):
-            if "spot_f = last or mark" in line or "last or mark" in line:
-                out.append(Violation(plane, n,
-                                     "plane current spot must be LAST_PRICE only; MARK is not spot"))
+            elif (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)
+                  and [getattr(v, "id", None) for v in node.values[:2]] == ["last", "mark"]):
+                out.append(Violation(path, node.lineno,
+                                     "current spot must be LAST_PRICE only; MARK is not spot "
+                                     "(`last or mark` silently promotes the mark)"))
+    if not authorities:
+        out.append(Violation(REPO / "server.py", 1,
+                             "resolve_spot is missing from every production module - the "
+                             "spot-authority check is guarding nothing"))
+    elif len(authorities) > 1:
+        for path, node in authorities:
+            out.append(Violation(path, node.lineno,
+                                 f"{len(authorities)} functions named resolve_spot exist - two "
+                                 f"definitions are two spot authorities (RC-14)"))
+    for path, node in authorities:
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Call):
+                continue
+            name = _call_name(sub)
+            if name == "_spot_from_stored":
+                out.append(Violation(path, node.lineno,
+                                     "resolve_spot must not promote snapshots.spot to current live spot"))
+            elif name == "chain_underlying_spot":
+                out.append(Violation(path, node.lineno,
+                                     "resolve_spot must not promote chain underlying to current live spot"))
     return out
 
 
@@ -173,7 +184,7 @@ def _asserting_helper_names(tree: ast.AST) -> set[str]:
 
 def _covered_by_helper(node: ast.AST, helpers: set[str]) -> bool:
     """A decorator or a called helper may supply the assertion."""
-    for d in getattr(node, "decorator_list", []):
+    for d in getattr(node, "decorator_list", []):  # caps-ok: duck typing: only def/class nodes have decorator_list; any other node truly has no decorators
         if (isinstance(d, ast.Name) and d.id in helpers) or            (isinstance(d, ast.Attribute) and d.attr in helpers):
             return True
     for c in ast.walk(node):
@@ -811,9 +822,9 @@ def check_no_synthetic_domain_fixtures_in_tests() -> list[Violation]:
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Dict) and _CONTRACT_KEYS.issubset(_dict_literal_keys(node))):
                 continue
-            line = getattr(node, "lineno", 0)
+            line = getattr(node, "lineno", 0)  # caps-ok: ast.Dict parsed from source always carries lineno; the default is unreachable for parsed nodes
             span = _enclosing_func_span(tree, line)
-            seg = "\n".join(lines[span[0] - 1 : span[1]]) if span else "\n".join(lines[max(0, line - 2) : line + 1])
+            seg = "\n".join(lines[span[0] - 1 : span[1]]) if span else "\n".join(lines[max(0, line - 2) : line + 1])  # caps-ok: module-level dict literal has no enclosing function; the justification marker is looked up in the surrounding lines instead
             if _JUSTIFY_MARKER in seg:
                 continue  # explicitly justified fail-closed/edge contract
             out.append(
@@ -905,7 +916,7 @@ def _find_duplicate_test_groups(root: Path) -> list[list[tuple[Path, int, str]]]
         for node in ast.walk(tree):
             if not (isinstance(node, ast.FunctionDef) and node.name.startswith("test_")):
                 continue
-            lo, hi = node.lineno, getattr(node, "end_lineno", node.lineno)
+            lo, hi = node.lineno, getattr(node, "end_lineno", node.lineno)  # caps-ok: ast.parse on 3.8+ always sets end_lineno on FunctionDef; the fallback narrows the marker search span (fail-closed)
             seg = "\n".join(lines[lo - 1: hi])
             if _DUPLICATE_TEST_JUSTIFY_MARKER in seg:
                 continue
@@ -973,7 +984,7 @@ def _is_git_ls_files_call(node: ast.Call) -> bool:
     if not (isinstance(fn, ast.Attribute) and fn.attr in ("run", "check_output", "check_call")
             and isinstance(fn.value, ast.Name) and fn.value.id == "subprocess"):
         return False
-    first = node.args[0] if node.args else next(
+    first = node.args[0] if node.args else next(  # caps-ok: subprocess args may be positional or args=; when neither exists first is None and the isinstance check returns False
         (kw.value for kw in node.keywords if kw.arg == "args"), None)
     if not isinstance(first, (ast.List, ast.Tuple)):
         return False
@@ -1064,17 +1075,17 @@ def _find_py_source_scan_sites(root: Path, *, name_glob: str,
             is_git_ls_candidate = (not is_scan) and _is_git_ls_files_call(node)
             if not (is_scan or is_git_ls_candidate):
                 continue
-            line = getattr(node, "lineno", 0)
+            line = getattr(node, "lineno", 0)  # caps-ok: ast.Call parsed from source always carries lineno; the default is unreachable for parsed nodes
             span = _enclosing_func_span(tree, line)
             if is_git_ls_candidate and span is not None:
                 for fn_node in ast.walk(tree):
                     if (isinstance(fn_node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                            and (fn_node.lineno, getattr(fn_node, "end_lineno", fn_node.lineno)) == span):
+                            and (fn_node.lineno, getattr(fn_node, "end_lineno", fn_node.lineno)) == span):  # caps-ok: ast.parse on 3.8+ always sets end_lineno on FunctionDef; used only to match the span computed by _enclosing_func_span with the same rule
                         is_scan = _reads_py_source_in_function(fn_node, tree)
                         break
             if not is_scan:
                 continue
-            seg = "\n".join(lines[span[0] - 1: span[1]]) if span else lines[max(0, line - 1)]
+            seg = "\n".join(lines[span[0] - 1: span[1]]) if span else lines[max(0, line - 1)]  # caps-ok: module-level call has no enclosing function; the marker is looked up on the call's own line instead
             if _SCAN_JUSTIFY_MARKER in seg:
                 continue
             out.append((p, line))
@@ -1178,20 +1189,53 @@ MAX_COMPLEXITY = 15  # cyclomatic; above this a function is too hard to understa
 
 
 def _production_py_files() -> list[Path]:
+    # Pruned walk: skipped directories are never descended into (rglob walked the whole
+    # .venv and reports/ trees before filtering; same population, a fraction of the I/O).
+    # tests have their own check; archive is frozen legacy.
+    skip = _SKIP_DIR_PARTS | {"archive", "tests"}
     out: list[Path] = []
-    for p in REPO.rglob("*.py"):
-        parts = p.relative_to(REPO).parts
-        if any(d in _SKIP_DIR_PARTS for d in parts):
-            continue
-        if "archive" in parts or "tests" in parts:
-            continue  # tests have their own check; archive is frozen legacy
-        out.append(p)
+    for dirpath, dirnames, filenames in os.walk(REPO):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        out.extend(Path(dirpath) / f for f in filenames if f.endswith(".py"))
     return sorted(out)
 
 
+def _production_asts() -> list[tuple[Path, ast.AST]]:
+    """(path, parsed tree) for every production .py file — the repo-wide population the
+    single-authority checks scan. A file that does not parse is skipped here; the ruff E9 /
+    syntax gates own that failure. Parsed trees are cached per (path, mtime, size), so the
+    several repo-wide checks in one gate run parse each file once, and a file rewritten
+    between calls (the negative-control tests do exactly that) is re-parsed."""
+    out: list[tuple[Path, ast.AST]] = []
+    for p in _production_py_files():
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        key = (str(p), st.st_mtime_ns, st.st_size)
+        tree = _AST_CACHE.get(key)
+        if tree is None:
+            try:
+                tree = ast.parse(p.read_text(encoding="utf-8", errors="ignore"), filename=str(p))
+            except (SyntaxError, ValueError):
+                continue
+            _AST_CACHE[key] = tree
+        out.append((p, tree))
+    return out
+
+
+_AST_CACHE: dict[tuple[str, int, int], ast.AST] = {}
+
+
+def _call_name(node: ast.Call) -> str | None:
+    """`f(...)` -> "f", `mod.f(...)` -> "f"."""
+    f = node.func
+    return f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
+
+
 def _marker_in_span(lines: list[str], node: ast.AST, marker: str) -> bool:
-    lo = getattr(node, "lineno", 1)
-    hi = getattr(node, "end_lineno", lo)
+    lo = getattr(node, "lineno", 1)  # caps-ok: parsed statement/expression nodes always carry lineno; the default is unreachable for parsed nodes
+    hi = getattr(node, "end_lineno", lo)  # caps-ok: fallback narrows the marker search to the start line (fail-closed: fewer lines, fewer escapes)
     return marker in "\n".join(lines[lo - 1 : hi])
 
 
@@ -1387,6 +1431,32 @@ def check_one_producer() -> list[Violation]:
             out.append(Violation(REPO / "governance" / "computation_registry.json", 0, msg))
     except Exception as exc:                                        # noqa: BLE001
         out.append(Violation(REPO / "tools" / "check_one_producer.py", 0,
+                             f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
+                             f"that cannot run is not a gate"))
+    return out
+
+
+def check_field_naming_consistency() -> list[Violation]:
+    """RC-292 — a registered field's canonical serialization NAME is the only one used.
+
+    check_one_producer proves a field is COMPUTED in one place; it is silent about the KEY
+    that computed value is written under. GSF/GRC were each computed in exactly one place
+    and still shipped on the payload under two independent, undocumented names (`kl_gsf` and
+    `gsf`) with nothing keeping the two in sync, until this session's naming-consolidation
+    fix (2026-09-21) merged them. A field opts into this gate by declaring BOTH `source_key`
+    and `serialized_as` in governance/computation_registry.json; every assignment in a
+    declared payload surface that pulls a registered source_key and writes it to a target key
+    outside that field's serialized_as list is a violation — fresh, undocumented naming
+    drift of a value this repo already has exactly one producer for.
+    """
+    out: list[Violation] = []
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        from check_field_naming_consistency import naming_violations as _v
+        for msg in _v():
+            out.append(Violation(REPO / "governance" / "computation_registry.json", 0, msg))
+    except Exception as exc:                                        # noqa: BLE001
+        out.append(Violation(REPO / "tools" / "check_field_naming_consistency.py", 0,
                              f"checker unavailable ({type(exc).__name__}: {exc}) — a gate "
                              f"that cannot run is not a gate"))
     return out
@@ -1588,16 +1658,28 @@ _RC_CITATION_GRANDFATHERED = frozenset(f"RC-{i}" for i in range(1, 30))
 #: backticked span that is prose rather than a command still fails.
 _RC_CITATION_RE = re.compile(
     r"`[^`]*(SELECT |COUNT\(|SUM\(|PRAGMA |pytest|python |node |tools/|\.py"
-    r"|curl |urllib|http://127\.0\.0\.1|https?://localhost)[^`]*`", re.I
+    r"|curl |urllib|http://127\.0\.0\.1|https?://localhost|gh )[^`]*`", re.I
 )
+#: RC-REHAB-1 (2026-09-20): `gh run view <id> --log-failed` / `gh api ...` are already used
+#: as reproducible citations 8 times elsewhere in this same log (CI-run and GitHub-API
+#: lookups are exactly as re-runnable as a SQL query or a pytest invocation) but "gh " was
+#: never a recognized keyword here -- this checker's own blind spot, not a missing citation
+#: in the rows it was blocking.
 #: A numeric CLAIM — a bare digit run, optionally with a unit. Dates and RC ids are excluded
 #: by the callers stripping them, so "2026-07-20" does not read as three claims.
 _RC_NUMBER_RE = re.compile(r"\b\d[\d,.]*\s*(?:GB|MB|KB|s|ms|%|x|rows|files|strikes|tests)?\b")
 #: Digit-carrying tokens that are NOT a numeric finding: a date (full or year-month), a record
-#: id (`RC-43`, `O-09`, `INF-1`, `REQ-7`) and an issue number. THE one definition, stripped by
-#: both numeric-claim rules before the numbers on a line are counted (RC-548: `O-09` and
-#: `INF-1` were counted as two findings by the staged-claims rule).
-_NON_FINDING_TOKENS = re.compile(r"\d{4}-\d{2}(?:-\d{2})?|\b[A-Z][A-Z0-9]{0,7}-\d+\b|#\d+")
+#: id (`RC-43`, `O-09`, `INF-1`, `REQ-7`), an issue number, and a bare parenthesized why-chain
+#: step marker (`(1)`, `(2)` ... `(5)`). THE one definition, stripped by both numeric-claim
+#: rules before the numbers on a line are counted (RC-548: `O-09` and `INF-1` were counted as
+#: two findings by the staged-claims rule; RC-REHAB-1 2026-09-20: RC-359's own standard
+#: `(1) ... -> (2) ... -> (3) ...` why-chain format -- used by every row in this log -- was
+#: itself counted as 5 numeric claims, tripping the reproducible-command rule on a row with
+#: NO actual measured quantity at all. A bare `(N)` with no unit immediately after is the
+#: log's own step-numbering convention, not a claim; a real measurement in parens still has a
+#: unit inside, e.g. `(15%)`, which this pattern does not match (the digits must be the whole
+#: parenthesized content).
+_NON_FINDING_TOKENS = re.compile(r"\d{4}-\d{2}(?:-\d{2})?|\b[A-Z][A-Z0-9]{0,7}-\d+\b|#\d+|\(\d{1,2}\)")
 _RC_CITATION_MIN_NUMBERS = 3
 
 
@@ -1732,43 +1814,46 @@ def check_shutdown_is_bounded() -> list[Violation]:
     REPRODUCED in isolation: a process with one wedged non-daemon thread never exits
     (>15 s, killed); with the watchdog armed it exits in 2.4 s.
 
-    HOW THE RULE WAS VALIDATED: prototyped against the current file -- the lifespan does
-    arm the watchdog, so this check is 0 today and only fires on regression.
+    SCOPE (RC-REHAB-1, 2026-09-23): every production module, by AST. The first version read
+    server.py alone and returned [] when `_app_lifespan` was not in it -- so moving the
+    lifespan into its own module would have turned the check silently green. Every
+    `*lifespan*` coroutine that joins with wait=True must arm the watchdog; every
+    `_arm_shutdown_watchdog` must refuse under pytest; finding no lifespan at all is a
+    violation, not a pass.
     """
     out: list[Violation] = []
-    server = REPO / "server.py"
-    if not server.exists():
-        return out
-    text = server.read_text(encoding="utf-8", errors="replace")
-    marker = "async def _app_lifespan"
-    if marker not in text:
-        return out
-    body = text[text.index(marker):]
-    end = body.find("\n@app.")
-    if end > 0:
-        body = body[:end]
-    if "wait=True" in body and "_arm_shutdown_watchdog" not in body:
-        out.append(Violation(
-            server, text[: text.index(marker)].count("\n") + 1,
-            "the lifespan joins background workers (wait=True) without arming "
-            "_arm_shutdown_watchdog — one blocked worker makes the console unkillable "
-            "by Ctrl+C (OBSERVED 2026-07-20)"))
-    # The watchdog itself must refuse under pytest. OBSERVED 2026-07-20: TestClient runs
-    # the lifespan inside the TEST process; an unguarded watchdog os._exit(0)'d PYTEST
-    # 12 s later, mid-suite, silently, exit code 0 — tests/adversarial "passed" with zero
-    # output and the full suite read as a hang (Cursor audit). RC-10 class.
-    wd = "def _arm_shutdown_watchdog"
-    if wd in text:
-        wd_body = text[text.index(wd):]
-        wd_end = wd_body.find("\ndef ")
-        if wd_end > 0:
-            wd_body = wd_body[:wd_end]
-        if "PYTEST_CURRENT_TEST" not in wd_body:
-            out.append(Violation(
-                server, text[: text.index(wd)].count("\n") + 1,
-                "_arm_shutdown_watchdog does not refuse under pytest — armed inside the "
-                "test process it os._exit(0)'s the RUNNER mid-suite with a success code "
-                "(OBSERVED 2026-07-20: silent zero-output 'pass')"))
+    lifespans = 0
+    for path, tree in _production_asts():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AsyncFunctionDef) and "lifespan" in node.name:
+                lifespans += 1
+                calls = [c for c in ast.walk(node) if isinstance(c, ast.Call)]
+                joins = any(kw.arg == "wait" and isinstance(kw.value, ast.Constant)
+                            and kw.value.value is True for c in calls for kw in c.keywords)
+                armed = any(_call_name(c) == "_arm_shutdown_watchdog" for c in calls)
+                if joins and not armed:
+                    out.append(Violation(
+                        path, node.lineno,
+                        "the lifespan joins background workers (wait=True) without arming "
+                        "_arm_shutdown_watchdog — one blocked worker makes the console unkillable "
+                        "by Ctrl+C (OBSERVED 2026-07-20)"))
+            elif (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  and node.name == "_arm_shutdown_watchdog"):
+                # The watchdog itself must refuse under pytest. OBSERVED 2026-07-20: TestClient
+                # runs the lifespan inside the TEST process; an unguarded watchdog os._exit(0)'d
+                # PYTEST 12 s later, mid-suite, silently, exit code 0 (RC-10 class).
+                guarded = any(isinstance(c, ast.Constant) and c.value == "PYTEST_CURRENT_TEST"
+                              for c in ast.walk(node))
+                if not guarded:
+                    out.append(Violation(
+                        path, node.lineno,
+                        "_arm_shutdown_watchdog does not refuse under pytest — armed inside the "
+                        "test process it os._exit(0)'s the RUNNER mid-suite with a success code "
+                        "(OBSERVED 2026-07-20: silent zero-output 'pass')"))
+    if lifespans == 0:
+        out.append(Violation(REPO / "server.py", 1,
+                             "no app lifespan coroutine found in any production module — the "
+                             "shutdown-bound check is guarding nothing"))
     return out
 
 
@@ -1794,31 +1879,56 @@ def check_sqlite_wal_contract() -> list[Violation]:
 
     OBSERVED (2026-07-25): concurrent agent/server writers lock a DELETE-mode
     DB; EdDB._connect already sets timeout=30 + configure_sqlite_connection
-    (WAL/NORMAL), but ad-hoc connects can skip both. VALIDATED: AST/source
-    contract on db.py — configure_sqlite_connection body + every
-    sqlite3.connect(…, timeout=…) site.
+    (WAL/NORMAL), but ad-hoc connects can skip both.
+
+    SCOPE (RC-REHAB-1, 2026-09-23): the rule is about AD-HOC connects, and the first version
+    read exactly one file for them -- db.py, the one module that was already compliant.
+    MEASURED on the switch to a repo-wide AST scan: 267 sqlite3.connect calls in production
+    code, 169 with no timeout (Python's default is 5 s) or one under 30 s, including live
+    writers (app/options/order_flow/history.py + streaming.py, calibration/writer.py, the
+    chain-capture writers, desk_store.py). All 169 now pass timeout=30.0. Every
+    `sqlite3.connect(...)` in every production module must pass `timeout=`; a constant one
+    must be >= 30. configure_sqlite_connection's PRAGMA content is checked wherever it is
+    defined (it moved to db_sqlite_utils.py in the db.py decomposition), and exactly one
+    definition must exist.
     """
     out: list[Violation] = []
-    path = REPO / "db.py"
-    try:
-        src = path.read_text(encoding="utf-8")
-    except OSError as e:
-        return [Violation(path, 0, f"cannot read db.py: {e}")]
-    if "PRAGMA journal_mode=WAL" not in src:
-        out.append(Violation(path, 0, "configure_sqlite_connection missing PRAGMA journal_mode=WAL"))
-    if "PRAGMA synchronous=NORMAL" not in src:
-        out.append(Violation(path, 0, "configure_sqlite_connection missing PRAGMA synchronous=NORMAL"))
-    if "busy_timeout" not in src:
-        out.append(Violation(path, 0, "configure_sqlite_connection missing busy_timeout pragma"))
-    # Every sqlite3.connect in db.py must pass timeout= (no default 5s lock storms).
-    for i, line in enumerate(src.splitlines(), 1):
-        if "sqlite3.connect(" not in line:
-            continue
-        if "timeout=" not in line:
-            out.append(Violation(
-                path, i,
-                "sqlite3.connect without timeout= — require timeout>=30.0 "
-                "(multi-agent / async lock storm class)"))
+    helpers: list[tuple[Path, ast.AST]] = []
+    for path, tree in _production_asts():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "configure_sqlite_connection":
+                helpers.append((path, node))
+                continue
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "connect"
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id == "sqlite3"):
+                continue
+            if any(k.arg is None for k in node.keywords):
+                continue  # **kwargs: the timeout is not statically knowable here
+            timeout = next((k.value for k in node.keywords if k.arg == "timeout"), None)  # caps-ok: None means no timeout= keyword, and the very next line raises a Violation for it (fail-closed)
+            if timeout is None:
+                out.append(Violation(
+                    path, node.lineno,
+                    "sqlite3.connect without timeout= — require timeout>=30.0 "
+                    "(multi-agent / async lock storm class; Python's default is 5 s)"))
+            elif (isinstance(timeout, ast.Constant) and isinstance(timeout.value, (int, float))
+                  and timeout.value < 30):
+                out.append(Violation(
+                    path, node.lineno,
+                    f"sqlite3.connect timeout={timeout.value} — require timeout>=30.0"))
+    if len(helpers) != 1:
+        where = ", ".join(f"{h.relative_to(REPO).as_posix()}:{n.lineno}" for h, n in helpers) or "nowhere"
+        out.append(Violation(REPO / "db_sqlite_utils.py", 0,
+                             f"expected exactly one configure_sqlite_connection, found "
+                             f"{len(helpers)} ({where})"))
+    for path, node in helpers:
+        body = ast.get_source_segment(path.read_text(encoding="utf-8"), node) or ""
+        for needle, what in (("PRAGMA journal_mode=WAL", "PRAGMA journal_mode=WAL"),
+                             ("PRAGMA synchronous=NORMAL", "PRAGMA synchronous=NORMAL"),
+                             ("busy_timeout", "busy_timeout pragma")):
+            if needle not in body:
+                out.append(Violation(path, node.lineno,
+                                     f"configure_sqlite_connection missing {what}"))
     return out
 
 
@@ -2500,7 +2610,9 @@ def check_single_faucet_provenance() -> list[Violation]:
         return [Violation(REPO / "tools" / "data_faucet_audit.py", 0,
                           f"faucet audit failed to run: {type(e).__name__}: {e}")]
     out: list[Violation] = []
-    for v in rep.get("faucet_violations", []):
+    # data_faucet_audit.run() always writes faucet_violations; a report without it must fail
+    # loudly, not read as zero violations.
+    for v in rep["faucet_violations"]:
         out.append(Violation(
             REPO / "server.py", 0,
             f"concept {v['concept']!r} is fed by UNDECLARED source(s) {v['undeclared']} "
@@ -2521,37 +2633,46 @@ def check_chain_width_single_faucet() -> list[Violation]:
     across 52 chains the fixed count was wrong in BOTH directions (~48 equities need under 20 and
     got 40; $SPX needs ~150 and got 40) — so a hardcoded literal cannot be right for any universe.
 
-    Rule: in server.py, a `strike_count=` argument on a chain fetch must be
-    `resolve_chain_strike_count(...)` (or a variable derived from it), never a bare constant —
-    unless the line declares `chain-width-faucet-ok: <reason>` for a fetch that provably computes
-    no levels (e.g. the expiry-list dropdown).
+    Rule: in EVERY production module, a `strike_count=` keyword must not be a bare constant — an
+    UPPER_CASE name or an integer literal — unless the call declares
+    `chain-width-faucet-ok: <reason>` for a fetch that provably computes no levels (e.g. the
+    expiry-list dropdown) or deliberately takes max width (the wide research capture).
 
-    HOW THE RULE WAS VALIDATED: prototyped against server.py before enforcing — it flags exactly
-    the bare-constant fetches and passes the faucet-routed ones and the single declared exemption;
-    scoped to server.py because that is where the live fetches live, so it cannot cry wolf across
-    offline tools that legitimately choose their own width.
+    SCOPE (RC-REHAB-1, 2026-09-23): the first version read server.py line by line on the theory
+    that "that is where the live fetches live". The decomposition moved three of them out
+    (app/api/routes/debug.py, terrain_refresh.py, server_state_persistence_tail.py) and the
+    check stopped seeing them. It also never matched an integer literal (`strike_count=40`),
+    the plainest form of the defect. MEASURED on the switch to repo-wide AST: 2 constant-width
+    calls in 694 production files, both already carrying a reviewed exemption — the wider scope
+    does not cry wolf.
     """
     out: list[Violation] = []
-    path = REPO / "server.py"
-    try:
-        src = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return out
-    for n, line in enumerate(src.splitlines(), start=1):
-        if "strike_count=" not in line or "def " in line:
-            continue
-        if "chain-width-faucet-ok" in line:
-            continue
-        arg = line.split("strike_count=", 1)[1].strip().rstrip(",)").strip()
-        if not arg or arg.startswith(("resolve_chain_strike_count", "_width", "_terrain_strike_count")):
-            continue
-        if arg.isidentifier() and arg.isupper():          # a bare CONSTANT is the defect
-            out.append(Violation(
-                path, n,
-                f"chain fetch sizes itself from the bare constant {arg!r} instead of the ONE "
-                f"width authority resolve_chain_strike_count(ticker) (RC-59). A fixed count is "
-                f"wrong in both directions across a real universe. Use the faucet, or declare "
-                f"'chain-width-faucet-ok: <reason>' if this fetch computes no levels."))
+    for path, tree in _production_asts():
+        lines: list[str] | None = None
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords:
+                if kw.arg != "strike_count":
+                    continue
+                v = kw.value
+                if isinstance(v, ast.Constant) and isinstance(v.value, int) and not isinstance(v.value, bool):
+                    shown = repr(v.value)
+                elif isinstance(v, ast.Name) and v.id.isupper():
+                    shown = v.id
+                else:
+                    continue
+                if lines is None:
+                    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+                span = "\n".join(lines[node.lineno - 1: (node.end_lineno or node.lineno)])
+                if "chain-width-faucet-ok" in span:
+                    continue
+                out.append(Violation(
+                    path, v.lineno,
+                    f"chain fetch sizes itself from the bare constant {shown} instead of the ONE "
+                    f"width authority resolve_chain_strike_count(ticker) (RC-59). A fixed count is "
+                    f"wrong in both directions across a real universe. Use the faucet, or declare "
+                    f"'chain-width-faucet-ok: <reason>' if this fetch computes no levels."))
     return out
 
 
@@ -2604,9 +2725,7 @@ def _measured_claims_cite_evidence_own_violations() -> list[Violation]:
     out: list[Violation] = []
     for rel in targets:
         path = REPO / rel
-        try:
-            whole = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
+        if not path.is_file():
             continue
         diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
         for ln in diff:
@@ -2776,10 +2895,9 @@ def check_universal_ticker_scope() -> list[Violation]:
     operator mandate: UNIVERSAL for everything we do, enforced with Cursor and Claude.
 
     Rule (practical — does NOT retro-flag historical report prose):
-      1. tools/liquidity_*.py, *_experiment*.py, lp01_*.py must not default --tickers / TICKERS
-         to SPY alone (AST). Escape: `# universal-scope-ok:` / OUT-OF-SCOPE / operator waiver.
-      2. static/chart.html must keep parameterized ticker fetches and must not gate
-         storm/highlight/combo/accrual on `=== 'SPY'` (or hardcode `ticker=SPY` APIs).
+      1. No production module may default --tickers / TICKERS to SPY alone (AST). Escape: `# universal-scope-ok:` / OUT-OF-SCOPE / operator waiver.
+      2. No static page or script may gate storm/highlight/combo/accrual on `=== 'SPY'` (or
+         hardcode `ticker=SPY` APIs); static/chart.html must keep its parameterized fetches.
       3. STAGED prompt / agent-instruction .md files (reports/*prompt*, .cursor/rules/,
          .claude/*.md, AGENTS.md, …) must not add SPY-only / sentinel-complete framing without
          UNIVERSAL / enrolled-universe / OUT-OF-SCOPE language.
@@ -2793,25 +2911,34 @@ def check_universal_ticker_scope() -> list[Violation]:
     from tools.universal_scope_lock import (
         chart_spy_only_feature_violations,
         chart_ticker_path_violations,
-        experiment_tool_paths,
         spy_only_ticker_default_violations,
     )
 
     out: list[Violation] = []
 
-    for path in experiment_tool_paths(REPO):
+    # SCOPE (RC-REHAB-1, 2026-09-23): rule 1 used to police only tools/liquidity_*.py,
+    # *_experiment*.py and lp01_*.py, and rule 2's feature scan only static/chart.html. The law
+    # is UNIVERSAL for everything we do, so both now run over every production module and every
+    # static page/script. MEASURED on the switch: 1 new hit in 694 .py files
+    # (tools/check_card_signal_fidelity.py --tickers default=["SPY"], fixed to the enrolled
+    # universe) and 0 in static/. chart_ticker_path_violations stays chart.html-specific: it
+    # asserts that page's own parameterized fetches are still PRESENT, a per-page contract.
+    for path in _production_py_files():
         src = _read_or_empty(path)
         if not src:
             continue
         for lineno, msg in spy_only_ticker_default_violations(path, src):
             out.append(Violation(path, lineno, msg))
 
-    chart = REPO / "static" / "chart.html"
-    if chart.exists():
-        csrc = _read_or_empty(chart)
-        for lineno, msg in chart_ticker_path_violations(csrc):
-            out.append(Violation(chart, lineno, msg))
+    static = REPO / "static"
+    web = sorted(static.rglob("*.html")) + sorted(static.rglob("*.js")) if static.is_dir() else []
+    for page in web:
+        csrc = _read_or_empty(page)
         for lineno, msg in chart_spy_only_feature_violations(csrc):
+            out.append(Violation(page, lineno, msg))
+    chart = static / "chart.html"
+    if chart.exists():
+        for lineno, msg in chart_ticker_path_violations(_read_or_empty(chart)):
             out.append(Violation(chart, lineno, msg))
 
     # BEDROCK 2026-09-06: rule 3 (SPY-only PHRASES in staged prompt prose) is retired. It was
@@ -2840,20 +2967,24 @@ def check_collect_window_single_law() -> list[Violation]:
     Rule (static, three clauses):
     1. `time_et.py` defines the authority (`COLLECT_WINDOW_START_MINS`, `COLLECT_WINDOW_END_MINS`,
        `is_collect_window_bar_end_ts_utc`).
-    2. `db.py`'s `upsert_1m_bars` calls the authority before appending rows.
-    3. No tracked .py outside `db.py` INSERTs into `price_bars_1m` directly — every writer goes
-       through the seam, or declares `# collect-window-ok: <reason>` on the INSERT line.
+    2. `db_snapshots.py`'s `upsert_1m_bars` calls the authority before appending rows.
+    3. No tracked .py outside `db_snapshots.py` INSERTs into `price_bars_1m` directly — every
+       writer goes through the seam, or declares `# collect-window-ok: <reason>` on the INSERT line.
 
     HOW VALIDATED: prototyped before registering — clause 3 walked the tree and found the only
-    direct INSERT sites are `db.py` itself and test fixtures under `tests/` (fixtures build
-    read-side scenarios and are exempt by path); clauses 1–2 fail when either symbol is renamed
-    or the call removed (checked by string mutation during development). Negative control:
+    direct INSERT sites are `db_snapshots.py` itself and test fixtures under `tests/` (fixtures
+    build read-side scenarios and are exempt by path); clauses 1–2 fail when either symbol is
+    renamed or the call removed (checked by string mutation during development). Negative control:
     `tests/test_collect_window_law_v1.py` names this check and injects a violating write.
     Escapes: `# collect-window-ok: <reason>`.
+
+    RC-REHAB-1 (2026-09-22): upsert_1m_bars moved from db.py to db_snapshots.py (slice 3, db.py
+    decomposition) -- the seam this law gates moved with it. Re-pointed here, not re-derived:
+    the law and its enforcement are unchanged, only the file that carries the seam.
     """
     out: list[Violation] = []
     te = REPO / "time_et.py"
-    dbp = REPO / "db.py"
+    dbp = REPO / "db_snapshots.py"
     te_src = te.read_text(encoding="utf-8", errors="replace") if te.exists() else ""
     db_src = dbp.read_text(encoding="utf-8", errors="replace") if dbp.exists() else ""
     for sym in ("COLLECT_WINDOW_START_MINS", "COLLECT_WINDOW_END_MINS",
@@ -2866,7 +2997,7 @@ def check_collect_window_single_law() -> list[Violation]:
                              "the ONE write seam for price_bars_1m has lost the operator law"))
     for rel in sorted(_tracked_py_files() or []):
         rel = rel.replace("\\", "/")
-        if rel in ("db.py", "tools/check_institutional_correctness.py") \
+        if rel in ("db.py", "db_snapshots.py", "tools/check_institutional_correctness.py") \
                 or rel.startswith("tests/") or rel.startswith("governance/"):
             continue
         py = REPO / rel
@@ -2896,8 +3027,8 @@ def check_collect_window_single_law() -> list[Violation]:
 # RC-470: the plus_player catalog checks (plus_player_law, plus_player_cursor_hooks)
 # and their callees are retired - governance/retired_checks.md. Roster demotions are
 # caught by the delta-gate roster comparison + declared-retirement manifest; hook-wiring
-# changes are reviewed by the operator at merge (RC-475 — the CODEOWNERS equivalence the
-# retirement rows cited was superseded when the authority model was torn down).
+# changes are reviewed by the operator at merge (RC-475 — the reviewer-identity-file
+# equivalence the retirement rows cited was superseded when the authority model was torn down).
 
 
 def check_admission_evidence_resolves() -> list[Violation]:
@@ -3009,7 +3140,7 @@ def check_decision_path_wired() -> list[Violation]:
 
 # claude_cursor_guard_parity RETIRED (declared governance/retired_checks.md 2026-08-24;
 # executed in the SIMPLICITY REHAB): hook parity is an operator merge-review property
-# (RC-475 superseded the CODEOWNERS equivalence the row cited). The
+# (RC-475 superseded the reviewer-identity-file equivalence the row cited). The
 # declared-but-still-enforced state this replaces was itself the manifest lying — the
 # defect class RC-468's seam exists to catch.
 
@@ -3020,29 +3151,52 @@ def check_collect_datasheet_staged() -> list[Violation]:
     WHAT WAS OBSERVED: new tables could land without motivation/composition documentation —
     BCBS 239 / FAIR data-provenance gap on schema migrations.
 
-    Rule: staged diff adding CREATE TABLE in db.py or calibration/*.py must ship a datasheet YAML
-    with motivation, composition, collection, recommended_uses. Existing tables grandfathered
-    (diff-scoped only).
+    Rule: staged diff adding CREATE TABLE in any production .py file must ship
+    a datasheet YAML with motivation, composition, collection, recommended_uses. Existing tables
+    grandfathered (diff-scoped only).
 
     HOW VALIDATED: tests/test_find_prove_locks_v1.py injects table without datasheet -> BLOCK.
+
+    RC-REHAB-1 (2026-09-22): _init_schema (every CREATE TABLE for the console DB) moved from
+    db.py to db_schema.py (slice 2, db.py decomposition). db_schema.py added to targets so a
+    future new table there is not silently invisible to this gate -- but that same move meant
+    EVERY existing table now appears added in db_schema.py's own diff (a brand-new file), which
+    would have falsely flagged all of them as new. Fixed by also scanning the FULL staged diff
+    (every staged file, not just the DDL-carrying ones) for removed CREATE TABLE lines: a table
+    added in one file and removed in another within the same staged change is a MOVE, not a new
+    table, and is excluded. Verified against this exact slice-2/3 diff shape before landing.
     """
     staged = _git_output_lines(["diff", "--cached", "--name-only"])
     if staged is None:
         return []
     try:
-        from tools.find_prove_locks import collect_datasheet_violations, new_table_names_in_diff
+        from tools.find_prove_locks import (
+            collect_datasheet_violations, new_table_names_in_diff, removed_table_names_in_diff,
+        )
     except ImportError:
-        from find_prove_locks import collect_datasheet_violations, new_table_names_in_diff  # type: ignore
-    targets = [
-        s.strip().replace("\\", "/") for s in staged
-        if s.strip().replace("\\", "/") in ("db.py",) or s.strip().replace("\\", "/").startswith("calibration/")
-    ]
+        from find_prove_locks import (  # type: ignore
+            collect_datasheet_violations, new_table_names_in_diff, removed_table_names_in_diff,
+        )
+    all_staged = [s.strip().replace("\\", "/") for s in staged if s.strip()]
+    # SCOPE (RC-REHAB-1, 2026-09-23): targets were db.py, db_schema.py and calibration/*.py
+    # only, while tables are created in desk_store.py, decision_record.py, execution_identity.py,
+    # override_registry.py, stream_spine.py, db_logging_universe.py, server.py and a dozen
+    # tools -- a new table in any of them landed with no datasheet. Every staged production
+    # .py file is a target now (tests/ excluded: fixture DDL is not a Collect table).
+    targets = [s for s in all_staged if s.endswith(".py") and not s.startswith("tests/")]
     if not targets:
         return []
     tables: set[str] = set()
     for rel in targets:
         diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
         tables |= new_table_names_in_diff(diff)
+    if not tables:
+        return []
+    removed: set[str] = set()
+    for rel in all_staged:
+        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+        removed |= removed_table_names_in_diff(diff)
+    tables -= removed
     if not tables:
         return []
     out: list[Violation] = []
@@ -3061,7 +3215,7 @@ def check_collect_datasheet_staged() -> list[Violation]:
 
 # RC-470: check_honesty_guard_wired retired (governance/retired_checks.md) - an
 # unwiring of the hook files is reviewed by the operator at merge (RC-475 superseded
-# the CODEOWNERS equivalence the row cited). The honesty guard itself stays on Stop.
+# the reviewer-identity-file equivalence the row cited). The honesty guard itself stays on Stop.
 
 
 #: RC-212 (operator law 2026-08-02: "tighten up the one faucet mechanical lock so this
@@ -3085,7 +3239,7 @@ def domain_faucet_violations(rel: str, added: str, registry_text: str,
     out: list[str] = []
     try:
         reg = json.loads(registry_text or "null")
-        producers = set((reg or {}).get("level_domain_producers", {}).keys())
+        producers = set((reg or {}).get("level_domain_producers", {}).keys())  # caps-ok: fail-closed: a registry without producers yields an empty set, so every level-domain route is reported as an unregistered producer
     except (ValueError, TypeError):
         return [f"{rel}: level-faucet registry unparseable — the domain lock gates NOTHING "
                 f"in this state; restore governance/level_faucets.json"]
@@ -3207,7 +3361,7 @@ def check_phase2a_single_level_computation() -> list[Violation]:
 # RC-470: check_writer_no_drift retired (governance/retired_checks.md). Measured before
 # retiring: the commit hook never ran this check (RC-406); CI deliberately set no role
 # (RC-396); it fired only in local verification shells. 2026-08-24 teardown: the whole
-# writer/role machinery (writer_drift_lock, CODEOWNERS, ED_AGENT_ROLE) was then removed
+# writer/role machinery (writer_drift_lock, a reviewer-identity file, ED_AGENT_ROLE) was then removed
 # with Architecture A — authority changes are approved by the operator's word in chat
 # (RC-475), with required CI as the machine gate at merge.
 
@@ -3358,6 +3512,11 @@ CHECKS = [
     # because an unregistered gate enforces nothing — it sat at zero registrations while
     # being reported as a lock.
     ("one_producer", check_one_producer, True),
+    # RC-292 (2026-09-21): a registered field's canonical serialization NAME is the only one
+    # used — one_producer above proves a value is COMPUTED once, this proves it is WRITTEN
+    # under one name. ENFORCED because the kl_gsf/gsf duplication it closes was live and
+    # undocumented in this repo until the same session that built this gate fixed it.
+    ("field_naming_consistency", check_field_naming_consistency, True),
     # OPTIONS_ORDER_FLOW_V1 Phase 1-3 (2026-08-30): exactly one production Schwab
     # StreamClient constructor, repo-wide. ENFORCED — mutation-tested
     # (tests/test_single_stream_authority_v1.py), not a design-review-only script.

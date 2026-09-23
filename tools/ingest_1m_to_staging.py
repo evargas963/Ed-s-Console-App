@@ -73,7 +73,7 @@ def bars_to_staging_rows(
     tkr = ticker_storage_key(ticker)
     rows: list[tuple[Any, ...]] = []
     for b in bars:
-        raw_ts = b.get("datetime", b.get("ts", b.get("_ts", 0)))
+        raw_ts = b.get("datetime", b.get("ts", b.get("_ts", 0)))  # caps-ok: a bar with no timestamp yields 0, which the `bar_start <= 0: continue` guard below drops; it is never staged
         try:
             raw_ts = float(raw_ts)
         except (TypeError, ValueError):
@@ -234,7 +234,7 @@ def validate_staging_batch(conn: sqlite3.Connection, batch_id: str) -> Validatio
         """,
         (batch_id,),
     ).fetchone()
-    mn, mx = (float(mn_mx[0]) if mn_mx[0] is not None else None, float(mn_mx[1]) if mn_mx[1] is not None else None)
+    mn, mx = (float(mn_mx[0]) if mn_mx[0] is not None else None, float(mn_mx[1]) if mn_mx[1] is not None else None)  # caps-ok: MIN/MAX over an empty batch are NULL and stay None
 
     intra = 0
     overnight = 0
@@ -335,13 +335,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="Fetch + validate mapping only; no INSERT")
     args = ap.parse_args()
 
-    try:
-        from db import DB_PATH, configure_sqlite_connection
-    except Exception:
-        DB_PATH = None  # type: ignore[misc, assignment]
-
-        def configure_sqlite_connection(conn: sqlite3.Connection, **kwargs: Any) -> None:
-            pass
+    from db import DB_PATH
+    from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
     db_path = args.db or DB_PATH
     if not db_path:

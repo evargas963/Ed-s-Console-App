@@ -52,7 +52,7 @@ def main() -> int:
     require_canonical_db_target(args, tool_name="tools.audit_similarity_features", write_capable=False)
     db = EdDB(
         args.db,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: flag from register_allow_noncanonical_flag; absent keeps the canonical-DB guard on
     )
     report = run_feature_impact_audit(
         db,

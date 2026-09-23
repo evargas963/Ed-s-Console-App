@@ -118,7 +118,7 @@ def _mi_discrete(x: list[float], y: list[float], bins: int = 8) -> float | None:
 
 
 def run_discrimination(db_path: Path) -> dict[str, Any]:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     configure_sqlite_connection(conn)
     conn.row_factory = sqlite3.Row
 
@@ -264,7 +264,7 @@ def run_discrimination(db_path: Path) -> dict[str, Any]:
                 fusion_near_flat is not None and fusion_near_flat < 0.02
             ),
             "layer_policy_single_bucket": (
-                len(set(layer_policies)) <= 1 if layer_policies else True
+                len(set(layer_policies)) <= 1 if layer_policies else True  # caps-ok: warning flag fails loud; zero logged layer policies is the most degenerate case, so it RAISES the single-bucket flag rather than hiding it
             ),
         },
     }

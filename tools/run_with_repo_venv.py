@@ -62,7 +62,7 @@ def main() -> int:
     if in_ci and not vpy.is_file():
         return _run([sys.executable, *target])
     if not vpy.is_file():
-        auto = os.environ.get("ED_AUTO_BOOTSTRAP_VENV", "").strip().lower() in {
+        auto = os.environ.get("ED_AUTO_BOOTSTRAP_VENV", "").strip().lower() in {  # caps-ok: opt-in env flag ED_AUTO_BOOTSTRAP_VENV; unset means "do not auto-bootstrap" (documented opt-in), not data
             "1", "true", "yes",
         }
         if auto:

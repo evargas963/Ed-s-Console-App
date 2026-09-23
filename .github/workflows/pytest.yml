@@ -145,11 +145,27 @@ jobs:
           set +e
           npm run test:e2e
           e2e_rc=$?
-          python -m pytest -n "$(nproc)" --dist loadfile --durations=20
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 --junitxml=/tmp/pytest-report.xml
           pytest_rc=$?
+          # Skip-transparency gate (2026-09-20): a full-suite "N passed, M skipped" run was
+          # being read as green without anyone checking what the M skips actually were --
+          # a direct audit found 8 of 10 skips in one run were tests that had NEVER executed
+          # in ANY CI environment. tools/check_skip_ledger.py consumes this same run's own
+          # --junitxml output (pytest-xdist already aggregates it correctly across every
+          # worker) and fails if any skip is neither self-declared (a "PRODUCTION-DATA-ONLY"
+          # reason) nor an exact, reviewed entry in tests/skip_ledger.json. See that script's
+          # module docstring for why this is a separate step rather than a conftest hook --
+          # a pytest_sessionfinish exitstatus mutation was tried and verified NOT to affect
+          # the process exit code under xdist.
+          python tools/check_skip_ledger.py /tmp/pytest-report.xml
+          skip_ledger_rc=$?
           set -e
           if [ "$e2e_rc" -ne 0 ]; then
             echo "Playwright E2E failed with ${e2e_rc}"
             exit "$e2e_rc"
+          fi
+          if [ "$skip_ledger_rc" -ne 0 ]; then
+            echo "Skip ledger gate failed with ${skip_ledger_rc}"
+            exit "$skip_ledger_rc"
           fi
           exit "$pytest_rc"

@@ -286,7 +286,7 @@ def test_rc207_rebuild_tool_measure_and_dry_defaults(tmp_path):
     assert rc == 0
     doc = json.loads(Path(report).read_text(encoding="utf-8"))
     assert doc["mode"] == "measure"
-    assert doc.get("snapshots_prior_net_gamma", {}).get("ok") is True
+    assert doc["snapshots_prior_net_gamma"]["ok"] is True
 
 
 def test_rc248_repair_tool_runs_when_invoked_BY_PATH(tmp_path):

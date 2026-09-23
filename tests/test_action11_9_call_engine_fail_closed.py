@@ -23,16 +23,16 @@ CALL_ENGINE = (ROOT / "call_engine.py").read_text(encoding="utf-8")
 
 _FORBIDDEN_CALL_ENGINE_PATTERNS = (
     '(exp or 0) >= (cont or 0)',
-    'float(etf_chg_pct or 0.0)',
+    'float(etf_chg_pct or 0.0)',  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from call_engine.py
     'inp.spy_chg_pct or 0.0',
     'inp.qqq_chg_pct or 0.0',
     'inp.iwm_chg_pct or 0.0',
     "return \"neutral\"  # not enough movement",
-    "getattr(fusion, 'reversal_posterior', 0.0)",
-    "getattr(fusion, 'continuation_posterior', 0.0)",
-    "getattr(fusion, 'breakout_posterior', 0.0)",
+    "getattr(fusion, 'reversal_posterior', 0.0)",  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from call_engine.py
+    "getattr(fusion, 'continuation_posterior', 0.0)",  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from call_engine.py
+    "getattr(fusion, 'breakout_posterior', 0.0)",  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from call_engine.py
     'inp.net_delta or 0.0',
-    "getattr(fusion, 'model_agreement', 0.5)",
+    "getattr(fusion, 'model_agreement', 0.5)",  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from call_engine.py
 )
 
 _DEFERRED_11_9B_PATTERNS: tuple[str, ...] = ()
@@ -49,8 +49,9 @@ def test_readiness_canonical_fields_nontradable_withholds_direction_and_prob():
         provenance="fusion_unavailable",
     )
     direction, dom_p = _readiness_canonical_fields(cf)
-    assert direction == "flat"
-    assert dom_p == 0.0
+    # RC-REHAB-1 CAPS review: withheld is (None, None), not a fabricated ("flat", 0.0) read.
+    assert direction is None
+    assert dom_p is None
 
 
 def test_readiness_canonical_fields_tradable_passes_through():

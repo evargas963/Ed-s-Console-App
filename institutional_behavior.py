@@ -143,7 +143,7 @@ def compute_liquidity_behavior_row(
         "gamma_regime_hint": gam_hint,
         "imbalance_proxy": round(imb, 4),
         "body_ratio": round(br, 4) if body_ratio is not None else None,
-        "range_pct_of_spot": round(range_pct * 100.0, 5) if range_pct is not None else None,
+        "range_pct_of_spot": round(range_pct * 100.0, 5) if range_pct is not None else None,  # caps-ok: scanner false positive: else branch is None (absence preserved)
         "volume_activity": round(vol_n, 4),
         "candle_vs_atr": vol_ctx,
     }

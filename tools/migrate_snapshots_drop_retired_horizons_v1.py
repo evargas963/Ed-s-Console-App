@@ -311,7 +311,10 @@ def _snapshot_row_count(conn: sqlite3.Connection) -> int:
 
 def _integrity_check(conn: sqlite3.Connection) -> str:
     row = conn.execute("PRAGMA integrity_check").fetchone()
-    return str(row[0] if row else "")
+    if row is None:
+        # SQLite always returns >=1 row; report the anomaly instead of an empty verdict string.
+        return "integrity_check returned no row"
+    return str(row[0])
 
 
 def _ensure_ed_schema_flags(conn: sqlite3.Connection) -> None:
@@ -331,7 +334,7 @@ def _flag_value(conn: sqlite3.Connection) -> str | None:
         "SELECT flag_value FROM ed_schema_flags WHERE flag_key = ?",
         (FLAG_KEY,),
     ).fetchone()
-    return str(row[0]) if row is not None else None
+    return str(row[0]) if row is not None else None  # caps-ok: scanner false positive: the else-branch is None (flag row absent -> None; callers record flag_state.present_* as `is not None`); the regex matched the index literal in row[0]
 
 
 def _set_flag(conn: sqlite3.Connection, flag_key: str) -> None:
@@ -349,9 +352,9 @@ def _column_dict(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "name": str(row["name"]),
         "type": str(row["type"] or "TEXT"),
-        "notnull": int(row["notnull"] or 0),
+        "notnull": int(row["notnull"]),  # PRAGMA table_info notnull is always 0/1
         "dflt_value": row["dflt_value"],
-        "pk": int(row["pk"] or 0),
+        "pk": int(row["pk"]),  # PRAGMA table_info pk is always an int (0 = not PK)
     }
 
 
@@ -361,11 +364,11 @@ def _quote_ident(name: str) -> str:
 
 def _column_definition(col: dict[str, Any]) -> str:
     name = str(col["name"])
-    if name == "snapshot_id" and int(col["pk"] or 0) == 1:
+    if name == "snapshot_id" and col["pk"] == 1:
         return "snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT"
     ctype = str(col["type"] or "TEXT").strip() or "TEXT"
     parts = [_quote_ident(name), ctype]
-    if int(col["notnull"] or 0):
+    if col["notnull"]:  # _column_dict already int()-normalized PRAGMA notnull
         parts.append("NOT NULL")
     default = col["dflt_value"]
     if default is not None:
@@ -417,7 +420,7 @@ def _fail(
 ) -> dict[str, Any]:
     audit["success"] = False
     audit["status"] = status
-    audit.setdefault("errors", []).append(message)
+    audit.setdefault("errors", []).append(message)  # caps-ok: list accumulator: appends this failure message to the audit error list, creating the list on first error
     if audit_path is not None:
         _finalize_audit(audit, audit_path)
     return audit

@@ -12,7 +12,7 @@ def fusion_is_authoritative(fusion: Any) -> bool:
     """True when fusion exists and reports ``available=True`` (setup-family posterior ran)."""
     if fusion is None:
         return False
-    return bool(getattr(fusion, "available", False))
+    return bool(getattr(fusion, "available", False))  # caps-ok: fail-closed authority predicate; fusion is authoritative only when it explicitly reports available=True, a missing attr is not authoritative
 
 
 def fusion_direction_is_authorized(fusion: Any) -> bool:

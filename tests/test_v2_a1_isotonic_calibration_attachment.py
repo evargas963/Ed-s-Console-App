@@ -162,38 +162,58 @@ def test_attachment_does_not_mutate_artifact_or_raw_probability_inputs(monkeypat
 
 
 def test_server_imports_isotonic_attachment_helper():
-    source = _server_source()
-
-    assert (
-        "from v2_decision.a1_isotonic_calibration_attachment "
-        "import attach_a1_isotonic_calibration_to_ms_dict"
-    ) in source
+    # RC-REHAB-1 (thirty-fifth/-seventh slices): both call sites moved with the v2 build
+    # (server_state_decision.py) and the publish (server_state_publish.py).
+    for mod in ("server_state_decision.py", "server_state_publish.py"):
+        source = Path(mod).read_text(encoding="utf-8")
+        assert (
+            "from v2_decision.a1_isotonic_calibration_attachment "
+            "import attach_a1_isotonic_calibration_to_ms_dict"
+        ) in source
 
 
 def test_server_logging_path_invokes_isotonic_attachment_after_conformal():
-    source = _server_source()
-    window = source[source.index("_v2_logging_ms_dict = _ms_to_dict(ms)") : source.index("from calibration.v2_live_logging")]
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): the
+    original end-of-window marker ("from calibration.v2_live_logging") lived
+    inside _post_publish_persistence_tail, now promoted to a module-level
+    function defined BEFORE _fetch_state -- an unqualified source.index() for
+    it now finds an EARLIER position than the window's start, producing an
+    invalid (empty) slice. This phase itself (stamp/attach/build) was not
+    touched by that promotion; re-bounded using the identity-anchor banner
+    that still immediately follows it inside _fetch_state's own body."""
+    # RC-REHAB-1 (thirty-fifth slice): the v2 logging build is _v2_decision_for_state in
+    # server_state_decision.py; the window is that function's own source.
+    import inspect
 
-    conformal_idx = window.index("attach_a1_conformal_artifact_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)")
-    isotonic_idx = window.index("attach_a1_isotonic_calibration_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)")
-    build_idx = window.index("build_module_a_a1_decision(_v2_logging_ms_dict)")
+    import server_state_decision
+
+    assert "_v2_decision_for_state(" in _server_source()
+    window = inspect.getsource(server_state_decision._v2_decision_for_state)
+
+    conformal_idx = window.index("attach_a1_conformal_artifact_to_ms_dict(logging_ms_dict, ticker=ticker)")
+    isotonic_idx = window.index("attach_a1_isotonic_calibration_to_ms_dict(logging_ms_dict, ticker=ticker)")
+    build_idx = window.index("build_module_a_a1_decision(logging_ms_dict)")
 
     assert conformal_idx < isotonic_idx < build_idx
 
 
 def test_server_response_path_invokes_isotonic_attachment_after_conformal():
     source = _server_source()
-    build_anchor = 'ms_dict["v2_decision"] = _v2_decision_for_response or build_module_a_a1_decision(ms_dict)'
-    build_pos = source.index(build_anchor)
-    start = source.rindex("_attach_stack_runtime_and_governance(ms_dict, ticker=ticker)", 0, build_pos)
-    end = source.index("_lmp.merge_into_state", build_pos)
-    window = source[start:end]
+    # RC-REHAB-1 (thirty-seventh slice): finalize -> a1 attachments -> v2 decision -> live-plane
+    # merge run inside server_state_publish._finalize_and_publish_state, in that order.
+    import inspect
 
+    import server_state_publish as _pub
+
+    assert "_finalize_and_publish_state(" in source
+    window = inspect.getsource(_pub._finalize_and_publish_state)
+    build_anchor = 'ms_dict["v2_decision"] = v2_decision or build_module_a_a1_decision(ms_dict)'
+    assert "_srv._finalize_production_decision(ms_dict, decision_route)" in inspect.getsource(_pub._finalize_decision)
     conformal_idx = window.index("attach_a1_conformal_artifact_to_ms_dict(ms_dict, ticker=ticker)")
     isotonic_idx = window.index("attach_a1_isotonic_calibration_to_ms_dict(ms_dict, ticker=ticker)")
     build_idx = window.index(build_anchor)
-
-    assert conformal_idx < isotonic_idx < build_idx
+    merge_idx = window.index("_srv._lmp.merge_into_state(ms_dict, ticker)")
+    assert conformal_idx < isotonic_idx < build_idx < merge_idx
 
 
 def _server_source() -> str:

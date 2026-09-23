@@ -88,7 +88,7 @@ def test_one_faucet_is_structural_not_coincidental(monkeypatch):
     move together. If they were separate computations, one would ignore the patch."""
     data = _data()
     real = ofe._book_side_depth_total
-    monkeypatch.setattr(ofe, "_book_side_depth_total", lambda lv, d: (real(lv, d) or 0) + 5)
+    monkeypatch.setattr(ofe, "_book_side_depth_total", lambda lv, d: (real(lv, d) or 0) + 5)  # caps-ok: test stub deliberately shifts the real depth total by +5 to force a disagreement; an empty side is the 0 depth the stub perturbs
     m = ofe.compute_book_microstructure(data, now_ts=1787233772.0)
     # published totals reflect the patched aggregator...
     assert m["depth"]["1"]["bid_total"] == 1000.0 + 5

@@ -188,11 +188,20 @@ def mhap_direction_map(mhap_rows: list[dict[str, Any]]) -> dict[str, str]:
     return out
 
 
-def fusion_direction_from_probs(up: Optional[float], down: Optional[float], flat: Optional[float]) -> str:
+def fusion_direction_from_probs(
+    up: Optional[float], down: Optional[float], flat: Optional[float]
+) -> Optional[str]:
+    """Argmax direction of a full probability triple; None when any leg is missing.
+
+    A missing leg is not a 0.0 probability: coercing it to 0 let a partial triple produce
+    a real-looking LONG/SHORT, and an absent triple read as WAIT (a genuine "no edge" call).
+    """
+    if up is None or down is None or flat is None:
+        return None
     triple = {
-        "LONG": float(up or 0.0),
-        "SHORT": float(down or 0.0),
-        "FLAT": float(flat or 0.0),
+        "LONG": float(up),
+        "SHORT": float(down),
+        "FLAT": float(flat),
     }
     best = max(triple, key=triple.get)
     if triple[best] <= 0:

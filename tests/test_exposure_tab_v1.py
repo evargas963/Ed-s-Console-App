@@ -56,7 +56,11 @@ def test_charm_is_payload_driven_never_vote_gated():
     assert "fields not served" in src, "no honest absence state for missing charm fields"
     assert "on vote" not in src and "operator vote" not in src.lower(), (
         "vote-gate language survives on the exposure surface (RC-199 revoked it)")
-    ssrc = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    # RC-REHAB-1 (Phase 3, sixteenth extraction slice): get_forces moved out of server.py
+    # into app/api/routes/market_data.py.
+    ssrc = (REPO / "app" / "api" / "routes" / "market_data.py").read_text(
+        encoding="utf-8", errors="replace"
+    )
     for key in ('"charm_below"', '"charm_above"', '"charm_book_scope"'):
         assert key in ssrc, f"/api/forces no longer serves {key}"
 
@@ -72,7 +76,11 @@ def test_charm_error_is_stated_on_the_charm_line():
     assert "charm failed:" in src, "a failed charm does not say so on the gates line"
     assert "fields not served" in src, (
         "the no-error absence state was lost — absence must stay distinct from failure")
-    ssrc = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    # RC-REHAB-1 (Phase 3, sixteenth extraction slice): get_forces moved out of server.py
+    # into app/api/routes/market_data.py.
+    ssrc = (REPO / "app" / "api" / "routes" / "market_data.py").read_text(
+        encoding="utf-8", errors="replace"
+    )
     assert '"charm_error"' in ssrc, "/api/forces no longer serves charm_error"
 
 
@@ -84,7 +92,10 @@ def test_theme_is_the_shared_cv2_system():
 
 
 def test_server_route_serves_the_page():
-    ssrc = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    """RC-REHAB-1 (Phase 3): this route moved from server.py to app/api/routes/pages.py
+    (second extraction slice, following desk.py's precedent) -- the source-text check moved
+    with it."""
+    ssrc = (REPO / "app" / "api" / "routes" / "pages.py").read_text(encoding="utf-8", errors="replace")
     assert '"/exposure"' in ssrc and "exposure.html" in ssrc, "no /exposure route"
 
 

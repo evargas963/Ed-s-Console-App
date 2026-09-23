@@ -26,7 +26,7 @@ def test_classifier_flags_schwab_primitive_default_risk():
             tags="DEFAULT_ZERO_OR",
             names="spot",
             candidate_schwab_fields="quotes.quote.lastPrice|quotes.quote.mark",
-            code='spot = row.get("spot") or 0.0',
+            code='spot = row.get("spot") or 0.0',  # caps-ok: scanner false positive: code-string fixture fed to the CSV crosswalk classifier
         )
     )
 
@@ -41,7 +41,7 @@ def test_classifier_excludes_tests_and_docs_from_runtime_residual():
             tags="DEFAULT_ZERO_OR",
             names="spot",
             candidate_schwab_fields="quotes.quote.lastPrice",
-            code='spot = row.get("spot") or 0.0',
+            code='spot = row.get("spot") or 0.0',  # caps-ok: scanner false positive: code-string fixture fed to the CSV crosswalk classifier
         )
     )
 
@@ -67,7 +67,7 @@ def test_classifier_marks_true_analytics_for_provenance_review():
             tags="DEFAULT_ZERO_OR",
             names="gamma",
             candidate_schwab_fields="chains.callExpDateMap.*.gamma",
-            code="b['net_gamma'] = b.get('call_gamma', 0.0) - b.get('put_gamma', 0.0)",
+            code="b['net_gamma'] = b.get('call_gamma', 0.0) - b.get('put_gamma', 0.0)",  # caps-ok: scanner false positive: code-string fixture fed to the CSV crosswalk classifier
         )
     )
 
@@ -79,7 +79,7 @@ def test_disposition_marks_primitive_risk_for_manual_review():
         tags="DEFAULT_ZERO_OR",
         names="spot",
         candidate_schwab_fields="quotes.quote.lastPrice",
-        code='spot = row.get("spot") or 0.0',
+        code='spot = row.get("spot") or 0.0',  # caps-ok: scanner false positive: code-string fixture fed to the CSV crosswalk classifier
     )
 
     classification, _reason = classify(row)
@@ -118,7 +118,7 @@ def test_debug_flow_snapshot_classifies_as_offline_echo():
             file="debug_flow_snapshot.py",
             tags="DEFAULT_ZERO_OR",
             names="totalVolume|volume",
-            code='''"totalVolume": ct.get("totalVolume") or 0''',
+            code='''"totalVolume": ct.get("totalVolume") or 0''',  # caps-ok: scanner false positive: code-string fixture fed to the CSV crosswalk classifier
         )
     )
     assert classification == "NOT_MARKET_DATA"
@@ -132,7 +132,7 @@ def test_monte_carlo_mc_feature_volatility_coercion_is_true_analytic():
             tags="DEFAULT_ZERO_OR",
             names="volatility",
             candidate_schwab_fields="chains.volatility",
-            code='"volatility": float(self.volatility or 0.0),',
+            code='"volatility": float(self.volatility or 0.0),',  # caps-ok: scanner false positive: code-string fixture fed to the CSV crosswalk classifier
         )
     )
     assert classification == "TRUE_ANALYTIC_REVIEW"
@@ -294,7 +294,7 @@ def test_mc_fusion_normalize_mc_volatility_is_true_analytic_not_schwab_primitive
             tags="DEFAULT_ZERO_OR",
             names="volatility",
             candidate_schwab_fields="chains.callExpDateMap.*.volatility",
-            code='vol = float(mc_output.get("volatility") or 0.0)',
+            code='vol = float(mc_output.get("volatility") or 0.0)',  # caps-ok: scanner false positive: code-string fixture fed to the CSV crosswalk classifier
         )
     )
     assert classification == "TRUE_ANALYTIC_REVIEW"

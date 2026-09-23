@@ -1,77 +1,20 @@
-"""S2A/S2B — Tier C /api/analytics/state card_freshness_v1 + operator mirror contract tests."""
+"""Tier C /api/analytics/state contract tests (S2A/S2B card_freshness_v1 + operator mirror
+tests removed 2026-09-21: confirmed dead -- CARD_TRUST_CONTRACT.md's resolveCardTrustGate,
+the sole intended consumer, does not exist anywhere in the rebuilt static/index.html or
+static/js/*.js, and neither do card_freshness_v1/operator_card_actionable/
+operator_card_trust_state/operator_stale_reason_codes/operator_actionability_reason have any
+other Python-side reader or database column. The remaining tests below cover unrelated Tier C
+behavior (bg recompute timing instrumentation, executor queue wait, etc.) that only
+incidentally stubbed the now-deleted _attach_card_freshness_v1_block as noise suppression."""
 
 from __future__ import annotations
 
 import json
 import time
-from copy import deepcopy
 
 import pytest
+import analytics_bg_recompute
 
-_CARD_FRESHNESS_V1_REQUIRED_KEYS = frozenset(
-    {
-        "card_trust_state",
-        "card_actionable",
-        "analytics_age_sec",
-        "quote_age_sec",
-        "bundle_age_sec",
-        "analytics_ttl_sec",
-        "quote_stale_sec",
-        "bundle_trust_sec",
-        "fallback_status",
-        "carry_forward_status",
-        "source_freshness",
-        "stale_reason_codes",
-        "quote_ts",
-        "bundle_ts",
-        "mhap_bundle_ts",
-        "tier_c_cache_revalidated",
-        "tier_c_cache_gate_ok",
-        "analytics_stale",
-        "analytics_generated_at",
-        "analytics_refresh_in_progress",
-        "quote_source_detail.carried_forward",
-        "quote_source_detail.schwab_auth_degraded",
-    }
-)
-
-_OPERATOR_MIRROR_KEYS = frozenset(
-    {
-        "operator_card_actionable",
-        "operator_card_trust_state",
-        "operator_stale_reason_codes",
-        "operator_actionability_reason",
-    }
-)
-
-_RAW_TRADE_FIELDS = (
-    "final_tradeable",
-    "call_signal",
-    "call_state",
-    "validation_passed",
-    "analytics_stale",
-)
-
-
-def _mhap_four() -> list[dict]:
-    return [{"horizon": h, "call": {"dir": "flat"}} for h in ("1c", "5c", "15c", "60c")]
-
-
-def _trusted_ms_dict(*, ticker: str = "ZZZ_CF1", bundle_ts: float | None = None) -> dict:
-    now = time.time()
-    ts = bundle_ts if bundle_ts is not None else now - 1.0
-    return {
-        "ticker": ticker,
-        "selected_exp": "2099-12-01",
-        "final_tradeable": True,
-        "call_signal": "wait",
-        "call_state": "WATCH",
-        "validation_passed": True,
-        "fusion_available": True,
-        "mhap_rows": _mhap_four(),
-        "_server_build_ts": ts,
-        "spot": 500.0,
-    }
 
 
 @pytest.fixture()
@@ -99,7 +42,7 @@ def _seed_cache(srv, ticker: str, expiry: str, ms_dict: dict, *, age_sec: float 
     gen = now - age_sec
     key = (ticker, expiry)
     ms = dict(ms_dict)
-    ms.setdefault("_server_build_ts", gen)
+    ms.setdefault("_server_build_ts", gen)  # caps-ok: fixture builder: a caller-supplied _server_build_ts wins, otherwise the seeded entry is stamped with the fixture's own generation time
     srv._state_cache[key] = {
         "ms_dict": ms,
         "ts": gen,
@@ -111,369 +54,6 @@ def _seed_cache(srv, ticker: str, expiry: str, ms_dict: dict, *, age_sec: float 
 
 def _response_body(resp) -> dict:
     return json.loads(resp.body)
-
-
-def _operator_mirrors(body: dict) -> dict:
-    return {k: body.get(k) for k in _OPERATOR_MIRROR_KEYS}
-
-
-def _assert_operator_mirrors_nested(body: dict) -> None:
-    block = body["card_freshness_v1"]
-    assert body["operator_card_actionable"] is block["card_actionable"]
-    assert body["operator_card_trust_state"] == block["card_trust_state"]
-    assert body["operator_stale_reason_codes"] == block["stale_reason_codes"]
-    if block["card_actionable"]:
-        assert body["operator_actionability_reason"] is None
-    else:
-        assert body["operator_actionability_reason"] is not None
-
-
-def test_operator_mirror_fields_present_on_analytics_state(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_PRESENT"
-    expiry = "2099-12-10"
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert _OPERATOR_MIRROR_KEYS <= set(body.keys())
-    _assert_operator_mirrors_nested(body)
-
-
-def test_operator_mirrors_equal_nested_card_freshness_v1(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_MIRROR"
-    expiry = "2099-12-11"
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    _assert_operator_mirrors_nested(body)
-
-
-def test_operator_card_actionable_true_on_trusted_payload(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_TRUE"
-    expiry = "2099-12-12"
-    now = time.time()
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0),
-        age_sec=1.0,
-    )
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 3.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is True
-    assert body["operator_actionability_reason"] is None
-    _assert_operator_mirrors_nested(body)
-
-
-def test_operator_card_actionable_false_on_analytics_stale(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_ASTALE"
-    expiry = "2099-12-13"
-    md = _trusted_ms_dict(ticker=ticker)
-    md["analytics_stale"] = True
-    # Step 2 honest staleness: analytics_stale is recomputed from age — seed past the
-    # missed-cycle grace window (TTL × ANALYTICS_STALE_GRACE_CYCLES), not one beat.
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        md,
-        age_sec=srv.CACHE_TTL * srv.ANALYTICS_STALE_GRACE_CYCLES + 2.0,
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is False
-    assert body["operator_actionability_reason"] is not None
-    assert "analytics_stale" in body["operator_stale_reason_codes"]
-    _assert_operator_mirrors_nested(body)
-
-
-def test_operator_card_actionable_false_on_revalidate_quarantine(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_RQ"
-    expiry = "2099-12-14"
-    now = time.time()
-    md = _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0)
-    _seed_cache(srv, ticker, expiry, md, age_sec=1.0)
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-
-    import trade_impacting_gate as tig
-
-    def _quarantine(ms_dict, *, route, stale):
-        out = dict(ms_dict)
-        out["tier_c_cache_gate_ok"] = False
-        return out
-
-    monkeypatch.setattr(tig, "revalidate_cached_decision", _quarantine)
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is False
-    assert "revalidate_quarantine" in body["operator_stale_reason_codes"]
-    _assert_operator_mirrors_nested(body)
-
-
-def test_operator_card_actionable_false_on_quote_newer_than_signal(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_QN"
-    expiry = "2099-12-15"
-    now = time.time()
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker, bundle_ts=now - 120.0),
-        age_sec=1.0,
-    )
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {"exchange_quote_ts": now - 5.0, "quote_source_detail": {"carried_forward": False}},
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is False
-    assert "quote_newer_than_signal" in body["operator_stale_reason_codes"]
-    _assert_operator_mirrors_nested(body)
-
-
-def test_operator_card_actionable_false_on_quote_carried_forward(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_CFW"
-    expiry = "2099-12-16"
-    now = time.time()
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0), age_sec=1.0)
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": True, "schwab_auth_degraded": False},
-        },
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is False
-    assert "quote_carried_forward" in body["operator_stale_reason_codes"]
-    _assert_operator_mirrors_nested(body)
-
-
-def test_regression_raw_trade_fields_unchanged_via_tier_c_response(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_RAW"
-    expiry = "2099-12-17"
-    now = time.time()
-    md = {
-        "ticker": ticker,
-        "final_tradeable": True,
-        "call_signal": "wait",
-        "call_state": "WATCH",
-        "validation_passed": True,
-        "analytics_stale": False,
-        "fusion_available": True,
-        "mhap_rows": _mhap_four(),
-        "_server_build_ts": now - 2.0,
-    }
-    expected_raw = {k: md[k] for k in _RAW_TRADE_FIELDS}
-    _seed_cache(srv, ticker, expiry, md, age_sec=1.0)
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    for key in _RAW_TRADE_FIELDS:
-        assert body[key] == expected_raw[key]
-    assert _OPERATOR_MIRROR_KEYS <= set(body.keys())
-
-
-def test_card_freshness_v1_block_present_on_analytics_state(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_PRESENT"
-    expiry = "2099-12-01"
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
-    resp = srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    body = _response_body(resp)
-    block = body.get("card_freshness_v1")
-    assert isinstance(block, dict)
-    assert _CARD_FRESHNESS_V1_REQUIRED_KEYS <= set(block.keys())
-
-
-def test_analytics_age_exceeded_reason_code(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_AGE"
-    expiry = "2099-12-02"
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker),
-        age_sec=srv.CACHE_TTL + 10.0,
-    )
-    resp = srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    codes = _response_body(resp)["card_freshness_v1"]["stale_reason_codes"]
-    assert "analytics_age_exceeded" in codes
-    assert "analytics_stale" in codes
-
-
-def test_tier_c_stale_cache_serve_reason_codes(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_STALE"
-    expiry = "2099-12-03"
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker),
-        age_sec=srv.CACHE_TTL + 5.0,
-    )
-    resp = srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    block = _response_body(resp)["card_freshness_v1"]
-    assert "tier_c_cache_stale_serve" in block["stale_reason_codes"]
-    assert block["card_trust_state"] in ("STALE", "DEGRADED", "UNAVAILABLE")
-
-
-def test_quote_carried_forward_reason_code(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_CFW"
-    expiry = "2099-12-04"
-    now = time.time()
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0), age_sec=1.0)
-
-    def _carried_quote(t):
-        return {
-            "ticker": t,
-            "spot": 501.0,
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {
-                "carried_forward": True,
-                "schwab_auth_degraded": True,
-            },
-        }
-
-    monkeypatch.setattr(srv._lmp, "get_quote", _carried_quote)
-    resp = srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    block = _response_body(resp)["card_freshness_v1"]
-    assert block["quote_source_detail.carried_forward"] is True
-    assert "quote_carried_forward" in block["stale_reason_codes"]
-    assert "auth_fallback" in block["stale_reason_codes"]
-    assert block["card_actionable"] is False
-
-
-def test_auth_degraded_reason_code(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_AUTH"
-    expiry = "2099-12-05"
-    now = time.time()
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
-
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {
-                "carried_forward": False,
-                "schwab_auth_degraded": True,
-            },
-        },
-    )
-    block = _response_body(
-        srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    )["card_freshness_v1"]
-    assert block["quote_source_detail.schwab_auth_degraded"] is True
-    assert "auth_degraded" in block["stale_reason_codes"]
-
-
-def test_quote_newer_than_signal_simulated(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_QN"
-    expiry = "2099-12-06"
-    now = time.time()
-    bundle_ts = now - 120.0
-    quote_ts = now - 5.0
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker, bundle_ts=bundle_ts),
-        age_sec=1.0,
-    )
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {"exchange_quote_ts": quote_ts, "quote_source_detail": {"carried_forward": False}},
-    )
-    codes = _response_body(
-        srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    )["card_freshness_v1"]["stale_reason_codes"]
-    assert "quote_newer_than_signal" in codes
-    assert "mhap_older_than_quote" in codes
-
-
-def test_card_actionable_false_when_trust_withheld(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_NA"
-    expiry = "2099-12-07"
-    md = _trusted_ms_dict(ticker=ticker)
-    md["analytics_stale"] = True
-    _seed_cache(srv, ticker, expiry, md, age_sec=srv.CACHE_TTL + 2.0)
-    block = _response_body(
-        srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    )["card_freshness_v1"]
-    assert block["card_actionable"] is False
-    assert block["card_trust_state"] == "STALE"
-
-
-def test_regression_existing_trade_fields_unchanged(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    now = time.time()
-    md = {
-        "ticker": "SPY",
-        "final_tradeable": True,
-        "call_signal": "wait",
-        "call_state": "WATCH",
-        "validation_passed": True,
-        "analytics_stale": False,
-        "analytics_age_sec": 1.0,
-        "analytics_generated_at": "2026-01-01T00:00:00+00:00",
-        "analytics_refresh_in_progress": False,
-        "mhap_rows": _mhap_four(),
-        "fusion_available": True,
-        "_server_build_ts": now - 2.0,
-        "exchange_quote_ts": now - 1.0,
-    }
-    before = deepcopy(md)
-    srv._attach_card_freshness_v1_block(
-        md,
-        ticker="SPY",
-        now=now,
-        analytics_ttl_sec=5.0,
-        tier_c_cache_stale_serve=False,
-        plane_quote={
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-    for key, value in before.items():
-        assert md[key] == value
-    assert isinstance(md.get("card_freshness_v1"), dict)
-
-
-# ── SESSION_OPEN_ANCHOR_WARM_SLICE_V1 — RTH-open anchor warm locks ───────────
 
 
 def test_session_open_anchor_warm_schedules_all_base_anchors(monkeypatch):
@@ -581,6 +161,13 @@ def test_freshness_constants_unchanged_by_warm_slice():
 def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
     """Completed recompute records additive duration (module dict + payload field) pre-stamp."""
     import server as srv
+    # RC-REHAB-1 (2026-09-23, module extraction, thirtieth slice):
+    # _schedule_analytics_recompute moved out of server.py, into
+    # analytics_bg_recompute.py; its own _work() closure calls
+    # _stamp_analytics_freshness_on_completed_fetch as a bare name, resolved
+    # against that module's own globals -- a mock must patch it there, not on
+    # server's re-export, to be picked up.
+    import analytics_bg_recompute as abr
 
     ticker = "ZZZ_WARMDUR"
     stamped: dict = {}
@@ -592,11 +179,10 @@ def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
         lambda t, e, update_source=None: {"ticker": t, "selected_exp": None},
     )
     monkeypatch.setattr(
-        srv,
+        abr,
         "_stamp_analytics_freshness_on_completed_fetch",
         lambda md, t, k: stamped.update(md),
     )
-    monkeypatch.setattr(srv, "_attach_card_freshness_v1_block", lambda *a, **k: None)
     srv._analytics_recompute_last_duration_sec.pop(ticker, None)
     key = srv._tier_c_inflight_key(ticker, None)
     srv._schedule_analytics_recompute(key, ticker, None, "session_open_anchor_warm")
@@ -613,6 +199,9 @@ def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
 def test_executor_queue_wait_recorded_on_completed_recompute(monkeypatch):
     """Completed recompute carries analytics_executor_queue_wait_sec (>= 0, additive)."""
     import server as srv
+    # RC-REHAB-1 (2026-09-23, thirtieth slice): see the identical comment in
+    # test_analytics_recompute_duration_instrumentation_recorded above.
+    import analytics_bg_recompute as abr
 
     ticker = "ZZZ_QWAIT"
     stamped: dict = {}
@@ -624,11 +213,10 @@ def test_executor_queue_wait_recorded_on_completed_recompute(monkeypatch):
         lambda t, e, update_source=None: {"ticker": t, "selected_exp": None},
     )
     monkeypatch.setattr(
-        srv,
+        abr,
         "_stamp_analytics_freshness_on_completed_fetch",
         lambda md, t, k: stamped.update(md),
     )
-    monkeypatch.setattr(srv, "_attach_card_freshness_v1_block", lambda *a, **k: None)
     key = srv._tier_c_inflight_key(ticker, None)
     srv._schedule_analytics_recompute(key, ticker, None, "sse_loop_test")
     assert "analytics_executor_queue_wait_sec" in stamped
@@ -662,7 +250,7 @@ def test_cache_observability_counters_are_passive_observation_only():
             == before["expiry_evictions"] + 1
         )
 
-        srv._invalidate_analytics_cache_after_bg_failures(
+        analytics_bg_recompute._invalidate_analytics_cache_after_bg_failures(
             ("ZZZ_OBS2", "2099-01-01"), "ZZZ_OBS2", reason="test_reason"
         )
         marked = srv._state_cache[("ZZZ_OBS2", "2099-01-01")]["ms_dict"]
@@ -683,50 +271,23 @@ def test_executor_sizing_unchanged_by_stage_timer_slice():
     assert srv._get_analytics_executor()._max_workers == 4
 
 
-def test_timing_fields_do_not_affect_trust_or_actionability(tier_c_cache_spy, monkeypatch):
-    """Identical payloads with/without timing fields produce identical operator actionability."""
-    srv = tier_c_cache_spy
-    now = time.time()
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-    plain = _trusted_ms_dict(ticker="ZZZ_TIM1", bundle_ts=now - 2.0)
-    timed = _trusted_ms_dict(ticker="ZZZ_TIM2", bundle_ts=now - 2.0)
-    timed.update(
-        {
-            "analytics_recompute_duration_sec": 42.0,
-            "analytics_executor_queue_wait_sec": 9.5,
-            "_finalize_tail_ms": 1234,
-            "_compute_breakdown": {"schwab_chain_ms": 9000.0, "chain_gate_wait_ms": 3200.0},
-            "chain_gate_wait_sec": 3.2,
-            "analytics_cache_observability_v1": {"pending_shell_builds": 99},
-        }
-    )
-    _seed_cache(srv, "ZZZ_TIM1", "2099-12-20", plain, age_sec=1.0)
-    _seed_cache(srv, "ZZZ_TIM2", "2099-12-21", timed, age_sec=1.0)
-    body_plain = _response_body(
-        srv._tier_c_analytics_json_response("ZZZ_TIM1", "2099-12-20", False, "test_timing")
-    )
-    body_timed = _response_body(
-        srv._tier_c_analytics_json_response("ZZZ_TIM2", "2099-12-21", False, "test_timing")
-    )
-    assert body_plain["operator_card_actionable"] == body_timed["operator_card_actionable"]
-    assert body_plain["operator_card_trust_state"] == body_timed["operator_card_trust_state"]
-    assert body_plain["analytics_stale"] == body_timed["analytics_stale"]
-
-
 def test_stage_timer_surfaces_present_in_fetch_state_source():
-    """Source lock: stage marks + additive timing fields exist in the Tier C recompute path."""
+    """Source lock: stage marks + additive timing fields exist in the Tier C recompute path.
+
+    RC-REHAB-1 (2026-09-23): _post_publish_persistence_tail (one of these stage marks'
+    home, `db_snapshot_write_accuracy`) moved to server_state_persistence_tail.py.
+    RC-REHAB-1 (2026-09-23, thirtieth slice): _schedule_analytics_recompute (the
+    other stage marks' home, and the queue-wait field's own stamp site) moved to
+    analytics_bg_recompute.py. Check all three files' source, not just server.py's."""
     from pathlib import Path
 
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    src = (root / "server.py").read_text(encoding="utf-8")
+    src += (root / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    src += (root / "analytics_bg_recompute.py").read_text(encoding="utf-8")
+    src += (root / "server_state_publish.py").read_text(encoding="utf-8")  # thirty-seventh slice
     for needle in (
-        '_stage_marks.append(("stack_runtime_governance_attach"',
+        'stage_marks.append(("stack_runtime_governance_attach"',
         '_stage_marks.append(("db_snapshot_write_accuracy"',
         '_stage_marks.append(("signals_engine_build_market_state"',
         'ms_dict["_compute_breakdown"]',
@@ -858,16 +419,20 @@ def test_chain_fetch_call_shape_and_gated_site_source_lock():
     # width, and every kwarg named — rather than a frozen literal that goes stale the moment a
     # legitimate argument is added.
     assert "resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,\n                              to_date=to_date, from_date=from_date)" in src
-    assert "_gated_safe_get_chain, client, ticker," in src
+    intake = _intake_source()
+    assert "pool.submit(_srv._gated_safe_get_chain, client, ticker, **chain_kwargs)" in intake
+    assert "_srv._gated_safe_get_chain(\n                client, ticker, **chain_kwargs)" in intake
     # Width comes from the faucet, never a bare constant (enforced repo-wide by
     # tools/check_institutional_correctness.py::check_chain_width_single_faucet).
-    assert "strike_count=resolve_chain_strike_count(ticker)" in src
-    assert "CHAIN_STRIKE_COUNT, priority=_chain_priority" not in src, (
+    assert "strike_count=_srv.resolve_chain_strike_count(ticker)" in intake
+    assert "CHAIN_STRIKE_COUNT" not in intake, (
         "the console chain fetch regressed to the hardcoded 20-strike width (RC-59)"
     )
-    assert "priority=_chain_priority," in src
-    assert 'ms_dict["chain_gate_wait_sec"]' in src
-    assert '_stage_ms["chain_gate_wait_ms"]' in src
+    assert "priority=chain_priority," in intake
+    assert "_fetch_chain_and_quote_for_state(" in src
+    pub = (Path(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
+    assert 'ms_dict["chain_gate_wait_sec"]' in pub  # thirty-seventh slice: timing lives in the publish phase
+    assert 'stage_ms["chain_gate_wait_ms"]' in pub
 
 
 # ── ANCHOR_QUOTE_LANE_REFRESHER_V1 ────────────────────────────────────────────
@@ -1010,13 +575,18 @@ def test_anchor_lane_refresh_lifespan_wiring_source_lock():
     assert src.count("_anchor_quote_lane_refresh_stop.clear()") == 1
 
 
-def test_anchor_lane_refresh_constants_inside_trust_threshold():
-    """Lane max-age + poll stay under the 30s quote-trust threshold; TTL/grace untouched."""
+def test_anchor_lane_refresh_constants_stay_pinned():
+    """Lane max-age/poll + TTL/grace stay pinned to their measured values.
+
+    2026-09-21: dropped the comparison against _CARD_FRESHNESS_V1_QUOTE_STALE_SEC (the
+    card_freshness_v1 system's own 30s threshold) -- that system was removed as confirmed
+    dead (no frontend, no other Python reader, no database column anywhere), so "stays under
+    its threshold" is no longer a real invariant to protect. The remaining constants are
+    still real and still worth pinning."""
     import server as srv
 
     assert srv.ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC == 20.0
     assert srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC == 20.0
-    assert srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC < srv._CARD_FRESHNESS_V1_QUOTE_STALE_SEC == 30.0
     assert srv.CACHE_TTL == 5
     assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
 
@@ -1094,7 +664,7 @@ def test_log_only_touch_version_monotonic_across_logger_interleave():
         srv._log_only_cache_touch(key, tkr, "2026-07-07", 1.0, 100.0, 15.0)
         prev_ent = srv._state_cache.get(key) or {}
         # Same expression as the full-publish site (_next_ver).
-        assert int(prev_ent.get("analytics_version", 0)) + 1 == 8
+        assert int(prev_ent.get("analytics_version", 0)) + 1 == 8  # caps-ok: deliberately the same expression as server's full-publish _next_ver site; a lost version reads 0 and 0+1 != 8 fails the assertion
         assert srv._analytics_cache_entry_is_full_bundle(prev_ent) is True
     finally:
         _clear_fixture_cache_keys(srv, tkr)
@@ -1186,7 +756,7 @@ def test_log_only_branch_routes_through_guard_source_lock():
     # The old inline clobber wrote ms_dict {} directly at the log_only branch;
     # the only remaining empty-ms_dict cache write lives inside the guarded helper.
     tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")  # caps-ok: scanner false positive: next() here has NO default argument; a missing match raises StopIteration and fails the test
     for sub in ast.walk(fn):
         if isinstance(sub, ast.Assign):
             for tgt in sub.targets:
@@ -1228,6 +798,25 @@ def _fetch_state_source() -> str:
     return (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
 
 
+def _intake_source() -> str:
+    """RC-REHAB-1 (thirty-fourth slice): the chain/quote pool selection, chain gate call and
+    inline-vs-pooled arms moved from _fetch_state's body to server_state_intake.py."""
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parent.parent / "server_state_intake.py").read_text(encoding="utf-8")
+
+
+def _persistence_tail_source() -> str:
+    """RC-REHAB-1 (2026-09-23, module extraction, twentieth slice):
+    _post_publish_persistence_tail moved out of server.py into its own file. Tests that
+    check the tail's OWN internal structure read this instead of _fetch_state_source();
+    tests that check _fetch_state's two CALL sites still read _fetch_state_source(),
+    since those call sites remain in server.py."""
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parent.parent / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+
+
 def _fetch_state_ast():
     import ast
 
@@ -1236,8 +825,14 @@ def _fetch_state_ast():
         n for n in ast.walk(tree)
         if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state"
     )
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice):
+    # _post_publish_persistence_tail moved out of server.py entirely, into
+    # server_state_persistence_tail.py -- no longer any FunctionDef node in server.py's
+    # own tree at all (not even at module scope, as the nineteenth slice above found it).
+    # Parsed from the new module's own source instead.
+    tail_tree = ast.parse(_persistence_tail_source())
     tail = next(
-        n for n in ast.walk(fetch)
+        n for n in tail_tree.body
         if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
     )
     return fetch, tail
@@ -1246,40 +841,73 @@ def _fetch_state_ast():
 def test_fix_b_publish_precedes_persistence_tail_source_lock():
     """Stage-order lock: the generated_at-stamping publish precedes the full-path
     tail call; the persistence stage marks live inside the tail def, which is
-    defined before but executed after the publish."""
+    defined before but executed after the publish.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail def moved to
+    server_state_persistence_tail.py -- "defined before executed" is now enforced by
+    Python's own import semantics (the module-level `from server_state_persistence_tail
+    import _post_publish_persistence_tail` must run, and therefore the def must exist,
+    before any call in server.py's own body can execute), checked here by asserting the
+    import exists; the stage marks' internal ordering is checked within the tail's own
+    file, not server.py's."""
     src = _fetch_state_source()
-    i_pub = src.index('"generated_at": _gen_ts')
-    i_full_call = src.index("_post_publish_persistence_tail(_next_ver")
-    i_tail_def = src.index("def _post_publish_persistence_tail(")
-    i_snap_mark = src.index('_stage_marks.append(("db_snapshot_write_accuracy"')
-    i_cal_mark = src.index('_stage_marks.append(("v2_calibration_logging"')
+    assert "from server_state_persistence_tail import _post_publish_persistence_tail" in src
+    # RC-REHAB-1 (thirty-seventh slice): the generated_at-stamping publish is
+    # _finalize_and_publish_state; its CALL must precede the full-path tail call.
+    from pathlib import Path as _P
+
+    assert '"generated_at": gen_ts' in (_P(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
+    i_pub = src.index("_next_ver = _finalize_and_publish_state(")
+    # RC-REHAB-1 (nineteenth slice): the full-path call is now multi-line
+    # (`_post_publish_persistence_tail(\n        _next_ver, ...`) since it passes 61
+    # keyword-only arguments -- the exact old single-line substring no longer exists.
+    i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
     assert i_pub < i_full_call, "full-path tail call must come AFTER the publish"
-    assert i_tail_def < i_snap_mark < i_cal_mark < i_pub, (
-        "persistence stage marks must live inside the tail def, "
-        "which is defined before (but executed after) the publish"
-    )
+
+    tail_src = _persistence_tail_source()
+    i_snap_mark = tail_src.index('_stage_marks.append(("db_snapshot_write_accuracy"')
+    i_cal_mark = tail_src.index('_stage_marks.append(("v2_calibration_logging"')
+    assert i_snap_mark < i_cal_mark, "persistence stage marks must be ordered snapshot then calibration"
 
 
 def test_fix_b_payload_shape_keys_still_served():
     """Payload-shape regression: counters/accuracy keys still assembled pre-publish
-    (documented one-cycle lag; values come from the pre-read count + module cache)."""
-    src = _fetch_state_source()
-    assert 'ms_dict["total_snapshots"]  = db_counts.get("total", 0)' in src
-    assert 'ms_dict["filled_snapshots"] = db_counts.get("filled", 0)' in src
-    assert 'ms_dict["accuracy_scope"] = "rth_0930_1600_et"' in src
+    (documented one-cycle lag; values come from the pre-read count + module cache).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the pre-read count
+    SELECT lives in the tail's own file now (server_state_persistence_tail.py); the
+    ms_dict keys it feeds are still assembled in server.py's own body."""
+    # RC-REHAB-1 (thirty-third slice): the payload projection moved to server_state_payload.py.
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server_state_payload.py").read_text(encoding="utf-8")
+    # CAPS RC-REHAB-1: the counts are read from the always-keyed db_counts dict (None =
+    # unknown when no DB / failed query) instead of a `.get(..., 0)` served-zero default.
+    assert 'ms_dict["total_snapshots"] = db_counts["total"]' in src
+    assert 'ms_dict["filled_snapshots"] = db_counts["filled"]' in src
+    assert '"rth_0930_1600_et" if ms_dict["accuracy"] is not None else None' in src
     # The pre-read count SELECT (read-only) still precedes the block.
-    assert "db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)" in src
+    assert "db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)" in _persistence_tail_source()
 
 
 def test_fix_b_once_per_cycle_call_sites():
     """Once-per-cycle: exactly one tail def; exactly two mutually-exclusive call
     sites (log_only pre-return, full-path post-publish); exactly one calibration
-    append inside the tail."""
+    append inside the tail.
+
+    RC-REHAB-1 (nineteenth slice): the tail def is module-level, so its own single
+    definition is checked directly against the module tree (not ast.walk(fetch));
+    the two CALL SITES are still inside _fetch_state's own body, checked there.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the def moved out of
+    server.py entirely -- its single-definition check now runs against
+    server_state_persistence_tail.py's own tree instead."""
     import ast
 
     fetch, tail = _fetch_state_ast()
+    tail_tree = ast.parse(_persistence_tail_source())
     defs = [
-        n for n in ast.walk(fetch)
+        n for n in tail_tree.body
         if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
     ]
     assert len(defs) == 1
@@ -1296,22 +924,30 @@ def test_fix_b_once_per_cycle_call_sites():
     ]
     assert len(appends) == 1
     # The log_only branch returns before the full path can reach the second call.
+    # RC-REHAB-1 (nineteenth slice): both call sites are now multi-line (61 keyword
+    # args each) -- matched on their unique opening substring, not the full old
+    # single-line call.
     src = _fetch_state_source()
-    i_log_only_call = src.index("_post_publish_persistence_tail(None, _v2_decision_for_response)")
+    i_log_only_call = src.index('_post_publish_persistence_tail(\n        None, _v2_decision_for_response')
     i_log_only_return = src.index("return {}", i_log_only_call)
-    i_full_call = src.index("_post_publish_persistence_tail(_next_ver")
+    i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
     assert i_log_only_call < i_log_only_return < i_full_call
 
 
 def test_fix_b_failure_visibility_counters_wired():
     """Failure-visibility: both post_publish_* counters exist in the observability
     dict and each tail except-handler increments its counter and warns with the
-    published version."""
+    published version.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail's own
+    except-handlers (counter increments, warnings, published_version threading) moved
+    to server_state_persistence_tail.py; _analytics_cache_observability itself is
+    unchanged (still a server.py module-global with other callers, reached lazily)."""
     import server as srv
 
     assert "post_publish_snapshot_failures" in srv._analytics_cache_observability
     assert "post_publish_calibration_failures" in srv._analytics_cache_observability
-    src = _fetch_state_source()
+    src = _persistence_tail_source()
     assert '_analytics_cache_observability["post_publish_snapshot_failures"] += 1' in src
     assert '_analytics_cache_observability["post_publish_calibration_failures"] += 1' in src
     assert "post-publish snapshot persistence failed ticker=" in src
@@ -1321,33 +957,64 @@ def test_fix_b_failure_visibility_counters_wired():
 
 def test_fix_b_v2_decision_parity_served_equals_logged():
     """v2_decision parity: the full-path tail call passes the SERVED object
-    (ms_dict['v2_decision']); the log_only path passes the built decision."""
+    (ms_dict['v2_decision']); the log_only path passes the built decision.
+
+    RC-REHAB-1 (nineteenth slice): both call sites are now multi-line (61 keyword
+    args each) -- matched on the still-exact positional-argument substring.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail's own read of
+    v2_decision_for_log moved to server_state_persistence_tail.py with it; the two call
+    sites remain in server.py."""
     src = _fetch_state_source()
-    assert '_post_publish_persistence_tail(_next_ver, ms_dict["v2_decision"])' in src
-    assert "_post_publish_persistence_tail(None, _v2_decision_for_response)" in src
-    assert "v2_decision=v2_decision_for_log," in src
+    assert '_post_publish_persistence_tail(\n        _next_ver, ms_dict["v2_decision"],' in src
+    assert '_post_publish_persistence_tail(\n        None, _v2_decision_for_response,' in src
+    assert "v2_decision=v2_decision_for_log," in _persistence_tail_source()
 
 
 def test_fix_b_tail_never_touches_state_cache():
     """Isolation lock: the tail never references _state_cache, and the prev-vix
     capture holds structurally (VOL_INPUT_CONTRACT 1.0.0 renamed it to
     _vol_prev_published_vix; the old exact-string anchor was brittle):
-    (a) exactly one capture binding exists in _fetch_state;
-    (b) it reads _state_cache.get(_cache_key, ...).get("vix") — the prior
+    (a) exactly one capture binding exists;
+    (b) it reads _state_cache.get(cache_key, ...).get("vix") — the prior
         published cache entry under the exact cycle key, no other source;
     (c) it precedes every dict-literal _state_cache[_cache_key] publish that
         carries a "vix" key, so this cycle's publish can never contaminate
-        the previous-value calculation."""
-    import ast
+        the previous-value calculation.
 
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): the prev-vix
+    capture moved from _fetch_state's own body into _vol_envelope_and_sector_for_state
+    (a module-level function, like the persistence tail below), and its scratch-var
+    name dropped its underscore prefix (_vol_prev_published_vix -> vol_prev_published_vix,
+    _cache_key -> cache_key, the function's own parameter).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function
+    itself moved out of server.py entirely, into server_state_vol_envelope_sector.py,
+    and the capture's _state_cache read became a `_srv._state_cache` attribute access
+    (the established lazy `import server as _srv` pattern for server.py-local state
+    with other callers) rather than a bare name. Since the capture now lives in a
+    different file than the publish sites it must precede, the line-number ordering
+    check below compares the CALL SITE of _vol_envelope_and_sector_for_state (which
+    is what actually runs the capture) against the publish sites' line numbers within
+    _fetch_state's own body, instead of comparing the capture's own (now foreign,
+    incomparable) line number directly."""
+    import ast
+    from pathlib import Path
+
+    ves_src = (Path(__file__).resolve().parent.parent / "server_state_vol_envelope_sector.py").read_text(encoding="utf-8")
+    ves_tree = ast.parse(ves_src)
     fetch, tail = _fetch_state_ast()
+    vol_fn = next(
+        n for n in ves_tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == "_vol_envelope_and_sector_for_state"
+    )
     names = {s.id for s in ast.walk(tail) if isinstance(s, ast.Name)}
     assert "_state_cache" not in names
 
     captures = [
-        node for node in ast.walk(fetch)
+        node for node in ast.walk(vol_fn)
         if isinstance(node, ast.Assign) and any(
-            isinstance(t, ast.Name) and t.id == "_vol_prev_published_vix"
+            isinstance(t, ast.Name) and t.id == "vol_prev_published_vix"
             for t in node.targets
         )
     ]
@@ -1360,28 +1027,51 @@ def test_fix_b_tail_never_touches_state_cache():
     inner = outer.func.value
     assert isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
     assert inner.func.attr == "get"
-    assert isinstance(inner.func.value, ast.Name)
-    assert inner.func.value.id == "_state_cache", "prev vix must come from the state cache"
+    assert isinstance(inner.func.value, ast.Attribute), (
+        "prev vix must come from the lazily-imported _srv._state_cache attribute access"
+    )
+    assert inner.func.value.attr == "_state_cache", "prev vix must come from the state cache"
+    assert isinstance(inner.func.value.value, ast.Name) and inner.func.value.value.id == "_srv"
     assert any(
-        isinstance(a, ast.Name) and a.id == "_cache_key" for a in inner.args
+        isinstance(a, ast.Name) and a.id == "cache_key" for a in inner.args
     ), "prev vix must read the exact per-cycle cache key"
 
-    publishes = [
+    call_sites = [
         node for node in ast.walk(fetch)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "_vol_envelope_and_sector_for_state"
+    ]
+    assert len(call_sites) == 1, "_fetch_state must call _vol_envelope_and_sector_for_state exactly once"
+    call_site = call_sites[0]
+
+    # RC-REHAB-1 (thirty-seventh slice): the vix-carrying publish moved into
+    # server_state_publish._finalize_and_publish_state (`_srv._state_cache[cache_key] = {...}`);
+    # ordering is the order of the two CALLS inside _fetch_state.
+    pub_tree = ast.parse((Path(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8"))
+    pub_fn = next(n for n in pub_tree.body if isinstance(n, ast.FunctionDef) and n.name == "_finalize_and_publish_state")  # caps-ok: scanner false positive: next() has NO default argument; a missing publish function raises StopIteration and fails the test
+    vix_publishes = [
+        node for node in ast.walk(pub_fn)
         if isinstance(node, ast.Assign)
         and isinstance(node.value, ast.Dict)
         and any(
-            isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
-            and t.value.id == "_state_cache"
+            isinstance(t, ast.Subscript) and isinstance(t.value, ast.Attribute)
+            and t.value.attr == "_state_cache"
             for t in node.targets
         )
         and "vix" in {
             k.value for k in node.value.keys if isinstance(k, ast.Constant)
         }
     ]
-    assert publishes, "expected a vix-carrying _state_cache publish in _fetch_state"
-    assert all(cap.lineno < p.lineno for p in publishes), (
-        "the prev-vix capture must precede every vix-carrying publish"
+    assert vix_publishes, "expected a vix-carrying _state_cache publish in the publish phase"
+    publishes = [
+        node for node in ast.walk(fetch)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "_finalize_and_publish_state"
+    ]
+    assert len(publishes) == 1, "_fetch_state must call the publish phase exactly once"
+    assert all(call_site.lineno < p.lineno for p in publishes), (
+        "the _vol_envelope_and_sector_for_state call (which runs the prev-vix capture) "
+        "must precede every vix-carrying publish"
     )
 
 
@@ -1390,18 +1080,26 @@ def test_fix_b_tail_never_touches_state_cache():
 
 def test_step1_log_only_inline_source_lock():
     """log_only joins the shutdown inline path for chain/quote and gets a
-    sequential inline arm for candle seeds; operator-facing submits remain."""
-    src = _fetch_state_source()
-    assert "if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):" in src
-    i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
+    sequential inline arm for candle seeds; operator-facing submits remain.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the candle-seed
+    arm (both its inline check and its pooled arm) moved with _exposures_for_state
+    into server_state_exposures.py; the chain/quote arm stays in _fetch_state's own
+    body, in server.py. Checked against each site's own file."""
+    src = _intake_source()
+    assert "if _srv._analytics_bg_shutdown or _srv._log_only_inline_leaf_fetches(log_only):" in src
+    from pathlib import Path
+
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    i_inline_seed = exp_src.index("if _srv._log_only_inline_leaf_fetches(log_only):", exp_src.index("def _seed_candles"))
     # Step 2 rebinds the pooled arm to the dedicated leaf pool; the Step 1
     # invariant (inline arm precedes the pooled arm) is pool-independent.
-    i_pool_seed = src.index("_seed_pool = (")
+    i_pool_seed = exp_src.index("_seed_pool = (")
     assert i_inline_seed < i_pool_seed, "inline seed arm must precede the pooled arm"
     # Operator-facing bounded parallelism intact (submits still present).
-    assert "_cq_pool.submit(" in src or "_chain_fut = _cq_pool.submit(" in src
-    assert "_f5 = _seed_pool.submit(_seed_candles, 5)" in src
-    assert "_f1 = _seed_pool.submit(_seed_candles, 1)" in src
+    assert "chain_fut = pool.submit(" in src
+    assert "_f5 = _seed_pool.submit(_seed_candles, 5)" in exp_src
+    assert "_f1 = _seed_pool.submit(_seed_candles, 1)" in exp_src
 
 
 def test_step1_discriminator_universal_by_signature():
@@ -1441,8 +1139,8 @@ def test_step1_ticker_matrix_invariance():
 
 def test_step1_shutdown_inline_branch_preserved():
     """Shutdown keeps its pre-existing inline behavior via the call-site or."""
-    src = _fetch_state_source()
-    assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
+    src = _intake_source()
+    assert "_srv._analytics_bg_shutdown or _srv._log_only_inline_leaf_fetches(log_only)" in src
 
 
 # ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 ───────────────────────────────
@@ -1450,8 +1148,24 @@ def test_step1_shutdown_inline_branch_preserved():
 
 def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
     """AST lock: _get_recompute_leaf_executor is called only inside _fetch_state
-    (the chain/quote and seed submit blocks) — never by handlers or other code."""
+    (the chain/quote submit block) or _exposures_for_state (the candle-seed submit
+    block, extracted from _fetch_state's own body) — never by handlers or other code.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): the candle-seed
+    leaf-pool selection moved out of _fetch_state's own body into
+    _exposures_for_state. This test's own literal expectation was never updated
+    when that slice landed (caught later, during the nineteenth slice's broader
+    verification sweep) -- the underlying invariant (leaf-executor calls stay
+    inside _fetch_state's own decomposition, never leak into route handlers or
+    unrelated code) still holds; only the accepted caller set needed widening.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): _exposures_for_state
+    itself moved out of server.py entirely, into server_state_exposures.py, where its
+    leaf-executor call is now `_srv._get_recompute_leaf_executor()` (the established
+    lazy `import server as _srv` pattern) rather than a bare name call -- checked
+    against that file's own tree instead of server.py's."""
     import ast
+    from pathlib import Path
 
     tree = ast.parse(_fetch_state_source())
     callers = []
@@ -1462,14 +1176,26 @@ def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
                         and sub.func.id == "_get_recompute_leaf_executor"
                         and node.name != "_get_recompute_leaf_executor"):
                     callers.append(node.name)
-    # Nested walk double-counts under enclosing defs; the set must be exactly
-    # _fetch_state (call sites live directly in its body, not in nested defs).
-    assert set(callers) == {"_fetch_state"}, f"unexpected callers: {sorted(set(callers))}"
-    src = _fetch_state_source()
-    # Call sites only (the bare substring also matches the def line).
-    # UI_05 residual: both sites are now conditional expressions selecting the
-    # priority lane vs the shared leaf pool.
-    assert src.count("else _get_recompute_leaf_executor()") == 2  # chain/quote + seeds
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    intake_src = _intake_source()
+    for extracted in (exp_src, intake_src):
+        for node in ast.walk(ast.parse(extracted)):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for sub in ast.walk(node):
+                    if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                            and sub.func.attr == "_get_recompute_leaf_executor"):
+                        callers.append(node.name)
+    # Nested walk double-counts under enclosing defs; the set must be exactly the two
+    # extracted leaf sites -- the chain/quote leg (server_state_intake, thirty-fourth
+    # slice) and the candle-seed leg (server_state_exposures). server.py itself no longer
+    # calls the leaf executor anywhere except its own definition.
+    assert set(callers) == {"_fetch_chain_and_quote_for_state", "_exposures_for_state"}, (
+        f"unexpected callers: {sorted(set(callers))}"
+    )
+    # UI_05 residual: both sites are conditional expressions selecting the priority lane vs
+    # the shared leaf pool.
+    assert intake_src.count("else _srv._get_recompute_leaf_executor()") == 1  # chain/quote
+    assert exp_src.count("else _srv._get_recompute_leaf_executor()") == 1  # seeds
 
 
 def test_step2_leaf_functions_have_no_nested_submit():
@@ -1529,27 +1255,54 @@ def test_step2_concurrent_recomputes_do_not_deadlock():
 
 def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
     """Source lock: both nested-submit sites bind the leaf pool; the route pool
-    is no longer referenced by either block."""
-    src = _fetch_state_source()
+    is no longer referenced by either block.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): the candle-seed
+    site moved into _exposures_for_state, where its own parameter dropped the
+    `_fetch_state`-scratch-variable underscore prefix (`_chain_priority` ->
+    `chain_priority`) -- counted together with the chain/quote site's original
+    spelling, still inside _fetch_state itself, rather than one literal pattern.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): _exposures_for_state
+    itself moved out of server.py, into server_state_exposures.py, where its leaf-
+    executor calls are `_srv._get_priority_leaf_executor()`/
+    `_srv._get_recompute_leaf_executor()` (the lazy `import server as _srv` pattern)
+    rather than bare names -- checked per-file below instead of one shared count."""
+    src = _intake_source()
+    from pathlib import Path
+
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
     # UI_05 residual: both leaf sites select the bounded PRIORITY leaf lane
     # for operator-priority recomputes and the shared leaf pool otherwise —
     # the route pool stays banned at both sites.
-    assert src.count("if _chain_priority") >= 2
-    assert src.count("else _get_recompute_leaf_executor()") == 2
-    assert src.count("_get_priority_leaf_executor()") >= 2
-    assert "_cq_pool = _get_route_offload_executor()" not in src
-    assert "_seed_pool = _get_route_offload_executor()" not in src
+    assert src.count("if chain_priority") >= 1
+    assert exp_src.count("if chain_priority") >= 1
+    assert src.count("else _srv._get_recompute_leaf_executor()") == 1
+    assert exp_src.count("else _srv._get_recompute_leaf_executor()") == 1
+    assert src.count("_srv._get_priority_leaf_executor()") >= 1
+    assert exp_src.count("_srv._get_priority_leaf_executor()") >= 1
+    assert "_get_route_offload_executor" not in src
+    assert "_seed_pool = _get_route_offload_executor()" not in exp_src
 
 
 def test_step2_log_only_uses_neither_pool_for_nested_work():
     """Step 1 preserved: the inline arms precede both submit blocks, so log_only
-    reaches neither the route pool nor the leaf pool for nested work."""
-    src = _fetch_state_source()
-    i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
-    i_pool_cq = src.index("_cq_pool = (")
-    i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
-    i_pool_seed = src.index("_seed_pool = (")
+    reaches neither the route pool nor the leaf pool for nested work.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the candle-seed
+    site (both its inline check and its pooled arm) moved with _exposures_for_state
+    into server_state_exposures.py; the chain/quote site stays in _fetch_state's own
+    body, in server.py."""
+    src = _intake_source()
+    i_inline_cq = src.index("if _srv._analytics_bg_shutdown or _srv._log_only_inline_leaf_fetches(log_only):")
+    i_pool_cq = src.index("pool = (")
     assert i_inline_cq < i_pool_cq
+
+    from pathlib import Path
+
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    i_inline_seed = exp_src.index("if _srv._log_only_inline_leaf_fetches(log_only):", exp_src.index("def _seed_candles"))
+    i_pool_seed = exp_src.index("_seed_pool = (")
     assert i_inline_seed < i_pool_seed
 
 
@@ -1560,7 +1313,7 @@ def test_step2_shutdown_order_and_inline_branch():
     i_analytics_shutdown = src.index("_shutdown_analytics_executor(wait=True)")
     i_leaf_teardown = src.index("_recompute_leaf_executor.shutdown(wait=True, cancel_futures=True)")
     assert i_analytics_shutdown < i_leaf_teardown
-    assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
+    assert "_srv._analytics_bg_shutdown or _srv._log_only_inline_leaf_fetches(log_only)" in _intake_source()
 
 
 def test_step2_no_ticker_session_horizon_literals():
@@ -1653,23 +1406,49 @@ def test_post_publish_last_error_recorder_is_passive():
 
 def test_post_publish_last_error_wired_at_both_failure_branches():
     """Both tail except-handlers record cause detail right after their counter
-    increment; the payload attaches a copy adjacent to the observability block."""
-    src = _fetch_state_source()
-    i_snap_inc = src.index('_analytics_cache_observability["post_publish_snapshot_failures"] += 1')
-    i_snap_rec = src.index('_record_post_publish_failure("snapshot", ticker, published_version, e)')
-    i_cal_inc = src.index('_analytics_cache_observability["post_publish_calibration_failures"] += 1')
-    i_cal_rec = src.index(
+    increment; the payload attaches a copy adjacent to the observability block.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail's own
+    except-handlers moved to server_state_persistence_tail.py with it; the ms_dict
+    payload-attachment ordering remains a server.py-only concern (both attach sites
+    are in _fetch_state's own body, unrelated to where the tail itself now lives)."""
+    tail_src = _persistence_tail_source()
+    i_snap_inc = tail_src.index('_analytics_cache_observability["post_publish_snapshot_failures"] += 1')
+    i_snap_rec = tail_src.index('_record_post_publish_failure("snapshot", ticker, published_version, e)')
+    i_cal_inc = tail_src.index('_analytics_cache_observability["post_publish_calibration_failures"] += 1')
+    i_cal_rec = tail_src.index(
         '_record_post_publish_failure("calibration", ticker, published_version, _v2_log_e)'
     )
     assert i_snap_inc < i_snap_rec < i_cal_inc < i_cal_rec
+
+    from pathlib import Path as _P
+
+    # RC-REHAB-1 (thirty-seventh slice): both attachments live in the publish phase.
+    src = (_P(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
     i_obs_attach = src.index('ms_dict["analytics_cache_observability_v1"] = dict(')
     i_err_attach = src.index('ms_dict["post_publish_last_errors_v1"] = {')
     assert i_obs_attach < i_err_attach
 
 
 def test_tail_mkt_ctx_nonlocal_rebind_restored():
-    """The confluence-completion rebind targets _fetch_state's mkt_ctx (nonlocal),
-    matching the pre-relocation inline binding; the completion call remains."""
+    """The confluence-completion rebind targets mkt_ctx; the completion call remains.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    _post_publish_persistence_tail was promoted from a nested closure to a
+    module-level function, so `mkt_ctx` is now a plain keyword-only PARAMETER
+    rather than a `nonlocal`-declared name -- a `nonlocal` statement in a
+    module-level (non-nested) function is a SyntaxError, so its absence here is
+    required, not a regression. The reassignment itself is an ordinary local
+    rebind now (parameters are always bound before the function body runs, so
+    the UnboundLocalError class this used to guard against cannot occur for a
+    parameter); verified it is NOT returned to the caller because nothing in
+    _fetch_state reads mkt_ctx again after either of the tail's two call sites.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the rebind moved with
+    the tail to server_state_persistence_tail.py; _ensure_mkt_ctx_confluence_complete
+    itself stayed in server.py (it has other callers), reached lazily as
+    `_srv._ensure_mkt_ctx_confluence_complete` -- the call-site substring now carries
+    that prefix."""
     import ast
 
     _fetch, tail = _fetch_state_ast()
@@ -1677,16 +1456,33 @@ def test_tail_mkt_ctx_nonlocal_rebind_restored():
     for node in ast.walk(tail):
         if isinstance(node, ast.Nonlocal):
             declared.update(node.names)
-    assert "mkt_ctx" in declared
-    src = _fetch_state_source()
-    assert "mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)" in src
+    assert declared == set(), (
+        "a module-level function must not declare `nonlocal` at all -- it would "
+        "be a SyntaxError with no enclosing function scope to bind to"
+    )
+    tail_params = {a.arg for a in tail.args.args + tail.args.kwonlyargs}
+    assert "mkt_ctx" in tail_params, "mkt_ctx must be threaded in as an explicit parameter"
+    src = _persistence_tail_source()
+    assert "mkt_ctx = _srv._ensure_mkt_ctx_confluence_complete(client, mkt_ctx)" in src
 
 
 def test_tail_no_unbound_shadow_of_fetch_state_locals():
     """Relocation-class lock: no name stored in the tail may shadow a
     _fetch_state-level binding AND be read at-or-before its first tail store
-    without a nonlocal declaration (the mkt_ctx UnboundLocalError class).
-    Comprehension targets are scope-isolated in py3 and excluded."""
+    without a nonlocal declaration OR being one of the tail's own parameters
+    (the mkt_ctx UnboundLocalError class). Comprehension targets are
+    scope-isolated in py3 and excluded.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): the tail
+    is now a module-level function with all 61 former free variables threaded in
+    as explicit parameters. A parameter is ALWAYS bound before the function body
+    executes, so the specific bug class this test protects against (a nested
+    closure reading a name before Python's compile-time scope inference has
+    given it a local binding, without `nonlocal`) is structurally impossible for
+    a plain function's own parameters -- there is no "first store point" for a
+    parameter inside the body to be read-before. Parameter names are exempted
+    from the offender check for exactly this reason, alongside `nonlocals` (now
+    always empty for a module-level function) and comprehension targets."""
     import ast
 
     fetch, tail = _fetch_state_ast()
@@ -1703,6 +1499,8 @@ def test_tail_no_unbound_shadow_of_fetch_state_locals():
     for node in ast.walk(tail):
         if isinstance(node, ast.Nonlocal):
             nonlocals.update(node.names)
+    tail_params = {a.arg for a in tail.args.args + tail.args.kwonlyargs}
+    nonlocals |= tail_params
 
     def _stores_and_loads(fn):
         stores: dict[str, int] = {}
@@ -2044,14 +1842,24 @@ def test_ui05r_priority_leaf_pool_bounded_and_separate():
 
 def test_ui05r_leaf_pool_selection_source_lock():
     """Chain/quote and seed legs select the priority lane exactly when the
-    recompute is operator-priority (the _chain_priority classifier)."""
-    src = _fetch_state_source()
-    i_cq = src.index("_cq_pool = (")
-    assert "_get_priority_leaf_executor()" in src[i_cq:i_cq + 200]
-    assert "else _get_recompute_leaf_executor()" in src[i_cq:i_cq + 260]
-    i_seed = src.index("_seed_pool = (")
-    assert "_get_priority_leaf_executor()" in src[i_seed:i_seed + 220]
-    assert "else _get_recompute_leaf_executor()" in src[i_seed:i_seed + 280]
+    recompute is operator-priority (the _chain_priority classifier).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the seed leg
+    moved with _exposures_for_state into server_state_exposures.py, where its
+    leaf-executor calls are `_srv._get_priority_leaf_executor()`/
+    `_srv._get_recompute_leaf_executor()` (the lazy `import server as _srv`
+    pattern)."""
+    src = _intake_source()
+    i_cq = src.index("pool = (")
+    assert "_srv._get_priority_leaf_executor()" in src[i_cq:i_cq + 200]
+    assert "else _srv._get_recompute_leaf_executor()" in src[i_cq:i_cq + 280]
+
+    from pathlib import Path
+
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    i_seed = exp_src.index("_seed_pool = (")
+    assert "_srv._get_priority_leaf_executor()" in exp_src[i_seed:i_seed + 220]
+    assert "else _srv._get_recompute_leaf_executor()" in exp_src[i_seed:i_seed + 280]
 
 
 def test_ui05r_priority_leaf_teardown_present():
@@ -2297,7 +2105,13 @@ def test_mkt_ctx_refresh_executor_single_worker_and_chain_window_marks():
 
     ex = srv._get_mkt_ctx_refresh_executor()
     assert ex._max_workers == 1
-    fetch_src = inspect.getsource(srv._fetch_state)
+    # RC-REHAB-1 (thirty-fourth slice): the two leaf marks are appended by the intake phase
+    # into the SAME list _fetch_state owns (window_marks=_chain_window_marks).
+    import server_state_intake
+
+    fetch_src = inspect.getsource(srv._fetch_state) + inspect.getsource(
+        server_state_intake._fetch_chain_and_quote_for_state)
+    assert "window_marks=_chain_window_marks" in inspect.getsource(srv._fetch_state)
     for mark in (
         "chain_window_preamble_ms",
         "chain_window_mkt_ctx_ms",

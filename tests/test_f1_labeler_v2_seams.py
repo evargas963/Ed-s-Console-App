@@ -158,7 +158,7 @@ def test_timeout_exits_at_first_bar_open_after_vertical():
     assert r.barrier_hit == "TIMEOUT" and r.withheld_reason is None
     exit_dt = datetime.fromtimestamp(r.t_exit_utc, tz=ET)
     assert (exit_dt.hour, exit_dt.minute) == (10, 26)
-    idx = next(i for i, b in enumerate(bars) if b.bar_start_ts_utc == r.t_exit_utc)
+    idx = next(i for i, b in enumerate(bars) if b.bar_start_ts_utc == r.t_exit_utc)  # caps-ok: scanner false positive: next() here has NO default argument; a missing exit bar raises StopIteration and fails the test
     assert r.realized_return_bp is not None
     assert abs((bars[idx].open - r.entry_price) / r.entry_price * 10000.0 - r.realized_return_bp) < 1e-9
 

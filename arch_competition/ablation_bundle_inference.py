@@ -94,7 +94,7 @@ def map_knockout_columns_to_encoder_indices(
         else:
             base_features = tuple(str(x).replace("__present", "") for x in names5 if not str(x).endswith("__present"))
             encoded_names = names5
-        mask = checkpoint.get("mask_5m") or [True] * len(encoded_names)
+        mask = checkpoint.get("mask_5m") or [True] * len(encoded_names)  # caps-ok: persisted checkpoint predating ablation masks was trained on every channel, so an absent mask means all-True by the lstm_model.py writer contract (current writer always stores it)
     elif stream == "lstm_1m":
         if enc_ver == ENCODER_SCHEMA_VERSION_V2:
             from arch_competition.encoder_lineage_v2 import ENCODED_FEATURES_1M_V2, FEATURES_1M_V2
@@ -103,7 +103,7 @@ def map_knockout_columns_to_encoder_indices(
         else:
             base_features = tuple(str(x).replace("__present", "") for x in names1 if not str(x).endswith("__present"))
             encoded_names = names1
-        mask = checkpoint.get("mask_1m") or [True] * len(encoded_names)
+        mask = checkpoint.get("mask_1m") or [True] * len(encoded_names)  # caps-ok: persisted checkpoint predating ablation masks was trained on every channel, so an absent mask means all-True by the lstm_model.py writer contract (current writer always stores it)
     elif stream == "transformer_5m":
         if enc_ver == ENCODER_SCHEMA_VERSION_V2:
             from arch_competition.encoder_lineage_v2 import ENCODED_FEATURES_5M_V2, FEATURES_5M_V2
@@ -112,7 +112,7 @@ def map_knockout_columns_to_encoder_indices(
         else:
             base_features = tuple(str(x).replace("__present", "") for x in names5 if not str(x).endswith("__present"))
             encoded_names = names5
-        mask = checkpoint.get("feature_mask") or checkpoint.get("mask_5m") or [True] * len(encoded_names)
+        mask = checkpoint.get("feature_mask") or checkpoint.get("mask_5m") or [True] * len(encoded_names)  # caps-ok: transformer_train.py stores feature_mask (older LSTM-style bundles stored mask_5m); a checkpoint with neither was trained on every channel, so all-True is its true mask
     else:
         return {
             "reachable": False,
@@ -277,7 +277,7 @@ def try_load_transformer_offline(ticker: str, hz: str, bundle_dir: Path) -> Opti
             return None
         model = build_transformer(
             checkpoint["n_features"],
-            seq_len=checkpoint.get("seq_len", 20),
+            seq_len=checkpoint.get("seq_len", 20),  # caps-ok: 20 is transformer_train.SEQUENCE_LENGTH, the fixed window every transformer checkpoint was trained at; a checkpoint predating the stored seq_len field used that same 20
         )
         model.load_state_dict(checkpoint["model_state"])
         model.eval()
@@ -315,17 +315,31 @@ def predict_lstm_offline(
     conf_vec = wire_neutral_confluence_vector(
         merged_days, list(CONFLUENCE_FEATURES), checkpoint=checkpoint
     )
-    mask_conf = np.array(checkpoint.get("mask_conf", [True] * len(conf_vec)), dtype=bool)
+    mask_conf = np.array(checkpoint.get("mask_conf", [True] * len(conf_vec)), dtype=bool)  # caps-ok: persisted checkpoint predating ablation masks was trained on every channel, so an absent mask means all-True by the lstm_model.py writer contract (current writer always stores it)
     n_conf_base = len(CONFLUENCE_FEATURES)
     if mask_conf.shape[0] > n_conf_base:
         need = mask_conf.shape[0] - n_conf_base
         if need == 3:
-            xa = xgb_probs_arr
-            if xa is None:
-                xa = np.full(3, 1.0 / 3.0, dtype=np.float32)
-            xa = np.asarray(xa, dtype=np.float32).reshape(-1)
+            # Cascade-trained checkpoint: its confluence input needs the XGB triple. Mirror
+            # ml_predict (parallel runtime refuses cascade artifacts) and never substitute a
+            # uniform 1/3 triple for a missing/malformed XGB output -- that scored the model on
+            # a fabricated input.
+            if parallel_runtime:
+                log.error(
+                    "LSTM offline predict %s: checkpoint expects cascade XGB extras; "
+                    "parallel runtime requires parallel-trained artifacts",
+                    ticker,
+                )
+                return None
+            if xgb_probs_arr is None:
+                log.error("LSTM offline predict %s: cascade checkpoint but no XGB probs", ticker)
+                return None
+            xa = np.asarray(xgb_probs_arr, dtype=np.float32).reshape(-1)
             if xa.shape[0] != 3:
-                xa = np.full(3, 1.0 / 3.0, dtype=np.float32)
+                log.error(
+                    "LSTM offline predict %s: XGB probs width %d != 3", ticker, xa.shape[0]
+                )
+                return None
             conf_vec = conf_vec + xa.tolist()
         else:
             log.error(
@@ -342,8 +356,8 @@ def predict_lstm_offline(
         return None
 
     if enc_ver >= 3:
-        mask_5m = np.array(checkpoint.get("mask_5m", [True] * X_5m.shape[2]), dtype=bool)
-        mask_1m = np.array(checkpoint.get("mask_1m", [True] * X_1m.shape[2]), dtype=bool)
+        mask_5m = np.array(checkpoint.get("mask_5m", [True] * X_5m.shape[2]), dtype=bool)  # caps-ok: persisted checkpoint predating ablation masks was trained on every channel, so an absent mask means all-True by the lstm_model.py writer contract (current writer always stores it)
+        mask_1m = np.array(checkpoint.get("mask_1m", [True] * X_1m.shape[2]), dtype=bool)  # caps-ok: persisted checkpoint predating ablation masks was trained on every channel, so an absent mask means all-True by the lstm_model.py writer contract (current writer always stores it)
         X_5m = X_5m[:, :, mask_5m]
         X_1m = X_1m[:, :, mask_1m]
     else:
@@ -352,7 +366,7 @@ def predict_lstm_offline(
 
     X_conf = X_conf[:, mask_conf]
 
-    norm = checkpoint.get("norm_stats", {})
+    norm = checkpoint.get("norm_stats", {})  # caps-ok: a checkpoint without norm_stats was trained on un-normalized inputs, so skipping normalization reproduces its training transform (lstm_model.py writer always stores it now)
     if norm:
         aligned = align_lstm_norm_stats(norm, mask_5m, mask_1m, mask_conf)
         if aligned is None:
@@ -465,7 +479,11 @@ def wire_neutral_confluence_vector(
     checkpoint: dict,
 ) -> list[float]:
     """Confluence channels from row keys on the eval bar — never ``compute_confluence_features``."""
-    last = merged_days[-1] if merged_days else {}
+    # No eval bar = no confluence evidence; an empty dict here zero-filled every channel into a
+    # fabricated input vector. wire_row_surface_bars always yields >=1 bar, so this only fires on misuse.
+    if not merged_days:
+        raise ValueError("wire_neutral_confluence_vector: merged_days is empty (no eval bar)")
+    last = merged_days[-1]
     out: list[float] = []
     for k in conf_features:
         if k in last and last.get(k) is not None:
@@ -499,7 +517,7 @@ def predict_transformer_offline(
     base = np.array([seq], dtype=np.float32)
 
     fm = np.asarray(
-        checkpoint.get("feature_mask", np.ones(base.shape[2], dtype=bool)),
+        checkpoint.get("feature_mask", np.ones(base.shape[2], dtype=bool)),  # caps-ok: transformer checkpoint predating feature_mask was trained on every channel; all-ones is its true mask (transformer_train.py writer always stores it now)
         dtype=bool,
     )
     if fm.shape[0] == base.shape[2]:
@@ -593,7 +611,8 @@ def score_unified_ablation_fusion_from_wire_row(
     except Exception as e:
         return None, yt, f"rules_regime:{type(e).__name__}", {}
 
-    direction_hint = getattr(rules, "signal", "wait") or "wait"
+    # RulesCard.signal is a required field ('long'/'short'/'wait'); no fabricated "wait" fallback.
+    direction_hint = rules.signal
     tku = ticker_storage_key(ticker)
     hz = mp.get_ml_infer_horizon_slug()
     bundle_dir = _ablation_ticker_bundle_dir(tku)
@@ -606,7 +625,9 @@ def score_unified_ablation_fusion_from_wire_row(
     xgb_arr = None
     if xgb_p:
         xgb_arr = np.asarray(
-            [float(xgb_p.get("up", 1 / 3)), float(xgb_p.get("down", 1 / 3)), float(xgb_p.get("flat", 1 / 3))],
+            # wire_neutral_xgb_predict_from_row emits all of ml_predict.CLASS_NAMES; a missing class
+            # raises instead of injecting a fabricated uniform 1/3 into the cascade confluence input.
+            [float(xgb_p["up"]), float(xgb_p["down"]), float(xgb_p["flat"])],
             dtype=np.float32,
         )
 
@@ -628,7 +649,7 @@ def score_unified_ablation_fusion_from_wire_row(
     tr_loaded = try_load_transformer_offline(tku, hz, bundle_dir)
     if tr_loaded:
         tr_model, tr_ckpt = tr_loaded
-        seq_len = int(tr_ckpt.get("seq_len", 20))
+        seq_len = int(tr_ckpt.get("seq_len", 20))  # caps-ok: 20 is transformer_train.SEQUENCE_LENGTH, the fixed window every transformer checkpoint was trained at; a checkpoint predating the stored seq_len field used that same 20
         tr_window = wire_row_surface_bars(wire_row, seq_len)
         tr_p = predict_transformer_offline(
             ticker=tku,

@@ -514,7 +514,7 @@ def test_ablation_harness_manifest_only_grid():
         from tools.feature_curation_gate import ablation_whole_stack_feature_cell_specs
 
         whole = ablation_whole_stack_feature_cell_specs(manifest)
-        assert len(whole) == report.get("whole_stack_feature_cell_count", len(whole))
+        assert len(whole) == report["whole_stack_feature_cell_count"]
         assert whole[0]["model_family"] in set(FULL_STACK_LAYERS)
     else:
         stack_specs = ablation_stack_authority_cell_specs(manifest)
@@ -1455,7 +1455,7 @@ def test_stamp_primary_ablation_authority_writes_confirm_drop_summary(tmp_path, 
     summary = stamped.get("confirm_drop_summary") or {}
     assert summary.get("primary_authority") is True
     assert summary.get("authority") == "primary_pass"
-    assert summary.get("drops_by_model_horizon", {}).get("xgb/1c") == ["charm"]
+    assert summary["drops_by_model_horizon"]["xgb/1c"] == ["charm"]
 
 
 def test_survivor_retrain_gate_env_contract():
@@ -2058,8 +2058,12 @@ def test_rc340_every_scheduler_xgb_route_uses_the_canonical_row_preparer():
     import inspect as _inspect
 
     import ml_scheduler as _sched
+    import ml_scheduler_cascade_train as _sched_cascade
 
-    src = _inspect.getsource(_sched)
+    # RC-REHAB-1 (2026-09-22): all 5 engineer_single_snapshot call sites this locks were in
+    # the cascade-training cluster, which moved to ml_scheduler_cascade_train.py (final
+    # slice of the ml_scheduler.py decomposition) -- same code, different file.
+    src = _inspect.getsource(_sched) + "\n" + _inspect.getsource(_sched_cascade)
     tree = _ast.parse(src)
     bare = []
     total = 0
@@ -2071,7 +2075,7 @@ def test_rc340_every_scheduler_xgb_route_uses_the_canonical_row_preparer():
                 total += 1
                 first = node.args[0]
                 ok = (isinstance(first, _ast.Call)
-                      and getattr(first.func, "id", getattr(first.func, "attr", ""))
+                      and getattr(first.func, "id", getattr(first.func, "attr", ""))  # caps-ok: AST duck typing: a callee with neither .id nor .attr has no name, and '' never equals prepare_row_for_xgb_features, so it is reported as bare
                       == "prepare_row_for_xgb_features")
                 if not ok:
                     bare.append(node.lineno)
@@ -2209,11 +2213,14 @@ def test_rc344_production_train_ticker_callers_forward_db_identity():
 
     repo = Path(__file__).resolve().parent.parent
     offenders = []
-    for rel in ("ml_scheduler.py", "train_all.py", "ml_train.py"):
+    # RC-REHAB-1 (2026-09-22): two of ml_scheduler.py's train_ticker call sites moved to
+    # ml_scheduler_parallel_train.py (slice 5 of the ml_scheduler.py decomposition); the
+    # remaining two (cascade cluster) are still in ml_scheduler.py itself.
+    for rel in ("ml_scheduler.py", "ml_scheduler_parallel_train.py", "train_all.py", "ml_train.py"):
         tree = _ast.parse((repo / rel).read_text(encoding="utf-8"))
         for node in _ast.walk(tree):
             if (isinstance(node, _ast.Call)
-                    and getattr(node.func, "id", getattr(node.func, "attr", ""))
+                    and getattr(node.func, "id", getattr(node.func, "attr", ""))  # caps-ok: AST duck typing: a callee with neither .id nor .attr has no name, and '' never equals train_ticker
                     == "train_ticker"):
                 kwargs = {k.arg for k in node.keywords if k.arg}
                 if "db_path" not in kwargs:

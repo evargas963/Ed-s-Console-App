@@ -105,7 +105,7 @@ def load_spy_1m_bars(
         batch_id=batch_id,
         staging_mode=staging,
     )
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         if staging:
@@ -137,7 +137,7 @@ def load_spy_1m_bars(
 
     rep.n_rows = len(rows)
     # Staging rows carry no source column; canonical rows do (F1 S5).
-    row_cols = set(rows[0].keys()) if rows else set()
+    row_cols = set(rows[0].keys()) if rows else set()  # caps-ok: no fetched rows means no columns to inspect; the loop below iterates zero rows, so has_source=False describes nothing
     has_source = "source" in row_cols
     prev_start: float | None = None
     bars_all: list[Bar1m] = []

@@ -218,8 +218,8 @@ def load_raw_fields_and_endpoints() -> tuple[list[str], dict[str, set[str]]]:
         with open(SUMMARY_CSV, encoding="utf-8", newline="") as f:
             r = csv.DictReader(f)
             for row in r:
-                fp = row.get("field_path", "").strip()
-                ep = row.get("endpoint", "").strip()
+                fp = row.get("field_path", "").strip()  # caps-ok: CSV row without field_path -> "" -> skipped by `if fp and ep` below, never recorded
+                ep = row.get("endpoint", "").strip()  # caps-ok: CSV row without endpoint -> "" -> skipped by `if fp and ep` below, never recorded
                 if fp and ep:
                     path_to_endpoints[fp].add(ep)
 
@@ -261,7 +261,7 @@ def build_canonical_dictionary(
                 eps = {inferred}
             else:
                 eps = set()
-        ep_for_norm = list(eps)[0] if eps else ""
+        ep_for_norm = list(eps)[0] if eps else ""  # caps-ok: no known endpoint -> "" -> normalize_path adds NO endpoint prefix (its documented falsy-endpoint branch), rather than guessing one
         norm = normalize_path(raw, ep_for_norm)
         if not norm:
             continue

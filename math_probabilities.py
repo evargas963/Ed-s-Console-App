@@ -181,7 +181,7 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
         for ct in contracts
         # single source: parse the strike once via the canonical finite reader (was
         # _f for the filter + raw float() for the value — the last such double-parse).
-        if str(ct.get("putCall", "")).upper().strip() == side_up
+        if str(ct.get("putCall", "")).upper().strip() == side_up  # caps-ok: a contract without putCall becomes "" which can never equal CALL/PUT, so it is EXCLUDED from the candidates, never assigned a side
         and (sp := _f(ct.get("strikePrice"))) is not None
         and abs(sp - strike_f) < 0.01
     ]
@@ -199,14 +199,14 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     a_px, b_px = ask, bid
     spread = round(a_px - b_px, 4) if b_px is not None and a_px is not None else None
     liq_gate = spread is not None and spread <= OE_SPREAD_TIGHT_MAX
-    dgr = round(abs(delta) / abs(gamma), 2) if gamma and gamma != 0 and delta is not None else None
-    voi = round(volume / oi, 3) if oi and oi > 0 and volume is not None else None
+    dgr = round(abs(delta) / abs(gamma), 2) if gamma and gamma != 0 and delta is not None else None  # caps-ok: delta/gamma ratio is None when gamma is missing/zero or delta is missing -- honest absence, no fabricated ratio
+    voi = round(volume / oi, 3) if oi and oi > 0 and volume is not None else None  # caps-ok: volume/OI ratio is None when OI is missing/zero or volume is missing -- honest absence, no fabricated ratio
     gxoi = gamma * oi if gamma is not None and oi is not None else None
     max_g = 0.0
     max_gs = None
     gis_max = False
     for c in contracts:
-        if str(c.get("putCall", "")).upper().strip() != side_up:
+        if str(c.get("putCall", "")).upper().strip() != side_up:  # caps-ok: a contract without putCall becomes "" != side_up and is SKIPPED from the max-gamma scan, never counted on either side
             continue
         g_raw = _f(c.get("gamma"))
         d_raw = _f(c.get("delta"))
@@ -402,16 +402,15 @@ def determine_confidence(match_tier: int, n_used: int,
             if p_value < 0.10 and match_tier <= 4:
                 return "medium"
             return "low"
-    tier_key = f"tier_{match_tier}" if isinstance(match_tier, int) else str(match_tier)
-    rules = CONFIDENCE_RULES.get(tier_key, CONFIDENCE_RULES.get("tier_7", {"base": "low"}))
-    # rules is a dict like {"base": "high"} — return the base confidence
-    if isinstance(rules, dict):
-        return rules.get("base", "low")
-    # Legacy format: list of (min_samples, min_prob, level) tuples
-    for min_samples, min_prob, level in rules:
-        if n_used >= min_samples and dominant_prob >= min_prob:
-            return level
-    return "low"
+    # CAPS RC-REHAB-1: an out-of-contract tier used to fall back silently to tier_7's "low"
+    # (and a non-int tier could never match any key at all). The similarity producer
+    # (db_snapshots.get_similar_setups) only emits integer tiers that CONFIDENCE_RULES
+    # covers, so an unknown tier is a producer defect and fails loudly here. The dead
+    # "legacy list-of-tuples" rule format (no rule uses it) is gone with it.
+    tier_key = f"tier_{match_tier}"
+    if tier_key not in CONFIDENCE_RULES:
+        raise ValueError(f"determine_confidence: match_tier {match_tier!r} has no CONFIDENCE_RULES entry")
+    return CONFIDENCE_RULES[tier_key]["base"]
 
 
 def _binomial_p_value(k: int, n: int, p0: float) -> float:

@@ -34,8 +34,8 @@ def _write_book_rows(path: Path, rows: list[tuple[float, str, dict]]) -> None:
 def _book(bid_price, bid_vol, ask_price, ask_vol, book_time_ms=0):
     return {
         "key": SYM, "BOOK_TIME": book_time_ms,
-        "BIDS": [{"BID_PRICE": bid_price, "TOTAL_VOLUME": bid_vol, "NUM_BIDS": 1}] if bid_price is not None else [],
-        "ASKS": [{"ASK_PRICE": ask_price, "TOTAL_VOLUME": ask_vol, "NUM_ASKS": 1}] if ask_price is not None else [],
+        "BIDS": [{"BID_PRICE": bid_price, "TOTAL_VOLUME": bid_vol, "NUM_BIDS": 1}] if bid_price is not None else [],  # caps-ok: fixture book builder: a None bid price builds a one-sided book with an empty BIDS array, the shape Schwab sends for an empty side
+        "ASKS": [{"ASK_PRICE": ask_price, "TOTAL_VOLUME": ask_vol, "NUM_ASKS": 1}] if ask_price is not None else [],  # caps-ok: fixture book builder: a None ask price builds a one-sided book with an empty ASKS array, the shape Schwab sends for an empty side
     }
 
 

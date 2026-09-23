@@ -80,7 +80,7 @@ def build_live_reload_report(
     if isinstance(results, list):
         for item in results:
             row = dict(item) if isinstance(item, dict) else {"succeeded": False, "error": "invalid result row"}
-            row.setdefault("http_status", http_status)
+            row.setdefault("http_status", http_status)  # caps-ok: a result row without its own status inherits the real HTTP status of the reload response that carried it
             report["results"].append(row)
     else:
         report["results"] = [

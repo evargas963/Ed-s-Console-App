@@ -82,6 +82,11 @@ def test_no_production_caller_uses_typed_version_directly():
     ]
     for rel in callers:
         src = (repo / rel).read_text(encoding="utf-8")
+        if rel == "ml_scheduler.py":
+            # RC-REHAB-1 (2026-09-22): _training_ticker_union (the actual caller of
+            # load_user_scheduler_tickers_or_empty) moved to ml_scheduler_rth_data.py
+            # (slice 2 of the ml_scheduler.py decomposition) -- same code, different file.
+            src += (repo / "ml_scheduler_rth_data.py").read_text(encoding="utf-8")
         # The typed name without `_or_empty` should only appear in import-and-handled patterns.
         # Easiest guard: assert the convenience wrapper IS imported, and the bare name does NOT
         # appear as a function call.

@@ -28,7 +28,7 @@ def _count_rows(db_path: Path) -> dict[str, Any]:
     out: dict[str, Any] = {"raw": {}, "normalized": {}}
     if not db_path.is_file():
         return {"error": f"db missing: {db_path}", **out}
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     try:
         for t in BASE_TICKERS:
             try:
@@ -66,11 +66,17 @@ def main() -> int:
     else:
         counts = _count_rows(args.db_path)
         failures = []
-        for t in BASE_TICKERS:
-            if not counts.get("raw", {}).get(t):
-                failures.append(f"base_raw_starved:{t}")
-            if not counts.get("normalized", {}).get(t):
-                failures.append(f"base_normalized_starved:{t}")
+        if "error" in counts:
+            failures.append(f"db_unavailable:{counts['error']}")
+        # _count_rows always returns "raw"/"normalized" dicts; a per-ticker None means the COUNT
+        # query failed (unmeasured), which is reported as such rather than as "starved" (0 rows).
+        for kind in ("raw", "normalized"):
+            for t in BASE_TICKERS:
+                n_rows = counts[kind].get(t)
+                if n_rows is None:
+                    failures.append(f"base_{kind}_unmeasured:{t}")
+                elif n_rows == 0:
+                    failures.append(f"base_{kind}_starved:{t}")
         env = capture_runtime_env()
         report = {
             "schema_version": 1,

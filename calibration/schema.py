@@ -215,7 +215,7 @@ def ensure_calibration_schema(conn: sqlite3.Connection) -> None:
 
 
 def ensure_calibration_schema_at_path(db_path: Path | str) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     ensure_calibration_schema(conn)
     return conn

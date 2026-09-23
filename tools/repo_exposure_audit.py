@@ -154,11 +154,13 @@ def section_faucets() -> dict:
         rep = faucet_run(str(canonical_console_db_path()))
     except Exception as e:
         return {"unmeasurable": f"{type(e).__name__}: {e}"}
-    return {"violations": len(rep.get("faucet_violations", [])),
-            "detail": [v.get("concept") for v in rep.get("faucet_violations", [])],
+    # data_faucet_audit.run() always returns faucet_violations/stale_sources; a missing key
+    # must fail the section (caught by main as "unmeasurable"), never read as 0 violations.
+    return {"violations": len(rep["faucet_violations"]),
+            "detail": [v.get("concept") for v in rep["faucet_violations"]],
             "stale_sources": [f"{s['faucet']} age={round(s['age_sec']/3600,1)}h "
                               f"> limit {round(s['limit_sec']/3600,1)}h"
-                              for s in rep.get("stale_sources", [])]}
+                              for s in rep["stale_sources"]]}
 
 
 def section_db() -> dict:
@@ -167,7 +169,7 @@ def section_db() -> dict:
         return {"unmeasurable": "data/ed_console.db missing"}
     out: dict = {"size_gb": round(db.stat().st_size / 1024 ** 3, 2)}
     try:
-        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=20)
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error as e:
         return {"unmeasurable": str(e)}
     try:
@@ -214,7 +216,7 @@ def section_tests() -> dict:
               "--collect-only", "-q", "tests")
     tail = [ln for ln in out.splitlines() if "test" in ln.lower() and "collected" in ln.lower()]
     files = len(list((REPO / "tests").glob("test_*.py")))
-    return {"test_files": files, "collection": tail[-1] if tail else "(collection unavailable)"}
+    return {"test_files": files, "collection": tail[-1] if tail else "(collection unavailable)"}  # caps-ok: explicit absence label: when pytest --collect-only prints no "collected" line the report says "(collection unavailable)" instead of inventing a count
 
 
 SECTIONS = (("INSTITUTIONAL GATE", section_gate), ("GOVERNANCE LEDGER", section_governance),
@@ -267,7 +269,7 @@ def main(argv: list[str]) -> int:
             rep[title] = fn()
         except Exception as e:                       # a crashed section is a finding
             rep[title] = {"unmeasurable": f"{type(e).__name__}: {e}"}
-        rep[title].setdefault("_sec", round(time.time() - t0, 1))
+        rep[title].setdefault("_sec", round(time.time() - t0, 1))  # caps-ok: timing metadata: records elapsed seconds only when the section dict did not report its own _sec
     if "--json" in argv:
         print(json.dumps(rep, indent=2, default=str))
     else:

@@ -44,7 +44,7 @@ def load_prereg() -> dict[str, Any]:
             f"prereg family inconsistent: {len(family.get('tickers') or [])} tickers x"
             f" {len(family.get('horizons') or [])} horizons != n_cells={family.get('n_cells')}"
         )
-    if prereg.get("primary_metric", {}).get("name", "").split(" ")[0] != "MCC":
+    if prereg.get("primary_metric", {}).get("name", "").split(" ")[0] != "MCC":  # caps-ok: fail-closed prereg check: an absent primary_metric.name reads '' which is != MCC and raises PreregViolationError
         raise PreregViolationError("prereg primary metric is not MCC — code and prereg diverged")
     return prereg
 
@@ -81,7 +81,7 @@ def load_cell_rows(
     cells: dict[tuple[str, str], list[dict[str, Any]]] = {
         (t, hz): [] for t in tickers for hz in horizons
     }
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         sql = (
@@ -294,7 +294,7 @@ def _console_summary(report: dict[str, Any]) -> str:
         mcc_txt = f"{mcc:+.4f}" if mcc is not None else "n/a"
         boot = cell.get("bootstrap") or {}
         ci = boot.get("ci95")
-        ci_txt = f"[{ci[0]:+.4f},{ci[1]:+.4f}]" if ci else "—"
+        ci_txt = f"[{ci[0]:+.4f},{ci[1]:+.4f}]" if ci else "—"  # caps-ok: console display only: '?' prints for a cell with no bootstrap CI, never parsed back into the report JSON
         lines.append(
             f"  {key:>9}  n={cell['n_scored']:>6}  days={cell['n_distinct_days']:>3}"
             f"  MCC={mcc_txt}  CI95={ci_txt}  acc={cell['accuracy']:.3f}"

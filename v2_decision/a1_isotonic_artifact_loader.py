@@ -54,7 +54,7 @@ def load_a1_isotonic_artifact(
         artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
         if not isinstance(artifact, dict):
             return None
-        if ticker not in artifact.get("ticker_universe", []):
+        if ticker not in artifact.get("ticker_universe", []):  # caps-ok: fail-closed - an artifact without a ticker_universe covers no ticker, so the loader returns None (no calibration applied)
             return None
         if artifact.get("horizon") != horizon:
             return None

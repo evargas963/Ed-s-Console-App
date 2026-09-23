@@ -86,14 +86,14 @@ def _compute_then_log(inp, *, db_path: Path, edb: EdDB):
     # per-decision identity, REGISTERED so the linkage triggers accept the row
     # (deterministic per refresh_ts so idempotent duplicate-key semantics stay
     # observable across threads/retries — same decision -> same identity).
-    _ts = getattr(inp, "refresh_ts_utc", 0.0)
-    _did = f"testdid-{getattr(inp, 'ticker', 'SPY')}-{_ts}"
+    _ts = inp.refresh_ts_utc
+    _did = f"testdid-{inp.ticker}-{_ts}"
     _sha = _register_execution_identity_for_test(db_path, _did)
 
     append_live_v2_calibration_decision(
         db_path=db_path,
         calibration_payload=out.calibration_payload,
-        v2_decision=_v2_for_output(out, getattr(inp, "ticker", "SPY")),
+        v2_decision=_v2_for_output(out, inp.ticker),
         decision_id=_did,
         execution_identity_sha256=_sha,
         colocated_snapshot_ts_utc=float(_ts) if _ts else None,

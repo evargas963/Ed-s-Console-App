@@ -64,5 +64,8 @@ def test_call_validation_fails_closed_without_spot_for_trade_signal():
         regime=None,
     )
 
+    # RC-REHAB-1 CAPS review: the early return used to leave trade_valid=True, so the final
+    # gate in compute_call passed a directional call with no spot. It must fail closed.
+    assert out["trade_valid"] is False
     assert out["structure_valid"] is False
     assert out["structure_reason"] == "missing canonical spot"

@@ -95,13 +95,13 @@ GOVERNANCE_SENSITIVE = frozenset(
 
 
 def is_production_serving_context() -> bool:
-    if os.environ.get("CI", "").strip().lower() in ("1", "true", "yes"):
+    if os.environ.get("CI", "").strip().lower() in ("1", "true", "yes"):  # caps-ok: env flag; unset CI means not a CI run
         return False
-    if os.environ.get("ED_NON_PRODUCTION_MODE", "").strip().lower() in ("1", "true", "yes", "on"):
+    if os.environ.get("ED_NON_PRODUCTION_MODE", "").strip().lower() in ("1", "true", "yes", "on"):  # caps-ok: explicit opt-in flag; unset keeps production rules
         return False
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return False
-    return os.environ.get("ED_SERVING_PROCESS", "").strip().lower() in ("1", "true", "yes", "on")
+    return os.environ.get("ED_SERVING_PROCESS", "").strip().lower() in ("1", "true", "yes", "on")  # caps-ok: register O-06 contract: the serving process marks itself with ED_SERVING_PROCESS=1; unset means not the serving process
 
 
 def active_env_overrides() -> dict[str, str]:

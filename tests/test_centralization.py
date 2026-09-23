@@ -337,17 +337,26 @@ def test_model_health():
             if meta_path and meta_path.exists():
                 try:
                     meta = json.loads(meta_path.read_text())
-                    edge = meta.get("edge_pp", meta.get("val_accuracy", meta.get("train_accuracy", 0)))
-                    edge_pp = float(edge) * 100 if isinstance(edge, (int, float)) and 0 < edge < 1 else float(edge or 0)
+                    # An absent edge metric is reported as n/a, never as a measured +0.0pp.
+                    edge = None
+                    for _edge_key in ("edge_pp", "val_accuracy", "train_accuracy"):
+                        if isinstance(meta.get(_edge_key), (int, float)):
+                            edge = meta[_edge_key]
+                            break
+                    if edge is None:
+                        edge_txt = "n/a (meta has no edge_pp/val_accuracy/train_accuracy)"
+                    else:
+                        edge_pp = float(edge) * 100 if 0 < edge < 1 else float(edge)
+                        edge_txt = f"{edge_pp:+.1f}pp"
                     # Governance-aware status: LIVE = compliant, NON-COMPLIANT = exists but not compliant
                     if load_provenance and is_provenance_compliant:
                         prov = load_provenance(meta_path)
                         status = "LIVE" if is_provenance_compliant(prov) else "NON-COMPLIANT"
-                        _pass(f"  {meta_path.name}: {status}, edge={edge_pp:+.1f}pp")
+                        _pass(f"  {meta_path.name}: {status}, edge={edge_txt}")
                         if status == "NON-COMPLIANT":
                             _warn(f"  {meta_path.name}: non-compliant (run ml_scheduler --force-retrain)")
                     else:
-                        _pass(f"  {meta_path.name}: edge={edge_pp:+.1f}pp")
+                        _pass(f"  {meta_path.name}: edge={edge_txt}")
                 except Exception as e:
                     _warn(f"  {meta_path.name}: parse error: {e}")
             elif meta_path:
@@ -559,8 +568,8 @@ def test_monte_carlo_v2():
             model_prob_up=0.70, model_prob_down=0.10, model_confidence="high")
         r_dn = monte_carlo.simulate(**base_args, regime="trend_continuation",
             model_prob_up=0.10, model_prob_down=0.70, model_confidence="high")
-        drift_up = r_up.assumptions.get("per_bar_drift", 0)
-        drift_dn = r_dn.assumptions.get("per_bar_drift", 0)
+        drift_up = r_up.assumptions["per_bar_drift"]
+        drift_dn = r_dn.assumptions["per_bar_drift"]
         if drift_up > 0 and drift_dn < 0:
             _pass(f"Drift follows model: up={drift_up:.6f}, down={drift_dn:.6f}")
         else:

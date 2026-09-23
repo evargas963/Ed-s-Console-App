@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+import app.api.routes.diagnostics
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,9 +20,8 @@ def test_l1_sse_diagnostics_exposed():
     round trip added nothing a direct call doesn't already prove."""
     import json
 
-    import server as srv
 
-    ed = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
+    ed = json.loads(app.api.routes.diagnostics.get_l1_diagnostics().body)["ed_l1"]
     assert "l1_sse_light" in ed
     assert "l1_light_sse_connections" in ed["l1_sse_light"]
 
@@ -83,7 +83,7 @@ def test_notify_throttled_within_window(monkeypatch):
     q = asyncio.Queue(maxsize=10)
     key = ("ZZZ", "__auto__")
     srv._l1_light_sse_clients.append((q, key))
-    th0 = int(srv._l1_sse_diag.get("l1_light_sse_events_throttled", 0))
+    th0 = int(srv._l1_sse_diag["l1_light_sse_events_throttled"])
     try:
         monkeypatch.setattr(
             srv,
@@ -93,7 +93,7 @@ def test_notify_throttled_within_window(monkeypatch):
         monkeypatch.setattr(srv, "_L1_SSE_MIN_INTERVAL_SEC", 60.0)
         srv._l1_notify_sse_after_authoritative_build("ZZZ", None)
         srv._l1_notify_sse_after_authoritative_build("ZZZ", None)
-        assert int(srv._l1_sse_diag.get("l1_light_sse_events_throttled", 0)) >= th0 + 1
+        assert int(srv._l1_sse_diag["l1_light_sse_events_throttled"]) >= th0 + 1
     finally:
         srv._l1_light_sse_clients.clear()
         srv._l1_sse_last_emit_mono.pop(key, None)
@@ -132,8 +132,9 @@ def test_fanout_only_matching_scope():
 
 def test_light_stream_route_registered():
     import server as srv
+    from tests.conftest import all_registered_route_paths
 
-    paths = [getattr(r, "path", "") for r in srv.app.routes if hasattr(r, "path")]
+    paths = all_registered_route_paths(srv.app.routes)
     assert "/api/analytics/light/stream" in paths
 
 

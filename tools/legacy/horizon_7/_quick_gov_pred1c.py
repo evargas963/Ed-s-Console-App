@@ -17,7 +17,7 @@ AND s.outcome_1c IS NOT NULL AND s.outcome_3c IS NOT NULL AND s.outcome_5c IS NO
 AND s.outcome_8c IS NOT NULL AND s.outcome_13c IS NOT NULL AND s.outcome_15c IS NOT NULL
 AND s.outcome_60c IS NOT NULL
 """
-c = sqlite3.connect(str(canonical_console_db_path()))
+c = sqlite3.connect(str(canonical_console_db_path()), timeout=30.0)
 n = c.execute(f"SELECT COUNT(*) FROM snapshots s WHERE {GOV}").fetchone()[0]
 p = c.execute(f"SELECT COUNT(*) FROM snapshots s WHERE {GOV} AND s.pred_1c_up_prob IS NOT NULL").fetchone()[0]
 print("governed", n, "pred_1c", p)

@@ -14,25 +14,59 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-SERVER_PATH = Path(__file__).resolve().parent.parent / "server.py"
+from tests.console_runtime import console_runtime_sources
+
+ROOT = Path(__file__).resolve().parent.parent
+SERVER_PATH = ROOT / "server.py"
 SERVER_SRC = SERVER_PATH.read_text(encoding="utf-8")
-SERVER_TREE = ast.parse(SERVER_SRC)
+#: RC-REHAB-1 (forty-fifth slice): the collection service lives in bars_loop.py.
+BARS_PATH = ROOT / "bars_loop.py"
+BARS_SRC = BARS_PATH.read_text(encoding="utf-8")
 
 
 def _fn_src(name: str) -> str:
-    for node in ast.walk(SERVER_TREE):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
-            return ast.get_source_segment(SERVER_SRC, node) or ""
-    raise AssertionError(f"{name} not found in server.py")
+    for src in (SERVER_SRC, BARS_SRC):
+        for node in ast.walk(ast.parse(src)):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+                return ast.get_source_segment(src, node) or ""
+    raise AssertionError(f"{name} not found in server.py or bars_loop.py")
+
+
+def _console_runtime_modules() -> dict[str, Path]:
+    """Every repo-local module the console process can import (tests/console_runtime.py)."""
+    return {rel: ROOT / rel for rel, _src, _tree in console_runtime_sources()}
+
+
+def _bar_writes(path: Path) -> list[str]:
+    """`<x>.upsert_1m_bars(...)` calls, excluding a module's own `__main__` smoke block."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    main_blocks = [n for n in tree.body if isinstance(n, ast.If)
+                   and "__main__" in ast.unparse(n.test)]
+    skip = {id(x) for b in main_blocks for x in ast.walk(b)}
+    out = []
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for x in ast.walk(fn):
+                if (isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute)
+                        and x.func.attr == "upsert_1m_bars" and id(x) not in skip):
+                    out.append(f"{path.relative_to(ROOT).as_posix()}:{fn.name}")
+    for x in ast.walk(tree):
+        if (isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute)
+                and x.func.attr == "upsert_1m_bars" and id(x) not in skip
+                and not any(id(x) in {id(y) for y in ast.walk(f)} for f in ast.walk(tree)
+                            if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)))):
+            out.append(f"{path.relative_to(ROOT).as_posix()}:<module>")
+    return out
 
 
 def test_price_bars_has_exactly_one_writer():
-    """THE single-faucet contract. A second writer is how collection drifted into the render
-    path in the first place."""
-    n = SERVER_SRC.count("upsert_1m_bars(")
-    assert n == 1, (
-        f"price_bars_1m has {n} writers in server.py; RC-69 requires exactly ONE "
-        f"(the bar collection service). A render path must never persist bars."
+    """THE single-faucet contract, over the WHOLE console process -- server.py and every module
+    it can import -- not one file. A second writer is how collection drifted into the render
+    path in the first place. Offline repair/backfill tools are not part of the console."""
+    writes = [w for p in _console_runtime_modules().values() for w in _bar_writes(p)]
+    assert writes == ["bars_loop.py:_persist_1m_bars"], (
+        f"price_bars_1m writers in the console runtime: {writes}; RC-69 requires exactly ONE "
+        f"(the bar collection service's _persist_1m_bars). A render path must never persist bars."
     )
 
 
@@ -90,5 +124,6 @@ def test_loop_refuses_to_start_under_pytest():
 
 
 def test_loop_is_wired_into_the_app_lifespan():
-    assert "start_bars_loop()" in SERVER_SRC, "collection service is never started"
-    assert "stop_bars_loop()" in SERVER_SRC, "collection service is never stopped on shutdown"
+    lifespan = _fn_src("_app_lifespan")
+    assert "start_bars_loop()" in lifespan, "collection service is never started"
+    assert "stop_bars_loop()" in lifespan, "collection service is never stopped on shutdown"

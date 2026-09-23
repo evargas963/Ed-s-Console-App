@@ -96,7 +96,7 @@ def load_certified_gamma(db_path: str, ticker: str) -> list[tuple[float, float]]
     """(ts_utc, net_gamma_rc) rows, trusted only, ascending. Gate-checked."""
     from tools.backfill_greeks_from_chain_archive_v1 import recomputed_greeks_ready
 
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     try:
         if not recomputed_greeks_ready(con):
             raise RuntimeError(
@@ -304,7 +304,7 @@ def run_study(db_path: str) -> dict[str, Any]:
             "bootstrap": baseline.bootstrap,
         },
         "conditions": verdicts,
-        "n_survivors": 0 if halted else len(survivors),
+        "n_survivors": 0 if halted else len(survivors),  # caps-ok: preregistered hard halt ('no real survivors may be reported'); status HALT_* and placebo.hard_halt_engaged carry why the count is 0
         "survivors": [] if halted else survivors,
         "placebo_day_shuffle": {
             "n_survivors": len(placebo_survivors), "survivors": placebo_survivors,

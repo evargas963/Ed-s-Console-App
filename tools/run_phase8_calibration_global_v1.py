@@ -97,11 +97,13 @@ def main() -> int:
         and r.get("policy_status") == "POLICY_ELIGIBLE"
     )
     excluded_family_hz = set()
-    for s in policy_inv.get("slices", []):
+    # build_checkpoint_provenance_bundle_v1 always writes "slices"; a missing key must not
+    # silently re-admit cloned/non-native slices by excluding nothing.
+    for s in policy_inv["slices"]:
         if s.get("cloned_or_non_native_inference_touches_slice"):
             excluded_family_hz.add((str(s.get("family")), str(s.get("horizon"))))
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 
@@ -168,7 +170,7 @@ def main() -> int:
             raw_emp = [b["emp_rate"] for b in bins_raw]
             _raw_pred = [b["pred_mean"] for b in bins_raw]
             raw_monotonic = _monotonic_non_decreasing(raw_emp)
-            raw_sep = (max(raw_emp) - min(raw_emp)) if raw_emp else 0.0
+            raw_sep = max(raw_emp) - min(raw_emp)  # n >= 50 here, so _deciles returned bins
 
             iso = IsotonicRegression(y_min=0.0, y_max=1.0, increasing=True, out_of_bounds="clip")
             iso.fit(p, y)
@@ -176,7 +178,7 @@ def main() -> int:
             bins_cal = _deciles(cp, y)
             cal_emp = [b["emp_rate"] for b in bins_cal]
             cal_monotonic = _monotonic_non_decreasing(cal_emp)
-            cal_sep = (max(cal_emp) - min(cal_emp)) if cal_emp else 0.0
+            cal_sep = max(cal_emp) - min(cal_emp)  # n >= 50 here, so _deciles returned bins
 
             brier_raw = _brier(p, y)
             brier_cal = _brier(cp, y)
@@ -187,9 +189,11 @@ def main() -> int:
             # cross ticker consistency: requery from stored db-less arrays is hard, so use
             # per-ticker counts concentration as a proxy + decile slopes.
             count_map = ticker_counts[hz if family == "move" else f"dir-{hz}"]
-            total = sum(count_map.values()) or 1
+            total = sum(count_map.values())  # an all-zero map divides by zero -> fails loudly
             shares = [v / total for v in count_map.values()]
-            max_share = max(shares) if shares else 0.0
+            # count_map tallies exactly the n >= 50 dataset rows, so shares is non-empty; an
+            # empty map must raise rather than pass cross_ok with a fabricated 0.0 share.
+            max_share = max(shares)
             hhi = sum(s * s for s in shares)
             cross_ok = max_share <= 0.55
             if not cross_ok:

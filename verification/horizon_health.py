@@ -29,7 +29,7 @@ def horizon_health_report(
     for hz_key, col, bars in PRODUCT_EMPIRICAL:
         probs, src_key, note, n = _literal_empirical_horizon(similar, col, bars)
         triplet = (
-            (float(probs["up"]), float(probs["down"]), float(probs["flat"])) if probs else (None, None, None)
+            (float(probs["up"]), float(probs["down"]), float(probs["flat"])) if probs else (None, None, None)  # caps-ok: withheld empirical horizon keeps an all-None triplet (prob_ok False downstream), no fabricated probability
         )
         if hz_key in fusion_probs_by_hz:
             triplet = fusion_probs_by_hz[hz_key]
@@ -90,7 +90,7 @@ def horizon_health_from_state_horizon_bars(ms_dict: dict) -> dict[str, Any]:
         u, d, f = row.get("up"), row.get("down"), row.get("flat")
         tri_ok = u is not None and d is not None and f is not None
         lc = row.get("labeled_count")
-        mn = row.get("min_samples_required", MIN_SAMPLES_STATISTICAL)
+        mn = row.get("min_samples_required", MIN_SAMPLES_STATISTICAL)  # caps-ok: sample-floor threshold, not data; absent from the payload it is the same product-wide MIN_SAMPLES_STATISTICAL this module reports as min_required, and it only picks WITHHELD vs UNAVAILABLE for a row already lacking a triplet
         src = row.get("source") or ""
         if tri_ok:
             st = "OK"

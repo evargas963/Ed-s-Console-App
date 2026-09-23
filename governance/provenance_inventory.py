@@ -240,23 +240,41 @@ def all_functions_in_file(rel: str) -> set[str]:
     return out
 
 
-def served_routes(rel: str = "server.py") -> list[tuple[str, str, str]]:
-    """(method, route, handler) for every @app.get/@app.post in `rel`."""
-    src = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+def served_routes(rels: tuple[str, ...] = ("server.py",)) -> list[tuple[str, str, str]]:
+    """(method, route, handler) for every @app.get/@app.post in `rels`, plus every
+    @router.get/@router.post in every app/api/routes/*.py module.
+
+    RC-REHAB-1 (Phase 3): server.py's route table is being decomposed into per-domain router
+    modules (app/api/routes/desk.py, .../options_order_flow.py, ...), each mounted via
+    app.include_router(...) — a route stops being findable by a server.py-only scan the moment
+    it moves. Discovering router modules by directory listing, not a maintained file list,
+    means a FUTURE extraction is covered automatically instead of silently reopening this same
+    "classified but not served" gap every time a route moves.
+    """
+    files = list(rels)
+    routes_dir = REPO / "app" / "api" / "routes"
+    if routes_dir.is_dir():
+        files += sorted(
+            str(p.relative_to(REPO)).replace("\\", "/")
+            for p in routes_dir.glob("*.py")
+            if p.name != "__init__.py"
+        )
     out = []
-    for n in ast.parse(src).body:
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for d in n.decorator_list:
-                if (isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
-                        and d.func.attr in ("get", "post") and d.args
-                        and isinstance(d.args[0], ast.Constant)):
-                    out.append((d.func.attr, d.args[0].value, n.name))
+    for rel in files:
+        src = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+        for n in ast.parse(src).body:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for d in n.decorator_list:
+                    if (isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                            and d.func.attr in ("get", "post") and d.args
+                            and isinstance(d.args[0], ast.Constant)):
+                        out.append((d.func.attr, d.args[0].value, n.name))
     return out
 
 
 def market_state_fields(rel: str = "market_state.py") -> list[str]:
     src = (REPO / rel).read_text(encoding="utf-8", errors="replace")
-    cls = next(n for n in ast.parse(src).body if isinstance(n, ast.ClassDef) and n.name == "MarketState")
+    cls = next(n for n in ast.parse(src).body if isinstance(n, ast.ClassDef) and n.name == "MarketState")  # caps-ok: scanner false positive: next() has NO default (the comma is inside the generator); a missing MarketState raises StopIteration
     return [b.target.id for b in cls.body if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)]
 
 
@@ -317,7 +335,10 @@ def roots(roots_data, idx) -> list[Root]:
     # B2 also covers keys the serializer ADDS to a carried payload outside MarketState (the
     # card's expected-move bands and analytics freshness flags live in server.py, not on the
     # dataclass); they are roots exactly like fields.
-    for key, (category, producer) in getattr(roots_data, "PAYLOAD_EXTRAS", {}).items():
+    # RC-REHAB-1 (2026-09-23): was getattr(roots_data, "PAYLOAD_EXTRAS", {}) -- a renamed or
+    # deleted PAYLOAD_EXTRAS silently dropped every payload root out of the provenance gate.
+    # Read directly, like MARKET_STATE / ENGINE_INPUTS / ROUTES beside it.
+    for key, (category, producer) in roots_data.PAYLOAD_EXTRAS.items():
         if category in ROOT_CATEGORIES:
             out.append(Root("payload", key, category, producer))
     for (file, fn), args in roots_data.ENGINE_INPUTS.items():

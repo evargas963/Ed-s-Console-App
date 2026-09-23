@@ -13,6 +13,8 @@ import time
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, options_quote_msg
+import gamma_surface_state
+import terrain_state
 
 _SPY_CONTRACT = "SPY   260820C00767000"
 
@@ -455,13 +457,13 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
             "expirationDate": "2026-09-18T20:00:00.000+00:00", "daysToExpiration": 7,
         }]
     spot = 400.0
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "_contracts_rest": contracts,
             "_contracts_rest_spot": spot,
             "_contracts_rest_computed_ts": _t.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (spot, "stub", _t.time()))
     try:
         # Baseline: measure ONE real call's cost directly against the real consumer. A
@@ -487,16 +489,16 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
             f"benchmark call must actually run the real projection, not short-circuit: {status}")
         print(f"[perf] refresh_gamma_surface_from_stream, {len(contracts)}-contract "
               f"synthetic SPXW-scale book: {one_call_sec * 1000:.1f} ms/call")
-        with srv._terrain_cache_lock:
-            baseline_surface = srv._terrain_cache[tk]["_gamma_surface"]
+        with terrain_state._terrain_cache_lock:
+            baseline_surface = terrain_state._terrain_cache[tk]["_gamma_surface"]
         seq_before_batch = baseline_surface["surface_seq"]
         assert baseline_surface["stream_overlay_contracts"] == 1   # only A, at this point
         monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", _real_get_stream_greeks)
 
         # Reset the REST generation so the real _feed_loop run below is a fresh, comparable
         # compute-and-publish, not a "stale_baseline_superseded" no-op.
-        with srv._terrain_cache_lock:
-            srv._terrain_cache[tk]["_contracts_rest_computed_ts"] = _t.time() - 30.0
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[tk]["_contracts_rest_computed_ts"] = _t.time() - 30.0
 
         # The real proof: THREE DISTINCT CONTRACTS (primary A, additional B and C -- all
         # sharing the SPY root) each get one fresh qualifying L1 row BEFORE one real
@@ -609,8 +611,8 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
         # require a NEW publication generation (surface_seq strictly greater than the
         # baseline's) AND that its overlay count reflects ALL THREE batch contracts, not
         # the baseline's one -- both are impossible to satisfy from stale leftover state.
-        with srv._terrain_cache_lock:
-            published = srv._terrain_cache[tk]["_gamma_surface"]
+        with terrain_state._terrain_cache_lock:
+            published = terrain_state._terrain_cache[tk]["_gamma_surface"]
         assert published is not None
         assert published["surface_seq"] > seq_before_batch, (
             f"the coalesced tick must publish a NEW surface generation "
@@ -631,9 +633,9 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
         ofs.set_streamed_greeks_hook(None)
         ofs._active_option_contract = None
         ofs._active_option_contracts = []
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
-        srv._gamma_surface_seq.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(tk, None)
         _drain_l1_sse_thread_queue()
 
 
@@ -666,12 +668,12 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
         "openInterest": 2097, "multiplier": 100.0, "gamma": 0.018, "delta": 0.5,
         "expirationDate": "2026-09-18T20:00:00.000+00:00", "daysToExpiration": 7,
     } for sym, strike in ((_CONTRACT_A, 600.0), (_CONTRACT_B, 610.0), (_CONTRACT_C, 620.0))]
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "_contracts_rest": contracts, "_contracts_rest_spot": 400.0,
             "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     try:
         ofs._active_option_contract = ofs.ticker_storage_key(_CONTRACT_A)
         ofs._active_option_contracts = [ofs.ticker_storage_key(_CONTRACT_B), ofs.ticker_storage_key(_CONTRACT_C)]
@@ -743,9 +745,9 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
 
         # And the publication assertion (overlay count reflecting the batch) must ALSO
         # fail -- with nothing ever written to state, nothing can have overlaid.
-        with srv._terrain_cache_lock:
-            published = srv._terrain_cache[tk].get("_gamma_surface")
-        overlay_count = published.get("stream_overlay_contracts", 0) if published else 0
+        with terrain_state._terrain_cache_lock:
+            published = terrain_state._terrain_cache[tk].get("_gamma_surface")
+        overlay_count = published.get("stream_overlay_contracts", 0) if published else 0  # caps-ok: negative control asserting != 3: an unpublished surface, or one no overlay pass touched, genuinely overlaid zero contracts
         assert overlay_count != 3, (
             f"the publication assertion (stream_overlay_contracts == 3) must also fail "
             f"when replay-to-state writes are suppressed; got {overlay_count}")
@@ -753,9 +755,9 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
         ofs.set_streamed_greeks_hook(None)
         ofs._active_option_contract = None
         ofs._active_option_contracts = []
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
-        srv._gamma_surface_seq.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(tk, None)
         _drain_l1_sse_thread_queue()
 
 
@@ -791,8 +793,8 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
     db = _reset(tmp_path, monkeypatch)
     tk = srv.ticker_storage_key("SPY")
     _CONTRACT_A = "SPY   260918C00600000"
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "_contracts_rest": [{
                 "symbol": _CONTRACT_A, "putCall": "CALL", "strikePrice": 600.0,
                 "openInterest": 2097, "multiplier": 100.0, "gamma": 0.018, "delta": 0.5,
@@ -801,7 +803,7 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
             "_contracts_rest_spot": 400.0,
             "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (400.0, "stub", time.time()))
     try:
         monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks",
@@ -809,10 +811,10 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
         ofs._active_option_contract = ofs.ticker_storage_key(_CONTRACT_A)
         status = srv.refresh_gamma_surface_from_stream(_CONTRACT_A, time.time())
         assert status == "ok"
-        with srv._terrain_cache_lock:
-            seq_before = srv._terrain_cache[tk]["_gamma_surface"]["surface_seq"]
-        with srv._terrain_cache_lock:
-            srv._terrain_cache[tk]["_contracts_rest_computed_ts"] = time.time() - 30.0
+        with terrain_state._terrain_cache_lock:
+            seq_before = terrain_state._terrain_cache[tk]["_gamma_surface"]["surface_seq"]
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[tk]["_contracts_rest_computed_ts"] = time.time() - 30.0
 
         # The hook is NEVER wired (set_streamed_greeks_hook is never called; confirmed
         # explicitly below) -- this models "the batch-publication callback is disabled".
@@ -847,8 +849,8 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
                 pass
         asyncio.run(_run_one_tick())
 
-        with srv._terrain_cache_lock:
-            after = srv._terrain_cache[tk]["_gamma_surface"]
+        with terrain_state._terrain_cache_lock:
+            after = terrain_state._terrain_cache[tk]["_gamma_surface"]
         assert after["surface_seq"] == seq_before, (
             "sanity: with the hook genuinely unregistered, _feed_loop's own dispatch "
             "branch must not publish a new surface generation")
@@ -864,9 +866,9 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
                 "genuinely missing publication either")
     finally:
         ofs._active_option_contract = None
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
-        srv._gamma_surface_seq.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(tk, None)
         _drain_l1_sse_thread_queue()
 
 
@@ -891,8 +893,8 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
     _SPY_A = "SPY   260918C00600000"
     _SPY_B = "SPY   260918C00610000"
     _QQQ_A = "QQQ   260918C00500000"
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[spy_tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[spy_tk] = {
             "_contracts_rest": [
                 {"symbol": _SPY_A, "putCall": "CALL", "strikePrice": 600.0, "openInterest": 500,
                  "multiplier": 100.0, "gamma": 0.02, "delta": 0.5,
@@ -903,7 +905,7 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
             ],
             "_contracts_rest_spot": 400.0, "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-        srv._terrain_cache[qqq_tk] = {
+        terrain_state._terrain_cache[qqq_tk] = {
             "_contracts_rest": [
                 {"symbol": _QQQ_A, "putCall": "CALL", "strikePrice": 500.0, "openInterest": 500,
                  "multiplier": 100.0, "gamma": 0.02, "delta": 0.5,
@@ -911,8 +913,8 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
             ],
             "_contracts_rest_spot": 300.0, "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(spy_tk, None)
-    srv._gamma_surface_seq.pop(qqq_tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(spy_tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(qqq_tk, None)
     _spot_by_tk = {spy_tk: 400.0, qqq_tk: 300.0}
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (_spot_by_tk.get(t), "stub", time.time()))
     try:
@@ -966,9 +968,9 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
             f"two SPY contracts + one QQQ contract qualifying in the same tick must fire "
             f"the hook exactly twice (once per underlying), not {len(hook_started)}: "
             f"{hook_started}")
-        with srv._terrain_cache_lock:
-            spy_pub = srv._terrain_cache[spy_tk]["_gamma_surface"]
-            qqq_pub = srv._terrain_cache[qqq_tk]["_gamma_surface"]
+        with terrain_state._terrain_cache_lock:
+            spy_pub = terrain_state._terrain_cache[spy_tk]["_gamma_surface"]
+            qqq_pub = terrain_state._terrain_cache[qqq_tk]["_gamma_surface"]
         assert spy_pub is not None and spy_pub["stream_overlay_contracts"] == 2, (
             "SPY's publication must reflect BOTH its own contracts")
         assert qqq_pub is not None and qqq_pub["stream_overlay_contracts"] == 1, (
@@ -977,11 +979,11 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
         ofs.set_streamed_greeks_hook(None)
         ofs._active_option_contract = None
         ofs._active_option_contracts = []
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(spy_tk, None)
-            srv._terrain_cache.pop(qqq_tk, None)
-        srv._gamma_surface_seq.pop(spy_tk, None)
-        srv._gamma_surface_seq.pop(qqq_tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(spy_tk, None)
+            terrain_state._terrain_cache.pop(qqq_tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(spy_tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(qqq_tk, None)
         _drain_l1_sse_thread_queue()
 
 
@@ -1035,8 +1037,8 @@ def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_p
     db = _reset(tmp_path, monkeypatch)
     spx_tk = srv.ticker_storage_key("SPX")
     assert spx_tk == "$SPX"
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[spx_tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[spx_tk] = {
             "_contracts_rest": [
                 {"symbol": _SPX_A, "putCall": "CALL", "strikePrice": 5600.0, "openInterest": 500,
                  "multiplier": 100.0, "gamma": 0.02, "delta": 0.5,
@@ -1047,7 +1049,7 @@ def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_p
             ],
             "_contracts_rest_spot": 5600.0, "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(spx_tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(spx_tk, None)
     try:
         ofs._active_option_contract = ofs.ticker_storage_key(_SPX_A)
         ofs._active_option_contracts = [ofs.ticker_storage_key(_SPXW_A)]
@@ -1084,9 +1086,9 @@ def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_p
         ofs.set_streamed_greeks_hook(None)
         ofs._active_option_contract = None
         ofs._active_option_contracts = []
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(spx_tk, None)
-        srv._gamma_surface_seq.pop(spx_tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(spx_tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(spx_tk, None)
         _drain_l1_sse_thread_queue()
 
 

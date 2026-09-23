@@ -39,12 +39,14 @@ def _interp_piecewise(x: float, xs: list[float], ys: list[float]) -> float:
 def _apply_mapping(raw: float, mapping: dict) -> float:
     t = mapping.get("type")
     if t in ("isotonic", "bin_mono"):
-        xs = [float(v) for v in mapping.get("x_thresholds", [])]
-        ys = [float(v) for v in mapping.get("y_thresholds", [])]
+        # A piecewise mapping without its knots is a broken artifact, not an identity map.
+        xs = [float(v) for v in mapping["x_thresholds"]]
+        ys = [float(v) for v in mapping["y_thresholds"]]
         return max(0.0, min(1.0, _interp_piecewise(float(raw), xs, ys)))
     if t == "platt":
-        a = float(mapping.get("coef", 0.0))
-        b = float(mapping.get("intercept", 0.0))
+        # A Platt mapping without coef/intercept would silently emit p=0.5 for every row.
+        a = float(mapping["coef"])
+        b = float(mapping["intercept"])
         z = a * float(raw) + b
         if z >= 0:
             ez = math.exp(-z)
@@ -70,23 +72,26 @@ def main() -> int:
     phase9r = json.loads((ROOT / "data" / "phase9_policy_remediation_v1.json").read_text(encoding="utf-8"))
     inventory = json.loads((ROOT / "data" / "required_model_inventory_v1.json").read_text(encoding="utf-8"))
 
-    readiness_lookup = lookup_payload.get("lookup", {})
+    # Producers (legacy enforce_universal_ticker_readiness_v1, run_phase9_*): these keys are
+    # always written; a missing key is a wrong/foreign artifact and must fail loudly rather
+    # than read as "no ready tickers / no horizons / no thresholds / no models".
+    readiness_lookup = lookup_payload["lookup"]
     allowed_tickers = sorted(
         r["ticker"]
         for r in readiness["tickers"]
         if r["final_readiness_verdict"] == "READY_GLOBAL_STANDARD" and r["policy_status"] == "POLICY_ELIGIBLE"
     )
-    edge_positive_horizons = set(phase9r.get("edge_positive_horizons", []))
-    excluded_hz = set(phase9r.get("excluded_horizons", []))
+    edge_positive_horizons = set(phase9r["edge_positive_horizons"])
+    excluded_hz = set(phase9r["excluded_horizons"])
     thresholds = {}
     # Use Phase 9 selected thresholds from phase9_decision artifact for deterministic execution.
     phase9 = json.loads((ROOT / "data" / "phase9_decision_policy_v1.json").read_text(encoding="utf-8"))
-    for k, v in phase9.get("thresholds_selected", {}).items():
+    for k, v in phase9["thresholds_selected"].items():
         head, hz = k.split(":")
         thresholds[(head, hz)] = v
 
     inv_index = {}
-    for r in inventory.get("rows", []):
+    for r in inventory["rows"]:
         inv_index[(r["ticker"], r["horizon"], r["head_type"])] = r
 
     # Failure mode list
@@ -101,6 +106,7 @@ def main() -> int:
         {"id": "PRED_MISSING", "category": "PREDICTION_FAILURE"},
         {"id": "CALIBRATION_MAPPING_MISSING", "category": "CALIBRATION_FAILURE"},
         {"id": "CALIBRATION_MAPPING_INVALID", "category": "CALIBRATION_FAILURE"},
+        {"id": "THRESHOLD_MISSING", "category": "CALIBRATION_FAILURE"},
         {"id": "NO_VALID_HORIZON", "category": "POLICY_FAILURE"},
         {"id": "THRESHOLD_NOT_MET", "category": "POLICY_FAILURE"},
         {"id": "CONFLICTING_SIGNALS", "category": "POLICY_FAILURE"},
@@ -138,7 +144,7 @@ def main() -> int:
             }
         )
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     latest_rows = []
@@ -149,7 +155,9 @@ def main() -> int:
         ).fetchone()
         if row:
             latest_rows.append(dict(row))
-    now_ts = max((float(r.get("ts_utc") or 0.0) for r in latest_rows), default=time.time())
+    # Staleness is judged against the wall clock. The old reference (max ts of the latest rows)
+    # made a fleet-wide stall invisible: if every ticker stopped at once, none was "stale".
+    now_ts = time.time()
 
     # Build runtime decision traces.
     decision_traces = []
@@ -165,9 +173,11 @@ def main() -> int:
         if not checks["ticker_ready"]:
             failures.append("TICKER_NOT_READY")
 
-        ts = float(r.get("ts_utc") or 0.0)
-        checks["data_present"] = ts > 0.0
-        checks["data_stale"] = (now_ts - ts) > (float(args.stale_minutes) * 60.0)
+        ts_raw = r.get("ts_utc")
+        ts = None if ts_raw is None else float(ts_raw)
+        checks["data_present"] = ts is not None
+        # An absent timestamp cannot prove freshness: it counts as stale as well as missing.
+        checks["data_stale"] = ts is None or (now_ts - ts) > (float(args.stale_minutes) * 60.0)
         if not checks["data_present"]:
             failures.append("DATA_MISSING")
         if checks["data_stale"]:
@@ -194,7 +204,7 @@ def main() -> int:
             if float(mp) < 0.0 or float(mp) > 1.0:
                 failures.append("PRED_NAN_OR_OOB")
                 continue
-            mcfg = phase8r.get("final_calibration_functions", {}).get("move", {}).get(hz)
+            mcfg = phase8r["final_calibration_functions"]["move"].get(hz)
             if not mcfg:
                 failures.append("CALIBRATION_MAPPING_MISSING")
                 continue
@@ -202,7 +212,13 @@ def main() -> int:
             if not math.isfinite(cal) or cal < 0.0 or cal > 1.0:
                 failures.append("CALIBRATION_MAPPING_INVALID")
                 continue
-            th = float(thresholds.get(("move", hz), {}).get("threshold", 1.1))
+            th_row = thresholds.get(("move", hz))
+            if th_row is None:
+                # No selected movement threshold: flag it instead of an unreachable 1.1 default
+                # that silently dropped the horizon.
+                failures.append("THRESHOLD_MISSING")
+                continue
+            th = float(th_row["threshold"])
             if cal >= th:
                 valid_h.append((hz, cal, th))
         checks["valid_horizons"] = len(valid_h)
@@ -212,11 +228,14 @@ def main() -> int:
         # conflicting signals test: opposite direction bias across horizons (if available)
         dir_biases = []
         for hz, _cal, _th in valid_h:
-            dcfg = phase8r.get("final_calibration_functions", {}).get("dir", {}).get(hz)
+            dcfg = phase8r["final_calibration_functions"]["dir"].get(hz)
             dp = r.get(f"fused_dir_up_prob_{hz}")
-            if dcfg and isinstance(dp, (int, float)):
+            dth_row = thresholds.get(("dir", hz))
+            # A direction bias needs a calibrated mapping AND a selected threshold; no
+            # fabricated 0.55 fallback threshold.
+            if dcfg and dth_row is not None and isinstance(dp, (int, float)):
                 dc = _apply_mapping(float(dp), dcfg["mapping"])
-                dth = float(thresholds.get(("dir", hz), {}).get("threshold", 0.55))
+                dth = float(dth_row["threshold"])
                 if dc >= dth:
                     dir_biases.append("long")
                 elif dc <= (1.0 - dth):
@@ -285,13 +304,13 @@ def main() -> int:
         generated = sorted(generated, key=lambda s: s["move_probability"], reverse=True)[: int(args.max_signals_per_cycle)]
 
     # Edge protection: drift / hit-rate drop detection only.
-    hist_hit = phase9r.get("sanity_new_policy", {}).get("hit_rate")
+    hist_hit = phase9r["sanity_new_policy"]["hit_rate"]  # always written (None when unmeasured)
     live_hit = None
     if generated:
         # Use observed historical labels on same latest row horizons when present.
         hits = []
         for s in generated:
-            rr = next((x for x in latest_rows if str(x["ticker"]) == s["ticker"]), None)
+            rr = next((x for x in latest_rows if str(x["ticker"]) == s["ticker"]), None)  # caps-ok: next(..., None) row lookup; the next line guards with `if rr and ...`, so a missing row adds no hit sample
             if rr and rr.get(f"outcome_move_{s['horizon']}") in ("move", "no_move"):
                 hits.append(1 if rr.get(f"outcome_move_{s['horizon']}") == "move" else 0)
         if hits:

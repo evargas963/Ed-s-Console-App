@@ -96,7 +96,7 @@ def test_signal_input_carries_the_plumbed_strike_and_regime_engine_does_not_cons
 
     from signal_types import SignalInput
 
-    fields = set(getattr(SignalInput, "__annotations__", {}))
+    fields = set(SignalInput.__annotations__)
     assert "absolute_gamma_strike" in fields, (
         "the RC-295 NEXT-DEPTH plumb regressed: SignalInput lost absolute_gamma_strike")
     assert SignalInput.__dataclass_fields__["absolute_gamma_strike"].default is None, (

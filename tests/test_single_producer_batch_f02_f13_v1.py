@@ -140,12 +140,19 @@ def test_rc345_candle_direction_has_one_authority() -> None:
     # serve semantic. snapshot_normalizer's strict-sign was a backfill-only shadow (MEASURED
     # 19.1% label delta on 372 stored bars) now aligned, so train = backfill = live = replay.
     # Prove BOTH producers delegate to the one authority and no strict-sign shadow survives.
-    srv3 = _read("server.py")
+    # RC-REHAB-1 (2026-09-22, module extraction): _candle_direction_for_state moved out of
+    # server.py entirely into server_state_candles.py; check the real source, not server.py's
+    # re-export shell.
+    srv3 = _read("server_state_candles.py")
     assert "classify_direction as _classify_direction" in srv3, (
         "live server candle direction must be the dead-band authority (F10/RC-345)")
-    assert "_candle_dir  = _classify_direction(_bar_move" in srv3
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifth slice): this call site moved
+    # out of _fetch_state's own body into _candle_direction_for_state, where the local
+    # dropped the "_fetch_state phase-scratch" underscore prefix (candle_dir/bar_move, not
+    # _candle_dir/_bar_move) as a clean local in its own small function.
+    assert "candle_dir  = _classify_direction(bar_move" in srv3
     # No production site reconstructs candle direction with a strict close-vs-open sign.
-    for mod in ("server.py", "snapshot_normalizer.py", "market_state.py"):
+    for mod in ("server.py", "server_state_candles.py", "snapshot_normalizer.py", "market_state.py"):
         mcode = "\n".join(l for l in _read(mod).splitlines() if not l.lstrip().startswith("#"))
         assert '"up" if c > o' not in mcode and "'up' if" not in mcode, (
             f"{mod} has a strict-sign candle-direction shadow (F10/RC-345)")
@@ -239,15 +246,21 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     dbcode = "\n".join(ln for ln in dbsrc.splitlines() if not ln.lstrip().startswith("#"))
     assert "ACCURACY_RTH_START_MIN: int = 570" not in dbcode, (
         "db.py re-hardcodes 570 for the RTH window; it must alias time_et (F09/RC-345).")
-    assert "_RTH_START_MINS_AUTH" in dbsrc
-    # F09 (reopened): db.market_session must NOT re-hardcode 570/960 either — it aliases the
-    # authority; and it is calendar-aware (is_trading_day_et decides first).
-    seg = dbsrc[dbsrc.index("def market_session("):]
+    # RC-REHAB-1 (2026-09-22): market_session moved from db.py into time_et.py itself (zero
+    # EdDB coupling; time_et.py is the RTH_START_MINS/RTH_END_MINS/is_trading_day_et authority
+    # it consumes). db.py now re-exports it unmodified -- check the real definition's source,
+    # not db.py's re-export shell, which no longer contains the function body at all.
+    assert "market_session" in dbsrc, "db.py must re-export market_session (F09/RC-345)"
+    tesrc = _read("time_et.py")
+    # F09 (reopened): market_session must NOT re-hardcode 570/960 — it uses the authority
+    # constants directly (same file now, no alias needed); and it is calendar-aware
+    # (is_trading_day_et decides first).
+    seg = tesrc[tesrc.index("def market_session("):]
     seg = seg[: seg.index("\ndef ", 1)]
     segcode = "\n".join(ln for ln in seg.splitlines() if not ln.lstrip().startswith("#"))
     assert "< 570" not in segcode and "< 960" not in segcode, (
-        "db.market_session re-hardcodes the RTH boundary; alias time_et (F09/RC-345).")
-    assert "_RTH_START_MINS_AUTH" in segcode and "is_trading_day_et" in segcode
+        "time_et.market_session re-hardcodes the RTH boundary (F09/RC-345).")
+    assert "RTH_START_MINS" in segcode and "is_trading_day_et" in segcode
     # F09 (reopened): the LSTM no-ts_utc fallback is calendar-aware (is_trading_day_et on the
     # row's ET date) or fails closed — never a silent clock-only RTH.
     lstm_fb = lstm[lstm.index("def extract_rth_snapshots"):]
@@ -284,7 +297,9 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     assert close_assign and "RTH_END_MINS" in close_assign[0] and "960" not in close_assign[0]
     mkt_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("MARKET_CLOSE_HOUR")]
     assert mkt_assign and "RTH_END_MINS" in mkt_assign[0] and "16.0" not in mkt_assign[0]
-    cont_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("TERRAIN_CONTENTION_START_MINS")]
+    # RC-REHAB-1 (forty-first slice): the contention guard's constants live in terrain_schedule.py.
+    sched = _read("terrain_schedule.py")
+    cont_assign = [ln.split("#", 1)[0] for ln in sched.splitlines() if ln.startswith("TERRAIN_CONTENTION_START_MINS")]
     assert cont_assign and "RTH_OPEN_MINS" in cont_assign[0] and "570" not in cont_assign[0]
 
     # F09 repo-wide (2026-08-19): frontend + research/tools/training consume time_et,
@@ -442,7 +457,11 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     'normalized' (NULL when ATM book was ~0, later filled by backfill's volume fallback): two
     producers for one column and a train/serve skew."""
     srv = _read("server.py")
-    assert "flow_imbalance_normalized_with_fallback" in srv, (
+    # RC-REHAB-1 (2026-09-22, module extraction): _order_flow_signals_for_state (the real
+    # caller of flow_imbalance_normalized_with_fallback) moved out of server.py entirely
+    # into server_state_signals.py -- check the real source, not server.py's re-export shell.
+    ss = _read("server_state_signals.py")
+    assert "flow_imbalance_normalized_with_fallback" in ss, (
         "live server must persist flow_imbalance via the one fallback authority")
     assert 'flow_imbalance=_flow_imbalance.get("normalized")' not in srv, (
         "live server still persists the book-only value; it must use the wrapper (F11/RC-345)")
@@ -459,17 +478,34 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     # F11 (reopened) SOURCE travels beside the value: the live server captures the source
     # book and emits flow_imbalance_source into the payload, so a consumer can tell 'book'
     # (bid/ask size) from 'volume' (call/put traded volume) — not a bare generic number.
-    assert "_flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback" in srv, (
+    #
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, third slice): this tuple-unpack
+    # capture moved out of _fetch_state's own body into _order_flow_signals_for_state, a
+    # standalone function where the local names dropped the "_fetch_state phase-scratch"
+    # underscore-prefix convention (flow_imb_norm/flow_imb_source, not
+    # _flow_imb_norm/_flow_imb_source) since they are now clean locals in their own small
+    # function, not scratch variables threaded through a 3,400-line body. _fetch_state
+    # itself still binds the result back to the underscore-prefixed names the rest of its
+    # body already reads (see the two assertions below, unchanged).
+    assert "flow_imb_norm, flow_imb_source = flow_imbalance_normalized_with_fallback" in ss, (
         "live server must capture the flow_imbalance SOURCE, not discard it (F11/RC-345)")
-    assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in srv, (
+    # RC-REHAB-1 (thirty-third slice): the payload projection lives in server_state_payload.py.
+    assert 'ms_dict["flow_imbalance_source"] = ofs.flow_imb_source' in _read("server_state_payload.py"), (
         "the flow_imbalance source must reach the payload beside the value (F11/RC-345)")
     # F11 residual (2026-08-19): label must classify the SAME number, not a
     # second book-only compute. MEASURED: empty ATM book + call-heavy volume
     # used to publish 0.6 / volume beside label="balanced".
     srv_code = "\n".join(ln for ln in srv.splitlines() if not ln.lstrip().startswith("#"))
+    ss_code = "\n".join(ln for ln in ss.splitlines() if not ln.lstrip().startswith("#"))
     assert "compute_option_flow_imbalance(" not in srv_code, (
         "live server must not independently compute the book-only kernel (F11)")
-    assert "flow_imbalance_label_from_normalized(_flow_imb_norm)" in srv, (
+    assert "compute_option_flow_imbalance(" not in ss_code, (
+        "server_state_signals must not independently compute the book-only kernel (F11)")
+    payload_src = _read("server_state_payload.py")
+    payload_code = "\n".join(ln for ln in payload_src.splitlines() if not ln.lstrip().startswith("#"))
+    assert "compute_option_flow_imbalance(" not in payload_code, (
+        "the payload projection must not independently compute the book-only kernel (F11)")
+    assert "flow_imbalance_label_from_normalized(ofs.flow_imb_norm)" in payload_src, (
         "flow_imbalance_label must be a function of the wrapper number (F11)")
     from math_probabilities import (
         compute_option_flow_imbalance,
@@ -518,6 +554,11 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
     pytest.importorskip("fastapi")
     import server as srv
     from math_probabilities import compute_option_flow_imbalance
+    # RC-REHAB-1 (2026-09-22, module extraction): _order_flow_signals_for_state (the real
+    # caller) moved out of server.py into server_state_signals.py, but this reference call
+    # doesn't need to follow it -- math_exposure is the same source server_state_signals.py
+    # itself imports from.
+    from math_exposure import flow_imbalance_normalized_with_fallback
     from starlette.testclient import TestClient
     from time_et import rth_clock_js_source
 
@@ -529,8 +570,9 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         }
     }
     book = compute_option_flow_imbalance(exposures, 100.0)
-    val, src = srv.flow_imbalance_normalized_with_fallback(exposures, 100.0)
-    label = srv.flow_imbalance_label_from_normalized(val)
+    val, src = flow_imbalance_normalized_with_fallback(exposures, 100.0)
+    from math_probabilities import flow_imbalance_label_from_normalized
+    label = flow_imbalance_label_from_normalized(val)
     assert src == "volume" and val == 0.6
     assert label == "strong_call_demand"
     assert label != book.get("label")
@@ -562,7 +604,7 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         js = client.get("/static/rth_clock_authority.js")
         assert js.status_code == 200
         assert js.text == rth_clock_js_source()
-        r = client.get("/api/state", params={"ticker": "SPY"})
+        r = client.get("/api/state", params={"ticker": "SPY"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r.status_code == 200
         body = r.json()
         assert body.get("flow_imbalance") == 0.6
@@ -571,7 +613,7 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         assert body["flow_imbalance_label"] != book.get("label")
 
 
-def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) -> None:
+def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch, tmp_path) -> None:
     """Negative proof: the UI-serving path cannot return a stale disk blob or
     a prior 570/960 constant once time_et has moved or projection fails.
 
@@ -580,51 +622,54 @@ def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) ->
          400/800 — GET must return 400/800, never 111 or 570/960.
       2. Force rth_clock_js_source to raise — GET must fail closed (5xx), not
          fall through to StaticFiles serving the planted 111/222 blob.
+
+    RC-REHAB-1 (2026-09-23): the blob used to be planted in the REAL static/ directory and
+    restored in `finally`. Two overlapping runs (xdist or two processes in one worktree)
+    raced that restore: the second run captured the first's planted blob as "prior" and
+    wrote it back, leaving a 111/222 static/rth_clock_authority.js in the tree -- which
+    then failed test_rc345_rth_clock_boundary_has_one_authority in unrelated runs. The
+    mounted StaticFiles app is now pointed at tmp_path, so the repo tree is never written.
     """
     import pytest
 
     pytest.importorskip("fastapi")
     import time_et
     import server as srv
-    from pathlib import Path
     from starlette.testclient import TestClient
 
-    disk = Path(srv.APP_DIR) / "static" / "rth_clock_authority.js"
-    stale = b"window.ED_RTH_START_MINS=111;\nwindow.ED_RTH_END_MINS=222;\n"
-    prior = disk.read_bytes() if disk.exists() else None
-    try:
-        disk.write_bytes(stale)
-        monkeypatch.setattr(time_et, "RTH_START_MINS", 400)
-        monkeypatch.setattr(time_et, "RTH_END_MINS", 800)
-        with TestClient(srv.app) as client:
-            r = client.get("/static/rth_clock_authority.js")
-            assert r.status_code == 200
-            assert r.text == (
-                "window.ED_RTH_START_MINS=400;\nwindow.ED_RTH_END_MINS=800;\n"
-            )
-            assert "111" not in r.text
-            assert "222" not in r.text
-            assert "570" not in r.text
-            assert "960" not in r.text
+    static_mount = next(r for r in srv.app.routes if getattr(r, "name", None) == "static")  # caps-ok: scanner false positive: next() has NO default (the comma is inside the generator); a missing /static mount raises StopIteration and fails the test
+    (tmp_path / "rth_clock_authority.js").write_bytes(
+        b"window.ED_RTH_START_MINS=111;\nwindow.ED_RTH_END_MINS=222;\n")
+    (tmp_path / "probe.txt").write_text("planted-dir-is-live", encoding="utf-8")
+    monkeypatch.setattr(static_mount.app, "all_directories", [str(tmp_path)])
+    monkeypatch.setattr(time_et, "RTH_START_MINS", 400)
+    monkeypatch.setattr(time_et, "RTH_END_MINS", 800)
+    with TestClient(srv.app) as client:
+        # Control: the StaticFiles mount really is serving the planted directory, so the
+        # blob below WOULD be served if the request-time route did not own the path.
+        assert client.get("/static/probe.txt").text == "planted-dir-is-live"
+        r = client.get("/static/rth_clock_authority.js")
+        assert r.status_code == 200
+        assert r.text == (
+            "window.ED_RTH_START_MINS=400;\nwindow.ED_RTH_END_MINS=800;\n"
+        )
+        assert "111" not in r.text
+        assert "222" not in r.text
+        assert "570" not in r.text
+        assert "960" not in r.text
 
-        def _boom() -> str:
-            raise OSError("forced projection failure")
+    def _boom() -> str:
+        raise OSError("forced projection failure")
 
-        monkeypatch.setattr(time_et, "rth_clock_js_source", _boom)
-        with TestClient(srv.app, raise_server_exceptions=False) as client:
-            r = client.get("/static/rth_clock_authority.js")
-            assert r.status_code >= 500
-            body = r.text or ""
-            assert "ED_RTH_START_MINS=111" not in body
-            assert "ED_RTH_START_MINS=570" not in body
-            assert "ED_RTH_END_MINS=222" not in body
-            assert "ED_RTH_END_MINS=960" not in body
-    finally:
-        if prior is None:
-            if disk.exists():
-                disk.unlink()
-        else:
-            disk.write_bytes(prior)
+    monkeypatch.setattr(time_et, "rth_clock_js_source", _boom)
+    with TestClient(srv.app, raise_server_exceptions=False) as client:
+        r = client.get("/static/rth_clock_authority.js")
+        assert r.status_code >= 500
+        body = r.text or ""
+        assert "ED_RTH_START_MINS=111" not in body
+        assert "ED_RTH_START_MINS=570" not in body
+        assert "ED_RTH_END_MINS=222" not in body
+        assert "ED_RTH_END_MINS=960" not in body
 
 
 def test_rc345_imbalance_taxonomy_is_distinct_and_named() -> None:
@@ -690,9 +735,15 @@ def test_rc345_expected_move_quantities_are_distinct_and_single_source() -> None
     assert callable(compute_expected_move_straddle) and callable(compute_expected_move_iv)
 
     # Distinct producers wired to distinct names in the live path.
-    srv = _read("server.py")
-    assert "_em_straddle = compute_expected_move_straddle(" in srv
-    assert "_em_iv = compute_expected_move_iv(" in srv
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventh slice): both call sites
+    # moved out of _fetch_state's own body into _expected_move_for_state, where the
+    # locals dropped the "_fetch_state phase-scratch" underscore prefix (em_straddle/
+    # em_iv, not _em_straddle/_em_iv) as clean locals in their own small function.
+    # RC-REHAB-1 (2026-09-22, module extraction): _expected_move_for_state moved again,
+    # out of server.py entirely into server_state_signals.py.
+    srv = _read("server_state_signals.py")
+    assert "em_straddle = compute_expected_move_straddle(" in srv
+    assert "em_iv = compute_expected_move_iv(" in srv
 
     # The MC excursion is the simulation quantity, single-source in monte_carlo.
     mc = _read("monte_carlo.py")
@@ -700,7 +751,7 @@ def test_rc345_expected_move_quantities_are_distinct_and_single_source() -> None
         "the Monte-Carlo expected excursion must be computed in exactly one place (F06/RC-345)")
 
     # Neither market/IV EM formula is duplicated outside its authority.
-    for mod in ("server.py", "terrain_engine.py", "market_state.py"):
+    for mod in ("server.py", "server_state_signals.py", "terrain_engine.py", "market_state.py"):
         body = _read(mod)
         assert "def compute_expected_move_iv" not in body
         assert "def compute_expected_move_straddle" not in body
@@ -854,7 +905,9 @@ def test_rc345_atr_denominator_is_fully_classified(repo_index) -> None:
     from math_volatility import compute_atr
 
     assert callable(compute_atr)
-    db = _read("db.py")
+    # RC-REHAB-1 (2026-09-22): _snapshot_row_atr moved to db_snapshots.py (db.py
+    # decomposition follow-up), same code, different file.
+    db = _read("db_snapshots.py")
     seg = db[db.index("def _snapshot_row_atr"):]
     seg = seg[: seg.index("\ndef ", 1)]
     assert 'row["atr"]' in seg and "for " not in seg.split("return")[0], (
@@ -907,9 +960,14 @@ def test_rc345_realized_vol_bar_minutes_is_required() -> None:
     bm = sig.parameters["bar_minutes"]
     assert bm.default is inspect.Parameter.empty, (
         "compute_realized_vol.bar_minutes must be REQUIRED, not defaulted (F17/RC-345)")
-    # the one production caller passes it explicitly
-    srv = _read("server.py")
-    assert "compute_realized_vol(_closes, bar_minutes=1.0)" in srv
+    # the one production caller passes it explicitly. RC-REHAB-1 (Phase 4, _fetch_state
+    # decomposition, fourth slice): this call site moved out of _fetch_state's own body
+    # into _volatility_signals_for_state, where the local dropped the "_fetch_state
+    # phase-scratch" underscore prefix (closes, not _closes) as a clean local in its own
+    # small function. RC-REHAB-1 (2026-09-22, module extraction): that function moved again,
+    # out of server.py entirely into server_state_volatility.py.
+    vol = _read("server_state_volatility.py")
+    assert "compute_realized_vol(closes, bar_minutes=1.0)" in vol
 
 
 # ---------------------------------------------------------------------- F24 signed dist to VWAP
@@ -936,13 +994,17 @@ def test_rc345_movement_target_threshold_one_selector() -> None:
     from movement_target_threshold import threshold_move_pts_for_slug
 
     assert callable(threshold_move_pts_for_slug)
-    for mod in ("db.py", "horizon_outcomes.py"):
+    # RC-REHAB-1 (2026-09-22): the bar-mutation/outcome-refresh consumer moved from db.py to
+    # db_snapshots.py (single-producer extraction, ONE FAUCET); horizon_outcomes.py documents
+    # the contract in prose. Check the real consumer, not db.py's re-export shell.
+    for mod in ("db_snapshots.py", "horizon_outcomes.py"):
         assert "threshold_move_pts_for_slug" in _read(mod), (
             f"{mod} must consume the one threshold selector (F29/RC-345)")
     # no local ATR-threshold reconstruction in the outcome path
-    dbcode = "\n".join(l for l in _read("db.py").splitlines() if not l.lstrip().startswith("#"))
-    assert not re.search(r"thr\s*=\s*[0-9.]+\s*\*\s*atr", dbcode), (
-        "db.py reconstructs a local ATR threshold; use the one selector (F29/RC-345)")
+    for mod in ("db.py", "db_snapshots.py"):
+        code = "\n".join(l for l in _read(mod).splitlines() if not l.lstrip().startswith("#"))
+        assert not re.search(r"thr\s*=\s*[0-9.]+\s*\*\s*atr", code), (
+            f"{mod} reconstructs a local ATR threshold; use the one selector (F29/RC-345)")
 
 
 # ------------------------------------------------------------------- F36 signal-layer VWAP anchor
@@ -1030,13 +1092,18 @@ def test_rc345_pin_width_one_authority() -> None:
 
     assert compute_pin_width_pts(105.0, 100.0) == 5.0
     assert compute_pin_width_pts(105.0, None) is None and compute_pin_width_pts(0, 100) is None
-    for mod in ("market_state.py", "server.py"):
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): server.py's own call
+    # site (inside _post_publish_persistence_tail) moved to server_state_persistence_tail.py.
+    for mod in ("market_state.py", "server.py", "server_state_persistence_tail.py"):
         m = _read(mod)
-        assert "compute_pin_width_pts(_cgw, _pgw)" in m, (
-            f"{mod} must delegate pin width to the one authority (F20/RC-345)")
+        home = "server.py" if mod == "server_state_persistence_tail.py" else mod
+        if "compute_pin_width_pts(_cgw, _pgw)" not in m:
+            if mod == "server.py":
+                continue  # moved -- checked via server_state_persistence_tail.py instead
+            assert False, f"{home} must delegate pin width to the one authority (F20/RC-345)"
         code = "\n".join(l for l in m.splitlines() if not l.lstrip().startswith("#"))
         assert "round(_cgw - _pgw" not in code and "(_cgw - _pgw)" not in code, (
-            f"{mod} still computes pin width inline (F20/RC-345)")
+            f"{home} still computes pin width inline (F20/RC-345)")
 
 
 # ------------------------------------------------------------------- F40 MC/GARCH sigma cadence
@@ -1137,12 +1204,22 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
 
     # F18: charm_drift_toward is WITHHELD — server no longer feeds the net-GEX peak as the
     # charm target (a different-Greek substitution).
+    # RC-REHAB-1 (2026-09-22, module extraction): _charm_for_state (the real call site)
+    # moved out of server.py entirely into server_state_signals.py; check both so a
+    # regression in either place is still caught.
     srv18 = _read("server.py")
-    assert "drift_toward_strike=None" in srv18 and "drift_toward_strike=_institutional_pin" not in srv18, (
+    ss18 = _read("server_state_signals.py")
+    assert "drift_toward_strike=None" in ss18, (
         "charm must not borrow the net-GEX peak as its target (F18/RC-345)")
+    assert (
+        "drift_toward_strike=_institutional_pin" not in srv18
+        and "drift_toward_strike=_institutional_pin" not in ss18
+    ), "charm must not borrow the net-GEX peak as its target (F18/RC-345)"
 
     # F22 accuracy: no `or 0` fabrication — rows with a missing pred triplet are SKIPPED.
-    _dbc_for_f22 = _read("db.py")
+    # RC-REHAB-1 (2026-09-22): compute_accuracy moved to db_model_accuracy.py (slice 4 of
+    # the db.py decomposition) -- same code, different file.
+    _dbc_for_f22 = _read("db.py") + _read("db_model_accuracy.py")
     assert "row[f\"pred_{horizon}_up_prob\"]   or 0" not in _dbc_for_f22, (
         "accuracy must not fabricate a pred from `or 0` (F22/RC-345)")
     assert "if _pu is None or _pd is None or _pf is None:" in _dbc_for_f22
@@ -1156,9 +1233,16 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
     # F11: flow_imbalance_source is PERSISTED (SnapshotRow field + schema column + write).
     from db import SnapshotRow
     assert "flow_imbalance_source" in SnapshotRow.__dataclass_fields__
-    dbsrc = _read("db.py")
+    # RC-REHAB-1 (2026-09-21): _init_schema/_migrate_schema moved to db_schema.py (slice 2
+    # of the db.py decomposition) -- both the schema DDL and the migration column-add list
+    # this checks now live there, same code, different file.
+    # RC-REHAB-1 (2026-09-22): compute_accuracy moved to db_model_accuracy.py (slice 4) --
+    # the F22 argmax-authority check below now needs that file too.
+    dbsrc = _read("db.py") + _read("db_schema.py") + _read("db_model_accuracy.py")
     assert "flow_imbalance_source   TEXT" in dbsrc and '("flow_imbalance_source",   "TEXT")' in dbsrc
-    assert "flow_imbalance_source=_flow_imb_source" in _read("server.py"), (
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the SnapshotRow
+    # construction site moved with _post_publish_persistence_tail to its own module.
+    assert "flow_imbalance_source=_flow_imb_source" in _read("server_state_persistence_tail.py"), (
         "the source must be persisted on the snapshot row (F11/RC-345)")
 
     # F22: db.py accuracy uses the ONE argmax authority.
@@ -1192,8 +1276,12 @@ def test_rc345_kwargs_contract_caller_callee_match() -> None:
         "build_market_state": build_market_state,
         "compute_liquidity_behavior_row": compute_liquidity_behavior_row,
     }
+    # RC-REHAB-1: the build_market_state call site moved to server_state_decision.py
+    # (thirty-fifth slice); every file that calls either callee is checked.
     src = _read("server.py")
-    tree = ast.parse(src)
+    tree = ast.Module(body=[*ast.parse(src).body,
+                            *ast.parse(_read("server_state_decision.py")).body],
+                      type_ignores=[])
     checked = {k: 0 for k in callees}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -1219,7 +1307,7 @@ def test_rc345_kwargs_contract_caller_callee_match() -> None:
     # the source book DOES persist on the snapshot row and IS served in the payload
     from db import SnapshotRow
     assert "flow_imbalance_source" in SnapshotRow.__dataclass_fields__
-    assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in src
+    assert 'ms_dict["flow_imbalance_source"] = ofs.flow_imb_source' in _read("server_state_payload.py")
     assert "flow_imbalance_source" not in set(inspect.signature(build_market_state).parameters)
 
 
@@ -1250,20 +1338,40 @@ def test_rc345_operator_em_band_carries_its_methodology() -> None:
     # F06 END-TO-END: the OPERATOR-FACING kl_em band (terrain implied-1d-move) carries its
     # methodology to the served payload — kl_em_source travels beside kl_em_upper/lower, and
     # is 'unavailable' (never dropped) when the band is absent.
-    assert 'md["kl_em_source"] = "IV_SIGMA_1D"' in srv and 'md["kl_em_source"] = "unavailable"' in srv, (
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-ninth slice): the stamp site
+    # (_terrain_kl_overlay) moved out of server.py entirely, into terrain_kl_overlay.py.
+    kl_overlay_src = _read("terrain_kl_overlay.py")
+    assert 'md["kl_em_source"] = "IV_SIGMA_1D"' in kl_overlay_src and 'md["kl_em_source"] = "unavailable"' in kl_overlay_src, (
         "the operator kl_em band must carry its methodology to the payload (F06/RC-345)")
-    kl = srv[srv.index('md["kl_em_upper"] = round'):]
+    kl = kl_overlay_src[kl_overlay_src.index('md["kl_em_upper"] = round'):]
     kl = kl[:900]
     assert "kl_em_source" in kl, "kl_em_source must be emitted with kl_em_upper (F06/RC-345)"
-    # the diagnostic straddle/iv path still records its own source too
-    assert "_em_band_source" in srv and "STRADDLE_IMPLIED" in srv and "IV_MODEL" in srv
+    # the diagnostic straddle/iv path still records its own source too. RC-REHAB-1
+    # (2026-09-22, module extraction): the STRADDLE_IMPLIED/IV_MODEL literals moved out of
+    # server.py entirely into server_state_signals.py along with _expected_move_for_state;
+    # _em_band_source = _em.em_band_source (the rebind) stayed in server.py's own
+    # _fetch_state body, unaffected.
+    ss = _read("server_state_signals.py")
+    # RC-REHAB-1 (thirty-sixth slice): _fetch_state's dead `_em_band_source` alias was deleted;
+    # the methodology travels on the phase result itself, beside the band it labels.
+    from server_state_signals import _ExpectedMoveForState
+    assert {"em_up", "em_lo", "em_band_source"} <= set(_ExpectedMoveForState._fields)
+    assert "STRADDLE_IMPLIED" in ss and "IV_MODEL" in ss
     assert '_em_up = _em_straddle.get("upper") or _em_iv.get("upper")' not in srv
     # RC-433: density congestion must bind terrain IV_SIGMA_1D, not remaining-risk binders.
-    dens = srv.split("# Build levels dict for density check", 1)[1].split(
-        "_level_density = compute_level_density", 1
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
+    # from _fetch_state's own inline body into _vol_envelope_and_sector_for_state, and its
+    # local variable names dropped their underscore-prefix scratch-var spelling in the
+    # process (_all_levels -> all_levels, _level_density -> level_density). The marker text
+    # below matches the new spelling/location; the invariant itself is unchanged.
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function itself
+    # moved out of server.py into server_state_vol_envelope_sector.py.
+    ves = _read("server_state_vol_envelope_sector.py")
+    dens = ves.split("# Build levels dict for density check", 1)[1].split(
+        "level_density = compute_level_density", 1
     )[0]
     dens_code = "\n".join(
-        ln for ln in dens.split("_all_levels = {}", 1)[1].splitlines()
+        ln for ln in dens.split("all_levels: dict = {}", 1)[1].splitlines()
         if ln.strip() and not ln.lstrip().startswith("#")
     )
     assert "implied_1d_move" in dens_code
@@ -1288,7 +1396,7 @@ def test_rc345_net_gex_books_are_consumer_separated() -> None:
         "terrain net_gex_at_spot must come from the repriced profile book (F02/RC-345)")
     html = _read("static/js/ed-trade-desk.js")
     assert "d.net_gex_at_spot" in html, "the repriced profile-at-spot book name is missing"
-    srv = _read("server.py")
+    srv = _read("server_state_payload.py")  # RC-REHAB-1: payload projection moved here
     assert '_net_gex_raw = getattr(cs, "net_gamma", None)' in srv, (
         "kl_net_gex must be the vendor aggregate (cs.net_gamma), same book as net_gamma")
     # the gex label/regime helpers are book-agnostic PURE functions (take a value arg).
@@ -1541,7 +1649,7 @@ def test_rc345_f25_cell_key_builders_are_behaviorally_canonical():
     for builder in ("_per_model_cell_key", "_confirm_cell_key", "_whole_stack_confirm_cell_key"):
         # locate the one-line body of each builder and assert it routes through ticker_storage_key
         lines = src.splitlines()
-        idx = next(i for i, l in enumerate(lines) if l.startswith(f"def {builder}("))
+        idx = next(i for i, l in enumerate(lines) if l.startswith(f"def {builder}("))  # caps-ok: scanner false positive: next() here has NO default argument; a missing builder def raises StopIteration and fails the test
         body = lines[idx + 1]
         assert "ticker_storage_key(anchor)" in body, f"{builder} must build the key from ticker_storage_key(anchor)"
         assert ".strip().upper()" not in body, f"{builder}: local .strip().upper() faucet reintroduced"
@@ -1631,7 +1739,7 @@ def test_rc345_f25_db_training_floor_stats_canonical_bind():
 
     # Recurrence lock: the function canonicalizes at entry; a raw local producer is rejected.
     lines = _read("training_cache.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def db_training_floor_stats("))
+    idx = next(i for i, l in enumerate(lines) if l.startswith("def db_training_floor_stats("))  # caps-ok: scanner false positive: next() here has NO default argument; a missing def raises StopIteration and fails the test
     body = "\n".join(lines[idx:idx + 40])
     assert "ticker = ticker_storage_key(ticker)" in body, (
         "db_training_floor_stats must canonicalize ticker at entry")
@@ -1651,7 +1759,7 @@ def test_rc345_f25_shared_sequence_context_meta_identity_canonical():
 
     # Source mutation guard: builder routes through the one authority, no local .upper().
     lines = _read("features/shared_sequence_context.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def _require_ticker("))
+    idx = next(i for i, l in enumerate(lines) if l.startswith("def _require_ticker("))  # caps-ok: scanner false positive: next() here has NO default argument; a missing def raises StopIteration and fails the test
     body = "\n".join(lines[idx:idx + 6])
     assert "ticker_storage_key(ticker)" in body, "_require_ticker must delegate to ticker_storage_key"
     assert ".strip().upper()" not in body, "_require_ticker: local .strip().upper() faucet reintroduced"
@@ -1708,8 +1816,11 @@ def test_rc345_f25_arch_state_writer_reader_share_canonical_key():
     sched = _read("ml_scheduler.py")
     assert "arch_key = ticker_storage_key(ticker)" in sched, "arch_state writer key must be canonical"
     assert "arch_state[arch_key]" in sched, "arch_state must be written under the canonical key"
-    srv = _read("server.py")
-    assert "arch.get(ticker_storage_key(ticker))" in srv, "arch_state reader key must be canonical"
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-eighth slice): the reader site
+    # (_attach_stack_runtime_and_governance) moved out of server.py entirely, into
+    # stack_runtime_governance.py.
+    stack_src = _read("stack_runtime_governance.py")
+    assert "arch.get(ticker_storage_key(ticker))" in stack_src, "arch_state reader key must be canonical"
 
 
 def test_rc345_f25_execution_routing_identity_contract():
@@ -1774,7 +1885,7 @@ def test_rc345_f25_cache_skip_streak_key_canonical():
     assert tps.cache_skip_streak_key("spy", "1c") == "SPY:1c"  # non-dollar preserved
 
     lines = _read("training_pipeline_status.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def cache_skip_streak_key("))
+    idx = next(i for i, l in enumerate(lines) if l.startswith("def cache_skip_streak_key("))  # caps-ok: scanner false positive: next() here has NO default argument; a missing def raises StopIteration and fails the test
     body = "\n".join(lines[idx:idx + 8])
     assert "ticker_storage_key(ticker)" in body, "cache_skip_streak_key must delegate to the authority"
     assert "ticker.upper()" not in body, "cache_skip_streak_key: raw .upper() faucet reintroduced"

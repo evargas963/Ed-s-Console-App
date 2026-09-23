@@ -38,32 +38,57 @@ def _forward_ret_bp(closes: np.ndarray, j: int, hz: str) -> float:
     return 10000.0 * (float(closes[j1]) - c0) / c0
 
 
-def _day_bootstrap_ci(day_nets: dict[str, list[float]], B: int, seed: int) -> list[float]:
+def _day_bootstrap_ci(day_nets: dict[str, list[float]], B: int, seed: int) -> list[float] | None:
+    """Day-block bootstrap 95% CI of the mean net; None when there are no scored days.
+
+    No days used to return [0.0, 0.0] -- a fabricated CI that "includes 0" and so turned an
+    empty study into a KILL verdict. Callers must treat None as UNDER_SAMPLED.
+    """
     days = sorted(day_nets)
     if not days:
-        return [0.0, 0.0]
+        return None
     rng = np.random.default_rng(seed)
     means = []
     for _ in range(B):
         sample = rng.choice(days, size=len(days), replace=True)
+        # Every day key was created by appending a value, so each resample has >= 1 value.
         vals = [v for d in sample for v in day_nets[d]]
-        means.append(float(np.mean(vals)) if vals else 0.0)
+        means.append(float(np.mean(vals)))
     return [float(np.quantile(means, 0.025)), float(np.quantile(means, 0.975))]
 
 
+def under_sampled_economic_cell(cost_bp: float) -> dict[str, Any]:
+    """Cell for a study with zero scored OOS rows: no mean, no CI, no KILL/SURVIVE verdict."""
+    return {
+        "n_scored": 0,
+        "mean_net_bp": None,
+        "median_net_bp": None,
+        "sum_net_bp": None,
+        "bootstrap_ci95_mean_net_bp": None,
+        "always_abstain_mean_bp": 0.0,
+        "cost_round_trip_bp": cost_bp,
+        "verdict": "UNDER_SAMPLED",
+        "kill_reasons": [],
+    }
+
+
 def _score_nets(nets: list[float], dates: list[str], cost_bp: float, B: int, seed: int) -> dict[str, Any]:
+    if not nets:
+        return under_sampled_economic_cell(cost_bp)
     arr = np.asarray(nets, dtype=np.float64)
     day_nets: dict[str, list[float]] = {}
     for d, v in zip(dates, nets):
         day_nets.setdefault(d, []).append(float(v))
-    mean_net = float(arr.mean()) if len(arr) else 0.0
+    mean_net = float(arr.mean())
     ci = _day_bootstrap_ci(day_nets, B, seed)
+    if ci is None:
+        raise RuntimeError("_score_nets: non-empty nets but no dated days (dates list misaligned)")
     kill = mean_net <= 0.0 or (ci[0] <= 0.0 <= ci[1])
     return {
         "n_scored": len(nets),
         "mean_net_bp": mean_net,
-        "median_net_bp": float(np.median(arr)) if len(arr) else 0.0,
-        "sum_net_bp": float(arr.sum()) if len(arr) else 0.0,
+        "median_net_bp": float(np.median(arr)),
+        "sum_net_bp": float(arr.sum()),
         "bootstrap_ci95_mean_net_bp": ci,
         "always_abstain_mean_bp": 0.0,
         "cost_round_trip_bp": cost_bp,
@@ -127,7 +152,8 @@ def _run_har_qqq(db: Path, prereg: dict[str, Any]) -> dict[str, Any]:
                 n_trades += 1
         cell = _score_nets(nets, out_dates, cost, B, seed)
         cell["n_trades"] = n_trades
-        cell["trade_rate"] = (n_trades / len(nets)) if nets else 0.0
+        # No scored rows -> trade rate undefined (None), not a measured 0%.
+        cell["trade_rate"] = (n_trades / len(nets)) if nets else None
         cells[f"QQQ:{hz}"] = cell
     return cells
 
@@ -153,7 +179,7 @@ def _run_survival_qqq_60c(db: Path, prereg: dict[str, Any]) -> dict[str, Any]:
         xs.append(np.concatenate([har[j], rets[j - 4 : j + 1]]))
         js.append(j)
         dates.append(_et_date(ts))
-    X = np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 8))
+    X = np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 8))  # caps-ok: zero-row design matrix of the correct width (no values invented); with no rows no fold trains, nets stays empty and _score_nets returns verdict UNDER_SAMPLED
     js_arr = np.asarray(js, dtype=np.int64)
     date_arr = np.asarray(dates)
     folds = expanding_window_oof_folds(sorted(set(dates)), n_folds=n_folds)
@@ -168,12 +194,15 @@ def _run_survival_qqq_60c(db: Path, prereg: dict[str, Any]) -> dict[str, Any]:
         moves = []
         for j in js_arr[tr]:
             moves.append(abs(closes[min(int(j) + hmin, len(closes) - 1)] - closes[int(j)]))
-        thr = float(np.median(moves)) if moves else 0.0
+        # tr.sum() >= 50 above, so `moves` is non-empty.
+        thr = float(np.median(moves))
         if thr <= 0:
             # RC-107: never fall back to raw np.diff — weekend gaps inflate the median.
             from research.tcn_eval_v1.runner import session_safe_abs_price_moves
             safe = session_safe_abs_price_moves(ends, closes)
-            thr = float(np.median(safe)) if len(safe) else 0.01
+            if not len(safe):
+                continue  # no measurable move scale: skip the fold, never invent a 0.01 barrier
+            thr = float(np.median(safe))
         y_tr = [
             _SURV_TO_SCREEN[competing_label(ends, closes, int(j), hmin, thr)]
             for j in js_arr[tr]
@@ -209,7 +238,7 @@ def _run_survival_qqq_60c(db: Path, prereg: dict[str, Any]) -> dict[str, Any]:
             n_trades += 1
     cell = _score_nets(nets, out_dates, cost, B, seed)
     cell["n_trades"] = n_trades
-    cell["trade_rate"] = (n_trades / len(nets)) if nets else 0.0
+    cell["trade_rate"] = (n_trades / len(nets)) if nets else None  # None: no scored rows
     cell["warnings"] = ["SURVIVAL_TARGET_STOP_MAPPED_TO_LONG_SHORT"]
     return {f"QQQ:{hz}": cell}
 
@@ -223,6 +252,14 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
     all_cells.update({f"survival:{k}": v for k, v in surv_cells.items()})
     verdicts = [c["verdict"] for c in all_cells.values()]
     n_survive = verdicts.count("SURVIVE_ECONOMIC")
+    n_under = verdicts.count("UNDER_SAMPLED")
+    # A KILL needs a measurement: cells with zero scored rows make the study INCONCLUSIVE, not killed.
+    if n_survive:
+        study_verdict = "ECONOMIC_SURVIVOR"
+    elif n_under:
+        study_verdict = "INCONCLUSIVE_UNDER_SAMPLED"
+    else:
+        study_verdict = "ECONOMIC_KILL"
     return {
         "schema_version": "1",
         "prereg_id": prereg["prereg_id"],
@@ -232,9 +269,10 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
         "cost_model_id": prereg["cost_model"]["id"],
         "cells": all_cells,
         "summary": {
-            "verdict": "ECONOMIC_KILL" if n_survive == 0 else "ECONOMIC_SURVIVOR",
+            "verdict": study_verdict,
             "n_survive": n_survive,
             "n_kill": verdicts.count("KILL"),
+            "n_under_sampled": n_under,
             "n_cells": len(all_cells),
             "note": "No signal-existence PASS cells existed; this is a hard economic kill on residual faint leads.",
         },
@@ -265,9 +303,11 @@ def main() -> int:
     s = report["summary"]
     print(f"cost_aware_eval_v1 — {s['verdict']} ({s['n_survive']} survive / {s['n_kill']} kill)")
     for k, t in report["cells"].items():
+        mn = t["mean_net_bp"]
+        mn_txt = f"{mn:.4f}" if mn is not None else "n/a"
         print(
-            f"  {k}: mean_net_bp={t.get('mean_net_bp'):.4f} "
-            f"ci={t.get('bootstrap_ci95_mean_net_bp')} trades={t.get('n_trades')} -> {t.get('verdict')}"
+            f"  {k}: mean_net_bp={mn_txt} "
+            f"ci={t['bootstrap_ci95_mean_net_bp']} trades={t['n_trades']} -> {t['verdict']}"
         )
     print("report:", path)
     return 0

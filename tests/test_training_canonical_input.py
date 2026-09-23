@@ -367,7 +367,14 @@ def test_meta_assembly_uses_canonical_dataframe_ingress() -> None:
     """Source lock: scheduler META must not call df.to_dict('records') directly."""
     from pathlib import Path
 
-    text = (Path(__file__).resolve().parent.parent / "ml_scheduler.py").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    # RC-REHAB-1 (2026-09-22): _assemble_meta_ml_layer_prob_vectors (the META block this
+    # locks) moved to ml_scheduler_meta_stack.py (slice 4 of the ml_scheduler.py
+    # decomposition) -- same code, different file.
+    text = (
+        (root / "ml_scheduler.py").read_text(encoding="utf-8")
+        + (root / "ml_scheduler_meta_stack.py").read_text(encoding="utf-8")
+    )
     assert "records_for_mvp_from_dataframe" in text
     # TEST_SYSTEM_REHAB_V2: was `'.to_dict("records")' not in text or
     # "records_for_mvp_from_dataframe(df)" in text` -- a whole-file OR, so a

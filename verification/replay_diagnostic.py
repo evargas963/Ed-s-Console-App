@@ -52,11 +52,15 @@ def _pred_from_similar(similar: list) -> Any:
 def _default_inp(row: dict) -> Any:
     zl = row.get("nearest_below_val") or row.get("nearest_below")
     zh = row.get("nearest_above_val") or row.get("nearest_above")
+    # Absent fields stay None. mins_to_close used to become 180 when missing (and when a real 0 was
+    # stored), forcing multi_horizon_decision._infer_trade_mode into "session" mode; that consumer
+    # handles None itself. The level fallbacks were hard-coded SPY prices applied to every ticker.
+    m2c = row.get("mins_to_close")
     return SimpleNamespace(
         spot=row.get("spot"),
-        mins_to_close=float(row.get("mins_to_close", 180) or 180),
-        nearest_below_val=float(zl) if zl is not None else 441.3,
-        nearest_above_val=float(zh) if zh is not None else 441.8,
+        mins_to_close=float(m2c) if m2c is not None else None,
+        nearest_below_val=float(zl) if zl is not None else None,
+        nearest_above_val=float(zh) if zh is not None else None,
     )
 
 

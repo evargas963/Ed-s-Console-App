@@ -8,7 +8,7 @@ if str(ROOT) not in sys.path:
 
 from db_authority import canonical_console_db_path  # noqa: E402
 
-conn = sqlite3.connect(str(canonical_console_db_path()))
+conn = sqlite3.connect(str(canonical_console_db_path()), timeout=30.0)
 n = conn.execute(
     """
     SELECT COUNT(*) FROM snapshots s

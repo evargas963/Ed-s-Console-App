@@ -7,14 +7,10 @@ _ROOT = Path(__file__).resolve().parent
 
 
 def _load_dotenv_if_present() -> None:
-    """Load repo-root ``.env`` when present (host secrets; never committed)."""
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        return
-    env_path = _ROOT / ".env"
-    if env_path.is_file():
-        load_dotenv(env_path, override=False)
+    """Load host secrets (``.env``, never committed). runtime_layout is the ONE loader: it reads
+    the source checkout's ``.env`` and then the runtime root's (the primary checkout, where the
+    token file also lives), so a linked worktree gets the same credentials as production."""
+    import runtime_layout  # noqa: F401  (import performs the load)
 
 
 def _ensure_dotenv_loaded() -> None:

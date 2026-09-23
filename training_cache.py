@@ -118,7 +118,7 @@ def db_training_fingerprint(
     from timeframe_config import CANONICAL_TIMEFRAME
 
     t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity for SQL bind AND fingerprint["ticker"]
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     if not _snapshots_1m_normalized_table_exists(conn):
         conn.close()
         return _empty_db_training_fingerprint(t)
@@ -174,7 +174,7 @@ def db_training_floor_stats(
     from training_provenance import USABLE_RTH_DAY_MIN_ROWS
 
     ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical identity for SQL bind AND emitted ticker field
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     if not _snapshots_1m_normalized_table_exists(conn):
         conn.close()
         return {
@@ -318,7 +318,7 @@ def db_distinct_rth_et_dates_for_ticker(
     from timeframe_config import CANONICAL_TIMEFRAME
 
     t = ticker_storage_key(ticker)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
         f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where} ORDER BY ts_utc",
@@ -435,7 +435,7 @@ def min_ts_utc_for_last_n_rth_sessions(
     from ml_data_common import et_date_str_from_ts_utc, filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
         f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",
@@ -528,9 +528,9 @@ def _normalize_data_fp(d: Optional[dict]) -> dict:
             row_count = None
 
     return {
-        "table": str(d.get("table", "")),
-        "timeframe": str(d.get("timeframe", "")),
-        "ticker": ticker_storage_key(str(d.get("ticker", ""))),  # RC-345/F25: normalize converges on canonical identity so SPX/$SPX fps compare equal
+        "table": str(d.get("table", "")),  # caps-ok: compare-only normalization; the live-side fp is always complete (db_training_fingerprint / compare_tabular_data_fingerprint_from_df), so a stored fp lacking the field normalizes to "" which never equals a real table name -> cache MISS (fail-closed)
+        "timeframe": str(d.get("timeframe", "")),  # caps-ok: compare-only normalization; live fp always carries CANONICAL_TIMEFRAME, so a stored fp lacking it ("") never compares equal -> cache MISS (fail-closed)
+        "ticker": ticker_storage_key(str(d.get("ticker", ""))),  # caps-ok: compare-only normalization; live fp always carries the canonical ticker, so a stored fp lacking it ("" -> "") never compares equal -> cache MISS (fail-closed). RC-345/F25: normalize converges on canonical identity so SPX/$SPX fps compare equal
         "min_ts_utc": _num(d.get("min_ts_utc")),
         "max_ts_utc": _num(d.get("max_ts_utc")),
         "row_count": row_count,
@@ -621,10 +621,12 @@ def save_lstm_feature_cache(
         "tickers": dataset.tickers,
         "timestamps": dataset.timestamps,
         "days": dataset.days,
-        "training_timeframe": getattr(dataset, "training_timeframe", ""),
-        "target_column": getattr(dataset, "target_column", "") or "",
-        "ml_horizon_slug": getattr(dataset, "ml_horizon_slug", "") or "",
-        "target_definition": getattr(dataset, "target_definition", ""),
+        # Declared LSTMDataset fields (lstm_data.LSTMDataset) — read directly so a wrong
+        # object type raises instead of persisting fabricated "" provenance.
+        "training_timeframe": dataset.training_timeframe,
+        "target_column": dataset.target_column,
+        "ml_horizon_slug": dataset.ml_horizon_slug,
+        "target_definition": dataset.target_definition,
         "n_features_5m": dataset.n_features_5m,
         "n_features_1m": dataset.n_features_1m,
         "n_confluence": dataset.n_confluence,
@@ -677,26 +679,38 @@ def load_lstm_feature_cache(
     if n_samples <= 0:
         log.info("LSTM feature cache meta invalid n_samples: %s", cache_dir)
         return None
+    # save_lstm_feature_cache always writes every one of these keys. A meta missing any of
+    # them is an invalid cache (miss -> rebuild from source), never a dataset with fabricated
+    # empty per-sample tickers/timestamps/days or zero n_days/n_tickers.
+    _required_meta = (
+        "tickers", "timestamps", "days", "training_timeframe", "target_column",
+        "ml_horizon_slug", "target_definition", "n_days", "n_tickers",
+        "class_distribution", "skipped_reasons",
+    )
+    _missing_meta = [k for k in _required_meta if k not in meta]
+    if _missing_meta:
+        log.info("LSTM feature cache meta missing keys %s: %s", _missing_meta, cache_dir)
+        return None
     return LSTMDataset(
         X_5m=z["X_5m"],
         X_1m=z["X_1m"],
         X_conf=z["X_conf"],
         y=z["y"],
-        tickers=meta.get("tickers", []),
-        timestamps=meta.get("timestamps", []),
-        days=meta.get("days", []),
-        training_timeframe=meta.get("training_timeframe", ""),
-        target_column=str(meta.get("target_column") or ""),
-        ml_horizon_slug=str(meta.get("ml_horizon_slug") or ""),
-        target_definition=meta.get("target_definition", ""),
+        tickers=meta["tickers"],
+        timestamps=meta["timestamps"],
+        days=meta["days"],
+        training_timeframe=meta["training_timeframe"],
+        target_column=str(meta["target_column"]),
+        ml_horizon_slug=str(meta["ml_horizon_slug"]),
+        target_definition=meta["target_definition"],
         n_features_5m=n_features_5m,
         n_features_1m=n_features_1m,
         n_confluence=n_confluence,
         n_samples=n_samples,
-        n_days=int(meta.get("n_days", 0)),
-        n_tickers=int(meta.get("n_tickers", 0)),
-        class_distribution=meta.get("class_distribution", {}),
-        skipped_reasons=meta.get("skipped_reasons", {}),
+        n_days=int(meta["n_days"]),
+        n_tickers=int(meta["n_tickers"]),
+        class_distribution=meta["class_distribution"],
+        skipped_reasons=meta["skipped_reasons"],
     )
 
 
@@ -815,7 +829,7 @@ def load_parallel_cascade_bridge(
         return None
     if _normalize_data_fp(meta.get("data_fingerprint")) != _normalize_data_fp(data_fp):
         return None
-    n_stored = int(meta.get("n_samples") or 0)
+    n_stored = int(meta.get("n_samples") or 0)  # caps-ok: a missing count becomes 0, which the `n_stored <= 0` guard on the next line rejects as a corrupt bridge (cache miss); the 0 never leaves this function
     if n_stored <= 0 or probs.shape[0] != n_stored:
         log.info("parallel→cascade bridge row count corrupt: %s", cache_dir)
         return None
@@ -924,7 +938,7 @@ def _cascade_identity_matches(
         # cache verdict and removes a silent-None (RC-15/RC-20 class).
         and d.get("lstm_checkpoint_sha256") == lstm_pt_sha
         and d.get("xgb_lstm_tensor_sha256") == tensor_sha_expected
-        and int(d.get("n_cascade_rows", -1)) == int(npz_n_rows)
+        and int(d.get("n_cascade_rows", -1)) == int(npz_n_rows)  # caps-ok: -1 is an impossible row count, so an identity lacking n_cascade_rows never equals the on-disk shape -> identity mismatch (cache miss)
         and _normalize_data_fp(d.get("data_fingerprint")) == _normalize_data_fp(data_fp)
     )
 
@@ -991,7 +1005,7 @@ def load_cascade_transformer_tensor_cache(
             continue
         try:
             idata = json.loads((sub / CASCADE_TF_IDENTITY_NAME).read_text(encoding="utf-8"))
-            texp = str(idata.get("xgb_lstm_tensor_sha256", ""))
+            texp = str(idata.get("xgb_lstm_tensor_sha256", ""))  # caps-ok: "" never equals the 64-hex xgb_lstm_tensor_sha256(arr) that _cascade_identity_matches computes, so a missing expected sha is an identity mismatch (cache miss)
         except Exception:
             continue
         if not _cascade_identity_matches(
@@ -1109,7 +1123,7 @@ def full_skip_eligible(
     if not manifest:
         return False, None, "no_manifest", "manifest_missing"
 
-    sv = int(manifest.get("schema_version", 0))
+    sv = int(manifest.get("schema_version", 0))  # caps-ok: 0 is below every real schema version, so a manifest lacking it fails the strict schema check below -> retrain ("manifest_schema_mismatch"), never a skip
     if sv < MIN_MANIFEST_SCHEMA_FOR_FULL_SKIP or sv != MANIFEST_SCHEMA_VERSION:
         return False, None, "manifest_schema_mismatch", "schema_strict_v2_required"
 
@@ -1127,7 +1141,7 @@ def full_skip_eligible(
         return False, None, "scheduler_key_or_data_mismatch", "data_or_versions_changed"
 
     if MANIFEST_SKIP_MAX_AGE_DAYS > 0:
-        age = trained_at_age_days(str(manifest.get("trained_at", "")), now)
+        age = trained_at_age_days(str(manifest.get("trained_at", "")), now)  # caps-ok: "" is trained_at_age_days' documented "missing" input -> _TRAINED_AT_UNAVAILABLE_AGE_DAYS sentinel -> retrain with reason "manifest_trained_at_unavailable", never a skip
         if age >= _TRAINED_AT_UNAVAILABLE_AGE_DAYS:
             # COH-I-B: distinguish "trained_at unavailable" from "trained_at is real but old"
             # in the caller-visible reason string. The numeric age still trips the same

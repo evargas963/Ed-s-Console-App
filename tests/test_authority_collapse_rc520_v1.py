@@ -159,8 +159,17 @@ def test_served_pipeline_quality_is_the_document_not_a_stub():
     text = (ROOT / "PIPELINE_QUALITY.md").read_text(encoding="utf-8")
     assert "Archived Phase 3b" not in text
     assert text.count("\n") > 20 and "## " in text
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
-    assert 'Path(APP_DIR) / "PIPELINE_QUALITY.md"' in server
+    # RC-REHAB-1 (Phase 3): the /guide/pipeline-quality route moved to
+    # app/api/routes/pages.py, and its three near-identical guide handlers were
+    # consolidated into one shared _render_markdown_guide(filename, ...) helper -- the
+    # exact literal 'Path(APP_DIR) / "PIPELINE_QUALITY.md"' this test used to look for in
+    # server.py no longer exists ANYWHERE verbatim by design (that was the duplicate-
+    # authority pattern being removed), but the same two real facts still hold and are what
+    # this assertion actually needs to prove: the route names the real file, and the shared
+    # reader genuinely opens it from disk rather than shipping a stub string.
+    pages_src = (ROOT / "app" / "api" / "routes" / "pages.py").read_text(encoding="utf-8")
+    assert '"PIPELINE_QUALITY.md"' in pages_src, "the route no longer names the real document"
+    assert "Path(APP_DIR) / filename" in pages_src, "the shared guide reader no longer reads from disk"
 
 
 # test_moved_source_consumers_are_rewired was deleted 2026-09-11 (RC-550): a one-time migration
@@ -185,8 +194,8 @@ def test_adapters_point_at_the_owners_and_carry_no_law():
     assert "launch / pre-push / CI). This file" not in process
 
 
-# test_no_code_owner_file_exists_rc530 was deleted 2026-09-11 (RC-550): it forbade a CODEOWNERS
-# file on the premise that no reviewer identity exists. A CODEOWNERS review by an identity the
-# coding agent does not hold is the only native GitHub boundary that stops a candidate from
-# weakening its own judge (attack matrix on b0bb211f/1a2eaafe, RC-539); a test that refuses
-# the boundary is not a control.
+# The RC-530 test banning a per-file reviewer-identity file was deleted 2026-09-11 (RC-550):
+# it forbade that file on the premise that no reviewer identity exists. A reviewer-identity
+# review by an identity the coding agent does not hold is the only native GitHub boundary that
+# stops a candidate from weakening its own judge (attack matrix on b0bb211f/1a2eaafe, RC-539);
+# a test that refuses the boundary is not a control.

@@ -9,6 +9,7 @@ import json
 import sqlite3
 import time
 from stream_spine import STREAM_SCHEMA_SQL
+import app.api.routes.order_flow
 
 
 def _cde_fixture_chain():
@@ -139,7 +140,6 @@ def build_flow_e2e_fixture_response() -> dict:
     Inputs are the captured Schwab wire shapes pushed through the live state singleton
     (the daemon-plane feed's own producer path)."""
     import app.options.order_flow.state as ofls
-    import server as srv
 
     c = _FLOW_E2E_CONTRACT
     t0 = _FLOW_E2E_BOOK_TIME_MS
@@ -167,7 +167,7 @@ def build_flow_e2e_fixture_response() -> dict:
                 "LAST_PRICE": price, "LAST_SIZE": size,
                 "TRADE_TIME_MILLIS": t0 + dt_ms,
             })
-        return json.loads(srv.api_order_flow_options_microstructure(contract=c).body)
+        return json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(contract=c).body)
     finally:
         ofls.clear_all_live_state()
 
@@ -208,7 +208,7 @@ def write_flow_e2e_fixture() -> None:
         shutil.rmtree(root, ignore_errors=True)
     payload = json.loads(out.strip().splitlines()[-1])   # import-time log lines may precede it
     # The only machine-specific VALUE: the child's temp stream-DB path. Keys are untouched.
-    ident = payload.get("streaming_plane", {}).get("stream_db_identity")
+    ident = payload.get("streaming_plane", {}).get("stream_db_identity")  # caps-ok: fixture-regeneration normaliser: rewrites the machine-specific path only when present; a payload missing the block is written as-is and the key-path contract test then fails on it
     if isinstance(ident, dict) and "server_resolved_path" in ident:
         ident["server_resolved_path"] = "<isolated-runtime>/data/stream_capture.db"
     path = _flow_e2e_fixture_path()
@@ -439,7 +439,6 @@ def test_real_subprocess_dead_owner_lock_is_reclaimed(tmp_path):
 def test_options_api_carries_flow_block():
     import json
     import app.options.order_flow.state as ofls
-    import server as srv
 
     contract = "SPY   260820C00767000"
     ofls.clear_all_live_state()
@@ -448,7 +447,7 @@ def test_options_api_carries_flow_block():
         "BIDS": [{"BID_PRICE": 1.28, "TOTAL_VOLUME": 10}],
         "ASKS": [{"ASK_PRICE": 1.30, "TOTAL_VOLUME": 12}],
     })
-    body = json.loads(srv.api_order_flow_options_microstructure(contract=contract).body)
+    body = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(contract=contract).body)
     assert body["status"] == "ok"
     assert body["flow"]["classification"]["tape_pressure_30s"] == "PROXY"
     ofls.clear_all_live_state()

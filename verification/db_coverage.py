@@ -48,7 +48,7 @@ def db_coverage_report(
     timeframe: str = CANONICAL_TIMEFRAME,
 ) -> dict[str, Any]:
     path = Path(db_path or DB_PATH)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
@@ -141,7 +141,7 @@ def db_coverage_report(
 
     # CSV table (machine-friendly table)
     buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=list(rows_out[0].__dict__.keys()) if rows_out else [])
+    w = csv.DictWriter(buf, fieldnames=list(rows_out[0].__dict__.keys()) if rows_out else [])  # caps-ok: CSV column list; with no rows nothing is written (header/rows gated on `if rows_out`), so [] never emits data
     if rows_out:
         w.writeheader()
         for r in rows_out:

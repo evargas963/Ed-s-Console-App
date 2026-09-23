@@ -143,7 +143,7 @@ def _validate_backup(
     expected_schema: tuple[tuple[str, str, str, str], ...],
     required_tables: set[str],
 ) -> str:
-    conn = sqlite3.connect(f"{backup_path.as_uri()}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"{backup_path.as_uri()}?mode=ro", uri=True, timeout=30.0)
     try:
         rows = [str(row[0]) for row in conn.execute("PRAGMA quick_check")]
         if rows != ["ok"]:
@@ -386,11 +386,15 @@ def install_production_sql_authorizer(conn: sqlite3.Connection) -> None:
         if dangerous_sql_unrestricted():
             return sqlite3.SQLITE_OK
         deny = {
-            getattr(sqlite3, "SQLITE_DROP_TABLE", 10),
-            getattr(sqlite3, "SQLITE_DROP_INDEX", 11),
-            getattr(sqlite3, "SQLITE_DROP_VIEW", 12),
-            getattr(sqlite3, "SQLITE_DROP_TRIGGER", 13),
-            getattr(sqlite3, "SQLITE_DETACH", 23),
+            # The stdlib sqlite3 module defines every authorizer action code. The old numeric
+            # fallbacks were WRONG (SQLite: DROP_INDEX=10, DROP_TABLE=11, DROP_VIEW=17,
+            # DROP_TRIGGER=16, DETACH=25; 23 is SQLITE_UPDATE), so a fallback would have denied
+            # every UPDATE and let DROP VIEW / DROP TRIGGER / DETACH through. Read them strictly.
+            sqlite3.SQLITE_DROP_TABLE,
+            sqlite3.SQLITE_DROP_INDEX,
+            sqlite3.SQLITE_DROP_VIEW,
+            sqlite3.SQLITE_DROP_TRIGGER,
+            sqlite3.SQLITE_DETACH,
         }
         if action in deny:
             return sqlite3.SQLITE_DENY

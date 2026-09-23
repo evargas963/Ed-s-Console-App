@@ -54,7 +54,7 @@ def main() -> int:
     require_canonical_db_target(args, tool_name="train_all_movement_heads_v1", write_capable=True)
 
     dbp = str(args.db.resolve())
-    conn = sqlite3.connect(dbp)
+    conn = sqlite3.connect(dbp, timeout=30.0)
     tickers = _tickers(conn)
     conn.close()
     log.info("tickers=%s", tickers)

@@ -72,7 +72,7 @@ def admission_evidence_resolves_violations(doc: dict | None = None) -> list[str]
     for rec in admissions:
         if not isinstance(rec, dict) or str(rec.get("status") or "").strip() != "ADMITTED":
             continue
-        comp = rec.get("component", "?")
+        comp = rec.get("component", "?")  # caps-ok: label in a violation message only; the row is still judged on its evidence block
         evidence = rec.get("evidence")
         if not isinstance(evidence, dict):
             out.append(f"{comp}: evidence block missing for ADMITTED row")
@@ -176,10 +176,15 @@ def decision_path_wired_violations(source: str | None = None) -> list[str]:
 
 # claude_cursor_parity_violations RETIRED with check_claude_cursor_guard_parity
 # (governance/retired_checks.md 2026-08-24): guard-wiring parity is an operator
-# merge-review property (RC-475 superseded the CODEOWNERS equivalence).
+# merge-review property (RC-475 superseded the reviewer-identity-file equivalence).
 
 
 _DATASHEET_REQUIRED = frozenset({"motivation", "composition", "collection", "recommended_uses"})
+
+
+#: RC-REHAB-1 (2026-09-23): matched only `CREATE TABLE IF NOT EXISTS`, so a plain
+#: `CREATE TABLE foo (...)` was never a "new table" and never needed a datasheet.
+_CREATE_TABLE_RE = re.compile(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?\\?[\"'`]?(\w+)", re.I)
 
 
 def new_table_names_in_diff(diff_lines: list[str]) -> set[str]:
@@ -187,7 +192,23 @@ def new_table_names_in_diff(diff_lines: list[str]) -> set[str]:
     for ln in diff_lines:
         if not ln.startswith("+") or ln.startswith("+++"):
             continue
-        m = re.search(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", ln, re.I)
+        m = _CREATE_TABLE_RE.search(ln)
+        if m:
+            names.add(m.group(1).lower())
+    return names
+
+
+def removed_table_names_in_diff(diff_lines: list[str]) -> set[str]:
+    """RC-REHAB-1 (2026-09-22): sibling of new_table_names_in_diff, scanning removed (`-`)
+    lines instead of added ones. A table name appearing in BOTH sets across a staged diff
+    (added in one file, removed in another -- e.g. db.py -> db_schema.py, slice 2 of the
+    db.py decomposition) is a MOVE, not a new table, and must not trip the datasheet
+    requirement a genuinely new table needs."""
+    names: set[str] = set()
+    for ln in diff_lines:
+        if not ln.startswith("-") or ln.startswith("---"):
+            continue
+        m = _CREATE_TABLE_RE.search(ln)
         if m:
             names.add(m.group(1).lower())
     return names

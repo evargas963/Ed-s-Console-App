@@ -30,12 +30,8 @@ from calibration.schema import ensure_calibration_schema
 from json_blob_codec import decode_json_blob, encode_text_blob
 from calibration.trust import TRUSTED_PREDICATE_SQL
 
-try:
-    from db import EdDB, configure_sqlite_connection
-except Exception:
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db import EdDB
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 def backfill(

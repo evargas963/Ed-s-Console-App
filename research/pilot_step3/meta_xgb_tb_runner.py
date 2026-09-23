@@ -451,7 +451,7 @@ def run_study(db_path: str) -> dict[str, Any]:
             "bootstrap": baseline.bootstrap,
         },
         "policies": verdict_rows,
-        "n_survivors": 0 if halted else len(survivors),
+        "n_survivors": 0 if halted else len(survivors),  # caps-ok: preregistered hard halt ('no real survivors may be reported'); status HALT_* and placebo.hard_halt_engaged carry why the count is 0
         "survivors": [] if halted else survivors,
         "greeks_channel": "era-floored to >=1784502281; empty in v1 (price-only feature set)",
         "next_depth": NEXT_DEPTH,

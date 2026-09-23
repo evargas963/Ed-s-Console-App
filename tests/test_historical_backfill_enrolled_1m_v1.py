@@ -161,7 +161,7 @@ def test_run_upsert_operational_locked_surfaces_db_locked(
     )
 
     assert out.get("aborted_after_db_lock") is True
-    assert out.get("candles_fetched", 0) >= 1
+    assert out["candles_fetched"] >= 1
     assert out.get("bars_upsert_count") == 0
     assert out.get("db_locked") is True
     assert out.get("persistence_success") is False

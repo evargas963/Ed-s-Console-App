@@ -156,6 +156,6 @@ def test_vol_regime_default_not_trade_permissive():
 
 def test_prediction_engine_no_fusion_prob_one_third_default():
     text = (ROOT / "prediction_engine.py").read_text(encoding="utf-8")
-    assert 'getattr(snap, "prob_up", 1.0 / 3.0)' not in text
+    assert 'getattr(snap, "prob_up", 1.0 / 3.0)' not in text  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from prediction_engine.py
     assert "0.33" not in text
     assert "0.34" not in text

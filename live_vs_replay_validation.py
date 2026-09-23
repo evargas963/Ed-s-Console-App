@@ -160,7 +160,7 @@ def _live_from_row(row: sqlite3.Row, rc: dict) -> dict[str, Any]:
     return {
         "live_expression": expr,
         "live_strike": float(live_strike) if live_strike is not None else None,
-        "live_side": live_side or (parsed[1] if parsed else ""),
+        "live_side": live_side or (parsed[1] if parsed else None),  # unknown side stays None, not ""
         "live_expiry_snapshot": snap_exp,
         "live_expiry_from_proof_chain": live_exp_proof,
         "live_no_trade": live_no_trade,
@@ -187,7 +187,7 @@ def run_live_vs_replay_validation(
             f"table must be one of {sorted(_VALIDATION_TABLES)}; got {table!r}"
         )
     ticker_u = ticker.upper() if ticker else None
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     # RC-6: the option_chain_json / replay_context_json blobs live ONLY in `snapshots`
@@ -195,7 +195,7 @@ def run_live_vs_replay_validation(
     # snapshots via a JOIN on the aligned key (ticker, timeframe, ts_utc); every other column
     # still comes from the validation table `n`. When {table} IS snapshots this is a 1:1
     # self-join (no duplicate keys), so the query is correct for both validation tables.
-    wh_t = "n.ticker = ?" if ticker_u else "1=1"
+    wh_t = "n.ticker = ?" if ticker_u else "1=1"  # caps-ok: scanner false positive: SQL WHERE-clause construction (ticker filter or none), not a value default
     params_count: list[Any] = [CANONICAL_TIMEFRAME]
     if ticker_u:
         params_count.append(ticker_u)
@@ -212,7 +212,7 @@ def run_live_vs_replay_validation(
         """,
         tuple(params_count),
     ).fetchone()
-    available = int(cnt_row["c"] or 0)
+    available = int(cnt_row["c"])  # COUNT(*) is never NULL
 
     take_n = max(n, min_required)
     params_sel: list[Any] = [CANONICAL_TIMEFRAME]
@@ -311,7 +311,9 @@ def run_live_vs_replay_validation(
             )
             live_exp = live["live_expiry_from_proof_chain"] or live["live_expiry_snapshot"]
             expiry_hit = bool(snap_exp) and live_exp == snap_exp
-            contract_hit = strike_hit and lside == rside and expiry_hit
+            # A side match needs a KNOWN side on both legs: two unknown sides normalise to ""
+            # and used to compare equal, counting an unverified contract as a match.
+            contract_hit = strike_hit and bool(lside) and lside == rside and expiry_hit
             expr_hit = _expressions_match_live(
                 replay["replay_expression"] or "",
                 proof,
@@ -383,12 +385,11 @@ def run_live_vs_replay_validation(
     bundle_diag = build_replay_bundle_coverage(
         db_path, min_required_rows=min_required_rows
     )
-    val_tbl_stats = bundle_diag.get("tables", {}).get(table, {})
-    snap_full = (
-        bundle_diag.get("tables", {})
-        .get("snapshots", {})
-        .get("rows_with_full_bundle", 0)
-    )
+    # build_replay_bundle_coverage always reports "tables" for snapshots + snapshots_1m_normalized
+    # (the only validation tables). Strict: a missing count must not read as 0 full-bundle rows
+    # and trigger the "No snapshots rows with both ..." remediation claim.
+    val_tbl_stats = bundle_diag["tables"][table]
+    snap_full = bundle_diag["tables"]["snapshots"]["rows_with_full_bundle"]
     remediation: list[str] = []
     if available == 0 and snap_full and table == SNAPSHOT_TABLE_1M:
         remediation.append(

@@ -744,7 +744,6 @@ def attach_net_gamma_prev_column(df: pd.DataFrame, db_path: str | None = None) -
     from timeframe_config import CANONICAL_TIMEFRAME
 
     out = df.copy()
-    ts_all = pd.to_numeric(out["ts_utc"], errors="coerce")
     prev = pd.Series(np.nan, index=out.index, dtype=float)
     path = db_path or _db_default_path()
     for tk, grp in out.groupby("ticker", sort=False):
@@ -834,7 +833,7 @@ def attach_5m_additive_context(
             )
             if not chunk.empty:
                 frames.append(chunk)
-        m5 = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        m5 = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()  # caps-ok: no 5m rows fetched -> empty frame, and the `if m5.empty: return df` below returns the input unmerged (m5_* stay absent), nothing fabricated
     finally:
         conn.close()
     if m5.empty:
@@ -908,6 +907,6 @@ def attach_5m_additive_context(
     # Rows without a matching 1m as-of snapshot keep NaN m5_*; do not stamp proxy timeframe.
     if M5_SOURCE_TIMEFRAME_COL in out.columns:
         m5_proxy_cols = [f"m5_{c}" for c in M5_ADDITIVE_SOURCE_COLS]
-        has_proxy = out[m5_proxy_cols].notna().any(axis=1) if m5_proxy_cols else False
+        has_proxy = out[m5_proxy_cols].notna().any(axis=1) if m5_proxy_cols else False  # caps-ok: with no M5 source columns configured no row can carry an m5 proxy, so False (clear the source-timeframe stamp) is the true value, not a default
         out.loc[~has_proxy, M5_SOURCE_TIMEFRAME_COL] = None
     return out

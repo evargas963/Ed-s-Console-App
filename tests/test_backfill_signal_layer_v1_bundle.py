@@ -60,7 +60,7 @@ def test_backfill_recomputes_empty_signal_layer_when_bars_exist(tmp_path) -> Non
     row = conn.execute("SELECT raw_bundle_json FROM calibration_decision_log").fetchone()
     conn.close()
     payload = decode_json_blob(row[0])
-    assert int(payload["signal_layer_v1"].get("meta.n_bars") or 0) > 0
+    assert int(payload["signal_layer_v1"]["meta.n_bars"]) > 0
 
 
 def test_backfill_skips_nonempty_layer_without_force(tmp_path) -> None:

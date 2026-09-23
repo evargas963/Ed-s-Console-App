@@ -184,7 +184,7 @@ def parse_cboe_history_csv(text: str) -> list[tuple[str, float | None, float | N
             out.append((date, _f(vals.get("OPEN")), _f(vals.get("HIGH")),
                         _f(vals.get("LOW")), _f(vals.get("CLOSE"))))
         else:
-            single = next(iter(vals.values()), None)
+            single = next(iter(vals.values()), None)  # caps-ok: next(..., None): a single-value Cboe row with no value cell yields None, and _f(None) keeps close None (NULL mirrors the source absence), never 0
             out.append((date, None, None, None, _f(single)))
     return out
 

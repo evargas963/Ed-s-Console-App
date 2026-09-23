@@ -63,7 +63,7 @@ def _coverage_for_table(
     if not _table_exists(conn, table):
         return {"table": table, "error": "table_missing"}
 
-    tf_clause = "n.timeframe = ?" if timeframe else "1=1"
+    tf_clause = "n.timeframe = ?" if timeframe else "1=1"  # caps-ok: SQL WHERE construction -- no timeframe filter requested means match all rows ("1=1"), not a value default
     base_params: tuple[Any, ...] = (timeframe,) if timeframe else ()
 
     # RC-6: the bundle blobs live ONLY in `snapshots` now (the byte-identical duplicate in
@@ -121,10 +121,10 @@ def _coverage_for_table(
         by_ticker.append(
             {
                 "ticker": r["ticker"],
-                "rows_total": int(r["rows_total"] or 0),
-                "rows_with_replay_context_json": int(r["rows_with_replay_context_json"] or 0),
-                "rows_with_option_chain_json": int(r["rows_with_option_chain_json"] or 0),
-                "rows_with_full_bundle": int(r["rows_with_full_bundle"] or 0),
+                "rows_total": int(r["rows_total"] or 0),  # caps-ok: SQL COUNT(*) of a GROUP BY group is never NULL (>=1 row); guard only
+                "rows_with_replay_context_json": int(r["rows_with_replay_context_json"] or 0),  # caps-ok: SQL SUM(CASE..1/0) is NULL only over zero rows, where the true count is 0
+                "rows_with_option_chain_json": int(r["rows_with_option_chain_json"] or 0),  # caps-ok: SQL SUM(CASE..1/0) is NULL only over zero rows, where the true count is 0
+                "rows_with_full_bundle": int(r["rows_with_full_bundle"] or 0),  # caps-ok: SQL SUM(CASE..1/0) is NULL only over zero rows, where the true count is 0
                 "first_ts_with_full_bundle_utc": r["first_ts_utc"],
                 "latest_ts_with_full_bundle_utc": r["latest_ts_utc"],
                 "first_ts_with_full_bundle_et": r["first_ts_et"],
@@ -135,10 +135,10 @@ def _coverage_for_table(
     return {
         "table": table,
         "timeframe_filter": timeframe,
-        "rows_total": int(row["rows_total"] or 0),
-        "rows_with_replay_context_json": int(row["n_rc"] or 0),
-        "rows_with_option_chain_json": int(row["n_oc"] or 0),
-        "rows_with_full_bundle": int(row["n_full"] or 0),
+        "rows_total": int(row["rows_total"] or 0),  # caps-ok: SQL COUNT(*) is never NULL; guard only
+        "rows_with_replay_context_json": int(row["n_rc"] or 0),  # caps-ok: SQL SUM(CASE..1/0) is NULL only over zero rows, where the true count is 0
+        "rows_with_option_chain_json": int(row["n_oc"] or 0),  # caps-ok: SQL SUM(CASE..1/0) is NULL only over zero rows, where the true count is 0
+        "rows_with_full_bundle": int(row["n_full"] or 0),  # caps-ok: SQL SUM(CASE..1/0) is NULL only over zero rows, where the true count is 0
         "first_ts_with_full_bundle_utc": row["first_ts_utc"],
         "latest_ts_with_full_bundle_utc": row["latest_ts_utc"],
         "first_ts_with_full_bundle_et": row["first_ts_et"],
@@ -168,8 +168,10 @@ def _enrich_with_expansion(
     prev_table: dict[str, Any],
 ) -> None:
     """Mutate table_stats with replay_coverage_rate, deltas, and shortage estimate."""
-    total = int(table_stats.get("rows_total") or 0)
-    n_full = int(table_stats.get("rows_with_full_bundle") or 0)
+    # CAPS RC-REHAB-1: table_stats is a SUCCESSFUL _coverage_for_table result (error dicts are
+    # skipped by the caller), which always carries these ints -- read directly, no `or 0`.
+    total = int(table_stats["rows_total"])
+    n_full = int(table_stats["rows_with_full_bundle"])
     table_stats["replay_coverage_rate"] = (
         round(n_full / total, 6) if total > 0 else None
     )
@@ -187,8 +189,8 @@ def _enrich_with_expansion(
     prev_by_t = prev_table.get("by_ticker") or {}
     for row in table_stats.get("by_ticker") or []:
         tk = row["ticker"]
-        rt = int(row.get("rows_total") or 0)
-        rf = int(row.get("rows_with_full_bundle") or 0)
+        rt = int(row["rows_total"])  # always set by _coverage_for_table's by_ticker builder
+        rf = int(row["rows_with_full_bundle"])
         row["replay_coverage_rate"] = round(rf / rt, 6) if rt > 0 else None
         row["estimated_rows_needed_to_reach_minimum"] = max(
             0, min_required_rows - rf
@@ -259,6 +261,12 @@ def build_replay_bundle_coverage(
                 out["tables"][tbl] = {"error": "table_not_allowed"}
                 continue
             stats = _coverage_for_table(conn, tbl, timeframe=CANONICAL_TIMEFRAME)
+            if "error" in stats:
+                # CAPS RC-REHAB-1: a missing table has NO counts. It used to flow into
+                # _enrich_with_expansion, which read its absent counts as 0 (fabricating a
+                # "rows needed" estimate) before the state write below crashed on them.
+                out["tables"][tbl] = stats
+                continue
             _enrich_with_expansion(
                 stats,
                 min_required_rows=min_required_rows,

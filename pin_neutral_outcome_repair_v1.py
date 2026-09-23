@@ -78,7 +78,7 @@ def main() -> None:
     r = run_repair(
         args.db,
         dry_run=args.dry_run,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: argparse opt-in flag registered by register_allow_noncanonical_flag; absent = the safe canonical-DB-only posture
     )
     print(json.dumps(r, indent=2))
 

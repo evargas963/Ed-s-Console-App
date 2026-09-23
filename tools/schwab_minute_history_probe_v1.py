@@ -67,7 +67,7 @@ def main() -> None:
                 {
                     "ok": False,
                     "status": getattr(resp, "status_code", None),
-                    "text": getattr(resp, "text", "")[:500],
+                    "text": getattr(resp, "text", "")[:500],  # caps-ok: error-path diagnostic print: resp may be None (checked on the line above) so the body text is "" when there is no response object; status is printed separately as None-able and the script exits 1
                 }
             )
         )

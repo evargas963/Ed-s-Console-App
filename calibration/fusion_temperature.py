@@ -111,7 +111,7 @@ def load_fusion_calibration_rows(
     """
     from time_et import is_rth_ts_utc
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     sql = (
         "SELECT ticker, decision_ts_utc, model_outputs_json,"

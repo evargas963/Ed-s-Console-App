@@ -38,7 +38,10 @@ def test_reads_real_producers_only():
 
 
 def test_server_route_serves_the_page():
-    ssrc = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    """RC-REHAB-1 (Phase 3): this route moved from server.py to app/api/routes/pages.py
+    (second extraction slice, following desk.py's precedent) -- the source-text check moved
+    with it."""
+    ssrc = (REPO / "app" / "api" / "routes" / "pages.py").read_text(encoding="utf-8", errors="replace")
     assert '"/options"' in ssrc and "options.html" in ssrc, "no /options route"
 
 

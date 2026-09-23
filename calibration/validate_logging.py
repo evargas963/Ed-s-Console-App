@@ -16,12 +16,7 @@ from calibration.db_guard import require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 
-try:
-    from db import configure_sqlite_connection
-except Exception:
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 def main() -> int:
@@ -32,7 +27,7 @@ def main() -> int:
         print(f"MISSING_DB {args.db}", file=sys.stderr)
         return 2
     require_canonical_db_target(args, tool_name="calibration.validate_logging", write_capable=False)
-    conn = sqlite3.connect(str(args.db))
+    conn = sqlite3.connect(str(args.db), timeout=30.0)
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
     try:

@@ -144,13 +144,15 @@ def _prepare_sequence(
             "return": ret,
             "range": rng,
             "position": pos,
-            "volume": float(v) if v else 0.0,
+            # Missing inputs stay None — a bar with no volume print or a tick with no gamma/VIX
+            # read is NOT a measured 0 (0 VIX / 0 gamma-wall distance are real, extreme values).
+            "volume": float(v) if v is not None else None,  # caps-ok: absence stays None, never a fabricated 0 volume
             # Static context (same for all bars — approximation)
-            "net_gamma": inp.net_gamma or 0,
-            "net_delta": inp.net_delta or 0,
-            "dist_call_gamma_wall": inp.dist_call_gamma_wall or 0,
-            "dist_put_gamma_wall": inp.dist_put_gamma_wall or 0,
-            "vix_level": inp.vix_level or 0,
+            "net_gamma": inp.net_gamma,
+            "net_delta": inp.net_delta,
+            "dist_call_gamma_wall": inp.dist_call_gamma_wall,
+            "dist_put_gamma_wall": inp.dist_put_gamma_wall,
+            "vix_level": inp.vix_level,
         }
         sequence.append(step)
 
@@ -194,7 +196,7 @@ def predict(inp, ticker: str, direction_hint: str = "flat", db=None, model_dir: 
         if meta_path.exists():
             with open(meta_path) as f:
                 meta = json.load(f)
-            version = meta.get("version", "transformer_v1")
+            version = meta.get("version", "transformer_v1")  # caps-ok: model_version display label only; "transformer_v1" is the artifact family name (same label as the no-meta branch below), not a measurement or decision input
         else:
             version = "transformer_v1"
 

@@ -161,7 +161,7 @@ def main() -> None:
         )
         db.insert_snapshot(snap)
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     def q(sql: str, params: tuple = ()) -> sqlite3.Cursor:
         return conn.execute(sql, params)
 
@@ -181,8 +181,8 @@ def main() -> None:
         "nad_max": r[2],
         "nbd_min": r[3],
         "nbd_max": r[4],
-        "nad_negative_count": int(r[5] or 0),
-        "nbd_negative_count": int(r[6] or 0),
+        "nad_negative_count": int(r[5] or 0),  # caps-ok: SQLite SUM(CASE..) over zero post-cutoff rows is NULL; zero rows contain exactly 0 negatives (true count, printed next to row_count)
+        "nbd_negative_count": int(r[6] or 0),  # caps-ok: same SUM-over-zero-rows NULL: true count 0 of negative nbd, printed next to row_count
     }
     leg = q(
         get_snapshot_sql("tools/phase2_forward_write_verify.py:legacy_nbd_neg"),

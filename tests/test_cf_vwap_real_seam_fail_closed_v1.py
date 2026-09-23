@@ -130,6 +130,9 @@ def _lstm_checkpoint(*, consumes_cf_vwap: bool) -> dict:
         "mask_5m": [True] * w5,
         "mask_1m": [True] * w1,
         "mask_conf": mask_conf,
+        # lstm_model.train always writes norm_stats; ml_predict now requires the key
+        # (CAPS RC-REHAB-1). Empty = this stub model was trained on un-normalized inputs.
+        "norm_stats": {},
     }
 
 

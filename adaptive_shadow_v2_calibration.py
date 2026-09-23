@@ -85,7 +85,9 @@ def _tier3_overlay_status(db: Any, anchor: dict[str, Any]) -> dict[str, Any]:
     )
     ov = r.get("overlay") or {}
     keys_ok = [c for c in ADAPTIVE_SHADOW_V2_TIER3_COLUMNS if c in ov and ov[c] is not None and str(ov[c]).strip() != ""]
-    tries = r.get("resolution", {}).get("tries") or []
+    # resolve_overlay_for_anchor always returns resolution.tries (possibly empty list);
+    # index strictly so a changed producer shape fails loudly instead of reading as "no overlay".
+    tries = r["resolution"]["tries"]
     overlay_found = any(bool(t.get("matched")) for t in tries)
     return {
         "overlay_found": overlay_found,
@@ -128,7 +130,7 @@ def report_tier1_pool_coverage_v1(
         "anchors_total": len(anchors),
         "nonempty_tier1_pool_count": nonempty,
         "empty_tier1_pool_count": len(anchors) - nonempty,
-        "mean_pool_size": round(statistics.mean(sizes), 6) if sizes else 0.0,
+        "mean_pool_size": round(statistics.mean(sizes), 6) if sizes else None,  # caps-ok: None (not 0.0) when no anchors were measured
         "anchors_with_zero_matches": [x["anchor_id"] for x in per if x["tier1_pool_size"] == 0],
         "per_anchor": per,
     }
@@ -201,7 +203,7 @@ def run_calibration_v1(
             sb = set(adapt.selected_row_ids)
             om = _overlap_metrics(hb, sb)
             jacs.append(float(om["jaccard"]))
-            viab.append(1 if adapt.tier_stop_viable else 0)
+            viab.append(1 if adapt.tier_stop_viable else 0)  # caps-ok: bool->int encoding of a real computed bool (tier_stop_viable) for a fraction, not a missing-value default
             pool_sizes.append(adapt.candidate_pool_size)
             dist = adapt.score_distribution
             if dist.get("mean") is not None:
@@ -246,27 +248,34 @@ def run_calibration_v1(
             }
         )
 
+    def _none_last(v: Optional[float], *, descending: bool) -> tuple[int, float]:
+        # An unmeasured aggregate (None: no anchors) sorts LAST; it is never read as 0.0
+        # (a 0.0 stdev would otherwise rank an unmeasured config as the most stable).
+        if v is None:
+            return (1, 0.0)
+        return (0, -v if descending else v)  # caps-ok: scanner false positive: sort-direction choice on a measured value, no default involved
+
     ranked = sorted(
         per_config,
         key=lambda x: (
-            -(x["aggregate"].get("mean_jaccard_vs_heuristic") or 0.0),
-            -(x["aggregate"].get("fraction_tier_stop_viable") or 0.0),
-            x["aggregate"].get("stdev_jaccard_across_anchors") or 0.0,
+            _none_last(x["aggregate"]["mean_jaccard_vs_heuristic"], descending=True),
+            _none_last(x["aggregate"]["fraction_tier_stop_viable"], descending=True),
+            _none_last(x["aggregate"]["stdev_jaccard_across_anchors"], descending=False),
         ),
     )
 
     ablation: list[dict[str, Any]] = []
     if include_feature_ablation and anchors:
         mid = default_tier3_mid_weights_v1()
-        base_prof = next((p for p in per_config if p["config_id"] == "mid_baseline"), None)
-        if base_prof is None:
-            base_j = [0.0]
-        else:
-            base_j = [
-                float(x["overlap"]["jaccard"])
-                for x in base_prof["per_anchor"]
-            ]
-        base_mean_j = statistics.mean(base_j) if base_j else 0.0
+        base_prof = next((p for p in per_config if p["config_id"] == "mid_baseline"), None)  # caps-ok: None handled below -> base_mean_j None -> delta None
+        base_j = (
+            [float(x["overlap"]["jaccard"]) for x in base_prof["per_anchor"]]
+            if base_prof is not None
+            else []
+        )
+        # No mid_baseline profile (or no anchors in it) -> no baseline to delta against: None,
+        # never a fabricated 0.0 baseline that would report raw Jaccard as a "delta".
+        base_mean_j: Optional[float] = statistics.mean(base_j) if base_j else None  # caps-ok: None (not 0.0) when no baseline measured; consumer emits delta None
         for col in ADAPTIVE_SHADOW_V2_TIER3_COLUMNS:
             w_zero = dict(mid)
             w_zero[col] = 0.0
@@ -290,7 +299,11 @@ def run_calibration_v1(
                 {
                     "zeroed_feature": col,
                     "mean_jaccard_vs_heuristic": round(statistics.mean(deltas), 6) if deltas else None,
-                    "mean_delta_jaccard_vs_mid_baseline": round(statistics.mean(deltas) - base_mean_j, 6) if deltas else None,
+                    "mean_delta_jaccard_vs_mid_baseline": (
+                        round(statistics.mean(deltas) - base_mean_j, 6)
+                        if deltas and base_mean_j is not None
+                        else None
+                    ),
                 }
             )
 
@@ -300,7 +313,8 @@ def run_calibration_v1(
     pool_diag: dict[str, Any] = {"empty_tier1_pool_count": 0, "nonempty_tier1_pool_count": 0, "note": ""}
     if ranked and ranked[0].get("per_anchor"):
         pa0 = ranked[0]["per_anchor"]
-        empties = [x for x in pa0 if int(x.get("structural_pool_size") or 0) == 0]
+        # structural_pool_size is always written from AdaptiveShadowV2Result.candidate_pool_size (int).
+        empties = [x for x in pa0 if int(x["structural_pool_size"]) == 0]
         pool_diag["empty_tier1_pool_count"] = len(empties)
         pool_diag["nonempty_tier1_pool_count"] = len(pa0) - len(empties)
         pool_diag["note"] = (

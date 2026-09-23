@@ -2,6 +2,8 @@
 
 # Checkpoint + provenance lock (v1)
 
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** this report is built on the retired 7-horizon set (`1c,3c,5c,8c,13c,15c,60c`). The Phase D3 migration (commit `c9138251`, 2026-05-17) dropped `3c`/`8c`/`13c` from the governed contract; current `ml_horizon.py` defines only `PRIMARY_DECISION_HORIZONS = ("1c","5c","15c","60c")`. Every artifact this report names (`data/checkpoint_manifest_v1.json`, `data/policy_usable_inventory_v1*.json/.md`, `data/artifact_provenance_matrix_v1.json`, `data/cold_start_inference_checkpoint_v1.json`, `data/evaluation_protocol_lock_v1.json`) and every `models/active/**/xgb_*_{1c|3c|5c|8c|13c|15c|60c}_{move|dir}.pkl` file it inventories (308 rows) are confirmed absent from the current tree, including the three named example tickers (`TSL`, `PCG` no longer have `models/active/` directories at all). The tooling this report depends on (`build_checkpoint_provenance_bundle_v1.py` and siblings) now lives only under `tools/legacy/horizon_7/`, explicitly marked "Quarantined tools from the 7-horizon snapshot era." Nothing below should be read as describing the current model-checkpoint inventory.
+
 ## 1. Checkpoint manifest
 
 Canonical file: `data/checkpoint_manifest_v1.json`  

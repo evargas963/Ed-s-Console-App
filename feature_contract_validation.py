@@ -86,7 +86,9 @@ def _validate_registry_policy(registries) -> tuple[list[str], dict[str, Any]]:
         fails.extend(shape_errs)
     details["registry_shape_errors"] = shape_errs
 
-    xgb_rows = registries.get("xgb", [])
+    # build_all_layer_registries always returns xgb/lstm/transformer; strict so a missing layer
+    # fails loudly instead of validating an empty registry as clean.
+    xgb_rows = registries["xgb"]
     bad_allowed: list[str] = []
     for e in xgb_rows:
         if e.raw_or_derived in {"model_output", "policy_output"} and e.allowed:
@@ -132,7 +134,7 @@ def _validate_lstm_transformer_contracts(registries) -> tuple[list[str], dict[st
     import transformer_train
 
     lstm_expected = set(FEATURES_5M) | set(FEATURES_1M) | set(CONFLUENCE_FEATURES)
-    lstm_registry = {e.feature_name for e in registries.get("lstm", [])}
+    lstm_registry = {e.feature_name for e in registries["lstm"]}
     miss_lstm = sorted(lstm_expected - lstm_registry)
     extra_lstm = sorted(lstm_registry - lstm_expected)
     if miss_lstm or extra_lstm:
@@ -148,7 +150,7 @@ def _validate_lstm_transformer_contracts(registries) -> tuple[list[str], dict[st
         "cascade_lstm_prob_down",
         "cascade_lstm_prob_flat",
     }
-    tr_registry = {e.feature_name for e in registries.get("transformer", [])}
+    tr_registry = {e.feature_name for e in registries["transformer"]}
     miss_tr = sorted(tr_expected - tr_registry)
     extra_tr = sorted(tr_registry - tr_expected)
     if miss_tr or extra_tr:
@@ -167,7 +169,7 @@ def _validate_lstm_transformer_contracts(registries) -> tuple[list[str], dict[st
 def _validate_fusion_prediction_policy(registries) -> tuple[list[str], dict[str, Any]]:
     fails: list[str] = []
     details: dict[str, Any] = {}
-    xgb_allowed = {e.feature_name for e in registries.get("xgb", []) if e.allowed}
+    xgb_allowed = {e.feature_name for e in registries["xgb"] if e.allowed}
     forbidden_hits = detect_forbidden_family_reappearance(xgb_allowed)
     if forbidden_hits:
         fails.append("Forbidden families found in XGB allowed feature set.")

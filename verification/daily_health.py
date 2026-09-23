@@ -181,7 +181,7 @@ def _build_summary(checks: list[dict[str, Any]]) -> dict[str, Any]:
     warn = sum(1 for c in checks if c.get("severity") == "WARN")
     by_cat: dict[str, dict[str, int]] = {}
     for c in checks:
-        cat = _check_category(str(c.get("id", "")))
+        cat = _check_category(str(c["id"]))  # every check dict built in this module carries an id
         by_cat.setdefault(cat, {"FAIL": 0, "WARN": 0})
         sev = c.get("severity")
         if sev == "FAIL":
@@ -264,7 +264,7 @@ def _bars_head_tail(conn: sqlite3.Connection, ticker: str) -> dict[str, Any]:
         """,
         (ticker,),
     ).fetchone()
-    n, mn, mx = int(row[0] or 0), row[1], row[2]
+    n, mn, mx = int(row[0]), row[1], row[2]  # COUNT(*) is never NULL
     return {"n_bars": n, "bar_end_min": mn, "bar_end_max": mx}
 
 
@@ -319,7 +319,7 @@ def _labeled_counts(conn: sqlite3.Connection, *, ticker: str, timeframe: str) ->
             f"SELECT COUNT(*) FROM snapshots WHERE ticker=? AND timeframe=? AND {col} IN ('up','down','flat')",
             (ticker, timeframe),
         ).fetchone()[0]
-        out[h] = int(c or 0)
+        out[h] = int(c)  # COUNT(*) is never NULL
     return out
 
 
@@ -483,7 +483,7 @@ def run_daily_health(
                         )
                 gs = _gap_stats_bars(conn, tkr)
                 row["bar_gaps"] = gs
-                wknd = int(gs.get("intraday_severe_gaps_weekend_et_skipped") or 0)
+                wknd = int(gs["intraday_severe_gaps_weekend_et_skipped"])  # _gap_stats_bars always sets it
                 if wknd > 0:
                     checks.append(
                         {
@@ -595,7 +595,7 @@ def run_daily_health(
                                 "message": f"pred {h} triad completeness {frac:.2%} < {FEATURE_COVERAGE_WARN:.0%}",
                             }
                         )
-            if cov.get("partial_triad_rows", 0) > 0:
+            if cov["partial_triad_rows"] > 0:  # _snapshot_pred_coverage sets it on every return path
                 checks.append(
                     {
                         "id": f"predictions_partial_triad:{tkr}",
@@ -670,7 +670,7 @@ def run_daily_health(
 
 
 def write_reports(report: DailyHealthReport, *, root: Path | None = None) -> tuple[Path, Path, Path]:
-    base = root if root is not None else Path(__file__).resolve().parents[1]
+    base = root if root is not None else Path(__file__).resolve().parents[1]  # caps-ok: output-directory argument; None means "write under this repo's root", a path choice not a measured value
     out_dir = base / "reports" / "daily_health"
     hist = out_dir / "history"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -695,10 +695,12 @@ def write_reports(report: DailyHealthReport, *, root: Path | None = None) -> tup
             [
                 "## Failure categories (summary)",
                 "",
-                f"- **FAIL checks**: {summ.get('fail_checks', 0)}",
-                f"- **WARN checks**: {summ.get('warn_checks', 0)}",
-                f"- **Universe resolution**: `{summ.get('universe_resolution', '')}` "
-                f"(mode requested: `{summ.get('universe_mode_requested', '')}`)",
+                # run_daily_health (the only DailyHealthReport builder) always sets these four keys;
+                # a missing one raises rather than printing "0 FAIL checks" into the health report.
+                f"- **FAIL checks**: {summ['fail_checks']}",
+                f"- **WARN checks**: {summ['warn_checks']}",
+                f"- **Universe resolution**: `{summ['universe_resolution']}` "
+                f"(mode requested: `{summ['universe_mode_requested']}`)",
                 "",
             ]
         )
@@ -707,8 +709,8 @@ def write_reports(report: DailyHealthReport, *, root: Path | None = None) -> tup
             lines.append("| category | FAIL | WARN |")
             lines.append("|----------|-----:|-----:|")
             for cat in sorted(by_cat.keys()):
-                d = by_cat[cat] or {}
-                lines.append(f"| {cat} | {d.get('FAIL', 0)} | {d.get('WARN', 0)} |")
+                d = by_cat[cat]  # _build_summary seeds every category with FAIL/WARN counters
+                lines.append(f"| {cat} | {d['FAIL']} | {d['WARN']} |")
             lines.append("")
     lines.extend(
         [
@@ -723,13 +725,14 @@ def write_reports(report: DailyHealthReport, *, root: Path | None = None) -> tup
     lines.extend(["", "## Per-ticker summary", "", "| ticker | bars | stale(d) | intraday_severe | max_gap_s | 1c tier / n | 5c | 15c | 60c | pred1c% |", "|--------|------|----------|-----------------|-----------|-------------|----|----|-----|---------|"])
     for r in report.per_ticker:
         tkr = r["ticker"]
-        b = r.get("bars") or {}
-        nbar = b.get("n_bars", 0)
-        stale_d = (r.get("stale_sec") or 0) / 86400.0 if r.get("stale_sec") is not None else None
-        stale_s = f"{stale_d:.2f}" if stale_d is not None else ""
+        # row["bars"] is None when price_bars_1m does not exist: render "n/a", never "0" bars.
+        b = r.get("bars")
+        nbar = b["n_bars"] if b is not None else "n/a"
+        stale_sec = r.get("stale_sec")
+        stale_s = f"{stale_sec / 86400.0:.2f}" if stale_sec is not None else ""  # caps-ok: markdown table cell; blank when stale_sec was never measured (no bars), never rendered as 0 days and never parsed back
         bg = r.get("bar_gaps") or {}
-        sev = bg.get("intraday_severe_gaps", "")
-        mxg = bg.get("max_gap_sec", "")
+        sev = bg.get("intraday_severe_gaps", "")  # caps-ok: markdown table cell; "" = gap stats not computed (no bars), rendered blank and never parsed back
+        mxg = bg.get("max_gap_sec", "")  # caps-ok: markdown table cell; "" = gap stats not computed (no bars), rendered blank and never parsed back
         lt = r.get("labeled_tier") or {}
         lc = r.get("labeled_counts") or {}
         pc = (r.get("pred_coverage_recent") or {}).get("horizons") or {}
@@ -737,8 +740,8 @@ def write_reports(report: DailyHealthReport, *, root: Path | None = None) -> tup
         p1s = f"{p1:.1%}" if isinstance(p1, float) else ""
         lines.append(
             f"| {tkr} | {nbar} | {stale_s} | {sev} | {mxg} | "
-            f"{lt.get('1c','')}/{lc.get('1c','')} | {lt.get('5c','')}/{lc.get('5c','')} | "
-            f"{lt.get('15c','')}/{lc.get('15c','')} | {lt.get('60c','')}/{lc.get('60c','')} | {p1s} |"
+            f"{lt.get('1c','')}/{lc.get('1c','')} | {lt.get('5c','')}/{lc.get('5c','')} | "  # caps-ok: markdown table cells; "" renders a blank cell for an unlabeled horizon and is never parsed back
+            f"{lt.get('15c','')}/{lc.get('15c','')} | {lt.get('60c','')}/{lc.get('60c','')} | {p1s} |"  # caps-ok: markdown table cells; "" renders a blank cell for an unlabeled horizon and is never parsed back
         )
     lines.append("")
     lines.append("## Constants")

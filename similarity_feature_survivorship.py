@@ -155,6 +155,10 @@ def run_multi_anchor_survivorship(
     as_of_ts_utc: Optional[float] = None,
     max_extra_soft_per_anchor: int = 8,
 ) -> dict[str, Any]:
+    if not anchors:
+        # Every frequency / stability ratio below divides by the anchor count; with zero
+        # anchors there is no survivorship to measure, so refuse rather than emit 0.0/1.0.
+        raise ValueError("run_multi_anchor_survivorship requires at least one anchor")
     per_anchor: list[dict[str, Any]] = []
     extra_in_top: dict[str, list[str]] = defaultdict(list)
     extra_roles_when_top: dict[str, list[str]] = defaultdict(list)
@@ -227,6 +231,7 @@ def run_multi_anchor_survivorship(
                 extra_roles_when_top[ex].append(role)
                 extra_weights_when_top[ex].append(wb)
 
+        _top_robust = staged["top_robust_tier_stop_viable"]
         per_anchor.append(
             {
                 "anchor_id": aid,
@@ -241,11 +246,11 @@ def run_multi_anchor_survivorship(
                 "heuristic_baseline": hb,
                 "trial_count": staged.get("trial_count"),
                 "top_trial_keys": tops,
-                "best_jaccard": float(
-                    (staged.get("top_robust_tier_stop_viable") or [{}])[0]
-                    .get("overlap_vs_heuristic", {})
-                    .get("jaccard")
-                    or 0.0
+                # None when no tier-stop-viable trial exists — not a measured 0.0 overlap.
+                "best_jaccard": (
+                    float(_top_robust[0]["overlap_vs_heuristic"]["jaccard"])
+                    if _top_robust
+                    else None
                 ),
             }
         )
@@ -274,8 +279,10 @@ def run_multi_anchor_survivorship(
         n_elig = len(set(elig))
         incl_anchors = sorted(set(extra_in_top.get(feat, [])))
         n_incl = len(incl_anchors)
-        inc_freq = (n_incl / n_elig) if n_elig else 0.0
-        stab = (n_incl / n_anchors) if n_anchors else 0.0
+        # No eligible anchor => inclusion frequency is undefined (None), not a measured 0.0;
+        # classification handles n_elig == 0 explicitly as OMIT below.
+        inc_freq: Optional[float] = (n_incl / n_elig) if n_elig else None  # caps-ok: absence stays None (undefined ratio), never 0.0
+        stab = n_incl / n_anchors  # n_anchors > 0 is enforced at function entry
 
         roles = extra_roles_when_top.get(feat, [])
         rc: Counter[str] = Counter(roles)
@@ -287,7 +294,7 @@ def run_multi_anchor_survivorship(
 
         failures = sorted(set(elig) - set(incl_anchors))
 
-        if n_elig == 0:
+        if inc_freq is None:
             cls = "OMIT"
         elif inc_freq >= 0.65 and n_elig >= 6:
             cls = "ROBUST_CORE"
@@ -298,13 +305,13 @@ def run_multi_anchor_survivorship(
         else:
             cls = "OMIT"
 
-        if feat in REGIME_DEPENDENT_FEATURES and cls == "WEAK" and inc_freq >= 0.15:
+        if feat in REGIME_DEPENDENT_FEATURES and cls == "WEAK" and inc_freq is not None and inc_freq >= 0.15:
             cls = "CONDITIONAL"
 
         table.append(
             {
                 "feature": feat,
-                "inclusion_frequency": round(inc_freq, 4),
+                "inclusion_frequency": round(inc_freq, 4) if inc_freq is not None else None,  # caps-ok: absence stays None (no eligible anchor), never a fabricated 0.0
                 "eligible_anchor_count": n_elig,
                 "included_anchor_count": n_incl,
                 "role_frequency": role_freq,
@@ -338,7 +345,7 @@ def final_structure_from_survivorship(report: dict[str, Any]) -> dict[str, Any]:
     add: list[str] = []
     regime_aware: list[str] = []
 
-    for row in report.get("feature_survivorship_table", []):
+    for row in report["feature_survivorship_table"]:
         f = row["feature"]
         cls = row["classification"]
         if f in STRUCTURAL_FEATURE_ROLES:
@@ -374,7 +381,7 @@ def final_structure_from_survivorship(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def overall_confidence(report: dict[str, Any]) -> str:
-    n = report.get("anchor_count", 0)
+    n = report["anchor_count"]
     no_ov = len(report.get("failure_anchors_no_matching_overlay") or [])
     nv = len(report.get("failure_anchors_heuristic_not_tier_stop_viable") or [])
     bad = no_ov + nv

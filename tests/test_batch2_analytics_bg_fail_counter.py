@@ -6,6 +6,11 @@ from pathlib import Path
 
 import pytest
 
+import analytics_bg_recompute
+import app.api.routes.analytics_state
+import app.api.routes.status
+import terrain_state
+
 
 @pytest.fixture()
 def _bg_fail_spy():
@@ -32,14 +37,14 @@ def test_record_analytics_bg_failure_marks_stale_after_threshold(_bg_fail_spy):
     ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
     threshold = srv.ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES
     for i in range(threshold - 1):
-        srv._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
+        analytics_bg_recompute._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
         assert cache_key in srv._state_cache
         assert srv._analytics_bg_fail_counts.get(inflight_key) == i + 1
-    srv._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
+    analytics_bg_recompute._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
     assert cache_key in srv._state_cache
     md = srv._state_cache[cache_key]["ms_dict"]
     assert md.get("state_error") == "analytics_refresh_failed"
-    assert "boom" in str(md.get("state_error_detail", ""))
+    assert "boom" in str(md["state_error_detail"])
     assert md.get("analytics_stale") is True
     assert inflight_key not in srv._analytics_bg_fail_counts
 
@@ -47,7 +52,7 @@ def test_record_analytics_bg_failure_marks_stale_after_threshold(_bg_fail_spy):
 def test_record_analytics_bg_failure_writes_cold_cache_error_shell(_bg_fail_spy):
     ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
     srv._state_cache.pop(cache_key, None)
-    srv._record_analytics_bg_failure(
+    analytics_bg_recompute._record_analytics_bg_failure(
         inflight_key,
         ticker,
         reason="schwab_auth",
@@ -60,7 +65,7 @@ def test_record_analytics_bg_failure_writes_cold_cache_error_shell(_bg_fail_spy)
     assert md.get("state_error") == "token_invalid"
     assert md.get("analytics_pending_shell") is False
     assert md.get("error") == "token_invalid"
-    assert "reauth_schwab" in str(md.get("remediation", ""))
+    assert "reauth_schwab" in str(md["remediation"])
 
 
 def test_schedule_analytics_recompute_wires_fail_counter(monkeypatch, _bg_fail_spy):
@@ -72,7 +77,7 @@ def test_schedule_analytics_recompute_wires_fail_counter(monkeypatch, _bg_fail_s
         raise RuntimeError("bg fetch failed")
 
     monkeypatch.setattr(srv, "_fetch_state", _boom)
-    monkeypatch.setattr(srv, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
+    monkeypatch.setattr(analytics_bg_recompute, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
     monkeypatch.setattr(srv._analytics_executor, "submit", lambda fn: fn())
     # UI_05: operator-class sources route to the priority pool — pin it to the
     # same inline-submit executor so this test stays synchronous.
@@ -98,7 +103,7 @@ def test_schedule_analytics_recompute_resets_counter_on_success(monkeypatch, _bg
         return {"ticker": ticker, "selected_exp": expiry}
 
     monkeypatch.setattr(srv, "_fetch_state", _flaky)
-    monkeypatch.setattr(srv, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
+    monkeypatch.setattr(analytics_bg_recompute, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
     monkeypatch.setattr(srv._analytics_executor, "submit", lambda fn: fn())
     # UI_05: operator-class sources route to the priority pool — pin it to the
     # same inline-submit executor so this test stays synchronous.
@@ -173,7 +178,7 @@ def test_analytics_stale_not_sse_connected_only():
     )
     assert md.get("analytics_stale") is False
     assert md.get("analytics_refresh_due") is True
-    assert md.get("analytics_age_sec", 99) < 2.0
+    assert md["analytics_age_sec"] < 2.0
 
 
 def test_resolve_ticker_param_symbol_alias():
@@ -202,7 +207,7 @@ def test_api_state_symbol_alias_routes_to_symbol(monkeypatch):
         return JSONResponse({"ticker": ticker, "update_source": update_source})
 
     monkeypatch.setattr(srv, "_tier_c_analytics_json_response", fake_tier)
-    resp = srv.get_state(symbol="QQQ")
+    resp = app.api.routes.analytics_state.get_state(symbol="QQQ")
     body = json.loads(resp.body)
     assert body["ticker"] == "QQQ"
     assert seen["ticker"] == "QQQ"
@@ -219,7 +224,7 @@ def test_api_build_exposes_git_sha(monkeypatch):
     import server as srv
 
     monkeypatch.setattr(srv, "_repo_git_head_sha", lambda: "abc123deadbeef")
-    body = srv.api_build()
+    body = app.api.routes.status.api_build()
     assert body["git_sha"] == body["process_identity"]["startup_git_sha"]
     assert body["repository_state_now"]["repo_head_now"] == "abc123deadbeef"
     assert body["git_sha_semantics"] == "startup_process_identity"
@@ -239,8 +244,8 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
     srv._state_cache.pop(cache_key, None)
     # RC-128/134: kl_* walls come only from terrain overlay — seed a fresh terrain row
     # so the progressive shell proves carriage, not a resurrected analytics wall book.
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[(ticker.upper())] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[(ticker.upper())] = {
             "call_wall": 510.0,
             "put_wall": 490.0,
             "computed_ts_utc": time.time(),
@@ -328,10 +333,10 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
     assert md.get("expiries") == [exp, "2099-06-08"]
     assert md.get("selected_exp") == exp
     assert md.get("kl_call_gamma_wall") == 510.0
-    assert len(md.get("summary_rows") or []) == 1
+    assert len(md["summary_rows"]) == 1
     srv._state_cache.pop(cache_key, None)
-    with srv._terrain_cache_lock:
-        srv._terrain_cache.pop(ticker.upper(), None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(ticker.upper(), None)
 
 
 def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
@@ -357,7 +362,7 @@ def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
     # symbol/expiry must be passed explicitly: calling the handler directly bypasses
     # FastAPI's Query(...) dependency resolution, so an omitted Query-typed param
     # stays the unresolved Query() sentinel object rather than its declared default.
-    resp = asyncio.run(srv.post_analytics_warm(ticker="SPY", symbol=None, expiry=None))
+    resp = asyncio.run(app.api.routes.analytics_state.post_analytics_warm(ticker="SPY", symbol=None, expiry=None))
     body = json.loads(resp.body)
     assert body.get("ok") is True
     assert body.get("ticker") == "SPY"
@@ -372,7 +377,7 @@ def test_api_build_exposes_ui_maximize_sla():
     added nothing a direct call doesn't already prove."""
     import server as srv
 
-    body = srv.api_build()
+    body = app.api.routes.status.api_build()
     sla = body.get("ui_maximize_sla_ms") or {}
     assert sla.get("first_quote") == srv.UI_MAXIMIZE_SLA_MS["first_quote"]
     assert sla.get("fusion_cards_panel_warm") == srv.UI_MAXIMIZE_SLA_MS["fusion_cards_panel_warm"]
@@ -384,8 +389,12 @@ def test_candle_seed_does_not_nest_analytics_executor():
     """Regression: parallel candle seed on _analytics_executor deadlocked Tier C
     (UI-MAXIMIZE). OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 moved the seed
     futures to the dedicated recompute-leaf pool — the invariant is unchanged:
-    seeds never nest into the analytics pool."""
-    text = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    seeds never nest into the analytics pool.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the candle-seed
+    block moved out of server.py entirely, into server_state_exposures.py, along with
+    _exposures_for_state."""
+    text = Path(__file__).resolve().parent.parent.joinpath("server_state_exposures.py").read_text(encoding="utf-8")
     idx = text.find("UI-MAXIMIZE: parallel seed")
     assert idx != -1
     block = text[idx : idx + 800]  # UI_05 residual: window covers the priority-lane selection comment

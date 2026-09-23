@@ -167,9 +167,11 @@ def stack_layer_ablation_snapshot_columns(model_family: str) -> frozenset[str]:
 
         reg = _registered_ml_columns()
         if key == "xgb":
-            return frozenset(reg.get("xgb", set()))
+            # _registered_ml_columns always returns xgb/lstm_5m/lstm_1m; strict so a missing cone
+            # fails loudly instead of ablating an EMPTY column set as if it were the layer.
+            return frozenset(reg["xgb"])
         if key == "lstm":
-            return frozenset(reg.get("lstm_5m", set()) | reg.get("lstm_1m", set()))
+            return frozenset(reg["lstm_5m"] | reg["lstm_1m"])
         if key == "transformer":
             try:
                 from features.lstm_sequence_input import ENCODED_FEATURES_5M
@@ -207,7 +209,7 @@ GUEST_ANCHOR_AFFILIATION_IWM_SMALL_CAP: str = "iwm_small_cap_sample"
 
 def guest_anchor_inference_enabled() -> bool:
     """Guest tickers borrow SPY/QQQ/IWM promoted weights on live guest features (default on)."""
-    return os.environ.get("ED_GUEST_ANCHOR_INFERENCE", "1").strip().lower() not in (
+    return os.environ.get("ED_GUEST_ANCHOR_INFERENCE", "1").strip().lower() not in (  # caps-ok: operator env knob with documented default ON ("default on" in the docstring)
         "0",
         "false",
         "no",
@@ -448,9 +450,9 @@ def mc_model_direction_inputs(
         (model_prob_up, model_prob_down, model_confidence, availability_map, source_note)
     """
     avail = {
-        "xgboost": bool(getattr(xgb_out, "available", False)),
-        "lstm": bool(getattr(lstm_out, "available", False)),
-        "transformer": bool(getattr(transformer_out, "available", False)),
+        "xgboost": bool(getattr(xgb_out, "available", False)),  # caps-ok: fail-closed availability map; only an explicit available=True counts as available
+        "lstm": bool(getattr(lstm_out, "available", False)),  # caps-ok: fail-closed availability map; only explicit available=True counts
+        "transformer": bool(getattr(transformer_out, "available", False)),  # caps-ok: fail-closed availability map; only explicit available=True counts
     }
     if stack_probs and isinstance(stack_probs, dict):
         u = stack_probs.get("up")
@@ -483,10 +485,17 @@ def mc_model_direction_inputs(
         ("lstm", lstm_out, wmap["lstm"]),
         ("transformer", transformer_out, wmap["transformer"]),
     ):
-        if not getattr(out, "available", False):
+        if not getattr(out, "available", False):  # caps-ok: fail-closed; a layer enters the MC drift average only on explicit available=True
             continue
-        pu = float(getattr(out, "prob_up", 0.33) or 0.33)
-        pd = float(getattr(out, "prob_down", 0.33) or 0.33)
+        # A layer's own up/down probabilities or nothing: the old `or 0.33` injected a
+        # placeholder 0.33 for a missing value AND turned a real 0.0 into 0.33, feeding a
+        # fabricated drift into Monte Carlo. Unreadable -> the layer is skipped.
+        from numeric_contract import float_finite_or_none
+
+        pu = float_finite_or_none(getattr(out, "prob_up", None))
+        pd = float_finite_or_none(getattr(out, "prob_down", None))
+        if pu is None or pd is None:
+            continue
         ups.append(pu)
         dns.append(pd)
         weights.append(w)
@@ -515,7 +524,7 @@ LEGACY_AVERAGE_AVAILABLE_ML_LAYERS = "average_available_base_models"
 
 
 def _model_out_triplet_complete(out: Any) -> bool:
-    if not getattr(out, "available", False):
+    if not getattr(out, "available", False):  # caps-ok: fail-closed predicate; missing available attr -> triplet not complete
         return False
     values: list[float] = []
     for key in ("prob_up", "prob_down", "prob_flat"):
@@ -597,7 +606,7 @@ def unified_stack_team_can_authorize(
         return False, "composition_schema_invalid"
     if not comp.get("contract_compliant"):
         issues = comp.get("contract_issues") or []
-        why = str(issues[0])[:60] if issues else "bundle contract not satisfied"
+        why = str(issues[0])[:60] if issues else "bundle contract not satisfied"  # caps-ok: diagnostic reason text attached to an authorization that is already DENIED (returns False); no value is asserted
         return False, f"composition_contract_noncompliant:{why}"
 
     from active_bundle_contract import BUNDLE_ARTIFACT_TRIPLE, META_STACK_KIND
@@ -676,11 +685,11 @@ def derive_stack_layers_scored(
     from ml_predict import stack_probs_bundle_key
 
     scored: list[str] = []
-    if getattr(xgb_out, "available", False):
+    if getattr(xgb_out, "available", False):  # caps-ok: evidence-derived list; a layer is listed scored only on explicit available=True
         scored.append("xgb")
-    if getattr(lstm_out, "available", False):
+    if getattr(lstm_out, "available", False):  # caps-ok: evidence-derived list; listed only on explicit available=True
         scored.append("lstm")
-    if getattr(transformer_out, "available", False):
+    if getattr(transformer_out, "available", False):  # caps-ok: evidence-derived list; listed only on explicit available=True
         scored.append("transformer")
 
     bundle = ml_bundle if isinstance(ml_bundle, dict) else {}
@@ -710,7 +719,7 @@ def derive_stack_layers_scored(
     ):
         scored.append("meta")
 
-    if getattr(mc_out, "available", False):
+    if getattr(mc_out, "available", False):  # caps-ok: evidence-derived list; MC listed scored only on explicit available=True
         scored.append("monte_carlo")
 
     reg_primary = getattr(regime, "primary", None) if regime is not None else None

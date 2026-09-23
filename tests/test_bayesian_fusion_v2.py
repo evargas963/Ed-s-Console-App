@@ -236,12 +236,14 @@ def test_fuse_unknown_regime_label_treated_exactly_as_absent_regime():
     assert a.n_sources_available == b.n_sources_available == 1
 
 
-def test_fuse_attributeless_rules_object_defaults_to_wait_evidence():
+def test_fuse_attributeless_rules_object_fails_closed():
+    # RC-REHAB-1 CAPS review: a rules object without RulesCard.signal/.conviction used to be
+    # read as a fabricated "wait"/"low" rules read and fused as real evidence. It must now fail
+    # closed: fuse() returns an unavailable payload with no posteriors.
     payload = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, object())
-    baseline = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
-    assert payload.available is True
-    assert payload.pinning_posterior == baseline.pinning_posterior
-    assert payload.dominant_outcome == baseline.dominant_outcome
+    assert payload.available is False
+    assert payload.pinning_posterior is None
+    assert payload.dominant_outcome is None
 
 
 # ── Directional fusion: hand-computed weighted blend ─────────────────────────

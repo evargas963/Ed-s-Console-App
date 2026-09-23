@@ -163,7 +163,7 @@ def load_rows(
     *,
     min_ts_utc: float | None = None,
 ) -> tuple[list[sqlite3.Row], dict[str, Any]]:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     bar_ends = _load_bar_ends(conn)
@@ -340,7 +340,7 @@ def run_phase6(db_path: Path, *, min_ts_utc: float | None = None) -> dict[str, A
                 "win_rate_model_5c": hm.get("win_rate_model"),
             }
         )
-    ticker_rank.sort(key=lambda x: (x.get("delta_ev_vs_long_5c") is not None, x.get("delta_ev_vs_long_5c") or 0.0), reverse=True)
+    ticker_rank.sort(key=lambda x: (x.get("delta_ev_vs_long_5c") is not None, x.get("delta_ev_vs_long_5c") or 0.0), reverse=True)  # caps-ok: sort-key tiebreak only; the leading "is not None" element already ranks every None-delta ticker last, and the stored delta stays None
     out["ticker_ranking_by_horizon"][ref_h] = ticker_rank
 
     # --- Confidence: fusion_dominant_prob quantile bins ---
@@ -455,7 +455,7 @@ def run_phase6(db_path: Path, *, min_ts_utc: float | None = None) -> dict[str, A
             )
 
     combos.sort(
-        key=lambda x: (x.get("delta_vs_long") is not None, x.get("delta_vs_long") or 0.0),
+        key=lambda x: (x.get("delta_vs_long") is not None, x.get("delta_vs_long") or 0.0),  # caps-ok: sort-key tiebreak only; the leading "is not None" element already ranks every None-delta slice last, and the stored delta stays None
         reverse=True,
     )
     out["combined_top_slices"] = combos[:40]
@@ -473,10 +473,14 @@ def run_phase6(db_path: Path, *, min_ts_utc: float | None = None) -> dict[str, A
     strong = 0
     weak = 0
     for hid, hm in out["horizons"].items():
-        b = hm.get("bootstrap_model_minus_long") or {}
-        if b.get("ci95_low") is not None and b.get("ci95_low", 0) > 0 and (hm.get("n") or 0) >= MIN_N_SLICE:
+        # horizon_metrics always sets n and bootstrap_model_minus_long ({} when n < 2: no
+        # bootstrap ran, so neither CI nor mean diff exists and the horizon counts for nothing).
+        b = hm["bootstrap_model_minus_long"]
+        ci_lo = b.get("ci95_low")
+        mean_diff = b.get("mean_diff")
+        if ci_lo is not None and ci_lo > 0 and hm["n"] >= MIN_N_SLICE:
             strong += 1
-        elif b.get("mean_diff") is not None and b.get("mean_diff", 0) > 0:
+        elif mean_diff is not None and mean_diff > 0:
             weak += 1
 
     edge_tickers = sum(
@@ -485,7 +489,7 @@ def run_phase6(db_path: Path, *, min_ts_utc: float | None = None) -> dict[str, A
         if t.get("delta_ev_vs_long_5c") is not None and float(t["delta_ev_vs_long_5c"]) > 0
     )
     conf_monotonic = True
-    evs = [x.get("mean_ev_model") for x in conf_curve if x.get("n", 0) >= MIN_N_SLICE]
+    evs = [x["mean_ev_model"] for x in conf_curve if x["n"] >= MIN_N_SLICE]  # every conf_curve entry carries horizon_metrics' n / mean_ev_model
     for i in range(1, len(evs)):
         if evs[i] < evs[i - 1]:
             conf_monotonic = False
@@ -541,7 +545,9 @@ def main() -> int:
     ensure_artifacts_dir()
     outp = ROOT / "data" / "phase6_edge_discovery_governed_v1_report.json"
     outp.write_text(json.dumps(rep, indent=2, default=str), encoding="utf-8")
-    print(json.dumps({"wrote": str(outp), "final": rep.get("final_classification"), "n_rows": rep.get("meta", {}).get("snapshots_after_anchor")}, indent=2))
+    # final_classification is absent (None) only on the insufficient_rows early return, whose
+    # error is printed alongside; meta is always set by run_phase6.
+    print(json.dumps({"wrote": str(outp), "final": rep.get("final_classification"), "error": rep.get("error"), "n_rows": rep["meta"]["snapshots_after_anchor"]}, indent=2))
     return 0
 
 

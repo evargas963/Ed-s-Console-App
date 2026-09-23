@@ -156,7 +156,7 @@ def build_inference_snapshot_v1_from_signal_input(inp: Any, *, as_of_ts: float |
     except (TypeError, ValueError):
         ts_f = None
     return build_inference_snapshot_v1(
-        ticker=getattr(inp, "ticker", "") or "",
+        ticker=inp.ticker,  # required SignalInput identity field; never an empty-string stand-in
         expiry=getattr(inp, "expiry", None),
         as_of_ts=ts_f,
         l1_payload=l1_equiv,

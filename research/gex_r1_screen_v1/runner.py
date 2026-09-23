@@ -46,6 +46,15 @@ def _block_bootstrap_mean_ci(
     return sum(xs) / n, lo, hi
 
 
+def _finite_gex_z(r: dict[str, Any]) -> float | None:
+    """gex_z as a finite float, or None (warm-up NaN / absent). A real 0.0 z is kept."""
+    v = r.get("gex_z")
+    if v is None:
+        return None
+    f = float(v)
+    return f if math.isfinite(f) else None
+
+
 def _sign_validation(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """§8.7 gate 1: +GEX days → smaller range / more reversion vs −GEX."""
     pos = [r for r in rows if r["gex_sign"] > 0 and r.get("regime_score") is not None]
@@ -61,7 +70,7 @@ def _sign_validation(rows: list[dict[str, Any]]) -> dict[str, Any]:
         math.isfinite(pos_score) and math.isfinite(neg_score) and pos_score > neg_score
     ) else "inverted_or_null"
     agrees = [r["sign_agrees_net_gamma"] for r in rows if r.get("sign_agrees_net_gamma") is not None]
-    agree_rate = (sum(1 for a in agrees if a) / len(agrees)) if agrees else float("nan")
+    agree_rate = (sum(1 for a in agrees if a) / len(agrees)) if agrees else float("nan")  # caps-ok: NaN = undefined rate (no day carried sign_agrees_net_gamma), the same no-data convention avg() uses above; never a numeric 0/1 rate
     return {
         "n_pos_gex": len(pos),
         "n_neg_gex": len(neg),
@@ -104,18 +113,16 @@ def _walk_forward_conditioned(
         test = days[i + embargo : test_end]
         if not test:
             break
-        y = np.array([1 if r["regime_score"] > 0 else 0 for r in train], dtype=int)
+        # attach_gex_z leaves gex_z NaN for each ticker's warm-up days. Those rows are EXCLUDED
+        # from model training; they used to enter as gex_z=0.0 ("exactly median GEX"), a
+        # fabricated feature value.
+        train_z = [r for r in train if _finite_gex_z(r) is not None]
+        y = np.array([1 if r["regime_score"] > 0 else 0 for r in train_z], dtype=int)
         X = np.array(
-            [
-                [
-                    float(r["gex_sign"]),
-                    float(r["gex_z"]) if math.isfinite(float(r.get("gex_z") or float("nan"))) else 0.0,
-                ]
-                for r in train
-            ],
+            [[float(r["gex_sign"]), _finite_gex_z(r)] for r in train_z],
             dtype=float,
         )
-        use_model = len(train) >= min_train and len(set(y.tolist())) == 2
+        use_model = len(train_z) >= min_train and len(set(y.tolist())) == 2
         clf = None
         scaler = None
         if use_model:
@@ -126,7 +133,11 @@ def _walk_forward_conditioned(
         for r in test:
             # predict reversion pays (1) vs breakout (0)
             if clf is not None and scaler is not None:
-                xz = float(r["gex_z"]) if math.isfinite(float(r.get("gex_z") or float("nan"))) else 0.0
+                xz = _finite_gex_z(r)
+                if xz is None:
+                    # No z for this day: the model cannot score it. Drop the day from ALL paired
+                    # series (conditioned and every baseline) rather than scoring it at z=0.0.
+                    continue
                 pred = int(
                     clf.predict(scaler.transform([[float(r["gex_sign"]), xz]]))[0]
                 )

@@ -59,9 +59,9 @@ def test_l1_generation_assign_instrumentation_increments():
 
     k = ("INST", "__auto__")
     _reset_scope(srv, k)
-    before = int(srv._l1_instrumentation.get("l1_generation_assign_total", 0))
+    before = int(srv._l1_instrumentation["l1_generation_assign_total"])
     srv._l1_next_generation(k)
-    after = int(srv._l1_instrumentation.get("l1_generation_assign_total", 0))
+    after = int(srv._l1_instrumentation["l1_generation_assign_total"])
     assert after == before + 1
 
 

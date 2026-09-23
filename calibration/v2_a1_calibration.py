@@ -24,16 +24,7 @@ from timeframe_config import CANONICAL_TIMEFRAME
 
 log = logging.getLogger(__name__)
 
-try:
-    from db import configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.configure_sqlite_connection not available — using no-op stub: %s",
-        e,
-    )
-
-    def configure_sqlite_connection(conn: sqlite3.Connection, **kwargs: Any) -> None:
-        return None
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 A1_CALIBRATION_ARTIFACT_SCHEMA_VERSION = "1"
@@ -273,8 +264,8 @@ def write_a1_calibration_artifact(artifact_dir: Path, artifact: dict[str, Any]) 
 
 def apply_isotonic_model(model: dict[str, Any], raw_probability: float) -> float:
     """Apply JSON-serialized isotonic step function with clipped bounds."""
-    xs = [float(x) for x in model.get("x_thresholds", [])]
-    ys = [float(y) for y in model.get("y_thresholds", [])]
+    xs = [float(x) for x in model.get("x_thresholds", [])]  # caps-ok: fail-closed; missing thresholds become [] and hit the explicit "invalid isotonic model thresholds" ValueError on the next line (v2_decision/a1_isotonic_runtime turns that into None)
+    ys = [float(y) for y in model.get("y_thresholds", [])]  # caps-ok: fail-closed; missing thresholds become [] and hit the explicit "invalid isotonic model thresholds" ValueError on the next line
     if not xs or not ys or len(xs) != len(ys):
         raise ValueError("invalid isotonic model thresholds")
     x_raw = float(raw_probability)

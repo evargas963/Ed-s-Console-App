@@ -477,7 +477,7 @@ def run_streaming_probes(client, output_root: Path, symbols: list[str], account_
 
     all_stream_fields: set[str] = set()
     for s in samples:
-        payload = s.get("payload", s)
+        payload = s.get("payload", s)  # caps-ok: field-inventory tool -- a captured sample is either a {"payload": ...} wrapper or the raw stream message itself; both are real captured data whose keys are flattened
         all_stream_fields.update(flatten_json(payload))
 
     ff = stream_dir / "fields_streaming.txt"
@@ -562,7 +562,7 @@ def main() -> int:
             resp = client.get_account_numbers()
             if resp.status_code == 200 and resp.json():
                 accs = resp.json()
-                raw = accs[0].get("accountNumber") or accs[0].get("hashValue")  # external-key-ok: Schwab /accounts payload (accountNumber/hashValue are the account identity leaves)
+                raw = accs[0].get("accountNumber") or accs[0].get("hashValue")  # external-key-ok: Schwab /accounts payload (accountNumber/hashValue are the account identity leaves)  # caps-ok: identity lookup across Schwab's two documented account-id leaves; absent both -> falsy -> next line's fallback / no account_id, no value invented
                 if not raw and accs:
                     raw = list(accs[0].values())[0]
                 if raw:

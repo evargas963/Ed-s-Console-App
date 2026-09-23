@@ -318,8 +318,8 @@ def simulate(
 
         # 5. Shock config
         shock_cfg = SHOCK_CONFIG.get(regime)
-        shock_prob = shock_cfg[0] if shock_cfg else 0.0
-        shock_atr_mult = shock_cfg[1] if shock_cfg else 0.0
+        shock_prob = shock_cfg[0] if shock_cfg else 0.0  # caps-ok: model design -- SHOCK_CONFIG lists only the jump-bearing regimes (breakout/acceleration/vol_expansion/reversal_prone); every other regime is simulated without a jump component, so probability 0 is the specified model, not a missing input
+        shock_atr_mult = shock_cfg[1] if shock_cfg else 0.0  # caps-ok: same model design -- no jump component for regimes outside SHOCK_CONFIG (and shock_size stays 0 because shock_prob is 0)
         shock_size = 0.0
         if shock_prob > 0 and atr is not None and atr > 0 and spot > 0:
             shock_size = (atr * shock_atr_mult) / spot
@@ -495,7 +495,7 @@ if __name__ == "__main__":
                      realized_vol=0.15, atr=0.8, seed=42, **kw)
         print(f"  {label}: disp={r.path_dispersion:.2f} EFE={r.expected_favorable_excursion:.2f} "
               f"EAE={r.expected_adverse_excursion:.2f} cont={r.containment_prob:.1%} "
-              f"shock={r.assumptions.get('shock_enabled')} drift={r.assumptions.get('per_bar_drift',0):.6f}")
+              f"shock={r.assumptions.get('shock_enabled')} drift={r.assumptions['per_bar_drift']:.6f}")  # CAPS RC-REHAB-1: simulate() always records per_bar_drift; the demo no longer prints a fabricated 0 drift
 
     # REHAB 2026-08-24: horizon_bars became required when the silent 13-bar default was
     # removed; these two demo calls had crashed ever since.

@@ -95,7 +95,7 @@ def _cell(rows: list[dict]) -> dict:
 
 def main() -> int:
     rows = _rows()
-    cut = rows[int(len(rows) * 0.6)]["day"] if rows else ""
+    cut = rows[int(len(rows) * 0.6)]["day"] if rows else None  # no rows -> no split day
     halves = {"DISCOVER": [r for r in rows if r["day"] <= cut],
               "CONFIRM": [r for r in rows if r["day"] > cut]}
     atlas: dict = {"rows_total": len(rows), "split_day": cut, "cells": {}}
@@ -125,8 +125,8 @@ def main() -> int:
     flat = []
     for sname, grid in atlas["cells"].items():
         for key, halves_d in grid.items():
-            d_, c_ = halves_d.get("DISCOVER", {}), halves_d.get("CONFIRM", {})
-            if d_.get("n", 0) >= 20 and c_.get("n", 0) >= 20:
+            d_, c_ = halves_d.get("DISCOVER", {}), halves_d.get("CONFIRM", {})  # caps-ok: grid only records a half when that half had rows for this key (grid.setdefault(key, {})[half] = _cell(g)); an absent half is a true 0-row cell and fails the n>=20 filter on the next line
+            if d_.get("n", 0) >= 20 and c_.get("n", 0) >= 20:  # caps-ok: _cell always sets n on real cells; the {} placeholder for an absent half has a true count of 0 rows
                 flat.append((sname, key, d_, c_))
     flat.sort(key=lambda x: x[3]["cont_pct"], reverse=True)
     for sname, key, d_, c_ in flat:

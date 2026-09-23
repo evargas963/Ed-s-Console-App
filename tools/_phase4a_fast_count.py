@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
 
 from db_authority import canonical_console_db_path  # noqa: E402
 
-conn = sqlite3.connect(str(canonical_console_db_path()))
+conn = sqlite3.connect(str(canonical_console_db_path()), timeout=30.0)
 conn.row_factory = sqlite3.Row
 
 total = conn.execute("SELECT COUNT(*) AS n FROM snapshots WHERE timeframe='1m'").fetchone()["n"]
@@ -59,7 +59,7 @@ print(
             "pct_of_1m": round(100.0 * len(miss) / total, 6),
             "trusted_no_anchor": tr,
             "trusted_total": tot_tr,
-            "pct_trusted": round(100.0 * tr / tot_tr, 6) if tot_tr else 0,
+            "pct_trusted": round(100.0 * tr / tot_tr, 6) if tot_tr else None,  # caps-ok: no trusted rows -> share undefined (None), trusted_total shows the 0
             "unique_tickers": len(bt),
             "by_ticker": dict(sorted(bt.items(), key=lambda x: -x[1])[:30]),
         },

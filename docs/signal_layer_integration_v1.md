@@ -2,6 +2,14 @@
 
 # Signal layer v1 — ML/fusion integration (audit)
 
+**SUPERSEDED on three specific points (reality-reconciliation audit, 2026-09-18)** — the wiring/plumbing claims in the table below (function signatures, sibling-key placement on `inference_snapshot_v1`, calibration writer field) were independently re-verified and are still accurate. These three are not:
+
+1. **The fusion blend default is 0.0 today, not 0.38, and production is governance-forbidden from using anything else.** `bayesian_fusion.py`'s actual code default for `ED_SIGNAL_LAYER_FUSION_BLEND` is `"0.0"`. `tools/check_env_override_hardening.py` now classifies this exact env var `governance_sensitive` ("Signal-layer fusion blend — must stay 0.0 default") and enforces that a production-serving context using anything else is an error. What this document calls "production integration" describes a state current governance actively forbids running in production.
+2. **`ED_MH_CANONICAL_BLEND` does not exist in the codebase.** Zero references anywhere. The real mechanism is `ED_MH_FALLBACK_CANONICAL_BLEND` (`multi_horizon_decision.py`), opposite in spirit to this row: it defaults to `0.0` (not `0.45`), fires only as a fallback when ML fusion is unavailable for a horizon, and is additionally gated on `is_canonical_tradable(canonical)` — none of which this document mentions.
+3. **The "MH promotion" logic this document attributes to `signals.py` is not there.** `signals.py` has no promotion logic (`grep -n "promot" signals.py` returns nothing). The real, differently-named, differently-architected mechanism lives in `call_engine.py::_resolve_call_direction_from_all_pool` ("Phase 3 — Call -> ALL only: pooled multi-horizon consensus is the sole ML authority"), gated on `mh_policy.final_tradeable_decision` and a tape/structure veto — not `signal_layer_v1`'s presence.
+
+`docs/host/ENVIRONMENT_VARIABLES.md` independently repeats the same stale `0.38` figure and needs its own correction — this document is not its source, both drifted from the code separately.
+
 This document records **production integration** of `signal_layer_v1` into the Bayesian fusion stack and downstream canonical / multi-horizon / call path, plus **before/after** discrimination on the accumulation harness.
 
 ---

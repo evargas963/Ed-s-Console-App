@@ -576,8 +576,12 @@ def test_decision_row_context_starvation_reason_matrix():
 
 
 def test_server_producer_guard_wired_before_snapshot_insert():
-    """Mechanical lock: the ECON-01 guard must sit in server's snapshot build."""
-    src = io.open("server.py", encoding="utf-8").read()
+    """Mechanical lock: the ECON-01 guard must sit in server's snapshot build.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the whole snapshot-build
+    phase this guards (_post_publish_persistence_tail) moved out of server.py into
+    server_state_persistence_tail.py -- checked there now, not server.py's own text."""
+    src = io.open("server_state_persistence_tail.py", encoding="utf-8").read()
     assert "decision_row_context_starvation_reason(" in src
     assert "REPLAY_CONTEXT_STARVATION" in src
     guard_at = src.find("decision_row_context_starvation_reason(")

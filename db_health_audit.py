@@ -287,18 +287,20 @@ def run_audit(
 
         inv = snapshot_inventory(conn)
         report["sections"]["snapshots"] = inv
-        if not inv.get("duplicate_snapshot_ids_ok", True):
+        # snapshot_inventory always sets these; strict so a missing check can never read as
+        # "no duplicates" / "0 out of range" and pass the audit.
+        if not inv["duplicate_snapshot_ids_ok"]:
             report["critical_ok"] = False
 
-        nz = inv.get("flow_range") or {}
-        if int(nz.get("out_of_range") or 0) > 0:
+        nz = inv["flow_range"]
+        if int(nz["out_of_range"]) > 0:
             report["warnings"].append(
                 f"flow_imbalance outside [-1,1]: {nz['out_of_range']} rows"
             )
 
         norm = validate_normalization(db_path)
         report["sections"]["normalized_1m"] = norm
-        if not norm.get("ok", False):
+        if not norm["ok"]:  # validate_normalization always sets "ok"
             report["critical_ok"] = False
 
         try:
@@ -337,10 +339,11 @@ def run_audit(
             )
             report["sections"]["flow_recompute_audit"] = fr
             total_issues = (
-                int(fr.get("mismatch_stored_vs_recompute") or 0)
-                + int(fr.get("null_stale") or 0)
+                # audit_flow_consistency always returns these counters.
+                int(fr["mismatch_stored_vs_recompute"])
+                + int(fr["null_stale"])
             )
-            scanned = int(fr.get("rows_scanned") or 0)
+            scanned = int(fr["rows_scanned"])
             if strict_flow and scanned > 0 and total_issues > 0:
                 report["critical_ok"] = False
             elif scanned > 0 and total_issues > max(3, scanned * 0.05):

@@ -54,7 +54,7 @@ from stream_spine import (  # noqa: E402
     quote_msg,
     read_active_option_contract_signal,
     read_active_option_contracts_signal,
-    read_active_ticker_signal,
+    read_active_ticker_roster_signal,
     resolve_stream_db_path,
 )
 from time_et import is_capturable_session  # noqa: E402
@@ -456,42 +456,52 @@ def make_book_handler(service: str, bus: MessageBus, health: HealthRegistry, sta
     return handler
 
 
-async def _apply_active_ticker_book_subs(stream, current: str | None) -> str | None:
-    """Diff the server's requested active ticker against the currently book-subscribed
-    one; unsub the old, sub the new. Bounded key cost: at most ONE symbol carries book
-    depth at a time (2 services x 1 symbol = 2 keys), independent of the L1/CHART roster
-    size — the daemon does not re-derive Section 1's whole-roster budget problem because
-    it never puts books on more than one symbol.
+async def _apply_active_ticker_book_subs(stream, current: frozenset[str]) -> frozenset[str]:
+    """Diff the server's requested FULL ROSTER against the currently book-subscribed set;
+    unsub whatever dropped off, sub whatever is new. UNIVERSAL (2026-09-21, operator
+    mandate: "we are ticker agnostic. everything needs to work universally" -- this
+    function used to hold book depth for at most ONE symbol at a time, an unresearched
+    simplifying assumption never validated against Schwab's actual subscription budget.
+    MEASURED same session: the enrolled roster is 58 tickers; LEVELONE_OPTIONS already
+    holds 917 option-contract keys concurrently on this same connection with no observed
+    budget failure, so 58 tickers x 2 book services = 116 keys is a small fraction of an
+    already-proven-safe order of magnitude, not a new risk class. Same RC-UI-3 precedent
+    that moved option-contract streaming past its own single-contract ceiling: historical
+    single-symbol operation established properties to preserve, not a ceiling to keep.
 
     Called after every (re)connect (a fresh StreamClient carries no subscriptions) and
-    polled on its own fast cadence so a UI ticker switch is not held to the 10s status
-    loop (SWITCH-LATENCY: server.py's prior direct-subscribe path was tuned for
-    sub-second turnaround; a signal-file poll must not regress that to 10s)."""
-    requested = read_active_ticker_signal()
+    polled on its own fast cadence so a roster change is not held to the 10s status loop
+    (SWITCH-LATENCY: server.py's prior direct-subscribe path was tuned for sub-second
+    turnaround; a signal-file poll must not regress that to 10s)."""
+    requested = frozenset(read_active_ticker_roster_signal())
     if requested == current:
         return current
-    if current:
+    to_drop = sorted(current - requested)
+    to_add = sorted(requested - current)
+    if to_drop:
         try:
-            await stream.nasdaq_book_unsubs([current])
-            await stream.nyse_book_unsubs([current])
+            await stream.nasdaq_book_unsubs(to_drop)
+            await stream.nyse_book_unsubs(to_drop)
         except Exception as e:
-            print(f"book unsub {current}: {e}")
-    if requested:
+            print(f"book unsub {to_drop}: {e}")
+    if to_add:
         try:
-            await stream.nasdaq_book_subs([requested])
-            await stream.nyse_book_subs([requested])
-            print(f"book subscribed active ticker -> {requested}")
+            await stream.nasdaq_book_subs(to_add)
+            await stream.nyse_book_subs(to_add)
+            print(f"book subscribed roster additions -> {to_add}")
         except Exception as e:
-            print(f"book sub {requested}: {e}")
-            return current
+            print(f"book sub {to_add}: {e}")
+            # fail-closed on the additions only: whatever was already subscribed and not
+            # dropped stays current; only the failed additions are withheld, never guessed
+            return current | (requested - frozenset(to_add))
     return requested
 
 
 async def _active_ticker_book_poll_loop(get_stream, get_current, set_current,
                                         stop: asyncio.Event,
                                         interval_sec: float = 1.0) -> None:
-    """Fast poll of the active-ticker signal, independent of the 10s status/watchdog
-    loop and of stream recycles (reads whatever StreamClient is current at each tick)."""
+    """Fast poll of the roster signal, independent of the 10s status/watchdog loop and of
+    stream recycles (reads whatever StreamClient is current at each tick)."""
     while not stop.is_set():
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval_sec)
@@ -1964,16 +1974,18 @@ async def _run_locked(
         writer.close()   # every exit path incl. auth/login/subscribe failure (round-3 MEDIUM)
 
 
-async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_ticker=None,
+async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_roster=None,
                           active_option_contract=None, writer=None, epoch_state=None):
     """Fresh Schwab stream: login + handlers + subs -> (stream, running pump task,
     option_contract_state). Used at start AND by the half-open watchdog (a recycle is a
     clean rebuild — never an attempt to resuscitate a dead StreamClient).
 
-    ``active_book_ticker`` / ``active_option_contract``: re-apply these subscriptions
+    ``active_book_roster`` / ``active_option_contract``: re-apply these subscriptions
     immediately after connecting — a fresh StreamClient carries no subscriptions, so a
     recycle that forgot this would silently drop live depth/options data until the next
     poll tick noticed the (unchanged) signal file and had nothing to diff against.
+    ``active_book_roster`` is the FULL enrolled ticker set (universal, 2026-09-21), not a
+    single symbol.
 
     ``writer``/``epoch_state``: when given, opens a NEW options coverage epoch for
     ``active_option_contract`` (a stream recycle genuinely ends the old subscription
@@ -2010,7 +2022,7 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
         await stream.login()
         return await _schwab_connect_after_login(
             stream, symbols, bus, health, stats, stop,
-            active_book_ticker=active_book_ticker,
+            active_book_roster=active_book_roster,
             active_option_contract=active_option_contract,
             writer=writer, epoch_state=epoch_state)
     except BaseException:
@@ -2028,7 +2040,7 @@ async def _schwab_connect(state, symbols, bus, health, stats, stop, active_book_
 
 
 async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop, *,
-                                      active_book_ticker=None, active_option_contract=None,
+                                      active_book_roster=None, active_option_contract=None,
                                       writer=None, epoch_state=None):
     """Everything _schwab_connect does once a live session exists. Split out ONLY so the
     ownership boundary above is a single try/except around one call rather than a large
@@ -2045,13 +2057,14 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
     await stream.chart_equity_subs(symbols)
     print(f"subscribed {len(symbols)} symbols x2 services (key accounting: "
           f"{len(symbols) * 2} keys used)")
-    if active_book_ticker:
+    if active_book_roster:
+        roster_list = sorted(active_book_roster)
         try:
-            await stream.nasdaq_book_subs([active_book_ticker])
-            await stream.nyse_book_subs([active_book_ticker])
-            print(f"book resubscribed active ticker -> {active_book_ticker} (post-reconnect)")
+            await stream.nasdaq_book_subs(roster_list)
+            await stream.nyse_book_subs(roster_list)
+            print(f"book resubscribed roster ({len(roster_list)} tickers) (post-reconnect)")
         except Exception as e:
-            print(f"book resub {active_book_ticker} after reconnect: {e}")
+            print(f"book resub {roster_list} after reconnect: {e}")
     option_contract_state = {"l1": None, "book": None}
     if active_option_contract:
         # A fresh StreamClient holds nothing (held=None for both services) — reconciles
@@ -2101,7 +2114,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     #: Shared with the active-ticker book-poll task (below) — a plain dict, not a
     #: closure-captured local, because BOTH the recycle path here and the poll loop's
     #: coroutine need to read/write the SAME current values.
-    book_state: dict = {"stream": None, "ticker": None}
+    book_state: dict = {"stream": None, "roster": frozenset()}
     #: Same shared-dict shape, for the options-contract poll loop — a SEPARATE signal
     #: (stream_active_option_contract.json) and a separate pair of Schwab services, so it
     #: is tracked independently rather than folded into book_state. "contract" holds the
@@ -2144,8 +2157,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         started: list = []
         try:
             started.append(asyncio.create_task(_active_ticker_book_poll_loop(
-                lambda: book_state["stream"], lambda: book_state["ticker"],
-                lambda t: book_state.__setitem__("ticker", t), stop)))
+                lambda: book_state["stream"], lambda: book_state["roster"],
+                lambda r: book_state.__setitem__("roster", r), stop)))
             started.append(asyncio.create_task(_active_option_contract_poll_loop(
                 lambda: option_state["stream"], lambda: option_state["contract"],
                 lambda c: option_state.__setitem__("contract", c), stop,
@@ -2177,16 +2190,16 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # while option epochs stayed closed — reconnect applied the signal,
         # initial connect did not, and a checkout-relative signal file had
         # pinned an expired OSI. Poll-only recovery is not generation-start.
-        boot_ticker = read_active_ticker_signal()
+        boot_roster = frozenset(read_active_ticker_roster_signal())
         boot_option = read_active_option_contract_signal()
         stream, pump_task, option_state["contract"] = await _schwab_connect(
             state, symbols, bus, health, stats, stop,
-            active_book_ticker=boot_ticker,
+            active_book_roster=boot_roster,
             active_option_contract=boot_option,
             writer=writer, epoch_state=option_epoch_state)
         book_state["stream"] = stream
         option_state["stream"] = stream
-        book_state["ticker"] = boot_ticker
+        book_state["roster"] = boot_roster
         # CR-02 prints leg — optional co-producer on the SAME bus/writer/health. NOT part
         # of a Schwab stream generation: it owns its own Alpaca socket and survives
         # recycles.
@@ -2290,7 +2303,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                             )
                     stream, pump_task, option_state["contract"] = await _schwab_connect(
                         reconnect_state, symbols, bus, health, stats, stop,
-                        active_book_ticker=book_state["ticker"],
+                        active_book_roster=book_state["roster"],
                         active_option_contract=reconnect_option_contract,
                         writer=writer, epoch_state=option_epoch_state)
                     book_state["stream"] = stream

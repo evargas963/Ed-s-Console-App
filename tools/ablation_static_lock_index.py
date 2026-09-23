@@ -101,7 +101,7 @@ def _build_index(
         dbp = canonical_console_db_path()
     else:
         dbp = repo_root / "data" / "ed_console.db"
-    db_exists = dbp.is_file() if dbp is not None else False
+    db_exists = dbp.is_file() if dbp is not None else False  # caps-ok: every branch above assigns dbp, so the else arm is unreachable; a missing file yields db_exists False and db_resolved None
     db_resolved = dbp if db_exists else None
 
     manifest: dict[str, Any] | None = None

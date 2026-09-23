@@ -245,5 +245,8 @@ def test_inference_and_training_sources_use_canonical_reference_helpers():
     assert "canonical_reference_spot_from_sequence_window_first_bar" in tt
     ld = (root / "lstm_data.py").read_text(encoding="utf-8")
     assert "canonical_reference_spot_from_sequence_window_first_bar" in ld
-    sch = (root / "ml_scheduler.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-22): every call site of this helper in ml_scheduler.py lived in
+    # the cascade-training cluster, which moved to ml_scheduler_cascade_train.py (final
+    # slice of the ml_scheduler.py decomposition) -- same code, different file.
+    sch = (root / "ml_scheduler_cascade_train.py").read_text(encoding="utf-8")
     assert "canonical_reference_spot_from_sequence_window_first_bar" in sch

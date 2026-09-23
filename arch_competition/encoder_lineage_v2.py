@@ -107,7 +107,7 @@ assert len(ENCODED_FEATURES_1M_V2) == 16
 
 
 def v2_encoder_lineage_valid(checkpoint: Mapping[str, Any]) -> tuple[bool, str]:
-    enc_ver = int(checkpoint.get("encoder_schema_version") or 0)
+    enc_ver = int(checkpoint.get("encoder_schema_version") or 0)  # caps-ok: fail-closed: an unversioned checkpoint maps to 0, which fails the != ENCODER_SCHEMA_VERSION_V2 check and is rejected
     if enc_ver != ENCODER_SCHEMA_VERSION_V2:
         return False, f"encoder_schema_version={enc_ver}!=2"
     pre5 = checkpoint.get("encoder_width_5m_pre_mask")
@@ -130,7 +130,7 @@ def resolve_encoder_lineage(
     from lstm_data import LSTM_ENCODER_SCHEMA_VERSION, encoded_width_5m, encoded_width_1m
 
     ck = checkpoint if isinstance(checkpoint, dict) else {}
-    enc_ver = int(ck.get("encoder_schema_version") or (meta or {}).get("encoder_schema_version") or 0)
+    enc_ver = int(ck.get("encoder_schema_version") or (meta or {}).get("encoder_schema_version") or 0)  # caps-ok: fail-closed: absent from both checkpoint and meta maps to 0, which matches no supported schema and returns the encoder_schema_version=0_unsupported error
     if enc_ver >= LSTM_ENCODER_SCHEMA_VERSION:
         names5 = ck.get("encoder_feature_names_5m") or (meta or {}).get("encoder_feature_names_5m")
         names1 = ck.get("encoder_feature_names_1m") or (meta or {}).get("encoder_feature_names_1m")

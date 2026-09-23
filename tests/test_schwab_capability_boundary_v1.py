@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import app.api.routes.status
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -90,7 +91,7 @@ def test_the_launcher_no_longer_exits_when_schwab_is_unavailable():
     bat = (REPO / "start_ed_console.bat").read_text(encoding="utf-8", errors="replace")
     lines = bat.splitlines()
 
-    schwab_at = next(i for i, ln in enumerate(lines) if "live_schwab_env.py --sanitize" in ln)
+    schwab_at = next(i for i, ln in enumerate(lines) if "live_schwab_env.py --sanitize" in ln)  # caps-ok: scanner false positive: next() here has NO default argument; a launcher without the sanitize line raises StopIteration and fails the test
     block, depth = [], 0
     for ln in lines[schwab_at:]:
         block.append(ln)
@@ -223,7 +224,7 @@ def test_health_reports_the_capability_and_the_app_stays_ok(clean_env, monkeypat
     import server
 
     monkeypatch.setattr(server, "_client", None, raising=False)
-    payload = server.health()
+    payload = app.api.routes.status.health()
     assert payload["status"] == "ok", "a vendor outage must not make the application unhealthy"
     assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
 
@@ -249,7 +250,7 @@ def test_credentials_alone_do_not_make_the_capability_available(clean_env, monke
     assert status == "UNAVAILABLE", (status, reason)
     assert "token" in reason.lower(), reason
 
-    payload = server.health()
+    payload = app.api.routes.status.health()
     assert payload["status"] == "ok"
     assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
     assert payload["capabilities"]["schwab_reason"], payload
@@ -279,7 +280,7 @@ def test_a_token_that_cannot_operate_reports_unavailable(clean_env, monkeypatch,
     status, reason = server.schwab_capability_state()
     assert status == "UNAVAILABLE", f"{label}: {status} {reason}"
     assert reason, label
-    assert server.health()["status"] == "ok", label
+    assert app.api.routes.status.health()["status"] == "ok", label
 
 
 def test_health_reads_the_same_client_cache_the_app_uses(clean_env, monkeypatch):
@@ -288,7 +289,7 @@ def test_health_reads_the_same_client_cache_the_app_uses(clean_env, monkeypatch)
 
     monkeypatch.setattr(server, "_client", object(), raising=False)
     assert server.schwab_capability_state() == ("AVAILABLE", "")
-    assert server.health()["capabilities"]["schwab"] == "AVAILABLE"
+    assert app.api.routes.status.health()["capabilities"]["schwab"] == "AVAILABLE"
 
 
 def test_health_answers_unavailable_when_the_capability_cannot_be_read(clean_env, monkeypatch):
@@ -304,7 +305,7 @@ def test_health_answers_unavailable_when_the_capability_cannot_be_read(clean_env
     assert status == "UNAVAILABLE" and "unreadable" in reason, (status, reason)
 
     monkeypatch.setattr(server, "schwab_capability_state", boom, raising=False)
-    payload = server.health()
+    payload = app.api.routes.status.health()
     assert payload["status"] == "ok"
     assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
 

@@ -151,7 +151,7 @@ def _wait_reason_from_call_blocker(blocker: Any) -> str:
     """Operator-visible wait_reason when execution stack vetoes a pooled directional setup."""
     if not isinstance(blocker, dict) or not blocker:
         return f"{WAIT_REASON_CALL_ENGINE_VETO_PREFIX} — execution stack WAIT"
-    reason = str(blocker.get("reason") or "unknown")
+    reason = str(blocker.get("reason") or "unknown")  # caps-ok: operator-visible WAIT explanation text only -- the setup is already vetoed (WAIT); a blocker without a reason is labelled literally "unknown", never parsed as a gate result
     if reason == "gates":
         gate_reasons = blocker.get("gate_reasons") or []
         if gate_reasons:
@@ -347,7 +347,7 @@ def compute_multi_horizon_synthesis(
     guest_anchor=None,
 ) -> MultiHorizonSynthesis:
     raw_mode = _infer_trade_mode(inp)
-    mode = raw_mode if raw_mode is not None else "unknown"
+    mode = raw_mode if raw_mode is not None else "unknown"  # caps-ok: trade_mode label when mins_to_close is absent; "unknown" matches none of scalp/intraday/session so no mode-specific branch fires, and it is surfaced literally as unknown (never as a real mode)
     hmap = {
         hz: _forecast_horizon_live(pred, inp, hz, canonical=canonical, mh_ml_bundle=mh_ml_bundle)
         for hz in PRODUCT_HORIZONS
@@ -499,8 +499,17 @@ def compute_multi_horizon_synthesis(
                 else None
             ),
             "fusion_ml_available": bool(snap and snap.horizon_fusion_available),
-            "fusion_dominant_direction": getattr(snap, "dominant_direction", None) if snap else None,
-            "fusion_top_probability": round(getattr(snap, "top_probability", 0.0), 4) if snap else None,
+            # CAPS RC-REHAB-1: an UNAVAILABLE horizon snapshot carries max-entropy placeholders
+            # (1/3 triplet, dominant "flat" -- multi_horizon_ml_bundle._unavailable_horizon_snapshot)
+            # and top_probability is a required dataclass field (the old 0.0 default was dead
+            # code). The audit used to publish those placeholders as this horizon's fusion
+            # read; both fields are now None unless fusion was actually available.
+            "fusion_dominant_direction": (
+                snap.dominant_direction if snap and snap.horizon_fusion_available else None
+            ),
+            "fusion_top_probability": (
+                round(snap.top_probability, 4) if snap and snap.horizon_fusion_available else None
+            ),
             "forecast_direction": hmap[hz].direction,
             "forecast_provenance": hmap[hz].provenance,
             "tradeable": hmap[hz].tradeable,
@@ -587,7 +596,7 @@ def finalize_multi_horizon_bundle(
     psel = synth.psel
     mode = synth.mode
     ml_live_audit = dict(synth.ml_live_audit)
-    call_signal = str(getattr(call, "signal", "wait") or "wait").lower()
+    call_signal = str(getattr(call, "signal", "wait") or "wait").lower()  # caps-ok: fail-closed -- no call / no call signal reads as "wait", which VETOES a tradeable setup (tradeable=False, size 0); it can never create a trade
     call_engine_veto = tradeable and call_signal == "wait"
     if call_engine_veto:
         tradeable = False
@@ -605,7 +614,7 @@ def finalize_multi_horizon_bundle(
         inp,
         hmap["1c"],
         getattr(call, "entry", None),
-        getattr(call, "call_state", None) or getattr(call, "signal", "WAIT"),
+        getattr(call, "call_state", None) or getattr(call, "signal", "WAIT"),  # caps-ok: fail-closed entry-state input -- absent call state/signal is "WAIT" (no entry armed), never an entry signal
     )
     stop = getattr(call, "stop", None)
     target = getattr(call, "target", None)
@@ -857,7 +866,7 @@ def _forecast_horizon_live(
     fusion_ml = bool(ml_snap and ml_snap.horizon_fusion_available)
     provenance = f"predictive_mh_fusion_primary_{hz}"
     if not fusion_ml:
-        env_blend = os.environ.get("ED_MH_FALLBACK_CANONICAL_BLEND", "0.0")
+        env_blend = os.environ.get("ED_MH_FALLBACK_CANONICAL_BLEND", "0.0")  # caps-ok: operator env knob; documented default 0.0 = no canonical blend into the empirical fallback triplet
         try:
             wfb = float(env_blend)
         except ValueError:

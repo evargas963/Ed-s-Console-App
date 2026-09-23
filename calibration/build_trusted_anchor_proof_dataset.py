@@ -89,7 +89,7 @@ def _build(proof_db: Path) -> int:
     _ = EdDB(proof_db)
     db_mod.DB_PATH = proof_db
 
-    conn = sqlite3.connect(str(proof_db))
+    conn = sqlite3.connect(str(proof_db), timeout=30.0)
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
 
@@ -150,8 +150,11 @@ def _build(proof_db: Path) -> int:
     }
     AUDIT_JSON.write_text(json.dumps(out, indent=2), encoding="utf-8")
 
-    ca = rep.get("calibration_trusted_anchor_audit") or {}
-    nt = int(ca.get("trusted_rows_total", -1))
+    if "error" in rep:
+        # run_anchor_audit returns early (no calibration_trusted_anchor_audit) on these paths.
+        print(f"FAIL: anchor audit error: {rep['error']}", file=sys.stderr)
+        return 2
+    nt = int(rep["calibration_trusted_anchor_audit"]["trusted_rows_total"])
     if nt <= 0:
         print("FAIL: trusted_rows_total not positive", file=sys.stderr)
         return 2

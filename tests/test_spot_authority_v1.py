@@ -18,6 +18,10 @@ from __future__ import annotations
 import pytest
 
 import server
+import app.api.routes.terrain
+import tier_a_live_state
+import terrain_state
+import terrain_reprice
 
 
 def test_quote_parser_key_contract() -> None:
@@ -130,7 +134,6 @@ def test_resolve_spot_prefers_the_quote_over_the_stored_snapshot(monkeypatch) ->
         server, "safe_get_quote",
         lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 999.99}}}),
     )
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
     spot, source, _ts = server.resolve_spot("SPY")
     assert spot == 999.99
     assert source == server.SPOT_SOURCE_QUOTE
@@ -169,14 +172,19 @@ def test_resolve_spot_falls_through_when_the_plane_row_is_stale(monkeypatch) -> 
     """A plane row this old is no longer meaningfully "streaming" -- serving a stopped
     stream as live would just move the divergence to the opposite direction (header frozen
     on an old tick, terrain correctly moving on). Falling through to the REST leg is more
-    honest and keeps every consumer converged on the same, still-live number."""
+    honest and keeps every consumer converged on the same, still-live number.
+
+    2026-09-21: was `server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0` -- that constant was
+    deleted along with the confirmed-dead card_freshness_v1 system; this test only ever
+    borrowed its value as a convenient "definitely stale" duration. Replaced with the
+    literal it evaluated to."""
     import time as _t
 
     import live_market_plane as L
 
     tk = "ZZPLANESTALE"
     L._by_ticker[tk] = {"spot": 700.42,
-                         "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0),
+                         "server_received_ts": _t.time() - 35.0,
                          "exchange_quote_ts": 1_800_000_000.0,
                          "quote_source_detail": {"spot": "LAST_PRICE"}}
     try:
@@ -232,7 +240,7 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
             lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 1.0}}}),
         )
         terrain_spot, terrain_source, _ts = server.resolve_spot(tk)
-        header_out = server._tier_a_live_state_dict(tk, None)
+        header_out = tier_a_live_state._tier_a_live_state_dict(tk, None)
         assert terrain_spot == 812.5 and terrain_source == server.SPOT_SOURCE_PLANE
         assert header_out.get("spot") == terrain_spot, (
             f"header spot {header_out.get('spot')} != terrain/resolve_spot spot {terrain_spot} "
@@ -247,7 +255,6 @@ def test_resolve_spot_never_promotes_stored_or_chain_when_last_price_is_absent(m
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
                         lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"mark": 111.11}}}))
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
     spot, source, _ts = server.resolve_spot(
         "SPY", chain_json={"underlying": {"last": 743.29, "mark": 743.20, "close": 743.10}}
     )
@@ -277,9 +284,9 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
     }
     # profile negative at 744.93 -> dealers short gamma there
     profile = [(700.0, -5.0), (745.00, 0.0), (760.0, 5.0)]
-    monkeypatch.setitem(server._terrain_profile_cache, "SPY", profile)
+    monkeypatch.setitem(terrain_state._terrain_profile_cache, "SPY", profile)
 
-    out = server._reprice_cached_terrain(cached, "SPY")
+    out = terrain_reprice._reprice_cached_terrain(cached, "SPY")
 
     assert out["spot"] == 744.93, "spot must be the live quote, not the cached one"
     assert out["spot_source"] == server.SPOT_SOURCE_QUOTE
@@ -295,7 +302,7 @@ def test_reprice_does_not_keep_cached_spot_as_current_when_last_price_is_unavail
     """A cached terrain spot must not silently become current live spot."""
     monkeypatch.setattr(server, "resolve_spot", lambda _tk, **_kw: (None, "none", None))
     cached = {"ticker": "SPY", "spot": 745.10, "regime": "LONG_GAMMA_CHOP"}
-    out = server._reprice_cached_terrain(cached, "SPY")
+    out = terrain_reprice._reprice_cached_terrain(cached, "SPY")
     assert out["spot"] is None
     assert out["spot_source"] == "none"
     assert out["spot_state"] == "unavailable"
@@ -313,16 +320,16 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
                         lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
-    monkeypatch.setitem(server._terrain_cache, "SPY", {
+    monkeypatch.setitem(terrain_state._terrain_cache, "SPY", {
         "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
         "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
         "gamma_flip": 745.00, "call_wall": 750.0, "put_wall": 740.0,
         "headline": "stale", "lines": ["stale"],
     })
-    monkeypatch.setitem(server._terrain_profile_cache, "SPY",
+    monkeypatch.setitem(terrain_state._terrain_profile_cache, "SPY",
                         [(700.0, -5.0), (745.00, 0.0), (760.0, 5.0)])
 
-    served = server.get_terrain(ticker="SPY")
+    served = app.api.routes.terrain.get_terrain(ticker="SPY")
 
     assert served["spot"] == 744.93, (
         "the endpoint served a frozen cached spot; the card would lag the header"
@@ -410,9 +417,11 @@ def test_server_queries_actually_carry_the_timeframe_predicate():
     """Guards the real call sites, not just a query string written in this test."""
     from pathlib import Path
 
-    src = Path(__file__).resolve().parent.parent / "server.py"
+    # RC-REHAB-1: the stored-chain read lives in stored_chain.py; _spot_from_stored was deleted
+    # (dead since RC-564 made resolve_spot LAST_PRICE-only).
+    src = Path(__file__).resolve().parent.parent / "stored_chain.py"
     text = src.read_text(encoding="utf-8", errors="replace")
-    for marker in ("def _spot_from_stored", "def _latest_chain_and_spot"):
+    for marker in ("def _latest_chain_and_spot",):
         i = text.index(marker)
         body = text[i : i + 3000]
         # Match the EXECUTED sql, not prose: these functions document the defect in their
@@ -633,9 +642,16 @@ def test_every_batch_vendor_quote_read_goes_through_one_call_site():
     consumer for the exact same ticker at the exact same instant. Same discipline, same
     reasoning, the sibling function this lock's own docstring should have covered from the
     start: exactly one raw call site, and it must record what it fetches into the plane
-    (proven behaviourally by test_watchlist_quotes_records_a_fresh_fetch_into_the_plane)."""
+    (proven behaviourally by test_watchlist_quotes_records_a_fresh_fetch_into_the_plane).
+
+    RC-REHAB-1 (Phase 3, route-extraction, seventeenth slice, predating this decomposition
+    session): /api/watchlist-quotes -- and with it, this call site -- moved out of
+    server.py into app/api/routes/market_data.py well before this lock was last verified;
+    this test was never updated for that move and had been silently checking an empty
+    file ever since (0 matches, not 1) until the full suite finally caught it here."""
     from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    src = (root / "app" / "api" / "routes" / "market_data.py").read_text(encoding="utf-8")
     sites = [ln.strip() for ln in src.splitlines()
              if "safe_get_quotes" in ln
              and "def safe_get_quotes" not in ln
@@ -645,4 +661,14 @@ def test_every_batch_vendor_quote_read_goes_through_one_call_site():
         f"{len(sites)} references to the raw batch vendor fetch — exactly one disciplined "
         f"call site (the one that checks the plane first and records its results back into "
         f"it) may call schwab_client.safe_get_quotes: {sites}"
+    )
+    # Also confirm the OLD location is genuinely clean, not just relocated-and-duplicated.
+    server_src = (root / "server.py").read_text(encoding="utf-8")
+    server_sites = [ln.strip() for ln in server_src.splitlines()
+                    if "safe_get_quotes" in ln
+                    and "def safe_get_quotes" not in ln
+                    and "import safe_get_quotes" not in ln
+                    and not ln.strip().startswith("#")]
+    assert server_sites == [], (
+        f"server.py must not carry a second, duplicate raw batch vendor fetch: {server_sites}"
     )

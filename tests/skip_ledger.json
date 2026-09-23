@@ -1,0 +1,27 @@
+[
+  {
+    "file": "tests/test_delta_adds_no_debt_v1.py",
+    "reason_contains": "this sandbox account cannot create symlinks",
+    "covered_elsewhere": "CI's ubuntu-latest runner can create symlinks; this test runs for real there. The skip is a local Windows-sandbox-account limitation only."
+  },
+  {
+    "file": "tests/test_ml_feature_schema_parity.py",
+    "reason_contains": "compound ablation survivors void",
+    "covered_elsewhere": "Self-aware staleness guard (compound_survivors_voided()): refuses to test against a stale ablation leaf manifest rather than reporting a false pass. Re-ablating the manifest un-skips it; this is not a coverage gap."
+  },
+  {
+    "file": "tests/test_operator_law_guard_repo_scope_v1.py",
+    "reason_contains": "Windows path casing",
+    "covered_elsewhere": "test_windows_case_variants_are_the_same_repository is gated `@pytest.mark.skipif(os.name != \"nt\", ...)` -- it asserts a Windows drive-letter path (C:\\... vs c:\\...) normalizes identically, which is not a meaningful assertion on Linux's posix os.name. This test runs for real on every local Windows session (the repo's own primary dev environment) and would run on CI too if CI ever used a windows-latest runner; ubuntu-latest simply has no Windows path form to test."
+  },
+  {
+    "file": "tests/test_operator_law_guard_repo_scope_v1.py",
+    "reason_contains": "MSYS drive spelling is a Windows/Git-Bash form",
+    "covered_elsewhere": "test_msys_git_bash_path_resolves / test_cygdrive_path_resolves / test_msys_and_windows_spellings_are_the_same_repository are gated `@pytest.mark.skipif(os.name != \"nt\", ...)` -- they assert Git-Bash-specific path spellings (/c/Users/..., /cygdrive/c/...) resolve to the real repo, forms that only exist under MSYS/Git-Bash on Windows. These run for real on every local Windows session, this repo's own primary dev environment; ubuntu-latest's native shell has no MSYS path form to test."
+  },
+  {
+    "file": "tests/test_operator_law_guard_repo_scope_v1.py",
+    "reason_contains": "history unavailable: cannot locate the introducing commit",
+    "covered_elsewhere": "test_negative_control_pre_fix_had_no_repository_resolution searches full git history (`git log -S ... `) for the commit that introduced resolve_target_repo. GitHub Actions' actions/checkout defaults to a shallow clone (fetch-depth: 1), so that commit is genuinely absent from CI's history -- the test correctly self-detects this and skips rather than fabricating a pass/fail on a control it cannot actually evaluate. Runs for real, and proves the control, against any full clone (including this repo's own local checkouts, which are never shallow)."
+  }
+]

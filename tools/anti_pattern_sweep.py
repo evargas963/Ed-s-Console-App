@@ -1,10 +1,24 @@
 """
 CAPS — Comprehensive Anti-Pattern Sweep.
 
-Enumerates silent-default-substitution shapes on Schwab-leaf-derived paths.
-Output: file:line:variant_id:expression (tab-separated on CLI).
+Enumerates silent-default-substitution shapes across EVERY git-tracked .py file in the repo
+(production, tools/, tests/, governance/). Output: file:line:variant_id:expression.
 
-Used by tests/test_anti_pattern_family_repo_wide.py and governance register maintenance.
+The ONLY escape is a line-specific `# caps-ok: <reason>` marker on the hit line itself.
+
+RC-REHAB-1 (2026-09-23, operator: "fix the CAPS exemptions too, review them all"): this gate
+used to carry CAPS_PREFIX_ALLOWLIST (106 whole-file / whole-folder exemptions: tests/, tools/,
+calibration/, server.py, market_state.py, call_engine.py, ...) and CAPS_LINE_ALLOWLIST
+(line-number pins), and its pass/fail scan skipped tools/ and tests/ and governance/ outright.
+Together they hid 1,967 hits across 393 files that nobody had reviewed line by line. Every one
+was reviewed: real masked defects were fixed at the source, and every legitimate default carries
+its own reason on its own line. Both allowlists and the scope exclusions are deleted; a new
+blanket exemption has nowhere to live.
+
+    .venv/Scripts/python.exe tools/anti_pattern_sweep.py              # every unmarked hit
+    .venv/Scripts/python.exe tools/anti_pattern_sweep.py a.py b.py    # just these files
+
+Used by tests/test_anti_pattern_family_repo_wide.py and tests/test_caps_marker_is_line_scoped_v1.py.
 """
 
 from __future__ import annotations
@@ -28,15 +42,7 @@ SKIP_DIR_PARTS = frozenset(
         "node_modules",
         ".pytest_cache",
         "backups",
-        "governance",
-        "schwab_field_inventory",
     }
-)
-
-# Production scan excludes tooling and test harnesses (allowlisted via register prefix rows).
-SCAN_SKIP_PREFIXES = (
-    "tools/",
-    "tests/",
 )
 
 DEFAULT_VALUE_RE = re.compile(
@@ -59,7 +65,15 @@ class VariantSpec:
 VARIANTS: tuple[VariantSpec, ...] = (
     VariantSpec(
         "GET_WITH_DEFAULT",
-        re.compile(r"""\.get\(\s*['"][^'"]+['"]\s*,\s*(?!None\b)([^)]+)\)"""),
+        # CAPS audit fix (2026-09-20): the lookahead used to be `\s*(?!None\b)` -- since
+        # `\s*` is greedy but backtracks, a genuine `.get(key, None)` (real, honest
+        # missingness) could still match: the engine backtracks `\s*` to zero-width,
+        # checks the lookahead at a position where a SPACE (not "N") comes next, the
+        # lookahead trivially succeeds, and the true `None` default is silently
+        # misclassified as a fabricated one. The lookahead itself now tolerates the
+        # same leading whitespace so it always sees what the value actually is,
+        # regardless of how far `\s*` backtracks.
+        re.compile(r"""\.get\(\s*['"][^'"]+['"]\s*,\s*(?!\s*None\b)([^)]+)\)"""),
         "dict.get(key, default) where default is not None",
     ),
     VariantSpec(
@@ -91,8 +105,14 @@ VARIANTS: tuple[VariantSpec, ...] = (
     ),
     VariantSpec(
         "GETATTR_DEFAULT",
+        # CAPS audit fix (2026-09-20): same backtracking bug as GET_WITH_DEFAULT above --
+        # `getattr(obj, "field", None)`, a genuine "absence has a type" default, was
+        # silently misclassified as a fabricated default because `\s*` could backtrack
+        # to zero-width before the `(?!None\b)` lookahead ran, letting a stray space
+        # hide the real `None` from the check. Widened the lookahead to tolerate that
+        # same leading whitespace so it always sees the true value.
         re.compile(
-            r"""getattr\(\s*[^,]+,\s*['"][^'"]+['"]\s*,\s*(?!None\b)"""
+            r"""getattr\(\s*[^,]+,\s*['"][^'"]+['"]\s*,\s*(?!\s*None\b)"""
         ),
         "getattr(obj, field, default) where default is not None",
     ),
@@ -104,12 +124,23 @@ VARIANTS: tuple[VariantSpec, ...] = (
     VariantSpec(
         "NEXT_DEFAULT",
         re.compile(r"""next\(\s*[^,]+,\s*"""),
-        "next(iter, default)",
+        "next(iter, default)",  # caps-ok: scanner false positive: this is the variant's own description string, not a call
     ),
     VariantSpec(
         "EXCEPT_RETURN_DEFAULT",
         re.compile(r"""except\s*[^:]*:\s*(?:return\s+)?(?:0\.0|0|None|False|True)\b"""),
         "try/except return default",
+    ),
+    VariantSpec(
+        # RC-REHAB-1 (2026-09-23): found during the allowlist-retirement review --
+        # `float_nonnegative_or_none(ct.get("openInterest")) or 0.0` escaped every variant
+        # above because the closing paren sits BEFORE the `or`. Any call result defaulted to
+        # a silent-default literal. 22 hits on introduction, each individually dispositioned.
+        "CALL_OR_DEFAULT",
+        re.compile(
+            r"""\)\s+or\s+(?:0\.0|0|1\.0|1|100\.0|100|False|True|["'](?:unknown|neutral|flat|above)["'])\b"""
+        ),
+        "f(...) or default (a call's missing result replaced by a silent-default literal)",
     ),
 )
 
@@ -162,16 +193,9 @@ def _tracked_py_files() -> list[Path]:
     return [ROOT / p for p in proc.stdout.split("\0") if p]
 
 
-def iter_py_files(*, production_only: bool) -> list[Path]:
-    out: list[Path] = []
-    for path in _tracked_py_files():
-        if set(path.parts) & SKIP_DIR_PARTS:
-            continue
-        rel = path.relative_to(ROOT).as_posix()
-        if production_only and any(rel.startswith(p) for p in SCAN_SKIP_PREFIXES):
-            continue
-        out.append(path)
-    return out
+def iter_py_files() -> list[Path]:
+    """Every git-tracked .py file outside the not-code trees in SKIP_DIR_PARTS."""
+    return [p for p in _tracked_py_files() if not (set(p.parts) & SKIP_DIR_PARTS)]
 
 
 def scan_file(path: Path) -> list[tuple[int, str, str, str]]:
@@ -199,9 +223,9 @@ def scan_file(path: Path) -> list[tuple[int, str, str, str]]:
     return hits
 
 
-def scan_all(*, production_only: bool = False) -> list[tuple[int, str, str, str]]:
+def scan_all() -> list[tuple[int, str, str, str]]:
     all_hits: list[tuple[int, str, str, str]] = []
-    for path in sorted(iter_py_files(production_only=production_only)):
+    for path in sorted(iter_py_files()):
         all_hits.extend(scan_file(path))
     return all_hits
 
@@ -212,220 +236,26 @@ def format_hit(lineno: int, rel: str, variant_id: str, expr: str) -> str:
     return f"{rel}:{lineno}:{variant_id}:{expr_one}"
 
 
-def hit_is_allowlisted(
-    rel: str,
-    lineno: int,
-    variant_id: str,
-    *,
-    prefix_rules: tuple[tuple[str, str], ...],
-    line_rules: tuple[tuple[str, int | str, str, str], ...],
-) -> bool:
-    for prefix, _reason in prefix_rules:
-        if rel == prefix or rel.startswith(prefix):
-            return True
-    for file, line, variant, _reason in line_rules:
-        if rel != file:
-            continue
-        if line != "*" and int(line) != lineno:
-            continue
-        if variant != "*" and variant != variant_id:
-            continue
-        return True
-    return False
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="CAPS anti-pattern family sweep")
-    parser.add_argument(
-        "--production-only",
-        action="store_true",
-        help="Exclude tests/ and tools/",
-    )
-    parser.add_argument(
-        "--variant",
-        action="append",
-        help="Filter to variant_id (repeatable)",
-    )
-    parser.add_argument(
-        "--emit-register-tsv",
-        action="store_true",
-        help="Emit CAPS allowlist TSV rows to stdout (for register maintenance)",
-    )
+    parser.add_argument("paths", nargs="*", help="limit to these repo-relative files")
+    parser.add_argument("--variant", action="append", help="Filter to variant_id (repeatable)")
+    parser.add_argument("--all", action="store_true",
+                        help="also print hits that carry a caps-ok marker")
     args = parser.parse_args(argv)
-
     allowed_variants = set(args.variant) if args.variant else None
-    hits = scan_all(production_only=args.production_only)
-    for lineno, rel, vid, expr in hits:
-        if allowed_variants and vid not in allowed_variants:
-            continue
-        if args.emit_register_tsv:
-            print(f"{rel}\t{lineno}\t{vid}\tauto-classified pending")
-        else:
+    files = [ROOT / p for p in args.paths] if args.paths else iter_py_files()
+    n = 0
+    for path in sorted(files):
+        for lineno, rel, vid, expr in scan_file(path):
+            if allowed_variants and vid not in allowed_variants:
+                continue
+            if not args.all and line_carries_caps_marker(rel, lineno):
+                continue
+            n += 1
             print(format_hit(lineno, rel, vid, expr))
-    return 0
-
-
-# Prefix allowlist: path prefix → justification (all variants, all lines).
-CAPS_PREFIX_ALLOWLIST: tuple[tuple[str, str], ...] = (
-    ("tests/", "test fixtures and gate documentation"),
-    ("tools/", "scanner/CLI tooling not production data path"),
-    ("calibration/", "calibration audit SQL aggregates and phase cleanup counters"),
-    ("verification/", "verification harness diagnostics"),
-    ("arch_competition/", "offline arch competition harness"),
-    ("adaptive_shadow_v2_calibration.py", "shadow calibration ranking aggregates"),
-    ("adaptive_similarity_engine.py", "adaptive similarity pool diagnostics"),
-    ("replay_bundle_coverage.py", "replay bundle join row-count audit"),
-    ("bar_rehydration_issue19_v1.py", "rehydration repair counters"),
-    ("db_health_audit.py", "DB health audit counters"),
-    ("similarity_audit.py", "similarity trace diagnostics"),
-    ("similarity_feature_search.py", "shadow feature-search counters"),
-    ("similarity_feature_universe.py", "feature universe report counters"),
-    ("training_cache.py", "training manifest fingerprint counters"),
-    ("training_provenance.py", "training manifest rows_used counter"),
-    ("ml_scheduler.py", "scheduler manifest skip/row counters"),
-    ("patch_active_artifact_provenance.py", "artifact patch counters"),
-    ("planes/", "L1/runtime plane timestamps and version counters"),
-    ("lifecycle_rule_core.py", "session minutes-since-open derived input"),
-    ("setup_readiness.py", "readiness display probability coercion"),
-    ("call_engine.py", "rules-engine display percent coercion"),
-    ("ml_train.py", "training window max_ts comparison guard"),
-    ("realized_contract_eval.py", "contract eval PnL + SQL pool counts"),
-    ("liquidity_value_engine.py", "internal bar _ts sort keys"),
-    ("app/options/order_flow/engine.py", "Schwab print time_millis sort/cutoff"),
-    ("snapshot_normalizer.py", "materialize row-count audit"),
-    ("market_state.py", "wall-score audit diff derived metrics"),
-    ("db.py", "SQL COUNT aggregate int coercion"),
-    ("server.py", "L1/SSE instrumentation timestamps and volume deltas"),
-    ("monte_carlo.py", "MC output dict serialization of derived sim metrics"),
-    ("live_vs_replay_validation.py", "replay validation row counts"),
-    ("live_market_plane.py", "streaming plane timestamps and carry-forward guards"),
-    ("bayesian_fusion.py", "fusion stack model-output defaults when sub-model unavailable"),
-    ("features/signal_layer_v1.py", "derived signal layer counters"),
-    ("features/fusion_policy_contract.py", "fusion policy prob normalization"),
-    ("api_pressure.py", "HTTP client status_code getattr default"),
-    ("tier3_design.py", "design-only similarity documentation"),
-    ("distance_option_a_backfill_v1.py", "distance backfill counters"),
-    ("inspect_trading_data.py", "inspection script"),
-    ("feature_contracts.py", "legacy contract test helpers"),
-    ("signals.py", "signal orchestration derived defaults (non-Schwab-leaf paths)"),
-    ("prediction_engine.py", "prediction orchestration derived defaults and empirical pools"),
-    ("multi_horizon_decision.py", "horizon decision orchestration derived defaults"),
-    ("ml_predict.py", "inference orchestration derived defaults"),
-    ("live_pipeline_diag.py", "live pipeline diagnostic counters"),
-    ("lstm_model.py", "LSTM model wrapper derived defaults"),
-    ("lstm_data.py", "training dataset builder — non-leaf time/session fields"),
-    ("transformer_model.py", "transformer wrapper derived defaults"),
-    ("transformer_train.py", "transformer training script counters"),
-    ("train_all.py", "training driver counters"),
-    ("train_compare.py", "training comparison script"),
-    ("verify_ml_pipeline.py", "ML pipeline verification counters"),
-    ("levels.py", "legacy levels helper derived defaults"),
-    ("news_sentiment.py", "news API optional field coercion"),
-    ("mc_fusion_adjustment.py", "MC fusion adjustment derived metrics"),
-    ("micro_structure.py", "microstructure derived metrics"),
-    ("movement_target_threshold.py", "movement target threshold derived metrics"),
-    ("app/options/order_flow/state.py", "order-flow live state derived metrics"),
-    ("app/options/order_flow/streaming.py", "order-flow streaming diagnostics"),
-    ("institutional_behavior.py", "institutional behavior derived metrics"),
-    ("polling_adapter.py", "polling adapter timestamps"),
-    ("governed_stack_contract.py", "stack contract validation defaults"),
-    ("math_volatility.py", "volatility derived metrics"),
-    ("multi_horizon_ml_bundle.py", "ML bundle orchestration defaults"),
-    ("training_cache_policy.py", "training cache policy counters"),
-    ("similarity_feature_survivorship.py", "similarity survivorship audit"),
-    ("similarity_feature_universe.py", "similarity universe audit"),
-    ("research/", "research pilot scripts"),
-    ("schwab_full_field_inventory.py", "field inventory scanner"),
-    ("v2_decision/", "v2 decision adapter derived defaults"),
-    ("audit_", "audit script counters and diagnostics"),
-    ("backfill_", "backfill script counters"),
-    ("compare_clustering_modes.py", "clustering comparison CLI"),
-    ("debug_", "debug utilities"),
-    ("crash_trace.py", "crash trace env flag"),
-    ("db_authority.py", "DB authority env flags"),
-    ("db_safety.py", "sqlite3 constant getattr defaults"),
-    ("feature_contract_validation.py", "feature contract validation CLI"),
-    ("feature_presence_contract.py", "feature presence validation CLI"),
-    ("rules_engine.py", "rules engine display coercion"),
-    ("market_context.py", "Schwab quote envelope nesting (quote/extended/regular dict shells)"),
-    ("features/inference_snapshot.py", "SignalInput getattr with None default — fail-closed read"),
-    ("features/monte_carlo_stack_input.py", "MC stack input derived defaults"),
-    ("features/live_feature_adapter.py", "live feature adapter optional reads"),
-    ("features/db_feature_adapter.py", "DB feature adapter optional reads"),
-    ("features/regime_mvp_context.py", "regime MVP context derived defaults"),
-    ("features/replay_signal_input_v1.py", "replay signal input derived defaults"),
-    ("features/training_canonical_input.py", "training canonical merge path"),
-    ("features/xgb_model_input.py", "XGB tabular envelope path"),
-    ("features/shared_sequence_context.py", "shared sequence context derived defaults"),
-    ("math_exposure_core.py", "explicit None branches on bucket aggregates"),
-    ("math_probabilities.py", "probability derived metrics"),
-    ("features/parallel_stack_schema.py", "parallel stack prob triplet defaults when probs dict partial"),
-    ("features/fusion_model_input.py", "explicit unknown semantics for missing zone/vwap (Day 3)"),
-    ("live_decision_bundle.py", "env config thresholds not Schwab leaves"),
-    ("ml_data_common.py", "pandas merge empty-frame guards"),
-    ("normalized_training_sync.py", "training sync env/debounce config"),
-    ("ops_runner.py", "ops runner env flags"),
-    ("pin_neutral_outcome_repair_v1.py", "outcome repair CLI"),
-    ("print_liquidity_value_snapshot.py", "CLI display script"),
-    ("regime_engine.py", "regime engine micro attribute read"),
-    ("schwab_field_dictionary_builder.py", "field dictionary builder tooling"),
-    ("math_levels.py", "structural window index default (non-price)"),
-    ("market_data_adapter.py", "Schwab timestamp key alias (datetime vs timestamp) not numeric default"),
-    ("smoke_predict_active.py", "smoke test CLI"),
-    ("ticker_readiness_lookup.py", "readiness lookup API envelope"),
-    ("verify_snapshot_pipeline.py", "snapshot pipeline verification counters"),
-    ("xgboost_model.py", "XGB model prob triplet defaults when partial dict"),
-)
-
-# Line-level exceptions (file, line or *, variant or *, justification).
-CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
-    ("calibration/v2_advisory_backfill.py", "*", "SETDEFAULT", "reconstructed Tier C ms dict setdefault for optional blocks"),
-    ("fusion_contract.py", "*", "GETATTR_DEFAULT", "duck-typing on fusion + CanonicalForecast objects (FusionOutput.available, CanonicalForecast.provenance); not a silent-default fabrication"),
-    ("numeric_contract.py", "*", "GETATTR_DEFAULT", "duck-typing on base-model output objects (prob_up/prob_down/prob_flat, dominant_class/dominant_dir); not a silent-default fabrication"),
-    # ANTI_PATTERN_CAPS_VIOLATIONS bucket — exact line+variant exemptions for reviewed
-    # non-market-leaf hits (no whole-file prefix; any future hit on another line/variant
-    # in these files is still caught). Reasons state the reviewed category.
-    ("decision_record.py", 352, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
-    ("decision_record.py", 422, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
-    ("money_path_ticker_tiers.py", 66, "GET_WITH_DEFAULT", "env config only"),
-    ("override_registry.py", 85, "IF_TRUTHY_ELSE", "SQL COUNT(*) aggregate coercion"),
-    ("release_object.py", 35, "GET_WITH_DEFAULT", "env config only"),
-    ("release_object.py", 106, "GET_WITH_DEFAULT", "env config only"),
-    ("release_object.py", 107, "GET_WITH_DEFAULT", "env config only"),
-    ("scheduler_user_tickers.py", 60, "GET_WITH_DEFAULT", "env config only"),
-    ("schwab_client.py", 51, "GETATTR_DEFAULT", "constant base URL only"),
-    # RC-514: 293/371/372/403 -> 294/372/373/404. These entries are keyed by ABSOLUTE line
-    # number, so widening a refusal message earlier in schwab_client.py shifted every later
-    # line and three inherited, already-reviewed hits reappeared as new violations in required
-    # CI. The lines themselves are unchanged — re-identified by CONTENT, not by adding one:
-    # 294 is the OAuth callback timeout, 372/373 the two parse_qs indexing idioms, 404 the
-    # auth-failure latch.
-    ("schwab_client.py", 294, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
-    ("schwab_client.py", 372, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
-    ("schwab_client.py", 373, "GET_OR_DEFAULT", "parse_qs indexing idiom only"),
-    ("schwab_client.py", 404, "GET_WITH_DEFAULT", "OAuth/config timeout only"),
-    ("timing_probe2.py", 23, "GET_WITH_DEFAULT", "diagnostic probe display fallback"),
-    # 218 -> 217: RC-64 removed a dead `reasons: list[str] = []` initialisation earlier in this
-    # file, shifting every following line up by one. The reviewed site is unchanged.
-    ("trade_impacting_gate.py", 217, "GET_WITH_DEFAULT", "env config only"),
-    # stream_spine.py's `msg.get("src", "?")` sites moved when native-fidelity/book capture
-    # (2026-08-30) added lines above CaptureWriter.insert(); a line-pinned entry here would
-    # silently stop matching the moment anything shifts again (exactly the failure mode this
-    # allowlist shape is documented above as NOT suited to). Each site now carries its own
-    # `# caps-ok:` marker instead, which travels with the code it excuses.
-)
-
-
-def caps_hit_allowed(rel: str, lineno: int, variant_id: str) -> bool:
-    if hit_is_allowlisted(
-        rel,
-        lineno,
-        variant_id,
-        prefix_rules=CAPS_PREFIX_ALLOWLIST,
-        line_rules=CAPS_LINE_ALLOWLIST,
-    ):
-        return True
-    return False
+    print(f"{n} hit(s)", file=sys.stderr)
+    return 1 if n else 0  # caps-ok: process exit code (1 = hits found), n is a real count, not a data default
 
 
 #: RC-287: the per-line escape, the same shape RC-276 gave the silent-zero gate as
@@ -452,16 +282,14 @@ def line_carries_caps_marker(rel: str, lineno: int) -> bool:
     return bool(_CAPS_OK_RE.search(lines[lineno - 1]))
 
 
-def find_unallowlisted_hits(*, production_only: bool = True) -> list[str]:
+def find_unmarked_hits() -> list[str]:
+    """Every hit in the repo whose own line does not state why it is not a silent default."""
     out: list[str] = []
-    for lineno, rel, vid, expr in scan_all(production_only=production_only):
-        if caps_hit_allowed(rel, lineno, vid):
-            continue
+    for lineno, rel, vid, expr in scan_all():
         if line_carries_caps_marker(rel, lineno):
             continue
         out.append(format_hit(lineno, rel, vid, expr))
     return out
-
 
 if __name__ == "__main__":
     sys.exit(main())

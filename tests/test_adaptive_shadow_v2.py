@@ -262,7 +262,7 @@ def test_mini_calibration_repeatable(tmp_path):
     assert a["schema"] == "adaptive_shadow_v2_calibration_v1"
     assert len(a["per_weight_configuration"]) == 2
     assert "tier1_structural_pool_diagnostics" in a
-    assert a.get("tier1_pool_coverage", {}).get("schema") == "tier1_pool_coverage_report_v1"
+    assert a["tier1_pool_coverage"]["schema"] == "tier1_pool_coverage_report_v1"
 
 
 def test_get_similar_setups_untouched():

@@ -32,12 +32,12 @@ os.environ.pop("ED_CONSOLE_DB", None)
 os.environ.pop("ED_DB_PATH", None)
 _PYTEST_RUNTIME_ROOT = Path(
     tempfile.mkdtemp(
-        prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"
+        prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"  # caps-ok: pytest-xdist env var; absent means no xdist worker, and the value only names the temp-dir prefix
     )
 ).resolve()
 os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
 os.environ["ED_ARTIFACTS_ROOT"] = str(_PYTEST_RUNTIME_ROOT / "artifacts")
-os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
+os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")  # caps-ok: test-harness env switch; setdefault lets an invoker who exported it explicitly keep their value, it seeds no data
 # The console DB and stream-capture DB are NOT set by env: RC-534 disabled ambient
 # ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db._resolve_console_db_path raises on
 # them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
@@ -64,6 +64,9 @@ os.environ["ED_TERRAIN_QUARANTINE_LEDGER"] = str(
 os.environ["ED_GATE_CACHE_DISABLE"] = "1"
 
 
+_wave_lock = None  # RC-565: held only by the controller/serial process, only for a heavy run
+
+
 def pytest_configure(config) -> None:
     """The import-time runtime boundary holds in the controller and every xdist worker."""
     assert Path(os.environ["ED_RUNTIME_ROOT"]) == _PYTEST_RUNTIME_ROOT
@@ -72,6 +75,32 @@ def pytest_configure(config) -> None:
 
     assert _PYTEST_RUNTIME_ROOT in canonical_console_db_path().parents
     assert _PYTEST_RUNTIME_ROOT in canonical_stream_db_path().parents
+
+    # RC-565: refuse a second concurrent HEAVY wave on this machine (see
+    # tools/verification_wave_lock.py for the full incident history and rationale).
+    # `workerinput` exists only inside an xdist WORKER process -- the gate belongs to the
+    # controller (or a plain serial run) exactly once per invocation, never once per worker.
+    if hasattr(config, "workerinput"):
+        return
+    from tools.verification_wave_lock import (
+        WaveLock, is_heavy_wave, override_requested, refusal_message,
+    )
+
+    numprocesses = getattr(config.option, "numprocesses", None)
+    if not is_heavy_wave(numprocesses) or override_requested():
+        return
+    global _wave_lock
+    _wave_lock = WaveLock()
+    if not _wave_lock.try_acquire():
+        _wave_lock = None
+        pytest.exit(refusal_message(str(config.rootpath)), returncode=2)
+
+
+def pytest_unconfigure(config) -> None:
+    global _wave_lock
+    if _wave_lock is not None:
+        _wave_lock.release()
+        _wave_lock = None
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -293,6 +322,31 @@ def most_recent_completed_session_et() -> date:
     return day
 
 
+def all_registered_route_paths(routes) -> list[str]:
+    """Every registered path on `app.routes`, including ones added via `include_router`.
+
+    2026-09-21: a newer FastAPI/Starlette wraps each `app.include_router(...)` call's
+    routes in a `fastapi.routing._IncludedRouter` object that has no `.path` attribute of
+    its own -- only the app's OWN top-level routes (openapi/docs/redoc, static mounts) do.
+    Three tests independently wrote `[getattr(r, "path", "") for r in app.routes if  # caps-ok: scanner false positive: docstring quoting the retired route-listing idiom this helper replaced
+    hasattr(r, "path")]`, which silently filtered out every route this app actually
+    registers through the 20 `include_router` calls in server.py -- MEASURED: 93 real
+    paths exist, that filter sees 6. The real object is recoverable via
+    `route.original_router.routes`, which is what this walks recursively (so a router
+    nested inside another router, if that shape is ever introduced, is still found).
+    """
+    out: list[str] = []
+    for r in routes:
+        path = getattr(r, "path", None)
+        if path is not None:
+            out.append(path)
+            continue
+        original = getattr(r, "original_router", None)
+        if original is not None and hasattr(original, "routes"):
+            out.extend(all_registered_route_paths(original.routes))
+    return out
+
+
 @pytest.fixture
 def fresh_ablation_static_lock_index():
     """Opt-in reset for tests that mutate manifest/DB/spec inputs or fake the index builder."""
@@ -465,7 +519,7 @@ def live_orphans(tmp_path_factory, worker_id: str):
 # ------------------------------------------------- tracked-ledger firewall --
 # REHAB 2026-08-24: reports/terrain_quarantine_ledger.jsonl is a TRACKED operator audit
 # file, and tests exercising the quarantine machinery (scorecard file, silent-zero file,
-# and any future caller of server._note_terrain_failure / _terrain_quarantine_blocks)
+# and any future caller of terrain_quarantine._note_terrain_failure / _terrain_quarantine_blocks)
 # were appending ZZTEST*/ZZQ fixture rows to it on every suite run. This GLOBAL autouse
 # fixture redirects the module's ledger path to tmp for EVERY test whenever `server` is
 # imported — per-file fixtures kept missing writers (measured: ZZQ rows landed from a
@@ -494,9 +548,11 @@ def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
         size_before = _TRACKED_TERRAIN_LEDGER.stat().st_size
     except OSError:
         size_before = None                       # tracked file absent — creation is growth too
-    srv = sys.modules.get("server")
-    if srv is not None and hasattr(srv, "TERRAIN_QUARANTINE_LEDGER"):
-        monkeypatch.setattr(srv, "TERRAIN_QUARANTINE_LEDGER",
+    # RC-REHAB-1 (fortieth slice): the ledger's home is terrain_quarantine.py; server.py
+    # no longer binds the name, so the redirect targets the module that writes it.
+    tq = sys.modules.get("terrain_quarantine")
+    if tq is not None and hasattr(tq, "TERRAIN_QUARANTINE_LEDGER"):
+        monkeypatch.setattr(tq, "TERRAIN_QUARANTINE_LEDGER",
                             tmp_path / "terrain_quarantine_ledger.jsonl")
     yield
     try:
@@ -513,7 +569,7 @@ def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
             f"{_TRACKED_TERRAIN_LEDGER.name} ({grew} bytes) — server was imported after "
             "fixture setup, so TERRAIN_QUARANTINE_LEDGER was never redirected to tmp. "
             "The file has been removed to restore the tracked state; import server before "
-            "the write (or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
+            "the write (or patch terrain_quarantine.TERRAIN_QUARANTINE_LEDGER inside the test)."
         )
     if size_after > size_before:
         # xdist: every worker watches the SAME tracked file, so a concurrent worker's
@@ -547,5 +603,5 @@ def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
             "write landed in the real operator audit file (an external writer touching "
             "the tracked file mid-test trips this too). It has been truncated back to "
             f"its pre-test length ({size_before} bytes); import server before the write "
-            "(or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
+            "(or patch terrain_quarantine.TERRAIN_QUARANTINE_LEDGER inside the test)."
         )

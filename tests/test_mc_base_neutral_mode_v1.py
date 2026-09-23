@@ -91,7 +91,7 @@ def _run_stack(*, layers: dict, spot: float = 450.0, iv: float = 0.2):
         # INDEPENDENT draws. Any test comparing two runs must therefore pin the seed itself, or it
         # is really measuring Monte Carlo sampling noise. Injected here, at the test's own seam;
         # the producer's default is untouched.
-        kwargs.setdefault("seed", 20260828)
+        kwargs.setdefault("seed", 20260828)  # caps-ok: test seam pins the RNG seed only when the caller passed none, so two simulations compare model effect, not sampling noise (see comment above)
         captured.update(kwargs)
         return real_simulate(**kwargs)
 

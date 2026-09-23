@@ -8,7 +8,7 @@ For each affected ticker, inserts exactly **one** canonical 1m bar with:
   OHLC = first real bar's close (carry) for that ticker
 
 This guarantees EXISTS(bar_end <= ts) for every snapshot at or after that minute for pre-history rows
-(anchor = last completed bar <= ts; see db._apply_bar_based_outcome_updates bisect on bar_ends).
+(anchor = last completed bar <= ts; see db_snapshots._apply_bar_based_outcome_updates bisect on bar_ends).
 
 Does not replace real Schwab history; tags source for audit.
 
@@ -82,13 +82,13 @@ def run(db_path: Path, *, dry_run: bool, allow_noncanonical: bool) -> dict[str, 
             (tkr,),
         ).fetchone()
         if r0 is None:
-            rep.setdefault("skipped_no_bars_at_all", []).append(tkr)
+            rep.setdefault("skipped_no_bars_at_all", []).append(tkr)  # caps-ok: grouping list created on first skip; it holds only tickers actually skipped
             continue
         c0 = float(r0["close"])
         bar_end = math.floor(float(min_ts) / 60.0) * 60.0
         bar_start = bar_end - 60.0
         if bar_start <= 0:
-            rep.setdefault("skipped_bad_ts", []).append({"ticker": tkr, "min_ts": min_ts})
+            rep.setdefault("skipped_bad_ts", []).append({"ticker": tkr, "min_ts": min_ts})  # caps-ok: grouping list created on first skip; it holds only (ticker, min_ts) pairs actually skipped
             continue
         planned.append((tkr, bar_start, bar_end, c0))
         rep["pairs"].append({"ticker": tkr, "min_ts": min_ts, "bar_start": bar_start, "bar_end": bar_end, "close": c0})
@@ -134,7 +134,7 @@ def main() -> int:
     r = run(
         args.db,
         dry_run=not args.execute,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(args.allow_noncanonical_db),  # registered just above
     )
     print(json.dumps(r, indent=2))
     return 0

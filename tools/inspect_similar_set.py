@@ -52,7 +52,8 @@ def _run_inspection(
         nearest_below_dist=nearest_below_dist,
         return_trace=True,
     )
-    tier = int(trace.get("chosen_tier") or 0)
+    raw_tier = trace.get("chosen_tier")
+    tier = int(raw_tier) if raw_tier is not None else None  # None: the trace never chose a tier
     out: dict = {
         "mode": mode_tag,
         "mode_warning": mode_warning,
@@ -62,7 +63,12 @@ def _run_inspection(
     }
     if validate_rows:
         ctx = trace.get("query_context") or {}
-        out["row_constraint_audit"] = validate_selected_rows_match_tier(similar, tier, ctx)
+        if tier is None:
+            # Auditing against an invented tier 0 would apply the strictest constraints to rows
+            # no tier selected; report the audit as not runnable instead.
+            out["row_constraint_audit"] = {"tier": None, "error": "trace has no chosen_tier"}
+        else:
+            out["row_constraint_audit"] = validate_selected_rows_match_tier(similar, tier, ctx)
     return out
 
 
@@ -96,7 +102,7 @@ def _cmd_canonical(args: argparse.Namespace) -> int:
 
     db = EdDB(
         args.db,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: flag from register_allow_noncanonical_flag; absent keeps the canonical-DB guard on
     )
     out = _run_inspection(
         db,
@@ -120,7 +126,7 @@ def _cmd_raw_sql_debug(args: argparse.Namespace) -> int:
     require_canonical_db_target(args, tool_name="tools.inspect_similar_set", write_capable=False)
     db = EdDB(
         args.db,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: flag from register_allow_noncanonical_flag; absent keeps the canonical-DB guard on
     )
     out = _run_inspection(
         db,

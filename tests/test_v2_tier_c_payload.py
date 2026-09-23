@@ -11,29 +11,48 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_tier_c_attaches_v2_decision_after_decision_bundle_stamp():
-    server_source = (ROOT / "server.py").read_text(encoding="utf-8")
-
-    stamp_idx = server_source.index("_finalize_production_decision(ms_dict, _decision_route)")
-    attach_idx = server_source.index('ms_dict["v2_decision"] = _v2_decision_for_response')
-    merge_idx = server_source.index("_lmp.merge_into_state(ms_dict, ticker)", attach_idx)
-
+    # RC-REHAB-1 (thirty-seventh slice): the finalize/attach/merge run inside
+    # server_state_publish._finalize_and_publish_state, in this order.
+    pub = (ROOT / "server_state_publish.py").read_text(encoding="utf-8")
+    fn_at = pub.index("def _finalize_and_publish_state(")
+    stamp_idx = pub.index("_finalize_decision(ms_dict, ms,", fn_at)
+    attach_idx = pub.index('ms_dict["v2_decision"] = v2_decision or build_module_a_a1_decision(ms_dict)', fn_at)
+    merge_idx = pub.index("_srv._lmp.merge_into_state(ms_dict, ticker)", attach_idx)
     assert stamp_idx < attach_idx < merge_idx
 
 
 def test_tier_c_single_phase_calibration_write_after_v2_before_log_only_return():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    append_live_v2_calibration_decision now lives inside
+    _post_publish_persistence_tail, promoted to a module-level function
+    (defined BEFORE _fetch_state in the file, so a forward text search from the
+    v2-build site inside _fetch_state can no longer find it there). Re-derived
+    as an execution-order claim instead: v2 decision built, THEN the tail is
+    called on the log_only path (which is where the calibration write actually
+    executes for that path), THEN the log_only return -- and the write call
+    itself still lives inside the tail's own body."""
     server_source = (ROOT / "server.py").read_text(encoding="utf-8")
 
-    v2_idx = server_source.index("_v2_decision_for_response = build_module_a_a1_decision")
-    write_idx = server_source.index("append_live_v2_calibration_decision(", v2_idx)
-    log_only_idx = server_source.index("if log_only:", write_idx)
+    # RC-REHAB-1 (thirty-fifth slice): the v2 build is _v2_decision_for_state.
+    v2_idx = server_source.index("_v2_decision_for_response, _v2_logging_ms_dict = _v2_decision_for_state(")
+    log_only_tail_call_idx = server_source.index(
+        '_post_publish_persistence_tail(\n        None, _v2_decision_for_response', v2_idx
+    )
+    log_only_return_idx = server_source.index("return {}", log_only_tail_call_idx)
+    assert v2_idx < log_only_tail_call_idx < log_only_return_idx
 
-    assert v2_idx < write_idx < log_only_idx
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out of
+    # server.py entirely into server_state_persistence_tail.py -- checked there now.
+    tail_source = (ROOT / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    assert "append_live_v2_calibration_decision(" in tail_source, (
+        "the persistence tail no longer performs the calibration write"
+    )
 
 
 def test_tier_c_imports_module_a_a1_adapter():
-    server_source = (ROOT / "server.py").read_text(encoding="utf-8")
-
-    assert "from v2_decision import build_module_a_a1_decision" in server_source
+    # RC-REHAB-1 (thirty-fifth/-seventh slices): the v2 build and the publish own the calls.
+    for mod in ("server_state_decision.py", "server_state_publish.py"):
+        assert "from v2_decision import build_module_a_a1_decision" in (ROOT / mod).read_text(encoding="utf-8")
 
 
 def test_v2_ui_card_removed_negative_lock():

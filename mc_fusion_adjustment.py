@@ -284,7 +284,7 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
     # approved runtime computation was authorized by the producer.
     if not fusion_direction_is_authorized(fusion):
         return fusion
-    if not getattr(mc_out, "available", False):
+    if not getattr(mc_out, "available", False):  # caps-ok: an MC output without an `available` flag is treated as NOT available, so the fusion triplet is returned untouched (fail-closed, no MC adjustment applied)
         return fusion
     sp = float(spot_price) if spot_price is not None and float(spot_price) > 0 else 0.0
     if sp <= 0:
@@ -397,7 +397,7 @@ def fuse_payload_apply_mc_adjustment(fusion: Any, mc_out: Any, spot_price: Optio
     # e.g. pre=(0.985,0.005,0.01) margin 0.975000 -> stored 0.975001). Both are rejected here, so
     # the value actually WRITTEN carries the invariant, not merely the intermediate.
     rounded_tri = _triplet((round(u, 6), round(d, 6), round(fl, 6)))
-    _rt_sorted = sorted(rounded_tri, reverse=True) if rounded_tri is not None else None
+    _rt_sorted = sorted(rounded_tri, reverse=True) if rounded_tri is not None else None  # caps-ok: None propagates an invalid rounded triplet; _rt_keeps_authority is then False and the adjustment is rejected (fail-closed)
     _rt_keeps_authority = _rt_sorted is not None and (
         _rt_sorted[0] <= _pre_dom
         and (_rt_sorted[0] - _rt_sorted[1]) <= _pre_margin

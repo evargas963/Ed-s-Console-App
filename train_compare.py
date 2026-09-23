@@ -258,8 +258,8 @@ def main():
         promotion_decision=None,
         skipped_train=False,
         skipped_eval=False,
-        used_feature_cache=bool(par_ret.get("used_feature_cache", False)),
-        used_cascade_tensor_cache=bool(par_ret.get("used_cascade_tensor_cache", False)),
+        used_feature_cache=bool(par_ret["used_feature_cache"]),
+        used_cascade_tensor_cache=bool(par_ret["used_cascade_tensor_cache"]),
         rolling_window_days_tabular=ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
         rolling_window_days_sequence=ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE,
         rolling_rth_sessions_tabular=ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
@@ -293,8 +293,8 @@ def main():
         promotion_decision=None,
         skipped_train=False,
         skipped_eval=False,
-        used_feature_cache=bool(cas_ret.get("used_feature_cache", False)),
-        used_cascade_tensor_cache=bool(cas_ret.get("used_cascade_tensor_cache", False)),
+        used_feature_cache=bool(cas_ret["used_feature_cache"]),
+        used_cascade_tensor_cache=bool(cas_ret["used_cascade_tensor_cache"]),
         rolling_window_days_tabular=ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
         rolling_window_days_sequence=ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE,
         rolling_rth_sessions_tabular=ROLLING_WINDOW_RTH_SESSIONS_TABULAR,
@@ -345,6 +345,10 @@ def main():
 
     shutil.rmtree(COMPARE_DIR, ignore_errors=True)
 
+    def _txt(v) -> str:
+        # Display-only: an unmeasured metric prints as "—" in the text report, never as 0.
+        return "—" if v is None else str(v)
+
     report = f"""TRAIN_COMPARE REPORT
 ===================
 Session split: db_distinct_rth_et_dates_for_ticker (chronological train / val)
@@ -352,8 +356,8 @@ Training: ml_scheduler._train_* with allowed_et_dates=train sessions (same code 
 Eval: ml_scheduler._evaluate_*_on_full_rth with allowed_et_dates=val sessions (identical rows for both arches)
 
 BASELINE:   accuracy={baseline_acc*100:.1f}%
-PARALLEL:   accuracy={parallel_acc*100:.1f}%  balanced_acc={parallel_bal*100:.1f}%  log_loss={par_ll if par_ll is not None else '—'}  pnl_realized_avg={_par_avg if _par_avg is not None else '—'}  n_val_rows={n_ev_p}
-CASCADE:    accuracy={cascade_acc*100:.1f}%  balanced_acc={cascade_bal*100:.1f}%  log_loss={cas_ll if cas_ll is not None else '—'}  pnl_realized_avg={_cas_avg if _cas_avg is not None else '—'}  n_val_rows={n_ev_c}
+PARALLEL:   accuracy={parallel_acc*100:.1f}%  balanced_acc={parallel_bal*100:.1f}%  log_loss={_txt(par_ll)}  pnl_realized_avg={_txt(_par_avg)}  n_val_rows={n_ev_p}
+CASCADE:    accuracy={cascade_acc*100:.1f}%  balanced_acc={cascade_bal*100:.1f}%  log_loss={_txt(cas_ll)}  pnl_realized_avg={_txt(_cas_avg)}  n_val_rows={n_ev_c}
 WINNER (scheduler: lower log_loss primary; else acc/bal/realized contract PnL avg): {winner}
 """
     print("\n" + report)

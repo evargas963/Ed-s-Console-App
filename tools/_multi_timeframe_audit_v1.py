@@ -36,7 +36,7 @@ def main() -> None:
     args = ap.parse_args()
     db_path = args.db.resolve()
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()]
@@ -84,9 +84,10 @@ def main() -> None:
             ).fetchall()
         ]
         rpc = {
-            "min": min(per_ticker) if per_ticker else 0,
+            # No rows for this timeframe -> min/max undefined (None), matching _median.
+            "min": min(per_ticker) if per_ticker else None,  # caps-ok: no tickers -> min undefined, None like _median
             "median": _median([float(x) for x in per_ticker]),
-            "max": max(per_ticker) if per_ticker else 0,
+            "max": max(per_ticker) if per_ticker else None,  # caps-ok: no tickers -> max undefined, None like _median
         }
 
         dup_groups = int(
@@ -161,8 +162,8 @@ def main() -> None:
         ]
         coverage[tf] = {
             "days_observed_with_at_least_one_row": len(day_rows),
-            "min_rows_any_day": min(day_rows) if day_rows else 0,
-            "max_rows_any_day": max(day_rows) if day_rows else 0,
+            "min_rows_any_day": min(day_rows) if day_rows else None,  # caps-ok: no observed days -> undefined (None), days_observed carries the 0
+            "max_rows_any_day": max(day_rows) if day_rows else None,  # caps-ok: no observed days -> undefined (None), days_observed carries the 0
         }
 
     sch_by_tf: dict[str, list] = {}
@@ -227,7 +228,7 @@ def main() -> None:
                 _atr = float(row["atr"]) if row["atr"] is not None else None
             except (TypeError, ValueError):
                 _atr = None
-            # Mirror the production writer (db._apply_bar_based_outcome_updates): per-horizon
+            # Mirror the production writer (db_snapshots._apply_bar_based_outcome_updates): per-horizon
             # ATR-scaled threshold, not a fixed 0.05% cut, or this recompute reports false mismatches.
             _thr = threshold_move_pts_for_slug("5c", anchor_close=ac, atr=_atr, cfg=_mcfg)
             exp = classify_direction_pts(fc - ac, _thr)

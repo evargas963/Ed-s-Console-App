@@ -16,6 +16,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db import EdDB
+import app.api.routes.accuracy
+import app.api.routes.logger
 
 
 def _tickers_by_cat(db: EdDB) -> dict[str, set[str]]:
@@ -281,6 +283,42 @@ def test_issue22_scheduler_json_migration_idempotent(tmp_path):
     assert b["status"] == "already_completed"
 
 
+def test_legacy_and_scheduler_migrations_route_through_the_guarded_connect(tmp_path, monkeypatch):
+    """RC-573 (audit finding during db.py decomposition, 2026-09-21): both one-time JSON
+    migrations used to open a raw sqlite3.connect() instead of self._connect() -- every OTHER
+    write path in EdDB goes through self._connect(), which installs the production DROP/DETACH
+    authorizer guard (db_safety.maybe_install_sql_guard_on_connection). The two migrations had
+    silently NO structural-safety net. Proof: self._connect is spied, not stubbed (the real
+    connection still opens and the migration still runs for real), so a regression back to a
+    bare sqlite3.connect() call fails this test even though the migration's own return value
+    would look identical either way."""
+    calls = []
+    dbp = tmp_path / "guard_route.db"
+    edb = EdDB(dbp)
+    real_connect = edb._connect
+    monkeypatch.setattr(edb, "_connect", lambda **kw: (calls.append(1), real_connect(**kw))[1])
+
+    primary = tmp_path / "legacy_tickers.json"
+    primary.write_text(json.dumps(["zza"]), encoding="utf-8")
+    r1 = edb.logging_universe_migrate_legacy_json_file(
+        primary_path=primary,
+        archive_path=tmp_path / "legacy_tickers.json.archived",
+        core_tickers=["SPY"],
+    )
+    assert r1["status"] == "imported"
+    assert calls, "logging_universe_migrate_legacy_json_file did not route its connection through self._connect()"
+
+    calls.clear()
+    sched = tmp_path / "user_sched.json"
+    sched.write_text(json.dumps({"tickers": ["zzb"]}), encoding="utf-8")
+    r2 = edb.logging_universe_migrate_scheduler_companion_json(
+        primary_path=sched,
+        archive_path=tmp_path / "user_sched.json.archived",
+    )
+    assert r2["status"] == "imported"
+    assert calls, "logging_universe_migrate_scheduler_companion_json did not route its connection through self._connect()"
+
+
 def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
     """TEST_SYSTEM_REHAB_V2 final remediation: logger_universe/
     logger_universe_by_category are plain sync handlers with no auth/middleware/
@@ -313,7 +351,7 @@ def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
                         merged.append(t)
             srv._logger_tickers[:] = merged
 
-        body = json.loads(srv.logger_universe().body)
+        body = json.loads(app.api.routes.logger.logger_universe().body)
         assert body.get("schema") == "logging_universe_audit_v2"
         assert "protected_symbols" in body
         assert "eviction_candidates_fifo_user_persisted" in body
@@ -327,7 +365,7 @@ def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
         assert by_t["AUD1"]["eviction_status"] == "eligible"
         for key in ("category", "enrollment_source", "enrolled_ts_utc", "last_seen_ts_utc"):
             assert key in by_t["AUD1"]
-        rcat = json.loads(srv.logger_universe_by_category(category="pinned").body)
+        rcat = json.loads(app.api.routes.logger.logger_universe_by_category(category="pinned").body)
         assert rcat["count"] == 1
         assert rcat["rows"][0]["ticker"].upper() == "AUDP"
     finally:
@@ -520,13 +558,13 @@ def test_ticker_preview_view_endpoint_no_enroll_track_enrolls(monkeypatch, tmp_p
         srv.CORE_TICKERS[:] = ["SPY"]
 
         # VIEW: peek accuracy for an un-enrolled ticker → no enrollment.
-        srv.get_accuracy(ticker="ZVQ")
+        app.api.routes.accuracy.get_accuracy(ticker="ZVQ")
         users = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
                  if r["category"] == "user_persisted"}
         assert "ZVQ" not in users, "VIEW endpoint /api/accuracy must not enroll"
 
         # TRACK: explicit add → enrolls.
-        srv.logger_add(ticker="ZTK")
+        app.api.routes.logger.logger_add(ticker="ZTK")
         users2 = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
                   if r["category"] == "user_persisted"}
         assert "ZTK" in users2, "explicit track /api/logger/add must enroll"
@@ -548,7 +586,7 @@ def test_step3_fetch_state_does_not_enroll_viewed_ticker():
     src = inspect.getsource(srv._fetch_state)
     assert "_register_tracked_ticker(" not in src, "_fetch_state must not auto-enroll viewed tickers"
     assert "_touch_tracked_ticker_view(ticker)" in src
-    add_src = inspect.getsource(srv.logger_add)
+    add_src = inspect.getsource(app.api.routes.logger.logger_add)
     assert "_register_tracked_ticker(" in add_src, "explicit track route remains the enrollment path"
 
 
@@ -686,11 +724,13 @@ def test_f25_lu_write_identity_mutation_killed():
     assert ("SPX".upper().strip()) != ("$SPX".upper().strip())  # 'SPX' != '$SPX' -> would split
 
     # Source guard: the live enrollment read/update/delete/touch consume the authority, not .upper()
+    # RC-REHAB-1 (db.py decomposition, 2026-09-21): this code moved from db.py to
+    # db_logging_universe.py's LoggingUniverseMixin (mixed into EdDB) -- same guarantee, new file.
     from pathlib import Path as _P
-    src = (_P(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
+    src = (_P(__file__).resolve().parent.parent / "db_logging_universe.py").read_text(encoding="utf-8")
     for needle in (
         "t = ticker_storage_key(ticker)  # RC-345/F25",           # unpin/remove/touch
         "ticker_storage_key(r[0]) for r in rows",                 # canonical reads
         "def logging_universe_migrate_canonical_ticker_identity",  # migration exists
     ):
-        assert needle in src, f"db.py logging_universe missing canonical routing: {needle!r}"
+        assert needle in src, f"db_logging_universe.py missing canonical routing: {needle!r}"

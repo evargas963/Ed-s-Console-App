@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import server
+import tier_a_live_state
 
 
 class _Resp:
@@ -207,7 +208,7 @@ def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(mo
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
 
-    out = server._tier_a_live_state_dict("SPY", None)
+    out = tier_a_live_state._tier_a_live_state_dict("SPY", None)
 
     assert out.get("_tier") == "A_live"
     assert out["quote_ingestion"] == "rest_tier_a"
@@ -248,7 +249,7 @@ def test_tier_a_live_state_retries_the_rest_bootstrap_after_an_early_get_client_
     monkeypatch.setattr(server, "get_client", _flaky_get_client)
     monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
 
-    out = server._tier_a_live_state_dict("SPY", None)
+    out = tier_a_live_state._tier_a_live_state_dict("SPY", None)
 
     assert calls["n"] >= 2, "get_client must be retried, not abandoned after the first raise"
     assert out["quote_ingestion"] == "rest_tier_a", (
@@ -262,18 +263,23 @@ def test_tier_a_live_state_falls_through_to_rest_when_the_plane_row_is_stale(mon
     """Operator-reproduced defect (2026-09-14, spot 360 audit): this gate used to trust ANY
     plane row with a spot, however old -- if the streaming websocket silently stalled, the
     header kept painting that stopped price as live forever, with no fallback, while
-    resolve_spot()'s own plane leg (same _CARD_FRESHNESS_V1_QUOTE_STALE_SEC boundary) would
-    already have fallen through to a fresher REST quote -- reopening the header-vs-terrain
-    divergence from the other direction."""
+    resolve_spot()'s own plane leg (the same ~30s freshness boundary) would already have
+    fallen through to a fresher REST quote -- reopening the header-vs-terrain divergence
+    from the other direction.
+
+    2026-09-21: was `server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0` -- that constant was
+    deleted along with the confirmed-dead card_freshness_v1 system; this test only ever
+    borrowed its value as a convenient "definitely stale" duration, unrelated to that system.
+    Replaced with the literal it evaluated to."""
     import time as _t
 
-    stale_row = {"spot": 999.0, "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0)}
+    stale_row = {"spot": 999.0, "server_received_ts": _t.time() - 35.0}
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: dict(stale_row))
     monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
 
-    out = server._tier_a_live_state_dict("SPY", None)
+    out = tier_a_live_state._tier_a_live_state_dict("SPY", None)
 
     assert out["quote_ingestion"] == "rest_tier_a", "a stale plane row must not short-circuit the REST bootstrap"
     assert out["quote_mid"] == 501.25, "the REST leg's own value must be what's actually served"
@@ -306,20 +312,20 @@ def test_tier_a_lightweight_carries_the_tier_c_bundle_generation(monkeypatch):
                                      analytics_version=7,
                                      ms_dict={"ticker": "SPY", "selected_exp": key2[1], "pcr_val": 1.13})
     try:
-        out = server._tier_a_live_state_dict("SPY", None)
+        out = tier_a_live_state._tier_a_live_state_dict("SPY", None)
         lw = out["analytics_lightweight"]
         assert lw["pcr_val"] == 0.87
         assert lw["analytics_version"] == 42 == server._state_cache[key]["analytics_version"]
         # the generation is the bundle's, so advancing the bundle advances the plane
         server._state_cache[key]["analytics_version"] = 43
-        assert server._tier_a_live_state_dict("SPY", None)["analytics_lightweight"]["analytics_version"] == 43
+        assert tier_a_live_state._tier_a_live_state_dict("SPY", None)["analytics_lightweight"]["analytics_version"] == 43
         # EXPIRY CONTEXT: /api/live/state?expiry=E answers from entry (SPY, E) — the same entry
         # /api/analytics/state?expiry=E reads — not from the ticker's newest entry
-        lw2 = server._tier_a_live_state_dict("SPY", key2[1])["analytics_lightweight"]
+        lw2 = tier_a_live_state._tier_a_live_state_dict("SPY", key2[1])["analytics_lightweight"]
         assert lw2["analytics_version"] == 7 and lw2["pcr_val"] == 1.13
         server._state_cache[key2]["analytics_version"] = 8
-        assert server._tier_a_live_state_dict("SPY", key2[1])["analytics_lightweight"]["analytics_version"] == 8
-        assert server._tier_a_live_state_dict("SPY", None)["analytics_lightweight"]["analytics_version"] == 43
+        assert tier_a_live_state._tier_a_live_state_dict("SPY", key2[1])["analytics_lightweight"]["analytics_version"] == 8
+        assert tier_a_live_state._tier_a_live_state_dict("SPY", None)["analytics_lightweight"]["analytics_version"] == 43
         # DEFAULT CONTEXT: both carriers resolve "no expiry" to the ticker's newest entry by the
         # same freshest-ts rule (the analytics route via _latest_cached_ms_and_key_for_ticker)
         _md, newest_key = server._latest_cached_ms_and_key_for_ticker("SPY")

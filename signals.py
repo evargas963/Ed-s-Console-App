@@ -99,7 +99,7 @@ def canonical_forward_probs_for_display(
 #: "The Call" decision policy, every UI availability badge) sees EXACTLY the same shape
 #: it already handles today whenever the stack genuinely fails -- the same fail-closed
 #: path this codebase already relies on, made the permanent state instead of an outage.
-LIVE_MODEL_STACK_ENABLED = os.environ.get("ED_LIVE_MODEL_STACK_ENABLED", "").strip().lower() in (
+LIVE_MODEL_STACK_ENABLED = os.environ.get("ED_LIVE_MODEL_STACK_ENABLED", "").strip().lower() in (  # caps-ok: operator env switch — unset means the documented OFF state (RC-REHAB-1 operator directive in the comment above), which routes every consumer down the fail-closed unavailable-stack path
     "1", "true", "yes",
 )
 
@@ -223,7 +223,7 @@ def _debug_canonical_override(canonical: CanonicalForecast, direction: str, sour
 
 
 def _pred_override_allowed() -> bool:
-    return os.environ.get("ED_CONSOLE_ALLOW_PRED_OVERRIDE", "").strip() in ("1", "true", "TRUE", "yes", "YES")
+    return os.environ.get("ED_CONSOLE_ALLOW_PRED_OVERRIDE", "").strip() in ("1", "true", "TRUE", "yes", "YES")  # caps-ok: debug env opt-in — unset means overrides are refused (compute_signals docstring), the safe default
 
 
 def _live_model_stack_horizons(ticker: str) -> tuple[tuple[str, ...], dict[str, dict[str, Any]]]:
@@ -597,12 +597,12 @@ def _compute_display_wall_clock_mc_excursions(
             log.warning(
                 "display wall-clock MC failed minutes=%s ticker=%s: %s",
                 minutes,
-                getattr(inp, "ticker", ""),
+                inp.ticker,
                 e,
                 exc_info=True,
             )
             continue
-        if not getattr(mc_out, "available", False) or not getattr(mc_out, "simulation_ok", False):
+        if not getattr(mc_out, "available", False) or not getattr(mc_out, "simulation_ok", False):  # caps-ok: fail-closed — a horizon without an explicit available+simulation_ok MC run is skipped, so its mc_efe_/mc_eae_ keys stay absent (read as None), never a fabricated excursion
             continue
         suffix = f"{minutes}m"
         out[f"mc_efe_{suffix}"] = float_finite_or_none(
@@ -649,7 +649,7 @@ def _run_model_stack(
     skip redundant ``get_recent_snapshots`` / LSTM window merges for that tick.
     """
     direction_hint = rules.signal
-    ticker = getattr(inp, "ticker", "") or ""
+    ticker = inp.ticker
 
     # ── Canonical InferenceSnapshotV1 (MVP) — supplied by caller (single build per tick) ─
     from ml_predict import (
@@ -689,7 +689,7 @@ def _run_model_stack(
                     fallback_used=True,
                     authority_intact=False,
                 )
-            snap = {"ticker": getattr(inp, "ticker", "") or ""}
+            snap = {"ticker": inp.ticker}
 
     # ── XGB, LSTM, Transformer — single run_unified_stack_ml_once per tick (Issue 13)
     xgb_out = lstm_out = transformer_out = None
@@ -901,7 +901,7 @@ def _run_model_stack(
             # as ML-conditioned. `assumptions` is this run's own manifest and already carries
             # per_bar_drift; `model_version` labels the artifact. The observable status for
             # consumers remains ml_bundle["mc_stack_probability_source"], set above.
-            if getattr(mc_out, "available", False):
+            if getattr(mc_out, "available", False):  # caps-ok: conditioning provenance is stamped only onto an explicitly available simulation; an unavailable/flagless output carries no simulated paths to label
                 mc_out.assumptions["mc_conditioning"] = (
                     "ml_conditioned" if _mc_conditioned else "base_neutral"
                 )
@@ -952,7 +952,7 @@ def compute_fusion_policy_flat_for_replay(
     from features.inference_snapshot import build_inference_snapshot_v1_from_signal_input
     from ml_predict import reset_ml_infer_horizon_slug, set_ml_infer_horizon_slug
 
-    ticker = getattr(inp, "ticker", "") or ""
+    ticker = inp.ticker
 
     inference_snapshot_v1 = build_inference_snapshot_v1_from_signal_input(inp)
     _mvp = inference_snapshot_v1.get("features")
@@ -1007,7 +1007,7 @@ def compute_fusion_policy_flat_for_replay(
             authority_intact=False,
             dedupe_key="fusion_overlay_replay",
         )
-        shared_fusion_overlay = {"ticker": getattr(inp, "ticker", "") or ""}
+        shared_fusion_overlay = {"ticker": inp.ticker}
 
     shared_mc_ctx: Optional[dict[str, Any]] = None
     mc_ctx_err: Optional[BaseException] = None
@@ -1105,7 +1105,7 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     Monte Carlo is a first-class stage with expansion/containment, skew, directional support.
     """
     def _model_stage(name, out, stage_id) -> StackStage:
-        if not getattr(out, "available", False):
+        if not getattr(out, "available", False):  # caps-ok: model output may be None (stack disabled/failed) or lack the flag; absent availability renders the stage "inactive" — the fail-closed truth, never an active read
             return StackStage(stage_id=stage_id, status="inactive", note=f"{name}: inactive")
         pu = float_finite_or_none(getattr(out, "prob_up", None))
         pd = float_finite_or_none(getattr(out, "prob_down", None))
@@ -1134,7 +1134,7 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
     trans_stage = _model_stage("Transformer", transformer_out, "transformer")
 
     # 4. Monte Carlo — first-class: expansion vs containment, skew, directional support
-    mc_avail = getattr(mc_out, "available", False)
+    mc_avail = getattr(mc_out, "available", False)  # caps-ok: mc_out may be None (tests/test_action11_8 passes None) — absent availability renders the MC stage "inactive" (fail-closed), never an active read
     cont = getattr(mc_out, "containment_prob", None)
     exp = getattr(mc_out, "expansion_prob", None)
     _d_bias_raw = getattr(mc_out, "directional_bias", None)
@@ -1149,7 +1149,7 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
         if exp is not None and cont is not None:
             is_expansion = exp >= cont
             mode = "expansion" if is_expansion else "containment"
-            pct = int(100 * (exp if is_expansion else cont))
+            pct = int(100 * (exp if is_expansion else cont))  # caps-ok: scanner false positive — a ternary choosing between two measured, both-non-None MC probabilities (guarded by the enclosing `exp is not None and cont is not None`), no default involved
         elif exp is not None:
             mode = "expansion"
             pct = int(100 * exp)
@@ -1167,8 +1167,8 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
                 else "downside skew" if d_bias < -1e-4
                 else "neutral"
             )
-            call_sig = getattr(call, "signal", "wait")
-            mc_dir = "up" if d_bias > 1e-4 else "down" if d_bias < -1e-4 else "flat"
+            call_sig = call.signal
+            mc_dir ="up" if d_bias > 1e-4 else "down" if d_bias < -1e-4 else "flat"
             supports = (
                 (mc_dir == "up" and call_sig == "long")
                 or (mc_dir == "down" and call_sig == "short")
@@ -1225,11 +1225,11 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
         prob = getattr(fusion, "dominant_probability", None)
         conf = getattr(fusion, "fusion_confidence", None)
         agree = getattr(fusion, "model_agreement", None)
-        agree_pct = int(agree * 100) if agree is not None else None
+        agree_pct = int(agree * 100) if agree is not None else None  # caps-ok: absence stays None (the suffix is then omitted); no value is fabricated
         dom_label = dom if dom is not None else "—"
         conf_label = conf if conf is not None else "—"
         dir_label = dom_dir if dom_dir is not None else "—"
-        prob_pct = int(prob * 100) if prob is not None else None
+        prob_pct = int(prob * 100) if prob is not None else None  # caps-ok: absence stays None (the "@ N%" suffix is then omitted); no value is fabricated
         agree_suffix = f" | agreement {agree_pct}%" if agree_pct is not None else ""
         prob_suffix = f" @ {prob_pct}%" if prob_pct is not None else ""
         note = f"Fusion: {dom_label} ({conf_label}) | dir={dir_label}{prob_suffix}{agree_suffix}"
@@ -1243,8 +1243,10 @@ def _build_stack_decision_path(xgb_out, lstm_out, transformer_out, mc_out, fusio
         )
 
     # 6. Final Call
-    call_sig = getattr(call, "signal", "wait")
-    call_conv = getattr(call, "conviction", "low")
+    # TheCall.signal / .conviction are required fields (signal_types.TheCall); a missing one must
+    # raise, never render as a fabricated "Final Call: WAIT (low)".
+    call_sig = call.signal
+    call_conv = call.conviction
     if call_sig == "wait":
         call_stage = StackStage(stage_id="final_call", status="active", direction="wait", confidence=call_conv, note=f"Final Call: WAIT ({call_conv})")
     else:
@@ -1336,7 +1338,7 @@ def compute_signals(inp: SignalInput, db=None, pred_override: Optional[dict] = N
     pred_override: Ignored unless ED_CONSOLE_ALLOW_PRED_OVERRIDE=1. When allowed, forces canonical
     direction only (max-entropy probs, low confidence) for debug — never injects synthetic histograms.
     """
-    ticker = getattr(inp, "ticker", "") or ""
+    ticker = inp.ticker
     try:
         return _compute_signals_impl(inp, db, ticker, pred_override=pred_override)
     except Exception as e:
@@ -1348,7 +1350,7 @@ def compute_signals(inp: SignalInput, db=None, pred_override: Optional[dict] = N
 def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
                          pred_override: Optional[dict] = None) -> SignalOutput:
     if not ticker:
-        ticker = getattr(inp, "ticker", "") or ""
+        ticker = inp.ticker
     # ── STACK ORDER 1: Market Data (inp) ──────────────────────────────────────
     # inp = SignalInput, provided by caller (build_market_state)
     # Canonical InferenceSnapshotV1 once — shared by vol/regime policy, fusion overlay, ML, MC.
@@ -1456,7 +1458,7 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
             authority_intact=False,
             dedupe_key="fusion_overlay_shared_tick",
         )
-        shared_fusion_overlay = {"ticker": getattr(inp, "ticker", "") or ""}
+        shared_fusion_overlay = {"ticker": inp.ticker}
 
     shared_mc_ctx: Optional[dict[str, Any]] = None
     mc_ctx_err: Optional[BaseException] = None
@@ -1642,9 +1644,6 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
     if _don():
         _ddone("fusion", ticker)
 
-    _n_base_live = sum(
-        1 for o in (xgb_out, lstm_out, transformer_out) if getattr(o, "available", False)
-    )
     mh_ml_fusion_bundle = build_multi_horizon_ml_fusion_bundle(
         fusion_by_hz,
         live_canonical_horizon_slug=_live_hz,
@@ -1663,8 +1662,10 @@ def _compute_signals_impl(inp: SignalInput, db=None, ticker: str = "",
         }
         ml_bundle["secondary_support_fusion_audit"] = secondary_support_fusion_audit
         ml_bundle["multi_horizon_ml_fusion_bundle"] = mh_ml_fusion_bundle
-        ml_bundle["fusion_contributing_models"] = list(getattr(fusion, "contributing_models", []) or [])
-        ml_bundle["fusion_missing_models"] = list(getattr(fusion, "missing_models", []) or [])
+        # fusion is a non-None FusionOutput here (hard invariant raised above); both lists are
+        # declared fields, so a missing one must raise rather than serve "no models missing".
+        ml_bundle["fusion_contributing_models"] = list(fusion.contributing_models)
+        ml_bundle["fusion_missing_models"] = list(fusion.missing_models)
         ml_bundle["stack_integrity_events"] = stack_integrity_events
 
     canonical = canonical_forecast_from_fusion(fusion)

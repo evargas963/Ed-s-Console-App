@@ -823,9 +823,14 @@ def collapse_sweep_alerts(sweeps: list) -> list[str]:
 
     # Group by (direction, outcome)
     groups: dict[tuple[str, str], list] = {}
+    # CAPS RC-REHAB-1: SweepEvent.type / .held are REQUIRED dataclass fields. The old
+    # getattr(..., "") / getattr(..., False) defaults filed any event without a recognised
+    # type under "swing low" and any event without `held` under "continuation" -- a
+    # fabricated classification. Unknown type now fails loudly (KeyError).
+    _sweep_direction = {"sweep_high": "swing high", "sweep_low": "swing low"}
     for sw in sweeps:
-        direction = "swing high" if getattr(sw, "type", "") == "sweep_high" else "swing low"
-        outcome = "reversal" if getattr(sw, "held", False) else "continuation"
+        direction = _sweep_direction[sw.type]
+        outcome = "reversal" if sw.held else "continuation"
         key = (direction, outcome)
         if key not in groups:
             groups[key] = []
@@ -1263,7 +1268,11 @@ def _generate_text(regime, structure, bos, choch, candle_pats, multi_pats,
 
     elif regime == R_REVERSAL_UP:
         confirm_names = [p.name for p in candle_pats if p.bias == "bullish"]
-        pat_text = confirm_names[0].replace("_", " ") if confirm_names else "confirming pattern"
+        # CAPS RC-REHAB-1: _classify_regime returns REVERSAL_UP ONLY when this same
+        # candle_pats list holds a bullish pattern, so confirm_names is non-empty by
+        # construction. The old "confirming pattern" fallback would have claimed a pattern
+        # that did not exist; an empty list now fails loudly instead.
+        pat_text = confirm_names[0].replace("_", " ")
         headline_5m = f"5min: Reversal attempt UP — CHoCH + {pat_text}."
         detail = (
             f"Structure broke higher AND a bullish candle pattern confirms buyers stepping in. "
@@ -1273,7 +1282,8 @@ def _generate_text(regime, structure, bos, choch, candle_pats, multi_pats,
 
     elif regime == R_REVERSAL_DN:
         confirm_names = [p.name for p in candle_pats if p.bias == "bearish"]
-        pat_text = confirm_names[0].replace("_", " ") if confirm_names else "confirming pattern"
+        # CAPS RC-REHAB-1: REVERSAL_DN implies a bearish pattern in this same list (see UP).
+        pat_text = confirm_names[0].replace("_", " ")
         headline_5m = f"5min: Reversal attempt DOWN — CHoCH + {pat_text}."
         detail = (
             f"Structure broke lower AND a bearish candle pattern confirms sellers stepping in. "

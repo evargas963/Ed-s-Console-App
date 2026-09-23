@@ -14,18 +14,19 @@ from __future__ import annotations
 
 import os
 
-os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
+os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env switch read by import-time guards to recognise a pytest process; setdefault keeps a value pytest already set, it seeds no market data
 
-import server  # noqa: E402
+import terrain_radar
+import terrain_atr
 
 
 def _contact(call_wall, put_wall, spot=100.0, flip=None):
     """Drive the REAL contact builder. The ATR is sized so the fixture walls land inside the
     radar's real rings — the point is the LABEL, so the contact must actually be earned."""
-    atr = server.AtrPair(daily=20.0, m15=5.0)
+    atr = terrain_atr.AtrPair(daily=20.0, m15=5.0)
     t = {"ticker": "TEST", "regime": "SHORT_GAMMA_TREND", "posture": "X", "confidence": "TRUSTED",
          "call_wall": call_wall, "put_wall": put_wall, "gamma_flip": flip}
-    return server._radar_contact(t, spot, atr)
+    return terrain_radar._radar_contact(t, spot, atr)
 
 
 def test_a_shared_strike_is_not_called_a_call_wall():

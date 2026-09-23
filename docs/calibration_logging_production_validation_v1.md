@@ -2,7 +2,9 @@
 
 # Calibration logging — production-path validation (v1)
 
-**FINAL: PASS**
+**FINAL: PASS** (for the execution path traced below, which no longer exists in current code)
+
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** the single synchronous call chain this validation traces (`compute_signals -> signals._maybe_append_calibration_log -> writer.append_calibration_decision`, one write per successful decision) was removed by commit `ed8806fa` (2026-05-06). `signals.py::_build_calibration_payload` today only prepares data ("persistence is owned by the server lifecycle" — its own docstring); the real insert is a separate, later, execution-identity-gated write in `calibration/v2_live_logging.py` called from `server.py`. `tests/test_calibration_logging_production_path.py::test_compute_signals_returns_calibration_payload_without_writing` now directly asserts `compute_signals` alone performs **zero** writes — the opposite of this document's traced path. The PASS verdict was accurate for the mechanism as it existed on 2026-04-11; it is not a description of how logging works today.
 
 Pass criteria for this document:
 

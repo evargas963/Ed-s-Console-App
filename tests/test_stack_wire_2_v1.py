@@ -47,17 +47,14 @@ def test_market_state_mhap_rank_derived_from_primary_decision_horizons():
 
 
 def test_canonical_provenance_fallback_is_fail_closed():
+    import market_state
     from fusion_contract import TRADABLE_CANONICAL_PROVENANCE
-    from market_state import MarketState
 
-    ms = MarketState()
-    _cf = None
-    if _cf is not None:
-        ms.canonical_provenance = str(getattr(_cf, "provenance", "") or "")
-    else:
-        ms.canonical_provenance = "canonical_forecast_missing"
-    assert ms.canonical_provenance == "canonical_forecast_missing"
-    assert ms.canonical_provenance not in TRADABLE_CANONICAL_PROVENANCE
+    # Read the real branch in build_market_state rather than re-implementing it here: the
+    # missing-forecast path stamps a non-tradable provenance.
+    src = inspect.getsource(market_state.build_market_state)
+    assert 'ms.canonical_provenance = "canonical_forecast_missing"' in src
+    assert "canonical_forecast_missing" not in TRADABLE_CANONICAL_PROVENANCE
 
 
 def test_multi_horizon_decision_threshold_constants_exist_and_used():

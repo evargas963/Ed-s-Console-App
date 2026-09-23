@@ -13,21 +13,33 @@ expirationDate, so which underlying a slice came from is immaterial to the ident
 test (cell == faucet on the slice; per-expiry additivity; expiry isolation); nothing about the
 rows is invented.
 """
+import datetime
 import inspect
 import json
 from pathlib import Path
 
-from server import (
-    project_gamma_surface,
-    project_gamma_surface_update_expiry,
-    _per_strike_exposures_by_expiry,
-    _merge_all_expiry_exposures,
-    _per_strike_view_from_contracts,
-    _per_strike_view_update_expiry,
-)
+from gamma_surface_projection import project_gamma_surface, project_gamma_surface_update_expiry
+from per_strike_view import _per_strike_exposures_by_expiry, _merge_all_expiry_exposures, _per_strike_view_from_contracts
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
+# _per_strike_view_update_expiry moved out of server.py entirely, into
+# gamma_surface_eager_refresh.py, along with its sole caller.
+from gamma_surface_eager_refresh import _per_strike_view_update_expiry
 from math_exposure_core import compute_exposures_by_strike
+from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
+
+# RC-REHAB-2 (2026-09-18): both real captures' baked-in expirationDate stamps (CRWD
+# 2026-09-18T20:00:00Z, CDE 2026-09-04T20:00:00Z) are now in the past relative to real
+# wall-clock time. bs_vanna's T comes from time_et.time_to_expiry_years, fail-closed at
+# T<=0 -- correct production behaviour, but it silently collapsed
+# test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex
+# to comparing two independently-computed 0.0s (call_vanna/put_vanna are pre-initialized to
+# 0.0 and simply never get overwritten once T<=0), the same vacuous-pass defect fixed in
+# tests/test_vanna_charm_by_strike_v1.py. Freezing `now` to an instant inside BOTH captures'
+# windows (well before either's expirationDate) restores the test to proving real per-
+# contract vanna math instead of a degenerate zero-equals-zero comparison.
+_FROZEN_NOW = datetime.datetime(2026, 9, 2, 14, 30, tzinfo=ET)
 
 
 def _real(name: str) -> dict:
@@ -70,8 +82,8 @@ def test_fixture_preconditions_are_real_two_expiry_input():
     assert E1 != E2 and len(E1) == 10 and len(E2) == 10
     assert all(_exp_key(ct) == E1 for ct in CRWD["chain"])
     assert all(_exp_key(ct) == E2 for ct in CDE["chain"])
-    assert sum(1 for ct in CRWD["chain"] if (ct.get("openInterest") or 0) > 0) > 0
-    assert sum(1 for ct in CDE["chain"] if (ct.get("openInterest") or 0) > 0) > 0
+    assert sum(1 for ct in CRWD["chain"] if ct["openInterest"] > 0) > 0
+    assert sum(1 for ct in CDE["chain"] if ct["openInterest"] > 0) > 0
     # the native stamp is the ISO form production feeds the projection, not a bare date
     assert "T" in str(CRWD["chain"][0]["expirationDate"])
 
@@ -168,7 +180,7 @@ def test_F_input_projection_coverage():
         expected_strikes |= {float(k) for k in compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)[0]}
     assert set(surface["strikes"]) == expected_strikes
     # native DTE carried onto the column header, not inferred
-    native_dte = {exp: next(int(ct["daysToExpiration"]) for ct in _slice(chain, exp) if ct.get("daysToExpiration") is not None)
+    native_dte = {exp: next(int(ct["daysToExpiration"]) for ct in _slice(chain, exp) if ct.get("daysToExpiration") is not None)  # caps-ok: scanner false positive: next() here has NO default argument; an expiry with no DTE-bearing row raises StopIteration and fails the test
                   for exp in (E1, E2)}
     assert {e["expiry"]: e["dte"] for e in surface["expirations"]} == native_dte
     assert surface["contracts_total"] == len(chain)
@@ -179,7 +191,7 @@ def test_F_input_projection_coverage():
 #    rows are REAL rows with their native expirationDate broken (the only field under test).
 def test_G_malformed_expiry_excluded_not_reassigned():
     clean_chain = _chain()
-    probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)   # the heaviest real row
+    probe = max(CRWD["chain"], key=lambda ct: ct["openInterest"])   # the heaviest real row
     chain = clean_chain + [dict(probe, expirationDate=None), dict(probe, expirationDate="bad")]
     surface = project_gamma_surface(chain, SPOT)
     assert surface["contracts_excluded_malformed_expiry"] == 2
@@ -193,13 +205,13 @@ def test_G_malformed_expiry_excluded_not_reassigned():
 
 # H. SPX / SPXW — canonical underlying->option-chain identity is unchanged; no UI translation.
 def test_H_spx_identity_unchanged():
-    from server import ticker_storage_key
+    from instrument_identity import ticker_storage_key
     assert ticker_storage_key("SPX") == "$SPX"
     assert ticker_storage_key("$SPX") == "$SPX"
     # an SPXW-rooted contract projects without any symbol rewriting. No real SPX capture exists
     # in tests/fixtures; the row is a REAL vendor row re-rooted to the SPXW symbol/strike, which
     # is the only thing this identity check reads.
-    probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)
+    probe = max(CRWD["chain"], key=lambda ct: ct["openInterest"])
     spxw = [dict(probe, symbol="SPXW  260918C07690000", strikePrice=7690)]
     surface = project_gamma_surface(spxw, 7690.0)
     assert surface["expirations"] and surface["strikes"] == [7690.0]
@@ -246,7 +258,7 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
     # strike so no PUT row exists there -- the minimal input this specific absent-side
     # identity check needs.
     """
-    probe = dict(max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0))
+    probe = dict(max(CRWD["chain"], key=lambda ct: ct["openInterest"]))
     lonely_strike = max(ct["strikePrice"] for ct in CRWD["chain"]) + 1000.0
     probe["strikePrice"] = lonely_strike
     probe["symbol"] = "CRWD  260918C" + str(int(lonely_strike * 1000)).zfill(8)
@@ -265,7 +277,7 @@ def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_w
     never silently borrow a strike-mate's symbol or fall back to a stale cached value -- it must
     report None, the same fail-closed rule the rest of this file already proves for missing OI/
     expiry."""
-    probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)
+    probe = max(CRWD["chain"], key=lambda ct: ct["openInterest"])
     no_symbol = dict(probe)
     no_symbol.pop("symbol", None)
     chain = [no_symbol]
@@ -299,10 +311,12 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
     assert checked > 20
 
 
-def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex():
+def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex(monkeypatch):
+    monkeypatch.setattr("time_et.now_et", lambda: _FROZEN_NOW)
     chain = _chain()
     surface = project_gamma_surface(chain, SPOT)
     checked = 0
+    nonzero = 0
     for exp in (E1, E2):
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
@@ -321,7 +335,13 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
             expected = bucket["call_vanna"] - bucket["put_vanna"]
             assert abs(row["vanna"][col] - expected) < 0.1
             checked += 1
+            if expected != 0.0:
+                nonzero += 1
     assert checked > 20
+    # RC-REHAB-2: with `now` frozen inside both captures' own windows every contract has T > 0,
+    # so this must exercise REAL per-contract vanna math, not every strike silently collapsing
+    # to a vacuous 0.0-matches-0.0 comparison (which is what two expired chains give).
+    assert nonzero > 20
 
 
 def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_totals():
@@ -507,8 +527,8 @@ def test_per_strike_view_update_expiry_matches_a_full_recompute_for_the_changed_
         "same canonical faucet on a narrower input, never an approximation")
     # 'near'/'far' are deliberately carried over from the prior view, not recomputed here
     # (see _per_strike_view_update_expiry's own docstring) -- still present, unchanged.
-    assert updated_view["near"] == prior_view.get("near", [])
-    assert updated_view["far"] == prior_view.get("far", [])
+    assert updated_view["near"] == prior_view["near"]
+    assert updated_view["far"] == prior_view["far"]
     # the cache for the UNAFFECTED expiry (E2) must be the untouched prior object.
     assert updated_by_expiry[E2] is by_expiry[E2]
 

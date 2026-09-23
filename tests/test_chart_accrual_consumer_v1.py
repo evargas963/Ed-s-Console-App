@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from datetime import date, datetime, timedelta
 
-os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
+os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env switch read by import-time guards to recognise a pytest process; setdefault keeps a value pytest already set, it seeds no market data
 
 from calibration.option_chain_morning_full import (  # noqa: E402
     et_date_and_mins,
@@ -30,6 +30,10 @@ TURN_AUDIT_OWNS = [
 ]
 
 from tests.conftest import most_recent_trading_day_et  # noqa: E402
+import app.api.routes.terrain
+import terrain_freshness
+import terrain_loop
+import terrain_state
 
 #: RC-160: a sentinel AND a non-sentinel enrolled ticker. One of each, never SPY alone.
 SENTINEL = "SPY"
@@ -137,9 +141,8 @@ def test_endpoint_prefers_live_and_falls_back_only_when_stale():
     snapshot is absent or older than TERRAIN_STALE_AFTER_SEC, and only when it is NEWER."""
     import time
 
-    import server as s
 
-    stale_after = s.TERRAIN_STALE_AFTER_SEC
+    stale_after = terrain_freshness.TERRAIN_STALE_AFTER_SEC
     now = time.time()
 
     def live_is_stale(live_ts, today_present):
@@ -156,9 +159,8 @@ def test_endpoint_wires_the_bank_reader_and_labels_it_distinctly():
     staleness, must stamp its own source, and must NOT let the prior-day archive become today."""
     import inspect
 
-    import server as s
 
-    src = inspect.getsource(s.get_terrain_strikes)
+    src = inspect.getsource(app.api.routes.terrain.get_terrain_strikes)
     assert "latest_accrual_rows" in src, "the strikes endpoint still has no bank reader"
     assert "TERRAIN_STALE_AFTER_SEC" in src, "the fallback is not gated on staleness"
     assert "accrual_bank:" in src, "banked rows are not stamped with their own source"
@@ -216,19 +218,19 @@ def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
     import server as s
 
     now = time.time()
-    prev = s._terrain_last_cycle_sec
+    prev = terrain_state._terrain_last_cycle_sec
     prev_gate = s._is_loggable_session
     try:
         # Pin the branch instead of the clock: this test is about the CADENCE yardstick, so the
         # loop must be inside its window for the whole of it, whatever hour the suite runs at.
         s._is_loggable_session = lambda *a, **k: True
-        s._terrain_last_cycle_sec = 156.0
-        healthy = s.terrain_staleness(now - 234, "ZZTEST")
+        terrain_state._terrain_last_cycle_sec = 156.0
+        healthy = terrain_freshness.terrain_staleness(now - 234, "ZZTEST")
         assert healthy["levels_stale"] is False, (
             "234s at a 156s delivered cycle is 1.5 sweeps — flagging it stale calls a healthy "
             "scheduler broken"
         )
-        behind = s.terrain_staleness(now - 400, "ZZTEST")
+        behind = terrain_freshness.terrain_staleness(now - 400, "ZZTEST")
         assert behind["levels_stale"] is True, "400s is 2.6 sweeps — genuinely behind"
         assert "DELIVERED" in behind["levels_stale_reason"]
         assert "156s" in behind["levels_stale_reason"], (
@@ -238,26 +240,26 @@ def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
             "the retired sentence asserted a malfunction from a cadence the loop never meets"
         )
         # a FAST loop must not be allowed to hide staleness: the floor still applies
-        s._terrain_last_cycle_sec = 10.0
-        assert s.terrain_staleness(now - 200, "ZZTEST")["levels_stale"] is True, (
+        terrain_state._terrain_last_cycle_sec = 10.0
+        assert terrain_freshness.terrain_staleness(now - 200, "ZZTEST")["levels_stale"] is True, (
             "a fast cycle dropped the floor — staleness could be hidden by a quick sweep"
         )
         # before the first cycle completes, fall back to the nominal floor rather than 0
-        s._terrain_last_cycle_sec = 0.0
-        assert s.terrain_staleness(now - 400, "ZZTEST")["levels_stale"] is True
+        terrain_state._terrain_last_cycle_sec = 0.0
+        assert terrain_freshness.terrain_staleness(now - 400, "ZZTEST")["levels_stale"] is True
 
         # And the branch that legitimately owns the OTHER sentence: outside its window the loop
         # is not refreshing on purpose, and saying so is correct — the defect was asserting the
         # in-window wording while the clock had chosen the out-of-window path.
         s._is_loggable_session = lambda *a, **k: False
-        s._terrain_last_cycle_sec = 156.0
-        paused = s.terrain_staleness(now - 400, "ZZTEST")
+        terrain_state._terrain_last_cycle_sec = 156.0
+        paused = terrain_freshness.terrain_staleness(now - 400, "ZZTEST")
         assert paused["levels_stale"] is True
         assert "DELIVERED" not in paused["levels_stale_reason"], (
             "a loop stopped by design must not be described by the cadence yardstick"
         )
     finally:
-        s._terrain_last_cycle_sec = prev
+        terrain_state._terrain_last_cycle_sec = prev
         s._is_loggable_session = prev_gate
 
 
@@ -266,14 +268,13 @@ def test_loop_publishes_the_cycle_duration_it_already_measures():
     left comparing against the floor."""
     import inspect
 
-    import server as s
 
-    src = inspect.getsource(s._terrain_loop)
+    src = inspect.getsource(terrain_loop._terrain_loop)
     assert "_terrain_last_cycle_sec" in src, (
         "the loop still keeps its measured cycle duration to itself"
     )
     assert "elapsed" in src
-    assert isinstance(s._terrain_last_cycle_sec, float)
+    assert isinstance(terrain_state._terrain_last_cycle_sec, float)
 
 
 def test_decide_untouched_admissions_empty():

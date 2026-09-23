@@ -10,6 +10,7 @@ from calibration.option_chain_morning_full import (
     persist_chain_accrual,
 )
 from time_et import ET
+import app.api.routes.market_data
 
 
 def _contracts() -> list[dict]:
@@ -67,7 +68,7 @@ def test_forces_skips_non_trading_morning_full_dates(tmp_path, monkeypatch):
         db_path = str(db)
 
     monkeypatch.setattr(s, "get_db", lambda: _DB())
-    s._FORCES_CACHE.clear()
+    app.api.routes.market_data._FORCES_CACHE.clear()
     # Drive the SQL+filter branch without requiring rich chains: inspect candidate filter
     # by reusing the same selection the endpoint uses.
     con = sqlite3.connect(db)

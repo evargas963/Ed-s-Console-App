@@ -498,7 +498,7 @@ def test_history_missing_and_malformed_inputs_fail_closed(tmp_path, monkeypatch)
 
     l1_only = {
         "symbol": symbol,
-        "events": [next(e for e in sample["events"] if e["kind"] == "l1")],
+        "events": [next(e for e in sample["events"] if e["kind"] == "l1")],  # caps-ok: scanner false positive: next() here has NO default argument; a sample without an l1 event raises StopIteration and fails the test
     }
     l1_db = tmp_path / "l1-only.db"
     _write_db(l1_db, [l1_only])
@@ -509,7 +509,7 @@ def test_history_missing_and_malformed_inputs_fail_closed(tmp_path, monkeypatch)
 
     book_only = {
         "symbol": symbol,
-        "events": [next(e for e in sample["events"] if e["kind"] == "book")],
+        "events": [next(e for e in sample["events"] if e["kind"] == "book")],  # caps-ok: scanner false positive: next() here has NO default argument; a sample without a book event raises StopIteration and fails the test
     }
     book_db = tmp_path / "book-only.db"
     _write_db(book_db, [book_only])

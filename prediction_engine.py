@@ -78,7 +78,7 @@ class PredictionEnrichmentState:
 
 
 def _predict_enrichment_enabled() -> bool:
-    return os.environ.get("ED_PREDICT_ENRICHMENT", "1").strip().lower() not in ("0", "false", "no")
+    return os.environ.get("ED_PREDICT_ENRICHMENT", "1").strip().lower() not in ("0", "false", "no")  # caps-ok: operator env switch, documented default "1" (enrichment on); only an explicit 0/false/no disables it
 
 
 def _as_of_ts_utc_for_similarity(
@@ -161,7 +161,7 @@ def _tri_probs(p: Optional[dict]) -> tuple[Optional[float], Optional[float], Opt
 
 def _fusion_snap_triplet(snap) -> Optional[tuple[float, float, float]]:
     """Per-horizon fusion directional triplet; None when horizon_fusion_available but probs missing."""
-    if snap is None or not getattr(snap, "horizon_fusion_available", False):
+    if snap is None or not getattr(snap, "horizon_fusion_available", False):  # caps-ok: fail-closed -- a snapshot without the availability flag is treated as fusion UNAVAILABLE and yields no triplet (None)
         return None
     pu = getattr(snap, "prob_up", None)
     pd = getattr(snap, "prob_down", None)
@@ -248,7 +248,7 @@ def _overlay_multi_horizon_ml_on_product_triplets(
         )
         by_h = {}
     try:
-        w_sup = float(os.environ.get("ED_MH_EMPIRICAL_SUPPORT", "0.0"))
+        w_sup = float(os.environ.get("ED_MH_EMPIRICAL_SUPPORT", "0.0"))  # caps-ok: operator env knob, documented default 0.0 = no empirical support blend into the fusion triplet
     except ValueError:
         w_sup = 0.0
     w_sup = max(0.0, min(1.0, w_sup))
@@ -258,13 +258,13 @@ def _overlay_multi_horizon_ml_on_product_triplets(
         fusion_triplet = _fusion_snap_triplet(snap)
         if fusion_triplet is None:
             out[hz] = _withheld
-            snap_provenance = str(getattr(snap, "provenance", "") or "")
+            snap_provenance = str(getattr(snap, "provenance", "") or "")  # caps-ok: provenance string only selects the WITHHELD reason label; "" (no snapshot / no provenance) falls to the generic fusion_unavailable/missing label and the triplet stays withheld either way
             if snap_provenance == "fusion_directional_unauthorized":
                 src[hz] = "fusion_directional_unauthorized"
             else:
                 src[hz] = (
                     "fusion_unavailable"
-                    if snap is None or not getattr(snap, "horizon_fusion_available", False)
+                    if snap is None or not getattr(snap, "horizon_fusion_available", False)  # caps-ok: fail-closed reason label -- missing availability flag reads as fusion unavailable; the horizon is withheld in both branches
                     else "fusion_directional_missing"
                 )
             continue
@@ -305,7 +305,7 @@ def _multi_horizon_authorization_maps(
         authorized[hz] = getattr(snap, "stack_directional_authorized", None) is True
         reasons[hz] = getattr(snap, "stack_directional_authorization_reason", None)
         available[hz] = bool(
-            authorized[hz] and getattr(snap, "horizon_fusion_available", False)
+            authorized[hz] and getattr(snap, "horizon_fusion_available", False)  # caps-ok: fail-closed -- a snapshot without the availability flag is not counted as available
         )
     return authorized, reasons, available
 
@@ -878,7 +878,10 @@ def compute_prediction_core(
 
     match_tier = 7
     if similar:
-        match_tier = similar[0].get("match_tier", 7)
+        # CAPS RC-REHAB-1: every row get_similar_setups returns carries its SQL-stamped
+        # match_tier (db_snapshots: `SELECT ..., N as match_tier`). A row without it used to be
+        # re-labelled tier 7 ("general dataset", low confidence) -- an invented tier. Required.
+        match_tier = similar[0]["match_tier"]
 
     tier_label = _TIER_LABELS.get(match_tier, "general dataset")
 
@@ -971,7 +974,7 @@ def compute_prediction_core(
 
     move_range_lo, move_range_hi = compute_percentile_range(similar)
 
-    if _fusion_available and getattr(fusion, "mc_available", False):
+    if _fusion_available and getattr(fusion, "mc_available", False):  # caps-ok: capability flag (FusionPayload.mc_available defaults False = MC did not contribute); absent -> MC band not used, move range stays empirical-only / None
         _mc_lo = getattr(fusion, "mc_lower_50", None)
         _mc_hi = getattr(fusion, "mc_upper_50", None)
         if move_range_lo is None and _mc_lo is not None:
@@ -1161,7 +1164,7 @@ def compute_prediction_enrichment(
 
     _regime_label = getattr(regime, "primary", None) if regime else None
     if reversal_risk is not None and _regime_label == "reversal_prone":
-        if _fusion_available and getattr(fusion, "mc_available", False):
+        if _fusion_available and getattr(fusion, "mc_available", False):  # caps-ok: capability flag, absent = MC did not contribute -> no MC-based reversal-risk boost is applied
             _mc_eae = getattr(fusion, "mc_eae", None)
             _mc_efe = getattr(fusion, "mc_efe", None)
             if _mc_eae and _mc_efe and _mc_eae > _mc_efe * MC_EAE_EFE_AMPLIFY_THRESHOLD:
@@ -1191,7 +1194,7 @@ def compute_prediction_enrichment(
 
     prediction_dir = pred_core.prediction_dir
     prediction_target = pred_core.prediction_target
-    pct = int(emp_prob * 100) if emp_prob is not None else None
+    pct = int(emp_prob * 100) if emp_prob is not None else None  # caps-ok: percent stays None when there is no empirical probability; every text branch below checks `pct is not None`
     fwd = (canonical.direction or "flat").lower()
     dir_labels = {"up": "UP", "down": "DOWN", "flat": "FLAT", "none": "NO EDGE"}
     fwd_lbl = dir_labels.get(fwd, "FLAT")
@@ -1318,7 +1321,7 @@ def compute_prediction_enrichment(
             _n_suffix = f" ({_n_active} models)" if _n_active is not None and _n_active > 0 else ""
             parts.append(f"Fusion: {_dom} ({_dom_p:.0%}){_agree_suffix}{_n_suffix}.")
 
-    if _fusion_available and getattr(fusion, "mc_available", False):
+    if _fusion_available and getattr(fusion, "mc_available", False):  # caps-ok: capability flag, absent = MC did not contribute -> the MC sentence is simply omitted from the rationale
         _mc_efe = getattr(fusion, "mc_efe", None)
         _mc_eae = getattr(fusion, "mc_eae", None)
         _mc_contain = getattr(fusion, "mc_containment", None)
@@ -1352,7 +1355,7 @@ def compute_prediction_enrichment(
         _action = "→ Forward stack: slight call bias — size per The Call."
     elif canonical.confidence == "medium" and fwd == "down":
         _action = "→ Forward stack: slight put bias — size per The Call."
-    elif fwd == "flat" and (canonical.dominant_probability() or 0.0) >= CANONICAL_DOM_PROB_ACTION_MIN:
+    elif fwd == "flat" and (canonical.dominant_probability() or 0.0) >= CANONICAL_DOM_PROB_ACTION_MIN:  # caps-ok: fail-closed threshold: an absent dominant probability can never clear the action minimum
         # LIVE-UI-A: non-tradable canonical → dominant_probability()=None → 0.0 fallback,
         # which sits below CANONICAL_DOM_PROB_ACTION_MIN so the elif falls through to the
         # default "low conviction" action text. No placeholder leak into the action line.

@@ -5,6 +5,7 @@ import ast
 import threading
 import time
 from pathlib import Path
+import bars_loop
 
 
 def _collect_window_session_open_ts() -> float:
@@ -104,7 +105,11 @@ def test_governed_refresh_runs_after_tier1_lock_release(tmp_path):
     ed.fill_outcomes("SPY", CF, t_snap + 5000.0)
 
     # Source-level: refresh call site is OUTSIDE the nested _do that runs under tier-1.
-    src = Path(db_mod.__file__).read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-22): upsert_1m_bars (and _post_unlock_refresh, its own nested
+    # closure) moved from db.py to db_snapshots.py (slice 3 of the db.py decomposition) --
+    # same code, different file, so the source check follows it there.
+    import db_snapshots
+    src = Path(db_mod.__file__).read_text(encoding="utf-8") + Path(db_snapshots.__file__).read_text(encoding="utf-8")
     # The post-unlock call uses _post_unlock_refresh and sits after _tier1_snapshot_write return.
     assert "_post_unlock_refresh" in src
     assert "post-unlock governed outcome refresh" in src
@@ -145,7 +150,13 @@ def test_analytics_light_uses_dedicated_l1_pool_not_route_offload():
     """RC-166: /api/analytics/light must not share ed_route_offload with Tier C/stream."""
     import server as srv
 
-    src = Path(srv.__file__).read_text(encoding="utf-8")
+    # RC-REHAB-1 (Phase 3, fourteenth extraction slice): get_analytics_light moved out of
+    # server.py into app/api/routes/analytics_light.py. L1_LIGHT_EXECUTOR_MAX_WORKERS itself
+    # (checked below) stays in server.py.
+    analytics_light_path = (
+        Path(__file__).resolve().parent.parent / "app" / "api" / "routes" / "analytics_light.py"
+    )
+    src = analytics_light_path.read_text(encoding="utf-8")
     tree = ast.parse(src)
     light_fn = None
     for node in tree.body:
@@ -173,7 +184,10 @@ def test_analytics_light_uses_dedicated_l1_pool_not_route_offload():
     assert "run_in_executor(_get_fast_quote_executor()" not in text_chunk
     assert "run_in_executor(_get_route_offload_executor()" not in text_chunk
     assert srv.L1_LIGHT_EXECUTOR_MAX_WORKERS == 4
-    assert 'thread_name_prefix="ed_l1_light"' in src
+    # _get_l1_light_executor's own construction (the thread_name_prefix literal) lives in
+    # server.py, not in the moved route -- it has other callers and stayed put.
+    server_src = Path(srv.__file__).read_text(encoding="utf-8")
+    assert 'thread_name_prefix="ed_l1_light"' in server_src
 
 
 def test_rc243_bars_pool_is_sized_against_the_write_seam_not_the_api():
@@ -184,17 +198,15 @@ def test_rc243_bars_pool_is_sized_against_the_write_seam_not_the_api():
     SQLite's busy handler). The constant had NO test at all; this pins the ceiling and the
     reason, so a future edit must argue with the measurement rather than the old comment.
     """
-    import server as srv
-
-    assert srv.BARS_WORKERS <= 2, (
-        f"BARS_WORKERS={srv.BARS_WORKERS} — every worker contends for the single "
+    assert bars_loop.BARS_WORKERS <= 2, (
+        f"BARS_WORKERS={bars_loop.BARS_WORKERS} — every worker contends for the single "
         f"db._TIER1_SNAPSHOT_WRITE_LOCK; raising it adds queueing, not throughput (RC-243)"
     )
-    assert srv.BARS_WORKERS >= 1, "the bar loop must keep at least one collector"
+    assert bars_loop.BARS_WORKERS >= 1, "the bar loop must keep at least one collector"
 
     # The pool must still be the ONE place the sweep fans out, under its own thread name, so
     # contention telemetry stays attributable per RC-166's diagnosis.
-    src = Path(srv.__file__).read_text(encoding="utf-8")
+    src = Path(bars_loop.__file__).read_text(encoding="utf-8")   # the loop's own home
     assert 'thread_name_prefix="ed_bars"' in src
     assert src.count("max_workers=BARS_WORKERS") == 1, (
         "a second bar pool would re-create the unbounded fan-in this row measured"

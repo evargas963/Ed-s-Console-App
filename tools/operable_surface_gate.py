@@ -131,7 +131,7 @@ def evaluate_operable_surface(
         inv = conn.execute(
             f"""
             SELECT COUNT(*) AS n,
-                   COALESCE(MAX(ABS(matched_snapshot_ts_utc - decision_ts_utc)), 0) AS max_gap,
+                   MAX(ABS(matched_snapshot_ts_utc - decision_ts_utc)) AS max_gap,
                    SUM(CASE WHEN ABS(matched_snapshot_ts_utc - decision_ts_utc) > ?
                             THEN 1 ELSE 0 END) AS gt59,
                    SUM(CASE WHEN ABS(matched_snapshot_ts_utc - decision_ts_utc) > ?
@@ -144,25 +144,27 @@ def evaluate_operable_surface(
             """,
             (MAX_ATTACH_GAP_SEC, BACKFILL_JOIN_TOL_SEC, MAX_ATTACH_GAP_SEC),
         ).fetchone()
-        attach_gt59 = int(inv["gt59"] or 0)
-        max_attach_gap = float(inv["max_gap"] or 0.0)
-        band_29_59 = int(inv["band_29_59"] or 0)
+        attach_gt59 = int(inv["gt59"] or 0)  # caps-ok: SQLite SUM over zero attached rows is NULL; with no attached rows there are exactly 0 rows with gap > 59s, a true count (G1 separately fails on unattached old rows)
+        # No attached rows -> no gap was measured: report None, not a 0.0s gap.
+        max_attach_gap = None if inv["max_gap"] is None else float(inv["max_gap"])
+        band_29_59 = int(inv["band_29_59"] or 0)  # caps-ok: same SUM-over-zero-rows NULL: zero attached rows means a true 0 in the 29-59s band (disclosure count)
 
         # Inversion: matched snapshot more than 59s away already counted;
         # signed extremes for disclosure.
         signed = conn.execute(
             f"""
             SELECT
-              COALESCE(MAX(matched_snapshot_ts_utc - decision_ts_utc), 0) AS max_pos,
-              COALESCE(MIN(matched_snapshot_ts_utc - decision_ts_utc), 0) AS max_neg
+              MAX(matched_snapshot_ts_utc - decision_ts_utc) AS max_pos,
+              MIN(matched_snapshot_ts_utc - decision_ts_utc) AS max_neg
             FROM calibration_decision_log
             WHERE calibration_trust='trusted'
               AND {operable}
               AND matched_snapshot_ts_utc IS NOT NULL
             """
         ).fetchone()
-        max_pos = float(signed["max_pos"] or 0.0)
-        max_neg = float(signed["max_neg"] or 0.0)
+        # Disclosure extremes: None when there are no attached rows to measure.
+        max_pos = None if signed["max_pos"] is None else float(signed["max_pos"])
+        max_neg = None if signed["max_neg"] is None else float(signed["max_neg"])
         inversions_gt59 = int(
             conn.execute(
                 f"""
@@ -206,7 +208,9 @@ def evaluate_operable_surface(
             ) <= 1e-9:
                 colocated += 1
         live_n = len(live_rows)
-        live_rate = (colocated / live_n) if live_n else 1.0
+        # Zero live decisions in the window -> the colocation rate is unmeasured (None),
+        # not a perfect 100%.
+        live_rate = (colocated / live_n) if live_n else None
 
         research_excluded = 0
         if _has_col(conn, "calibration_decision_log", "research_excluded"):
@@ -224,13 +228,17 @@ def evaluate_operable_surface(
             and inversions_gt59 == 0
         )
         g3 = attach_gt59 == 0
-        g4 = live_n == 0 or live_rate >= LIVE_COLOCATED_MIN_RATE
+        # G4 is None (unmeasured) when no live decision landed in the window: an empty live
+        # window cannot prove colocation, so it may not produce a *_CLEAN verdict.
+        g4 = None if live_rate is None else live_rate >= LIVE_COLOCATED_MIN_RATE
 
         sentinel_clean = old_missing_sentinel == 0
-        if g1 and g2 and g3 and g4:
+        if g1 and g2 and g3 and g4 is True:
             verdict = "OPERABLE_SURFACE_CLEAN"
-        elif sentinel_clean and g2 and g3 and g4 and not g1:
+        elif sentinel_clean and g2 and g3 and g4 is True and not g1:
             verdict = "SENTINEL_SURFACE_CLEAN"
+        elif g2 and g3 and g4 is None and (g1 or sentinel_clean):
+            verdict = "OPERABLE_SURFACE_G4_UNMEASURED" if g1 else "SENTINEL_SURFACE_G4_UNMEASURED"
         else:
             verdict = "OPERABLE_SURFACE_NOT_CLEAN"
 
@@ -274,7 +282,9 @@ def evaluate_operable_surface(
             "label_law": (
                 "OPERABLE_SURFACE_CLEAN requires all-ticker G1. "
                 "SENTINEL_SURFACE_CLEAN is allowed when only SPY/QQQ/IWM G1 holds; "
-                "never call that OPERABLE_SURFACE_CLEAN."
+                "never call that OPERABLE_SURFACE_CLEAN. "
+                "*_G4_UNMEASURED means G1-G3 held but no live decision landed in the "
+                "last-30m window, so colocation (G4) was not proven; it is not CLEAN."
             ),
         }
     finally:

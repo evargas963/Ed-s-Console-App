@@ -36,14 +36,18 @@ def main() -> int:
 
     r = scan_db(args.db)
     d = result_to_dict(r)
-    ok = d["missing_forward_bar_count"] == 0 and d["off_grid_price_bars_1m"] == 0
+    # Zero defects over zero scanned anchors is not a pass: an empty or unreadable grid would
+    # otherwise certify itself. Require that the scan actually examined snapshots.
+    scanned = int(d["snapshots_bar_anchor_total"])
+    d["canonical_1m_grid_scanned_anchor_rows"] = scanned
+    ok = scanned > 0 and d["missing_forward_bar_count"] == 0 and d["off_grid_price_bars_1m"] == 0
     d["canonical_1m_grid_gate_pass"] = ok
     d["note"] = (
         "missing_anchor_count reflects snapshots with ts_utc before any price_bars_1m bar_end for that ticker; "
         "not part of the forward-grid defect class."
     )
     print(json.dumps(d, indent=2))
-    return 0 if ok else 1
+    return 0 if ok else 1  # caps-ok: exit code IS the gate verdict (1 = fail)
 
 
 if __name__ == "__main__":

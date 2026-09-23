@@ -43,8 +43,13 @@ def test_stack_wiring_integrity_map_ingests_all_17_findings():
 def test_server_py_diag_markers_renamed_post_ed_db_hoist():
     import server
 
-    src = inspect.getsource(server._fetch_state)
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): this
+    # diag-marker pair moved out of _fetch_state's own body into
+    # _db_counts_and_crosses_for_state, extracted verbatim -- caught here by
+    # running the full suite rather than a curated batch.
+    src = inspect.getsource(server._db_counts_and_crosses_for_state)
     assert '_diag_step("pre_db_counts", ticker)' in src
     assert '_diag_done("db_counts", ticker)' in src
-    assert '_diag_step("pre_get_db", ticker)' not in src
-    assert '_diag_done("get_db", ticker)' not in src
+    full_src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
+    assert '_diag_step("pre_get_db", ticker)' not in full_src
+    assert '_diag_done("get_db", ticker)' not in full_src

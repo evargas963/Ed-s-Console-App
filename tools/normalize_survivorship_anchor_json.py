@@ -16,7 +16,8 @@ from canonical_distances import canonicalize_distance_read
 def main() -> None:
     p = ROOT / "data" / "survivorship_multi_anchor_20.json"
     data = json.loads(p.read_text(encoding="utf-8"))
-    for a in data.get("anchors_used", []):
+    # The artifact without anchors_used is the wrong file; do not rewrite it as a silent no-op.
+    for a in data["anchors_used"]:
         nad, nbd = canonicalize_distance_read(
             float(a["nearest_above_dist"]) if a.get("nearest_above_dist") is not None else None,
             float(a["nearest_below_dist"]) if a.get("nearest_below_dist") is not None else None,

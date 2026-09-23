@@ -194,20 +194,3 @@ def chart_ticker_path_violations(src: str) -> list[tuple[int, str]]:
         + ", ".join(missing)
         + " — enrolled Chart rotation must stay ticker-parameterized (RC-160)",
     )]
-
-
-def experiment_tool_paths(repo: Path) -> list[Path]:
-    """Experiment / liquidity study tools whose ticker defaults are policed."""
-    tools = repo / "tools"
-    if not tools.is_dir():
-        return []
-    out: list[Path] = []
-    for p in sorted(tools.glob("liquidity_*.py")):
-        out.append(p)
-    for p in sorted(tools.glob("*_experiment*.py")):
-        if p not in out:
-            out.append(p)
-    for p in sorted(tools.glob("lp01_*.py")):
-        if p not in out:
-            out.append(p)
-    return out

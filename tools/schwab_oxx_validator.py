@@ -206,7 +206,7 @@ def validate_register_messages(
             disp = (row.get("disposition") or "").strip()
             if not disp.startswith("GOVERNED_EXCEPTION"):
                 continue
-            rid = row.get("register_id", "")
+            rid = row.get("register_id")  # message label; a missing id prints as None
             dm = DISP_OXX.search(disp)
             if not dm:
                 msgs.append(
@@ -264,13 +264,18 @@ def main(argv: list[str] | None = None) -> int:
     if not args.operator_register.is_file():
         print(f"Missing {args.operator_register}", file=sys.stderr)
         return 2
+    # Both row validators return [] (no findings) for an absent register CSV; without this
+    # check a missing --register file exited 0, i.e. "validated clean" with nothing read.
+    if not args.register.is_file():
+        print(f"Missing {args.register}", file=sys.stderr)
+        return 2
     msgs = []
     if not args.replaced_perf_only:
         msgs.extend(validate_register_messages(args.register, args.operator_register))
     msgs.extend(validate_replaced_perf_bindings(args.register, args.perf_dir))
     for m in msgs:
         print(m, file=sys.stderr)
-    return 1 if msgs else 0
+    return 1 if msgs else 0  # caps-ok: scanner false positive: process exit code (1 when any validation message, else 0), not a value default
 
 
 if __name__ == "__main__":

@@ -88,13 +88,13 @@ class Check:
 
     @property
     def pct(self) -> float:
-        return 100.0 * self.violations / self.total if self.total else 0.0
+        return 100.0 * self.violations / self.total if self.total else 0.0  # caps-ok: 0 rows means 0 violations were counted (0 of 0); an empty price_bars_1m is failed separately by run_bars_present_check, and staging may be empty by design
 
     @property
     def passed(self) -> bool:
         if self.error:
             return False
-        return self.pct <= self.max_pct if self.max_pct else self.violations == 0
+        return self.pct <= self.max_pct if self.max_pct else self.violations == 0  # caps-ok: documented field contract (max_pct 0 => any violation fails): a rate-capped rule uses pct, every other rule requires zero violations
 
 
 BAR_RULES: list[tuple[str, str, str, float]] = [
@@ -202,7 +202,7 @@ def run_wal_size_check(con: sqlite3.Connection) -> Check:
     wal = db_path + "-wal"
     if not os.path.exists(wal):
         return c                       # no WAL file: nothing to outgrow
-    db_size = os.path.getsize(db_path) or 1
+    db_size = os.path.getsize(db_path) or 1  # caps-ok: a 0-byte main DB beside a WAL makes the share enormous, so this check FAILS -- the correct verdict for a 0-byte database
     wal_size = os.path.getsize(wal)
     share = 100.0 * wal_size / db_size
     c.violations = 0 if share <= WAL_MAX_PCT_OF_DB else 1
@@ -260,8 +260,33 @@ def run_capacity_checks(db_path: str) -> list[Check]:
     return [c]
 
 
+def run_bars_present_check(con: sqlite3.Connection, tables: set[str]) -> Check:
+    """COMPLETENESS: the canonical bar table must exist and hold rows.
+
+    Every bar rule counts violations, so a missing or empty price_bars_1m would otherwise
+    report zero violations everywhere and read as healthy. (The staging table is a landing
+    table and may legitimately be empty, so it is not required here.)
+    """
+    c = Check("COMPLETENESS", "price_bars_1m exists and holds bars", SRC_DAMA, total=1)
+    if "price_bars_1m" not in tables:
+        c.violations = 1
+        c.error = "price_bars_1m table missing"
+        return c
+    try:
+        # session-universe-ok: a presence probe over the whole table (every session stored by design) -- no RTH assumption, no measurement
+        has_row = con.execute("select 1 from price_bars_1m limit 1").fetchone() is not None
+    except sqlite3.Error as exc:
+        c.violations = 1
+        c.error = str(exc)[:80]
+        return c
+    if not has_row:
+        c.violations = 1
+        c.error = "price_bars_1m is empty"
+    return c
+
+
 def collect(db_path: str) -> list[Check]:
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     try:
         tables = {r[0] for r in con.execute(
             "select name from sqlite_master where type='table'")}
@@ -269,6 +294,7 @@ def collect(db_path: str) -> list[Check]:
         for table in ("price_bars_1m", "price_bars_1m_staging"):
             if table in tables:
                 checks += run_bar_checks(con, table)
+        checks.append(run_bars_present_check(con, tables))
         checks += run_pragma_checks(con)
     finally:
         con.close()
@@ -326,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(
             f"db-health: {args.db} not found"
             f"{' (explicit --db)' if explicit else ' -- nothing to check'}\n")
-        return 2 if explicit else 0
+        return 2 if explicit else 0  # caps-ok: documented contract in the comment above: an absent DEFAULT DB (fresh clone/CI) is reported on stderr and exits 0; repo_scoreboard.row_db checks existence first and shows UNMEASURED; an explicit --db that is absent exits 2
     try:
         checks = collect(args.db)
     except sqlite3.Error as exc:
@@ -339,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
             "dimension": c.dimension, "rule": c.rule, "violations": c.violations,
             "total": c.total, "pct": round(c.pct, 4), "passed": c.passed,
             "error": c.error, "source": c.source} for c in checks], indent=2))
-        return 1 if failed else 0
+        return 1 if failed else 0  # caps-ok: exit code IS the verdict: 1 when any check failed
 
     print(f"DATABASE HEALTH — {os.path.basename(args.db)} "
           f"({os.path.getsize(args.db) / 1073741824:.1f} GB)")
@@ -355,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"    [{'PASS' if c.passed else 'FAIL'}] {c.rule}{detail}")
     print(f"\n  {len(checks) - len(failed)} pass · {len(failed)} fail")
     print(f"  sources: {SRC_DAMA} · {SRC_OHLC} · {SRC_WAL} · {SRC_VAC}")
-    return 1 if failed else 0
+    return 1 if failed else 0  # caps-ok: exit code IS the verdict: 1 when any check failed
 
 
 if __name__ == "__main__":

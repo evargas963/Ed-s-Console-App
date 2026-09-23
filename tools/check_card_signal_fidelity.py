@@ -93,8 +93,8 @@ def _answer_questions(
             "Yes on short horizons — fusion LONG while horizon_prob_bars favor DOWN on 1m/5m at many decline samples"
         ),
         "16_longer_horizons_forward_returns": {
-            "1c_hit_rate": (spy.get("horizon_metrics") or {}).get("1c", {}).get("direction_hit_rate"),
-            "60c_hit_rate": (spy.get("horizon_metrics") or {}).get("60c", {}).get("direction_hit_rate"),
+            "1c_hit_rate": (spy.get("horizon_metrics") or {}).get("1c", {}).get("direction_hit_rate"),  # caps-ok: a missing metrics block yields None (no hit rate), never a number
+            "60c_hit_rate": (spy.get("horizon_metrics") or {}).get("60c", {}).get("direction_hit_rate"),  # caps-ok: a missing metrics block yields None (no hit rate), never a number
         },
         "17_all_plan_non_tradeable_while_horizons_long": (spy.get("answers") or {}).get(
             "all_plan_non_tradeable_while_horizons_long"
@@ -193,7 +193,7 @@ def run_card_signal_fidelity_audit(
 
     return {
         "meta": {
-            **integrity.get("meta", {}),
+            **integrity["meta"],  # run_direction_integrity_audit always writes meta (date, db_path, ...)
             "audit_type": "card_signal_fidelity_and_provenance",
             "branch": "audit/card-signal-fidelity-and-provenance",
             "read_only": True,
@@ -326,17 +326,28 @@ def format_markdown(report: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Card signal fidelity + provenance audit")
     ap.add_argument("--date", required=True)
-    ap.add_argument("--tickers", nargs="+", default=["SPY"])
+    # RC-160 (found when universal_ticker_scope went repo-wide, 2026-09-23): the default was
+    # ["SPY"] -- a sentinel subset framed as the audit. Omitted now means the enrolled universe.
+    ap.add_argument("--tickers", nargs="+", default=None,
+                    help="default: the enrolled logging universe")
     ap.add_argument("--db", type=Path, default=Path(DB_PATH))
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--markdown", type=Path, default=None)
     ap.add_argument("--sample-stride", type=int, default=5)
     ap.add_argument("--min-decline-minutes", type=int, default=30)
     args = ap.parse_args(argv)
+    tickers = args.tickers
+    if not tickers:
+        from db import EdDB
+
+        tickers = list(EdDB(str(args.db)).logging_universe_authoritative_tickers())
+        if not tickers:
+            print("no enrolled tickers in the logging universe; pass --tickers", file=sys.stderr)
+            return 2
 
     report = run_card_signal_fidelity_audit(
         day=datetime.date.fromisoformat(args.date.strip()),
-        tickers=[t.upper() for t in args.tickers],
+        tickers=[t.upper() for t in tickers],
         db_path=args.db,
         sample_stride=max(1, args.sample_stride),
         min_decline_minutes=max(15, args.min_decline_minutes),

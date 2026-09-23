@@ -435,7 +435,7 @@ def test_base_materialize_does_not_touch_guest_ticker(tmp_path: Path):
     mat = materialize_base_money_path_tickers(db.db_path)
     assert not mat.get("errors")
     assert "SPY" in mat["by_ticker"]
-    assert "NVDA" not in mat.get("by_ticker", {})
+    assert "NVDA" not in mat["by_ticker"]
     with db._connect() as conn:
         nvda_norm = conn.execute(
             "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE ticker='NVDA'"
@@ -751,14 +751,19 @@ def test_logger_full_fetch_when_no_live_operator_mode(monkeypatch):
 
 
 def test_step3_bars_and_outcomes_ride_snapshot_throttle():
-    """upsert_1m_bars + fill_outcomes submit must sit inside the _do_insert throttle."""
+    """upsert_1m_bars + fill_outcomes submit must sit inside the _do_insert throttle.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): this whole
+    block moved from _fetch_state's own body into _post_publish_persistence_tail,
+    promoted to a module-level function; checked against that function's own source
+    now instead."""
     import inspect
 
     import server as srv
 
-    src = inspect.getsource(srv._fetch_state)
+    src = inspect.getsource(srv._post_publish_persistence_tail)
     marker = src.find("bars persist + outcome backfill ride")
-    assert marker != -1, "Step 3 throttle block missing from _fetch_state"
+    assert marker != -1, "Step 3 throttle block missing from _post_publish_persistence_tail"
     # Anchor on the guard itself, not a fixed-size window: the lane-4 CSV-first
     # declaration comment sits between the Step 3 comment and the guard, and any
     # future comment growth must not break this lock's semantic assertion.
@@ -810,7 +815,7 @@ def test_console_ml_scheduler_is_opt_in():
     src = (_P(__file__).resolve().parent.parent / "server.py").read_text(
         encoding="utf-8", errors="replace"
     )
-    gate = src.find('os.environ.get("ED_ENABLE_BACKGROUND_SCHEDULER", "0")')
+    gate = src.find('os.environ.get("ED_ENABLE_BACKGROUND_SCHEDULER", "0")')  # caps-ok: scanner false positive: literal searched for in server.py source to prove the scheduler gate defaults OFF
     assert gate != -1, "scheduler opt-in gate missing (default must be OFF)"
     start = src.find("start_background_scheduler()")
     assert start != -1

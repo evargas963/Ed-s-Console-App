@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         from db import configure_sqlite_connection
@@ -265,15 +265,16 @@ def run_audit(db_path: Path) -> dict[str, Any]:
                 get_snapshot_sql("calibration/audit_phase1.py:245"),
                 (CANONICAL_TIMEFRAME,),
             ).fetchone()
-            n = int(oc["n"] or 0)
+            n = int(oc["n"])  # COUNT(*) is never NULL
             nr_gate = bucket_gate(n, MIN_SAMPLES_STATISTICAL)
             out["outcome_label_integrity"]["row_count_1m"] = n
             if nr_gate["sufficient_sample"]:
+                # n >= MIN_SAMPLES_STATISTICAL here, so each SUM(CASE ...) is non-NULL.
                 out["outcome_label_integrity"]["null_rates"] = {
-                    "outcome_1c": float(oc["o1_null"] or 0) / max(n, 1),
-                    "outcome_5c": float(oc["o5_null"] or 0) / max(n, 1),
-                    "outcome_15c": float(oc["o15_null"] or 0) / max(n, 1),
-                    "outcome_60c": float(oc["o60_null"] or 0) / max(n, 1),
+                    "outcome_1c": float(oc["o1_null"]) / n,
+                    "outcome_5c": float(oc["o5_null"]) / n,
+                    "outcome_15c": float(oc["o15_null"]) / n,
+                    "outcome_60c": float(oc["o60_null"]) / n,
                 }
             else:
                 out["outcome_label_integrity"]["null_rates"] = {
@@ -289,14 +290,14 @@ def run_audit(db_path: Path) -> dict[str, Any]:
                 (CANONICAL_TIMEFRAME,),
             ).fetchone()
             out["outcome_label_integrity"]["suspect_up_negative_pts_gt_0_25"] = int(
-                weird["c"] or 0
+                weird["c"]  # COUNT(*) is never NULL
             )
             weird2 = conn.execute(
                 get_snapshot_sql("calibration/audit_phase1.py:276"),
                 (CANONICAL_TIMEFRAME,),
             ).fetchone()
             out["outcome_label_integrity"]["suspect_down_positive_pts_gt_0_25"] = int(
-                weird2["c"] or 0
+                weird2["c"]  # COUNT(*) is never NULL
             )
             out["outcome_label_integrity"]["forward_leakage_note"] = (
                 "Labels are filled by db.fill_outcomes / horizon_outcomes forward-bar contract; "
@@ -310,21 +311,26 @@ def run_audit(db_path: Path) -> dict[str, Any]:
                 get_snapshot_sql("calibration/audit_phase1.py:structural_completeness"),
                 (CANONICAL_TIMEFRAME,),
             ).fetchone()
-            nn = int(st["n"] or 0)
+            nn = int(st["n"])  # COUNT(*) is never NULL
             st_gate = bucket_gate(nn, MIN_SAMPLES_STATISTICAL)
             if st_gate["sufficient_sample"] and nn > 0:
-                zn = float(st["zone_null"] or 0) / nn
-                vn = float(st["vwap_null"] or 0) / nn
+                # nn > 0 here, so each SUM(CASE ...) is non-NULL.
+                zn = float(st["zone_null"]) / nn
+                vn = float(st["vwap_null"]) / nn
             else:
                 zn = vn = None
+            # SQLite SUM() over an empty set is NULL; the number of violating rows among zero
+            # rows is exactly 0, so only the nn == 0 case maps to 0 (rows: 0 is reported beside it).
+            above_neg = int(st["above_neg"]) if nn > 0 else 0
+            below_neg = int(st["below_neg"]) if nn > 0 else 0
             out["structural_field_completeness"] = {
                 "rows": nn,
                 "zone_null_rate": zn,
                 "vwap_side_null_rate": vn,
                 "structural_null_rates_sample_gate": st_gate,
-                "nearest_above_dist_negative_count": int(st["above_neg"] or 0),
-                "nearest_below_dist_negative_count": int(st["below_neg"] or 0),
-                "canonical_option_a_violation": (int(st["above_neg"] or 0) + int(st["below_neg"] or 0)) > 0,
+                "nearest_above_dist_negative_count": above_neg,
+                "nearest_below_dist_negative_count": below_neg,
+                "canonical_option_a_violation": (above_neg + below_neg) > 0,
             }
 
         # ── 6. Symbol normalization ────────────────────────────────────

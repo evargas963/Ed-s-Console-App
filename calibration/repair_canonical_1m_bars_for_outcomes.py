@@ -29,17 +29,8 @@ from calibration.db_guard import register_allow_noncanonical_flag, require_canon
 from calibration.paths import DEFAULT_DB
 from db_authority import is_canonical_db_path
 
-try:
-    from db import EdDB, configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.EdDB / configure_sqlite_connection not available — governed outcome refresh disabled: %s",
-        e,
-    )
-    EdDB = None  # type: ignore[misc, assignment]
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db import EdDB
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 from instrument_identity import ticker_storage_key
 
@@ -149,19 +140,6 @@ def repair_snapshot_horizon_bars(
         refresh_status = "skipped_dry_run"
         conn.close()
     else:
-        if EdDB is None:
-            conn.rollback()
-            conn.close()
-            return {
-                "error": "outcome_refresh_unavailable_eddb_import_failed",
-                "snapshot_id": snapshot_id,
-                "ticker": raw_ticker,
-                "ticker_key": tkr,
-                "planned_inserted_bar_starts": inserted,
-                "governed_outcome_refresh_rows": 0,
-                "governed_outcome_refresh_status": "skipped_eddb_unavailable",
-                "note": "gap-fill inserts rolled back — governed outcome refresh requires db.EdDB",
-            }
         conn.commit()
         conn.close()
         edb = EdDB(

@@ -53,7 +53,7 @@ def compute_l2_version(ent: Optional[dict[str, Any]]) -> int:
     if not ent:
         return 0
     try:
-        return int(ent.get("analytics_version") or 0)
+        return int(ent.get("analytics_version") or 0)  # caps-ok: 0 is the repo-wide "no analytics version yet" generation sentinel (analytics_bg_recompute seeds L2 entries with 0); it is a cache-key/version counter, not a market value
     except (TypeError, ValueError):
         return 0
 

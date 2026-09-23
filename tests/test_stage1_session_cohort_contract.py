@@ -40,9 +40,11 @@ def test_rth_integrity_contradiction_is_detected_and_disclosed():
     assert a["canonical_ts_utc_authority_present"] is True
     assert a["contradiction_present"] is True
     assert a["live_cohort_stored_clock_rth_sites"], "expected live stored-clock RTH sites"
-    # both db.py and audit_model_readiness.py must appear
+    # both db_model_accuracy.py (EdDB.compute_accuracy's rth_clause, moved out of db.py in
+    # a db.py decomposition slice -- RC-REHAB-1 2026-09-22) and audit_model_readiness.py
+    # must appear
     joined = " ".join(a["live_cohort_stored_clock_rth_sites"])
-    assert "db.py" in joined and "audit_model_readiness.py" in joined
+    assert "db_model_accuracy.py" in joined and "audit_model_readiness.py" in joined
     contract = _load("session_cohort_contract_v1.json")
     assert contract["rth_integrity_contradiction"]["status"].startswith("OPEN")
 
@@ -108,7 +110,7 @@ def test_stage2_eligibility_is_experiment_eligible_and_empty(monkeypatch):
     reg = load_registry()
     eligible = stage2_eligible_targets(reg)
     assert eligible == []
-    assert targets_by_status(reg).get("EXPERIMENT_ELIGIBLE", []) == []
+    assert targets_by_status(reg).get("EXPERIMENT_ELIGIBLE", []) == []  # caps-ok: the assertion is that NO target is experiment-eligible; targets_by_status only creates keys for statuses that occur, so a missing key is exactly the asserted outcome
     contract = _load("stage2_experiment_contract_v1.json")
     assert contract["eligible_targets"]["currently_eligible"] == eligible
     # the rule must name the fail-closed selection function

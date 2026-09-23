@@ -87,6 +87,12 @@ def test_training_and_serving_lanes_use_the_one_micro_producer():
     root = Path(__file__).resolve().parents[1]
     for mod in ("lstm_data.py", "ml_scheduler.py", "ml_predict.py"):
         text = (root / mod).read_text(encoding="utf-8")
+        if mod == "ml_scheduler.py":
+            # RC-REHAB-1 (2026-09-22): every micro_reference_spot_from_window call site in
+            # ml_scheduler.py was in the cascade-training cluster, which moved to
+            # ml_scheduler_cascade_train.py (final slice of the ml_scheduler.py
+            # decomposition) -- same code, different file.
+            text += (root / "ml_scheduler_cascade_train.py").read_text(encoding="utf-8")
         assert "micro_reference_spot_from_window" in text, mod
         assert "_safe_float(micro" not in text, mod
 

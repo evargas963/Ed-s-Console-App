@@ -491,7 +491,7 @@ def classify_regime(
 
     # Get micro regime from the RulesCard's micro object
     micro = getattr(rules, "micro", None)
-    micro_regime = getattr(micro, "regime", "UNKNOWN") if micro else "UNKNOWN"
+    micro_regime = getattr(micro, "regime", "UNKNOWN") if micro else "UNKNOWN"  # caps-ok: "UNKNOWN" is micro_structure.R_UNKNOWN, the explicit no-micro-read regime; the family scorers give it no directional support (regime_direction -> neutral)
 
     # ── Score all 8 regime families ───────────────────────────────────────────
     scores = {}
@@ -523,7 +523,7 @@ def classify_regime(
     scores[R_REVERSAL_PRONE] = s; all_support[R_REVERSAL_PRONE] = sup; all_contra[R_REVERSAL_PRONE] = con
 
     # ── Determine primary regime (highest score) ──────────────────────────────
-    primary_score = max(scores.values()) if scores else 0.0
+    primary_score = max(scores.values()) if scores else 0.0  # caps-ok: no scored family -> 0.0, which the very next line turns into _unknown_regime() (fail-closed), never a regime
     if primary_score <= 0:
         return _unknown_regime()
 

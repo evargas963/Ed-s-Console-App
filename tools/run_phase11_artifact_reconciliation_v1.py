@@ -25,17 +25,19 @@ def main() -> int:
         and r.get("policy_status") == "POLICY_ELIGIBLE"
     )
     # Policy-active execution horizons are the edge-positive set from Phase 9 remediation.
-    policy_active_horizons = sorted(set(phase9.get("edge_positive_horizons", [])), key=lambda x: int(x[:-1]))
+    # Upstream producers always write these keys; a missing key is a wrong/foreign artifact and
+    # must fail loudly, not reconcile against an empty horizon/threshold/inventory set.
+    policy_active_horizons = sorted(set(phase9["edge_positive_horizons"]), key=lambda x: int(x[:-1]))
     horizons = list(policy_active_horizons)
 
     # Threshold inventory for movement gating.
     move_thresholds = {}
-    for r in phase8.get("thresholds", []):
+    for r in phase8["thresholds"]:
         if r.get("head") != "move":
             continue
-        hz = str(r.get("horizon", ""))
+        hz = str(r["horizon"])
         cur = move_thresholds.get(hz)
-        if cur is None or float(r.get("edge_delta") or 0.0) > float(cur.get("edge_delta") or 0.0):
+        if cur is None or float(r["edge_delta"]) > float(cur["edge_delta"]):
             move_thresholds[hz] = r
 
     # True minimum live dependency contract:
@@ -68,9 +70,9 @@ def main() -> int:
                     "policy_active_horizon": hz in policy_active_horizons,
                     "edge_positive_horizon": hz in policy_active_horizons,
                     "has_threshold": bool(move_thresholds.get(hz)) if head == "move" else False,
-                    "has_calibration_mapping": bool(phase8.get("final_calibration_functions", {}).get("move", {}).get(hz))
+                    "has_calibration_mapping": bool(phase8["final_calibration_functions"]["move"].get(hz))
                     if head == "move"
-                    else bool(phase8.get("final_calibration_functions", {}).get("dir", {}).get(hz)),
+                    else bool(phase8["final_calibration_functions"]["dir"].get(hz)),
                     "exists": p.is_file() and m.is_file(),
                     "artifact_path": str(p.resolve()),
                     "meta_path": str(m.resolve()),
@@ -168,7 +170,7 @@ def main() -> int:
     # Root-cause classification for the historical "missing 115" from old inventory.
     root_causes = []
     ready_map = {r["ticker"]: r for r in readiness["tickers"]}
-    for r in old_inventory.get("rows", []):
+    for r in old_inventory["rows"]:
         if r.get("native_model_present_y"):
             continue
         t = r.get("ticker")

@@ -28,7 +28,6 @@ Truthy for most flags: `1`, `true`, `yes`, `on` (case-insensitive). Falsy: `0`, 
 | `ED_CONSOLE_PORT` | `8000` | HTTP port (reload URL derivation) |
 | `ED_CONSOLE_RELOAD_URL` | derived | `POST` target for model registry reload after promote |
 | `ED_CONSOLE_RELOAD_TOKEN` | empty | Optional Bearer token for reload route |
-| `ED_ALLOW_ACTIVE_SYNC` | `0` | Request-path active mutation (G4-1; keep off) |
 | `ED_CONSOLE_ALLOW_PRED_OVERRIDE` | off | Allow prediction override paths |
 | `ED_VIEWER_SSE_REFRESH_SEC` | `1.0` | Viewer SSE interval |
 | `ED_VIEWER_STATE_CACHE_TTL_SEC` | `1.0` | State cache TTL |
@@ -85,7 +84,7 @@ Truthy for most flags: `1`, `true`, `yes`, `on` (case-insensitive). Falsy: `0`, 
 | `ED_PREDICT_ENRICHMENT` | `1` | Cold-path UI enrichment |
 | `ED_MH_EMPIRICAL_SUPPORT` | `0.15` | Multi-horizon empirical weight |
 | `ED_MH_FALLBACK_CANONICAL_BLEND` | `0.0` | MH fallback blend |
-| `ED_SIGNAL_LAYER_FUSION_BLEND` | `0.38` | Signal-layer fusion blend |
+| `ED_SIGNAL_LAYER_FUSION_BLEND` | `0.0` | Signal-layer fusion blend — `tools/check_env_override_hardening.py` classifies this `governance_sensitive` and enforces it must stay `0.0` in production (corrected 2026-09-18; was stale at `0.38`, an already-superseded doc's original stated default that never matched code) |
 
 ## Calibration and ops
 

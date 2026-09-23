@@ -155,7 +155,7 @@ def test_setup_readiness_no_false_positive_on_no_alignment():
         "near_support": True,
         "breakout_ready": False,
     })
-    cs = out["component_scores"].get("confluence_score", 15)
+    cs = out["component_scores"]["confluence_score"]
     assert cs <= 7, (
         "neutral confluence text must not score as 'aligned'; got confluence_score=%s" % cs
     )

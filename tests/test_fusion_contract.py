@@ -70,7 +70,7 @@ def test_is_ms_dict_fusion_authoritative_provenance_gate():
         is_ms_dict_fusion_authoritative(
             {
                 "fusion_available": True,
-                "canonical_provenance": next(iter(TRADABLE_CANONICAL_PROVENANCE)),
+                "canonical_provenance": next(iter(TRADABLE_CANONICAL_PROVENANCE)),  # caps-ok: scanner false positive: next(iter(set)) with NO default picks a real member of the tradable set and raises if the set were empty
                 "stack_directional_authorized": True,
             }
         )

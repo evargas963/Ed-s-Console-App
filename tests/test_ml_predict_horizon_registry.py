@@ -28,7 +28,10 @@ def test_all_governed_horizons_have_distinct_keys():
 
 def _valid_xgb_meta(features: list[str]) -> dict:
     im = {f: 0.0 for f in features}
-    return {**contract_metadata_dict(), "features": features, "impute_medians": im}
+    # category_maps / vol_medians: always written by ml_train.train_ticker and now required
+    # by ml_predict._load_xgb (CAPS RC-REHAB-1 -- no silent {} default).
+    return {**contract_metadata_dict(), "features": features, "impute_medians": im,
+            "category_maps": {}, "vol_medians": {}}
 
 
 def test_distinct_xgb_models_per_horizon(tmp_path, monkeypatch):

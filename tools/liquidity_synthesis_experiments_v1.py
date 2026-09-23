@@ -88,7 +88,7 @@ def _rows(con: sqlite3.Connection, ticker: str) -> list[dict]:
             "dt": dt,
             "datetime": int(float(ts) * 1000),  # engine timestamp authority (same as LP-01)
             "open": float(o), "high": float(h), "low": float(l),
-            "close": float(c), "volume": float(v or 0.0),
+            "close": float(c), "volume": None if v is None else float(v),
             "min_of_day": dt.hour * 60 + dt.minute,
         })
     return out
@@ -112,19 +112,19 @@ def _levels_for_session(all_bars: list[dict], sess: date) -> dict[str, float]:
             if v is not None and isinstance(v, (int, float)) and math.isfinite(float(v))}
 
 
-def _session_atr(sb: list[dict]) -> float:
+def _session_atr(sb: list[dict]) -> float | None:
     """ATR proxy = median RTH bar range for the session (known as session progresses;
     for labeling we use full-session median only for width *definitions of random zones*
     matched within the same session — for barrier targets we use *causal* ATR:
     median range of bars STRICTLY BEFORE the event index (fallback: first 30 bars)."""
     ranges = [b["high"] - b["low"] for b in sb if b["high"] > b["low"]]
-    return statistics.median(ranges) if ranges else 0.0
+    return statistics.median(ranges) if ranges else None  # unmeasurable ATR: callers skip
 
 
-def _causal_atr(sb: list[dict], i: int) -> float:
+def _causal_atr(sb: list[dict], i: int) -> float | None:
     window = sb[max(0, i - 30):i] or sb[: max(1, min(30, i + 1))]
     ranges = [b["high"] - b["low"] for b in window if b["high"] > b["low"]]
-    return statistics.median(ranges) if ranges else 0.0
+    return statistics.median(ranges) if ranges else None  # unmeasurable ATR: callers skip
 
 
 # ── Triple barrier (session-bound, no lookahead) ─────────────────────────────
@@ -136,7 +136,7 @@ def _triple_barrier(
     direction: int,
     zone_lo: float,
     zone_hi: float,
-    atr: float,
+    atr: float | None,
     horizon: int = HORIZON_MIN,
     k: float = K_ATR,
 ) -> dict:
@@ -148,7 +148,7 @@ def _triple_barrier(
     TIMEOUT: neither within horizon bars; never crosses session end.
     Entry = touch bar close. Costs ABSENT.
     """
-    if atr <= 0 or i >= len(sb) - 1:
+    if atr is None or atr <= 0 or i >= len(sb) - 1:
         return {"label": None, "reward_risk": None}
     entry = sb[i]["close"]
     width = max(zone_hi - zone_lo, 1e-9)
@@ -304,12 +304,12 @@ def _scan_zone_touches(
     *,
     ticker: str,
     sess: str,
-    atr_session: float,
+    atr_session: float | None,
     start_min: int = ORB_END_MIN,
     meta_extra: dict | None = None,
 ) -> list[dict]:
     """First-touch with re-arm; direction from prior close vs zone mid."""
-    if atr_session <= 0 or not zones:
+    if atr_session is None or atr_session <= 0 or not zones:
         return []
     rearm = atr_session * REARM_ATR_MULT
     armed = [True] * len(zones)
@@ -337,7 +337,7 @@ def _scan_zone_touches(
                     "direction": direction,
                     "zone_lo": z["lo"], "zone_hi": z["hi"],
                     "width": z["hi"] - z["lo"],
-                    "n_tags": z.get("n_tags"), "n_families": z.get("n_families"),
+                    "n_tags": z["n_tags"], "n_families": z["n_families"],
                     "families": z.get("families"), "tags": z.get("tags"),
                     "label": tb["label"], "reward_risk": tb["reward_risk"],
                     "bars": tb.get("bars"),
@@ -384,21 +384,21 @@ def exp_A_family_count(sessions: list[dict], rnd: random.Random) -> dict:
     def bucket(events, pred):
         return _summarize_labels([e for e in events if pred(e)])
 
-    real_hi = bucket(real_events, lambda e: (e.get("n_families") or 0) >= 2)
-    real_lo = bucket(real_events, lambda e: (e.get("n_families") or 0) == 1)
+    real_hi = bucket(real_events, lambda e: e["n_families"] >= 2)
+    real_lo = bucket(real_events, lambda e: e["n_families"] == 1)
     # Placebo "≥2 families" under shuffled labels
-    p_hi = bucket(placebo_events, lambda e: (e.get("n_families") or 0) >= 2)
-    p_lo = bucket(placebo_events, lambda e: (e.get("n_families") or 0) == 1)
+    p_hi = bucket(placebo_events, lambda e: e["n_families"] >= 2)
+    p_lo = bucket(placebo_events, lambda e: e["n_families"] == 1)
 
     # Tag-count comparison on REAL arm only (descriptive) + family edge vs placebo hi
     by_tags = {}
     for tmin, tmax, name in ((1, 1, "tags_1"), (2, 2, "tags_2"), (3, 99, "tags_ge3")):
-        by_tags[name] = bucket(real_events, lambda e, a=tmin, b=tmax: a <= (e.get("n_tags") or 0) <= b)
+        by_tags[name] = bucket(real_events, lambda e, a=tmin, b=tmax: a <= e["n_tags"] <= b)
 
     # Primary test: family≥2 real vs family≥2 placebo (shuffled families)
     oos = _date_half_edge(
-        [e for e in real_events if (e.get("n_families") or 0) >= 2],
-        [e for e in placebo_events if (e.get("n_families") or 0) >= 2],
+        [e for e in real_events if e["n_families"] >= 2],
+        [e for e in placebo_events if e["n_families"] >= 2],
     )
     # Secondary: family≥2 vs family==1 on real (no placebo) — informational
     fam_edge = None
@@ -442,7 +442,7 @@ def exp_B_width_ev(sessions: list[dict], rnd: random.Random) -> dict:
         if not lv:
             continue
         atr = _session_atr(sb)
-        if atr <= 0:
+        if atr is None or atr <= 0:
             continue
         # Real: each causal level as center
         for wfrac in WIDTH_ATR_FRACS:
@@ -528,7 +528,7 @@ def exp_C_gamma_gate(con: sqlite3.Connection, tickers: list[str]) -> dict:
     by_tk = {r[0]: {"n_days": r[1], "min": r[2], "max": r[3]} for r in rows}
     n_total = sum(v["n_days"] for v in by_tk.values())
     # Need enough days to stratify barrier events; <20 sessions per sentinel → BLOCKED
-    min_days = min((by_tk.get(t, {}).get("n_days", 0) for t in tickers), default=0)
+    min_days = min((by_tk.get(t, {}).get("n_days", 0) for t in tickers), default=0)  # caps-ok: GROUP BY omits tickers with zero option_chain_morning_full rows, so an absent ticker truly has 0 days; default=0 for an empty ticker list; either way min_days<20 forces status BLOCKED (fail-closed)
     blocked = min_days < 20
     return {
         "id": "C_gamma_regime",
@@ -568,7 +568,7 @@ def _detect_order_blocks(sb: list[dict]) -> list[dict]:
         if sb[i]["min_of_day"] < RTH_OPEN_MIN or sb[i]["min_of_day"] >= RTH_CLOSE_MIN - OB_IMPULSE_BARS:
             continue
         atr = _causal_atr(sb, i)
-        if atr <= 0:
+        if atr is None or atr <= 0:
             continue
         need = OB_IMPULSE_ATR * atr
         o, h, l, c = sb[i]["open"], sb[i]["high"], sb[i]["low"], sb[i]["close"]
@@ -605,11 +605,11 @@ def _scan_formed_zones(
     *,
     ticker: str,
     sess: str,
-    atr_session: float,
+    atr_session: float | None,
     max_keep: int,
 ) -> list[dict]:
     """Touch scan for zones that become valid only after form_i; fixed bounce direction."""
-    if atr_session <= 0 or not zones:
+    if atr_session is None or atr_session <= 0 or not zones:
         return []
     # Limit per session by earliest formation
     zones = zones[:max_keep]
@@ -652,7 +652,7 @@ def exp_D_order_blocks(sessions: list[dict], rnd: random.Random) -> dict:
     for S in sessions:
         sb, tk, sess = S["sb"], S["ticker"], S["session"]
         atr = _session_atr(sb)
-        if atr <= 0:
+        if atr is None or atr <= 0:
             continue
         obs = _detect_order_blocks(sb)
         n_zones += len(obs)
@@ -719,7 +719,7 @@ def _detect_fvgs(sb: list[dict]) -> list[dict]:
         if sb[i]["min_of_day"] < RTH_OPEN_MIN or sb[i]["min_of_day"] >= RTH_CLOSE_MIN:
             continue
         atr = _causal_atr(sb, i)
-        if atr <= 0:
+        if atr is None or atr <= 0:
             continue
         min_gap = FVG_MIN_GAP_ATR * atr
         # bull
@@ -748,7 +748,7 @@ def exp_E_fvg(sessions: list[dict], rnd: random.Random) -> dict:
     for S in sessions:
         sb, tk, sess = S["sb"], S["ticker"], S["session"]
         atr = _session_atr(sb)
-        if atr <= 0:
+        if atr is None or atr <= 0:
             continue
         fvgs = _detect_fvgs(sb)
         n_zones += len(fvgs)
@@ -803,7 +803,7 @@ def exp_E_fvg(sessions: list[dict], rnd: random.Random) -> dict:
 def _load_sessions(
     tickers: list[str], limit_sessions: int | None,
 ) -> tuple[list[dict], dict, dict]:
-    con = sqlite3.connect(f"file:{canonical_console_db_path()}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{canonical_console_db_path()}?mode=ro", uri=True, timeout=30.0)
     sessions: list[dict] = []
     bar_counts = {}
     date_min, date_max = None, None

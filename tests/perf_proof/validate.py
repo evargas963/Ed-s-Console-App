@@ -38,7 +38,7 @@ def validate_perf_proof(doc: dict[str, Any]) -> list[str]:
     for bk in ("command", "iterations", "timings_ms", "median_ms"):
         if bk not in bench:
             errs.append(f"benchmark.{bk} required")
-    if bench.get("iterations", 0) < 1:
+    if bench.get("iterations", 0) < 1:  # caps-ok: a missing iterations key is already reported by the required-key loop above, and 0 < 1 appends a second error, so absence can never validate
         errs.append("benchmark.iterations must be >= 1")
     tms = bench.get("timings_ms")
     if not isinstance(tms, list) or len(tms) != bench.get("iterations"):

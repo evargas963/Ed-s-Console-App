@@ -15,6 +15,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SNAP_DIR = ROOT / "snapshot_sql"
 
+# RC-REHAB-1 (2026-09-22): matches tools/anti_pattern_sweep.py's SKIP_DIR_PARTS -- this
+# script never excluded vendored/generated trees, so it crashed on the first non-UTF-8
+# file rglob("*.py") happened to walk into inside .venv/site-packages. Not previously
+# caught because this script is manual/one-off, not CI/pre-commit-wired.
+_SKIP_DIR_PARTS = frozenset(
+    {".git", ".claude", "__pycache__", ".venv", "venv", "node_modules", ".pytest_cache"}
+)
+
 
 def _literal_sql_from_arg(arg: ast.expr) -> str | None:
     import re
@@ -33,8 +41,12 @@ def _literal_sql_from_arg(arg: ast.expr) -> str | None:
 def main() -> None:
     out: dict[str, str] = {}
     for path in sorted(ROOT.rglob("*.py")):
+        if _SKIP_DIR_PARTS & set(path.parts):
+            continue
         rel = path.relative_to(ROOT).as_posix()
-        if rel == "db.py" or "__pycache__" in rel:
+        # RC-REHAB-1 (2026-09-22): the sql_* builders moved to db_sql_fragments.py
+        # (db.py decomposition follow-up) -- same exemption, new home.
+        if rel in ("db.py", "db_sql_fragments.py"):
             continue
         try:
             src = path.read_text(encoding="utf-8")
@@ -56,7 +68,7 @@ def main() -> None:
             sql = _literal_sql_from_arg(node.args[0])
             if not sql:
                 continue
-            key = f"{rel}:{getattr(node, 'lineno', 0)}"
+            key = f"{rel}:{getattr(node, 'lineno', 0)}"  # caps-ok: ast.Call parsed from source always carries lineno; the default is unreachable
             out[key] = sql
 
     SNAP_DIR.mkdir(parents=True, exist_ok=True)
@@ -68,7 +80,12 @@ def main() -> None:
         except (json.JSONDecodeError, OSError):
             pass
     merged.update(out)
-    target.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # newline="" -- write_text's platform-default newline translation flips this file's LF
+    # convention to CRLF on Windows (RC-382 eol-style-invariant caught it), obscuring the
+    # real diff under a spurious terminator-only change on every regeneration.
+    target.write_text(
+        json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline=""
+    )
     print(f"Wrote {len(out)} new entries ({len(merged)} total) to {target}", file=sys.stderr)
 
 

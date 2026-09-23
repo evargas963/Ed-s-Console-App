@@ -49,7 +49,7 @@ _build_generation_cache: dict[str, Optional[str]] = {}
 
 
 def resolve_build_generation() -> Optional[str]:
-    env = os.environ.get("ED_BUILD_GENERATION", "").strip()
+    env = os.environ.get("ED_BUILD_GENERATION", "").strip()  # caps-ok: unset/blank env var means "no override" and falls through to the git-SHA fingerprint (documented above); "" is never written as a generation
     if env:
         return env
     if "git_sha" not in _build_generation_cache:
@@ -115,7 +115,7 @@ def calibration_logging_enabled() -> bool:
     at boot when this returns False, so the operator can't restart into a
     silent-skip state without seeing it.
     """
-    return os.environ.get("ED_CALIBRATION_LOG", "").strip().lower() in (
+    return os.environ.get("ED_CALIBRATION_LOG", "").strip().lower() in (  # caps-ok: documented default-OFF opt-in flag; unset -> "" -> False, and server.py WARNs at boot when it is False
         "1",
         "true",
         "yes",
@@ -379,7 +379,9 @@ def append_calibration_decision(
                     "SELECT MAX(decision_ts_utc) FROM calibration_decision_log WHERE ticker = ?",
                     (ticker_storage_key(ticker),),
                 ).fetchone()
-                prior_max = prior[0] if prior and prior[0] is not None else None
+                # MAX() is an aggregate: always exactly one row, NULL (None) when the ticker has
+                # no prior rows.
+                prior_max = prior[0]
                 if prior_max is not None and float(prior_max) > float(decision_ts_utc):
                     log.warning(
                         "calibration_decision_log logical-time inversion: ticker=%s incoming_ts=%.6f prior_max_ts=%.6f (proceeding with insert; COH-I-D diagnostic)",
@@ -494,7 +496,7 @@ def compute_calibration_rate_health(
     prior_24h: int = 0
     table_present: bool = False
     try:
-        conn = sqlite3.connect(str(path))
+        conn = sqlite3.connect(str(path), timeout=30.0)
         conn.row_factory = sqlite3.Row
         try:
             try:

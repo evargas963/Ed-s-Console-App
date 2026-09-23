@@ -23,12 +23,7 @@ from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
 from calibration.trust import CALIBRATION_TRUST_LEGACY, CALIBRATION_TRUST_TRUSTED
 
-try:
-    from db import configure_sqlite_connection
-except Exception:
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 def analyze(db_path: Path) -> dict[str, Any]:

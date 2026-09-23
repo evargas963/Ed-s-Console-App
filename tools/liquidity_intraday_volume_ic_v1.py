@@ -133,14 +133,16 @@ def _et_day_and_min(ts: float) -> tuple[str, int]:
     return d.strftime("%Y-%m-%d"), d.hour * 60 + d.minute
 
 
-def _causal_atr_pre_T(sb: list[dict], t_min: int) -> float:
-    """Median 1m range from RTH open through last bar BEFORE T — no post-T lookahead."""
+def _causal_atr_pre_T(sb: list[dict], t_min: int) -> float | None:
+    """Median 1m range from RTH open through last bar BEFORE T — no post-T lookahead.
+
+    None when fewer than 5 ranged pre-T bars exist (ATR unmeasurable; caller drops the day)."""
     pre = [
         b for b in sb
         if RTH_OPEN_MIN <= b["min_of_day"] < t_min and b["high"] > b["low"]
     ]
     if len(pre) < 5:
-        return 0.0
+        return None
     return statistics.median(b["high"] - b["low"] for b in pre)
 
 
@@ -323,8 +325,11 @@ def _build_signal_rows(
         dist = abs(sk - spot)
         dist_inv = 1.0 / (dist + 0.01)
         fr = freeze_by_k.get(sk) if freeze_by_k else None
-        f_oi = float(fr["oi"]) if fr else 0.0
-        f_vol = float(fr["vol"]) if fr else 0.0
+        # No freeze chain (or strike absent from it) -> freeze signals are unmeasured (None);
+        # _day_ic drops None pairs, so the day blanks as insufficient_pairs instead of
+        # scoring a fabricated all-zero cross-section.
+        f_oi = float(fr["oi"]) if fr else None
+        f_vol = float(fr["vol"]) if fr else None
         rows.append({
             "strike": sk,
             "VOL": vol,
@@ -332,7 +337,7 @@ def _build_signal_rows(
             "PRODUCT": oi * vol,
             "FREEZE_VOL": f_vol,
             "FREEZE_OI": f_oi,
-            "FREEZE_PRODUCT": f_oi * f_vol,
+            "FREEZE_PRODUCT": (f_oi * f_vol) if fr else None,
             "DIST_INV": dist_inv,
         })
     return rows
@@ -542,7 +547,7 @@ def run(tickers: list[str]) -> dict:
     t0 = time.time()
     rnd = random.Random(SEED)
     boot_rnd = random.Random(SEED + 11)
-    con = sqlite3.connect(str(DB))
+    con = sqlite3.connect(str(DB), timeout=30.0)
     con.row_factory = sqlite3.Row
 
     census = _census_snapshots(con, tickers)
@@ -601,8 +606,8 @@ def run(tickers: list[str]) -> dict:
                 drops["short_session"] += 1
                 continue
             atr = _causal_atr_pre_T(sb, T)
-            if atr <= 0:
-                drops["atr_zero"] += 1
+            if atr is None or atr <= 0:
+                drops["atr_unmeasurable_or_zero"] += 1
                 continue
             post = [b for b in sb if b["min_of_day"] > T]  # STRICTLY after T
             if len(post) < MIN_POST_BARS:
@@ -641,13 +646,15 @@ def run(tickers: list[str]) -> dict:
             if len(sig_rows) < MIN_STRIKES:
                 drops["thin_band"] += 1
                 continue
-            # If no freeze, freeze signals are zero — still compute live; flag
+            # If no freeze, freeze signals are None (unmeasured, blank for the day) — still
+            # compute live; flag
             if freeze_by_k is None:
-                drops["freeze_signals_zeroed"] += 1
+                drops["freeze_signals_absent"] += 1
 
             rows = _attach_targets(sig_rows, post, atr, include_pin=include_pin)
             faucet_counts[str(meta.get("faucet"))] += 1
-            lag_list.append(int(meta.get("lag_min") or 0))
+            # _load_snaps_at_or_before_T always sets integer lag_min for every obs entry.
+            lag_list.append(int(meta["lag_min"]))
 
             for sig in SIGNALS_ALL:
                 for tgt in TARGETS:
@@ -734,7 +741,8 @@ def run(tickers: list[str]) -> dict:
             c for c in resid_cells
             if c["signal"] == "VOL"
             and c["verdict"] in ("PASS", "WEAK_FAIL")
-            and (c.get("edge_vs_placebo") or 0) > 0
+            and c.get("edge_vs_placebo") is not None
+            and c["edge_vs_placebo"] > 0
         ]
         vol_pass = [c for c in resid_cells if c["signal"] == "VOL" and c["verdict"] == "PASS"]
 

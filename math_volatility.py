@@ -119,11 +119,15 @@ def _extract_iv_for_strike(contracts: List[dict], strike: float) -> tuple[float 
 # ── Charm intraday context ───────────────────────────────────────────────────
 
 def charm_intraday_context(charm_result: dict, spot: float, *, et_hour: int | None = None) -> dict:
-    net = charm_result.get("net_charm_daily", 0.0)
-    direction = charm_result.get("charm_direction", "neutral")
+    # CAPS RC-REHAB-1: compute_net_charm publishes net_charm_daily/charm_direction as None
+    # (contracts_used 0) when nothing contributed. A missing net/direction used to become a
+    # fabricated 0.0 / "neutral" ("Charm balanced") card; now any absent input -> unavailable.
+    net = charm_result.get("net_charm_daily")
+    direction = charm_result.get("charm_direction")
     pin = charm_result.get("drift_toward")
-    used = charm_result.get("contracts_used", 0)
-    if used == 0: return {"available": False, "banner_line": "", "card_text": ""}
+    used = charm_result.get("contracts_used")
+    if not used or net is None or direction is None:
+        return {"available": False, "banner_line": "", "card_text": ""}
     net_deltas = abs(net) / 100.0
     if et_hour is not None:
         if et_hour >= 15:   urgency = "🔴 FINAL HOUR"; note = "Charm at maximum — dealer unwind accelerating into close."
@@ -142,7 +146,7 @@ def charm_intraday_context(charm_result: dict, spot: float, *, et_hour: int | No
         dir_text  = "Charm balanced — no dominant drift pressure"
         drift_txt = f"pin at {pin:.0f}" if pin else "current level"
     banner = f"{urgency}  ⏱ Charm: {dir_text} → expect {drift_txt}" if urgency else f"⏱ Charm: {dir_text} → expect {drift_txt}"
-    card   = (f"{note}  " if note else "") + f"Net charm: {'+' if net>=0 else ''}{net:.2f} Δ-equiv/day. {dir_text}. Expect {drift_txt} into close."
+    card   = (f"{note}  " if note else "") + f"Net charm: {'+' if net>=0 else ''}{net:.2f} Δ-equiv/day. {dir_text}. Expect {drift_txt} into close."  # caps-ok: display prose -- the urgency note prefix is omitted ("") when no et_hour was given; net is a guaranteed real value here (absent net returns unavailable above)
     return {"available": True, "banner_line": banner, "card_text": card,
             "net_deltas": net_deltas, "direction": direction, "urgency": urgency, "drift_toward": pin}
 
@@ -901,7 +905,7 @@ def blend_garch_sigma(
     rv_bar = (realized_vol * sqrt_dt) if (realized_vol is not None and realized_vol > 0) else None
 
     # Sigma floor: 0.5 × realized vol per bar (prevents GARCH collapse)
-    sigma_floor = (rv_bar * 0.5) if rv_bar else 0.00001
+    sigma_floor = (rv_bar * 0.5) if rv_bar else 0.00001  # caps-ok: numerical positivity floor, not a vol estimate -- without RV the blend is the measured GARCH/IV sigma and 1e-5/bar only binds if that collapses to ~0, keeping the per-bar sigma strictly positive for the simulator
 
     blended = []
     for g_sigma in garch_sigmas:

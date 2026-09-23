@@ -71,7 +71,7 @@ def is_producer(fn: ast.AST) -> tuple[bool, str]:
             arith += 1
         elif isinstance(n, ast.AugAssign):
             agg += 1
-        elif isinstance(n, ast.Call) and getattr(n.func, "id", "") in (
+        elif isinstance(n, ast.Call) and getattr(n.func, "id", "") in (  # caps-ok: AST duck typing: only ast.Name callees have .id; attribute/other callees have no bare builtin name, and "" matches none of the listed builtins
                 "sum", "min", "max", "sorted", "round", "abs", "len"):
             agg += 1
         elif isinstance(n, ast.Compare):
@@ -277,7 +277,7 @@ def main() -> int:
           and bucket_sum == rec["repository_files_total"]
           and sum(per_lang.values()) == len(cands) and with_loc == len(cands))
     print(f"\n  PHASE_A_STATUS = {'COMPLETE' if ok else 'NOT_COMPLETE'}")
-    return 0 if ok else 2
+    return 0 if ok else 2  # caps-ok: scanner false positive: process exit code (0 = PHASE_A complete, 2 = incomplete), not a value default
 
 
 if __name__ == "__main__":

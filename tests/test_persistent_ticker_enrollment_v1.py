@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db import EdDB
+import app.api.routes.logger
 
 
 def test_hydrate_merges_all_user_persisted_into_logger_cycle(monkeypatch, tmp_path):
@@ -88,7 +89,7 @@ def test_logger_status_includes_enrollment_policy(monkeypatch, tmp_path):
         srv.CORE_TICKERS[:] = ["SPY"]
         with srv._logger_lock:
             srv._logger_tickers[:] = ["SPY"]
-        body = json.loads(srv.logger_status().body)
+        body = json.loads(app.api.routes.logger.logger_status().body)
         pol = body.get("user_persisted_enrollment_policy")
         assert pol is not None
         assert pol.get("fifo_eviction_enabled") is False

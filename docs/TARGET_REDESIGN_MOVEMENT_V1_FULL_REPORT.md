@@ -5,6 +5,8 @@
 **DB evaluated:** `data/ed_console.db` (governed anchor population per `load_rows` in `calibration/phase6_edge_discovery_governed_v1.py`).  
 **Artifacts:** `data/movement_target_phase5_discrimination_v1.json`, `data/movement_target_phase6_edge_v1.json`, `data/phase65_movement_isolation_v1_report.json`, `data/phase65_movement_cleanup_v1_result.json`, `data/movement_threshold_search_report_v1.json`.
 
+**STALE (reality-reconciliation audit, 2026-09-18):** this report's horizon table (§2/§5/§14: `1c,3c,5c,8c,13c,15c,60c`) describes a 7-horizon universe; the Phase D3 migration (commit `c9138251`, 2026-05-17) retired `3c`/`8c`/`13c` — current governed horizons are `1c,5c,15c,60c` (`ml_horizon.py`). Reading this table today would wrongly suggest 3c/8c/13c movement columns still exist. The mechanism it describes for the 4 surviving horizons remains live (`db.py`'s `outcome_dir_*`/`outcome_move_*`/`valid_dir_*`/`threshold_move_*` columns, `ml_predict._predict_xgb_movement_heads`). This report's own verdict is already **FAIL** (n=0 persisted predictions); a same-era companion, `docs/PIPELINE_COMPLETION_MOVEMENT_V1_REPORT.md`, describes the next, since-superseded stage of the same mission.
+
 ---
 
 ## 1. Target definitions

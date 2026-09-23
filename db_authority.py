@@ -109,7 +109,7 @@ def classify_db_path(p: Path | str) -> Classification:
 
 
 def env_allows_noncanonical_db() -> bool:
-    return os.environ.get("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "").strip().lower() in (
+    return os.environ.get("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "").strip().lower() in (  # caps-ok: opt-in env flag; unset means non-canonical DB NOT allowed (fail-closed)
         "1",
         "true",
         "yes",

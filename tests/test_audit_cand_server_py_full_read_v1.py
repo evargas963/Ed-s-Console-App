@@ -9,6 +9,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import app.api.routes.debug
+import app.api.routes.prediction
+import tier_a_live_state
 
 ROOT = Path(__file__).resolve().parent.parent
 SERVER_PY = ROOT / "server.py"
@@ -18,10 +21,11 @@ def _server_src() -> str:
     return SERVER_PY.read_text(encoding="utf-8", errors="replace")
 
 
-def _fn_src(name: str) -> str:
-    import server
+def _fn_src(name: str, module: str = "server") -> str:
+    """Source of `name` from the module that DEFINES it (server.py re-exports nothing)."""
+    import importlib
 
-    return inspect.getsource(getattr(server, name))
+    return inspect.getsource(getattr(importlib.import_module(module), name))
 
 
 def _unresolved_free_names_in_module(source: str) -> list[tuple[str, int]]:
@@ -172,26 +176,31 @@ def test_candle_grid_stale_triggers_pricehistory_reseed():
     quote tick per ~15min visit, so the 1m grid was ~94% empty and fill_outcomes
     could never label forward bars. The grid must report stale on a gap so the
     fetch path re-seeds from the canonical Schwab pricehistory leaf — not only on
-    the first visit of the server lifetime."""
+    the first visit of the server lifetime.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice):
+    CANDLE_RESEED_GAP_SECONDS moved out of server.py into server_state_exposures.py
+    along with its sole reader, _exposures_for_state."""
     import server
+    from server_state_exposures import CANDLE_RESEED_GAP_SECONDS
 
     acc = server._CandleAccumulator(bar_seconds=60, max_bars=500)
     # No bars yet → stale (first-visit seed preserved).
-    assert acc.grid_stale("QQQ", 10_000.0, server.CANDLE_RESEED_GAP_SECONDS)
+    assert acc.grid_stale("QQQ", 10_000.0, CANDLE_RESEED_GAP_SECONDS)
 
     # Contiguous ticks → fresh grid, no re-seed churn for the active UI ticker.
     for i in range(5):
         acc.tick("QQQ", 100.0 + i, 9_600.0 + i * 60.0)
     last_end = acc.get_bars("QQQ")[-1].ts + 60.0
-    assert not acc.grid_stale("QQQ", last_end + 60.0, server.CANDLE_RESEED_GAP_SECONDS)
+    assert not acc.grid_stale("QQQ", last_end + 60.0, CANDLE_RESEED_GAP_SECONDS)
 
     # 15-minute polling gap (background logger cadence) → stale → re-seed.
-    assert acc.grid_stale("QQQ", last_end + 900.0, server.CANDLE_RESEED_GAP_SECONDS)
+    assert acc.grid_stale("QQQ", last_end + 900.0, CANDLE_RESEED_GAP_SECONDS)
 
     # Fetch path wires the staleness check (not has_bars-once-per-lifetime).
-    src = _server_src()
-    assert "_candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS)" in src
-    assert "if not _candles_1m.has_bars(ticker):" not in src
+    exp_src = Path(__file__).resolve().parent.parent.joinpath("server_state_exposures.py").read_text(encoding="utf-8")
+    assert "_srv._candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS)" in exp_src
+    assert "if not _candles_1m.has_bars(ticker):" not in exp_src
     # Re-seed replaces the sparse tick grid with the canonical leaf, end to end.
     seed_bars = [
         {"datetime": (9_600.0 + i * 60.0) * 1000.0, "open": 1.0, "high": 2.0,
@@ -201,7 +210,7 @@ def test_candle_grid_stale_triggers_pricehistory_reseed():
     acc.seed("QQQ", seed_bars)
     assert len(acc.get_bars("QQQ")) == 20
     assert acc.get_bars_source("QQQ") == "schwab_pricehistory"
-    assert not acc.grid_stale("QQQ", 9_600.0 + 20 * 60.0, server.CANDLE_RESEED_GAP_SECONDS)
+    assert not acc.grid_stale("QQQ", 9_600.0 + 20 * 60.0, CANDLE_RESEED_GAP_SECONDS)
 
 
 # FIND-SERVERPY-2
@@ -230,7 +239,7 @@ def test_rth_open_mins_constant_exists_and_used():
     import server
 
     assert server.RTH_OPEN_MINS == 570
-    src = _fn_src("_update_rest_cum_delta")
+    src = _fn_src("_update_rest_cum_delta", "server_state_order_flow")
     assert "9 * 60 + 30" not in src
     assert "RTH_OPEN_MINS" in src
 
@@ -266,22 +275,28 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
         payload = server._build_rest_fast_quote_payload("SPY", "test")
         assert payload.get("spread_semantic") == "fraction"
 
-        tier = server._tier_a_live_state_dict("SPY", None)
+        tier = tier_a_live_state._tier_a_live_state_dict("SPY", None)
         assert tier.get("spread_semantic") == "dollar"
 
 
 # FIND-SERVERPY-6
 def test_price_levels_cache_sec_at_module_level():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixth slice): the Price Levels
+    phase (the carried-generation check, the LevelCarrierConflict handling, and the
+    try/except/else structure this test locks) moved out of _fetch_state's own body into
+    _price_levels_for_state. The invariants below are unchanged; only their source
+    location moved."""
     import server
 
     assert server.PRICE_LEVELS_CACHE_SEC == 15
-    src = _fn_src("_fetch_state")
-    assert "_PL_CACHE_SEC" not in src
-    assert "carried_price_levels_match_snapshot" in src
-    assert ">= PRICE_LEVELS_CACHE_SEC" not in src
-    assert "except _LevelCarrierConflict" in src
-    block = src[src.index("# ── Price levels"):src.index("# ── Expected Move")]
-    fail_arm = block[block.index("except Exception"):].split("else:", 1)[0]
+    fetch_state_src = _fn_src("_fetch_state")
+    price_levels_src = _fn_src("_price_levels_for_state")
+    assert "_PL_CACHE_SEC" not in fetch_state_src
+    assert "_PL_CACHE_SEC" not in price_levels_src
+    assert "carried_price_levels_match_snapshot" in price_levels_src
+    assert ">= PRICE_LEVELS_CACHE_SEC" not in price_levels_src
+    assert "except _LevelCarrierConflict" in price_levels_src
+    fail_arm = price_levels_src[price_levels_src.index("except Exception"):].split("else:", 1)[0]
     assert '["price_levels"]' not in fail_arm
     assert "PriceLevels()" in fail_arm
 
@@ -302,16 +317,30 @@ def test_l1_next_generation_regression_raises_runtime_error_not_assert():
 
 # FIND-SERVERPY-8
 def test_ed_db_bound_before_iv_rank_references():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): the
+    `if _atm_iv and _ed_db and _tick_ts is not None` IV-rank gate moved out of
+    _fetch_state's own body into _volatility_signals_for_state (as
+    `if atm_iv and ed_db and tick_ts is not None`, clean local parameter names). The
+    invariant this test protects -- _ed_db must be bound before it is used for the IV-rank
+    gate -- now holds structurally: _fetch_state only ever USES _ed_db by passing it as a
+    call argument to _volatility_signals_for_state, and Python evaluates call arguments
+    before the call itself, so an unbound _ed_db at that point would raise immediately.
+    This checks that ordering directly instead of the (now relocated) conditional text."""
     src = _fn_src("_fetch_state")
     ed_assign = src.index("_ed_db = get_db()")
-    iv_use = src.index("if _atm_iv and _ed_db")
-    assert ed_assign < iv_use
+    ed_passed_to_phase = src.index("_volatility_signals_for_state(")
+    assert ed_assign < ed_passed_to_phase
 
 
 def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
     """Flow: hoisted _ed_db must be bound before IV rank block (FIND-8)."""
     import server
-    from server import CANONICAL_TIMEFRAME, IV_HISTORY_LOOKBACK, compute_iv_rank
+    from timeframe_config import CANONICAL_TIMEFRAME
+    from server_state_volatility import IV_HISTORY_LOOKBACK
+    # RC-REHAB-1 (2026-09-22): compute_iv_rank was never re-exported from server.py --
+    # only used internally by _volatility_signals_for_state, which moved to
+    # server_state_volatility.py and resolves it via its own math_exposure import.
+    from math_exposure import compute_iv_rank
 
     mock_db = MagicMock()
     mock_db.get_recent_snapshots.return_value = [
@@ -335,7 +364,7 @@ def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
     _iv_history = [
         float(r.get("iv_level"))
         for r in _iv_hist_rows
-        if r.get("iv_level") is not None and float(r.get("iv_level", 0)) > 0
+        if r.get("iv_level") is not None and float(r["iv_level"]) > 0
     ]
     if _atm_iv and _ed_db and _tick_ts is not None and _iv_history:
         _iv_rank = compute_iv_rank(_atm_iv, _iv_history)
@@ -344,15 +373,20 @@ def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
 
 # FIND-SERVERPY-9
 def test_pressure_label_unavailable_when_no_dpi_or_hedging_flow():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): this
+    field derivation moved from _fetch_state's own body into
+    _post_publish_persistence_tail, promoted to a module-level function."""
     src = _fn_src("_fetch_state")
     assert '_pressure_label_live = "neutral"' not in src
-    assert "unavailable_no_dpi_or_hedging_flow_direction" in src
+    tail_src = _fn_src("_post_publish_persistence_tail")
+    assert '_pressure_label_live = "neutral"' not in tail_src
+    assert "unavailable_no_dpi_or_hedging_flow_direction" in tail_src
 
 
 # FIND-SERVERPY-11
 def test_r_units_none_default_not_zero_float():
     src = _server_src()
-    assert 'getattr(ms, "r_units", 0.0)' not in src
+    assert 'getattr(ms, "r_units", 0.0)' not in src  # caps-ok: scanner false positive: forbidden-pattern literal asserted ABSENT from server.py
     assert 'getattr(ms, \'r_units\', 0.0)' not in src
 
 
@@ -363,10 +397,13 @@ def test_no_mc_em_pre_bms_warning_log():
 
 # FIND-SERVERPY-13
 def test_recent_crosses_uses_named_constant():
+    """RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): the
+    RECENT_CROSSES_DISPLAY_LIMIT call site moved from _fetch_state's own body into
+    _db_counts_and_crosses_for_state (defined above _fetch_state)."""
     import server
 
     assert server.RECENT_CROSSES_DISPLAY_LIMIT == 5
-    assert "RECENT_CROSSES_DISPLAY_LIMIT" in _fn_src("_fetch_state")
+    assert "RECENT_CROSSES_DISPLAY_LIMIT" in _fn_src("_db_counts_and_crosses_for_state")
 
 
 # FIND-SERVERPY-14
@@ -378,10 +415,14 @@ def test_no_underscore_json_references():
 
 # FIND-SERVERPY-15
 def test_stack_mode_value_is_authority_only():
-    src = _server_src()
+    from pathlib import Path as _P
+
+    # RC-REHAB-1 (thirty-seventh slice): the signals-engine-failed flag is set in the publish
+    # phase; the forbidden stack_mode overwrite is checked in both files.
+    src = _server_src() + (_P(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
     assert 'sr["stack_mode"] = "signals_engine_error"' not in src
     assert 'sr["signals_engine_failed"] = True' in src
-    attach = _fn_src("_attach_stack_runtime_and_governance")
+    attach = _fn_src("_attach_stack_runtime_and_governance", "stack_runtime_governance")
     assert "classify_stack_health" in attach
 
 
@@ -398,10 +439,9 @@ def test_prediction_override_rejects_empty_direction():
     import pytest
     from fastapi import HTTPException
 
-    import server
 
     with pytest.raises(HTTPException) as exc:
-        server.prediction_override(ticker="SPY", direction="", source="user")
+        app.api.routes.prediction.prediction_override(ticker="SPY", direction="", source="user")
     assert exc.value.status_code == 400
     assert "up, flat, or down" in str(exc.value.detail)
 
@@ -449,7 +489,7 @@ def test_debug_prediction_returns_populated_distribution(monkeypatch):
             gdb.return_value = MagicMock(
                 get_zone_distribution=MagicMock(return_value={"pin_bull": 3})
             )
-            body = server.debug_prediction(ticker="SPY")
+            body = app.api.routes.debug.debug_prediction(ticker="SPY")
     assert "error" not in body
     assert body.get("db_zone_distribution") == {"pin_bull": 3}
 

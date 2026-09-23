@@ -69,7 +69,7 @@ Metrics captured per (ticker, scope):
     counted via /api/build's own request-count diagnostics when present, else via the
     heartbeat/coverage table row-count delta as a lower-bound proxy (documented per field).
   - cell_state_counts: live/partial/stale/pending/daemon_unavailable/rejected/unavailable
-    straight from stream_coverage (server.py's _gamma_surface_coverage_summary).
+    straight from stream_coverage (gamma_surface_state._gamma_surface_coverage_summary).
   - ok: the ONE pass/fail verdict for this (ticker, scope) — False on ANY of: a rejected
     symbol, an unresolved symbol, the daemon reporting unavailable, no strictly-newer
     surface_seq observed, or no GEX-dollar cell actually changing. `main()` exits nonzero

@@ -174,8 +174,52 @@ def test_absent_payload_surface_is_silent_when_none_declared(tmp_path, monkeypat
 def test_this_repository_declares_its_payload_surface():
     """The production registry must declare, or case 1 can never fire here."""
     reg = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    assert reg.get("payload_surfaces") == ["server.py"]
-    assert (REPO / "server.py").exists()
+    surfaces = reg.get("payload_surfaces") or []
+    assert surfaces and surfaces[0] == "server.py"
+    missing = [rel for rel in surfaces if not (REPO / rel).exists()]
+    assert not missing, f"declared payload surfaces that do not exist: {missing}"
+
+
+# Modules that import server.py AND are imported by it, but were NOT carved out of it:
+# long-standing circular couplings whose fields are not server.py payload emissions.
+_BIDIRECTIONAL_NOT_EXTRACTED = {"decision_record.py", "market_state.py"}
+
+
+def test_every_module_extracted_from_server_is_a_declared_payload_surface():
+    """RC-REHAB-1 (2026-09-23): the decomposition moved server.py's payload writers into
+    route modules and server_state_* phases while payload_surfaces still named server.py
+    alone. Each slice silently dropped its fields out of NOT_PROVEN (668 on main -> 310 on
+    the branch, by moving code, not by proving anything) and blinded the RC-292 naming
+    gate to _terrain_kl_overlay, the writer it was built for.
+
+    The mechanical marker of an extracted phase is the two-way coupling every slice uses:
+    server.py imports from the module (re-export or call) and the module lazily imports
+    server back for runtime state. Every such module must be declared. (A fully pure
+    extracted phase with no back-import is not caught by this marker -- declare it by
+    hand, as server_state_signals.py is.)"""
+    import ast
+    import subprocess
+
+    tree = ast.parse((REPO / "server.py").read_text(encoding="utf-8"))
+    imported_by_server = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            rel = node.module.replace(".", "/") + ".py"
+            if (REPO / rel).exists():
+                imported_by_server.add(rel)
+    out = subprocess.run(
+        ["git", "grep", "-lE", r"^\s*(import server( as|$)|from server import)", "--", "*.py"],
+        cwd=REPO, capture_output=True, text=True, check=False,
+    ).stdout.split()
+    imports_server = {p.replace("\\", "/") for p in out}
+    extracted = (imported_by_server & imports_server) - _BIDIRECTIONAL_NOT_EXTRACTED
+    assert extracted, "found no extracted server.py modules -- the marker scan is broken"
+    reg = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    undeclared = sorted(extracted - set(reg.get("payload_surfaces") or []))
+    assert not undeclared, (
+        f"modules extracted from server.py are not declared payload_surfaces: {undeclared}. "
+        "Add them to governance/computation_registry.json in the same commit that moves "
+        "the code, or their emitted fields vanish from NOT_PROVEN and the naming gate.")
 
 
 def test_the_live_repository_state_is_reported_not_hidden():

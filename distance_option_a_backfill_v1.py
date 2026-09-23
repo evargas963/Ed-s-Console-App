@@ -233,7 +233,7 @@ def run_distance_option_a_backfill_v1(
             "SELECT flag_value FROM ed_schema_flags WHERE flag_key = ?",
             (FLAG_KEY,),
         ).fetchone()
-        current = str(row[0]) if row and row[0] is not None else None
+        current = str(row[0]) if row and row[0] is not None else None  # caps-ok: absent flag row stays None (flag_before then records the declared FLAG_NONE sentinel)
         audit["flag_before"] = current or FLAG_NONE
 
         if current == FLAG_COMPLETE and not force and not dry_run:
@@ -458,11 +458,12 @@ def main() -> None:
         cov = out["tier1_coverage_after"]
         at = cov["anchors_total"]
         ne = cov["nonempty_tier1_pool_count"]
+        # Zero anchors -> the majority question is undefined (None), not a False verdict; the
+        # coverage report always carries mean_pool_size (None when no anchors were measured).
         out["majority_nonempty_tier1_pools"] = (
-            (ne * 2 >= at) if at else False
+            (ne * 2 >= at) if at else None  # caps-ok: None (not False) when there are no anchors to take a majority of
         )
-        mean_sz = cov.get("mean_pool_size", 0.0)
-        out["mean_pool_size"] = mean_sz
+        out["mean_pool_size"] = cov["mean_pool_size"]
     print(json.dumps(out, indent=2))
 
 

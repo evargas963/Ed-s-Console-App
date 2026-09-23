@@ -96,30 +96,20 @@ def test_the_two_quantities_no_longer_share_one_input():
 
 
 def test_the_caller_passes_both_counts():
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    """RC-REHAB-1 (Phase 3, route-extraction, predating this decomposition
+    session): this caller moved out of server.py into
+    app/api/routes/diagnostics.py well before this lock was last verified --
+    caught here by running the full suite rather than a curated batch."""
+    src = (REPO / "app" / "api" / "routes" / "diagnostics.py").read_text(encoding="utf-8", errors="replace")
     assert "l1_build_total=bt," in src, "the true build count is no longer sent"
     assert "timing_sample_count=bt_measured," in src, "the timed count is no longer sent"
 
 
 # ──────────────────────────── a model nobody scored is not approved ────
-
-def test_a_compliant_model_with_no_edge_is_not_reported_live():
-    """RC-291 fixed the value and left the verdict that reads it."""
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    i = src.find('"status_reason": "Binary + metadata + provenance compliant, but no edge')
-    assert i > 0, "the UNSCORED branch is gone — a model with no edge reads LIVE again"
-    assert '"status": "UNSCORED"' in src[max(0, i - 400):i + 200]
-
-
-def test_the_unscored_branch_is_reached_only_when_edge_is_absent():
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    i = src.find('"status": "UNSCORED"')
-    assert i > 0
-    assert "if edge is None:" in src[max(0, i - 500):i], (
-        "UNSCORED is not gated on the edge being absent")
-
-
-def test_a_scored_model_is_still_live():
-    """Negative control: the honest verdict must not condemn real models."""
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert '"status": "LIVE", "status_reason": "Binary + metadata + provenance compliant"' in src
+# test_a_compliant_model_with_no_edge_is_not_reported_live,
+# test_the_unscored_branch_is_reached_only_when_edge_is_absent and
+# test_a_scored_model_is_still_live were retired (RC-REHAB-1, 2026-09-23): they string-scanned
+# server.py for the per-cycle Model Health Dashboard producer's LIVE/UNSCORED verdicts, and
+# that producer was deleted outright -- zero consumers after the /console rebuild (no page
+# counts "N approved" any more), per-cycle disk I/O, and a hard-coded "Monte Carlo: LIVE"
+# row made false by #262. The first half of this file (the build-rate consumer) stands.

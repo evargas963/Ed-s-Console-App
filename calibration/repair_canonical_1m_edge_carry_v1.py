@@ -154,7 +154,7 @@ def main() -> int:
     rep = run_repair(
         args.db,
         dry_run=not args.execute,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(args.allow_noncanonical_db),  # registered just above
     )
     print(json.dumps(rep, indent=2))
     return 1 if rep.get("error") else 0

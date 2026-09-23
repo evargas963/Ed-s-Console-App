@@ -2,6 +2,8 @@
 
 # Target redesign — movement v1
 
+**STALE (reality-reconciliation audit, 2026-09-18):** this is the design/procedure companion to `docs/TARGET_REDESIGN_MOVEMENT_V1_FULL_REPORT.md` (SQL snippets, the `ml_train.py --target-mode` CLI contract, threshold formula) — not a duplicate of it, a different facet of the same mission at the same stage. It inherits the same staleness: written against a 7-horizon set (`1c,3c,5c,8c,13c,15c,60c`); the Phase D3 migration (commit `c9138251`, 2026-05-17) retired `3c`/`8c`/`13c`. §6's columns (`pred_{H}_dir_up_prob`, `pred_{H}_move_prob`, etc.) are live only for the 4 surviving horizons (`1c,5c,15c,60c`) today.
+
 ## 1. Target definitions
 
 - **Legacy (unchanged):** `outcome_{H} ∈ {up, down, flat}` from `classify_direction(Δclose, anchor_close)`.

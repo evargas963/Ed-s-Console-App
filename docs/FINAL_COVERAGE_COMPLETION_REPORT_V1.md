@@ -2,6 +2,8 @@
 
 # Final coverage completion report (v1)
 
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** same Phase D3 horizon retirement as `docs/CHECKPOINT_PROVENANCE_LOCK_REPORT_V1.md` (commit `c9138251`, 2026-05-17) — the 22-ticker x 7-horizon "all Y/Y" matrix below depends on artifact naming for a horizon set (`3c,8c,13c`) no longer governed; zero `xgb_*_{move,dir}.pkl` files of any kind exist anywhere in the current tree, and two of the matrix's 22 tickers (`TSL`, `PCG`) no longer have `models/active/` directories at all. The tools this report used (`batch_backfill_movement_predictions_v1.py`, `validate_movement_prediction_coverage_v1.py`) now live only under `tools/legacy/horizon_7/`. The still-maintained successor, `tools/train_missing_movement_heads_v1.py`, now imports `ML_HORIZON_SLUGS` from `ml_horizon.py` and operates on the current 4-horizon set (`1c,5c,15c,60c`) — that is where current coverage should be checked, not this matrix.
+
 ## 1. Artifact audit matrix
 
 Governed universe: **22** tickers with `snapshots` rows matching governed predicate. For each ticker `T` and horizon `H` ∈ {1c,3c,5c,8c,13c,15c,60c}: `models/active/T/xgb_T_H_move.pkl` = **Y**, `xgb_T_H_dir.pkl` = **Y** (full matrix; post-audit). Non-governed symbols in `snapshots_1m_normalized` (e.g. COP, KO) may lack artifacts; they do not affect governed coverage.

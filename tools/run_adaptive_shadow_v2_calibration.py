@@ -46,7 +46,7 @@ def main() -> None:
         sys.exit(1)
     db = EdDB(
         args.db,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: argparse flag from register_allow_noncanonical_flag; absent/False keeps the canonical-DB-only restriction (fail-closed safety flag, not data)
     )
     emit_calibration_json(
         db,

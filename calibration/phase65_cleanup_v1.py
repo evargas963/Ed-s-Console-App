@@ -67,8 +67,12 @@ def _proper_subset_dims(d_broad: dict[str, str], d_narrow: dict[str, str]) -> bo
     return True
 
 
+# Only ACCEPTED records reach these helpers. phase65_edge_isolation_v1._evaluate_slice gives every
+# ACCEPTED record metrics (_multiclass_metrics, n > 0), baselines (_baseline_accuracies) and
+# oos.n_oos, so they are indexed directly: a missing baseline must raise, never become 0.0 that
+# any accuracy trivially "beats".
 def _n(rec: dict) -> int:
-    return int(rec.get("metrics", {}).get("n") or rec.get("n_eligible") or 0)
+    return int(rec["metrics"]["n"])
 
 
 def _acc(rec: dict) -> float:
@@ -80,11 +84,11 @@ def _prior(rec: dict) -> float:
 
 
 def _flat_share(rec: dict) -> float:
-    bal = rec.get("metrics", {}).get("class_balance") or {}
+    bal = rec["metrics"]["class_balance"]
     n = _n(rec)
     if n <= 0:
         return 0.0
-    return float(bal.get("flat", 0)) / n
+    return float(bal.get("flat", 0)) / n  # caps-ok: class_balance is dict(Counter(ys)); a class with zero rows has no key, so absent "flat" is a measured 0 count
 
 
 def hard_filter(rec: dict) -> tuple[bool, str | None]:
@@ -96,26 +100,26 @@ def hard_filter(rec: dict) -> tuple[bool, str | None]:
     if n < min_n:
         return False, "FAIL_SAMPLE"
 
-    b = rec.get("baselines") or {}
+    b = rec["baselines"]
     acc = _acc(rec)
     prior = _prior(rec)
-    if acc <= float(b.get("prior_majority_accuracy", 0)):
+    if acc <= float(b["prior_majority_accuracy"]):
         return False, "FAIL_BASELINE"
-    if acc <= float(b.get("always_up_accuracy", 0)):
+    if acc <= float(b["always_up_accuracy"]):
         return False, "FAIL_BASELINE"
-    if acc <= float(b.get("always_down_accuracy", 0)):
+    if acc <= float(b["always_down_accuracy"]):
         return False, "FAIL_BASELINE"
-    if acc <= float(b.get("random_uniform_accuracy_mean", 0)):
+    if acc <= float(b["random_uniform_accuracy_mean"]):
         return False, "FAIL_BASELINE"
 
     if acc - prior < MIN_EFFECT_VS_PRIOR:
         return False, "FAIL_EFFECT_SIZE"
 
-    if (b.get("prior_majority_class") == "flat") and _flat_share(rec) >= FLAT_SHARE_DOM and (acc - prior) < FLAT_DOM_MAX_UPLIFT:
+    if (b["prior_majority_class"] == "flat") and _flat_share(rec) >= FLAT_SHARE_DOM and (acc - prior) < FLAT_DOM_MAX_UPLIFT:
         return False, "FAIL_FLAT_DOMINANCE"
 
-    oos = rec.get("oos") or {}
-    n_oos = int(oos.get("n_oos") or 0)
+    oos = rec["oos"]
+    n_oos = int(oos["n_oos"])
     oa = oos.get("oos_model_accuracy")
     op = oos.get("oos_prior_from_is_mode_accuracy")
     if n_oos < MIN_OOS_N:
@@ -232,8 +236,8 @@ def main() -> int:
     clusters: dict[str, list[dict]] = defaultdict(list)
     for rec in stab2:
         d = rec["_dims"]
-        h = d.get("horizon", "?")
-        rg = d.get("regime", "_none")
+        h = rec["horizon"]  # _evaluate_slice stamps horizon on every record
+        rg = d.get("regime", "_none")  # caps-ok: cluster label only; slices with no regime= dimension are grouped under the literal "_none" cluster, never parsed back as a regime
         key = f"H={h}|regime={rg}"
         clusters[key].append(rec)
 
@@ -242,7 +246,8 @@ def main() -> int:
         if not members:
             continue
         tn = sum(_n(m) for m in members)
-        w_acc = sum(_n(m) * _acc(m) for m in members) / tn if tn else 0.0
+        # members are ACCEPTED slices (n >= min_n > 0), so tn > 0; no 0.0 stand-in.
+        w_acc = sum(_n(m) * _acc(m) for m in members) / tn
         priors = [_prior(m) for m in members]
         cluster_summ.append(
             {

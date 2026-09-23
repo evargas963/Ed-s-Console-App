@@ -516,19 +516,43 @@ def test_stamp_decision_bundle_respects_anchored_decision_id(monkeypatch):
 def test_server_model_derived_snapshot_write_is_anchor_guarded():
     """Recurrence lock: the server's model-derived snapshot insert must sit
     behind the execution-identity anchor (refused-write skip path present),
-    and the quote-only lightweight path must NOT create identities."""
-    src = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    i_anchor = src.index("anchor_production_execution as _xid_anchor")
-    i_refuse = src.index("if _xid_refused:")
-    i_model_insert = src.index("_ed_db.insert_snapshot(_snap)")
-    assert i_anchor < i_refuse < i_model_insert
-    assert "EXECUTION_IDENTITY_REFUSED" in src
+    and the quote-only lightweight path must NOT create identities.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    _post_publish_persistence_tail (which owns `_xid_refused` and the insert) was
+    promoted to a module-level function defined BEFORE _fetch_state -- so its
+    definition now sits at a smaller file offset than the anchor code, which
+    still lives inside _fetch_state's own body. Raw text-position comparison no
+    longer reflects EXECUTION order once definition and call sites diverge in the
+    file. Split into what each half actually claims: the anchor must precede the
+    tail's CALL SITE (true execution-order claim, checked against _fetch_state's
+    own body), and the refuse-check must precede the insert WITHIN the tail's own
+    body (a same-function ordering claim, unaffected by the promotion).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out
+    of server.py entirely into server_state_persistence_tail.py -- its own internal
+    ordering (refuse-check before insert) is checked against that file's full source
+    now, not a server.py substring slice."""
+    root = Path(__file__).resolve().parent.parent
+    src = (root / "server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (thirty-fifth slice): the anchor body moved to server_state_decision.py;
+    # _fetch_state CALLS it, and that call must precede the tail's full-path call site.
+    dec_src = (root / "server_state_decision.py").read_text(encoding="utf-8")
+    i_anchor = src.index("_anchor_execution_identity_for_state(\n        ms,")
+    i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
+    assert i_anchor < i_full_call, "anchor must precede the tail's full-path call site"
+    assert "anchor_production_execution(" in dec_src
+    tail_src = (root / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    i_refuse = tail_src.index("if _xid_refused:")
+    i_model_insert = tail_src.index("_ed_db.insert_snapshot(_snap)")
+    assert i_refuse < i_model_insert, "refuse-check must precede the insert within the tail"
+    assert "EXECUTION_IDENTITY_REFUSED" in dec_src
     # quote-only path (lightweight builder) carries no identity wiring
     i_light = src.index("build_lightweight_snapshot_row_from_quote")
     seg = src[i_light : i_light + 600]
     assert "execution_identity" not in seg
     # decision surface lands only when stamping bound the SAME decision
-    assert 'ms_dict.get("decision_id") == _xid_pair[0]' in src
+    assert 'ms_dict.get("decision_id") == xid_pair[0]' in (root / "server_state_publish.py").read_text(encoding="utf-8")
 
 
 def test_write_path_universe_inventory(repo_index):
@@ -551,8 +575,16 @@ def test_write_path_universe_inventory(repo_index):
                 continue
             writers.add(rel.name if in_root else f"calibration/{rel.name}")
     known = {
-        "db.py",                      # insert_snapshot (guarded; quote-only N/A)
+        "db.py",                      # SnapshotRow/EdDB itself (schema, class def)
+        "db_snapshots.py",            # RC-REHAB-1 (2026-09-22): insert_snapshot moved here
+                                       # from db.py (slice 3 of the db.py decomposition) --
+                                       # same guarded/quote-only-N/A write, relocated, not
+                                       # a new write path.
         "server.py",                  # anchored model-derived + quote-only paths
+        "server_state_persistence_tail.py",  # RC-REHAB-1 (2026-09-23): insert_snapshot
+                                       # moved here from server.py (module extraction,
+                                       # twentieth slice) -- same anchored write, relocated,
+                                       # not a new write path.
         "decision_record.py",         # identity-carrying decision records
         "live_decision_bundle.py",    # stamp + persist passthrough
         "calibration/writer.py",      # identity-carrying calibration rows
@@ -583,47 +615,70 @@ def test_write_path_universe_inventory(repo_index):
 # ══════════════════════════════════════════════════════════════════════════════
 
 _SERVER_PY = Path(__file__).resolve().parent.parent / "server.py"
+# RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): _post_publish_persistence_tail
+# moved out of server.py into its own file.
+_TAIL_PY = Path(__file__).resolve().parent.parent / "server_state_persistence_tail.py"
 
 
 def _server_text() -> str:
     return _SERVER_PY.read_text(encoding="utf-8", errors="replace")
 
 
+def _tail_text() -> str:
+    return _TAIL_PY.read_text(encoding="utf-8", errors="replace")
+
+
 def test_server_anchor_precedes_finalize_and_log_only_tail():
     """Source-ordering lock (RED on pre-fix main): the ONE identity anchor site
     must execute before the log_only early return AND the production-decision
-    finalize; the post-publish tail must only consume the anchored pair."""
+    finalize; the post-publish tail must only consume the anchored pair.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
+    _post_publish_persistence_tail was promoted from a nested closure to a
+    module-level function (defined BEFORE _fetch_state now, not after the anchor
+    site inside it), and its call sites are multi-line (61 keyword-only args)."""
     text = _server_text()
-    anchor_at = text.index(
-        "EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor"
-    )
+    # RC-REHAB-1 (thirty-fifth slice): the anchor body lives in server_state_decision.py;
+    # execution order is the order of the CALLS inside _fetch_state.
+    anchor_at = text.index("_anchor_execution_identity_for_state(\n        ms,")
     log_only_tail_at = text.index(
-        "_post_publish_persistence_tail(None, _v2_decision_for_response)"
+        '_post_publish_persistence_tail(\n        None, _v2_decision_for_response'
     )
-    finalize_at = text.index("_finalize_production_decision(ms_dict, _decision_route)")
+    # RC-REHAB-1 (thirty-seventh slice): the production-decision finalize runs inside
+    # _finalize_and_publish_state (server_state_publish.py).
+    finalize_at = text.index("_finalize_and_publish_state(\n        ms_dict, ms,")
     assert anchor_at < log_only_tail_at, "anchor must precede the log_only tail call"
     assert anchor_at < finalize_at, "anchor must precede the production-decision finalize"
-    # Exactly one anchor call site, and it is NOT inside the persistence tail.
-    assert text.count("anchor_production_execution as _xid_anchor") == 1
-    tail_start = text.index("def _post_publish_persistence_tail(")
-    tail_end = text.index("def _fv(v):", tail_start)
-    assert "anchor_production_execution" not in text[tail_start:tail_end], (
+    # Exactly one anchor call site, and it is NOT inside the persistence tail or server.py.
+    from pathlib import Path as _P
+
+    dec_text = (_P(__file__).resolve().parent.parent / "server_state_decision.py").read_text(encoding="utf-8")
+    assert dec_text.count("anchor_production_execution(") == 1
+    assert "anchor_production_execution" not in text
+    assert text.count("_anchor_execution_identity_for_state(") == 1
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out of
+    # server.py entirely into server_state_persistence_tail.py -- checked against that
+    # file's own full text now, not a server.py substring slice.
+    tail_text = _tail_text()
+    assert "anchor_production_execution" not in tail_text, (
         "the persistence tail must consume the pre-anchored pair, never anchor"
     )
     # The tail consumes the hoisted throttle reservation (single reservation/cycle).
-    assert "_do_insert = _xid_do_snapshot_insert" in text[tail_start:tail_end]
+    assert "_do_insert = _xid_do_snapshot_insert" in tail_text
     # The decision surface is marked landed only on a persist that actually landed.
-    assert "_decision_persist_landed" in text
-    mark_at = text.index('_xid_mark_dec(_xconn3, _xid_pair[0], "decision")')
-    guard_at = text.rindex('ms_dict.get("_decision_persist_landed")', 0, mark_at)
+    pub_text = (_P(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
+    assert "_decision_persist_landed" in pub_text
+    mark_at = pub_text.index('mark_surface_landed(conn, xid_pair[0], "decision")')
+    guard_at = pub_text.rindex('ms_dict.get("_decision_persist_landed")', 0, mark_at)
     assert mark_at - guard_at < 600, "decision-surface marking must be guarded by persist success"
     # Idle/non-model calibration contract: expected non-write, not a refusal.
     # The condition was inline in server.py until 2026-07-19; it now lives in
     # calibration.v2_live_logging.resolve_live_v2_calibration_tail_action. Assert the
     # CONTRACT (server delegates the decision, and the resolver still encodes the
     # idle skip) rather than a literal source string that a refactor can move.
-    assert "resolve_live_v2_calibration_tail_action(" in text
-    assert "has_execution_identity=_xid_pair_cal is not None" in text
+    # RC-REHAB-1 (twentieth slice): both call sites moved with the tail.
+    assert "resolve_live_v2_calibration_tail_action(" in tail_text
+    assert "has_execution_identity=_xid_pair_cal is not None" in tail_text
     from calibration.v2_live_logging import (
         LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
         LIVE_ADVISORY_V2_TAIL_APPEND,

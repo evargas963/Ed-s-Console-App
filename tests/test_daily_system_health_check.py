@@ -118,7 +118,7 @@ def test_daily_health_fails_stale_bars(tmp_path: Path) -> None:
 
     rep = run_daily_health(db, ticker_filter=["SPY"])
     assert rep.overall_pass is False
-    assert any("stale" in c.get("message", "").lower() for c in rep.checks if c["severity"] == "FAIL")
+    assert any("stale" in c["message"].lower() for c in rep.checks if c["severity"] == "FAIL")
 
 
 def _snap_only(conn, t0: float, n: int) -> None:
@@ -258,8 +258,8 @@ def test_vix_market_context_intraday_gap_warn_not_fail(tmp_path: Path, monkeypat
     gap_checks = [c for c in rep.checks if c.get("id") == "data_severe_intraday_gap:$VIX"]
     assert gap_checks, "expected intraday gap diagnostic for $VIX"
     assert gap_checks[0]["severity"] == "WARN"
-    assert "MARKET_CONTEXT_ONLY" in gap_checks[0].get("message", "")
-    assert not any(c["severity"] == "FAIL" and c.get("id", "").startswith("data_severe_intraday_gap") for c in rep.checks)
+    assert "MARKET_CONTEXT_ONLY" in gap_checks[0]["message"]
+    assert not any(c["severity"] == "FAIL" and c["id"].startswith("data_severe_intraday_gap") for c in rep.checks)
 
 
 def test_daily_health_fails_intraday_gap(tmp_path: Path) -> None:
@@ -286,7 +286,7 @@ def test_daily_health_fails_intraday_gap(tmp_path: Path) -> None:
     rep = run_daily_health(db, ticker_filter=["SPY"])
     assert rep.overall_pass is False
     assert any(
-        "rth-clock" in c.get("message", "").lower() or "intraday" in c.get("message", "").lower()
+        "rth-clock" in c["message"].lower() or "intraday" in c["message"].lower()
         for c in rep.checks
         if c["severity"] == "FAIL"
     )

@@ -23,16 +23,7 @@ from v2_decision import SCHEMA_VERSION, V2_STATUS, build_module_a_a1_decision
 
 log = logging.getLogger(__name__)
 
-try:
-    from db import configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.configure_sqlite_connection not available — using no-op stub: %s",
-        e,
-    )
-
-    def configure_sqlite_connection(conn: sqlite3.Connection, **kwargs: Any) -> None:
-        return None
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION = "1"
@@ -70,6 +61,16 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
     def _alias_if_absent_stamped(target: str, source: str) -> None:
         if ms.get(target) is None and ms.get(source) is not None:
             ms[target] = ms.get(source)
+            field_sources[target] = RECONSTRUCTED_LIVE_MS_SOURCE
+
+    def _set_if_absent_stamped(target: str, value: Any) -> None:
+        # setdefault semantics (a live key present in the row always passes through), but a
+        # value this reconstruction actually supplies is stamped in live_ms_field_sources like
+        # every other reconstructed field (FIND-WIRE6c-7 identity/clock surrogates).
+        if target in ms:
+            return
+        ms[target] = value
+        if value is not None:
             field_sources[target] = RECONSTRUCTED_LIVE_MS_SOURCE
 
     _alias_if_absent_stamped("rules_headline", "rules_summary")
@@ -112,7 +113,7 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
 
     _infer_fusion_fields(ms)
     if ts_utc is not None:
-        ms.setdefault("ts_utc", ts_utc)
+        _set_if_absent_stamped("ts_utc", ts_utc)  # row carried only decision_ts_utc
         from ml_data_common import market_session_from_ts_utc
         from time_et import et_clock_from_ts_utc
 
@@ -123,10 +124,15 @@ def ms_dict_from_snapshot_row(row: Mapping[str, Any]) -> dict[str, Any]:
         field_sources["et_hour"] = RECONSTRUCTED_LIVE_MS_SOURCE
         field_sources["et_minute"] = RECONSTRUCTED_LIVE_MS_SOURCE
         field_sources["market_session"] = RECONSTRUCTED_LIVE_MS_SOURCE
-    ms.setdefault("ticker", ticker)
-    ms.setdefault("decision_generation_id", snapshot_id)
-    ms.setdefault("_server_build_ts", ts_utc)
-    ms.setdefault("decision_time_ms", int(ts_utc * 1000) if ts_utc is not None else None)
+    _set_if_absent_stamped("ticker", ticker)
+    # Backfilled decisions have no live generation id / build time: the snapshot id and the
+    # snapshot capture time are the reconstruction's identity and clock, stamped as such.
+    _set_if_absent_stamped("decision_generation_id", snapshot_id)
+    _set_if_absent_stamped("_server_build_ts", ts_utc)
+    decision_time_ms: int | None = None
+    if ts_utc is not None:
+        decision_time_ms = int(ts_utc * 1000)
+    _set_if_absent_stamped("decision_time_ms", decision_time_ms)
     for block in ("stack_runtime", "stack_governance", "signal_chain"):
         existing = ms.get(block)
         if existing is None:
@@ -373,7 +379,7 @@ def backfill_calibration_decisions_insert_from_snapshots(
             else:
                 skipped += 1
                 skipped_reason_counts["unique_conflict"] = (
-                    skipped_reason_counts.get("unique_conflict", 0) + 1
+                    skipped_reason_counts.get("unique_conflict", 0) + 1  # caps-ok: skip-reason counter increment; first conflict starts from 0
                 )
         except (sqlite3.Error, KeyError, TypeError, ValueError) as exc:
             skipped += 1

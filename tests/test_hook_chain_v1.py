@@ -249,5 +249,5 @@ def test_the_executor_keeps_no_state_by_construction():
     tree = ast.parse((ROOT / "tools" / "hook_chain.py").read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            callee = getattr(node.func, "attr", getattr(node.func, "id", ""))
+            callee = getattr(node.func, "attr", getattr(node.func, "id", ""))  # caps-ok: AST duck typing: a callee that is neither Attribute nor Name has no name, and '' is never one of the forbidden write callees
             assert callee not in ("write_text", "write_bytes", "open", "putenv", "environ"), callee

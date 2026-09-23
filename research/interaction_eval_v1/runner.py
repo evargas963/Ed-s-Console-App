@@ -35,7 +35,7 @@ def _load(db: Path, ticker: str, hz: str):
         f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL "
         f"AND realized_vol IS NOT NULL AND spread IS NOT NULL"
     )
-    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = c.execute(q, (ticker,)).fetchall()
     c.close()
     return [(float(a), str(b), float(d), float(e)) for a, b, d, e in rows]
@@ -66,7 +66,7 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
                 xs.append(np.concatenate([h, [rv, sp], h * rv, h * sp]))
                 ys.append(y)
                 dates.append(_et_date(ts))
-            X = np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 11))
+            X = np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 11))  # caps-ok: zero-row design matrix of the correct width (no values invented); X.shape[0]==0 / no folds routes the cell to verdict UNDER_SAMPLED with mcc None
             day_list = sorted(set(dates))
             folds = expanding_window_oof_folds(day_list, n_folds=n_folds)
             if X.shape[0] == 0 or not folds:

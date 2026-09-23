@@ -106,7 +106,7 @@ def enrolled_tickers(db_path: str) -> list[str]:
             return sorted(set(tks))
     except Exception:  # institutional-swallow-ok: enrollment-authority read is best-effort; falls through to the direct DB scan below, never a silent empty
         pass
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=15.0)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     try:
         rows = con.execute(
             "SELECT DISTINCT ticker FROM price_bars_1m WHERE bar_end_ts_utc >= ?",
@@ -172,14 +172,14 @@ def vendor_reconcile(db_path: str, et_date: str, tickers: list[str]) -> dict:
     import os
     from datetime import datetime, timedelta, timezone
 
-    os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # server import without lifespan
+    os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # server import without lifespan  # caps-ok: import-guard env flag so importing server skips its lifespan startup; setdefault keeps a real pytest value; not data
     from bar_rehydration_issue19_v1 import _fetch_minute_window
     from server import get_client
 
     client = get_client()
     day = datetime.strptime(et_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     close = int(collect_window_end_mins_for_et_date(et_date) or 975)
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=15.0)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     out: dict[str, dict] = {}
     lost_total = 0
     try:

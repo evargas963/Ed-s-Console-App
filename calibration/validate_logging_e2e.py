@@ -16,7 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-os.environ.setdefault("ED_CALIBRATION_LOG", "1")
+os.environ.setdefault("ED_CALIBRATION_LOG", "1")  # caps-ok: this harness exists to prove the writer persists rows, so it enables the default-OFF flag for its own process; an explicit operator value is respected and a disabled writer then shows as a failed row-count check
 
 from db import DB_PATH, EdDB  # noqa: E402
 from signal_types import SignalInput  # noqa: E402
@@ -124,7 +124,7 @@ def main() -> int:
     ap.add_argument("--calls", type=int, default=3, help="Number of compute_signals invocations")
     args = ap.parse_args()
     n_calls = max(1, args.calls)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
     before = conn.execute("SELECT COUNT(*) FROM calibration_decision_log").fetchone()[0]
@@ -173,7 +173,7 @@ def main() -> int:
         print(f"call {i} signal={out.call.signal} refresh_ts_utc={rts:.3f} wall_s=[{t0:.3f},{t1:.3f}]")
         time.sleep(0.15)
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
     after = conn.execute("SELECT COUNT(*) FROM calibration_decision_log").fetchone()[0]

@@ -106,7 +106,7 @@ def _gate_ok_for_value(val: Any, gate: dict[str, Any] | None) -> bool:
 
 
 def _edge_discovery_gate(row: dict[str, Any]) -> dict[str, Any]:
-    g = bucket_gate(int(row.get("n") or 0), MIN_SAMPLES_STATISTICAL)
+    g = bucket_gate(int(row.get("n") or 0), MIN_SAMPLES_STATISTICAL)  # caps-ok: fail-closed leak gate; a row with no n gets an insufficient-sample gate, so any numeric it carries FAILS verify_edge_discovery_no_numeric_leak
     if row.get("gate_sufficient") is False:
         return {
             **g,
@@ -130,19 +130,19 @@ def verify_phase3_no_numeric_leak(out: dict[str, Any]) -> bool:
     Defensive check: no empirical rate/mean should be present without sufficient_sample.
     Returns True if safe.
     """
-    for _bkt, row in out.get("reliability_by_canonical_confidence", {}).items():
+    for _bkt, row in out.get("reliability_by_canonical_confidence", {}).items():  # caps-ok: leak detector; an absent section carries no number that could leak, and analyze_phase3 indexes this section directly so the producer cannot silently drop it
         g = row.get("sample_gate")
         if not _gate_ok_for_value(row.get("empirical_hit_rate"), g):
             return False
         if not _gate_ok_for_value(row.get("mean_max_class_probability"), g):
             return False
-    for _k, row in out.get("regime_buckets", {}).items():
+    for _k, row in out.get("regime_buckets", {}).items():  # caps-ok: leak detector; an absent section carries no number that could leak, and analyze_phase3 indexes this section directly so the producer cannot silently drop it
         g = row.get("sample_gate")
         if not _gate_ok_for_value(row.get("mean_5c_pts"), g):
             return False
         if not _gate_ok_for_value(row.get("win_rate_up_or_down_aligned"), g):
             return False
-    for _k, row in out.get("model_by_regime_buckets", {}).items():
+    for _k, row in out.get("model_by_regime_buckets", {}).items():  # caps-ok: leak detector; an absent section carries no number that could leak, and analyze_phase3 indexes this section directly so the producer cannot silently drop it
         g = row.get("sample_gate")
         if not _gate_ok_for_value(row.get("mean_5c_pts"), g):
             return False
@@ -151,7 +151,7 @@ def verify_phase3_no_numeric_leak(out: dict[str, Any]) -> bool:
         g = cell.get("sample_gate")
         if not _gate_ok_for_value(cell.get("mean_5c_pts"), g):
             return False
-    for _k, row in out.get("probability_bucket_expectancy_5c_pts", {}).items():
+    for _k, row in out.get("probability_bucket_expectancy_5c_pts", {}).items():  # caps-ok: leak detector; an absent section carries no number that could leak, and analyze_phase3 indexes this section directly so the producer cannot silently drop it
         g = row.get("sample_gate")
         if not _gate_ok_for_value(row.get("mean_pts"), g):
             return False
@@ -160,7 +160,7 @@ def verify_phase3_no_numeric_leak(out: dict[str, Any]) -> bool:
         if br is None or not br.get("sufficient_sample"):
             return False
     sf = out.get("snapshots_fallback") or {}
-    for _conv, row in sf.get("by_combined_conviction", {}).items():
+    for _conv, row in sf.get("by_combined_conviction", {}).items():  # caps-ok: leak detector; sf is {} when the snapshot fallback never ran, so there are no conviction buckets and nothing that could leak
         g = row.get("sample_gate")
         if not _gate_ok_for_value(row.get("mean_pnl_proxy_5c"), g):
             return False
@@ -192,7 +192,7 @@ def verify_a1_calibration_health_no_numeric_leak(health: dict[str, Any]) -> bool
 
 
 def verify_phase4_no_numeric_leak(out: dict[str, Any]) -> bool:
-    for _sig, row in out.get("decision_performance_from_log", {}).items():
+    for _sig, row in out.get("decision_performance_from_log", {}).items():  # caps-ok: leak detector; an absent section carries no number that could leak, and analyze_phase4 indexes this section directly so the producer cannot silently drop it
         g = row.get("sample_gate")
         if not _gate_ok_for_value(row.get("mean_pnl_proxy"), g):
             return False
@@ -356,7 +356,7 @@ def verify_edge_discovery_no_numeric_leak(out: dict[str, Any]) -> bool:
     fi = out.get("feature_importance_naive") or {}
     pearson_gate = fi.get("pearson_sample_gate")
     if pearson_gate is None:
-        pearson_gate = bucket_gate(int(fi.get("pearson_n") or 0), MIN_SAMPLES_STATISTICAL)
+        pearson_gate = bucket_gate(int(fi.get("pearson_n") or 0), MIN_SAMPLES_STATISTICAL)  # caps-ok: fail-closed leak gate; no pearson_n -> insufficient-sample gate, so a reported Pearson value FAILS the leak check
     if not _gate_ok_for_value(
         fi.get("pearson_fusion_prob_up_vs_outcome_5c_pts"), pearson_gate
     ):

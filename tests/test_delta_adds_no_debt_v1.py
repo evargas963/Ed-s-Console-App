@@ -211,10 +211,10 @@ def test_the_tool_measures_in_a_clean_worktree_not_the_dirty_tree(monkeypatch):
     monkeypatch.setattr(GATE, "enforced_roster", lambda wt: {"venv_parity", "root_cause_log"})
     counts, identities, sha, roster = GATE.enforced_counts("HEAD")
     assert (counts, identities, sha) == ({}, {}, "deadbeef") and roster
-    add = next(a for a, _ in calls if a[:3] == ["git", "worktree", "add"])
+    add = next(a for a, _ in calls if a[:3] == ["git", "worktree", "add"])  # caps-ok: scanner false positive: next() here has NO default argument; a missing git worktree add call raises StopIteration and fails the test
     assert "--detach" in add and add[-1] == "HEAD"
     wt = add[-2]
-    gate_argv, gate_cwd = next((a, c) for a, c in calls if any("check_institutional_correctness.py" in str(x) for x in a))
+    gate_argv, gate_cwd = next((a, c) for a, c in calls if any("check_institutional_correctness.py" in str(x) for x in a))  # caps-ok: scanner false positive: next() here has NO default argument; a missing gate invocation raises StopIteration and fails the test
     assert "--enforced-only" in gate_argv and str(gate_cwd) == str(wt) and str(gate_cwd) != str(REPO)
     removed = [a for a, _ in calls if a[:3] == ["git", "worktree", "remove"]]
     assert removed and str(wt) in removed[-1]
@@ -240,7 +240,7 @@ def test_each_tree_is_measured_in_its_own_process_never_imported(tmp_path):
     src = (REPO / "tools" / "check_delta_adds_no_debt.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     imported = {getattr(n, "module", None) or a.name for n in ast.walk(tree)
-                if isinstance(n, (ast.Import, ast.ImportFrom)) for a in getattr(n, "names", [])}
+                if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}
     assert not any("check_institutional" in str(m) for m in imported), imported
     assert "sys.path.insert" not in src and "load_tree_module" not in src
 
@@ -315,8 +315,8 @@ def test_declarations_only_touch_removal_accounting_and_come_from_the_candidate(
     candidate worktree (the diff under review), never from a base-side registry."""
     src_main = inspect.getsource(GATE.main)
     fn = ast.parse(src_main).body[0]
-    decl = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "declared_retirements"]
-    assert len(decl) == 1 and getattr(decl[0].args[0], "id", "") == "cand_wt"
+    decl = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "declared_retirements"]  # caps-ok: AST duck typing: an Attribute/Subscript callee has no .id, and '' never matches declared_retirements
+    assert len(decl) == 1 and getattr(decl[0].args[0], "id", "") == "cand_wt"  # caps-ok: AST duck typing: an argument that is not a Name has no .id, and '' fails the == 'cand_wt' equality, so a wrong argument fails the test
     assert "declared_retirements" not in inspect.getsource(GATE.compare)
     code = inspect.getsource(GATE).split('"""', 2)[-1]          # past the module docstring
     assert "OPEN_ITEMS" not in code and "--trusted" not in code and "contract" not in code

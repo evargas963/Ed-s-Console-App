@@ -59,7 +59,7 @@ def _get_active_tickers() -> list[str]:
     tickers = filter_valid_tickers(load_user_scheduler_tickers_or_empty())
     tickers = resolve_ml_training_roster(tickers, str(db.db_path))
     # Operational gate: must have at least one normalized 1m snapshot row.
-    con = sqlite3.connect(str(db.db_path))
+    con = sqlite3.connect(str(db.db_path), timeout=30.0)
     cur = con.cursor()
     out: list[str] = []
     for t in tickers:

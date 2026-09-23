@@ -161,9 +161,11 @@ def _evaluate_slice(
     ys_oos, pr_oos = (
         _vectors_move(oos_rows, hz) if family == "move" else _vectors_dir(oos_rows, hz)
     )
-    oos_prior = Counter(ys_is).most_common(1)[0][0] if ys_is else 0
-    oos_prior_acc = sum(1 for y in ys_oos if y == oos_prior) / len(ys_oos) if ys_oos else float("nan")
-    oos_model_acc = sum(1 for a, b in zip(ys_oos, pr_oos) if a == b) / len(ys_oos) if ys_oos else float("nan")
+    # n >= min_n >= 1 here and _split_is_oos keeps >= 1 IS row, so ys_is is never empty: the IS
+    # mode is always measured (it used to fall back to a fabricated class 0 / no_move / down).
+    oos_prior = Counter(ys_is).most_common(1)[0][0]
+    oos_prior_acc = sum(1 for y in ys_oos if y == oos_prior) / len(ys_oos) if ys_oos else float("nan")  # caps-ok: NaN = undefined on an empty OOS half; the verdict treats isnan as INCONCLUSIVE and the report serialises it as None
+    oos_model_acc = sum(1 for a, b in zip(ys_oos, pr_oos) if a == b) / len(ys_oos) if ys_oos else float("nan")  # caps-ok: NaN = undefined on an empty OOS half; isnan -> INCONCLUSIVE verdict, serialised as None
 
     old, recent = _median_split(el)
     ys_o, pr_o = (
@@ -172,8 +174,8 @@ def _evaluate_slice(
     ys_r, pr_r = (
         _vectors_move(recent, hz) if family == "move" else _vectors_dir(recent, hz)
     )
-    acc_o = sum(1 for a, b in zip(ys_o, pr_o) if a == b) / len(ys_o) if ys_o else float("nan")
-    acc_r = sum(1 for a, b in zip(ys_r, pr_r) if a == b) / len(ys_r) if ys_r else float("nan")
+    acc_o = sum(1 for a, b in zip(ys_o, pr_o) if a == b) / len(ys_o) if ys_o else float("nan")  # caps-ok: NaN = undefined on an empty older half; stab_fail only compares halves with >= 30 rows and the report serialises NaN as None
+    acc_r = sum(1 for a, b in zip(ys_r, pr_r) if a == b) / len(ys_r) if ys_r else float("nan")  # caps-ok: NaN = undefined on an empty recent half; stab_fail only compares halves with >= 30 rows and the report serialises NaN as None
     stab_fail = (acc_r < acc_o - 0.03) if (len(ys_o) >= 30 and len(ys_r) >= 30) else False
 
     if family == "move":
@@ -253,25 +255,25 @@ def run_phase65_movement(db_path: Path) -> dict[str, Any]:
     for hz in HORIZONS_MV:
         for fam in ("move", "dir"):
             res = _evaluate_slice(rows, hz, fam, f"global|horizon={hz}|family={fam}", MIN_N_GLOBAL)
-            out["primary_slices"][fam].setdefault("by_horizon", {})[hz] = res
+            out["primary_slices"][fam].setdefault("by_horizon", {})[hz] = res  # caps-ok: nested grouping container created on first write; holds only evaluated slice records
             out["summary_counts"][fam][res["verdict"]] += 1
 
         for tkr, mem in by_t.items():
             for fam in ("move", "dir"):
                 res = _evaluate_slice(mem, hz, fam, f"ticker={tkr}|horizon={hz}|family={fam}", MIN_N_SLICE)
-                out["primary_slices"][fam].setdefault("by_ticker", {}).setdefault(tkr, {})[hz] = res
+                out["primary_slices"][fam].setdefault("by_ticker", {}).setdefault(tkr, {})[hz] = res  # caps-ok: nested grouping containers (dimension -> ticker) created on first write; hold only evaluated slice records
                 out["summary_counts"][fam][res["verdict"]] += 1
 
         for sname, mem in by_s.items():
             for fam in ("move", "dir"):
                 res = _evaluate_slice(mem, hz, fam, f"session={sname}|horizon={hz}|family={fam}", MIN_N_SLICE)
-                out["primary_slices"][fam].setdefault("by_session", {}).setdefault(sname, {})[hz] = res
+                out["primary_slices"][fam].setdefault("by_session", {}).setdefault(sname, {})[hz] = res  # caps-ok: nested grouping containers (dimension -> session) created on first write; hold only evaluated slice records
                 out["summary_counts"][fam][res["verdict"]] += 1
 
         for rg, mem in by_rg.items():
             for fam in ("move", "dir"):
                 res = _evaluate_slice(mem, hz, fam, f"regime={rg}|horizon={hz}|family={fam}", MIN_N_SLICE)
-                out["primary_slices"][fam].setdefault("by_regime", {}).setdefault(rg, {})[hz] = res
+                out["primary_slices"][fam].setdefault("by_regime", {}).setdefault(rg, {})[hz] = res  # caps-ok: nested grouping containers (dimension -> regime) created on first write; hold only evaluated slice records
                 out["summary_counts"][fam][res["verdict"]] += 1
 
     # Interaction: ticker × horizon (single cell per family)
@@ -292,10 +294,17 @@ def run_phase65_movement(db_path: Path) -> dict[str, Any]:
             if not isinstance(d, dict):
                 continue
             for _k, v in d.items():
-                if isinstance(v, dict):
-                    for _k2, rec in v.items():
-                        if isinstance(rec, dict) and rec.get("verdict") == "ACCEPTED":
-                            accepted.append(rec.get("slice_id"))
+                if not isinstance(v, dict):
+                    continue
+                if "verdict" in v:
+                    # by_horizon is one level shallower ({hz: record}); these global slices
+                    # used to be skipped, undercounting accepted_total.
+                    if v["verdict"] == "ACCEPTED":
+                        accepted.append(v["slice_id"])
+                    continue
+                for _k2, rec in v.items():
+                    if isinstance(rec, dict) and rec.get("verdict") == "ACCEPTED":
+                        accepted.append(rec["slice_id"])
     out["inventories"] = {"accepted_slice_ids_sample": accepted[:120], "accepted_total": len(accepted)}
     out["phase65_movement_verdict"] = "PASS" if out["primary_slices"]["move"].get("by_horizon") else "FAIL"
     return out
@@ -315,7 +324,7 @@ def main() -> int:
     ensure_artifacts_dir()
     outp = ROOT / "data" / "phase65_movement_isolation_v1_report.json"
     outp.write_text(json.dumps(rep, indent=2, default=str), encoding="utf-8")
-    print(json.dumps({"wrote": str(outp), "accepted_total": rep.get("inventories", {}).get("accepted_total")}, indent=2))
+    print(json.dumps({"wrote": str(outp), "accepted_total": rep["inventories"]["accepted_total"]}, indent=2))
     return 0
 
 

@@ -1,7 +1,10 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
 import inspect
+import math
+from datetime import datetime
 
+from time_et import ET
 from math_exposure_core import (
     aggregate_net_gex,
     bucket_metric_abs,
@@ -22,6 +25,9 @@ from math_levels import (
     pick_gamma_wall_strikes,
     WallsRow,
 )
+import terrain_loop
+import terrain_state
+import terrain_radar
 
 
 def _dollarized_exposures():
@@ -220,12 +226,12 @@ def _wide_vs_selected_wall_books():
     chain, spot = fx["chain"], float(fx["spot"])
     src = next(
         c for c in chain
-        if str(c.get("putCall", "")).upper() == "CALL"
-        and float(c.get("strikePrice") or 0) == 745.0
+        if str(c["putCall"]).upper() == "CALL"
+        and float(c["strikePrice"]) == 745.0
     )
     extra = dict(src)
     extra["strikePrice"] = 760.0
-    extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
+    extra["daysToExpiration"] = int(src["daysToExpiration"]) + 30
     extra["expirationDate"] = "2026-08-16"
     extra["openInterest"] = 500_000
     extra["symbol"] = "SPY   260816C00760000"
@@ -271,7 +277,7 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
     from math_probabilities import compute_wall_score_components
 
     prox, _, audit = compute_wall_score_components(760.0, spot, "CALL", bound)
-    levels_scored = [d["level"] for d in audit.get("proximity_detail", [])]
+    levels_scored = [d["level"] for d in audit["proximity_detail"]]
     assert bound[0].dom_delta_wall is None
     assert "call_delta_wall" in levels_scored
     assert "put_delta_wall" in levels_scored
@@ -315,7 +321,7 @@ def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
     assert "strike_in_call_gamma_wall_approach_zone" in (audit.get("bias_notes") or [])
     assert bias == 0.85
     assert all("dom_gamma" not in n for n in (audit.get("bias_notes") or []))
-    assert all(d["level"] != "dom_gamma_wall" for d in audit.get("proximity_detail", []))
+    assert all(d["level"] != "dom_gamma_wall" for d in audit["proximity_detail"])
     # Negative: even a fabricated dominant CALL wall at the call strike must NOT
     # revive +0.45 or a third proximity contrib (pre-fix did both).
     fake = replace(
@@ -328,7 +334,7 @@ def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
     )
     prox2, bias2, audit2 = compute_wall_score_components(760.0, spot, "CALL", [fake])
     notes2 = audit2.get("bias_notes") or []
-    levels2 = [d["level"] for d in audit2.get("proximity_detail", [])]
+    levels2 = [d["level"] for d in audit2["proximity_detail"]]
     assert "dom_gamma_call_confluence" not in notes2
     assert "dom_gamma_wall" not in levels2
     assert bias2 == 0.85  # approach only — not 0.85+0.45
@@ -339,7 +345,7 @@ def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
     _, _, audit3 = compute_wall_score_components(
         float(unbound[0].dom_gamma_wall), spot, "PUT", unbound
     )
-    levels3 = [d["level"] for d in audit3.get("proximity_detail", [])]
+    levels3 = [d["level"] for d in audit3["proximity_detail"]]
     assert "dom_gamma_wall" not in levels3
     assert all("dom_gamma" not in n for n in (audit3.get("bias_notes") or []))
 
@@ -427,21 +433,21 @@ def test_terrain_cache_get_derives_staleness_from_computed_ts():
 
     tk = srv.ticker_storage_key("SPY")
     old_ts = time.time() - 99999.0
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "computed_ts_utc": old_ts,
             "call_wall": 760.0,
             "put_wall": 745.0,
         }
-    got = srv.terrain_cache_get("SPY")
+    got = terrain_loop.terrain_cache_get("SPY")
     assert got is not None
     assert got["call_wall"] == 760.0
     assert got["levels_stale"] is True
     assert "levels_stale_reason" in got
     fresh_ts = time.time()
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {"computed_ts_utc": fresh_ts, "call_wall": 760.0}
-    fresh = srv.terrain_cache_get("SPY")
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"computed_ts_utc": fresh_ts, "call_wall": 760.0}
+    fresh = terrain_loop.terrain_cache_get("SPY")
     assert fresh["levels_stale"] is False
 
 
@@ -457,9 +463,9 @@ def test_consensus_walls_withhold_when_cache_stale_via_computed_ts():
     tk = srv.ticker_storage_key("SPY")
     stale_entry = dict(terrain)
     stale_entry["computed_ts_utc"] = time.time() - 99999.0
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = stale_entry
-    merged = srv.terrain_cache_get("SPY")
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = stale_entry
+    merged = terrain_loop.terrain_cache_get("SPY")
     assert merged["levels_stale"] is True
     bound = consensus_walls_bind_terrain_ssot(walls, merged)
     assert bound[0].call_gamma_wall is None
@@ -468,9 +474,9 @@ def test_consensus_walls_withhold_when_cache_stale_via_computed_ts():
     assert bound[0].put_delta_wall is None
     fresh_entry = dict(terrain)
     fresh_entry["computed_ts_utc"] = time.time()
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = fresh_entry
-    merged_fresh = srv.terrain_cache_get("SPY")
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = fresh_entry
+    merged_fresh = terrain_loop.terrain_cache_get("SPY")
     assert merged_fresh["levels_stale"] is False
     bound_fresh = consensus_walls_bind_terrain_ssot(walls, merged_fresh)
     assert bound_fresh[0].call_gamma_wall == 760.0
@@ -507,9 +513,15 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     assert "g-Inflection" not in nearest
     assert "D-Inflection" not in nearest
     assert "Call OI Wall" not in nearest
-    srv = Path("server.py").read_text(encoding="utf-8")
-    dens = srv.split("# Build levels dict for density check", 1)[1].split("_level_density", 1)[0]
-    dens_body = dens.split("_all_levels = {}", 1)[1]
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
+    # into _vol_envelope_and_sector_for_state, and its local names dropped their
+    # underscore-prefix scratch-var spelling (_all_levels -> all_levels, _level_density ->
+    # level_density) in the process.
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function itself
+    # moved out of server.py into server_state_vol_envelope_sector.py.
+    srv = Path("server_state_vol_envelope_sector.py").read_text(encoding="utf-8")
+    dens = srv.split("# Build levels dict for density check", 1)[1].split("level_density", 1)[0]
+    dens_body = dens.split("all_levels: dict = {}", 1)[1]
     assert 'getattr(consensus_summary, "oi_center"' not in dens_body
     assert "'gamma_inflection'" not in dens_body
     assert "'call_oi_wall'" not in dens_body
@@ -517,7 +529,7 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     # Assert on dens_body only — historical comments may still name the dead locals pattern.
     assert "if _gamma_flip:" not in dens_body
     assert "locals().get(" not in dens_body
-    assert "_w0" in dens_body
+    assert "w0" in dens_body
     assert 'get("gamma_flip")' in dens_body
     ce = Path("call_engine.py").read_text(encoding="utf-8")
     rdy = ce.split("_nearest_dist = None", 1)[1].split("_level_prox =", 1)[0]
@@ -563,14 +575,19 @@ def test_level_density_uses_terrain_bound_walls_not_dead_locals():
     assert "put_gamma_wall" in (fixed["level_names"] or [])
     assert fixed["density_label"] == "light"
     assert fixed["count"] == 1
-    src = Path("server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
+    # into _vol_envelope_and_sector_for_state, dropping its underscore-prefix scratch-var
+    # spelling (_all_levels -> all_levels, _level_density -> level_density, _w0 -> w0).
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function itself
+    # moved out of server.py into server_state_vol_envelope_sector.py.
+    src = Path("server_state_vol_envelope_sector.py").read_text(encoding="utf-8")
     dens = src.split("# Build levels dict for density check", 1)[1].split(
-        "_level_density = compute_level_density", 1
+        "level_density = compute_level_density", 1
     )[0]
-    body = dens.split("_all_levels = {}", 1)[1]
+    body = dens.split("all_levels: dict = {}", 1)[1]
     assert "locals().get(" not in body
     assert "if _gamma_flip:" not in body
-    assert "_w0" in body
+    assert "w0" in body
     assert 'get("gamma_flip")' in dens
 
 
@@ -618,10 +635,15 @@ def test_level_density_uses_terrain_iv_sigma_em_not_remaining_risk_em():
     assert fixed["density_label"] == "light"
     assert "em_upper" not in (fixed["level_names"] or [])
     # Source lock: dens body binds implied_1d_move, not `_em_up`.
-    dens = Path("server.py").read_text(encoding="utf-8").split(
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block
+    # moved into _vol_envelope_and_sector_for_state, dropping its underscore-prefix
+    # scratch-var spelling (_all_levels -> all_levels, _level_density -> level_density).
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function
+    # itself moved out of server.py into server_state_vol_envelope_sector.py.
+    dens = Path("server_state_vol_envelope_sector.py").read_text(encoding="utf-8").split(
         "# Build levels dict for density check", 1
-    )[1].split("_level_density = compute_level_density", 1)[0]
-    body = dens.split("_all_levels = {}", 1)[1]
+    )[1].split("level_density = compute_level_density", 1)[0]
+    body = dens.split("all_levels: dict = {}", 1)[1]
     assert "implied_1d_move" in body
     assert "if _em_up:" not in body
     # Executable dens lines only — comments may name the retired remaining-risk binders.
@@ -632,8 +654,10 @@ def test_level_density_uses_terrain_iv_sigma_em_not_remaining_risk_em():
     code = "\n".join(code_lines)
     assert "_em_up" not in code
     assert "_em_band_source" not in code
-    assert 'em_upper"] = float(_em_spot) + float(_em_pts)' in code or (
-        "em_upper" in code and "_em_pts" in code and "_em_spot" in code
+    # RC-REHAB-1 (sixteenth slice): em_spot/em_pts dropped their underscore-prefix
+    # scratch-var spelling in the same move as all_levels/level_density above.
+    assert 'em_upper"] = float(em_spot) + float(em_pts)' in code or (
+        "em_upper" in code and "em_pts" in code and "em_spot" in code
     )
 
 
@@ -861,30 +885,30 @@ def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
 
     tk = srv.ticker_storage_key("SPY")
     old_ts = time.time() - 99999.0
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "ticker": "SPY",
             "computed_ts_utc": old_ts,
             "call_wall": 760.0,
             "confidence": "TRUSTED",
             "spot": 755.0,
         }
-    snaps = srv._terrain_snapshots_for_radar()
-    spy = next((s for s in snaps if s.get("ticker") == "SPY"), None)
+    snaps = terrain_radar._terrain_snapshots_for_radar()
+    spy = next((s for s in snaps if s.get("ticker") == "SPY"), None)  # caps-ok: None is asserted against on the very next line (assert spy is not None), so a missing SPY snapshot fails the test
     assert spy is not None
     assert spy["levels_stale"] is True
     assert "levels_stale_reason" in spy
     fresh_ts = time.time()
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "ticker": "SPY",
             "computed_ts_utc": fresh_ts,
             "call_wall": 760.0,
             "confidence": "TRUSTED",
             "spot": 755.0,
         }
-    fresh_snaps = srv._terrain_snapshots_for_radar()
-    fresh_spy = next((s for s in fresh_snaps if s.get("ticker") == "SPY"), None)
+    fresh_snaps = terrain_radar._terrain_snapshots_for_radar()
+    fresh_spy = next(s for s in fresh_snaps if s.get("ticker") == "SPY")
     assert fresh_spy["levels_stale"] is False
 
 
@@ -937,10 +961,23 @@ def test_volatility_points_are_signed_extremes_on_real_chain():
     assert lvp is not None
 
 
-def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
+def test_terrain_snapshot_v2_carries_net_gex_and_new_levels(monkeypatch):
     """Real seam: compute_terrain (the /api/terrain producer) on the real SPY chain
     must serve schema v2 with net_gex_at_spot ≡ flip_diag.gamma_at_spot and the new
-    levels agreeing with their pickers — the UI renders these fields directly."""
+    levels agreeing with their pickers — the UI renders these fields directly.
+
+    This fixture (real_spy_0dte_chain_with_poison.json) carries a UNIFORM
+    expirationDate of 2026-07-17T20:00:00Z baked into every contract. net_gex_at_spot
+    and flip_diag['gamma_at_spot'] both derive from compute_gamma_flip_v2's gamma
+    profile, which is time-to-expiry sensitive via time_et.time_to_expiry_years and
+    fails closed (empty profile, gamma_at_spot=None) once real wall-clock time passes
+    that date. Left unpinned, the equality assertion below degenerates to comparing
+    two independently-computed Nones (MEASURED: net_gex_at_spot=None, flip_diag
+    reason='empty_profile' against real 2026-09-18 wall clock) instead of exercising
+    the real recompute. Freeze `now` to mid-session on the fixture's own capture day so
+    the comparison is genuine (MEASURED under this freeze: net_gex_at_spot ==
+    -4855788963.56, gamma_flip=761.0)."""
+    monkeypatch.setattr("time_et.now_et", lambda: datetime(2026, 7, 17, 10, 0, tzinfo=ET))
     import json
     from pathlib import Path
 
@@ -959,6 +996,14 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
         assert fld in d, fld + " missing from terrain payload"
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
+    # RC-REHAB (test-fixture expiry rehab): the equality above must be between two real,
+    # non-degenerate numbers — not the vacuous None==None a fail-closed, expired-T profile
+    # would otherwise produce on this fixture.
+    assert d["net_gex_at_spot"] is not None and math.isfinite(d["net_gex_at_spot"]), (
+        "net_gex_at_spot degenerated to None — the gamma profile likely fell through the "
+        "time-to-expiry fail-closed path (expired fixture date), making the equality above "
+        "a vacuous None==None comparison instead of genuine math"
+    )
     exposures, _ = compute_exposures_by_strike(fx["chain"], spot=float(fx["spot"]), require_oi=True)
     strikes = sorted(exposures.keys())
     # engine strike list is filtered; pickers must agree when run on the same inputs

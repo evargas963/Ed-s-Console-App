@@ -127,8 +127,8 @@ def main() -> None:
         write_capable=not args.dry_run,
     )
 
-    edb = EdDB(db_path, allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)))
-    conn = sqlite3.connect(str(db_path))
+    edb = EdDB(db_path, allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)))  # caps-ok: flag from register_allow_noncanonical_flag; absent keeps the canonical-DB guard on
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     gov_extra = ""
@@ -155,7 +155,7 @@ def main() -> None:
         ORDER BY ts_utc { "ASC" if args.order_ts == "asc" else "DESC" }
     """
     lim = args.limit if args.limit and args.limit > 0 else None
-    chunk_size = int(args.chunk_size) if getattr(args, "chunk_size", 0) else 0
+    chunk_size = int(args.chunk_size) if getattr(args, "chunk_size", 0) else 0  # caps-ok: CLI option; 0 is the documented 'no chunking' setting
 
     total_scanned = 0
     updated = 0

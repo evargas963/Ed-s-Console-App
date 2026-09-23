@@ -49,16 +49,7 @@ from db_authority import canonical_console_db_path
 
 log = logging.getLogger(__name__)
 
-try:
-    from db import configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.configure_sqlite_connection not available — using no-op stub: %s",
-        e,
-    )
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 MIN_N = MIN_SAMPLES_STATISTICAL
 AXIS_INVALID = "__invalid__"
@@ -109,7 +100,7 @@ def _bootstrap_gated(
     if gate_ok:
         return {**boot, "gate_sufficient": True}
     return {
-        "n": boot.get("n", len(actual)),
+        "n": boot["n"],  # every _bootstrap_delta return and the len<2 stub carry "n"
         "gate_sufficient": False,
         "mean_delta": None,
         "ci95_low": None,
@@ -186,7 +177,7 @@ def _bootstrap_delta(
 
 
 def load_labeled_rows(db_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
@@ -478,7 +469,7 @@ def pick_db_path(explicit: Path | None) -> Path:
     for p in candidates:
         if not p.is_file():
             continue
-        conn = sqlite3.connect(str(p))
+        conn = sqlite3.connect(str(p), timeout=30.0)
         n = int(
             conn.execute(
                 f"SELECT COUNT(*) FROM calibration_decision_log WHERE outcome_5c IS NOT NULL AND ({TRUSTED_PREDICATE_SQL})"
@@ -581,7 +572,7 @@ def run_discovery_rows(
         "population_notes": {
             "filters": "trusted + canonical 1m + outcome_5c NOT NULL + BAR_ANCHOR_V1",
             "rows_used": len(rows),
-            "signal_fn": getattr(signal_fn, "__name__", str(signal_fn)) if signal_fn else "canonical_effective_default",
+            "signal_fn": getattr(signal_fn, "__name__", str(signal_fn)) if signal_fn else "canonical_effective_default",  # caps-ok: provenance label only; callables without __name__ (functools.partial) fall back to their repr, and None names the _effective_directional_signal default row_metrics actually uses
         },
         "marginal_slice_count": len(marginal),
         "two_d_slice_count": len(two_d),
@@ -640,7 +631,7 @@ def main() -> int:
     db_path = pick_db_path(args.db)
     enforce_resolved_path(
         db_path,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(args.allow_noncanonical_db),  # registered just above
         tool_name="calibration.edge_discovery",
         write_capable=False,
     )

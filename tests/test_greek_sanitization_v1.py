@@ -61,14 +61,16 @@ def test_corrupt_spy_748p_excluded_from_gamma_sums_oi_kept() -> None:
     exp_clean, _diag_clean = compute_exposures_by_strike(clean, spot=742.0)
 
     # (a) corrupt contract excluded from gamma sums
-    bad_bucket = exp_bad.get(748.0, {})
-    assert bad_bucket.get("put_gamma", 0.0) == 0.0
+    bad_bucket = exp_bad[748.0]
+    assert bad_bucket["put_gamma"] == 0.0
+    # ...and that 0.0 is flagged as an absence, not presented as a computed zero.
+    assert bad_bucket["has_valid_gamma"] is False
     # OI-only metrics still record the contract
     assert bad_bucket.get("put_oi") == 21605.0
 
     # (b) net_gamma / pin match the clean set
     def total_net_gamma(exp: dict) -> float:
-        return sum(float(b.get("net_gamma") or 0.0) for b in exp.values())
+        return sum(float(b["net_gamma"]) for b in exp.values())
 
     assert abs(total_net_gamma(exp_bad) - total_net_gamma(exp_clean)) < 1e-9
     strikes_bad = sorted(exp_bad)

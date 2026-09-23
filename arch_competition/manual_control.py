@@ -96,8 +96,8 @@ def _canonical_candidate_dirs(model_dir: Path, ticker: str) -> tuple[Path, Path]
 
 def _validate_manifest_paths_match_canonical(manifest: dict[str, Any], model_dir: Path, ticker: str) -> None:
     p_can, c_can = _canonical_candidate_dirs(model_dir, ticker)
-    p = Path(str(manifest.get("parallel_model_dir", ""))).resolve()
-    c = Path(str(manifest.get("cascade_model_dir", ""))).resolve()
+    p = Path(str(manifest.get("parallel_model_dir", ""))).resolve()  # caps-ok: fail-closed: a missing path resolves to the cwd, which never equals the canonical parallel dir, so ManualGovernanceError is raised
+    c = Path(str(manifest.get("cascade_model_dir", ""))).resolve()  # caps-ok: fail-closed: a missing path resolves to the cwd, which never equals the canonical cascade dir, so ManualGovernanceError is raised
     if p != p_can or c != c_can:
         raise ManualGovernanceError(
             f"evaluation manifest paths must match {p_can} and {c_can} (got {p} / {c})"

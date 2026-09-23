@@ -112,7 +112,9 @@ def run(db_path: str) -> dict:
 
     # The justified span: smallest ladder point where >=95% of chains are within tolerance.
     justified = next((r["span_pct"] for r in rows
-                      if r.get("share_within_tolerance", 0) >= 95.0), None)
+                      # empty ladder rows carry no share (n=0): they cannot justify a span
+                      if r.get("share_within_tolerance") is not None
+                      and r["share_within_tolerance"] >= 95.0), None)
     return {
         "db_path": db_path,
         "chains_with_reference_flip": n_ref,
@@ -129,4 +131,4 @@ def run(db_path: str) -> dict:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    print(json.dumps(run(args[0] if args else str(canonical_console_db_path())), indent=2))
+    print(json.dumps(run(args[0] if args else str(canonical_console_db_path())), indent=2))  # caps-ok: CLI positional DB path with the canonical console DB as documented default; an argument choice, not data

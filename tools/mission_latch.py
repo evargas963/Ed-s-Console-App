@@ -274,7 +274,7 @@ def row_blockers(row: MissionRow) -> list[str]:
                 "without a live resume date is a deferral, not a blocker"]
     if status != "OPEN":
         return []                          # CLOSED / REMEDIATED rows are finished
-    hit = next((m for m in UNFINISHED_MARKERS if m in row.fix.upper()), None)
+    hit = next((m for m in UNFINISHED_MARKERS if m in row.fix.upper()), None)  # caps-ok: next(..., None) lookup of the first unfinished marker; the very next line branches on `if hit else` so None is handled explicitly
     # The marker adds nothing to the DECISION — measured decision-neutral across 30
     # cases — but naming what the agent itself wrote makes the block message actionable.
     return [f"fix cell still says {hit!r}" if hit else
@@ -328,7 +328,7 @@ def _user_texts(transcript_path: str) -> list[str]:
                 if isinstance(content, str):
                     texts = [content]
                 elif isinstance(content, list):
-                    texts = [b.get("text", "") for b in content
+                    texts = [b.get("text") for b in content
                              if isinstance(b, dict) and b.get("type") == "text"]
                 else:
                     texts = []

@@ -16,7 +16,7 @@ _PIN_TF = (CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME)
 
 
 def main() -> None:
-    conn = sqlite3.connect(str(DB))
+    conn = sqlite3.connect(str(DB), timeout=30.0)
     conn.row_factory = sqlite3.Row
     now = time.time()
     win = now - 14 * 86400

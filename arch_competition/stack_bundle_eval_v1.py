@@ -304,8 +304,9 @@ def _authority_block(
     ranked: list[tuple[str, float]] = []
     for name, m in by_config.items():
         ll = m.get("multiclass_log_loss")
-        n = m.get("n_rows_scored", 0)
-        if ll is None or n < min_rows:
+        n = m.get("n_rows_scored")
+        # Unknown row count cannot satisfy the min_rows authority floor (a 0 stand-in passed it at min_rows=0).
+        if ll is None or n is None or n < min_rows:
             continue
         ranked.append((name, float(ll)))
     ranked.sort(key=lambda x: x[1])
@@ -522,7 +523,7 @@ def run_stack_bundle_evaluation(
                     snap,
                     ticker,
                     hist_db,
-                    getattr(rules, "signal", "wait") or "wait",
+                    rules.signal,  # RulesCard.signal is required ('long'/'short'/'wait'); no fabricated "wait"
                     inference_snapshot_v1=inf_v1,
                 )
             except Exception as e:
@@ -1308,7 +1309,7 @@ def primary_scoring_cell_untrusted(model_family: str, horizon_slug: str) -> bool
 
 
 def _primary_matrix_complete(survivor_summary: dict) -> bool:
-    scored = int(survivor_summary.get("scored_cell_count") or 0)
+    scored = int(survivor_summary.get("scored_cell_count") or 0)  # caps-ok: fail-closed: an absent count reads 0 < matrix_target, so the matrix is reported INCOMPLETE
     matrix_target = ablation_full_matrix_cell_target()
     return matrix_target > 0 and scored >= matrix_target
 
@@ -1416,7 +1417,7 @@ def confirmed_drop_group_ids_by_model_horizon(
         key = (str(cell.get("model_family")), str(cell.get("horizon_slug")))
         by_mh[key].append(cell)
 
-    anchors_required = int(confirm.get("anchors_required") or 0)
+    anchors_required = int(confirm.get("anchors_required") or 0)  # caps-ok: fail-closed: absent means need = len(group), i.e. EVERY confirm cell must be safe_to_drop (stricter than any configured count)
     for key, group in by_mh.items():
         safe = [c for c in group if c.get("safe_to_drop")]
         need = anchors_required if anchors_required > 0 else len(group)
@@ -1488,7 +1489,7 @@ def resolve_ablation_drop_group_ids() -> list[str]:
         log.warning("ablation survivor mask: report unreadable (%s); fail-closed.", e)
         return []
     ss = report.get("survivor_summary") or {}
-    scored = int(ss.get("scored_cell_count") or 0)
+    scored = int(ss.get("scored_cell_count") or 0)  # caps-ok: fail-closed: an absent count reads 0 < matrix_target, so no survivor mask is applied
     matrix_target = ablation_full_matrix_cell_target()
     if matrix_target <= 0 or scored < matrix_target:
         log.warning(
@@ -1702,7 +1703,7 @@ def ablated_drop_group_ids_for_model_horizon(model_family: str, horizon_slug: st
     drops only; primary-pass DROP_CANDIDATE is never applied on the money path.
     Raises AblatedTrainingUnavailable if the matrix is missing/incomplete or confirm not run."""
     ss = _load_ablation_report_or_raise().get("survivor_summary") or {}
-    scored = int(ss.get("scored_cell_count") or 0)
+    scored = int(ss.get("scored_cell_count") or 0)  # caps-ok: fail-closed: an absent count reads 0 < matrix_target and raises AblatedTrainingUnavailable
     matrix_target = ablation_full_matrix_cell_target()
     if matrix_target <= 0 or scored < matrix_target:
         raise AblatedTrainingUnavailable(
@@ -2519,10 +2520,10 @@ def run_whole_stack_feature_group_ablation(
     pooled = bool(baseline_cache.get("pooled"))
     if baseline_cache.get("status") != "ok":
         skipped: dict[str, Any] = {
-            "horizon_slug": baseline_cache.get("hz", ml_horizon_slug),
+            "horizon_slug": baseline_cache.get("hz", ml_horizon_slug),  # caps-ok: skipped-record metadata; the requested horizon slug is the true horizon of this skipped evaluation
             "group_id": group_id,
             "status": "skipped",
-            "reason": baseline_cache.get("reason", "baseline_not_ready"),
+            "reason": baseline_cache.get("reason", "baseline_not_ready"),  # caps-ok: skip reason label on a status!=ok record; no metric is emitted for a skipped group
             "ablation_kind": "whole_stack_feature_group",
             "decision_mode": WHOLE_STACK_DECISION_MODE,
             "model_family": model_family,
@@ -2747,10 +2748,10 @@ def run_whole_stack_feature_group_confirm_drop(
     if baseline_cache.get("status") != "ok":
         return {
             "anchor_ticker": ticker,
-            "horizon_slug": baseline_cache.get("hz", ml_horizon_slug),
+            "horizon_slug": baseline_cache.get("hz", ml_horizon_slug),  # caps-ok: skipped-record metadata; the requested horizon slug is the true horizon of this skipped evaluation
             "group_id": group_id,
             "status": "skipped",
-            "reason": baseline_cache.get("reason", "baseline_not_ready"),
+            "reason": baseline_cache.get("reason", "baseline_not_ready"),  # caps-ok: skip reason label on a status!=ok record; no metric is emitted for a skipped group
             "ablation_kind": "confirm_drop_feature_group",
             "decision_mode": WHOLE_STACK_CONFIRM_DECISION_MODE,
         }

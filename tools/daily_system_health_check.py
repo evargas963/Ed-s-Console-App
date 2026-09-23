@@ -96,13 +96,13 @@ def main() -> int:
     sm = report.summary or {}
     print(
         f"overall_pass={report.overall_pass} tickers={len(report.tickers)} checks={len(report.checks)} "
-        f"fail_checks={sm.get('fail_checks', '?')} warn_checks={sm.get('warn_checks', '?')} "
-        f"universe={sm.get('universe_resolution', '')}"
+        f"fail_checks={sm.get('fail_checks', '?')} warn_checks={sm.get('warn_checks', '?')} "  # caps-ok: console display; '?' shows the count is absent, the verdict is overall_pass
+        f"universe={sm.get('universe_resolution', '')}"  # caps-ok: console display label only
     )
     for c in report.checks:
         print(f"  [{c.get('severity')}] {c.get('id')}: {c.get('message')}")
 
-    return 0 if report.overall_pass else 1
+    return 0 if report.overall_pass else 1  # caps-ok: exit code IS the verdict
 
 
 if __name__ == "__main__":

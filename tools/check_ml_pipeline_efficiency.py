@@ -72,7 +72,15 @@ def check_ml_pipeline_efficiency() -> list[str]:
     sched_path = REPO_ROOT / "ml_scheduler.py"
     if sched_path.is_file():
         sched_text = sched_path.read_text(encoding="utf-8", errors="replace")
-        if "load_parallel_cascade_bridge" not in sched_text:
+        # RC-REHAB-1 (2026-09-22): load_parallel_cascade_bridge's call site moved to
+        # ml_scheduler_cascade_train.py (final slice of the ml_scheduler.py decomposition,
+        # inside train_cascade_candidate) -- same code, different file.
+        cascade_train_path = REPO_ROOT / "ml_scheduler_cascade_train.py"
+        cascade_train_text = (
+            cascade_train_path.read_text(encoding="utf-8", errors="replace")
+            if cascade_train_path.is_file() else ""
+        )
+        if "load_parallel_cascade_bridge" not in sched_text + cascade_train_text:
             errors.append("ml_scheduler.py: cascade must call load_parallel_cascade_bridge")
         gate_slice = _scheduler_survivor_gate_slice(sched_text)
         if not gate_slice:

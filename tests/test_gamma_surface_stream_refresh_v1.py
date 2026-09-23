@@ -12,12 +12,24 @@ import time
 from pathlib import Path
 
 import server
-from server import (
-    refresh_gamma_surface_from_stream,
-    project_gamma_surface,
-    ticker_storage_key,
-)
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
+# refresh_gamma_surface_from_stream moved out of server.py entirely, into
+# gamma_surface_eager_refresh.py, which imports project_gamma_surface/
+# project_gamma_surface_update_expiry/compute_terrain directly (module-level, not
+# lazily via `import server`) -- mocks targeting those three must patch that
+# module's own binding, not server's re-export, to be picked up.
+import gamma_surface_eager_refresh as gse
+from gamma_surface_eager_refresh import refresh_gamma_surface_from_stream
+from gamma_surface_projection import project_gamma_surface
+from instrument_identity import ticker_storage_key
 from math_exposure_core import overlay_streamed_contract_fields
+import gamma_surface_state
+import per_strike_view
+import terrain_refresh
+import gamma_surface_projection
+import terrain_state
+import terrain_engine
+import gamma_last_valid
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -83,8 +95,8 @@ def _surfaces_match_ignoring_vanna_drift(actual, expected, tol=0.1):
 
 
 def _clear_cache():
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(TK, None)
     # Canonical input-validity rules (2026-09-15): _LAST_VALID_GEX_CELLS is a module-level,
     # cross-call snapshot store (by design -- it must survive the very cache pops this helper
     # performs, in production). Cleared here too so ONE test's real backfilled values never
@@ -92,29 +104,29 @@ def _clear_cache():
     # directly and therefore never goes through backfill itself. _HYDRATED is cleared too so
     # a later test's first backfill call re-hydrates (a real, but harmless and fail-closed-
     # empty-for-this-ticker, DB read) rather than silently reusing this run's in-memory state.
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        server._LAST_VALID_GEX_CELLS.pop(TK, None)
-        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
+    with gamma_last_valid._LAST_VALID_GEX_CELLS_LOCK:
+        gamma_last_valid._LAST_VALID_GEX_CELLS.pop(TK, None)
+        gamma_last_valid._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
         # Pre-throttled (not popped) -- this file's tests are about overlay/refresh semantics,
         # not DB persistence (see test_canonical_gex_input_validity_v1.py for that proof), so
         # the durability flush is deliberately kept quiet here: real backfill READS still run
         # (harmless, read-only, fail-closed to {} for this synthetic ticker), but no test in
         # this file writes rows into the real dev database.
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
+        gamma_last_valid._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
 
 
 def _put_rest_baseline(*, computed_ts_utc=None, contracts=None):
     ts = time.time() if computed_ts_utc is None else computed_ts_utc
     cts = _CONTRACTS if contracts is None else contracts
-    with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[TK] = {
             "_contracts_rest": cts,
             "_contracts_rest_spot": _SPOT,
             "_contracts_rest_computed_ts": ts,
             "_gamma_surface": project_gamma_surface(cts, _SPOT),
             "computed_ts_utc": ts,
         }
-    server._gamma_surface_seq.pop(TK, None)
+    gamma_surface_state._gamma_surface_seq.pop(TK, None)
 
 
 def _backfilled(surface):
@@ -129,7 +141,7 @@ def _backfilled(surface):
     _LAST_VALID_GEX_CELLS store -- already populated by the real call under test -- is
     correctly backfilled in production and must be here too, or the comparison is against a
     path production no longer takes)."""
-    server._backfill_gex_cells_from_last_valid(TK, surface)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(TK, surface)
     return surface
 
 
@@ -195,8 +207,8 @@ def test_no_cached_ticker_when_the_root_matches_nothing_on_the_board():
 
 
 def test_no_rest_baseline_when_the_cache_has_no_stored_contracts(monkeypatch):
-    with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {"computed_ts_utc": time.time()}  # no _contracts_rest
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[TK] = {"computed_ts_utc": time.time()}  # no _contracts_rest
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, 1.0) == "no_rest_baseline"
 
 
@@ -221,8 +233,8 @@ def test_eager_refresh_uses_resolve_spot_not_the_stale_rest_cycle_spot(monkeypat
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (fresher_spot, "streaming_plane", now))
 
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
-    with server._terrain_cache_lock:
-        surf = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        surf = terrain_state._terrain_cache[TK]["_gamma_surface"]
     overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}})
     assert n == 1
     expected = _backfilled(project_gamma_surface(overlaid, fresher_spot))
@@ -244,8 +256,8 @@ def test_eager_refresh_stamps_the_resolved_spot_source_and_timestamp():
     with _mock.patch("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym)), \
          _mock.patch.object(server, "resolve_spot", lambda tk, **kw: (321.5, "streaming_plane", now)):
         assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
-    with server._terrain_cache_lock:
-        surf = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        surf = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert surf["spot"] == 321.5
     assert surf["spot_source"] == "streaming_plane"
     assert surf["spot_as_of_ts_utc"] == now
@@ -265,10 +277,10 @@ def test_eager_refresh_fails_closed_never_falls_back_to_the_rest_cycle_spot(monk
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
 
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "no_current_spot"
-    with server._terrain_cache_lock:
+    with terrain_state._terrain_cache_lock:
         # The cache must still hold only the untouched REST baseline surface -- no eager
         # write happened at all, so nothing here can have "fallen back" to anything.
-        surf = server._terrain_cache[TK]["_gamma_surface"]
+        surf = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert surf.get("spot") is None, "the REST-cycle baseline in this fixture never stamped its own spot"
 
 
@@ -286,9 +298,9 @@ def test_no_change_when_the_streamed_value_is_too_stale(monkeypatch):
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": 0.0})
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, 100000.0) == "no_change"
     # the cache must be untouched -- still the original, un-overlaid projection
-    with server._terrain_cache_lock:
+    with terrain_state._terrain_cache_lock:
         assert _surfaces_match_ignoring_vanna_drift(
-            server._terrain_cache[TK]["_gamma_surface"], project_gamma_surface(_CONTRACTS, _SPOT))
+            terrain_state._terrain_cache[TK]["_gamma_surface"], project_gamma_surface(_CONTRACTS, _SPOT))
 
 
 def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monkeypatch):
@@ -308,11 +320,11 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
     overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed})
     assert n == 1
     expected_surface = _backfilled(project_gamma_surface(overlaid, _SPOT))
-    expected_per_strike = server._per_strike_view_from_contracts(overlaid, _SPOT)
+    expected_per_strike = per_strike_view._per_strike_view_from_contracts(overlaid, _SPOT)
 
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]["_gamma_surface"]
-        cached_per_strike = server._terrain_cache[TK]["_per_strike"]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]["_gamma_surface"]
+        cached_per_strike = terrain_state._terrain_cache[TK]["_per_strike"]
     # the faucet's own cells/strikes/expirations must match the independently-computed
     # expectation exactly -- proves the wiring calls the SAME projection, not a reimplementation
     assert _cells_match_ignoring_vanna_drift(cached["cells"], expected_surface["cells"])
@@ -330,8 +342,8 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
     # / GEX-by-strike panel disagree on the same strike.
     assert cached_per_strike == expected_per_strike
     # the untouched REST baseline in the cache is unchanged by the eager overlay
-    with server._terrain_cache_lock:
-        assert server._terrain_cache[TK]["_contracts_rest"] == _CONTRACTS
+    with terrain_state._terrain_cache_lock:
+        assert terrain_state._terrain_cache[TK]["_contracts_rest"] == _CONTRACTS
 
 
 def test_a_streamed_tick_also_refreshes_key_levels_fast_no_rth_required(monkeypatch):
@@ -347,12 +359,12 @@ def test_a_streamed_tick_also_refreshes_key_levels_fast_no_rth_required(monkeypa
     point of this test existing."""
     baseline_ts = time.time() - 10.0
     _put_rest_baseline(computed_ts_utc=baseline_ts)
-    with server._terrain_cache_lock:
+    with terrain_state._terrain_cache_lock:
         # The REST baseline seeded above never set gamma_flip/walls (only a bare gamma
         # surface) -- start from an explicit "old/absent" sentinel so a pass proves this
         # call actually WROTE a fresh value, not that one was already sitting there.
-        server._terrain_cache[TK]["gamma_flip"] = "SENTINEL_STALE_VALUE"
-        server._terrain_cache[TK]["call_wall"] = "SENTINEL_STALE_VALUE"
+        terrain_state._terrain_cache[TK]["gamma_flip"] = "SENTINEL_STALE_VALUE"
+        terrain_state._terrain_cache[TK]["call_wall"] = "SENTINEL_STALE_VALUE"
 
     now = time.time()
     streamed = {"gamma": 0.5, "gamma_ts_recv": now, "delta": 0.9, "delta_ts_recv": now,
@@ -376,10 +388,10 @@ def test_a_streamed_tick_also_refreshes_key_levels_fast_no_rth_required(monkeypa
 
     overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed})
     assert n == 1
-    expected_terrain = server.compute_terrain(TK, overlaid, _SPOT).to_dict()
+    expected_terrain = terrain_engine.compute_terrain(TK, overlaid, _SPOT).to_dict()
 
-    with server._terrain_cache_lock:
-        cached = dict(server._terrain_cache[TK])
+    with terrain_state._terrain_cache_lock:
+        cached = dict(terrain_state._terrain_cache[TK])
 
     # PROOF OF CORRECTNESS: Key Levels' own fields moved off the sentinel and match the
     # SAME canonical terrain_engine.compute_terrain the REST cycle uses -- never a second,
@@ -413,12 +425,12 @@ def test_key_levels_refresh_is_best_effort_a_terrain_failure_never_blocks_the_he
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: streamed if sym == _CONTRACT_SYMBOL else None)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
-    monkeypatch.setattr(server, "compute_terrain", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(gse, "compute_terrain", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
 
     status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
     assert status == "ok"
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]
     assert cached["_gamma_surface"]["stream_overlay_symbols"] == [_CONTRACT_SYMBOL]
     # No Key Levels fields were written from the failed call -- degrades to "wait for the
     # next REST cycle", never to a partial/corrupt terrain write.
@@ -443,17 +455,17 @@ def test_a_second_tick_with_a_moved_spot_forces_a_full_recompute_not_a_stale_spl
                         lambda sym: streamed1 if sym == _CONTRACT_SYMBOL else None)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (spot1, "stub", time.time()))
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now1) == "ok"
-    with server._terrain_cache_lock:
-        cached_after_1 = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached_after_1 = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert cached_after_1["spot"] == spot1
 
-    real_update_expiry = server.project_gamma_surface_update_expiry
+    real_update_expiry = gamma_surface_projection.project_gamma_surface_update_expiry
     calls = []
 
     def _spy_update_expiry(prior_surface, chain, spot, target_expiry, *, prior_spot):
         calls.append({"spot": spot, "prior_spot": prior_spot})
         return real_update_expiry(prior_surface, chain, spot, target_expiry, prior_spot=prior_spot)
-    monkeypatch.setattr(server, "project_gamma_surface_update_expiry", _spy_update_expiry)
+    monkeypatch.setattr(gse, "project_gamma_surface_update_expiry", _spy_update_expiry)
 
     now2 = time.time()
     streamed2 = {"gamma": 0.6, "gamma_ts_recv": now2}
@@ -467,8 +479,8 @@ def test_a_second_tick_with_a_moved_spot_forces_a_full_recompute_not_a_stale_spl
         "the splice attempt must be told the truth about both spots, not a value already "
         "reconciled to look safe"
     )
-    with server._terrain_cache_lock:
-        cached_after_2 = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached_after_2 = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert cached_after_2["spot"] == spot2
     # The full recompute this forces must reflect the NEW spot exactly -- an independent
     # full computation at spot2 on the same overlaid contracts, never a value left over
@@ -502,8 +514,8 @@ def test_stream_overlay_symbols_names_only_the_contract_actually_freshened_not_e
 
         status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL_B, now)
         assert status == "ok"
-        with server._terrain_cache_lock:
-            cached = server._terrain_cache[TK]["_gamma_surface"]
+        with terrain_state._terrain_cache_lock:
+            cached = terrain_state._terrain_cache[TK]["_gamma_surface"]
         assert cached["stream_overlay_symbols"] == [_CONTRACT_SYMBOL_B], (
             f"only the genuinely-fresh contract must be named, not the stale desired one too: "
             f"{cached['stream_overlay_symbols']}")
@@ -532,9 +544,9 @@ def test_a_streamed_value_older_than_the_rest_baseline_is_rejected(monkeypatch):
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": now - 2.0})
     assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "no_change"
-    with server._terrain_cache_lock:
+    with terrain_state._terrain_cache_lock:
         assert _surfaces_match_ignoring_vanna_drift(
-            server._terrain_cache[TK]["_gamma_surface"], project_gamma_surface(contracts, _SPOT))
+            terrain_state._terrain_cache[TK]["_gamma_surface"], project_gamma_surface(contracts, _SPOT))
 
 
 def test_repeated_eager_refreshes_never_compound_away_from_the_rest_baseline(monkeypatch):
@@ -559,8 +571,8 @@ def test_repeated_eager_refreshes_never_compound_away_from_the_rest_baseline(mon
     overlaid, _ = overlay_streamed_contract_fields(
         _CONTRACTS, {_CONTRACT_SYMBOL: {"gamma": 0.22, "gamma_ts_recv": later}})
     expected = _backfilled(project_gamma_surface(overlaid, _SPOT))
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]["_gamma_surface"]
         seq = cached["surface_seq"]
     assert _cells_match_ignoring_vanna_drift(cached["cells"], expected["cells"]), (
         "the second refresh must reflect ONLY gamma=0.22, not gamma=0.11 carried forward"
@@ -580,15 +592,15 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": now})
 
-    orig_project = server.project_gamma_surface
-    orig_update_expiry = server.project_gamma_surface_update_expiry
+    orig_project = gamma_surface_projection.project_gamma_surface
+    orig_update_expiry = gamma_surface_projection.project_gamma_surface_update_expiry
     fresh_marker = {"expirations": [], "strikes": [], "cells": [], "marker": "FRESH_REST_GENERATION"}
 
     def _simulate_race():
         # Simulate a REAL REST refresh landing WHILE this function computes, publishing a
         # newer generation before this function gets a chance to write its own (older) one.
-        with server._terrain_cache_lock:
-            server._terrain_cache[TK] = {
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[TK] = {
                 "_contracts_rest": _CONTRACTS, "_contracts_rest_spot": _SPOT,
                 "_contracts_rest_computed_ts": time.time(),   # NEW generation
                 "_gamma_surface": fresh_marker,
@@ -609,16 +621,16 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
         return orig_update_expiry(prior_surface_arg, contracts_arg, spot_arg, expiry_arg,
                                   prior_spot=prior_spot)
 
-    monkeypatch.setattr(server, "project_gamma_surface", racing_project)
-    monkeypatch.setattr(server, "project_gamma_surface_update_expiry", racing_update_expiry)
+    monkeypatch.setattr(gse, "project_gamma_surface", racing_project)
+    monkeypatch.setattr(gse, "project_gamma_surface_update_expiry", racing_update_expiry)
     try:
         status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
     finally:
-        server.project_gamma_surface = orig_project
-        server.project_gamma_surface_update_expiry = orig_update_expiry
+        gamma_surface_projection.project_gamma_surface = orig_project
+        gamma_surface_projection.project_gamma_surface_update_expiry = orig_update_expiry
     assert status == "stale_baseline_superseded"
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]
     assert cached["_gamma_surface"] == fresh_marker, (
         "the newer REST generation published mid-computation must survive, never be "
         "overwritten by a result computed from the OLD baseline"
@@ -631,13 +643,13 @@ def test_never_raises_on_an_internal_error(monkeypatch):
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": time.time()})
-    monkeypatch.setattr(server, "project_gamma_surface",
+    monkeypatch.setattr(gse, "project_gamma_surface",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     # 2026-09-16 incremental-update path (audit finding #2): a prior _gamma_surface is
     # already cached from _put_rest_baseline, so the code under test reaches
     # project_gamma_surface_update_expiry, not project_gamma_surface directly -- both
     # must independently prove the never-raises guarantee.
-    monkeypatch.setattr(server, "project_gamma_surface_update_expiry",
+    monkeypatch.setattr(gse, "project_gamma_surface_update_expiry",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, time.time())
     assert status.startswith("error:")
@@ -652,7 +664,7 @@ def test_gamma_surface_contracts_with_stream_overlay_ignores_a_foreign_ticker(mo
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": time.time()})
-    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(
+    out, n, syms = terrain_refresh._gamma_surface_contracts_with_stream_overlay(
         ticker_storage_key("SPY"), _CONTRACTS)  # asking for SPY, not CRWD
     assert n == 0
     assert out == _CONTRACTS
@@ -666,7 +678,7 @@ def test_gamma_surface_contracts_with_stream_overlay_applies_for_the_matching_ti
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": time.time()})
-    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = terrain_refresh._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 1
     assert out[0]["gamma"] == 0.99
     assert syms == [_CONTRACT_SYMBOL]
@@ -675,7 +687,7 @@ def test_gamma_surface_contracts_with_stream_overlay_applies_for_the_matching_ti
 def test_gamma_surface_contracts_with_stream_overlay_noop_with_no_active_contract(monkeypatch):
     monkeypatch.setattr(
         "app.options.order_flow.streaming.get_active_option_contract", lambda: None)
-    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = terrain_refresh._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 0
     assert out is _CONTRACTS
     assert syms == []
@@ -702,10 +714,10 @@ def test_a_volume_only_streamed_update_reaches_both_per_strike_and_gamma_surface
     overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed})
     assert n == 1
     assert overlaid[0]["totalVolume"] == 999999.0
-    expected_per_strike = server._per_strike_view_from_contracts(overlaid, _SPOT)
+    expected_per_strike = per_strike_view._per_strike_view_from_contracts(overlaid, _SPOT)
 
-    with server._terrain_cache_lock:
-        cached_per_strike = server._terrain_cache[TK]["_per_strike"]
+    with terrain_state._terrain_cache_lock:
+        cached_per_strike = terrain_state._terrain_cache[TK]["_per_strike"]
     assert cached_per_strike == expected_per_strike
     # the overlaid contract's own strike shows the new volume in the per-strike "all" rows
     strike = round(overlaid[0]["strikePrice"], 2)
@@ -739,8 +751,8 @@ def test_rapid_successive_calls_are_never_silently_dropped(monkeypatch):
         "an immediately-successive call must execute in full, never return a synthetic "
         "'debounced'/skipped status"
     )
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert cached["surface_seq"] == 2, "both calls must have actually published"
 
 
@@ -807,8 +819,8 @@ def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkey
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
     assert refresh_gamma_surface_from_stream(_ATM_CONTRACT_A, now_a) == "ok"
-    with server._terrain_cache_lock:
-        after_a = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        after_a = terrain_state._terrain_cache[TK]["_gamma_surface"]
     overlaid_a_only, n_a = overlay_streamed_contract_fields(_CONTRACTS, {_ATM_CONTRACT_A: streamed_a})
     assert n_a == 1
     assert _cells_match_ignoring_vanna_drift(
@@ -830,8 +842,8 @@ def test_refreshing_b_does_not_undo_a_the_a_then_b_overwrite_reproduction(monkey
         _CONTRACTS, {_ATM_CONTRACT_A: streamed_a, _ATM_CONTRACT_B: streamed_b})
     assert n_both == 2
     expected_after_b = _backfilled(project_gamma_surface(overlaid_both, _SPOT))
-    with server._terrain_cache_lock:
-        after_b = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        after_b = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert _cells_match_ignoring_vanna_drift(after_b["cells"], expected_after_b["cells"]), (
         "refreshing B must not undo A's already-applied fresh overlay -- THE defect "
         "as independently reproduced")
@@ -873,8 +885,8 @@ def test_a_dropped_from_the_desired_set_no_longer_lingers_in_a_later_b_refresh(m
     overlaid_b_only, n_b = overlay_streamed_contract_fields(_CONTRACTS, {_ATM_CONTRACT_B: streamed_b})
     assert n_b == 1
     expected = _backfilled(project_gamma_surface(overlaid_b_only, _SPOT))
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert _cells_match_ignoring_vanna_drift(cached["cells"], expected["cells"]), "A must not linger once it truly stops being desired"
     assert cached["stream_overlay_contracts"] == 1
     # Sanity: this is a REAL regression control only if A's lingering would have been
@@ -902,11 +914,11 @@ def test_desired_stream_greeks_excludes_an_additional_contract_on_a_foreign_tick
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": now} if sym == foreign else None)
 
-    streamed = server._desired_stream_greeks_for_ticker(TK)
+    streamed = gamma_surface_state._desired_stream_greeks_for_ticker(TK)
     assert streamed == {}, (
         f"a foreign ticker's additional contract must never overlay onto CRWD: {streamed}")
 
-    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = terrain_refresh._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 0
     assert out == _CONTRACTS
     assert syms == []

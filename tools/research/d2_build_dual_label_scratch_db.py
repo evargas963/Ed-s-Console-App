@@ -92,7 +92,7 @@ def tb_label_for_window(
         if touch_dn:
             return "down", "sl_down", 0
     truncated = 1 if len(path_bars) < n_bars_vertical else 0
-    return "flat", ("vertical_truncated" if truncated else "vertical"), truncated
+    return "flat", ("vertical_truncated" if truncated else "vertical"), truncated  # caps-ok: scanner false positive: "flat" is the measured vertical-barrier outcome class (neither barrier touched within the window) and the ternary picks the label from the real truncation flag
 
 
 class TickerBars:
@@ -184,9 +184,9 @@ def main() -> int:
         raise FileExistsError(f"research scratch DB must start fresh: {args.out.resolve()}")
 
     # READ-ONLY source: mutation of production is impossible on this handle.
-    src = sqlite3.connect(f"file:{args.src.as_posix()}?mode=ro", uri=True)
+    src = sqlite3.connect(f"file:{args.src.as_posix()}?mode=ro", uri=True, timeout=30.0)
     src.row_factory = sqlite3.Row
-    dst = sqlite3.connect(str(args.out))
+    dst = sqlite3.connect(str(args.out), timeout=30.0)
 
     src_cols = [r["name"] for r in src.execute("PRAGMA table_info(snapshots)")]
     keep_cols = [c for c in src_cols if c not in BLOB_COLUMNS]
@@ -334,7 +334,7 @@ def main() -> int:
         from snapshot_normalizer import materialize_normalized_table
 
         norm_res = materialize_normalized_table(db_path=args.out, tickers=list(args.tickers))
-        dst = sqlite3.connect(str(args.out))
+        dst = sqlite3.connect(str(args.out), timeout=30.0)
         dst.row_factory = sqlite3.Row
         norm_tb = dst.execute(
             "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE outcome_tb_5c IS NOT NULL"

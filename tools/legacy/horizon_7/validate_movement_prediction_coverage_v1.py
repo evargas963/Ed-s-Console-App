@@ -59,7 +59,7 @@ def main() -> int:
         print(json.dumps({"error": "missing db"}))
         return 2
 
-    conn = sqlite3.connect(str(dbp))
+    conn = sqlite3.connect(str(dbp), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 
@@ -83,8 +83,23 @@ def main() -> int:
                 f"SELECT COUNT(*) FROM snapshots WHERE {GOV_WHERE} AND {pu} IS NOT NULL"
             ).fetchone()[0]
         )
-        cov_m = n_m / total if total else 0.0
-        cov_d = n_d / total if total else 0.0
+        if not total:
+            # No governed rows: coverage is undefined, not a measured 0%. The gate still
+            # FAILs, but the report says why instead of printing a fabricated 0.0000.
+            per_h[hz] = {
+                "total_governed": 0,
+                "non_null_move": n_m,
+                "non_null_dir_up": n_d,
+                "coverage_move": None,
+                "coverage_dir": None,
+                "verdict_move": "FAIL",
+                "verdict_dir": "FAIL",
+            }
+            verdict = "FAIL"
+            reasons.append(f"{hz} coverage undefined: zero governed rows")
+            continue
+        cov_m = n_m / total
+        cov_d = n_d / total
         st = {
             "total_governed": total,
             "non_null_move": n_m,

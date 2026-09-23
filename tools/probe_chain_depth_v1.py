@@ -103,8 +103,10 @@ def probe_ticker(client, ticker: str) -> dict:
         # Does the widest DELIVERED chain actually cover the +/-5% span the flip requires?
         out["delivered_span_pct"] = {"below": best.get("span_below_pct"),
                                      "above": best.get("span_above_pct")}
-        out["covers_5pct_span"] = bool(
-            (best.get("span_below_pct") or 0) >= 5.0 and (best.get("span_above_pct") or 0) >= 5.0
+        # Unmeasured span (None) leaves coverage unknown (None) instead of a coerced False.
+        below, above = best.get("span_below_pct"), best.get("span_above_pct")
+        out["covers_5pct_span"] = (
+            None if below is None or above is None else bool(below >= 5.0 and above >= 5.0)
         )
     return out
 

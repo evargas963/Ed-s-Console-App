@@ -234,12 +234,19 @@ def test_realized_vol_invalid_bar_minutes_fails_closed():
 
 
 def test_server_realized_vol_call_site_passes_1m_interval():
-    """Source lock: the 1m candle path must pass bar_minutes=1.0."""
+    """Source lock: the 1m candle path must pass bar_minutes=1.0.
+
+    RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): this call site moved
+    out of _fetch_state's own body into _volatility_signals_for_state, where the local
+    dropped the "_fetch_state phase-scratch" underscore prefix (closes, not _closes) as a
+    clean local in its own small function. RC-REHAB-1 (2026-09-22, module extraction):
+    that function moved again, out of server.py entirely into server_state_volatility.py.
+    """
     from pathlib import Path
 
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    assert "compute_realized_vol(_closes, bar_minutes=1.0)" in src
-    assert "compute_realized_vol(_closes)\n" not in src
+    src = (Path(__file__).resolve().parent.parent / "server_state_volatility.py").read_text(encoding="utf-8")
+    assert "compute_realized_vol(closes, bar_minutes=1.0)" in src
+    assert "compute_realized_vol(closes)\n" not in src
 
 
 # ── VOL_INPUT_CONTRACT 1.0.0 (lane V1) — MSD-001 rapid-branch restoration ────

@@ -4,7 +4,7 @@ near-term complete-chain capture.
 Round 3 built a PROVEN-complete strike_range=ALL fetch, but wired it only to the
 operator-triggered GET /api/chain endpoint — an expiry only ever earned a proven-
 complete record in `complete_chain_captures` if a human happened to click it in
-/options. `server._persist_universal_complete_chain` closes that gap: it rides the
+/options. `terrain_capture._persist_universal_complete_chain` closes that gap: it rides the
 SAME once-daily universal-capture WINDOW every ticker's wide fetch already uses,
 discovers this ticker's near-term LISTED expiries (the same MAX_DTE_DAYS horizon
 `option_chain_morning_full` already uses) from the regular per-cycle chain fetch, and
@@ -47,6 +47,8 @@ from calibration.complete_chain_capture import (
 from tests.conftest import most_recent_trading_day_et
 from tests.test_chain_api_v1 import _chain_json_for, _FakeResp
 from time_et import ET
+import calibration.complete_chain_capture as ccc_mod  # noqa: E402
+import terrain_capture  # noqa: E402
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -165,7 +167,7 @@ def test_has_complete_capture_today_false_until_written_then_day_scoped(tmp_path
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# server._persist_universal_complete_chain — the systematic iteration itself
+# terrain_capture._persist_universal_complete_chain — the systematic iteration itself
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fake_db(monkeypatch, srv, tmp_path):
@@ -175,7 +177,7 @@ def _fake_db(monkeypatch, srv, tmp_path):
 
 
 def _reset_module_state(srv):
-    srv._complete_chain_capture_attempts.clear()
+    terrain_capture._complete_chain_capture_attempts.clear()
 
 
 def _wide_contracts_spanning_both_real_expiries():
@@ -229,11 +231,11 @@ def test_universal_complete_chain_iterates_both_eligible_expiries_and_persists_e
     # declared 37-day near-term horizon can admit together. Widening the horizon for
     # THIS test only proves the ITERATION mechanism across >1 expiry; the horizon
     # boundary itself is proven separately and exactly above with plain date strings.
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
+    monkeypatch.setattr(terrain_capture, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
     calls: list[dict] = []
     _gated_by_requested_expiry(monkeypatch, srv, calls)
 
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=_wide_contracts_spanning_both_real_expiries(),
         ts_utc=_TS_IN_WINDOW)
 
@@ -244,8 +246,8 @@ def test_universal_complete_chain_iterates_both_eligible_expiries_and_persists_e
         assert c["from_date"] == c["to_date"], "budget-safety: each fetch bounded to exactly one expiry"
         assert c["priority"] is False, "background systematic capture must never jump the priority queue"
 
-    tsla_cap = srv.latest_complete_chain_capture(db_path, "ZZTEST", _TSLA_EXPIRY)
-    spy_cap = srv.latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY)
+    tsla_cap = ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", _TSLA_EXPIRY)
+    spy_cap = ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY)
     assert tsla_cap is not None and spy_cap is not None
     assert {c["symbol"] for c in tsla_cap["contracts"]} == {c["symbol"] for c in _TSLA_CONTRACTS}, (
         "exact vendor -> persisted contract-symbol set equality for expiry 1"
@@ -253,8 +255,8 @@ def test_universal_complete_chain_iterates_both_eligible_expiries_and_persists_e
     assert {c["symbol"] for c in spy_cap["contracts"]} == {c["symbol"] for c in _SPY_CONTRACTS}, (
         "exact vendor -> persisted contract-symbol set equality for expiry 2"
     )
-    assert tsla_cap["completeness_basis"] == srv.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
-    assert spy_cap["completeness_basis"] == srv.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
+    assert tsla_cap["completeness_basis"] == ccc_mod.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
+    assert spy_cap["completeness_basis"] == ccc_mod.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
 
 
 def test_universal_complete_chain_self_gates_outside_the_capture_window(monkeypatch, tmp_path):
@@ -269,7 +271,7 @@ def test_universal_complete_chain_self_gates_outside_the_capture_window(monkeypa
     _gated_by_requested_expiry(monkeypatch, srv, calls)
 
     # 09:00 ET -- before the window opens.
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=_wide_contracts_spanning_both_real_expiries(),
         ts_utc=_ts_at(_DAY, 9, 0))
     assert calls == [], "must not fetch before the capture window opens"
@@ -281,7 +283,7 @@ def test_universal_complete_chain_self_gates_outside_the_capture_window(monkeypa
     probe = date.fromordinal(_DAY.toordinal() + 5)
     while is_trading_day_et(probe.isoformat()):
         probe = date.fromordinal(probe.toordinal() + 1)
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=_wide_contracts_spanning_both_real_expiries(),
         ts_utc=_ts_at(probe, 10, 15))
     assert calls == [], "must not fetch on a non-trading day even at an in-window minute"
@@ -294,16 +296,16 @@ def test_universal_complete_chain_is_idempotent_within_the_same_et_day(monkeypat
 
     _fake_db(monkeypatch, srv, tmp_path)
     _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
+    monkeypatch.setattr(terrain_capture, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
     calls: list[dict] = []
     _gated_by_requested_expiry(monkeypatch, srv, calls)
 
     contracts = _wide_contracts_spanning_both_real_expiries()
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=contracts, ts_utc=_TS_IN_WINDOW)
     assert len([c for c in calls if c["strike_range"] == "ALL"]) == 2
 
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=contracts, ts_utc=_TS_IN_WINDOW)
     assert len([c for c in calls if c["strike_range"] == "ALL"]) == 2, (
         "same-day re-entry must make zero additional vendor calls -- already proven complete today"
@@ -327,7 +329,7 @@ def test_universal_complete_chain_rejects_an_expiry_scope_mismatch(monkeypatch, 
 
     db_path = _fake_db(monkeypatch, srv, tmp_path)
     _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
+    monkeypatch.setattr(terrain_capture, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
 
     def _fake_gated(client, ticker, *, strike_count=None, strike_range=None,
                     from_date=None, to_date=None, priority=False):
@@ -335,11 +337,11 @@ def test_universal_complete_chain_rejects_an_expiry_scope_mismatch(monkeypatch, 
         return _FakeResp(200, _chain_json_for(_TSLA_CONTRACTS)), 0.0, 0.1
     monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated)
 
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=_wide_contracts_spanning_both_real_expiries(),
         ts_utc=_TS_IN_WINDOW)
 
-    assert srv.latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY) is None, (
+    assert ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY) is None, (
         "vendor answering with the wrong expiry must never be banked as that expiry's proof"
     )
 
@@ -371,7 +373,7 @@ def _real_contracts_at(expiry_str: str, n: int):
                                  [_TSLA_CONTRACTS[i % len(_TSLA_CONTRACTS)] for i in range(n)]):
         row = copy.deepcopy(template)
         row["expirationDate"] = f"{expiry_str}T20:00:00.000+00:00"
-        row["symbol"] = f"{row.get('symbol', 'X')}_{expiry_str}_{i}"
+        row["symbol"] = f"{row['symbol']}_{expiry_str}_{i}"
         out.append(row)
     return out
 
@@ -384,17 +386,17 @@ def test_A_cap_plus_3_eligible_cycle_one_performs_at_most_cap_calls(monkeypatch,
 
     _fake_db(monkeypatch, srv, tmp_path)
     _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
-    cap = srv._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
+    monkeypatch.setattr(terrain_capture, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
+    cap = terrain_capture._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
     n_eligible = cap + 3
     wide_contracts = _n_contracts_at_distinct_expiries(n_eligible)
 
     calls: list[str] = []
     _fake_gated_by_symbol_list(monkeypatch, srv, {}, calls)
     logged = []
-    monkeypatch.setattr(srv.log, "warning", lambda msg, *a: logged.append(msg % a if a else msg))
+    monkeypatch.setattr(terrain_capture.log, "warning", lambda msg, *a: logged.append(msg % a if a else msg))
 
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
 
     assert len(calls) == cap, f"cycle 1 must attempt at most the cap ({cap}), not all {n_eligible} eligible"
@@ -406,8 +408,8 @@ def test_B_cycle_two_same_day_advances_past_already_complete_expiries(monkeypatc
 
     db_path = _fake_db(monkeypatch, srv, tmp_path)
     _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
-    cap = srv._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
+    monkeypatch.setattr(terrain_capture, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
+    cap = terrain_capture._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
     n_eligible = cap + 3
     wide_contracts = _n_contracts_at_distinct_expiries(n_eligible)
     all_expiries = sorted({c["expirationDate"][:10] for c in wide_contracts})
@@ -416,13 +418,13 @@ def test_B_cycle_two_same_day_advances_past_already_complete_expiries(monkeypatc
     calls: list[str] = []
     _fake_gated_by_symbol_list(monkeypatch, srv, contracts_by_expiry, calls)
 
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
     cycle1_calls = list(calls)
     assert len(cycle1_calls) == cap
 
     calls.clear()
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
 
     assert set(calls).isdisjoint(cycle1_calls), (
@@ -432,7 +434,7 @@ def test_B_cycle_two_same_day_advances_past_already_complete_expiries(monkeypatc
         "cycle 2 must attempt exactly the remaining not-yet-captured expiries"
     )
     for e in all_expiries[:cap]:
-        assert srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        assert ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
 
 
 def test_C_eventual_full_coverage_across_successive_cycles(monkeypatch, tmp_path):
@@ -447,8 +449,8 @@ def test_C_eventual_full_coverage_across_successive_cycles(monkeypatch, tmp_path
 
     db_path = _fake_db(monkeypatch, srv, tmp_path)
     _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
-    cap = srv._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
+    monkeypatch.setattr(terrain_capture, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
+    cap = terrain_capture._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
     n_eligible = cap + 5
     wide_contracts = _n_contracts_at_distinct_expiries(n_eligible)
     all_expiries = sorted({c["expirationDate"][:10] for c in wide_contracts})
@@ -458,25 +460,25 @@ def test_C_eventual_full_coverage_across_successive_cycles(monkeypatch, tmp_path
 
     max_cycles = (n_eligible // cap) + 2  # generous bound, not a tight timing assumption
     for _ in range(max_cycles):
-        srv._persist_universal_complete_chain(
+        terrain_capture._persist_universal_complete_chain(
             "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
         captured = {
             e for e in all_expiries
-            if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+            if ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
         }
         if captured == set(all_expiries):
             break
 
     captured = {
         e for e in all_expiries
-        if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        if ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
     }
     assert captured == set(all_expiries), (
         f"eventual coverage must reach EXACT set equality with the declared eligible "
         f"set within {max_cycles} cycles; missing {set(all_expiries) - captured}"
     )
     for e in all_expiries:
-        cap_row = srv.latest_complete_chain_capture(db_path, "ZZTEST", e)
+        cap_row = ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", e)
         assert {c["symbol"] for c in cap_row["contracts"]} == {c["symbol"] for c in contracts_by_expiry[e]}
 
 
@@ -489,8 +491,8 @@ def test_D_restart_re_entry_advances_from_durable_db_state(monkeypatch, tmp_path
 
     db_path = _fake_db(monkeypatch, srv, tmp_path)
     _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
-    cap = srv._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
+    monkeypatch.setattr(terrain_capture, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
+    cap = terrain_capture._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
     n_eligible = cap + 2
     wide_contracts = _n_contracts_at_distinct_expiries(n_eligible)
     all_expiries = sorted({c["expirationDate"][:10] for c in wide_contracts})
@@ -498,19 +500,19 @@ def test_D_restart_re_entry_advances_from_durable_db_state(monkeypatch, tmp_path
     calls: list[str] = []
     _fake_gated_by_symbol_list(monkeypatch, srv, contracts_by_expiry, calls)
 
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
     captured_before_restart = {
         e for e in all_expiries
-        if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        if ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
     }
     assert captured_before_restart, "precondition: cycle 1 must have captured something"
 
     # Simulate a process restart: the in-memory attempt map is gone, the DB is not.
-    srv._complete_chain_capture_attempts.clear()
+    terrain_capture._complete_chain_capture_attempts.clear()
     calls.clear()
 
-    srv._persist_universal_complete_chain(
+    terrain_capture._persist_universal_complete_chain(
         "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
 
     assert set(calls).isdisjoint(captured_before_restart), (
@@ -518,7 +520,7 @@ def test_D_restart_re_entry_advances_from_durable_db_state(monkeypatch, tmp_path
     )
     captured_after = {
         e for e in all_expiries
-        if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        if ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
     }
     assert captured_after > captured_before_restart, (
         "post-restart, the remaining expiries must still be attempted and captured"
@@ -534,8 +536,8 @@ def test_E_one_chronically_failing_expiry_does_not_starve_later_ones(monkeypatch
 
     db_path = _fake_db(monkeypatch, srv, tmp_path)
     _reset_module_state(srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
-    cap = srv._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
+    monkeypatch.setattr(terrain_capture, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 400.0)
+    cap = terrain_capture._COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER
     n_eligible = cap + 3
     wide_contracts = _n_contracts_at_distinct_expiries(n_eligible)
     all_expiries = sorted({c["expirationDate"][:10] for c in wide_contracts})
@@ -558,25 +560,25 @@ def test_E_one_chronically_failing_expiry_does_not_starve_later_ones(monkeypatch
     # test must observe both outcomes: healthy expiries fully captured, AND the
     # chronic failer actually reaching its own give-up threshold, not just whichever
     # comes first.
-    max_cycles = srv._COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS + (n_eligible // cap) + 2
+    max_cycles = terrain_capture._COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS + (n_eligible // cap) + 2
     for _ in range(max_cycles):
-        srv._persist_universal_complete_chain(
+        terrain_capture._persist_universal_complete_chain(
             "ZZTEST", client=object(), contracts=wide_contracts, ts_utc=_TS_IN_WINDOW)
 
     captured = {
         e for e in healthy
-        if srv.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
+        if ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", e) is not None
     }
     assert captured == set(healthy), (
         f"every healthy expiry must eventually be captured despite one chronic "
         f"failure hogging a budget slot each cycle; missing {set(healthy) - captured}"
     )
-    assert srv.latest_complete_chain_capture(db_path, "ZZTEST", chronic_failer) is None, (
+    assert ccc_mod.latest_complete_chain_capture(db_path, "ZZTEST", chronic_failer) is None, (
         "the chronically-failing expiry itself must never be falsely marked complete"
     )
     assert (
-        srv._complete_chain_capture_attempts.get(("ZZTEST", chronic_failer, _DAY_STR), 0)
-        >= srv._COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS
+        terrain_capture._complete_chain_capture_attempts.get(("ZZTEST", chronic_failer, _DAY_STR), 0)
+        >= terrain_capture._COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS
     ), "the chronic failer must have hit its own give-up cap, not been retried forever"
 
 

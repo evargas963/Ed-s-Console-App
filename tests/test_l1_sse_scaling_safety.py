@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
+import app.api.routes.diagnostics
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -141,7 +142,7 @@ def test_global_connection_cap_returns_503(monkeypatch):
         with pytest.raises(HTTPException) as ei:
             srv._l1_light_sse_try_reserve(_fake_sse_request("10.0.0.3"), sk_iwm)
         assert ei.value.status_code == 503
-        assert int(srv._l1_sse_diag.get("l1_light_sse_rejected_total", 0)) >= 1
+        assert int(srv._l1_sse_diag["l1_light_sse_rejected_total"]) >= 1
     finally:
         srv._l1_light_sse_release(q1, sk_spy, rs1)
         srv._l1_light_sse_release(q2, sk_qqq, rs2)
@@ -172,11 +173,11 @@ def test_duplicate_same_client_same_scope_increments_warn_counter(monkeypatch):
     monkeypatch.setattr(srv, "MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE", 8)
     sk = ("SPY", "__auto__")
     req = _fake_sse_request("10.0.0.7")
-    w0 = int(srv._l1_sse_diag.get("l1_light_sse_duplicate_scope_same_client_warn_total", 0))
+    w0 = int(srv._l1_sse_diag["l1_light_sse_duplicate_scope_same_client_warn_total"])
     q1, rs1 = srv._l1_light_sse_try_reserve(req, sk)
     q2, rs2 = srv._l1_light_sse_try_reserve(req, sk)
     try:
-        w1 = int(srv._l1_sse_diag.get("l1_light_sse_duplicate_scope_same_client_warn_total", 0))
+        w1 = int(srv._l1_sse_diag["l1_light_sse_duplicate_scope_same_client_warn_total"])
         assert w1 >= w0 + 1
     finally:
         srv._l1_light_sse_release(q1, sk, rs1)
@@ -192,7 +193,7 @@ def test_diagnostics_include_scaling_fields():
 
     import server as srv
 
-    d = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
+    d = json.loads(app.api.routes.diagnostics.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
     assert "l1_light_sse_connections_by_scope" in d
     assert d["l1_light_sse_limit_max_total"] == srv.MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL
     assert d["l1_light_sse_limit_max_per_scope"] == srv.MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE

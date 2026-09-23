@@ -115,6 +115,79 @@ def test_collect_datasheet_staged_live_clean():
     assert check_collect_datasheet_staged() == []
 
 
+def test_new_table_names_in_diff_sees_every_create_table_form():
+    """RC-REHAB-1 (2026-09-23): only `CREATE TABLE IF NOT EXISTS` was recognised, so a plain
+    or quoted-name CREATE TABLE never counted as a new table needing a datasheet."""
+    from tools.find_prove_locks import new_table_names_in_diff
+
+    diff = [
+        "+CREATE TABLE plain_new (id INTEGER)",
+        '+    cur.execute("CREATE TABLE \\"quoted_new\\" (x)")',
+        "+CREATE TABLE IF NOT EXISTS guarded_new (id INTEGER)",
+    ]
+    assert new_table_names_in_diff(diff) == {"plain_new", "quoted_new", "guarded_new"}
+
+
+def test_new_table_names_in_diff_only_reads_added_lines():
+    from tools.find_prove_locks import new_table_names_in_diff
+
+    diff = [
+        "+++ b/db_schema.py",
+        "+CREATE TABLE IF NOT EXISTS genuinely_new_table (id INTEGER)",
+        "-CREATE TABLE IF NOT EXISTS should_not_count_as_added (id INTEGER)",
+    ]
+    assert new_table_names_in_diff(diff) == {"genuinely_new_table"}
+
+
+def test_removed_table_names_in_diff_only_reads_removed_lines():
+    from tools.find_prove_locks import removed_table_names_in_diff
+
+    diff = [
+        "--- a/db.py",
+        "-CREATE TABLE IF NOT EXISTS moved_table (id INTEGER)",
+        "+CREATE TABLE IF NOT EXISTS should_not_count_as_removed (id INTEGER)",
+    ]
+    assert removed_table_names_in_diff(diff) == {"moved_table"}
+
+
+def test_table_moved_between_files_is_not_a_new_table():
+    """RC-REHAB-1: a table's CREATE TABLE relocating from one staged file to another must
+    NOT be treated as a new table requiring a datasheet -- it is the same set-subtraction
+    logic check_collect_datasheet_staged() applies to the real staged diff."""
+    from tools.find_prove_locks import new_table_names_in_diff, removed_table_names_in_diff
+
+    added_in_new_file = [
+        "+++ b/db_schema.py",
+        "+CREATE TABLE IF NOT EXISTS relocated_table (id INTEGER)",
+    ]
+    removed_from_old_file = [
+        "--- a/db.py",
+        "-CREATE TABLE IF NOT EXISTS relocated_table (id INTEGER)",
+    ]
+    tables = new_table_names_in_diff(added_in_new_file)
+    removed = removed_table_names_in_diff(removed_from_old_file)
+    assert tables - removed == set(), "a moved table must cancel out, not read as new"
+
+
+def test_genuinely_new_table_survives_the_move_subtraction():
+    """The move-detection subtraction must not swallow a real new table that was never
+    removed from anywhere -- only exact-name matches on the removed side cancel out."""
+    from tools.find_prove_locks import new_table_names_in_diff, removed_table_names_in_diff
+
+    added = [
+        "+++ b/db_schema.py",
+        "+CREATE TABLE IF NOT EXISTS relocated_table (id INTEGER)",
+        "+CREATE TABLE IF NOT EXISTS actually_new_table (id INTEGER)",
+    ]
+    removed = [
+        "--- a/db.py",
+        "-CREATE TABLE IF NOT EXISTS relocated_table (id INTEGER)",
+    ]
+    tables = new_table_names_in_diff(added)
+    gone = removed_table_names_in_diff(removed)
+    assert tables - gone == {"actually_new_table"}
+
+
 # RC-470: test_honesty_guard_still_green left with check_honesty_guard_wired
 # (retired - governance/retired_checks.md); the parity tests above still assert
 # honesty_guard.py is wired in both agents' hook files.

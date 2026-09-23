@@ -28,7 +28,7 @@ def main() -> None:
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="tools.pin_neutral_anchor_feasibility_sample_v1", write_capable=False)
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     key = (
         "tools/pin_neutral_anchor_feasibility_sample_v1.py:sample_oldest"

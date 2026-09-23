@@ -31,7 +31,7 @@ def main() -> int:
     require_canonical_db_target(args, tool_name="validate_fusion_backfill_complete_v1", write_capable=False)
 
     tf = CANONICAL_TIMEFRAME
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     configure_sqlite_connection(conn)
 
     summary_path = ROOT / "data" / "fusion_backfill_complete_summary_v1.json"
@@ -71,7 +71,8 @@ def main() -> int:
             f"AND outcome_move_{hz} IS NOT NULL",
             (tf,),
         ).fetchone()
-        rate = (100.0 * fused_nn / elig) if elig else 0.0
+        # Zero eligible rows -> coverage is undefined (None), not a measured 0%.
+        rate = (100.0 * fused_nn / elig) if elig else None
         suff = "PASS" if comp >= MIN_COMPARABLE else "FAIL"
         per[hz] = {
             "eligible_rows_pred_outcome_1m": int(elig),
@@ -80,7 +81,7 @@ def main() -> int:
             "distinct_tickers_comparable": int(nt),
             "ts_utc_min": rng[0],
             "ts_utc_max": rng[1],
-            "fused_coverage_vs_eligible_pct": round(rate, 4),
+            "fused_coverage_vs_eligible_pct": None if rate is None else round(rate, 4),
             "comparable_sufficiency_ge_500": suff,
         }
 
@@ -99,13 +100,19 @@ def main() -> int:
     )
     remaining_incomplete = int(conn.execute(rem_q, (tf, tf, prior)).fetchone()[0])
 
+    # backfill_fusion_policy_complete_v1 always writes limit_debug (None = no --limit). Only an
+    # explicit None proves "no limit"; a summary missing the key proves nothing.
+    ran_without_limit = (
+        None if not backfill_meta
+        else ("limit_debug" in backfill_meta and backfill_meta["limit_debug"] is None)
+    )
     full_run = False
     if backfill_meta and backfill_meta.get("expected_rows_in_query"):
         exp = int(backfill_meta["expected_rows_in_query"])
         att = backfill_meta.get("rows_attempted")
         interrupted = bool(backfill_meta.get("interrupted_or_partial"))
         full_run = (
-            backfill_meta.get("limit_debug") is None
+            ran_without_limit is True
             and att is not None
             and int(att) == exp
             and exp > 0
@@ -132,7 +139,8 @@ def main() -> int:
             "per_horizon_pass_ge_500": {hz: per[hz]["comparable_rows"] >= MIN_COMPARABLE for hz in ML_HORIZON_SLUGS},
         },
         "full_eligible_backfill_completed_verified": full_run,
-        "FULL_DATASET_RUN_WITHOUT_LIMIT": bool(backfill_meta.get("limit_debug") is None) if backfill_meta else False,
+        # None = no readable backfill summary, so the limit status is unknown (verdict FAILs).
+        "FULL_DATASET_RUN_WITHOUT_LIMIT": ran_without_limit,
         "ATTEMPTED_EQUALS_EXPECTED": full_run,
         "remaining_incomplete_backfill_queue_rows": remaining_incomplete,
         "FINAL_VERDICT": verdict,

@@ -7,7 +7,7 @@ it?* Every answer was agent prose. That is how a 2.1-hour-frozen volume panel, a
 bind, a 110-hour-old scorecard file and a 19.1-minute bar lag all survived inside a system that
 had already declared the law. A law with no instrument is enforced only by whoever happens to look.
 
-WHAT THIS DOES. Statically traces every UI endpoint in server.py to the sources it reads, measures
+WHAT THIS DOES. Statically traces every UI endpoint in the repo to the sources it reads, measures
 each source's real AGE against the live DB, and counts how many distinct faucets feed each logical
 data concept. It replaces narrative with a number.
 
@@ -142,26 +142,11 @@ CLIENT_CONCEPTS: dict[str, dict] = {
     # false positive — and this repo does not enforce a check that produces those. So the reader
     # matches only what RENDERS OR CHOOSES a price: a numeric coercion of a `.spot` field, a
     # `??`/`||` precedence between two of them, or a raw read of the SSE fast lane.
-    "console_spot": {
-        "files": ("static/index.html",),
-        "reader": (r"parseFloat\(\s*[\w$]+\.spot\b|Number\(\s*[\w$]+\.spot\b"
-                   r"|fnum\([^)]*\.spot\b|[\w$]+\.spot\s*(?:\?\?|\|\|)"
-                   r"|(?:\?\?|\|\|)\s*[\w$]+\.spot\b|\bwindow\._fastLaneSpot\b"
-                   r"|\bedLiveSpot\s*\("),
-        "authorities": ("consoleSpot", "effectiveDisplaySpot"),
-        # Lane management and fast-repaint paths: they FEED the authority or repaint from the
-        # lane itself. edLiveSpot is the raw lane accessor — legitimate to read the lane,
-        # never to choose between faucets.
-        "writers": ("_livePlaneApplyCore", "_quoteLaneShouldApply", "_syncQuoteLaneFromMergedState",
-                    "setActiveTicker", "edLiveSpot", "edPaintSpot", "edLoadRadar",
-                    "computeSpreadGate"),
-        # `window._fastLaneSpot = …` (write), `!== window._fastLaneSpot` (change detection),
-        # `_fastLaneSpot: window._fastLaneSpot` (injection into the pure computeSpreadGate, which
-        # needs a REFERENCE price to convert a fractional spread to a dollar width and never
-        # renders one), and `x.spot == null` guards all choose nothing and display nothing.
-        "assign_only": (r"window\._fastLaneSpot\w*\s*=|[!=]==?\s*window\._fastLaneSpot"
-                        r"|_fastLaneSpot\s*:\s*window\._fastLaneSpot|\.spot\s*[!=]=\s*null"),
-    },
+    # "console_spot" (static/index.html, authorities consoleSpot/effectiveDisplaySpot) was
+    # RETIRED (RC-REHAB-1, 2026-09-23): after the /console rebuild index.html defines neither
+    # authority and reads no spot at all -- its panels live in static/js/*.js -- so the entry
+    # scored "bound only inside consoleSpot" over a file with nothing to bind. The console's
+    # spot reads are now covered by the repo-wide dual-source rule in audit_client below.
 }
 
 _JS_FUNC = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(")
@@ -213,6 +198,15 @@ def audit_client() -> list[dict]:
                 continue
             code_lines = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
             owners = _js_function_at(code_lines)
+            # RC-REHAB-1 (2026-09-23): an authority that no longer exists in the file makes
+            # every read "outside" it vacuous -- the retired console_spot entry passed for
+            # weeks over a page that defined neither of its authorities.
+            if not set(spec["authorities"]) & set(owners):
+                bad.append({"concept": f"{concept} (client)",
+                            "undeclared": [f"{rel} defines none of its declared authorities "
+                                           f"{'/'.join(spec['authorities'])}() -- the concept "
+                                           f"guards nothing"]})
+                continue
             for i, (code, owner) in enumerate(zip(code_lines, owners), 1):
                 if not reader.search(code):
                     continue
@@ -228,6 +222,39 @@ def audit_client() -> list[dict]:
                             "undeclared": [f"{rel}:{i} reads a {concept} source outside "
                                            f"{'/'.join(spec['authorities'])}(): "
                                            f"{code.strip()[:64]}"]})
+    bad.extend(audit_client_dual_source())
+    return bad
+
+
+#: `a.spot ?? b.spot`, `a.spot || b.spot`, `a.spot ? … : b.spot` -- one statement choosing
+#: between two DIFFERENT payloads' spot. `.spot_disp` / `.spot_state` etc. are not spot.
+_DUAL_SPOT = re.compile(
+    r"([A-Za-z_$][\w$]*)\.spot\b(?![\w$])[^;\n]{0,160}?(?:\?\?|\|\||\?)[^;\n]{0,160}?"
+    r"([A-Za-z_$][\w$]*)\.spot\b(?![\w$])")
+
+
+def audit_client_dual_source(root: Path | None = None) -> list[dict]:
+    """Every static page and script: no statement may choose between two payloads' spot.
+
+    RC-REHAB-1 (2026-09-23): CLIENT_CONCEPTS names three legacy pages; the live console's
+    spot reads (35 of them, static/js/*.js) were in no file any client rule scanned. Its
+    design is one payload per panel, each carrying the server's resolve_spot value, so the
+    defect to forbid is the RC-75 shape itself -- a private precedence between two sources,
+    two prices on one screen -- and that shape is recognisable in ANY file without knowing
+    the file's authority function. MEASURED at introduction: 0 hits across static/.
+    """
+    root = root or _ROOT
+    static = root / "static"
+    files = sorted(static.rglob("*.html")) + sorted(static.rglob("*.js")) if static.is_dir() else []
+    bad: list[dict] = []
+    for path in files:
+        rel = path.relative_to(root).as_posix()
+        for i, code in enumerate(_strip_comments(path.read_text(encoding="utf-8", errors="ignore")), 1):
+            for m in _DUAL_SPOT.finditer(code):
+                if m.group(1) != m.group(2):
+                    bad.append({"concept": "spot (client, dual source)",
+                                "undeclared": [f"{rel}:{i} chooses between {m.group(1)}.spot and "
+                                               f"{m.group(2)}.spot: {code.strip()[:72]}"]})
     return bad
 
 
@@ -272,7 +299,7 @@ def measure_ages(db_path: str) -> dict[str, float | None]:
     if not os.path.exists(db_path):
         return ages
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=15)
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return ages
     try:
@@ -303,14 +330,66 @@ def _fmt(a: float | None) -> str:
     return f"{a/3600:.1f}h" if a >= 3600 else f"{a/60:.0f}m"
 
 
+#: Tracked path prefixes whose `/api/` decorators are not served routes (test fixtures build
+#: throwaway apps; archive is frozen legacy).
+_NON_SERVING_PREFIXES = ("tests/", "archive/")
+
+
+def repo_endpoint_sources(root: Path | None = None) -> dict[str, list[dict]]:
+    """endpoint_sources() over EVERY tracked production .py file, not one named file.
+
+    RC-REHAB-1 (2026-09-23): this used to read server.py alone. The decomposition moved every
+    route into app/api/routes/*.py, and the scan found 0 endpoints on the branch against 74 on
+    main -- so the ENFORCED single_faucet_provenance gate reported "0 violations" over nothing.
+    Discovery is by git's tracked-file list, not a maintained file list, so a route that moves
+    again stays in scope automatically. Measured on the switch: the 74 main endpoints all
+    reappear with byte-identical traced faucets (plus 1 route added since).
+    """
+    import subprocess
+
+    root = root or _ROOT
+    proc = subprocess.run(["git", "ls-files", "-z", "--", "*.py"], cwd=root,
+                          capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError("git ls-files failed, so the endpoint scan scope is unknown: "
+                           + proc.stderr.strip()[:160])
+    out: dict[str, list[dict]] = {}
+    for rel in sorted(p for p in proc.stdout.split("\0") if p):
+        rel = rel.replace("\\", "/")
+        if rel.startswith(_NON_SERVING_PREFIXES):
+            continue
+        src = (root / rel).read_text(encoding="utf-8", errors="ignore")
+        if "/api/" not in src:
+            continue
+        try:
+            found = endpoint_sources(src)
+        except SyntaxError:
+            continue
+        for path, hits in found.items():
+            bucket = out.setdefault(path, [])
+            for h in hits:
+                if h not in bucket:
+                    bucket.append(h)
+    return out
+
+
 def run(db_path: str) -> dict:
-    src = (_ROOT / "server.py").read_text(encoding="utf-8", errors="ignore")
-    eps = endpoint_sources(src)
+    eps = repo_endpoint_sources()
+    if not eps:
+        # Unmeasurable is not compliant: an empty trace must never read as "0 violations".
+        raise RuntimeError("the endpoint scan found no /api/ routes anywhere in the repo")
     ages = measure_ages(db_path)
     violations = []
     concepts = {}
     for concept, paths in CONCEPTS.items():
         faucets: list[str] = []
+        unserved = [p for p in paths if p not in eps]
+        if unserved:
+            # A concept whose endpoint is found nowhere is untraced, not single-faucet.
+            violations.append({"concept": concept,
+                               "undeclared": [f"<{p} is served by no route in the repo>"
+                                              for p in unserved],
+                               "declared": sorted(DECLARED_FAUCETS.get(concept, frozenset()))})
         for p in paths:
             for h in eps.get(p, []):
                 if h["faucet"] in UNIVERSAL_AUTHORITIES:
@@ -358,7 +437,7 @@ def render(rep: dict) -> str:
         for s in rep["stale_sources"]:
             L.append(f"  {s['faucet']:<18s} age={_fmt(s['age_sec'])} > limit {_fmt(s['limit_sec'])}")
     L += ["", "CLIENT-SIDE BINDS (RC-75)", "-" * 78]
-    cv = rep.get("client_violations", [])
+    cv = rep["client_violations"]  # run() always writes it; a report without it must not print [OK] binds
     if not cv:
         for c, spec in CLIENT_CONCEPTS.items():
             L.append(f"  [OK  ] {c:14s} bound only inside {', '.join(spec['authorities'])}"
@@ -491,7 +570,7 @@ def main(argv: list[str]) -> int:
     # predicate's callee) never touches them, so they must not load just because
     # `import tools.data_faucet_audit` happens.
     from db_authority import canonical_console_db_path
-    db = next((a for a in argv if not a.startswith("--")), str(canonical_console_db_path()))
+    db = next((a for a in argv if not a.startswith("--")), str(canonical_console_db_path()))  # caps-ok: CLI positional; absent uses the canonical console DB (only measure_ages reads it)
     rep = run(db)
     print(json.dumps(rep, indent=2) if "--json" in argv else render(rep))
     if "--check" in argv and rep["faucet_violations"]:

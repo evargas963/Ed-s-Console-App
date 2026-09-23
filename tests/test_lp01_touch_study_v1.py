@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from datetime import date, datetime
 
-os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
+os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env switch read by import-time guards to recognise a pytest process; setdefault keeps a value pytest already set, it seeds no market data
 
 import tools.lp01_touch_study_v1 as S  # noqa: E402
 from time_et import ET, RTH_START_MINS  # noqa: E402

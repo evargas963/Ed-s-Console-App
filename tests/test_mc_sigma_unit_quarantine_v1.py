@@ -42,11 +42,18 @@ from monte_carlo import (  # noqa: E402
 #: column, exactly what this census requires of a new reader). Measured 2026-08-25.
 READER_CENSUS = frozenset({
     "bayesian_fusion.py",
-    "db.py",
+    "db_models.py",  # RC-REHAB-1 (2026-09-22): db.py's SnapshotRow dataclass (including its
+    # mc_sigma_value field declaration) moved here verbatim (db.py decomposition) -- same
+    # already-reviewed field-declaration mention, not a new reader, no row classification.
+    "db_schema.py",  # RC-REHAB-1 (2026-09-21): db.py's _init_schema/_migrate_schema moved
+    # here verbatim (slice 2 of the db.py decomposition) -- same already-reviewed
+    # column-add mention (mc_sigma_value REAL), not a new reader, no row classification.
     "inspect_trading_data.py",
     "market_state.py",
     "monte_carlo.py",
-    "server.py",
+    "server_state_persistence_tail.py",  # RC-REHAB-1 (2026-09-23): server.py's own mention
+    # moved here verbatim with _post_publish_persistence_tail (module extraction, twentieth
+    # slice) -- same already-reviewed mention, not a new reader, no row classification.
     "verify_snapshot_pipeline.py",
     "governance/provenance_roots.py",  # RC-532: names the MarketState FIELD mc_sigma_value with its category — a mention, not a reader (was mega3_traceable_inventory.py)
     "tools/mc_sigma_normalize_history_v1.py",

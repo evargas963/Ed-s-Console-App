@@ -259,6 +259,62 @@ def test_citation_check_accepts_the_repos_live_probe_forms(tmp_path, monkeypatch
         )
 
 
+def test_citation_check_accepts_a_gh_cli_citation(tmp_path, monkeypatch):
+    """RC-REHAB-1 (2026-09-20): `gh run view <id> --log-failed` / `gh api ...` are used as
+    reproducible citations 8 times elsewhere in this repo's real root_cause_log.md, but "gh "
+    was never a recognized keyword here — the checker's own blind spot blocked evidence shaped
+    exactly like the RC-125 live-probe law this rule was built to accept."""
+    from tools import check_institutional_correctness as M
+    (tmp_path / "governance").mkdir()
+    log = tmp_path / "governance" / "root_cause_log.md"
+    monkeypatch.setattr(M, "REPO", tmp_path)
+
+    log.write_text(_citation_row(
+        "Reproduce with `gh run view 31859275082 --log-failed`."
+    ) + "\n", encoding="utf-8")
+    assert M.check_rc_numeric_claims_cite_a_command() == [], (
+        "a gh CLI citation was rejected — the keyword gap regressed"
+    )
+
+
+def test_citation_check_does_not_count_the_why_chains_own_step_numbering(tmp_path, monkeypatch):
+    """RC-359 (real row, 2026-09-20): a why-chain using this log's own standard
+    `(1) ... -> (2) ... -> (3) ...` step format contributed 5 false "numeric claims" from its
+    own list markers alone, tripping this rule on a row with NO actual measured quantity —
+    (1)-(5) are structural, not evidence. A genuine measurement in parens still carries a unit
+    inside, e.g. `(15%)`, which must still count; only a BARE digit-only parenthesized token
+    is exempt."""
+    from tools import check_institutional_correctness as M
+    (tmp_path / "governance").mkdir()
+    log = tmp_path / "governance" / "root_cause_log.md"
+    monkeypatch.setattr(M, "REPO", tmp_path)
+
+    why_chain_only_step_markers = (
+        "(1) first link -> (2) second link -> (3) third link -> (4) fourth link -> "
+        "(5) ROOT: TERMINAL, no real measurement anywhere in this chain"
+    )
+    log.write_text(
+        "| RC-901 | OPEN | 2026-07-28 | 2026-07-28 | desc | "
+        f"{why_chain_only_step_markers} | PLAN: still needs 2 sessions before it can ship. |\n",
+        encoding="utf-8",
+    )
+    assert M.check_rc_numeric_claims_cite_a_command() == [], (
+        "the why-chain's own (1)/(2)/(3) step numbering is being counted as a numeric claim"
+    )
+
+    # A real measurement inside parens, WITH a unit, must still be caught -- three genuine
+    # findings (not chain markers) to clear _RC_CITATION_MIN_NUMBERS on its own merits.
+    log.write_text(
+        "| RC-902 | OPEN | 2026-07-28 | 2026-07-28 | desc | "
+        "(1) first link -> (2) second link -> a real finding of (15%) drift across 42 tickers "
+        "over 3 sessions with no citation -> (3) ROOT: TERMINAL | PLAN: fix it. |\n",
+        encoding="utf-8",
+    )
+    assert len(M.check_rc_numeric_claims_cite_a_command()) == 1, (
+        "a real parenthesized measurement with a unit was wrongly exempted"
+    )
+
+
 def test_closed_row_must_ship_its_code_controls():
     """RC-137/RC-139/RC-526: a closure must not assert a repair with no repairing code.
 
@@ -493,16 +549,21 @@ def test_shutdown_bound_check_screams_on_an_unarmed_lifespan_and_a_pytest_blind_
 
 def test_sqlite_wal_check_screams_on_a_default_timeout_connect_and_a_missing_pragma(tmp_path, monkeypatch):
     """Concurrent writers on a DELETE-mode DB with the 5 s default lock storm; every connect in
-    db.py must pass timeout= and the helper must set WAL/NORMAL/busy_timeout."""
-    bad = ("def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA synchronous=NORMAL')\n"
-           "    conn.execute('PRAGMA busy_timeout=30000')\n\nconn = sqlite3.connect(str(path))\n")
-    M = _tree(tmp_path, monkeypatch, {"db.py": bad})
+    db.py must pass timeout= and the helper (db_sqlite_utils.py, since RC-REHAB-1's db.py
+    decomposition moved configure_sqlite_connection there) must set WAL/NORMAL/busy_timeout."""
+    bad_utils = (
+        "def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA synchronous=NORMAL')\n"
+        "    conn.execute('PRAGMA busy_timeout=30000')\n")
+    bad_db = "conn = sqlite3.connect(str(path))\n"
+    M = _tree(tmp_path, monkeypatch, {"db.py": bad_db, "db_sqlite_utils.py": bad_utils})
     msgs = [v.msg for v in M.check_sqlite_wal_contract()]
     assert any("journal_mode=WAL" in m for m in msgs) and any("without timeout=" in m for m in msgs)
-    good = ("def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA journal_mode=WAL')\n"
-            "    conn.execute('PRAGMA synchronous=NORMAL')\n    conn.execute('PRAGMA busy_timeout=30000')\n\n"
-            "conn = sqlite3.connect(str(path), timeout=30.0)\n")
-    (tmp_path / "db.py").write_text(good, encoding="utf-8")
+    good_utils = (
+        "def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA journal_mode=WAL')\n"
+        "    conn.execute('PRAGMA synchronous=NORMAL')\n    conn.execute('PRAGMA busy_timeout=30000')\n")
+    good_db = "conn = sqlite3.connect(str(path), timeout=30.0)\n"
+    (tmp_path / "db.py").write_text(good_db, encoding="utf-8")
+    (tmp_path / "db_sqlite_utils.py").write_text(good_utils, encoding="utf-8")
     assert M.check_sqlite_wal_contract() == []
 
 
@@ -557,3 +618,110 @@ def test_enforced_gate_execution_closure_has_no_application_module():
     r = subprocess.run([_sys.executable, "-c", probe], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", check=True)
     assert r.stdout.strip() == "False False", r.stdout + r.stderr
+
+
+# ── RC-REHAB-1 (2026-09-23): the single-authority checks scan EVERY production module ──────
+# Each of these checks used to read server.py (plus, for spot, two more named files) and was
+# silently blind to anything the server.py decomposition moved out. These controls plant the
+# defect in a module that is NOT server.py -- the exact shape that used to pass.
+
+_RESOLVE_SPOT_OK = "def resolve_spot(ticker):\n    return None\n"
+
+
+def test_chain_width_check_catches_a_constant_width_fetch_outside_server_py(tmp_path, monkeypatch):
+    M = _tree(tmp_path, monkeypatch, {
+        "server.py": "x = 1\n",
+        "app/api/routes/debugx.py": "c = safe_get_chain(cl, t, strike_count=CHAIN_STRIKE_COUNT)\n",
+        "terrain_x.py": "c = safe_get_chain(cl, t,\n    strike_count=40)\n",
+    })
+    hits = sorted((v.path.name, v.line) for v in M.check_chain_width_single_faucet())
+    assert hits == [("debugx.py", 1), ("terrain_x.py", 2)], hits
+    (tmp_path / "terrain_x.py").write_text(
+        "c = safe_get_chain(cl, t,\n    strike_count=40)  # chain-width-faucet-ok: expiry list only\n",
+        encoding="utf-8")
+    (tmp_path / "app/api/routes/debugx.py").write_text(
+        "c = safe_get_chain(cl, t, strike_count=resolve_chain_strike_count(t))\n", encoding="utf-8")
+    assert M.check_chain_width_single_faucet() == []
+
+
+def test_spot_authority_check_catches_a_second_faucet_outside_server_py(tmp_path, monkeypatch):
+    M = _tree(tmp_path, monkeypatch, {
+        "server.py": _RESOLVE_SPOT_OK,
+        "server_state_x.py": "s = chain_underlying_spot(c)\n",
+        "planes/y.py": "spot_f = last or mark\n",
+    })
+    hits = sorted(v.path.name for v in M.check_single_spot_authority())
+    assert hits == ["server_state_x.py", "y.py"], hits
+    # A second resolve_spot anywhere is a second authority.
+    (tmp_path / "server_state_x.py").write_text(_RESOLVE_SPOT_OK, encoding="utf-8")
+    (tmp_path / "planes/y.py").write_text("spot_f = last\n", encoding="utf-8")
+    msgs = [v.msg for v in M.check_single_spot_authority()]
+    assert len(msgs) == 2 and all("two spot authorities" in m for m in msgs), msgs
+    (tmp_path / "server_state_x.py").write_text("x = 1\n", encoding="utf-8")
+    assert M.check_single_spot_authority() == []
+    # And a deleted authority fails closed instead of guarding nothing.
+    (tmp_path / "server.py").write_text("x = 1\n", encoding="utf-8")
+    assert any("guarding nothing" in v.msg for v in M.check_single_spot_authority())
+
+
+def test_shutdown_check_follows_the_lifespan_out_of_server_py(tmp_path, monkeypatch):
+    unarmed = ("async def _app_lifespan(app):\n    pool.shutdown(wait=True)\n\n"
+               "def _arm_shutdown_watchdog():\n    pass\n")
+    M = _tree(tmp_path, monkeypatch, {"server.py": "x = 1\n", "app_lifespan.py": unarmed})
+    msgs = [v.msg for v in M.check_shutdown_is_bounded()]
+    assert len(msgs) == 2, msgs
+    (tmp_path / "app_lifespan.py").write_text("x = 1\n", encoding="utf-8")
+    assert any("guarding nothing" in v.msg for v in M.check_shutdown_is_bounded())
+
+
+def test_faucet_audit_traces_routes_in_any_module_and_fails_closed_on_none(tmp_path, monkeypatch):
+    """single_faucet_provenance read server.py alone and found 0 endpoints once every route
+    moved to app/api/routes/ -- '0 violations' over nothing. Discovery is now repo-wide."""
+    import subprocess
+
+    from tools import data_faucet_audit as A
+
+    route = (tmp_path / "app" / "api" / "routes" / "x.py")
+    route.parent.mkdir(parents=True)
+    route.write_text(
+        '@router.get("/api/bars1m")\n'
+        'def bars():\n'
+        '    return q("SELECT * FROM price_bars_1m")\n'
+        '    return q("SELECT * FROM snapshots ")\n', encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "fixture.py").write_text(
+        '@app.get("/api/spot")\ndef s():\n    return safe_get_chain()\n', encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    eps = A.repo_endpoint_sources(tmp_path)
+    assert set(eps) == {"/api/bars1m"}, "test fixtures must not count as served routes"
+    assert {h["faucet"] for h in eps["/api/bars1m"]} == {"price_bars_1m", "snapshots"}
+
+    monkeypatch.setattr(A, "repo_endpoint_sources", lambda root=None: {})
+    import pytest as _pytest
+    with _pytest.raises(RuntimeError):
+        A.run("/dev/null/no-db")
+
+
+def test_sqlite_wal_check_sees_connects_and_stub_helpers_in_every_module(tmp_path, monkeypatch):
+    """RC-REHAB-1 (2026-09-23): the rule is about AD-HOC connects, yet it read db.py alone --
+    169 of 267 production connects had no timeout or one under 30 s, and 16 modules defined a
+    silent no-op configure_sqlite_connection fallback. Both shapes, planted outside db.py."""
+    good_utils = (
+        "def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA journal_mode=WAL')\n"
+        "    conn.execute('PRAGMA synchronous=NORMAL')\n    conn.execute('PRAGMA busy_timeout=30000')\n")
+    M = _tree(tmp_path, monkeypatch, {
+        "db_sqlite_utils.py": good_utils,
+        "app/options/x.py": "c = sqlite3.connect(p, uri=True)\nd = sqlite3.connect(p, timeout=10)\n",
+        "calibration/y.py": ("try:\n    from db import configure_sqlite_connection\n"
+                             "except ImportError:\n    def configure_sqlite_connection(conn, **kw):\n"
+                             "        pass\n"),
+    })
+    hits = [(v.path.name, v.line, v.msg) for v in M.check_sqlite_wal_contract()]
+    assert ("x.py", 1) in [(n, ln) for n, ln, _ in hits] and ("x.py", 2) in [(n, ln) for n, ln, _ in hits]
+    assert any("exactly one configure_sqlite_connection" in m for _, _, m in hits)
+    (tmp_path / "app/options/x.py").write_text(
+        "c = sqlite3.connect(p, uri=True, timeout=30.0)\n", encoding="utf-8")
+    (tmp_path / "calibration/y.py").write_text(
+        "from db_sqlite_utils import configure_sqlite_connection\n", encoding="utf-8")
+    assert M.check_sqlite_wal_contract() == []

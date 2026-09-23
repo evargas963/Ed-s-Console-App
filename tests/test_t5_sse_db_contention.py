@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
+import analytics_bg_recompute
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -67,12 +68,18 @@ def test_t5_sse_uses_cached_snapshot_when_fetch_in_flight(srv_module, monkeypatc
 
 def test_t5_sse_recompute_timeout_does_not_starve_broadcast(srv_module, monkeypatch):
     srv = srv_module
+    # RC-REHAB-1 (2026-09-23, module extraction, thirtieth slice):
+    # _schedule_analytics_recompute moved out of server.py, into
+    # analytics_bg_recompute.py; its own _work() closure calls
+    # _fetch_state_sse_bounded as a bare name, resolved against that module's
+    # own globals -- a mock must patch it there, not on server's re-export.
+    import analytics_bg_recompute as abr
     ticker, expiry, ck = _seed_spy_cache(srv)
     inflight_key = srv._tier_c_inflight_key(ticker, expiry)
     with srv._sse_lock:
         srv._sse_subscribers[ck] = 1
 
-    monkeypatch.setattr(srv, "_fetch_state_sse_bounded", lambda *a, **k: None)
+    monkeypatch.setattr(abr, "_fetch_state_sse_bounded", lambda *a, **k: None)
     fanouts: list[str] = []
 
     def _capture_fanout(t, e, *, inflight_key, fanout_reason):
@@ -117,10 +124,10 @@ def test_step2_honest_viewer_cadence_and_no_websocket():
 
     _env = __import__("os").environ
     assert srv.VIEWER_SSE_REFRESH_SEC == float(
-        _env.get("ED_VIEWER_SSE_REFRESH_SEC", "5.0")
+        _env.get("ED_VIEWER_SSE_REFRESH_SEC", "5.0")  # caps-ok: mirrors server's documented env default (5.0s) so the assertion holds whether or not the operator env sets it
     )
     assert srv.VIEWER_STATE_CACHE_TTL_SEC == float(
-        _env.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "5.0")
+        _env.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "5.0")  # caps-ok: mirrors server's documented env default (5.0s) so the assertion holds whether or not the operator env sets it
     )
     assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
     src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
@@ -346,7 +353,7 @@ def test_t5_sse_fetch_bounded_uses_timeout_executor(srv_module, monkeypatch):
 
     monkeypatch.setattr(srv, "_get_sse_fetch_timeout_executor", lambda: _FakePool())
     monkeypatch.setattr(srv, "SSE_RECOMPUTE_FETCH_TIMEOUT_SEC", 7.5)
-    out = srv._fetch_state_sse_bounded(
+    out = analytics_bg_recompute._fetch_state_sse_bounded(
         "SPY", None, update_source="sse_loop", timeout_sec=7.5
     )
     assert out is None

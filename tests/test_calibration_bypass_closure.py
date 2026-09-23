@@ -64,10 +64,15 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "tests/test_backfill_signal_layer_v1_bundle.py":
         return True
-    # server.py: table name only in boot diagnostic log strings + the read-only
-    # /api/ops/calibration_rowcount health probe, which delegates the SELECT to
-    # calibration.writer.compute_calibration_rate_health (no SQL in server.py).
+    # server.py: table name only in boot diagnostic log strings.
     if s == "server.py":
+        return True
+    # RC-REHAB-1 (Phase 3): the read-only /api/ops/calibration_rowcount health probe moved
+    # from server.py to app/api/routes/ops.py (third extraction slice) -- it still only
+    # delegates the SELECT to calibration.writer.compute_calibration_rate_health (no SQL in
+    # this file either), same justification as server.py's own entry above, just relocated
+    # with the code it describes.
+    if s == "app/api/routes/ops.py":
         return True
     # operable_surface_gate: G1-G4 reporting tool. READ-ONLY by construction as of
     # 2026-07-19 — its ALTER/UPDATE quarantine writer was moved into

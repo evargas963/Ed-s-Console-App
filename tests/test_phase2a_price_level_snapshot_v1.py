@@ -49,6 +49,7 @@ from tools.phase2a_level_lock import (
     level_computation_violations,
     scan_repo,
 )
+import app.api.routes.liquidity
 
 ROOT = Path(__file__).resolve().parent.parent
 SESSION = datetime(2026, 8, 4, 12, 0, tzinfo=ET).date()
@@ -318,7 +319,7 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
     monkeypatch.setattr(te, "now_et", lambda: datetime(2026, 8, 4, 12, 0, tzinfo=ET))
 
-    payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
+    payload = json.loads(bytes(app.api.routes.liquidity.get_levels(ticker="SPY").body))
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     ids = [lv["id"] for lv in payload["levels"]]
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload"

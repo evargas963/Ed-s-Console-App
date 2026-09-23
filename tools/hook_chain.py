@@ -80,16 +80,16 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
         try:
             mod = importlib.import_module(name)
             sys.stdin = io.StringIO(raw_payload)
-            rc = int(mod.main() or 0)
+            rc = int(mod.main() or 0)  # caps-ok: a guard main() returning None follows the sys.exit(None) convention, which is exit status 0
         except SystemExit as exc:          # a guard that sys.exit()s inside main()
-            rc = int(exc.code or 0)
+            rc = int(exc.code or 0)  # caps-ok: SystemExit(None) is exit status 0 by Python's own contract
         except Exception as exc:  # noqa: BLE001 — a broken guard must scream, not wave through
             sys.stderr.write(f"HOOK CHAIN: {name} crashed: {type(exc).__name__}: {exc}\n")
             rc = 2
         worst = max(worst, rc)
     if worst:
         sys.stderr.write(judge_banner() + "\n")
-    return 2 if worst else 0
+    return 2 if worst else 0  # caps-ok: exit code IS the verdict (2 = any member refused)
 
 
 def _argv_members(argv: list[str]) -> tuple[str, ...]:

@@ -65,7 +65,7 @@ def apply_retention(
             f"refusing table {table!r}: not in the operator-approved retention scope "
             f"{sorted(ALLOWED_TABLES)} (see this script's own module docstring for why)"
         )
-    cutoff = (now_ts if now_ts is not None else time.time()) - retention_days * 86400.0
+    cutoff = (now_ts if now_ts is not None else time.time()) - retention_days * 86400.0  # caps-ok: now_ts is a test-injection clock; production callers omit it and get the real wall clock
     conn = sqlite3.connect(str(db_path), timeout=60.0)
     summary = {
         "table": table, "ts_column": ts_column, "cutoff_ts": cutoff,
@@ -78,7 +78,9 @@ def apply_retention(
                     f'SELECT COUNT(*) FROM "{table}" WHERE "{ts_column}" < ?', (cutoff,)
                 ).fetchone()
                 summary["rows_affected"] = int(n)
-                summary["batches_run"] = 1 if n else 0
+                # Same count the real loop below would run: full batches plus the final short one
+                # (which may be empty). The old `1 if n else 0` reported one batch for any backlog.
+                summary["batches_run"] = int(n) // batch_size + 1
                 break
             cur = conn.execute(
                 f'DELETE FROM "{table}" WHERE rowid IN '

@@ -71,7 +71,7 @@ def _anchor_feasible_count(conn: sqlite3.Connection, since_ts: float) -> dict[st
         get_snapshot_sql("tools/issue19_forward_canonical_validation_v1.py:94"),
         (CANONICAL_TIMEFRAME, since_ts),
     ).fetchone()
-    return {"pin_neutral_1m_labeled_anchor_feasible_since": int(r["n"] if r else 0)}
+    return {"pin_neutral_1m_labeled_anchor_feasible_since": int(r["n"])}  # SELECT COUNT(*) always returns one row
 
 
 def issue19_pools_for_window(
@@ -147,7 +147,7 @@ def _funnel_pin_neutral_1m(conn: sqlite3.Connection, since_ts: float) -> dict[st
             base + suffix,
             (CANONICAL_TIMEFRAME, since_ts) + params,
         ).fetchone()
-        return int(row["n"] if row else 0)
+        return int(row["n"])  # funnel_count_base is SELECT COUNT(*): always one row
 
     n0 = count_where("", ())
     stages.append({"stage": "0_pin_neutral_1m_rows", "count": n0})

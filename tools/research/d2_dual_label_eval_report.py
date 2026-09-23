@@ -155,7 +155,7 @@ def main() -> int:
 
     from ml_data_common import filter_df_to_rth_ts_utc, stamp_et_clock_columns, attach_net_gamma_prev_column
 
-    conn = sqlite3.connect(f"file:{args.db.as_posix()}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{args.db.as_posix()}?mode=ro", uri=True, timeout=30.0)
     t0 = time.time()
     report: dict = {"schema": "d2_dual_label_pilot_v1", "db": str(args.db),
                     "design": "xgb_learnability_ab_identical_rows_features_split",

@@ -42,7 +42,12 @@ from math_exposure_core import (
     vendor_greeks_unavailable,
     MISSING_GREEK_SENTINEL,
 )
-from server import project_gamma_surface, ticker_storage_key
+from gamma_surface_projection import project_gamma_surface
+from instrument_identity import ticker_storage_key
+import gamma_surface_state
+import app.api.routes.options
+import terrain_state
+import gamma_last_valid
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -220,10 +225,10 @@ def _surf(strike, expiry, gex, dex=None, vanna=None):
 
 def setup_function(_fn):
     server.get_db()   # pay any one-time schema-migration cost before, not during, a test
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        server._LAST_VALID_GEX_CELLS.clear()
-        server._LAST_VALID_GEX_CELLS_HYDRATED.clear()
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS.clear()
+    with gamma_last_valid._LAST_VALID_GEX_CELLS_LOCK:
+        gamma_last_valid._LAST_VALID_GEX_CELLS.clear()
+        gamma_last_valid._LAST_VALID_GEX_CELLS_HYDRATED.clear()
+        gamma_last_valid._LAST_VALID_GEX_CELLS_DB_WRITE_TS.clear()
 
 
 teardown_function = setup_function
@@ -232,18 +237,18 @@ teardown_function = setup_function
 def test_a_valid_cell_populates_the_store_for_later_use():
     tk = ticker_storage_key("ZGEXTEST1")
     surface = _surf(100.0, "2026-09-15", 5000, dex=3000, vanna=1.2)
-    server._backfill_gex_cells_from_last_valid(tk, surface)
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        assert server._LAST_VALID_GEX_CELLS[tk][(100.0, "2026-09-15")]["gex"] == 5000
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, surface)
+    with gamma_last_valid._LAST_VALID_GEX_CELLS_LOCK:
+        assert gamma_last_valid._LAST_VALID_GEX_CELLS[tk][(100.0, "2026-09-15")]["gex"] == 5000
 
 
 def test_an_invalid_cell_is_backfilled_from_the_prior_valid_snapshot():
     tk = ticker_storage_key("ZGEXTEST2")
     good = _surf(100.0, "2026-09-15", 5000, dex=3000, vanna=1.2)
-    server._backfill_gex_cells_from_last_valid(tk, good)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, good)
 
     bad = _surf(100.0, "2026-09-15", None, dex=None, vanna=None)
-    server._backfill_gex_cells_from_last_valid(tk, bad)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, bad)
     cell = bad["cells"][0]
     assert cell["gex"] == [5000]
     assert cell["dex"] == [3000]
@@ -256,7 +261,7 @@ def test_an_invalid_cell_is_backfilled_from_the_prior_valid_snapshot():
 def test_a_cell_with_no_history_and_no_current_value_stays_none():
     tk = ticker_storage_key("ZGEXTEST3")
     bad = _surf(100.0, "2026-09-15", None)
-    server._backfill_gex_cells_from_last_valid(tk, bad)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, bad)
     cell = bad["cells"][0]
     assert cell["gex"] == [None]
     assert cell["value_snapshot_ts_utc"] == [None]
@@ -266,9 +271,9 @@ def test_a_cell_with_no_history_and_no_current_value_stays_none():
 def test_a_currently_valid_cell_is_never_overwritten_by_an_older_snapshot():
     tk = ticker_storage_key("ZGEXTEST4")
     first = _surf(100.0, "2026-09-15", 1000)
-    server._backfill_gex_cells_from_last_valid(tk, first)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, first)
     second = _surf(100.0, "2026-09-15", 9999)   # a genuinely new, different, CURRENT value
-    server._backfill_gex_cells_from_last_valid(tk, second)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, second)
     assert second["cells"][0]["gex"] == [9999]
     assert second["cells"][0]["value_snapshot_ts_utc"] == [None]   # current, not a snapshot
 
@@ -279,17 +284,17 @@ def test_snapshot_never_re_stamps_itself_as_a_fresher_snapshot():
     masking exactly how stale it really is."""
     tk = ticker_storage_key("ZGEXTEST5")
     good = _surf(100.0, "2026-09-15", 1000)
-    server._backfill_gex_cells_from_last_valid(tk, good)
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        original_ts = server._LAST_VALID_GEX_CELLS[tk][(100.0, "2026-09-15")]["captured_ts_utc"]
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, good)
+    with gamma_last_valid._LAST_VALID_GEX_CELLS_LOCK:
+        original_ts = gamma_last_valid._LAST_VALID_GEX_CELLS[tk][(100.0, "2026-09-15")]["captured_ts_utc"]
 
     time.sleep(0.05)
     bad1 = _surf(100.0, "2026-09-15", None)
-    server._backfill_gex_cells_from_last_valid(tk, bad1)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, bad1)
     bad2 = _surf(100.0, "2026-09-15", None)
-    server._backfill_gex_cells_from_last_valid(tk, bad2)
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        still_ts = server._LAST_VALID_GEX_CELLS[tk][(100.0, "2026-09-15")]["captured_ts_utc"]
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, bad2)
+    with gamma_last_valid._LAST_VALID_GEX_CELLS_LOCK:
+        still_ts = gamma_last_valid._LAST_VALID_GEX_CELLS[tk][(100.0, "2026-09-15")]["captured_ts_utc"]
     assert still_ts == original_ts, "the store's own timestamp must not advance from serving snapshots"
     assert bad2["cells"][0]["value_snapshot_ts_utc"][0] == original_ts
 
@@ -297,10 +302,10 @@ def test_snapshot_never_re_stamps_itself_as_a_fresher_snapshot():
 def test_multiple_tickers_are_isolated_never_cross_contaminate():
     tk_a = ticker_storage_key("ZGEXTESTA")
     tk_b = ticker_storage_key("ZGEXTESTB")
-    server._backfill_gex_cells_from_last_valid(tk_a, _surf(100.0, "2026-09-15", 1111))
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk_a, _surf(100.0, "2026-09-15", 1111))
     # B has never had a valid value at this exact (strike, expiry) -- must NOT see A's.
     bad_b = _surf(100.0, "2026-09-15", None)
-    server._backfill_gex_cells_from_last_valid(tk_b, bad_b)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk_b, bad_b)
     assert bad_b["cells"][0]["gex"] == [None]
 
 
@@ -313,14 +318,14 @@ def test_multiple_expirations_backfill_independently():
         "cells": [{"strike": 100.0, "gex": [4000, 7000], "dex": [4000, 7000], "vanna": [1.0, 2.0],
                    "contracts": [{"call": "C1", "put": "P1"}, {"call": "C2", "put": "P2"}]}],
     }
-    server._backfill_gex_cells_from_last_valid(tk, good)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, good)
     later = {
         "expirations": [{"expiry": "2026-09-15", "dte": 0}, {"expiry": "2026-09-19", "dte": 4}],
         "strikes": [100.0],
         "cells": [{"strike": 100.0, "gex": [None, 9000], "dex": [None, 9000], "vanna": [None, 2.5],
                    "contracts": [{"call": "C1", "put": "P1"}, {"call": "C2", "put": "P2"}]}],
     }
-    server._backfill_gex_cells_from_last_valid(tk, later)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, later)
     cell = later["cells"][0]
     assert cell["gex"] == [4000, 9000]              # col 0 backfilled, col 1 current -- independent
     assert cell["value_snapshot_ts_utc"][0] is not None
@@ -344,7 +349,7 @@ def test_spx_style_whole_surface_outage_recovers_from_history_no_special_case():
         ],
         "gamma_available": True,
     }
-    server._backfill_gex_cells_from_last_valid(tk, good_surface)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, good_surface)
 
     # Vendor outage: every cell now comes back with no usable OI/greeks at all.
     outage_surface = {
@@ -358,7 +363,7 @@ def test_spx_style_whole_surface_outage_recovers_from_history_no_special_case():
         "gamma_available": False,
         "gamma_unavailable_reason": "no usable open interest in this chain (3 of 3 strike×expiry cells)",
     }
-    server._backfill_gex_cells_from_last_valid(tk, outage_surface)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, outage_surface)
     assert [c["gex"] for c in outage_surface["cells"]] == [[1000], [2000], [3000]]
     assert outage_surface["gamma_available"] is True
     assert outage_surface["gamma_unavailable_reason"] is None
@@ -379,16 +384,16 @@ def test_spx_style_whole_surface_outage_recovers_from_history_no_special_case():
 def _simulate_process_restart(tk: str) -> None:
     """Drop every IN-MEMORY trace of `tk` -- what a real process restart does to module-level
     state -- while leaving the on-disk database (the durable layer under test) untouched."""
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        server._LAST_VALID_GEX_CELLS.pop(tk, None)
-        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(tk)
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS.pop(tk, None)
+    with gamma_last_valid._LAST_VALID_GEX_CELLS_LOCK:
+        gamma_last_valid._LAST_VALID_GEX_CELLS.pop(tk, None)
+        gamma_last_valid._LAST_VALID_GEX_CELLS_HYDRATED.discard(tk)
+        gamma_last_valid._LAST_VALID_GEX_CELLS_DB_WRITE_TS.pop(tk, None)
 
 
 def test_a_valid_cell_flushes_to_the_real_db_table_not_a_new_one():
     tk = ticker_storage_key("ZGEXRESTART1")
     surface = _surf(100.0, "2026-09-15", 5000, dex=3000, vanna=1.2)
-    server._backfill_gex_cells_from_last_valid(tk, surface)   # first write for this ticker -> never throttled
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, surface)   # first write for this ticker -> never throttled
 
     rows = server.get_db().load_gamma_surface_last_valid(tk)
     assert rows[(100.0, "2026-09-15")]["gex"] == 5000
@@ -401,14 +406,14 @@ def test_last_valid_gex_survives_a_simulated_restart():
     AFTER one, with no in-memory state carried over -- only the durable DB row."""
     tk = ticker_storage_key("ZGEXRESTART2")
     good = _surf(100.0, "2026-09-15", 7777, dex=4444, vanna=2.5)
-    server._backfill_gex_cells_from_last_valid(tk, good)   # banks it, in-memory AND on disk
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, good)   # banks it, in-memory AND on disk
 
     _simulate_process_restart(tk)
-    assert tk not in server._LAST_VALID_GEX_CELLS, "the simulated restart must actually clear memory"
+    assert tk not in gamma_last_valid._LAST_VALID_GEX_CELLS, "the simulated restart must actually clear memory"
 
     # The "process" comes back up; the FIRST call for this ticker must rehydrate from disk.
     bad = _surf(100.0, "2026-09-15", None)
-    server._backfill_gex_cells_from_last_valid(tk, bad)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, bad)
     assert bad["cells"][0]["gex"] == [7777]
     assert bad["cells"][0]["dex"] == [4444]
     assert bad["cells"][0]["vanna"] == [2.5]
@@ -422,9 +427,9 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
     console restart during a live vendor problem would produce. Proven through the actual
     /api/options/gamma-surface route, not just the backfill helper."""
     tk = ticker_storage_key("ZSPXRESTART")
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
     try:
         good_surface = {
             "expirations": [{"expiry": "2026-09-15", "dte": 0}], "strikes": [7580.0],
@@ -432,7 +437,7 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
                        "contracts": [{"call": "SPXC", "put": "SPXP"}]}],
             "gamma_available": True, "gamma_unavailable_reason": None,
         }
-        server._backfill_gex_cells_from_last_valid(tk, good_surface)
+        gamma_last_valid._backfill_gex_cells_from_last_valid(tk, good_surface)
 
         # The process restarts -- every in-memory trace of this ticker is gone.
         _simulate_process_restart(tk)
@@ -445,21 +450,21 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
             "gamma_available": False,
             "gamma_unavailable_reason": "no usable open interest in this chain (1 of 1 strike×expiry cells)",
         }
-        server._backfill_gex_cells_from_last_valid(tk, outage_surface)
+        gamma_last_valid._backfill_gex_cells_from_last_valid(tk, outage_surface)
         computed_ts = time.time()
-        with server._terrain_cache_lock:
-            server._terrain_cache[tk] = {
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[tk] = {
                 "_gamma_surface": outage_surface, "computed_ts_utc": computed_ts, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
             }
-        d = json.loads(server.get_options_gamma_surface(tk).body)
+        d = json.loads(app.api.routes.options.get_options_gamma_surface(tk).body)
         assert d["available"] is True, "a restart must not erase previously valid data"
         assert d["cells"][0]["gex"] == [12345678]
         assert d["reason"] is None
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
@@ -469,9 +474,9 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
     prior cycle's valid surface exists, exactly what an operator hitting the real endpoint
     during a live outage would see."""
     tk = ticker_storage_key("ZSPXENDPOINT")
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
     try:
         good_surface = {
             "expirations": [{"expiry": "2026-09-15", "dte": 0}], "strikes": [7580.0],
@@ -480,14 +485,14 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
             "gamma_available": True, "gamma_unavailable_reason": None,
             "cells_with_oi_but_invalid_greeks": 0,
         }
-        server._backfill_gex_cells_from_last_valid(tk, good_surface)   # seeds the store
+        gamma_last_valid._backfill_gex_cells_from_last_valid(tk, good_surface)   # seeds the store
         computed_ts = time.time()
-        with server._terrain_cache_lock:
-            server._terrain_cache[tk] = {
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[tk] = {
                 "_gamma_surface": good_surface, "computed_ts_utc": computed_ts, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
             }
-        d = json.loads(server.get_options_gamma_surface(tk).body)
+        d = json.loads(app.api.routes.options.get_options_gamma_surface(tk).body)
         assert d["available"] is True and d["cells"][0]["gex"] == [12345678]
 
         # Now the live vendor outage: this cycle's own surface has zero usable cells at all
@@ -501,21 +506,21 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
             "gamma_unavailable_reason": "no usable open interest in this chain (1 of 1 strike×expiry cells)",
             "cells_with_oi_but_invalid_greeks": 0,
         }
-        server._backfill_gex_cells_from_last_valid(tk, outage_surface)
+        gamma_last_valid._backfill_gex_cells_from_last_valid(tk, outage_surface)
         computed_ts2 = time.time()
-        with server._terrain_cache_lock:
-            server._terrain_cache[tk] = {
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[tk] = {
                 "_gamma_surface": outage_surface, "computed_ts_utc": computed_ts2, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts2, "chain_basis": "full",
             }
-        d2 = json.loads(server.get_options_gamma_surface(tk).body)
+        d2 = json.loads(app.api.routes.options.get_options_gamma_surface(tk).body)
         assert d2["available"] is True, "current vendor failure must not erase previously valid data"
         assert d2["cells"][0]["gex"] == [12345678]
         assert d2["reason"] is None
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_backfill_never_labels_a_snapshot_live_stream_state_stays_honest():
@@ -527,12 +532,12 @@ def test_backfill_never_labels_a_snapshot_live_stream_state_stays_honest():
     tk = ticker_storage_key("ZGEXTESTSTREAM")
     good = _surf(100.0, "2026-09-15", 1000)
     good["cells"][0]["contracts"] = [{"call": "SYMC", "put": "SYMP"}]
-    server._backfill_gex_cells_from_last_valid(tk, good)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, good)
 
     bad = _surf(100.0, "2026-09-15", None)
     bad["cells"][0]["contracts"] = [{"call": "SYMC", "put": "SYMP"}]
-    server._stamp_gamma_surface_cell_stream_state(bad, {}, set())   # nothing streaming this cycle
-    server._backfill_gex_cells_from_last_valid(tk, bad)
+    gamma_surface_state._stamp_gamma_surface_cell_stream_state(bad, {}, set())   # nothing streaming this cycle
+    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, bad)
     cell = bad["cells"][0]
     assert cell["gex"] == [1000]                       # the real snapshot value, never blanked
     assert cell["stream"][0]["state"] == "unavailable"  # honestly not live -- never mislabelled

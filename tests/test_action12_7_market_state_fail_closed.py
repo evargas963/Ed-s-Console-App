@@ -165,9 +165,9 @@ def test_mhap_rows_confidence_none_not_zero_for_missing_assessment():
     _mhb = sig.multi_horizon_bundle
     _mhd = _mhb.final_decision
     _rows = []
-    for _a in list(getattr(_mhd, "supporting_assessments", []) or []):
-        _missing = bool(getattr(_a, "missing", False))
-        _hz = str(getattr(_a, "horizon", ""))
+    for _a in list(_mhd.supporting_assessments):
+        _missing = bool(_a.missing)
+        _hz = str(_a.horizon)
         if _missing:
             _conf = None
         else:

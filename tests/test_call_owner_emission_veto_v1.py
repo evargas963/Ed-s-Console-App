@@ -149,34 +149,46 @@ def test_stale_cache_serve_blocks_actionability_and_manufactures_no_wait():
 # ── wiring: one route, one gate fact, computed before the state is built ────────────────
 
 def test_server_validates_the_emission_facts_once_before_build_and_hands_them_to_the_owner():
+    # RC-REHAB-1 (thirty-fifth slice): the gate facts are computed by _emission_gate_for_state
+    # and the build by _build_market_state_for_state (server_state_decision.py). The claim is
+    # checked across the call graph: _fetch_state calls the gate helper BEFORE the build
+    # adapter, the decision module resolves the route exactly ONCE (the identity anchor now
+    # receives it instead of re-resolving), and the build hands emission_gate to the owner.
+    def _named_calls(fn):
+        out = {}
+        for n in ast.walk(fn):
+            if isinstance(n, ast.Call):
+                name = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")  # caps-ok: AST duck typing: a Call.func that is neither Name nor Attribute (Subscript, Call, Lambda) has no name, and '' never matches the callees being counted
+                out.setdefault(name, []).append(n)
+        return out
+
     src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    tree = ast.parse(src)
-    fetch = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")
-    calls = {}
-    for n in ast.walk(fetch):
-        if isinstance(n, ast.Call):
-            name = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")
-            if name in ("validate_trade_impacting_gate", "build_market_state", "resolve_fetch_state_decision_route"):
-                calls.setdefault(name, []).append(n)
-    assert len(calls["validate_trade_impacting_gate"]) == 1
-    assert len(calls["resolve_fetch_state_decision_route"]) == 1  # one route resolution per fetch
-    gate_line = calls["validate_trade_impacting_gate"][0].lineno
-    bms = calls["build_market_state"][0]
-    assert gate_line < bms.lineno
+    fetch = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")  # caps-ok: scanner false positive: next() here has NO default argument; a missing function raises StopIteration and fails the test
+    fc = _named_calls(fetch)
+    assert len(fc["_emission_gate_for_state"]) == 1
+    assert len(fc["_build_market_state_for_state"]) == 1
+    assert fc["_emission_gate_for_state"][0].lineno < fc["_build_market_state_for_state"][0].lineno
+    assert any(k.arg == "emission_gate" for k in fc["_build_market_state_for_state"][0].keywords)
+    assert "validate_trade_impacting_gate" not in fc and "resolve_fetch_state_decision_route" not in fc
+    dec = ast.parse((REPO / "server_state_decision.py").read_text(encoding="utf-8"))
+    dc = _named_calls(dec)
+    assert len(dc["validate_trade_impacting_gate"]) == 1
+    assert len(dc["resolve_fetch_state_decision_route"]) == 1  # one route resolution per fetch
+    bms = dc["build_market_state"][0]
     assert any(k.arg == "emission_gate" for k in bms.keywords)
 
 
 def test_market_state_hands_the_facts_to_signal_input_and_derives_identity_after_the_call():
     src = (REPO / "market_state.py").read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_market_state")
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_market_state")  # caps-ok: scanner false positive: next() here has NO default argument; a missing function raises StopIteration and fails the test
     assert any(a.arg == "emission_gate" for a in fn.args.kwonlyargs)
-    sig = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)
+    sig = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)  # caps-ok: scanner false positive: next() here has NO default argument; a missing call raises StopIteration and fails the test
                and isinstance(n.func, ast.Name) and n.func.id == "SignalInput")
     kws = {k.arg for k in sig.keywords}
     assert {"production_emission_allowed", "emission_block_reasons"} <= kws
     # Option identity derives from ms.call_signal AFTER the call: one verdict, coherent fields.
-    oe = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)
+    oe = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)  # caps-ok: scanner false positive: next() here has NO default argument; a missing call raises StopIteration and fails the test
               and isinstance(n.func, ast.Name) and n.func.id == "recommend_option_expression")
     assert any(k.arg == "call_signal" and ast.unparse(k.value) == "ms.call_signal" for k in oe.keywords)
     assert oe.lineno > sig.lineno

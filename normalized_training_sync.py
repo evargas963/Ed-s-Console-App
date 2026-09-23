@@ -55,7 +55,7 @@ def inline_normsync_enabled() -> bool:
 
 # Cross-process: live server debounced refresh + training normsync can materialize concurrently.
 _MATERIALIZE_LOCK_STALE_SEC = float(
-    os.environ.get("ED_NORMALIZED_MATERIALIZE_LOCK_STALE_SEC", "7200")
+    os.environ.get("ED_NORMALIZED_MATERIALIZE_LOCK_STALE_SEC", "7200")  # caps-ok: operator env config -- cross-process materialize lock staleness, documented default 7200s
 )
 
 
@@ -225,7 +225,7 @@ def _get_stored_fp(conn: sqlite3.Connection) -> Optional[str]:
         "SELECT flag_value FROM ed_schema_flags WHERE flag_key = ?",
         (FP_FLAG_KEY,),
     ).fetchone()
-    return str(row[0]) if row and row[0] is not None else None
+    return str(row[0]) if row and row[0] is not None else None  # caps-ok: no stored fingerprint row -> None ("never materialized"), which the caller treats as a mismatch requiring materialization
 
 
 def _set_stored_fp(conn: sqlite3.Connection, fp: str) -> None:
@@ -394,7 +394,7 @@ def base_money_path_normalize_debounce_sec(
     """
     if delay_s is not None:
         return max(5.0, float(delay_s))
-    raw = os.environ.get("ED_BASE_MONEY_PATH_NORMALIZE_DEBOUNCE_SEC", "").strip()
+    raw = os.environ.get("ED_BASE_MONEY_PATH_NORMALIZE_DEBOUNCE_SEC", "").strip()  # caps-ok: operator env override; unset ("") falls through to the capture-interval-derived debounce below
     if raw:
         return max(5.0, float(raw))
     if capture_interval_sec is None:
@@ -510,7 +510,7 @@ def schedule_debounced_normalized_refresh(
     lg = logger or _log
     db_path = Path(db_path)
     if delay_s is None:
-        delay_s = float(os.environ.get("ED_NORMALIZED_REFRESH_DEBOUNCE_SEC", "120"))
+        delay_s = float(os.environ.get("ED_NORMALIZED_REFRESH_DEBOUNCE_SEC", "120"))  # caps-ok: operator env config -- normalized refresh debounce, documented default 120s
 
     def _fire() -> None:
         global _debounce_timer

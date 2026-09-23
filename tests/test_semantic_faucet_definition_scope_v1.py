@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+import terrain_state
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -101,12 +102,12 @@ def _widened_book():
     chain, spot = _fixture_book()
     src = next(
         c for c in chain
-        if str(c.get("putCall", "")).upper() == "CALL"
-        and float(c.get("strikePrice") or 0) == 745.0
+        if str(c["putCall"]).upper() == "CALL"
+        and float(c["strikePrice"]) == 745.0
     )
     extra = dict(src)
     extra["strikePrice"] = 743.0
-    extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
+    extra["daysToExpiration"] = int(src["daysToExpiration"]) + 30
     extra["expirationDate"] = "2026-08-16"
     extra["openInterest"] = 250_000
     extra["symbol"] = "SPY   260816C00743000"
@@ -223,7 +224,7 @@ def test_kl_overlay_maps_each_name_from_its_declared_terrain_source(monkeypatch)
         "computed_ts_utc": time.time(),
         "levels_stale": False,
     }
-    monkeypatch.setattr(S, "_terrain_cache", {"SPY": dict(cache)})
+    monkeypatch.setattr(terrain_state, "_terrain_cache", {"SPY": dict(cache)})
     md: dict = {}
     S._terrain_kl_overlay(md, "SPY")
     assert md["kl_absolute_gamma_strike"] == 745.0
@@ -314,7 +315,10 @@ def test_ui_surfaces_bind_the_renamed_names_and_never_the_collision_name():
     # split (declared above in HISTORICAL_DB_COLUMNS), reached through db.py/time_et.py.
     assert HISTORICAL_DB_COLUMNS == {("snapshots_db", "gamma_pin")}
     server_src = (REPO / "server.py").read_text(encoding="utf-8")
-    assert "gamma_pin=_ssot_gamma_pin" in server_src, (
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the SnapshotRow
+    # construction site moved with _post_publish_persistence_tail to its own module.
+    tail_src = (REPO / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    assert "gamma_pin=_ssot_gamma_pin" in tail_src, (
         "the DB persist kwarg is the one sanctioned live use of the historical column name")
     assert 'md["gamma_pin"]' not in server_src and '.get("gamma_pin")' not in server_src, (
         "a live payload read/write of the retired name returned to server.py")

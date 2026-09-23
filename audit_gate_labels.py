@@ -53,15 +53,19 @@ def main():
 
         # 4. Percentage of total RTH rows
         potentially_bad = cond1 + cond2
-        pct = (potentially_bad / rth_total * 100) if rth_total else 0
-        pct3 = (cond3 / rth_total * 100) if rth_total else 0
+        # Zero RTH rows -> the percentage is undefined, not 0% bad.
+        pct = (potentially_bad / rth_total * 100) if rth_total else None  # caps-ok: None (printed n/a) when there are no RTH rows to divide by
+        pct3 = (cond3 / rth_total * 100) if rth_total else None  # caps-ok: None (printed n/a) when there are no RTH rows to divide by
+
+        def _fmt_pct(p: float | None) -> str:
+            return "n/a (0 RTH rows)" if p is None else f"{p:.2f}%"
 
         print(f"\n1. long + fusion_reversal > 0.50 (reversal gate should block): {cond1:,}")
         print(f"\n2. short + fusion_continuation > 0.45 AND fusion_breakout > 0.45: {cond2:,}")
         print(f"\n3. validation_passed=1 but above conditions true (confirmed bad): {cond3:,}")
         print("\n4. % of total RTH rows:")
-        print(f"   Potentially bad (cond1+cond2): {pct:.2f}%")
-        print(f"   Confirmed bad (cond3):         {pct3:.2f}%")
+        print(f"   Potentially bad (cond1+cond2): {_fmt_pct(pct)}")
+        print(f"   Confirmed bad (cond3):         {_fmt_pct(pct3)}")
 
     print("\n" + "=" * 70)
 

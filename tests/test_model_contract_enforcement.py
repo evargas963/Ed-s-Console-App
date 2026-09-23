@@ -252,54 +252,11 @@ def test_load_lstm_never_enters_load_lstm_on_refusal(tmp_path, monkeypatch):
     mp._active_bundle_dir_cache.clear()
 
 
-def test_item4_display_path_meta_verify_before_parse(tmp_path, monkeypatch):
-    """RC-377 (Cursor F1): /api/state model-health parses the SAME governed meta the
-    serve path refuses when tampered. The REAL producer slice is extracted from
-    server.py and driven: a refusing verifier fails closed BEFORE json.loads (the
-    trapping json proves the parser is never reached), and the success path runs
-    verify THEN parse (ordered-sequence control)."""
-    import json as _json
-    import textwrap
-    import types
-    from pathlib import Path
-
-    import ml_predict
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    i = src.index("def _model_status_from_artifact(")
-    j = src.index("_xgb_meta = ", i)
-    fn_src = textwrap.dedent(src[i:j])
-
-    meta_p = tmp_path / "lstm_SPY_1c_meta.json"
-    meta_p.write_text('{"edge_pp": 1.25, "model_type": "dual_stream_lstm"}', encoding="utf-8")
-
-    def build(seq, verify_result):
-        trap = types.SimpleNamespace(loads=lambda s: seq.append("loads") or _json.loads(s))
-        ns = {
-            "_artifacts": {"lstm": {"exists": True, "has_provenance": True, "issues": []}},
-            "_dashboard_ticker": "SPY",
-            "_dashboard_ml_hz": "1c",
-            "_active_dir": tmp_path,
-            "json": trap,
-            "Path": Path,
-        }
-        monkeypatch.setattr(
-            ml_predict, "_verify_governed_artifact",
-            lambda base, bt, hz, role, fn: seq.append(f"verify:{role}:{fn}") or verify_result)
-        exec(compile(fn_src, "server.py::_model_status_from_artifact", "exec"), ns)
-        return ns["_model_status_from_artifact"]
-
-    # refusal: verifier returns None → fail closed, json.loads NEVER reached
-    seq: list = []
-    out = build(seq, None)("lstm", "LSTM", meta_p, "edge_pp", "model_type")
-    assert out["status"] == "INTEGRITY FAILED" and out["edge"] is None
-    assert seq == [f"verify:lstm_meta:{meta_p.name}"], seq
-
-    # control: verified → verify strictly precedes the parse, the real edge serves
-    seq2: list = []
-    out2 = build(seq2, {"verified": True})("lstm", "LSTM", meta_p, "edge_pp", "model_type")
-    assert seq2 == [f"verify:lstm_meta:{meta_p.name}", "loads"], seq2
-    assert out2["status"] == "LIVE" and out2["edge"] == 1.25
+# test_item4_display_path_meta_verify_before_parse was retired (RC-REHAB-1, 2026-09-23):
+# its subject -- server.py's per-cycle Model Health Dashboard producer
+# (_model_status_from_artifact) -- was deleted outright, zero consumers anywhere. The
+# serve-path verify-before-deserialize boundary it mirrored stays locked by
+# test_item4_all_governed_loaders_call_verifier_before_deserialization below.
 
 
 def test_load_transformer_blocked_when_meta_missing_contract(tmp_path, monkeypatch):
@@ -356,6 +313,10 @@ def _make_complete_bundle(models_root, ticker, hz="1c"):
         "trained_at": "2026-07-01 00:00:00",
         "features": ["a"],
         "impute_medians": {"a": 0.0},
+        # ml_train.train_ticker always writes both into an XGB meta; ml_predict now
+        # requires them (CAPS RC-REHAB-1) instead of defaulting to {}.
+        "category_maps": {},
+        "vol_medians": {},
     }
     for kind, model_path, meta_path in bundle_artifact_paths(ticker, hz, bd):
         model_path.write_bytes(b"x")

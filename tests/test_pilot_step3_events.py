@@ -25,7 +25,7 @@ def _minimal_prereg(**overrides):
             "trend_following_only": True,
         }
     }
-    cg = {**base["candidate_generator"], **overrides.get("candidate_generator", {})}
+    cg = {**base["candidate_generator"], **overrides.get("candidate_generator", {})}  # caps-ok: fixture config builder: a test that passes no candidate_generator override gets the base config unchanged
     return {"candidate_generator": cg}
 
 

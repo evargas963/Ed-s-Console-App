@@ -124,9 +124,9 @@ def latest_accrual_rows(
     path = Path(db_path)
     if not path.is_file():
         return None
-    day = str(et_date) if et_date else et_date_and_mins()[0]
+    day = str(et_date) if et_date else et_date_and_mins()[0]  # caps-ok: et_date=None is the documented "current ET session" call (live Chart fallback); the day is the real ET clock date, and a day with no banked rows still returns None
     try:
-        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return None
     try:
@@ -265,7 +265,7 @@ def has_morning_full_capture(
     if not path.is_file():
         return False
     try:
-        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return False
     try:

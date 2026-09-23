@@ -4,6 +4,8 @@
 
 Closure proof: no application path can bypass calibration constraints (`canonical_timeframe`, trusted study scope, writer-only inserts, backfill-only outcome writes) without going through controlled modules.
 
+**SUPERSEDED (reality-reconciliation audit, 2026-09-18):** the production INSERT chain this doc traces (`signals.py::_maybe_append_calibration_log`) no longer exists (removed by commit `ed8806fa`, 2026-05-06); the real production insert is `calibration/v2_live_logging.py::append_live_v2_calibration_decision`, called from `server.py`, execution-identity-gated. Separately, the doc's UPDATE inventory is stale on its own terms: it names one UPDATE-capable module (`calibration/backfill_outcomes.py`); `tests/test_calibration_bypass_closure.py`'s current allowlist permits UPDATE from five modules (`operable_surface_quarantine.py`, `backfill_outcomes.py`, `backfill_signal_layer_v1_bundle.py`, `v2_advisory_backfill.py`, `v2_live_logging.py`) across a ~40+ path allowlist, not the 19 files this doc inventories. The bypass-closure *property* (nothing writes calibration_decision_log outside the allowlisted set) is still enforced today — the allowlist has just grown with the codebase.
+
 ---
 
 ## A. Full entry / exit inventory
