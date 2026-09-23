@@ -172,26 +172,31 @@ def test_candle_grid_stale_triggers_pricehistory_reseed():
     quote tick per ~15min visit, so the 1m grid was ~94% empty and fill_outcomes
     could never label forward bars. The grid must report stale on a gap so the
     fetch path re-seeds from the canonical Schwab pricehistory leaf — not only on
-    the first visit of the server lifetime."""
+    the first visit of the server lifetime.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice):
+    CANDLE_RESEED_GAP_SECONDS moved out of server.py into server_state_exposures.py
+    along with its sole reader, _exposures_for_state."""
     import server
+    from server_state_exposures import CANDLE_RESEED_GAP_SECONDS
 
     acc = server._CandleAccumulator(bar_seconds=60, max_bars=500)
     # No bars yet → stale (first-visit seed preserved).
-    assert acc.grid_stale("QQQ", 10_000.0, server.CANDLE_RESEED_GAP_SECONDS)
+    assert acc.grid_stale("QQQ", 10_000.0, CANDLE_RESEED_GAP_SECONDS)
 
     # Contiguous ticks → fresh grid, no re-seed churn for the active UI ticker.
     for i in range(5):
         acc.tick("QQQ", 100.0 + i, 9_600.0 + i * 60.0)
     last_end = acc.get_bars("QQQ")[-1].ts + 60.0
-    assert not acc.grid_stale("QQQ", last_end + 60.0, server.CANDLE_RESEED_GAP_SECONDS)
+    assert not acc.grid_stale("QQQ", last_end + 60.0, CANDLE_RESEED_GAP_SECONDS)
 
     # 15-minute polling gap (background logger cadence) → stale → re-seed.
-    assert acc.grid_stale("QQQ", last_end + 900.0, server.CANDLE_RESEED_GAP_SECONDS)
+    assert acc.grid_stale("QQQ", last_end + 900.0, CANDLE_RESEED_GAP_SECONDS)
 
     # Fetch path wires the staleness check (not has_bars-once-per-lifetime).
-    src = _server_src()
-    assert "_candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS)" in src
-    assert "if not _candles_1m.has_bars(ticker):" not in src
+    exp_src = Path(__file__).resolve().parent.parent.joinpath("server_state_exposures.py").read_text(encoding="utf-8")
+    assert "_srv._candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS)" in exp_src
+    assert "if not _candles_1m.has_bars(ticker):" not in exp_src
     # Re-seed replaces the sparse tick grid with the canonical leaf, end to end.
     seed_bars = [
         {"datetime": (9_600.0 + i * 60.0) * 1000.0, "open": 1.0, "high": 2.0,
@@ -201,7 +206,7 @@ def test_candle_grid_stale_triggers_pricehistory_reseed():
     acc.seed("QQQ", seed_bars)
     assert len(acc.get_bars("QQQ")) == 20
     assert acc.get_bars_source("QQQ") == "schwab_pricehistory"
-    assert not acc.grid_stale("QQQ", 9_600.0 + 20 * 60.0, server.CANDLE_RESEED_GAP_SECONDS)
+    assert not acc.grid_stale("QQQ", 9_600.0 + 20 * 60.0, CANDLE_RESEED_GAP_SECONDS)
 
 
 # FIND-SERVERPY-2

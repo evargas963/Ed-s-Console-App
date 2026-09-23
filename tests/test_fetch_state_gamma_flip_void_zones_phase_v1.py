@@ -16,6 +16,17 @@ from __future__ import annotations
 import time
 
 import server as srv
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): these 5 helpers'
+# only server.py call site (_exposures_for_state) moved out into
+# server_state_exposures.py, which imports all 5 directly from math_exposure -- this
+# fixture helper does the same rather than resolving them off srv.
+from math_exposure import (
+    build_summary_rows,
+    build_totals_rows,
+    build_walls_rows,
+    compute_exposures_by_strike,
+)
+from server_state_exposures import EXPOSURE_WINDOWS
 
 
 def _fixture_contracts():
@@ -30,10 +41,10 @@ def _fixture_contracts():
 
 
 def _build_exposures_rows_walls_totals(contracts, spot_f):
-    exposures, _diag = srv.compute_exposures_by_strike(contracts, spot=spot_f, require_oi=True)
-    rows = srv.build_summary_rows(exposures, spot_f, windows=srv.EXPOSURE_WINDOWS)
-    walls = srv.build_walls_rows(exposures, spot_f)
-    totals = srv.build_totals_rows(exposures, spot_f, windows=srv.EXPOSURE_WINDOWS, contracts_for_iv=contracts)
+    exposures, _diag = compute_exposures_by_strike(contracts, spot=spot_f, require_oi=True)
+    rows = build_summary_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS)
+    walls = build_walls_rows(exposures, spot_f)
+    totals = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts)
     return exposures, rows, walls, totals
 
 

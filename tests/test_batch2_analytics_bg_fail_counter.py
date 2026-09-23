@@ -384,8 +384,12 @@ def test_candle_seed_does_not_nest_analytics_executor():
     """Regression: parallel candle seed on _analytics_executor deadlocked Tier C
     (UI-MAXIMIZE). OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 moved the seed
     futures to the dedicated recompute-leaf pool — the invariant is unchanged:
-    seeds never nest into the analytics pool."""
-    text = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    seeds never nest into the analytics pool.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the candle-seed
+    block moved out of server.py entirely, into server_state_exposures.py, along with
+    _exposures_for_state."""
+    text = Path(__file__).resolve().parent.parent.joinpath("server_state_exposures.py").read_text(encoding="utf-8")
     idx = text.find("UI-MAXIMIZE: parallel seed")
     assert idx != -1
     block = text[idx : idx + 800]  # UI_05 residual: window covers the priority-lane selection comment

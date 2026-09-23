@@ -122,8 +122,11 @@ def test_the_caller_still_passes_the_net_gex_peak():
 
     RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): this
     assignment moved into _exposures_for_state, dropping its underscore-prefix
-    scratch-var spelling (_institutional_pin -> institutional_pin)."""
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    scratch-var spelling (_institutional_pin -> institutional_pin).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the function
+    itself moved out of server.py into server_state_exposures.py."""
+    src = (REPO / "server_state_exposures.py").read_text(encoding="utf-8", errors="replace")
     i = src.find("institutional_pin = (")
     assert i > 0, "the institutional_pin site moved; re-derive the docstring claim"
     assert "pick_net_gex_peak_strike(" in src[i:i + 260], (

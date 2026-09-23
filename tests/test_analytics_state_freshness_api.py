@@ -1032,18 +1032,26 @@ def test_fix_b_tail_never_touches_state_cache():
 
 def test_step1_log_only_inline_source_lock():
     """log_only joins the shutdown inline path for chain/quote and gets a
-    sequential inline arm for candle seeds; operator-facing submits remain."""
+    sequential inline arm for candle seeds; operator-facing submits remain.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the candle-seed
+    arm (both its inline check and its pooled arm) moved with _exposures_for_state
+    into server_state_exposures.py; the chain/quote arm stays in _fetch_state's own
+    body, in server.py. Checked against each site's own file."""
     src = _fetch_state_source()
     assert "if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):" in src
-    i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
+    from pathlib import Path
+
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    i_inline_seed = exp_src.index("if _srv._log_only_inline_leaf_fetches(log_only):", exp_src.index("def _seed_candles"))
     # Step 2 rebinds the pooled arm to the dedicated leaf pool; the Step 1
     # invariant (inline arm precedes the pooled arm) is pool-independent.
-    i_pool_seed = src.index("_seed_pool = (")
+    i_pool_seed = exp_src.index("_seed_pool = (")
     assert i_inline_seed < i_pool_seed, "inline seed arm must precede the pooled arm"
     # Operator-facing bounded parallelism intact (submits still present).
     assert "_cq_pool.submit(" in src or "_chain_fut = _cq_pool.submit(" in src
-    assert "_f5 = _seed_pool.submit(_seed_candles, 5)" in src
-    assert "_f1 = _seed_pool.submit(_seed_candles, 1)" in src
+    assert "_f5 = _seed_pool.submit(_seed_candles, 5)" in exp_src
+    assert "_f1 = _seed_pool.submit(_seed_candles, 1)" in exp_src
 
 
 def test_step1_discriminator_universal_by_signature():
@@ -1101,8 +1109,15 @@ def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
     when that slice landed (caught later, during the nineteenth slice's broader
     verification sweep) -- the underlying invariant (leaf-executor calls stay
     inside _fetch_state's own decomposition, never leak into route handlers or
-    unrelated code) still holds; only the accepted caller set needed widening."""
+    unrelated code) still holds; only the accepted caller set needed widening.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): _exposures_for_state
+    itself moved out of server.py entirely, into server_state_exposures.py, where its
+    leaf-executor call is now `_srv._get_recompute_leaf_executor()` (the established
+    lazy `import server as _srv` pattern) rather than a bare name call -- checked
+    against that file's own tree instead of server.py's."""
     import ast
+    from pathlib import Path
 
     tree = ast.parse(_fetch_state_source())
     callers = []
@@ -1112,6 +1127,14 @@ def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
                 if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
                         and sub.func.id == "_get_recompute_leaf_executor"
                         and node.name != "_get_recompute_leaf_executor"):
+                    callers.append(node.name)
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    exp_tree = ast.parse(exp_src)
+    for node in ast.walk(exp_tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                        and sub.func.attr == "_get_recompute_leaf_executor"):
                     callers.append(node.name)
     # Nested walk double-counts under enclosing defs; the set must be exactly
     # _fetch_state + _exposures_for_state (call sites live directly in their own
@@ -1123,7 +1146,8 @@ def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
     # Call sites only (the bare substring also matches the def line).
     # UI_05 residual: both sites are now conditional expressions selecting the
     # priority lane vs the shared leaf pool.
-    assert src.count("else _get_recompute_leaf_executor()") == 2  # chain/quote + seeds
+    assert src.count("else _get_recompute_leaf_executor()") == 1  # chain/quote
+    assert exp_src.count("else _srv._get_recompute_leaf_executor()") == 1  # seeds
 
 
 def test_step2_leaf_functions_have_no_nested_submit():
@@ -1189,27 +1213,48 @@ def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
     site moved into _exposures_for_state, where its own parameter dropped the
     `_fetch_state`-scratch-variable underscore prefix (`_chain_priority` ->
     `chain_priority`) -- counted together with the chain/quote site's original
-    spelling, still inside _fetch_state itself, rather than one literal pattern."""
+    spelling, still inside _fetch_state itself, rather than one literal pattern.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): _exposures_for_state
+    itself moved out of server.py, into server_state_exposures.py, where its leaf-
+    executor calls are `_srv._get_priority_leaf_executor()`/
+    `_srv._get_recompute_leaf_executor()` (the lazy `import server as _srv` pattern)
+    rather than bare names -- checked per-file below instead of one shared count."""
     src = _fetch_state_source()
+    from pathlib import Path
+
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
     # UI_05 residual: both leaf sites select the bounded PRIORITY leaf lane
     # for operator-priority recomputes and the shared leaf pool otherwise —
     # the route pool stays banned at both sites.
-    assert src.count("if _chain_priority") + src.count("if chain_priority") >= 2
-    assert src.count("else _get_recompute_leaf_executor()") == 2
-    assert src.count("_get_priority_leaf_executor()") >= 2
+    assert src.count("if _chain_priority") >= 1
+    assert exp_src.count("if chain_priority") >= 1
+    assert src.count("else _get_recompute_leaf_executor()") == 1
+    assert exp_src.count("else _srv._get_recompute_leaf_executor()") == 1
+    assert src.count("_get_priority_leaf_executor()") >= 1
+    assert exp_src.count("_srv._get_priority_leaf_executor()") >= 1
     assert "_cq_pool = _get_route_offload_executor()" not in src
-    assert "_seed_pool = _get_route_offload_executor()" not in src
+    assert "_seed_pool = _get_route_offload_executor()" not in exp_src
 
 
 def test_step2_log_only_uses_neither_pool_for_nested_work():
     """Step 1 preserved: the inline arms precede both submit blocks, so log_only
-    reaches neither the route pool nor the leaf pool for nested work."""
+    reaches neither the route pool nor the leaf pool for nested work.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the candle-seed
+    site (both its inline check and its pooled arm) moved with _exposures_for_state
+    into server_state_exposures.py; the chain/quote site stays in _fetch_state's own
+    body, in server.py."""
     src = _fetch_state_source()
     i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
     i_pool_cq = src.index("_cq_pool = (")
-    i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
-    i_pool_seed = src.index("_seed_pool = (")
     assert i_inline_cq < i_pool_cq
+
+    from pathlib import Path
+
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    i_inline_seed = exp_src.index("if _srv._log_only_inline_leaf_fetches(log_only):", exp_src.index("def _seed_candles"))
+    i_pool_seed = exp_src.index("_seed_pool = (")
     assert i_inline_seed < i_pool_seed
 
 
@@ -1746,14 +1791,24 @@ def test_ui05r_priority_leaf_pool_bounded_and_separate():
 
 def test_ui05r_leaf_pool_selection_source_lock():
     """Chain/quote and seed legs select the priority lane exactly when the
-    recompute is operator-priority (the _chain_priority classifier)."""
+    recompute is operator-priority (the _chain_priority classifier).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the seed leg
+    moved with _exposures_for_state into server_state_exposures.py, where its
+    leaf-executor calls are `_srv._get_priority_leaf_executor()`/
+    `_srv._get_recompute_leaf_executor()` (the lazy `import server as _srv`
+    pattern)."""
     src = _fetch_state_source()
     i_cq = src.index("_cq_pool = (")
     assert "_get_priority_leaf_executor()" in src[i_cq:i_cq + 200]
     assert "else _get_recompute_leaf_executor()" in src[i_cq:i_cq + 260]
-    i_seed = src.index("_seed_pool = (")
-    assert "_get_priority_leaf_executor()" in src[i_seed:i_seed + 220]
-    assert "else _get_recompute_leaf_executor()" in src[i_seed:i_seed + 280]
+
+    from pathlib import Path
+
+    exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    i_seed = exp_src.index("_seed_pool = (")
+    assert "_srv._get_priority_leaf_executor()" in exp_src[i_seed:i_seed + 220]
+    assert "else _srv._get_recompute_leaf_executor()" in exp_src[i_seed:i_seed + 280]
 
 
 def test_ui05r_priority_leaf_teardown_present():

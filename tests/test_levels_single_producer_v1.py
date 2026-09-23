@@ -322,8 +322,11 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): this assignment
     # moved into _exposures_for_state, where its manually-aligned spacing (extra
     # padding spaces before "=") was normalized to a single space.
-    i_walls = src.index("walls = build_walls_rows")
-    walls_chunk = src[i_walls:i_walls + 700]
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the function
+    # itself moved out of server.py into server_state_exposures.py.
+    exp_src = (SERVER.parent / "server_state_exposures.py").read_text(encoding="utf-8")
+    i_walls = exp_src.index("walls = build_walls_rows")
+    walls_chunk = exp_src[i_walls:i_walls + 700]
     assert "consensus_walls_bind_terrain_ssot" in walls_chunk
     assert "terrain_cache_get" in walls_chunk
     assert walls_chunk.find("consensus_walls_bind_terrain_ssot") < walls_chunk.find("build_totals_rows")

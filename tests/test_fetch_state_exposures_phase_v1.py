@@ -17,12 +17,24 @@ get_client() is a cached singleton in practice, so this is normally a no-op,
 but the extracted function returns the (possibly rebound) client explicitly
 so _fetch_state can rebind its own `client` from the return value and match
 the original behavior exactly, not just "close enough".
+
+RC-REHAB-1 (2026-09-23, module extraction, twenty-third slice): the function
+itself moved out of server.py into server_state_exposures.py (ses below);
+server.py keeps a re-export so srv._exposures_for_state still resolves, but
+compute_exposures_by_strike/build_summary_rows/build_walls_rows/
+build_totals_rows/pick_net_gex_peak_strike/EXPOSURE_WINDOWS are no longer bound
+on srv -- they're imported/defined directly in ses, matching what ses itself
+does. get_client stays bound on srv (it has 27 other call sites and stays in
+server.py, reached lazily) so mocking srv.get_client is unaffected; but
+safe_get_price_history is imported directly in ses (module-level, not lazily
+via `import server`), so it must be mocked on ses, not srv.
 """
 from __future__ import annotations
 
 from unittest import mock
 
 import server as srv
+import server_state_exposures as ses
 
 
 def _fixture_contracts():
@@ -52,16 +64,16 @@ def test_full_pipeline_matches_the_original_computation_chain():
             ticker, client, 100.5, contracts, 1000.0, None, 12345.0, True, False,
         )
 
-        exposures2, diag2 = srv.compute_exposures_by_strike(contracts, spot=100.5, require_oi=True)
+        exposures2, diag2 = ses.compute_exposures_by_strike(contracts, spot=100.5, require_oi=True)
         cons2 = sorted(float(k) for k in exposures2.keys())
         from math_exposure_core import key_level_strikes_with_gamma
         gamma2 = key_level_strikes_with_gamma(exposures2) or cons2
-        pin2 = srv.pick_net_gex_peak_strike(exposures2, gamma2, institutional=True) if gamma2 else None
-        rows2 = srv.build_summary_rows(exposures2, 100.5, windows=srv.EXPOSURE_WINDOWS)
-        walls2 = srv.build_walls_rows(exposures2, 100.5)
+        pin2 = ses.pick_net_gex_peak_strike(exposures2, gamma2, institutional=True) if gamma2 else None
+        rows2 = ses.build_summary_rows(exposures2, 100.5, windows=ses.EXPOSURE_WINDOWS)
+        walls2 = ses.build_walls_rows(exposures2, 100.5)
         from math_levels import consensus_walls_bind_terrain_ssot
         walls2 = consensus_walls_bind_terrain_ssot(walls2, srv.terrain_cache_get(ticker) or {})
-        totals2 = srv.build_totals_rows(exposures2, 100.5, windows=srv.EXPOSURE_WINDOWS, contracts_for_iv=contracts)
+        totals2 = ses.build_totals_rows(exposures2, 100.5, windows=ses.EXPOSURE_WINDOWS, contracts_for_iv=contracts)
 
         assert result.spot_f == 100.5
         assert result.tick_ts == 1000.0
@@ -103,7 +115,7 @@ def test_client_rebound_from_get_client_on_the_seed_path():
     srv._candles_1m.grid_stale = lambda *a, **k: True
     try:
         with mock.patch.object(srv, "get_client", return_value=new_client), \
-             mock.patch.object(srv, "safe_get_price_history", return_value=None):
+             mock.patch.object(ses, "safe_get_price_history", return_value=None):
             result = srv._exposures_for_state(
                 "ZZZ_EXPOSURES_SEED", orig_client, 100.5, contracts, None, None, None, True, False,
             )
