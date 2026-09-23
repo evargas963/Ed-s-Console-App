@@ -2375,7 +2375,10 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_app_lifespan).',
     ),
     Row(
-        file='server.py', derivation='_attach_stack_runtime_and_governance', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (2026-09-23, module extraction, twenty-eighth slice):
+        # _attach_stack_runtime_and_governance moved out of server.py into
+        # stack_runtime_governance.py.
+        file='stack_runtime_governance.py', derivation='_attach_stack_runtime_and_governance', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_attach_stack_runtime_and_governance).',
     ),

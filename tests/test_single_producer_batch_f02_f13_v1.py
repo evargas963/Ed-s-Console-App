@@ -1794,8 +1794,11 @@ def test_rc345_f25_arch_state_writer_reader_share_canonical_key():
     sched = _read("ml_scheduler.py")
     assert "arch_key = ticker_storage_key(ticker)" in sched, "arch_state writer key must be canonical"
     assert "arch_state[arch_key]" in sched, "arch_state must be written under the canonical key"
-    srv = _read("server.py")
-    assert "arch.get(ticker_storage_key(ticker))" in srv, "arch_state reader key must be canonical"
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-eighth slice): the reader site
+    # (_attach_stack_runtime_and_governance) moved out of server.py entirely, into
+    # stack_runtime_governance.py.
+    stack_src = _read("stack_runtime_governance.py")
+    assert "arch.get(ticker_storage_key(ticker))" in stack_src, "arch_state reader key must be canonical"
 
 
 def test_rc345_f25_execution_routing_identity_contract():

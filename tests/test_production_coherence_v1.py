@@ -453,12 +453,24 @@ def test_stack_health_requires_the_transported_verdict_and_cannot_substitute():
 
 # ── CONTROL 7: ONE FAUCET — the verdict is transported, never recomputed ──────────────────────
 def test_server_transports_the_verdict_and_does_not_recompute_it():
+    """RC-REHAB-1 (2026-09-23, module extraction, twenty-eighth slice):
+    _attach_stack_runtime_and_governance (the verdict-consuming site) moved out of
+    server.py entirely, into stack_runtime_governance.py -- checked across both
+    files: the "must not" assertions still hold for server.py itself (nothing
+    reintroduced them there), and the "must consume" assertion now finds its match
+    in the new module instead."""
     src = _code_only((ROOT / "server.py").read_text(encoding="utf-8", errors="replace"))
+    stack_src = _code_only(
+        (ROOT / "stack_runtime_governance.py").read_text(encoding="utf-8", errors="replace"))
     assert "unified_stack_team_can_authorize(" not in src, \
         "server must not hold a second authorization computation"
-    assert "ms_dict.get('stack_directional_authorized')" in src, \
-        "server must consume the transported verdict"
+    assert "unified_stack_team_can_authorize(" not in stack_src, \
+        "stack_runtime_governance must not hold a second authorization computation"
+    assert "ms_dict.get('stack_directional_authorized')" in stack_src, \
+        "the verdict-consuming site must still consume the transported verdict"
     assert "def classify_stack_health(*, fusion_available" not in src, \
+        "the shadow stack-health copy must be gone"
+    assert "def classify_stack_health(*, fusion_available" not in stack_src, \
         "the shadow stack-health copy must be gone"
 
 
