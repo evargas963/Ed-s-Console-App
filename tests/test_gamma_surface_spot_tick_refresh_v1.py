@@ -39,6 +39,8 @@ import per_strike_view
 import gamma_surface_projection
 import terrain_state
 import terrain_engine
+import terrain_reprice
+import gamma_last_valid
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -55,13 +57,13 @@ def _clear_caches():
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache.pop(TK, None)
         terrain_state._terrain_cache.pop(TK2, None)
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        server._LAST_VALID_GEX_CELLS.pop(TK, None)
-        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
-        server._LAST_VALID_GEX_CELLS.pop(TK2, None)
-        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK2)
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK2] = time.time()
+    with gamma_last_valid._LAST_VALID_GEX_CELLS_LOCK:
+        gamma_last_valid._LAST_VALID_GEX_CELLS.pop(TK, None)
+        gamma_last_valid._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
+        gamma_last_valid._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
+        gamma_last_valid._LAST_VALID_GEX_CELLS.pop(TK2, None)
+        gamma_last_valid._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK2)
+        gamma_last_valid._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK2] = time.time()
     with gamma_surface_eager_refresh._spot_gamma_refresh_lock:
         gamma_surface_eager_refresh._spot_gamma_refresh_inflight.discard(TK)
         gamma_surface_eager_refresh._spot_gamma_refresh_pending.discard(TK)
@@ -459,7 +461,7 @@ def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(mo
     # request. Before this fix they read ONLY _contracts_rest/_contracts_rest_spot (the
     # REST-cycle-only baseline) and would still show the OLD spot here. Proving they now
     # see the NEW spot is the direct test of the _contracts_overlaid fix.
-    live_contracts, live_spot = server._live_terrain_contracts_and_spot(TK)
+    live_contracts, live_spot = terrain_reprice._live_terrain_contracts_and_spot(TK)
     assert live_spot == new_spot, (
         "Vanna/Charm-by-strike still reading the stale REST-only spot -- "
         "_contracts_overlaid fix did not take effect"

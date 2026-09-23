@@ -21,6 +21,7 @@ import server
 import app.api.routes.terrain
 import tier_a_live_state
 import terrain_state
+import terrain_reprice
 
 
 def test_quote_parser_key_contract() -> None:
@@ -285,9 +286,9 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
     }
     # profile negative at 744.93 -> dealers short gamma there
     profile = [(700.0, -5.0), (745.00, 0.0), (760.0, 5.0)]
-    monkeypatch.setitem(server._terrain_profile_cache, "SPY", profile)
+    monkeypatch.setitem(terrain_state._terrain_profile_cache, "SPY", profile)
 
-    out = server._reprice_cached_terrain(cached, "SPY")
+    out = terrain_reprice._reprice_cached_terrain(cached, "SPY")
 
     assert out["spot"] == 744.93, "spot must be the live quote, not the cached one"
     assert out["spot_source"] == server.SPOT_SOURCE_QUOTE
@@ -303,7 +304,7 @@ def test_reprice_does_not_keep_cached_spot_as_current_when_last_price_is_unavail
     """A cached terrain spot must not silently become current live spot."""
     monkeypatch.setattr(server, "resolve_spot", lambda _tk, **_kw: (None, "none", None))
     cached = {"ticker": "SPY", "spot": 745.10, "regime": "LONG_GAMMA_CHOP"}
-    out = server._reprice_cached_terrain(cached, "SPY")
+    out = terrain_reprice._reprice_cached_terrain(cached, "SPY")
     assert out["spot"] is None
     assert out["spot_source"] == "none"
     assert out["spot_state"] == "unavailable"
@@ -327,7 +328,7 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
         "gamma_flip": 745.00, "call_wall": 750.0, "put_wall": 740.0,
         "headline": "stale", "lines": ["stale"],
     })
-    monkeypatch.setitem(server._terrain_profile_cache, "SPY",
+    monkeypatch.setitem(terrain_state._terrain_profile_cache, "SPY",
                         [(700.0, -5.0), (745.00, 0.0), (760.0, 5.0)])
 
     served = app.api.routes.terrain.get_terrain(ticker="SPY")

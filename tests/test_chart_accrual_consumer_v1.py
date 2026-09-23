@@ -225,12 +225,12 @@ def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
         # loop must be inside its window for the whole of it, whatever hour the suite runs at.
         s._is_loggable_session = lambda *a, **k: True
         terrain_state._terrain_last_cycle_sec = 156.0
-        healthy = s.terrain_staleness(now - 234, "ZZTEST")
+        healthy = terrain_freshness.terrain_staleness(now - 234, "ZZTEST")
         assert healthy["levels_stale"] is False, (
             "234s at a 156s delivered cycle is 1.5 sweeps — flagging it stale calls a healthy "
             "scheduler broken"
         )
-        behind = s.terrain_staleness(now - 400, "ZZTEST")
+        behind = terrain_freshness.terrain_staleness(now - 400, "ZZTEST")
         assert behind["levels_stale"] is True, "400s is 2.6 sweeps — genuinely behind"
         assert "DELIVERED" in behind["levels_stale_reason"]
         assert "156s" in behind["levels_stale_reason"], (
@@ -241,19 +241,19 @@ def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
         )
         # a FAST loop must not be allowed to hide staleness: the floor still applies
         terrain_state._terrain_last_cycle_sec = 10.0
-        assert s.terrain_staleness(now - 200, "ZZTEST")["levels_stale"] is True, (
+        assert terrain_freshness.terrain_staleness(now - 200, "ZZTEST")["levels_stale"] is True, (
             "a fast cycle dropped the floor — staleness could be hidden by a quick sweep"
         )
         # before the first cycle completes, fall back to the nominal floor rather than 0
         terrain_state._terrain_last_cycle_sec = 0.0
-        assert s.terrain_staleness(now - 400, "ZZTEST")["levels_stale"] is True
+        assert terrain_freshness.terrain_staleness(now - 400, "ZZTEST")["levels_stale"] is True
 
         # And the branch that legitimately owns the OTHER sentence: outside its window the loop
         # is not refreshing on purpose, and saying so is correct — the defect was asserting the
         # in-window wording while the clock had chosen the out-of-window path.
         s._is_loggable_session = lambda *a, **k: False
         terrain_state._terrain_last_cycle_sec = 156.0
-        paused = s.terrain_staleness(now - 400, "ZZTEST")
+        paused = terrain_freshness.terrain_staleness(now - 400, "ZZTEST")
         assert paused["levels_stale"] is True
         assert "DELIVERED" not in paused["levels_stale_reason"], (
             "a loop stopped by design must not be described by the cadence yardstick"

@@ -29,7 +29,8 @@ def get_vanna_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
     exact BS-vanna faucet, math_levels.bs_vanna, independently FD-verified)."""
     from math_exposure_core import compute_exposures_by_strike as _cebs
     from numeric_contract import float_finite_or_none as _fin
-    from server import _live_terrain_contracts_and_spot, _touch_tracked_ticker_view
+    from terrain_reprice import _live_terrain_contracts_and_spot
+    from server import _touch_tracked_ticker_view
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     _touch_tracked_ticker_view(tk)
@@ -71,7 +72,8 @@ def get_charm_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
     shaped for a strike bar chart the same way /api/terrain/strikes already is. Units:
     delta-shares decaying per day (RC-179 dealer convention: +call/-put)."""
     from math_levels import compute_charm_by_strike as _ccs
-    from server import _live_terrain_contracts_and_spot, _touch_tracked_ticker_view
+    from terrain_reprice import _live_terrain_contracts_and_spot
+    from server import _touch_tracked_ticker_view
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     _touch_tracked_ticker_view(tk)

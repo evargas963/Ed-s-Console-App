@@ -65,6 +65,7 @@ from terrain_engine import compute_terrain
 import chain_width
 import terrain_state
 import terrain_radar
+import gamma_last_valid
 
 
 def _gamma_surface_contracts_with_stream_overlay(
@@ -170,7 +171,6 @@ def _apply_gamma_surface_projection(tk, payload, contracts, spot, spot_source, s
     (deferred to the caller's own cache-write lock, exactly like the original inline
     code: the DECISION to stamp a seq is made here; the seq itself is assigned, and the
     SSE notify fired, atomically with the cache write, never here)."""
-    import server as _srv
     from gamma_surface_projection import project_gamma_surface
 
     stamp_surface_seq = False
@@ -203,7 +203,7 @@ def _apply_gamma_surface_projection(tk, payload, contracts, spot, spot_source, s
                 try:
                     # Best-effort enhancement, like the overlay above -- a bug here must
                     # never take down an otherwise-freshly-computed, valid surface.
-                    _srv._backfill_gex_cells_from_last_valid(tk, payload["_gamma_surface"])
+                    gamma_last_valid._backfill_gex_cells_from_last_valid(tk, payload["_gamma_surface"])
                 except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
                     log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
             if _overlay_n:
@@ -416,7 +416,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             if stamp_surface_seq:
                 payload["_gamma_surface"]["surface_seq"] = _gss._next_gamma_surface_seq(tk)
             terrain_state._terrain_cache[tk] = payload
-            _srv._terrain_profile_cache[tk] = snap.profile
+            terrain_state._terrain_profile_cache[tk] = snap.profile
         # RC-159 (operator mandate 2026-07-30): ACCRUE the wide chain across
         # [09:15, 16:15] ET == [08:15, 15:15] CT. The chain is already fetched and the
         # per-strike map already computed above, so this costs ZERO additional vendor calls —

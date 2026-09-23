@@ -2647,7 +2647,8 @@ ROWS: tuple[Row, ...] = (
         justification='Projects already-computed terrain fields + ATR distances into a radar row; no new field read.',
     ),
     Row(
-        file='server.py', derivation='_reprice_cached_terrain', disposition='DERIVED',
+        # RC-REHAB-1 (2026-09-23): moved to terrain_reprice.py.
+        file='terrain_reprice.py', derivation='_reprice_cached_terrain', disposition='DERIVED',
         producer_refs=('server.py:resolve_spot',),
         justification='Re-evaluates cached gamma profile at the fresh authoritative spot (RC-28); both inputs from traced producers.',
     ),

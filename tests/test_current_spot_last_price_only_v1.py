@@ -6,6 +6,7 @@ import time
 
 import live_market_plane as L
 import server
+import terrain_reprice
 
 
 class _FakeResp:
@@ -135,7 +136,7 @@ def test_reprice_and_api_spot_do_not_use_bar_close_or_snapshot(monkeypatch) -> N
         "call_wall": 750.0,
         "put_wall": 740.0,
     }
-    out = server._reprice_cached_terrain(cached, "SPY")
+    out = terrain_reprice._reprice_cached_terrain(cached, "SPY")
     assert out["spot"] is None
     assert out["spot_state"] == "unavailable"
     assert out["call_wall"] == 750.0

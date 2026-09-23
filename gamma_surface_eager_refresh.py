@@ -58,6 +58,7 @@ from gamma_surface_projection import project_gamma_surface, project_gamma_surfac
 from instrument_identity import ticker_storage_key
 from terrain_engine import compute_terrain
 import terrain_state
+import gamma_last_valid
 
 
 def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
@@ -300,7 +301,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             try:
                 # Best-effort enhancement -- a bug here must never block publishing an
                 # otherwise-genuinely-fresh eager refresh.
-                _srv._backfill_gex_cells_from_last_valid(tk, new_surface)
+                gamma_last_valid._backfill_gex_cells_from_last_valid(tk, new_surface)
             except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
                 log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
         # RC-UI-2 latency label (independent-review finding 2026-09-12): this timestamp is the
@@ -462,7 +463,7 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
             set(_gss._desired_option_symbols_for_ticker(tk)),
             daemon_available=is_option_producer_daemon_available())
         try:
-            _srv._backfill_gex_cells_from_last_valid(tk, new_surface)
+            gamma_last_valid._backfill_gex_cells_from_last_valid(tk, new_surface)
         except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
             log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
         applied_ts = time.time()

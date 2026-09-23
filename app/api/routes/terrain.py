@@ -424,7 +424,8 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     from terrain_freshness import terrain_staleness
     from terrain_state import _terrain_refresh_last_error
     from terrain_loop import terrain_cache_get
-    from server import _reprice_cached_terrain, resolve_spot
+    from terrain_reprice import _reprice_cached_terrain
+    from server import resolve_spot
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     cached = terrain_cache_get(tk)

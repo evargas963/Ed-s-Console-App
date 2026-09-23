@@ -26,6 +26,8 @@
 "stack_runtime_governance.py",
 "terrain_kl_overlay.py",
 "terrain_refresh.py",
+"gamma_last_valid.py",
+"terrain_reprice.py",
 "terrain_radar.py",
 "terrain_capture.py",
 "terrain_freshness.py",

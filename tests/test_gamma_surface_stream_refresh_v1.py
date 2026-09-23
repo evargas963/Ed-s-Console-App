@@ -29,6 +29,7 @@ import terrain_refresh
 import gamma_surface_projection
 import terrain_state
 import terrain_engine
+import gamma_last_valid
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -103,15 +104,15 @@ def _clear_cache():
     # directly and therefore never goes through backfill itself. _HYDRATED is cleared too so
     # a later test's first backfill call re-hydrates (a real, but harmless and fail-closed-
     # empty-for-this-ticker, DB read) rather than silently reusing this run's in-memory state.
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        server._LAST_VALID_GEX_CELLS.pop(TK, None)
-        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
+    with gamma_last_valid._LAST_VALID_GEX_CELLS_LOCK:
+        gamma_last_valid._LAST_VALID_GEX_CELLS.pop(TK, None)
+        gamma_last_valid._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
         # Pre-throttled (not popped) -- this file's tests are about overlay/refresh semantics,
         # not DB persistence (see test_canonical_gex_input_validity_v1.py for that proof), so
         # the durability flush is deliberately kept quiet here: real backfill READS still run
         # (harmless, read-only, fail-closed to {} for this synthetic ticker), but no test in
         # this file writes rows into the real dev database.
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
+        gamma_last_valid._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
 
 
 def _put_rest_baseline(*, computed_ts_utc=None, contracts=None):
@@ -140,7 +141,7 @@ def _backfilled(surface):
     _LAST_VALID_GEX_CELLS store -- already populated by the real call under test -- is
     correctly backfilled in production and must be here too, or the comparison is against a
     path production no longer takes)."""
-    server._backfill_gex_cells_from_last_valid(TK, surface)
+    gamma_last_valid._backfill_gex_cells_from_last_valid(TK, surface)
     return surface
 
 

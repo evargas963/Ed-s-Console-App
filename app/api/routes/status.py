@@ -97,11 +97,11 @@ def api_build():
     from dataclasses import asdict
 
     from release_object import get_current_release
+    from gamma_last_valid import _LAST_VALID_GEX_CELLS_ERRORS
     from server import (
         PROCESS_IDENTITY_V1,
         UI_MAXIMIZE_PANEL_WARM_TICKERS,
         UI_MAXIMIZE_SLA_MS,
-        _LAST_VALID_GEX_CELLS_ERRORS,
         _repo_git_head_sha,
     )
 

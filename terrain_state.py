@@ -57,3 +57,8 @@ _terrain_last_cycle_sec: float = 0.0
 LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the single producer
 LEVELS_SOURCE_STORED_CHAIN = "stored_chain_fallback"  # narrower; walls sit inward
 LEVELS_SOURCE_UNKNOWN = "unknown"                 # unstamped reads as unknown, never as trusted
+
+
+#: Gamma profiles for cached tickers, keyed by ticker. Kept beside the payload cache so a
+#: cached payload can be re-priced without refetching the chain (RC-28).
+_terrain_profile_cache: dict[str, list] = {}
