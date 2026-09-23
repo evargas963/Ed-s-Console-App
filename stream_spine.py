@@ -502,36 +502,46 @@ def _option_contract_rank_key(symbol: str) -> tuple:
     return None, None, None
 
 
-def prioritize_option_contracts(symbols, budget: int = OPTION_CONTRACTS_MAX_HELD
-                                ) -> "tuple[list[str], list[str]]":
-    """Split desired option contracts into (admitted, over_budget) under `budget`.
+def rank_option_contracts_by_spot(symbols, spot_by_root: "dict[str, float]",
+                                  budget: int = OPTION_CONTRACTS_MAX_HELD,
+                                  ) -> "tuple[list[str], dict[str, str]]":
+    """(admitted, {not_admitted_symbol: reason}) -- the ONE ranking of which contracts the
+    shared socket carries, done by the console, which owns the spot authority.
 
-    Order carries no meaning on the way in (the signal is a set), so priority comes from
-    the contracts themselves: nearest expiry first, then nearest to the MIDDLE strike the
-    caller asked for on that root and expiry (a heatmap/chain view is centred on the money,
-    so its median strike is the at-the-money anchor without reading any price). Ties break
-    on the symbol, so the same request always admits the same contracts."""
+    Rank = nearest expiry, then |strike - SPOT|, then symbol (deterministic). `spot_by_root`
+    is the live underlying price per option root from resolve_spot. No spot means no rank:
+    a contract whose root has no spot is NOT admitted and says so -- nothing is guessed from
+    the request's own strikes. Unparseable symbols are not admitted either."""
     uniq = sorted({str(s).upper().strip() for s in symbols or ()} - {""})
-    if budget <= 0:
-        return [], uniq
-    groups: dict = {}
+    not_admitted: "dict[str, str]" = {}
+    rankable = []
     for s in uniq:
         root, exp, strike = _option_contract_rank_key(s)
-        if strike is not None:
-            groups.setdefault((root, exp), []).append(strike)
-    centre = {}
-    for k, strikes in groups.items():
-        strikes = sorted(strikes)
-        centre[k] = strikes[len(strikes) // 2]
-
-    def _key(s: str) -> tuple:
-        root, exp, strike = _option_contract_rank_key(s)
         if strike is None:
-            return (1, "", 0.0, s)                      # unparseable: last, but still ranked
-        return (0, exp, abs(strike - centre[(root, exp)]), s)
+            not_admitted[s] = "not admitted: unparseable option symbol"
+        elif (spot_by_root or {}).get(root) is None:  # caps-ok: no spot for this root is an explicit not-admitted outcome, never a guessed rank
+            not_admitted[s] = f"not admitted: no live spot for {root} to rank by"
+        else:
+            rankable.append((exp, abs(strike - float(spot_by_root[root])), s))
+    rankable.sort()
+    admitted = [s for _e, _d, s in rankable[:max(budget, 0)]]
+    for _e, _d, s in rankable[max(budget, 0):]:
+        not_admitted[s] = f"not admitted: outside the live-stream budget ({budget})"
+    return admitted, not_admitted
 
-    ranked = sorted(uniq, key=_key)
-    return ranked[:budget], ranked[budget:]
+
+def enforce_option_contracts_budget(symbols, budget: int = OPTION_CONTRACTS_MAX_HELD
+                                    ) -> "tuple[list[str], dict[str, str]]":
+    """The DAEMON's guard. It holds no spot, so it never ranks: a request within the budget
+    is held as sent; a request over it is refused whole (every symbol not admitted, with the
+    reason), because only the console can choose by spot. The console always sends a set
+    already ranked to the budget, so a refusal here means the console broke its contract."""
+    uniq = sorted({str(s).upper().strip() for s in symbols or ()} - {""})
+    if len(uniq) <= budget:
+        return uniq, {}
+    reason = (f"not admitted: request of {len(uniq)} contracts exceeds the shared-socket "
+              f"budget ({budget}); the console must rank by spot before sending")
+    return [], {s: reason for s in uniq}
 
 
 def read_active_option_contracts_signal(

@@ -12881,6 +12881,11 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                               is currently working on it.
       'rejected'             — the vendor explicitly refused this contract's subscription; its
                               own error is carried on the leg so the UI can disclose WHY.
+      'not_admitted'         — the view asked for this contract but it was not admitted to
+                              the shared Schwab socket: outside the spot-ranked budget
+                              (stream_spine.OPTION_CONTRACTS_MAX_HELD) or no spot to rank it
+                              by. Not a vendor refusal and not coming -- so never 'pending';
+                              the reason rides on the leg as `not_admitted_reason`.
       'unavailable'          — no symbol for this leg (missing contract), or a symbol never
                               desired at all — covers unsubscribed, missing, and mismatched-
                               identity alike.
@@ -12892,6 +12897,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     now = time.time()
     rejected_symbols = rejected_symbols or {}
     desired_symbols = desired_symbols or set()
+    from app.options.order_flow.streaming import get_option_contracts_not_admitted
+    not_admitted_symbols = get_option_contracts_not_admitted()
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
         state_row = []
@@ -12916,6 +12923,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     leg_state = "daemon_unavailable"
                 elif sym in desired_symbols:
                     leg_state = "pending"
+                elif sym in not_admitted_symbols:
+                    leg_state = "not_admitted"
                 else:
                     leg_state = "unavailable"
                 leg_states.append(leg_state)
@@ -12926,6 +12935,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                 }
                 if leg_state == "rejected":
                     leg_out["rejected_reason"] = rejected_symbols.get(sym)
+                elif leg_state == "not_admitted":
+                    leg_out["not_admitted_reason"] = not_admitted_symbols.get(sym)
                 legs[side] = leg_out
             if not leg_states:
                 cell_state = "unavailable"
@@ -12941,6 +12952,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                 cell_state = "daemon_unavailable"
             elif any(s == "rejected" for s in leg_states):
                 cell_state = "rejected"
+            elif any(s == "not_admitted" for s in leg_states):
+                cell_state = "not_admitted"
             else:
                 cell_state = "unavailable"
             legs["state"] = cell_state
@@ -12953,7 +12966,7 @@ def _gamma_surface_cell_state_counts(surface: dict) -> dict:
     cheap surface-level counts — a client or test's one-field check instead of scanning every
     cell. The seven states are mutually exclusive per cell (see that function's docstring)."""
     counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
-              "rejected": 0, "unavailable": 0}
+              "rejected": 0, "not_admitted": 0, "unavailable": 0}
     for cell in (surface.get("cells") or []):
         for col in (cell.get("stream") or []):
             if isinstance(col, dict) and col.get("state") in counts:
@@ -13006,7 +13019,7 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
     capture daemon itself being unreachable is a materially different, more actionable fact
     than a contract merely queued behind a live daemon's own poll cycle."""
     counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
-              "rejected": 0, "unavailable": 0}
+              "rejected": 0, "not_admitted": 0, "unavailable": 0}
     relevant = 0
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
@@ -13035,7 +13048,8 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
         "total_visible_cells": relevant,
         "live": counts["live"], "partial": counts["partial"], "stale": counts["stale"],
         "pending": counts["pending"], "daemon_unavailable": counts["daemon_unavailable"],
-        "rejected": counts["rejected"], "unavailable": counts["unavailable"],
+        "rejected": counts["rejected"], "not_admitted": counts["not_admitted"],
+        "unavailable": counts["unavailable"],
         "live_pct": live_pct,
         "meets_live_requirement": relevant > 0 and counts["live"] == relevant,
     }
@@ -16852,10 +16866,17 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 
     def _apply():
         from app.options.order_flow.streaming import set_active_option_contracts
-        from app.options.order_flow.streaming import get_option_contracts_budget_state
+        from app.options.order_flow.streaming import (
+            get_active_option_contracts, get_option_contracts_budget_state,
+            get_option_contracts_not_admitted)
         ok = set_active_option_contracts(contracts, command_generation=generation)
-        return {"ok": ok, "contracts": contracts, "command_generation": generation,
-                **get_option_contracts_budget_state()}
+        # `contracts` is what the stream will actually carry (the admitted, budgeted set),
+        # never an echo of the request -- a client trusting it must not believe the whole
+        # request is being streamed. The request size and the left-out set ride beside it.
+        return {"ok": ok, "contracts": list(get_active_option_contracts()),
+                "requested_count": len(contracts),
+                "not_admitted": get_option_contracts_not_admitted(),
+                "command_generation": generation, **get_option_contracts_budget_state()}
     try:
         out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
     except StaleOptionCommandError as e:
@@ -17217,7 +17238,10 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
                     "spot": row["spot"],
                     "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
                     "spot_state": "live",
-                    "spot_source": SPOT_SOURCE_PLANE,
+                    # same identity rule as resolve_spot: only a stream-written row is the
+                    # streaming plane; a fresh REST-written one is the REST last it is
+                    "spot_source": (SPOT_SOURCE_PLANE if _lmp.plane_row_is_streamed(row)
+                                    else SPOT_SOURCE_QUOTE),
                     "chg_pct": resolve_chg_pct(t, row.get("chg_pct")),
                     "exchange_quote_ts": row.get("exchange_quote_ts"),
                 }

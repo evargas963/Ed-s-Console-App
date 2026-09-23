@@ -181,7 +181,8 @@ def test_cell_state_counts_tallies_across_cells_and_columns():
     counts = _gamma_surface_cell_state_counts(surf)
     # cell0: live (both legs live). cell1: stale (CCC desired, not overlaid). cell2: unavailable (DDD never desired).
     assert counts == {"live": 1, "partial": 0, "stale": 1, "pending": 0,
-                       "daemon_unavailable": 0, "rejected": 0, "unavailable": 1}
+                       "daemon_unavailable": 0, "rejected": 0, "not_admitted": 0,
+                       "unavailable": 1}
 
 
 # ---------------------------------------------------------------------------

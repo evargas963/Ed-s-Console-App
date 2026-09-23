@@ -19,44 +19,69 @@ import pytest
 import app.market_data.schwab.streaming.capture as rsc
 import live_market_plane as L
 import stream_spine
-from stream_spine import OPTION_CONTRACTS_MAX_HELD, prioritize_option_contracts
+from stream_spine import (
+    OPTION_CONTRACTS_MAX_HELD,
+    enforce_option_contracts_budget,
+    rank_option_contracts_by_spot,
+)
 
 
 def _sym(root: str, exp: str, cp: str, strike: float) -> str:
     return f"{root:<6}{exp}{cp}{int(round(strike * 1000)):08d}"
 
 
-# ── the shared budget and its ranking ───────────────────────────────────────────────────
+# ── the console ranks by SPOT; the daemon only guards ───────────────────────────────
 
-def test_budget_admits_nearest_expiry_then_nearest_the_money_first():
-    near = [_sym("SPY", "260924", "C", k) for k in range(700, 841)]      # 141 strikes, centre 770
-    far = [_sym("SPY", "261030", "P", k) for k in range(700, 841)]
-    admitted, over = prioritize_option_contracts(near + far, budget=150)
-    assert len(admitted) == 150 and len(over) == 132
+SPOT = {"SPY": 820.0}
+
+
+def test_ranking_is_nearest_expiry_then_nearest_spot():
+    near = [_sym("SPY", "260924", "C", k) for k in range(700, 841)]
+    far = [_sym("SPY", "261030", "P", k) for k in range(700, 941)]
+    admitted, not_admitted = rank_option_contracts_by_spot(near + far, SPOT, budget=150)
+    assert len(admitted) == 150 and len(not_admitted) == len(near) + len(far) - 150
     assert set(near) <= set(admitted), "the nearest expiry fills the budget first"
-    far_in = [s for s in admitted if "261030" in s]
-    strikes = sorted(int(s[-8:]) / 1000 for s in far_in)
-    assert strikes and max(abs(k - 770) for k in strikes) <= 5, (
-        "within an expiry, contracts closest to the middle of the request win")
+    far_in = [int(s[-8:]) / 1000 for s in admitted if "261030" in s]
+    assert far_in and max(abs(k - 820.0) for k in far_in) <= 5, "then nearest the SPOT"
 
 
-def test_budget_ranking_is_deterministic_and_order_free():
+def test_ranking_uses_spot_not_the_middle_of_the_request():
+    syms = [_sym("SPY", "260924", "C", k) for k in range(500, 1001)]       # middle = 750
+    admitted, _ = rank_option_contracts_by_spot(syms, SPOT, budget=21)
+    strikes = sorted(int(s[-8:]) / 1000 for s in admitted)
+    assert strikes[0] == 810 and strikes[-1] == 830
+
+
+def test_no_spot_means_nothing_admitted_and_it_says_why():
+    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 720)]
+    admitted, not_admitted = rank_option_contracts_by_spot(syms, {}, budget=200)
+    assert admitted == []
+    assert all(r == "not admitted: no live spot for SPY to rank by"
+               for r in not_admitted.values())
+
+
+def test_ranking_is_deterministic_and_order_free():
     syms = [_sym("SPY", "260924", "C", k) for k in range(600, 900)]
-    a1, _ = prioritize_option_contracts(syms, budget=40)
-    a2, _ = prioritize_option_contracts(list(reversed(syms)), budget=40)
+    a1, _ = rank_option_contracts_by_spot(syms, SPOT, budget=40)
+    a2, _ = rank_option_contracts_by_spot(list(reversed(syms)), SPOT, budget=40)
     assert a1 == a2
 
 
-def test_budget_default_is_the_measured_constant_and_below_the_dying_load():
+def test_budget_is_below_the_load_that_still_died():
     assert OPTION_CONTRACTS_MAX_HELD < 850, (
         "~850 held contracts still killed the socket every 4-20 min on 2026-09-23")
-    admitted, over = prioritize_option_contracts([_sym("SPY", "260924", "C", k)
-                                                  for k in range(1000)])
-    assert len(admitted) == OPTION_CONTRACTS_MAX_HELD
-    assert len(over) == 1000 - OPTION_CONTRACTS_MAX_HELD
 
 
-# ── the daemon enforces the budget and reports the rest honestly ────────────────────────
+def test_daemon_guard_never_ranks_it_holds_or_refuses():
+    ok = [_sym("SPY", "260924", "C", k) for k in range(700, 710)]
+    assert enforce_option_contracts_budget(ok, budget=10) == (sorted(ok), {})
+    too_many = [_sym("SPY", "260924", "C", k) for k in range(700, 711)]
+    admitted, refused = enforce_option_contracts_budget(too_many, budget=10)
+    assert admitted == [] and set(refused) == set(too_many)
+    assert all("console must rank by spot" in r for r in refused.values())
+
+
+# ── the daemon applies the guard and reports refusals honestly ─────────────────────────
 
 class _Stream:
     def __init__(self, die_after: int | None = None):
@@ -96,26 +121,33 @@ def _apply(stream, rejected, monkeypatch, symbols):
         stream, state, rejected_state=rejected, rejection_backoff={}))
 
 
-def test_daemon_holds_at_most_the_budget_and_marks_the_rest_not_admitted(monkeypatch):
+def test_daemon_holds_a_request_within_budget(monkeypatch):
     monkeypatch.setattr(rsc, "OPTION_CONTRACTS_MAX_HELD", 50)
-    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 820)]
+    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 750)]
     stream, rejected = _Stream(), {}
     _apply(stream, rejected, monkeypatch, syms)
-    assert len(stream.held) == 50
-    over = {s for s, why in rejected.items() if why == rsc.OPTION_OVER_BUDGET_REASON}
-    assert len(over) == len(syms) - 50 and not (over & stream.held)
-    assert all("not admitted" in rejected[s] for s in over), (
-        "a capacity decision must never read as a vendor rejection")
+    assert stream.held == set(syms) and not rejected
 
 
-def test_over_budget_marks_clear_when_the_request_shrinks(monkeypatch):
+def test_daemon_refuses_an_over_budget_request_as_not_admitted(monkeypatch):
+    monkeypatch.setattr(rsc, "OPTION_CONTRACTS_MAX_HELD", 50)
+    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 751)]
+    stream, rejected = _Stream(), {}
+    _apply(stream, rejected, monkeypatch, syms)
+    assert stream.held == set(), "the daemon never picks contracts itself"
+    assert set(rejected) == set(syms)
+    assert all(r.startswith("not admitted:") for r in rejected.values()), (
+        "a capacity refusal must never read as a vendor rejection")
+
+
+def test_refusals_clear_when_the_request_fits_again(monkeypatch):
     monkeypatch.setattr(rsc, "OPTION_CONTRACTS_MAX_HELD", 10)
     syms = [_sym("SPY", "260924", "C", k) for k in range(700, 730)]
     rejected: dict = {}
     _apply(_Stream(), rejected, monkeypatch, syms)
-    assert sum(v == rsc.OPTION_OVER_BUDGET_REASON for v in rejected.values()) == 20
+    assert len(rejected) == 30
     _apply(_Stream(), rejected, monkeypatch, syms[:5])
-    assert not any(v == rsc.OPTION_OVER_BUDGET_REASON for v in rejected.values())
+    assert not any(v.startswith("not admitted:") for v in rejected.values())
 
 
 # ── a dead socket stops the subscribe at once: no false rejections, one recycle ─────────
@@ -211,6 +243,9 @@ def test_a_stale_rest_row_is_never_promoted_to_spot(monkeypatch):
 
 def test_console_publishes_only_the_budget_and_reports_the_rest(monkeypatch, tmp_path):
     import app.options.order_flow.streaming as st
+    import server
+    monkeypatch.setattr(st, "_active_ticker", "SPY")
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (820.0, server.SPOT_SOURCE_PLANE, 1.0))
     written: list = []
     monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: written.append(list(syms)))
     monkeypatch.setattr(st, "_active_option_contracts", [])
@@ -250,7 +285,100 @@ def test_admission_summary_reports_over_budget_contracts_as_not_admitted(monkeyp
     import server
     import app.options.order_flow.streaming as st
     sym = _sym("SPY", "260924", "C", 900)
-    monkeypatch.setattr(st, "_option_contracts_over_budget", [sym])
+    monkeypatch.setattr(st, "_option_contracts_not_admitted",
+                        {sym: "not admitted: outside the live-stream budget (200)"})
     out = server._option_contract_admission_summary("SPY")
     assert out["not_admitted"] == [sym], "the heatmap must be able to say why the cell has no stream"
     assert sym not in out["pending"] and sym not in out["rejected"]
+
+
+# ── follow-ups from the Cursor review of #268 ──────────────────────────────────────────
+
+def test_a_dead_pump_is_detected_but_our_own_teardown_and_placeholders_are_not():
+    async def boom():
+        raise ConnectionError("no close frame received or sent")
+
+    async def run():
+        dead = asyncio.ensure_future(boom())
+        placeholder = asyncio.ensure_future(asyncio.sleep(0))
+        cancelled = asyncio.ensure_future(asyncio.sleep(10))
+        await asyncio.sleep(0.01)
+        cancelled.cancel()
+        await asyncio.sleep(0.01)
+        return (rsc.pump_died(dead), rsc.pump_died(placeholder),
+                rsc.pump_died(cancelled), rsc.pump_died(None))
+    dead, placeholder, cancelled, none = asyncio.run(run())
+    assert isinstance(dead, ConnectionError)
+    assert placeholder is None and cancelled is None and none is None
+    assert rsc.PUMP_DEATH_RECONNECT_MIN_SEC < rsc.STREAM_STALE_RECONNECT_SEC, (
+        "a dead socket must recycle faster than the quiet-feed watchdog")
+
+
+def test_console_ranks_by_resolve_spot(monkeypatch):
+    import app.options.order_flow.streaming as st
+    import server
+    monkeypatch.setattr(st, "_active_ticker", "SPY")
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (820.0, server.SPOT_SOURCE_PLANE, 1.0))
+    monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: None)
+    monkeypatch.setattr(st, "_active_option_contracts", [])
+    syms = [_sym("SPY", "260924", "C", k) for k in range(500, 1001)]       # middle = 750
+    st.set_active_option_contracts(syms)
+    strikes = sorted(int(s[-8:]) / 1000 for s in st.get_active_option_contracts())
+    assert strikes[0] >= 720 and strikes[-1] <= 920
+    assert abs(strikes[len(strikes) // 2] - 820) <= 1, "centred on SPOT"
+
+
+def test_console_admits_nothing_without_a_spot(monkeypatch):
+    import app.options.order_flow.streaming as st
+    import server
+    monkeypatch.setattr(st, "_active_ticker", "SPY")
+    monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: None)
+    monkeypatch.setattr(st, "_active_option_contracts", [])
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (None, "none", None))
+    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 720)]
+    st.set_active_option_contracts(syms)
+    assert st.get_active_option_contracts() == []
+    assert set(st.get_option_contracts_not_admitted()) == set(syms)
+
+
+def test_post_returns_the_admitted_set_not_an_echo_of_the_request(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import app.options.order_flow.streaming as st
+    import server
+    monkeypatch.setattr(st, "_active_ticker", "SPY")
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (820.0, server.SPOT_SOURCE_PLANE, 1.0))
+    monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: None)
+    monkeypatch.setattr(st, "_active_option_contracts", [])
+    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 700 + OPTION_CONTRACTS_MAX_HELD + 9)]
+    body = TestClient(server.app).post("/api/streaming/active-option-contracts",
+                                       json={"contracts": syms}).json()
+    assert body["ok"] is True
+    assert len(body["contracts"]) == OPTION_CONTRACTS_MAX_HELD
+    assert body["requested_count"] == len(syms) and len(body["not_admitted"]) == 9
+
+
+def test_watchlist_labels_a_rest_written_row_as_rest(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import server
+    tk = "ZZWLREST"
+    L._by_ticker[tk] = _row("rest_watchlist_batch", 1.0)
+    try:
+        body = TestClient(server.app).get(f"/api/watchlist-quotes?tickers={tk}").json()
+        assert body["quotes"][tk]["spot_source"] == server.SPOT_SOURCE_QUOTE
+    finally:
+        L._by_ticker.pop(tk, None)
+
+
+def test_over_budget_legs_are_stamped_not_admitted(monkeypatch):
+    import app.options.order_flow.streaming as st
+    import server
+    c, p = _sym("SPY", "260924", "C", 900), _sym("SPY", "260924", "P", 900)
+    why = "not admitted: outside the live-stream budget (200)"
+    monkeypatch.setattr(st, "_option_contracts_not_admitted", {c: why, p: why})
+    surface = {"cells": [{"contracts": [{"call": c, "put": p}]}]}
+    server._stamp_gamma_surface_cell_stream_state(surface, {}, set(), {}, set())
+    assert surface["cells"][0]["stream"][0]["state"] == "not_admitted"
+    assert surface["cells"][0]["stream"][0]["call"]["not_admitted_reason"] == why
+    assert server._gamma_surface_cell_state_counts(surface)["not_admitted"] == 1

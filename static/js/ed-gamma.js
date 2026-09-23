@@ -647,6 +647,9 @@
           : liveState === 'daemon_unavailable' ? 'DAEMON UNAVAILABLE: the capture daemon is unreachable, so this request cannot even be attempted yet -- most recent valid computed value shown'
           : liveState === 'rejected' ? ('REJECTED: the vendor refused this contract\'s subscription' +
               (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
+          : liveState === 'not_admitted' ? ('NOT STREAMED: ' +
+              ((cellState.call || {}).not_admitted_reason || (cellState.put || {}).not_admitted_reason) +
+              ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
           : '';
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
@@ -889,7 +892,7 @@
   // independently-derived windowing calculation that could drift from the real one.
   function _visibleCellCoverage() {
     var host = document.getElementById('heatBody');
-    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, unavailable: 0 };
+    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, not_admitted: 0, unavailable: 0 };
     var cells = host ? host.querySelectorAll('.hcell[data-cell-state]') : [];
     for (var i = 0; i < cells.length; i++) {
       var st = cells[i].getAttribute('data-cell-state');
@@ -900,7 +903,7 @@
       total_visible_cells: total,
       live: counts.live, partial: counts.partial, stale: counts.stale,
       pending: counts.pending, daemon_unavailable: counts.daemon_unavailable,
-      rejected: counts.rejected, unavailable: counts.unavailable,
+      rejected: counts.rejected, not_admitted: counts.not_admitted, unavailable: counts.unavailable,
       live_pct: total ? Math.round(1000 * counts.live / total) / 10 : 0,
       meets_live_requirement: total > 0 && counts.live === total,
     };
@@ -946,7 +949,8 @@
       el.title = cov.total_visible_cells
         ? ('visible coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
            ' stale, ' + cov.pending + ' pending, ' + cov.daemon_unavailable + ' daemon-unavailable, ' +
-           cov.rejected + ' rejected, ' + cov.unavailable + ' unavailable of ' +
+           cov.rejected + ' rejected, ' + cov.not_admitted + ' outside the stream budget, ' +
+           cov.unavailable + ' unavailable of ' +
            cov.total_visible_cells + ' visible cells (' + cov.live_pct + '% live)')
         : ((surface.coverage && surface.coverage.note) || '');
     }

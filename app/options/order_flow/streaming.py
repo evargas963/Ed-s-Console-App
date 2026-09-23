@@ -49,7 +49,7 @@ from stream_spine import (
     PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,
     read_open_coverage_symbols,
-    prioritize_option_contracts,
+    rank_option_contracts_by_spot,
     read_producer_heartbeat,
     read_rejected_option_contracts,
     resolve_stream_db_path,
@@ -1170,19 +1170,52 @@ def set_active_option_contract(contract_symbol: str,
 #: signal (stream_spine.write_active_option_contracts_signal) has a server-side writer
 #: symmetric to the existing singular one.
 _active_option_contracts: "list[str]" = []
-#: Contracts the last plural request asked for that did not fit the shared socket's budget.
-_option_contracts_over_budget: "list[str]" = []
+#: {symbol: reason} for every contract the last plural request asked for that was not
+#: admitted to the stream (outside the budget, or no spot to rank it by).
+_option_contracts_not_admitted: "dict[str, str]" = {}
+
+
+def _spot_by_root(symbols: "list[str]") -> "dict[str, float]":
+    """{option root: SPOT of that root's own underlying}, from resolve_spot -- the one spot
+    authority (1 hop: the Schwab LAST_PRICE it serves). A root's underlying is identified
+    by contract_matches_underlying (the vendor root in the Schwab `symbol`, plus the banked
+    chain for weekly roots such as SPXW -> $SPX); the candidates are the active streaming
+    ticker, the root itself and its $-index form. A root whose underlying cannot be
+    identified, or whose spot resolve_spot does not return, is absent -- its contracts are
+    not admitted, and rank_option_contracts_by_spot says why. Nothing is guessed."""
+    import server as _srv
+    from stream_spine import _option_contract_rank_key
+
+    out: "dict[str, float]" = {}
+    seen: set = set()
+    for s in symbols:
+        root = _option_contract_rank_key(s)[0]
+        if not root or root in seen:
+            continue
+        seen.add(root)
+        for tkr in dict.fromkeys(t for t in (_active_ticker, root, f"${root}") if t):
+            if contract_matches_underlying(s, tkr):
+                spot, _source, _ts = _srv.resolve_spot(tkr)
+                if spot is not None:
+                    out[root] = float(spot)
+                break
+    return out
 
 
 def get_option_contracts_over_budget() -> "list[str]":
-    """Contracts the last plural request asked for that the socket budget left out."""
-    return list(_option_contracts_over_budget)
+    """Contracts the last plural request asked for that were not admitted to the stream."""
+    return sorted(_option_contracts_not_admitted)
+
+
+def get_option_contracts_not_admitted() -> "dict[str, str]":
+    """{symbol: reason} for the last plural request's contracts that were not admitted."""
+    return dict(_option_contracts_not_admitted)
 
 
 def get_option_contracts_budget_state() -> dict:
     """What the last plural request was admitted to, against the shared-socket budget."""
     return {"admitted_count": len(_active_option_contracts),
-            "over_budget_count": len(_option_contracts_over_budget),
+            "over_budget_count": len(_option_contracts_not_admitted),
             "budget": OPTION_CONTRACTS_MAX_HELD}
 
 #: Independent generation counter for plural commands (see _option_command_seq for the
@@ -1219,16 +1252,16 @@ def set_active_option_contracts(contract_symbols: "list[str]",
     Same command-generation staleness guard as the primary slot (see
     set_active_option_contract's docstring for why), on the independent counter above so
     ordering a plural command never depends on how many primary commands ran meanwhile."""
-    global _active_option_contracts, _option_contracts_over_budget
+    global _active_option_contracts, _option_contracts_not_admitted
     requested = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: no symbols requested is an empty request, which clears the set
                         if ticker_storage_key(s)})
     # The shared Schwab socket's budget (stream_spine.OPTION_CONTRACTS_MAX_HELD, measured):
-    # publish only what the daemon may hold, ranked nearest-expiry / nearest-the-money, and
-    # remember how many were left out so the caller can say so instead of showing them as
-    # pending forever.
-    admitted, over_budget = prioritize_option_contracts(requested)
+    # publish only what the daemon may hold, ranked by SPOT (nearest expiry, then nearest
+    # the spot), and remember what was left out and why, so the caller can say so instead
+    # of showing it as pending forever. No spot, no rank, nothing admitted -- never a guess.
+    admitted, not_admitted = rank_option_contracts_by_spot(requested, _spot_by_root(requested))
     symbols = sorted(admitted)
-    _option_contracts_over_budget = over_budget
+    _option_contracts_not_admitted = not_admitted
     with _option_contracts_command_lock:
         if command_generation is not None and command_generation < _option_contracts_command_seq:
             _log_stream("OPTION_CONTRACTS_COMMAND_SUPERSEDED",

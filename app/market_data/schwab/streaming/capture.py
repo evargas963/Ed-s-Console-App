@@ -55,7 +55,7 @@ from stream_spine import (  # noqa: E402
     quote_msg,
     read_active_option_contract_signal,
     read_active_option_contracts_signal,
-    prioritize_option_contracts,
+    enforce_option_contracts_budget,
     read_active_ticker_signal,
     resolve_stream_db_path,
 )
@@ -167,6 +167,12 @@ ALPACA_SRC = "alpaca_iex"
 ALPACA_STALE_RECONNECT_SEC = 120.0   #: no frames this long -> recycle the socket
 STREAM_STALE_RECONNECT_SEC = 90.0    #: LEVELONE quiet this long -> recycle stream
 RECONNECT_COOLDOWN_SEC = 180.0       #: never login-spam Schwab on quiet tape
+#: A pump that has DIED (handle_message raised: the socket is closed) is not a quiet feed to
+#: be waited out -- it is a known-dead socket. MEASURED 2026-09-23: the only recycle path was
+#: the quiet-feed watchdog (90 s quiet AND 180 s since the last reconnect), and typical SPY
+#: gaps were 145-233 s. A dead pump now recycles on the next status tick; this floor only
+#: stops a reconnect that dies instantly from turning into a login loop.
+PUMP_DEATH_RECONNECT_MIN_SEC = 20.0
 #: Status-write + watchdog evaluation cadence. Named (not an inline literal) so the
 #: recycle path can be driven deterministically at its REAL seam in tests instead of
 #: through a copied state machine — the recycle ordering is a correctness contract and
@@ -177,6 +183,15 @@ STATUS_LOOP_INTERVAL_SEC = 10.0
 #: recovery, so cleanup must never be able to prevent that recovery — see
 #: _retire_stream_client.
 STREAM_RETIRE_TIMEOUT_SEC = 5.0
+
+
+def pump_died(pump_task) -> "BaseException | None":
+    """The exception a finished Schwab pump task died with, else None. A cancelled task
+    (our own teardown) and the reconnect-failure placeholder (asyncio.sleep(0), finishes
+    cleanly) are not deaths."""
+    if pump_task is None or not pump_task.done() or pump_task.cancelled():
+        return None
+    return pump_task.exception()
 
 
 def stream_needs_recycle(age_sec: float | None, seen_data: bool,
@@ -1147,10 +1162,6 @@ def _subs_or_add(contract_state: dict, svc_key: str, exclude_key: str, subs_fn, 
 #: a genuinely vendor-poisoned individual symbol (unrelated to payload size).
 OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS = 500
 
-#: rejected_state reason for a desired contract the daemon did not offer to the vendor
-#: because the shared socket's budget was full -- a capacity decision, not a vendor refusal.
-OPTION_OVER_BUDGET_REASON = (
-    f"not admitted: over the shared-socket option budget ({OPTION_CONTRACTS_MAX_HELD})")
 
 
 def _is_connection_death(exc: BaseException) -> bool:
@@ -1615,17 +1626,17 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
     # The ONE shared Schwab socket holds at most OPTION_CONTRACTS_MAX_HELD additional
     # contracts (see its measured table in stream_spine): demanding more is what killed the
     # socket -- and SPY's live price with it -- 42 times on 2026-09-23. The daemon owns the
-    # socket, so it enforces the budget whatever the server asks for; over-budget contracts
-    # are reported as NOT ADMITTED (never as a vendor rejection) so the heatmap can say so.
-    _admitted, _over_budget = prioritize_option_contracts(
+    # socket, so it guards the budget whatever arrives -- but it holds no spot, so it never
+    # RANKS (the console does, by spot): an over-budget request is refused whole, and every
+    # refused symbol is reported as NOT ADMITTED (never as a vendor rejection).
+    _admitted, _not_admitted = enforce_option_contracts_budget(
         read_active_option_contracts_signal(), budget=OPTION_CONTRACTS_MAX_HELD)
     plural_requested_raw = set(_admitted)
     if rejected_state is not None:
-        for _sym in [k for k, v in rejected_state.items() if v == OPTION_OVER_BUDGET_REASON]:
-            if _sym not in _over_budget:
+        for _sym in [k for k, v in rejected_state.items() if v.startswith("not admitted:")]:
+            if _sym not in _not_admitted:
                 rejected_state.pop(_sym, None)
-        for _sym in _over_budget:
-            rejected_state[_sym] = OPTION_OVER_BUDGET_REASON
+        rejected_state.update(_not_admitted)
     # Role-transfer pre-pass (independent-review finding, 2026-09-12): must run before
     # any reconcile call this tick — see _apply_option_primary_role_transfer's docstring.
     #
@@ -2304,10 +2315,16 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
             seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0  # caps-ok: diagnostic unseen-count; 0 means never seen
             _coverage_forced = option_recycle_request.is_set()
-            if _coverage_forced or stream_needs_recycle(
+            _dead = pump_died(pump_task)
+            _dead_now = (_dead is not None and is_capturable_session()
+                         and time.monotonic() - last_reconnect > PUMP_DEATH_RECONNECT_MIN_SEC)
+            if _coverage_forced or _dead_now or stream_needs_recycle(
                     age, seen, time.monotonic() - last_reconnect,
                     is_capturable_session()):
-                if _coverage_forced:
+                if _dead_now and not _coverage_forced:
+                    print(f"watchdog: Schwab stream socket DIED ({type(_dead).__name__}: "
+                          f"{_dead}) — recycling now, not after the quiet-feed wait")
+                elif _coverage_forced:
                     # gap 4: option coverage compensation failed — vendor state uncertain
                     # with no durable coverage. Same teardown/rebuild as the watchdog.
                     option_recycle_request.clear()

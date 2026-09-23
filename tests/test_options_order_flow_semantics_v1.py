@@ -14,6 +14,8 @@ import asyncio
 import threading
 import time
 
+import pytest
+
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, book_msg, options_quote_msg
@@ -35,6 +37,19 @@ _REAL_OPTIONS_BOOK_CONTENT = {
     "ASKS": [{"ASK_PRICE": 1.3, "TOTAL_VOLUME": 1533, "NUM_ASKS": 1,
              "ASKS": [{"EXCHANGE": "EDGX", "ASK_VOLUME": 346, "SEQUENCE": 2}]}],
 }
+
+
+@pytest.fixture
+def spot_authority(monkeypatch):
+    """The live path ranks additional contracts by their underlying's SPOT from
+    resolve_spot (no spot, not admitted). These tests serve a real-looking spot per
+    underlying through that one authority instead of bypassing the ranking."""
+    import server
+    spots = {"SPY": 767.0, "QQQ": 450.0}
+    monkeypatch.setattr(server, "resolve_spot",
+                        lambda tk, **_k: (spots.get(tk), server.SPOT_SOURCE_PLANE, 1.0)
+                        if tk in spots else (None, "none", None))
+    return spots
 
 
 def _reset(tmp_path, monkeypatch):
@@ -152,7 +167,7 @@ def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path
     assert ofs._active_option_contract == _SPY_CONTRACT
 
 
-def test_set_active_option_contracts_writes_plural_signal_and_clears_only_dropped(monkeypatch):
+def test_set_active_option_contracts_writes_plural_signal_and_clears_only_dropped(monkeypatch, spot_authority):
     """RC-UI-3 (2026-09-12): set_active_option_contracts mirrors set_active_option_contract
     for the ADDITIONAL-symbols slot, except a symbol still (or newly) requested must keep
     replaying -- only a symbol actually DROPPED from the desired set gets its cursor
@@ -315,7 +330,7 @@ async def _run_feed_loop_until(predicate, *, timeout=10.0):
             pass
 
 
-def test_feed_loop_replays_an_additional_only_contract_with_no_primary(tmp_path, monkeypatch):
+def test_feed_loop_replays_an_additional_only_contract_with_no_primary(tmp_path, monkeypatch, spot_authority):
     """Independent-review finding (2026-09-12), REPRODUCED: with ONLY an additional
     contract requested (no primary), _feed_loop used to read solely
     `_active_option_contract` (None) and replay NOTHING -- the additional contract's rows
@@ -340,7 +355,7 @@ def test_feed_loop_replays_an_additional_only_contract_with_no_primary(tmp_path,
         "an additional-only contract (no primary) must still reach live state")
 
 
-def test_feed_loop_replays_primary_and_additional_contracts_together(tmp_path, monkeypatch):
+def test_feed_loop_replays_primary_and_additional_contracts_together(tmp_path, monkeypatch, spot_authority):
     """Both the primary AND every additional contract must replay in the same running
     daemon -- not merely whichever one happens to be set alone."""
     db = _reset(tmp_path, monkeypatch)
