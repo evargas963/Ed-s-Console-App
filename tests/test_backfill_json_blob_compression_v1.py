@@ -118,3 +118,64 @@ def test_bytes_before_and_after_reflect_real_compression_ratio(tmp_path):
                                     key_columns=["ticker", "ts_utc"], dry_run=False)
     assert result["bytes_after"] < result["bytes_before"]
     assert result["bytes_before"] / result["bytes_after"] > 2.0
+
+
+# ── INTEGER PRIMARY KEY (rowid-alias) tables ─────────────────────────────────────────
+# RC-REHAB-3 bugfix (2026-09-23): every test above uses a composite (ticker, ts_utc) key,
+# where SQLite's own hidden `rowid` is a genuinely separate column from the declared
+# primary key -- that shape never exercised the bug. calibration_decision_log's real
+# schema (`id INTEGER PRIMARY KEY`) makes `id` a rowid ALIAS: SQLite reports the SELECTed
+# rowid expression under the alias's own name, so row["rowid"] raised IndexError live
+# against production before this fix (row[0], positional, is correct for both shapes).
+
+_SQL_CREATE_INT_PK = """
+CREATE TABLE cal (
+    id INTEGER PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+)
+"""
+
+
+def _make_int_pk_db(tmp_path, rows: list[tuple[str, object]]) -> str:
+    db_path = tmp_path / "cal.db"
+    con = sqlite3.connect(str(db_path))
+    con.execute(_SQL_CREATE_INT_PK)
+    for ticker, obj in rows:
+        con.execute("INSERT INTO cal (ticker, payload_json) VALUES (?,?)", (ticker, json.dumps(obj)))
+    con.commit()
+    con.close()
+    return str(db_path)
+
+
+def _read_all_int_pk(db_path: str) -> list[tuple]:
+    con = sqlite3.connect(db_path)
+    try:
+        return con.execute("SELECT id, ticker, payload_json FROM cal ORDER BY id").fetchall()
+    finally:
+        con.close()
+
+
+def test_integer_primary_key_table_compresses_without_the_rowid_alias_crash(tmp_path):
+    db_path = _make_int_pk_db(tmp_path, [("SPY", {"a": 1}), ("QQQ", {"b": 2})])
+    result = backfill_table_column(db_path, table="cal", blob_column="payload_json",
+                                    key_columns=["id"], dry_run=False)
+    assert result["rows_compressed"] == 2
+    rows = _read_all_int_pk(db_path)
+    assert all(is_compressed_blob(r[2]) for r in rows)
+    by_ticker = {r[1]: decode_json_blob(r[2]) for r in rows}
+    assert by_ticker == {"SPY": {"a": 1}, "QQQ": {"b": 2}}
+
+
+def test_integer_primary_key_table_paginates_correctly_across_batches(tmp_path):
+    """The bug would have surfaced as an infinite loop here too: rowid_cursor never
+    advancing (since row["rowid"] raised before it could be assigned) -- proving
+    multi-batch coverage closes that failure mode, not just the immediate crash."""
+    rows_in = [(f"T{i}", {"n": i}) for i in range(25)]
+    db_path = _make_int_pk_db(tmp_path, rows_in)
+    result = backfill_table_column(db_path, table="cal", blob_column="payload_json",
+                                    key_columns=["id"], batch_size=7, dry_run=False)
+    assert result["batches_run"] == 4
+    assert result["rows_compressed"] == 25
+    rows = _read_all_int_pk(db_path)
+    assert {decode_json_blob(r[2])["n"] for r in rows} == set(range(25))

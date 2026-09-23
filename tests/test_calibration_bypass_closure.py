@@ -133,6 +133,14 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "tests/test_apply_row_retention_v1.py":
         return True
+    # RC-REHAB-3: table-agnostic JSON-blob compression backfill (takes --table as a CLI
+    # arg, never hard-codes a table in code) -- calibration_decision_log appears only in
+    # an explanatory code comment (a 2026-09-23 bugfix for its own
+    # INTEGER PRIMARY KEY rowid-alias schema), not in any SQL this file executes.
+    if s == "tools/backfill_json_blob_compression_v1.py":
+        return True
+    if s == "tests/test_backfill_json_blob_compression_v1.py":
+        return True
     return False
 
 

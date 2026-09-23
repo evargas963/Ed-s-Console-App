@@ -72,7 +72,20 @@ def backfill_table_column(
             summary["batches_run"] += 1
             to_update: list[tuple] = []
             for row in rows:
-                rowid_cursor = row["rowid"]
+                # RC-REHAB-3 bugfix (2026-09-23): row["rowid"] fails for a table whose
+                # primary key is an INTEGER PRIMARY KEY column (e.g.
+                # calibration_decision_log.id) -- SQLite treats that column as a rowid
+                # ALIAS, so the driver reports the selected `rowid` expression under the
+                # alias's own name ("id"), not literally "rowid"; sqlite3.Row.keys()
+                # confirms this live: both the rowid and id selections come back named
+                # "id". `rowid` genuinely is a separate, distinctly-named hidden column
+                # only for a table with a composite or non-integer primary key
+                # (complete_chain_captures, option_chain_morning_full,
+                # option_chain_accrual, production_decision_records all worked fine
+                # under the old name-based lookup for exactly this reason). Positional
+                # indexing sidesteps the alias collision entirely: rowid is always the
+                # first selected column, whatever name SQLite reports for it.
+                rowid_cursor = row[0]
                 summary["rows_scanned"] += 1
                 blob = row[blob_column]
                 if blob is None or is_compressed_blob(blob):
