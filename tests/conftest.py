@@ -519,7 +519,7 @@ def live_orphans(tmp_path_factory, worker_id: str):
 # ------------------------------------------------- tracked-ledger firewall --
 # REHAB 2026-08-24: reports/terrain_quarantine_ledger.jsonl is a TRACKED operator audit
 # file, and tests exercising the quarantine machinery (scorecard file, silent-zero file,
-# and any future caller of server._note_terrain_failure / _terrain_quarantine_blocks)
+# and any future caller of terrain_quarantine._note_terrain_failure / _terrain_quarantine_blocks)
 # were appending ZZTEST*/ZZQ fixture rows to it on every suite run. This GLOBAL autouse
 # fixture redirects the module's ledger path to tmp for EVERY test whenever `server` is
 # imported — per-file fixtures kept missing writers (measured: ZZQ rows landed from a
@@ -548,9 +548,11 @@ def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
         size_before = _TRACKED_TERRAIN_LEDGER.stat().st_size
     except OSError:
         size_before = None                       # tracked file absent — creation is growth too
-    srv = sys.modules.get("server")
-    if srv is not None and hasattr(srv, "TERRAIN_QUARANTINE_LEDGER"):
-        monkeypatch.setattr(srv, "TERRAIN_QUARANTINE_LEDGER",
+    # RC-REHAB-1 (fortieth slice): the ledger's home is terrain_quarantine.py; server.py
+    # no longer binds the name, so the redirect targets the module that writes it.
+    tq = sys.modules.get("terrain_quarantine")
+    if tq is not None and hasattr(tq, "TERRAIN_QUARANTINE_LEDGER"):
+        monkeypatch.setattr(tq, "TERRAIN_QUARANTINE_LEDGER",
                             tmp_path / "terrain_quarantine_ledger.jsonl")
     yield
     try:
@@ -567,7 +569,7 @@ def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
             f"{_TRACKED_TERRAIN_LEDGER.name} ({grew} bytes) — server was imported after "
             "fixture setup, so TERRAIN_QUARANTINE_LEDGER was never redirected to tmp. "
             "The file has been removed to restore the tracked state; import server before "
-            "the write (or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
+            "the write (or patch terrain_quarantine.TERRAIN_QUARANTINE_LEDGER inside the test)."
         )
     if size_after > size_before:
         # xdist: every worker watches the SAME tracked file, so a concurrent worker's
@@ -601,5 +603,5 @@ def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
             "write landed in the real operator audit file (an external writer touching "
             "the tracked file mid-test trips this too). It has been truncated back to "
             f"its pre-test length ({size_before} bytes); import server before the write "
-            "(or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
+            "(or patch terrain_quarantine.TERRAIN_QUARANTINE_LEDGER inside the test)."
         )

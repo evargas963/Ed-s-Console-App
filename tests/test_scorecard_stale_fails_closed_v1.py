@@ -19,6 +19,7 @@ os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env s
 import pytest  # noqa: E402
 
 import server  # noqa: E402
+import terrain_quarantine  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CHART = ROOT / "static" / "chart.html"
@@ -31,7 +32,7 @@ def _quarantine_ledger_to_tmp(tmp_path, monkeypatch):
     on every suite run (found dirty in git status 2026-08-24). Same defect shape RC-255
     fixed for the TQM queue: the producer's path is real, tests redirect it."""
     redirected = tmp_path / "terrain_quarantine_ledger.jsonl"
-    monkeypatch.setattr(server, "TERRAIN_QUARANTINE_LEDGER", redirected)
+    monkeypatch.setattr(terrain_quarantine, "TERRAIN_QUARANTINE_LEDGER", redirected)
     tracked = ROOT / "reports" / "terrain_quarantine_ledger.jsonl"
     before = tracked.stat().st_size if tracked.exists() else None
     yield
@@ -157,14 +158,14 @@ def test_morning_window_skip_is_recorded_by_the_producer():
     that MSFT/NVDA/AAPL were dropped on purpose, so every reader downstream had to guess. Drive
     the real recorder and prove a reason survives exactly as long as the pause does."""
     try:
-        server._note_terrain_skip(["MSFT", "nvda"], "paused until 10:00 ET")
-        assert server.terrain_skip_reason("MSFT") == "paused until 10:00 ET"
-        assert server.terrain_skip_reason("NVDA") == "paused until 10:00 ET", "case must not matter"
-        assert server.terrain_skip_reason("SPY") == "", "a refreshed ticker carries no skip reason"
-        assert server.terrain_skip_reason(None) == "", "absent ticker fails closed to no reason"
+        terrain_quarantine._note_terrain_skip(["MSFT", "nvda"], "paused until 10:00 ET")
+        assert terrain_quarantine.terrain_skip_reason("MSFT") == "paused until 10:00 ET"
+        assert terrain_quarantine.terrain_skip_reason("NVDA") == "paused until 10:00 ET", "case must not matter"
+        assert terrain_quarantine.terrain_skip_reason("SPY") == "", "a refreshed ticker carries no skip reason"
+        assert terrain_quarantine.terrain_skip_reason(None) == "", "absent ticker fails closed to no reason"
     finally:
-        server._clear_terrain_skips()
-    assert server.terrain_skip_reason("MSFT") == "", (
+        terrain_quarantine._clear_terrain_skips()
+    assert terrain_quarantine.terrain_skip_reason("MSFT") == "", (
         "a skip reason outlived the pause — the panel would keep telling the operator to wait"
     )
 
@@ -181,7 +182,7 @@ def test_terrain_staleness_prefers_the_producers_reason_over_the_clock():
         assert blind["levels_paused_on_purpose"] is False, (
             "no recorded skip must never be dressed up as a deliberate pause"
         )
-        server._note_terrain_skip(["MSFT"], "the morning wide-chain capture holds the chain slots")
+        terrain_quarantine._note_terrain_skip(["MSFT"], "the morning wide-chain capture holds the chain slots")
         told = server.terrain_staleness(old, "MSFT")
         assert told["levels_paused_on_purpose"] is True
         assert "chain slots" in told["levels_stale_reason"], (
@@ -192,7 +193,7 @@ def test_terrain_staleness_prefers_the_producers_reason_over_the_clock():
         other = server.terrain_staleness(old, "SPY")
         assert other["levels_paused_on_purpose"] is False
     finally:
-        server._clear_terrain_skips()
+        terrain_quarantine._clear_terrain_skips()
 
 
 def test_recorded_failure_reaches_the_payload_once_a_snapshot_exists():
@@ -215,14 +216,14 @@ def test_recorded_failure_reaches_the_payload_once_a_snapshot_exists():
         never = server.terrain_staleness(None, "$SPX")
         assert never["levels_failing"] is True and "HTTP 400" in never["levels_stale_reason"]
         # a DELIBERATE pause outranks a stale prior failure — it is why it is not refreshing now
-        server._note_terrain_skip(["$SPX"], "paused until 10:00 ET")
+        terrain_quarantine._note_terrain_skip(["$SPX"], "paused until 10:00 ET")
         paused = server.terrain_staleness(old, "$SPX")
         assert paused["levels_paused_on_purpose"] is True
         assert paused["levels_failing"] is False
         assert "HTTP 400" not in paused["levels_stale_reason"]
     finally:
         server._terrain_refresh_last_error.pop("$SPX", None)
-        server._clear_terrain_skips()
+        terrain_quarantine._clear_terrain_skips()
     clean = server.terrain_staleness(old, "$SPX")
     assert clean["levels_failing"] is False, "a cleared failure must not linger"
 
@@ -232,13 +233,13 @@ def test_skip_and_error_dicts_share_one_ticker_normalisation():
     one. `_terrain_refresh_last_error` is keyed by ticker_storage_key (RC-126), so the skip dict
     must be too — SPX and $SPX are the same instrument to exactly one of them otherwise."""
     try:
-        server._note_terrain_skip(["SPX"], "paused")
-        assert server.terrain_skip_reason("$SPX") == "paused", (
+        terrain_quarantine._note_terrain_skip(["SPX"], "paused")
+        assert terrain_quarantine.terrain_skip_reason("$SPX") == "paused", (
             "the skip dict normalises differently from the error dict beside it"
         )
-        assert server.terrain_skip_reason("SPX") == "paused"
+        assert terrain_quarantine.terrain_skip_reason("SPX") == "paused"
     finally:
-        server._clear_terrain_skips()
+        terrain_quarantine._clear_terrain_skips()
 
 
 def test_hard_rejection_quarantines_and_stops_touching_the_gate():
@@ -248,33 +249,33 @@ def test_hard_rejection_quarantines_and_stops_touching_the_gate():
     tk = "ZZTESTHARD"
     try:
         msg = "chain fetch failed (HTTP 400)"
-        for i in range(server.TERRAIN_QUARANTINE_HARD_FAILS - 1):
-            server._note_terrain_failure(tk, msg, "hard")
-            assert not server._terrain_quarantine_blocks(tk), (
+        for i in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS - 1):
+            terrain_quarantine._note_terrain_failure(tk, msg, "hard")
+            assert not terrain_quarantine._terrain_quarantine_blocks(tk), (
                 f"quarantined after only {i + 1} failures — a transient blip must not evict a "
                 f"real instrument"
             )
-        server._note_terrain_failure(tk, msg, "hard")
-        assert server._terrain_quarantine_blocks(tk) is True, "the retry storm was not stopped"
-        st = server.terrain_quarantine_state(tk)
-        assert st["permanent"] is True and st["failures"] >= server.TERRAIN_QUARANTINE_HARD_FAILS
-        why = server.terrain_quarantine_reason(tk)
+        terrain_quarantine._note_terrain_failure(tk, msg, "hard")
+        assert terrain_quarantine._terrain_quarantine_blocks(tk) is True, "the retry storm was not stopped"
+        st = terrain_quarantine.terrain_quarantine_state(tk)
+        assert st["permanent"] is True and st["failures"] >= terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS
+        why = terrain_quarantine.terrain_quarantine_reason(tk)
         assert "QUARANTINED" in why and "re-admit" in why, (
             "a hold with no stated way back is a deletion the operator never approved"
         )
         # the producer must refuse BEFORE spending any vendor budget, priority or not
         assert server._terrain_refresh_one(tk, priority=True) == "skip:quarantined"
-        assert server._terrain_quarantine_skips.get(tk, 0) >= 1, "avoided fetches are not counted"
+        assert terrain_quarantine._terrain_quarantine_skips.get(tk, 0) >= 1, "avoided fetches are not counted"
         # a permanent hold NEVER self-releases, however long you wait
-        with server._terrain_quarantine_lock:
-            server._terrain_quarantine[tk]["until_ts"] = 0.0
-        assert server._terrain_quarantine_blocks(tk) is True
+        with terrain_quarantine._terrain_quarantine_lock:
+            terrain_quarantine._terrain_quarantine[tk]["until_ts"] = 0.0
+        assert terrain_quarantine._terrain_quarantine_blocks(tk) is True
         # ...only the operator releases it
-        out = server.terrain_quarantine_release(tk)
+        out = terrain_quarantine.terrain_quarantine_release(tk)
         assert out["released"] is True
-        assert server._terrain_quarantine_blocks(tk) is False
+        assert terrain_quarantine._terrain_quarantine_blocks(tk) is False
     finally:
-        server.terrain_quarantine_release(tk)
+        terrain_quarantine.terrain_quarantine_release(tk)
 
 
 def test_soft_failure_backs_off_and_self_releases():
@@ -283,18 +284,18 @@ def test_soft_failure_backs_off_and_self_releases():
     expensive mistake."""
     tk = "ZZTESTSOFT"
     try:
-        for _ in range(server.TERRAIN_QUARANTINE_HARD_FAILS):
-            server._note_terrain_failure(tk, "chain fetch failed (HTTP timeout)", "soft")
-        st = server.terrain_quarantine_state(tk)
+        for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
+            terrain_quarantine._note_terrain_failure(tk, "chain fetch failed (HTTP timeout)", "soft")
+        st = terrain_quarantine.terrain_quarantine_state(tk)
         assert st["permanent"] is False, "a timeout must never earn a permanent hold"
-        assert server._terrain_quarantine_blocks(tk) is True
-        assert "backing off" in server.terrain_quarantine_reason(tk)
-        with server._terrain_quarantine_lock:      # simulate the backoff elapsing
-            server._terrain_quarantine[tk]["until_ts"] = 0.0
-        assert server._terrain_quarantine_blocks(tk) is False, "soft hold failed to self-release"
-        assert server.terrain_quarantine_state(tk) == {}
+        assert terrain_quarantine._terrain_quarantine_blocks(tk) is True
+        assert "backing off" in terrain_quarantine.terrain_quarantine_reason(tk)
+        with terrain_quarantine._terrain_quarantine_lock:      # simulate the backoff elapsing
+            terrain_quarantine._terrain_quarantine[tk]["until_ts"] = 0.0
+        assert terrain_quarantine._terrain_quarantine_blocks(tk) is False, "soft hold failed to self-release"
+        assert terrain_quarantine.terrain_quarantine_state(tk) == {}
     finally:
-        server.terrain_quarantine_release(tk)
+        terrain_quarantine.terrain_quarantine_release(tk)
 
 
 def test_success_clears_the_failure_streak():
@@ -302,17 +303,17 @@ def test_success_clears_the_failure_streak():
     healthy — consecutive means consecutive."""
     tk = "ZZTESTSTREAK"
     try:
-        server._note_terrain_failure(tk, "boom", "hard")
-        server._note_terrain_failure(tk, "boom", "hard")
-        assert server._terrain_consecutive_fails.get(tk) == 2
-        server._note_terrain_success(tk)
-        assert server._terrain_consecutive_fails.get(tk) is None
-        server._note_terrain_failure(tk, "boom", "hard")
-        assert not server._terrain_quarantine_blocks(tk), (
+        terrain_quarantine._note_terrain_failure(tk, "boom", "hard")
+        terrain_quarantine._note_terrain_failure(tk, "boom", "hard")
+        assert terrain_quarantine._terrain_consecutive_fails.get(tk) == 2
+        terrain_quarantine._note_terrain_success(tk)
+        assert terrain_quarantine._terrain_consecutive_fails.get(tk) is None
+        terrain_quarantine._note_terrain_failure(tk, "boom", "hard")
+        assert not terrain_quarantine._terrain_quarantine_blocks(tk), (
             "the streak survived a success, so non-consecutive failures accumulate to eviction"
         )
     finally:
-        server.terrain_quarantine_release(tk)
+        terrain_quarantine.terrain_quarantine_release(tk)
 
 
 def test_quarantine_state_is_distinguishable_from_pause_and_failure():
@@ -323,8 +324,8 @@ def test_quarantine_state_is_distinguishable_from_pause_and_failure():
     tk = "ZZTESTFLAGS"
     old = time.time() - (server.TERRAIN_STALE_AFTER_SEC + 600.0)
     try:
-        for _ in range(server.TERRAIN_QUARANTINE_HARD_FAILS):
-            server._note_terrain_failure(tk, "chain fetch failed (HTTP 400)", "hard")
+        for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
+            terrain_quarantine._note_terrain_failure(tk, "chain fetch failed (HTTP 400)", "hard")
         s = server.terrain_staleness(old, tk)
         assert s["levels_quarantined"] is True
         assert s["levels_failing"] is True, "a vendor-refused symbol is failing, not merely idle"
@@ -335,7 +336,7 @@ def test_quarantine_state_is_distinguishable_from_pause_and_failure():
         assert n["levels_quarantined"] is True and n["levels_failing"] is True
         assert "QUARANTINED" in n["levels_stale_reason"]
     finally:
-        server.terrain_quarantine_release(tk)
+        terrain_quarantine.terrain_quarantine_release(tk)
 
 
 def _fake_chain(n_expiries: int, spot: float = 7400.0) -> list:

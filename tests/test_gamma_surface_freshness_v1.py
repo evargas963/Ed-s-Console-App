@@ -6,6 +6,7 @@ import json
 import time
 
 import server
+import terrain_quarantine
 from app.api.routes.options import get_options_gamma_surface
 from instrument_identity import ticker_storage_key
 
@@ -86,9 +87,9 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
-    monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    monkeypatch.setattr(terrain_quarantine, "terrain_skip_reason", lambda t: None)
+    monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_reason", lambda t: None)
+    monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_state", lambda t: {})
     try:
         monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # eligible
         d = _call(tk)
@@ -118,9 +119,9 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # snapshot, no surface
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
     # session/quarantine are eligible — the ONLY thing withholding warming is board membership
-    monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    monkeypatch.setattr(terrain_quarantine, "terrain_skip_reason", lambda t: None)
+    monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_reason", lambda t: None)
+    monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_state", lambda t: {})
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     try:
         assert server._ticker_on_terrain_board(tk) is False

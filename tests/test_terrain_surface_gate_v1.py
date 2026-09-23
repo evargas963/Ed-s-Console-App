@@ -8,6 +8,7 @@ import types
 from pathlib import Path
 
 import server
+import terrain_quarantine
 import terrain_refresh
 import gamma_surface_projection
 
@@ -32,7 +33,7 @@ def _stub_terrain(monkeypatch, proj):
         def to_dict(self):
             return {}
 
-    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
+    monkeypatch.setattr(terrain_quarantine, "_terrain_quarantine_blocks", lambda t: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_universal_capture_wanted", lambda t: (False, None))
     monkeypatch.setattr(server, "_terrain_strike_count", lambda t: 60)
@@ -52,7 +53,7 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_radar_atr", lambda t: types.SimpleNamespace(daily=None, m15=None))
-    monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
+    monkeypatch.setattr(terrain_quarantine, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(gamma_surface_projection, "project_gamma_surface", proj)
 
 

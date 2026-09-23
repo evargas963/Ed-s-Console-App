@@ -26,10 +26,9 @@ not fully traced in this slice -- reached via the established lazy `import serve
 pattern instead of risking a mis-traced move in money-path code.
 
 MONKEYPATCH/RUNTIME-STATE NOTE: every other name this module touches (get_client,
-_terrain_quarantine_blocks, _universal_capture_wanted, _terrain_strike_count,
+_universal_capture_wanted, _terrain_strike_count,
 _persist_universal_capture, _persist_universal_complete_chain, _learn_strike_geometry,
 _radar_atr, flatten_chain_contracts, resolve_spot, _gated_safe_get_chain,
-_classify_chain_failure, _note_terrain_failure, _note_terrain_success,
 _terrain_refresh_last_error, _terrain_cache, _terrain_cache_lock,
 _terrain_profile_cache, _gamma_surface_wanted, _desired_stream_greeks_for_ticker,
 _desired_option_symbols_for_ticker, _stamp_gamma_surface_cell_stream_state,
@@ -50,6 +49,8 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timedelta, timezone
+
+import terrain_quarantine as _tq  # RC-REHAB-1 fortieth slice: the quarantine book's own home
 
 log = logging.getLogger(__name__)
 
@@ -319,7 +320,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     # (RC-147) was necessary and not sufficient: a control that reports the burn while the burn
     # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
     # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
-    if _srv._terrain_quarantine_blocks(tk):
+    if _tq._terrain_quarantine_blocks(tk):
         return "skip:quarantined"
     try:
         client = _srv.get_client()
@@ -342,7 +343,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             # RC-148: classify so the response fits the cause. A 4xx is the vendor refusing THIS
             # SYMBOL and will refuse it identically forever; a timeout or 5xx is the venue being
             # busy and deserves a backoff, not a death sentence.
-            _srv._note_terrain_failure(tk, _msg, _srv._classify_chain_failure(
+            _tq._note_terrain_failure(tk, _msg, _tq._classify_chain_failure(
                 _code, "timeout-at-all-rungs" if resp is None else None))
             return "error:chain_http"
         # Independent-review finding (2026-09-12), REPRODUCED: the generation marker used below
@@ -418,7 +419,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         _srv._accrue_chain_observation(tk, snap)
         _srv._log_flip_drift(tk, payload)
         _srv._terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
-        _srv._note_terrain_success(tk)                   # RC-148: and the failure streak with it
+        _tq._note_terrain_success(tk)                   # RC-148: and the failure streak with it
         _bank_daily_atm_iv_from_payload(tk, payload)
         _bank_daily_strike_oi_and_walls(tk, snap)
         return f"ok:{snap.confidence}"
@@ -430,6 +431,6 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # RC-148: an exception is never a symbol rejection (those arrive as a 4xx RESPONSE), so
         # it always classifies soft — backoff, never a permanent hold. A crash in our own code
         # must not be able to evict a real instrument from the board.
-        _srv._note_terrain_failure(tk, f"{type(e).__name__}: {e}", "soft")
+        _tq._note_terrain_failure(tk, f"{type(e).__name__}: {e}", "soft")
         log.warning("terrain refresh %s failed: %s", tk, e, exc_info=True)
         return f"error:{type(e).__name__}"

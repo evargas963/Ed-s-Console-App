@@ -77,18 +77,20 @@ def get_terrain_producer_diagnostics():
     ticker not refreshing" — the question that cost a session on $SPX (RC-126) and another on
     RTY/XXT. Read-only, no Schwab call, no model stack."""
     from server import (
-        TERRAIN_QUARANTINE_HARD_FAILS,
-        TERRAIN_QUARANTINE_LEDGER,
         TERRAIN_REFRESH_SEC,
         TERRAIN_STALE_AFTER_SEC,
+        _terrain_refresh_last_error,
+        terrain_cache_size,
+    )
+    from terrain_quarantine import (
+        TERRAIN_QUARANTINE_HARD_FAILS,
+        TERRAIN_QUARANTINE_LEDGER,
         _terrain_consecutive_fails,
         _terrain_quarantine,
         _terrain_quarantine_lock,
         _terrain_quarantine_skips,
-        _terrain_refresh_last_error,
         _terrain_skip_lock,
         _terrain_skipped_reason,
-        terrain_cache_size,
     )
 
     with _terrain_skip_lock:
@@ -117,7 +119,7 @@ def post_terrain_quarantine_release(ticker: str = Query(...)):
     A quarantine with no way back is a deletion the operator never approved, so this exists in
     the same commit as the quarantine itself rather than as a follow-up.
     """
-    from server import terrain_quarantine_release
+    from terrain_quarantine import terrain_quarantine_release
 
     return JSONResponse(terrain_quarantine_release(ticker))
 

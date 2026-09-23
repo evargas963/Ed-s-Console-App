@@ -179,6 +179,7 @@ def test_logger_quarantines_permanently_refused_symbol_f4(monkeypatch):
     returns 'skipped:quarantined' and issues NO vendor call. A 5xx (transient) must stay a soft
     backoff, never a permanent quarantine (fail-closed classification)."""
     import server as srv
+    import terrain_quarantine
     from fastapi import HTTPException
     from instrument_identity import ticker_storage_key
 
@@ -187,27 +188,27 @@ def test_logger_quarantines_permanently_refused_symbol_f4(monkeypatch):
     monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)
 
     def _reset():
-        srv._terrain_quarantine.pop(tk, None)
-        srv._terrain_consecutive_fails.pop(tk, None)
+        terrain_quarantine._terrain_quarantine.pop(tk, None)
+        terrain_quarantine._terrain_consecutive_fails.pop(tk, None)
 
     # 404 (permanent symbol refusal) -> hard -> quarantined after the threshold
     _reset()
     monkeypatch.setattr(srv, "_fetch_state",
                         lambda *a, **k: (_ for _ in ()).throw(
                             HTTPException(status_code=502, detail="Chain fetch failed [vendor_status=404]")))
-    for _ in range(srv.TERRAIN_QUARANTINE_HARD_FAILS):
+    for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
         assert srv._logger_fetch_and_log(sym).startswith("error:")
     assert srv._logger_fetch_and_log(sym) == "skipped:quarantined", "a 404 symbol must stop being requested"
-    assert srv.terrain_quarantine_reason(sym).startswith("QUARANTINED")
+    assert terrain_quarantine.terrain_quarantine_reason(sym).startswith("QUARANTINED")
 
     # 503 (transient venue error) -> soft -> backoff, NEVER a permanent quarantine
     _reset()
     monkeypatch.setattr(srv, "_fetch_state",
                         lambda *a, **k: (_ for _ in ()).throw(
                             HTTPException(status_code=502, detail="Chain fetch failed [vendor_status=503]")))
-    for _ in range(srv.TERRAIN_QUARANTINE_HARD_FAILS):
+    for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
         srv._logger_fetch_and_log(sym)
-    assert not srv.terrain_quarantine_reason(sym).startswith("QUARANTINED"), (
+    assert not terrain_quarantine.terrain_quarantine_reason(sym).startswith("QUARANTINED"), (
         "a 5xx transient error must be a soft backoff, not a permanent quarantine")
     _reset()
 

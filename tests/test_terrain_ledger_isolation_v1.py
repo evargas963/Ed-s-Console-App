@@ -46,15 +46,16 @@ from pathlib import Path
 
 def test_mid_test_server_import_cannot_bind_the_tracked_ledger():
     import server                                     # LATE import: after fixture setup
+    import terrain_quarantine                         # the ledger's home (RC-REHAB-1 slice 40)
 
     override = os.environ.get("ED_TERRAIN_QUARANTINE_LEDGER")
     assert override, "conftest must set the ledger kill-switch before any server import"
-    assert str(server.TERRAIN_QUARANTINE_LEDGER) == override, (
-        f"server bound {server.TERRAIN_QUARANTINE_LEDGER}, not the env override")
-    for _ in range(server.TERRAIN_QUARANTINE_HARD_FAILS):
-        server._note_terrain_failure(
+    assert str(terrain_quarantine.TERRAIN_QUARANTINE_LEDGER) == override, (
+        f"terrain_quarantine bound {terrain_quarantine.TERRAIN_QUARANTINE_LEDGER}, not the env override")
+    for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
+        terrain_quarantine._note_terrain_failure(
             "ZZLATEIMPORT", "synthetic hard rejection (isolation prover)", "hard")
-    entry = server.terrain_quarantine_state("ZZLATEIMPORT")
+    entry = terrain_quarantine.terrain_quarantine_state("ZZLATEIMPORT")
     assert entry.get("permanent") is True, entry
     text = Path(override).read_text(encoding="utf-8") if Path(override).exists() else ""
     assert "ZZLATEIMPORT" in text, "the quarantine write did not land in the override file"
