@@ -64,7 +64,9 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/ops/run-sequence': ('OPS', None),
     '/api/ops/status': ('OPS', None),
     '/api/options/charm-by-strike': ('PRODUCER', 'app/api/routes/options.py:get_charm_by_strike'),
-    '/api/options/gamma-surface': ('PRODUCER', 'server.py:project_gamma_surface'),
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-fourth slice): project_gamma_surface
+    # moved out of server.py into gamma_surface_projection.py.
+    '/api/options/gamma-surface': ('PRODUCER', 'gamma_surface_projection.py:project_gamma_surface'),
     # RC-REHAB-1 (Phase 3): served_routes() only scanned server.py until now, so this
     # already-extracted route (app/api/routes/options_order_flow.py, mounted before this
     # session's own desk.py extraction) was never actually checked by this suite -- a
