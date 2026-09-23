@@ -64,6 +64,7 @@ from instrument_identity import ticker_storage_key
 from terrain_engine import compute_terrain
 import chain_width
 import terrain_state
+import terrain_radar
 
 
 def _gamma_surface_contracts_with_stream_overlay(
@@ -393,13 +394,13 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # wide-chain output with stored-chain fallback rows and ranks them against each other;
         # wall selection depends on chain width (RC-80 measured an 11-point difference on SPY),
         # so an unlabelled merge sorts systematically-different numbers as if they were peers.
-        payload["levels_source"] = _srv.LEVELS_SOURCE_WIDE_CHAIN
+        payload["levels_source"] = terrain_state.LEVELS_SOURCE_WIDE_CHAIN
         # RC-127: which rung of the timeout ladder produced this book — 'full' is the
         # operator-locked basis; a narrower rung is visible degradation, never silent.
         payload["chain_basis"] = _chain_basis
         payload["spot_source"] = spot_source
         payload["spot_as_of_ts_utc"] = spot_ts
-        _atr = _srv._radar_atr(tk)
+        _atr = terrain_radar._radar_atr(tk)
         payload["atr_daily"] = round(_atr.daily, 3) if _atr.daily else None
         payload["atr_15m"] = round(_atr.m15, 3) if _atr.m15 else None
         # RC-68: carry the LIVE per-strike map into the cache. to_dict() deliberately drops it

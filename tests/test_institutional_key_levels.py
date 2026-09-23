@@ -27,6 +27,7 @@ from math_levels import (
 )
 import terrain_loop
 import terrain_state
+import terrain_radar
 
 
 def _dollarized_exposures():
@@ -892,7 +893,7 @@ def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
             "confidence": "TRUSTED",
             "spot": 755.0,
         }
-    snaps = srv._terrain_snapshots_for_radar()
+    snaps = terrain_radar._terrain_snapshots_for_radar()
     spy = next((s for s in snaps if s.get("ticker") == "SPY"), None)  # caps-ok: None is asserted against on the very next line (assert spy is not None), so a missing SPY snapshot fails the test
     assert spy is not None
     assert spy["levels_stale"] is True
@@ -906,7 +907,7 @@ def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
             "confidence": "TRUSTED",
             "spot": 755.0,
         }
-    fresh_snaps = srv._terrain_snapshots_for_radar()
+    fresh_snaps = terrain_radar._terrain_snapshots_for_radar()
     fresh_spy = next(s for s in fresh_snaps if s.get("ticker") == "SPY")
     assert fresh_spy["levels_stale"] is False
 

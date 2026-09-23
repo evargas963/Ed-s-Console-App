@@ -14,19 +14,16 @@ from __future__ import annotations
 
 import ast
 import os
-from pathlib import Path
 
 os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env switch read by import-time guards to recognise a pytest process; setdefault keeps a value pytest already set, it seeds no market data
 
-import server  # noqa: E402
+import terrain_state
+import terrain_radar
 
-SRC = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-TREE = ast.parse(SRC)
-# RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
-# moved out of server.py entirely, into terrain_refresh.py.
-_TR_SRC = (Path(__file__).resolve().parent.parent / "terrain_refresh.py").read_text(encoding="utf-8")
-_TR_TREE = ast.parse(_TR_SRC)
-_SOURCES = ((SRC, TREE), (_TR_SRC, _TR_TREE))
+from tests.console_runtime import console_runtime_sources
+
+# every function the radar provenance lock names is looked up across the console runtime
+_SOURCES = tuple((src, tree) for _path, src, tree in console_runtime_sources())
 
 
 def _fn(name: str) -> str:
@@ -38,9 +35,9 @@ def _fn(name: str) -> str:
 
 
 def test_the_two_producers_are_distinguishable():
-    assert server.LEVELS_SOURCE_WIDE_CHAIN != server.LEVELS_SOURCE_STORED_CHAIN
-    assert server.LEVELS_SOURCE_UNKNOWN not in (
-        server.LEVELS_SOURCE_WIDE_CHAIN, server.LEVELS_SOURCE_STORED_CHAIN)
+    assert terrain_state.LEVELS_SOURCE_WIDE_CHAIN != terrain_state.LEVELS_SOURCE_STORED_CHAIN
+    assert terrain_state.LEVELS_SOURCE_UNKNOWN not in (
+        terrain_state.LEVELS_SOURCE_WIDE_CHAIN, terrain_state.LEVELS_SOURCE_STORED_CHAIN)
 
 
 def test_each_producer_stamps_itself():
@@ -64,18 +61,18 @@ def test_the_row_carries_the_stamp_and_unstamped_reads_as_unknown():
 
 def test_a_row_built_from_an_unstamped_snapshot_is_not_called_trusted():
     """Drive the REAL row builder, not a reading of it."""
-    atr = server._radar_atr("SPY")
-    row = server._radar_row(
+    atr = terrain_radar._radar_atr("SPY")
+    row = terrain_radar._radar_row(
         {"ticker": "SPY", "regime": "SHORT_GAMMA_TREND", "posture": "X",
          "call_wall": 750.0, "put_wall": 740.0, "gamma_flip": 746.0, "confidence": "TRUSTED"},
         745.0, atr, "AT WALL", "call wall", 750.0, 5.0, 0.5, sort_key=None)
-    assert row["levels_source"] == server.LEVELS_SOURCE_UNKNOWN
+    assert row["levels_source"] == terrain_state.LEVELS_SOURCE_UNKNOWN
 
 
 def test_a_stamped_snapshot_is_carried_through_verbatim():
-    atr = server._radar_atr("SPY")
-    row = server._radar_row(
+    atr = terrain_radar._radar_atr("SPY")
+    row = terrain_radar._radar_row(
         {"ticker": "SPY", "call_wall": 750.0, "put_wall": 740.0, "confidence": "TRUSTED",
-         "levels_source": server.LEVELS_SOURCE_STORED_CHAIN},
+         "levels_source": terrain_state.LEVELS_SOURCE_STORED_CHAIN},
         745.0, atr, "AT WALL", "call wall", 750.0, 5.0, 0.5, sort_key=None)
-    assert row["levels_source"] == server.LEVELS_SOURCE_STORED_CHAIN
+    assert row["levels_source"] == terrain_state.LEVELS_SOURCE_STORED_CHAIN

@@ -26,6 +26,7 @@
 "stack_runtime_governance.py",
 "terrain_kl_overlay.py",
 "terrain_refresh.py",
+"terrain_radar.py",
 "terrain_capture.py",
 "terrain_freshness.py",
 "terrain_schedule.py",

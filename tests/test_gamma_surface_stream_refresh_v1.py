@@ -28,6 +28,7 @@ import per_strike_view
 import terrain_refresh
 import gamma_surface_projection
 import terrain_state
+import terrain_engine
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -386,7 +387,7 @@ def test_a_streamed_tick_also_refreshes_key_levels_fast_no_rth_required(monkeypa
 
     overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed})
     assert n == 1
-    expected_terrain = server.compute_terrain(TK, overlaid, _SPOT).to_dict()
+    expected_terrain = terrain_engine.compute_terrain(TK, overlaid, _SPOT).to_dict()
 
     with terrain_state._terrain_cache_lock:
         cached = dict(terrain_state._terrain_cache[TK])

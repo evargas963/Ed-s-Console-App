@@ -51,3 +51,9 @@ _terrain_refresh_last_error: dict[str, str] = {}
 #: against the floor reports healthy tickers as broken. 0.0 until the first cycle completes, in
 #: which case readers fall back to the nominal floor.
 _terrain_last_cycle_sec: float = 0.0
+
+#: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
+#: unlabelled merge is how systematically-different numbers get ranked as peers (RC-82).
+LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the single producer
+LEVELS_SOURCE_STORED_CHAIN = "stored_chain_fallback"  # narrower; walls sit inward
+LEVELS_SOURCE_UNKNOWN = "unknown"                 # unstamped reads as unknown, never as trusted

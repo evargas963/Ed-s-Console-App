@@ -32,7 +32,7 @@ def get_terrain_radar(limit: int = Query(default=12, ge=1, le=60)):
     Everything mid-box and quiet is deliberately invisible. Untrusted tickers are never
     ranked as if their levels were real -- they are reported separately as blind spots.
     """
-    from server import (
+    from terrain_radar import (
         RADAR_NEAR_PCT,
         RADAR_WATCH_PCT,
         _radar_atr,

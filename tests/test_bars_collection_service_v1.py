@@ -14,6 +14,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.console_runtime import console_runtime_sources
+
 ROOT = Path(__file__).resolve().parent.parent
 SERVER_PATH = ROOT / "server.py"
 SERVER_SRC = SERVER_PATH.read_text(encoding="utf-8")
@@ -31,28 +33,8 @@ def _fn_src(name: str) -> str:
 
 
 def _console_runtime_modules() -> dict[str, Path]:
-    """Every repo-local module the console process can import: the static import closure of
-    server.py, following imports anywhere in a file (lazy in-function imports included)."""
-    seen: dict[str, Path] = {}
-    todo = ["server"]
-    while todo:
-        mod = todo.pop()
-        if mod in seen:
-            continue
-        path = ROOT / (mod.replace(".", "/") + ".py")
-        if not path.is_file():
-            pkg = ROOT / mod.replace(".", "/") / "__init__.py"
-            if not pkg.is_file():
-                continue
-            path = pkg
-        seen[mod] = path
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Import):
-                todo += [a.name for a in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-                todo.append(node.module)
-                todo += [f"{node.module}.{a.name}" for a in node.names]
-    return seen
+    """Every repo-local module the console process can import (tests/console_runtime.py)."""
+    return {rel: ROOT / rel for rel, _src, _tree in console_runtime_sources()}
 
 
 def _bar_writes(path: Path) -> list[str]:

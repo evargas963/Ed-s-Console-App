@@ -182,8 +182,20 @@ def test_storm1_ties_do_not_depend_on_list_order():
 
 # ── RC-161: the accrual producer is UNIVERSAL, not sentinel-only ─────────────────────────
 def _server():
-    import server
-    return server
+    """The scheduler's own home (RC-REHAB-1 moved it out of server.py): the rotation, the
+    accrual cadence and the contention bounds live in terrain_schedule; the cadence floor in
+    terrain_state."""
+    import types
+
+    import terrain_schedule
+    import terrain_state
+    return types.SimpleNamespace(
+        terrain_cycle_tickers=terrain_schedule.terrain_cycle_tickers,
+        ACCRUAL_MIN_INTERVAL_OTHER_SEC=terrain_schedule.ACCRUAL_MIN_INTERVAL_OTHER_SEC,
+        TERRAIN_CONTENTION_START_MINS=terrain_schedule.TERRAIN_CONTENTION_START_MINS,
+        TERRAIN_CONTENTION_END_MINS=terrain_schedule.TERRAIN_CONTENTION_END_MINS,
+        TERRAIN_REFRESH_SEC=terrain_state.TERRAIN_REFRESH_SEC,
+    )
 
 
 def _board(n_others: int = 54) -> list[str]:

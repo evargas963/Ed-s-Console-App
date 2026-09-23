@@ -19,6 +19,7 @@ import per_strike_view
 import chain_width
 import terrain_loop
 import terrain_state
+import terrain_radar
 
 #: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
 #: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
@@ -60,7 +61,7 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *a, **k: Snap())
     monkeypatch.setattr(terrain_schedule, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(flip_drift_log, "_log_flip_drift", lambda *a, **k: None)
-    monkeypatch.setattr(server, "_radar_atr", lambda t: types.SimpleNamespace(daily=None, m15=None))
+    monkeypatch.setattr(terrain_radar, "_radar_atr", lambda t: types.SimpleNamespace(daily=None, m15=None))
     monkeypatch.setattr(terrain_quarantine, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(gamma_surface_projection, "project_gamma_surface", proj)
 

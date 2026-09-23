@@ -25,6 +25,7 @@ import flip_drift_log  # noqa: E402
 import terrain_capture  # noqa: E402
 import app.api.routes.market_data
 import chain_width
+import terrain_radar
 
 
 def test_rings_are_ordered_and_distinct() -> None:
@@ -192,7 +193,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
             return {"gamma_flip": 99.5, "spot": 100.0, "confidence": "TRUSTED"}
 
     monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *_a, **_k: _Snap())
-    monkeypatch.setattr(srv, "_radar_atr", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
+    monkeypatch.setattr(terrain_radar, "_radar_atr", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
 
     out = terrain_refresh._terrain_refresh_one("SPY")
     assert out == "ok:TRUSTED"
@@ -221,7 +222,6 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
     import threading as th
     import time as _t
 
-    import server as srv
 
     started = th.Event()
     release = th.Event()
@@ -233,12 +233,12 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
         release.wait(10)
         return [{"ticker": "ZZZ", "spot": 10.0}]
 
-    monkeypatch.setattr(srv, "_radar_fallback_recompute", _slow_recompute)
-    monkeypatch.setattr(srv, "_radar_fallback_cache", (0.0, [{"ticker": "OLD", "spot": 1.0}]))
-    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_recompute", _slow_recompute)
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_cache", (0.0, [{"ticker": "OLD", "spot": 1.0}]))
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_inflight", False)
 
-    out1 = srv._terrain_snapshots_for_radar()
-    out2 = srv._terrain_snapshots_for_radar()
+    out1 = terrain_radar._terrain_snapshots_for_radar()
+    out2 = terrain_radar._terrain_snapshots_for_radar()
     # returned while the recompute is still parked on `release` -> proven non-blocking:
     # an inline path could only return ZZZ (or wait); OLD in hand proves the memo served
     assert any(m.get("ticker") == "OLD" for m in out1)
@@ -248,18 +248,18 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
     release.set()
     deadline = _t.time() + 30
     while _t.time() < deadline:
-        if srv._radar_fallback_cache[1] and \
-           srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ":
+        if terrain_radar._radar_fallback_cache[1] and \
+           terrain_radar._radar_fallback_cache[1][0].get("ticker") == "ZZZ":
             break
         _t.sleep(0.02)
-    assert srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ", \
+    assert terrain_radar._radar_fallback_cache[1][0].get("ticker") == "ZZZ", \
         "background result must land in the memo"
 
     # None keeps the previous memo (DB hiccup must not wipe the scope)
-    monkeypatch.setattr(srv, "_radar_fallback_recompute", lambda: None)
-    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
-    srv._radar_fallback_refresh_worker()
-    assert srv._radar_fallback_cache[1][0].get("ticker") == "ZZZ"
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_recompute", lambda: None)
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_inflight", False)
+    terrain_radar._radar_fallback_refresh_worker()
+    assert terrain_radar._radar_fallback_cache[1][0].get("ticker") == "ZZZ"
 
     # Fresh empty memo is a legitimate result — must NOT re-kick the sweep
     kicks = {"n": 0}
@@ -268,10 +268,10 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
         kicks["n"] += 1
         return []
 
-    monkeypatch.setattr(srv, "_radar_fallback_recompute", _count_recompute)
-    monkeypatch.setattr(srv, "_radar_fallback_cache", (_t.time(), []))
-    monkeypatch.setattr(srv, "_radar_fallback_inflight", False)
-    srv._terrain_snapshots_for_radar()
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_recompute", _count_recompute)
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_cache", (_t.time(), []))
+    monkeypatch.setattr(terrain_radar, "_radar_fallback_inflight", False)
+    terrain_radar._terrain_snapshots_for_radar()
     assert kicks["n"] == 0, "fresh empty memo must not re-stampede the fallback"
 
 

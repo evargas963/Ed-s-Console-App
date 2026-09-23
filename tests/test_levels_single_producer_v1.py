@@ -32,35 +32,13 @@ SERVER = Path(__file__).resolve().parent.parent / "server.py"
 SRC = SERVER.read_text(encoding="utf-8")
 TREE = ast.parse(SRC)
 
-# RC-REHAB-1 (Phase 3, seventh extraction slice): get_terrain/get_terrain_radar/
-# get_terrain_strikes moved out of server.py into app/api/routes/terrain.py.
-# _fn/_calls_in must also be able to find a function that moved, since they answer questions
-# about a NAMED function's own body regardless of which file currently owns it.
-_TERRAIN_ROUTES = (
-    Path(__file__).resolve().parent.parent / "app" / "api" / "routes" / "terrain.py"
-)
-_TERRAIN_ROUTES_SRC = _TERRAIN_ROUTES.read_text(encoding="utf-8")
-_TERRAIN_ROUTES_TREE = ast.parse(_TERRAIN_ROUTES_SRC)
-# RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
-# (and its own real, non-UNAVAILABLE compute_terrain call) moved out of server.py entirely,
-# into terrain_refresh.py -- _producers() below now scans _SOURCES (all three files), not
-# just server.py's own TREE, so this real producer site is still found.
-_TERRAIN_REFRESH = Path(__file__).resolve().parent.parent / "terrain_refresh.py"
-_TERRAIN_REFRESH_SRC = _TERRAIN_REFRESH.read_text(encoding="utf-8")
-_TERRAIN_REFRESH_TREE = ast.parse(_TERRAIN_REFRESH_SRC)
-# RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
-# refresh_gamma_surface_from_stream/refresh_gamma_surface_from_spot_tick (two more
-# real, declared producers _producers() must find) moved out of server.py entirely,
-# into gamma_surface_eager_refresh.py.
-_GAMMA_EAGER = Path(__file__).resolve().parent.parent / "gamma_surface_eager_refresh.py"
-_GAMMA_EAGER_SRC = _GAMMA_EAGER.read_text(encoding="utf-8")
-_GAMMA_EAGER_TREE = ast.parse(_GAMMA_EAGER_SRC)
-_SOURCES = (
-    (SRC, TREE),
-    (_TERRAIN_ROUTES_SRC, _TERRAIN_ROUTES_TREE),
-    (_TERRAIN_REFRESH_SRC, _TERRAIN_REFRESH_TREE),
-    (_GAMMA_EAGER_SRC, _GAMMA_EAGER_TREE),
-)
+# The producer census and the named-function lookups scan the WHOLE console process -- the
+# static import closure of server.py (tests/console_runtime.py) -- not a hand-kept file list.
+# The old list (server.py + three modules) missed any producer that moved into a new module:
+# a single-producer lock is only as wide as the code it can see.
+from tests.console_runtime import console_runtime_sources
+
+_SOURCES = tuple((src, tree) for _path, src, tree in console_runtime_sources())
 
 
 def _fn(name: str) -> str:
@@ -68,12 +46,12 @@ def _fn(name: str) -> str:
         for n in ast.walk(tree):
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
                 return ast.get_source_segment(src, n) or ""
-    raise AssertionError(f"{name} not found in server.py or app/api/routes/terrain.py")
+    raise AssertionError(f"{name} not found anywhere in the console runtime")
 
 
 def _producers() -> list[tuple[int, str]]:
     """(line, enclosing function) for every compute_terrain call fed REAL contracts, across
-    every source _SOURCES tracks (server.py, app/api/routes/terrain.py, terrain_refresh.py).
+    the whole console runtime (_SOURCES).
 
     `compute_terrain(tk, None, ...)` is the UNAVAILABLE constructor — it computes no levels from
     data and is therefore not a producer."""

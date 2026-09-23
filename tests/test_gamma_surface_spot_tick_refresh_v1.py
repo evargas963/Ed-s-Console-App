@@ -38,6 +38,7 @@ import gamma_surface_state
 import per_strike_view
 import gamma_surface_projection
 import terrain_state
+import terrain_engine
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -441,7 +442,7 @@ def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(mo
     assert cached_per_strike == expected_per_strike
 
     # ---- 3. Key Levels (gamma_flip/call_wall/put_wall/absolute_gamma_strike/net_gex_peak) ----
-    expected_terrain = server.compute_terrain(TK, _CONTRACTS, new_spot).to_dict()
+    expected_terrain = terrain_engine.compute_terrain(TK, _CONTRACTS, new_spot).to_dict()
     with terrain_state._terrain_cache_lock:
         cached = dict(terrain_state._terrain_cache[TK])
     assert cached["gamma_flip"] != "SENTINEL_STALE"

@@ -2611,32 +2611,38 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_project_l1).',
     ),
     Row(
-        file='server.py', derivation='_radar_atr', disposition='DERIVED',
-        producer_refs=('server.py:_radar_atr_compute_into_cache',),
+        # RC-REHAB-1 (2026-09-23): moved to terrain_radar.py.
+        file='terrain_radar.py', derivation='_radar_atr', disposition='DERIVED',
+        producer_refs=('terrain_radar.py:_radar_atr_compute_into_cache',),
         justification='Cache front for ATR: stale-while-revalidate; no direct Schwab read.',
     ),
     Row(
-        file='server.py', derivation='_radar_atr_compute_into_cache', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (2026-09-23): moved to terrain_radar.py.
+        file='terrain_radar.py', derivation='_radar_atr_compute_into_cache', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='ATR from persisted price_bars_1m (traced collector output); single-flight cache fill.',
     ),
     Row(
-        file='server.py', derivation='_radar_contact', disposition='DERIVED',
-        producer_refs=('server.py:_radar_row',),
+        # RC-REHAB-1 (2026-09-23): moved to terrain_radar.py.
+        file='terrain_radar.py', derivation='_radar_contact', disposition='DERIVED',
+        producer_refs=('terrain_radar.py:_radar_row',),
         justification='Ring classification from existing levels/ATR; thresholds are terrain_atr constants.',
     ),
     Row(
-        file='server.py', derivation='_radar_daily_atr_vendor_fallback', disposition='DERIVED',
+        # RC-REHAB-1 (2026-09-23): moved to terrain_radar.py.
+        file='terrain_radar.py', derivation='_radar_daily_atr_vendor_fallback', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_daily_price_history',),
         justification='RC-484 radar fallback: daily ATR from Schwab DAILY candles when local 1m history spans <15 sessions; delegates to the daily transport wrapper.',
     ),
     Row(
-        file='server.py', derivation='_radar_fallback_recompute', disposition='DERIVED',
+        # RC-REHAB-1 (2026-09-23): moved to terrain_radar.py.
+        file='terrain_radar.py', derivation='_radar_fallback_recompute', disposition='DERIVED',
         producer_refs=('server.py:_fetch_state',),
         justification='Heavy off-request radar sweep recomputed from cached terrain/analytics; no direct leaf read.',
     ),
     Row(
-        file='server.py', derivation='_radar_row', disposition='DERIVED',
+        # RC-REHAB-1 (2026-09-23): moved to terrain_radar.py.
+        file='terrain_radar.py', derivation='_radar_row', disposition='DERIVED',
         producer_refs=('app/api/routes/terrain.py:get_terrain_radar',),
         justification='Projects already-computed terrain fields + ATR distances into a radar row; no new field read.',
     ),
@@ -2716,7 +2722,8 @@ ROWS: tuple[Row, ...] = (
         justification='Fetches one chain and computes terrain into the cache; no model stack, never raises.',
     ),
     Row(
-        file='server.py', derivation='_terrain_snapshots_for_radar', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (2026-09-23): moved to terrain_radar.py.
+        file='terrain_radar.py', derivation='_terrain_snapshots_for_radar', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON; merges the live terrain cache over a memoised stored-chain fallback.',
     ),
