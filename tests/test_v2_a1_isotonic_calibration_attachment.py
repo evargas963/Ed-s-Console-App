@@ -179,14 +179,18 @@ def test_server_logging_path_invokes_isotonic_attachment_after_conformal():
     invalid (empty) slice. This phase itself (stamp/attach/build) was not
     touched by that promotion; re-bounded using the identity-anchor banner
     that still immediately follows it inside _fetch_state's own body."""
-    source = _server_source()
-    window = source[source.index("_v2_logging_ms_dict = _ms_to_dict(ms)") : source.index(
-        "EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor"
-    )]
+    # RC-REHAB-1 (thirty-fifth slice): the v2 logging build is _v2_decision_for_state in
+    # server_state_decision.py; the window is that function's own source.
+    import inspect
 
-    conformal_idx = window.index("attach_a1_conformal_artifact_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)")
-    isotonic_idx = window.index("attach_a1_isotonic_calibration_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)")
-    build_idx = window.index("build_module_a_a1_decision(_v2_logging_ms_dict)")
+    import server_state_decision
+
+    assert "_v2_decision_for_state(" in _server_source()
+    window = inspect.getsource(server_state_decision._v2_decision_for_state)
+
+    conformal_idx = window.index("attach_a1_conformal_artifact_to_ms_dict(logging_ms_dict, ticker=ticker)")
+    isotonic_idx = window.index("attach_a1_isotonic_calibration_to_ms_dict(logging_ms_dict, ticker=ticker)")
+    build_idx = window.index("build_module_a_a1_decision(logging_ms_dict)")
 
     assert conformal_idx < isotonic_idx < build_idx
 

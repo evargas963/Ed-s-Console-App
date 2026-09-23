@@ -1274,8 +1274,12 @@ def test_rc345_kwargs_contract_caller_callee_match() -> None:
         "build_market_state": build_market_state,
         "compute_liquidity_behavior_row": compute_liquidity_behavior_row,
     }
+    # RC-REHAB-1: the build_market_state call site moved to server_state_decision.py
+    # (thirty-fifth slice); every file that calls either callee is checked.
     src = _read("server.py")
-    tree = ast.parse(src)
+    tree = ast.Module(body=[*ast.parse(src).body,
+                            *ast.parse(_read("server_state_decision.py")).body],
+                      type_ignores=[])
     checked = {k: 0 for k in callees}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):

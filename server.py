@@ -532,7 +532,8 @@ from market_context import (
 # own local `from market_context import _derive_session` (line ~6081), shadowing this one.
 # Its sole real caller, _tier_a_live_state_dict, moved to tier_a_live_state.py, which
 # imports it directly; ruff -F401 caught the now-genuinely-dead top-level import.
-from market_state import build_market_state, derive_zone
+# RC-REHAB-1 (thirty-fifth slice): build_market_state is called from server_state_decision.py.
+from market_state import derive_zone
 from vol_observability import vol_observability_payload  # noqa: F401
 # RC-REHAB-1 (Phase 3): vol_observability_payload's only caller, api_vol_observability, moved
 # to app/api/routes/status.py, which imports it back lazily via `from server import
@@ -6278,6 +6279,14 @@ from server_state_quote import _QuoteForState, _quote_and_spread_for_state  # no
 from server_state_payload import _project_state_payload
 # RC-REHAB-1 (2026-09-23): chain+quote intake and the three early exits moved to
 # server_state_intake.py (thirty-fourth slice).
+# RC-REHAB-1 (2026-09-23): MarketState build, v2 decision and execution-identity anchor
+# moved to server_state_decision.py (thirty-fifth slice).
+from server_state_decision import (  # noqa: E402
+    _anchor_execution_identity_for_state,
+    _build_market_state_for_state,
+    _emission_gate_for_state,
+    _v2_decision_for_state,
+)
 from server_state_intake import (  # noqa: E402
     _expiry_slice_empty_state,
     _fetch_chain_and_quote_for_state,
@@ -6691,14 +6700,9 @@ def _fetch_state(
     # _db_counts_and_crosses_for_state (defined above).
     _dbcc = _db_counts_and_crosses_for_state(ticker, _ed_db, walls)
     db_counts = _dbcc.db_counts
-    ceil_tests = _dbcc.ceil_tests
-    floor_tests = _dbcc.floor_tests
-    recent_crosses = _dbcc.recent_crosses
 
-    # session_label already computed above — reuse it
     et_h = now_et.hour
     et_m = now_et.minute
-    mins_to_close = max(0.0, RTH_CLOSE_MINS - (et_h * 60 + et_m))
 
     # RC-REHAB-1 (route-extraction/decomposition audit fix): _candle_volume_for_state
     # is called BEFORE _order_flow_data_for_state, restoring the original inline
@@ -6717,95 +6721,23 @@ def _fetch_state(
 
     # ── Build MarketState ─────────────────────────────────────────────────────
     _stage_marks.append(("db_reads_orderflow_input", time.perf_counter()))
-    if _diag_on():
-        _diag_step("pre_build_market_state", ticker)
     from db import utc_ts as _utc_ts_refresh
     _refresh_ts_utc = _utc_ts_refresh()
-    # RC-534: the emission facts The Call must consume — decision route class + market-data sanity
-    # (ticker, spot, spread age) — computed ONCE here by the gate's own validator on the facts known
-    # before the state is built, and handed to the owner through SignalInput. The Call vetoes itself;
-    # the post-build gate in stamp_decision_bundle stamps quarantine and blocks decision_id /
-    # persistence and REWRITES NOTHING (it was a second writer of the verdict).
-    from trade_impacting_gate import resolve_fetch_state_decision_route, validate_trade_impacting_gate
-
-    _decision_route = resolve_fetch_state_decision_route(update_source)
-    _emission_gate = validate_trade_impacting_gate(
-        {"ticker": ticker, "spot": spot_f, "spread_age_ms": _quote_spread_age_ms},
-        route=_decision_route,
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirty-fifth slice): the RC-534
+    # emission facts, the build_market_state adapter (which reads the phase NamedTuples
+    # directly), the v2 decision and the execution-identity anchor moved to
+    # server_state_decision.py.
+    _decision_route, _emission_gate = _emission_gate_for_state(
+        update_source, ticker=ticker, spot_f=spot_f, spread_age_ms=_quote_spread_age_ms,
     )
-    try:
-        ms = build_market_state(
-        ticker=ticker,
-        selected_exp=selected_exp,
-        session_label=session_label,
-        spot=spot_f,
-        bid=bid,
-        ask=ask,
-        consensus_summary=consensus_summary,
-        contracts_use=contracts_use,
-        walls=walls,
-        totals=totals,
-        price_levels=price_levels,
-        mkt_ctx=mkt_ctx,
-        vol_ctx=vol_ctx,
-        live_on=True,
-        zone_since_bars=zt["since_bars_1m"],
-        zone_since_bars_5m=zt["since_bars_5m"],
-        prev_zone=zt["prev_zone"],
-        ceiling_tests_today=ceil_tests,
-        floor_tests_today=floor_tests,
-        recent_crosses=recent_crosses,
-        total_snapshots=db_counts["total"],  # always keyed (count_snapshots / _db_counts_and_crosses_for_state); None = unknown
-        filled_snapshots=db_counts["filled"],
-        et_hour=et_h,
-        et_minute=et_m,
-        mins_to_close=mins_to_close,
-        candle_direction=_candle_dir,
-        candle_body_pts=_candle_body,
-        candles_5m=_candles_5m.get_bars(ticker),
-        candles_1m=_candles_1m.get_bars(ticker),
-        charm_net=_charm_net,
-        charm_direction=_charm_dir,
-        charm_drift_toward=_charm_toward,
-        charm_magnitude=_charm_mag,
-        charm_top_drivers=_charm_drivers,
-        # RC-292/RC-295: terrain SSOT absolute-gamma strike — the same fail-closed read
-        # the pin score uses above (None when the terrain cache is absent or stale).
-        absolute_gamma_strike=_pin_strike,
-        # Cursor-audit F9 (corrected after the gamma audit): dealer gamma AT SPOT — the regime SIGN
-        # authority — read from the TERRAIN SSOT, the same wide-book value the terrain card renders
-        # as net_gex_at_spot (terrain_engine: compute_gamma_profile over the full multi-expiry
-        # capture book). The first cut of this fix sourced _gamma_flip_diag["gamma_at_spot"], which is
-        # computed on contracts_use — the SELECTED-EXPIRY slice — so the Call could still disagree in
-        # sign with the card, and a one-expiry slice is the wrong basis for a claim about dealer
-        # hedging, which spans the whole book. Fail-closed exactly like the pin read above: no terrain
-        # snapshot, or a stale one, yields None and the consumers emit NO regime claim.
-        net_gamma_at_spot=_regime_gamma_at_spot,
-        iv_direction=_iv_direction,
-        em_upper=_em_up,
-        em_lower=_em_lo,
-        mc_iv_level=_mc_iv_level,
-        mc_em_anchor=_kl_em_anchor,
-        mc_iv_source=_mc_iv_source,
-        realized_vol=_realized_vol,
-        atr=_atr,
-        garch_sigma_bars=_garch_sigma_bars,
-        candle_volume=_c_vol,
-        flow_imbalance=_flow_imb_norm,
-        spread=_quote_spread,
-        iv_rank=_iv_rank,
-        smart_money_score=_smart_money.get("score") if _smart_money else None,
-        breakout_score=_breakout_score.get("normalized") if _breakout_score else None,
-        pin_score=_pin_score_val.get("normalized") if _pin_score_val else None,
-        order_flow_data=_order_flow_data,
-        db=_ed_db,
-        pred_override=_get_prediction_override(ticker),
-        refresh_ts_utc=_refresh_ts_utc,
-        emission_gate=_emission_gate,
+    ms = _build_market_state_for_state(
+        ticker=ticker, selected_exp=selected_exp, session_label=session_label,
+        contracts_use=contracts_use, q=_q, exp=_exp, gfvz=_gfvz, charm=_charm, cd=_cd,
+        em=_em, vs=_vs, garch_sigma_bars=_garch_sigma_bars, ofs=_ofs, pp=_pp, ves=_ves,
+        zt=zt, dbcc=_dbcc, price_levels=price_levels, mkt_ctx=mkt_ctx, c_vol=_c_vol,
+        order_flow_data=_order_flow_data, db=_ed_db, now_et=now_et,
+        refresh_ts_utc=_refresh_ts_utc, emission_gate=_emission_gate,
     )
-    except Exception as _bms_e:
-        _diag_crash("build_market_state", _bms_e, ticker)
-        raise
     _stage_marks.append(("signals_engine_build_market_state", time.perf_counter()))
     if _diag_on():
         _diag_done("build_market_state", ticker)
@@ -6830,144 +6762,15 @@ def _fetch_state(
     )
     _stage_marks.append(("context_news", time.perf_counter()))
 
-    # ── V2 decision build (pre-publish) ──────────────────────────────────────
-    # FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1: the decision is computed BEFORE the
-    # bundle publish and the SAME object is served (ms_dict["v2_decision"]) and
-    # logged by the post-publish calibration append — no served/logged drift.
-    _v2_decision_for_response = None
-    _v2_logging_ms_dict = None  # bound before the try: the identity anchor reads it
-    try:
-        _v2_logging_ms_dict = _ms_to_dict(ms)
-        _v2_logging_ms_dict["selected_exp"] = selected_exp
-        _v2_logging_ms_dict["decision_time_ms"] = int(_refresh_ts_utc * 1000)
-        _v2_logging_ms_dict["_server_build_ts"] = time.time()
-        _attach_stack_runtime_and_governance(_v2_logging_ms_dict, ticker=ticker)
-        _apply_trader_horizon_contract(_v2_logging_ms_dict)
-        stamp_decision_bundle(_v2_logging_ms_dict)
-        attach_a1_conformal_artifact_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)
-        attach_a1_isotonic_calibration_to_ms_dict(_v2_logging_ms_dict, ticker=ticker)
-        _v2_decision_for_response = build_module_a_a1_decision(_v2_logging_ms_dict)
-    except Exception as _v2_build_e:
-        log.warning("v2 decision build failed: %s", _v2_build_e)
-
-    # ── EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor ─────────
-    # Anchor the ONE (decision_id, execution_identity) pair for this cycle
-    # BEFORE every governed consumer: the production-decision finalize (full
-    # path), the log_only early return, and the post-publish persistence tail
-    # (snapshot + calibration writes). Root cause of the 2026-07-13 RTH
-    # contradiction: the anchor lived inside the tail, which runs AFTER
-    # _finalize_production_decision on the full path — stamping minted a
-    # decision_id with no identity and the linkage trigger refused every
-    # production-decision write (255/258 ledgers OPEN missing "decision").
-    # expected_surfaces mirror the cycle's REAL writers: "decision" only when
-    # this cycle finalizes on a production route (never on log_only),
-    # "snapshot" only when the per-minute throttle reservation admits this
-    # cycle, "calibration" only when logging is enabled and the payload +
-    # served v2 decision exist. A writer-side divergence after anchoring
-    # leaves the ledger OPEN → INCOMPLETE (honest, mechanically visible).
-    # Schwab CSV authority checked: yes
-    # CSV row(s): NO_SCHWAB_EQUIVALENT — provenance anchor ordering only;
-    #   no market field read, derived, or emitted by this block.
-    # Derived-field disposition: none required.
-    # All consumers checked: yes — finalize (ms_dict pair seed), tail snapshot
-    #   kwargs, tail calibration append, v2 logging dict; all consume the one
-    #   anchored pair below.
-    # SCHWAB_CSV_CHECKED
-    _xid_do_snapshot_insert = False
-    if _ed_db:
-        try:
-            # Reservation hoisted from the tail (same key: ticker + refresh ts;
-            # still exactly one reservation per cycle). The tail releases it on
-            # a failed insert exactly as before.
-            _xid_do_snapshot_insert = bool(
-                _snapshot_row_insert_allowed(ticker, _refresh_ts_utc, db=_ed_db)
-            )
-        except Exception as _thr_e:
-            log.warning("snapshot throttle reservation failed ticker=%s: %s", ticker, _thr_e)
-    # Model-derived predicate reads the SAME source the snapshot writer uses
-    # (the tail sets combined_signal=ms.call_signal) — noncanonical runtime
-    # proof 2026-07-13 caught the v2-dict projection lacking this key, which
-    # skipped the anchor and fail-closed every model-derived surface.
-    _xid_model_derived = getattr(ms, "call_signal", None) is not None
-    if _ed_db and _xid_model_derived:
-        from decision_record import new_decision_id as _new_did
-        from execution_identity import ExecutionIdentityError as _XidErr
-        from execution_identity import anchor_production_execution as _xid_anchor
-        from trade_impacting_gate import (
-            classify_route as _xid_classify_route,
-            resolve_fetch_state_decision_route as _xid_resolve_route,
-        )
-        from calibration.writer import calibration_logging_enabled as _cal_on
-
-        _v2md = _v2_logging_ms_dict
-        # ONE cycle = ONE decision: the v2 build's stamped decision_id (same
-        # MarketState, same refresh, gate-checked) is the single owner; every
-        # downstream writer consumes it and stamp_decision_bundle reuses it.
-        _xid_did = str(_v2md.get("decision_id") or "") or _new_did()
-        _xid_route = _xid_resolve_route(update_source)
-        _xid_expected_decision = (
-            (not log_only)
-            and bool(_v2md.get("decision_id"))
-            and _xid_classify_route(_xid_route) == "production"
-        )
-        # FP-24: expect calibration only when this cycle reserved a snapshot
-        # slot — otherwise decision_ts (wall clock) drifts past tol=29 from the
-        # minute's single snapshot and outcome join debt accumulates.
-        _xid_expected_cal = bool(
-            _cal_on()
-            and getattr(ms, "_calibration_payload", None)
-            and _v2_decision_for_response is not None
-            and _xid_do_snapshot_insert
-        )
-        _xid_surfaces = []
-        if _xid_expected_decision:
-            _xid_surfaces.append("decision")
-        if _xid_do_snapshot_insert:
-            _xid_surfaces.append("snapshot")
-        if _xid_expected_cal:
-            _xid_surfaces.append("calibration")
-        # Exact calibration state USED by this cycle's decision: attached at
-        # the v2 build (BEFORE this anchor); absence recorded explicitly.
-        _cal_info = None
-        _conf = _v2md.get("a1_conformal_artifact")
-        _iso_lineage = _v2md.get("a1_calibrated_probability_lineage_id")
-        if isinstance(_conf, dict) or _iso_lineage:
-            _cal_info = {
-                str(_v2md.get("primary_horizon") or "1c"): {
-                    "conformal": (
-                        {
-                            k: _conf.get(k)
-                            for k in ("run_id", "lineage_id", "artifact_id",
-                                       "created_at", "horizon", "ticker")
-                            if _conf.get(k) is not None
-                        }
-                        if isinstance(_conf, dict) else None
-                    ),
-                    "isotonic_lineage_id": _iso_lineage,
-                }
-            }
-        if _xid_surfaces:
-            try:
-                with _ed_db._connect() as _xconn0:
-                    _xid_sha0 = _xid_anchor(
-                        requested_ticker=ticker,
-                        serving_provenance=getattr(ms, "model_serving_provenance_v1", None),
-                        calibration_info=_cal_info,
-                        db_conn=_xconn0,
-                        decision_id=_xid_did,
-                        executed_at_utc=float(_refresh_ts_utc),
-                        expected_surfaces=_xid_surfaces,
-                    )
-            except _XidErr as _x_exc0:
-                log.error(
-                    "EXECUTION_IDENTITY_REFUSED ticker=%s reason=%s — every "
-                    "model-derived persistence surface REFUSED this cycle (fail closed)",
-                    ticker, _x_exc0,
-                )
-            else:
-                setattr(ms, "_execution_identity_pair", (_xid_did, _xid_sha0))
-                _v2_logging_ms_dict["decision_id"] = _xid_did
-                _v2_logging_ms_dict["execution_identity_sha256"] = _xid_sha0
+    # ── V2 decision build (pre-publish) + execution-identity anchor ──────────
+    _v2_decision_for_response, _v2_logging_ms_dict = _v2_decision_for_state(
+        ms, ticker=ticker, selected_exp=selected_exp, refresh_ts_utc=_refresh_ts_utc,
+    )
+    _xid_do_snapshot_insert, _xid_model_derived = _anchor_execution_identity_for_state(
+        ms, ticker=ticker, db=_ed_db, refresh_ts_utc=_refresh_ts_utc,
+        v2_decision=_v2_decision_for_response, v2_logging_ms_dict=_v2_logging_ms_dict,
+        log_only=log_only, decision_route=_decision_route,
+    )
     _stage_marks.append(("execution_identity_anchor", time.perf_counter()))
 
     # ── FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 — post-publish persistence tail ──

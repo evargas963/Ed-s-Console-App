@@ -69,7 +69,8 @@ def test_compute_sweep_score_called_after_build_market_state():
     src = _fetch_state_source()
     call_calls = [i for i in range(len(src)) if src.startswith("_post_build_sweep_score_for_state(", i)]
     assert call_calls, "_fetch_state must call _post_build_sweep_score_for_state at least once"
-    build_idx = src.find("build_market_state(")
+    # RC-REHAB-1 (thirty-fifth slice): the build is _build_market_state_for_state.
+    build_idx = src.find("_build_market_state_for_state(")
     assert build_idx > 0, "_fetch_state must call build_market_state"
     for pos in call_calls:
         assert pos > build_idx, (

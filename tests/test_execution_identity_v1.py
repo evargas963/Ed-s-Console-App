@@ -535,14 +535,18 @@ def test_server_model_derived_snapshot_write_is_anchor_guarded():
     now, not a server.py substring slice."""
     root = Path(__file__).resolve().parent.parent
     src = (root / "server.py").read_text(encoding="utf-8")
-    i_anchor = src.index("anchor_production_execution as _xid_anchor")
+    # RC-REHAB-1 (thirty-fifth slice): the anchor body moved to server_state_decision.py;
+    # _fetch_state CALLS it, and that call must precede the tail's full-path call site.
+    dec_src = (root / "server_state_decision.py").read_text(encoding="utf-8")
+    i_anchor = src.index("_anchor_execution_identity_for_state(\n        ms,")
     i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
     assert i_anchor < i_full_call, "anchor must precede the tail's full-path call site"
+    assert "anchor_production_execution(" in dec_src
     tail_src = (root / "server_state_persistence_tail.py").read_text(encoding="utf-8")
     i_refuse = tail_src.index("if _xid_refused:")
     i_model_insert = tail_src.index("_ed_db.insert_snapshot(_snap)")
     assert i_refuse < i_model_insert, "refuse-check must precede the insert within the tail"
-    assert "EXECUTION_IDENTITY_REFUSED" in src
+    assert "EXECUTION_IDENTITY_REFUSED" in dec_src
     # quote-only path (lightweight builder) carries no identity wiring
     i_light = src.index("build_lightweight_snapshot_row_from_quote")
     seg = src[i_light : i_light + 600]
@@ -634,17 +638,22 @@ def test_server_anchor_precedes_finalize_and_log_only_tail():
     module-level function (defined BEFORE _fetch_state now, not after the anchor
     site inside it), and its call sites are multi-line (61 keyword-only args)."""
     text = _server_text()
-    anchor_at = text.index(
-        "EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor"
-    )
+    # RC-REHAB-1 (thirty-fifth slice): the anchor body lives in server_state_decision.py;
+    # execution order is the order of the CALLS inside _fetch_state.
+    anchor_at = text.index("_anchor_execution_identity_for_state(\n        ms,")
     log_only_tail_at = text.index(
         '_post_publish_persistence_tail(\n        None, _v2_decision_for_response'
     )
     finalize_at = text.index("_finalize_production_decision(ms_dict, _decision_route)")
     assert anchor_at < log_only_tail_at, "anchor must precede the log_only tail call"
     assert anchor_at < finalize_at, "anchor must precede the production-decision finalize"
-    # Exactly one anchor call site, and it is NOT inside the persistence tail.
-    assert text.count("anchor_production_execution as _xid_anchor") == 1
+    # Exactly one anchor call site, and it is NOT inside the persistence tail or server.py.
+    from pathlib import Path as _P
+
+    dec_text = (_P(__file__).resolve().parent.parent / "server_state_decision.py").read_text(encoding="utf-8")
+    assert dec_text.count("anchor_production_execution(") == 1
+    assert "anchor_production_execution" not in text
+    assert text.count("_anchor_execution_identity_for_state(") == 1
     # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out of
     # server.py entirely into server_state_persistence_tail.py -- checked against that
     # file's own full text now, not a server.py substring slice.

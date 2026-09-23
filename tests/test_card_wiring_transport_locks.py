@@ -445,8 +445,12 @@ def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
     # the pre-publish identity anchor (same key: ticker + refresh ts, same db
     # handle) and the tail consumes it — the durable-probe db handle and the
     # single-reservation-per-cycle semantics are unchanged.
-    assert "_snapshot_row_insert_allowed(ticker, _refresh_ts_utc, db=_ed_db)" in seg, (
-        "_fetch_state gate call lost the durable-probe db handle"
+    # RC-REHAB-1 (thirty-fifth slice): the reservation is taken inside the identity anchor
+    # (server_state_decision.py), which _fetch_state calls with its own db handle.
+    assert "_anchor_execution_identity_for_state(" in seg and "db=_ed_db" in seg
+    dec_src = (ROOT / "server_state_decision.py").read_text(encoding="utf-8")
+    assert "_srv._snapshot_row_insert_allowed(ticker, refresh_ts_utc, db=db)" in dec_src, (
+        "the anchor's gate call lost the durable-probe db handle"
     )
     assert "_do_insert = _xid_do_snapshot_insert" in tail_seg, (
         "the persistence tail must consume the hoisted reservation"

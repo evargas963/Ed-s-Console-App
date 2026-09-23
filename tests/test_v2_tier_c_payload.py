@@ -32,7 +32,8 @@ def test_tier_c_single_phase_calibration_write_after_v2_before_log_only_return()
     itself still lives inside the tail's own body."""
     server_source = (ROOT / "server.py").read_text(encoding="utf-8")
 
-    v2_idx = server_source.index("_v2_decision_for_response = build_module_a_a1_decision")
+    # RC-REHAB-1 (thirty-fifth slice): the v2 build is _v2_decision_for_state.
+    v2_idx = server_source.index("_v2_decision_for_response, _v2_logging_ms_dict = _v2_decision_for_state(")
     log_only_tail_call_idx = server_source.index(
         '_post_publish_persistence_tail(\n        None, _v2_decision_for_response', v2_idx
     )

@@ -28,8 +28,15 @@ def test_expected_calibration_requires_snapshot_reservation() -> None:
         if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state"
     )
     seg = ast.get_source_segment(SERVER, fn) or ""
-    assert "and _xid_do_snapshot_insert" in seg
-    assert "_xid_expected_cal = bool(" in seg
+    # RC-REHAB-1 (thirty-fifth slice): the anchor body is _anchor_execution_identity_for_state.
+    assert "_anchor_execution_identity_for_state(" in seg
+    import inspect
+
+    import server_state_decision
+
+    anchor = inspect.getsource(server_state_decision._anchor_execution_identity_for_state)
+    assert "and do_snapshot_insert" in anchor
+    assert "expected_cal = bool(" in anchor
 
 
 def test_server_tail_uses_resolve_helper() -> None:

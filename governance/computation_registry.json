@@ -17,6 +17,7 @@
 "server_state_predictive_positioning.py",
 "server_state_payload.py",
 "server_state_intake.py",
+"server_state_decision.py",
 "server_state_quote.py",
 "server_state_signals.py",
 "server_state_vol_envelope_sector.py",
