@@ -8,7 +8,7 @@ Consensus plan v1.2 (docs/CONSOLE_REBUILD_PLAN_CR_V1.md §4). Laws encoded here:
   - raw streams write ONLY to stream_capture.db — ed_console.db grows zero bytes.
   - health is first-class: a stale feed must look different from a quiet market.
 
-Pure asyncio; no Schwab/Alpaca imports here. The capture daemon (tools/) plugs feed
+Pure asyncio; no Schwab imports here. The capture daemon (tools/) plugs feed
 clients into `MessageBus.publish` and runs `CaptureWriter.run` + `HealthRegistry`.
 """
 
@@ -123,15 +123,6 @@ CREATE TABLE IF NOT EXISTS stream_coverage_epochs (
     reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sce_sym_svc ON stream_coverage_epochs(symbol, service);
-CREATE TABLE IF NOT EXISTS stream_prints_raw (
-    ts_recv REAL NOT NULL,
-    symbol TEXT NOT NULL,
-    price REAL, size INTEGER,
-    exchange TEXT, conditions TEXT,
-    trade_ts_ms INTEGER,
-    src TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_spr_sym_ts ON stream_prints_raw(symbol, ts_recv);
 CREATE TABLE IF NOT EXISTS stream_bars_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -552,13 +543,6 @@ def read_active_option_contracts_signal(
     return _read_json_list_signal("contract_symbols", path=dest)
 
 
-def print_msg(*, symbol: str, price=None, size=None, exchange=None, conditions=None,
-              trade_ts_ms=None, src: str, ts_recv: float | None = None) -> dict:
-    return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
-            "price": price, "size": size, "exchange": exchange, "conditions": conditions,
-            "trade_ts_ms": trade_ts_ms, "src": src}
-
-
 def bar_msg(*, symbol: str, bar_start_ms=None, open=None, high=None, low=None, close=None,  # noqa: A002
             volume=None, src: str, ts_recv: float | None = None) -> dict:
     return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
@@ -780,13 +764,6 @@ class CaptureWriter:
                 "VALUES(?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), json.dumps(content),
                  msg.get("src", "?")))  # caps-ok: src is a required kwarg on options_quote_msg (no default); same guard as the quote branch above
-        elif kind == "print":
-            db.execute(
-                "INSERT INTO stream_prints_raw(ts_recv,symbol,price,size,exchange,conditions,"
-                "trade_ts_ms,src) VALUES(?,?,?,?,?,?,?,?)",
-                (msg.get("ts_recv"), msg.get("symbol"), msg.get("price"), msg.get("size"),
-                 msg.get("exchange"), msg.get("conditions"), msg.get("trade_ts_ms"),
-                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on print_msg (no default); same guard as the quote branch above
         elif kind == "bar1m":
             db.execute(
                 "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
@@ -998,7 +975,7 @@ class CaptureWriter:
         """Persist every bus message -- WITHOUT ever blocking the event loop.
 
         MEASURED 2026-09-23: this used to execute every SQLite insert and commit on the SAME
-        asyncio loop that reads the Schwab and Alpaca websockets. A slow commit (a busy
+        asyncio loop that reads the Schwab websocket. A slow commit (a busy
         disk, a reader holding the WAL) stalled the socket reads; the writer queue reached
         6,565 and 9,784 messages were dropped. Now the loop only hands each message to a
         thread-safe queue (put, never blocks) and a dedicated thread, which owns its own

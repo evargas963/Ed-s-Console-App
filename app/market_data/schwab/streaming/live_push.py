@@ -7,8 +7,8 @@ they are published, so the console's live values never wait on a database write 
 SQLite (stream_capture.db) stays the permanent record, written by the writer thread; it is
 not in the live path.
 
-What is forwarded -- Schwab only, never Alpaca (Alpaca IEX publishes on the same
-`quote.SYM` topics and is not a source for any live value):
+What is forwarded -- Schwab only, by each message's `src` (anything else published on
+the same topics is refused):
   quote.SYM    src "schwab_l1"          LEVELONE_EQUITIES
   book.SYM     src "schwab_book"        NASDAQ_BOOK / NYSE_BOOK / OPTIONS_BOOK (by `service`)
   optquote.SYM src "schwab_options_l1"  LEVELONE_OPTIONS

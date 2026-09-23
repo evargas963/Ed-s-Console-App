@@ -7,7 +7,7 @@ prove the seam the 2026-09-23 transport change created:
 
   * a Schwab message published on the daemon's bus reaches the console's live-price plane
     with its OWN receive time (never the time the console processed it);
-  * Alpaca messages on the same topics are never forwarded;
+  * only Schwab-sourced messages are forwarded (any other src on the same topic is not);
   * a connecting console first receives the bus's last values, then live messages;
   * the live loop never opens the capture database;
   * with the push server down nothing is served, and the feed picks up when it returns.
@@ -121,11 +121,11 @@ def test_a_quote_only_tick_does_not_refresh_the_last_trade_age(feed):
     asyncio.run(_run(feed, body))
 
 
-def test_alpaca_messages_on_the_same_topic_are_never_forwarded(feed):
+def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
         bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, ask=1.1, last=1.05,
-                                           src="alpaca_iex", ts_recv=time.time(),
+                                           src="not_schwab", ts_recv=time.time(),
                                            native={"LAST_PRICE": 1.05}))
         bus.publish("quote.SPY", _spy_trade(502.0, time.time()))
         assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 502.0)
