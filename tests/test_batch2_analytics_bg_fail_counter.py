@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+import analytics_bg_recompute
+
 
 @pytest.fixture()
 def _bg_fail_spy():
@@ -72,7 +74,7 @@ def test_schedule_analytics_recompute_wires_fail_counter(monkeypatch, _bg_fail_s
         raise RuntimeError("bg fetch failed")
 
     monkeypatch.setattr(srv, "_fetch_state", _boom)
-    monkeypatch.setattr(srv, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
+    monkeypatch.setattr(analytics_bg_recompute, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
     monkeypatch.setattr(srv._analytics_executor, "submit", lambda fn: fn())
     # UI_05: operator-class sources route to the priority pool — pin it to the
     # same inline-submit executor so this test stays synchronous.
@@ -98,7 +100,7 @@ def test_schedule_analytics_recompute_resets_counter_on_success(monkeypatch, _bg
         return {"ticker": ticker, "selected_exp": expiry}
 
     monkeypatch.setattr(srv, "_fetch_state", _flaky)
-    monkeypatch.setattr(srv, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
+    monkeypatch.setattr(analytics_bg_recompute, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
     monkeypatch.setattr(srv._analytics_executor, "submit", lambda fn: fn())
     # UI_05: operator-class sources route to the priority pool — pin it to the
     # same inline-submit executor so this test stays synchronous.
