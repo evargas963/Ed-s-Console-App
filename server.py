@@ -32,7 +32,6 @@ Install deps (once):
 from __future__ import annotations
 
 import os
-import shutil
 import signal
 import sys
 import time
@@ -7698,159 +7697,15 @@ def _fetch_state(
     ms_dict["iv_model_spread"]       = _iv_model_spread.get("spread")
     ms_dict["iv_model_spread_label"] = _iv_model_spread.get("label")
 
-    # ── Model Health Dashboard (per-ticker ML stack artifacts from active/) ─────────
-    # Status semantics: LIVE = binary + meta + provenance compliant; NON-COMPLIANT = binary+meta, no provenance;
-    # BINARY MISSING = meta exists, binary absent; NOT TRAINED = no meta
-    _model_health = []
-    _models_dir = Path(__file__).parent / "models"
-    try:
-        from ml_horizon import live_inference_horizon_slug as _live_ml_hz_slug
-
-        _dashboard_ml_hz = _live_ml_hz_slug()
-    except Exception:
-        _dashboard_ml_hz = "1c"
-    _arch_path = _models_dir / "arch_state.json"
-    _dashboard_ticker = "SPY"
-    if _arch_path.exists():
-        try:
-            _arch = json.loads(_arch_path.read_text())
-            _dashboard_ticker = next((t for t in ("SPY", "QQQ", "IWM") if t in _arch), next(iter(_arch), "SPY"))
-        except Exception as e:
-            log.debug("dashboard arch_state.json parse failed: %s", e, exc_info=True)
-    _active_dir = _models_dir / "active" / _dashboard_ticker
-
-    # Sync missing binaries: if active has meta but not .pt/.pkl, copy from parallel/cascade/flat.
-    # Log explicitly; warn when sync is used — indicates promotion pipeline may not have run.
-    def _sync_missing_binaries_to_active(ticker: str, active_dir: Path) -> int:
-        """Copy missing binaries from candidate dirs. Returns count of files synced."""
-        allow_sync = os.environ.get("ED_ALLOW_ACTIVE_SYNC", "0").strip().lower() in ("1", "true", "yes")
-        if not allow_sync:
-            log.info("Active artifact sync disabled (set ED_ALLOW_ACTIVE_SYNC=1 to enable)")
-            return 0
-        t = ticker
-        synced = 0
-        hz = _dashboard_ml_hz
-        for model_file, meta_file in [
-            (f"lstm_{t}_{hz}.pt", f"lstm_{t}_{hz}_meta.json"),
-            (f"transformer_{t}_{hz}.pt", f"transformer_{t}_{hz}_meta.json"),
-            (f"xgb_{t}_{hz}.pkl", f"xgb_{t}_{hz}_meta.json"),
-        ]:
-            dest = active_dir / model_file
-            meta = active_dir / meta_file
-            if meta.exists() and not dest.exists():
-                for src_dir in [
-                    _models_dir / "parallel" / t,
-                    _models_dir / "cascade" / t,
-                    _models_dir,  # flat train_all output
-                ]:
-                    src = src_dir / model_file
-                    if src.exists():
-                        try:
-                            shutil.copy2(src, dest)
-                            synced += 1
-                            log.info("Synced %s to active/%s/%s (from %s)", model_file, t, model_file, src_dir.name)
-                            break
-                        except Exception as e:
-                            log.warning("Sync %s failed: %s", model_file, e)
-        if synced > 0:
-            log.warning(
-                "Model sync used for %s (%d file(s)) — promotion pipeline may not have run. "
-                "Run: python ml_scheduler.py --run-now",
-                ticker, synced,
-            )
-        return synced
-    try:
-        _sync_count = _sync_missing_binaries_to_active(_dashboard_ticker, _active_dir)
-    except Exception as e:
-        log.debug("sync_missing_binaries: %s", e)
-        _sync_count = 0
-
-    # Governance-aware status from compliance check
-    try:
-        from verify_active_models import check_artifact_compliance
-        _comp = check_artifact_compliance(_dashboard_ticker)
-    except Exception:
-        _comp = {"compliant": False, "artifacts": {}, "issues": None}
-    _artifacts = _comp.get("artifacts", {})
-
-    def _model_status_from_artifact(name: str, display_name: str, meta_path: Path, edge_key: str, version_key: str = "version") -> dict:
-        art = _artifacts.get(name, {"exists": False, "has_provenance": False, "issues": []})
-        meta_exists = meta_path.exists()
-        if not meta_exists:
-            return {"model": display_name, "status": "NOT TRAINED", "status_reason": "No metadata — model never promoted", "edge": None, "version": "—", "ticker": _dashboard_ticker}
-        if not art.get("exists", False):
-            return {"model": display_name, "status": "BINARY MISSING", "status_reason": "Metadata present but model file missing — run training/promotion", "edge": None, "version": "—", "ticker": _dashboard_ticker}
-        if not art.get("has_provenance", False):
-            issues = "; ".join(art.get("issues", [])) or "Metadata lacks provenance"
-            return {"model": display_name, "status": "NON-COMPLIANT", "status_reason": issues, "edge": None, "version": "—", "ticker": _dashboard_ticker}
-        # RC-377 (Cursor drift-audit F1): this display path parses the SAME governed
-        # meta the serve path refuses when tampered — without the Item-4 verify here,
-        # the weakest parser of the artifact defines the real integrity boundary.
-        from ml_predict import _verify_governed_artifact as _item4_verify
-        if _item4_verify(_active_dir, _dashboard_ticker, _dashboard_ml_hz, f"{name}_meta", meta_path.name) is None:
-            return {"model": display_name, "status": "INTEGRITY FAILED",
-                    "status_reason": "Metadata failed bundle integrity verification — not parsed",
-                    "edge": None, "version": "—", "ticker": _dashboard_ticker}
-        try:
-            _m = json.loads(meta_path.read_text())
-            # RC-285: no `, 0` default. A model whose metadata omits the metric has not
-            # scored zero edge, it has not been scored — and my earlier annotation defending
-            # 0 as "this endpoint's existing missing convention" described the defect rather
-            # than justifying it. `status` is no longer load-bearing for reading `edge`.
-            # RC-291: NO val_accuracy fallback. RC-285 removed the `, 0` default and then
-            # substituted a DIFFERENT METRIC — accuracy is not edge over a baseline, so a
-            # coin-flip model with val_accuracy 0.55 published `edge: 55.0` and the UI counts
-            # every LIVE model toward "N approved". Substituting a different measurement is
-            # worse than reporting none, because none is legible and a wrong one is not.
-            from numeric_contract import float_finite_or_none as _fin_edge
-            # RC-364/RC-291 port: edge comes ONLY from the requested edge metric — never a
-            # val_accuracy translation (accuracy is not edge over a baseline; a coin-flip
-            # model with val_accuracy 0.55 must not publish edge 55.0 and read as approved).
-            # val_accuracy is stamped under its OWN name for any consumer that wants it.
-            edge = _fin_edge(_m.get(edge_key))
-            val_accuracy = _fin_edge(_m.get("val_accuracy"))
-            version = _m.get(version_key, _m.get("model_version", "—"))
-        except Exception:
-            edge, version, val_accuracy = None, "—", None
-        # RC-293: compliant with NO edge measurement is not APPROVED. RC-291 made `edge`
-        # an honest None and left status LIVE, and static/index.html counts every LIVE model
-        # toward "N approved" — so a model nobody scored still read as approved, which was
-        # the substance of the finding rather than the field's type.
-        if edge is None:
-            return {"model": display_name, "status": "UNSCORED",
-                    "status_reason": "Binary + metadata + provenance compliant, but no edge "
-                                     "metric recorded — not scored, so not approved",
-                    "edge": None, "val_accuracy": val_accuracy, "metric_name": edge_key,
-                    "version": version or "—", "ticker": _dashboard_ticker}
-        return {"model": display_name, "status": "LIVE", "status_reason": "Binary + metadata + provenance compliant", "edge": edge, "val_accuracy": val_accuracy, "metric_name": edge_key, "version": version or "—", "ticker": _dashboard_ticker}
-
-    _xgb_meta = _active_dir / f"xgb_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
-    _lstm_meta = _active_dir / f"lstm_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
-    _tf_meta = _active_dir / f"transformer_{_dashboard_ticker}_{_dashboard_ml_hz}_meta.json"
-    try:
-        _model_health.append(_model_status_from_artifact("xgb", "XGBoost", _xgb_meta, "edge_pp", "model_version"))
-    except Exception:
-        _model_health.append({"model": "XGBoost", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
-    try:
-        _model_health.append(_model_status_from_artifact("transformer", "Transformer", _tf_meta, "edge_pp"))
-    except Exception:
-        _model_health.append({"model": "Transformer", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
-    try:
-        # RC-364/RC-291 port: request edge_pp for LSTM like every other model — absent
-        # edge_pp → edge None → UNSCORED, never val_accuracy masquerading as edge.
-        _model_health.append(_model_status_from_artifact("lstm", "LSTM", _lstm_meta, "edge_pp", "model_type"))
-    except Exception:
-        _model_health.append({"model": "LSTM", "status": "ERROR", "status_reason": "Check failed", "edge": None, "version": "—", "ticker": _dashboard_ticker})
-
-    # MC + Rules + Regime + Fusion (always live)
-    for m in [{"model": "Monte Carlo", "version": "10K paths"}, {"model": "Regime Engine", "version": "8 families"}, {"model": "Bayesian Fusion", "version": "6 posteriors"}]:
-        _model_health.append({**m, "status": "LIVE", "status_reason": "Always active", "edge": None, "ticker": _dashboard_ticker})
-
-    ms_dict["model_health"] = _model_health
-    ms_dict["n_models_live"] = sum(1 for m in _model_health if m["status"] == "LIVE")
-    ms_dict["model_sync_used"] = _sync_count > 0  # True when binaries were recovered via sync (publication problem)
-    ms_dict["active_compliant"] = _comp.get("compliant")
-    ms_dict["active_compliance_issues"] = _comp.get("issues")
+    # RC-REHAB-1 (2026-09-23): the per-cycle Model Health Dashboard block that lived here
+    # (model_health / n_models_live / model_sync_used / active_compliant /
+    # active_compliance_issues) was DELETED, not moved: zero consumers anywhere (the
+    # /console rebuild has no model-health surface; no backend reader, no registry), it
+    # re-read arch_state.json + every active meta + a bundle-integrity verify on EVERY
+    # _fetch_state cycle for every tracked ticker, it carried the request-path
+    # ED_ALLOW_ACTIVE_SYNC file-copy mutation, and its hard-coded "Monte Carlo: LIVE,
+    # Always active" row became false when #262 turned the live model stack off.
+    # verify_active_models.py remains the artifact-compliance authority.
 
     # ── Confluence (market context) ────────────────────────────────────────────
     ms_dict["spy_chg_pct"]    = getattr(mkt_ctx, "spy_chg_pct",  None)

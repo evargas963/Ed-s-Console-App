@@ -28,7 +28,6 @@ Truthy for most flags: `1`, `true`, `yes`, `on` (case-insensitive). Falsy: `0`, 
 | `ED_CONSOLE_PORT` | `8000` | HTTP port (reload URL derivation) |
 | `ED_CONSOLE_RELOAD_URL` | derived | `POST` target for model registry reload after promote |
 | `ED_CONSOLE_RELOAD_TOKEN` | empty | Optional Bearer token for reload route |
-| `ED_ALLOW_ACTIVE_SYNC` | `0` | Request-path active mutation (G4-1; keep off) |
 | `ED_CONSOLE_ALLOW_PRED_OVERRIDE` | off | Allow prediction override paths |
 | `ED_VIEWER_SSE_REFRESH_SEC` | `1.0` | Viewer SSE interval |
 | `ED_VIEWER_STATE_CACHE_TTL_SEC` | `1.0` | State cache TTL |

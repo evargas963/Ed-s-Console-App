@@ -98,7 +98,7 @@ untouched by this note.
 
 | surface | field | producer | transport | client_clock | stale_rule | test | open_items_id | phase_2_3 |
 |---------|-------|----------|-------------|--------------|------------|------|---------------|-------------|
-| Diagnostic: Model Health panel | `model_health[*].edge`, `.version` | `server.py:5196-5213` (`json.loads` L5136 arch + L5207 meta) | SSE Tier C | `decision_generation_id` | On meta load failure: status enum + `0` / `"—"` (not silent NameError) | `tests/test_audit_cand_server_py_full_read_v1.py::test_no_underscore_json_references` | FIND-SERVERPY-14 | producer-only closed @ 05c48d8 (`index.html` L5987+ consumes `model_health`) |
+| Diagnostic: Model Health panel | RETIRED (`model_health`, `n_models_live`, `model_sync_used`, `active_compliant`, `active_compliance_issues`) | none — producer deleted from `server.py::_fetch_state` (RC-REHAB-1, 2026-09-23): zero consumers after the /console rebuild; artifact compliance is `verify_active_models.py` | — | — | — | — | FIND-SERVERPY-14 | retired |
 | Diagnostic: `/api/debug/prediction` | `db_zone_distribution` | `server.py:7414` → `db.py:3705` (`get_zone_distribution`) | HTTP GET one-shot | N/A | Empty dict OK; no error trace | `tests/test_audit_cand_server_py_full_read_v1.py::test_debug_prediction_returns_populated_distribution` | FIND-SERVERPY-19 | producer-only closed |
 
 ---
