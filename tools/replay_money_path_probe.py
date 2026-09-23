@@ -27,6 +27,7 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from db import DB_PATH
+from json_blob_codec import decode_json_blob
 from money_path_ticker_tiers import (
     BASE_MONEY_PATH_TICKERS,
     TRUST_BASE,
@@ -140,7 +141,8 @@ def cal_signal_summary(conn: sqlite3.Connection, ticker: str, rth_start: float, 
         (t, rth_start, rth_end),
     ).fetchall()
     for r in rows:
-        mh = json.loads(r["multi_horizon_json"] or "{}")
+        _mhj = r["multi_horizon_json"]
+        mh = decode_json_blob(_mhj) if _mhj else {}
         if mh.get("final_tradeable") is True:
             tradeable_true += 1
         if r["final_signal"] in ("long", "short"):

@@ -40,6 +40,7 @@ from stream_spine import (
 )
 import app.market_data.schwab.streaming.capture as rsc
 from app.market_data.schwab.streaming.capture import (
+    OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS,
     _active_option_contract_poll_loop,
     _apply_active_option_contract_subs,
     _apply_extra_option_contract_subs,
@@ -1356,6 +1357,92 @@ def test_multi_A2_thirty_extra_symbols_admit_in_one_vendor_call_not_thirty(
         f"rejection, got {len(add_calls)}: {add_calls}")
     assert set(add_calls[0][1]) == set(symbols)
     assert stream.held["LEVELONE_OPTIONS"] == {_SPY_CONTRACT, *symbols}
+
+
+def test_multi_A3_a_batch_over_the_size_ceiling_is_chunked_not_sent_whole(
+        tmp_path, monkeypatch):
+    """RC-REHAB-1 (2026-09-22, live-RTH trace): MEASURED against the live production
+    daemon that a single batched l1_option_add carrying enough symbols to exceed roughly
+    65,535 bytes of comma-joined `keys` gets the WHOLE websocket connection closed by
+    Schwab's server (close code 1009, "message too big") -- not a per-symbol vendor
+    rejection bisection could isolate, since the connection bisection itself depends on
+    is already dead by the time the recursive halves run. See
+    OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS's own comment in capture.py for the full trace
+    (exact error text, byte counts, and the 3,072/5,712 rejection-count split measured
+    live). This proves the fix at the boundary: a desired set well over the chunk size
+    ceiling reaches full vendor coverage through MULTIPLE bounded calls, none of which
+    would come close to the byte ceiling that killed the connection live, rather than one
+    unbounded call."""
+    n = OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS * 2 + 137   # forces 3 chunks, last one partial
+    symbols = sorted(f"MSFT  260918C00{300 + i:03d}000" for i in range(n))
+    assert len(symbols) == n
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: symbols)
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state: dict = {}
+    contract_state: dict = {}
+
+    async def go():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, writer=writer, epoch_state=epoch_state)
+    new_state = asyncio.run(go())
+    writer.close()
+
+    for sym in symbols:
+        assert new_state["l1:extra:" + sym] == sym, f"{sym} must have reached steady state"
+    add_calls = [c for c in stream.calls if c[0] == "l1_option_add"]
+    assert len(add_calls) == 3, (
+        f"expected {n} symbols chunked into exactly 3 bounded vendor calls "
+        f"(ceiling={OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS}), got {len(add_calls)}: "
+        f"sizes={[len(c[1]) for c in add_calls]}")
+    for _name, syms in add_calls:
+        assert len(syms) <= OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS, (
+            f"a single vendor call carried {len(syms)} symbols, over the "
+            f"{OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS} ceiling this fix exists to enforce")
+    assert sorted(sym for _name, syms in add_calls for sym in syms) == symbols
+    assert stream.held["LEVELONE_OPTIONS"] == {_SPY_CONTRACT, *symbols}
+
+
+def test_multi_A4_dropping_a_batch_over_the_size_ceiling_is_also_chunked(
+        tmp_path, monkeypatch):
+    """Symmetrical to test_multi_A3 above but for the UNSUBS side (level_one_option_unsubs)
+    -- the same comma-joined `keys` wire format, so a large drop (e.g. switching away from
+    a wide multi-hundred-contract view in one tick) carries the identical connection-kill
+    risk this whole fix exists for. Proves removal also reaches full vendor un-coverage
+    through multiple bounded calls, not one unbounded one."""
+    n = OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS * 2 + 61   # forces 3 chunks, last one partial
+    symbols = sorted(f"MSFT  260918C00{300 + i:03d}000" for i in range(n))
+    assert len(symbols) == n
+    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: symbols)
+    stream = _FlakyOptionStream()
+    writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    epoch_state: dict = {}
+    contract_state: dict = {}
+
+    async def tick():
+        return await _apply_active_option_contract_subs(
+            stream, contract_state, writer=writer, epoch_state=epoch_state)
+    asyncio.run(tick())   # tick 1: the whole large set opens as extras
+
+    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: [])
+    new_state = asyncio.run(tick())   # tick 2: the whole large set is dropped at once
+    writer.close()
+
+    for sym in symbols:
+        assert "l1:extra:" + sym not in new_state, f"{sym} must be pruned after drop"
+    unsub_calls = [c for c in stream.calls if c[0] == "l1_option_unsub"]
+    assert len(unsub_calls) == 3, (
+        f"expected {n} dropped symbols chunked into exactly 3 bounded vendor unsub calls "
+        f"(ceiling={OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS}), got {len(unsub_calls)}: "
+        f"sizes={[len(c[1]) for c in unsub_calls]}")
+    for _name, syms in unsub_calls:
+        assert len(syms) <= OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS, (
+            f"a single vendor unsub call carried {len(syms)} symbols, over the "
+            f"{OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS} ceiling this fix exists to enforce")
+    assert sorted(sym for _name, syms in unsub_calls for sym in syms) == symbols
+    assert stream.held["LEVELONE_OPTIONS"] == {_SPY_CONTRACT}
 
 
 def test_multi_B_dropping_an_extra_symbol_unsubscribes_closes_and_prunes_state(

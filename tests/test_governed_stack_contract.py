@@ -2,6 +2,7 @@
 authorization, and wall-clock-to-bars conversion must fail closed on a degraded or
 malformed stack, never authorize a decision on incomplete inputs."""
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -147,21 +148,29 @@ def test_display_wall_clock_mc_excursions_fail_closed_without_iv():
 
 
 def test_display_wall_clock_mc_excursions_populates_5m_15m():
+    import signals
     from signals import _compute_display_wall_clock_mc_excursions
     from governed_stack_contract import wall_clock_minutes_to_mc_bars
 
     inp = SimpleNamespace(ticker="SPY", iv_level=0.18)
     fb = SimpleNamespace(available=False, prob_up=0.33, prob_down=0.33, prob_flat=0.34)
-    out = _compute_display_wall_clock_mc_excursions(
-        inp,
-        regime=SimpleNamespace(primary="pinning", confidence="high"),
-        mc_spot_ctx={"spot": 450.0, "realized_vol": 0.15, "atr": 1.5},
-        mc_context_error=None,
-        xgb_out=fb,
-        lstm_out=fb,
-        transformer_out=fb,
-        ml_bundle={},
-    )
+    # RC-REHAB-1 (2026-09-22): LIVE_MODEL_STACK_ENABLED now defaults to False (operator
+    # directive, legacy live ML/MC stack off by default) -- this test proves the
+    # function's OWN simulation wiring when genuinely running, so it explicitly
+    # re-enables it for this call; that behavior is still correct code, just no longer
+    # the default (a disabled call returns all-None, proven by the fail-closed test
+    # above, which needs no override since it already expects all-None).
+    with patch.object(signals, "LIVE_MODEL_STACK_ENABLED", True):
+        out = _compute_display_wall_clock_mc_excursions(
+            inp,
+            regime=SimpleNamespace(primary="pinning", confidence="high"),
+            mc_spot_ctx={"spot": 450.0, "realized_vol": 0.15, "atr": 1.5},
+            mc_context_error=None,
+            xgb_out=fb,
+            lstm_out=fb,
+            transformer_out=fb,
+            ml_bundle={},
+        )
     # Wall-clock invariant is unit-independent: N minutes -> N / BAR_MINUTES bars
     # (was 5->1, 15->3 under BAR_MINUTES=5; identity under the =1 alignment).
     from monte_carlo import BAR_MINUTES

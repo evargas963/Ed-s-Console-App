@@ -31,6 +31,7 @@ from research.challenger_eval_v1.runner import (
 from research.incumbent_eval_v1 import stats
 from research.incumbent_eval_v1.runner import invalid_threshold_horizons
 from calibration.operable_surface_quarantine import operable_filter_sql
+from json_blob_codec import decode_json_blob
 
 PREREG_PATH = Path(__file__).resolve().parent / "prereg_v1.json"
 RULES = ("zone_direction", "wall_attraction", "wall_repulsion", "regime_gated_momentum_15")
@@ -121,8 +122,9 @@ def load_decision_rows(
             if not is_rth_ts_utc(ts):
                 continue
             try:
-                bundle = json.loads(row["model_outputs_json"] or "{}")
-            except (TypeError, ValueError):
+                _mo = row["model_outputs_json"]
+                bundle = decode_json_blob(_mo) if _mo else {}
+            except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile
                 continue
             by_hz = (
                 (bundle.get("stack_probs_bundle") or {}).get("multi_horizon_ml_fusion_bundle")

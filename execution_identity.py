@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_text_blob, encode_text_blob
 
 log = logging.getLogger(__name__)
 
@@ -399,7 +400,7 @@ def insert_execution_identity(
                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(execution_identity_sha256) DO NOTHING""",
             (
-                sha, ENVELOPE_SCHEMA_VERSION, payload, now,
+                sha, ENVELOPE_SCHEMA_VERSION, encode_text_blob(payload), now,
                 str(rel.get("release_id") or ""), str(rel.get("git_sha") or ""),
                 str(rel.get("config_hash") or ""),
                 routing["requested_ticker"], routing["bundle_ticker"],
@@ -411,7 +412,11 @@ def insert_execution_identity(
             "SELECT envelope_json FROM model_execution_identities WHERE execution_identity_sha256=?",
             (sha,),
         ).fetchone()
-        if existing is None or existing[0] != payload:
+        # RC-REHAB-3: envelope_json is stored gzip-compressed (encode_text_blob above) —
+        # decode_text_blob back to the raw canonical text before this byte-identity
+        # comparison, or every insert (including the one that just landed) would read as
+        # a hash collision with DIFFERENT bytes.
+        if existing is None or decode_text_blob(existing[0]) != payload:
             raise ExecutionIdentityError(
                 "ENVELOPE_HASH_MISMATCH",
                 f"identity {sha[:16]} already registered with DIFFERENT envelope bytes",
@@ -582,8 +587,9 @@ def gc_check_artifact(conn: sqlite3.Connection, sha256: str) -> None:
     """Garbage collection guard: refuse removal while ANY persisted execution
     identity references the artifact (full reference scan, no cached counts)."""
     needle = str(sha256).lower()
-    for (payload,) in conn.execute("SELECT envelope_json FROM model_execution_identities"):
-        if needle in payload:
+    for (raw,) in conn.execute("SELECT envelope_json FROM model_execution_identities"):
+        payload = decode_text_blob(raw)
+        if payload is not None and needle in payload:
             raise ExecutionIdentityError(
                 "ARTIFACT_REFERENCED",
                 f"artifact {needle[:16]}… is referenced by a persisted execution identity",
@@ -633,7 +639,11 @@ def resolve_execution_for_replay(
     ).fetchone()
     if rec is None:
         raise ExecutionIdentityError("IDENTITY_MISSING", f"identity {str(sha)[:16]}… not registered")
-    payload = rec[0]
+    # RC-REHAB-3: envelope_json may be gzip-compressed (encode_text_blob at insert) or a
+    # pre-migration plain string — decode_text_blob returns the raw canonical text either
+    # way, which the hash below must verify against (the hash was computed over that
+    # exact text, never over compressed bytes).
+    payload = decode_text_blob(rec[0])
     if hashlib.sha256(payload.encode("ascii")).hexdigest() != str(sha).lower():
         raise ExecutionIdentityError("ENVELOPE_HASH_MISMATCH", "stored envelope bytes fail content address")
     envelope = json.loads(payload)

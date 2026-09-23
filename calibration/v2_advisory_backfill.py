@@ -6,7 +6,6 @@ v2 table so existing calibration outcome joins keep their row identity.
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 import time
@@ -18,6 +17,7 @@ from calibration.backfill_outcomes import resolve_snapshot_for_backfill
 from calibration.canonical_enforcement import enforce_calibration_decision_log_only_1m
 from calibration.json_utils import parse_json_mapping
 from calibration.schema import ensure_calibration_schema
+from json_blob_codec import encode_json_blob
 from timeframe_config import CANONICAL_TIMEFRAME
 from v2_decision import SCHEMA_VERSION, V2_STATUS, build_module_a_a1_decision
 
@@ -221,7 +221,7 @@ def backfill_v2_advisory_decisions(
                 WHERE id=?
                 """,
                 (
-                    json.dumps(payload, default=str, sort_keys=True),
+                    encode_json_blob(payload, default=str),
                     ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
                     ADVISORY_V2_ADAPTER_VERSION,
                     now,
@@ -348,8 +348,8 @@ def backfill_calibration_decisions_insert_from_snapshots(
                 "decision_source": RECONSTRUCTED_DECISION_SOURCE,
                 "matched_snapshot_ts_utc": float(row["ts_utc"]),
                 "outcome_join_method": RECONSTRUCTED_LIVE_MS_SOURCE,
-                "advisory_v2_decision_snapshot_json": json.dumps(
-                    payload_dict, default=str, sort_keys=True
+                "advisory_v2_decision_snapshot_json": encode_json_blob(
+                    payload_dict, default=str
                 ),
                 "advisory_v2_snapshot_schema_version": ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
                 "advisory_v2_adapter_version": ADVISORY_V2_ADAPTER_VERSION,

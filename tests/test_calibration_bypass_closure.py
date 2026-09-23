@@ -130,6 +130,14 @@ def _allowed_path(rel: Path) -> bool:
         return True
     if s == "tests/test_structural_eval_v1.py":
         return True
+    # RC-REHAB-3: row-retention DELETE tool. Its own hard-coded ALLOWED_TABLES set (not
+    # this closure list) is the actual safety boundary -- it refuses any table outside
+    # {complete_chain_captures, production_decision_records, calibration_decision_log}
+    # even if a caller asks, proven by its own tests. Dry-run by default; batched deletes.
+    if s == "tools/apply_row_retention_v1.py":
+        return True
+    if s == "tests/test_apply_row_retention_v1.py":
+        return True
     return False
 
 

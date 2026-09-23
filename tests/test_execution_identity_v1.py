@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import execution_identity as xi
+from json_blob_codec import decode_json_blob
 
 
 def _release():
@@ -200,7 +201,7 @@ def test_same_sha_different_envelope_refused(conn):
     assert row is not None
     class Fake(dict):
         pass
-    tampered = json.loads(row[0])
+    tampered = decode_json_blob(row[0])
     tampered["executed_at_utc"] = 1.0
     # direct API path: inserting the tampered envelope produces a DIFFERENT sha
     sha2 = xi.insert_execution_identity(conn, tampered, decision_id="d2", expected_surfaces=["decision"])

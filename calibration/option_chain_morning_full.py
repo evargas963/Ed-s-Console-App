@@ -6,7 +6,6 @@ Does not widen every snapshot's option_chain_json.
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import sqlite3
@@ -17,6 +16,7 @@ from typing import Any
 
 from time_et import ET, is_trading_day_et  # RC-278: the calendar authority, on the WRITE side
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob, encode_json_blob
 
 log = logging.getLogger(__name__)
 
@@ -147,8 +147,8 @@ def latest_accrual_rows(
     if not row:
         return None
     try:
-        rows = json.loads(row[5])
-    except (TypeError, ValueError):
+        rows = decode_json_blob(row[5])
+    except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile on a corrupt blob
         return None
     if not isinstance(rows, list) or not rows:
         return None
@@ -234,7 +234,7 @@ def persist_chain_accrual(
             (tk, ts, et_date, int(mins),
              float(spot) if spot is not None and math.isfinite(float(spot)) else None,
              len(clean), vol_total, gex_total,
-             json.dumps(clean, separators=(",", ":")), str(source)),
+             encode_json_blob(clean), str(source)),
         )
         conn.commit()
     finally:
@@ -381,7 +381,7 @@ def maybe_persist_morning_full_chain(
                 len(near),
                 len(exps),
                 max(dtes) if dtes else None,
-                json.dumps(near, default=str),
+                encode_json_blob(near, default=str),
                 str(source),
             ),
         )

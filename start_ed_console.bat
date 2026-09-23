@@ -124,6 +124,18 @@ REM succeed, so its result (printed above by the script itself) is informational
 REM only -- deliberately not gated on errorlevel here.
 "%VENV_PY%" "%~dp0launcher_port_guard.py" 8322
 
+REM RC-REHAB-2 (2026-09-22, operator question about WebSocket reliability across restarts):
+REM best-effort safety net for the Schwab stream capture task (EdConsole Stream Capture,
+REM the ONE real Schwab WebSocket connection -- see capture.py). That task is scheduled
+REM weekdays 8:25am-8:25pm CT plus an at-logon trigger, but neither self-heals if this app
+REM is opened outside both windows (e.g. a restart in the early morning before 8:25am, or a
+REM task disabled/stopped by hand). `schtasks /run` forces a start attempt on every launch
+REM of this app. Windows' own MultipleInstances=IgnoreNew setting on that task makes this a
+REM true no-op when it is already running (confirmed live), so it is safe to call
+REM unconditionally -- and deliberately not gated on errorlevel: a scheduling quirk here
+REM must never block the app itself from starting.
+schtasks /run /tn "EdConsole Stream Capture" >nul 2>&1
+
 set "PF86=%ProgramFiles(x86)%"
 set "EDGE_EXE=%PF86%\Microsoft\Edge\Application\msedge.exe"
 if not exist "%EDGE_EXE%" set "EDGE_EXE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"

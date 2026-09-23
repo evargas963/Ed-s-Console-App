@@ -1118,6 +1118,37 @@ def _subs_or_add(contract_state: dict, svc_key: str, exclude_key: str, subs_fn, 
     return _op
 
 
+#: RC-REHAB-1 (2026-09-22, live-RTH trace, proven not guessed): a batched LEVELONE_OPTIONS
+#: SUBS/ADD request large enough (MEASURED live: a 71,060-byte comma-joined `keys` payload)
+#: does not get a per-symbol vendor rejection at all -- Schwab's own streaming server closes
+#: the WHOLE websocket connection with close code 1009 ("message too big"), confirmed via
+#: /api/streaming/active-ticker's producer_heartbeat.rejected_contracts on the live daemon:
+#: 3,072 SPY contracts rejected with exactly
+#: "ConnectionClosedError: received 1009 (message too big) Text message too large: 71,060 >
+#: 65,535; no close frame sent". Because the connection itself dies, `_batch_subscribe_with_
+#: bisection`'s recursive halves (and every OTHER pending vendor call sharing the same
+#: stream, e.g. OPTIONS_BOOK / other tickers' subscribes in flight at that instant) then
+#: fail too, with the UNRELATED generic "no close frame received or sent" error -- MEASURED:
+#: 5,712 further rejections carrying exactly that error, not a size complaint of their own.
+#: Bisection-after-failure cannot recover from this shape: by the time the recursive halves
+#: run, the shared connection the whole reconciliation loop depends on is already dead, so
+#: even a half that would fit comfortably under the limit fails with a fresh connection-
+#: closed error instead of succeeding. This is why SPY's gamma-surface heatmap measured
+#: 0% live cell coverage all RTH session despite the daemon and terrain cycle both running:
+#: the daemon never got past this wall for SPY's full desired-contract set.
+#:
+#: FIX: never construct an over-budget request in the first place. `keys` is a comma-joined
+#: OCC-format option symbol (schwab-py `_service_op`, ~21 chars + 1 comma each); 500 symbols
+#: is ~11,000 bytes of keys plus request/field overhead -- a wide safety margin under the
+#: measured 65,535-byte ceiling even before considering that a genuinely large SPY near-
+#: money+wide-chain desired set could exceed 3,000 symbols in one shot (the failing batch's
+#: own 71,060 bytes implies roughly that many). Chunking happens ONCE, before any network
+#: call, in the public entry point below; the existing per-symbol bisection-on-failure logic
+#: is untouched and still runs inside each already-safely-sized chunk as the safety net for
+#: a genuinely vendor-poisoned individual symbol (unrelated to payload size).
+OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS = 500
+
+
 async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitted) -> "list[tuple[str, str]]":
     """Subscribe `symbols` to the vendor in as FEW network round trips as possible
     (2026-09-16, audit finding: the prior design issued one full WS round trip PER
@@ -1135,6 +1166,12 @@ async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitt
     isolated to the exact symbol(s) that caused it, or the accepting subset is confirmed.
     Worst case (every symbol rejected) costs O(N) calls; the ordinary case (the whole
     batch, or a batch with no genuinely poisoned symbol, accepted) costs exactly ONE.
+
+    Callers should go through `_batch_subscribe_with_size_chunking` (below), never call
+    this directly with an unbounded list — see that function's docstring and
+    OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS's own comment for why: this function's own
+    bisection-on-failure cannot recover from a connection-killing oversized-payload
+    rejection, only from a genuinely vendor-poisoned individual symbol.
 
     `on_admitted(list_of_symbols)` fires the instant a sub-batch is confirmed accepted,
     BEFORE any further vendor call in this recursion — callers use it to mark those
@@ -1159,6 +1196,24 @@ async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitt
         left = await _batch_subscribe_with_bisection(op, symbols[:mid], on_admitted=on_admitted)
         right = await _batch_subscribe_with_bisection(op, symbols[mid:], on_admitted=on_admitted)
         return left + right
+
+
+async def _batch_subscribe_with_size_chunking(op, symbols: "list[str]", *, on_admitted) -> "list[tuple[str, str]]":
+    """Public entry point: splits `symbols` into OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS-sized
+    chunks BEFORE any vendor call, then runs each chunk through the existing
+    `_batch_subscribe_with_bisection` safety net sequentially (each chunk's own connection
+    must be healthy before the next chunk is attempted -- a chunk failure still bisects
+    within itself exactly as before). Rejections from every chunk are concatenated; a
+    later chunk is still attempted even if an earlier one had rejections, since a chunk-
+    local failure (whether a genuinely poisoned symbol or a fresh connection drop) says
+    nothing about a DIFFERENT chunk's own symbols."""
+    if not symbols:
+        return []
+    rejected: "list[tuple[str, str]]" = []
+    for start in range(0, len(symbols), OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS):
+        chunk = symbols[start:start + OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS]
+        rejected += await _batch_subscribe_with_bisection(op, chunk, on_admitted=on_admitted)
+    return rejected
 
 
 #: Once the vendor explicitly refuses a symbol, do not offer it again in the very next
@@ -1264,7 +1319,14 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
         closed_ok.append(symbol)
     if closed_ok:
         try:
-            await stream.level_one_option_unsubs(closed_ok)
+            # RC-REHAB-1 (2026-09-22): same oversized-payload connection-kill risk as the
+            # ADD path above (identical comma-joined `keys` wire format) -- a large drop
+            # (e.g. switching away from a wide multi-hundred-contract view) could exceed
+            # the same byte ceiling in one UNSUBS call. Chunked for the same reason;
+            # OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS's own comment above has the full trace.
+            for _start in range(0, len(closed_ok), OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS):
+                await stream.level_one_option_unsubs(
+                    closed_ok[_start:_start + OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS])
             for symbol in closed_ok:
                 contract_state[f"{prefix}{symbol}"] = None
                 if rejected_state is not None:
@@ -1295,7 +1357,7 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
                 contract_state[f"{prefix}{symbol}"] = symbol
                 admitted_this_call.append(symbol)
 
-        rejected = await _batch_subscribe_with_bisection(op, to_add, on_admitted=_mark_admitted)
+        rejected = await _batch_subscribe_with_size_chunking(op, to_add, on_admitted=_mark_admitted)
 
         for symbol in admitted_this_call:
             epoch_key = f"{prefix}{symbol}"

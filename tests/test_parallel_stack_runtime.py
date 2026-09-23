@@ -149,7 +149,11 @@ def _drift_priors_captured_for_composition(composition):
     rules = SimpleNamespace(signal="wait", conviction="low")
     regime = SimpleNamespace(primary="unknown", confidence="low")
 
-    with patch(
+    # RC-REHAB-1 (2026-09-22): LIVE_MODEL_STACK_ENABLED now defaults to False (operator
+    # directive, legacy live ML/MC stack off by default) -- this helper proves the
+    # stack's OWN drift-prior wiring when genuinely running, so it explicitly re-enables
+    # it for this call; that behavior is still correct code, just no longer the default.
+    with patch.object(signals, "LIVE_MODEL_STACK_ENABLED", True), patch(
         "features.inference_snapshot.build_inference_snapshot_v1_from_signal_input",
         return_value=_minimal_inf_v1(),
     ), patch(
