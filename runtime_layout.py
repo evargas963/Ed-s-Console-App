@@ -27,12 +27,12 @@ from pathlib import Path
 SOURCE_ROOT = Path(__file__).resolve().parent
 
 
-def _load_env_file() -> None:
+def _load_env_file(root: Path) -> None:
     try:
         from dotenv import load_dotenv
     except ImportError:
         return
-    env_path = SOURCE_ROOT / ".env"
+    env_path = root / ".env"
     if env_path.is_file():
         load_dotenv(env_path, override=False)
 
@@ -86,9 +86,16 @@ def _default_runtime_root() -> Path:
         ) from exc
 
 
-_load_env_file()
+_load_env_file(SOURCE_ROOT)            # may itself set ED_RUNTIME_ROOT
 #: Live database, logs and tokens live here. Linked worktrees share the primary root.
 RUNTIME_ROOT: Path = _dir_from_env("ED_RUNTIME_ROOT", _default_runtime_root())
+# Host secrets (.env: the Schwab app key/secret) live with the runtime, beside the token file
+# config.build_config already reads from RUNTIME_ROOT. Without this, a console launched from a
+# linked worktree resolved the production DB and token but NOT the app key, and came up
+# "Schwab capability UNAVAILABLE" (MEASURED 2026-09-23 on a live RTH cutover). override=False:
+# anything already set (an operator export, a test placeholder) still wins.
+if RUNTIME_ROOT != SOURCE_ROOT:
+    _load_env_file(RUNTIME_ROOT)
 #: Generated reports and scorecards live under here. Default: the runtime root.
 ARTIFACTS_ROOT: Path = _dir_from_env("ED_ARTIFACTS_ROOT", RUNTIME_ROOT)
 

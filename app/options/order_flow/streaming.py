@@ -28,7 +28,6 @@ server.py): `start_order_flow_stream` / `stop_order_flow_stream` /
 from __future__ import annotations
 
 import asyncio
-import functools
 import json
 import logging
 import sqlite3
@@ -730,6 +729,60 @@ def _hook_grouping_key(symbol: str) -> str:
     return root
 
 
+async def _equity_feed_loop() -> None:
+    """The active EQUITY ticker's live quotes, on their own poll loop, DB thread and connection.
+
+    2026-09-23 LIVE-RTH FINDING (operator litmus: "spot is not dancing for SPY"): the equity
+    replay shared one sequential loop with the option-contract replay. At live coverage
+    (~2,000 LEVELONE_OPTIONS contracts) one option pass took long enough that the console's
+    plane went 131 s stale while the daemon's LEVELONE_EQUITIES was 0.99 s old, and spot
+    fell back to REST quotes. Moving the equity replay first in the shared loop did NOT fix
+    it (MEASURED: staleness still grew 1 s/s) because the next tick still waited for the
+    previous option pass. The operator's live price therefore gets its own loop: option
+    work can no longer delay it at all. The connection is thread-affine, so it is opened,
+    used and closed only on this loop's own single-worker executor."""
+    loop = asyncio.get_event_loop()
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-equity")
+    con: Optional[sqlite3.Connection] = None
+    try:
+        while _feed_running:
+            tkr = _active_ticker
+            if tkr:
+                try:
+                    if con is None:
+                        con = await loop.run_in_executor(executor, _open_capture_db_readonly)
+                    if con is not None:
+                        await loop.run_in_executor(executor, _replay_new_rows, con, tkr)
+                except sqlite3.Error as e:
+                    log.warning("daemon plane equity feed: db read failed, reopening: %s", e)
+                    if con is not None:
+                        try:
+                            await loop.run_in_executor(executor, con.close)
+                        except sqlite3.Error:
+                            pass
+                    con = None
+            await asyncio.sleep(POLL_INTERVAL_SEC)
+    finally:
+        if con is not None:
+            try:
+                await loop.run_in_executor(executor, con.close)
+            except sqlite3.Error:
+                pass
+        executor.shutdown(wait=False)
+
+
+def _replay_option_contracts_batch(con: sqlite3.Connection, contracts: list[str],
+                                   prefetched: dict) -> list[tuple[str, float]]:
+    """Replay every desired option contract's new rows in ONE call on the feed's DB thread;
+    returns (symbol, freshest qualifying ts_recv) for each contract that produced one."""
+    out: list[tuple[str, float]] = []
+    for sym in contracts:
+        ts = _replay_option_contract_rows(con, sym, prefetched_l1=prefetched.get(sym))
+        if ts is not None:
+            out.append((sym, ts))
+    return out
+
+
 async def _feed_loop() -> None:
     """A sqlite3.Connection is THREAD-AFFINE (check_same_thread=True by default) — it may
     only be touched from the OS thread that created it. This loop opens ONE read-only
@@ -773,6 +826,7 @@ async def _feed_loop() -> None:
     hook_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-hook")
     hook_tasks: "set[asyncio.Task]" = set()
     loop = asyncio.get_event_loop()
+    equity_task = asyncio.ensure_future(_equity_feed_loop())
     # Independent-review finding (2026-09-13), REPRODUCED: this dispatched one hook task
     # PER QUALIFYING TICK, per root, unconditionally -- with no check for "is a call for
     # this root already queued or running." Holding the hook callback while four
@@ -844,7 +898,8 @@ async def _feed_loop() -> None:
             # order (the primary first, matching the historical single-contract replay
             # order) in case the caller's additional set happens to also name the primary.
             contracts_to_replay = [s for s in dict.fromkeys([contract, *_active_option_contracts]) if s]
-            if con is not None and (tkr or contracts_to_replay):
+            # the equity ticker replays on its OWN loop (_equity_feed_loop), never here
+            if con is not None and contracts_to_replay:
                 try:
                     # Independent-review finding (2026-09-12), REPRODUCED: with more than one
                     # desired contract (a primary plus one or more additional -- RC-UI-3), this
@@ -875,14 +930,11 @@ async def _feed_loop() -> None:
                     # is small), but it now consumes already-fetched rows instead of querying.
                     prefetched_l1_batch = await loop.run_in_executor(
                         executor, _prefetch_option_l1_batch, con, contracts_to_replay)
-                    qualifying: list[tuple[str, float]] = []
-                    for sym in contracts_to_replay:
-                        ts = await loop.run_in_executor(
-                            executor, functools.partial(
-                                _replay_option_contract_rows, con, sym,
-                                prefetched_l1=prefetched_l1_batch.get(sym)))
-                        if ts is not None:
-                            qualifying.append((sym, ts))
+                    # ONE executor hop for every contract's replay (it was one await per
+                    # symbol -- ~2,000 thread round-trips per tick at live coverage).
+                    qualifying: list[tuple[str, float]] = await loop.run_in_executor(
+                        executor, _replay_option_contracts_batch, con, contracts_to_replay,
+                        prefetched_l1_batch)
                     if qualifying and _streamed_greeks_hook is not None:
                         groups: dict[str, tuple[str, float]] = {}
                         for sym, ts in qualifying:
@@ -892,8 +944,6 @@ async def _feed_loop() -> None:
                                 groups[root] = (sym, ts)
                         for rep_sym, rep_ts in groups.values():
                             _dispatch_hook_background(rep_sym, rep_ts)
-                    if tkr:
-                        await loop.run_in_executor(executor, _replay_new_rows, con, tkr)
                 except sqlite3.Error as e:
                     log.warning("daemon plane feed: db read failed, reopening: %s", e)
                     try:
@@ -903,6 +953,7 @@ async def _feed_loop() -> None:
                     con = None
             await asyncio.sleep(POLL_INTERVAL_SEC)
     finally:
+        equity_task.cancel()
         if con is not None:
             try:
                 await loop.run_in_executor(executor, con.close)
