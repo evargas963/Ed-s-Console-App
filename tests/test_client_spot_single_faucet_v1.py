@@ -61,11 +61,15 @@ def test_detector_catches_an_aliased_precedence():
     """The exact defect that shipped: same sources, different local names."""
     bad = _mutate('<span id="metapx">${esc(fmt(currentSpot()))}</span>',
                   '<span id="metapx">${esc(fmt((s && s.spot) ?? t.spot))}</span>')
-    assert len(bad) == 1, f"the aliased meta-bar bug went undetected: {bad}"
+    # RC-REHAB-1 (2026-09-23): the repo-wide dual-source rule ALSO reports this line -- two
+    # independent detectors agreeing; the per-page authority finding must be among them.
+    per_page = [b for b in bad if b["concept"] == "spot (client)"]
+    assert len(per_page) == 1, f"the aliased meta-bar bug went undetected: {bad}"
+    assert any(b["concept"] == "spot (client, dual source)" for b in bad), bad
     # Assert the CONTENT, not a line number: an unrelated edit above this point must not be able
     # to fail the lock, or the lock gets weakened to shut it up.
-    assert "chart.html:" in bad[0]["undeclared"][0]
-    assert "s.spot" in bad[0]["undeclared"][0]
+    assert "chart.html:" in per_page[0]["undeclared"][0]
+    assert "s.spot" in per_page[0]["undeclared"][0]
 
 
 def test_detector_catches_a_source_name_it_has_never_seen():
@@ -507,3 +511,28 @@ def test_unconditional_wall_claim_injection_is_caught():
         "{ t: 'PUT WALL', tip: 'A durable support level for the session.' }"
     ), "the geometry vocabulary widened the lock into accepting an unconditioned claim"
 
+
+
+def test_dual_source_spot_rule_covers_every_static_script(tmp_path):
+    """RC-REHAB-1 (2026-09-23): the live console's spot reads (static/js/*.js) were in no file
+    any client rule scanned. A panel choosing between two payloads' spot is flagged anywhere
+    under static/, and a single-payload read with a display fallback is not."""
+    from tools.data_faucet_audit import audit_client_dual_source
+
+    js = tmp_path / "static" / "js"
+    js.mkdir(parents=True)
+    (js / "ed-panel.js").write_text(
+        "var a = (strikes && strikes.spot) ?? terrain.spot;\n"
+        "var b = d.spot_disp || fmt(d.spot);\n", encoding="utf-8")
+    hits = audit_client_dual_source(tmp_path)
+    assert [h["undeclared"][0].split(" ")[0] for h in hits] == ["static/js/ed-panel.js:1"], hits
+
+
+def test_a_concept_whose_authority_is_gone_is_reported_not_passed(monkeypatch):
+    """The retired console_spot entry scored clean over a page defining neither authority."""
+    import tools.data_faucet_audit as A
+
+    monkeypatch.setitem(A.CLIENT_CONCEPTS, "ghost", {
+        "files": ("static/chart.html",), "reader": r"\.spot\b",
+        "authorities": ("noSuchAuthority",), "writers": (), "assign_only": r"$^"})
+    assert any("guards nothing" in h["undeclared"][0] for h in A.audit_client())

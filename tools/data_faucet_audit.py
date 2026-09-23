@@ -142,26 +142,11 @@ CLIENT_CONCEPTS: dict[str, dict] = {
     # false positive — and this repo does not enforce a check that produces those. So the reader
     # matches only what RENDERS OR CHOOSES a price: a numeric coercion of a `.spot` field, a
     # `??`/`||` precedence between two of them, or a raw read of the SSE fast lane.
-    "console_spot": {
-        "files": ("static/index.html",),
-        "reader": (r"parseFloat\(\s*[\w$]+\.spot\b|Number\(\s*[\w$]+\.spot\b"
-                   r"|fnum\([^)]*\.spot\b|[\w$]+\.spot\s*(?:\?\?|\|\|)"
-                   r"|(?:\?\?|\|\|)\s*[\w$]+\.spot\b|\bwindow\._fastLaneSpot\b"
-                   r"|\bedLiveSpot\s*\("),
-        "authorities": ("consoleSpot", "effectiveDisplaySpot"),
-        # Lane management and fast-repaint paths: they FEED the authority or repaint from the
-        # lane itself. edLiveSpot is the raw lane accessor — legitimate to read the lane,
-        # never to choose between faucets.
-        "writers": ("_livePlaneApplyCore", "_quoteLaneShouldApply", "_syncQuoteLaneFromMergedState",
-                    "setActiveTicker", "edLiveSpot", "edPaintSpot", "edLoadRadar",
-                    "computeSpreadGate"),
-        # `window._fastLaneSpot = …` (write), `!== window._fastLaneSpot` (change detection),
-        # `_fastLaneSpot: window._fastLaneSpot` (injection into the pure computeSpreadGate, which
-        # needs a REFERENCE price to convert a fractional spread to a dollar width and never
-        # renders one), and `x.spot == null` guards all choose nothing and display nothing.
-        "assign_only": (r"window\._fastLaneSpot\w*\s*=|[!=]==?\s*window\._fastLaneSpot"
-                        r"|_fastLaneSpot\s*:\s*window\._fastLaneSpot|\.spot\s*[!=]=\s*null"),
-    },
+    # "console_spot" (static/index.html, authorities consoleSpot/effectiveDisplaySpot) was
+    # RETIRED (RC-REHAB-1, 2026-09-23): after the /console rebuild index.html defines neither
+    # authority and reads no spot at all -- its panels live in static/js/*.js -- so the entry
+    # scored "bound only inside consoleSpot" over a file with nothing to bind. The console's
+    # spot reads are now covered by the repo-wide dual-source rule in audit_client below.
 }
 
 _JS_FUNC = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(")
@@ -213,6 +198,15 @@ def audit_client() -> list[dict]:
                 continue
             code_lines = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
             owners = _js_function_at(code_lines)
+            # RC-REHAB-1 (2026-09-23): an authority that no longer exists in the file makes
+            # every read "outside" it vacuous -- the retired console_spot entry passed for
+            # weeks over a page that defined neither of its authorities.
+            if not set(spec["authorities"]) & set(owners):
+                bad.append({"concept": f"{concept} (client)",
+                            "undeclared": [f"{rel} defines none of its declared authorities "
+                                           f"{'/'.join(spec['authorities'])}() -- the concept "
+                                           f"guards nothing"]})
+                continue
             for i, (code, owner) in enumerate(zip(code_lines, owners), 1):
                 if not reader.search(code):
                     continue
@@ -228,6 +222,39 @@ def audit_client() -> list[dict]:
                             "undeclared": [f"{rel}:{i} reads a {concept} source outside "
                                            f"{'/'.join(spec['authorities'])}(): "
                                            f"{code.strip()[:64]}"]})
+    bad.extend(audit_client_dual_source())
+    return bad
+
+
+#: `a.spot ?? b.spot`, `a.spot || b.spot`, `a.spot ? … : b.spot` -- one statement choosing
+#: between two DIFFERENT payloads' spot. `.spot_disp` / `.spot_state` etc. are not spot.
+_DUAL_SPOT = re.compile(
+    r"([A-Za-z_$][\w$]*)\.spot\b(?![\w$])[^;\n]{0,160}?(?:\?\?|\|\||\?)[^;\n]{0,160}?"
+    r"([A-Za-z_$][\w$]*)\.spot\b(?![\w$])")
+
+
+def audit_client_dual_source(root: Path | None = None) -> list[dict]:
+    """Every static page and script: no statement may choose between two payloads' spot.
+
+    RC-REHAB-1 (2026-09-23): CLIENT_CONCEPTS names three legacy pages; the live console's
+    spot reads (35 of them, static/js/*.js) were in no file any client rule scanned. Its
+    design is one payload per panel, each carrying the server's resolve_spot value, so the
+    defect to forbid is the RC-75 shape itself -- a private precedence between two sources,
+    two prices on one screen -- and that shape is recognisable in ANY file without knowing
+    the file's authority function. MEASURED at introduction: 0 hits across static/.
+    """
+    root = root or _ROOT
+    static = root / "static"
+    files = sorted(static.rglob("*.html")) + sorted(static.rglob("*.js")) if static.is_dir() else []
+    bad: list[dict] = []
+    for path in files:
+        rel = path.relative_to(root).as_posix()
+        for i, code in enumerate(_strip_comments(path.read_text(encoding="utf-8", errors="ignore")), 1):
+            for m in _DUAL_SPOT.finditer(code):
+                if m.group(1) != m.group(2):
+                    bad.append({"concept": "spot (client, dual source)",
+                                "undeclared": [f"{rel}:{i} chooses between {m.group(1)}.spot and "
+                                               f"{m.group(2)}.spot: {code.strip()[:72]}"]})
     return bad
 
 
@@ -272,7 +299,7 @@ def measure_ages(db_path: str) -> dict[str, float | None]:
     if not os.path.exists(db_path):
         return ages
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=15)
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return ages
     try:
