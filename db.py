@@ -3823,7 +3823,7 @@ class EdDB:
                     FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
                       AND outcome_filled = 0
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                       AND ts_utc < ? AND ts_utc > ?
                     ORDER BY ts_utc DESC
                     LIMIT ?
@@ -3831,7 +3831,10 @@ class EdDB:
                     (
                         tkr,
                         tf,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                        # Fallback lock (2026-09-17): was COALESCE(horizon_outcome_schema_version, X) =
+                        # X, silently treating a NULL (pre-migration/unrecorded) row as CONFIRMED
+                        # current-schema with no per-row proof. A plain `= ?` naturally excludes NULL
+                        # rows (SQL: NULL = X is never true) instead of assuming them.
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         tz,
                         min_snap_ts,
@@ -3899,11 +3902,13 @@ class EdDB:
                     """
                     SELECT DISTINCT ticker FROM snapshots
                     WHERE timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                     """,
                     (
                         CANONICAL_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                        # Fallback lock (2026-09-17): was COALESCE(...,X)=X; a plain `= ?` naturally
+                        # excludes NULL (unrecorded-version) rows instead of assuming the current
+                        # version for them.
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                     ),
                 )
@@ -3913,13 +3918,12 @@ class EdDB:
                     """
                     SELECT snapshot_id, ts_utc, atr FROM snapshots
                     WHERE ticker = ? AND timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                       AND ts_utc < ?
                     """,
                     (
                         tkr,
                         CANONICAL_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         tz,
                     ),
@@ -4026,11 +4030,13 @@ class EdDB:
                     WHERE zone = 'pin_neutral'
                       AND outcome_filled = 0
                       AND timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                     """,
                     (
                         DERIVED_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+                        # Fallback lock (2026-09-17): was COALESCE(...,X)=X; a plain `= ?` naturally
+                        # excludes NULL (unrecorded-version) rows instead of assuming the current
+                        # version for them.
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                     ),
                 ).fetchone()
@@ -4049,12 +4055,11 @@ class EdDB:
                     WHERE zone = 'pin_neutral'
                       AND outcome_filled = 0
                       AND timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
+                      AND horizon_outcome_schema_version = ?
                     ORDER BY ticker, ts_utc
                     """,
                     (
                         CANONICAL_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                         HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
                     ),
                 ).fetchall()
@@ -4917,9 +4922,15 @@ class EdDB:
         scope = "rth_0930_1600_et" if rth_only else "all_hours"
         rth_clause = ""
         if rth_only:
+            # Fallback lock (2026-09-17): a NULL et_minute used to be assumed :00, fabricating
+            # a specific wrong time-of-day for the RTH boundary check. et_minute is a genuine
+            # nullable INTEGER (db.py:1114); dropping the default lets SQL's own NULL
+            # semantics naturally EXCLUDE a row whose minute is unrecorded from the rth_only
+            # scope (a comparison against NULL is never true) rather than guessing it landed
+            # inside or outside the window.
             rth_clause = (
-                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) >= {self.ACCURACY_RTH_START_MIN}"
-                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) < {self.ACCURACY_RTH_END_MIN} "
+                f" AND (et_hour * 60 + et_minute) >= {self.ACCURACY_RTH_START_MIN}"
+                f" AND (et_hour * 60 + et_minute) < {self.ACCURACY_RTH_END_MIN} "
             )
 
         for horizon in PRIMARY_DECISION_HORIZONS:
@@ -5255,13 +5266,14 @@ def _snapshot_rows_affected_by_bar_mutations(
         """
         SELECT snapshot_id, ts_utc, atr FROM snapshots
         WHERE ticker = ? AND timeframe = ?
-          AND COALESCE(horizon_outcome_schema_version, ?) = ?
+          AND horizon_outcome_schema_version = ?
           AND ts_utc < ?
         """,
         (
             tkr,
             CANONICAL_TIMEFRAME,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
+            # Fallback lock (2026-09-17): was COALESCE(...,X)=X; a plain `= ?` naturally excludes
+            # NULL (unrecorded-version) rows instead of assuming the current version for them.
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             tz,
         ),
@@ -5680,11 +5692,18 @@ _ISSUE19_CTX_GROUP_COLS = frozenset(
 
 
 def sql_issue19_snapshots_context_group(col: str) -> str:
-    """Labeled-row distribution for Issue 19 context audit (whitelist columns only)."""
+    """Labeled-row distribution for Issue 19 context audit (whitelist columns only).
+
+    Fallback lock (2026-09-17): the '(null)' SQL-level display default is removed (operator
+    ruling: no display-label exemption survives). The one caller
+    (tools/issue19_option_a_post_validate.py) puts this straight into a JSON-shaped
+    "key": r["k"] report entry -- a real JSON `null` for a genuinely-NULL column is more
+    honest than a string that could be mistaken for an actual category value, not less.
+    """
     if col not in _ISSUE19_CTX_GROUP_COLS:
         raise ValueError(f"unsupported context group column: {col!r}")
     return (
-        f"SELECT COALESCE({col}, '(null)') AS k, COUNT(*) AS n FROM snapshots "
+        f"SELECT {col} AS k, COUNT(*) AS n FROM snapshots "
         "WHERE timeframe = ? AND outcome_1c IS NOT NULL "
         "GROUP BY k ORDER BY n DESC LIMIT 50"
     )

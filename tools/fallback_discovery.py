@@ -1,0 +1,792 @@
+#!/usr/bin/env python3
+"""Repo-wide fallback-behavior DISCOVERY scanner (no-fallback mechanical lock mission).
+
+This is the MECHANICAL, syntactic half of discovery: it walks every git-tracked source
+surface in scope (Python, JS/JSX/MJS, inline HTML <script>, .sql files and inline SQL
+strings inside Python, PowerShell, batch) and flags every location matching a KNOWN
+fallback-shaped pattern. It does NOT itself decide FALLBACK vs NOT_FALLBACK -- that is a
+semantic judgment call this script deliberately leaves to a human/agent adjudication pass
+(see reports/no_fallback_inventory.json), because "every use of `or`, a default, or
+exception handling" is explicitly NOT a fallback per se (mission instruction). What this
+script guarantees is that no candidate location is silently skipped: every hit gets a
+stable ID and is emitted for adjudication, defaulting to NOT_PROVEN until a human/agent
+adjudicator sets `adjudication` explicitly.
+
+A location is flagged as a CANDIDATE when a syntactic fallback-shaped construct's
+left-hand/target expression references an identifier that looks like a SEMANTIC domain
+field (see _SEMANTIC_TERMS) rather than a purely technical/plumbing parameter (timeout,
+retries, buffer size, worker count, ...). This keeps the raw candidate count sane enough
+for real adjudication instead of drowning in thousands of harmless technical defaults --
+but the term list is intentionally broad and any match is still just a CANDIDATE, subject
+to human/agent semantic adjudication, never a final verdict by itself.
+
+CANDIDATE IDENTITY (operator correction, point 5, 2026-09-17): a candidate's `id` is a
+deterministic fingerprint derived from (repo-relative file, enclosing symbol/context,
+detector pattern, a normalized AST dump of the matched expression -- position-independent,
+so renaming a variable elsewhere or reflowing whitespace never moves it -- and the guessed
+semantic target), never from scan/iteration order. The PRIOR scheme assigned sequential
+`FB-NNNNN` IDs purely from the order files were visited and nodes were walked -- inserting
+or deleting so much as one candidate anywhere earlier in that walk silently renumbered
+every later one, so an adjudication recorded against "FB-00519" could point at a
+completely different, unrelated piece of code after the very next regeneration, and
+nothing would detect the mismatch. Under fingerprint identity this is structurally
+impossible: if the underlying expression changes, its ID changes; an adjudication that
+references a since-changed candidate's old ID simply finds no match in a fresh scan
+(a loud, visible "stale reference", never a silent misapplication to different code) --
+see tools/apply_adjudication.py's own hard check for this. `line` is retained purely as
+human-navigation metadata and is NEVER part of identity.
+
+Usage:
+    python tools/fallback_discovery.py --out reports/no_fallback_discovery_raw.json
+
+Exits 0 always (this is a discovery tool, not a gate); the ENFORCEMENT gate is a separate,
+narrower check registered in tools/check_institutional_correctness.py's CHECKS list.
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import hashlib
+import json
+import re
+import subprocess
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+
+# This discovery scanner's own governance meta-tooling (itself, and its adjudication-
+# recording sibling): their entire content is PROSE quoting real fallback syntax found
+# elsewhere as human-readable evidence strings, not executable fallback logic. Scanning
+# them as ordinary source self-matches that prose (e.g. an evidence string that literally
+# contains the substring "COALESCE(" to explain what was found) and manufactures fake
+# candidates that pollute the census with entries that point at nothing real. The
+# regression gate (tools/check_no_fallback_lock.py) already carries this exact exclusion
+# for this exact reason -- imported here rather than re-declared, so the two governance
+# tools cannot silently drift apart on which files are meta-tooling.
+try:
+    from tools.check_no_fallback_lock import (
+        _META_TOOLING_EXCLUDED_FROM_CONTENT_RULES as _META_TOOLING_EXCLUDED,
+        _TEST_PROOF_NAMESPACE_PREFIX,
+    )
+except ImportError:  # pragma: no cover -- running as a script with tools/ not on sys.path
+    import sys as _sys
+    _sys.path.insert(0, str(REPO))
+    from tools.check_no_fallback_lock import (
+        _META_TOOLING_EXCLUDED_FROM_CONTENT_RULES as _META_TOOLING_EXCLUDED,
+        _TEST_PROOF_NAMESPACE_PREFIX,
+    )
+
+#: This mission's own mutation/negative-control proof namespace (see
+#: check_no_fallback_lock.py's own docstring on _TEST_PROOF_NAMESPACE_PREFIX for the full
+#: precedent): its tests stage FIXTURE strings containing the exact banned syntax into a
+#: throwaway repo to prove the ENFORCEMENT gate rejects them. Those fixture strings
+#: necessarily quote real fallback-shaped text, which would otherwise self-trigger this
+#: DISCOVERY census the same way it already self-triggers on the meta-tooling files above
+#: -- excluded from the census for the identical reason, reusing the SAME namespace
+#: constant the enforcement gate already established rather than re-declaring it.
+
+#: Domain/semantic field-name fragments (case-insensitive substring match on the target
+#: identifier/dict-key/attribute name). Broad by design -- a match only PROMOTES a
+#: syntactic hit to a candidate; it never itself adjudicates FALLBACK vs NOT_FALLBACK.
+_SEMANTIC_TERMS = [
+    "spot", "price", "quote", "bid", "ask", "last", "mid", "close", "open_", "high", "low",
+    "gamma", "delta", "theta", "vega", "vanna", "charm", "gex", "dex", "oi", "open_interest",
+    "volume", "iv", "implied_vol", "premium", "strike", "expiry", "expiration",
+    "size", "qty", "quantity", "balance", "position", "pnl", "margin", "equity", "account",
+    "order", "fill", "status", "state", "regime", "session", "flag", "source", "vendor",
+    "provider", "seq", "sequence", "generation", "admitted", "active", "rejected", "pending",
+    "coverage", "staleness", "stale", "age_sec", "ts_utc", "ts_recv", "timestamp",
+    "contracts", "admission", "surface", "exposure", "chain", "greeks", "underlying",
+    "watchlist", "ticker", "symbol", "book", "depth", "trade", "tape", "level",
+]
+_SEMANTIC_RE = re.compile("|".join(re.escape(t) for t in _SEMANTIC_TERMS), re.I)
+
+_SKIP_DIR_PARTS = {
+    ".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache",
+    "archive", ".mypy_cache", "dist", "build",
+}
+
+
+def _tracked_files() -> list[str]:
+    r = subprocess.run(["git", "ls-files"], cwd=str(REPO), capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError(f"git ls-files failed: {r.stderr}")
+    return [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
+
+
+def _in_scope(rel: str) -> bool:
+    parts = Path(rel).parts
+    return not any(d in _SKIP_DIR_PARTS for d in parts)
+
+
+def _normalize_ws(s: str) -> str:
+    """Collapse whitespace runs so cosmetic reflow/reindent never changes identity."""
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _ast_normalized(node: ast.AST) -> str:
+    """A position-independent structural fingerprint basis for a Python AST node:
+    `ast.dump` with `include_attributes=False` (the default) omits lineno/col_offset
+    entirely, so the same expression produces the same string no matter where it moves
+    to in the file or how many lines were inserted/deleted around it."""
+    return ast.dump(node, annotate_fields=True)
+
+
+def _finalize_ids(candidates: list[dict]) -> None:
+    """Assigns each candidate's final, content-derived `id` and `fingerprint` in place.
+
+    Identity basis: (file, context, pattern, normalized_expr, semantic_field_guess) --
+    deliberately NOT line number and NOT scan/insertion order, per operator point 5.
+    Processed in (file, line) order purely so that the rare case of two genuinely
+    identical expressions in the same file/function gets a deterministic, stable
+    `-2`/`-3` disambiguating suffix rather than one dependent on dict/walk ordering.
+    """
+    seen: dict[str, int] = {}
+    for c in sorted(candidates, key=lambda c: (c["file"], c["line"])):
+        basis = json.dumps(
+            [c["file"], c.get("context"), c["pattern"], c.get("normalized_expr", ""),
+             c.get("semantic_field_guess")],
+            sort_keys=False,
+        )
+        digest = hashlib.sha256(basis.encode("utf-8")).hexdigest()
+        c["fingerprint"] = digest
+        n = seen.get(digest, 0)
+        seen[digest] = n + 1
+        base_id = f"FB-{digest[:10]}"
+        c["id"] = base_id if n == 0 else f"{base_id}-{n + 1}"
+
+
+def _read(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Python detectors (AST-based)
+# ---------------------------------------------------------------------------
+
+def _name_of(node: ast.AST) -> str:
+    """Best-effort identifier/attribute/key name a node writes to or reads as its
+    'subject' -- used only to test against _SEMANTIC_RE, never to prove semantics."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Subscript):
+        sl = node.slice
+        if isinstance(sl, ast.Constant) and isinstance(sl.value, str):
+            return sl.value
+        return _name_of(node.value)
+    if isinstance(node, ast.Call):
+        return _name_of(node.func)
+    return ""
+
+
+def _semantic(node: ast.AST) -> bool:
+    return bool(_SEMANTIC_RE.search(_name_of(node)))
+
+
+def _build_parent_map(tree: ast.AST) -> dict:
+    parents: dict = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[child] = node
+    return parents
+
+
+def _in_boolean_test_context(node: ast.AST, parents: dict) -> bool:
+    """True when `node` (a BoolOp) is consumed as a pure boolean CONTROL-FLOW test --
+    the `test` of an If/While/Assert/IfExp's condition, or nested inside another
+    BoolOp/UnaryOp-Not that is itself in such a position -- rather than as a VALUE that
+    gets assigned, returned, or passed on. `if a or b:` is ordinary logic; `x = a or b`
+    is a value-substitution candidate. Only the latter shape is a fallback candidate."""
+    cur = node
+    while cur in parents:
+        parent = parents[cur]
+        if isinstance(parent, (ast.If, ast.While)) and parent.test is cur:
+            return True
+        if isinstance(parent, ast.Assert) and parent.test is cur:
+            return True
+        if isinstance(parent, ast.comprehension) and cur in parent.ifs:
+            return True
+        if isinstance(parent, ast.BoolOp) and cur in parent.values:
+            cur = parent
+            continue
+        if isinstance(parent, ast.UnaryOp) and isinstance(parent.op, ast.Not) and parent.operand is cur:
+            cur = parent
+            continue
+        return False
+    return False
+
+
+def _enclosing_context(tree: ast.AST, lineno: int) -> str:
+    best = None
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            lo, hi = n.lineno, getattr(n, "end_lineno", n.lineno)
+            if lo <= lineno <= hi and (best is None or lo > best[0]):
+                best = (lo, getattr(n, "name", "?"))
+    return best[1] if best else "<module>"
+
+
+def scan_python(rel: str, src: str) -> list[dict]:
+    out: list[dict] = []
+    try:
+        tree = ast.parse(src, filename=rel)
+    except SyntaxError as e:
+        return [{
+            "file": rel, "line": e.lineno or 0,
+            "language": "python", "pattern": "PARSE_FAILURE",
+            "snippet": f"SyntaxError: {e.msg}",
+            "semantic_field_guess": None, "context": None,
+            "normalized_expr": f"PARSE_FAILURE:{e.msg}",
+            "adjudication": "NOT_PROVEN",
+            "evidence": "file failed to parse -- an unscanned executable surface is a "
+                        "discovery failure, not a pass; must be resolved by hand",
+        }]
+    lines = src.splitlines()
+    parents = _build_parent_map(tree)
+
+    for node in ast.walk(tree):
+        # `x or y` / `x or y or z` ladders -- excluding pure boolean control-flow use
+        # (`if a or b:`), which is ordinary logic, not a value substitution.
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+            first = node.values[0]
+            if _semantic(first) and not _in_boolean_test_context(node, parents):
+                ln = node.lineno
+                out.append({
+                    "file": rel, "line": ln, "language": "python",
+                    "pattern": "OR_LADDER",
+                    "snippet": (lines[ln - 1].strip() if 0 <= ln - 1 < len(lines) else ""),
+                    "semantic_field_guess": _name_of(first),
+                    "context": _enclosing_context(tree, ln),
+                    "normalized_expr": _ast_normalized(node),
+                    "adjudication": "NOT_PROVEN",
+                    "evidence": "boolean-or ladder whose leading operand's name matches a "
+                                "domain-semantic term",
+                })
+        # ternary `a if cond else b` where the true-branch (the intended value) looks semantic
+        if isinstance(node, ast.IfExp):
+            if _semantic(node.body):
+                ln = node.lineno
+                out.append({
+                    "file": rel, "line": ln, "language": "python",
+                    "pattern": "TERNARY",
+                    "snippet": (lines[ln - 1].strip() if 0 <= ln - 1 < len(lines) else ""),
+                    "semantic_field_guess": _name_of(node.body),
+                    "context": _enclosing_context(tree, ln),
+                    "normalized_expr": _ast_normalized(node),
+                    "adjudication": "NOT_PROVEN",
+                    "evidence": "conditional expression whose primary branch's name matches "
+                                "a domain-semantic term",
+                })
+        # `.get(key, default)` two-arg dict access
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+            if len(node.args) >= 2:
+                target_name = _name_of(node.func.value) + "." + (
+                    node.args[0].value if isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str) else ""
+                )
+                default_is_trivial = (
+                    isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value in (None,)
+                )
+                if _SEMANTIC_RE.search(target_name) and not default_is_trivial:
+                    ln = node.lineno
+                    out.append({
+                        "file": rel, "line": ln, "language": "python",
+                        "pattern": "DICT_GET_DEFAULT",
+                        "snippet": (lines[ln - 1].strip() if 0 <= ln - 1 < len(lines) else ""),
+                        "semantic_field_guess": target_name,
+                        "context": _enclosing_context(tree, ln),
+                        "normalized_expr": _ast_normalized(node),
+                        "adjudication": "NOT_PROVEN",
+                        "evidence": ".get(key, default) with a non-None default on a key "
+                                    "matching a domain-semantic term",
+                    })
+        # getattr(obj, name, default) three-arg form
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr" and len(node.args) >= 3):
+            name_arg = node.args[1]
+            key = name_arg.value if isinstance(name_arg, ast.Constant) and isinstance(name_arg.value, str) else ""
+            default_is_trivial = isinstance(node.args[2], ast.Constant) and node.args[2].value is None
+            if _SEMANTIC_RE.search(key) and not default_is_trivial:
+                ln = node.lineno
+                out.append({
+                    "file": rel, "line": ln, "language": "python",
+                    "pattern": "GETATTR_DEFAULT",
+                    "snippet": (lines[ln - 1].strip() if 0 <= ln - 1 < len(lines) else ""),
+                    "semantic_field_guess": key,
+                    "context": _enclosing_context(tree, ln),
+                    "normalized_expr": _ast_normalized(node),
+                    "adjudication": "NOT_PROVEN",
+                    "evidence": "getattr(obj, name, default) with a non-None default on a "
+                                "name matching a domain-semantic term",
+                })
+        # pandas-style imputation
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in (
+                "fillna", "ffill", "bfill", "interpolate"):
+            ln = node.lineno
+            out.append({
+                "file": rel, "line": ln, "language": "python",
+                "pattern": "IMPUTATION",
+                "snippet": (lines[ln - 1].strip() if 0 <= ln - 1 < len(lines) else ""),
+                "semantic_field_guess": _name_of(node.func.value),
+                "context": _enclosing_context(tree, ln),
+                "normalized_expr": _ast_normalized(node),
+                "adjudication": "NOT_PROVEN",
+                "evidence": f"pandas-style imputation call ({node.func.attr}) -- always a "
+                            f"candidate regardless of name match (imputation is inherently "
+                            f"a substitution of missing data)",
+            })
+        # except handler whose body returns/assigns something (not just pass/raise/log) --
+        # overlaps only partially with check_no_silent_swallow (which only catches
+        # pass-only bodies); this flags a handler that produces a SUBSTITUTE VALUE.
+        if isinstance(node, ast.ExceptHandler):
+            broad = node.type is None or (
+                isinstance(node.type, ast.Name) and node.type.id in {"Exception", "BaseException"})
+            if broad:
+                for stmt in node.body:
+                    substitute_return = (
+                        isinstance(stmt, ast.Return) and stmt.value is not None
+                        and not (isinstance(stmt.value, ast.Constant) and stmt.value.value is None)
+                    )
+                    # No-fallback lock repair (2026-09-18, PR #254 point 8 audit): `return
+                    # None` on failure was already exempted above (an explicit
+                    # UNAVAILABLE marker is the mission's own required shape, never a
+                    # candidate) -- but a plain `x = None` assignment had no equivalent
+                    # exemption, flagging the identical "disclose failure honestly"
+                    # idiom as if it were a substitution. Confirmed via audit: 15 of 25
+                    # EXCEPT_SUBSTITUTE NOT_PROVEN candidates were exactly this shape
+                    # (e.g. market_state.py's `ms.gex_magnitude = None`, itself a
+                    # REPAIRED site from this same mission -- assigning None on failure
+                    # was the FIX, not a new violation). AugAssign (`+=` etc.) has no
+                    # literal-None equivalent to exempt (there is no meaningful "+= None").
+                    substitute_assign = isinstance(stmt, ast.Assign) and not (
+                        isinstance(stmt.value, ast.Constant) and stmt.value.value is None
+                    )
+                    substitute_assign = substitute_assign or isinstance(stmt, ast.AugAssign)
+                    if substitute_return or substitute_assign:
+                        target = stmt.value if substitute_return else (
+                            stmt.targets[0] if isinstance(stmt, ast.Assign) else stmt.target)
+                        if _semantic(target) or (substitute_return and _semantic(stmt.value)):
+                            ln = stmt.lineno
+                            out.append({
+                                "file": rel, "line": ln,
+                                "language": "python", "pattern": "EXCEPT_SUBSTITUTE",
+                                "snippet": (lines[ln - 1].strip() if 0 <= ln - 1 < len(lines) else ""),
+                                "semantic_field_guess": _name_of(target),
+                                "context": _enclosing_context(tree, ln),
+                                "normalized_expr": _ast_normalized(stmt),
+                                "adjudication": "NOT_PROVEN",
+                                "evidence": "broad except handler returns/assigns a "
+                                            "substitute value for a domain-semantic field "
+                                            "instead of propagating/marking failure",
+                            })
+        # inline SQL strings passed anywhere (heuristic: a string constant containing
+        # COALESCE/IFNULL/NVL, case-insensitive). A multi-line triple-quoted literal
+        # reports node.lineno as the literal's OPENING line, not the match's own line --
+        # walk the literal's own text to find the real offset instead of pointing at
+        # the string's start. EXCLUDES a literal whose only use is as the operand of an
+        # `in`/`not in` membership test (`"COALESCE(...)" not in some_source_text`) --
+        # this repo's own regression-proof tests assert a REPAIR by searching for the
+        # banned pattern's ABSENCE in real source text, which necessarily quotes the
+        # banned syntax as a string to search FOR, not to execute as SQL (confirmed via
+        # a direct false-positive: tests/test_horizon_bar_outcomes.py and
+        # tests/test_operable_surface_gate.py's own `assert "COALESCE(...)" not in
+        # code_only` proof lines were being counted as production SQL-fallback
+        # candidates). A string executed as SQL is passed to a query call or returned/
+        # assigned, never merely compared via membership -- this exclusion cannot hide a
+        # real violation, only a search-pattern quotation of one.
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            parent = parents.get(node)
+            in_membership_test = (
+                isinstance(parent, ast.Compare)
+                and any(isinstance(op, (ast.In, ast.NotIn)) for op in parent.ops)
+            )
+            m = None if in_membership_test else _SQL_FALLBACK_RE.search(node.value)
+            if m:
+                line_offset_in_literal = node.value.count("\n", 0, m.start())
+                ln = node.lineno + line_offset_in_literal
+                literal_lines = node.value.splitlines()
+                match_line_text = (literal_lines[line_offset_in_literal].strip()
+                                    if 0 <= line_offset_in_literal < len(literal_lines) else "")
+                snippet = (match_line_text or
+                           (lines[ln - 1].strip() if 0 <= ln - 1 < len(lines) else ""))[:200]
+                out.append({
+                    "file": rel, "line": ln, "language": "sql-in-python",
+                    "pattern": "SQL_COALESCE_STYLE",
+                    "snippet": snippet,
+                    "semantic_field_guess": None,
+                    "context": _enclosing_context(tree, ln),
+                    "normalized_expr": _normalize_ws(snippet),
+                    "adjudication": "NOT_PROVEN",
+                    "evidence": "string literal contains COALESCE/IFNULL/NVL -- inline SQL "
+                                "fallback substitution",
+                })
+    return out
+
+
+_SQL_FALLBACK_RE = re.compile(r"\bCOALESCE\s*\(|\bIFNULL\s*\(|\bNVL\s*\(", re.I)
+
+
+# ---------------------------------------------------------------------------
+# JS / inline-HTML-script detectors (regex-based -- no build step, no TS, plain JS)
+# ---------------------------------------------------------------------------
+
+_JS_OR_RE = re.compile(
+    r"(?P<target>[A-Za-z_$][\w.$\[\]'\"]*)\s*(?:=|:|\breturn\b)?\s*"
+    r"(?P<lhs>[A-Za-z_$][\w.$\[\]'\"]*)\s*(?P<op>\|\||\?\?)\s*(?P<rhs>[^;,)\n]{1,80})"
+)
+
+
+def scan_js_text(rel: str, src: str, line_offset: int = 0) -> list[dict]:
+    out: list[dict] = []
+    for i, line in enumerate(src.splitlines(), 1):
+        if "//" in line:
+            code_part = line.split("//", 1)[0]
+        else:
+            code_part = line
+        for m in _JS_OR_RE.finditer(code_part):
+            lhs = m.group("lhs")
+            if _SEMANTIC_RE.search(lhs):
+                out.append({
+                    "file": rel, "line": i + line_offset,
+                    "language": "javascript",
+                    "pattern": "OR_OR" if m.group("op") == "||" else "NULLISH_COALESCE",
+                    "snippet": line.strip()[:200],
+                    "semantic_field_guess": lhs,
+                    "context": None,
+                    "normalized_expr": _normalize_ws(m.group(0)),
+                    "adjudication": "NOT_PROVEN",
+                    "evidence": f"{m.group('op')} substitution whose left operand's name "
+                                f"matches a domain-semantic term",
+                })
+    return out
+
+
+_HTML_SCRIPT_RE = re.compile(r"<script\b[^>]*>(.*?)</script>", re.I | re.S)
+
+
+def scan_html(rel: str, src: str) -> list[dict]:
+    out: list[dict] = []
+    for m in _HTML_SCRIPT_RE.finditer(src):
+        body = m.group(1)
+        start_line = src.count("\n", 0, m.start(1))
+        out.extend(scan_js_text(rel, body, line_offset=start_line))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# .sql file detector
+# ---------------------------------------------------------------------------
+
+def scan_sql_file(rel: str, src: str) -> list[dict]:
+    out: list[dict] = []
+    for i, line in enumerate(src.splitlines(), 1):
+        if _SQL_FALLBACK_RE.search(line):
+            snippet = line.strip()[:200]
+            out.append({
+                "file": rel, "line": i, "language": "sql",
+                "pattern": "SQL_COALESCE_STYLE",
+                "snippet": snippet,
+                "semantic_field_guess": None, "context": None,
+                "normalized_expr": _normalize_ws(snippet),
+                "adjudication": "NOT_PROVEN",
+                "evidence": "COALESCE/IFNULL/NVL in a .sql file",
+            })
+    return out
+
+
+# ---------------------------------------------------------------------------
+# JSON SQL-registry detector (operator point 7 / original mission point 6:
+# "discover executable content by loader, not extension"). Confirmed real gap
+# (not hypothetical): db.py's get_snapshot_sql() loads every snapshot_sql/*.json
+# file and returns its STRING VALUES as literal SQL text, executed as-is by 60+
+# callers -- a JSON value here is exactly as executable as a Python string
+# literal passed to conn.execute(), but until this scanner existed, no
+# extension-based dispatch table would ever look inside a .json file for it.
+# Every string value (not keys -- keys are handle names, e.g. a source file
+# path, never SQL) in the parsed JSON is checked the same way a Python string
+# constant is checked: COALESCE/IFNULL/NVL anywhere inside it is a candidate.
+# This is deliberately NOT scoped to snapshot_sql/ specifically -- scanning
+# every .json file's string values costs nothing extra (no AST parse, no
+# execution) and closes the general "loader-interpreted content hidden behind
+# a non-code extension" gap rather than only the one instance found so far.
+# ---------------------------------------------------------------------------
+
+def scan_json_file(rel: str, src: str) -> list[dict]:
+    import json as _json
+
+    out: list[dict] = []
+
+    def _walk(node, path: str):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                _walk(v, f"{path}.{k}" if path else str(k))
+            return
+        if isinstance(node, list):
+            for idx, v in enumerate(node):
+                _walk(v, f"{path}[{idx}]")
+            return
+        if isinstance(node, str):
+            m = _SQL_FALLBACK_RE.search(node)
+            if m:
+                line_offset = node.count("\n", 0, m.start())
+                literal_lines = node.splitlines()
+                match_line_text = (
+                    literal_lines[line_offset].strip()
+                    if 0 <= line_offset < len(literal_lines) else node.strip()
+                )
+                snippet = match_line_text[:200]
+                out.append({
+                    "file": rel, "line": 0, "language": "sql-in-json",
+                    "pattern": "SQL_COALESCE_STYLE",
+                    "snippet": snippet,
+                    "semantic_field_guess": None,
+                    "context": path,
+                    "normalized_expr": _normalize_ws(snippet),
+                    "adjudication": "NOT_PROVEN",
+                    "evidence": f"COALESCE/IFNULL/NVL in a JSON string value at {path!r} -- "
+                                f"loader-interpreted as literal SQL (see db.get_snapshot_sql "
+                                f"and its 60+ callers), not a comment or prose reference",
+                })
+
+    try:
+        data = _json.loads(src)
+    except (ValueError, RecursionError) as e:
+        return [{
+            "file": rel, "line": 0, "language": "json",
+            "pattern": "PARSE_FAILURE",
+            "snippet": f"JSONDecodeError: {e}",
+            "semantic_field_guess": None, "context": None,
+            "normalized_expr": f"PARSE_FAILURE:{e}",
+            "adjudication": "NOT_PROVEN",
+            "evidence": "file failed to parse as JSON -- an unscanned executable surface "
+                        "is a discovery failure, not a pass; must be resolved by hand",
+        }]
+    _walk(data, "")
+    # Line numbers are not meaningful for a value discovered via json.loads (the
+    # parser discards source position); "line" stays metadata-only (0) exactly as
+    # documented for every other pattern -- identity comes from the fingerprint
+    # (file, context=key path, pattern, normalized_expr), never from line.
+    return out
+
+
+# ---------------------------------------------------------------------------
+# PowerShell / batch detectors
+# ---------------------------------------------------------------------------
+
+_PS_FALLBACK_RE = re.compile(r"\?\?|\bif\s*\(\s*-not\b")
+_BAT_FALLBACK_RE = re.compile(r"if\s+not\s+defined\b|if\s+\"%\w+%\"\s*==\s*\"\"", re.I)
+
+
+def scan_ps1(rel: str, src: str) -> list[dict]:
+    out: list[dict] = []
+    for i, line in enumerate(src.splitlines(), 1):
+        if _PS_FALLBACK_RE.search(line):
+            snippet = line.strip()[:200]
+            out.append({
+                "file": rel, "line": i, "language": "powershell",
+                "pattern": "PS_NULL_COALESCE_OR_GUARD",
+                "snippet": snippet,
+                "semantic_field_guess": None, "context": None,
+                "normalized_expr": _normalize_ws(snippet),
+                "adjudication": "NOT_PROVEN",
+                "evidence": "PowerShell null-coalesce (??) or an if-not guard that may "
+                            "assign a substitute value",
+            })
+    return out
+
+
+def scan_bat(rel: str, src: str) -> list[dict]:
+    out: list[dict] = []
+    for i, line in enumerate(src.splitlines(), 1):
+        if _BAT_FALLBACK_RE.search(line):
+            snippet = line.strip()[:200]
+            out.append({
+                "file": rel, "line": i, "language": "batch",
+                "pattern": "BAT_DEFAULT_VAR",
+                "snippet": snippet,
+                "semantic_field_guess": None, "context": None,
+                "normalized_expr": _normalize_ws(snippet),
+                "adjudication": "NOT_PROVEN",
+                "evidence": "batch 'if not defined'/'if var==\"\"' default-assignment shape",
+            })
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Driver
+# ---------------------------------------------------------------------------
+
+_HANDLERS = {
+    ".py": ("python", scan_python),
+    ".js": ("javascript", None),   # handled via scan_js_text below
+    ".mjs": ("javascript", None),
+    ".jsx": ("javascript", None),
+    ".html": ("html", scan_html),
+    ".sql": ("sql", scan_sql_file),
+    ".ps1": ("powershell", scan_ps1),
+    ".bat": ("batch", scan_bat),
+}
+
+#: Extensions this tool has NO detector for at all, that still sit in an "executable/
+#: source surface" location the mission's SCOPE names (config, APIs). Emitted as explicit
+#: UNSCANNED_SURFACE entries -- never silently dropped -- per "fail nonzero on ... unknown
+#: executable surfaces." `.json` is NOT here -- see scan_json_file: db.get_snapshot_sql
+#: loads every snapshot_sql/*.json file and executes its string values as literal SQL,
+#: a confirmed live loader-interpreted surface, not a hypothetical one.
+_DECLARED_NO_OP_EXTENSIONS = {".yaml", ".yml", ".toml", ".css"}
+
+#: The ONLY pattern types capable of self-matching prose/fixture TEXT rather than a real
+#: code SHAPE: SQL_COALESCE_STYLE fires on any string constant containing "COALESCE("
+#: etc regardless of why the string exists, and IMPUTATION fires on any `.fillna`-named
+#: call. Every other pattern (OR_LADDER, TERNARY, DICT_GET_DEFAULT, GETATTR_DEFAULT,
+#: EXCEPT_SUBSTITUTE) requires an actual matching AST SHAPE -- a docstring or evidence
+#: string that merely MENTIONS "x or y" or "getattr(...)" as prose does not parse as one
+#: of those node types, so those patterns cannot self-match meta-tooling's own text the
+#: way the two text patterns can. Confirmed empirically (2026-09-18, PR #254 point 1):
+#: scanning every currently-meta-tooling-excluded file with no exclusion at all produces
+#: SQL_COALESCE_STYLE hits and NOTHING else -- zero OR_LADDER/TERNARY/DICT_GET_DEFAULT/
+#: GETATTR_DEFAULT/EXCEPT_SUBSTITUTE hits across all of them.
+_META_TOOLING_TEXT_ONLY_PATTERNS = {"SQL_COALESCE_STYLE", "IMPUTATION"}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default="reports/no_fallback_discovery_raw.json")
+    args = ap.parse_args()
+
+    candidates: list[dict] = []
+    scanned_by_type: dict[str, int] = {}
+    unscanned_declared: dict[str, int] = {}
+    unscanned_unknown: list[str] = []
+    meta_tooling_excluded: dict[str, int] = {}
+    reports_json_excluded: dict[str, int] = {}
+
+    for rel in _tracked_files():
+        if not _in_scope(rel):
+            continue
+        is_meta_tooling = rel in _META_TOOLING_EXCLUDED or rel.startswith(_TEST_PROOF_NAMESPACE_PREFIX)
+        path = REPO / rel
+        ext = path.suffix.lower()
+        if ext == ".py":
+            src = _read(path)
+            if src is None:
+                candidates.append({
+                    "file": rel, "line": 0, "language": "python",
+                    "pattern": "READ_FAILURE", "snippet": "", "semantic_field_guess": None,
+                    "context": None, "normalized_expr": "READ_FAILURE",
+                    "adjudication": "NOT_PROVEN",
+                    "evidence": "file could not be read as UTF-8 -- unscanned surface",
+                })
+                continue
+            if is_meta_tooling:
+                # No-fallback lock repair (2026-09-18, PR #254 point 1): this file's
+                # own governance/proof role makes SQL_COALESCE_STYLE and IMPUTATION
+                # hits self-referential noise (see _META_TOOLING_TEXT_ONLY_PATTERNS'
+                # own docstring) -- but excluding the WHOLE FILE from scanning, as this
+                # gate previously did, silently concealed every OTHER pattern type too,
+                # exactly the "excludes complete executable test files... can conceal
+                # real fallback behavior" defect the operator named. Now scans the file
+                # in full and filters out ONLY the two self-matching text patterns,
+                # keeping every AST-structural pattern (OR_LADDER, TERNARY,
+                # DICT_GET_DEFAULT, GETATTR_DEFAULT, EXCEPT_SUBSTITUTE) fully in scope.
+                all_hits = scan_python(rel, src)
+                kept = [h for h in all_hits if h["pattern"] not in _META_TOOLING_TEXT_ONLY_PATTERNS]
+                filtered_count = len(all_hits) - len(kept)
+                if filtered_count:
+                    meta_tooling_excluded[rel] = meta_tooling_excluded.get(rel, 0) + filtered_count
+                scanned_by_type["python"] = scanned_by_type.get("python", 0) + 1
+                candidates.extend(kept)
+                continue
+            scanned_by_type["python"] = scanned_by_type.get("python", 0) + 1
+            candidates.extend(scan_python(rel, src))
+        elif ext in (".js", ".mjs", ".jsx"):
+            src = _read(path)
+            if src is None:
+                continue
+            scanned_by_type["javascript"] = scanned_by_type.get("javascript", 0) + 1
+            candidates.extend(scan_js_text(rel, src))
+        elif ext == ".html":
+            src = _read(path)
+            if src is None:
+                continue
+            scanned_by_type["html"] = scanned_by_type.get("html", 0) + 1
+            candidates.extend(scan_html(rel, src))
+        elif ext == ".sql":
+            src = _read(path)
+            if src is None:
+                continue
+            scanned_by_type["sql"] = scanned_by_type.get("sql", 0) + 1
+            candidates.extend(scan_sql_file(rel, src))
+        elif ext == ".ps1":
+            src = _read(path)
+            if src is None:
+                continue
+            scanned_by_type["powershell"] = scanned_by_type.get("powershell", 0) + 1
+            candidates.extend(scan_ps1(rel, src))
+        elif ext == ".bat":
+            src = _read(path)
+            if src is None:
+                continue
+            scanned_by_type["batch"] = scanned_by_type.get("batch", 0) + 1
+            candidates.extend(scan_bat(rel, src))
+        elif ext == ".json":
+            if rel.startswith("reports/"):
+                # reports/ is this repo's established generated-OUTPUT directory (audit
+                # results, inventories, run snapshots -- see RC-523 runtime_layout) --
+                # nothing under it is ever json.load()-ed back into a live SQL string the
+                # way snapshot_sql/*.json genuinely is (db.get_snapshot_sql). Scanning it
+                # for SQL-fallback shapes self-matches this very mission's own governance
+                # artifacts (no_fallback_inventory.json etc. quote real COALESCE findings
+                # as evidence prose) and other tools' run logs that RECORD a query that
+                # executed elsewhere, not one this file itself causes to execute.
+                # Enumerated, never silently dropped -- .py/.sql/.jsx files under reports/
+                # (real source, e.g. reports/audit_round2_scripts/*.py) are unaffected;
+                # only the JSON-as-SQL-registry interpretation is excluded here.
+                reports_json_excluded[rel] = reports_json_excluded.get(rel, 0) + 1
+                continue
+            src = _read(path)
+            if src is None:
+                continue
+            scanned_by_type["json"] = scanned_by_type.get("json", 0) + 1
+            candidates.extend(scan_json_file(rel, src))
+        elif ext in _DECLARED_NO_OP_EXTENSIONS:
+            unscanned_declared[ext] = unscanned_declared.get(ext, 0) + 1
+        elif ext in ("", ".md", ".txt", ".pt", ".pkl", ".png", ".csv", ".gitkeep",
+                     ".gitignore", ".example", ".ico", ".webmanifest", ".mdc",
+                     ".python-version", ".gitattributes", ".migrated_issue22", ".jsonl"):
+            unscanned_declared[ext or "(no-ext)"] = unscanned_declared.get(ext or "(no-ext)", 0) + 1
+        else:
+            unscanned_unknown.append(rel)
+
+    _finalize_ids(candidates)
+
+    report = {
+        "scanned_by_type": scanned_by_type,
+        "unscanned_declared_noop_by_ext": unscanned_declared,
+        "unscanned_unknown_extensions": unscanned_unknown,
+        "meta_tooling_excluded_from_scan": meta_tooling_excluded,
+        "reports_dir_json_excluded_from_sql_scan": reports_json_excluded,
+        "candidate_count": len(candidates),
+        "candidates": candidates,
+    }
+    out_path = REPO / args.out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(f"scanned_by_type: {scanned_by_type}")
+    print(f"unscanned_declared_noop_by_ext: {unscanned_declared}")
+    print(f"unscanned_unknown_extensions: {len(unscanned_unknown)} -> {unscanned_unknown[:20]}")
+    print(f"meta_tooling_excluded_from_scan: {meta_tooling_excluded}")
+    print(f"reports_dir_json_excluded_from_sql_scan: {len(reports_json_excluded)} files")
+    print(f"candidate_count: {len(candidates)}")
+    print(f"wrote {out_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -53,7 +53,8 @@ MOVE_CLASS_MAP = {"move": 0, "no_move": 1}
 MOVE_CLASS_NAMES = ["move", "no_move"]
 
 def xgb_meta_contract_ok(meta: dict) -> bool:
-    """True if XGB meta satisfies system contract + tabular impute_medians."""
+    """True if XGB meta satisfies the system contract (issue7_v2: empty impute_medians
+    for native XGBoost NaN handling, or a legacy fully-populated dict)."""
     from model_contract import validate_artifact_contract
 
     ok, _ = validate_artifact_contract(meta, "xgb")
@@ -70,10 +71,24 @@ def apply_xgb_imputation_matrix(
     Training may impute historical MAR gaps. Live serve must call
     ``engineered_features_missing_withheld_wall_distances`` (RC-435) *before*
     this helper so structurally withheld OI/vanna distances are not fabricated.
+
+    No-fallback lock (2026-09-17, MISSINGNESS_CONTRACT_VERSION issue7_v2): a model
+    trained under the CURRENT contract carries an empty impute_medians -- it was
+    trained on raw NaN, relying on XGBoost's own native missing-value handling
+    (tree splits learn an optimal default direction for NaN internally), not a
+    fabricated median. For that shape, this function is a pure passthrough: no
+    median fill, and critically no unconditional nan_to_num(nan=0.0) either -- 0.0
+    is a specific, valid-looking numeric value, and silently substituting it for
+    "never observed" would reintroduce exactly the fallback this contract version
+    exists to remove. A model trained under the PRIOR contract (real, complete
+    impute_medians) is unaffected -- this function's behavior for that shape is
+    byte-identical to before.
     """
     out = np.asarray(x_mat, dtype=np.float64, order="C")
     out = out.copy()
-    if impute_medians and feature_names:
+    if not impute_medians:
+        return out
+    if feature_names:
         for j, name in enumerate(feature_names):
             med = impute_medians.get(name)
             if med is None:
@@ -1179,14 +1194,21 @@ def train_ticker(
     # legacy full-data path. CORRECTNESS-CLOSEOUT #1 (2026-05-31): the prior
     # [REAL-GATE: training-skew] full-df category/volume fit is now closed — feature VALUES change,
     # so PREPROCESSING_VERSION is bumped to force the one clean refit.
-    _impute_basis = X.iloc[:train_end] if n_val > 0 else X
-    med_series = _impute_basis.median()
-    impute_medians = {}
-    for f in feat_names:
-        v = med_series[f] if f in med_series.index else np.nan
-        impute_medians[f] = float(v) if pd.notna(v) else 0.0
-    X = X.fillna(pd.Series(impute_medians))
-    X_np = np.nan_to_num(X.values.astype(np.float64), nan=0.0)
+    #
+    # No-fallback lock (2026-09-17, MISSINGNESS_CONTRACT_VERSION issue7_v2): a missing feature
+    # reading used to be median-imputed here (fit on the train partition only, to avoid
+    # training-skew leakage) and any remaining NaN zeroed -- both are a specific, meaningful
+    # value substituted for "this was never observed." XGBoost natively handles NaN inputs
+    # (learns an optimal split direction for missing values per tree, confirmed via its own
+    # sklearn API default `missing=nan`), so training now passes real NaN straight through --
+    # no imputation, no leakage risk from a train-fit statistic, and no zero standing in for
+    # unknown. impute_medians is written as an empty dict (not omitted, so the schema stays
+    # stable for every bundle-reading consumer) -- apply_xgb_imputation_matrix and
+    # arch_competition.ablation_bundle_inference's parallel inference path both already treat
+    # an empty impute_medians as "this model uses native NaN handling, pass values through
+    # unchanged" (see apply_xgb_imputation_matrix's own docstring).
+    impute_medians: dict[str, float] = {}
+    X_np = X.values.astype(np.float64)
 
     # O-55: equal/uniform sample weights only — every row counts the same. No recency
     # decay, no class re-weighting, no toggle.

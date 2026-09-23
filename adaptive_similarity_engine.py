@@ -377,7 +377,17 @@ def _bucket_adjacency_score(
         return 0.0
     if rb == ab:
         return 1.0
-    ir, ia = _BUCKET_INDEX.get(rb, -99), _BUCKET_INDEX.get(ab, -99)
+    # rb/ab are non-None here (both-None and either-None cases returned above), so each
+    # must be one of dist_bucket()'s own labels -- every one of which is a key of
+    # _BUCKET_INDEX. A label outside that set means the two are out of sync, not that
+    # this bucket is "distant"; -99 would silently mis-score it as non-adjacent instead
+    # of surfacing the drift.
+    if rb not in _BUCKET_INDEX or ab not in _BUCKET_INDEX:
+        raise ValueError(
+            f"_bucket_adjacency_score: bucket label out of sync with _BUCKET_INDEX: "
+            f"rb={rb!r} ab={ab!r} known={sorted(k for k in _BUCKET_INDEX if k is not None)}"
+        )
+    ir, ia = _BUCKET_INDEX[rb], _BUCKET_INDEX[ab]
     if ir >= 0 and ia >= 0 and abs(ir - ia) == 1:
         return adjacent_credit
     return 0.0
@@ -703,7 +713,12 @@ def run_order_variant(
     anchor_overlay: Optional[dict[str, Any]] = None,
     extra_soft_weights: Optional[dict[str, float]] = None,
 ) -> AdaptiveShadowRun:
-    relaxed = ORDERING_PRESETS.get(preset, frozenset())
+    if preset not in ORDERING_PRESETS:
+        raise ValueError(
+            f"run_order_variant: unknown ordering preset {preset!r}; "
+            f"must be one of {sorted(ORDERING_PRESETS)}"
+        )
+    relaxed = ORDERING_PRESETS[preset]
     return run_weighted_selection(
         db,
         ticker=ticker,

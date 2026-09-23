@@ -157,8 +157,14 @@ class MarketState:
     pin_strength:       str             = "Very Low"
     net_delta:          Optional[float] = None      # share-equivalent
     net_gamma:          Optional[float] = None
-    gex_magnitude:      str             = "negligible"  # large/moderate/small/negligible
-    dex_magnitude:      str             = "negligible"
+    # No-fallback lock (2026-09-17): both were non-Optional str with a "negligible"
+    # class default -- a genuine computation failure (gex) or a producer that has never
+    # existed (dex; governance/provenance_roots.py's own registry records
+    # 'dex_magnitude': ('MARKET', None), no derivation function) must read as None, not
+    # as a specific, valid-looking magnitude bucket indistinguishable from a real
+    # negligible reading.
+    gex_magnitude:      Optional[str]   = None  # large/moderate/small/negligible/None=unavailable
+    dex_magnitude:      Optional[str]   = None  # None=unavailable; no producer exists yet
     zone:               str             = "pin"     # pin | breakout | breakdown
 
     # Regime colors (derived, not computed inline in UI)
@@ -935,7 +941,11 @@ def _schwab_days_to_expiration_for_contract(
 
 def _build_contract_context_ms(ms: "MarketState", contracts: list) -> str:
     """Contract-first framing: DTE, strike/right, breakeven when bid/ask exist."""
-    exp = ms.call_option_expiry or ms.selected_exp
+    # No-fallback lock (2026-09-17): ms.call_option_expiry has exactly one write site in
+    # this whole repo (build_market_state, always set to selected_exp), so it is provably
+    # always equal to ms.selected_exp by the time this runs -- the `or` fallback could
+    # never actually substitute a different value.
+    exp = ms.call_option_expiry
     k = ms.rec_strike
     side = (ms.call_option_right or ms.rec_side or "").upper().strip()
     t = (ms.ticker or "").upper().strip()
@@ -1052,6 +1062,14 @@ def build_market_state(
     charm_drift_toward: float | None = None,
     charm_magnitude: Optional[str] = None,
     charm_top_drivers: list | None = None,
+    # PCR — this ticker's own option-chain put/call ratio, computed by server BEFORE
+    # calling this function (from totals[0].pcr_oi + market_context.pcr_trend), passed
+    # in directly like charm. Never read from mkt_ctx (PR #254 point 2: PCR is
+    # per-ticker data and was never a property of the shared MarketContext).
+    pcr_val: float | None = None,
+    pcr_arrow: str = "→",
+    pcr_color: str = "#9ca3af",
+    pcr_label: str = "",
     # RC-292/RC-295: terrain SSOT absolute-gamma strike (full book), read by the server
     # from the terrain cache (fail-closed None when stale) and passed in like charm.
     absolute_gamma_strike: float | None = None,
@@ -1143,9 +1161,27 @@ def build_market_state(
         try:
             from math_exposure_core import gex_magnitude_label
             ms.gex_magnitude = gex_magnitude_label(_ng)
-        except Exception:
-            ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
-        ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
+        except Exception as _gme:
+            # No-fallback lock (2026-09-17, corrected from an earlier pass that kept
+            # "negligible" here alongside the state_error disclosure -- the operator
+            # correctly rejected that as still substituting a meaningful state).
+            # gex_magnitude_label itself never raises for a float/None input, so this
+            # branch fires only on a genuine system fault (realistically, its own
+            # import failing). The field is now genuinely unavailable, not a specific,
+            # valid-looking bucket that happens to also carry a disclosed error.
+            ms.gex_magnitude = None
+            ms.state_error = ms.state_error or "gex_magnitude_computation_failed"
+            ms.state_error_detail = ms.state_error_detail or f"{type(_gme).__name__}: {_gme}"[:200]
+        # No-fallback lock (2026-09-17): dex_magnitude has never had a real producer --
+        # governance/provenance_roots.py's own registry records
+        # 'dex_magnitude': ('MARKET', None), and consensus_summary (an ExposureRow) has
+        # never carried this attribute in practice. The prior getattr(...,'negligible')
+        # always silently fabricated the same specific bucket regardless of the true
+        # (unknown) delta-exposure magnitude. Left genuinely None until a real
+        # dex-magnitude computation exists; every consumer (call_engine.greek_bias,
+        # governance) already treats None as "exclude this input," not a fabricated
+        # equivalent of "negligible."
+        ms.dex_magnitude = None
     else:
         ms.bias_signal  = "Neutral"
         ms.pin_strength = "Very Low"
@@ -1189,16 +1225,30 @@ def build_market_state(
             import logging
             logging.getLogger(__name__).warning(f"Order Flow Engine error: {_of_e}")
 
-    # ── 4. VIX / PCR — from mkt_ctx ─────────────────────────────────────────
-    ms.vix             = getattr(mkt_ctx, "vix",            None)
-    ms.vix_regime      = getattr(mkt_ctx, "vix_regime",     "")
-    ms.vix_color       = getattr(mkt_ctx, "vix_color",      "#9ca3af")
-    ms.vix_implication = getattr(mkt_ctx, "vix_implication","")
-    _pcr               = getattr(mkt_ctx, "pcr",            None)
-    ms.pcr_val         = _f(_pcr)
-    ms.pcr_arrow       = getattr(mkt_ctx, "pcr_arrow",      "")
-    ms.pcr_color       = getattr(mkt_ctx, "pcr_color",      "#9ca3af")
-    ms.pcr_label       = getattr(mkt_ctx, "pcr_label",      "")
+    # ── 4. VIX — from current mkt_ctx only ───────────────────────────────────
+    # A failed current fetch produces no MarketContext. Neutral dataclass
+    # defaults must not enter current fields. Prior/stale context is not
+    # accepted here.
+    if mkt_ctx is None:
+        ms.state_error = ms.state_error or "market_context_unavailable"
+        ms.state_error_detail = ms.state_error_detail or "current MarketContext unavailable"
+    else:
+        _ctx_err = getattr(mkt_ctx, "error", "")
+        if isinstance(_ctx_err, str) and _ctx_err:
+            ms.state_error = ms.state_error or "market_context_degraded"
+            ms.state_error_detail = ms.state_error_detail or _ctx_err[:200]
+        if getattr(mkt_ctx, "vix", None) is not None:
+            ms.vix_regime = mkt_ctx.vix_regime
+            ms.vix_color = mkt_ctx.vix_color
+            ms.vix_implication = mkt_ctx.vix_implication
+
+    # ── PCR — this ticker's own option-chain reading, passed in directly (PR #254
+    # point 2: never read from the shared mkt_ctx, which is not per-ticker data) ──
+    if pcr_val is not None:
+        ms.pcr_arrow = pcr_arrow
+        ms.pcr_color = pcr_color
+        ms.pcr_label = pcr_label
+    ms.pcr_val = _f(pcr_val)
     ms.iv_direction = (
         iv_direction if iv_direction in ("expanding", "contracting", "flat") else None
     )
@@ -1330,10 +1380,13 @@ def build_market_state(
             _charm_net = charm_net
             _charm_toward = charm_drift_toward
 
-            # Cross-instrument
-            _spy_chg  = getattr(mkt_ctx, "spy_chg_pct",  None)
-            _qqq_chg  = getattr(mkt_ctx, "qqq_chg_pct",  None)
-            _iwm_chg  = getattr(mkt_ctx, "iwm_chg_pct",  None)
+            # Cross-instrument — current context only; None when current is unavailable
+            if mkt_ctx is None:
+                _spy_chg = _qqq_chg = _iwm_chg = None
+            else:
+                _spy_chg  = getattr(mkt_ctx, "spy_chg_pct",  None)
+                _qqq_chg  = getattr(mkt_ctx, "qqq_chg_pct",  None)
+                _iwm_chg  = getattr(mkt_ctx, "iwm_chg_pct",  None)
             _qqq_delta = (
                 round(_qqq_chg - _spy_chg, 4)
                 if (_spy_chg is not None and _qqq_chg is not None)
@@ -1355,7 +1408,10 @@ def build_market_state(
             # VOL_INPUT_CONTRACT 1.0.0 single-source: the bucket derives from the
             # per-cycle context level (vol_ctx=None rollback falls back to the
             # raw quote, mirroring the vix_level stamp fallback below).
-            _vix_bkt_src = (vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix)
+            if mkt_ctx is None:
+                _vix_bkt_src = (vol_ctx.market_iv_level if vol_ctx is not None else None)
+            else:
+                _vix_bkt_src = (vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix)
             _vix_bkt     = _vb_fn(_vix_bkt_src) if _vix_bkt_src is not None else None
 
             sig_inp = SignalInput(
@@ -1411,21 +1467,21 @@ def build_market_state(
                 ceiling_tests_today=ceiling_tests_today,
                 floor_tests_today=floor_tests_today,
                 spy_zone=None, spy_vwap_side=None,
-                spy_chg_pct=mkt_ctx.spy_chg_pct,
+                spy_chg_pct=_spy_chg,
                 qqq_zone=None, qqq_vwap_side=None,
-                qqq_chg_pct=mkt_ctx.qqq_chg_pct,
+                qqq_chg_pct=_qqq_chg,
                 qqq_vs_spy=_qqq_vs_spy, qqq_vs_spy_delta=_qqq_delta,
                 iwm_zone=None, iwm_vwap_side=None,
-                iwm_chg_pct=mkt_ctx.iwm_chg_pct,
+                iwm_chg_pct=_iwm_chg,
                 iwm_risk_signal=_iwm_risk,
-                spy_weighted_push=getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None),
-                qqq_weighted_push=getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None),
+                spy_weighted_push=(None if mkt_ctx is None else getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None)),
+                qqq_weighted_push=(None if mkt_ctx is None else getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None)),
                 iwm_weighted_push=iwm_blended_participation_push(mkt_ctx),
                 event_risk_level=ms.event_risk_level,
                 event_risk_detail=ms.event_risk_detail or "",
                 # VOL_INPUT_CONTRACT 1.0.0: live stamp mirrors the per-cycle
                 # context so SignalInput == snapshot row == ms_dict (MSD-001).
-                vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix),
+                vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix) if mkt_ctx is not None else (vol_ctx.market_iv_level if vol_ctx is not None else None),
                 vix_direction=(vol_ctx.market_iv_direction if vol_ctx is not None else None),
                 vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None),
                 et_hour=et_hour, et_minute=et_minute,
@@ -1517,24 +1573,36 @@ def build_market_state(
             ms.zone_label       = _rules.zone_label
             ms.zone_badge_css   = _rules.zone_color or zone_badge_color(_rules.zone_label)
             ms.rules_headline   = _rules.headline
-            ms.rules_headline_1m = getattr(_rules, 'headline_1m', '') or ''
+            # headline_1m is a required (non-default) str field on RulesCard -- always
+            # present and already a str, so getattr's default could never fire.
+            ms.rules_headline_1m = _rules.headline_1m
             ms.rules_detail     = _rules.detail
             ms.rules_alerts     = list(_rules.alerts or [])
 
             # Session levels + sweeps from micro
-            _micro = getattr(_rules, 'micro', None)
+            # No-fallback lock (2026-09-17): RulesCard.micro is always the same object
+            # rules_engine.py's build_rules_card received as its own `micro` parameter
+            # (micro=micro, passed straight through), so a truthy _micro here is always a
+            # real micro_structure.MicroRead instance -- session_high/session_low/sweeps/
+            # last_sweep are declared @dataclass fields on it, always present.
+            _micro = _rules.micro
             if _micro:
-                ms.session_high = getattr(_micro, 'session_high', None)
-                ms.session_low = getattr(_micro, 'session_low', None)
-                _sweeps = getattr(_micro, 'sweeps', [])
+                ms.session_high = _micro.session_high
+                ms.session_low = _micro.session_low
+                _sweeps = _micro.sweeps
                 ms.n_sweeps_today = len(_sweeps)
-                _last_sw = getattr(_micro, 'last_sweep', None)
+                _last_sw = _micro.last_sweep
                 if _last_sw:
                     ms.last_sweep_type = _last_sw.type
                     ms.last_sweep_level = _last_sw.level
                     ms.last_sweep_held = _last_sw.held
 
         # The Call — entry/stop/target + new fields
+        # No-fallback lock (2026-09-17): _call is always a signal_types.TheCall instance
+        # (a @dataclass whose every field below is required or class-defaulted -- Python's
+        # own dataclass machinery makes it impossible to construct a TheCall missing any of
+        # them; call_engine.py is the sole constructor). Every getattr(_call, ..., default)
+        # here was provably dead code.
         _call = _sig_out.call
         if _call:
             ms.call_signal      = _call.signal
@@ -1544,111 +1612,125 @@ def build_market_state(
             ms.target           = _call.target
             ms.target2          = _call.target2
             ms.reward_risk      = _call.reward_risk
-            ms.reward_risk2     = getattr(_call, 'reward_risk2', None)
+            ms.reward_risk2     = _call.reward_risk2
             ms.entry_disp       = _ms_price_disp(_call.entry)
             ms.stop_disp        = _ms_price_disp(_call.stop)
             ms.target_disp      = _ms_price_disp(_call.target)
             ms.target2_disp     = _ms_price_disp(_call.target2)
             ms.rr_disp          = f"{_call.reward_risk:.1f}x" if _call.reward_risk else "—"
-            ms.rr2_disp         = f"{_call.reward_risk2:.1f}x" if getattr(_call, 'reward_risk2', None) else "—"
+            ms.rr2_disp         = f"{_call.reward_risk2:.1f}x" if _call.reward_risk2 else "—"
             ms.call_headline    = _call.headline
             ms.call_reasoning   = _call.reasoning
-            ms.trade_type       = getattr(_call, 'trade_type', 'none')
-            _tt = getattr(_call, 'trade_type', 'none')
-            ms.trade_type_label = _tt.replace('_', ' ').title() if _tt and _tt != 'none' else ''
-            ms.invalidation     = getattr(_call, 'invalidation', '')
-            ms.confluence_count = getattr(_call, 'confluence_count', 0)
-            ms.confluence_total = getattr(_call, 'confluence_total', None)
-            ms.confluence_detail = getattr(_call, 'confluence_detail', '')
-            ms.mh_promoted_directional = bool(getattr(_call, 'mh_promoted_directional', False))
-            ms.time_qualifier   = getattr(_call, 'time_qualifier', '')
-            ms.replay_max_hold_bars = int(getattr(_call, 'replay_max_hold_bars', 0) or 0)
-            ms.size_cue         = getattr(_call, 'size_cue', 'SKIP')
+            ms.trade_type       = _call.trade_type
+            ms.trade_type_label = _call.trade_type.replace('_', ' ').title() if _call.trade_type and _call.trade_type != 'none' else ''
+            ms.invalidation     = _call.invalidation
+            ms.confluence_count = _call.confluence_count
+            ms.confluence_total = _call.confluence_total
+            ms.confluence_detail = _call.confluence_detail
+            ms.mh_promoted_directional = _call.mh_promoted_directional
+            ms.time_qualifier   = _call.time_qualifier
+            ms.replay_max_hold_bars = _call.replay_max_hold_bars
+            ms.size_cue         = _call.size_cue
             ms.rules_pred_agree = _call.rules_pred_agree
             ms.time_warning     = _call.time_warning
             ms.size_note        = _call.size_note
             # Validation gate — fail-closed when call omits flags
-            ms.validation_passed  = getattr(_call, 'validation_passed', None)
-            ms.structure_valid    = getattr(_call, 'structure_valid', None)
-            ms.probability_valid  = getattr(_call, 'probability_valid', None)
-            ms.risk_valid         = getattr(_call, 'risk_valid', None)
-            ms.validation_summary = getattr(_call, 'validation_summary', '')
+            ms.validation_passed  = _call.validation_passed
+            ms.structure_valid    = _call.structure_valid
+            ms.probability_valid  = _call.probability_valid
+            ms.risk_valid         = _call.risk_valid
+            ms.validation_summary = _call.validation_summary
             # Position sizing
-            ms.r_units          = getattr(_call, 'r_units', None)
-            ms.execution_mode   = getattr(_call, 'execution_mode', 'NO_TRADE')
-            ms.sizing_summary   = getattr(_call, 'sizing_summary', '')
+            ms.r_units          = _call.r_units
+            ms.execution_mode   = _call.execution_mode
+            ms.sizing_summary   = _call.sizing_summary
             # Call Readiness
-            ms.call_readiness_score   = getattr(_call, 'readiness_score', 0)
-            ms.call_state             = getattr(_call, 'call_state', 'WAIT')
-            ms.call_forecast_state    = getattr(_call, 'forecast_state', 'dormant')
-            ms.call_readiness_reasons = list(getattr(_call, 'readiness_reasons', []) or [])
-            ms.call_missing_conditions = list(getattr(_call, 'missing_conditions', []) or [])
-            ms.call_readiness_component_scores = dict(getattr(_call, 'readiness_component_scores', {}) or {})
-            ms.call_wait_blocker = getattr(_call, 'wait_blocker', None)
+            ms.call_readiness_score   = _call.readiness_score
+            ms.call_state             = _call.call_state
+            ms.call_forecast_state    = _call.forecast_state
+            ms.call_readiness_reasons = list(_call.readiness_reasons)
+            ms.call_missing_conditions = list(_call.missing_conditions)
+            ms.call_readiness_component_scores = dict(_call.readiness_component_scores)
+            ms.call_wait_blocker = _call.wait_blocker
             # Put Readiness
-            ms.put_readiness_score   = getattr(_call, 'put_readiness_score', 0)
-            ms.put_state             = getattr(_call, 'put_state', 'WAIT')
-            ms.put_forecast_state    = getattr(_call, 'put_forecast_state', 'dormant')
-            ms.put_readiness_reasons = list(getattr(_call, 'put_readiness_reasons', []) or [])
-            ms.put_missing_conditions = list(getattr(_call, 'put_missing_conditions', []) or [])
-            ms.put_readiness_component_scores = dict(getattr(_call, 'put_readiness_component_scores', {}) or {})
+            ms.put_readiness_score   = _call.put_readiness_score
+            ms.put_state             = _call.put_state
+            ms.put_forecast_state    = _call.put_forecast_state
+            ms.put_readiness_reasons = list(_call.put_readiness_reasons)
+            ms.put_missing_conditions = list(_call.put_missing_conditions)
+            ms.put_readiness_component_scores = dict(_call.put_readiness_component_scores)
 
         # MODEL_SERVING_PROVENANCE_SURFACE_V1 — ungated copy (provenance must be
         # visible on every serve, not only when a multi-horizon decision exists).
-        ms.model_serving_provenance_v1 = getattr(_sig_out, "model_serving_provenance", None)
+        ms.model_serving_provenance_v1 = _sig_out.model_serving_provenance
 
         # Multi-horizon decision payload (authoritative call synthesis + MHAP rows)
-        _mhb = getattr(_sig_out, "multi_horizon_bundle", None)
+        # No-fallback lock (2026-09-17): _mhb is always either None or a real
+        # MultiHorizonForecastBundle, _mhd a MultiHorizonDecision, _mr a
+        # HorizonAlignmentReport, _pt a FinalTradePlan, and each _a a
+        # SupportingHorizonAssessment (multi_horizon_decision.py, all @dataclass with
+        # every field below required or class-defaulted) -- every getattr(..., default)
+        # for THEIR ATTRIBUTE PRESENCE was already provably dead code (fixed earlier).
+        # The value-level `or <default>` guards below were traced into
+        # multi_horizon_decision.py's own construction logic (per-field, not assumed):
+        # final_bias/final_quality/primary_horizon/trade_mode/alignment_state/
+        # contradiction_state/conflict_level/entry_state/risk_note/decision_provenance/
+        # entry_display_text/stop_display_text/targets_display/hold_style/
+        # size_modifier_display/row_state are each built from an exhaustive if/elif/else
+        # chain or a hardcoded non-empty literal -- there is no code path that produces
+        # an empty/falsy value for any of them, so every one of these `or` guards was
+        # dead. supporting_horizon_summary/wait_reason/reason_code genuinely CAN be ""
+        # by design (e.g. no other horizons to summarize) -- their `or ""` guards were
+        # already no-ops (both sides identical when they'd fire), simplified for
+        # consistency, not because they were unsafe.
+        _mhb = _sig_out.multi_horizon_bundle
         if _mhb is not None and getattr(_mhb, "final_decision", None) is not None:
             _mhd = _mhb.final_decision
-            _mr = getattr(_mhd, "alignment_report", None)
-            _pt = getattr(_mhd, "final_trade_plan", None)
-            ms.final_bias = str(getattr(_mhd, "final_bias", "WAIT") or "WAIT")
-            _fc = getattr(_mhd, "final_confidence", None)
-            ms.final_confidence = float_finite_or_none(_fc)
-            ms.final_quality = str(getattr(_mhd, "final_quality", "D") or "D")
-            ms.final_tradeable = bool(getattr(_mhd, "final_tradeable", False))
-            ms.primary_horizon = str(getattr(_mhd, "primary_horizon", "1c") or "1c")
-            ms.trade_mode = str(getattr(_mhd, "trade_mode", "intraday") or "intraday")
-            ms.supporting_horizon_summary = str(getattr(_mhd, "supporting_horizon_summary", "") or "")
-            ms.alignment_state_display = normalize_alignment_state(
-                getattr(_mhd, "alignment_state", None) or "no_primary"
-            )
-            ms.contradiction_state = str(getattr(_mhd, "contradiction_state", "none") or "none")
-            ms.conflict_level_display = str(getattr(_mr, "conflict_level", "high") or "high")
-            ms.entry_state = str(getattr(_mhd, "entry_state", "no_setup") or "no_setup")
-            ms.risk_note = str(getattr(_mhd, "risk_note", "") or "")
-            ms.wait_reason = str(getattr(_mhd, "wait_reason", "") or "")
-            ms.decision_provenance = str(getattr(_mhd, "decision_provenance", "") or "")
-            ms.guest_anchor_active = bool(getattr(_sig_out, "guest_anchor_active", False))
-            ms.guest_anchor_weights_ticker = getattr(_sig_out, "guest_anchor_weights_ticker", None)
-            ms.guest_anchor_affiliation = getattr(_sig_out, "guest_anchor_affiliation", None)
-            ms.guest_anchor_rationale = getattr(_sig_out, "guest_anchor_rationale", None)
+            _mr = _mhd.alignment_report
+            _pt = _mhd.final_trade_plan
+            ms.final_bias = str(_mhd.final_bias)
+            ms.final_confidence = float_finite_or_none(_mhd.final_confidence)
+            ms.final_quality = str(_mhd.final_quality)
+            ms.final_tradeable = bool(_mhd.final_tradeable)
+            ms.primary_horizon = str(_mhd.primary_horizon)
+            ms.trade_mode = str(_mhd.trade_mode)
+            ms.supporting_horizon_summary = str(_mhd.supporting_horizon_summary)
+            ms.alignment_state_display = normalize_alignment_state(_mhd.alignment_state)
+            ms.contradiction_state = str(_mhd.contradiction_state)
+            ms.conflict_level_display = str(_mr.conflict_level)
+            ms.entry_state = str(_mhd.entry_state)
+            ms.risk_note = str(_mhd.risk_note)
+            ms.wait_reason = str(_mhd.wait_reason)
+            ms.decision_provenance = str(_mhd.decision_provenance)
+            ms.guest_anchor_active = bool(_sig_out.guest_anchor_active)
+            ms.guest_anchor_weights_ticker = _sig_out.guest_anchor_weights_ticker
+            ms.guest_anchor_affiliation = _sig_out.guest_anchor_affiliation
+            ms.guest_anchor_rationale = _sig_out.guest_anchor_rationale
             if _pt is not None:
-                ms.entry_display_text = str(getattr(_pt, "entry_display_text", ms.entry_display_text) or ms.entry_display_text)
-                ms.stop_display_text = str(getattr(_pt, "stop_display_text", "—") or "—")
-                ms.targets_display = str(getattr(_pt, "targets_display", "—") or "—")
-                ms.hold_style = str(getattr(_pt, "hold_style", ms.hold_style) or ms.hold_style)
-                ms.size_modifier_display = str(getattr(_pt, "size_modifier_display", "0.00x") or "0.00x")
+                ms.entry_display_text = str(_pt.entry_display_text)
+                ms.stop_display_text = str(_pt.stop_display_text)
+                ms.targets_display = str(_pt.targets_display)
+                ms.hold_style = str(_pt.hold_style)
+                ms.size_modifier_display = str(_pt.size_modifier_display)
             _rows = []
-            for _a in list(getattr(_mhd, "supporting_assessments", []) or []):
-                _missing = bool(getattr(_a, "missing", False))
-                _hz = str(getattr(_a, "horizon", ""))
+            for _a in list(_mhd.supporting_assessments):
+                _missing = bool(_a.missing)
+                _hz = str(_a.horizon)
                 if _missing:
                     _conf: float | None = None
                 else:
-                    _conf = float_finite_or_none(getattr(_a, "confidence", None))
+                    _conf = float_finite_or_none(_a.confidence)
                 _rows.append(
                     {
                         "horizon": _hz,
-                        "role": str(getattr(_a, "role", "")),
-                        "call": str(getattr(_a, "call", "")),
+                        "role": str(_a.role),
+                        "call": str(_a.call),
                         "confidence": _conf,
-                        "entry_ref": getattr(_a, "entry_ref", None),
-                        "effect": str(getattr(_a, "effect", "")),
-                        "row_state": "missing" if _missing else str(getattr(_a, "row_state", "weak")),
+                        "entry_ref": _a.entry_ref,
+                        "effect": str(_a.effect),
+                        "row_state": "missing" if _missing else str(_a.row_state),
                         "state": "missing" if _missing else "ok",
-                        "reason_code": str(getattr(_a, "reason_code", "") or ""),
+                        "reason_code": str(_a.reason_code),
                         "missing_horizon": _hz if _missing else None,
                     }
                 )
@@ -1800,28 +1882,33 @@ def build_market_state(
                 ms.transformer_approved   = _t.get("approved")
 
         # Regime classification
-        _regime = getattr(_sig_out, 'regime', None)
+        # No-fallback lock (2026-09-17): regime/fusion/vol_regime are always either None or a
+        # real @dataclass instance (regime_engine.RegimePayload, bayesian_fusion.FusionPayload,
+        # volatility_regime.VolRegimePayload respectively) -- every field read below is a
+        # required or class-defaulted field on one of those dataclasses, so once the None-guard
+        # passes, a getattr default on it could never fire.
+        _regime = _sig_out.regime
         if _regime:
-            ms.regime_primary       = getattr(_regime, 'primary', 'unknown')
-            ms.regime_secondary     = list(getattr(_regime, 'secondary_tags', []))
-            ms.regime_confidence    = getattr(_regime, 'confidence', 'low')
-            ms.regime_score         = getattr(_regime, 'confidence_score', 0.0)
-            ms.regime_summary       = getattr(_regime, 'summary', '')
-            ms.regime_support       = list(getattr(_regime, 'support_factors', []))
-            ms.regime_contradiction = list(getattr(_regime, 'contradiction_factors', []))
+            ms.regime_primary       = _regime.primary
+            ms.regime_secondary     = list(_regime.secondary_tags)
+            ms.regime_confidence    = _regime.confidence
+            ms.regime_score         = _regime.confidence_score
+            ms.regime_summary       = _regime.summary
+            ms.regime_support       = list(_regime.support_factors)
+            ms.regime_contradiction = list(_regime.contradiction_factors)
 
         # Bayesian fusion
-        _fusion = getattr(_sig_out, 'fusion', None)
+        _fusion = _sig_out.fusion
         if fusion_is_authoritative(_fusion):
             def _fusion_f(name: str) -> Optional[float]:
                 return float_finite_or_none(getattr(_fusion, name, None))
 
             ms.fusion_available       = True
-            ms.fusion_dominant        = getattr(_fusion, 'dominant_outcome', 'unknown')
+            ms.fusion_dominant        = _fusion.dominant_outcome
             ms.fusion_dominant_prob   = _fusion_f('dominant_probability')
-            ms.fusion_confidence      = getattr(_fusion, 'fusion_confidence', 'low')
+            ms.fusion_confidence      = _fusion.fusion_confidence
             ms.fusion_confidence_score = _fusion_f('fusion_confidence_score')
-            ms.fusion_summary         = getattr(_fusion, 'fusion_summary', '')
+            ms.fusion_summary         = _fusion.fusion_summary
             ms.fusion_breakout        = _fusion_f('breakout_posterior')
             ms.fusion_pinning         = _fusion_f('pinning_posterior')
             ms.fusion_continuation    = _fusion_f('continuation_posterior')
@@ -1829,36 +1916,36 @@ def build_market_state(
             ms.fusion_vol_expansion   = _fusion_f('vol_expansion_posterior')
             ms.fusion_mean_reversion  = _fusion_f('mean_reversion_posterior')
             ms.fusion_model_agreement = _fusion_f('model_agreement')
-            ms.fusion_agreement_label = getattr(_fusion, 'model_agreement_label', 'low')
-            ms.fusion_n_models_active = getattr(_fusion, 'n_sources_active', 0)
+            ms.fusion_agreement_label = _fusion.model_agreement_label
+            ms.fusion_n_models_active = _fusion.n_sources_active
             ms.fusion_prob_up         = _fusion_f('prob_up')
             ms.fusion_prob_down       = _fusion_f('prob_down')
             ms.fusion_prob_flat       = _fusion_f('prob_flat')
-            ms.fusion_dominant_direction = getattr(_fusion, 'dominant_direction', 'flat')
-            ms.fusion_evidence        = list(getattr(_fusion, 'evidence_summary', []))
-            ms.fusion_contradictions  = list(getattr(_fusion, 'contradiction_summary', []))
-            ms.fusion_mc_contribution = getattr(_fusion, "fusion_mc_contribution", None)
+            ms.fusion_dominant_direction = _fusion.dominant_direction
+            ms.fusion_evidence        = list(_fusion.evidence_summary)
+            ms.fusion_contradictions  = list(_fusion.contradiction_summary)
+            ms.fusion_mc_contribution = _fusion.fusion_mc_contribution
             # Monte Carlo pass-through
-            ms.mc_available     = getattr(_fusion, 'mc_available', False)
-            ms.mc_containment   = getattr(_fusion, 'mc_containment', None)
-            ms.mc_expansion     = getattr(_fusion, 'mc_expansion', None)
-            ms.mc_efe           = getattr(_fusion, 'mc_efe', None)
-            ms.mc_eae           = getattr(_fusion, 'mc_eae', None)
-            ms.mc_upper_50      = getattr(_fusion, 'mc_upper_50', None)
-            ms.mc_lower_50      = getattr(_fusion, 'mc_lower_50', None)
-            ms.mc_paths         = getattr(_fusion, 'mc_paths', None)
-            ms.mc_horizon       = getattr(_fusion, 'mc_horizon', None)
-            ms.mc_vol_source    = getattr(_fusion, 'mc_vol_source', None)
-            ms.mc_sigma_value   = getattr(_fusion, 'mc_sigma_value', None)
-            ms.mc_conditioning  = getattr(_fusion, 'mc_conditioning', None)
-            ms.mc_horizon_minutes = getattr(_fusion, 'mc_horizon_minutes', None)
+            ms.mc_available     = _fusion.mc_available
+            ms.mc_containment   = _fusion.mc_containment
+            ms.mc_expansion     = _fusion.mc_expansion
+            ms.mc_efe           = _fusion.mc_efe
+            ms.mc_eae           = _fusion.mc_eae
+            ms.mc_upper_50      = _fusion.mc_upper_50
+            ms.mc_lower_50      = _fusion.mc_lower_50
+            ms.mc_paths         = _fusion.mc_paths
+            ms.mc_horizon       = _fusion.mc_horizon
+            ms.mc_vol_source    = _fusion.mc_vol_source
+            ms.mc_sigma_value   = _fusion.mc_sigma_value
+            ms.mc_conditioning  = _fusion.mc_conditioning
+            ms.mc_horizon_minutes = _fusion.mc_horizon_minutes
             # Transport only — no recomputation. See governed_stack_contract for the authority.
-            ms.stack_directional_authorized = getattr(
-                _fusion, 'stack_directional_authorized', None)
-            ms.stack_directional_authorization_reason = getattr(
-                _fusion, 'stack_directional_authorization_reason', None)
+            ms.stack_directional_authorized = _fusion.stack_directional_authorized
+            ms.stack_directional_authorization_reason = (
+                _fusion.stack_directional_authorization_reason
+            )
 
-        _disp_mc = getattr(_sig_out, "mc_display_excursions", None) or {}
+        _disp_mc = _sig_out.mc_display_excursions or {}
         if isinstance(_disp_mc, dict):
             ms.mc_efe_5m = float_finite_or_none(_disp_mc.get("mc_efe_5m"))
             ms.mc_eae_5m = float_finite_or_none(_disp_mc.get("mc_eae_5m"))
@@ -1866,36 +1953,38 @@ def build_market_state(
             ms.mc_eae_15m = float_finite_or_none(_disp_mc.get("mc_eae_15m"))
 
         # Volatility regime (policy layer — influences The Call)
-        _vr = getattr(_sig_out, 'vol_regime', None)
+        _vr = _sig_out.vol_regime
         if _vr is not None:
-            ms.vol_regime = getattr(_vr, 'vol_regime', 'unknown')
-            ms.vol_regime_summary = getattr(_vr, 'summary', '')
-            _cvm = getattr(_vr, 'conviction_multiplier', None)
-            ms.vol_regime_conviction_mult = float_finite_or_none(_cvm)
-            _rmm = getattr(_vr, 'risk_multiplier', None)
-            ms.vol_regime_risk_mult = float_finite_or_none(_rmm)
+            ms.vol_regime = _vr.vol_regime
+            ms.vol_regime_summary = _vr.summary
+            ms.vol_regime_conviction_mult = float_finite_or_none(_vr.conviction_multiplier)
+            ms.vol_regime_risk_mult = float_finite_or_none(_vr.risk_multiplier)
 
         # Stack decision path (ordered: XGB → LSTM → Transformer → MC → Fusion → Call)
-        _path = getattr(_sig_out, 'stack_decision_path', None)
+        # No-fallback lock (2026-09-17): stack_decision_path is Optional[StackDecisionPath]
+        # (a specific @dataclass, not loose `object`) -- once non-None, all six stage
+        # fields are required (no defaults), and each StackStage's stage_id/status are
+        # required fields too. Every getattr default here was provably dead code.
+        _path = _sig_out.stack_decision_path
         if _path is not None:
             _stages = [
-                getattr(_path, 'xgboost', None),
-                getattr(_path, 'lstm', None),
-                getattr(_path, 'transformer', None),
-                getattr(_path, 'monte_carlo', None),
-                getattr(_path, 'fusion', None),
-                getattr(_path, 'final_call', None),
+                _path.xgboost,
+                _path.lstm,
+                _path.transformer,
+                _path.monte_carlo,
+                _path.fusion,
+                _path.final_call,
             ]
             ms.stack_decision_path = []
             for s in _stages:
                 if s is not None:
                     ms.stack_decision_path.append({
-                        "stage_id": getattr(s, 'stage_id', ''),
-                        "status": getattr(s, 'status', 'inactive'),
-                        "direction": getattr(s, 'direction', None),
-                        "confidence": getattr(s, 'confidence', None),
-                        "probability": getattr(s, 'probability', None),
-                        "note": getattr(s, 'note', ''),
+                        "stage_id": s.stage_id,
+                        "status": s.status,
+                        "direction": s.direction,
+                        "confidence": s.confidence,
+                        "probability": s.probability,
+                        "note": s.note,
                     })
 
     # ── 9b. Store charm on MarketState — single source for ms_dict ─────────
@@ -1952,7 +2041,8 @@ def build_market_state(
         contracts_use,
         ms.rec_strike,
         ms.call_option_right,
-        expiry=(ms.call_option_expiry or ms.selected_exp),
+        # Same provable-redundancy reasoning as _build_contract_context_ms above.
+        expiry=ms.call_option_expiry,
     )
     ms.dte_warn, ms.dte_color = dte_style(_selected_dte)
 

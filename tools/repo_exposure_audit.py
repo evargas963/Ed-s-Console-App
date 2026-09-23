@@ -185,9 +185,16 @@ def section_db() -> dict:
         # Duplication in the event log — one price event written once per NAMED level (RC-88).
         try:
             tot = con.execute("SELECT COUNT(*) FROM level_crosses").fetchone()[0]
-            extra = con.execute(
-                "SELECT COALESCE(SUM(c-1),0) FROM (SELECT COUNT(*) c FROM level_crosses "
+            # Fallback lock (2026-09-17): SQL-level default-on-NULL removed (operator
+            # ruling: no aggregate exemption survives). Unlike the other aggregate sites
+            # this repair touched, THIS one had no pre-existing Python-side guard -- a
+            # SUM over zero duplicate-groups (the common, healthy-database case) is a
+            # legal NULL, and the f-string/division below would crash on it without an
+            # explicit guard, so one is added here rather than assumed to already exist.
+            extra_row = con.execute(
+                "SELECT SUM(c-1) FROM (SELECT COUNT(*) c FROM level_crosses "
                 "GROUP BY ticker, ts_utc, level_value HAVING COUNT(*)>1)").fetchone()[0]
+            extra = extra_row if extra_row is not None else 0
             out["level_crosses_duplication"] = (
                 f"{extra:,} of {tot:,} rows are repeats of another row's "
                 f"(ticker, ts, level_value) — {extra / max(tot, 1) * 100:.1f}%")

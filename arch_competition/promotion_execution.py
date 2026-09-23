@@ -148,7 +148,7 @@ def _stamp_candidate_manifests_from_evaluation_manifest(
     without this sync, a successful 60c train blocks 1c/5c/15c promote with
     ``manifest horizon '60c' != expected '1c'``.
     """
-    from training_cache import load_run_manifest, save_run_manifest
+    from training_cache import ManifestCorruptError, load_run_manifest, save_run_manifest
 
     lineage = manifest.get("lineage") or {}
     hz = normalize_ml_horizon_slug(ml_horizon_slug)
@@ -158,7 +158,17 @@ def _stamp_candidate_manifests_from_evaluation_manifest(
         if val is not None:
             patch[key] = val
     for cand_dir in (parallel_dir, cascade_dir):
-        existing = load_run_manifest(cand_dir) or {}
+        try:
+            existing = load_run_manifest(cand_dir)
+        except ManifestCorruptError as e:
+            # Distinct from absent (repo-wide semantic-coherence mission, item 1):
+            # silently treating a corrupt manifest as "nothing to patch, skip" would
+            # bury a real anomaly (disk corruption, a partial write) under the same
+            # behavior a genuinely-never-written manifest gets. Log it visibly and
+            # skip this one directory rather than merging patch fields into an
+            # empty dict and overwriting whatever was actually on disk.
+            log.warning("manifest lineage sync: %s is corrupt, skipping: %s", cand_dir, e)
+            continue
         if not existing:
             continue
         merged = dict(existing)

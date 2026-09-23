@@ -477,8 +477,14 @@ def main():
 
     # Single query for rules_signal per day (faster than N queries)
     sig_by_day = {}
+    # Fallback lock (2026-09-17): SQL-level default-on-NULL removed (operator ruling: no
+    # display-label exemption survives). SQLite already groups a genuinely-NULL rules_signal
+    # into its own distinct GROUP BY bucket with no help from a default; the f-string below
+    # (sig_str = ", ".join(f"{s}:{c}" ...)) already prints Python's own "None" for that
+    # bucket, an equally self-describing, unmistakable label -- the SQL default changed only
+    # which word appeared, not whether the group was disclosed.
     for row in conn.execute(f"""
-        SELECT substr(ts_et, 1, 10) as dt, COALESCE(rules_signal, 'NULL') as sig, COUNT(*) as c
+        SELECT substr(ts_et, 1, 10) as dt, rules_signal as sig, COUNT(*) as c
         FROM {SNAPSHOT_TABLE_1M} WHERE {RTH_WHERE}
         GROUP BY dt, sig
     """).fetchall():

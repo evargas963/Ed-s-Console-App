@@ -250,7 +250,10 @@ def test_parallel_eval_skips_row_when_lstm_unavailable(monkeypatch) -> None:
         if lstm_calls["n"] == 1:
             from features.lstm_sequence_input import LstmSequenceInputError
 
-            raise LstmSequenceInputError("LSTM needs at least 60 snapshots, got 0")
+            raise LstmSequenceInputError(
+                "LSTM needs at least 60 snapshots, got 0",
+                reason="INSUFFICIENT_HISTORY",
+            )
         return {"up": 0.4, "down": 0.3, "flat": 0.3}
 
     import ml_predict as mp

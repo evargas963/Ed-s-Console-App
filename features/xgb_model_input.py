@@ -41,41 +41,58 @@ MVP_LEGACY_KEYS: frozenset[str] = frozenset(CANONICAL_TO_XGB_TABULAR.values())
 class XgbInferenceInputError(ValueError):
     """InferenceSnapshotV1 is missing, invalid, or incompatible with XGB tabular inference."""
 
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
 
 def validate_inference_snapshot_v1_envelope(snap: Any) -> None:
     """Structural checks for InferenceSnapshotV1 (type, version, timeframe, feature row shape)."""
     if not isinstance(snap, dict):
-        raise XgbInferenceInputError("InferenceSnapshotV1 must be a dict")
+        raise XgbInferenceInputError("InferenceSnapshotV1 must be a dict", reason="ENVELOPE_INVALID")
     if snap.get("snapshot_type") != INFERENCE_SNAPSHOT_TYPE:
         raise XgbInferenceInputError(
-            f"expected snapshot_type {INFERENCE_SNAPSHOT_TYPE!r}, got {snap.get('snapshot_type')!r}"
+            f"expected snapshot_type {INFERENCE_SNAPSHOT_TYPE!r}, got {snap.get('snapshot_type')!r}",
+            reason="ENVELOPE_INVALID",
         )
     if snap.get("feature_contract_version") != CANONICAL_FEATURE_CONTRACT_VERSION:
         raise XgbInferenceInputError(
             f"feature_contract_version mismatch: expected {CANONICAL_FEATURE_CONTRACT_VERSION!r}, "
-            f"got {snap.get('feature_contract_version')!r}"
+            f"got {snap.get('feature_contract_version')!r}",
+            reason="CONTRACT_MISMATCH",
         )
     if snap.get("canonical_timeframe") != CANONICAL_FEATURE_TIMEFRAME:
         raise XgbInferenceInputError(
             f"canonical_timeframe must be {CANONICAL_FEATURE_TIMEFRAME!r}, "
-            f"got {snap.get('canonical_timeframe')!r}"
+            f"got {snap.get('canonical_timeframe')!r}",
+            reason="CONTRACT_MISMATCH",
         )
     tkr = snap.get("ticker")
     if tkr is None or not str(tkr).strip():
-        raise XgbInferenceInputError("InferenceSnapshotV1 missing non-empty ticker")
+        raise XgbInferenceInputError(
+            "InferenceSnapshotV1 missing non-empty ticker", reason="ENVELOPE_INVALID"
+        )
     ts = snap.get("as_of_ts")
     if ts is None:
-        raise XgbInferenceInputError("InferenceSnapshotV1 missing as_of_ts")
+        raise XgbInferenceInputError(
+            "InferenceSnapshotV1 missing as_of_ts", reason="ENVELOPE_INVALID"
+        )
     try:
         float(ts)
     except (TypeError, ValueError) as e:
-        raise XgbInferenceInputError(f"as_of_ts not numeric: {ts!r}") from e
+        raise XgbInferenceInputError(
+            f"as_of_ts not numeric: {ts!r}", reason="ENVELOPE_INVALID"
+        ) from e
     feats = snap.get("features")
     if not isinstance(feats, dict):
-        raise XgbInferenceInputError("InferenceSnapshotV1 missing features dict")
+        raise XgbInferenceInputError(
+            "InferenceSnapshotV1 missing features dict", reason="ENVELOPE_INVALID"
+        )
     ok, errs = validate_feature_contract_row(feats)
     if not ok:
-        raise XgbInferenceInputError(f"invalid canonical feature row: {errs}")
+        raise XgbInferenceInputError(
+            f"invalid canonical feature row: {errs}", reason="FEATURE_CONTRACT_INVALID"
+        )
 
 
 def validate_inference_snapshot_v1_for_xgb(snap: Any) -> None:
@@ -86,13 +103,21 @@ def validate_inference_snapshot_v1_for_xgb(snap: Any) -> None:
     feats = snap["features"]
     spot = feats.get("price.spot")
     if spot is None:
-        raise XgbInferenceInputError("XGB inference requires price.spot (missing in canonical features)")
+        raise XgbInferenceInputError(
+            "XGB inference requires price.spot (missing in canonical features)",
+            reason="MISSING_CANONICAL_SPOT",
+        )
     try:
         sf = float(spot)
     except (TypeError, ValueError) as e:
-        raise XgbInferenceInputError(f"price.spot not numeric: {spot!r}") from e
+        raise XgbInferenceInputError(
+            f"price.spot not numeric: {spot!r}", reason="INVALID_CANONICAL_SPOT"
+        ) from e
     if not (sf > 0.0):
-        raise XgbInferenceInputError(f"XGB inference requires price.spot > 0, got {sf!r}")
+        raise XgbInferenceInputError(
+            f"XGB inference requires price.spot > 0, got {sf!r}",
+            reason="INVALID_CANONICAL_SPOT",
+        )
 
 
 def _et_from_ts_utc(ts_utc: float) -> tuple[int, int]:
@@ -152,9 +177,11 @@ def assert_not_raw_l1_payload(d: Any) -> None:
     if "liquidity_summary" in d and "features" not in d:
         raise XgbInferenceInputError(
             "raw L1-style payload forbidden for XGB: found top-level liquidity_summary "
-            "(use InferenceSnapshotV1 with canonical features)"
+            "(use InferenceSnapshotV1 with canonical features)",
+            reason="RAW_PAYLOAD_REJECTED",
         )
     if "spot_anchors" in d and "snapshot_type" not in d:
         raise XgbInferenceInputError(
-            "raw L1-style payload forbidden for XGB: found spot_anchors (use InferenceSnapshotV1)"
+            "raw L1-style payload forbidden for XGB: found spot_anchors (use InferenceSnapshotV1)",
+            reason="RAW_PAYLOAD_REJECTED",
         )

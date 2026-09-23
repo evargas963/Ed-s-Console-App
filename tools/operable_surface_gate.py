@@ -131,7 +131,7 @@ def evaluate_operable_surface(
         inv = conn.execute(
             f"""
             SELECT COUNT(*) AS n,
-                   COALESCE(MAX(ABS(matched_snapshot_ts_utc - decision_ts_utc)), 0) AS max_gap,
+                   MAX(ABS(matched_snapshot_ts_utc - decision_ts_utc)) AS max_gap,
                    SUM(CASE WHEN ABS(matched_snapshot_ts_utc - decision_ts_utc) > ?
                             THEN 1 ELSE 0 END) AS gt59,
                    SUM(CASE WHEN ABS(matched_snapshot_ts_utc - decision_ts_utc) > ?
@@ -153,8 +153,8 @@ def evaluate_operable_surface(
         signed = conn.execute(
             f"""
             SELECT
-              COALESCE(MAX(matched_snapshot_ts_utc - decision_ts_utc), 0) AS max_pos,
-              COALESCE(MIN(matched_snapshot_ts_utc - decision_ts_utc), 0) AS max_neg
+              MAX(matched_snapshot_ts_utc - decision_ts_utc) AS max_pos,
+              MIN(matched_snapshot_ts_utc - decision_ts_utc) AS max_neg
             FROM calibration_decision_log
             WHERE calibration_trust='trusted'
               AND {operable}
@@ -210,10 +210,14 @@ def evaluate_operable_surface(
 
         research_excluded = 0
         if _has_col(conn, "calibration_decision_log", "research_excluded"):
+            # Fallback lock (2026-09-17): COALESCE removed -- provably redundant once this
+            # column exists (see calibration/operable_surface_quarantine.py's own note: the
+            # column is always added NOT NULL DEFAULT 0, so NULL is structurally impossible
+            # here).
             research_excluded = int(
                 conn.execute(
                     "SELECT COUNT(*) AS n FROM calibration_decision_log "
-                    "WHERE COALESCE(research_excluded,0)=1"
+                    "WHERE research_excluded=1"
                 ).fetchone()["n"]
             )
 
@@ -239,7 +243,7 @@ def evaluate_operable_surface(
             "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "db_path": str(db_path),
             "definitions": {
-                "operable": "calibration_trust='trusted' AND COALESCE(research_excluded,0)=0",
+                "operable": "calibration_trust='trusted' AND research_excluded=0",
                 "scope": "all tickers (not sentinel-only)",
                 "old_missing": (
                     "operable AND decision_ts_utc < now-70m AND matched_snapshot_ts_utc IS NULL"

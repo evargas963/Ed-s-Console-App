@@ -18,10 +18,6 @@ def _mkt_ctx() -> MagicMock:
     ctx.qqq_chg_pct = None
     ctx.iwm_chg_pct = None
     ctx.vix = None
-    ctx.pcr = None
-    ctx.pcr_arrow = ""
-    ctx.pcr_color = ""
-    ctx.pcr_label = ""
     ctx.vix_regime = ""
     ctx.vix_color = ""
     ctx.vix_implication = ""
@@ -251,3 +247,113 @@ def test_market_state_source_imports_canonical_provenance_gate():
     assert "canonical_provenance_is_tradable" in body_src, (
         "canonical_provenance_is_tradable not used inside build_market_state — gate moved or removed"
     )
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_gex_magnitude_computation_failure_is_disclosed_not_guessed(_mock_cs, monkeypatch):
+    """No-fallback lock repair (2026-09-17, FB-00266, corrected 2026-09-17 per operator
+    rejection of a first pass that kept 'negligible' here): a genuine gex_magnitude_label
+    failure (the only realistic trigger is math_exposure_core's own import failing) used
+    to be caught and silently papered over by guessing a value off consensus_summary's
+    own 'gex_magnitude' attribute -- an attribute that does not exist upstream in
+    practice. The first repair pass replaced the guess with a hardcoded 'negligible'
+    plus a state_error disclosure -- still a meaningful, valid-looking value substituted
+    for a genuine computation failure. gex_magnitude is now genuinely None on failure;
+    the failure is disclosed via state_error/state_error_detail, and the field itself is
+    honestly unavailable rather than a specific bucket."""
+    import math_exposure_core
+
+    def _raise(_net_gex):
+        raise RuntimeError("synthetic gex_magnitude_label failure")
+
+    monkeypatch.setattr(math_exposure_core, "gex_magnitude_label", _raise)
+    consensus = MagicMock(bias_signal="Bullish", pin_strength="High", net_delta=1.0, net_gamma=2.0,
+                          gex_magnitude="large", dex_magnitude="large")
+    ms = build_market_state(**_base_kwargs(consensus_summary=consensus))
+    assert ms.state_error == "gex_magnitude_computation_failed"
+    assert "RuntimeError" in (ms.state_error_detail or "")
+    assert ms.gex_magnitude is None, (
+        "a genuine computation failure must leave the field honestly unavailable (None), "
+        "disclosed via state_error -- not a specific, valid-looking magnitude bucket"
+    )
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_gex_magnitude_never_reads_a_guessed_alternate_source_on_failure(_mock_cs, monkeypatch):
+    """Proves the guess-from-consensus_summary path is gone entirely: even when
+    consensus_summary DOES carry a plausible-looking 'gex_magnitude' attribute, a
+    gex_magnitude_label failure must not read it -- only the disclosed default."""
+    import math_exposure_core
+
+    def _raise(_net_gex):
+        raise RuntimeError("synthetic failure")
+
+    monkeypatch.setattr(math_exposure_core, "gex_magnitude_label", _raise)
+    consensus = MagicMock(bias_signal="Bullish", pin_strength="High", net_delta=1.0, net_gamma=2.0,
+                          gex_magnitude="large", dex_magnitude="large")
+    ms = build_market_state(**_base_kwargs(consensus_summary=consensus))
+    assert ms.gex_magnitude != "large", (
+        "must not have read consensus_summary.gex_magnitude as a guessed substitute"
+    )
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_dex_magnitude_is_always_none_no_producer_exists(_mock_cs):
+    """
+    No-fallback lock repair (2026-09-17): dex_magnitude has never had a real producer --
+    governance/provenance_roots.py's own registry records
+    'dex_magnitude': ('MARKET', None), and consensus_summary (ExposureRow) has never
+    carried this attribute in practice. Even when consensus_summary carries a
+    plausible-looking 'dex_magnitude' attribute, build_market_state must not read it as
+    a substitute -- the field stays honestly None until a real computation exists.
+    """
+    consensus = MagicMock(bias_signal="Bullish", pin_strength="High", net_delta=1.0, net_gamma=2.0,
+                          gex_magnitude="large", dex_magnitude="large")
+    ms = build_market_state(**_base_kwargs(consensus_summary=consensus))
+    assert ms.dex_magnitude is None
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_mkt_ctx_fields_read_directly_no_silent_default_on_a_real_value(_mock_cs):
+    """Display fields copy only when the measured source exists. A stray
+    vix_regime on a context with no vix must not populate current fields.
+    """
+    measured = _mkt_ctx()
+    measured.vix = 22.5
+    measured.vix_regime = "elevated"
+    measured.vix_color = "#ff0000"
+    measured.vix_implication = "hedging pressure rising"
+    ms = build_market_state(**_base_kwargs(mkt_ctx=measured))
+    assert ms.vix_regime == "elevated"
+    assert ms.vix_color == "#ff0000"
+    assert ms.vix_implication == "hedging pressure rising"
+
+    orphan_labels = _mkt_ctx()
+    orphan_labels.vix = None
+    orphan_labels.vix_regime = "elevated"
+    ms_orphan = build_market_state(**_base_kwargs(mkt_ctx=orphan_labels))
+    assert ms_orphan.vix_regime == ""
+
+
+@patch("signals.compute_signals", side_effect=_fake_compute_signals)
+def test_pcr_fields_passed_directly_never_read_from_mkt_ctx(_mock_cs):
+    """No-fallback lock repair (2026-09-18, PR #254 point 2): PCR is this ticker's
+    own option-chain reading, computed by server.py and passed directly into
+    build_market_state (exactly like charm) -- it must never be sourced from the
+    shared mkt_ctx, which no longer carries pcr fields at all. A mkt_ctx mock with
+    no pcr attributes proves the label fields cannot leak from there."""
+    ctx_with_no_pcr_attrs = _mkt_ctx()
+    ms = build_market_state(
+        **_base_kwargs(
+            mkt_ctx=ctx_with_no_pcr_attrs,
+            pcr_val=0.9, pcr_arrow="up", pcr_color="#00ff00", pcr_label="put pressure building",
+        )
+    )
+    assert ms.pcr_val == pytest.approx(0.9)
+    assert ms.pcr_arrow == "up"
+    assert ms.pcr_color == "#00ff00"
+    assert ms.pcr_label == "put pressure building"
+
+    ms_absent = build_market_state(**_base_kwargs(mkt_ctx=ctx_with_no_pcr_attrs))
+    assert ms_absent.pcr_val is None
+    assert ms_absent.pcr_arrow == ""

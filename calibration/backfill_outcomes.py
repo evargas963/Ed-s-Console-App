@@ -11,8 +11,10 @@ Priority:
 Never attaches if more than one snapshot row matches at the chosen key (duplicate ts_utc rows).
 
 After pending rows are processed, every row with `outcome_5c` already set is re-synced from
-`snapshots` at `COALESCE(matched_snapshot_ts_utc, decision_ts_utc)` so legacy partial attaches
-cannot drift from the matched snapshot row.
+`snapshots` at its recorded `matched_snapshot_ts_utc` (or, for a legacy row where that
+provenance was never recorded, at `decision_ts_utc` only when `outcome_join_method='exact'`
+proves the two are equal). A legacy row whose original match timestamp cannot be proven is
+skipped rather than guessed, so re-sync never drifts a row onto an unrecorded snapshot.
 
 Usage:
   python -m calibration.backfill_outcomes
@@ -215,10 +217,11 @@ def _resync_existing_outcomes_from_snapshots(
         "resync_skipped_no_snapshot": 0,
         "resync_skipped_duplicate_snapshots": 0,
         "resync_skipped_snapshot_outcomes_not_filled": 0,
+        "resync_skipped_match_provenance_unrecorded": 0,
     }
     rows = conn.execute(
         """
-        SELECT id, ticker, decision_ts_utc, matched_snapshot_ts_utc
+        SELECT id, ticker, decision_ts_utc, matched_snapshot_ts_utc, outcome_join_method
         FROM calibration_decision_log
         WHERE outcome_5c IS NOT NULL AND calibration_trust = 'trusted'
         """
@@ -226,8 +229,25 @@ def _resync_existing_outcomes_from_snapshots(
     for r in rows:
         rid = int(r["id"])
         tk = ticker_storage_key(str(r["ticker"]))
-        key_ts = float(r["matched_snapshot_ts_utc"] if r["matched_snapshot_ts_utc"] is not None else r["decision_ts_utc"])
         dec_ts = float(r["decision_ts_utc"])
+        if r["matched_snapshot_ts_utc"] is not None:
+            # Real recorded provenance from the last attach/resync.
+            key_ts = float(r["matched_snapshot_ts_utc"])
+        elif r["outcome_join_method"] == "exact":
+            # Not a substitution: an exact-method attach is defined by
+            # snapshots.ts_utc == decision_ts_utc (see resolve_snapshot_for_backfill),
+            # so decision_ts_utc IS the matched snapshot's ts_utc here, proven by
+            # the join method itself rather than assumed.
+            key_ts = dec_ts
+        else:
+            # matched_snapshot_ts_utc was never recorded (pre-migration legacy row)
+            # and the join method is not provably 'exact' -- the original match
+            # timestamp is genuinely unknown. Guessing decision_ts_utc here would
+            # be a real substitution for a row that may have been matched via
+            # nearest-tolerance to a different snapshot ts. Expose the gap instead
+            # of guessing.
+            out["resync_skipped_match_provenance_unrecorded"] += 1
+            continue
         n = _count_snapshots_at_exact_ts(conn, tk, key_ts)
         if n == 0:
             out["resync_skipped_no_snapshot"] += 1

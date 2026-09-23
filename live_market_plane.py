@@ -208,7 +208,14 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
             "bid": bid_source,
             "ask": ask_source,
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
-            "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
+            # Composed FROM bid_source/ask_source (never a separate hardcoded constant):
+            # a spread provenance label that agrees with the two sources it was built
+            # from by construction, not by coincidence -- if either side's source ever
+            # changes, this label changes with it instead of silently staying stale.
+            "spread": (
+                f"{bid_source}+{ask_source}" if bid_source is not None and ask_source is not None
+                else "unavailable_missing_bid_or_ask"
+            ),
             "quote_ts": quote_ts_clock,  # M6: which exchange clock exchange_quote_ts carries (QUOTE_TIME_MILLIS, or TRADE_TIME_MILLIS_proxy on fallback)
             "carried_forward": False,
             "previous_spot_available": pspot is not None,

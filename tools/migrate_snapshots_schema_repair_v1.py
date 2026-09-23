@@ -329,10 +329,13 @@ def _counts(conn: sqlite3.Connection) -> dict[str, int]:
 
 
 def _id_assignment_preview(conn: sqlite3.Connection) -> dict[str, Any]:
+    # Fallback lock (2026-09-17): SQL-level default-on-NULL removed (operator ruling: no
+    # aggregate exemption survives) -- the Python-side `or 0` guards two lines below already
+    # handle MAX-over-zero-rows identically.
     row = conn.execute(
         """
         SELECT
-            COALESCE(MAX(snapshot_id), 0) AS max_snapshot_id,
+            MAX(snapshot_id) AS max_snapshot_id,
             COUNT(*) AS total,
             SUM(CASE WHEN snapshot_id IS NULL THEN 1 ELSE 0 END) AS null_count
         FROM snapshots

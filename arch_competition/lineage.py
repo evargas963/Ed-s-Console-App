@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from training_cache import load_run_manifest
+from training_cache import ManifestCorruptError, load_run_manifest
 # RC-345/F25: lineage manifest + fingerprint ticker identity consumes the ONE canonical authority
 # so 'SPX' and '$SPX' are the SAME instrument (no false-reject across the parity boundary).
 from instrument_identity import ticker_storage_key
@@ -49,8 +49,18 @@ def validate_parallel_cascade_manifest_lineage(
     if not ticker or not str(ticker).strip():
         raise EvaluationLineageError("ticker argument required (non-empty)")
 
-    mp = load_run_manifest(parallel_dir)
-    mc = load_run_manifest(cascade_dir)
+    try:
+        mp = load_run_manifest(parallel_dir)
+    except ManifestCorruptError as e:
+        # Distinct from absent (repo-wide semantic-coherence mission, item 1): the
+        # prior behavior coalesced a corrupt manifest into `None`, so this raised
+        # "parallel manifest missing" for a file that was actually present but
+        # unreadable -- a misleading diagnosis.
+        raise EvaluationLineageError(f"parallel manifest at {parallel_dir} is corrupt: {e}") from e
+    try:
+        mc = load_run_manifest(cascade_dir)
+    except ManifestCorruptError as e:
+        raise EvaluationLineageError(f"cascade manifest at {cascade_dir} is corrupt: {e}") from e
     if not mp:
         raise EvaluationLineageError(f"parallel manifest missing under {parallel_dir}")
     if not mc:

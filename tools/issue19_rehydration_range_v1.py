@@ -53,7 +53,6 @@ def main() -> None:
             CANONICAL_TIMEFRAME,
             DERIVED_TIMEFRAME,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
         ),
     ).fetchall()
 
@@ -62,7 +61,6 @@ def main() -> None:
         (
             CANONICAL_TIMEFRAME,
             DERIVED_TIMEFRAME,
-            HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
             HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
         ),
     ).fetchone()

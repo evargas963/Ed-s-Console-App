@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from calibration.complete_chain_capture import (
     latest_complete_chain_capture,
     persist_complete_chain_capture,
@@ -41,6 +43,25 @@ def test_flatten_preserves_real_cde_half_dollar_set():
     assert len(_frac(after)) == len(_frac(_CDE_CONTRACTS))
     strikes = {float(c["strikePrice"]) for c in after}
     assert 21.0 in strikes and 21.5 in strikes
+
+
+def test_flatten_rejects_malformed_non_dict_chain_response():
+    """No-fallback item 10: a chain response that is not a JSON object (a malformed
+    vendor body, or a parse anomaly) must never silently read as [] -- indistinguishable
+    from "this chain genuinely has zero contracts" to every one of flatten_chain_contracts'
+    9 real callers, several of which turn an empty result into
+    'option chain returned zero contracts' or a False readiness verdict."""
+    for bad in (None, [], "not a dict", 42, ["a", "list", "of", "contracts"]):
+        with pytest.raises(TypeError, match="malformed vendor body"):
+            flatten_chain_contracts(bad)
+
+
+def test_flatten_still_returns_empty_for_a_genuinely_well_formed_empty_chain():
+    """A well-formed chain response with genuinely zero contracts (both expDateMaps
+    present but empty) is still a real, legitimate [] -- the fix distinguishes malformed
+    from empty, it does not turn empty into an error."""
+    assert flatten_chain_contracts({"callExpDateMap": {}, "putExpDateMap": {}}) == []
+    assert flatten_chain_contracts({}) == []   # both keys absent -- same legitimate empty
 
 
 def test_persist_keeps_exact_cde_contract_set(tmp_path):

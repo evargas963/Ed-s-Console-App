@@ -181,7 +181,12 @@ def prepare_transformer_data(
 
             enrolled = load_user_scheduler_tickers_or_empty()
             tickers = resolve_ml_training_roster(enrolled, str(_db))
-        except Exception:
+        except Exception as _roster_exc:
+            # Fallback lock (2026-09-17): a roster-resolution failure used to silently
+            # produce the SAME empty-tickers result a genuinely-empty enrollment does.
+            log.warning("ticker roster resolution FAILED (%s: %s) — training zero tickers, "
+                        "this is a resolution failure, not a confirmed-empty roster",
+                        type(_roster_exc).__name__, _roster_exc)
             tickers = []
         tickers = [t for t in tickers if t and not str(t).startswith("$")]
 

@@ -782,9 +782,13 @@ def test_rc345_selected_dte_selectors_both_key_on_expiry() -> None:
         "market_state DTE selector must take an expiry argument (F41/RC-345)")
     assert 'str(ct.get("expirationDate") or "")[:10] != exp_key' in ms, (
         "market_state DTE selector must filter contracts by expiry (F41/RC-345)")
-    # Both callers pass the selected expiry.
+    # Both callers pass the selected expiry. No-fallback lock (2026-09-17): the second
+    # caller's `expiry=(ms.call_option_expiry or ms.selected_exp)` was simplified to a bare
+    # `expiry=ms.call_option_expiry` -- call_option_expiry has exactly one write site in
+    # this file (always set to selected_exp), so the `or` fallback could never actually
+    # substitute a different value; this assertion follows that simplification.
     assert ms.count("_schwab_days_to_expiration_for_contract(") >= 2
-    assert "expiry=exp" in ms and "expiry=(ms.call_option_expiry or ms.selected_exp)" in ms, (
+    assert "expiry=exp" in ms and "expiry=ms.call_option_expiry" in ms, (
         "both market_state callers must pass the selected expiry (F41/RC-345)")
     # server's full-chain selector already keys on expiry (expirationDate slice).
     srv = _read("server.py")

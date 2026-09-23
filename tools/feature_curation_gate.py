@@ -393,9 +393,20 @@ def run(tickers, null_thresh, cluster_thresh):
     catish = [c for c in live if c not in numeric_cols]  # categoricals / constant — not clustered
 
     # ---- 2. SPEARMAN-HIERARCHICAL CLUSTER ----
+    # No-fallback lock (2026-09-17): a missing feature reading used to be median-imputed
+    # before computing the correlation matrix -- fabricating a value the correlation
+    # would then treat as observed data, capable of silently pulling two features into
+    # (or out of) the same redundancy cluster based on invented numbers. Complete-case
+    # rows only: a row missing ANY numeric_cols value is excluded from THIS correlation
+    # computation entirely, never assigned a value it didn't have.
     clusters, representatives = {}, []
     if len(numeric_cols) >= 2:
-        X = num[numeric_cols].fillna(num[numeric_cols].median())
+        X = num[numeric_cols].dropna()
+        if len(X) < 2:
+            X = None
+    else:
+        X = None
+    if X is not None:
         rho, _ = spearmanr(X.values)
         rho = np.atleast_2d(rho)
         if rho.shape[0] == len(numeric_cols):

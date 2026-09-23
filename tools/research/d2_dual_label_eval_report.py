@@ -124,7 +124,12 @@ def run_cell(df: pd.DataFrame, hz: str, exclude_truncated: bool) -> dict | None:
     fixed_col, tb_col = f"outcome_{hz}", f"outcome_tb_{hz}"
     sub = df[df[fixed_col].isin(CLASSES) & df[tb_col].isin(CLASSES)].copy()
     if exclude_truncated:
-        sub = sub[sub[f"tb_truncated_{hz}"].fillna(0).astype(int) == 0]
+        # No-fallback lock (2026-09-17): a NULL truncation flag used to be assumed
+        # "not truncated" (0) via fillna -- but an unrecorded truncation status is not
+        # proof the row wasn't truncated. A bare comparison excludes it naturally (NaN
+        # == 0 is False in pandas), the same "exclude, don't assume" behavior SQL NULL
+        # propagation gives for free.
+        sub = sub[sub[f"tb_truncated_{hz}"] == 0]
     sub = sub.sort_values("ts_utc").reset_index(drop=True)
     if len(sub) < 1500:
         return None

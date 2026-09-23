@@ -1,0 +1,2056 @@
+{
+  "prior_ref": "05cc3bf4",
+  "prior_count": 1226,
+  "current_count": 1125,
+  "retained": 1111,
+  "removed": 115,
+  "added": 14,
+  "net_delta": -101,
+  "classification_counts": {
+    "EXPRESSION_REMOVED_OR_RESHAPED": 86,
+    "DELETED_FILE": 29,
+    "ADDED_SINCE_PRIOR": 14
+  },
+  "removals": [
+    {
+      "old_id": "FB-00058",
+      "new_id": null,
+      "file": "audit_model_readiness.py",
+      "symbol": "main",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "audit_model_readiness.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "SELECT substr(ts_et, 1, 10) as dt, COALESCE(rules_signal, 'NULL') as sig, COUNT(*) as c",
+        "line": 481,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00081",
+      "new_id": null,
+      "file": "calibration/anchor_audit.py",
+      "symbol": "_audit_trusted_calibration_anchors",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/anchor_audit.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'trusted'",
+        "line": 124,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00083",
+      "new_id": null,
+      "file": "calibration/anchor_audit.py",
+      "symbol": "run_anchor_audit",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/anchor_audit.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'legacy'",
+        "line": 468,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00084",
+      "new_id": null,
+      "file": "calibration/anchor_audit.py",
+      "symbol": "run_anchor_audit",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/anchor_audit.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "WHERE COALESCE(canonical_timeframe, '1m') = ? AND calibration_trust = 'trusted'",
+        "line": 477,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00088",
+      "new_id": null,
+      "file": "calibration/backfill_outcomes.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/backfill_outcomes.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "`snapshots` at `COALESCE(matched_snapshot_ts_utc, decision_ts_utc)` so legacy partial attaches",
+        "line": 14,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00089",
+      "new_id": null,
+      "file": "calibration/backfill_outcomes.py",
+      "symbol": "_resync_existing_outcomes_from_snapshots",
+      "pattern": "TERNARY",
+      "old_adjudication": "NOT_PROVEN",
+      "reason": "calibration/backfill_outcomes.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "key_ts = float(r[\"matched_snapshot_ts_utc\"] if r[\"matched_snapshot_ts_utc\"] is not None else r[\"decision_ts_utc\"])",
+        "line": 229,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00091",
+      "new_id": null,
+      "file": "calibration/canonical_1m_grid_scan.py",
+      "symbol": "scan_db",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/canonical_1m_grid_scan.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+        "line": 112,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00093",
+      "new_id": null,
+      "file": "calibration/canonical_1m_grid_scan.py",
+      "symbol": "scan_db",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/canonical_1m_grid_scan.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+        "line": 66,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00114",
+      "new_id": null,
+      "file": "calibration/operable_surface_quarantine.py",
+      "symbol": "operable_filter_sql",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/operable_surface_quarantine.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(research_excluded,0)=0",
+        "line": 42,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00115",
+      "new_id": null,
+      "file": "calibration/operable_surface_quarantine.py",
+      "symbol": "quarantine_old_unattached",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/operable_surface_quarantine.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(research_excluded,0)=0",
+        "line": 82,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00122",
+      "new_id": null,
+      "file": "calibration/phase65_edge_isolation_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/phase65_edge_isolation_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "timeframe='1m' AND COALESCE(horizon_outcome_schema_version,3)=3 AND outcome_1c..outcome_60c AND outcome_*_pts all NOT NULL AND EXISTS price_bars_1m bar anchor at ts_utc (same as phase6 load_rows)",
+        "line": 37,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00124",
+      "new_id": null,
+      "file": "calibration/phase6_edge_discovery_governed_v1.py",
+      "symbol": "load_rows",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/phase6_edge_discovery_governed_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 175,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00129",
+      "new_id": null,
+      "file": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/repair_canonical_1m_edge_carry_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "rep[\"tickers_touched\"] = 0",
+        "line": 136,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00130",
+      "new_id": null,
+      "file": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/repair_canonical_1m_edge_carry_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "rep[\"governed_outcome_refresh_tickers\"] = 0",
+        "line": 137,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00132",
+      "new_id": null,
+      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "rep[\"tickers_touched\"] = 0",
+        "line": 157,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00133",
+      "new_id": null,
+      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "rep[\"governed_outcome_refresh_tickers\"] = 0",
+        "line": 158,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00134",
+      "new_id": null,
+      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/repair_canonical_1m_interior_gaps_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "rep[\"fill_outcomes_tickers\"] = 0",
+        "line": 159,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00137",
+      "new_id": null,
+      "file": "calibration/run_production_accumulation_validation.py",
+      "symbol": "_unsafe_non_exact_joins",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/run_production_accumulation_validation.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND IFNULL(outcome_join_method, '') NOT IN ('exact', '')",
+        "line": 172,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00148",
+      "new_id": null,
+      "file": "calibration/writer.py",
+      "symbol": "_count_enrolled_tickers",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "calibration/writer.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "SELECT COUNT(*) FROM logging_universe WHERE COALESCE(active, 1) = 1",
+        "line": 443,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00161",
+      "new_id": null,
+      "file": "call_engine.py",
+      "symbol": "compute_call",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "NOT_PROVEN",
+      "reason": "call_engine.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "dex_magnitude=inp.dex_magnitude or \"moderate\",",
+        "line": 1547,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00162",
+      "new_id": null,
+      "file": "call_engine.py",
+      "symbol": "compute_call",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "NOT_PROVEN",
+      "reason": "call_engine.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "charm_magnitude=inp.charm_magnitude or \"moderate\")",
+        "line": 1548,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00174",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "_snapshot_rows_affected_by_bar_mutations",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+        "line": 5189,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00175",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "sql_issue19_snapshots_context_group",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "SELECT COALESCE(",
+        "line": 5618,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00179",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "compute_accuracy",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND (et_hour * 60 + COALESCE(et_minute, 0)) >=",
+        "line": 4852,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00180",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "compute_accuracy",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND (et_hour * 60 + COALESCE(et_minute, 0)) <",
+        "line": 4853,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00182",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "refresh_all_governed_bar_anchor_outcomes_v1",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+        "line": 3833,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00184",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "refresh_all_governed_bar_anchor_outcomes_v1",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+        "line": 3847,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00185",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "_do",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+        "line": 3960,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00186",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "_do",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+        "line": 3983,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00188",
+      "new_id": null,
+      "file": "db.py",
+      "symbol": "_do",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "db.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, ?) = ?",
+        "line": 3757,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00243",
+      "new_id": null,
+      "file": "lstm_data.py",
+      "symbol": "<module>",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "lstm_data.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "tickers = []",
+        "line": 1340,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00260",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "_build_contract_context_ms",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "exp = ms.call_option_expiry or ms.selected_exp",
+        "line": 938,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00262",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.vix_regime      = getattr(mkt_ctx, \"vix_regime\",     \"\")",
+        "line": 1194,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00266",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.gex_magnitude = str(getattr(consensus_summary, \"gex_magnitude\", \"negligible\") or \"negligible\")",
+        "line": 1147,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00272",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.trade_type       = getattr(_call, 'trade_type', 'none')",
+        "line": 1556,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00273",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "_tt = getattr(_call, 'trade_type', 'none')",
+        "line": 1557,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00274",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.size_cue         = getattr(_call, 'size_cue', 'SKIP')",
+        "line": 1566,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00275",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.call_state             = getattr(_call, 'call_state', 'WAIT')",
+        "line": 1582,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00276",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.call_forecast_state    = getattr(_call, 'forecast_state', 'dormant')",
+        "line": 1583,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00277",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.put_state             = getattr(_call, 'put_state', 'WAIT')",
+        "line": 1590,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00278",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.put_forecast_state    = getattr(_call, 'put_forecast_state', 'dormant')",
+        "line": 1591,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00279",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.fusion_n_models_active = getattr(_fusion, 'n_sources_active', 0)",
+        "line": 1833,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00280",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.vol_regime = getattr(_vr, 'vol_regime', 'unknown')",
+        "line": 1871,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00281",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "expiry=(ms.call_option_expiry or ms.selected_exp),",
+        "line": 1955,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00282",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.dex_magnitude = str(getattr(consensus_summary, \"dex_magnitude\", \"negligible\") or \"negligible\")",
+        "line": 1148,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00283",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.final_tradeable = bool(getattr(_mhd, \"final_tradeable\", False))",
+        "line": 1610,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00284",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.guest_anchor_active = bool(getattr(_sig_out, \"guest_anchor_active\", False))",
+        "line": 1623,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00290",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.trade_mode = str(getattr(_mhd, \"trade_mode\", \"intraday\") or \"intraday\")",
+        "line": 1612,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00291",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.contradiction_state = str(getattr(_mhd, \"contradiction_state\", \"none\") or \"none\")",
+        "line": 1617,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00292",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.conflict_level_display = str(getattr(_mr, \"conflict_level\", \"high\") or \"high\")",
+        "line": 1618,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00293",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.entry_state = str(getattr(_mhd, \"entry_state\", \"no_setup\") or \"no_setup\")",
+        "line": 1619,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00294",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.gex_magnitude = str(getattr(consensus_summary, \"gex_magnitude\", \"negligible\") or \"negligible\")",
+        "line": 1147,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00295",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms.size_modifier_display = str(getattr(_pt, \"size_modifier_display\", \"0.00x\") or \"0.00x\")",
+        "line": 1632,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00296",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "\"status\": getattr(s, 'status', 'inactive'),",
+        "line": 1894,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00297",
+      "new_id": null,
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "market_state.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "\"row_state\": \"missing\" if _missing else str(getattr(_a, \"row_state\", \"weak\")),",
+        "line": 1649,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00362",
+      "new_id": null,
+      "file": "ml_predict.py",
+      "symbol": "_active_base_collapse_flags",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "ml_predict.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "flags = set()",
+        "line": 2298,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00392",
+      "new_id": null,
+      "file": "ml_scheduler.py",
+      "symbol": "_training_ticker_union",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "ml_scheduler.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "tickers = []",
+        "line": 273,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00420",
+      "new_id": null,
+      "file": "ml_train.py",
+      "symbol": "train_ticker",
+      "pattern": "IMPUTATION",
+      "old_adjudication": "REPAIRED",
+      "reason": "ml_train.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "X = X.fillna(pd.Series(impute_medians))",
+        "line": 1188,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00433",
+      "new_id": null,
+      "file": "normalized_training_sync.py",
+      "symbol": "_aggregate_select_exprs",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(MAX(snapshot_id), 0)",
+        "line": 153,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00434",
+      "new_id": null,
+      "file": "normalized_training_sync.py",
+      "symbol": "_aggregate_select_exprs",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(MAX(CAST(horizon_outcome_schema_version AS INTEGER)), 0)",
+        "line": 174,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00435",
+      "new_id": null,
+      "file": "normalized_training_sync.py",
+      "symbol": "_aggregate_select_exprs",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(SUM(CAST(",
+        "line": 158,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00436",
+      "new_id": null,
+      "file": "normalized_training_sync.py",
+      "symbol": "_aggregate_select_exprs",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(SUM(CAST(",
+        "line": 167,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00437",
+      "new_id": null,
+      "file": "normalized_training_sync.py",
+      "symbol": "_aggregate_select_exprs",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(SUM(CAST(",
+        "line": 169,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00438",
+      "new_id": null,
+      "file": "normalized_training_sync.py",
+      "symbol": "_aggregate_select_exprs",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "normalized_training_sync.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(SUM(CAST(",
+        "line": 172,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00519",
+      "new_id": null,
+      "file": "server.py",
+      "symbol": "_seed_strike_geometry_from_storage",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "server.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "tickers = list(CORE_TICKERS)",
+        "line": 13844,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00559",
+      "new_id": null,
+      "file": "server.py",
+      "symbol": "_terrain_loop",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "server.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "tickers = list(CORE_TICKERS)",
+        "line": 13712,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00560",
+      "new_id": null,
+      "file": "server.py",
+      "symbol": "_bars_loop",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": "REPAIRED",
+      "reason": "server.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "tickers = list(CORE_TICKERS)",
+        "line": 13940,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00724",
+      "new_id": null,
+      "file": "snapshot_normalizer.py",
+      "symbol": "materialize_normalized_table",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "snapshot_normalizer.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots_1m_normalized",
+        "line": 372,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00830",
+      "new_id": null,
+      "file": "tests/test_calibration_outcome_join_scale.py",
+      "symbol": "test_scale_exact_join_no_ambiguity_validate_passes",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tests/test_calibration_outcome_join_scale.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "WHERE outcome_5c IS NOT NULL AND IFNULL(outcome_join_method,'') != 'exact'",
+        "line": 94,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00892",
+      "new_id": null,
+      "file": "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py",
+      "symbol": "test_bar_anchor_scope_supports_table_alias",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(s.outcome_filled,0)=0",
+        "line": 8,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00893",
+      "new_id": null,
+      "file": "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py",
+      "symbol": "test_bar_anchor_scope_supports_table_alias",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tests/test_pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(s.outcome_filled,0)=0",
+        "line": 11,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00927",
+      "new_id": null,
+      "file": "tools/_multi_timeframe_audit_v1.py",
+      "symbol": "main",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/_multi_timeframe_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) AS v, COUNT(*) AS n",
+        "line": 175,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-00972",
+      "new_id": null,
+      "file": "tools/feature_curation_gate.py",
+      "symbol": "run",
+      "pattern": "IMPUTATION",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/feature_curation_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "X = num[numeric_cols].fillna(num[numeric_cols].median())",
+        "line": 398,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01001",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py",
+      "symbol": "main",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "sc = Counter((r[\"market_session\"] or \"unknown\") for r in rows)",
+        "line": 141,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01002",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py",
+      "symbol": "main",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "rc = Counter((r[\"regime_primary\"] or \"NULL\") for r in rows)",
+        "line": 150,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01003",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py",
+      "symbol": "main",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "SELECT COALESCE(horizon_outcome_schema_version, -1) AS v, COUNT(*) AS c",
+        "line": 72,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01004",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
+      "symbol": "main",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "sess[str(r[\"market_session\"] or \"unknown\")].append(i)",
+        "line": 342,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01005",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py",
+      "symbol": "main",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 46,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01006",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py",
+      "symbol": "main",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 69,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01007",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/audit_fused_policy_history_sufficiency_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/audit_fused_policy_history_sufficiency_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 29,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01008",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 37,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01009",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py",
+      "symbol": "main",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "chunk_size = int(args.chunk_size) if getattr(args, \"chunk_size\", 0) else 0",
+        "line": 158,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01010",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py",
+      "symbol": "_process_rows",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ticker = str(r[\"ticker\"] or \"\")",
+        "line": 50,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01011",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py",
+      "symbol": "main",
+      "pattern": "GETATTR_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "edb = EdDB(db_path, allow_noncanonical=bool(getattr(args, \"allow_noncanonical_db\", False)))",
+        "line": 130,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01012",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/batch_backfill_movement_predictions_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/batch_backfill_movement_predictions_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 49,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01013",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/build_checkpoint_provenance_bundle_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/build_checkpoint_provenance_bundle_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 34,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01014",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/enforce_universal_ticker_readiness_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/enforce_universal_ticker_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 39,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01015",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py",
+      "symbol": "main",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 145,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01016",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py",
+      "symbol": "main",
+      "pattern": "OR_LADDER",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "ms = r[\"market_session\"] or \"unknown\"",
+        "line": 154,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01017",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "counts_by_ticker[r[\"ticker\"]] = counts_by_ticker.get(r[\"ticker\"], 0) + 1",
+        "line": 153,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01018",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "counts_by_session[ms] = counts_by_session.get(ms, 0) + 1",
+        "line": 155,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01019",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "for hz in phase9.get(\"edge_positive_horizons\", []):",
+        "line": 205,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01020",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 28,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01021",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "exp_rows = reconciled.get(\"expected_artifact_matrix\", {}).get(\"grouped_by_ticker_horizon_model_head\", [])",
+        "line": 108,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01022",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "min_rows = reconciled.get(\"ticker_minimum_requirements\", [])",
+        "line": 109,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01023",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "inference_fail_count = sum(1 for dt in phase10.get(\"decision_traces\", []) if \"INFERENCE_NULL\" in dt.get(\"failure_flags\", []))",
+        "line": 131,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01024",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 28,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01025",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "shorter = [x for x in qual if horizon_order.get(x[\"horizon\"], 0) < horizon_order.get(chosen[\"horizon\"], 0)]",
+        "line": 215,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01026",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "shorter = [x for x in qual if horizon_order.get(x[\"horizon\"], 0) < horizon_order.get(chosen[\"horizon\"], 0)]",
+        "line": 215,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01027",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
+      "symbol": "main",
+      "pattern": "DICT_GET_DEFAULT",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "qual.sort(key=lambda x: (horizon_order.get(x[\"horizon\"], 0), x[\"move_prob\"]), reverse=True)",
+        "line": 213,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01028",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 27,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01029",
+      "new_id": null,
+      "file": "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py is absent from 21468eb2 (the pinned current tree)",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(horizon_outcome_schema_version, 3) = 3",
+        "line": 34,
+        "file_exists_at_current_ref": false
+      },
+      "classification": "DELETED_FILE"
+    },
+    {
+      "old_id": "FB-01062",
+      "new_id": null,
+      "file": "tools/migrate_snapshots_schema_repair_v1.py",
+      "symbol": "_id_assignment_preview",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/migrate_snapshots_schema_repair_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(MAX(snapshot_id), 0) AS max_snapshot_id,",
+        "line": 309,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01072",
+      "new_id": null,
+      "file": "tools/operable_surface_gate.py",
+      "symbol": "evaluate_operable_surface",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/operable_surface_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "calibration_trust='trusted' AND COALESCE(research_excluded,0)=0",
+        "line": 242,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01073",
+      "new_id": null,
+      "file": "tools/operable_surface_gate.py",
+      "symbol": "evaluate_operable_surface",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/operable_surface_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(MAX(ABS(matched_snapshot_ts_utc - decision_ts_utc)), 0) AS max_gap,",
+        "line": 134,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01074",
+      "new_id": null,
+      "file": "tools/operable_surface_gate.py",
+      "symbol": "evaluate_operable_surface",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/operable_surface_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(MAX(matched_snapshot_ts_utc - decision_ts_utc), 0) AS max_pos,",
+        "line": 156,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01075",
+      "new_id": null,
+      "file": "tools/operable_surface_gate.py",
+      "symbol": "evaluate_operable_surface",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/operable_surface_gate.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "SELECT COUNT(*) AS n FROM calibration_decision_log WHERE COALESCE(research_excluded,0)=1",
+        "line": 215,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01076",
+      "new_id": null,
+      "file": "tools/pin_neutral_1m_5m_divergence_audit_v1.py",
+      "symbol": "bar_anchor_scope_sql",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "AND COALESCE(",
+        "line": 59,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01077",
+      "new_id": null,
+      "file": "tools/pin_neutral_1m_5m_divergence_audit_v1.py",
+      "symbol": "inventory_timeframe",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(outcome_filled,0)=1",
+        "line": 76,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01078",
+      "new_id": null,
+      "file": "tools/pin_neutral_1m_5m_divergence_audit_v1.py",
+      "symbol": "inventory_timeframe",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/pin_neutral_1m_5m_divergence_audit_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "COALESCE(outcome_filled,0)=0",
+        "line": 81,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01105",
+      "new_id": null,
+      "file": "tools/repair_validation_counts_v1.py",
+      "symbol": "main",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/repair_validation_counts_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "pin_neutral COALESCE(outcome_filled,0)=0",
+        "line": 88,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01110",
+      "new_id": null,
+      "file": "tools/repo_exposure_audit.py",
+      "symbol": "section_db",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/repo_exposure_audit.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "SELECT COALESCE(SUM(c-1),0) FROM (SELECT COUNT(*) c FROM level_crosses GROUP BY ticker, ts_utc, level_value HAVING COUNT(*)>1)",
+        "line": 189,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01111",
+      "new_id": null,
+      "file": "tools/research/d2_dual_label_eval_report.py",
+      "symbol": "run_cell",
+      "pattern": "IMPUTATION",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/research/d2_dual_label_eval_report.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "sub = sub[sub[f\"tb_truncated_{hz}\"].fillna(0).astype(int) == 0]",
+        "line": 127,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01135",
+      "new_id": null,
+      "file": "tools/smoke_movement_heads_inference_v1.py",
+      "symbol": "<module>",
+      "pattern": "SQL_COALESCE_STYLE",
+      "old_adjudication": "REPAIRED",
+      "reason": "tools/smoke_movement_heads_inference_v1.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "timeframe='1m' AND COALESCE(horizon_outcome_schema_version,3)=3 AND outcome_1c IS NOT NULL AND outcome_60c IS NOT NULL",
+        "line": 22,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    },
+    {
+      "old_id": "FB-01156",
+      "new_id": null,
+      "file": "train_compare.py",
+      "symbol": "_compute_baseline",
+      "pattern": "IMPUTATION",
+      "old_adjudication": "REPAIRED",
+      "reason": "train_compare.py still exists in 21468eb2 but this (pattern, snippet, context) is no longer discovered",
+      "evidence": {
+        "prior_ref": "05cc3bf4",
+        "snippet": "pred = df[\"rules_signal\"].str.lower().map(rules_map).fillna(\"flat\")",
+        "line": 55,
+        "file_exists_at_current_ref": true
+      },
+      "classification": "EXPRESSION_REMOVED_OR_RESHAPED"
+    }
+  ],
+  "additions": [
+    {
+      "old_id": null,
+      "new_id": "FB-36b658d221",
+      "file": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "rep[\"tickers_touched\"] = None",
+        "line": 141
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-adce905a20",
+      "file": "calibration/repair_canonical_1m_edge_carry_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "rep[\"governed_outcome_refresh_tickers\"] = None",
+        "line": 142
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-eb1589f63c",
+      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "rep[\"tickers_touched\"] = None",
+        "line": 162
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-8883ea5747",
+      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "rep[\"governed_outcome_refresh_tickers\"] = None",
+        "line": 163
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-9d1e6a5a4c",
+      "file": "calibration/repair_canonical_1m_interior_gaps_v1.py",
+      "symbol": "run_repair",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "rep[\"fill_outcomes_tickers\"] = None",
+        "line": 164
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-86886918dc",
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "ms.gex_magnitude = None",
+        "line": 1164
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-5e1a062758",
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "ms.state_error = ms.state_error or \"gex_magnitude_computation_failed\"",
+        "line": 1165
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-54ba4ad9aa",
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "EXCEPT_SUBSTITUTE",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "ms.state_error_detail = ms.state_error_detail or f\"{type(_gme).__name__}: {_gme}\"[:200]",
+        "line": 1166
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-c65bfaa0b1",
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "OR_LADDER",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "ms.state_error = ms.state_error or \"market_context_degraded\"",
+        "line": 1231
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-c39d76c1b6",
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "OR_LADDER",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "ms.state_error_detail = ms.state_error_detail or mkt_ctx.error[:200]",
+        "line": 1232
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-ba565781f1",
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "OR_LADDER",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "ms.state_error = ms.state_error or \"gex_magnitude_computation_failed\"",
+        "line": 1165
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-2aa5f80456",
+      "file": "market_state.py",
+      "symbol": "build_market_state",
+      "pattern": "OR_LADDER",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "ms.state_error_detail = ms.state_error_detail or f\"{type(_gme).__name__}: {_gme}\"[:200]",
+        "line": 1166
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-e719811489",
+      "file": "tests/test_action12_7_market_state_fail_closed.py",
+      "symbol": "test_gex_magnitude_computation_failure_is_disclosed_not_guessed",
+      "pattern": "OR_LADDER",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "assert \"RuntimeError\" in (ms.state_error_detail or \"\")",
+        "line": 278
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    },
+    {
+      "old_id": null,
+      "new_id": "FB-31fa8184b7",
+      "file": "tests/test_mkt_ctx_fetch_exception_disclosure.py",
+      "symbol": "test_build_market_state_surfaces_mkt_ctx_error",
+      "pattern": "OR_LADDER",
+      "old_adjudication": null,
+      "reason": "new identity not present in the 1226-row prior inventory",
+      "evidence": {
+        "snippet": "assert \"RuntimeError\" in (ms.state_error_detail or \"\")",
+        "line": 47
+      },
+      "classification": "ADDED_SINCE_PRIOR"
+    }
+  ],
+  "verdict": "RECONCILED",
+  "note": "101 is the NET (115 removals - 14 additions). Each removal and each addition has its own lineage row; arithmetic identity is not discovery completeness."
+}

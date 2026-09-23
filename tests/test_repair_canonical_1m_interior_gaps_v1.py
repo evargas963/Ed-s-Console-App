@@ -148,3 +148,56 @@ def test_apply_repair_batch_writes_with_snapshot_refresh(tmp_path: Path):
         "SELECT COUNT(*) FROM price_bars_1m WHERE bar_start_ts_utc=?", (base + 60.0,)
     ).fetchone()[0] == 1
     conn.close()
+
+
+def test_run_repair_failure_reports_none_not_zero_counts(tmp_path: Path, monkeypatch):
+    """
+    No-fallback lock repair (FB-00132/FB-00133/FB-00134): apply_repair_1m_bar_batch_writes
+    rolls back its single transaction on any exception, so rows_upserted/tickers_touched/
+    governed_outcome_refresh_tickers/fill_outcomes_tickers ARE durably zero on failure --
+    but a bare 0 there is indistinguishable from "ran fine, nothing to touch." None marks
+    the report fields as not-reported-due-to-failure, distinct from either outcome.
+    """
+    from calibration import repair_canonical_1m_interior_gaps_v1 as interior
+
+    db_path = tmp_path / "interior_fail.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE price_bars_1m (
+            ticker TEXT NOT NULL,
+            bar_start_ts_utc REAL NOT NULL,
+            bar_end_ts_utc REAL NOT NULL,
+            open REAL, high REAL, low REAL, close REAL, volume REAL,
+            source TEXT,
+            PRIMARY KEY (ticker, bar_start_ts_utc)
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO price_bars_1m VALUES
+        ('SPY', 1000.0, 1060.0, 10.0, 10.0, 10.0, 10.0, 1.0, ?)
+        """,
+        (AUTHORITATIVE_1M_SOURCE,),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        interior,
+        "_collect_interior_missing",
+        lambda _db, _tz: [("SPY", 1060.0, 1000.0, 1120.0, 15.0)],
+    )
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("simulated batch-write failure")
+
+    monkeypatch.setattr(interior, "apply_repair_1m_bar_batch_writes", _boom)
+
+    rep = interior.run_repair(db_path, dry_run=False)
+    assert rep["error"].startswith("repair_failed_rollback:")
+    assert rep["rows_upserted"] is None
+    assert rep["tickers_touched"] is None
+    assert rep["governed_outcome_refresh_tickers"] is None
+    assert rep["fill_outcomes_tickers"] is None

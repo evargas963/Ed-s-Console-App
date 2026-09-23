@@ -1098,14 +1098,29 @@ def build_lstm_dataset(
 
             enrolled = load_user_scheduler_tickers_or_empty()
             tickers = resolve_ml_training_roster(enrolled, str(_db))
-        except Exception:
+            _roster_resolution_failed = None
+        except Exception as _roster_exc:
+            # Fallback lock (2026-09-17): a roster-resolution FAILURE used to log the exact
+            # same "logging_universe empty" message a genuinely-empty roster produces,
+            # silently masking a real resolution failure (e.g. a DB error) as "nothing is
+            # enrolled". Both still degrade to an empty dataset here (this is a shared
+            # library function; a CLI-level caller decides whether that's fatal), but the
+            # log now says which one actually happened.
             tickers = []
+            _roster_resolution_failed = _roster_exc
         tickers = [t for t in (tickers or []) if t and not str(t).startswith("$")]
         if not tickers:
-            log.warning(
-                "build_lstm_dataset: logging_universe empty — no tickers "
-                "(Issue 22: DISTINCT snapshot discovery disabled for enrollment authority)"
-            )
+            if _roster_resolution_failed is not None:
+                log.warning(
+                    "build_lstm_dataset: ticker roster resolution FAILED (%s: %s) — "
+                    "proceeding with zero tickers, this is NOT a confirmed-empty roster",
+                    type(_roster_resolution_failed).__name__, _roster_resolution_failed,
+                )
+            else:
+                log.warning(
+                    "build_lstm_dataset: logging_universe empty — no tickers "
+                    "(Issue 22: DISTINCT snapshot discovery disabled for enrollment authority)"
+                )
         else:
             log.info(
                 "build_lstm_dataset: authoritative enrolled tickers (%d): %s",
@@ -1336,8 +1351,15 @@ if __name__ == "__main__":
             [t for t in enrolled if t and not t.startswith("$")],
             str(DB_PATH),
         )
-    except Exception:
-        tickers = []
+    except Exception as _roster_exc:
+        # Fallback lock (2026-09-17): this used to set tickers=[] on ANY exception, then
+        # fall through to the SAME "no enrolled tickers" message a genuinely-empty roster
+        # produces -- both cases exit(1) either way, but a roster-resolution FAILURE (e.g. a
+        # DB error) is a different root cause than "nothing is enrolled", and reported
+        # identically misleads whoever reads the error.
+        print(f"ERROR: ticker roster resolution failed ({type(_roster_exc).__name__}: "
+              f"{_roster_exc}) — this is a resolution failure, not an empty roster.")
+        sys.exit(1)
     if not tickers:
         print("ERROR: logging_universe has no enrolled tickers (Issue 22 — use UI/API or server sync).")
         sys.exit(1)

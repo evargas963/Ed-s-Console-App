@@ -1252,15 +1252,35 @@ def candidate_manifest_path(out_dir: Path) -> Path:
     return out_dir / MANIFEST_FILENAME
 
 
+class ManifestCorruptError(RuntimeError):
+    """The manifest file exists but is not valid JSON, or does not decode to a dict.
+
+    No-fallback lock repair (2026-09-18, repo-wide semantic-coherence mission, item 1):
+    distinct from "absent" -- a file that was never written and a file that IS present
+    but corrupt/malformed are different facts a caller must not conflate. The prior
+    behavior returned bare `None` for both, so `write_bundle_integrity_manifest`
+    recorded every corrupt manifest as `{"source_manifest_absent": True}`, an
+    incorrect and misleading state: "we never had one" reads as benign, "we had one
+    and it's corrupt" is an anomaly worth investigating (disk corruption, a partial
+    write, a version-incompatible reader). Callers must catch this explicitly and
+    decide their own fail-closed behavior; they must never silently coalesce it with
+    the absent case via `or {}`/`or None`.
+    """
+
+
 def load_run_manifest(out_dir: Path) -> Optional[dict]:
     p = candidate_manifest_path(out_dir)
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8"))
     except Exception as e:
-        log.warning("Manifest load failed %s: %s", p, e)
-        return None
+        raise ManifestCorruptError(f"manifest at {p} is not valid JSON: {e}") from e
+    if not isinstance(data, dict):
+        raise ManifestCorruptError(
+            f"manifest at {p} decoded to {type(data).__name__}, not a dict"
+        )
+    return data
 
 
 def save_run_manifest(out_dir: Path, manifest: dict) -> None:
@@ -1297,7 +1317,17 @@ def sync_candidate_manifest_lineage_before_governed_eval(
     from training_cache_policy import MANIFEST_SCHEMA_VERSION as MSV
     from features.training_canonical_input import training_canonical_lineage_header
 
-    existing = load_run_manifest(out_dir) or {}
+    try:
+        existing = load_run_manifest(out_dir) or {}
+    except ManifestCorruptError as e:
+        # Distinct from absent (repo-wide semantic-coherence mission, item 1): logged
+        # visibly rather than silently treated the same as "never written". Safe to
+        # proceed from an empty base here specifically because every field this
+        # function cares about is about to be re-stamped with fresh, authoritative
+        # values below -- unlike a pure lineage-patch utility, this is not preserving
+        # stale content from `existing`, only its (now-corrupt, now-discarded) prior state.
+        log.warning("manifest stamp: %s is corrupt, starting from a fresh manifest: %s", out_dir, e)
+        existing = {}
     hz = str(ml_horizon_suffix or DEFAULT_ML_HORIZON_SLUG).strip().lower()
 
     def _ts_label(v: Any) -> str:

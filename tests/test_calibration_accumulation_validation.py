@@ -2,11 +2,51 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 import calibration.run_production_accumulation_validation as accum
+from calibration.schema import ensure_calibration_schema
+from db import EdDB, configure_sqlite_connection
+
+
+def test_non_exact_or_unrecorded_joins_separates_nearest_from_unrecorded(tmp_path):
+    """
+    No-fallback lock repair (FB-00137): the prior query defaulted an unrecorded (NULL)
+    join method to a never-occurring blank sentinel before comparing it against the
+    'exact' method name -- silently counting "we don't know how this row was
+    joined" as safe alongside a proven exact match. The two risks must be reported
+    separately, and neither may be silently folded into "safe."
+    """
+    db_path = tmp_path / "join_risk.db"
+    _ = EdDB(db_path)
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    configure_sqlite_connection(conn)
+    ensure_calibration_schema(conn)
+    rows = [
+        ("SPY", 1.0, "exact"),
+        ("SPY", 2.0, "nearest_within_tol"),
+        ("SPY", 3.0, None),
+        ("SPY", 4.0, "exact"),
+    ]
+    for tkr, ts, method in rows:
+        conn.execute(
+            """
+            INSERT INTO calibration_decision_log
+                (decision_ts_utc, ticker, canonical_timeframe, calibration_trust,
+                 outcome_5c, outcome_join_method)
+            VALUES (?, ?, '1m', 'trusted', 'up', ?)
+            """,
+            (ts, tkr, method),
+        )
+    conn.commit()
+
+    result = accum._non_exact_or_unrecorded_joins(conn)
+    conn.close()
+    assert result == {"nearest_within_tol": 1, "unrecorded_provenance": 1}
 
 
 def test_production_accumulation_harness_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

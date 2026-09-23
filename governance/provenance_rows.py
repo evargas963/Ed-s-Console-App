@@ -287,7 +287,7 @@ ROWS: tuple[Row, ...] = (
         justification='Pure helper: returns stub model artifact dicts for the accumulation-validation harness. No DB read here; classified ALLOWLISTED because the parent run() pipeline is the orchestrator that DOES open SQLite; this helper is filesystem fixture only. No market-field derivation.',
     ),
     Row(
-        file='calibration/run_production_accumulation_validation.py', derivation='_unsafe_non_exact_joins', disposition='ALLOWLISTED',
+        file='calibration/run_production_accumulation_validation.py', derivation='_non_exact_or_unrecorded_joins', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Opens SQLite read on caller-supplied db_path; returns rows whose snapshot/outcome joins are non-exact (would-be-unsafe inserts) for the validation pass. Mega4 internal SQLite read; no Schwab wire derivation.',
     ),

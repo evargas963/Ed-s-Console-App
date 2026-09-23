@@ -7,7 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from bayesian_fusion import FusionPayload
 from market_state import _f_ms, _ms_price_disp, build_market_state
+from signal_types import TheCall
 from tests.test_build_market_state_spot_fail_closed import _base_kwargs, _fake_compute_signals
 
 
@@ -99,7 +101,11 @@ def test_forward_prob_nan_surfaces_none_on_ms(mock_cs):
 
 @patch("signals.compute_signals")
 def test_fusion_prob_nan_surfaces_none(mock_cs):
-    fusion = SimpleNamespace(
+    # No-fallback lock (2026-09-17): market_state.py now reads FusionPayload fields
+    # directly (no getattr default), so a stand-in for this test must be a genuine
+    # FusionPayload instance -- a partial SimpleNamespace that only supplied the fields
+    # this specific test cared about would crash on the MC pass-through fields.
+    fusion = FusionPayload(
         available=True,
         dominant_outcome="breakout",
         dominant_probability=0.6,
@@ -166,7 +172,11 @@ def test_vol_regime_nan_multipliers_none(mock_cs):
 
 @patch("signals.compute_signals")
 def test_call_display_nan_entry_em_dash(mock_cs):
-    call = SimpleNamespace(
+    # No-fallback lock (2026-09-17): TheCall is a real dataclass -- market_state.py now
+    # reads every field on it directly (no getattr default), so a stand-in object for this
+    # test must be a genuine TheCall instance, not a partial SimpleNamespace that happened
+    # to only supply the fields this specific test cared about.
+    call = TheCall(
         signal="long",
         conviction="high",
         entry=float("nan"),
@@ -174,8 +184,16 @@ def test_call_display_nan_entry_em_dash(mock_cs):
         target=445.0,
         target2=None,
         reward_risk=2.0,
+        reward_risk2=None,
         headline="test",
         reasoning="test",
+        trade_type="none",
+        invalidation="",
+        confluence_count=0,
+        confluence_total=0,
+        confluence_detail="",
+        time_qualifier="",
+        size_cue="SKIP",
         rules_pred_agree=True,
         time_warning="",
         size_note="",

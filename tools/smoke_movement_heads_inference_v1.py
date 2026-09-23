@@ -19,7 +19,7 @@ import ml_predict
 from ml_predict import _predict_xgb_movement_heads, reset_ml_infer_horizon_slug, set_ml_infer_horizon_slug
 
 GOV = (
-    "timeframe='1m' AND COALESCE(horizon_outcome_schema_version,3)=3 "
+    "timeframe='1m' AND horizon_outcome_schema_version=3 "
     "AND outcome_1c IS NOT NULL AND outcome_60c IS NOT NULL"
 )
 

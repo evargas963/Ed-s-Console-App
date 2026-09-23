@@ -240,3 +240,26 @@ def test_fingerprint_moves_when_label_config_version_changes(monkeypatch, tmp_db
         fp_v2 = nts.compute_snapshots_training_fingerprint(conn)
     assert fp_v2 != fp_v1
     assert fp_v2.endswith("_probe")
+
+
+def test_fingerprint_handles_empty_snapshots_table_without_crashing(tmp_db: EdDB):
+    """No-fallback lock repair (2026-09-17): _aggregate_select_exprs' MAX/SUM calls used to
+    default an aggregate-over-zero-rows to 0/0.0 via SQL COALESCE. Removed per the operator's
+    ruling (no aggregate exemption survives) -- proves the fingerprint function still runs
+    cleanly (MAX/SUM over zero matching rows is a legal NULL, not an error) and is
+    deterministic (calling it twice on the same untouched table gives the same string) on a
+    genuinely empty snapshots table, the exact case that would have exercised the removed
+    default."""
+    import inspect
+
+    import normalized_training_sync as nts
+
+    with tmp_db._connect() as conn:
+        fp1 = nts.compute_snapshots_training_fingerprint(conn)
+        fp2 = nts.compute_snapshots_training_fingerprint(conn)
+    assert fp1 == fp2
+    assert isinstance(fp1, str) and fp1
+
+    src = inspect.getsource(nts._aggregate_select_exprs)
+    code_only = "\n".join(ln for ln in src.splitlines() if not ln.strip().startswith("#"))
+    assert "COALESCE" not in code_only

@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from calibration.schema import ensure_calibration_schema
 from research.incumbent_eval_v1 import runner, stats
 from time_et import ET
 
@@ -221,12 +222,12 @@ def _fixture_db(tmp_path, n_days: int = 12, per_day: int = 30):
     """calibration_decision_log with the columns the runner reads; RTH rows only."""
     db = tmp_path / "fixture.db"
     conn = sqlite3.connect(db)
-    conn.execute(
-        "CREATE TABLE calibration_decision_log ("
-        " ticker TEXT, decision_ts_utc REAL, model_outputs_json TEXT,"
-        " outcome_1c TEXT, outcome_5c TEXT, outcome_15c TEXT, outcome_60c TEXT,"
-        " calibration_trust TEXT, outcomes_attached_ts_utc REAL)"
-    )
+    # No-fallback lock repair (2026-09-18, PR #254 point 4): use the CANONICAL schema
+    # (ensure_calibration_schema) rather than a hand-rolled 9-column table -- the bare
+    # shape never occurs in production (db.py migrates research_excluded onto every
+    # real database) and was silently exercising operable_filter_sql's now-removed
+    # '1=1' degrade path instead of the real 'research_excluded=0' filter.
+    ensure_calibration_schema(conn)
     import random
 
     rng = random.Random(11)
@@ -259,7 +260,11 @@ def _fixture_db(tmp_path, n_days: int = 12, per_day: int = 30):
             days_done += 1
         day += timedelta(days=1)
     conn.executemany(
-        "INSERT INTO calibration_decision_log VALUES (?,?,?,?,?,?,?,?,?)", rows
+        "INSERT INTO calibration_decision_log ("
+        " ticker, decision_ts_utc, model_outputs_json,"
+        " outcome_1c, outcome_5c, outcome_15c, outcome_60c,"
+        " calibration_trust, outcomes_attached_ts_utc"
+        ") VALUES (?,?,?,?,?,?,?,?,?)", rows
     )
     conn.commit()
     conn.close()

@@ -443,24 +443,34 @@ CALIBRATION_RATE_WARN_RATIO: float = 0.5
 
 
 def _count_enrolled_tickers(conn: sqlite3.Connection) -> int:
-    try:
-        row = conn.execute(
-            "SELECT COUNT(*) FROM logging_universe WHERE COALESCE(active, 1) = 1"
-        ).fetchone()
-    except sqlite3.Error:
-        return 0
+    # No-fallback lock (2026-09-17): logging_universe has no `active` column --
+    # db.py's CREATE TABLE never defines one, and eviction is DELETE-based
+    # (logging_universe_eviction_log is a separate audit trail, not an in-row flag),
+    # so every row present IS enrolled by construction. The prior
+    # `WHERE COALESCE(active, 1) = 1` referenced a column that has never existed,
+    # meaning this query always raised sqlite3.OperationalError in production and the
+    # except below silently reported a fabricated "0 enrolled" every single call.
+    #
+    # No-fallback lock repair (2026-09-18, PR #254 point 5): a genuine query FAILURE
+    # (locked database, disk error, a real schema drift) must not be reported as the
+    # SAME value a confirmed-empty enrollment produces -- "0 enrolled tickers" and
+    # "the count query itself failed" are different facts, and compute_calibration_rate_
+    # health's own rate-warning math cannot tell them apart if both collapse to 0. The
+    # exception now propagates; the caller is responsible for disclosing the failure
+    # rather than silently substituting a real-looking zero.
+    row = conn.execute("SELECT COUNT(*) FROM logging_universe").fetchone()
     return int(row[0]) if row and row[0] is not None else 0
 
 
 def _count_calibration_rows_between(conn: sqlite3.Connection, *, lo_ts: float, hi_ts: float) -> int:
-    try:
-        row = conn.execute(
-            "SELECT COUNT(*) FROM calibration_decision_log "
-            "WHERE decision_ts_utc >= ? AND decision_ts_utc < ?",
-            (lo_ts, hi_ts),
-        ).fetchone()
-    except sqlite3.Error:
-        return 0
+    # No-fallback lock repair (2026-09-18, PR #254 point 5): same defect, same fix as
+    # _count_enrolled_tickers above -- a query failure must not silently masquerade as
+    # a confirmed-zero row count. Propagates; see compute_calibration_rate_health.
+    row = conn.execute(
+        "SELECT COUNT(*) FROM calibration_decision_log "
+        "WHERE decision_ts_utc >= ? AND decision_ts_utc < ?",
+        (lo_ts, hi_ts),
+    ).fetchone()
     return int(row[0]) if row and row[0] is not None else 0
 
 
@@ -480,6 +490,18 @@ def compute_calibration_rate_health(
     is mis-configured, which the 24-day Apr-May gap proved is invisible
     without this counter).
 
+    No-fallback lock repair (2026-09-18, PR #254 point 5): `enrolled_tickers`,
+    `last_24h_count`, and `prior_24h_count` are `None` (never a real-looking 0)
+    whenever their OWN query fails after the table/DB was confirmed reachable --
+    a query failure is a different fact from a confirmed-empty result, and this
+    function's own `warn` math cannot tell a real zero-rate outage apart from a
+    probe that simply couldn't run. `health_unknown` is True whenever ANY
+    measurement this function needs is missing (DB unreachable, table absent, or
+    a query failed) -- `warn` is only ever computed from confirmed measurements,
+    never treated as "no problem" merely because a measurement is missing.
+    `measurement_error` carries the first failure's message when `health_unknown`
+    is True from a query failure (not from a benign absent table).
+
     Pure function over the DB; no side effects, no INSERT. Safe to call
     from /api/ops/calibration_rowcount, daily_health, pytest fixtures,
     or operator REPL.
@@ -489,10 +511,11 @@ def compute_calibration_rate_health(
     lo_48 = now - 2 * 86400.0
     path = _db_path_for_write(db_path)
 
-    enrolled: int = 0
-    last_24h: int = 0
-    prior_24h: int = 0
+    enrolled: Optional[int] = None
+    last_24h: Optional[int] = None
+    prior_24h: Optional[int] = None
     table_present: bool = False
+    measurement_error: Optional[str] = None
     try:
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
@@ -503,24 +526,47 @@ def compute_calibration_rate_health(
             except sqlite3.OperationalError:
                 table_present = False
             if table_present:
-                last_24h = _count_calibration_rows_between(conn, lo_ts=lo_24, hi_ts=now)
-                prior_24h = _count_calibration_rows_between(conn, lo_ts=lo_48, hi_ts=lo_24)
-            enrolled = (
-                int(enrolled_tickers_override)
-                if enrolled_tickers_override is not None
-                else _count_enrolled_tickers(conn)
-            )
+                try:
+                    last_24h = _count_calibration_rows_between(conn, lo_ts=lo_24, hi_ts=now)
+                    prior_24h = _count_calibration_rows_between(conn, lo_ts=lo_48, hi_ts=lo_24)
+                except sqlite3.Error as e:
+                    measurement_error = f"row_count_query_failed: {e}"
+            else:
+                # Structural zero, not a failure: no table exists, so there are
+                # (by construction) zero matching rows -- distinct from a query
+                # that ran against a present table and failed mid-flight.
+                last_24h = 0
+                prior_24h = 0
+            if enrolled_tickers_override is not None:
+                enrolled = int(enrolled_tickers_override)
+            else:
+                try:
+                    enrolled = _count_enrolled_tickers(conn)
+                except sqlite3.Error as e:
+                    measurement_error = measurement_error or f"enrolled_ticker_query_failed: {e}"
         finally:
             conn.close()
-    except sqlite3.Error:
-        # DB unreachable — return zeros + table_present false; warn stays false
-        # because we can't distinguish a true zero-write from a probe failure.
-        pass
+    except sqlite3.Error as e:
+        # DB unreachable -- every measurement stays unproven (None), not zero.
+        measurement_error = measurement_error or f"db_unreachable: {e}"
 
-    expected = float(enrolled) * SESSION_MINUTES_RTH * EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER
-    ratio: Optional[float] = (last_24h / expected) if expected > 0 else None
+    expected: Optional[float] = (
+        float(enrolled) * SESSION_MINUTES_RTH * EXPECTED_DECISIONS_PER_MINUTE_PER_TICKER
+        if enrolled is not None else None
+    )
+    ratio: Optional[float] = (
+        (last_24h / expected)
+        if (expected is not None and expected > 0 and last_24h is not None)
+        else None
+    )
     env_enabled = calibration_logging_enabled()
-    warn = bool(env_enabled and expected > 0 and ratio is not None and ratio < CALIBRATION_RATE_WARN_RATIO)
+    health_unknown = bool(
+        measurement_error is not None or not table_present or enrolled is None or last_24h is None
+    )
+    warn = bool(
+        env_enabled and not health_unknown and expected is not None and expected > 0
+        and ratio is not None and ratio < CALIBRATION_RATE_WARN_RATIO
+    )
 
     return {
         "ts_utc": now,
@@ -535,6 +581,8 @@ def compute_calibration_rate_health(
         "ratio": ratio,
         "warn_ratio": CALIBRATION_RATE_WARN_RATIO,
         "warn": warn,
+        "health_unknown": health_unknown,
+        "measurement_error": measurement_error,
     }
 
 
