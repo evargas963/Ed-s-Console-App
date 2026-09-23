@@ -51,7 +51,9 @@ READER_CENSUS = frozenset({
     "inspect_trading_data.py",
     "market_state.py",
     "monte_carlo.py",
-    "server.py",
+    "server_state_persistence_tail.py",  # RC-REHAB-1 (2026-09-23): server.py's own mention
+    # moved here verbatim with _post_publish_persistence_tail (module extraction, twentieth
+    # slice) -- same already-reviewed mention, not a new reader, no row classification.
     "verify_snapshot_pipeline.py",
     "governance/provenance_roots.py",  # RC-532: names the MarketState FIELD mc_sigma_value with its category — a mention, not a reader (was mega3_traceable_inventory.py)
     "tools/mc_sigma_normalize_history_v1.py",

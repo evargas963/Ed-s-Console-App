@@ -327,7 +327,10 @@ def test_three_surfaces_consume_the_one_context():
     assert 'ms_dict["vix"] = vol_ctx.market_iv_level' in server_src
     assert 'ms_dict["vix_direction"] = vol_ctx.market_iv_direction' in server_src
     assert 'ms_dict["vix_vs_prev"] = vol_ctx.market_iv_change' in server_src
-    assert "_vix_vs_prev = vol_ctx.market_iv_change" in server_src   # snapshot row
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the snapshot-row
+    # assignment moved with _post_publish_persistence_tail to its own module.
+    tail_src = (_REPO / "server_state_persistence_tail.py").read_text(encoding="utf-8", errors="replace")
+    assert "_vix_vs_prev = vol_ctx.market_iv_change" in tail_src   # snapshot row
     assert "vix_level=vol_ctx.market_iv_level" in server_src         # snapshot row
     assert "vol_ctx=vol_ctx" in server_src                           # build_market_state call
     assert "vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None)" in ms_src

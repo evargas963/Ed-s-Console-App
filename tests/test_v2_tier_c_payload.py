@@ -39,9 +39,10 @@ def test_tier_c_single_phase_calibration_write_after_v2_before_log_only_return()
     log_only_return_idx = server_source.index("return {}", log_only_tail_call_idx)
     assert v2_idx < log_only_tail_call_idx < log_only_return_idx
 
-    tail_start = server_source.index("def _post_publish_persistence_tail(")
-    tail_end = server_source.index("def _fetch_state(", tail_start)
-    assert "append_live_v2_calibration_decision(" in server_source[tail_start:tail_end], (
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out of
+    # server.py entirely into server_state_persistence_tail.py -- checked there now.
+    tail_source = (ROOT / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    assert "append_live_v2_calibration_decision(" in tail_source, (
         "the persistence tail no longer performs the calibration write"
     )
 

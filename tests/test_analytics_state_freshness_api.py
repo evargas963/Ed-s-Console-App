@@ -261,10 +261,16 @@ def test_executor_sizing_unchanged_by_stage_timer_slice():
 
 
 def test_stage_timer_surfaces_present_in_fetch_state_source():
-    """Source lock: stage marks + additive timing fields exist in the Tier C recompute path."""
+    """Source lock: stage marks + additive timing fields exist in the Tier C recompute path.
+
+    RC-REHAB-1 (2026-09-23): _post_publish_persistence_tail (one of these stage marks'
+    home, `db_snapshot_write_accuracy`) moved to server_state_persistence_tail.py -- check
+    both files' source, not just server.py's."""
     from pathlib import Path
 
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    src = (root / "server.py").read_text(encoding="utf-8")
+    src += (root / "server_state_persistence_tail.py").read_text(encoding="utf-8")
     for needle in (
         '_stage_marks.append(("stack_runtime_governance_attach"',
         '_stage_marks.append(("db_snapshot_write_accuracy"',
@@ -773,6 +779,17 @@ def _fetch_state_source() -> str:
     return (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
 
 
+def _persistence_tail_source() -> str:
+    """RC-REHAB-1 (2026-09-23, module extraction, twentieth slice):
+    _post_publish_persistence_tail moved out of server.py into its own file. Tests that
+    check the tail's OWN internal structure read this instead of _fetch_state_source();
+    tests that check _fetch_state's two CALL sites still read _fetch_state_source(),
+    since those call sites remain in server.py."""
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parent.parent / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+
+
 def _fetch_state_ast():
     import ast
 
@@ -781,14 +798,14 @@ def _fetch_state_ast():
         n for n in ast.walk(tree)
         if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state"
     )
-    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice):
-    # _post_publish_persistence_tail was promoted from a nested closure inside
-    # _fetch_state to a module-level function (61 free variables, symtable-verified,
-    # now threaded as explicit keyword-only parameters). It is looked up at module
-    # scope (tree.body) here, not via ast.walk(fetch), since it is no longer a
-    # descendant of the _fetch_state FunctionDef node.
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice):
+    # _post_publish_persistence_tail moved out of server.py entirely, into
+    # server_state_persistence_tail.py -- no longer any FunctionDef node in server.py's
+    # own tree at all (not even at module scope, as the nineteenth slice above found it).
+    # Parsed from the new module's own source instead.
+    tail_tree = ast.parse(_persistence_tail_source())
     tail = next(
-        n for n in tree.body
+        n for n in tail_tree.body
         if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
     )
     return fetch, tail
@@ -797,32 +814,43 @@ def _fetch_state_ast():
 def test_fix_b_publish_precedes_persistence_tail_source_lock():
     """Stage-order lock: the generated_at-stamping publish precedes the full-path
     tail call; the persistence stage marks live inside the tail def, which is
-    defined before but executed after the publish."""
+    defined before but executed after the publish.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail def moved to
+    server_state_persistence_tail.py -- "defined before executed" is now enforced by
+    Python's own import semantics (the module-level `from server_state_persistence_tail
+    import _post_publish_persistence_tail` must run, and therefore the def must exist,
+    before any call in server.py's own body can execute), checked here by asserting the
+    import exists; the stage marks' internal ordering is checked within the tail's own
+    file, not server.py's."""
     src = _fetch_state_source()
+    assert "from server_state_persistence_tail import _post_publish_persistence_tail" in src
     i_pub = src.index('"generated_at": _gen_ts')
     # RC-REHAB-1 (nineteenth slice): the full-path call is now multi-line
     # (`_post_publish_persistence_tail(\n        _next_ver, ...`) since it passes 61
     # keyword-only arguments -- the exact old single-line substring no longer exists.
     i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
-    i_tail_def = src.index("def _post_publish_persistence_tail(")
-    i_snap_mark = src.index('_stage_marks.append(("db_snapshot_write_accuracy"')
-    i_cal_mark = src.index('_stage_marks.append(("v2_calibration_logging"')
     assert i_pub < i_full_call, "full-path tail call must come AFTER the publish"
-    assert i_tail_def < i_snap_mark < i_cal_mark < i_pub, (
-        "persistence stage marks must live inside the tail def, "
-        "which is defined before (but executed after) the publish"
-    )
+
+    tail_src = _persistence_tail_source()
+    i_snap_mark = tail_src.index('_stage_marks.append(("db_snapshot_write_accuracy"')
+    i_cal_mark = tail_src.index('_stage_marks.append(("v2_calibration_logging"')
+    assert i_snap_mark < i_cal_mark, "persistence stage marks must be ordered snapshot then calibration"
 
 
 def test_fix_b_payload_shape_keys_still_served():
     """Payload-shape regression: counters/accuracy keys still assembled pre-publish
-    (documented one-cycle lag; values come from the pre-read count + module cache)."""
+    (documented one-cycle lag; values come from the pre-read count + module cache).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the pre-read count
+    SELECT lives in the tail's own file now (server_state_persistence_tail.py); the
+    ms_dict keys it feeds are still assembled in server.py's own body."""
     src = _fetch_state_source()
     assert 'ms_dict["total_snapshots"]  = db_counts.get("total", 0)' in src
     assert 'ms_dict["filled_snapshots"] = db_counts.get("filled", 0)' in src
     assert 'ms_dict["accuracy_scope"] = "rth_0930_1600_et"' in src
     # The pre-read count SELECT (read-only) still precedes the block.
-    assert "db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)" in src
+    assert "db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)" in _persistence_tail_source()
 
 
 def test_fix_b_once_per_cycle_call_sites():
@@ -832,13 +860,17 @@ def test_fix_b_once_per_cycle_call_sites():
 
     RC-REHAB-1 (nineteenth slice): the tail def is module-level, so its own single
     definition is checked directly against the module tree (not ast.walk(fetch));
-    the two CALL SITES are still inside _fetch_state's own body, checked there."""
+    the two CALL SITES are still inside _fetch_state's own body, checked there.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the def moved out of
+    server.py entirely -- its single-definition check now runs against
+    server_state_persistence_tail.py's own tree instead."""
     import ast
 
-    tree = ast.parse(_fetch_state_source())
     fetch, tail = _fetch_state_ast()
+    tail_tree = ast.parse(_persistence_tail_source())
     defs = [
-        n for n in tree.body
+        n for n in tail_tree.body
         if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
     ]
     assert len(defs) == 1
@@ -868,12 +900,17 @@ def test_fix_b_once_per_cycle_call_sites():
 def test_fix_b_failure_visibility_counters_wired():
     """Failure-visibility: both post_publish_* counters exist in the observability
     dict and each tail except-handler increments its counter and warns with the
-    published version."""
+    published version.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail's own
+    except-handlers (counter increments, warnings, published_version threading) moved
+    to server_state_persistence_tail.py; _analytics_cache_observability itself is
+    unchanged (still a server.py module-global with other callers, reached lazily)."""
     import server as srv
 
     assert "post_publish_snapshot_failures" in srv._analytics_cache_observability
     assert "post_publish_calibration_failures" in srv._analytics_cache_observability
-    src = _fetch_state_source()
+    src = _persistence_tail_source()
     assert '_analytics_cache_observability["post_publish_snapshot_failures"] += 1' in src
     assert '_analytics_cache_observability["post_publish_calibration_failures"] += 1' in src
     assert "post-publish snapshot persistence failed ticker=" in src
@@ -886,11 +923,15 @@ def test_fix_b_v2_decision_parity_served_equals_logged():
     (ms_dict['v2_decision']); the log_only path passes the built decision.
 
     RC-REHAB-1 (nineteenth slice): both call sites are now multi-line (61 keyword
-    args each) -- matched on the still-exact positional-argument substring."""
+    args each) -- matched on the still-exact positional-argument substring.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail's own read of
+    v2_decision_for_log moved to server_state_persistence_tail.py with it; the two call
+    sites remain in server.py."""
     src = _fetch_state_source()
     assert '_post_publish_persistence_tail(\n        _next_ver, ms_dict["v2_decision"],' in src
     assert '_post_publish_persistence_tail(\n        None, _v2_decision_for_response,' in src
-    assert "v2_decision=v2_decision_for_log," in src
+    assert "v2_decision=v2_decision_for_log," in _persistence_tail_source()
 
 
 def test_fix_b_tail_never_touches_state_cache():
@@ -1249,15 +1290,22 @@ def test_post_publish_last_error_recorder_is_passive():
 
 def test_post_publish_last_error_wired_at_both_failure_branches():
     """Both tail except-handlers record cause detail right after their counter
-    increment; the payload attaches a copy adjacent to the observability block."""
-    src = _fetch_state_source()
-    i_snap_inc = src.index('_analytics_cache_observability["post_publish_snapshot_failures"] += 1')
-    i_snap_rec = src.index('_record_post_publish_failure("snapshot", ticker, published_version, e)')
-    i_cal_inc = src.index('_analytics_cache_observability["post_publish_calibration_failures"] += 1')
-    i_cal_rec = src.index(
+    increment; the payload attaches a copy adjacent to the observability block.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail's own
+    except-handlers moved to server_state_persistence_tail.py with it; the ms_dict
+    payload-attachment ordering remains a server.py-only concern (both attach sites
+    are in _fetch_state's own body, unrelated to where the tail itself now lives)."""
+    tail_src = _persistence_tail_source()
+    i_snap_inc = tail_src.index('_analytics_cache_observability["post_publish_snapshot_failures"] += 1')
+    i_snap_rec = tail_src.index('_record_post_publish_failure("snapshot", ticker, published_version, e)')
+    i_cal_inc = tail_src.index('_analytics_cache_observability["post_publish_calibration_failures"] += 1')
+    i_cal_rec = tail_src.index(
         '_record_post_publish_failure("calibration", ticker, published_version, _v2_log_e)'
     )
     assert i_snap_inc < i_snap_rec < i_cal_inc < i_cal_rec
+
+    src = _fetch_state_source()
     i_obs_attach = src.index('ms_dict["analytics_cache_observability_v1"] = dict(')
     i_err_attach = src.index('ms_dict["post_publish_last_errors_v1"] = {')
     assert i_obs_attach < i_err_attach
@@ -1275,7 +1323,13 @@ def test_tail_mkt_ctx_nonlocal_rebind_restored():
     rebind now (parameters are always bound before the function body runs, so
     the UnboundLocalError class this used to guard against cannot occur for a
     parameter); verified it is NOT returned to the caller because nothing in
-    _fetch_state reads mkt_ctx again after either of the tail's two call sites."""
+    _fetch_state reads mkt_ctx again after either of the tail's two call sites.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the rebind moved with
+    the tail to server_state_persistence_tail.py; _ensure_mkt_ctx_confluence_complete
+    itself stayed in server.py (it has other callers), reached lazily as
+    `_srv._ensure_mkt_ctx_confluence_complete` -- the call-site substring now carries
+    that prefix."""
     import ast
 
     _fetch, tail = _fetch_state_ast()
@@ -1289,8 +1343,8 @@ def test_tail_mkt_ctx_nonlocal_rebind_restored():
     )
     tail_params = {a.arg for a in tail.args.args + tail.args.kwonlyargs}
     assert "mkt_ctx" in tail_params, "mkt_ctx must be threaded in as an explicit parameter"
-    src = _fetch_state_source()
-    assert "mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)" in src
+    src = _persistence_tail_source()
+    assert "mkt_ctx = _srv._ensure_mkt_ctx_confluence_complete(client, mkt_ctx)" in src
 
 
 def test_tail_no_unbound_shadow_of_fetch_state_locals():

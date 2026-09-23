@@ -202,19 +202,23 @@ def test_server_accuracy_surfaces_are_rth_primary() -> None:
     import ast as _ast
     repo_root = Path(__file__).resolve().parent.parent
     src = (repo_root / "server.py").read_text(encoding="utf-8")
-    tree = _ast.parse(src)
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the compute_accuracy
+    # call sites moved with _post_publish_persistence_tail to its own module.
+    tail_src = (repo_root / "server_state_persistence_tail.py").read_text(encoding="utf-8")
     rth_flags = []
-    for n in _ast.walk(tree):
-        if isinstance(n, _ast.Call):
-            callee = n.func.attr if isinstance(n.func, _ast.Attribute) else None
-            if callee == "compute_accuracy":
-                kw = {k.arg: k.value for k in n.keywords}
-                assert "rth_only" in kw, (
-                    f"compute_accuracy at server.py:{n.lineno} does not declare its "
-                    "scope — implicit all-hours can masquerade as RTH edge"
-                )
-                v = kw["rth_only"]
-                rth_flags.append(isinstance(v, _ast.Constant) and v.value is True)
+    for label, text in (("server.py", src), ("server_state_persistence_tail.py", tail_src)):
+        tree = _ast.parse(text)
+        for n in _ast.walk(tree):
+            if isinstance(n, _ast.Call):
+                callee = n.func.attr if isinstance(n.func, _ast.Attribute) else None
+                if callee == "compute_accuracy":
+                    kw = {k.arg: k.value for k in n.keywords}
+                    assert "rth_only" in kw, (
+                        f"compute_accuracy at {label}:{n.lineno} does not declare its "
+                        "scope — implicit all-hours can masquerade as RTH edge"
+                    )
+                    v = kw["rth_only"]
+                    rth_flags.append(isinstance(v, _ast.Constant) and v.value is True)
     assert any(rth_flags), "no RTH-primary compute_accuracy call remains in server.py"
     assert '"accuracy_scope"' in src and 'rth_0930_1600_et' in src, (
         "payload/API accuracy scope stamp missing"

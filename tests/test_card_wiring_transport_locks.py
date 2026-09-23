@@ -23,6 +23,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SERVER_SRC = (ROOT / "server.py").read_text(encoding="utf-8")
 SERVER_TREE = ast.parse(SERVER_SRC)
+# RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): _post_publish_persistence_tail
+# moved out of server.py into its own file -- no longer findable in SERVER_TREE at all.
+TAIL_SRC = (ROOT / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+TAIL_TREE = ast.parse(TAIL_SRC)
 
 
 def _find_function(tree: ast.AST, name: str) -> ast.FunctionDef | None:
@@ -117,11 +121,14 @@ def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
     directly at module scope now, not as a descendant of _fetch_state's own
     AST node. The invariants themselves (no bars write on the render path,
     fill_outcomes ordered inside the background task, submitted to the
-    fill-outcomes executor) are unchanged; only where each is checked moved."""
+    fill-outcomes executor) are unchanged; only where each is checked moved.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out
+    of server.py entirely, into server_state_persistence_tail.py -- found there now."""
     fn = _find_function(SERVER_TREE, "_fetch_state")
     assert fn is not None, "server._fetch_state not found"
-    tail = _find_function(SERVER_TREE, "_post_publish_persistence_tail")
-    assert tail is not None, "server._post_publish_persistence_tail not found"
+    tail = _find_function(TAIL_TREE, "_post_publish_persistence_tail")
+    assert tail is not None, "server_state_persistence_tail._post_publish_persistence_tail not found"
     bg = _find_function(tail, "_bg_persist_bars_then_fill_outcomes")
     assert bg is not None, (
         "_bg_persist_bars_then_fill_outcomes not found — bars persistence has "
@@ -415,13 +422,18 @@ def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
     _post_publish_persistence_tail (which consumes the reservation and releases
     it on failure) was promoted to a module-level function -- checked against
     its own source segment now; the reservation TAKEN at the pre-publish
-    identity anchor is still inside _fetch_state's own body, unaffected."""
+    identity anchor is still inside _fetch_state's own body, unaffected.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out
+    of server.py into server_state_persistence_tail.py -- found and its source
+    segment extracted from there now. _snapshot_row_insert_release itself stayed in
+    server.py (it has other callers), reached lazily as `_srv.` from the tail."""
     fn = _find_function(SERVER_TREE, "_fetch_state")
     assert fn is not None
     seg = ast.get_source_segment(SERVER_SRC, fn) or ""
-    tail = _find_function(SERVER_TREE, "_post_publish_persistence_tail")
-    assert tail is not None, "server._post_publish_persistence_tail not found"
-    tail_seg = ast.get_source_segment(SERVER_SRC, tail) or ""
+    tail = _find_function(TAIL_TREE, "_post_publish_persistence_tail")
+    assert tail is not None, "server_state_persistence_tail._post_publish_persistence_tail not found"
+    tail_seg = ast.get_source_segment(TAIL_SRC, tail) or ""
     # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: the reservation is taken at
     # the pre-publish identity anchor (same key: ticker + refresh ts, same db
     # handle) and the tail consumes it — the durable-probe db handle and the
@@ -432,7 +444,7 @@ def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
     assert "_do_insert = _xid_do_snapshot_insert" in tail_seg, (
         "the persistence tail must consume the hoisted reservation"
     )
-    assert "_snapshot_row_insert_release(ticker, _snap_ts)" in tail_seg, (
+    assert "_srv._snapshot_row_insert_release(ticker, _snap_ts)" in tail_seg, (
         "the persistence tail no longer releases a failed reservation"
     )
     assert "db=get_db()" in SERVER_SRC and "_snapshot_row_insert_release(t, snap_ts)" in SERVER_SRC, (
@@ -451,11 +463,15 @@ def test_offhours_snapshot_writes_gated_rc48() -> None:
 
     RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): the
     off-hours insert-skip gate lives inside _post_publish_persistence_tail now
-    (promoted to a module-level function), not _fetch_state's own body."""
-    assert "is_capturable_session" in SERVER_SRC, "server lost the single capture authority import"
-    tail = _find_function(SERVER_TREE, "_post_publish_persistence_tail")
-    assert tail is not None, "server._post_publish_persistence_tail not found"
-    tail_seg = ast.get_source_segment(SERVER_SRC, tail) or ""
+    (promoted to a module-level function), not _fetch_state's own body.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail (and its
+    own direct `from time_et import is_capturable_session`) moved out of server.py
+    into server_state_persistence_tail.py."""
+    assert "is_capturable_session" in TAIL_SRC, "the persistence tail lost the capture authority import"
+    tail = _find_function(TAIL_TREE, "_post_publish_persistence_tail")
+    assert tail is not None, "server_state_persistence_tail._post_publish_persistence_tail not found"
+    tail_seg = ast.get_source_segment(TAIL_SRC, tail) or ""
     assert "elif not is_capturable_session():" in tail_seg, (
         "off-hours capture gate (RC-48) missing from the persistence tail"
     )

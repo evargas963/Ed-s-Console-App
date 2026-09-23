@@ -2443,9 +2443,9 @@ ROWS: tuple[Row, ...] = (
         justification='RC-REHAB-1 (Phase 4, _fetch_state decomposition, fifteenth slice): the price-history-fallback path (accumulator has no usable volume) that used to call safe_get_price_history inline inside _fetch_state now calls it from this extracted Candle-Volume-Resolution-phase function instead; no new transport call, only relocated. RC-REHAB-1 (2026-09-22, module extraction): moved again, out of server.py into its own module.',
     ),
     Row(
-        file='server.py', derivation='_post_publish_persistence_tail', disposition='ALLOWLISTED',
+        file='server_state_persistence_tail.py', derivation='_post_publish_persistence_tail', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Relocated persistence/telemetry tail (FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1): snapshot INSERT + bars/outcomes + accuracy scans + calibration append, moved verbatim to run after the generated_at-stamping publish; writes persisted SQLite rows, no new Schwab wire read. RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): derivation name updated from the dotted `_fetch_state._post_publish_persistence_tail` to the bare name -- this function was promoted from a nested closure to a module-level function, so it is no longer qualified under _fetch_state at all.',
+        justification='Relocated persistence/telemetry tail (FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1): snapshot INSERT + bars/outcomes + accuracy scans + calibration append, moved verbatim to run after the generated_at-stamping publish; writes persisted SQLite rows, no new Schwab wire read. RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): derivation name updated from the dotted `_fetch_state._post_publish_persistence_tail` to the bare name -- this function was promoted from a nested closure to a module-level function, so it is no longer qualified under _fetch_state at all. RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): moved again, out of server.py into its own module (same pattern already applied to the fifteenth slice above).',
     ),
     Row(
         file='server.py', derivation='_filter_contracts_by_selected_expiry', disposition='ALLOWLISTED',

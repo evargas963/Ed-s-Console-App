@@ -526,14 +526,18 @@ def test_server_model_derived_snapshot_write_is_anchor_guarded():
     file. Split into what each half actually claims: the anchor must precede the
     tail's CALL SITE (true execution-order claim, checked against _fetch_state's
     own body), and the refuse-check must precede the insert WITHIN the tail's own
-    body (a same-function ordering claim, unaffected by the promotion)."""
-    src = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    body (a same-function ordering claim, unaffected by the promotion).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out
+    of server.py entirely into server_state_persistence_tail.py -- its own internal
+    ordering (refuse-check before insert) is checked against that file's full source
+    now, not a server.py substring slice."""
+    root = Path(__file__).resolve().parent.parent
+    src = (root / "server.py").read_text(encoding="utf-8")
     i_anchor = src.index("anchor_production_execution as _xid_anchor")
     i_full_call = src.index('_post_publish_persistence_tail(\n        _next_ver')
     assert i_anchor < i_full_call, "anchor must precede the tail's full-path call site"
-    tail_start = src.index("def _post_publish_persistence_tail(")
-    tail_end = src.index("def _fetch_state(", tail_start)
-    tail_src = src[tail_start:tail_end]
+    tail_src = (root / "server_state_persistence_tail.py").read_text(encoding="utf-8")
     i_refuse = tail_src.index("if _xid_refused:")
     i_model_insert = tail_src.index("_ed_db.insert_snapshot(_snap)")
     assert i_refuse < i_model_insert, "refuse-check must precede the insert within the tail"
@@ -572,6 +576,10 @@ def test_write_path_universe_inventory(repo_index):
                                        # same guarded/quote-only-N/A write, relocated, not
                                        # a new write path.
         "server.py",                  # anchored model-derived + quote-only paths
+        "server_state_persistence_tail.py",  # RC-REHAB-1 (2026-09-23): insert_snapshot
+                                       # moved here from server.py (module extraction,
+                                       # twentieth slice) -- same anchored write, relocated,
+                                       # not a new write path.
         "decision_record.py",         # identity-carrying decision records
         "live_decision_bundle.py",    # stamp + persist passthrough
         "calibration/writer.py",      # identity-carrying calibration rows
@@ -602,10 +610,17 @@ def test_write_path_universe_inventory(repo_index):
 # ══════════════════════════════════════════════════════════════════════════════
 
 _SERVER_PY = Path(__file__).resolve().parent.parent / "server.py"
+# RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): _post_publish_persistence_tail
+# moved out of server.py into its own file.
+_TAIL_PY = Path(__file__).resolve().parent.parent / "server_state_persistence_tail.py"
 
 
 def _server_text() -> str:
     return _SERVER_PY.read_text(encoding="utf-8", errors="replace")
+
+
+def _tail_text() -> str:
+    return _TAIL_PY.read_text(encoding="utf-8", errors="replace")
 
 
 def test_server_anchor_precedes_finalize_and_log_only_tail():
@@ -629,16 +644,15 @@ def test_server_anchor_precedes_finalize_and_log_only_tail():
     assert anchor_at < finalize_at, "anchor must precede the production-decision finalize"
     # Exactly one anchor call site, and it is NOT inside the persistence tail.
     assert text.count("anchor_production_execution as _xid_anchor") == 1
-    tail_start = text.index("def _post_publish_persistence_tail(")
-    # The tail is now module-level, defined immediately before _fetch_state -- that is
-    # its own true boundary now, not the "def _fv(v):" nested helper that used to
-    # follow it inside _fetch_state's own body.
-    tail_end = text.index("def _fetch_state(", tail_start)
-    assert "anchor_production_execution" not in text[tail_start:tail_end], (
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the tail moved out of
+    # server.py entirely into server_state_persistence_tail.py -- checked against that
+    # file's own full text now, not a server.py substring slice.
+    tail_text = _tail_text()
+    assert "anchor_production_execution" not in tail_text, (
         "the persistence tail must consume the pre-anchored pair, never anchor"
     )
     # The tail consumes the hoisted throttle reservation (single reservation/cycle).
-    assert "_do_insert = _xid_do_snapshot_insert" in text[tail_start:tail_end]
+    assert "_do_insert = _xid_do_snapshot_insert" in tail_text
     # The decision surface is marked landed only on a persist that actually landed.
     assert "_decision_persist_landed" in text
     mark_at = text.index('_xid_mark_dec(_xconn3, _xid_pair[0], "decision")')
@@ -649,8 +663,9 @@ def test_server_anchor_precedes_finalize_and_log_only_tail():
     # calibration.v2_live_logging.resolve_live_v2_calibration_tail_action. Assert the
     # CONTRACT (server delegates the decision, and the resolver still encodes the
     # idle skip) rather than a literal source string that a refactor can move.
-    assert "resolve_live_v2_calibration_tail_action(" in text
-    assert "has_execution_identity=_xid_pair_cal is not None" in text
+    # RC-REHAB-1 (twentieth slice): both call sites moved with the tail.
+    assert "resolve_live_v2_calibration_tail_action(" in tail_text
+    assert "has_execution_identity=_xid_pair_cal is not None" in tail_text
     from calibration.v2_live_logging import (
         LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
         LIVE_ADVISORY_V2_TAIL_APPEND,

@@ -103,7 +103,10 @@ def test_server_snapshot_kwargs_includes_pred_1c_assignment():
     """Guard: server _snapshot_kwargs must wire ms.up_prob_1c → pred_1c_* (grep-level contract)."""
     from pathlib import Path
 
-    text = Path(ROOT / "server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the SnapshotRow
+    # construction site (_snapshot_kwargs) moved with _post_publish_persistence_tail to
+    # its own module.
+    text = Path(ROOT / "server_state_persistence_tail.py").read_text(encoding="utf-8")
     assert "pred_1c_up_prob=ms.up_prob_1c" in text
     assert "pred_1c_down_prob=ms.down_prob_1c" in text
     assert "pred_1c_flat_prob=ms.flat_prob_1c" in text

@@ -14,6 +14,9 @@ from calibration.v2_live_logging import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = (ROOT / "server.py").read_text(encoding="utf-8")
+# RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the live calibration
+# tail-action call moved with _post_publish_persistence_tail to its own module.
+TAIL = (ROOT / "server_state_persistence_tail.py").read_text(encoding="utf-8")
 
 
 def test_expected_calibration_requires_snapshot_reservation() -> None:
@@ -31,8 +34,8 @@ def test_expected_calibration_requires_snapshot_reservation() -> None:
 
 def test_server_tail_uses_resolve_helper() -> None:
     """Server must call the executable skip resolver (not only string presence)."""
-    assert "resolve_live_v2_calibration_tail_action(" in SERVER
-    assert "colocated_snapshot_ts_utc=float(_snap_ts)" in SERVER
+    assert "resolve_live_v2_calibration_tail_action(" in TAIL
+    assert "colocated_snapshot_ts_utc=float(_snap_ts)" in TAIL
 
 
 def test_calibration_tail_skip_branch_executes() -> None:
@@ -70,4 +73,4 @@ def test_skip_reason_constant_stable() -> None:
 
 def test_live_append_passes_colocated_snapshot_ts() -> None:
     """FP-32: server must pass landed snap ts into the live calibration writer."""
-    assert "colocated_snapshot_ts_utc=float(_snap_ts)" in SERVER
+    assert "colocated_snapshot_ts_utc=float(_snap_ts)" in TAIL

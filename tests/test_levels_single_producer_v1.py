@@ -306,7 +306,11 @@ def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     assert "exposures.get(float(_pin_strike)" not in chunk
     assert "_pin_bkt" not in chunk
     assert "total_gamma_raw_at_strike" not in chunk
-    assert "gamma_pin=_ssot_gamma_pin" in src
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the SnapshotRow
+    # construction site (gamma_pin=_ssot_gamma_pin) moved with _post_publish_persistence_tail
+    # into server_state_persistence_tail.py.
+    tail_src = (SERVER.parent / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    assert "gamma_pin=_ssot_gamma_pin" in tail_src
     assert 'getattr(consensus_summary, "gamma_pin"' not in src
     assert 'getattr(consensus_summary, "net_gex_peak"' not in src
     # RC-420: CONSENSUS gamma/delta walls bind to the same terrain cache (folded

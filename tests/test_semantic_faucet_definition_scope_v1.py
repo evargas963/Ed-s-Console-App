@@ -314,7 +314,10 @@ def test_ui_surfaces_bind_the_renamed_names_and_never_the_collision_name():
     # split (declared above in HISTORICAL_DB_COLUMNS), reached through db.py/time_et.py.
     assert HISTORICAL_DB_COLUMNS == {("snapshots_db", "gamma_pin")}
     server_src = (REPO / "server.py").read_text(encoding="utf-8")
-    assert "gamma_pin=_ssot_gamma_pin" in server_src, (
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the SnapshotRow
+    # construction site moved with _post_publish_persistence_tail to its own module.
+    tail_src = (REPO / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    assert "gamma_pin=_ssot_gamma_pin" in tail_src, (
         "the DB persist kwarg is the one sanctioned live use of the historical column name")
     assert 'md["gamma_pin"]' not in server_src and '.get("gamma_pin")' not in server_src, (
         "a live payload read/write of the retired name returned to server.py")

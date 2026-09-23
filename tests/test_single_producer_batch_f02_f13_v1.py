@@ -1081,13 +1081,18 @@ def test_rc345_pin_width_one_authority() -> None:
 
     assert compute_pin_width_pts(105.0, 100.0) == 5.0
     assert compute_pin_width_pts(105.0, None) is None and compute_pin_width_pts(0, 100) is None
-    for mod in ("market_state.py", "server.py"):
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): server.py's own call
+    # site (inside _post_publish_persistence_tail) moved to server_state_persistence_tail.py.
+    for mod in ("market_state.py", "server.py", "server_state_persistence_tail.py"):
         m = _read(mod)
-        assert "compute_pin_width_pts(_cgw, _pgw)" in m, (
-            f"{mod} must delegate pin width to the one authority (F20/RC-345)")
+        home = "server.py" if mod == "server_state_persistence_tail.py" else mod
+        if "compute_pin_width_pts(_cgw, _pgw)" not in m:
+            if mod == "server.py":
+                continue  # moved -- checked via server_state_persistence_tail.py instead
+            assert False, f"{home} must delegate pin width to the one authority (F20/RC-345)"
         code = "\n".join(l for l in m.splitlines() if not l.lstrip().startswith("#"))
         assert "round(_cgw - _pgw" not in code and "(_cgw - _pgw)" not in code, (
-            f"{mod} still computes pin width inline (F20/RC-345)")
+            f"{home} still computes pin width inline (F20/RC-345)")
 
 
 # ------------------------------------------------------------------- F40 MC/GARCH sigma cadence
@@ -1224,7 +1229,9 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
     # the F22 argmax-authority check below now needs that file too.
     dbsrc = _read("db.py") + _read("db_schema.py") + _read("db_model_accuracy.py")
     assert "flow_imbalance_source   TEXT" in dbsrc and '("flow_imbalance_source",   "TEXT")' in dbsrc
-    assert "flow_imbalance_source=_flow_imb_source" in _read("server.py"), (
+    # RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the SnapshotRow
+    # construction site moved with _post_publish_persistence_tail to its own module.
+    assert "flow_imbalance_source=_flow_imb_source" in _read("server_state_persistence_tail.py"), (
         "the source must be persisted on the snapshot row (F11/RC-345)")
 
     # F22: db.py accuracy uses the ONE argmax authority.
