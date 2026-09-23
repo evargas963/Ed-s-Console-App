@@ -24,6 +24,15 @@ from __future__ import annotations
 from unittest import mock
 
 import server as srv
+import server_state_predictive_positioning as spp
+from math_exposure import (
+    aggregate_net_gex,
+    bucket_metric,
+    compute_dealer_pressure_index,
+    compute_gamma_gradient,
+    compute_hedging_flow_score,
+    compute_pin_score,
+)
 
 
 def _fixture_exposures():
@@ -57,19 +66,23 @@ def test_full_pipeline_matches_the_original_computation_chain():
             "SPY", exposures, cons_strikes, 450.0, 12.5, [{"contains_spot": False, "lower": 448.0, "upper": 452.0}], "expanding",
         )
 
-    sum_gex = float(srv.aggregate_net_gex(exposures, cons_strikes) or 0.0)
-    sum_dex = sum(srv.bucket_metric(b, "net_dex_dollars") for b in exposures.values())
+    # RC-REHAB-1 CAPS fix (twenty-first slice): DPI now sees the honest None from
+    # aggregate_net_gex directly -- only the hedging-flow normalization further down
+    # still coerces None to 0.0 (that math has no null-safe path of its own).
+    _gex_raw = aggregate_net_gex(exposures, cons_strikes)
+    sum_dex = sum(bucket_metric(b, "net_dex_dollars") for b in exposures.values())
     sum_oi = sum(srv._bucket_total_oi(b) for b in exposures.values())
     sum_vanna = (
-        sum(srv.bucket_metric(b, "call_vanna") for b in exposures.values())
-        + sum(srv.bucket_metric(b, "put_vanna") for b in exposures.values())
+        sum(bucket_metric(b, "call_vanna") for b in exposures.values())
+        + sum(bucket_metric(b, "put_vanna") for b in exposures.values())
     )
-    expected_dpi = srv.compute_dealer_pressure_index(sum_dex, sum_gex, sum_oi)
+    expected_dpi = compute_dealer_pressure_index(sum_dex, _gex_raw, sum_oi)
     assert result.dpi == expected_dpi
 
+    sum_gex = float(_gex_raw or 0.0)
     max_gex, max_dex = max(abs(sum_gex), 1.0), max(abs(sum_dex), 1.0)
     max_charm, max_vanna = max(abs(12.5), 1.0), max(abs(sum_vanna), 1.0)
-    expected_hedging = srv.compute_hedging_flow_score(
+    expected_hedging = compute_hedging_flow_score(
         net_gex_normalized=sum_gex / max_gex,
         net_dex_normalized=sum_dex / max_dex,
         charm_normalized=12.5 / max_charm,
@@ -77,12 +90,30 @@ def test_full_pipeline_matches_the_original_computation_chain():
     )
     assert result.hedging_flow == expected_hedging
 
-    assert result.gamma_gradient == srv.compute_gamma_gradient(exposures, 450.0)
+    assert result.gamma_gradient == compute_gamma_gradient(exposures, 450.0)
     assert result.pin_strike == 450.0
     assert result.regime_gamma_at_spot == -1200.0
 
     expected_oi_concentration = 900.0 / 3000.0
-    assert result.pin_score_val == srv.compute_pin_score(5000.0, expected_oi_concentration)
+    assert result.pin_score_val == compute_pin_score(5000.0, expected_oi_concentration)
+
+
+def test_no_gex_data_reports_honest_none_dpi_not_a_fabricated_zero():
+    """RC-REHAB-1 CAPS fix (twenty-first slice): a real "no GEX data" case
+    (aggregate_net_gex returns None when cons_strikes is empty -- its own contract,
+    math_exposure_core.py) must produce DPI's honest null-shaped result, not a
+    fabricated "raw=0.0, direction=neutral, magnitude=negligible" reading that looks
+    like a real (if weak) measurement. compute_dealer_pressure_index was already
+    built to handle net_gex=None this way; the old code coerced it to 0.0 before it
+    ever got there."""
+    exposures = _fixture_exposures()
+    with mock.patch.object(srv, "terrain_cache_get", return_value=None):
+        result = srv._predictive_positioning_for_state(
+            "SPY", exposures, [], 450.0, 5.0, [], "flat",
+        )
+    assert aggregate_net_gex(exposures, []) is None  # the precondition this test relies on
+    assert result.dpi == {"raw": None, "normalized": None, "direction": None, "magnitude": None}
+    assert result.dpi != {"raw": 0.0, "normalized": 0.0, "direction": "buying", "magnitude": "negligible"}
 
 
 def test_stale_terrain_snapshot_withholds_pin_and_regime():
@@ -108,7 +139,10 @@ def test_total_failure_fails_closed_to_defaults_never_raises():
     to consume -- never an UNDEFINED name that would crash the ENTIRE market state
     build for one failed sub-computation."""
     exposures = _fixture_exposures()
-    with mock.patch.object(srv, "aggregate_net_gex", side_effect=RuntimeError("boom")):
+    # Patched on server_state_predictive_positioning, not srv: aggregate_net_gex is
+    # imported directly there (module-level, not lazily via `import server as _srv`),
+    # so that is the name the real call site actually resolves against.
+    with mock.patch.object(spp, "aggregate_net_gex", side_effect=RuntimeError("boom")):
         result = srv._predictive_positioning_for_state("SPY", exposures, [450.0], 450.0, 5.0, [], "flat")
 
     assert result.dpi == {}

@@ -296,8 +296,12 @@ def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
 
 def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
     src = SERVER.read_text(encoding="utf-8")
-    i = src.index("# 5. Pin Score")
-    chunk = src[i:i + 1400]
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-first slice): the "# 5. Pin
+    # Score" block moved with _predictive_positioning_for_state into
+    # server_state_predictive_positioning.py.
+    pp_src = (SERVER.parent / "server_state_predictive_positioning.py").read_text(encoding="utf-8")
+    i = pp_src.index("# 5. Pin Score")
+    chunk = pp_src[i:i + 1400]
     assert "terrain_cache_get" in chunk
     assert "getattr(consensus_summary" not in chunk
     assert "absolute_gamma_gex_dollars" in chunk
