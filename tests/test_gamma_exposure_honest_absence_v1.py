@@ -176,7 +176,7 @@ def _seed_morning_full(path, ticker: str, et_date: str, ts_utc: float, spot: flo
 def _clear_gamma_surface(tk):
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_a_prior_session_banked_chain_is_not_served_as_a_morning_reference(tmp_path, monkeypatch):

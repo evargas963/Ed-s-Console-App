@@ -232,7 +232,7 @@ def build_findings() -> list[dict]:
                 "/api/terrain/strikes (per-strike GEX$/volume payload)":
                     _sites("app/api/routes/terrain.py", r'@router.get\("/api/terrain/strikes"\)', 1),
                 "chart FORCES strip client-side rows (GEX/OV derived in-browser from the same payload)":
-                    _sites("server.py", r"strip's GEX/OV rows come from the live strikes payload client-side", 1),
+                    _sites("app/api/routes/market_data.py", r"strip's GEX/OV rows come from the live strikes payload client-side", 1),
             },
             "evidence": "One data source, two aggregation sites (server payload vs in-browser derivation for the "
                         "strip). Binding-level duality: a payload change breaks the strip silently.",

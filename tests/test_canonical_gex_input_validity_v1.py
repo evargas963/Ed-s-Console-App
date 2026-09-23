@@ -428,7 +428,7 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
     tk = ticker_storage_key("ZSPXRESTART")
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
     try:
         good_surface = {
             "expirations": [{"expiry": "2026-09-15", "dte": 0}], "strikes": [7580.0],
@@ -463,7 +463,7 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
@@ -475,7 +475,7 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
     tk = ticker_storage_key("ZSPXENDPOINT")
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
     try:
         good_surface = {
             "expirations": [{"expiry": "2026-09-15", "dte": 0}], "strikes": [7580.0],
@@ -519,7 +519,7 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_backfill_never_labels_a_snapshot_live_stream_state_stays_honest():

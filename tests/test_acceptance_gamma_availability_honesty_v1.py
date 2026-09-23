@@ -26,10 +26,10 @@ from __future__ import annotations
 
 import json
 
-import server
 from app.api.routes.options import get_options_gamma_surface
 from instrument_identity import ticker_storage_key
 import terrain_state
+import app.api.routes.options
 
 _BASE_SURF = {
     "expirations": [{"expiry": "2026-09-25", "dte": 5}],
@@ -58,7 +58,7 @@ def _put_live(tk: str, surf: dict, *, computed_ts: float) -> None:
 def _clear(tk: str) -> None:
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_a_malformed_surface_reports_unavailable_not_a_fabricated_true():

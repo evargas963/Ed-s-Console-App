@@ -47,7 +47,7 @@ def _quarantine_ledger_to_tmp(tmp_path, monkeypatch):
 
 
 def _age(s: str | None) -> int | None:
-    return server.scorecard_trading_day_age(s)
+    return app.api.routes.terrain.scorecard_trading_day_age(s)
 
 
 def test_weekend_does_not_age_a_scorecard():
@@ -96,13 +96,13 @@ def test_stale_report_withholds_the_numbers_and_says_why():
         assert body.get("age_trading_days") != 0
     else:
         assert body.get("age_trading_days") is not None
-        assert body["age_trading_days"] <= server.SCORECARD_MAX_TRADING_DAY_AGE
+        assert body["age_trading_days"] <= app.api.routes.terrain.SCORECARD_MAX_TRADING_DAY_AGE
 
 
 def test_budget_is_one_trading_day():
     """A daily job older than one session means a run was MISSED — exactly when it must stop
     speaking. If this constant grows, the reason must grow with it."""
-    assert server.SCORECARD_MAX_TRADING_DAY_AGE == 1
+    assert app.api.routes.terrain.SCORECARD_MAX_TRADING_DAY_AGE == 1
 
 
 def test_client_refuses_a_stale_scorecard_and_states_the_reason():

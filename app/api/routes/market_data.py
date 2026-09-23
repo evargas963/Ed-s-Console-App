@@ -90,7 +90,7 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
     # DB-failure fallback below.
     import server as _server
     from time_et import is_trading_day_et
-    from server import _charm_book_scope, _FORCES_CACHE
+    from server import _charm_book_scope
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -193,14 +193,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
     on timeout they re-contend for leadership or serve the last cache entry
     (stale beats a quote stampede).
     """
-    from server import (
-        SPOT_POLL_TTL_SEC,
-        _spot_poll_cache,
-        _spot_poll_inflight,
-        _spot_poll_lock,
-        current_spot_state,
-        resolve_spot,
-    )
+    from server import current_spot_state, resolve_spot
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     deadline = time.time() + 10.0
@@ -384,3 +377,24 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
     loop = asyncio.get_event_loop()
     payload = await loop.run_in_executor(_get_quote_hot_executor(), _build)
     return JSONResponse(payload)
+
+
+# Route-private caches (moved from server.py, RC-REHAB-1 forty-seventh slice): /api/forces and
+# /api/spot are their only readers and writers.
+#: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
+#: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
+#: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the
+#: two newest wide captures, which only the server can read.
+_FORCES_CACHE: dict = {}
+
+#: /api/spot upstream guard (operator 2026-07-23: "spot needs to be the fastest
+#: polling"). Every resolve_spot is a REAL Schwab REST quote against the shared
+#: ~120 req/min budget, so the endpoint caches per ticker for a short TTL — all
+#: viewers share one upstream call per window and the client can poll at 1.5s.
+_spot_poll_cache: dict[str, tuple[float, dict]] = {}
+
+_spot_poll_lock = threading.Lock()
+
+_spot_poll_inflight: dict[str, threading.Event] = {}
+
+SPOT_POLL_TTL_SEC = 1.25

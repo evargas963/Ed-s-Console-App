@@ -11,6 +11,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
+from time_et import now_et
 
 router = APIRouter()
 log = logging.getLogger("ed_server")
@@ -199,7 +200,6 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         _stamp_gamma_surface_cell_stream_state,
     )
     from terrain_loop import _ticker_on_terrain_board, terrain_cache_get
-    from server import _GAMMA_SURFACE_CACHE, _stamp_surface_session
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -400,3 +400,35 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                    "reason": f"gamma-surface read failed: {e}"}
     _GAMMA_SURFACE_CACHE[tk] = (now, payload)
     return JSONResponse(payload)
+
+
+# Gamma-surface route cache and session stamping (moved from server.py, RC-REHAB-1 forty-
+# seventh slice): /api/options/gamma-surface is their only consumer.
+# RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. A PROJECTION over the
+# one canonical exposure authority, not a second producer: it partitions a wide chain by native
+# expirationDate (via the existing _filter_contracts_by_selected_expiry slice) and invokes
+# math_exposure_core.compute_exposures_by_strike per slice, shaping net_gex_1pct cells into a grid.
+# No gamma/GEX/multiplier/OI/spot/sign/missingness math lives here.
+# SOURCE (current, post live-terrain rewire): PREFERRED is the live terrain projection —
+# _terrain_refresh_one projects it from the live wide chain + live spot it already fetches each cycle
+# and caches it (in-memory, zero extra vendor calls), demand-gated to viewed tickers. FALLBACK is the
+# banked MORNING wide reference (one DB read, 5-min cache) — labelled stale/not-intraday, never live.
+_GAMMA_SURFACE_CACHE: dict = {}
+
+
+def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
+    """Session identity for a projected surface, stamped by the ONE ET clock (server side — a
+    browser never decides what day it is): today's ET session date, whether the surface is a
+    PRIOR-session reference (a banked capture from an earlier trading day viewed today), and which
+    expiration columns have already expired relative to today. Presentation reads these flags to
+    label an expired 0DTE column and a prior-session reference for what they are; it never infers
+    them. No cell value is touched."""
+    today = now_et().strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
+    out = dict(surface)
+    out["expirations"] = [
+        dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
+        for e in (surface.get("expirations") or [])
+    ]
+    out["session_date_et"] = today
+    out["prior_session"] = bool(reference_date and str(reference_date) < today)
+    return out

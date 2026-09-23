@@ -40,7 +40,7 @@ import logging
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
@@ -48,8 +48,7 @@ from typing import Any, Dict, NamedTuple, Optional
 from dataclasses import asdict, dataclass
 
 import time_et as _time_et
-from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session,
-                     is_trading_day_et)
+from time_et import (now_et, RTH_OPEN_MINS, RTH_END_MINS, is_capturable_session)
 
 import hashlib
 import json
@@ -7078,34 +7077,6 @@ def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None
     return contracts, float(spot)
 
 
-#: RC-192/RC-199 FORCES (RE-LANDED 2026-08-02 after a worktree reset destroyed the
-#: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
-#: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the
-#: two newest wide captures, which only the server can read.
-_FORCES_CACHE: dict = {}
-
-
-#: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
-#: per-strike exposure time series the console has.
-_EXPOSURE_FLOW_CACHE: dict = {}
-
-
-#: RC-209: Split·DEX and multi-day structure were gated ONLY by missing endpoints.
-_EXPOSURE_BOOK_CACHE: dict = {}
-_EXPOSURE_HISTORY_CACHE: dict = {}
-
-
-# RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. A PROJECTION over the
-# one canonical exposure authority, not a second producer: it partitions a wide chain by native
-# expirationDate (via the existing _filter_contracts_by_selected_expiry slice) and invokes
-# math_exposure_core.compute_exposures_by_strike per slice, shaping net_gex_1pct cells into a grid.
-# No gamma/GEX/multiplier/OI/spot/sign/missingness math lives here.
-# SOURCE (current, post live-terrain rewire): PREFERRED is the live terrain projection —
-# _terrain_refresh_one projects it from the live wide chain + live spot it already fetches each cycle
-# and caches it (in-memory, zero extra vendor calls), demand-gated to viewed tickers. FALLBACK is the
-# banked MORNING wide reference (one DB read, 5-min cache) — labelled stale/not-intraday, never live.
-_GAMMA_SURFACE_CACHE: dict = {}
-
 #: Operator directive (2026-09-15, canonical input-validity rules): "If current inputs are
 #: invalid, display the latest valid timestamped snapshot for that cell. Show — only if no
 #: valid current or historical snapshot exists... current vendor failure must not erase
@@ -7305,77 +7276,6 @@ def _backfill_gex_cells_from_last_valid(tk: str, surface: dict) -> None:
     # this cycle) exactly as it was -- backfill found nothing to offer either.
 
 
-def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
-    """Session identity for a projected surface, stamped by the ONE ET clock (server side — a
-    browser never decides what day it is): today's ET session date, whether the surface is a
-    PRIOR-session reference (a banked capture from an earlier trading day viewed today), and which
-    expiration columns have already expired relative to today. Presentation reads these flags to
-    label an expired 0DTE column and a prior-session reference for what they are; it never infers
-    them. No cell value is touched."""
-    today = now_et().strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
-    out = dict(surface)
-    out["expirations"] = [
-        dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
-        for e in (surface.get("expirations") or [])
-    ]
-    out["session_date_et"] = today
-    out["prior_session"] = bool(reference_date and str(reference_date) < today)
-    return out
-
-
-#: /api/spot upstream guard (operator 2026-07-23: "spot needs to be the fastest
-#: polling"). Every resolve_spot is a REAL Schwab REST quote against the shared
-#: ~120 req/min budget, so the endpoint caches per ticker for a short TTL — all
-#: viewers share one upstream call per window and the client can poll at 1.5s.
-_spot_poll_cache: dict[str, tuple[float, dict]] = {}
-_spot_poll_lock = threading.Lock()
-_spot_poll_inflight: dict[str, threading.Event] = {}
-SPOT_POLL_TTL_SEC = 1.25
-
-
-#: Trading days a daily scorecard may be old and still be quoted as a measurement. 1 = yesterday's
-#: run is current, the day before that is not. DERIVED from the artifact's own cadence: the job is
-#: daily, so anything older than one trading day means a run was MISSED, and a missed run is
-#: exactly the condition under which the numbers must stop speaking.
-SCORECARD_MAX_TRADING_DAY_AGE: int = 1
-
-
-def scorecard_trading_day_age(generated_utc: object) -> int | None:
-    """TRADING days between `generated_utc` (YYYY-MM-DD...) and today ET. None = unusable.
-
-    Counts sessions, not hours, so a Friday scorecard reads as 1 day old on Monday rather than 3
-    — the distinction between "the job did not run" and "the market was shut"."""
-    # RC-98: CONVERT to ET, never slice the UTC string. `generated_utc[:10]` is a UTC calendar
-    # date being compared against an ET calendar date, and after 20:00 ET the UTC date is already
-    # TOMORROW — so a scorecard that had just run successfully scored `gen > today`, returned
-    # None, and the API reported the FRESH artifact as unusable. MEASURED 2026-07-27 21:21 ET:
-    # generated_utc 2026-07-28T00:30:00+00:00 (= 20:30 ET today) returned None instead of 0.
-    # The session calendar is ET, so the timestamp must be moved onto that clock before any date
-    # arithmetic — comparing two different clocks' dates is the defect, not the comparison.
-    raw = str(generated_utc or "").strip()
-    try:
-        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        if len(raw) == 10:
-            # A DATE-ONLY string carries no time and no zone — it is already a calendar date, so
-            # converting it is the bug, not the fix. Treating "2026-07-24" as UTC midnight and
-            # shifting to ET lands on 07-23 and ages the scorecard by an extra day. Caught by
-            # tests/test_scorecard_stale_fails_closed_v1.py the moment the ET conversion landed.
-            gen = ts.date()
-        else:
-            if ts.tzinfo is None:            # naive TIMESTAMPS are UTC by this repo's storage law
-                ts = ts.replace(tzinfo=timezone.utc)
-            gen = ts.astimezone(now_et().tzinfo).date()
-    except (TypeError, ValueError):
-        return None                          # unparseable age is NOT a fresh age
-    today = now_et().date()
-    if gen > today:
-        return None                          # a future stamp is a broken clock, never "fresh"
-    age, day = 0, gen
-    while day < today:
-        day += timedelta(days=1)
-        if is_trading_day_et(day.isoformat()):
-            age += 1
-    return age
 
 
 # RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):

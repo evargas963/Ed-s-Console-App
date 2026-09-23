@@ -35,7 +35,6 @@ def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
     # designed fallback for a DB failure -- ever runs. `import server as _server`
     # defers resolution to the point of use, already inside the try.
     import server as _server
-    from server import _EXPOSURE_FLOW_CACHE
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -95,7 +94,6 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
     # DB-failure fallback below.
     import server as _server
     from time_et import is_trading_day_et
-    from server import _EXPOSURE_BOOK_CACHE
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -154,7 +152,6 @@ def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
     # DB-failure fallback below.
     import server as _server
     from time_et import is_trading_day_et
-    from server import _EXPOSURE_HISTORY_CACHE
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()
@@ -193,3 +190,15 @@ def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
         payload = {"ticker": tk, "available": False, "reason": f"history read failed: {e}"}
     _EXPOSURE_HISTORY_CACHE[tk] = (now, payload)
     return JSONResponse(payload)
+
+
+# Route-private caches (moved from server.py, RC-REHAB-1 forty-seventh slice): each
+# /api/exposure/* route is its cache's only reader and writer.
+#: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
+#: per-strike exposure time series the console has.
+_EXPOSURE_FLOW_CACHE: dict = {}
+
+#: RC-209: Split·DEX and multi-day structure were gated ONLY by missing endpoints.
+_EXPOSURE_BOOK_CACHE: dict = {}
+
+_EXPOSURE_HISTORY_CACHE: dict = {}

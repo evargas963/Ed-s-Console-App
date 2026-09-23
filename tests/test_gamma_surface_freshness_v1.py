@@ -12,6 +12,7 @@ from instrument_identity import ticker_storage_key
 import gamma_surface_state
 import terrain_loop
 import terrain_state
+import app.api.routes.options
 
 _SURF = {
     "expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [580.0, 583.0, 586.0],
@@ -36,7 +37,7 @@ def _put_live(tk, *, computed_ts):
 def _clear(tk):
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_live_terrain_surface_is_preferred_and_discloses_coverage():
@@ -89,7 +90,7 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
     tk = ticker_storage_key("SPY")
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
     monkeypatch.setattr(terrain_quarantine, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_reason", lambda t: None)
     monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_state", lambda t: {})
@@ -98,13 +99,13 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
         d = _call(tk)
         assert d["warming"] is True and d["requested"] is True
         monkeypatch.setattr(server, "_is_loggable_session", lambda: False)  # out of session -> not warming
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
         d2 = _call(tk)
         assert d2["warming"] is False and d2["requested"] is True           # still on the board -> requested
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch):
@@ -120,7 +121,7 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
             server._logger_tickers.remove(tk)
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # snapshot, no surface
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
     # session/quarantine are eligible — the ONLY thing withholding warming is board membership
     monkeypatch.setattr(terrain_quarantine, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_reason", lambda t: None)
@@ -135,7 +136,7 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
         gamma_surface_state._gamma_surface_demand.pop(tk, None)
         if had:
             with server._logger_lock:
@@ -164,10 +165,10 @@ def test_surface_session_identity_is_stamped_by_the_server_clock():
     finally:
         _clear(tk)
     # a banked reference from an earlier trading day is a PRIOR-session reference
-    stamped = server._stamp_surface_session(surf, reference_date="2000-01-03")
+    stamped = app.api.routes.options._stamp_surface_session(surf, reference_date="2000-01-03")
     assert stamped["prior_session"] is True
     assert stamped["cells"] == surf["cells"] and stamped["strikes"] == surf["strikes"]
-    assert server._stamp_surface_session(surf, reference_date=today)["prior_session"] is False
+    assert app.api.routes.options._stamp_surface_session(surf, reference_date=today)["prior_session"] is False
 
 
 def test_fallback_is_labelled_not_live_never_intraday():

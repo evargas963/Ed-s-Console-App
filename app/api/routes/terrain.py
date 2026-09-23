@@ -16,6 +16,11 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
+from datetime import datetime
+from datetime import timedelta
+from datetime import timezone
+from time_et import is_trading_day_et
+from time_et import now_et
 
 router = APIRouter()
 
@@ -376,7 +381,6 @@ def get_terrain_scorecard():
     Monday and stale on Tuesday. A wall-clock budget would condemn every
     scorecard each weekend and teach the operator to ignore the warning."""
     from runtime_layout import reports_dir as _artifact_reports_dir
-    from server import SCORECARD_MAX_TRADING_DAY_AGE, scorecard_trading_day_age
 
     p = _artifact_reports_dir() / "terrain_backtest_latest.json"    # RC-523: artifacts root
     try:
@@ -459,3 +463,50 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
         # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
         **terrain_staleness(None, tk),
     }
+
+
+# Scorecard age gate (moved from server.py, RC-REHAB-1 forty-seventh slice):
+# /api/terrain/scorecard is its only consumer.
+#: Trading days a daily scorecard may be old and still be quoted as a measurement. 1 = yesterday's
+#: run is current, the day before that is not. DERIVED from the artifact's own cadence: the job is
+#: daily, so anything older than one trading day means a run was MISSED, and a missed run is
+#: exactly the condition under which the numbers must stop speaking.
+SCORECARD_MAX_TRADING_DAY_AGE: int = 1
+
+
+def scorecard_trading_day_age(generated_utc: object) -> int | None:
+    """TRADING days between `generated_utc` (YYYY-MM-DD...) and today ET. None = unusable.
+
+    Counts sessions, not hours, so a Friday scorecard reads as 1 day old on Monday rather than 3
+    — the distinction between "the job did not run" and "the market was shut"."""
+    # RC-98: CONVERT to ET, never slice the UTC string. `generated_utc[:10]` is a UTC calendar
+    # date being compared against an ET calendar date, and after 20:00 ET the UTC date is already
+    # TOMORROW — so a scorecard that had just run successfully scored `gen > today`, returned
+    # None, and the API reported the FRESH artifact as unusable. MEASURED 2026-07-27 21:21 ET:
+    # generated_utc 2026-07-28T00:30:00+00:00 (= 20:30 ET today) returned None instead of 0.
+    # The session calendar is ET, so the timestamp must be moved onto that clock before any date
+    # arithmetic — comparing two different clocks' dates is the defect, not the comparison.
+    raw = str(generated_utc or "").strip()
+    try:
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if len(raw) == 10:
+            # A DATE-ONLY string carries no time and no zone — it is already a calendar date, so
+            # converting it is the bug, not the fix. Treating "2026-07-24" as UTC midnight and
+            # shifting to ET lands on 07-23 and ages the scorecard by an extra day. Caught by
+            # tests/test_scorecard_stale_fails_closed_v1.py the moment the ET conversion landed.
+            gen = ts.date()
+        else:
+            if ts.tzinfo is None:            # naive TIMESTAMPS are UTC by this repo's storage law
+                ts = ts.replace(tzinfo=timezone.utc)
+            gen = ts.astimezone(now_et().tzinfo).date()
+    except (TypeError, ValueError):
+        return None                          # unparseable age is NOT a fresh age
+    today = now_et().date()
+    if gen > today:
+        return None                          # a future stamp is a broken clock, never "fresh"
+    age, day = 0, gen
+    while day < today:
+        day += timedelta(days=1)
+        if is_trading_day_et(day.isoformat()):
+            age += 1
+    return age

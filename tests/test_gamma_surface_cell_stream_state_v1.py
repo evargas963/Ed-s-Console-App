@@ -25,6 +25,7 @@ from instrument_identity import ticker_storage_key
 from gamma_surface_state import _stamp_gamma_surface_cell_stream_state, _gamma_surface_cell_state_counts
 import gamma_surface_state
 import terrain_state
+import app.api.routes.options
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -319,7 +320,7 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
@@ -340,7 +341,7 @@ def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverage():
@@ -374,7 +375,7 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live():
@@ -408,7 +409,7 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
@@ -442,7 +443,7 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
@@ -468,7 +469,7 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 class _FakeDB:
@@ -518,7 +519,7 @@ def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path,
     tk = ticker_storage_key("ZZZTEST3")
     with terrain_state._terrain_cache_lock:
         terrain_state._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)
 
     db = tmp_path / "morning.db"
     today_et = _FROZEN.strftime("%Y-%m-%d")
@@ -533,4 +534,4 @@ def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path,
     finally:
         with terrain_state._terrain_cache_lock:
             terrain_state._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
+        app.api.routes.options._GAMMA_SURFACE_CACHE.pop(tk, None)

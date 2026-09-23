@@ -297,8 +297,8 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
         return (123.45, "test_quote", 1.0)
 
     monkeypatch.setattr(srv, "resolve_spot", _fake)
-    srv._spot_poll_cache.clear()
-    srv._spot_poll_inflight.clear()
+    app.api.routes.market_data._spot_poll_cache.clear()
+    app.api.routes.market_data._spot_poll_inflight.clear()
 
     results: list = []
     slock = th.Lock()
@@ -324,8 +324,8 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
     resp2 = app.api.routes.market_data.get_spot(ticker="SPY")
     assert _json.loads(resp2.body.decode("utf-8"))["spot"] == 123.45
     assert calls["n"] == 1, "TTL hit must not resolve again"
-    srv._spot_poll_cache.clear()
-    srv._spot_poll_inflight.clear()
+    app.api.routes.market_data._spot_poll_cache.clear()
+    app.api.routes.market_data._spot_poll_inflight.clear()
 
 
 def test_spot_endpoint_shape_single_authority():
