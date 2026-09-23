@@ -24,8 +24,11 @@ from server import (
     _per_strike_exposures_by_expiry,
     _merge_all_expiry_exposures,
     _per_strike_view_from_contracts,
-    _per_strike_view_update_expiry,
 )
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
+# _per_strike_view_update_expiry moved out of server.py entirely, into
+# gamma_surface_eager_refresh.py, along with its sole caller.
+from gamma_surface_eager_refresh import _per_strike_view_update_expiry
 from math_exposure_core import compute_exposures_by_strike
 from time_et import ET
 

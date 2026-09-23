@@ -12,6 +12,13 @@ import time
 from pathlib import Path
 
 import server
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
+# refresh_gamma_surface_from_stream moved out of server.py entirely, into
+# gamma_surface_eager_refresh.py, which imports project_gamma_surface/
+# project_gamma_surface_update_expiry/compute_terrain directly (module-level, not
+# lazily via `import server`) -- mocks targeting those three must patch that
+# module's own binding, not server's re-export, to be picked up.
+import gamma_surface_eager_refresh as gse
 from server import (
     refresh_gamma_surface_from_stream,
     project_gamma_surface,
@@ -413,7 +420,7 @@ def test_key_levels_refresh_is_best_effort_a_terrain_failure_never_blocks_the_he
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: streamed if sym == _CONTRACT_SYMBOL else None)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
-    monkeypatch.setattr(server, "compute_terrain", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(gse, "compute_terrain", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
 
     status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
     assert status == "ok"
@@ -453,7 +460,7 @@ def test_a_second_tick_with_a_moved_spot_forces_a_full_recompute_not_a_stale_spl
     def _spy_update_expiry(prior_surface, chain, spot, target_expiry, *, prior_spot):
         calls.append({"spot": spot, "prior_spot": prior_spot})
         return real_update_expiry(prior_surface, chain, spot, target_expiry, prior_spot=prior_spot)
-    monkeypatch.setattr(server, "project_gamma_surface_update_expiry", _spy_update_expiry)
+    monkeypatch.setattr(gse, "project_gamma_surface_update_expiry", _spy_update_expiry)
 
     now2 = time.time()
     streamed2 = {"gamma": 0.6, "gamma_ts_recv": now2}
@@ -609,8 +616,8 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
         return orig_update_expiry(prior_surface_arg, contracts_arg, spot_arg, expiry_arg,
                                   prior_spot=prior_spot)
 
-    monkeypatch.setattr(server, "project_gamma_surface", racing_project)
-    monkeypatch.setattr(server, "project_gamma_surface_update_expiry", racing_update_expiry)
+    monkeypatch.setattr(gse, "project_gamma_surface", racing_project)
+    monkeypatch.setattr(gse, "project_gamma_surface_update_expiry", racing_update_expiry)
     try:
         status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
     finally:
@@ -631,13 +638,13 @@ def test_never_raises_on_an_internal_error(monkeypatch):
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": time.time()})
-    monkeypatch.setattr(server, "project_gamma_surface",
+    monkeypatch.setattr(gse, "project_gamma_surface",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     # 2026-09-16 incremental-update path (audit finding #2): a prior _gamma_surface is
     # already cached from _put_rest_baseline, so the code under test reaches
     # project_gamma_surface_update_expiry, not project_gamma_surface directly -- both
     # must independently prove the never-raises guarantee.
-    monkeypatch.setattr(server, "project_gamma_surface_update_expiry",
+    monkeypatch.setattr(gse, "project_gamma_surface_update_expiry",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, time.time())
     assert status.startswith("error:")

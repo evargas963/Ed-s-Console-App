@@ -41,10 +41,18 @@ _TERRAIN_ROUTES_TREE = ast.parse(_TERRAIN_ROUTES_SRC)
 _TERRAIN_REFRESH = Path(__file__).resolve().parent.parent / "terrain_refresh.py"
 _TERRAIN_REFRESH_SRC = _TERRAIN_REFRESH.read_text(encoding="utf-8")
 _TERRAIN_REFRESH_TREE = ast.parse(_TERRAIN_REFRESH_SRC)
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
+# refresh_gamma_surface_from_stream/refresh_gamma_surface_from_spot_tick (two more
+# real, declared producers _producers() must find) moved out of server.py entirely,
+# into gamma_surface_eager_refresh.py.
+_GAMMA_EAGER = Path(__file__).resolve().parent.parent / "gamma_surface_eager_refresh.py"
+_GAMMA_EAGER_SRC = _GAMMA_EAGER.read_text(encoding="utf-8")
+_GAMMA_EAGER_TREE = ast.parse(_GAMMA_EAGER_SRC)
 _SOURCES = (
     (SRC, TREE),
     (_TERRAIN_ROUTES_SRC, _TERRAIN_ROUTES_TREE),
     (_TERRAIN_REFRESH_SRC, _TERRAIN_REFRESH_TREE),
+    (_GAMMA_EAGER_SRC, _GAMMA_EAGER_TREE),
 )
 
 

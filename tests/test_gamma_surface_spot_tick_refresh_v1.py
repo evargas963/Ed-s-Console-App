@@ -23,6 +23,12 @@ import time
 from pathlib import Path
 
 import server
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
+# refresh_gamma_surface_from_spot_tick moved out of server.py entirely, into
+# gamma_surface_eager_refresh.py, which imports project_gamma_surface directly
+# (module-level, not lazily via `import server`) -- a mock targeting it must patch
+# that module's own binding, not server's re-export, to be picked up.
+import gamma_surface_eager_refresh as gse
 from server import (
     refresh_gamma_surface_from_spot_tick,
     refresh_gamma_surface_from_stream,
@@ -221,7 +227,7 @@ def test_a_stale_baseline_generation_is_discarded_not_published(monkeypatch):
                 "_gamma_surface": fresh_marker, "computed_ts_utc": time.time(),
             }
         return orig_project(contracts_arg, spot_arg)
-    monkeypatch.setattr(server, "project_gamma_surface", racing_project)
+    monkeypatch.setattr(gse, "project_gamma_surface", racing_project)
     try:
         status = refresh_gamma_surface_from_spot_tick(TK)
     finally:
