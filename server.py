@@ -542,10 +542,9 @@ from vol_observability import vol_observability_payload  # noqa: F401
 # record_market_vol_observation moved with _vol_envelope_and_sector_for_state into
 # server_state_vol_envelope_sector.py, which imports both directly.
 from ml_horizon import PRIMARY_DECISION_HORIZONS, SECONDARY_SUPPORT_HORIZONS
+# RC-REHAB-1 (thirty-fifth/-seventh slices): the v2 decision build + a1 attachments moved to
+# server_state_decision.py / server_state_publish.py.
 from live_decision_bundle import stamp_decision_bundle, tick_triggers_coherent_refresh, persist_stamped_decision
-from v2_decision import build_module_a_a1_decision
-from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
-from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
 from terrain_read import build_terrain_read
 from terrain_engine import compute_terrain, wall_geometry_state
 from terrain_atr import RING_REGIME, AtrPair, atr_distance, compute_atr_pair, ring_for
@@ -6281,6 +6280,8 @@ from server_state_payload import _project_state_payload
 # server_state_intake.py (thirty-fourth slice).
 # RC-REHAB-1 (2026-09-23): MarketState build, v2 decision and execution-identity anchor
 # moved to server_state_decision.py (thirty-fifth slice).
+# RC-REHAB-1 (2026-09-23): finalize + publish moved to server_state_publish.py (thirty-seventh slice).
+from server_state_publish import _finalize_and_publish_state  # noqa: E402
 from server_state_decision import (  # noqa: E402
     _anchor_execution_identity_for_state,
     _build_market_state_for_state,
@@ -6767,150 +6768,16 @@ def _fetch_state(
         price_levels=price_levels, vs=_vs, pp=_pp, sweep_score=_sweep_score, ves=_ves,
         ofs=_ofs, mkt_ctx=mkt_ctx, db_counts=_dbcc.db_counts,
     )
-    _attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
-    _stage_marks.append(("stack_runtime_governance_attach", time.perf_counter()))
-    if ms_dict.get("signals_engine_failed"):
-        sr = ms_dict.get("stack_runtime")
-        if isinstance(sr, dict):
-            sr["signals_engine_failed"] = True
-    _apply_trader_horizon_contract(ms_dict)
-    # _decision_route was resolved before build_market_state (RC-534): one route, one gate fact.
-    # execution_identity_v1: one cycle = one decision_id = one identity. Seed
-    # the anchored pair so stamping binds the SAME decision the snapshot carries.
-    _xid_pair = getattr(ms, "_execution_identity_pair", None)
-    if _xid_pair:
-        ms_dict["decision_id"] = _xid_pair[0]
-        ms_dict["execution_identity_sha256"] = _xid_pair[1]
-    _finalize_production_decision(ms_dict, _decision_route)
-    if (
-        _xid_pair
-        and ms_dict.get("decision_id") == _xid_pair[0]
-        and not ms_dict.get("decision_generation_skipped")
-        # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: only a write that
-        # actually landed marks the "decision" surface — a refused/skipped
-        # persist leaves the ledger honestly OPEN.
-        and ms_dict.get("_decision_persist_landed")
-    ):
-        try:
-            from execution_identity import mark_surface_landed as _xid_mark_dec
-
-            with get_db()._connect() as _xconn3:
-                _xid_mark_dec(_xconn3, _xid_pair[0], "decision")
-        except Exception as _x_exc2:
-            log.error("execution identity decision-surface landing failed: %s", _x_exc2)
-    _stage_marks.append(("payload_assembly_model_health_finalize", time.perf_counter()))
-    _t_pipeline_end_mono = time.monotonic()
-    ms_dict["_server_build_ts"] = time.time()
-    ms_dict["_pipeline_ms"] = round((_t_pipeline_end_mono - _fetch_start_mono) * 1000)
-    ms_dict["_chain_ms"] = round((_cq.t_after_chain_mono - _fetch_start_mono) * 1000)
-    ms_dict["_quote_ms"] = round((_cq.t_after_quote_mono - _cq.t_after_chain_mono) * 1000)
-    ms_dict["_compute_ms"] = round((_t_pipeline_end_mono - _cq.t_after_quote_mono) * 1000)
-    # Lane-3 diagnostic: stage split of _compute_ms (+ chain/quote copies for one-stop reads).
-    _stage_ms: dict[str, float] = {}
-    _stage_prev_pc = _stage_t0
-    for _stage_name, _stage_pc in _stage_marks:
-        _stage_ms[_stage_name] = round((_stage_pc - _stage_prev_pc) * 1000.0, 1)
-        _stage_prev_pc = _stage_pc
-    # Chain gate: schwab_chain_ms is the PURE Schwab fetch (helper-measured);
-    # gate wait is split out; _chain_ms keeps its wall-clock-to-chain meaning.
-    _stage_ms["schwab_chain_ms"] = (
-        round(_cq.chain_fetch_pure_sec * 1000.0, 1)
-        if _cq.chain_fetch_pure_sec is not None
-        else float(ms_dict["_chain_ms"])
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirty-seventh slice): finalize,
+    # timing, v2 attach, level crosses and the generated_at-stamping cache write moved to
+    # server_state_publish.py.
+    _next_ver = _finalize_and_publish_state(
+        ms_dict, ms, ticker=ticker, expiry=expiry, selected_exp=selected_exp,
+        cache_key=_cache_key, update_source=update_source, decision_route=_decision_route,
+        v2_decision=_v2_decision_for_response, spot_f=_exp.spot_f, pcr_val=pcr_val,
+        vol_ctx=_ves.vol_ctx, db=_ed_db, fetch_start_mono=_fetch_start_mono, cq=_cq,
+        stage_t0=_stage_t0, stage_marks=_stage_marks, chain_window_marks=_chain_window_marks,
     )
-    _stage_ms["chain_gate_wait_ms"] = round(_cq.chain_gate_wait_sec * 1000.0, 1)
-    _stage_ms["schwab_quote_ms"] = float(ms_dict["_quote_ms"])
-    # UI_05 tail attribution: consecutive deltas across the _chain_ms window
-    # (preamble | mkt_ctx | leaf submit->result wall | contracts parse).
-    _cw_prev_mono = _fetch_start_mono
-    for _cw_name, _cw_mono in _chain_window_marks:
-        _stage_ms[_cw_name] = round((_cw_mono - _cw_prev_mono) * 1000.0, 1)
-        _cw_prev_mono = _cw_mono
-    ms_dict["chain_gate_wait_sec"] = _cq.chain_gate_wait_sec
-    ms_dict["_compute_breakdown"] = dict(_stage_ms)
-    log.info(
-        f"_fetch_state: {ticker} pipeline_ms={ms_dict['_pipeline_ms']} "
-        f"quote_ms={ms_dict['_quote_ms']} chain_ms={ms_dict['_chain_ms']} compute_ms={ms_dict['_compute_ms']} expiry={expiry}"
-    )
-    log.info("_fetch_state_breakdown: %s %s", ticker, json.dumps(_stage_ms, sort_keys=True))
-    if update_source is not None:
-        ms_dict["_update_source"] = update_source
-
-    attach_a1_conformal_artifact_to_ms_dict(ms_dict, ticker=ticker)
-    attach_a1_isotonic_calibration_to_ms_dict(ms_dict, ticker=ticker)
-    ms_dict["v2_decision"] = _v2_decision_for_response or build_module_a_a1_decision(ms_dict)
-    _lmp.merge_into_state(ms_dict, ticker)
-
-    _prev_ent = _state_cache.get(_cache_key) or {}
-    _gen_ts = time.time()
-    _next_ver = int(_prev_ent.get("analytics_version", 0)) + 1  # caps-ok: generation counter increment -- no previous version means 0 so the first published bundle is version 1
-    if not _prev_ent:
-        # Version restarts at 1 — a cold entry write (fresh key or prior eviction).
-        _analytics_cache_observability["cold_entry_writes"] += 1
-
-    # ── Pass 4: level cross detection ─────────────────────────────────────────
-    # Writer for level_crosses, consumer at /api/level_crosses + Decision
-    # Command "third test of ceiling" pattern (db.count_level_tests). Debounced
-    # by (ticker, level_name, direction) per EdDB.LEVEL_CROSS_DEBOUNCE_S.
-    if _ed_db is not None:
-        try:
-            from live_decision_bundle import _key_levels_from_ms_dict as _kl_for_cross
-            _prev_spot_for_cross = _prev_ent.get("spot_f")
-            _levels_for_cross = _kl_for_cross(ms_dict)
-            if _prev_spot_for_cross is not None and _exp.spot_f is not None and _levels_for_cross:
-                _ts_et_str = _eastern_now().strftime("%Y-%m-%d %H:%M:%S ET")
-                _crosses = _ed_db.detect_and_log_level_crosses(
-                    ticker=ticker,
-                    prev_spot=float(_prev_spot_for_cross),
-                    cur_spot=float(_exp.spot_f),
-                    levels=_levels_for_cross,
-                    ts_utc=_gen_ts,
-                    ts_et=_ts_et_str,
-                    timeframe="1m",
-                    zone_before=(_prev_ent.get("ms_dict") or {}).get("zone"),
-                    zone_after=ms_dict.get("zone"),
-                )
-                for _xc in _crosses:
-                    log.info(
-                        "level_cross ticker=%s level=%s value=%.2f direction=%s spot=%.2f",
-                        ticker,
-                        _xc["level_name"],
-                        _xc["level_value"],
-                        _xc["direction"],
-                        _xc["spot_at_cross"],
-                    )
-        except Exception as _xce:
-            log.debug("level cross detection failed ticker=%s: %s", ticker, _xce)
-
-    _state_cache[_cache_key] = {
-        "ts": _gen_ts,
-        "generated_at": _gen_ts,
-        "analytics_version": _next_ver,
-        "ms_dict": ms_dict, "pcr_val": pcr_val, "spot_f": _exp.spot_f,
-        # VOL_INPUT_CONTRACT 1.0.0 single-source: publish the context level —
-        # this is the value the next cycle's market_iv_change diffs against.
-        "vix": _ves.vol_ctx.market_iv_level,
-        "price_levels": _prev_ent.get("price_levels"),
-        "pl_date":      _prev_ent.get("pl_date", ""),  # caps-ok: price-level cache-validity key carried forward; "" never matches today's date -> cache MISS (refetch)
-        "pl_generation": _prev_ent.get("pl_generation"),
-        "pl_mono":      _prev_ent.get("pl_mono"),
-    }
-    _evict_old_expiry_entries(ticker, selected_exp)
-    _attach_db_contention_operator_surface(ms_dict)
-    from market_state import attach_operator_visible_field_lineage
-
-    attach_operator_visible_field_lineage(ms_dict)
-    # TIER_C_STAGE_TIMER_INSTRUMENTATION_V1 — post-pipeline tail (merge_into_state,
-    # level-cross detection, cache write, eviction, lineage) runs AFTER _pipeline_ms
-    # stops; time it separately so cycle totals attribute fully. Passive observation.
-    ms_dict["_finalize_tail_ms"] = round((time.monotonic() - _t_pipeline_end_mono) * 1000)
-    ms_dict["analytics_cache_observability_v1"] = dict(_analytics_cache_observability)
-    # EXEC-03 POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 — failure cause detail for
-    # the counters above; recorded by the tail, so it reflects failures up to the
-    # PREVIOUS cycle (publish-before-persistence ordering).
-    ms_dict["post_publish_last_errors_v1"] = {
-        k: dict(v) for k, v in _post_publish_last_errors.items()
-    }
     # FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1: persistence/telemetry runs AFTER the
     # generated_at-stamping publish above, same worker, same cycle; the SERVED
     # decision object (ms_dict["v2_decision"]) is the logged object.

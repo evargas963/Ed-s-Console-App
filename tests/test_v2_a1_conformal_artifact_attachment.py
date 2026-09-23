@@ -86,12 +86,14 @@ def test_attachment_does_not_inject_calibrated_probability_or_lineage_id(monkeyp
 
 
 def test_server_imports_attachment_helper():
-    source = _server_source()
-
-    assert (
-        "from v2_decision.a1_conformal_artifact_attachment "
-        "import attach_a1_conformal_artifact_to_ms_dict"
-    ) in source
+    # RC-REHAB-1 (thirty-fifth/-seventh slices): both call sites moved with the v2 build
+    # (server_state_decision.py) and the publish (server_state_publish.py).
+    for mod in ("server_state_decision.py", "server_state_publish.py"):
+        source = Path(mod).read_text(encoding="utf-8")
+        assert (
+            "from v2_decision.a1_conformal_artifact_attachment "
+            "import attach_a1_conformal_artifact_to_ms_dict"
+        ) in source
 
 
 def test_server_logging_path_invokes_attachment_between_stamp_and_build():
@@ -121,13 +123,17 @@ def test_server_logging_path_invokes_attachment_between_stamp_and_build():
 
 def test_server_response_path_invokes_attachment_before_v2_decision_build():
     source = _server_source()
-    build_anchor = 'ms_dict["v2_decision"] = _v2_decision_for_response or build_module_a_a1_decision(ms_dict)'
-    build_pos = source.index(build_anchor)
-    start = source.rindex("_attach_stack_runtime_and_governance(ms_dict, ticker=ticker)", 0, build_pos)
-    end = source.index("_lmp.merge_into_state", build_pos)
-    window = source[start:end]
+    # RC-REHAB-1 (thirty-seventh slice): finalize -> a1 attachments -> v2 decision -> live-plane
+    # merge run inside server_state_publish._finalize_and_publish_state, in that order.
+    import inspect
 
-    stamp_idx = window.index("_finalize_production_decision(ms_dict, _decision_route)")
+    import server_state_publish as _pub
+
+    assert "_finalize_and_publish_state(" in source
+    window = inspect.getsource(_pub._finalize_and_publish_state)
+    build_anchor = 'ms_dict["v2_decision"] = v2_decision or build_module_a_a1_decision(ms_dict)'
+    assert "_srv._finalize_production_decision(ms_dict, decision_route)" in inspect.getsource(_pub._finalize_decision)
+    stamp_idx = window.index("_finalize_decision(ms_dict, ms,")
     attach_idx = window.index("attach_a1_conformal_artifact_to_ms_dict(ms_dict, ticker=ticker)")
     build_idx = window.index(build_anchor)
 

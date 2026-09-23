@@ -44,8 +44,14 @@ def test_server_build_ts_always_set():
     # build timestamp on the bundle it returns, and the ms_dict decision bundle is stamped
     # through the canonical stamper with an explicit route in the server path. We assert the
     # stable current shape, not the old single-function source ordering.
+    # RC-REHAB-1 (thirty-seventh slice): the full-path stamp lives in the publish phase's
+    # timing step, which _fetch_state always calls before returning ms_dict.
+    import server_state_publish
+
     fetch_src = inspect.getsource(server._fetch_state)
-    assert 'ms_dict["_server_build_ts"] = time.time()' in fetch_src
+    assert "_finalize_and_publish_state(" in fetch_src
+    assert 'ms_dict["_server_build_ts"] = time.time()' in inspect.getsource(
+        server_state_publish._stamp_cycle_timing)
 
     server_src = inspect.getsource(server)
     assert "stamp_decision_bundle(ms_dict, route=route)" in server_src

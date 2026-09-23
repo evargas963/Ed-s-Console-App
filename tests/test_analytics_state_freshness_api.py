@@ -284,8 +284,9 @@ def test_stage_timer_surfaces_present_in_fetch_state_source():
     src = (root / "server.py").read_text(encoding="utf-8")
     src += (root / "server_state_persistence_tail.py").read_text(encoding="utf-8")
     src += (root / "analytics_bg_recompute.py").read_text(encoding="utf-8")
+    src += (root / "server_state_publish.py").read_text(encoding="utf-8")  # thirty-seventh slice
     for needle in (
-        '_stage_marks.append(("stack_runtime_governance_attach"',
+        'stage_marks.append(("stack_runtime_governance_attach"',
         '_stage_marks.append(("db_snapshot_write_accuracy"',
         '_stage_marks.append(("signals_engine_build_market_state"',
         'ms_dict["_compute_breakdown"]',
@@ -428,8 +429,9 @@ def test_chain_fetch_call_shape_and_gated_site_source_lock():
     )
     assert "priority=chain_priority," in intake
     assert "_fetch_chain_and_quote_for_state(" in src
-    assert 'ms_dict["chain_gate_wait_sec"]' in src
-    assert '_stage_ms["chain_gate_wait_ms"]' in src
+    pub = (Path(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
+    assert 'ms_dict["chain_gate_wait_sec"]' in pub  # thirty-seventh slice: timing lives in the publish phase
+    assert 'stage_ms["chain_gate_wait_ms"]' in pub
 
 
 # ── ANCHOR_QUOTE_LANE_REFRESHER_V1 ────────────────────────────────────────────
@@ -849,7 +851,12 @@ def test_fix_b_publish_precedes_persistence_tail_source_lock():
     file, not server.py's."""
     src = _fetch_state_source()
     assert "from server_state_persistence_tail import _post_publish_persistence_tail" in src
-    i_pub = src.index('"generated_at": _gen_ts')
+    # RC-REHAB-1 (thirty-seventh slice): the generated_at-stamping publish is
+    # _finalize_and_publish_state; its CALL must precede the full-path tail call.
+    from pathlib import Path as _P
+
+    assert '"generated_at": gen_ts' in (_P(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
+    i_pub = src.index("_next_ver = _finalize_and_publish_state(")
     # RC-REHAB-1 (nineteenth slice): the full-path call is now multi-line
     # (`_post_publish_persistence_tail(\n        _next_ver, ...`) since it passes 61
     # keyword-only arguments -- the exact old single-line substring no longer exists.
@@ -1036,20 +1043,31 @@ def test_fix_b_tail_never_touches_state_cache():
     assert len(call_sites) == 1, "_fetch_state must call _vol_envelope_and_sector_for_state exactly once"
     call_site = call_sites[0]
 
-    publishes = [
-        node for node in ast.walk(fetch)
+    # RC-REHAB-1 (thirty-seventh slice): the vix-carrying publish moved into
+    # server_state_publish._finalize_and_publish_state (`_srv._state_cache[cache_key] = {...}`);
+    # ordering is the order of the two CALLS inside _fetch_state.
+    pub_tree = ast.parse((Path(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8"))
+    pub_fn = next(n for n in pub_tree.body if isinstance(n, ast.FunctionDef) and n.name == "_finalize_and_publish_state")  # caps-ok: scanner false positive: next() has NO default argument; a missing publish function raises StopIteration and fails the test
+    vix_publishes = [
+        node for node in ast.walk(pub_fn)
         if isinstance(node, ast.Assign)
         and isinstance(node.value, ast.Dict)
         and any(
-            isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
-            and t.value.id == "_state_cache"
+            isinstance(t, ast.Subscript) and isinstance(t.value, ast.Attribute)
+            and t.value.attr == "_state_cache"
             for t in node.targets
         )
         and "vix" in {
             k.value for k in node.value.keys if isinstance(k, ast.Constant)
         }
     ]
-    assert publishes, "expected a vix-carrying _state_cache publish in _fetch_state"
+    assert vix_publishes, "expected a vix-carrying _state_cache publish in the publish phase"
+    publishes = [
+        node for node in ast.walk(fetch)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "_finalize_and_publish_state"
+    ]
+    assert len(publishes) == 1, "_fetch_state must call the publish phase exactly once"
     assert all(call_site.lineno < p.lineno for p in publishes), (
         "the _vol_envelope_and_sector_for_state call (which runs the prev-vix capture) "
         "must precede every vix-carrying publish"
@@ -1402,7 +1420,10 @@ def test_post_publish_last_error_wired_at_both_failure_branches():
     )
     assert i_snap_inc < i_snap_rec < i_cal_inc < i_cal_rec
 
-    src = _fetch_state_source()
+    from pathlib import Path as _P
+
+    # RC-REHAB-1 (thirty-seventh slice): both attachments live in the publish phase.
+    src = (_P(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
     i_obs_attach = src.index('ms_dict["analytics_cache_observability_v1"] = dict(')
     i_err_attach = src.index('ms_dict["post_publish_last_errors_v1"] = {')
     assert i_obs_attach < i_err_attach

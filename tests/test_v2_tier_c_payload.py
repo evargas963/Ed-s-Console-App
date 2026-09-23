@@ -11,12 +11,13 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_tier_c_attaches_v2_decision_after_decision_bundle_stamp():
-    server_source = (ROOT / "server.py").read_text(encoding="utf-8")
-
-    stamp_idx = server_source.index("_finalize_production_decision(ms_dict, _decision_route)")
-    attach_idx = server_source.index('ms_dict["v2_decision"] = _v2_decision_for_response')
-    merge_idx = server_source.index("_lmp.merge_into_state(ms_dict, ticker)", attach_idx)
-
+    # RC-REHAB-1 (thirty-seventh slice): the finalize/attach/merge run inside
+    # server_state_publish._finalize_and_publish_state, in this order.
+    pub = (ROOT / "server_state_publish.py").read_text(encoding="utf-8")
+    fn_at = pub.index("def _finalize_and_publish_state(")
+    stamp_idx = pub.index("_finalize_decision(ms_dict, ms,", fn_at)
+    attach_idx = pub.index('ms_dict["v2_decision"] = v2_decision or build_module_a_a1_decision(ms_dict)', fn_at)
+    merge_idx = pub.index("_srv._lmp.merge_into_state(ms_dict, ticker)", attach_idx)
     assert stamp_idx < attach_idx < merge_idx
 
 
@@ -49,9 +50,9 @@ def test_tier_c_single_phase_calibration_write_after_v2_before_log_only_return()
 
 
 def test_tier_c_imports_module_a_a1_adapter():
-    server_source = (ROOT / "server.py").read_text(encoding="utf-8")
-
-    assert "from v2_decision import build_module_a_a1_decision" in server_source
+    # RC-REHAB-1 (thirty-fifth/-seventh slices): the v2 build and the publish own the calls.
+    for mod in ("server_state_decision.py", "server_state_publish.py"):
+        assert "from v2_decision import build_module_a_a1_decision" in (ROOT / mod).read_text(encoding="utf-8")
 
 
 def test_v2_ui_card_removed_negative_lock():

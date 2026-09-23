@@ -108,7 +108,11 @@ def test_fetch_state_stamps_compute_breakdown() -> None:
         "compute-stage instrumentation regressed (need the named stage marks)."
     )
     seg = ast.get_source_segment(SERVER_SRC, fn) or ""
-    assert '"_compute_breakdown"' in seg, (
+    # RC-REHAB-1 (thirty-seventh slice): the stamp lives in server_state_publish.py's timing
+    # step, which _fetch_state calls with its own _stage_marks list.
+    assert "stage_marks=_stage_marks" in seg and "_finalize_and_publish_state(" in seg
+    pub = (ROOT / "server_state_publish.py").read_text(encoding="utf-8")
+    assert '"_compute_breakdown"' in pub, (
         "_fetch_state no longer stamps _compute_breakdown on the payload"
     )
 

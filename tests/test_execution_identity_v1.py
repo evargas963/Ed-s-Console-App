@@ -552,7 +552,7 @@ def test_server_model_derived_snapshot_write_is_anchor_guarded():
     seg = src[i_light : i_light + 600]
     assert "execution_identity" not in seg
     # decision surface lands only when stamping bound the SAME decision
-    assert 'ms_dict.get("decision_id") == _xid_pair[0]' in src
+    assert 'ms_dict.get("decision_id") == xid_pair[0]' in (root / "server_state_publish.py").read_text(encoding="utf-8")
 
 
 def test_write_path_universe_inventory(repo_index):
@@ -644,7 +644,9 @@ def test_server_anchor_precedes_finalize_and_log_only_tail():
     log_only_tail_at = text.index(
         '_post_publish_persistence_tail(\n        None, _v2_decision_for_response'
     )
-    finalize_at = text.index("_finalize_production_decision(ms_dict, _decision_route)")
+    # RC-REHAB-1 (thirty-seventh slice): the production-decision finalize runs inside
+    # _finalize_and_publish_state (server_state_publish.py).
+    finalize_at = text.index("_finalize_and_publish_state(\n        ms_dict, ms,")
     assert anchor_at < log_only_tail_at, "anchor must precede the log_only tail call"
     assert anchor_at < finalize_at, "anchor must precede the production-decision finalize"
     # Exactly one anchor call site, and it is NOT inside the persistence tail or server.py.
@@ -664,9 +666,10 @@ def test_server_anchor_precedes_finalize_and_log_only_tail():
     # The tail consumes the hoisted throttle reservation (single reservation/cycle).
     assert "_do_insert = _xid_do_snapshot_insert" in tail_text
     # The decision surface is marked landed only on a persist that actually landed.
-    assert "_decision_persist_landed" in text
-    mark_at = text.index('_xid_mark_dec(_xconn3, _xid_pair[0], "decision")')
-    guard_at = text.rindex('ms_dict.get("_decision_persist_landed")', 0, mark_at)
+    pub_text = (_P(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
+    assert "_decision_persist_landed" in pub_text
+    mark_at = pub_text.index('mark_surface_landed(conn, xid_pair[0], "decision")')
+    guard_at = pub_text.rindex('ms_dict.get("_decision_persist_landed")', 0, mark_at)
     assert mark_at - guard_at < 600, "decision-surface marking must be guarded by persist success"
     # Idle/non-model calibration contract: expected non-write, not a refusal.
     # The condition was inline in server.py until 2026-07-19; it now lives in
