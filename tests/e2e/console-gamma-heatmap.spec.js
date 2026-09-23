@@ -1145,25 +1145,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#chartModes .cmode[data-cmode="dotmap"]')).toHaveClass(/on/);
   });
 
-  test('live-update: single scheduler + monotonic latest-wins on the header quote', async ({ page }) => {
-    // a stale/slow response for the PREVIOUS ticker must never overwrite the newer one
-    await page.route('**/api/live/state**', async (route) => {
-      const url = route.request().url();
-      if (url.includes('ticker=SPY')) {
-        await new Promise((r) => setTimeout(r, 900));   // stale, arrives late
-        return route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ spot: 111.11, spot_disp: '111.11', bid: 111, ask: 111.2,
-            streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 } }) });
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ spot: 222.22, spot_disp: '222.22', bid: 222, ask: 222.3,
-          streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 } }) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });   // init ticker SPY -> delayed 111.11
-    await page.evaluate(() => window.EdShell.setTicker('QQQ'));        // newer -> immediate 222.22
-    await expect(page.locator('#hPx')).toHaveText('222.22');
-    await page.waitForTimeout(1300);                                   // let the stale SPY response land
-    await expect(page.locator('#hPx')).toHaveText('222.22');          // not overwritten by the stale response
+  test('header never paints a quote from a poll: no push -> UNAVAILABLE, not a fallback', async ({ page }) => {
+    // Operator rule 2026-09-23 (no fallbacks): /api/live/state still answers (session label),
+    // but its quote is never painted -- with no SSE push the header withdraws the quote.
+    await page.route('**/api/analytics/light/stream**', (route) => route.abort());
+    await page.route('**/api/live/state**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ spot: 111.11, spot_disp: '111.11', bid: 111, ask: 111.2, session_label: 'RTH',
+        streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 } }) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
+    await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
+    await page.waitForTimeout(3500);                                    // a full scheduler tick
+    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');      // the polled 111.11 never lands
+    await expect(page.locator('#hSession')).toHaveText('RTH');          // session still read
   });
 
   test('header consumes the canonical L1 SSE push (real server envelope) when available', async ({ page }) => {
@@ -1183,7 +1178,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       }) + '\n\n',
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // 601.23 comes only from env.payload; the /api/live/state poll fallback would show 583.41
+    // 601.23 comes only from env.payload -- the header's one source
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
   });
@@ -2475,7 +2470,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const scopeText = await page.locator('#heatScope').textContent();
     expect(scopeText).toMatch(/STREAMING·50%/);
     expect(scopeText).not.toMatch(/LIVE/);   // the literal word must never appear below 100%
-    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 unavailable of 2 visible/);
+    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 outside the stream budget, 0 unavailable of 2 visible/);
   });
 
   test('audit #6: a vendor-rejected contract renders a distinct, visibly-failed cell', async ({ page }) => {

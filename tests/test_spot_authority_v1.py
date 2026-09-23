@@ -618,25 +618,15 @@ def test_every_vendor_quote_read_goes_through_the_memo():
     )
 
 
-def test_every_batch_vendor_quote_read_goes_through_one_call_site():
-    """Operator-reproduced defect (2026-09-14, spot 360 audit): this lock's own scope was
-    "every VENDOR quote read", but it only ever counted _safe_get_quote_with_retry (the
-    single-symbol fetch) -- schwab_client.safe_get_quotes (the BATCH fetch /api/watchlist-
-    quotes uses) was a second, completely uncounted raw vendor call, outside both the memo
-    AND live_market_plane, that could return a genuinely different tick than every other
-    consumer for the exact same ticker at the exact same instant. Same discipline, same
-    reasoning, the sibling function this lock's own docstring should have covered from the
-    start: exactly one raw call site, and it must record what it fetches into the plane
-    (proven behaviourally by test_watchlist_quotes_records_a_fresh_fetch_into_the_plane)."""
+def test_no_batch_vendor_quote_read_feeds_any_live_value():
+    """Operator rule 2026-09-23 (no fallbacks): the watchlist used to fetch Schwab REST batch
+    quotes (schwab_client.safe_get_quotes) for every symbol the stream was not answering and
+    record them into the plane -- a second spot source. Live values come from the stream
+    only, so nothing in server.py may call the batch vendor quote read."""
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
     sites = [ln.strip() for ln in src.splitlines()
-             if "safe_get_quotes" in ln
-             and "def safe_get_quotes" not in ln
-             and "import safe_get_quotes" not in ln
-             and not ln.strip().startswith("#")]
-    assert len(sites) == 1, (
-        f"{len(sites)} references to the raw batch vendor fetch — exactly one disciplined "
-        f"call site (the one that checks the plane first and records its results back into "
-        f"it) may call schwab_client.safe_get_quotes: {sites}"
-    )
+             if "safe_get_quotes" in ln and not ln.strip().startswith("#")]
+    assert sites == [], f"batch vendor quote read reintroduced: {sites}"
+
+

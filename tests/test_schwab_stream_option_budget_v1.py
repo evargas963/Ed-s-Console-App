@@ -421,7 +421,8 @@ def test_post_returns_the_admitted_set_not_an_echo_of_the_request(monkeypatch):
     assert body["requested_count"] == len(syms) and len(body["not_admitted"]) == 9
 
 
-def test_watchlist_labels_a_rest_written_row_as_rest(monkeypatch):
+def test_watchlist_never_serves_a_rest_written_row(monkeypatch):
+    """Stream only: a fresh-looking REST-written plane row is not a watchlist quote."""
     from fastapi.testclient import TestClient
 
     import server
@@ -429,7 +430,8 @@ def test_watchlist_labels_a_rest_written_row_as_rest(monkeypatch):
     L._by_ticker[tk] = _row("rest_watchlist_batch", 1.0)
     try:
         body = TestClient(server.app).get(f"/api/watchlist-quotes?tickers={tk}").json()
-        assert body["quotes"][tk]["spot_source"] == server.SPOT_SOURCE_QUOTE
+        assert tk not in body["quotes"]
+        assert body == {"ok": False, "error": "stream_unavailable", "quotes": {}}
     finally:
         L._by_ticker.pop(tk, None)
 

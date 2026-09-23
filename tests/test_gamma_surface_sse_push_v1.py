@@ -33,6 +33,10 @@ def test_next_gamma_surface_seq_pushes_a_gamma_surface_seq_envelope_when_a_subsc
     q = asyncio.Queue(maxsize=10)
     key = (tk, "__auto__")
     server._l1_light_sse_clients.append((q, key))
+    # the thread queue is a process-wide global: drain what earlier tests left in it so this
+    # test reads its OWN push, not a leftover (seen: a CRWD envelope from another test)
+    while not server._l1_sse_thread_queue.empty():
+        server._l1_sse_thread_queue.get_nowait()
     try:
         n0 = server._l1_sse_thread_queue.qsize()
         seq = server._next_gamma_surface_seq(tk)

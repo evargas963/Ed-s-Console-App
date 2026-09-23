@@ -540,7 +540,8 @@
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
     openHeaderStream(state.ticker);   // (re)subscribe the SSE push to this ticker (one subscription)
-    refreshHeader();                  // immediate paint while the stream connects
+    markHeaderPushDown();             // CONNECTING until the new ticker's first push
+    refreshSession();
     document.dispatchEvent(new CustomEvent('ed:ticker', { detail: { ticker: state.ticker } }));
   }
 
@@ -638,8 +639,8 @@
   // ---- header quote: PUSH via the canonical L1 SSE stream (/api/analytics/light/stream,
   //      event l1_projection), which already carries spot/bid/ask (planes/context_light.py).
   //      Ordering is the shared EdL1SseGuards monotonic l1_generation (+ _server_build_ts tie-
-  //      break). Polling /api/live/state is a FALLBACK ONLY, so there is ONE source per truth. ----
-  var _hdrGen = 0;                       // guards in-flight poll responses (latest-wins)
+  //      break). The push is the ONLY source of the header quote (operator rule 2026-09-23: no
+  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote. ----
   // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
   // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
   // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
@@ -709,18 +710,17 @@
   // tick AND immediately after every add/remove (renderWatchlist), so a fast add/remove can
   // legitimately have two requests in flight at once. Without a generation check, an OLDER
   // request that happens to resolve AFTER a newer one would overwrite fresher data with
-  // stale data for whatever symbols both requests shared. Same pattern this file already
-  // uses for the header poll (_hdrGen).
+  // stale data for whatever symbols both requests shared. Same pattern refreshSession uses
+  // (_sessGen).
   var _wlPollGen = 0;
-  // A failed/degraded poll must not look identical to a healthy one: values already on
-  // screen are real numbers from the LAST successful poll, so blanking them on a single
-  // transient failure would be its own kind of dishonesty (implying no data exists at
-  // all). Instead the whole list gets a visible "stale" mark (dimmed, #wl-h shows age)
-  // until a poll succeeds again — the mark, not the numbers, carries the truth.
+  // A failed poll withdraws every row to UNAVAILABLE (operator rule 2026-09-23: no
+  // fallbacks, not even a labelled last-known value) and marks the list degraded with the
+  // reason, until a poll succeeds again.
   var _wlLastGoodTs = null;
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
+    loadWL().forEach(function (sym) { setWlRow(sym, null, null, 'unavailable'); });
     wlNotify(reason);
   }
   function markWlHealthy() {
@@ -755,14 +755,29 @@
       })
       .catch(function () {
         if (myGen !== _wlPollGen) return;
-        markWlDegraded('Connection lost — showing last known values');
+        markWlDegraded('Connection lost — quotes unavailable');
       });
   }
 
-  var _sse = null, _sseUp = false, _lastSseTs = 0, _l1Gen = {}, _l1Ts = {};
+  var _sse = null, _sseUp = false, _lastSseTs = 0, _sseOpenedTs = 0, _l1Gen = {}, _l1Ts = {};
+  // requestAnimationFrame throttle: pushes can arrive faster than the screen repaints; only the
+  // NEWEST quote is painted, once per frame, so a burst never queues stale paints.
+  var _pendingQuote = null, _quoteFrame = 0;
+  function paintQuoteNextFrame(q) {
+    _pendingQuote = q;
+    if (_quoteFrame) return;
+    var onFrame = function () {
+      _quoteFrame = 0;
+      var next = _pendingQuote; _pendingQuote = null;
+      if (next) paintQuote(next);
+    };
+    _quoteFrame = window.requestAnimationFrame ? window.requestAnimationFrame(onFrame)
+                                               : setTimeout(onFrame, 16);
+  }
   function closeHeaderStream() { if (_sse) { try { _sse.close(); } catch (e) {} } _sse = null; _sseUp = false; }
   function openHeaderStream(tk) {
     closeHeaderStream();
+    _sseOpenedTs = Date.now();
     if (typeof EventSource === 'undefined') return;
     try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)); }
     catch (e) { _sse = null; return; }
@@ -778,7 +793,7 @@
       var gen = (p.l1_generation != null ? p.l1_generation : env.l1_generation);
       var bts = (p._server_build_ts != null ? p._server_build_ts : env.l1_server_build_ts);
       if (G && !G.l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)) return;
-      _sseUp = true; _lastSseTs = Date.now(); _hdrGen++;   // supersede any in-flight fallback poll
+      _sseUp = true; _lastSseTs = Date.now();
       var ageMs = bts ? Math.max(0, Math.round(Date.now() - bts * 1000)) : null;
       // TRUTHFUL LIVE: receiving an SSE event only proves the SERVER pushed a projection
       // promptly — it does not prove the underlying quote is fresh (the server can build
@@ -788,7 +803,7 @@
       // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
       var stale = !!p.l1_stale || p.spot_state === 'stale';
       var unavailable = p.spot_state === 'unavailable' || p.spot == null;
-      paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
+      paintQuoteNextFrame({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
         spotState: p.spot_state,
         feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
@@ -816,7 +831,7 @@
       if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
       document.dispatchEvent(new CustomEvent('ed:gamma-push', { detail: { surfaceSeq: env.surface_seq } }));
     });
-    _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
+    _sse.onerror = function () { _sseUp = false; };   // the browser reconnects; the header shows the gap
   }
 
   // #6: canonical market session (RTH / Pre-Market / After-Hours / Closed) — a DIFFERENT truth
@@ -859,38 +874,28 @@
       .catch(function () { if (g === _sessGen) paintSession(null); });
   }
 
-  function refreshHeader() {   // FALLBACK poll — only runs when the SSE push is not delivering
-    var g = ++_hdrGen, ex = state.expiryFilter || '';
-    fetch(liveStateUrl(), { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) {
-        if (g !== _hdrGen) return;
-        paintSession(d.session_label);              // header poll also carries session (no extra read)
-        notePlane(d, ex);
-        if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }
-        var age = (d.streaming_plane && d.streaming_plane.streaming_staleness_ms != null)
-          ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';
-        var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
-        paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
-          chgPct: d.chg_pct, quoteIngestion: d.quote_ingestion,
-          spotState: d.spot_state,
-          feedCls: d.spot_state === 'unavailable' ? 'stale' : (healthy ? '' : 'warn'),
-          feedLabel: d.spot_state === 'unavailable' ? 'UNAVAILABLE' : (d.spot_state === 'stale' ? 'STALE' : (healthy ? 'LIVE' : 'DEGRADED')),
-          ageLabel: age });
-      })
-      .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });
+  // The push is not delivering: withdraw the quote instead of leaving the last one on screen
+  // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
+  // label is not a live quote and keeps its own slow read.
+  function markHeaderPushDown() {
+    _pendingQuote = null;
+    var connecting = _sse && !_sseUp && (Date.now() - _sseOpenedTs <= 9000);
+    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null,
+      spotState: 'unavailable', feedCls: 'stale',
+      feedLabel: connecting ? 'WAITING' : 'OFFLINE',
+      ageLabel: connecting ? 'no push yet' : 'live push down' });
   }
 
-  // ONE coordinated scheduler. The header prefers the SSE push above; this timer only polls the
-  // header as a FALLBACK (SSE down/stalled) and drives the SLOW gamma/terrain refresh — that
+  // ONE coordinated scheduler. The header quote comes ONLY from the SSE push above; this timer
+  // checks that the push is still delivering and drives the SLOW gamma/terrain refresh -- that
   // producer changes on a 60s/5min cadence, so coordinated POLLING (not SSE) is the correct,
   // lowest-cost delivery for it. No duplicate subscriptions, no polling storm.
   var _tick = 0;
   function liveTick() {
     _tick++;
     var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 9000);
-    if (!sseHealthy) refreshHeader();                 // fallback: paints quote + session
-    else if (_tick % 4 === 0) refreshSession();       // SSE covers the quote; slow session read
+    if (!sseHealthy) markHeaderPushDown();            // the gap is shown, never filled
+    if (!sseHealthy || _tick % 4 === 0) refreshSession();
     if (_tick % 4 === 0) pollWatchlistQuotes();       // every non-active row, same slow cadence
     document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { tick: _tick, slow: _tick % 4 === 0 } }));
   }
