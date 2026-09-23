@@ -13,6 +13,7 @@ import pytest
 
 from calibration.json_utils import parse_json_mapping
 from calibration.schema import ensure_calibration_schema
+from json_blob_codec import decode_json_blob
 from calibration.v2_advisory_backfill import (
     ADVISORY_V2_ADAPTER_VERSION,
     ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION,
@@ -225,7 +226,7 @@ def test_v2_advisory_backfill_persists_snapshot_with_adapter_version(tmp_path):
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM calibration_decision_log").fetchone()
-    payload = json.loads(row["advisory_v2_decision_snapshot_json"])
+    payload = decode_json_blob(row["advisory_v2_decision_snapshot_json"])
     conn.close()
 
     assert stats["updated"] == 1

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 from types import SimpleNamespace
@@ -10,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from calibration.schema import ensure_calibration_schema
+from json_blob_codec import decode_json_blob
 from calibration.writer import (
     _json_excerpt,
     _sqlite_busy_or_locked,
@@ -156,7 +156,7 @@ def test_model_outputs_json_single_encodes_null_models(calib_db):
     ).fetchone()["model_outputs_json"]
     conn.close()
 
-    mo = json.loads(mo_json)
+    mo = decode_json_blob(mo_json)
     assert mo["xgb"] == xgb
     assert mo["lstm"] is None
     assert mo["transformer"] is None

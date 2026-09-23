@@ -8,6 +8,8 @@ from dataclasses import asdict, is_dataclass
 from types import SimpleNamespace
 from typing import Any
 
+from json_blob_codec import decode_text_blob
+
 log = logging.getLogger(__name__)
 
 
@@ -40,14 +42,23 @@ def dumps_compact(obj: Any) -> str:
 
 
 def parse_json_mapping(value: Any, *, context: str) -> dict[str, Any]:
-    """Parse JSON text to dict; log warning and return {} on failure."""
+    """Parse JSON text to dict; log warning and return {} on failure.
+
+    RC-REHAB-3: `value` may be gzip-compressed bytes (json_blob_codec) or a legacy plain
+    JSON string -- decode_text_blob handles both. Before this fix, a compressed value hit
+    `str(value)` (producing a "b'\\x1f\\x8b...'" literal), which json.loads immediately
+    rejected -- caught below and SILENTLY returned {}, not raised. That is worse than a
+    crash: every trusted row would quietly lose its content with only a log line, easy to
+    miss in a batch analysis run.
+    """
     if isinstance(value, dict):
         return value
     if not value:
         return {}
     try:
-        parsed = json.loads(str(value))
-    except (TypeError, ValueError, json.JSONDecodeError) as e:
+        text = decode_text_blob(value)
+        parsed = json.loads(text) if text else {}
+    except (TypeError, ValueError, json.JSONDecodeError, OSError) as e:   # OSError: gzip.BadGzipFile
         log.warning("%s unparseable, treating as empty: %s", context, e)
         return {}
     return parsed if isinstance(parsed, dict) else {}

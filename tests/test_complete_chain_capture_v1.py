@@ -178,3 +178,53 @@ def test_nearest_memo_self_heals_after_the_ttl_expires(monkeypatch, tmp_path):
         ccc._nearest_capture_memo.clear()
     assert first is not None and second is not None
     assert calls["n"] == 1, "expected the DB to be re-read once the TTL window elapsed"
+
+
+def test_persisted_chain_json_is_actually_gzip_compressed_on_disk(tmp_path):
+    """RC-REHAB-3: the whole point of wiring json_blob_codec in here is that the bytes on
+    disk are smaller than raw JSON -- prove it directly against the stored column, not just
+    that round-tripping through the public functions still works."""
+    db_path = tmp_path / "cap.db"
+    persist_complete_chain_capture(
+        db_path, ticker="TSLA", expiry=_TSLA_EXPIRY, contracts=_TSLA_CONTRACTS,
+        spot=350.0, completeness_basis="strike_range=ALL", ts_utc=1000.0)
+    con = sqlite3.connect(str(db_path))
+    try:
+        raw = con.execute("SELECT chain_json FROM complete_chain_captures").fetchone()[0]
+    finally:
+        con.close()
+    assert isinstance(raw, bytes)
+    assert raw[:2] == b"\x1f\x8b", "stored value must be gzip, not plain JSON text"
+    uncompressed_len = len(json.dumps(_TSLA_CONTRACTS, default=str).encode("utf-8"))
+    assert len(raw) < uncompressed_len
+
+
+def test_a_pre_migration_plain_json_row_still_reads_back_correctly(tmp_path):
+    """A row written before this codec existed is plain JSON TEXT, not gzip. Both
+    latest_complete_chain_capture and nearest_complete_chain_capture must keep reading it
+    correctly with no backfill required -- this is the whole transition-safety guarantee
+    the codec is built around, proven here at the real table-function level, not just
+    inside json_blob_codec's own unit tests."""
+    db_path = tmp_path / "cap.db"
+    con = sqlite3.connect(str(db_path))
+    try:
+        ccc.ensure_schema(con)
+        con.execute(
+            "INSERT INTO complete_chain_captures "
+            "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            ("TSLA", _TSLA_EXPIRY, 1000.0, 350.0, len(_TSLA_CONTRACTS), "strike_range=ALL",
+             json.dumps(_TSLA_CONTRACTS, default=str), "legacy_pre_compression"),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+    latest = latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY)
+    assert latest is not None
+    assert latest["contracts"] == _TSLA_CONTRACTS
+
+    nearest = nearest_complete_chain_capture(db_path, "TSLA", on_or_after_expiry="2000-01-01")
+    ccc._nearest_capture_memo.clear()
+    assert nearest is not None
+    assert nearest["contracts"] == _TSLA_CONTRACTS

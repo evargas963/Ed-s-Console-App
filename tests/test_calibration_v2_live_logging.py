@@ -3,10 +3,10 @@ live calibration sqlite schema with the correct adapter/schema version columns -
 a mismatch here corrupts calibration training data silently."""
 from __future__ import annotations
 
-import json
 import sqlite3
 
 from calibration.schema import ensure_calibration_schema
+from json_blob_codec import decode_json_blob
 from calibration.v2_advisory_backfill import (
     ADVISORY_V2_ADAPTER_VERSION,
     ADVISORY_V2_DECISION_LOG_COLUMNS,
@@ -106,7 +106,7 @@ def test_live_v2_logging_inserts_single_row_with_v1_and_v2_metadata(tmp_path, mo
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM calibration_decision_log").fetchone()
     conn.close()
-    payload = json.loads(row["advisory_v2_decision_snapshot_json"])
+    payload = decode_json_blob(row["advisory_v2_decision_snapshot_json"])
 
     assert result == {"status": "ok", "row_id": 1}
     assert row["ticker"] == "SPY"

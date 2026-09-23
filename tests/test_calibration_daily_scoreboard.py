@@ -1055,7 +1055,11 @@ def test_all_card_row_reads_only_persisted_row_fields():
     names = {x.id for x in ast.walk(fn) if isinstance(x, ast.Name)}
     allowed = {"row", "mh", "pred", "primary_hz", "json", "isinstance", "dict", "str",
                "float", "Optional", "_FINAL_BIAS_TO_LABEL", "HORIZON_SLUGS", "ALL_CARD_SLUG",
-               "TypeError", "ValueError", "Any", "sqlite3"}
+               "TypeError", "ValueError", "Any", "sqlite3",
+               # RC-REHAB-3: multi_horizon_json may be gzip-compressed; decode_json_blob
+               # (json_blob_codec) still reads it from the row's own persisted field only
+               # -- no config/roster substitution, the lock this test enforces.
+               "_mhj", "decode_json_blob", "OSError"}
     assert names <= allowed, f"unexpected names in _all_card_row: {names - allowed}"
     # The load-bearing lock: no config/roster/horizon-selection machinery inside.
     banned = {"PRIMARY_DECISION_HORIZONS", "load_movement_thresholds_by_horizon_v1",

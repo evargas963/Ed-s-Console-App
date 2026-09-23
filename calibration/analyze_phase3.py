@@ -33,6 +33,7 @@ from calibration.canonical_enforcement import (
     provenance_dict,
 )
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
+from json_blob_codec import decode_json_blob
 from calibration.paths import DEFAULT_DB, ensure_artifacts_dir
 from calibration.schema import ensure_calibration_schema
 from calibration.trust import TRUSTED_PREDICATE_SQL
@@ -81,12 +82,14 @@ def _brier_triplet(p_up: float, p_dn: float, p_fl: float, y: str) -> float:
     return (p_up - o_up) ** 2 + (p_dn - o_dn) ** 2 + (p_fl - o_fl) ** 2
 
 
-def _load_json_col(s: str | None) -> dict[str, Any]:
+def _load_json_col(s: "str | bytes | None") -> dict[str, Any]:
+    """RC-REHAB-3: `s` may be gzip-compressed bytes (json_blob_codec) or a legacy plain
+    JSON string -- decode_json_blob handles both."""
     if not s:
         return {}
     try:
-        obj = json.loads(s)
-    except (json.JSONDecodeError, ValueError) as e:
+        obj = decode_json_blob(s)
+    except (json.JSONDecodeError, ValueError, OSError) as e:   # OSError: gzip.BadGzipFile
         log.warning("analyze_phase3: could not parse JSON column: %s", e)
         return {}
     if not isinstance(obj, dict):

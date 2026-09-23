@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob
 
 log = logging.getLogger(__name__)
 
@@ -129,8 +130,9 @@ def load_fusion_calibration_rows(
             if not is_rth_ts_utc(float(row["decision_ts_utc"])):
                 continue
             try:
-                bundle = json.loads(row["model_outputs_json"] or "{}")
-            except (TypeError, ValueError):
+                _mo = row["model_outputs_json"]
+                bundle = decode_json_blob(_mo) if _mo else {}
+            except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile
                 continue
             sb = bundle.get("stack_probs_bundle") or {}
             by_hz = (sb.get("multi_horizon_ml_fusion_bundle") or {}).get("by_horizon") or {}

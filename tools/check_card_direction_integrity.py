@@ -25,6 +25,7 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from db import DB_PATH
+from json_blob_codec import decode_json_blob
 from money_path_ticker_tiers import BASE_MONEY_PATH_TICKERS, is_base_money_path_ticker
 from verification.base_ticker_observability import base_ticker_observability_report
 from verification.card_direction_integrity import (
@@ -160,11 +161,12 @@ def _fusion_triplets_from_cal(cal_row: Optional[sqlite3.Row]) -> dict[str, dict[
     if cal_row is None:
         return {}
     try:
-        mo = json.loads(cal_row["model_outputs_json"] or "{}")
+        _mo = cal_row["model_outputs_json"]
+        mo = decode_json_blob(_mo) if _mo else {}
         by_hz = (mo.get("stack_probs_bundle") or {}).get("multi_horizon_ml_fusion_bundle", {}).get(
             "by_horizon", {}
         )
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError, OSError):   # OSError: gzip.BadGzipFile
         return {}
     out: dict[str, dict[str, Optional[float]]] = {}
     for hz in HORIZON_SLUGS:
