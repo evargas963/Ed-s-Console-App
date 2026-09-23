@@ -2145,11 +2145,11 @@ def _barrier_boundary_case(tmp_path, monkeypatch, *, path, ttl=1.5):
     real_shutdown = m._shutdown_sequence
 
     async def timed_retire(*a, **k):
-        marks.setdefault("surrender_ts", time.time())    # the subscription dies HERE
+        marks.setdefault("surrender_ts", time.time())    # the subscription dies HERE  # caps-ok: first-write-wins timing mark: the first surrender instant is the one under test, a later shutdown pass must not overwrite it
         return await real_retire(*a, **k)
 
     async def timed_shutdown(*a, **k):
-        marks.setdefault("surrender_ts", time.time())
+        marks.setdefault("surrender_ts", time.time())  # caps-ok: first-write-wins timing mark: the first surrender instant is the one under test, a later shutdown pass must not overwrite it
         return await real_shutdown(*a, **k)
     monkeypatch.setattr(m, "_retire_stream_generation", timed_retire)
     monkeypatch.setattr(m, "_shutdown_sequence", timed_shutdown)
@@ -2157,11 +2157,11 @@ def _barrier_boundary_case(tmp_path, monkeypatch, *, path, ttl=1.5):
     real_barrier = m._surrender_claim_or_wait_out_lease
 
     async def timed_barrier(writer, *, reason):
-        marks.setdefault("barrier_start", time.time())
+        marks.setdefault("barrier_start", time.time())  # caps-ok: first-write-wins timing mark: the recycle barrier start must not be overwritten by the later shutdown barrier
         waited = await real_barrier(writer, reason=reason)
         # setdefault: a recycle run also passes through the LATER shutdown barrier, and
         # that second pass must not overwrite the surrender under test.
-        marks.setdefault("waited", waited)
+        marks.setdefault("waited", waited)  # caps-ok: first-write-wins timing mark: the recycle barrier's wait must not be overwritten by the later shutdown barrier
         return waited
     monkeypatch.setattr(m, "_surrender_claim_or_wait_out_lease", timed_barrier)
 
@@ -2196,7 +2196,7 @@ def _barrier_boundary_case(tmp_path, monkeypatch, *, path, ttl=1.5):
     # Pair the FIRST closed epoch with the FIRST observed surrender: on a recycle run the
     # later shutdown closes generation 2's epochs too, and comparing those against
     # generation 1's teardown would measure nothing.
-    return closed[0][4], marks.get("surrender_ts"), marks.get("waited", 0.0)
+    return closed[0][4], marks.get("surrender_ts"), marks.get("waited", 0.0)  # caps-ok: 0.0 means the barrier never ran; both callers assert waited >= 0.9 with 'the barrier must actually have engaged', so absence fails loudly
 
 
 def test_barrier_boundary_recycle_records_the_post_barrier_surrender(tmp_path, monkeypatch):

@@ -676,7 +676,7 @@ def test_denominator_no_ticker_literals_in_grid_code():
         "_build_eligible_grid", "_equal_weight_rollup", "_coverage_diagnostics",
         "_quality_circle_summary",
     ):
-        fn = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef) and n.name == fname)
+        fn = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef) and n.name == fname)  # caps-ok: scanner false positive: next() here has NO default argument; a missing function raises StopIteration and fails the test
         doc = fn.body[0].value if isinstance(fn.body[0], _ast.Expr) else None
         for node in _ast.walk(fn):
             if node is doc:
@@ -965,8 +965,8 @@ def _v4_row(pred: str, truth: str | None, hz: str = "1c", ts: float = 1000.0, **
     return {
         "ticker": "ZZZ", "decision_ts_utc": ts, "horizon": hz, "pred": pred,
         "truth": truth, "top_probability": 0.5,
-        "join_cohort": kw.get("join_cohort", "exact_timestamp"),
-        "bundle_identity_proven": kw.get("bundle_identity_proven", True),
+        "join_cohort": kw.get("join_cohort", "exact_timestamp"),  # caps-ok: fixture row builder: callers override join_cohort via kwargs; the default is the explicit exact-timestamp cohort this helper builds
+        "bundle_identity_proven": kw.get("bundle_identity_proven", True),  # caps-ok: fixture row builder: callers override bundle_identity_proven via kwargs; True is the helper's explicit proven-identity fixture value
     }
 
 
@@ -1213,7 +1213,7 @@ def test_v4_universal_ticker_and_horizon_construction(tmp_path):
         "_new_v4_cell", "_v4_accumulate", "_finalize_v4_cell", "_v4_cell_warnings",
         "_all_card_trade_metrics", "_threshold_source_identity", "_join_identity_cohort",
     ):
-        fn = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef) and n.name == fname)
+        fn = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef) and n.name == fname)  # caps-ok: scanner false positive: next() here has NO default argument; a missing function raises StopIteration and fails the test
         doc = fn.body[0].value if isinstance(fn.body[0], _ast.Expr) else None
         for node in _ast.walk(fn):
             if node is doc:
@@ -1283,7 +1283,7 @@ def test_v4_invalid_threshold_rows_excluded_from_every_trusted_metric(tmp_path, 
     # Historical legacy cell preserved for reproducibility (raw value retained).
     assert sb["by_horizon"]["60c"]["n_scored"] == 1
     # No SPY 60c extended cell was created at all.
-    assert "60c" not in sb["by_ticker_extended"].get("SPY", {})
+    assert "60c" not in sb["by_ticker_extended"].get("SPY", {})  # caps-ok: the assertion is that NO SPY 60c extended cell exists; a missing SPY bucket is itself that outcome, not masked data
 
 
 def test_invalid_threshold_classification_is_flat_and_disclosed():
@@ -1464,7 +1464,7 @@ def test_v2_eligible_grid_all_cell_cannot_read_as_governed_accuracy(tmp_path):
     assert "<th scope=\"col\">all — Legacy ALL triclass accuracy" in html
     assert "<th scope=\"col\">all</th>" not in html
     grid_rows = [seg for seg in html.split("<tr>") if seg.startswith("<td>SPY</td>")]
-    grid_row = next(seg for seg in grid_rows if "legacy triclass, not trade-call accuracy" in seg)
+    grid_row = next(seg for seg in grid_rows if "legacy triclass, not trade-call accuracy" in seg)  # caps-ok: scanner false positive: next() here has NO default argument; a missing grid row raises StopIteration and fails the test
     assert "66.7%" in grid_row and "(n=3)" in grid_row
     # Caption binds the semantics to the table structure itself.
     assert "<caption>Eligible grid: per-cell LEGACY triclass accuracy" in html
@@ -1795,7 +1795,7 @@ def test_defect1_renderers_consume_canonical_contracts_source_lock():
     ).read_text(encoding="utf-8")
     tree = ast.parse(src)
     for fname in ("render_html", "main"):
-        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == fname)
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == fname)  # caps-ok: scanner false positive: next() here has NO default argument; a missing function raises StopIteration and fails the test
         names = {x.id for x in ast.walk(fn) if isinstance(x, ast.Name)}
         assert "LEGACY_ALL_DISPLAY_CONTRACT" in names, f"{fname} does not consume the canonical legacy contract"
         assert "TRADE_CALL_DISPLAY_CONTRACT" in names, f"{fname} does not consume the canonical governed contract"

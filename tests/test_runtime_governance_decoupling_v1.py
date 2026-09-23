@@ -302,7 +302,7 @@ def _governance_path_constants(tree: ast.AST) -> list[ast.Constant]:
         # `Path("governance") / ...`
         elif isinstance(node, ast.Call):
             func = node.func
-            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")  # caps-ok: AST duck typing: a callee that is neither Attribute nor Name has no name, and '' never ends with Path
             if str(name).endswith("Path"):
                 for arg in node.args:
                     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):

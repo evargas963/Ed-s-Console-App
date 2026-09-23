@@ -131,7 +131,8 @@ def main() -> int:
     _load_json(ROOT / "data" / "phase65_movement_isolation_v1_report.json")
     validate_cov = _load_json(ROOT / "data" / "validate_movement_prediction_coverage_v1.json")
 
-    policy_slice_ids = {str(r.get("slice_id")) for r in phase65_cleanup.get("policy_usable", [])}
+    # The cleanup artifact must carry policy_usable; a missing list must not publish as [].
+    policy_slice_ids = {str(r.get("slice_id")) for r in phase65_cleanup["policy_usable"]}
 
     required_rows: list[dict] = []
     remediation_actions: list[dict] = []
@@ -248,9 +249,14 @@ def main() -> int:
                     (t,),
                 ).fetchone()[0]
             )
-            cm = (n_move / n_total) if n_total else 0.0
-            cd = (n_dir / n_total) if n_total else 0.0
-            cov_per_h[hz] = {"coverage_move": round(cm, 6), "coverage_dir": round(cd, 6)}
+            # No governed rows -> coverage unmeasured (None); the readiness verdict already fails
+            # that ticker via no_governed_row_for_inference below.
+            cm = (n_move / n_total) if n_total else None  # caps-ok: zero governed rows -> coverage undefined (None)
+            cd = (n_dir / n_total) if n_total else None  # caps-ok: zero governed rows -> coverage undefined (None)
+            cov_per_h[hz] = {
+                "coverage_move": round(cm, 6) if cm is not None else None,
+                "coverage_dir": round(cd, 6) if cd is not None else None,
+            }
             if n_total and (cm < 1.0 or cd < 1.0):
                 inference_reasons.append(f"{hz}:coverage_move={cm:.3f},coverage_dir={cd:.3f}")
 

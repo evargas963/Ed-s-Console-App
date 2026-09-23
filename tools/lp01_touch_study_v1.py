@@ -102,7 +102,7 @@ def _rows(con: sqlite3.Connection, ticker: str) -> list[dict]:
         dt = datetime.fromtimestamp(float(ts), ET)
         out.append({"dt": dt, "datetime": int(float(ts) * 1000), "open": float(o),
                     "high": float(h), "low": float(l), "close": float(c),
-                    "volume": float(v or 0.0), "min_of_day": dt.hour * 60 + dt.minute})
+                    "volume": None if v is None else float(v), "min_of_day": dt.hour * 60 + dt.minute})
     return out
 
 
@@ -188,7 +188,7 @@ def run(tickers: list[str], limit_sessions: int | None) -> dict:
                     if r is not None:
                         baseline[h].setdefault(b["min_of_day"], []).append(abs(r))
 
-            rng = statistics.median([b["high"] - b["low"] for b in sb]) or 0.0
+            rng = statistics.median([b["high"] - b["low"] for b in sb])
             rearm = rng * REARM_ATR_MULT
             # REAL and PLACEBO run through the IDENTICAL scan. Any difference between the arms
             # therefore cannot come from the touch rule, the re-arm rule, the horizon handling or

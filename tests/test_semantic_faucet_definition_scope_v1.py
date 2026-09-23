@@ -101,12 +101,12 @@ def _widened_book():
     chain, spot = _fixture_book()
     src = next(
         c for c in chain
-        if str(c.get("putCall", "")).upper() == "CALL"
-        and float(c.get("strikePrice") or 0) == 745.0
+        if str(c["putCall"]).upper() == "CALL"
+        and float(c["strikePrice"]) == 745.0
     )
     extra = dict(src)
     extra["strikePrice"] = 743.0
-    extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
+    extra["daysToExpiration"] = int(src["daysToExpiration"]) + 30
     extra["expirationDate"] = "2026-08-16"
     extra["openInterest"] = 250_000
     extra["symbol"] = "SPY   260816C00743000"

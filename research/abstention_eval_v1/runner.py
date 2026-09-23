@@ -116,13 +116,16 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
                 all_preds.extend(str(p) for p in preds)
                 all_truths.extend(y_arr[te][trade].tolist())
                 all_dates.extend(date_arr[te][trade].tolist())
-            cov = (n_traded / n_te) if n_te else 0.0
-            if not all_preds or cov < min_cov:
+            # No OOS test rows -> coverage is undefined (None), not a measured 0% trade rate.
+            cov = (n_traded / n_te) if n_te else None
+            if not all_preds or cov is None or cov < min_cov:
                 cells[key] = {
                     "under_sampled": True,
                     "n_scored": len(all_preds),
                     "n_distinct_days": len(set(all_dates)),
-                    "warnings": [f"LOW_COVERAGE cov={cov:.4f}"],
+                    "warnings": [
+                        f"LOW_COVERAGE cov={cov:.4f}" if cov is not None else "NO_OOS_TEST_ROWS cov=undefined"
+                    ],
                     "verdict": "UNDER_SAMPLED",
                     "mcc": None,
                     "accuracy": None,

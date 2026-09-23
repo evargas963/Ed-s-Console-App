@@ -153,29 +153,35 @@ def _run_snapshot(ticker: str, bars: list, session_date, snapshot_type: str, con
         if config.clustering_mode == "atr"
         else None
     )
-    ref = 500.0
+    # Reference price from real levels only (POC > ORB mid > prior-day POC/close). No level ->
+    # None: the old 500.0 stand-in fabricated a reference price and a percent threshold from it.
     rl = out.raw_levels
     prev = rl.get("prev_day") or rl.get("prev") or {}
-    ref = prev.get("pd_poc") or prev.get("pdc") or 500.0
+    ref: float | None = None
+    for _k in ("pd_poc", "pdc"):
+        if prev.get(_k):
+            ref = prev[_k]
+            break
     if rl.get("poc") is not None:
         ref = rl["poc"]
-    elif rl.get("orb"):
-        ref = rl["orb"].get("orb_mid") or ref
+    elif rl.get("orb") and rl["orb"].get("orb_mid"):
+        ref = rl["orb"]["orb_mid"]
 
-    # Compute effective threshold
-    if config.clustering_mode == "percent":
-        thresh = ref * config.clustering_threshold_pct
-    elif config.clustering_mode == "fixed" and config.clustering_threshold > 0:
+    # Compute effective threshold (None when the mode needs a reference price and none exists)
+    thresh: float | None
+    if config.clustering_mode == "fixed" and config.clustering_threshold > 0:
         thresh = config.clustering_threshold
     elif config.clustering_mode == "atr" and atr_val:
         thresh = atr_val * config.clustering_threshold_atr_mult
-    else:
+    elif ref is not None:
         thresh = ref * config.clustering_threshold_pct
+    else:
+        thresh = None
 
     clustering_settings = {
         "clustering_mode": config.clustering_mode,
-        "effective_threshold": round(thresh, 4),
-        "reference_price": round(ref, 4),
+        "effective_threshold": round(thresh, 4) if thresh is not None else None,
+        "reference_price": round(ref, 4) if ref is not None else None,
         "atr_value": round(atr_val, 4) if atr_val is not None else None,
         "atr_multiplier": config.clustering_threshold_atr_mult if config.clustering_mode == "atr" else None,
         "fixed_threshold": config.clustering_threshold if config.clustering_mode == "fixed" else None,
@@ -221,9 +227,10 @@ def _zone_diagnostics(zones: list) -> dict:
     if not zones:
         return {
             "total_zones": 0,
-            "avg_width": 0.0,
-            "widest_zone": 0.0,
-            "tightest_zone": 0.0,
+            # No zones -> width statistics are undefined (None), not a measured 0.0 width.
+            "avg_width": None,
+            "widest_zone": None,
+            "tightest_zone": None,
             "merged_per_zone": [],
             "overly_broad_zones": [],
         }
@@ -303,17 +310,19 @@ def _final_assessment(results: dict, snapshot_types: list) -> str:
         all_zones = []
         for st in snapshot_types:
             all_zones.extend(results[mode][st]["zones"])
+        # A mode with no zones has no average width: it is excluded from the width ranking
+        # (it used to be ranked with an inf stand-in and then reported as "Zones too wide").
         if all_zones:
             avg_widths[mode] = sum(z["zone_width"] for z in all_zones) / len(all_zones)
-        else:
-            avg_widths[mode] = float("inf")
-    most_tradeable = min(avg_widths, key=lambda m: avg_widths[m])
-    lines.append(f"* Most tradeable zones (tightest avg): {most_tradeable} (avg width {avg_widths[most_tradeable]:.4f})")
+    if avg_widths:
+        most_tradeable = min(avg_widths, key=lambda m: avg_widths[m])
+        lines.append(f"* Most tradeable zones (tightest avg): {most_tradeable} (avg width {avg_widths[most_tradeable]:.4f})")
 
-    # Too wide
-    widest_avg = max(avg_widths.values())
-    too_wide = [m for m in modes if avg_widths[m] == widest_avg and widest_avg > 0][0]
-    lines.append(f"* Zones too wide: {too_wide} (avg width {avg_widths[too_wide]:.4f})")
+        # Too wide
+        too_wide = max(avg_widths, key=lambda m: avg_widths[m])
+        lines.append(f"* Zones too wide: {too_wide} (avg width {avg_widths[too_wide]:.4f})")
+    else:
+        lines.append("* Zone widths: n/a (no mode produced zones)")
 
     # Best separation
     separation_scores = {}
@@ -453,9 +462,10 @@ def main():
         print("\n  -- 4. SNAPSHOT SUMMARY --")
         summ = r_pct.get("summary") or r_atr.get("summary") or r_fix.get("summary")
         if summ:
-            print(f"    value_state: {summ.get('value_state', '-')}")
-            print(f"    vwap_relation: {summ.get('vwap_relation', '-')}")
-            print(f"    auction_interpretation: {summ.get('auction_interpretation', '-')}")
+            # summary dict is built with all three keys in _run_mode (values may be None).
+            print(f"    value_state: {summ['value_state']}")
+            print(f"    vwap_relation: {summ['vwap_relation']}")
+            print(f"    auction_interpretation: {summ['auction_interpretation']}")
         print(f"    total_zones (pct/fix/atr): {r_pct['total_zones']} / {r_fix['total_zones']} / {r_atr['total_zones']}")
 
         # Side-by-side comparison

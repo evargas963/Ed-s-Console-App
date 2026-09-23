@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 
 from time_et import ET as _ET, RTH_START_MINS
 
-_throttle_sec = float(__import__("os").environ.get("ED_NEWS_THROTTLE_SEC", "90"))
+_throttle_sec = float(__import__("os").environ.get("ED_NEWS_THROTTLE_SEC", "90"))  # caps-ok: operator env config -- news refresh throttle, documented default 90s
 _lock = threading.Lock()
 _last_fetch: dict[str, float] = {}
 _cache: dict[str, dict[str, Any]] = {}
@@ -108,7 +108,7 @@ def classify_headline_impact(headline: str) -> str:
 
 def _http_timeout_sec() -> float:
     """Per-request HTTP timeout; keep low on server hot path (Finnhub + AV)."""
-    return float(__import__("os").environ.get("ED_NEWS_HTTP_TIMEOUT_SEC", "5"))
+    return float(__import__("os").environ.get("ED_NEWS_HTTP_TIMEOUT_SEC", "5"))  # caps-ok: operator env config -- per-request HTTP timeout, documented default 5s
 
 
 def _http_json_any(url: str, timeout: Optional[float] = None) -> tuple[Any, Optional[str]]:
@@ -455,7 +455,7 @@ def refresh_and_context_for_ui(
     import concurrent.futures
     import os
 
-    dline = float(os.environ.get("ED_NEWS_CONTEXT_DEADLINE_SEC", "5"))
+    dline = float(os.environ.get("ED_NEWS_CONTEXT_DEADLINE_SEC", "5"))  # caps-ok: operator env config -- news-context deadline, documented default 5s (<=0 disables the deadline)
     if dline <= 0:
         return refresh_and_context(ticker, db=db, throttle_sec=throttle_sec)
     tkr = ticker.upper().strip()

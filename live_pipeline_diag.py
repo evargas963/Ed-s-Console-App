@@ -34,7 +34,7 @@ def _live_diag_on() -> bool:
 
 
 def _avail(obj: Any) -> bool:
-    return obj is not None and bool(getattr(obj, "available", False))
+    return obj is not None and bool(getattr(obj, "available", False))  # caps-ok: fail-closed availability read for the diag dump; only explicit available=True reports available
 
 
 def _fus_pack(obj: Any) -> dict[str, Any]:
@@ -42,9 +42,10 @@ def _fus_pack(obj: Any) -> dict[str, Any]:
         return {"present": False, "available": False}
     return {
         "present": True,
-        "available": bool(getattr(obj, "available", False)),
-        "dominant_class": str(getattr(obj, "dominant_class", None) or getattr(obj, "dominant_direction", "") or ""),
-        "confidence_label": str(getattr(obj, "confidence_label", None) or getattr(obj, "confidence", "") or ""),
+        "available": bool(getattr(obj, "available", False)),  # caps-ok: fail-closed availability read; only explicit available=True reports available
+        # Unknown stays None in the diag JSON (was coerced to "", indistinguishable from a value).
+        "dominant_class": getattr(obj, "dominant_class", None) or getattr(obj, "dominant_direction", None),
+        "confidence_label": getattr(obj, "confidence_label", None) or getattr(obj, "confidence", None),
     }
 
 
@@ -99,12 +100,15 @@ def _serialize_mh_bundle(mh_bundle: Any) -> dict[str, Any]:
             out["horizons"][hz] = None
             continue
         out["horizons"][hz] = {
-            "direction": getattr(f, "direction", None),
-            "confidence": round(float(getattr(f, "confidence", 0.0) or 0.0), 4),
-            "tradeable": bool(getattr(f, "tradeable", False)),
-            "unavailable": bool(getattr(f, "unavailable", False)),
-            "missing": bool(getattr(f, "missing", False)),
-            "entry_ref": getattr(f, "entry_ref", None),
+            # HorizonForecast declares every one of these fields (multi_horizon_decision.py);
+            # read strictly. The old defaults reported a missing confidence as 0.0 and a missing
+            # "missing"/"unavailable" flag as False (i.e. "present").
+            "direction": f.direction,
+            "confidence": round(float(f.confidence), 4) if f.confidence is not None else None,
+            "tradeable": bool(f.tradeable),
+            "unavailable": bool(f.unavailable),
+            "missing": bool(f.missing),
+            "entry_ref": f.entry_ref,
         }
     fd = getattr(mh_bundle, "final_decision", None)
     if fd is not None:
@@ -115,13 +119,13 @@ def _serialize_mh_bundle(mh_bundle: Any) -> dict[str, Any]:
             "alignment_state": getattr(fd, "alignment_state", None),
             "contradiction_state": getattr(fd, "contradiction_state", None),
             "final_bias": getattr(fd, "final_bias", None),
-            "final_tradeable": bool(getattr(fd, "final_tradeable", False)),
+            "final_tradeable": bool(fd.final_tradeable),  # declared MultiHorizonDecision field
             "wait_reason": getattr(fd, "wait_reason", None),
             "entry_state": getattr(fd, "entry_state", None),
             "conflict_level": getattr(ar, "conflict_level", None) if ar else None,
         }
         rows = []
-        for a in list(getattr(fd, "supporting_assessments", []) or []):
+        for a in list(fd.supporting_assessments):  # declared list field, always set
             rows.append(
                 {
                     "horizon": getattr(a, "horizon", None),
@@ -174,7 +178,7 @@ def emit_compute_signals_diag(
             "transformer": _fus_pack(transformer_out),
             "monte_carlo": {
                 "present": mc_out is not None,
-                "available": bool(getattr(mc_out, "available", False)) if mc_out is not None else False,
+                "available": bool(getattr(mc_out, "available", False)) if mc_out is not None else False,  # caps-ok: fail-closed; no MC output or no explicit available=True -> not available (present is reported separately)
             },
             "model_outputs_fresh": mo,
             "stack_probs_triplet": stack_probs,
@@ -182,14 +186,16 @@ def emit_compute_signals_diag(
         "fusion": {
             "present": fusion is not None,
             "available": _avail(fusion),
-            "dominant_direction": str(getattr(fusion, "dominant_direction", "") or "") if fusion else "",
-            "fusion_confidence": str(getattr(fusion, "fusion_confidence", "") or "") if fusion else "",
+            # Unknown stays None in the diag JSON (was coerced to "").
+            "dominant_direction": getattr(fusion, "dominant_direction", None) if fusion is not None else None,
+            "fusion_confidence": getattr(fusion, "fusion_confidence", None) if fusion is not None else None,
         },
         "canonical": {
             "present": canonical is not None,
-            "direction": str(getattr(canonical, "direction", "") or "") if canonical else "",
-            "confidence": str(getattr(canonical, "confidence", "") or "") if canonical else "",
-            "provenance": str(getattr(canonical, "provenance", "") or "") if canonical else "",
+            # CanonicalForecast declares direction/confidence/provenance; read strictly.
+            "direction": canonical.direction if canonical is not None else None,
+            "confidence": canonical.confidence if canonical is not None else None,
+            "provenance": canonical.provenance if canonical is not None else None,
         },
         "predictive_card": _serialize_predictive(pred),
         "call": {"pre_multi_horizon": call_pre_mh, "post_multi_horizon": call_post_mh},

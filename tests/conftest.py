@@ -32,12 +32,12 @@ os.environ.pop("ED_CONSOLE_DB", None)
 os.environ.pop("ED_DB_PATH", None)
 _PYTEST_RUNTIME_ROOT = Path(
     tempfile.mkdtemp(
-        prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"
+        prefix=f"ed-pytest-{os.environ.get('PYTEST_XDIST_WORKER', 'serial')}-{os.getpid()}-"  # caps-ok: pytest-xdist env var; absent means no xdist worker, and the value only names the temp-dir prefix
     )
 ).resolve()
 os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
 os.environ["ED_ARTIFACTS_ROOT"] = str(_PYTEST_RUNTIME_ROOT / "artifacts")
-os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
+os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")  # caps-ok: test-harness env switch; setdefault lets an invoker who exported it explicitly keep their value, it seeds no data
 # The console DB and stream-capture DB are NOT set by env: RC-534 disabled ambient
 # ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db._resolve_console_db_path raises on
 # them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
@@ -328,7 +328,7 @@ def all_registered_route_paths(routes) -> list[str]:
     2026-09-21: a newer FastAPI/Starlette wraps each `app.include_router(...)` call's
     routes in a `fastapi.routing._IncludedRouter` object that has no `.path` attribute of
     its own -- only the app's OWN top-level routes (openapi/docs/redoc, static mounts) do.
-    Three tests independently wrote `[getattr(r, "path", "") for r in app.routes if
+    Three tests independently wrote `[getattr(r, "path", "") for r in app.routes if  # caps-ok: scanner false positive: docstring quoting the retired route-listing idiom this helper replaced
     hasattr(r, "path")]`, which silently filtered out every route this app actually
     registers through the 20 `include_router` calls in server.py -- MEASURED: 93 real
     paths exist, that filter sees 6. The real object is recoverable via

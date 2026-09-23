@@ -47,12 +47,12 @@ def resolve_console_reload_url() -> str:
     explicit = os.environ.get("ED_CONSOLE_RELOAD_URL")
     if explicit is not None:
         return explicit.strip()
-    port = os.environ.get("ED_CONSOLE_PORT", "8000").strip() or "8000"
+    port = os.environ.get("ED_CONSOLE_PORT", "8000").strip() or "8000"  # caps-ok: env config: 8000 is the console's documented default listen port
     return f"http://127.0.0.1:{port}/api/internal/reload_models"
 
 
 def console_reload_token() -> str | None:
-    tok = os.environ.get("ED_CONSOLE_RELOAD_TOKEN", "").strip()
+    tok = os.environ.get("ED_CONSOLE_RELOAD_TOKEN", "").strip()  # caps-ok: env secret: unset becomes None (no token header), not a fabricated token
     return tok or None
 
 

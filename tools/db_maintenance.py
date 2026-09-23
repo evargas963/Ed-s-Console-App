@@ -54,7 +54,11 @@ def analyze(conn: sqlite3.Connection) -> None:
 def wal_checkpoint_truncate(conn: sqlite3.Connection) -> tuple[int, int, int]:
     """Fold the -wal back into the DB and truncate it. Returns (busy, log_pages, checkpointed)."""
     row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
-    return (int(row[0]), int(row[1]), int(row[2])) if row else (0, 0, 0)
+    if row is None:
+        # PRAGMA wal_checkpoint always returns one row; none means the checkpoint result is
+        # unknown, which must not be reported as busy=0 (success).
+        raise sqlite3.OperationalError("PRAGMA wal_checkpoint(TRUNCATE) returned no row")
+    return (int(row[0]), int(row[1]), int(row[2]))
 
 
 def run_maintenance(db_path: str) -> int:
@@ -85,6 +89,12 @@ def run_maintenance(db_path: str) -> int:
         print("  [3] PRAGMA wal_checkpoint(TRUNCATE) ...", flush=True)
         busy, log_pages, ckpt = wal_checkpoint_truncate(conn)
         print(f"      busy={busy} log_pages={log_pages} checkpointed={ckpt}", flush=True)
+        if busy:
+            # busy=1: another connection blocked the TRUNCATE checkpoint, so the WAL was NOT
+            # folded back; reporting "WAL truncated" below would be false.
+            print("  [WARN] wal_checkpoint was blocked (busy=1) — WAL not truncated; retry when idle",
+                  flush=True)
+            return 5
 
         after = db_stats(conn)
         print(f"  after:  page_count={after['page_count']:,} freelist={after['freelist_count']:,} "
@@ -100,5 +110,5 @@ def run_maintenance(db_path: str) -> int:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if a and not a.startswith("--")]
-    path = args[0] if args else str(canonical_console_db_path())
+    path = args[0] if args else str(canonical_console_db_path())  # caps-ok: CLI positional; absent uses the canonical console DB
     sys.exit(run_maintenance(path))

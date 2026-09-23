@@ -92,7 +92,7 @@ def tb_label_for_window(
         if touch_dn:
             return "down", "sl_down", 0
     truncated = 1 if len(path_bars) < n_bars_vertical else 0
-    return "flat", ("vertical_truncated" if truncated else "vertical"), truncated
+    return "flat", ("vertical_truncated" if truncated else "vertical"), truncated  # caps-ok: scanner false positive: "flat" is the measured vertical-barrier outcome class (neither barrier touched within the window) and the ternary picks the label from the real truncation flag
 
 
 class TickerBars:

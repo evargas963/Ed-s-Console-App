@@ -84,7 +84,7 @@ def preflight(db_path: str, ticker: str = "SPY") -> dict[str, Any]:
             (tk,),
         ).fetchone()
         sources = {
-            (row[0] if row[0] is not None else "NULL"): int(row[1])
+            (row[0] if row[0] is not None else "NULL"): int(row[1])  # caps-ok: preflight grouping label: rows whose source column IS NULL are counted under the literal key 'NULL', which is exactly what they are
             for row in con.execute(
                 "SELECT source, COUNT(*) FROM price_bars_1m "
                 "WHERE ticker = ? GROUP BY source",

@@ -68,20 +68,23 @@ def screen_ticker(db_path: str, ticker: str) -> dict[str, Any]:
     tradable = [b for b in rep.bars if is_tradable_session_ts_utc(b.bar_start_ts_utc)]
     sessions = {et_date_str_from_ts_utc(b.bar_start_ts_utc) for b in tradable}
     n_real = sum(1 for b in tradable if classify_bar_source(b.source) == "real")
-    real_share = (n_real / len(tradable)) if tradable else 0.0
+    # No tradable bars -> real-bar share is unmeasured (None), not 0%; still disqualifies.
+    real_share = (n_real / len(tradable)) if tradable else None
     reasons: list[str] = []
     if len(sessions) < MIN_TRADABLE_SESSIONS:
         reasons.append(f"sessions_{len(sessions)}_below_{MIN_TRADABLE_SESSIONS}")
     if rep.n_rows < MIN_TOTAL_BARS:
         reasons.append(f"bars_{rep.n_rows}_below_{MIN_TOTAL_BARS}")
-    if real_share < MIN_REAL_BAR_SHARE:
+    if real_share is None:
+        reasons.append("real_share_unmeasured_no_tradable_bars")
+    elif real_share < MIN_REAL_BAR_SHARE:
         reasons.append(f"real_share_{real_share:.2f}_below_{MIN_REAL_BAR_SHARE}")
     return {
         "ticker": ticker,
         "n_bars_total": rep.n_rows,
         "n_tradable_bars": len(tradable),
         "n_tradable_sessions": len(sessions),
-        "real_bar_share": round(real_share, 4),
+        "real_bar_share": None if real_share is None else round(real_share, 4),
         "qualified": not reasons,
         "exclusion_reasons": reasons,
     }

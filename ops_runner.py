@@ -20,11 +20,11 @@ APP_DIR = Path(__file__).resolve().parent
 
 
 def is_ops_runner_enabled() -> bool:
-    return os.environ.get("ED_OPS_RUNNER", "").strip().lower() in ("1", "true", "yes", "on")
+    return os.environ.get("ED_OPS_RUNNER", "").strip().lower() in ("1", "true", "yes", "on")  # caps-ok: operator env opt-in; unset means the ops runner stays DISABLED
 
 
 def allow_remote() -> bool:
-    return os.environ.get("ED_OPS_ALLOW_REMOTE", "").strip().lower() in ("1", "true", "yes", "on")
+    return os.environ.get("ED_OPS_ALLOW_REMOTE", "").strip().lower() in ("1", "true", "yes", "on")  # caps-ok: operator env opt-in; unset means remote triggering stays DENIED (local only)
 
 
 def client_may_trigger(host: str | None) -> bool:
@@ -196,7 +196,7 @@ def sequences_public_list() -> list[dict[str, object]]:
                 "label": meta["label"],
                 "cadence": meta["cadence"],
                 "steps": meta["steps"],
-                "description": meta.get("description", ""),
+                "description": meta.get("description", ""),  # caps-ok: optional human-readable text of an ops sequence in the static registry; blank when the entry has none, display-only
             }
         )
     return out

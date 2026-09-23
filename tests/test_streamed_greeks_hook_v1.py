@@ -745,7 +745,7 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
         # fail -- with nothing ever written to state, nothing can have overlaid.
         with srv._terrain_cache_lock:
             published = srv._terrain_cache[tk].get("_gamma_surface")
-        overlay_count = published.get("stream_overlay_contracts", 0) if published else 0
+        overlay_count = published.get("stream_overlay_contracts", 0) if published else 0  # caps-ok: negative control asserting != 3: an unpublished surface, or one no overlay pass touched, genuinely overlaid zero contracts
         assert overlay_count != 3, (
             f"the publication assertion (stream_overlay_contracts == 3) must also fail "
             f"when replay-to-state writes are suppressed; got {overlay_count}")

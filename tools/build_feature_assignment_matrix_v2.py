@@ -150,7 +150,7 @@ def _wrapcell(ws, r, c, v, fill=None, font=None, align=WRAP, border=True):
 def A(spec):
     out = {}
     for h in HORIZONS:
-        out[h] = spec.get(h, spec.get("*", ""))
+        out[h] = spec.get(h, spec.get("*", ""))  # caps-ok: framing matrix cell: per-horizon text, else the '*' all-horizon text, else a blank display cell (no framing written)
     return out
 
 
@@ -371,9 +371,11 @@ def _schwab_primary_endpoint(source_endpoints: str) -> str:
 
 def categorize_schwab_field(row: dict) -> str:
     """Catalog tier for one Schwab dictionary row — categorization only, not ablation verdict."""
-    category = str(row.get("category") or "unknown").strip()
-    likely_use = str(row.get("likely_use") or "unknown").strip()
-    priority = str(row.get("priority") or "medium").strip()
+    category = str(row.get("category") or "unknown").strip()  # caps-ok: blank maps to the dictionary's own 'unknown' category, which the ML_INGEST_CANDIDATE branch explicitly rejects
+    likely_use = str(row.get("likely_use") or "unknown").strip()  # caps-ok: blank maps to the dictionary's own 'unknown' likely_use, which routes to the conservative catalog tiers
+    # A blank priority is unreviewed (the dictionary's own term), never promoted to "medium",
+    # which would qualify the row for ML_INGEST_CANDIDATE below.
+    priority = str(row.get("priority") or "unreviewed").strip()  # caps-ok: blank maps to the dictionary's own 'unreviewed' value, which no promotion branch accepts
     endpoint = _schwab_primary_endpoint(str(row.get("source_endpoints") or ""))
 
     if likely_use == "ui_only":
@@ -392,7 +394,7 @@ def categorize_schwab_field(row: dict) -> str:
 def _canonical_to_column_hint(canonical_field: str, example_raw: str = "") -> str:
     leaf = str(canonical_field or "").split(".")[-1]
     if leaf in ("*", "callExpDateMap", "putExpDateMap"):
-        leaf = example_raw.split(".")[-1] if example_raw else leaf
+        leaf = example_raw.split(".")[-1] if example_raw else leaf  # caps-ok: keeps the canonical leaf when no example path is supplied; no value is invented
     hint = _camel_to_snake(leaf)
     if hint in ("last_price", "lastprice"):
         return "spot"
@@ -455,7 +457,7 @@ def load_schwab_ablation_field_registry(*, write: bool = False, stable_time: boo
     if not write and SCHWAB_ABLATION_REGISTRY_PATH.is_file():
         try:
             on_disk = json.loads(SCHWAB_ABLATION_REGISTRY_PATH.read_text(encoding="utf-8"))
-            if int(on_disk.get("schwab_field_count") or 0) >= 2300 and on_disk.get("fields"):
+            if int(on_disk.get("schwab_field_count") or 0) >= 2300 and on_disk.get("fields"):  # caps-ok: fail-closed cache check: an on-disk registry without a count is treated as invalid and rebuilt
                 return on_disk
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             pass
@@ -509,7 +511,12 @@ def _snapshot_expansion_columns(registered: dict[str, set[str]]) -> list[dict]:
             continue
         if verdict not in ("KEEP", "KEEP_LIVE", "WIRED_PENDING_DATA"):
             continue
-        null_pct = float(col.get("null_pct") or 100.0)  # fake-default-ok: missing null_pct -> treat as fully-null (conservative skip below); offline tooling
+        # Missing null_pct -> population unknown -> skip. (The old `or 100.0` also turned a real
+        # 0.0 null_pct — a fully populated column — into 100.0 and dropped it.)
+        raw_null_pct = col.get("null_pct")
+        if raw_null_pct is None:
+            continue
+        null_pct = float(raw_null_pct)
         if null_pct >= 99.0:
             continue
         out.append(
@@ -559,9 +566,9 @@ def _atomic_members_from_ingest_cone(
     column: str, registered: dict[str, set[str]]
 ) -> tuple[list[str], list[str], list[str]]:
     """Ingest-capability metadata only — NOT placement. O-56 survivors assign model×horizon winners."""
-    xgb = [column] if column in registered.get("xgb", set()) else []
-    l5 = [column] if column in registered.get("lstm_5m", set()) else []
-    l1 = [column] if column in registered.get("lstm_1m", set()) else []
+    xgb = [column] if column in registered["xgb"] else []
+    l5 = [column] if column in registered["lstm_5m"] else []
+    l1 = [column] if column in registered["lstm_1m"] else []
     return xgb, l5, l1
 
 
@@ -664,7 +671,7 @@ def resolve_expanded_schwab_ablation_universe(*, write_registry: bool = False) -
         if hint in reg_union:
             for g in groups:
                 if g.get("atomic_column") == hint:
-                    existing = g.setdefault("schwab_lineage", [])
+                    existing = g.setdefault("schwab_lineage", [])  # caps-ok: grouping: creates the lineage list to append into
                     for leaf in lineages:
                         if leaf not in existing:
                             existing.append(leaf)
@@ -813,12 +820,12 @@ def write_feature_ablation_universe_xlsx(
         ws.column_dimensions[get_column_letter(j)].width = w
 
     for r, g in enumerate(groups, 2):
-        ws.cell(r, 1, g.get("group_id", ""))
-        ws.cell(r, 2, g.get("label", ""))
-        ws.cell(r, 3, g.get("atomic_column", ""))
-        ws.cell(r, 4, g.get("catalog_tier", ""))
-        ws.cell(r, 5, g.get("ingest_status", ""))
-        ws.cell(r, 6, _join_member_list(g.get("schwab_lineage", [])))
+        ws.cell(r, 1, g.get("group_id", ""))  # caps-ok: xlsx display cell for the operator workbook; blank cell, never parsed back as data
+        ws.cell(r, 2, g.get("label", ""))  # caps-ok: xlsx display cell for the operator workbook; blank cell, never parsed back as data
+        ws.cell(r, 3, g.get("atomic_column", ""))  # caps-ok: xlsx display cell; groups without an atomic column show blank, never parsed back
+        ws.cell(r, 4, g.get("catalog_tier", ""))  # caps-ok: xlsx display cell; registry-native groups carry no Schwab catalog tier, shown blank
+        ws.cell(r, 5, g.get("ingest_status", ""))  # caps-ok: xlsx display cell; blank cell, never parsed back as data
+        ws.cell(r, 6, _join_member_list(g.get("schwab_lineage", [])))  # caps-ok: xlsx display cell; groups with no Schwab lineage show an empty list
 
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(groups) + 1)}"

@@ -374,7 +374,7 @@ def train_transformer(
     val_basis = "time_ordered_tail" if has_holdout else "in_sample_no_holdout"
 
     # Normalize (after cascade concat if any) — stats fit on the train partition only.
-    fit_flat = (X[:train_end] if has_holdout else X).reshape(-1, X.shape[2])
+    fit_flat = (X[:train_end] if has_holdout else X).reshape(-1, X.shape[2])  # caps-ok: scanner false positive — selects the train partition vs the full array (in-sample, disclosed via val_basis); no default value
     mean = fit_flat.mean(axis=0)
     std = fit_flat.std(axis=0)
     std[std < 1e-8] = 1.0
@@ -382,7 +382,7 @@ def train_transformer(
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
     # Feature mask — variance computed on the train partition only.
-    fit_var_src = (X[:train_end] if has_holdout else X).reshape(-1, n_features)
+    fit_var_src = (X[:train_end] if has_holdout else X).reshape(-1, n_features)  # caps-ok: scanner false positive — selects the train partition vs the full array (in-sample, disclosed via val_basis); no default value
     var = fit_var_src.var(axis=0)
     feature_mask = var > 1e-8
     X = X[:, :, feature_mask]
@@ -476,15 +476,19 @@ def train_transformer(
                 )
                 key_ok = blob.get("scheduler_cache_key") == scheduler_cache_key
                 arch_ok = blob.get("architecture") == architecture
-                nf_ok = int(blob.get("n_features", -1)) == n_features
+                nf_ok = int(blob.get("n_features", -1)) == n_features  # caps-ok: -1 is an impossible feature width, so a checkpoint lacking n_features never matches -> clean train (no resume)
                 cas_fp = _cascade_tensor_fp(xgb_lstm_probs)
                 cas_ok = architecture != "cascade" or blob.get("cascade_tensor_fp") == cas_fp
-                ne = int(blob.get("next_epoch", 1))
+                # 0 fails the `1 <= ne` guard below: a checkpoint that does not record its next
+                # epoch is NOT resumed (previously 1 resumed its weights with an unknown epoch count).
+                ne = int(blob.get("next_epoch", 0))  # caps-ok: 0 is an impossible epoch that fails the 1 <= ne resume guard -> clean train
                 if fp_ok and key_ok and arch_ok and nf_ok and cas_ok and 1 <= ne <= EPOCHS:
                     try:
                         model.load_state_dict(blob["model_state"])
                         start_epoch = ne
-                        best_loss = float(blob.get("best_loss", float("inf")))
+                        # Required (the resume writer always stores it); a KeyError lands in the
+                        # except below -> clean train, instead of resuming with a forgotten best.
+                        best_loss = float(blob["best_loss"])
                         bs = blob.get("best_state")
                         if isinstance(bs, dict):
                             best_state = bs
@@ -516,7 +520,8 @@ def train_transformer(
             train_loss += loss.item() * len(yb)
             train_correct += (logits.argmax(dim=1) == yb).sum().item()
             train_total += len(yb)
-        train_acc = train_correct / train_total if train_total else 0
+        # No 0% fallback: an empty train loader already raises on train_loss / train_total below.
+        train_acc = train_correct / train_total
         # B3: select best_state on the held-out val tail (not training loss). Thin tickers with
         # no holdout fall back to train-loss selection (in-sample, disclosed).
         if has_holdout:
@@ -538,7 +543,7 @@ def train_transformer(
             best_loss = sel_loss
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             result.best_epoch = epoch
-        epochs_no_improve = 0 if improved else epochs_no_improve + 1
+        epochs_no_improve = 0 if improved else epochs_no_improve + 1  # caps-ok: scanner false positive — early-stop streak counter reset/increment, no missing value involved
         if epoch % 10 == 0 or epoch == 1:
             log.info(
                 "Epoch %d: train_loss=%.4f acc=%.1f%% sel_loss=%.4f (%s)",
@@ -593,7 +598,7 @@ def train_transformer(
 
     # B3: honest out-of-sample accuracy on the held-out tail (full-data in-sample only when no
     # holdout could be carved — disclosed via val_basis).
-    eval_dl = val_dl if has_holdout else DataLoader(full_ds, batch_size=BATCH_SIZE, shuffle=False)
+    eval_dl = val_dl if has_holdout else DataLoader(full_ds, batch_size=BATCH_SIZE, shuffle=False)  # caps-ok: scanner false positive — selects the held-out loader vs the full in-sample loader (disclosed via val_basis); no default value
     all_preds = []
     with torch.no_grad():
         for xb, yb, _ in eval_dl:

@@ -15,7 +15,7 @@ def test_accumulator_builds_bars_from_collection_service_call_shape():
     (ticker, price, ts, total_volume=) and prove completed bars appear."""
     import os
 
-    os.environ.setdefault("PYTEST_CURRENT_TEST", "rc69")
+    os.environ.setdefault("PYTEST_CURRENT_TEST", "rc69")  # caps-ok: test-boot env switch read by import-time guards to recognise a pytest process; setdefault keeps a value pytest already set, it seeds no market data
     import server as srv
 
     tk = "ZZRC69"

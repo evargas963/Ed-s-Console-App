@@ -238,7 +238,7 @@ def test_watchlist_quotes_route_reports_auth_failure_distinctly(monkeypatch):
     try:
         monkeypatch.setattr(srv, "get_client", _raise_auth_unavailable)
         with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(tks)})
+            r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(tks)})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
             assert r.status_code == 200  # the route itself succeeds; failure is IN the payload
             body = r.json()
             assert body["ok"] is False
@@ -262,7 +262,7 @@ def test_watchlist_quotes_route_success_shape(monkeypatch):
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
     with TestClient(srv.app) as client:
-        r = client.get("/api/watchlist-quotes", params={"tickers": "ZZZTEST"})
+        r = client.get("/api/watchlist-quotes", params={"tickers": "ZZZTEST"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         body = r.json()
         assert body["ok"] is True
         assert body["error"] is None
@@ -295,7 +295,7 @@ def test_watchlist_quotes_reuses_a_fresh_plane_row_with_no_vendor_call(monkeypat
     try:
         monkeypatch.setattr("schwab_client.safe_get_quotes", _boom)
         with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": tk})
+            r = client.get("/api/watchlist-quotes", params={"tickers": tk})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         body = r.json()
         assert called["n"] == 0
         assert body["ok"] is True
@@ -326,7 +326,7 @@ def test_watchlist_quotes_records_a_fresh_fetch_into_the_plane(monkeypatch):
         monkeypatch.setattr(srv, "get_client", lambda: object())
         monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
         with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": tk})
+            r = client.get("/api/watchlist-quotes", params={"tickers": tk})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         body = r.json()
         assert body["quotes"][tk]["spot"] == 61.5
         plane_row = L.get_quote(tk)
@@ -360,6 +360,6 @@ def test_watchlist_quotes_route_no_invented_count_cap(monkeypatch):
     monkeypatch.setattr("schwab_client.safe_get_quotes", _fake_safe_get_quotes)
     many = ["T{}".format(i) for i in range(600)]
     with TestClient(srv.app) as client:
-        r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(many)})
+        r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(many)})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r.status_code == 200
         assert len(requested["tickers"]) == 600  # nothing silently dropped

@@ -400,7 +400,7 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
         cov = d["stream_coverage"]
         assert cov["total_visible_cells"] == 2
         assert cov["live"] == 1 and cov["pending"] == 1
-        assert cov.get("unavailable", 0) == 0, "the pending leg must not also be counted as unavailable"
+        assert cov["unavailable"] == 0, "the pending leg must not also be counted as unavailable"
         assert cov["meets_live_requirement"] is False, (
             "a pending (not-yet-confirmed) cell must NOT satisfy the LIVE requirement")
         assert d["cell_stream_state_counts"]["pending"] == 1
@@ -434,8 +434,8 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
         d = _call(tk)
         cov = d["stream_coverage"]
         assert cov["live"] == 1 and cov["daemon_unavailable"] == 1
-        assert cov.get("pending", 0) == 0, "a daemon-down symbol must not also count as pending"
-        assert cov.get("unavailable", 0) == 0, "a daemon-down symbol must not also count as unavailable"
+        assert cov["pending"] == 0, "a daemon-down symbol must not also count as pending"
+        assert cov["unavailable"] == 0, "a daemon-down symbol must not also count as unavailable"
         assert cov["meets_live_requirement"] is False
         assert d["cell_stream_state_counts"]["daemon_unavailable"] == 1
     finally:

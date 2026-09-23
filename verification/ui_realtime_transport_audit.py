@@ -569,9 +569,9 @@ def simulate_switch_guard_matrix(
         "trust_class": ticker_trust_class(active),
         "wrong_ticker_discarded": discard,
         "wrong_ticker_discard_reason": discard_reason,
-        "wrong_ticker_payload_rejected_count": 1 if discard else 0,
+        "wrong_ticker_payload_rejected_count": 1 if discard else 0,  # caps-ok: count of the single simulated payload, derived from the computed bool `discard`; 0 is the true count when it was not discarded
         "superseded_generation_discarded": superseded_discard,
-        "stale_generation_payload_rejected_count": 1 if superseded_discard else 0,
+        "stale_generation_payload_rejected_count": 1 if superseded_discard else 0,  # caps-ok: count of the single simulated stale payload, derived from the computed bool `superseded_discard`; 0 is the true count
         "cache_restore_marks_stale": restored.get("analytics_stale") is True
         and restored.get("analytics_refresh_in_progress") is True
         and restored.get("_update_source") == "client_ticker_cache",
@@ -921,9 +921,8 @@ def bugs_proven_and_unproven(
 ) -> dict[str, Any]:
     proven: list[str] = []
     not_proven: list[str] = []
-    if sqlite_log.get("sqlite_database_locked_count", 0) > 0 or sqlite_log.get(
-        "sqlite_lock_wait_count", 0
-    ) > 0:
+    # sqlite_log comes from parse_sqlite_contention_from_text, which always returns all four counts.
+    if sqlite_log["sqlite_database_locked_count"] > 0 or sqlite_log["sqlite_lock_wait_count"] > 0:
         proven.append(
             "SQLite write contention on tier-1 snapshot path (log evidence: lock wait / database locked)"
         )
@@ -1054,7 +1053,7 @@ def enrich_switch_diag_record(raw: dict[str, Any]) -> dict[str, Any]:
     row["selected_ticker"] = selected
     row["previous_ticker"] = previous
     row["storage_key"] = ticker_storage_key(selected) if selected else ""
-    row["schema_version"] = max(int(row.get("schema_version") or 1), 2)
+    row["schema_version"] = max(int(row.get("schema_version") or 1), 2)  # caps-ok: records without schema_version predate versioning (v1); this normalizer upgrades every record to >=2, so the 1 only ever loses to max()
     row["switch_started_at"] = row.get("switch_started_at") or row.get("client_wall_start_ms")
     row["fast_quote_first_seen_ms"] = row.get("fast_quote_first_seen_ms")
     if row["fast_quote_first_seen_ms"] is None:
@@ -1131,7 +1130,9 @@ def build_guest_switch_sla_report(
         "switch_diag_events_sample": events[:10],
         "switch_diag_event_count": len(events),
         "operator_states": sorted(SWITCH_OPERATOR_STATES),
-        "live_rth_validation_required": core_vs_guest.get("live_validation_required_guest", []),
+        # audit_core_vs_guest_ticker_switching always emits this list; a missing key raises rather
+        # than reporting "no live RTH validation required".
+        "live_rth_validation_required": core_vs_guest["live_validation_required_guest"],
         "recommended_next_branch": "fix/card-price-conflict-explainability",
     }
 

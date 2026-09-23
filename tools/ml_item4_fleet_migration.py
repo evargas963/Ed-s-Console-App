@@ -592,10 +592,10 @@ def regenerate_migration_state_from_disk(
                 continue
             mp = bundle_integrity_manifest_path(tdir)
             if not mp.is_file():
-                method_counts["NO_MANIFEST"] = method_counts.get("NO_MANIFEST", 0) + 1
+                method_counts["NO_MANIFEST"] = method_counts.get("NO_MANIFEST", 0) + 1  # caps-ok: census counter: tally of bundle dirs with no integrity manifest, starts at 0
                 continue
             doc = json.loads(mp.read_text(encoding="utf-8"))
-            m = (doc.get("provenance") or {}).get("method", "NO_PROVENANCE_FIELD")
+            m = (doc.get("provenance") or {}).get("method", "NO_PROVENANCE_FIELD")  # caps-ok: explicit absence label: a manifest without provenance.method is tallied under the named NO_PROVENANCE_FIELD bucket, which reports the absence (never counted as a real method)
             method_counts[m] = method_counts.get(m, 0) + 1
     fleet = verify_fleet(models_dir)
     doc = {

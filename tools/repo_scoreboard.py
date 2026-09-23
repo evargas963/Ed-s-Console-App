@@ -109,14 +109,19 @@ def row_coverage() -> list[Row]:
         return [Row("COV", "tests", "line coverage", "—", ">= 80%", "UNMEASURED",
                     note="run: pytest tests --cov=. --cov-report=xml:reports/coverage.xml")]
     root = ET.parse(p).getroot()
-    line = float(root.get("line-rate", 0)) * 100
-    branch = float(root.get("branch-rate", 0)) * 100
-    return [
-        Row("COV", "tests", "line coverage", f"{line:.1f}%", ">= 80%",
-            "OK" if line >= 80 else "OPEN", art, _age(art)),
-        Row("COVB", "tests", "branch coverage", f"{branch:.1f}%", ">= 80%",
-            "OK" if branch >= 80 else "OPEN", art, _age(art)),
-    ]
+    rows: list[Row] = []
+    # A coverage.xml without the rate attribute did not measure it: UNMEASURED, not 0%.
+    for code, label, attr in (("COV", "line coverage", "line-rate"),
+                              ("COVB", "branch coverage", "branch-rate")):
+        raw = root.get(attr)
+        if raw is None:
+            rows.append(Row(code, "tests", label, "—", ">= 80%", "UNMEASURED", art,
+                            note=f"{art} has no {attr} attribute"))
+            continue
+        rate = float(raw) * 100
+        rows.append(Row(code, "tests", label, f"{rate:.1f}%", ">= 80%",
+                        "OK" if rate >= 80 else "OPEN", art, _age(art)))
+    return rows
 
 
 def row_suite() -> list[Row]:
@@ -143,7 +148,11 @@ def row_mutation() -> list[Row]:
                     note="the only measure of whether a test would FAIL if the "
                          "code broke; coverage cannot see an assertion-free test")]
     m = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
-    score = float(m.group(1)) if m else 0.0
+    if not m:
+        # An artefact with no percentage in it is not a 0% mutation score.
+        return [Row("MUT", "tests", "mutation score", "—", ">= 80%", "UNMEASURED", art,
+                    note=f"no percentage found in {art}")]
+    score = float(m.group(1))
     return [Row("MUT", "tests", "mutation score", f"{score:.0f}%", ">= 80%",
                 "OK" if score >= 80 else "OPEN", art, _age(art))]
 
@@ -202,7 +211,7 @@ def row_unwired() -> list[Row]:
                           for p in glob.glob(os.path.join(REPO, ".github/workflows/*.y*ml"))))
     unwired = [t for t in tools if t not in surfaces]
     return [Row("WIRE", "codebase", "tools no runner invokes",
-                f"{len(unwired)} of {len(tools)}", "0", "OPEN" if unwired else "OK",
+                f"{len(unwired)} of {len(tools)}", "0", "OPEN" if unwired else "OK",  # caps-ok: state label computed from the real `unwired` list (OPEN when any tool is unwired); the "0" on this line is the row target text, not a default
                 note="no pre-commit/gate/schedule/CI runs these; audit each — "
                      "wire if it serves the repo, delete if archaeology")]
 
@@ -265,8 +274,17 @@ def row_surfaces() -> list[Row]:
 
 
 def row_ui() -> list[Row]:
+    pages = glob.glob(os.path.join(REPO, "static", "*.html"))
+    if not pages:
+        # No surface found means nothing was measured -- never a clean 0-colour / 0% board.
+        return [
+            Row("PAL", "ui", "distinct colours (worst surface)", "—", "<= 30",
+                "UNMEASURED", "IBM Carbon", "no static/*.html surface found"),
+            Row("GRID", "ui", "spacing off the 8pt grid", "—", "<= 5%",
+                "UNMEASURED", "IBM Carbon", "no static/*.html surface found"),
+        ]
     worst, where = 0, ""
-    for p in glob.glob(os.path.join(REPO, "static", "*.html")):
+    for p in pages:
         t = open(p, encoding="utf-8", errors="replace").read()
         n = len(set(re.findall(r"#[0-9a-fA-F]{3,8}\b", t))
                 | set(re.findall(r"rgba?\([^)]*\)", t)))
@@ -274,16 +292,21 @@ def row_ui() -> list[Row]:
             worst, where = n, os.path.basename(p)
     grid = {0, 2, 4, 8, 12, 16, 24, 32, 40, 48, 64, 96, 160}
     tot = bad = 0
-    for p in glob.glob(os.path.join(REPO, "static", "*.html")):
+    for p in pages:
         vals = [abs(float(v)) for v in re.findall(
             r"(?:margin|padding|gap)[a-z-]*:\s*(-?[0-9.]+)px",
             open(p, encoding="utf-8", errors="replace").read())]
         tot += len(vals)
         bad += sum(1 for v in vals if v not in grid)
-    pct = 100.0 * bad / tot if tot else 0
+    pal = Row("PAL", "ui", "distinct colours (worst surface)", str(worst), "<= 30",
+              "OK" if worst <= 30 else "OPEN", "IBM Carbon", where)
+    if not tot:
+        # No px spacing value parsed: the grid share is unmeasured, not a passing 0%.
+        return [pal, Row("GRID", "ui", "spacing off the 8pt grid", "—", "<= 5%",
+                         "UNMEASURED", "IBM Carbon", "no margin/padding/gap px values found")]
+    pct = 100.0 * bad / tot
     return [
-        Row("PAL", "ui", "distinct colours (worst surface)", str(worst), "<= 30",
-            "OK" if worst <= 30 else "OPEN", "IBM Carbon", where),
+        pal,
         Row("GRID", "ui", "spacing off the 8pt grid", f"{pct:.0f}%", "<= 5%",
             "OK" if pct <= 5 else "OPEN", "IBM Carbon"),
     ]

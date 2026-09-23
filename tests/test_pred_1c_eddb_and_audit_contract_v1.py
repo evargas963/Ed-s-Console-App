@@ -24,7 +24,7 @@ AND s.outcome_1c IS NOT NULL AND s.pred_1c_up_prob IS NOT NULL
 
 
 def _require_governed_pred_1c_hard_gate() -> bool:
-    return os.environ.get("ED_REQUIRE_GOVERNED_PRED_1C", "").strip().lower() in ("1", "true", "yes")
+    return os.environ.get("ED_REQUIRE_GOVERNED_PRED_1C", "").strip().lower() in ("1", "true", "yes")  # caps-ok: opt-in env flag: unset means the hard production-data gate was not requested for this run
 
 
 def _governed_pred_1c_count(db_path: Path) -> int:

@@ -172,7 +172,7 @@ def _unsafe_non_exact_joins(conn: sqlite3.Connection) -> int:
           AND IFNULL(outcome_join_method, '') NOT IN ('exact', '')
         """
     ).fetchone()
-    return int(r[0]) if r else 0
+    return int(r[0])  # an aggregate COUNT(*) always returns exactly one row
 
 
 def run(out_db: Path) -> dict[str, Any]:
@@ -279,22 +279,31 @@ def run(out_db: Path) -> dict[str, Any]:
         unsafe_join = _unsafe_non_exact_joins(conn)
         conn.close()
 
-        ca = anchor1.get("calibration_trusted_anchor_audit") or {}
-        trusted_total = int(ca.get("trusted_rows_total", -1))
-        without_anchor = int(ca.get("trusted_rows_without_anchor", -1))
+        # calibration_trusted_anchor_audit is absent only on run_anchor_audit's error returns;
+        # then the counts are unknown (None) and the anchor gate below fails on its own terms.
+        ca = anchor1.get("calibration_trusted_anchor_audit")
+        trusted_total: int | None = None
+        without_anchor: int | None = None
+        if ca is not None:
+            trusted_total = int(ca["trusted_rows_total"])
+            without_anchor = int(ca["trusted_rows_without_anchor"])
 
         pass_gates = {
             "trusted_population_non_trivial": n_trusted >= 30,
             "decision_events_match_trusted_rows": decision_events == n_trusted == N_ACCUM,
             "no_duplicate_keys": len(dups) == 0,
             "total_rows_eq_trusted_no_legacy": n_total == n_trusted and n_legacy == 0,
-            "backfill_first_no_ambiguity": int(bf1.get("skipped_ambiguous_duplicate_snapshots", 0) or 0) == 0
-            and int(bf1.get("ambiguous_nearest_tie", 0) or 0) == 0,
-            "outcome_join_pass_first": join1.get("binary_pass") is True
-            and join1.get("verification_fail", -1) == 0
-            and join1.get("ambiguous_exact_ts_duplicate_snapshots", -1) == 0,
-            "outcome_join_pass_after_resync": join2.get("binary_pass") is True
-            and join2.get("verification_fail", -1) == 0,
+            # backfill() pre-seeds every skipped_* counter; the nearest-tie counter is
+            # skipped_ambiguous_nearest_tie (the old "ambiguous_nearest_tie" lookup named a key
+            # backfill never writes, so its 0 default made this half of the gate always pass).
+            "backfill_first_no_ambiguity": int(bf1["skipped_ambiguous_duplicate_snapshots"]) == 0
+            and int(bf1["skipped_ambiguous_nearest_tie"]) == 0,
+            # analyze_outcome_join pre-seeds verification_fail / ambiguous_* and always sets binary_pass.
+            "outcome_join_pass_first": join1["binary_pass"] is True
+            and join1["verification_fail"] == 0
+            and join1["ambiguous_exact_ts_duplicate_snapshots"] == 0,
+            "outcome_join_pass_after_resync": join2["binary_pass"] is True
+            and join2["verification_fail"] == 0,
             "unsafe_joins_zero": unsafe_join == 0,
             "anchor_all_trusted_anchored": without_anchor == 0 and trusted_total == n_trusted,
             "anchor_audit_binary": anchor1.get("binary_pass") is True,

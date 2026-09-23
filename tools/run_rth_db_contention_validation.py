@@ -36,8 +36,19 @@ def _evaluate_live(base_url: str) -> dict[str, Any]:
             "runtime_env": env,
         }
 
-    lock_wait = int(sqlite.get("sqlite_lock_wait_count") or 0)
-    db_locked = int(sqlite.get("sqlite_database_locked_count") or 0)
+    # /api/diagnostics/sqlite-contention always carries both counters (db_sqlite_utils snapshot);
+    # a payload without them is unmeasured -- never read as "0 lock waits".
+    lw_raw = sqlite.get("sqlite_lock_wait_count")
+    dl_raw = sqlite.get("sqlite_database_locked_count")
+    if lw_raw is None or dl_raw is None:
+        return {
+            "pass": False,
+            "classifications": ["SQLITE_METRICS_MISSING"],
+            "failures": ["sqlite-contention payload lacks lock-wait/locked counters"],
+            "runtime_env": env,
+        }
+    lock_wait = int(lw_raw)
+    db_locked = int(dl_raw)
     operator = sqlite.get("operator") or {}
     if (lock_wait > 0 or db_locked > 0) and not operator.get("show"):
         failures.append("DB_DEGRADED_NOT_SURFACED_FAIL")

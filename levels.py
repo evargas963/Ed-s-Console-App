@@ -326,15 +326,17 @@ def key_levels_to_plot_rows(
     # Spot and Regime rows are always kept separate.
     if dedup_pts >= 0 and spot is not None:
         # Separate non-level rows from level rows
-        special = [r for r in rows if r.get("_level_f", -1.0) < 0]
-        level_rows = [r for r in rows if r.get("_level_f", -1.0) >= 0]
+        # Every row builder above (_row / Spot / Regime) sets _level_f, _side and _raw_metric;
+        # the Regime row carries its own explicit -1.0 non-level marker. Index strictly.
+        special = [r for r in rows if r["_level_f"] < 0]
+        level_rows = [r for r in rows if r["_level_f"] >= 0]
 
         # Group by (rounded_level, side) — same strike + same side = confluence candidate
         from collections import defaultdict
         groups: dict[tuple, list[dict]] = defaultdict(list)
         for r in level_rows:
             lf = r["_level_f"]
-            side = r.get("_side", "")
+            side = r["_side"]
             # Round to nearest dedup_pts bucket
             bucket = round(lf / (dedup_pts if dedup_pts > 0 else 0.25))
             groups[(bucket, side)].append(r)
@@ -355,7 +357,7 @@ def key_levels_to_plot_rows(
                     return m.split()[0] if m.split() else m
 
                 def _row_priority(r: dict) -> int:
-                    m = r.get("_raw_metric", "")
+                    m = r["_raw_metric"]
                     if "Wall" in m:        return 4
                     if "Inflection" in m:  return 3
                     if "Pin" in m:         return 2
@@ -367,12 +369,12 @@ def key_levels_to_plot_rows(
                 # Build combined metric label from unique bases
                 seen_bases = []
                 for r in grp_sorted:
-                    base = _metric_base(r.get("_raw_metric", ""))
+                    base = _metric_base(r["_raw_metric"])
                     if base not in seen_bases:
                         seen_bases.append(base)
 
                 # Determine unified label suffix (Wall if any wall present, else highest)
-                label_suffix = "Wall" if any("Wall" in r.get("_raw_metric","") for r in grp_sorted) else                                "Pin"  if any("Pin"  in r.get("_raw_metric","") for r in grp_sorted) else ""
+                label_suffix = "Wall" if any("Wall" in r["_raw_metric"] for r in grp_sorted) else                                "Pin"  if any("Pin"  in r["_raw_metric"] for r in grp_sorted) else ""
 
                 # e.g. "Gamma + Delta + OI Wall"  or "Gamma + OI Pin"
                 combined_metric = " + ".join(seen_bases)
@@ -386,7 +388,7 @@ def key_levels_to_plot_rows(
                 # OE flag: propagate if any row in the group has it
                 oe_flag = ""
                 for r in grp:
-                    if "★ OE" in r.get("Metric", ""):
+                    if "★ OE" in r["Metric"]:  # every row builder sets Metric
                         oe_flag = " ★ OE"
                         break
 

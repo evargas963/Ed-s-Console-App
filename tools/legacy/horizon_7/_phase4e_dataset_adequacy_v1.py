@@ -165,7 +165,7 @@ WHERE s.timeframe = '1m'
 
     # Concentration: top ticker share
     tot_rows = len(rows)
-    top1 = tc.most_common(1)[0][1] if tc else 0
+    top1 = tc.most_common(1)[0][1] if tc else 0  # caps-ok: row COUNT of the top ticker; with no rows that count is genuinely 0
     top3 = sum(x for _, x in tc.most_common(3))
 
     out = {

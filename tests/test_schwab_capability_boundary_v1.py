@@ -90,7 +90,7 @@ def test_the_launcher_no_longer_exits_when_schwab_is_unavailable():
     bat = (REPO / "start_ed_console.bat").read_text(encoding="utf-8", errors="replace")
     lines = bat.splitlines()
 
-    schwab_at = next(i for i, ln in enumerate(lines) if "live_schwab_env.py --sanitize" in ln)
+    schwab_at = next(i for i, ln in enumerate(lines) if "live_schwab_env.py --sanitize" in ln)  # caps-ok: scanner false positive: next() here has NO default argument; a launcher without the sanitize line raises StopIteration and fails the test
     block, depth = [], 0
     for ln in lines[schwab_at:]:
         block.append(ln)

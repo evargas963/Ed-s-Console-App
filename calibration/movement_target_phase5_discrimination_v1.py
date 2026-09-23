@@ -109,7 +109,8 @@ def run(db_path: Path) -> dict[str, Any]:
         label_stats = {
             "governed_n": n_gov,
             "outcome_move_labeled_n": len(move_labeled),
-            "outcome_move_coverage_vs_governed": round(len(move_labeled) / n_gov, 6) if n_gov else 0.0,
+            # zero governed rows -> coverage undefined (None), not 0% coverage
+            "outcome_move_coverage_vs_governed": round(len(move_labeled) / n_gov, 6) if n_gov > 0 else None,
             "outcome_move_counts": dict(mc),
             "valid_dir_conditional_n": len(vd1),
             "valid_dir_up_down_balance": dict(dc),

@@ -110,7 +110,7 @@ def test_stage2_eligibility_is_experiment_eligible_and_empty(monkeypatch):
     reg = load_registry()
     eligible = stage2_eligible_targets(reg)
     assert eligible == []
-    assert targets_by_status(reg).get("EXPERIMENT_ELIGIBLE", []) == []
+    assert targets_by_status(reg).get("EXPERIMENT_ELIGIBLE", []) == []  # caps-ok: the assertion is that NO target is experiment-eligible; targets_by_status only creates keys for statuses that occur, so a missing key is exactly the asserted outcome
     contract = _load("stage2_experiment_contract_v1.json")
     assert contract["eligible_targets"]["currently_eligible"] == eligible
     # the rule must name the fail-closed selection function

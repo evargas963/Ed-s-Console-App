@@ -1189,7 +1189,11 @@ def probability_of_profit(dist: Mapping[str, Any], breakeven: float,
     d = dist["density"]
     lo, width, counts = float(d["lo"]), float(d["bin_width"]), list(d["counts"])
     hi = float(d["hi"])
-    total = sum(counts) or 1
+    total = sum(counts)
+    if total <= 0:
+        # CAPS (CALL_OR_DEFAULT): `sum(counts) or 1` turned an empty density into a measured
+        # 0.0 probability; with no mass there is no probability to report.
+        return None
     hit = 0
     for i, c in enumerate(counts):
         centre = lo + (i + 0.5) * width

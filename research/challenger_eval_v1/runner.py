@@ -53,7 +53,7 @@ def load_prereg() -> dict[str, Any]:
         raise PreregViolationError(f"prereg family inconsistent: computed {n} != n_tests={fam.get('n_tests')}")
     if set(fam.get("challengers") or []) != set(CHALLENGER_LOOKBACKS):
         raise PreregViolationError("prereg challenger roster diverged from code roster")
-    if prereg.get("primary_metric", {}).get("name", "").split(" ")[0] != "MCC":
+    if prereg.get("primary_metric", {}).get("name", "").split(" ")[0] != "MCC":  # caps-ok: fail-closed prereg check: an absent primary_metric.name reads '' which is != MCC and raises PreregViolationError
         raise PreregViolationError("prereg primary metric is not MCC — code and prereg diverged")
     return prereg
 
@@ -370,7 +370,7 @@ def _console_summary(report: dict[str, Any]) -> str:
             lines.append(f"  {key:>28}  n={t['n_scored']:>6}  -> UNDER_SAMPLED")
             continue
         ci = (t.get("bootstrap") or {}).get("ci95")
-        ci_txt = f"[{ci[0]:+.4f},{ci[1]:+.4f}]" if ci else "—"
+        ci_txt = f"[{ci[0]:+.4f},{ci[1]:+.4f}]" if ci else "—"  # caps-ok: console display only: '?' prints for a cell with no bootstrap CI, never parsed back into the report JSON
         delta = t.get("mcc_delta_vs_incumbent")
         delta_txt = f"{delta:+.4f}" if delta is not None else "n/a"
         lines.append(

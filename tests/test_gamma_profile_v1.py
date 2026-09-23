@@ -72,7 +72,7 @@ def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
 def test_profile_uses_dealer_sign_convention() -> None:
     """Calls add, puts subtract: an all-call book must be positive at every price."""
     chain, spot = _load_real_chain()
-    calls = [c for c in chain if str(c.get("putCall", "")).upper().startswith("C")]
+    calls = [c for c in chain if str(c["putCall"]).upper().startswith("C")]
     assert calls, "fixture must contain calls"
     prof = compute_gamma_profile(calls, spot, span_pct=0.10, steps=40)
     assert prof and all(v >= 0 for _, v in prof)

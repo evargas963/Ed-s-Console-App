@@ -68,7 +68,7 @@ def main() -> None:
             sql = _literal_sql_from_arg(node.args[0])
             if not sql:
                 continue
-            key = f"{rel}:{getattr(node, 'lineno', 0)}"
+            key = f"{rel}:{getattr(node, 'lineno', 0)}"  # caps-ok: ast.Call parsed from source always carries lineno; the default is unreachable
             out[key] = sql
 
     SNAP_DIR.mkdir(parents=True, exist_ok=True)

@@ -81,9 +81,9 @@ def scale_join_db(tmp_path):
 def test_scale_exact_join_no_ambiguity_validate_passes(scale_join_db):
     stats = backfill(scale_join_db, tol_sec=0.0)
     assert stats["updated"] == N_MATCH
-    assert stats.get("skipped_no_exact_match", 0) == N_UNMATCHED
-    assert stats.get("ambiguous_duplicate_snapshots", 0) == 0
-    assert stats.get("ambiguous_nearest_tie", 0) == 0
+    assert stats["skipped_no_exact_match"] == N_UNMATCHED
+    assert stats["skipped_ambiguous_duplicate_snapshots"] == 0
+    assert stats["skipped_ambiguous_nearest_tie"] == 0
 
     conn = sqlite3.connect(str(scale_join_db))
     conn.row_factory = sqlite3.Row

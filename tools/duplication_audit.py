@@ -543,12 +543,16 @@ def scan_duplicate_gates() -> list[Finding]:
     try:
         sys.path.insert(0, os.path.join(REPO, "tools"))
         import check_institutional_correctness as K
-    except Exception:                                       # noqa: BLE001
-        return []
+    except Exception as exc:                                # noqa: BLE001
+        # Unmeasured is not clean: an import failure used to return [] and read as
+        # "no duplicate gates". Surface it as a live finding instead.
+        return [Finding("D-GATE", "D-GATE:unmeasured",
+                        f"gate registry not importable, duplicate-gate scan did not run: "
+                        f"{type(exc).__name__}: {exc}", ["tools/check_institutional_correctness.py"])]
     STOP = set("the a an of to and or is are be for in on that this it its "
                "must never always when what why how not no with which".split())
     sigs: dict[frozenset, list[str]] = defaultdict(list)
-    for name, fn, enforced in getattr(K, "CHECKS", []):
+    for name, fn, enforced in K.CHECKS:  # the gate registry always defines CHECKS
         doc = (fn.__doc__ or "").strip().splitlines()
         if not doc:
             continue
@@ -615,7 +619,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.as_json:
         print(json.dumps([f.__dict__ for f in findings], indent=2))
-        return 1 if live else 0
+        return 1 if live else 0  # caps-ok: exit code IS the verdict (1 = unexempted duplication)
 
     print("DUPLICATION REGISTER — the total must reach zero (RC-265)")
     print(f"server: {'UP' if server_up() else 'DOWN — live scans skipped'}\n")
@@ -649,7 +653,7 @@ def main(argv: list[str] | None = None) -> int:
         for f in exempt:
             print(f"  {f.ident}\n      {f.accepted}")
 
-    return 1 if live else 0
+    return 1 if live else 0  # caps-ok: exit code IS the verdict (1 = unexempted duplication)
 
 
 if __name__ == "__main__":

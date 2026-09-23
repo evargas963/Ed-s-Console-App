@@ -326,9 +326,9 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
     """Return (last, chg_pct) from a single-ticker Schwab quote payload."""
     try:
         data = q_json.get(symbol, {})
-        quote = data.get("quote", {}) or {}
-        ext = data.get("extended", {}) or {}
-        reg = data.get("regular", {}) or {}
+        quote = data.get("quote", {}) or {}  # caps-ok: empty-dict stand-in for an absent Schwab sub-object; _last_traded_price reads it with .get -> None, so absence propagates as None (last=None), never a price
+        ext = data.get("extended", {}) or {}  # caps-ok: same; absent "extended" block contributes no price (None)
+        reg = data.get("regular", {}) or {}  # caps-ok: same; absent "regular" block contributes no price (None)
         last = _last_traded_price(quote, ext, reg)
         from numeric_contract import float_finite_or_none as _fin
         if last:
@@ -596,7 +596,7 @@ def patch_context_confluence_from_quote_ticks(
 
     def _patch_list(items: list) -> None:
         for item in items:
-            sym = str(getattr(item, "symbol", "") or "").upper()
+            sym = str(getattr(item, "symbol", "") or "").upper()  # caps-ok: lookup key only; "" matches no ticker in chg_by_ticker, so a symbol-less item is left unpatched (chg_pct stays None)
             if getattr(item, "chg_pct", None) is not None:
                 continue
             chg = _float_chg(chg_by_ticker.get(sym))
@@ -607,7 +607,7 @@ def patch_context_confluence_from_quote_ticks(
     _patch_list(getattr(ctx, "qqq_constituents", None) or [])
     _patch_list(getattr(ctx, "iwm_holdings", None) or [])
     for sq in getattr(ctx, "iwm_sectors", None) or []:
-        sym = str(getattr(sq, "symbol", "") or "").upper()
+        sym = str(getattr(sq, "symbol", "") or "").upper()  # caps-ok: lookup key only; "" matches no ticker, so the sector row is left unpatched (chg_pct stays None)
         if getattr(sq, "chg_pct", None) is not None:
             continue
         chg = _float_chg(chg_by_ticker.get(sym))
@@ -892,8 +892,8 @@ def proximity_alerts(
         dist = level - spot
         if abs(dist) > threshold:
             return
-        role  = getattr(level_obj, "role", "") or getattr(level_obj, "type_label", "") or ""
-        label = getattr(level_obj, "label", "") or getattr(level_obj, "row_label", "") or name_hint
+        role  = getattr(level_obj, "role", "") or getattr(level_obj, "type_label", "") or ""  # caps-ok: display-only alert wording; no role -> the generic "Key level" branch, never a wall/pin claim
+        label = getattr(level_obj, "label", "") or getattr(level_obj, "row_label", "") or name_hint  # caps-ok: display-only alert name; falls back to the list the row came from ("Wall"/"Pin"), which is true
         side  = "above" if dist >= 0 else "below"
         if "Magnet" in role or "Wall" in role:
             color   = "#dc2626" if side == "above" else "#2563eb"
@@ -1038,7 +1038,7 @@ def fetch_price_levels(
     if quote_raw:
         try:
             sym_node = quote_raw.get(symbol.upper()) or quote_raw.get(symbol) or {}
-            q = sym_node.get("quote", {}) or {}
+            q = sym_node.get("quote", {}) or {}  # caps-ok: empty-dict stand-in for an absent Schwab quote block; _sf reads each field through float_finite_or_none -> None, so no level is fabricated
             def _sf(key):
                 # single source: canonical finite reader. Raw float() admitted NaN/inf
                 # straight into today_open/high/low, and from there into the levels; the
@@ -1089,9 +1089,9 @@ def fetch_price_levels(
         pl.today_poc, pl.today_vah, pl.today_val = (
             carried["TODAY_POC"], carried["TODAY_VAH"], carried["TODAY_VAL"])
         pl.bars_today = snap.bars_used
-        pl.session_rth_positive_volume_bars = int(
-            getattr(snap, "session_rth_positive_volume_bars", 0) or 0
-        )
+        # Declared __slots__ field, always set by the level snapshot's __init__
+        # (liquidity_value_engine); strict so a missing count cannot read as 0 VWAP-input bars.
+        pl.session_rth_positive_volume_bars = int(snap.session_rth_positive_volume_bars)
         pl.level_generation = snap.generation
         pl.level_semantic_scope = "session_rth"
         pl.level_as_of_ts_utc = snap.as_of_ts_utc
@@ -1146,17 +1146,17 @@ def stamp_confluence_display_fields(mkt_ctx: "MarketContext | None") -> dict[str
     spy_push = _confluence_push_or_none(_cf)
     out: dict[str, object] = {
         "cf_weighted_push": spy_push,
-        "cf_label": getattr(_cf, "label", "—") if _cf is not None else "—",
-        "cf_color": getattr(_cf, "color", "#9ca3af") if _cf is not None else "#9ca3af",
+        "cf_label": getattr(_cf, "label", "—") if _cf is not None else "—",  # caps-ok: display-only badge text "—" for no read; the numeric push is carried separately as None (RC-365/F39) and nothing parses the label
+        "cf_color": getattr(_cf, "color", "#9ca3af") if _cf is not None else "#9ca3af",  # caps-ok: display-only neutral badge color for no read; not data
         "qqq_cf_weighted_push": _confluence_push_or_none(_qcf),
-        "qqq_cf_label": getattr(_qcf, "label", "—") if _qcf is not None else "—",
-        "qqq_cf_color": getattr(_qcf, "color", "#9ca3af") if _qcf is not None else "#9ca3af",
+        "qqq_cf_label": getattr(_qcf, "label", "—") if _qcf is not None else "—",  # caps-ok: display-only "—" badge text; qqq push carried separately as None
+        "qqq_cf_color": getattr(_qcf, "color", "#9ca3af") if _qcf is not None else "#9ca3af",  # caps-ok: display-only neutral badge color
         "iwm_holdings_cf_push": _confluence_push_or_none(_ihcf),
-        "iwm_holdings_cf_label": getattr(_ihcf, "label", "—") if _ihcf is not None else "—",
-        "iwm_holdings_cf_color": getattr(_ihcf, "color", "#9ca3af") if _ihcf is not None else "#9ca3af",
+        "iwm_holdings_cf_label": getattr(_ihcf, "label", "—") if _ihcf is not None else "—",  # caps-ok: display-only "—" badge text; push carried separately as None
+        "iwm_holdings_cf_color": getattr(_ihcf, "color", "#9ca3af") if _ihcf is not None else "#9ca3af",  # caps-ok: display-only neutral badge color
         "iwm_cf_push": _confluence_push_or_none(_icf),
-        "iwm_cf_label": getattr(_icf, "label", "—") if _icf is not None else "—",
-        "iwm_cf_color": getattr(_icf, "color", "#9ca3af") if _icf is not None else "#9ca3af",
+        "iwm_cf_label": getattr(_icf, "label", "—") if _icf is not None else "—",  # caps-ok: display-only "—" badge text; push carried separately as None
+        "iwm_cf_color": getattr(_icf, "color", "#9ca3af") if _icf is not None else "#9ca3af",  # caps-ok: display-only neutral badge color
         "iwm_participation_push": (
             iwm_blended_participation_push(ctx) if ctx is not None else None
         ),

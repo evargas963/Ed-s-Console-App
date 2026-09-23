@@ -596,7 +596,7 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         js = client.get("/static/rth_clock_authority.js")
         assert js.status_code == 200
         assert js.text == rth_clock_js_source()
-        r = client.get("/api/state", params={"ticker": "SPY"})
+        r = client.get("/api/state", params={"ticker": "SPY"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r.status_code == 200
         body = r.json()
         assert body.get("flow_imbalance") == 0.6
@@ -605,7 +605,7 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         assert body["flow_imbalance_label"] != book.get("label")
 
 
-def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) -> None:
+def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch, tmp_path) -> None:
     """Negative proof: the UI-serving path cannot return a stale disk blob or
     a prior 570/960 constant once time_et has moved or projection fails.
 
@@ -614,51 +614,54 @@ def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) ->
          400/800 — GET must return 400/800, never 111 or 570/960.
       2. Force rth_clock_js_source to raise — GET must fail closed (5xx), not
          fall through to StaticFiles serving the planted 111/222 blob.
+
+    RC-REHAB-1 (2026-09-23): the blob used to be planted in the REAL static/ directory and
+    restored in `finally`. Two overlapping runs (xdist or two processes in one worktree)
+    raced that restore: the second run captured the first's planted blob as "prior" and
+    wrote it back, leaving a 111/222 static/rth_clock_authority.js in the tree -- which
+    then failed test_rc345_rth_clock_boundary_has_one_authority in unrelated runs. The
+    mounted StaticFiles app is now pointed at tmp_path, so the repo tree is never written.
     """
     import pytest
 
     pytest.importorskip("fastapi")
     import time_et
     import server as srv
-    from pathlib import Path
     from starlette.testclient import TestClient
 
-    disk = Path(srv.APP_DIR) / "static" / "rth_clock_authority.js"
-    stale = b"window.ED_RTH_START_MINS=111;\nwindow.ED_RTH_END_MINS=222;\n"
-    prior = disk.read_bytes() if disk.exists() else None
-    try:
-        disk.write_bytes(stale)
-        monkeypatch.setattr(time_et, "RTH_START_MINS", 400)
-        monkeypatch.setattr(time_et, "RTH_END_MINS", 800)
-        with TestClient(srv.app) as client:
-            r = client.get("/static/rth_clock_authority.js")
-            assert r.status_code == 200
-            assert r.text == (
-                "window.ED_RTH_START_MINS=400;\nwindow.ED_RTH_END_MINS=800;\n"
-            )
-            assert "111" not in r.text
-            assert "222" not in r.text
-            assert "570" not in r.text
-            assert "960" not in r.text
+    static_mount = next(r for r in srv.app.routes if getattr(r, "name", None) == "static")  # caps-ok: scanner false positive: next() has NO default (the comma is inside the generator); a missing /static mount raises StopIteration and fails the test
+    (tmp_path / "rth_clock_authority.js").write_bytes(
+        b"window.ED_RTH_START_MINS=111;\nwindow.ED_RTH_END_MINS=222;\n")
+    (tmp_path / "probe.txt").write_text("planted-dir-is-live", encoding="utf-8")
+    monkeypatch.setattr(static_mount.app, "all_directories", [str(tmp_path)])
+    monkeypatch.setattr(time_et, "RTH_START_MINS", 400)
+    monkeypatch.setattr(time_et, "RTH_END_MINS", 800)
+    with TestClient(srv.app) as client:
+        # Control: the StaticFiles mount really is serving the planted directory, so the
+        # blob below WOULD be served if the request-time route did not own the path.
+        assert client.get("/static/probe.txt").text == "planted-dir-is-live"
+        r = client.get("/static/rth_clock_authority.js")
+        assert r.status_code == 200
+        assert r.text == (
+            "window.ED_RTH_START_MINS=400;\nwindow.ED_RTH_END_MINS=800;\n"
+        )
+        assert "111" not in r.text
+        assert "222" not in r.text
+        assert "570" not in r.text
+        assert "960" not in r.text
 
-        def _boom() -> str:
-            raise OSError("forced projection failure")
+    def _boom() -> str:
+        raise OSError("forced projection failure")
 
-        monkeypatch.setattr(time_et, "rth_clock_js_source", _boom)
-        with TestClient(srv.app, raise_server_exceptions=False) as client:
-            r = client.get("/static/rth_clock_authority.js")
-            assert r.status_code >= 500
-            body = r.text or ""
-            assert "ED_RTH_START_MINS=111" not in body
-            assert "ED_RTH_START_MINS=570" not in body
-            assert "ED_RTH_END_MINS=222" not in body
-            assert "ED_RTH_END_MINS=960" not in body
-    finally:
-        if prior is None:
-            if disk.exists():
-                disk.unlink()
-        else:
-            disk.write_bytes(prior)
+    monkeypatch.setattr(time_et, "rth_clock_js_source", _boom)
+    with TestClient(srv.app, raise_server_exceptions=False) as client:
+        r = client.get("/static/rth_clock_authority.js")
+        assert r.status_code >= 500
+        body = r.text or ""
+        assert "ED_RTH_START_MINS=111" not in body
+        assert "ED_RTH_START_MINS=570" not in body
+        assert "ED_RTH_END_MINS=222" not in body
+        assert "ED_RTH_END_MINS=960" not in body
 
 
 def test_rc345_imbalance_taxonomy_is_distinct_and_named() -> None:
@@ -1630,7 +1633,7 @@ def test_rc345_f25_cell_key_builders_are_behaviorally_canonical():
     for builder in ("_per_model_cell_key", "_confirm_cell_key", "_whole_stack_confirm_cell_key"):
         # locate the one-line body of each builder and assert it routes through ticker_storage_key
         lines = src.splitlines()
-        idx = next(i for i, l in enumerate(lines) if l.startswith(f"def {builder}("))
+        idx = next(i for i, l in enumerate(lines) if l.startswith(f"def {builder}("))  # caps-ok: scanner false positive: next() here has NO default argument; a missing builder def raises StopIteration and fails the test
         body = lines[idx + 1]
         assert "ticker_storage_key(anchor)" in body, f"{builder} must build the key from ticker_storage_key(anchor)"
         assert ".strip().upper()" not in body, f"{builder}: local .strip().upper() faucet reintroduced"
@@ -1720,7 +1723,7 @@ def test_rc345_f25_db_training_floor_stats_canonical_bind():
 
     # Recurrence lock: the function canonicalizes at entry; a raw local producer is rejected.
     lines = _read("training_cache.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def db_training_floor_stats("))
+    idx = next(i for i, l in enumerate(lines) if l.startswith("def db_training_floor_stats("))  # caps-ok: scanner false positive: next() here has NO default argument; a missing def raises StopIteration and fails the test
     body = "\n".join(lines[idx:idx + 40])
     assert "ticker = ticker_storage_key(ticker)" in body, (
         "db_training_floor_stats must canonicalize ticker at entry")
@@ -1740,7 +1743,7 @@ def test_rc345_f25_shared_sequence_context_meta_identity_canonical():
 
     # Source mutation guard: builder routes through the one authority, no local .upper().
     lines = _read("features/shared_sequence_context.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def _require_ticker("))
+    idx = next(i for i, l in enumerate(lines) if l.startswith("def _require_ticker("))  # caps-ok: scanner false positive: next() here has NO default argument; a missing def raises StopIteration and fails the test
     body = "\n".join(lines[idx:idx + 6])
     assert "ticker_storage_key(ticker)" in body, "_require_ticker must delegate to ticker_storage_key"
     assert ".strip().upper()" not in body, "_require_ticker: local .strip().upper() faucet reintroduced"
@@ -1866,7 +1869,7 @@ def test_rc345_f25_cache_skip_streak_key_canonical():
     assert tps.cache_skip_streak_key("spy", "1c") == "SPY:1c"  # non-dollar preserved
 
     lines = _read("training_pipeline_status.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def cache_skip_streak_key("))
+    idx = next(i for i, l in enumerate(lines) if l.startswith("def cache_skip_streak_key("))  # caps-ok: scanner false positive: next() here has NO default argument; a missing def raises StopIteration and fails the test
     body = "\n".join(lines[idx:idx + 8])
     assert "ticker_storage_key(ticker)" in body, "cache_skip_streak_key must delegate to the authority"
     assert "ticker.upper()" not in body, "cache_skip_streak_key: raw .upper() faucet reintroduced"

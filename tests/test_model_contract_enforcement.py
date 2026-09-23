@@ -313,6 +313,10 @@ def _make_complete_bundle(models_root, ticker, hz="1c"):
         "trained_at": "2026-07-01 00:00:00",
         "features": ["a"],
         "impute_medians": {"a": 0.0},
+        # ml_train.train_ticker always writes both into an XGB meta; ml_predict now
+        # requires them (CAPS RC-REHAB-1) instead of defaulting to {}.
+        "category_maps": {},
+        "vol_medians": {},
     }
     for kind, model_path, meta_path in bundle_artifact_paths(ticker, hz, bd):
         model_path.write_bytes(b"x")

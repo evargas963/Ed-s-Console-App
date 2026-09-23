@@ -43,7 +43,7 @@ def test_mc_fusion_n7_volatility_row_classified_true_analytic_after_upstream_tra
         "tags": "DEFAULT_ZERO_OR",
         "names": "volatility",
         "candidate_schwab_fields": "chains.callExpDateMap.*.volatility|chains.putExpDateMap.*.volatility|chains.volatility",
-        "code": 'vol = float(mc_output.get("volatility") or 0.0)',
+        "code": 'vol = float(mc_output.get("volatility") or 0.0)',  # caps-ok: scanner false positive: code-string fixture fed to the CSV crosswalk classifier
     }
     classification, _reason = classify(dict(row))
     assert classification == "TRUE_ANALYTIC_REVIEW"

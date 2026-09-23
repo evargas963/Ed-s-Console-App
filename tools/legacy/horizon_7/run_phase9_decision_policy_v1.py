@@ -61,12 +61,14 @@ def _interp_piecewise(x: float, xs: list[float], ys: list[float]) -> float:
 def _apply_mapping(raw: float, mapping: dict) -> float:
     t = mapping.get("type")
     if t in ("isotonic", "bin_mono"):
-        xs = [float(v) for v in mapping.get("x_thresholds", [])]
-        ys = [float(v) for v in mapping.get("y_thresholds", [])]
+        # A piecewise mapping without its knots is a broken artifact, not an identity map.
+        xs = [float(v) for v in mapping["x_thresholds"]]
+        ys = [float(v) for v in mapping["y_thresholds"]]
         return max(0.0, min(1.0, _interp_piecewise(float(raw), xs, ys)))
     if t == "platt":
-        a = float(mapping.get("coef", 0.0))
-        b = float(mapping.get("intercept", 0.0))
+        # A Platt mapping without coef/intercept would silently emit p=0.5 for every row.
+        a = float(mapping["coef"])
+        b = float(mapping["intercept"])
         z = a * float(raw) + b
         if z >= 0:
             ez = math.exp(-z)
@@ -98,7 +100,7 @@ def main() -> int:
 
     # Thresholds: choose strongest edge with sample >= 120 per head/hz.
     thr_map: dict[tuple[str, str], dict] = {}
-    for r in rem.get("thresholds", []):
+    for r in rem["thresholds"]:
         key = (r["head"], r["horizon"])
         cur = thr_map.get(key)
         if cur is None or float(r["edge_delta"]) > float(cur["edge_delta"]):
@@ -158,11 +160,14 @@ def main() -> int:
                 continue
             map_cfg = rem["final_calibration_functions"]["move"][hz]["mapping"]
             p_move = _apply_mapping(float(p_raw), map_cfg)
-            thr = float(thr_map.get(("move", hz), {}).get("threshold", 1.1))
+            # No selected movement threshold for this horizon -> threshold stays None
+            # (reported as such) and the row cannot reach an entry tier.
+            move_thr_row = thr_map.get(("move", hz))
+            thr = None if move_thr_row is None else float(move_thr_row["threshold"])
             pct = percentile(hz, p_move)
-            if p_move >= thr + tier_margin and pct >= 0.92:
+            if thr is not None and p_move >= thr + tier_margin and pct >= 0.92:
                 tier = "TIER_1"
-            elif p_move >= thr + 0.02 and pct >= 0.80:
+            elif thr is not None and p_move >= thr + 0.02 and pct >= 0.80:
                 tier = "TIER_2"
             else:
                 tier = "TIER_3"
@@ -174,15 +179,19 @@ def main() -> int:
                 d_map = rem["final_calibration_functions"]["dir"][hz]["mapping"]
                 d_cal = _apply_mapping(d_raw, d_map)
                 dir_prob = d_cal
-                dir_thr = float(thr_map.get(("dir", hz), {}).get("threshold", 0.60))
-                if d_cal >= dir_thr:
-                    direction_bias = "long"
-                elif d_cal <= (1.0 - dir_thr):
-                    direction_bias = "short"
+                # Only a selected direction threshold may assert a bias; without one the
+                # threshold is reported as None and no long/short bias is claimed.
+                dir_thr_row = thr_map.get(("dir", hz))
+                if dir_thr_row is not None:
+                    dir_thr = float(dir_thr_row["threshold"])
+                    if d_cal >= dir_thr:
+                        direction_bias = "long"
+                    elif d_cal <= (1.0 - dir_thr):
+                        direction_bias = "short"
             per_row.append(
                 {
                     "ticker": t,
-                    "ts_utc": float(d.get("ts_utc") or 0.0),
+                    "ts_utc": float(d["ts_utc"]),
                     "horizon": hz,
                     "move_prob": round(p_move, 6),
                     "move_threshold": thr,
@@ -230,20 +239,22 @@ def main() -> int:
     trade_count = len(signals)
     sel_count = len(selected)
     move_hits = [1 if s.get("outcome_move") == "move" else 0 for s in signals]
-    move_rate = statistics.fmean(move_hits) if move_hits else 0.0
+    # No signals -> no hit rate (None), not a measured 0% hit rate.
+    move_rate = statistics.fmean(move_hits) if move_hits else None
     base_move = []
     for hz in mv_hz:
         ys = [1 if dict(r).get(f"outcome_move_{hz}") == "move" else 0 for r in rows if dict(r).get(f"outcome_move_{hz}") in ("move", "no_move")]
         if ys:
             base_move.append(statistics.fmean(ys))
-    base_rate = statistics.fmean(base_move) if base_move else 0.0
+    base_rate = statistics.fmean(base_move) if base_move else None
+    rates_known = move_rate is not None and base_rate is not None
 
     out = {
         "created_ts_utc": time.time(),
         "db_path": str(args.db.resolve()),
         "ticker_universe_used": allowed_tickers,
         "horizons_used": {"movement": mv_hz, "direction": dr_hz},
-        "excluded_horizons": rem.get("excluded_family_horizon", []),
+        "excluded_horizons": rem["excluded_family_horizon"],
         "thresholds_selected": {f"{k[0]}:{k[1]}": v for k, v in thr_map.items()},
         "policy_rules": {
             "signal_tiers": {
@@ -283,12 +294,13 @@ def main() -> int:
             "rows_evaluated": total_rows,
             "signals_generated": trade_count,
             "selected_signals": sel_count,
-            "signal_rate": round(trade_count / total_rows, 6) if total_rows else 0.0,
-            "move_hit_rate_on_signals": round(move_rate, 6),
-            "baseline_move_rate": round(base_rate, 6),
-            "edge_delta": round(move_rate - base_rate, 6),
+            "signal_rate": round(trade_count / total_rows, 6) if total_rows else None,
+            "move_hit_rate_on_signals": round(move_rate, 6) if move_rate is not None else None,
+            "baseline_move_rate": round(base_rate, 6) if base_rate is not None else None,
+            "edge_delta": round(move_rate - base_rate, 6) if rates_known else None,
             "not_excessive_trading": trade_count < max(1, int(0.35 * total_rows)),
-            "edge_positive": move_rate > base_rate,
+            # An unmeasurable edge is not a positive edge: verdict stays FAIL.
+            "edge_positive": rates_known and move_rate > base_rate,
         },
     }
 

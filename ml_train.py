@@ -845,7 +845,7 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
     if spot is None or spot <= 0:
         return None
 
-    tkr = ticker or snapshot.get("ticker", "?")
+    tkr = ticker or snapshot.get("ticker", "?")  # caps-ok: tkr is used ONLY to build the vol_median_{tkr}_{h}_{m} lookup key; "?" matches no fitted median, so volume_ratio stays absent (NaN) -- no value is fabricated
     row = {}
 
     def _f(key):
@@ -887,7 +887,7 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
         if col not in skip:
             row[col] = _f(col)
 
-    if np.isnan(row.get("qqq_vs_spy", np.nan)):
+    if np.isnan(row.get("qqq_vs_spy", np.nan)):  # caps-ok: NaN is this feature row's missing-value marker (XGBoost missing, same as training's to_numeric coerce); absent/NaN qqq_vs_spy only triggers the numeric-twin lookup, which is itself NaN when absent
         # Producer split: live SignalInput carries the 'leading'/'lagging'/'inline' label under
         # qqq_vs_spy and the numeric spread under qqq_vs_spy_delta; the DB/training column holds
         # the numeric spread (server snapshot writer). Use the numeric twin for serve parity.
@@ -937,20 +937,20 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
     row["minutes_since_open"] = float(_mopen)
 
     row["body_range_ratio"] = float(fk_body_range_ratio(
-        row.get("candle_body_pct", np.nan), row.get("candle_range_pct", np.nan)))
+        row.get("candle_body_pct", np.nan), row.get("candle_range_pct", np.nan)))  # caps-ok: NaN is the missing-value marker of this XGB feature row (training's to_numeric coerce yields the same NaN); fk_body_range_ratio propagates NaN, nothing is invented
 
-    ng = row.get("net_gamma", np.nan)
+    ng = row.get("net_gamma", np.nan)  # caps-ok: NaN = missing marker of this XGB feature row; fk_dgex/fk_sign_positive propagate NaN (documented "missing is never 'not positive'")
     row["dgex"] = float(fk_dgex(ng, _f("net_gamma_prev")))
     row["dgex_positive"] = float(fk_sign_positive(row["dgex"]))
-    nd = row.get("net_delta", np.nan)
-    cn = row.get("charm_net", np.nan)
+    nd = row.get("net_delta", np.nan)  # caps-ok: NaN = missing marker; fk_sign_positive / fk_agreement_positive return NaN for an absent leg
+    cn = row.get("charm_net", np.nan)  # caps-ok: NaN = missing marker; fk_agreement_positive returns NaN when either leg is absent
     row["gamma_positive"] = float(fk_sign_positive(ng))
     row["delta_positive"] = float(fk_sign_positive(nd))
     row["charm_delta_agree"] = float(fk_agreement_positive(nd, cn))
 
-    sc = row.get("spy_chg_pct", np.nan)
-    qc = row.get("qqq_chg_pct", np.nan)
-    ic = row.get("iwm_chg_pct", np.nan)
+    sc = row.get("spy_chg_pct", np.nan)  # caps-ok: NaN = missing marker; fk_alignment multiplies (NaN propagates) and fk_cross_change_stats needs >= 2 finite legs
+    qc = row.get("qqq_chg_pct", np.nan)  # caps-ok: NaN = missing marker; propagates through fk_alignment / fk_cross_change_stats
+    ic = row.get("iwm_chg_pct", np.nan)  # caps-ok: NaN = missing marker; propagates through fk_alignment / fk_cross_change_stats
     row["spy_qqq_align"] = float(fk_alignment(sc, qc))
     row["spy_iwm_align"] = float(fk_alignment(sc, ic))
     _cavg, _cstd = fk_cross_change_stats(sc, qc, ic)
@@ -992,12 +992,13 @@ def engineer_single_snapshot(snapshot: dict, category_maps: dict,
 
     from lstm_data import CONFLUENCE_FEATURES
 
+    # CAPS RC-REHAB-1: serve-side confluence now goes through the same _f reader as every
+    # other column (None / non-numeric -> NaN), matching training's
+    # pd.to_numeric(errors="coerce") in engineer_features. It used to write 0.0 for a
+    # missing or non-numeric cf_* value -- a fabricated reading AND a train/serve skew
+    # (training saw NaN for the same absence).
     for cf in CONFLUENCE_FEATURES:
-        v = snapshot.get(cf)
-        try:
-            row[cf] = float(v) if v is not None else 0.0
-        except (TypeError, ValueError):
-            row[cf] = 0.0
+        row[cf] = _f(cf)
 
     return pd.DataFrame([{fn: row.get(fn, np.nan) for fn in feature_names}])
 
@@ -1050,15 +1051,23 @@ def _xgb_append_only_ok(prev_fp: dict, curr_fp: dict) -> bool:
     from training_cache import _normalize_data_fp
 
     a, b = _normalize_data_fp(prev_fp), _normalize_data_fp(curr_fp)
-    if ticker_storage_key(str(a.get("ticker", ""))) != ticker_storage_key(str(b.get("ticker", ""))):
+    # CAPS RC-REHAB-1: this is a GATE (warm-start is only legal on proven append-only growth),
+    # so every compared field must be PRESENT on both sides. It used to default a missing
+    # ticker to "" (two ticker-less fps compared equal), and a missing max_ts_utc/row_count to
+    # 0 (a prior fp lacking them always passed the "non-shrinking" test). Missing -> False.
+    # _normalize_data_fp already canonicalizes the ticker ("" when absent).
+    ta, tb = a.get("ticker"), b.get("ticker")
+    if not ta or ta != tb:
         return False
     if a.get("min_ts_utc") is None or b.get("min_ts_utc") is None:
         return False
     if abs(float(a["min_ts_utc"]) - float(b["min_ts_utc"])) > 1e-6:
         return False
-    if float(b.get("max_ts_utc") or 0) + 1e-9 < float(a.get("max_ts_utc") or 0):
+    a_max, b_max = a.get("max_ts_utc"), b.get("max_ts_utc")
+    if a_max is None or b_max is None or float(b_max) + 1e-9 < float(a_max):
         return False
-    if int(b.get("row_count", 0)) < int(a.get("row_count", 0)):
+    a_rc, b_rc = a.get("row_count"), b.get("row_count")
+    if a_rc is None or b_rc is None or int(b_rc) < int(a_rc):
         return False
     return True
 
@@ -1126,7 +1135,7 @@ def train_ticker(
     # exact legacy full-df behavior.
     from ml_data_common import time_ordered_tail_split
 
-    train_end, n_val = (len(df), 0) if evaluate_only else time_ordered_tail_split(len(df))
+    train_end, n_val = (len(df), 0) if evaluate_only else time_ordered_tail_split(len(df))  # caps-ok: branch on the evaluate_only bool flag -- evaluate-only fits nothing, so "no holdout (n_val=0), whole frame" is the real split, not a default
     _fit_end = train_end if (n_val > 0 and not evaluate_only) else None
     # RC-340 (DEFECT B): forward the caller's DB so the confluence authority queries the
     # SAME source the training rows came from. This call previously dropped it, so a
@@ -1261,11 +1270,16 @@ def train_ticker(
         if (
             prev_clf is not None
             and prev_meta is not None
-            and str(prev_meta.get("preprocessing_version", "")) == str(_PREPROC_V)
+            # CAPS RC-REHAB-1: absent keys read as None and can never match (warm-start is
+            # refused); target_mode no longer defaults to triclass -- a meta that does not
+            # STATE its target mode does not get to warm-start a model of any mode.
+            and prev_meta.get("preprocessing_version") is not None
+            and str(prev_meta["preprocessing_version"]) == str(_PREPROC_V)
             and _xgb_append_only_ok(prior_data_fingerprint, current_data_fingerprint)
             and prev_meta.get("features") == feat_names
             and prev_meta.get("target") == target_col
-            and str(prev_meta.get("target_mode", TARGET_MODE_TRICLASS)).lower() == tm
+            and prev_meta.get("target_mode") is not None
+            and str(prev_meta["target_mode"]).lower() == tm
             and xgb_meta_contract_ok(prev_meta)
             and hasattr(prev_clf, "get_booster")
         ):
@@ -1463,10 +1477,14 @@ def main():
 
     if len(tickers) > 1:
         print(f"\n{'='*60}\nSUMMARY\n{'='*60}")
+        # CAPS RC-REHAB-1: a ticker whose result lacks edge / cv accuracy prints "n/a"; it
+        # used to print a measured-looking "acc=0.0% edge=+0.0pp".
         for tkr, r in results.items():
-            edge = r.get("edge", 0) * 100
-            acc = r.get("cv", {}).get("avg_accuracy", 0)
-            print(f"  {tkr:8s}  acc={acc:.1%}  edge={edge:+.1f}pp")
+            edge = r.get("edge")
+            acc = (r.get("cv") or {}).get("avg_accuracy")  # caps-ok: a result without a cv block has no avg_accuracy -> None -> printed "n/a" below, never 0
+            acc_s = f"{acc:.1%}" if acc is not None else "n/a"  # caps-ok: display-only CLI placeholder for an absent accuracy, never parsed back
+            edge_s = f"{edge * 100:+.1f}pp" if edge is not None else "n/a"  # caps-ok: display-only CLI placeholder for an absent edge, never parsed back
+            print(f"  {tkr:8s}  acc={acc_s}  edge={edge_s}")
 
 
 if __name__ == "__main__":

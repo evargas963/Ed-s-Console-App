@@ -265,8 +265,8 @@ def tick_triggers_coherent_refresh(
     except Exception:
         log.warning("tick_triggers: session_bucket check failed — scheduling refresh", exc_info=True)
         return True
-    pct_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_PCT", str(TICK_REFRESH_SPOT_PCT_DEFAULT)))
-    abs_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_ABS", str(TICK_REFRESH_SPOT_ABS_DEFAULT)))
+    pct_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_PCT", str(TICK_REFRESH_SPOT_PCT_DEFAULT)))  # caps-ok: operator env knob; default is the named constant TICK_REFRESH_SPOT_PCT_DEFAULT
+    abs_thr = float(os.environ.get("ED_TICK_REFRESH_SPOT_ABS", str(TICK_REFRESH_SPOT_ABS_DEFAULT)))  # caps-ok: operator env knob; default is the named constant TICK_REFRESH_SPOT_ABS_DEFAULT
 
 
     ns: Optional[float] = None

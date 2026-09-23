@@ -141,7 +141,7 @@ def sync_perf_json_from_register(rows: list[dict[str, str]]) -> None:
     for proof in PROOF_FILES:
         path = PERF_DIR / proof
         doc = json.loads(path.read_text(encoding="utf-8"))
-        rl = doc.setdefault("register_link", {})
+        rl = doc.setdefault("register_link", {})  # caps-ok: creates the register_link container this binder writes into
         rl["status"] = "bound_retroactive"
         ids = sorted(by_proof[proof])
         rl["replaced_register_ids"] = ids
@@ -150,7 +150,7 @@ def sync_perf_json_from_register(rows: list[dict[str, str]]) -> None:
 
     gate = PERF_DIR / "pp_v4b_schwab_gate_eleven_test_bundle.json"
     doc = json.loads(gate.read_text(encoding="utf-8"))
-    rl = doc.setdefault("register_link", {})
+    rl = doc.setdefault("register_link", {})  # caps-ok: creates the register_link container this binder writes into
     rl["status"] = "composite_bundle_retroactive"
     rl["wrapped_proof_ids"] = sorted(PROOF_FILES)
     rl["replaced_register_ids"] = sorted(union)
@@ -208,7 +208,7 @@ def initial_bind_from_id_sets() -> None:
         rid = (row.get("register_id") or "").strip()
         if rid not in all_ids:
             continue
-        proof_name = next((p for p, ids in proof_to_ids.items() if rid in ids), None)
+        proof_name = next((p for p, ids in proof_to_ids.items() if rid in ids), None)  # caps-ok: None = no proof binds this register id; the next line skips it
         if proof_name is None:
             continue
         picker = _PICKERS[proof_name]

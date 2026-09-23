@@ -359,7 +359,7 @@ def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
     _iv_history = [
         float(r.get("iv_level"))
         for r in _iv_hist_rows
-        if r.get("iv_level") is not None and float(r.get("iv_level", 0)) > 0
+        if r.get("iv_level") is not None and float(r["iv_level"]) > 0
     ]
     if _atm_iv and _ed_db and _tick_ts is not None and _iv_history:
         _iv_rank = compute_iv_rank(_atm_iv, _iv_history)
@@ -381,7 +381,7 @@ def test_pressure_label_unavailable_when_no_dpi_or_hedging_flow():
 # FIND-SERVERPY-11
 def test_r_units_none_default_not_zero_float():
     src = _server_src()
-    assert 'getattr(ms, "r_units", 0.0)' not in src
+    assert 'getattr(ms, "r_units", 0.0)' not in src  # caps-ok: scanner false positive: forbidden-pattern literal asserted ABSENT from server.py
     assert 'getattr(ms, \'r_units\', 0.0)' not in src
 
 

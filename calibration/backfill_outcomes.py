@@ -56,7 +56,7 @@ def _count_snapshots_at_exact_ts(
         get_snapshot_sql("calibration/backfill_outcomes.py:57"),
         (ticker, ts),
     ).fetchone()
-    return int(r["n"] if r else 0)
+    return int(r["n"])  # an aggregate COUNT(*) always returns exactly one row
 
 
 def resolve_snapshot_for_backfill(

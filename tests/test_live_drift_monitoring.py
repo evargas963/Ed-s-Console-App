@@ -135,7 +135,7 @@ def test_missing_model_dirs_emits_warning_and_unavailable_summary(tmp_path: Path
     assert pl["ok"] is True
     assert pl["model_freshness_summary"]["state"] == "unavailable"
     assert pl["model_freshness_summary"]["reason_code"] == REASON_MODEL_DIR_UNAVAILABLE
-    codes = [s.get("reason_code") for s in pl.get("signals", [])]
+    codes = [s["reason_code"] for s in pl["signals"]]
     assert REASON_MODEL_DIR_UNAVAILABLE in codes
 
 
@@ -186,7 +186,7 @@ def test_recent_slice_n_below_min_samples_statistical_unavailable(tmp_path: Path
         )
     assert pl["calibration_drift_summary"]["state"] == "unavailable"
     assert pl["calibration_drift_summary"]["reason_code"] == REASON_RECENT_SLICE_INSUFFICIENT
-    codes = [s.get("reason_code") for s in pl.get("signals", [])]
+    codes = [s["reason_code"] for s in pl["signals"]]
     assert REASON_CALIBRATION_DRIFT_MATERIAL not in codes
 
 
@@ -309,7 +309,7 @@ def test_corrupt_scheduler_manifest_emits_invalid_signal(tmp_path: Path, caplog:
     with caplog.at_level(logging.WARNING, logger="arch_competition.live_drift_monitoring"):
         payload = build_live_drift_monitoring_payload(tmp_path, "1c", "SPY", db_path=None)
     assert payload["ok"] is True
-    codes = [s.get("reason_code") for s in payload.get("signals", [])]
+    codes = [s["reason_code"] for s in payload["signals"]]
     assert REASON_MODEL_MANIFEST_INVALID in codes
     assert any("invalid scheduler manifest" in r.message for r in caplog.records)
 
@@ -461,5 +461,5 @@ def test_calibration_drift_material_emits_signal_when_recent_slice_degrades(tmp_
             recent_rth_sessions=5,
             calibration_ece_drift_critical=0.12,
         )
-    codes = [s.get("reason_code") for s in pl.get("signals", [])]
+    codes = [s["reason_code"] for s in pl["signals"]]
     assert REASON_CALIBRATION_DRIFT_MATERIAL in codes

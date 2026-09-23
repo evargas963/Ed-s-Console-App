@@ -143,7 +143,7 @@ def scan_file(path: Path) -> list[tuple[int, str, str]]:
             var = m.group("var")
             rhs = m.group("rhs")
             src_m = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\.get\(|\[)", rhs)
-            src = src_m.group(1) if src_m else ""
+            src = src_m.group(1) if src_m else ""  # caps-ok: no recognisable source name -> not in SOURCE_DENYLIST, so the var is still tracked (fail-toward-flag)
             if fld in VENDOR_FIELDS and src in SOURCE_DENYLIST:
                 vendor_vars.pop(var, None)  # already-parsed payload / internal output -> safe
             elif fld in VENDOR_FIELDS and not _rhs_uses_canonical(rhs):

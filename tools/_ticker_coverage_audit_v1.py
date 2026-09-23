@@ -63,7 +63,7 @@ def main() -> None:
             ).fetchall()
         ]
         gaps = [ts_list[i] - ts_list[i - 1] for i in range(1, len(ts_list))]
-        max_gap = max(gaps) if gaps else 0.0
+        max_gap = max(gaps) if gaps else None  # caps-ok: fewer than two rows -> no gap is measurable (None), never a 0-second gap
         by_day = conn.execute(
             """
             SELECT strftime('%Y-%m-%d', ts_utc, 'unixepoch') AS d, COUNT(*) AS c
@@ -83,8 +83,8 @@ def main() -> None:
                 "min_ts_utc": r["min_ts"],
                 "max_ts_utc": r["max_ts"],
                 "distinct_utc_days": int(r["n_days"]),
-                "per_day_row_count_min_max": [min(day_counts), max(day_counts)] if day_counts else [0, 0],
-                "max_gap_seconds_between_consecutive_rows": round(max_gap, 3),
+                "per_day_row_count_min_max": [min(day_counts), max(day_counts)] if day_counts else None,  # caps-ok: no day rows -> range undefined (None)
+                "max_gap_seconds_between_consecutive_rows": round(max_gap, 3) if max_gap is not None else None,
                 "logging_universe_category": in_lu,
                 "recent_tail_7d_heuristic": recent_tail,
             }

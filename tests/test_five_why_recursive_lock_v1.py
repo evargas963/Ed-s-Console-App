@@ -16,7 +16,7 @@ _P = Path("governance/root_cause_log.md")
 
 
 def _row(rc="RC-90", status="OPEN", opened="2026-07-24", why=None, fix=None):
-    why = why if why is not None else "(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: the cause"
+    why = why if why is not None else "(1) a -> (2) b -> (3) c -> (4) d -> (5) ROOT: the cause"  # caps-ok: fixture row builder: an explicit why argument wins, otherwise the helper's well-formed five-link chain is used
     fix = fix if fix is not None else "NOT FIXED - scoped"
     return f"| {rc} | {status} | {opened} | 2026-08-08 | defect text | {why} | {fix} |"
 

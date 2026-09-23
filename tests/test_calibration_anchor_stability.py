@@ -43,9 +43,9 @@ def test_unanchored_trusted_row_excluded_from_phase3_labeled_sample(tmp_path):
     assert ca["root_cause_miss_sum_check"] is True
 
     p3 = analyze_phase3(db_path)
-    assert p3.get("calibration_rows", 0) == 0
-    ex = (p3.get("provenance") or {}).get("excluded_by_reason") or {}
-    assert ex.get("rows_without_bar_anchor_BAR_ANCHOR_V1", 0) >= 1
+    assert p3["calibration_rows"] == 0
+    ex = p3["provenance"]["excluded_by_reason"]
+    assert ex["rows_without_bar_anchor_BAR_ANCHOR_V1"] >= 1
 
 
 def test_anchored_trusted_row_passes_anchor_audit_and_enters_phase3_sample(tmp_path):
@@ -82,5 +82,5 @@ def test_anchored_trusted_row_passes_anchor_audit_and_enters_phase3_sample(tmp_p
     assert ca["trusted_rows_without_anchor"] == 0
 
     p3 = analyze_phase3(db_path)
-    assert p3.get("calibration_rows", 0) == 1
-    assert (p3.get("provenance") or {}).get("labeled_sample_count") == 1
+    assert p3["calibration_rows"] == 1
+    assert p3["provenance"]["labeled_sample_count"] == 1

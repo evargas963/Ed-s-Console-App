@@ -141,7 +141,7 @@ def db_coverage_report(
 
     # CSV table (machine-friendly table)
     buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=list(rows_out[0].__dict__.keys()) if rows_out else [])
+    w = csv.DictWriter(buf, fieldnames=list(rows_out[0].__dict__.keys()) if rows_out else [])  # caps-ok: CSV column list; with no rows nothing is written (header/rows gated on `if rows_out`), so [] never emits data
     if rows_out:
         w.writeheader()
         for r in rows_out:

@@ -171,10 +171,10 @@ def backfill(
         "rows_considered": len(rows),
         "rows_updated": updated,
         "rows_skipped": skipped,
-        "flow_source_book": by_src.get("book", 0),
+        "flow_source_book": by_src.get("book", 0),  # caps-ok: provenance bucket counter; no row landed in the "book" bucket means a true count of 0
         # flow-imbalance provenance bucket counts (not Schwab totalVolume primitive)
         "flow_source_volume": (by_src["volume"] if "volume" in by_src else 0),
-        "flow_source_none": by_src.get("none", 0),
+        "flow_source_none": by_src.get("none", 0),  # caps-ok: provenance bucket counter; no row landed in the "none" bucket means a true count of 0
     }
 
 

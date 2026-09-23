@@ -195,7 +195,7 @@ def _call_name(node: ast.Call) -> str:
     fn = node.func
     if isinstance(fn, ast.Name):
         return fn.id
-    return getattr(fn, "attr", "") or ""
+    return getattr(fn, "attr", "") or ""  # caps-ok: AST duck typing: only ast.Attribute callees have .attr; any other callee (Subscript, Call, Lambda) has no simple name and "" matches no helper name
 
 
 def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
@@ -203,7 +203,7 @@ def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
     owner: dict[int, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            end = getattr(node, "end_lineno", node.lineno)
+            end = getattr(node, "end_lineno", node.lineno)  # caps-ok: ast FunctionDef always carries end_lineno on py3.8+; fallback to the def line (the next line also maps None to lineno) only narrows the owner span
             for ln in range(node.lineno, (end or node.lineno) + 1):
                 owner[ln] = node.name
     return owner
@@ -335,7 +335,7 @@ def level_alias_value_violations(rel_path: str, source: str,
             val = _dict_key_value(node, value_key)
             if val is None:
                 continue
-            if _escaped(source, getattr(val, "lineno", node.lineno), lines):
+            if _escaped(source, getattr(val, "lineno", node.lineno), lines):  # caps-ok: every ast.expr carries lineno; the fallback is the enclosing Dict node line, i.e. the same source location, used only to look for an escape marker
                 continue
             expr = ast.unparse(val) if hasattr(ast, "unparse") else ""
             if any(tok in expr for tok in CARRIAGE_TOKENS):
@@ -353,9 +353,9 @@ def level_alias_value_violations(rel_path: str, source: str,
                             break
             if reason is None:
                 continue
-            fn = owner.get(getattr(val, "lineno", node.lineno), "<module>")
+            fn = owner.get(getattr(val, "lineno", node.lineno), "<module>")  # caps-ok: every ast.expr carries lineno; fallback is the enclosing Dict line (same location) for the owner lookup; "<module>" is the stated label for module-level code
             out.append(
-                f"{rel}:{getattr(val, 'lineno', node.lineno)}: {fn}() emits level "
+                f"{rel}:{getattr(val, 'lineno', node.lineno)}: {fn}() emits level "  # caps-ok: every ast.expr carries lineno; fallback is the enclosing Dict line, used only in the violation message location
                 f"{lid!r} with {reason} — a level row must carry the canonical "
                 f"snapshot's value for this (ticker, level_id, semantic_scope, "
                 f"generation), not produce its own."

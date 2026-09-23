@@ -139,7 +139,7 @@ def run_staged_shadow_search(
             for extra in extras:
                 esw = None
                 if extra:
-                    esw = {extra: WEIGHT_BAND_SCALARS.get("MEDIUM", 1.0)}
+                    esw = {extra: WEIGHT_BAND_SCALARS["MEDIUM"]}
                 if pn:
                     run = run_order_variant(
                         db,
@@ -323,7 +323,9 @@ def synthesize_per_feature_recommendations(
         ex = (t.get("trial_key") or {}).get("extra_soft")
         if not ex:
             continue
-        j = float((t.get("overlap_vs_heuristic") or {}).get("jaccard") or 0.0)
+        # Every staged trial carries _overlap_metrics(...)["jaccard"]; a missing one must raise,
+        # not enter the survival mean as a fabricated 0.0 overlap.
+        j = float(t["overlap_vs_heuristic"]["jaccard"])
         if t.get("tier_stop_viable"):
             extra_survival[ex].append(j)
 
@@ -514,7 +516,7 @@ def diagnose_overlay_match_counts(
         ).fetchone()[0]
         stages.append({"stage": "plus_distance_buckets_resolved_zone", "count": n7})
 
-    first_zero = next((s["stage"] for s in stages if s["count"] == 0), None)
+    first_zero = next((s["stage"] for s in stages if s["count"] == 0), None)  # caps-ok: None is the true answer "no stage reached a zero count", served as first_zero_count_stage=null
     return {
         "schema": "overlay_match_count_diagnosis_v1",
         "ticker": t,

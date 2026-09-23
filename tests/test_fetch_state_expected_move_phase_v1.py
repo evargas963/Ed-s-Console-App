@@ -52,7 +52,7 @@ def test_falls_back_to_iv_model_when_no_contracts_available():
 
     assert result.em_straddle == {"straddle": None, "em_pts": None, "upper": None, "lower": None}
     assert result.em_band_source == "IV_MODEL"
-    hours_rem = hours_until_session_close_et(NOW) or 0.0
+    hours_rem = hours_until_session_close_et(NOW) or 0.0  # caps-ok: mirrors server_state_signals: None only when no session is open, where 0 hours remaining is true
     expected_iv = compute_expected_move_iv(450.0, 18.5, hours_rem)
     assert result.em_iv == expected_iv
     assert result.em_up == result.em_iv["upper"]

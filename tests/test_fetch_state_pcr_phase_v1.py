@@ -76,6 +76,6 @@ def test_fetch_state_calls_the_extracted_function_exactly_once():
         and len(n.args) >= 2 and isinstance(n.args[1], ast.Constant) and n.args[1].value == "pcr_oi"
     ]
     assert not stray_pcr_getattr, (
-        "_fetch_state still contains a direct getattr(..., 'pcr_oi', ...) read -- the PCR "
+        "_fetch_state still contains a direct getattr(..., 'pcr_oi', ...) read -- the PCR "  # caps-ok: scanner false positive: assertion message text
         "phase was not fully extracted, a second inline read site survived"
     )

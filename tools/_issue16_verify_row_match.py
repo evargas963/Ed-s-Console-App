@@ -7,6 +7,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from db import DB_PATH, get_snapshot_sql
 
+def _pts_match(a, b) -> bool:
+    """Both NULL is a match; one NULL is a mismatch (never coerced to 0 to force equality)."""
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(float(a) - float(b)) < 1e-4
+
+
 p = DB_PATH
 c = sqlite3.connect(str(p), timeout=30.0)
 c.row_factory = sqlite3.Row
@@ -34,8 +41,8 @@ else:
         ok = (
             row["outcome_15c"] == s["outcome_15c"]
             and row["outcome_60c"] == s["outcome_60c"]
-            and abs(float(row["outcome_15c_pts"] or 0) - float(s["outcome_15c_pts"] or 0)) < 1e-4
-            and abs(float(row["outcome_60c_pts"] or 0) - float(s["outcome_60c_pts"] or 0)) < 1e-4
+            and _pts_match(row["outcome_15c_pts"], s["outcome_15c_pts"])
+            and _pts_match(row["outcome_60c_pts"], s["outcome_60c_pts"])
         )
         print("match", ok)
     else:

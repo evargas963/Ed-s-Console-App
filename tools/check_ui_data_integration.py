@@ -104,7 +104,7 @@ _ENDPOINTS = {
 
 
 def _base_url() -> str:
-    return (os.environ.get("ED_DIAG_BASE") or "http://127.0.0.1:8000").rstrip("/")
+    return (os.environ.get("ED_DIAG_BASE") or "http://127.0.0.1:8000").rstrip("/")  # caps-ok: env override of the documented local console URL (127.0.0.1, not localhost)
 
 
 def _server_up(base: str, timeout: float = 0.4) -> bool:

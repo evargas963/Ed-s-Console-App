@@ -435,7 +435,7 @@ def test_base_materialize_does_not_touch_guest_ticker(tmp_path: Path):
     mat = materialize_base_money_path_tickers(db.db_path)
     assert not mat.get("errors")
     assert "SPY" in mat["by_ticker"]
-    assert "NVDA" not in mat.get("by_ticker", {})
+    assert "NVDA" not in mat["by_ticker"]
     with db._connect() as conn:
         nvda_norm = conn.execute(
             "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE ticker='NVDA'"
@@ -815,7 +815,7 @@ def test_console_ml_scheduler_is_opt_in():
     src = (_P(__file__).resolve().parent.parent / "server.py").read_text(
         encoding="utf-8", errors="replace"
     )
-    gate = src.find('os.environ.get("ED_ENABLE_BACKGROUND_SCHEDULER", "0")')
+    gate = src.find('os.environ.get("ED_ENABLE_BACKGROUND_SCHEDULER", "0")')  # caps-ok: scanner false positive: literal searched for in server.py source to prove the scheduler gate defaults OFF
     assert gate != -1, "scheduler opt-in gate missing (default must be OFF)"
     start = src.find("start_background_scheduler()")
     assert start != -1

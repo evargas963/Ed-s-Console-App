@@ -116,15 +116,15 @@ def git_head_sha() -> str:
 
 
 def capture_runtime_env() -> dict[str, Any]:
-    cal = os.environ.get("ED_CALIBRATION_LOG", "")
+    cal = os.environ.get("ED_CALIBRATION_LOG", "")  # caps-ok: operator env flag; unset means calibration logging off (the documented opt-in ED_CALIBRATION_LOG=1), recorded verbatim in the run env block
     return {
         "git_commit": git_head_sha(),
-        "branch": os.environ.get("GIT_BRANCH", ""),
+        "branch": os.environ.get("GIT_BRANCH", ""),  # caps-ok: provenance metadata; unset env leaves an empty branch string in the report header, git_commit carries the real sha
         "captured_at_utc": datetime.now(timezone.utc).isoformat(),
-        "market_session_mode": os.environ.get("ED_MARKET_SESSION_MODE", "unknown"),
+        "market_session_mode": os.environ.get("ED_MARKET_SESSION_MODE", "unknown"),  # caps-ok: provenance metadata; "unknown" literally records that the env var was not set, it gates nothing
         "ED_CALIBRATION_LOG": cal,
         "ED_CALIBRATION_LOG_enabled": str(cal).strip().lower() in {"1", "true", "yes", "on"},
-        "schwab_mode": os.environ.get("ED_SCHWAB_MODE", "unknown"),
+        "schwab_mode": os.environ.get("ED_SCHWAB_MODE", "unknown"),  # caps-ok: provenance metadata; "unknown" literally records that the env var was not set, it gates nothing
         "db_path": str(canonical_console_db_path()),
         "server_pid": os.getpid(),
         "ticker_universe_note": "operator-selected during RTH matrix",
@@ -144,16 +144,16 @@ def http_get_json(url: str, timeout: float = 5.0) -> dict[str, Any]:
 def evaluate_switch_event(ev: dict[str, Any]) -> list[str]:
     """Return failure reasons for one switch diagnostic event."""
     fails: list[str] = []
-    if ev.get("ticker_mismatch_discarded") is False and ev.get("wrong_ticker_payload_rejected_count", 0) == 0:
+    if ev.get("ticker_mismatch_discarded") is False and ev.get("wrong_ticker_payload_rejected_count", 0) == 0:  # caps-ok: fail-closed: an event without a rejected-count is treated as 'nothing rejected', which RUNS the wrong-ticker check instead of skipping it
         pt = str(ev.get("payload_ticker") or "")
         at = str(ev.get("selected_ticker") or ev.get("new_ticker") or "")
         if pt and at and pt.upper() != at.upper():
             fails.append("WRONG_TICKER_ACCEPTED_FAIL")
-    if ev.get("generation_superseded") is False and ev.get("stale_generation_payload_rejected_count", 0) == 0:
+    if ev.get("generation_superseded") is False and ev.get("stale_generation_payload_rejected_count", 0) == 0:  # caps-ok: fail-closed: an event without a rejected-count is treated as 'nothing rejected', which RUNS the stale-generation check instead of skipping it
         if ev.get("accepted_stale_generation"):
             fails.append("STALE_GENERATION_ACCEPTED_FAIL")
     if ev.get("stale_cache_restored") and not (
-        ev.get("analytics_stale") or ev.get("final_switch_state", "").startswith("CACHE")
+        ev.get("analytics_stale") or ev.get("final_switch_state", "").startswith("CACHE")  # caps-ok: fail-closed: an event without final_switch_state is not credited as a CACHE state, so a restored cache presented as fresh still FAILs
     ):
         if ev.get("presented_as_fresh"):
             fails.append("CACHE_PRESENTED_AS_FRESH_FAIL")
@@ -266,8 +266,8 @@ def run_guest_switch_validation(
         pair_ev = [
             e
             for e in res.events
-            if str(e.get("old_ticker", "")).upper() == old_t.upper()
-            and str(e.get("new_ticker", "")).upper() == new_t.upper()
+            if str(e.get("old_ticker", "")).upper() == old_t.upper()  # caps-ok: pair filter; an event lacking old_ticker cannot be attributed to this switch pair and is excluded, never counted as a pass
+            and str(e.get("new_ticker", "")).upper() == new_t.upper()  # caps-ok: pair filter; an event lacking new_ticker cannot be attributed to this switch pair and is excluded, never counted as a pass
         ]
         pair_failures: list[str] = []
         for ev in pair_ev:
@@ -307,7 +307,7 @@ def write_validation_outputs(
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     lines = [
-        f"> **Classification:** {report.get('classification', report.get('harness', 'RTH'))}",
+        f"> **Classification:** {report.get('classification', report.get('harness', 'RTH'))}",  # caps-ok: markdown header label; falls back through the report's own harness name, display-only text never parsed back
         "",
         f"**Pass:** {report.get('pass')}",
         f"**Dry run:** {report.get('dry_run')}",

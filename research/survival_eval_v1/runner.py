@@ -65,7 +65,7 @@ def _build(ends, closes, labeled_ts, horizon_min, thr_by_day_train=None):
         js.append(j)
         dates.append(_et_date(ts))
     return (
-        np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 8)),
+        np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, 8)),  # caps-ok: zero-row design matrix of the correct width (no values invented); X.shape[0]==0 / no folds routes the cell to verdict UNDER_SAMPLED with mcc None
         np.asarray(js, dtype=np.int64),
         dates,
     )
@@ -119,12 +119,15 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
                 for j in js[tr]:
                     if j + 1 < len(closes):
                         moves.append(abs(closes[min(j + hmin, len(closes) - 1)] - closes[j]))
-                thr = float(np.median(moves)) if moves else 0.0
+                # _build keeps only j < len(closes) - 1 and tr.sum() >= 50, so `moves` is non-empty.
+                thr = float(np.median(moves))
                 if thr <= 0:
                     # RC-107: never fall back to raw np.diff — weekend gaps inflate the median.
                     from research.tcn_eval_v1.runner import session_safe_abs_price_moves
                     safe = session_safe_abs_price_moves(ends, closes)
-                    thr = float(np.median(safe)) if len(safe) else 0.01
+                    if not len(safe):
+                        continue  # no measurable move scale: skip the fold, never invent a 0.01 barrier
+                    thr = float(np.median(safe))
                 y_tr = [
                     _SURV_TO_SCREEN[competing_label(ends, closes, int(j), hmin, thr)]
                     for j in js[tr]

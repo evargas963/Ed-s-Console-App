@@ -32,7 +32,7 @@ _cached_release: Optional[dict[str, Any]] = None
 
 
 def _git_head_sha() -> Optional[str]:
-    env = os.environ.get("ED_BUILD_GENERATION", "").strip()
+    env = os.environ.get("ED_BUILD_GENERATION", "").strip()  # caps-ok: optional operator env override; unset ("") falls through to reading the real git HEAD sha
     if env:
         return env
     try:
@@ -103,8 +103,8 @@ def build_release_object(
         "model_hashes": model_hashes,
         "config_hash": cfg_hash,
         "migration_version": "production_decision_records_v1",
-        "approval_record": approval_record or os.environ.get("ED_RELEASE_APPROVAL_RECORD", "").strip() or None,
-        "rollback_target": rollback_target or os.environ.get("ED_RELEASE_ROLLBACK_TARGET", "").strip() or None,
+        "approval_record": approval_record or os.environ.get("ED_RELEASE_APPROVAL_RECORD", "").strip() or None,  # caps-ok: optional operator env; unset collapses to None (no approval record), never a placeholder string
+        "rollback_target": rollback_target or os.environ.get("ED_RELEASE_ROLLBACK_TARGET", "").strip() or None,  # caps-ok: optional operator env; unset collapses to None (no rollback target), never a placeholder string
         "created_at_utc": created,
     }
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")

@@ -27,7 +27,7 @@ def test_static_js_response_forces_revalidation():
         # revalidation must still work (a cheap 304) -- not a regression to no-store
         etag = r.headers.get("etag")
         assert etag
-        r2 = client.get("/static/js/ed-gamma.js", headers={"If-None-Match": etag})
+        r2 = client.get("/static/js/ed-gamma.js", headers={"If-None-Match": etag})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + headers), not a dict read with a default
         assert r2.status_code == 304
 
 

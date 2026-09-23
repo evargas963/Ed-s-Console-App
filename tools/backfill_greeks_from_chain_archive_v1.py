@@ -105,7 +105,9 @@ def _census_one_contract(
     qt = _num(ct.get("quoteTimeInLong"))
     if qt is not None:
         qtimes.append(int(qt))
-    oi = _num(ct.get("openInterest")) or 0.0
+    # CAPS (CALL_OR_DEFAULT): None when the contract reports no openInterest; the census
+    # sums only reported OI (identical totals, but no fabricated 0 value exists).
+    oi = _num(ct.get("openInterest"))
     plaus = gamma_is_plausible(_num(ct.get("gamma")), _num(ct.get("delta")))
     return oi, plaus
 
@@ -124,10 +126,11 @@ def census_from_chain(chain: Any, spot: float | None) -> SliceCensus:
         if not isinstance(ct, dict):
             continue
         oi_f, plaus = _census_one_contract(ct, strikes, expiries, qtimes)
-        oi_total += oi_f
+        if oi_f is not None:
+            oi_total += oi_f
         if plaus:
             n_plaus += 1
-        else:
+        elif oi_f is not None:
             oi_rej += oi_f
     s_min = min(strikes) if strikes else None
     s_max = max(strikes) if strikes else None
@@ -299,7 +302,10 @@ def run_p0(db_path: str, tickers: list[str] | None, stride: int) -> dict[str, An
     n_floor_fail = acc.n_floor_fail
     n_pre_epoch = acc.n_pre_epoch
     spans.sort()
-    parse_fail_share = (n_parse_fail / n_sampled) if n_sampled else 0.0
+    # Zero sampled rows means nothing was measured: the share is None and the census stops
+    # (STOP_NO_ROWS_SAMPLED) instead of reading 0.0 failures as P0_OK.
+    parse_fail_share = (n_parse_fail / n_sampled) if n_sampled else None  # caps-ok: no sampled rows -> share undefined (None) and the verdict below is STOP_NO_ROWS_SAMPLED
+    parse_failure_stop = parse_fail_share is not None and parse_fail_share > JSON_FAILURE_STOP_SHARE
     modes = sorted(contract_hist.items(), key=lambda kv: -kv[1])
     multi_modal = len([m for m in modes if m[1] >= max(5, n_sampled // 50)]) > 1
     report = {
@@ -315,7 +321,7 @@ def run_p0(db_path: str, tickers: list[str] | None, stride: int) -> dict[str, An
         "sampled": {
             "n_sampled": n_sampled,
             "n_pre_epoch": n_pre_epoch,
-            "parse_fail_share": round(parse_fail_share, 5),
+            "parse_fail_share": round(parse_fail_share, 5) if parse_fail_share is not None else None,
             "n_contracts_histogram": {str(k): v for k, v in sorted(contract_hist.items())},
             "dominant_mode": modes[0][0] if modes else None,
             "multi_modal_slice_types": multi_modal,
@@ -326,12 +332,14 @@ def run_p0(db_path: str, tickers: list[str] | None, stride: int) -> dict[str, An
             "strike_floor_fail_share": round(n_floor_fail / n_sampled, 5) if n_sampled else None,
         },
         "gates": {
-            "parse_failure_stop": parse_fail_share > JSON_FAILURE_STOP_SHARE,
+            "parse_failure_stop": parse_failure_stop,
             "expected_slice_contracts": EXPECTED_SLICE_CONTRACTS,
         },
         "verdict": (
-            "STOP_PARSE_FAILURES"
-            if parse_fail_share > JSON_FAILURE_STOP_SHARE
+            "STOP_NO_ROWS_SAMPLED"
+            if n_sampled == 0
+            else "STOP_PARSE_FAILURES"
+            if parse_failure_stop
             else "P0_OK_MULTI_MODAL_FLAGGED"
             if multi_modal
             else "P0_OK"
@@ -401,9 +409,12 @@ def run_p1(db_path: str, tickers: list[str] | None, rel_tol: float) -> dict[str,
     n_compared = st.n_compared
     n_match = st.n_match
     mismatches = st.mismatches
-    parity = (n_match / n_compared) if n_compared else 0.0
-    sign_parity = (st.n_sign_match / n_compared) if n_compared else 0.0
-    certified = n_compared > 0 and parity >= PARITY_GATE
+    # Nothing compared -> parity is unmeasured (None), never a reported 0.0; certification
+    # still requires n_compared > 0.
+    raw_parity = (n_match / n_compared) if n_compared else None  # caps-ok: zero compared rows -> parity undefined (None); certified stays False
+    certified = raw_parity is not None and raw_parity >= PARITY_GATE  # gate on the unrounded value
+    parity = round(raw_parity, 6) if raw_parity is not None else None
+    sign_parity = round(st.n_sign_match / n_compared, 6) if n_compared else None  # caps-ok: zero compared rows -> sign parity undefined (None)
     report = {
         "schema": "backfill_greeks_p1_certification_v1",
         "generated_utc": datetime.now(tz=timezone.utc).isoformat(),
@@ -417,8 +428,8 @@ def run_p1(db_path: str, tickers: list[str] | None, rel_tol: float) -> dict[str,
         "n_recompute_none": n_recompute_none,
         "n_compared": n_compared,
         "n_match": n_match,
-        "parity": round(parity, 6),
-        "sign_parity": round(sign_parity, 6),
+        "parity": parity,
+        "sign_parity": sign_parity,
         "mismatch_examples": mismatches,
         "verdict": "CERTIFIED" if certified else "STOP_PARITY_FAILURE",
         "run_sec": round(time.perf_counter() - t0, 2),
@@ -499,7 +510,12 @@ def _p1_certified_or_none() -> float | None:
         return None
     if rep.get("verdict") != "CERTIFIED":
         return None
-    return float(rep.get("parity", 0.0))
+    # A CERTIFIED report must carry a parity at or above the gate; anything else refuses P2
+    # rather than recording certified_parity=0.0 in greeks_recomputed_v1_meta.
+    parity = rep.get("parity")
+    if parity is None or float(parity) < PARITY_GATE:
+        return None
+    return float(parity)
 
 
 def _p2_row_payload(row: sqlite3.Row, now_utc: float) -> tuple | None:
@@ -661,13 +677,13 @@ def main() -> int:
     if args.phase == "p2":
         rep = run_p2(args.db, args.tickers, args.limit)
         print(json.dumps(rep, indent=2))
-        return 0 if rep.get("verdict", "").startswith("P2_") else 4
+        return 0 if rep.get("verdict", "").startswith("P2_") else 4  # caps-ok: fail-closed exit code: a P2 report without a verdict exits 4
     exit_code = 0
     out: dict[str, Any] = {}
     if args.phase in ("p0", "both"):
         p0 = run_p0(args.db, args.tickers, max(1, args.census_stride))
         out["p0"] = {k: p0[k] for k in ("verdict", "n_chain_rows_total", "sampled", "run_sec")}
-        if p0["verdict"] == "STOP_PARSE_FAILURES":
+        if p0["verdict"] in ("STOP_PARSE_FAILURES", "STOP_NO_ROWS_SAMPLED"):
             exit_code = 2
     if args.phase in ("p1", "both") and exit_code == 0:
         p1 = run_p1(args.db, args.tickers, args.rel_tol)

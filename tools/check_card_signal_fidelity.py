@@ -93,8 +93,8 @@ def _answer_questions(
             "Yes on short horizons — fusion LONG while horizon_prob_bars favor DOWN on 1m/5m at many decline samples"
         ),
         "16_longer_horizons_forward_returns": {
-            "1c_hit_rate": (spy.get("horizon_metrics") or {}).get("1c", {}).get("direction_hit_rate"),
-            "60c_hit_rate": (spy.get("horizon_metrics") or {}).get("60c", {}).get("direction_hit_rate"),
+            "1c_hit_rate": (spy.get("horizon_metrics") or {}).get("1c", {}).get("direction_hit_rate"),  # caps-ok: a missing metrics block yields None (no hit rate), never a number
+            "60c_hit_rate": (spy.get("horizon_metrics") or {}).get("60c", {}).get("direction_hit_rate"),  # caps-ok: a missing metrics block yields None (no hit rate), never a number
         },
         "17_all_plan_non_tradeable_while_horizons_long": (spy.get("answers") or {}).get(
             "all_plan_non_tradeable_while_horizons_long"
@@ -193,7 +193,7 @@ def run_card_signal_fidelity_audit(
 
     return {
         "meta": {
-            **integrity.get("meta", {}),
+            **integrity["meta"],  # run_direction_integrity_audit always writes meta (date, db_path, ...)
             "audit_type": "card_signal_fidelity_and_provenance",
             "branch": "audit/card-signal-fidelity-and-provenance",
             "read_only": True,

@@ -83,7 +83,7 @@ def test_notify_throttled_within_window(monkeypatch):
     q = asyncio.Queue(maxsize=10)
     key = ("ZZZ", "__auto__")
     srv._l1_light_sse_clients.append((q, key))
-    th0 = int(srv._l1_sse_diag.get("l1_light_sse_events_throttled", 0))
+    th0 = int(srv._l1_sse_diag["l1_light_sse_events_throttled"])
     try:
         monkeypatch.setattr(
             srv,
@@ -93,7 +93,7 @@ def test_notify_throttled_within_window(monkeypatch):
         monkeypatch.setattr(srv, "_L1_SSE_MIN_INTERVAL_SEC", 60.0)
         srv._l1_notify_sse_after_authoritative_build("ZZZ", None)
         srv._l1_notify_sse_after_authoritative_build("ZZZ", None)
-        assert int(srv._l1_sse_diag.get("l1_light_sse_events_throttled", 0)) >= th0 + 1
+        assert int(srv._l1_sse_diag["l1_light_sse_events_throttled"]) >= th0 + 1
     finally:
         srv._l1_light_sse_clients.clear()
         srv._l1_sse_last_emit_mono.pop(key, None)

@@ -196,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[FAIL] eol_style_invariant — {len(bad)} violation(s):")
     for b in bad:
         print(f"  {b}")
-    return 0 if args.measure else 1
+    return 0 if args.measure else 1  # caps-ok: documented --measure mode reports violations without failing; the enforcing (staged) mode exits 1
 
 
 if __name__ == "__main__":

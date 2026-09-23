@@ -220,7 +220,7 @@ def _resolved_regime_label(regime) -> Optional[str]:
 
 def _model_dominant_class(out) -> Optional[str]:
     """Dominant class from normalized model triplet only (ignore upstream label)."""
-    if not getattr(out, "available", False):
+    if not getattr(out, "available", False):  # caps-ok: fail-closed gate; an output only counts when its producer explicitly sets available=True, missing attr -> no dominant class (None)
         return None
     triplet = _model_direction_triplet(out)
     if triplet is None:
@@ -235,7 +235,7 @@ def _optional_support(out, attr: str) -> Optional[float]:
 
 def _model_direction_triplet(out) -> Optional[tuple[float, float, float]]:
     """Read normalized (up, down, flat) from an available model output; None if attrs missing."""
-    if not getattr(out, "available", False):
+    if not getattr(out, "available", False):  # caps-ok: fail-closed gate; missing available attr -> triplet None (no probabilities read), never a fabricated triplet
         return None
     up = getattr(out, "prob_up", None)
     down = getattr(out, "prob_down", None)
@@ -255,7 +255,7 @@ def _model_direction_triplet(out) -> Optional[tuple[float, float, float]]:
 
 def _translate_xgb_evidence(xgb_out, direction_hint: str) -> dict:
     """Convert XGBoost output into likelihood contributions per outcome family."""
-    if not getattr(xgb_out, "available", False):
+    if not getattr(xgb_out, "available", False):  # caps-ok: fail-closed gate; XGB evidence enters only when the producer set available=True, else {} (excluded from the update)
         return {}
 
     triplet = _model_direction_triplet(xgb_out)
@@ -280,7 +280,7 @@ def _translate_xgb_evidence(xgb_out, direction_hint: str) -> dict:
 
 def _translate_lstm_evidence(lstm_out, direction_hint: str) -> dict:
     """Convert LSTM output into likelihood contributions."""
-    if not getattr(lstm_out, "available", False):
+    if not getattr(lstm_out, "available", False):  # caps-ok: fail-closed gate; LSTM evidence enters only when the producer set available=True, else {} (excluded)
         return {}
 
     triplet = _model_direction_triplet(lstm_out)
@@ -305,7 +305,7 @@ def _translate_lstm_evidence(lstm_out, direction_hint: str) -> dict:
 
 def _translate_transformer_evidence(transformer_out, direction_hint: str) -> dict:
     """Convert Transformer output into likelihood contributions."""
-    if not getattr(transformer_out, "available", False):
+    if not getattr(transformer_out, "available", False):  # caps-ok: fail-closed gate; transformer evidence enters only when the producer set available=True, else {} (excluded)
         return {}
 
     triplet = _model_direction_triplet(transformer_out)
@@ -330,8 +330,10 @@ def _translate_transformer_evidence(transformer_out, direction_hint: str) -> dic
 
 def _translate_rules_evidence(rules, regime) -> dict:
     """Convert rules engine output into likelihood contributions."""
-    sig = getattr(rules, "signal", "wait")
-    conv = getattr(rules, "conviction", "low")
+    # RulesCard.signal / .conviction are required dataclass fields (signal_types.RulesCard);
+    # a missing one must fail loudly, never be read as a fabricated "wait"/"low" rules read.
+    sig = rules.signal
+    conv = rules.conviction
 
     conv_mult = {"high": 1.0, "medium": 0.7, "low": 0.4}.get(conv, 0.3)
 
@@ -375,7 +377,7 @@ class FusionTickCache:
 def build_fusion_tick_cache(regime, rules) -> FusionTickCache:
     """Build shared fusion prep once per tick; pass into fuse(..., fusion_tick_cache=...)."""
     regime_label = _resolved_regime_label(regime)
-    direction_hint = getattr(rules, "signal", "wait")
+    direction_hint = rules.signal  # required RulesCard field
     priors = (
         dict(REGIME_PRIORS[regime_label])
         if regime_label in REGIME_PRIORS
@@ -505,7 +507,7 @@ def _fuse_impl(
         adjustments = fusion_tick_cache.weight_adjustments
     else:
         regime_label = _resolved_regime_label(regime)
-        direction_hint = getattr(rules, "signal", "wait")
+        direction_hint = rules.signal  # required RulesCard field
 
         # ── Select priors based on regime ─────────────────────────────────────────
         priors = (
@@ -523,9 +525,9 @@ def _fuse_impl(
 
     # Zero out weights for unavailable sources
     source_available = {
-        "xgboost":     getattr(xgb_out, "available", False),
-        "lstm":        getattr(lstm_out, "available", False),
-        "transformer": getattr(transformer_out, "available", False),
+        "xgboost":     getattr(xgb_out, "available", False),  # caps-ok: fail-closed; weight kept only when producer explicitly set available=True, missing attr zeroes the weight and lists it in missing_models
+        "lstm":        getattr(lstm_out, "available", False),  # caps-ok: fail-closed; weight kept only on explicit available=True, missing attr -> weight 0 + listed in missing_models
+        "transformer": getattr(transformer_out, "available", False),  # caps-ok: fail-closed; weight kept only on explicit available=True, missing attr -> weight 0 + listed in missing_models
         # Monte Carlo is intentionally excluded from fusion weights and likelihoods;
         # it is applied only as post-fusion context (see mc_fusion_adjustment).
         "monte_carlo": False,
@@ -602,9 +604,9 @@ def _fuse_impl(
     # MC and rules are always available — they don't count as ensemble diversity.
     # A model with available=True passed approval and is producing real output.
     n_predictive_approved = 0
-    if getattr(xgb_out, "available", False):
+    if getattr(xgb_out, "available", False):  # caps-ok: fail-closed; only an explicitly available model counts toward ensemble diversity, a missing attr keeps the confidence dampening on
         n_predictive_approved += 1
-    if getattr(lstm_out, "available", False):
+    if getattr(lstm_out, "available", False):  # caps-ok: fail-closed; only an explicitly available model counts toward ensemble diversity, a missing attr keeps the confidence dampening on
         n_predictive_approved += 1
     # Damp 1: fewer than 2 approved predictive models → cap at medium
     if n_predictive_approved < 2 and conf == "high":
@@ -646,9 +648,9 @@ def _fuse_impl(
         ("lstm", lstm_out),
         ("transformer", transformer_out),
     ]:
-        if not getattr(out, "available", False):
+        if not getattr(out, "available", False):  # caps-ok: fail-closed; directional triplet used only from an explicitly available model, missing attr -> source skipped
             continue
-        w = weights.get(src, 0.0)
+        w = weights[src]  # every BASE_WEIGHTS key is always present in weights
         if w <= 0:
             continue
         triplet = _model_direction_triplet(out)
@@ -684,7 +686,7 @@ def _fuse_impl(
         if nb >= 25 and prob_up is not None and prob_down is not None and prob_flat is not None:
             triplet = signal_layer_v1_to_direction_probs(signal_layer_v1)
             if triplet is not None:
-                _env_blend = os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.0")
+                _env_blend = os.environ.get("ED_SIGNAL_LAYER_FUSION_BLEND", "0.0")  # caps-ok: operator env knob; documented default 0.0 = signal_layer_v1 blend OFF (probabilities unchanged)
                 w_sl = float_finite_or_none(_env_blend)
                 if w_sl is None:
                     log.debug(
@@ -717,13 +719,13 @@ def _fuse_impl(
     evidence = []
     contradictions = []
 
-    if getattr(mc_out, "available", False):
+    if getattr(mc_out, "available", False):  # caps-ok: fail-closed; MC evidence text only when MonteCarloOutput.available is explicitly True, missing -> no MC line
         if mc_out.containment_prob and mc_out.containment_prob > 0.6:
             evidence.append(f"MC: {mc_out.containment_prob:.0%} containment — supports pinning/range")
         elif mc_out.expansion_prob and mc_out.expansion_prob > 0.5:
             evidence.append(f"MC: {mc_out.expansion_prob:.0%} expansion probability")
 
-    if getattr(xgb_out, "available", False):
+    if getattr(xgb_out, "available", False):  # caps-ok: fail-closed; XGB evidence text only on explicit available=True, missing -> no XGB line
         _xgb_dom = _model_dominant_class(xgb_out)
         if _xgb_dom is not None:
             evidence.append(f"XGB: {_xgb_dom} ({xgb_out.confidence_label} confidence)")
@@ -772,7 +774,7 @@ def _fuse_impl(
         summary += f"Agreement: {agree_label}."
 
     # ── MC pass-through ──────────────────────────────────────────────────────
-    mc_avail = getattr(mc_out, "available", False)
+    mc_avail = getattr(mc_out, "available", False)  # caps-ok: fail-closed; MC pass-through fields are emitted only on explicit available=True, else all None
     _assum = getattr(mc_out, "assumptions", None) or {}
     mc_paths = getattr(mc_out, "n_paths", None) if mc_avail else None
     mc_horizon = getattr(mc_out, "horizon_bars", None) if mc_avail else None
@@ -794,12 +796,13 @@ def _fuse_impl(
         reversal_posterior=round(posteriors["reversal"], 3),
         vol_expansion_posterior=round(posteriors["vol_expansion"], 3),
         mean_reversion_posterior=round(posteriors["mean_reversion"], 3),
-        weight_xgboost=round(weights.get("xgboost", 0), 3),
-        weight_lstm=round(weights.get("lstm", 0), 3),
-        weight_transformer=round(weights.get("transformer", 0), 3),
+        # weights always holds every BASE_WEIGHTS key (built by iterating BASE_WEIGHTS above).
+        weight_xgboost=round(weights["xgboost"], 3),
+        weight_lstm=round(weights["lstm"], 3),
+        weight_transformer=round(weights["transformer"], 3),
         weight_monte_carlo=0.0,
-        weight_rules=round(weights.get("rules", 0), 3),
-        weight_regime=round(weights.get("regime", 0), 3),
+        weight_rules=round(weights["rules"], 3),
+        weight_regime=round(weights["regime"], 3),
         dominant_outcome=dominant,
         dominant_probability=round(dominant_prob, 3),
         fusion_confidence=conf,

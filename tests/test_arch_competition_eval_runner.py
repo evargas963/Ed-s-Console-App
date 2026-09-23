@@ -28,7 +28,7 @@ def _base_lineage():
 
 
 def _detail(*, n: int, prob_rows: list | None = None, ts_base: float = 1_700_000_000.0):
-    rows = prob_rows if prob_rows is not None else [[0.34, 0.33, 0.33]] * n
+    rows = prob_rows if prob_rows is not None else [[0.34, 0.33, 0.33]] * n  # caps-ok: fixture builder parameter: callers that pass prob_rows get theirs, the rest get the explicit near-uniform triplet this helper uses as its fixture input
     return {
         "prob_rows": rows,
         "y_true": [1] * n,

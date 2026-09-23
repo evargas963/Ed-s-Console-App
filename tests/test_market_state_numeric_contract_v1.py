@@ -20,8 +20,8 @@ def _sig_out_with_pred(**pred_kw):
         eval_pnl_realized_contract_oos=None,
         eval_realized_contract_metrics_oos=None,
         forward_prob_up=pred_kw.get("forward_prob_up"),
-        forward_prob_down=pred_kw.get("forward_prob_down", 0.2),
-        forward_prob_flat=pred_kw.get("forward_prob_flat", 0.2),
+        forward_prob_down=pred_kw.get("forward_prob_down", 0.2),  # caps-ok: fixture builder: callers override the probability through pred_kw; 0.2 is the helper's explicit fixture input, not a read of real data
+        forward_prob_flat=pred_kw.get("forward_prob_flat", 0.2),  # caps-ok: fixture builder: callers override the probability through pred_kw; 0.2 is the helper's explicit fixture input, not a read of real data
         forward_direction="up",
         forward_confidence="medium",
         forward_provenance="test",
@@ -166,7 +166,11 @@ def test_vol_regime_nan_multipliers_none(mock_cs):
 
 @patch("signals.compute_signals")
 def test_call_display_nan_entry_em_dash(mock_cs):
-    call = SimpleNamespace(
+    # RC-REHAB-1 CAPS review: build_market_state now reads TheCall fields strictly (no invented
+    # 'none'/0/'SKIP'/'WAIT' defaults), so the fixture is a real TheCall, not a partial stub.
+    from signal_types import TheCall
+
+    call = TheCall(
         signal="long",
         conviction="high",
         entry=float("nan"),
@@ -174,8 +178,16 @@ def test_call_display_nan_entry_em_dash(mock_cs):
         target=445.0,
         target2=None,
         reward_risk=2.0,
+        reward_risk2=None,
         headline="test",
         reasoning="test",
+        trade_type="none",
+        invalidation="",
+        confluence_count=0,
+        confluence_total=0,
+        confluence_detail="",
+        time_qualifier="",
+        size_cue="SKIP",
         rules_pred_agree=True,
         time_warning="",
         size_note="",

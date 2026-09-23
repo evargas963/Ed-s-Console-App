@@ -522,7 +522,7 @@ def test_no_pool_language_in_rendered_zone_payload():
     zones = _step3_zones(session)
     assert zones, "fixture produced no zones — the assertion would be vacuous"
     for z in zones:
-        zt = str(getattr(z.zone_type, "value", z.zone_type))
+        zt = str(getattr(z.zone_type, "value", z.zone_type))  # caps-ok: enum-or-str duck typing: an Enum zone_type exposes .value, a plain-string zone_type already is the value
         notes = (z.interpretation_notes or "").lower()
         assert "side_liquidity" not in zt, f"zone_type claims a pool: {zt}"
         assert z.zone_class != "liquidity", f"zone_class claims a pool: {z.zone_class}"
@@ -564,7 +564,7 @@ def test_engine_emits_no_pool_language_anywhere_it_writes_notes():
             if s in docstrings:
                 continue
             if any(w in s.lower() for w in _POOL_WORDS):
-                offenders.append((getattr(node, "lineno", "?"), s))
+                offenders.append((getattr(node, "lineno", "?"), s))  # caps-ok: display-only: the line number is printed in the offender report; '?' is never parsed back
     # Source TAGS and enum values are identifiers, not prose shown as a claim; the two
     # remaining zone-type names are named OBSERVED in RC-154 and are not Step 3 victims.
     offenders = [(ln, s) for ln, s in offenders
@@ -840,7 +840,7 @@ def test_no_lookahead_premarket():
     # raw_levels` -- the second arm checked ANY "pd_" occurrence anywhere in the
     # whole payload, satisfied unconditionally since prev_day always has pd_ keys,
     # so a leaked unprefixed "today_poc" inside prev_day would never be caught.
-    prev_day = out.raw_levels.get("prev_day", {})
+    prev_day = out.raw_levels["prev_day"]
     poc_keys = [k for k in prev_day if "poc" in str(k).lower()]
     assert poc_keys, "prev_day carries no poc-shaped key at all"
     assert all(str(k).lower().startswith("pd_") for k in poc_keys), (

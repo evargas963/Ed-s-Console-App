@@ -157,6 +157,21 @@ def aggregate_all_horizons_exit_code(per_horizon_exit_codes) -> int:
     return agg
 
 
+# CAPS RC-REHAB-1: evaluation fields a run manifest must carry before its cached metrics may
+# stand in for a fresh evaluation. build_manifest always writes all three; a manifest that
+# lacks one used to be read as accuracy 0.0 / n_rows 0 -- numbers that then drove the
+# parallel-vs-cascade promotion comparison and were re-persisted as if measured.
+_REQUIRED_MANIFEST_EVAL_KEYS = ("eval_accuracy", "balanced_accuracy", "n_rows")
+
+
+def _manifest_eval_complete(manifest: Any) -> bool:
+    """True when ``manifest['evaluation']`` carries every required metric (non-None)."""
+    if not isinstance(manifest, dict):
+        return False
+    ev = manifest.get("evaluation")
+    return isinstance(ev, dict) and all(ev.get(k) is not None for k in _REQUIRED_MANIFEST_EVAL_KEYS)
+
+
 def run_once(
     wait: bool = False,
     force_retrain: bool = False,
@@ -196,7 +211,7 @@ def run_once(
         log.warning("DB not found at %s", DB_PATH)
         return {"exit_code": 1, "ticker_outcomes": [], "ml_horizon": hz_sched, "skipped": True}
 
-    _gate_skip = os.environ.get("ED_ML_SCHEDULER_SKIP_PRE_TRAIN_GATE", "").strip().lower()
+    _gate_skip = os.environ.get("ED_ML_SCHEDULER_SKIP_PRE_TRAIN_GATE", "").strip().lower()  # caps-ok: operator env opt-out; unset ("") means the pre-train DB health gate RUNS -- only an explicit 1/true/yes skips it
     if _gate_skip not in ("1", "true", "yes"):
         try:
             from db_health_audit import run_audit
@@ -520,7 +535,7 @@ def run_once(
             from timeframe_config import CANONICAL_TIMEFRAME
 
             data_fp = db_training_fingerprint(DB_PATH, ticker, label_column=target_column)
-            if int(data_fp.get("row_count") or 0) < 1:
+            if int(data_fp.get("row_count") or 0) < 1:  # caps-ok: fail-closed skip gate -- an absent/None row_count is treated as "no labeled rows" so the ticker is NOT trained; no count is persisted from this
                 log.info(
                     "%s: skip — no RTH labeled rows for %s in snapshots_1m_normalized (needed for training)",
                     ticker,
@@ -587,14 +602,25 @@ def run_once(
                         ticker,
                     )
                     continue
-                pe = parallel_man.get("evaluation") or {}
-                ce = cascade_man.get("evaluation") or {}
-                if not pe or not ce:
+                if not (_manifest_eval_complete(parallel_man) and _manifest_eval_complete(cascade_man)):
                     log.warning(
-                        "%s: --promote-from-manifests skipped (evaluation missing)",
+                        "%s: --promote-from-manifests skipped (evaluation missing or incomplete: "
+                        "need %s in both manifests)",
+                        ticker,
+                        ", ".join(_REQUIRED_MANIFEST_EVAL_KEYS),
+                    )
+                    continue
+                if not parallel_man.get("trained_at") or not cascade_man.get("trained_at"):
+                    # CAPS RC-REHAB-1: trained_at used to default to THIS run's timestamp,
+                    # laundering an unknown training time into a fresh one (which then made
+                    # the artifacts look young to the next run's max-age cache check).
+                    log.warning(
+                        "%s: --promote-from-manifests skipped (manifest trained_at missing)",
                         ticker,
                     )
                     continue
+                pe = parallel_man["evaluation"]
+                ce = cascade_man["evaluation"]
                 mf_hz = normalize_ml_horizon_slug(
                     parallel_man.get("ml_horizon_suffix") or cascade_man.get("ml_horizon_suffix") or hz_sched
                 )
@@ -637,8 +663,8 @@ def run_once(
                         ticker, "cascade", data_fp, code_fp, target_column=_tc_promo,
                     )
                 )
-                par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0)
-                cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0)
+                par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0)  # caps-ok: run counter -- a manifest that never recorded a skip streak has had zero consecutive skips; 0 only delays the forced-retrain cap, it asserts no market value
+                cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0)  # caps-ok: run counter, same zero-skips-recorded semantics as the parallel streak
                 par_skip_reason = "promote_from_manifests_only"
                 cas_skip_reason = "promote_from_manifests_only"
                 par_retrain_reason = None
@@ -649,9 +675,10 @@ def run_once(
                 cascade_skip = True
                 evp = pe
                 evc = ce
-                parallel_acc = float(evp.get("eval_accuracy", 0.0))
-                parallel_bal = float(evp.get("balanced_accuracy", 0.0))
-                n_rows = int(evp.get("n_rows", 0))
+                # Required keys verified by _manifest_eval_complete above -- read directly.
+                parallel_acc = float(evp["eval_accuracy"])
+                parallel_bal = float(evp["balanced_accuracy"])
+                n_rows = int(evp["n_rows"])
                 parallel_ll = evp.get("eval_log_loss")
                 if parallel_ll is not None:
                     parallel_ll = float(parallel_ll)
@@ -659,9 +686,9 @@ def run_once(
                 parallel_realized_metrics = (
                     dict(_prm) if isinstance(_prm, dict) else _empty_realized_metrics(n_rows)
                 )
-                cascade_acc = float(evc.get("eval_accuracy", 0.0))
-                cascade_bal = float(evc.get("balanced_accuracy", 0.0))
-                n_cascade_rows = int(evc.get("n_rows", 0))
+                cascade_acc = float(evc["eval_accuracy"])
+                cascade_bal = float(evc["balanced_accuracy"])
+                n_cascade_rows = int(evc["n_rows"])
                 cascade_ll = evc.get("eval_log_loss")
                 if cascade_ll is not None:
                     cascade_ll = float(cascade_ll)
@@ -673,14 +700,17 @@ def run_once(
                 par_skipped_eval = True
                 cas_skipped_train = True
                 cas_skipped_eval = True
-                par_used_fc = bool(parallel_man.get("used_feature_cache", False))
-                par_used_ctc = bool(parallel_man.get("used_cascade_tensor_cache", False))
-                pm_trained_at = str(parallel_man.get("trained_at", run_ts))
+                # CAPS RC-REHAB-1: provenance is carried forward verbatim -- a flag the prior
+                # manifest did not record stays None (unknown) in the rewritten manifest
+                # instead of being asserted False; trained_at is verified present above.
+                par_used_fc = parallel_man.get("used_feature_cache")
+                par_used_ctc = parallel_man.get("used_cascade_tensor_cache")
+                pm_trained_at = str(parallel_man["trained_at"])
                 par_warm_resume = parallel_man.get("warm_resume") or {}
-                cas_used_fc = bool(cascade_man.get("used_feature_cache", False))
-                cas_used_ctc = bool(cascade_man.get("used_cascade_tensor_cache", False))
-                cas_used_bridge = bool(cascade_man.get("used_parallel_cascade_bridge", False))
-                cm_trained_at = str(cascade_man.get("trained_at", run_ts))
+                cas_used_fc = cascade_man.get("used_feature_cache")
+                cas_used_ctc = cascade_man.get("used_cascade_tensor_cache")
+                cas_used_bridge = cascade_man.get("used_parallel_cascade_bridge")
+                cm_trained_at = str(cascade_man["trained_at"])
                 cas_warm_resume = cascade_man.get("warm_resume") or {}
                 log.info(
                     "%s: skip train (%s)",
@@ -691,8 +721,8 @@ def run_once(
                 parallel_man = load_run_manifest(parallel_out) if not bypass_cache else None
                 cascade_man = load_run_manifest(cascade_out) if not bypass_cache else None
 
-                par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0) if parallel_man else 0
-                cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0) if cascade_man else 0
+                par_streak_prev = int(parallel_man.get("consecutive_scheduler_skips", 0) or 0) if parallel_man else 0  # caps-ok: run counter -- no manifest (or none recorded) = zero consecutive skips so far; feeds only the forced-retrain cap
+                cas_streak_prev = int(cascade_man.get("consecutive_scheduler_skips", 0) or 0) if cascade_man else 0  # caps-ok: run counter, same zero-skips-so-far semantics as the parallel streak
                 par_inhibit = (
                     not bypass_cache
                     and not force_retrain
@@ -735,6 +765,14 @@ def run_once(
                     horizon_suffix=hz_sched,
                 )
                 parallel_skip = par_elig
+                if parallel_skip and not _manifest_eval_complete(parallel_man):
+                    # CAPS RC-REHAB-1: a cache hit reuses the manifest's evaluation instead of
+                    # re-evaluating; without a complete evaluation there is nothing real to
+                    # reuse, so it is a cache MISS (train + eval), never a 0.0-accuracy hit.
+                    parallel_skip = False
+                    par_skip_reason = None
+                    par_retrain_reason = "manifest_evaluation_incomplete"
+                    par_miss_reason = "evaluation_missing"
 
                 cas_elig, cas_skip_reason, cas_retrain_reason, cas_miss_reason = full_skip_eligible(
                     cascade_man,
@@ -751,6 +789,12 @@ def run_once(
                     horizon_suffix=hz_sched,
                 )
                 cascade_skip = cas_elig
+                if cascade_skip and not _manifest_eval_complete(cascade_man):
+                    # CAPS RC-REHAB-1: same rule as the parallel side above.
+                    cascade_skip = False
+                    cas_skip_reason = None
+                    cas_retrain_reason = "manifest_evaluation_incomplete"
+                    cas_miss_reason = "evaluation_missing"
 
             if not skip_train:
                 parallel_ll: Optional[float] = None
@@ -762,10 +806,14 @@ def run_once(
 
             if not skip_train and parallel_skip:
                 log.info("%s: parallel scheduler cache hit — skip train + eval (key=%s…)", ticker, parallel_key[:12])
-                evp = parallel_man.get("evaluation") or {}
-                parallel_acc = float(evp.get("eval_accuracy", 0.0))
-                parallel_bal = float(evp.get("balanced_accuracy", 0.0))
-                n_rows = int(evp.get("n_rows", 0))
+                # Cache hit implies _manifest_eval_complete (checked at eligibility) and a
+                # parseable trained_at (full_skip_eligible refuses a skip without one), so both
+                # are read directly. used_* provenance flags are carried verbatim (None if the
+                # prior manifest never recorded them), never asserted False.
+                evp = parallel_man["evaluation"]
+                parallel_acc = float(evp["eval_accuracy"])
+                parallel_bal = float(evp["balanced_accuracy"])
+                n_rows = int(evp["n_rows"])
                 parallel_ll = evp.get("eval_log_loss")
                 _prm = evp.get("realized_contract_metrics")
                 parallel_realized_metrics = (
@@ -775,9 +823,9 @@ def run_once(
                     parallel_ll = float(parallel_ll)
                 par_skipped_train = True
                 par_skipped_eval = True
-                par_used_fc = bool(parallel_man.get("used_feature_cache", False))
-                par_used_ctc = bool(parallel_man.get("used_cascade_tensor_cache", False))
-                pm_trained_at = str(parallel_man.get("trained_at", run_ts))
+                par_used_fc = parallel_man.get("used_feature_cache")
+                par_used_ctc = parallel_man.get("used_cascade_tensor_cache")
+                pm_trained_at = str(parallel_man["trained_at"])
                 par_warm_resume = parallel_man.get("warm_resume") or {}
             elif not skip_train and _scheduler_skip_parallel_train():
                 log.info(
@@ -795,10 +843,17 @@ def run_once(
                 )
                 par_skipped_train = True
                 par_skipped_eval = False
-                par_used_fc = bool((parallel_man or {}).get("used_feature_cache", False))
-                par_used_ctc = bool((parallel_man or {}).get("used_cascade_tensor_cache", False))
-                pm_trained_at = str((parallel_man or {}).get("trained_at", run_ts))
-                par_warm_resume = (parallel_man or {}).get("warm_resume") or {}
+                # CAPS RC-REHAB-1: these artifacts were NOT trained this run, so their training
+                # provenance comes only from the prior manifest. Without one (bypass_cache /
+                # first run) it is unknown -> None, never "trained now" (run_ts) or False; a
+                # None trained_at makes the next run's full_skip_eligible refuse the skip
+                # ("manifest_trained_at_unavailable") instead of trusting an invented age.
+                _pm = parallel_man if isinstance(parallel_man, dict) else {}
+                par_used_fc = _pm.get("used_feature_cache")
+                par_used_ctc = _pm.get("used_cascade_tensor_cache")
+                _pm_ta = _pm.get("trained_at")
+                pm_trained_at = str(_pm_ta) if _pm_ta else None
+                par_warm_resume = _pm.get("warm_resume") or {}
             elif not skip_train:
                 log.info("%s: Training parallel...", ticker)
                 archive_candidate_directory_before_train(parallel_out, MODEL_DIR, "parallel", ticker)
@@ -822,17 +877,20 @@ def run_once(
                 )
                 par_skipped_train = False
                 par_skipped_eval = False
-                par_used_fc = bool(par_ret.get("used_feature_cache", False))
-                par_used_ctc = bool(par_ret.get("used_cascade_tensor_cache", False))
+                # CAPS RC-REHAB-1: train_parallel_candidate returns both flags on every path
+                # (train_compare.py already indexes them) -- read directly, no False default.
+                par_used_fc = bool(par_ret["used_feature_cache"])
+                par_used_ctc = bool(par_ret["used_cascade_tensor_cache"])
                 pm_trained_at = run_ts
                 par_warm_resume = par_ret.get("warm_resume") or {}
 
             if not skip_train and cascade_skip:
                 log.info("%s: cascade scheduler cache hit — skip train + eval (key=%s…)", ticker, cascade_key[:12])
-                evc = cascade_man.get("evaluation") or {}
-                cascade_acc = float(evc.get("eval_accuracy", 0.0))
-                cascade_bal = float(evc.get("balanced_accuracy", 0.0))
-                n_cascade_rows = int(evc.get("n_rows", 0))
+                # Same cache-hit contract as the parallel side (eval complete, trained_at present).
+                evc = cascade_man["evaluation"]
+                cascade_acc = float(evc["eval_accuracy"])
+                cascade_bal = float(evc["balanced_accuracy"])
+                n_cascade_rows = int(evc["n_rows"])
                 cascade_ll = evc.get("eval_log_loss")
                 _crm = evc.get("realized_contract_metrics")
                 cascade_realized_metrics = (
@@ -842,10 +900,10 @@ def run_once(
                     cascade_ll = float(cascade_ll)
                 cas_skipped_train = True
                 cas_skipped_eval = True
-                cas_used_fc = bool(cascade_man.get("used_feature_cache", False))
-                cas_used_ctc = bool(cascade_man.get("used_cascade_tensor_cache", False))
-                cas_used_bridge = bool(cascade_man.get("used_parallel_cascade_bridge", False))
-                cm_trained_at = str(cascade_man.get("trained_at", run_ts))
+                cas_used_fc = cascade_man.get("used_feature_cache")
+                cas_used_ctc = cascade_man.get("used_cascade_tensor_cache")
+                cas_used_bridge = cascade_man.get("used_parallel_cascade_bridge")
+                cm_trained_at = str(cascade_man["trained_at"])
                 cas_warm_resume = cascade_man.get("warm_resume") or {}
             elif not skip_train:
                 log.info("%s: Training cascade...", ticker)
@@ -871,9 +929,14 @@ def run_once(
                 )
                 cas_skipped_train = False
                 cas_skipped_eval = False
-                cas_used_fc = bool(cas_ret.get("used_feature_cache", False))
-                cas_used_ctc = bool(cas_ret.get("used_cascade_tensor_cache", False))
-                cas_used_bridge = bool(cas_ret.get("used_parallel_cascade_bridge", False))
+                # CAPS RC-REHAB-1: train_cascade_candidate returns used_feature_cache and
+                # used_cascade_tensor_cache on every path (read directly). Two of its early
+                # returns (LSTM stage: too few samples / prob-length mismatch) omit
+                # used_parallel_cascade_bridge even when the bridge WAS used for the XGB stage,
+                # so an absent key is UNKNOWN (None), not False.
+                cas_used_fc = bool(cas_ret["used_feature_cache"])
+                cas_used_ctc = bool(cas_ret["used_cascade_tensor_cache"])
+                cas_used_bridge = cas_ret.get("used_parallel_cascade_bridge")
                 cm_trained_at = run_ts
                 cas_warm_resume = cas_ret.get("warm_resume") or {}
 
@@ -902,8 +965,10 @@ def run_once(
                     "error": "partial_candidate_bundle",
                     "failed_closed": True,
                     "issues": {
-                        "parallel": _par_bundle_chk.get("issues", []),
-                        "cascade": _cas_bundle_chk.get("issues", []),
+                        # check_active_bundle_complete always returns `issues` (its contract);
+                        # an `[]` default would have reported "no issues" for a failed bundle.
+                        "parallel": _par_bundle_chk["issues"],
+                        "cascade": _cas_bundle_chk["issues"],
                     },
                 }
             else:
@@ -1152,7 +1217,7 @@ def run_once(
                 report["governed_competition"] = governed_slice
 
             arch_key = ticker_storage_key(ticker)  # RC-345/F25: arch_state writer key == canonical identity (reader in server.py matches)
-            prior_arch = arch_state.get(arch_key, {}).get("active_architecture", "none")
+            prior_arch = arch_state.get(arch_key, {}).get("active_architecture", "none")  # caps-ok: "none" is the repo-wide "no architecture active" sentinel (same as promotion_execution / manual_control); a ticker absent from arch_state has never been promoted
             new_arch = prior_arch
             if promoted and auto_exec_result.get("target_architecture"):
                 new_arch = auto_exec_result["target_architecture"]
@@ -1273,8 +1338,8 @@ def run_once(
             except Exception as _em_e:
                 log.warning("eval_metrics_store: %s", _em_e)
 
-            par_skip_streak_next = (par_streak_prev + 1) if parallel_skip else 0
-            cas_skip_streak_next = (cas_streak_prev + 1) if cascade_skip else 0
+            par_skip_streak_next = (par_streak_prev + 1) if parallel_skip else 0  # caps-ok: counter reset -- a run that trained breaks the consecutive-skip streak, so 0 is the true new count
+            cas_skip_streak_next = (cas_streak_prev + 1) if cascade_skip else 0  # caps-ok: counter reset -- a run that trained breaks the consecutive-skip streak, so 0 is the true new count
 
             par_sha = compute_artifact_sha256_map(
                 parallel_out, parallel_artifact_basenames(ticker, horizon_suffix=hz_sched),
@@ -1512,7 +1577,7 @@ def start_background_scheduler() -> None:
 
     from arch_competition.scheduler_auto_promote_policy import scheduler_nightly_all_horizons_enabled
 
-    single_hz = os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG)
+    single_hz = os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG)  # caps-ok: operator env config with the documented default horizon slug (DEFAULT_ML_HORIZON_SLUG)
 
     def _run_scheduled_nightly() -> None:
         if scheduler_nightly_all_horizons_enabled():
@@ -1529,7 +1594,9 @@ def start_background_scheduler() -> None:
                     promote_from_manifests_only=False,
                     ml_horizon_slug=str(_hz),
                 )
-                code = int(summary.get("exit_code", 0))
+                # CAPS RC-REHAB-1: every run_once return carries exit_code; a `0` default
+                # would have reported a malformed summary as a successful horizon.
+                code = int(summary["exit_code"])
                 agg_exit |= code
                 log.info(
                     "ML scheduler background: finished horizon %s (exit=%s)",
@@ -1620,7 +1687,7 @@ if __name__ == "__main__":
     ap.add_argument(
         "--horizon",
         type=str,
-        default=os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG),
+        default=os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG),  # caps-ok: argparse default from operator env, falling back to the documented DEFAULT_ML_HORIZON_SLUG
         help="ML horizon slug for this scheduler run (1c, 5c, 15c, 60c). Non-1c promotes to models/active_{slug}/.",
     )
     ap.add_argument(
@@ -1649,7 +1716,7 @@ if __name__ == "__main__":
         for _hz in ALL_GOVERNED_HORIZONS:
             log.info("ml_scheduler --all-horizons: starting horizon %s", _hz)
             summary = run_once(
-                wait=False if run_now else args.wait,
+                wait=False if run_now else args.wait,  # caps-ok: CLI flag logic -- --run-now means "do not wait for the 16:15 slot", otherwise honour --wait
                 force_retrain=args.force_retrain,
                 bypass_cache=args.bypass_cache,
                 allow_non_market_day=run_now,
@@ -1657,11 +1724,11 @@ if __name__ == "__main__":
                 preflip_candidate_root=_preflip_root,
                 ml_horizon_slug=str(_hz),
             )
-            agg_exit = aggregate_all_horizons_exit_code((agg_exit, summary.get("exit_code", 0)))
+            agg_exit = aggregate_all_horizons_exit_code((agg_exit, summary["exit_code"]))  # required: run_once always returns exit_code (CAPS RC-REHAB-1, was a success-by-default 0)
             log.info("ml_scheduler --all-horizons: finished horizon %s (exit=%s)", _hz, summary.get("exit_code"))
         sys.exit(agg_exit)
     summary = run_once(
-        wait=False if run_now else args.wait,
+        wait=False if run_now else args.wait,  # caps-ok: CLI flag logic -- --run-now means "do not wait for the 16:15 slot", otherwise honour --wait
         force_retrain=args.force_retrain,
         bypass_cache=args.bypass_cache,
         allow_non_market_day=run_now,
@@ -1669,4 +1736,4 @@ if __name__ == "__main__":
         preflip_candidate_root=_preflip_root,
         ml_horizon_slug=str(args.horizon),
     )
-    sys.exit(int(summary.get("exit_code", 0)))
+    sys.exit(int(summary["exit_code"]))  # required: run_once always returns exit_code (CAPS RC-REHAB-1, was a success-by-default 0)

@@ -262,7 +262,7 @@ def test_validation_summary_exemption_is_real_not_a_guess():
     validation_summary is carried, never recomputed, end to end from its one producer.
     Locks the exemption's presence and that it names the real producer, so a future
     edit can't silently turn this back into an unreviewed guess."""
-    reason = DA.ACCEPTED.get("D-DBCOL:validation_summary", "")
+    reason = DA.ACCEPTED.get("D-DBCOL:validation_summary", "")  # caps-ok: '' feeds the next line's assert reason with message 'the validation_summary exemption is missing', so absence fails with that named message
     assert reason, "the validation_summary exemption is missing"
     assert "call_engine.py" in reason, (
         "the exemption no longer names the traced producer -- re-verify before keeping it")

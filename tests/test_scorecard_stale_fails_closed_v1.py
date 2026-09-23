@@ -14,7 +14,7 @@ import json
 import os
 from pathlib import Path
 
-os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
+os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env switch read by import-time guards to recognise a pytest process; setdefault keeps a value pytest already set, it seeds no market data
 
 import pytest  # noqa: E402
 

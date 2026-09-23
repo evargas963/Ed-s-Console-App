@@ -92,14 +92,18 @@ def build_provenance_rows() -> list[dict]:
         meta: dict = {}
         if meta_p.is_file():
             meta = json.loads(meta_p.read_text(encoding="utf-8"))
-        samples = int(meta.get("samples") or 0)
+        # Missing meta sample count stays None: the row-exception / augmentation verdicts that
+        # depend on it become None (unknown) instead of being derived from a fabricated 0.
+        raw_samples = meta.get("samples")
+        samples = int(raw_samples) if raw_samples is not None else None
         cloned = bool(meta.get("cloned_from_horizon"))
         source_hz = meta.get("cloned_from_horizon")
-        min_row_exc = samples < 80
+        min_row_exc = (samples < 80) if samples is not None else None
+        dir_small = (samples < 6) if samples is not None else None
         augmented = ((tkr, hz) in AUGMENTED_MOVE and head == "move") or (
-            head == "dir" and (not cloned) and samples < 6
+            head == "dir" and (not cloned) and dir_small
         )
-        native = (not cloned) and (not augmented) and samples >= 80
+        native = (not cloned) and augmented is False and samples is not None and samples >= 80
         rows.append(
             {
                 "ticker": tkr,
@@ -115,7 +119,7 @@ def build_provenance_rows() -> list[dict]:
                 "source_artifact_if_cloned": str((active / tkr / f"xgb_{tkr}_{source_hz}_dir.pkl").resolve())
                 if cloned and source_hz
                 else "",
-                "source_rationale_if_cloned": meta.get("clone_note", ""),
+                "source_rationale_if_cloned": meta.get("clone_note", ""),  # caps-ok: free-text rationale column; blank when the meta file wrote no clone note (display text, not a value)
                 "metadata_path": str(meta_p.resolve()) if meta_p.is_file() else "",
                 "loadable_y": pkl.is_file() and meta_p.is_file(),
                 "meta_samples": samples,
@@ -235,7 +239,7 @@ def main() -> int:
                 else:
                     p = part.strip()
                     if p:
-                        dims.setdefault("scope", p)
+                        dims.setdefault("scope", p)  # caps-ok: keeps the FIRST bare segment of the session id as its scope; later bare segments do not overwrite it
         touches_clone = False
         clone_note = ""
         if pu.get("family") == "dir" and pu.get("horizon") == "60c":
@@ -308,11 +312,13 @@ def main() -> int:
             "overall_coverage_verdict": cov.get("overall_verdict"),
             "per_horizon_coverage": cov.get("per_horizon"),
             "backfill_stats": backfill.get("stats"),
-            "phase65_isolation_accepted_total": isolation.get("inventories", {}).get("accepted_total"),
+            "phase65_isolation_accepted_total": isolation.get("inventories", {}).get("accepted_total"),  # caps-ok: absent inventory yields None (unknown), never a count
             "cleanup_initial_accepted": cleanup.get("initial_accepted"),
             "cleanup_after_hard_filter": cleanup.get("after_hard_filter"),
             "cleanup_after_subsumption": cleanup.get("after_subsumption"),
-            "policy_usable_count": len(cleanup.get("policy_usable", [])),
+            "policy_usable_count": (
+                len(cleanup["policy_usable"]) if cleanup.get("policy_usable") is not None else None
+            ),  # None when the cleanup artifact carries no policy_usable list, never a counted 0
         },
         "evaluation_bundle_stdout_note": "bundle exit 0 per checkpoint session",
     }

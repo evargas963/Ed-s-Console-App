@@ -251,7 +251,7 @@ def test_collapse_keys_on_price_event_not_level_name():
     import ast
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "app" / "api" / "routes" / "ops.py").read_text(encoding="utf-8")
-    seg = next(ast.get_source_segment(src, n) for n in ast.walk(ast.parse(src))
+    seg = next(ast.get_source_segment(src, n) for n in ast.walk(ast.parse(src))  # caps-ok: scanner false positive: next() here has NO default argument; a missing api_level_crosses raises StopIteration and fails the test
                if isinstance(n, ast.FunctionDef) and n.name == "api_level_crosses")
     assert 'r.get("ts_utc"), r.get("level_value"), r.get("direction")' in seg, (
         "the collapse key is no longer the price event; a level_name-keyed merge cannot see two "

@@ -102,7 +102,7 @@ def main() -> int:
     reset_caches()
     db = EdDB(
         args.db,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(args.allow_noncanonical_db),  # registered by register_allow_noncanonical_flag(ap)
     )
 
     print(f"DB: {args.db}")

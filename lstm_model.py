@@ -61,8 +61,8 @@ def _validate_lstm_dataset_shape(dataset, ticker: Optional[str] = None) -> None:
     scheduler records a meaningful ``train_failed`` error string and any
     catch-site can act on the exception class.
     """
-    n_samples = int(getattr(dataset, "n_samples", 0) or 0)
-    n_days = int(getattr(dataset, "n_days", 0) or 0)
+    n_samples = int(getattr(dataset, "n_samples", 0) or 0)  # caps-ok: fail-closed guard; an unknown sample count is treated as 0 which RAISES InsufficientLstmSamplesError below (after also consulting len(y))
+    n_days = int(getattr(dataset, "n_days", 0) or 0)  # caps-ok: only interpolated into the raised error message text
     if hasattr(dataset, "y") and dataset.y is not None:
         try:
             n_samples = max(n_samples, len(dataset.y))
@@ -76,9 +76,9 @@ def _validate_lstm_dataset_shape(dataset, ticker: Optional[str] = None) -> None:
             "to fill the LSTM sequence window, or skip LSTM for this ticker"
         )
     x5 = getattr(dataset, "X_5m", None)
-    if x5 is None or getattr(x5, "ndim", 0) < 3:
-        ndim = getattr(x5, "ndim", "?") if x5 is not None else "None"
-        shape = getattr(x5, "shape", "?") if x5 is not None else "None"
+    if x5 is None or getattr(x5, "ndim", 0) < 3:  # caps-ok: fail-closed shape guard; an array without ndim is treated as degenerate and RAISES
+        ndim = getattr(x5, "ndim", "?") if x5 is not None else "None"  # caps-ok: "?" only in the raised error message text
+        shape = getattr(x5, "shape", "?") if x5 is not None else "None"  # caps-ok: "?" only in the raised error message text
         raise InsufficientLstmSamplesError(
             f"LSTM dataset X_5m has degenerate shape={shape} ndim={ndim}"
             + (f" for ticker {ticker}" if ticker else "")
@@ -421,7 +421,13 @@ def train_lstm(
     # low-data tickers (12-19 RTH days) all failed at this exact path.
     _validate_lstm_dataset_shape(dataset, ticker=ticker)
 
-    save_ticker = ticker_storage_key(ticker or (dataset.tickers[0] if dataset.tickers else "unknown"))  # RC-345/F25: resume+meta+model identity one authority
+    # Model/meta/resume identity must be a real ticker: the old "unknown" stand-in would have
+    # written lstm_UNKNOWN_* artifacts. _validate_lstm_dataset_shape already guaranteed samples,
+    # so an empty per-sample ticker list here is an inconsistent dataset -> raise.
+    _identity = ticker or (dataset.tickers[0] if dataset.tickers else None)
+    if not _identity:
+        raise ValueError("train_lstm: no ticker identity (ticker arg empty and dataset.tickers empty)")
+    save_ticker = ticker_storage_key(_identity)  # RC-345/F25: resume+meta+model identity one authority
     hz = normalize_ml_horizon_slug(getattr(dataset, "ml_horizon_slug", None) or ml_horizon_slug)
 
     X_conf = dataset.X_conf.copy()
@@ -547,17 +553,20 @@ def train_lstm(
                 )
                 key_ok = blob.get("scheduler_cache_key") == scheduler_cache_key
                 arch_ok = blob.get("architecture") == architecture
-                w5 = int(blob.get("n_features_5m", -1)) == n_feat_5m
-                w1 = int(blob.get("n_features_1m", -1)) == n_feat_1m
-                wc = int(blob.get("n_confluence", -1)) == n_feat_conf
+                w5 = int(blob.get("n_features_5m", -1)) == n_feat_5m  # caps-ok: fail-closed; a missing width (-1) never equals a real width, so resume is refused
+                w1 = int(blob.get("n_features_1m", -1)) == n_feat_1m  # caps-ok: fail-closed; missing width -> resume refused
+                wc = int(blob.get("n_confluence", -1)) == n_feat_conf  # caps-ok: fail-closed; missing width -> resume refused
                 xfp = _lstm_xgb_probs_fp(xgb_probs)
                 xok = architecture != "cascade" or blob.get("xgb_probs_fp") == xfp
-                ne = int(blob.get("next_epoch", 1))
-                if fp_ok and key_ok and arch_ok and w5 and w1 and wc and xok and 1 <= ne <= EPOCHS:
+                # _save_lstm_resume always writes next_epoch; a missing one refuses the resume
+                # instead of silently restarting at epoch 1 on top of loaded weights.
+                _ne_raw = blob.get("next_epoch")
+                ne = int(_ne_raw) if _ne_raw is not None else None
+                if fp_ok and key_ok and arch_ok and w5 and w1 and wc and xok and ne is not None and 1 <= ne <= EPOCHS:
                     try:
                         model.load_state_dict(blob["model_state"])
                         start_epoch = ne
-                        best_loss = float(blob.get("best_loss", float("inf")))
+                        best_loss = float(blob["best_loss"])  # always written; KeyError -> clean train below
                         bs = blob.get("best_state")
                         if isinstance(bs, dict):
                             best_state = bs
@@ -627,7 +636,7 @@ def train_lstm(
             best_loss = sel_loss
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
             result.best_epoch = epoch
-        epochs_no_improve = 0 if improved else epochs_no_improve + 1
+        epochs_no_improve = 0 if improved else epochs_no_improve + 1  # caps-ok: scanner false positive: early-stop counter reset/increment on a computed bool
 
         if epoch % 10 == 0 or epoch == 1:
             log.info(

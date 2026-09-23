@@ -437,7 +437,7 @@ def render(rep: dict) -> str:
         for s in rep["stale_sources"]:
             L.append(f"  {s['faucet']:<18s} age={_fmt(s['age_sec'])} > limit {_fmt(s['limit_sec'])}")
     L += ["", "CLIENT-SIDE BINDS (RC-75)", "-" * 78]
-    cv = rep.get("client_violations", [])
+    cv = rep["client_violations"]  # run() always writes it; a report without it must not print [OK] binds
     if not cv:
         for c, spec in CLIENT_CONCEPTS.items():
             L.append(f"  [OK  ] {c:14s} bound only inside {', '.join(spec['authorities'])}"
@@ -570,7 +570,7 @@ def main(argv: list[str]) -> int:
     # predicate's callee) never touches them, so they must not load just because
     # `import tools.data_faucet_audit` happens.
     from db_authority import canonical_console_db_path
-    db = next((a for a in argv if not a.startswith("--")), str(canonical_console_db_path()))
+    db = next((a for a in argv if not a.startswith("--")), str(canonical_console_db_path()))  # caps-ok: CLI positional; absent uses the canonical console DB (only measure_ages reads it)
     rep = run(db)
     print(json.dumps(rep, indent=2) if "--json" in argv else render(rep))
     if "--check" in argv and rep["faucet_violations"]:

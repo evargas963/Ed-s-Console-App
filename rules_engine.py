@@ -150,9 +150,9 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
         alerts.append(f"🔁 {_ordinal(inp.floor_tests_today + 1)} test of floor — bounce probability rising")
 
     # Recent cross events
-    fresh_crosses = [c for c in (inp.recent_crosses or []) if c.get("bars_ago", 99) <= 2]
+    fresh_crosses = [c for c in (inp.recent_crosses or []) if c.get("bars_ago", 99) <= 2]  # caps-ok: fail-closed freshness filter -- a cross without bars_ago is treated as OLD and raises no "just crossed" alert; server builds every cross with bars_ago from the NOT NULL level_crosses.ts_utc
     for cross in fresh_crosses:
-        lvl  = cross.get("level_name", "level")
+        lvl  = cross.get("level_name", "level")  # caps-ok: alert display text only; server always sets level_name from the NOT NULL level_crosses.level_name column, "level" is a wording fallback never parsed back
         dirn = "up through" if cross.get("direction") == "up" else "down through"
         alerts.append(f"⚡ Just crossed {dirn} {lvl}")
 
@@ -205,7 +205,7 @@ def compute_rules(inp: SignalInput, *, mvp_features: dict) -> RulesCard:
     # function (line ~109) and remain in scope; re-importing them here shadowed the originals
     # with identical values (harmless today, but it hid the duplication from review).
     from micro_structure import regime_direction as _regime_dir
-    _r1m = getattr(micro, "regime_1m", "UNKNOWN")
+    _r1m = getattr(micro, "regime_1m", "UNKNOWN")  # caps-ok: "UNKNOWN" is micro_structure.R_UNKNOWN (analyze_micro's own value when no 1m regime was classified); regime_direction maps it to neutral, so no 1m/5m conflict downgrade fires
     _dir_5m = _regime_dir(micro.regime)
     _dir_1m = _regime_dir(_r1m)
 

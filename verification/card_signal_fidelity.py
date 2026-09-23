@@ -53,8 +53,15 @@ def histogram_is_flat(
     flat: Optional[float],
     *,
     spread_threshold: float = DEFAULT_HISTOGRAM_FLAT_SPREAD,
-) -> bool:
-    probs = [float(up or 0.0), float(down or 0.0), float(flat or 0.0)]
+) -> Optional[bool]:
+    """True when the triple's spread is under threshold; None when any leg is missing.
+
+    An absent histogram is not a flat one: coercing missing legs to 0.0 made an all-missing
+    triple read spread 0 → HISTOGRAM_TOO_FLAT, a fabricated shape finding.
+    """
+    if up is None or down is None or flat is None:
+        return None
+    probs = [float(up), float(down), float(flat)]
     return (max(probs) - min(probs)) < float(spread_threshold)
 
 
@@ -71,12 +78,12 @@ def _mhap_confidence(row: dict[str, Any], horizon: str) -> Optional[float]:
 def classify_histogram_shape_cell(
     *,
     trailing_tape: str,
-    histogram_dominant: str,
-    fusion_dominant: str,
+    histogram_dominant: Optional[str],
+    fusion_dominant: Optional[str],
     card_direction: Optional[str],
     forward_realized_return: Optional[float],
-    histogram_flat: bool,
-    data_degraded: bool,
+    histogram_flat: Optional[bool],
+    data_degraded: Optional[bool],
     stale_feature_risk: bool,
 ) -> list[str]:
     """Classify empirical histogram shape vs fusion/card during decline samples."""
@@ -105,7 +112,9 @@ def classify_histogram_shape_cell(
         else:
             tags.append(HIST_FUSION_OVERRIDES_BEARISH)
 
-    if trailing_tape == "DOWN" and hist not in ("SHORT",) and not histogram_flat and hist != "WAIT":
+    # Only a MEASURED non-flat LONG/FLAT histogram can be under-conditioned; a missing
+    # histogram (hist None / flat None) carries no shape evidence either way.
+    if trailing_tape == "DOWN" and hist in ("LONG", "FLAT") and histogram_flat is False:
         tags.append(HIST_UNDERCONDITIONED)
 
     return sorted(set(tags))
@@ -115,9 +124,12 @@ def build_histogram_shape_row(
     row: dict[str, Any],
     horizon: str,
     *,
-    data_degraded: bool = False,
+    data_degraded: Optional[bool] = None,
 ) -> dict[str, Any]:
-    """One histogram-shape audit cell for a decline timestamp × horizon."""
+    """One histogram-shape audit cell for a decline timestamp × horizon.
+
+    ``data_degraded`` None = degradation status unknown (not asserted healthy).
+    """
     hist_label = HISTOGRAM_LABEL_BY_HZ[horizon]
     hz_block = row.get(f"horizon_{horizon}") or {}
     hist_probs = (row.get("horizon_prob_bars") or {}).get(hist_label) or {}
@@ -182,7 +194,10 @@ def build_histogram_shape_audit(
     normalized_rows_rth: Optional[int] = None,
 ) -> dict[str, Any]:
     """Histogram shape audit for all decline samples × horizons."""
-    degraded = normalized_rows_rth == 0 if normalized_rows_rth is not None else False
+    # Unknown normalized-row count -> degradation unknown (None), never asserted healthy.
+    degraded: Optional[bool] = None
+    if normalized_rows_rth is not None:
+        degraded = normalized_rows_rth == 0
     cells: list[dict[str, Any]] = []
     for row in timeline:
         for hz in HORIZON_SLUGS:
@@ -221,14 +236,14 @@ def build_histogram_shape_audit(
         "cells": cells,
         "operator_interpretation": {
             "histogram_did_shift_bearish_on_short_horizons": (
-                by_horizon.get("1c", {}).get(HIST_SUPPORTED_SHORT, 0)
-                + by_horizon.get("5c", {}).get(HIST_SUPPORTED_SHORT, 0)
+                by_horizon["1c"].get(HIST_SUPPORTED_SHORT, 0)  # caps-ok: tag-count histogram; by_horizon pre-seeds every HORIZON_SLUG and a tag absent from a measured cell set genuinely occurred 0 times
+                + by_horizon["5c"].get(HIST_SUPPORTED_SHORT, 0)  # caps-ok: tag-count histogram; by_horizon pre-seeds every HORIZON_SLUG and a tag absent from a measured cell set genuinely occurred 0 times
             )
             > 0,
             "fusion_overrode_bearish_histogram": fusion_override > 0,
             "lower_horizon_reversal_legitimate": valid_reversal > max(1, fusion_override // 2),
             "longer_horizon_override_warrants_review": (
-                by_horizon.get("60c", {}).get(HIST_FUSION_OVERRIDES_BEARISH, 0) > 0
+                by_horizon["60c"].get(HIST_FUSION_OVERRIDES_BEARISH, 0) > 0  # caps-ok: tag-count histogram; 60c is pre-seeded and an absent tag genuinely occurred 0 times in the measured cells
             ),
             "empirical_disagreement_not_surfaced_on_card": True,
         },
@@ -236,19 +251,30 @@ def build_histogram_shape_audit(
 
 
 def histogram_shape_operator_answers(hist_audit: dict[str, Any]) -> dict[str, Any]:
-    """Answers operator deep-dive on histogram vs fusion during decline."""
-    counts = hist_audit.get("classification_counts") or {}
-    interp = hist_audit.get("operator_interpretation") or {}
+    """Answers operator deep-dive on histogram vs fusion during decline.
+
+    The caller passes a ``{"cell_count": 0, "cells": []}`` stub when the June 17 SPY audit was
+    not built; answering from that stub used to report "0 cells" as if measured. A stub now
+    yields an explicit not-run answer instead of fabricated zero findings.
+    """
+    if "operator_interpretation" not in hist_audit:
+        return {
+            "histogram_shape_audit_run": False,
+            "note": "histogram shape audit not built for this day/ticker; no deep-dive findings measured",
+        }
+    counts = hist_audit["classification_counts"]
+    interp = hist_audit["operator_interpretation"]
     return {
+        "histogram_shape_audit_run": True,
         "1_histogram_shift_bearish_during_downside": (
-            f"Partially — {hist_audit.get('histogram_shifted_bearish_during_down_tape', 0)} cells "
+            f"Partially — {hist_audit['histogram_shifted_bearish_during_down_tape']} cells "
             f"had DOWN trailing tape + SHORT histogram dominant; "
             f"also {counts.get(HIST_UNDERCONDITIONED, 0)} UNDERCONDITIONED cells where tape down "
             f"but histogram did not reshape bearish"
         ),
         "2_why_fusion_long_if_histogram_bearish": (
             "Fusion-only product contract: cards follow fusion argmax; empirical histogram is signal-rail "
-            f"context with default blend weight 0. {hist_audit.get('histogram_short_fusion_long_cells', 0)} "
+            f"context with default blend weight 0. {hist_audit['histogram_short_fusion_long_cells']} "
             "cells had histogram SHORT + fusion LONG"
         ),
         "3_if_not_bearish_missing_pattern_features": (
@@ -267,7 +293,8 @@ def histogram_shape_operator_answers(hist_audit: dict[str, Any]) -> dict[str, An
             "Not measured on timeline — sample_support null; sparse/missing normalized rows on original "
             "June 17 run degraded similar-set quality"
         ),
-        "7_stale_missing_norm_degraded_shape": bool(hist_audit.get("normalized_rows_degraded")),
+        # None = normalized-row count unknown for the audited ticker (not "not degraded").
+        "7_stale_missing_norm_degraded_shape": hist_audit["normalized_rows_degraded"],
         "8_should_empirical_become_veto_or_chip": (
             "Audit recommendation: conflict chip or confidence haircut when fusion overrides bearish histogram "
             "during DOWN tape — not implemented today"
@@ -468,15 +495,16 @@ def classify_signal_semantics(
             tags.append(CLASS_MOMENTUM_SHORT)
         return tags
 
-    t1 = trailing_return_1m or 0.0
-    t60 = trailing_return_60m or 0.0
+    # Missing trailing returns stay None: a 0.0 stand-in is not a measured flat tape.
+    t1 = trailing_return_1m
+    t60 = trailing_return_60m
     f1 = forward_return_1m
 
-    if t1 > 0 and t60 > 0:
+    if t1 is not None and t60 is not None and t1 > 0 and t60 > 0:
         tags.append(CLASS_TREND_FOLLOWING_LONG)
-    elif t1 < 0 and f1 is not None and f1 > 0:
+    elif t1 is not None and t1 < 0 and f1 is not None and f1 > 0:
         tags.append(CLASS_REVERSAL_LONG)
-    elif t60 < 0 and f1 is not None and f1 > 0:
+    elif t60 is not None and t60 < 0 and f1 is not None and f1 > 0:
         tags.append(CLASS_MEAN_REVERSION_LONG)
     elif (fusion_direction or "").upper() == "LONG" and (histogram_direction or "").upper() == "SHORT":
         tags.append(CLASS_MODEL_DIRECTION_DRIFT)
@@ -587,17 +615,18 @@ def aggregate_june17_explanation(timeline: list[dict[str, Any]]) -> dict[str, An
         for hz in ("1c", "5c")
         if ((r.get(f"horizon_{hz}") or {}).get("histogram_direction") or "").upper() == "SHORT"
     )
+    # Rows must come from enrich_timeline_row_provenance, which writes provenance_by_horizon for
+    # every horizon; an un-enriched row raises KeyError instead of silently counting as zero tags.
     fusion_override = sum(
         1
         for r in timeline
         for hz in HORIZON_SLUGS
-        if CLASS_FUSION_OVERRIDE_EMPIRICAL
-        in ((r.get("provenance_by_horizon") or {}).get(hz) or {}).get("fusion_vs_empirical", [])
+        if CLASS_FUSION_OVERRIDE_EMPIRICAL in r["provenance_by_horizon"][hz]["fusion_vs_empirical"]
     )
     semantics_counts: dict[str, int] = {}
     for r in timeline:
         for hz in HORIZON_SLUGS:
-            for tag in ((r.get("provenance_by_horizon") or {}).get(hz) or {}).get("signal_semantics", []):
+            for tag in r["provenance_by_horizon"][hz]["signal_semantics"]:
                 semantics_counts[tag] = semantics_counts.get(tag, 0) + 1
 
     return {
@@ -608,7 +637,7 @@ def aggregate_june17_explanation(timeline: list[dict[str, Any]]) -> dict[str, An
         "fusion_long_cell_count": fusion_long,
         "signal_semantics_counts": semantics_counts,
         "all_and_plan_blocked": all(r.get("final_tradeable") is False for r in timeline),
-        "typical_wait_reason": next((r.get("wait_reason") for r in timeline if r.get("wait_reason")), None),
+        "typical_wait_reason": next((r.get("wait_reason") for r in timeline if r.get("wait_reason")), None),  # caps-ok: None = no sample carried a wait_reason; served as JSON null, never coerced to a reason string
         "interpretation": (
             "Cards show forecast direction (fusion probability argmax), not trailing price direction. "
             "June 17 decline samples: fusion LONG + empirical SHORT on short horizons is common; "

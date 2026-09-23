@@ -75,7 +75,7 @@ def _enclosing_func_span(tree: ast.AST, line: int) -> tuple[int, int] | None:
     best: tuple[int, int] | None = None
     for n in ast.walk(tree):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            lo, hi = n.lineno, getattr(n, "end_lineno", n.lineno)
+            lo, hi = n.lineno, getattr(n, "end_lineno", n.lineno)  # caps-ok: ast.parse on 3.8+ always sets end_lineno on FunctionDef; the fallback only narrows the span to the def line, never widens it
             if lo <= line <= hi and (best is None or lo > best[0]):
                 best = (lo, hi)
     return best
@@ -184,7 +184,7 @@ def _asserting_helper_names(tree: ast.AST) -> set[str]:
 
 def _covered_by_helper(node: ast.AST, helpers: set[str]) -> bool:
     """A decorator or a called helper may supply the assertion."""
-    for d in getattr(node, "decorator_list", []):
+    for d in getattr(node, "decorator_list", []):  # caps-ok: duck typing: only def/class nodes have decorator_list; any other node truly has no decorators
         if (isinstance(d, ast.Name) and d.id in helpers) or            (isinstance(d, ast.Attribute) and d.attr in helpers):
             return True
     for c in ast.walk(node):
@@ -822,9 +822,9 @@ def check_no_synthetic_domain_fixtures_in_tests() -> list[Violation]:
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Dict) and _CONTRACT_KEYS.issubset(_dict_literal_keys(node))):
                 continue
-            line = getattr(node, "lineno", 0)
+            line = getattr(node, "lineno", 0)  # caps-ok: ast.Dict parsed from source always carries lineno; the default is unreachable for parsed nodes
             span = _enclosing_func_span(tree, line)
-            seg = "\n".join(lines[span[0] - 1 : span[1]]) if span else "\n".join(lines[max(0, line - 2) : line + 1])
+            seg = "\n".join(lines[span[0] - 1 : span[1]]) if span else "\n".join(lines[max(0, line - 2) : line + 1])  # caps-ok: module-level dict literal has no enclosing function; the justification marker is looked up in the surrounding lines instead
             if _JUSTIFY_MARKER in seg:
                 continue  # explicitly justified fail-closed/edge contract
             out.append(
@@ -916,7 +916,7 @@ def _find_duplicate_test_groups(root: Path) -> list[list[tuple[Path, int, str]]]
         for node in ast.walk(tree):
             if not (isinstance(node, ast.FunctionDef) and node.name.startswith("test_")):
                 continue
-            lo, hi = node.lineno, getattr(node, "end_lineno", node.lineno)
+            lo, hi = node.lineno, getattr(node, "end_lineno", node.lineno)  # caps-ok: ast.parse on 3.8+ always sets end_lineno on FunctionDef; the fallback narrows the marker search span (fail-closed)
             seg = "\n".join(lines[lo - 1: hi])
             if _DUPLICATE_TEST_JUSTIFY_MARKER in seg:
                 continue
@@ -984,7 +984,7 @@ def _is_git_ls_files_call(node: ast.Call) -> bool:
     if not (isinstance(fn, ast.Attribute) and fn.attr in ("run", "check_output", "check_call")
             and isinstance(fn.value, ast.Name) and fn.value.id == "subprocess"):
         return False
-    first = node.args[0] if node.args else next(
+    first = node.args[0] if node.args else next(  # caps-ok: subprocess args may be positional or args=; when neither exists first is None and the isinstance check returns False
         (kw.value for kw in node.keywords if kw.arg == "args"), None)
     if not isinstance(first, (ast.List, ast.Tuple)):
         return False
@@ -1075,17 +1075,17 @@ def _find_py_source_scan_sites(root: Path, *, name_glob: str,
             is_git_ls_candidate = (not is_scan) and _is_git_ls_files_call(node)
             if not (is_scan or is_git_ls_candidate):
                 continue
-            line = getattr(node, "lineno", 0)
+            line = getattr(node, "lineno", 0)  # caps-ok: ast.Call parsed from source always carries lineno; the default is unreachable for parsed nodes
             span = _enclosing_func_span(tree, line)
             if is_git_ls_candidate and span is not None:
                 for fn_node in ast.walk(tree):
                     if (isinstance(fn_node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                            and (fn_node.lineno, getattr(fn_node, "end_lineno", fn_node.lineno)) == span):
+                            and (fn_node.lineno, getattr(fn_node, "end_lineno", fn_node.lineno)) == span):  # caps-ok: ast.parse on 3.8+ always sets end_lineno on FunctionDef; used only to match the span computed by _enclosing_func_span with the same rule
                         is_scan = _reads_py_source_in_function(fn_node, tree)
                         break
             if not is_scan:
                 continue
-            seg = "\n".join(lines[span[0] - 1: span[1]]) if span else lines[max(0, line - 1)]
+            seg = "\n".join(lines[span[0] - 1: span[1]]) if span else lines[max(0, line - 1)]  # caps-ok: module-level call has no enclosing function; the marker is looked up on the call's own line instead
             if _SCAN_JUSTIFY_MARKER in seg:
                 continue
             out.append((p, line))
@@ -1234,8 +1234,8 @@ def _call_name(node: ast.Call) -> str | None:
 
 
 def _marker_in_span(lines: list[str], node: ast.AST, marker: str) -> bool:
-    lo = getattr(node, "lineno", 1)
-    hi = getattr(node, "end_lineno", lo)
+    lo = getattr(node, "lineno", 1)  # caps-ok: parsed statement/expression nodes always carry lineno; the default is unreachable for parsed nodes
+    hi = getattr(node, "end_lineno", lo)  # caps-ok: fallback narrows the marker search to the start line (fail-closed: fewer lines, fewer escapes)
     return marker in "\n".join(lines[lo - 1 : hi])
 
 
@@ -1905,7 +1905,7 @@ def check_sqlite_wal_contract() -> list[Violation]:
                 continue
             if any(k.arg is None for k in node.keywords):
                 continue  # **kwargs: the timeout is not statically knowable here
-            timeout = next((k.value for k in node.keywords if k.arg == "timeout"), None)
+            timeout = next((k.value for k in node.keywords if k.arg == "timeout"), None)  # caps-ok: None means no timeout= keyword, and the very next line raises a Violation for it (fail-closed)
             if timeout is None:
                 out.append(Violation(
                     path, node.lineno,
@@ -2610,7 +2610,9 @@ def check_single_faucet_provenance() -> list[Violation]:
         return [Violation(REPO / "tools" / "data_faucet_audit.py", 0,
                           f"faucet audit failed to run: {type(e).__name__}: {e}")]
     out: list[Violation] = []
-    for v in rep.get("faucet_violations", []):
+    # data_faucet_audit.run() always writes faucet_violations; a report without it must fail
+    # loudly, not read as zero violations.
+    for v in rep["faucet_violations"]:
         out.append(Violation(
             REPO / "server.py", 0,
             f"concept {v['concept']!r} is fed by UNDECLARED source(s) {v['undeclared']} "
@@ -3237,7 +3239,7 @@ def domain_faucet_violations(rel: str, added: str, registry_text: str,
     out: list[str] = []
     try:
         reg = json.loads(registry_text or "null")
-        producers = set((reg or {}).get("level_domain_producers", {}).keys())
+        producers = set((reg or {}).get("level_domain_producers", {}).keys())  # caps-ok: fail-closed: a registry without producers yields an empty set, so every level-domain route is reported as an unregistered producer
     except (ValueError, TypeError):
         return [f"{rel}: level-faucet registry unparseable — the domain lock gates NOTHING "
                 f"in this state; restore governance/level_faucets.json"]

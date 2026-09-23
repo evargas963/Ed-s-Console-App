@@ -43,7 +43,7 @@ def test_qqq_wrong_spot_quarantines(release_ready):
     ms = {"ticker": "QQQ", "spot": 0.01, "call_signal": "short", "validation_summary": "x"}
     out = stamp_decision_bundle(ms, route="server._fetch_state")
     assert out.get("decision_id") is None
-    assert (out.get("market_data_quarantine") or {}).get("active") is True
+    assert out["market_data_quarantine"]["active"] is True
 
 
 def test_valid_spot_allows_decision_id(release_ready):

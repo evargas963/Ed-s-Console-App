@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import time
 
-os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
+os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env switch read by import-time guards to recognise a pytest process; setdefault keeps a value pytest already set, it seeds no market data
 
 import pytest  # noqa: E402
 
@@ -723,7 +723,7 @@ def test_no_api_response_hands_the_operator_home_path_to_a_browser():
     root = Path(__file__).resolve().parent.parent
     for payload in (ds.evidence_rows(root), ds.evidence_rows(root, time.time()),
                     ds.evidence_rows(root, 1.0)):
-        src = str(payload.get("source", ""))
+        src = str(payload["source"])
         assert src == "reports/fp_scoreboard_latest.json", src
         assert "Users" not in src and ":" not in src, f"absolute path leaked: {src}"
 
@@ -789,7 +789,7 @@ def test_the_distribution_is_deterministic_against_the_same_bars(tmp_path):
         fn.body[0].value, ast.Constant) else fn.body
     seed_stmt = [n for n in ast.walk(ast.Module(body=body, type_ignores=[]))
                  if isinstance(n, ast.Assign)
-                 and any(getattr(t, "id", "") == "seed" for t in n.targets)]
+                 and any(getattr(t, "id", "") == "seed" for t in n.targets)]  # caps-ok: AST duck typing: an assignment target that is a Tuple/Attribute/Subscript has no .id, and '' never matches 'seed'
     assert seed_stmt, "no `seed` is constructed at all"
     seed_src = ast.dump(seed_stmt[0])
     assert "as_of_utc" not in seed_src, "the wall clock is back in the seed"

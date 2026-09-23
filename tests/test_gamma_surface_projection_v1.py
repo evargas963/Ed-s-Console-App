@@ -87,8 +87,8 @@ def test_fixture_preconditions_are_real_two_expiry_input():
     assert E1 != E2 and len(E1) == 10 and len(E2) == 10
     assert all(_exp_key(ct) == E1 for ct in CRWD["chain"])
     assert all(_exp_key(ct) == E2 for ct in CDE["chain"])
-    assert sum(1 for ct in CRWD["chain"] if (ct.get("openInterest") or 0) > 0) > 0
-    assert sum(1 for ct in CDE["chain"] if (ct.get("openInterest") or 0) > 0) > 0
+    assert sum(1 for ct in CRWD["chain"] if ct["openInterest"] > 0) > 0
+    assert sum(1 for ct in CDE["chain"] if ct["openInterest"] > 0) > 0
     # the native stamp is the ISO form production feeds the projection, not a bare date
     assert "T" in str(CRWD["chain"][0]["expirationDate"])
 
@@ -185,7 +185,7 @@ def test_F_input_projection_coverage():
         expected_strikes |= {float(k) for k in compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)[0]}
     assert set(surface["strikes"]) == expected_strikes
     # native DTE carried onto the column header, not inferred
-    native_dte = {exp: next(int(ct["daysToExpiration"]) for ct in _slice(chain, exp) if ct.get("daysToExpiration") is not None)
+    native_dte = {exp: next(int(ct["daysToExpiration"]) for ct in _slice(chain, exp) if ct.get("daysToExpiration") is not None)  # caps-ok: scanner false positive: next() here has NO default argument; an expiry with no DTE-bearing row raises StopIteration and fails the test
                   for exp in (E1, E2)}
     assert {e["expiry"]: e["dte"] for e in surface["expirations"]} == native_dte
     assert surface["contracts_total"] == len(chain)
@@ -196,7 +196,7 @@ def test_F_input_projection_coverage():
 #    rows are REAL rows with their native expirationDate broken (the only field under test).
 def test_G_malformed_expiry_excluded_not_reassigned():
     clean_chain = _chain()
-    probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)   # the heaviest real row
+    probe = max(CRWD["chain"], key=lambda ct: ct["openInterest"])   # the heaviest real row
     chain = clean_chain + [dict(probe, expirationDate=None), dict(probe, expirationDate="bad")]
     surface = project_gamma_surface(chain, SPOT)
     assert surface["contracts_excluded_malformed_expiry"] == 2
@@ -216,7 +216,7 @@ def test_H_spx_identity_unchanged():
     # an SPXW-rooted contract projects without any symbol rewriting. No real SPX capture exists
     # in tests/fixtures; the row is a REAL vendor row re-rooted to the SPXW symbol/strike, which
     # is the only thing this identity check reads.
-    probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)
+    probe = max(CRWD["chain"], key=lambda ct: ct["openInterest"])
     spxw = [dict(probe, symbol="SPXW  260918C07690000", strikePrice=7690)]
     surface = project_gamma_surface(spxw, 7690.0)
     assert surface["expirations"] and surface["strikes"] == [7690.0]
@@ -263,7 +263,7 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
     # strike so no PUT row exists there -- the minimal input this specific absent-side
     # identity check needs.
     """
-    probe = dict(max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0))
+    probe = dict(max(CRWD["chain"], key=lambda ct: ct["openInterest"]))
     lonely_strike = max(ct["strikePrice"] for ct in CRWD["chain"]) + 1000.0
     probe["strikePrice"] = lonely_strike
     probe["symbol"] = "CRWD  260918C" + str(int(lonely_strike * 1000)).zfill(8)
@@ -282,7 +282,7 @@ def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_w
     never silently borrow a strike-mate's symbol or fall back to a stale cached value -- it must
     report None, the same fail-closed rule the rest of this file already proves for missing OI/
     expiry."""
-    probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)
+    probe = max(CRWD["chain"], key=lambda ct: ct["openInterest"])
     no_symbol = dict(probe)
     no_symbol.pop("symbol", None)
     chain = [no_symbol]
@@ -532,8 +532,8 @@ def test_per_strike_view_update_expiry_matches_a_full_recompute_for_the_changed_
         "same canonical faucet on a narrower input, never an approximation")
     # 'near'/'far' are deliberately carried over from the prior view, not recomputed here
     # (see _per_strike_view_update_expiry's own docstring) -- still present, unchanged.
-    assert updated_view["near"] == prior_view.get("near", [])
-    assert updated_view["far"] == prior_view.get("far", [])
+    assert updated_view["near"] == prior_view["near"]
+    assert updated_view["far"] == prior_view["far"]
     # the cache for the UNAFFECTED expiry (E2) must be the untouched prior object.
     assert updated_by_expiry[E2] is by_expiry[E2]
 

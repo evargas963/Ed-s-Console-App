@@ -294,15 +294,17 @@ def _evaluate_slice(
     is_rows, oos_rows = _split_is_oos(el, FROZEN["is_fraction"])
     ys_is, pcs_is, _ = _build_vectors(is_rows, hid)
     ys_oos, pcs_oos, _ = _build_vectors(oos_rows, hid)
-    oos_prior = Counter(ys_is).most_common(1)[0][0] if ys_is else "up"
-    oos_prior_acc = sum(1 for y in ys_oos if y == oos_prior) / len(ys_oos) if ys_oos else float("nan")
-    oos_model_acc = sum(1 for a, b in zip(ys_oos, pcs_oos) if a == b) / len(ys_oos) if ys_oos else float("nan")
+    # n >= min_n >= 1 here, _split_is_oos keeps >= 1 IS row and _build_vectors drops none, so the
+    # IS mode is always measured (it used to fall back to a fabricated "up" prior).
+    oos_prior = Counter(ys_is).most_common(1)[0][0]
+    oos_prior_acc = sum(1 for y in ys_oos if y == oos_prior) / len(ys_oos) if ys_oos else float("nan")  # caps-ok: NaN = undefined on an empty OOS half; isnan -> INCONCLUSIVE verdict, serialised as None
+    oos_model_acc = sum(1 for a, b in zip(ys_oos, pcs_oos) if a == b) / len(ys_oos) if ys_oos else float("nan")  # caps-ok: NaN = undefined on an empty OOS half; isnan -> INCONCLUSIVE verdict, serialised as None
 
     old, recent = _median_split(el)
     ys_o, pcs_o, _ = _build_vectors(old, hid)
     ys_r, pcs_r, _ = _build_vectors(recent, hid)
-    acc_o = sum(1 for a, b in zip(ys_o, pcs_o) if a == b) / len(ys_o) if ys_o else float("nan")
-    acc_r = sum(1 for a, b in zip(ys_r, pcs_r) if a == b) / len(ys_r) if ys_r else float("nan")
+    acc_o = sum(1 for a, b in zip(ys_o, pcs_o) if a == b) / len(ys_o) if ys_o else float("nan")  # caps-ok: NaN = undefined on an empty older half; stab_fail only compares halves with >= 30 rows, serialised as None
+    acc_r = sum(1 for a, b in zip(ys_r, pcs_r) if a == b) / len(ys_r) if ys_r else float("nan")  # caps-ok: NaN = undefined on an empty recent half; stab_fail only compares halves with >= 30 rows, serialised as None
     stab_fail = (acc_r < acc_o - 0.03) if (len(ys_o) >= 30 and len(ys_r) >= 30) else False
 
     acc_m = m["accuracy"]
@@ -379,7 +381,7 @@ def _confidence_bucket(r: sqlite3.Row) -> str:
 
 def _zone_bucket(r: sqlite3.Row) -> str:
     z = (r["zone"] or "").strip().lower()
-    return z if z else "unknown"
+    return z if z else "unknown"  # caps-ok: slice-grouping label; rows with no zone are evaluated as their own zone=unknown slice (same convention as _confidence_bucket/_vwap_bucket), never assigned a real zone
 
 
 def _vwap_bucket(r: sqlite3.Row) -> str:
@@ -393,7 +395,7 @@ def _vwap_bucket(r: sqlite3.Row) -> str:
 
 def _regime_bucket(r: sqlite3.Row) -> str:
     x = (r["regime_primary"] or "").strip().lower()
-    return x if x else "unknown"
+    return x if x else "unknown"  # caps-ok: slice-grouping label; rows with no regime_primary are evaluated as their own regime=unknown slice, never assigned a real regime
 
 
 def run_phase65(db_path: Path) -> dict[str, Any]:
@@ -526,10 +528,10 @@ def run_phase65(db_path: Path) -> dict[str, Any]:
     # time windows (median split of governed rows)
     older, recent = _median_split(rows)
     for hid in FROZEN["horizons_analyzed"]:
-        primary["by_time_window"].setdefault("older_median_half", {})[hid] = _evaluate_slice(
+        primary["by_time_window"].setdefault("older_median_half", {})[hid] = _evaluate_slice(  # caps-ok: grouping container created on first write; holds only evaluated slice records
             older, hid, min_n=m_slice, slice_id=f"time=older_half|horizon={hid}"
         )
-        primary["by_time_window"].setdefault("recent_median_half", {})[hid] = _evaluate_slice(
+        primary["by_time_window"].setdefault("recent_median_half", {})[hid] = _evaluate_slice(  # caps-ok: grouping container created on first write; holds only evaluated slice records
             recent, hid, min_n=m_slice, slice_id=f"time=recent_half|horizon={hid}"
         )
 
@@ -660,18 +662,23 @@ def run_phase65(db_path: Path) -> dict[str, Any]:
     # Confidence monotonicity: high > med > low accuracy per 5c
     hid5 = "5c"
     conf_order = ["high", "medium", "low"]
-    accs = []
+    accs: list[float | None] = []
     for c in conf_order:
-        cell = primary["by_confidence"].get(c, {}).get(hid5, {})
-        accs.append(cell.get("metrics", {}).get("accuracy") if cell.get("verdict") != "INSUFFICIENT" else None)
-    mono = None
+        # A confidence bucket with no rows has no cell; an evaluated cell below min_n is
+        # INSUFFICIENT and carries no metrics. Both are "no accuracy" (None), never a number.
+        cell = primary["by_confidence"].get(c, {}).get(hid5)
+        if cell is None or cell["verdict"] == "INSUFFICIENT":
+            accs.append(None)
+        else:
+            accs.append(cell["metrics"]["accuracy"])
+    mono: bool | None = None
     if all(a is not None for a in accs):
         mono = accs[0] >= accs[1] >= accs[2]
     out["confidence_ranking_validation"] = {
         "horizon": hid5,
         "accuracy_high_medium_low": accs,
         "weak_monotonic_high_ge_med_ge_low": mono,
-        "verdict": "PASS" if mono else ("FAIL" if mono is False else "INSUFFICIENT"),
+        "verdict": {True: "PASS", False: "FAIL", None: "INSUFFICIENT"}[mono],
     }
 
     # Lists
@@ -740,7 +747,7 @@ def main() -> int:
     ensure_artifacts_dir()
     outp = ROOT / "data" / "phase65_edge_isolation_v1_report.json"
     outp.write_text(json.dumps(rep, indent=2, default=str), encoding="utf-8")
-    print(json.dumps({"wrote": str(outp), "phase65_verdict": rep.get("phase65_verdict"), "inventories": rep.get("inventories", {}).get("accepted_total")}, indent=2))
+    print(json.dumps({"wrote": str(outp), "phase65_verdict": rep["phase65_verdict"], "inventories": rep["inventories"]["accepted_total"]}, indent=2))
     return 0
 
 

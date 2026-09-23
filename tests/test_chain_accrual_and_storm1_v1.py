@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
+os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env switch read by import-time guards to recognise a pytest process; setdefault keeps a value pytest already set, it seeds no market data
 
 from calibration.option_chain_morning_full import (  # noqa: E402
     ACCRUAL_END_MINS,

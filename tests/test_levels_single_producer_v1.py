@@ -83,7 +83,7 @@ def _producers() -> list[tuple[int, str]]:
         visit_AsyncFunctionDef = visit_FunctionDef
 
         def visit_Call(self, n):
-            nm = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")
+            nm = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")  # caps-ok: AST duck typing: a Call.func that is neither Name nor Attribute has no name, and '' never matches compute_terrain
             if nm == "compute_terrain":
                 second = n.args[1] if len(n.args) > 1 else None
                 is_unavailable = isinstance(second, ast.Constant) and second.value is None
@@ -106,7 +106,7 @@ def _calls_in(name: str) -> set[str]:
         for n in ast.walk(tree)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
     )
-    return {c.func.id if isinstance(c.func, ast.Name) else getattr(c.func, "attr", "")
+    return {c.func.id if isinstance(c.func, ast.Name) else getattr(c.func, "attr", "")  # caps-ok: AST duck typing: a Call.func that is neither Name nor Attribute has no name; '' in the callee set matches no real producer name
             for c in ast.walk(node) if isinstance(c, ast.Call)}
 
 
@@ -386,8 +386,8 @@ def _ssot_writes_outside_overlay(src: str) -> list[tuple[int, str]]:
     import re as _re
     lines = src.splitlines()
     try:
-        i0 = next(n for n, l in enumerate(lines, 1) if "def _terrain_kl_overlay" in l)
-        i1 = next(n for n, l in enumerate(lines[i0:], i0 + 1)
+        i0 = next(n for n, l in enumerate(lines, 1) if "def _terrain_kl_overlay" in l)  # caps-ok: scanner false positive: next() has NO default; StopIteration is caught on purpose three lines below
+        i1 = next(n for n, l in enumerate(lines[i0:], i0 + 1)  # caps-ok: scanner false positive: next() has NO default; StopIteration is caught on purpose two lines below
                   if l.startswith("def ") or l.startswith("async def "))
     except StopIteration:
         i0, i1 = -1, -1
@@ -601,15 +601,15 @@ def test_multi_faucet_census_tool_emits_and_finds_known_duals(tmp_path, monkeypa
     payload = json.loads((tmp_path / "census.json").read_text(encoding="utf-8"))
     concepts = {f["concept"]: f for f in payload["findings"]}
 
-    vwap = next(f for c, f in concepts.items() if c.startswith("vwap"))
-    assert "TIERB_DONE" in vwap.get("status", "")
+    vwap = next(f for c, f in concepts.items() if c.startswith("vwap"))  # caps-ok: scanner false positive: next() here has NO default argument; a missing census concept raises StopIteration and fails the test
+    assert "TIERB_DONE" in vwap["status"]
     assert len(vwap["producers"]) >= 2
-    clocks = next(f for c, f in concepts.items() if c.startswith("clocks"))
+    clocks = next(f for c, f in concepts.items() if c.startswith("clocks"))  # caps-ok: scanner false positive: next() here has NO default argument; a missing census concept raises StopIteration and fails the test
     assert len(clocks["producers"]) >= 2
-    charm = next(f for c, f in concepts.items() if c.startswith("charm"))
+    charm = next(f for c, f in concepts.items() if c.startswith("charm"))  # caps-ok: scanner false positive: next() here has NO default argument; a missing census concept raises StopIteration and fails the test
     assert "bs_" in str(charm["producers"]) and "compute_net_charm" in str(charm["producers"])
-    prior = next(f for c, f in concepts.items() if c.startswith("prior_day"))
-    assert "PHASE1_DONE" in prior.get("status", "")
+    prior = next(f for c, f in concepts.items() if c.startswith("prior_day"))  # caps-ok: scanner false positive: next() here has NO default argument; a missing census concept raises StopIteration and fails the test
+    assert "PHASE1_DONE" in prior["status"]
 
     md = (tmp_path / "census.md").read_text(encoding="utf-8")
     assert "pattern gone" not in md, "census cites a producer line that no longer exists"
@@ -933,7 +933,7 @@ def test_api_levels_registered_in_faucet_registry():
     reg = json.loads((Path(__file__).resolve().parent.parent / "governance" /
                       "level_faucets.json").read_text(encoding="utf-8"))
     assert "/api/levels" in reg["level_domain_producers"]
-    assert "levels-tierb-session-collapse-v1" in reg.get("operator_quote", ""), (
+    assert "levels-tierb-session-collapse-v1" in reg["operator_quote"], (
         "adding a producer requires the operator_quote in the registry (RC-212)"
     )
 

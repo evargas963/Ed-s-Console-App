@@ -60,14 +60,16 @@ def _interp_piecewise(x: float, xs: list[float], ys: list[float]) -> float:
 def _apply_mapping(raw: float, mapping: dict) -> float:
     t = mapping.get("type")
     if t in ("isotonic", "bin_mono"):
-        xs = [float(v) for v in mapping.get("x_thresholds", [])]
-        ys = [float(v) for v in mapping.get("y_thresholds", [])]
+        # A piecewise mapping without its knots is a broken artifact, not an identity map.
+        xs = [float(v) for v in mapping["x_thresholds"]]
+        ys = [float(v) for v in mapping["y_thresholds"]]
         return max(0.0, min(1.0, _interp_piecewise(float(raw), xs, ys)))
     if t == "platt":
         import math
 
-        a = float(mapping.get("coef", 0.0))
-        b = float(mapping.get("intercept", 0.0))
+        # A Platt mapping without coef/intercept would silently emit p=0.5 for every row.
+        a = float(mapping["coef"])
+        b = float(mapping["intercept"])
         z = a * float(raw) + b
         if z >= 0:
             ez = math.exp(-z)
@@ -78,10 +80,16 @@ def _apply_mapping(raw: float, mapping: dict) -> float:
 
 
 def _edge_for_indices(labels: list[int], idx: list[int], baseline: float) -> dict:
+    # An empty selection has no hit rate and no edge (None), not a measured 0% / -baseline.
     if not idx:
-        return {"n": 0, "hit_rate": 0.0, "edge_delta": -baseline}
+        return {"n": 0, "hit_rate": None, "edge_delta": None}
     hr = statistics.fmean(labels[i] for i in idx)
     return {"n": len(idx), "hit_rate": float(hr), "edge_delta": float(hr - baseline)}
+
+
+def _edge_beats(a: float | None, b: float | None) -> bool:
+    """True when edge a was measured and exceeds b (or b was not measured); an unmeasured a never wins."""
+    return a is not None and (b is None or a > b)
 
 
 def main() -> int:
@@ -102,7 +110,7 @@ def main() -> int:
     )
     mv_hz = sorted(set(phase8r["horizon_sets"]["movement"]["POLICY_RANK_ONLY"] + phase8r["horizon_sets"]["movement"]["POLICY_CALIBRATED"]))
     dr_hz = sorted(set(phase8r["horizon_sets"]["direction"]["POLICY_RANK_ONLY"] + phase8r["horizon_sets"]["direction"]["POLICY_CALIBRATED"]))
-    excluded = set(tuple(x.split(":")) for x in phase8r.get("excluded_family_horizon", []))
+    excluded = set(tuple(x.split(":")) for x in phase8r["excluded_family_horizon"])
 
     thresholds = {}
     for r in phase8r["thresholds"]:
@@ -140,7 +148,7 @@ def main() -> int:
             cand.append(
                 {
                     "ticker": str(d["ticker"]),
-                    "ts_utc": float(d.get("ts_utc") or 0.0),
+                    "ts_utc": float(d["ts_utc"]),
                     "horizon": hz,
                     "move_cal": m_cal,
                     "dir_cal": dy,
@@ -149,7 +157,11 @@ def main() -> int:
             )
 
     labels = [c["y_move"] for c in cand]
-    baseline = statistics.fmean(labels) if labels else 0.0
+    if not labels:
+        # No labeled candidates -> no baseline exists; a 0.0 baseline would make any
+        # selection look like positive edge.
+        raise SystemExit("run_phase9_policy_remediation_v1: no labeled candidate rows; baseline undefined")
+    baseline = statistics.fmean(labels)
 
     # ranking percentile per horizon
     per_h = defaultdict(list)
@@ -159,23 +171,25 @@ def main() -> int:
     for hz, arr in per_h.items():
         arr.sort(key=lambda t: t[1])
         n = len(arr)
+        # n == len(arr) >= 1 inside this loop, and every candidate index gets a percentile.
         for rank, (i, _) in enumerate(arr, start=1):
-            pct[i] = rank / n if n else 0.0
+            pct[i] = rank / n
+
+    def _dir_gate(i: int) -> bool:
+        # Direction confirmation needs a calibrated direction prob AND a selected direction
+        # threshold for that horizon; no fabricated fallback threshold.
+        thr_row = thresholds.get(("dir", cand[i]["horizon"]))
+        return cand[i]["dir_cal"] is not None and thr_row is not None and cand[i]["dir_cal"] >= float(thr_row["threshold"])
 
     # Step2 components
     idx_A = [i for i, c in enumerate(cand) if c["move_cal"] >= float(thresholds[("move", c["horizon"])]["threshold"])]
-    idx_B = [i for i in idx_A if pct.get(i, 0.0) >= 0.80]
-    idx_C = [
-        i
-        for i in idx_A
-        if cand[i]["dir_cal"] is not None
-        and cand[i]["dir_cal"] >= float(thresholds.get(("dir", cand[i]["horizon"]), {"threshold": 0.55})["threshold"])
-    ]
+    idx_B = [i for i in idx_A if pct[i] >= 0.80]
+    idx_C = [i for i in idx_A if _dir_gate(i)]
     # D approx current (tier+ranking+direction optional): mimic strict tier margins from previous fail
     idx_D = [
         i
         for i, c in enumerate(cand)
-        if c["move_cal"] >= float(thresholds[("move", c["horizon"])]["threshold"]) + 0.02 and pct.get(i, 0.0) >= 0.80
+        if c["move_cal"] >= float(thresholds[("move", c["horizon"])]["threshold"]) + 0.02 and pct[i] >= 0.80
     ]
 
     comp = {
@@ -191,20 +205,18 @@ def main() -> int:
     for hz in mv_hz:
         idx = [i for i, c in enumerate(cand) if c["horizon"] == hz and c["move_cal"] >= float(thresholds[("move", hz)]["threshold"])]
         st = _edge_for_indices(labels, idx, baseline)
-        cls = "EDGE_POSITIVE" if st["edge_delta"] > 0 else ("EDGE_NEUTRAL" if abs(st["edge_delta"]) < 1e-9 else "EDGE_NEGATIVE")
+        if st["edge_delta"] is None:
+            cls = "EDGE_UNMEASURED_NO_SIGNALS"
+        else:
+            cls = "EDGE_POSITIVE" if st["edge_delta"] > 0 else ("EDGE_NEUTRAL" if abs(st["edge_delta"]) < 1e-9 else "EDGE_NEGATIVE")
         horizon_edge[hz] = {"classification": cls, **st}
         if cls == "EDGE_POSITIVE":
             edge_positive.append(hz)
 
     # Step4/5 test filters on EDGE_POSITIVE set
     idx_base = [i for i, c in enumerate(cand) if c["horizon"] in edge_positive and c["move_cal"] >= float(thresholds[("move", c["horizon"])]["threshold"])]
-    idx_rank = [i for i in idx_base if pct.get(i, 0.0) >= 0.80]
-    idx_dir = [
-        i
-        for i in idx_base
-        if cand[i]["dir_cal"] is not None
-        and cand[i]["dir_cal"] >= float(thresholds.get(("dir", cand[i]["horizon"]), {"threshold": 0.55})["threshold"])
-    ]
+    idx_rank = [i for i in idx_base if pct[i] >= 0.80]
+    idx_dir = [i for i in idx_base if _dir_gate(i)]
     idx_topN = []
     # group by timestamp and keep top5 by move prob
     g = defaultdict(list)
@@ -224,16 +236,16 @@ def main() -> int:
     # keep only beneficial filters
     best_idx = list(idx_base)
     removed_logic = []
-    if filt["base_plus_ranking"]["edge_delta"] > filt["base_threshold_only"]["edge_delta"] and filt["base_plus_ranking"]["n"] >= 0.5 * filt["base_threshold_only"]["n"]:
+    if _edge_beats(filt["base_plus_ranking"]["edge_delta"], filt["base_threshold_only"]["edge_delta"]) and filt["base_plus_ranking"]["n"] >= 0.5 * filt["base_threshold_only"]["n"]:
         best_idx = idx_rank
     else:
         removed_logic.append("ranking_percentile_cutoff_removed_no_edge_gain")
-    if filt["base_plus_direction_gate"]["edge_delta"] > _edge_for_indices(labels, best_idx, baseline)["edge_delta"] and filt["base_plus_direction_gate"]["n"] >= 0.5 * len(best_idx):
+    if _edge_beats(filt["base_plus_direction_gate"]["edge_delta"], _edge_for_indices(labels, best_idx, baseline)["edge_delta"]) and filt["base_plus_direction_gate"]["n"] >= 0.5 * len(best_idx):
         best_idx = idx_dir
     else:
         removed_logic.append("direction_confirmation_removed_no_edge_gain")
     # topN only if improves edge materially and not too trivial
-    if filt["base_plus_topN"]["edge_delta"] > _edge_for_indices(labels, best_idx, baseline)["edge_delta"] and filt["base_plus_topN"]["n"] >= args.min_signals:
+    if _edge_beats(filt["base_plus_topN"]["edge_delta"], _edge_for_indices(labels, best_idx, baseline)["edge_delta"]) and filt["base_plus_topN"]["n"] >= args.min_signals:
         best_idx = idx_topN
     else:
         removed_logic.append("top_n_selection_removed_no_edge_gain")
@@ -250,7 +262,7 @@ def main() -> int:
     final_stats = _edge_for_indices(labels, best_idx, baseline)
     final_stats["baseline_move_rate"] = baseline
     final_stats["signals_generated"] = final_stats["n"]
-    final_stats["signal_rate"] = final_stats["n"] / len(cand) if cand else 0.0
+    final_stats["signal_rate"] = final_stats["n"] / len(cand)  # cand non-empty: guarded at baseline
 
     # build output examples
     examples = []
@@ -284,8 +296,10 @@ def main() -> int:
         "excluded_horizons": sorted(":".join(x) for x in excluded),
         "control": {
             "baseline_move_rate": baseline,
-            "phase9_prev_move_hit_rate": phase9fail.get("sanity", {}).get("move_hit_rate_on_signals"),
-            "phase9_prev_edge_delta": phase9fail.get("sanity", {}).get("edge_delta"),
+            # run_phase9_decision_policy_v1 always writes sanity.{move_hit_rate_on_signals,edge_delta}
+            # (None when unmeasured); a missing key means a wrong/foreign artifact.
+            "phase9_prev_move_hit_rate": phase9fail["sanity"]["move_hit_rate_on_signals"],
+            "phase9_prev_edge_delta": phase9fail["sanity"]["edge_delta"],
         },
         "component_isolation": comp,
         "horizon_edge": horizon_edge,
@@ -318,11 +332,11 @@ def main() -> int:
         "signal_examples": examples,
         "sanity_new_policy": final_stats,
     }
-    out["final_verdict"] = "PASS" if final_stats["edge_delta"] > 0 and final_stats["signals_generated"] >= int(args.min_signals) else "FAIL"
+    out["final_verdict"] = "PASS" if _edge_beats(final_stats["edge_delta"], 0.0) and final_stats["signals_generated"] >= int(args.min_signals) else "FAIL"
 
     outp = ROOT / "data" / "phase9_policy_remediation_v1.json"
     outp.write_text(json.dumps(out, indent=2), encoding="utf-8")
-    print(json.dumps({"wrote": str(outp), "verdict": out["final_verdict"], "signals": final_stats["signals_generated"], "edge_delta": round(final_stats["edge_delta"], 6)}, indent=2))
+    print(json.dumps({"wrote": str(outp), "verdict": out["final_verdict"], "signals": final_stats["signals_generated"], "edge_delta": None if final_stats["edge_delta"] is None else round(final_stats["edge_delta"], 6)}, indent=2))
     return 0 if out["final_verdict"] == "PASS" else 3
 
 

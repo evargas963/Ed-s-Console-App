@@ -63,7 +63,7 @@ def fetch_bars_via_schwab_for_session(
         raise ValueError(f"Schwab price history fetch failed: {e}") from e
 
     if resp is None or resp.status_code != 200:
-        raise ValueError(f"Schwab price history failed: status={getattr(resp, 'status_code', '?')}")
+        raise ValueError(f"Schwab price history failed: status={getattr(resp, 'status_code', '?')}")  # caps-ok: error-message text only -- resp may be None here, so '?' marks "no HTTP status" inside the raised error; the fetch still fails
 
     payload = resp.json()
     if "candles" not in payload:
@@ -120,7 +120,7 @@ def fetch_bars_via_schwab(
             raise ValueError(f"Schwab price history fetch failed: {e}") from e
 
     if resp is None or resp.status_code != 200:
-        raise ValueError(f"Schwab price history failed: status={getattr(resp, 'status_code', '?')}")
+        raise ValueError(f"Schwab price history failed: status={getattr(resp, 'status_code', '?')}")  # caps-ok: error-message text only -- resp may be None here, so '?' marks "no HTTP status" inside the raised error; the fetch still fails
 
     payload = resp.json()
     if "candles" not in payload:

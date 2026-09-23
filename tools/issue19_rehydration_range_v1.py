@@ -102,7 +102,7 @@ def main() -> None:
                 "gap_start_ts_utc": gap_start,
                 "gap_end_ts_utc": gap_end,
                 "gap_seconds_snapshot_min_to_min_bar_start": gap_sec,
-                "gap_days": round(gap_sec / 86400.0, 4) if gap_sec is not None else None,
+                "gap_days": round(gap_sec / 86400.0, 4) if gap_sec is not None else None,  # caps-ok: no gap measured -> None carried through
             }
         )
 

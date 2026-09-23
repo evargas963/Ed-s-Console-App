@@ -287,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
 
     atr_series = build_atr_series(rep.bars)
     events, ev_stats = generate_events(rep.bars, prereg)
-    dropped_none = int(ev_stats.get("dropped_none_sma_near_equal", 0))
+    dropped_none = int(ev_stats["dropped_none_sma_near_equal"])  # generate_events seeds this counter on every path
     log.info(
         "events=%s dropped_none_count=%s bars_rth=%s",
         len(events),

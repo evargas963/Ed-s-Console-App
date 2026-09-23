@@ -323,7 +323,7 @@ def test_chain_overlays_streamed_volume_onto_the_rest_snapshot(monkeypatch, tmp_
         clear_symbol(target_symbol)
 
     assert body["scope"]["kind"] == "complete_single_expiry"
-    assert body.get("stream_overlay_contracts", 0) >= 1, "the response must disclose that a streamed field actually overlaid something"
+    assert body["stream_overlay_contracts"] >= 1, "the response must disclose that a streamed field actually overlaid something"
     overlaid = next(c for c in body["contracts"] if c["symbol"] == target_symbol)
     assert overlaid["totalVolume"] == streamed_volume, (
         f"streamed volume ({streamed_volume}) never reached /api/chain -- "
@@ -399,7 +399,7 @@ def test_chain_does_not_let_an_older_streamed_volume_replace_a_newer_rest_value(
         f"a streamed volume OLDER than this fetch's own REST read ({stale_streamed_volume}) "
         f"incorrectly replaced the newer REST value ({rest_volume}) -- got {overlaid['totalVolume']}"
     )
-    assert body.get("stream_overlay_contracts", 0) == 0, (
+    assert body["stream_overlay_contracts"] == 0, (
         "no contract should be counted as overlaid when the only streamed value available "
         "predates this fetch's own REST baseline"
     )
@@ -497,7 +497,7 @@ def test_chain_streamed_overlay_reaches_the_route_over_real_http(monkeypatch, tm
         with TestClient(srv.app) as client:
             prior_contract, prior_contracts = _push_streamed_volume(
                 ofs, target_symbol, "TSLA", streamed_volume, now)
-            r = client.get("/api/chain", params={"ticker": "TSLA"})
+            r = client.get("/api/chain", params={"ticker": "TSLA"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
     finally:
         if prior_contract is not None or prior_contracts is not None:
             ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts

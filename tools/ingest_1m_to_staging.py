@@ -73,7 +73,7 @@ def bars_to_staging_rows(
     tkr = ticker_storage_key(ticker)
     rows: list[tuple[Any, ...]] = []
     for b in bars:
-        raw_ts = b.get("datetime", b.get("ts", b.get("_ts", 0)))
+        raw_ts = b.get("datetime", b.get("ts", b.get("_ts", 0)))  # caps-ok: a bar with no timestamp yields 0, which the `bar_start <= 0: continue` guard below drops; it is never staged
         try:
             raw_ts = float(raw_ts)
         except (TypeError, ValueError):
@@ -234,7 +234,7 @@ def validate_staging_batch(conn: sqlite3.Connection, batch_id: str) -> Validatio
         """,
         (batch_id,),
     ).fetchone()
-    mn, mx = (float(mn_mx[0]) if mn_mx[0] is not None else None, float(mn_mx[1]) if mn_mx[1] is not None else None)
+    mn, mx = (float(mn_mx[0]) if mn_mx[0] is not None else None, float(mn_mx[1]) if mn_mx[1] is not None else None)  # caps-ok: MIN/MAX over an empty batch are NULL and stay None
 
     intra = 0
     overnight = 0

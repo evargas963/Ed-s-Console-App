@@ -72,7 +72,7 @@ def admission_evidence_resolves_violations(doc: dict | None = None) -> list[str]
     for rec in admissions:
         if not isinstance(rec, dict) or str(rec.get("status") or "").strip() != "ADMITTED":
             continue
-        comp = rec.get("component", "?")
+        comp = rec.get("component", "?")  # caps-ok: label in a violation message only; the row is still judged on its evidence block
         evidence = rec.get("evidence")
         if not isinstance(evidence, dict):
             out.append(f"{comp}: evidence block missing for ADMITTED row")

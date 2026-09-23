@@ -268,7 +268,9 @@ def test_rc338_both_sides_deliver_the_authoritys_result(monkeypatch):
     }
     monkeypatch.setattr(_sr, "score_readiness", lambda **kw: dict(sentinel))
     for fn in (_sr.compute_call_readiness, _sr.compute_put_readiness):
-        out = fn({})
+        # The sentinel's "strong" band words the measured probability, so one is supplied:
+        # an absent probability is None (band "unavailable"), never a formatted 0.00%.
+        out = fn({"prediction_dominant_prob": 0.61})
         assert out["readiness_score"] == 12345, f"{fn.__name__} altered the authority's score"
         assert out["call_state"] == "SENTINEL_STATE"
         assert out["forecast_state"] == "sentinel_fc"
@@ -350,3 +352,21 @@ def test_rc338_call_and_put_sides_score_identically_for_mirrored_inputs():
     for out in (call_max, put_max, call_empty, put_empty):
         assert set(out) == {"call_state", "forecast_state", "readiness_score",
                             "reasons", "missing_conditions", "component_scores"}
+
+
+def test_readiness_missing_probability_is_unavailable_not_zero_percent():
+    """CAPS: an absent dominant probability must not be scored or worded as a measured 0%."""
+    for fn, direction in ((_sr.compute_call_readiness, "up"), (_sr.compute_put_readiness, "down")):
+        out = fn({"prediction_direction": direction})
+        assert out["component_scores"]["probability_score"] == _sr.READINESS_PROB_UNAVAILABLE_POINTS
+        assert "Dominant probability is unavailable." in out["missing_conditions"]
+        assert not any("0.00%" in m for m in out["missing_conditions"]), out["missing_conditions"]
+        # A measured 0.0 is still a real (weak) probability, distinct from absence.
+        measured = fn({"prediction_direction": direction, "prediction_dominant_prob": 0.0})
+        assert measured["component_scores"]["probability_score"] == _sr.READINESS_PROB_WEAK_POINTS
+
+
+def test_put_readiness_never_reads_call_side_trigger_keys():
+    """CAPS: near_support / breakout_ready are CALL triggers; the PUT side must not adopt them."""
+    out = _sr.compute_put_readiness({"near_support": True, "breakout_ready": True})
+    assert out["component_scores"]["level_score"] == _sr.READINESS_LEVEL_POINTS["unknown"]

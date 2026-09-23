@@ -585,7 +585,7 @@ def compute_signal_layer_v1(
             break
     out["cnd.consecutive_impulse_count"] = float(min(impulse, 20))
     # Signed run length: +n consecutive up closes, -n consecutive down closes.
-    out["cnd.consecutive_impulse_signed"] = float(min(impulse, 20)) * (dir_sign or 0.0)
+    out["cnd.consecutive_impulse_signed"] = float(min(impulse, 20)) * (dir_sign or 0.0)  # caps-ok: dir_sign is None only when impulse == 0, so the product is the signed length (0) of a zero-length run; the default never scales a real count
 
     if len(bars) >= 2:
         prev_c = _f(bars[-2].get("close"))
@@ -601,7 +601,7 @@ def compute_signal_layer_v1(
         out["cnd.gap_flag"] = None
 
     br = out.get("cnd.body_range_ratio")
-    ic = float(out.get("cnd.consecutive_impulse_count") or 0.0)
+    ic = float(out["cnd.consecutive_impulse_count"])  # always set above (candle block)
     out["cnd.drive_flag"] = 1.0 if (isinstance(br, float) and br > 0.65) else 0.0
     out["cnd.stall_flag"] = 1.0 if (isinstance(br, float) and br < 0.25 and ic >= 3.0) else 0.0
 
@@ -665,8 +665,10 @@ def compute_signal_layer_v1(
         if i > 0:
             bd["_prev_close"] = _f(bars[i - 1].get("close"))
         tr_sum += _tr(bd)
-    body_sum = abs(c_now - o0) if o0 else 0.0
-    if tr_sum > EPS:
+    # No open for the last bar -> body unknown -> efficiency None (was a fabricated 0.0 body,
+    # i.e. a "0% efficient" move). `is not None` also stops a 0.0 open being read as missing.
+    body_sum = abs(c_now - o0) if o0 is not None else None
+    if body_sum is not None and tr_sum > EPS:
         out["part.move_efficiency_last_vs_tr5"] = body_sum / tr_sum
     else:
         out["part.move_efficiency_last_vs_tr5"] = None
@@ -685,7 +687,12 @@ def compute_price_action_snapshot_columns(
     (SNAPSHOT_PRICE_ACTION_COLUMNS). Missing history → None per column
     (honest nulls — never fabricated fills).
     """
-    closed = [b for b in bars if (_f(b.get("bar_end_ts_utc")) or 0.0) <= float(decision_ts_utc)]
+    # CAPS (CALL_OR_DEFAULT): a bar with no end timestamp used to read as epoch 0 and so
+    # always counted as CLOSED before the decision; an undated bar cannot be proven closed.
+    closed = [
+        b for b in bars
+        if (_end := _f(b.get("bar_end_ts_utc"))) is not None and _end <= float(decision_ts_utc)
+    ]
     layer = compute_signal_layer_v1(closed, decision_ts_utc=decision_ts_utc, inp=inp)
     return {col: _f(layer.get(key)) for col, key in SNAPSHOT_PRICE_ACTION_COLUMNS}
 
@@ -806,7 +813,7 @@ def flatten_numeric_features(layer: Mapping[str, Any]) -> dict[str, float]:
         if k.startswith("meta."):
             continue
         if isinstance(v, bool):
-            out[k] = 1.0 if v else 0.0
+            out[k] = 1.0 if v else 0.0  # caps-ok: exact bool->float encoding of a present bool feature (isinstance-checked), not a missing-value default
         elif isinstance(v, (int, float)) and not isinstance(v, bool):
             fv = float(v)
             if not (math.isnan(fv) or math.isinf(fv)):

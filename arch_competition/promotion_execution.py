@@ -354,7 +354,7 @@ def meta_basis_blocks_auto_promotion(src_dir, ticker: str, hz: str):
     if doc is None:
         return "meta_basis_manifest_absent_or_unreadable"
     if doc.get("oof_governed") is not True:
-        basis = str(doc.get("meta_training_basis") or "unknown")
+        basis = str(doc.get("meta_training_basis") or "unknown")  # caps-ok: label inside a BLOCKING reason string; the gate already refuses (oof_governed is not True) and 'unknown' names the absent basis
         return f"meta_basis_not_oof_governed:{basis}"
     return None
 

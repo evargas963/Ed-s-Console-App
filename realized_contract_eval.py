@@ -622,10 +622,10 @@ def compute_replay_coverage_stats(
         """,
         params,
     ).fetchone()
-    n_all = int(rows["n_all"] or 0)
-    n_rc = int(rows["n_replay_ctx"] or 0)
-    n_oc = int(rows["n_chain"] or 0)
-    n_full = int(rows["n_full"] or 0)
+    n_all = int(rows["n_all"] or 0)  # caps-ok: SQL COUNT(*) is never NULL; guard only
+    n_rc = int(rows["n_replay_ctx"] or 0)  # caps-ok: SQL SUM(CASE..1/0) is NULL only over ZERO rows, where the true count is 0
+    n_oc = int(rows["n_chain"] or 0)  # caps-ok: SQL SUM(CASE..1/0) is NULL only over ZERO rows, where the true count is 0
+    n_full = int(rows["n_full"] or 0)  # caps-ok: SQL SUM(CASE..1/0) is NULL only over ZERO rows, where the true count is 0
     return {
         "table": table,
         "ticker_filter": ticker,
@@ -633,9 +633,11 @@ def compute_replay_coverage_stats(
         "rows_with_replay_context": n_rc,
         "rows_with_option_chain_json": n_oc,
         "rows_fully_replayable": n_full,
-        "replay_coverage_rate": round(n_full / n_all, 6) if n_all else 0.0,
-        "replay_context_rate": round(n_rc / n_all, 6) if n_all else 0.0,
-        "option_chain_rate": round(n_oc / n_all, 6) if n_all else 0.0,
+        # CAPS RC-REHAB-1: a rate over ZERO rows is undefined -> None (was a fabricated 0.0
+        # "0% replayable"); matches replay_bundle_coverage's `... if rt > 0 else None`.
+        "replay_coverage_rate": round(n_full / n_all, 6) if n_all else None,
+        "replay_context_rate": round(n_rc / n_all, 6) if n_all else None,
+        "option_chain_rate": round(n_oc / n_all, 6) if n_all else None,
     }
 
 
@@ -786,9 +788,16 @@ def compare_parallel_cascade_trade_logs() -> dict[str, Any]:
     same_contract = sum(1 for t in inter if _contract_key(par[t]) == _contract_key(cas[t]))
     pnl_rows: list[dict[str, Any]] = []
     for t in sorted(inter):
+        # CAPS RC-REHAB-1: a valid trade row with a blank/missing pnl_dollars has NO pnl; it
+        # used to be read as $0 and produce a fabricated parallel-minus-cascade difference.
+        # Such a pair is now skipped, like an unparseable one.
+        pp_raw = par[t].get("pnl_dollars")
+        cp_raw = cas[t].get("pnl_dollars")
+        if pp_raw in (None, "") or cp_raw in (None, ""):
+            continue
         try:
-            pp = float(par[t].get("pnl_dollars") or 0)
-            cp = float(cas[t].get("pnl_dollars") or 0)
+            pp = float(pp_raw)
+            cp = float(cp_raw)
             pnl_rows.append({"signal_time": t, "pnl_diff_parallel_minus_cascade": round(pp - cp, 6)})
         except (TypeError, ValueError):
             continue
@@ -1115,7 +1124,7 @@ def evaluate_realized_contract_trades_for_rows(
                 "hold_bars": hold_bars,
                 "snapshot_id_exit": exit_row["snapshot_id"],
                 "path_model_used": path_model_used,
-                "same_bar_stop_target_conflict_flag": "1" if sb_conf else "0",
+                "same_bar_stop_target_conflict_flag": "1" if sb_conf else "0",  # caps-ok: CSV encoding of the computed boolean sb_conf (both stop and target hit in one bar) -- a real True/False, not a default
                 "same_bar_resolution_rule": sb_rule,
             }
         )
@@ -1220,7 +1229,9 @@ def evaluate_realized_contract_trades_for_rows(
             skip_rate is not None and skip_rate >= SKIP_RATE_WARNING_THRESHOLD
         ),
         "same_bar_conflict_trade_count": same_bar_conflict_trades,
-        "same_bar_conflict_share_of_valid": round(same_bar_conflict_trades / n_v, 6) if n_v else 0.0,
+        # CAPS RC-REHAB-1: share of ZERO valid trades is undefined -> None (was 0.0), matching
+        # win_rate / avg_pnl_dollars in this same report.
+        "same_bar_conflict_share_of_valid": round(same_bar_conflict_trades / n_v, 6) if n_v else None,
         "chain_selection_quality": {
             "selected_was_best_rate": round(_best / _nqa, 6) if _nqa else None,
             "selected_was_top2_rate": round(_top2 / max(len(_q), 1), 6) if _q else None,

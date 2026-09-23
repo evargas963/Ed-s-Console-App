@@ -180,9 +180,13 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
 
         bd = active_bundle_dir(bt, hz, models_dir=MODEL_DIR)
         comp = check_active_bundle_complete(bt, hz, bundle_dir=bd, models_dir=MODEL_DIR)
-        missing = list(comp.get("issues", []))
-        for art in (comp.get("artifacts") or {}).values():
-            missing.extend(art.get("issues", []))
+        # CAPS RC-REHAB-1: check_active_bundle_complete ALWAYS returns `issues` and
+        # `artifacts`, and every artifact entry ALWAYS carries `issues` (its documented
+        # contract). The old `.get(..., [])` defaults would have reported a malformed
+        # verdict as "no missing artifacts"; a missing key now fails loudly.
+        missing = list(comp["issues"])
+        for art in comp["artifacts"].values():
+            missing.extend(art["issues"])
 
         trained_at = feature_schema_version = preprocessing_version = None
         contract_match = None
@@ -372,8 +376,12 @@ def _probs_dict_to_arr(p: Optional[dict]) -> np.ndarray:
     u = 1.0 / 3.0
     if not p:
         return np.array([u, u, u], dtype=np.float32)
+    # CAPS RC-REHAB-1: a PRESENT probability dict must carry all three classes (the cascade
+    # contract takes "validated _predict_xgb/_predict_lstm outputs only"). The old per-key
+    # 1/3 default spliced an invented class probability into a real triplet; a partial dict
+    # now fails loudly (KeyError).
     return np.array(
-        [float(p.get("up", u)), float(p.get("down", u)), float(p.get("flat", u))],
+        [float(p["up"]), float(p["down"]), float(p["flat"])],
         dtype=np.float32,
     )
 
@@ -383,7 +391,7 @@ def _transformer_normalize_and_select(X_raw: np.ndarray, checkpoint: dict) -> np
     Match transformer_train.train_transformer: per-column normalize using raw means/stds,
     then keep columns where feature_mask is True (same order as training).
     """
-    fm = np.asarray(checkpoint.get("feature_mask", np.ones(X_raw.shape[2], dtype=bool)), dtype=bool)
+    fm = np.asarray(checkpoint.get("feature_mask", np.ones(X_raw.shape[2], dtype=bool)), dtype=bool)  # caps-ok: _load_transformer accepts a mask-less checkpoint ONLY after verifying n_features == the full encoder width, so all-True IS that model's real column set; norm_mean/std widths are cross-checked against it just below and raise on mismatch
     if X_raw.shape[2] != fm.shape[0]:
         raise ValueError(f"raw width {X_raw.shape[2]} != feature_mask len {fm.shape[0]}")
     mean_m = np.asarray(checkpoint["norm_mean"], dtype=np.float32)
@@ -421,7 +429,7 @@ def _transformer_apply_ablation_channel_zero(X: np.ndarray, checkpoint: dict) ->
 
         if not ablation_survivors_training_enabled():
             return X
-        fm = np.asarray(checkpoint.get("feature_mask", np.ones(X.shape[2], dtype=bool)), dtype=bool)
+        fm = np.asarray(checkpoint.get("feature_mask", np.ones(X.shape[2], dtype=bool)), dtype=bool)  # caps-ok: same load-verified mask-less transformer contract as _transformer_normalize_and_select (n_features == full encoder width checked at load), so all-True is the model's real column set for the ablation channel map
         dummy_1m = np.zeros((X.shape[0], X.shape[1], 0), dtype=X.dtype)
         X, _ = zero_ablated_sequence_channels_for_model(
             X,
@@ -762,7 +770,7 @@ def _model_dir_for_ticker(ticker: str) -> Path:
         from active_bundle_contract import active_bundle_dir
 
         return active_bundle_dir(bt, hz, models_dir=MODEL_DIR)
-    strict_active_only = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY", "1").strip().lower() not in (
+    strict_active_only = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY", "1").strip().lower() not in (  # caps-ok: operator env switch whose documented default "1" is the STRICT (active-bundle-only) posture; only an explicit 0/false/no relaxes it
         "0",
         "false",
         "no",
@@ -1023,8 +1031,12 @@ def _load_xgb(ticker: str) -> bool:
         _xgb_registry[rk] = dict(
             model=model, meta=meta,
             feature_names=meta["features"],
-            category_maps=meta.get("category_maps", {}),
-            vol_medians=meta.get("vol_medians", {}),
+            # CAPS RC-REHAB-1: ml_train.train_ticker writes category_maps AND vol_medians into
+            # every XGB meta (since the file's first commit). An `{}` default turned every
+            # categorical feature and volume_ratio into NaN -- a silently degraded model input
+            # that still produced a confident-looking prediction. Required now.
+            category_maps=meta["category_maps"],
+            vol_medians=meta["vol_medians"],
         )
         logger.info("XGBoost loaded for %s hz=%s: %d features", bt, hz, len(meta["features"]))
         return True
@@ -1203,8 +1215,9 @@ def _predict_xgb_movement_heads(
                             model=model,
                             meta=meta,
                             feature_names=meta["features"],
-                            category_maps=meta.get("category_maps", {}),
-                            vol_medians=meta.get("vol_medians", {}),
+                            # CAPS RC-REHAB-1: required, same writer contract as _load_xgb.
+                            category_maps=meta["category_maps"],
+                            vol_medians=meta["vol_medians"],
                             class_names=cnames,
                         )
                 except Exception as e:
@@ -1457,10 +1470,13 @@ def _predict_lstm(
         from ml_train import should_abstain_missing_session_vwap_for_cf
 
         _cf_idx = CONFLUENCE_FEATURES.index("cf_vwap_distance_pct")
-        _mask_conf_probe = np.array(
-            checkpoint.get("mask_conf", [True] * len(CONFLUENCE_FEATURES)),
-            dtype=bool,
-        )
+        # CAPS RC-REHAB-1: mask_5m/mask_1m/mask_conf/norm_stats are written into EVERY served
+        # LSTM checkpoint by lstm_model.train (since the file's first commit). The old
+        # all-True mask defaults made the width checks below pass trivially and a missing
+        # norm_stats silently skipped normalization (unnormalized inputs into a model trained
+        # on normalized ones). They are now required; a malformed checkpoint raises and the
+        # outer except returns no prediction.
+        _mask_conf_probe = np.array(checkpoint["mask_conf"], dtype=bool)
         _consumes_cf_vwap = (
             _cf_idx < _mask_conf_probe.shape[0] and bool(_mask_conf_probe[_cf_idx])
         )
@@ -1520,11 +1536,8 @@ def _predict_lstm(
             ticker, merged_days[-1].get("ts_utc") if merged_days else None, _conf_db)
         conf_vec = [conf[k] for k in CONFLUENCE_FEATURES]
 
-        snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
-        mask_conf = np.array(
-            checkpoint.get("mask_conf", [True] * (len(conf_vec))),
-            dtype=bool,
-        )
+        snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])  # caps-ok: with no caller snapshot the overlay is the newest REAL row of the same causal window the sequence ends on (not an invented value); it only feeds the non-parallel cascade stage-1 XGB call, and parallel runtime raises before that
+        mask_conf = np.array(checkpoint["mask_conf"], dtype=bool)
         n_conf_base = len(CONFLUENCE_FEATURES)
         if mask_conf.shape[0] > n_conf_base:
             need = mask_conf.shape[0] - n_conf_base
@@ -1558,8 +1571,8 @@ def _predict_lstm(
 
         X_conf = np.array([conf_vec], dtype=np.float32)
 
-        mask_5m = np.array(checkpoint.get("mask_5m", [True] * X_5m.shape[2]))
-        mask_1m = np.array(checkpoint.get("mask_1m", [True] * X_1m.shape[2]))
+        mask_5m = np.array(checkpoint["mask_5m"])
+        mask_1m = np.array(checkpoint["mask_1m"])
         if mask_5m.shape[0] != X_5m.shape[2]:
             logger.error(
                 "LSTM %s: checkpoint mask_5m len %d != encoded width %d; retrain required",
@@ -1586,7 +1599,7 @@ def _predict_lstm(
         X_1m   = X_1m[:, :, mask_1m]
         X_conf = X_conf[:, mask_conf]
 
-        norm = checkpoint.get("norm_stats", {})
+        norm = checkpoint["norm_stats"]
         if norm:
             from lstm_model import align_lstm_norm_stats, apply_normalization
 
@@ -1719,11 +1732,15 @@ def _load_transformer(ticker: str) -> bool:
             logger.error("Transformer %s: %s", ticker, exc)
             _trans_registry[rk] = None
             return False
-        n_enc = int(checkpoint.get("n_features", 0))
+        # CAPS RC-REHAB-1: n_features is REQUIRED (transformer_train always writes it and
+        # build_transformer below indexes it). The old `.get("n_features", 0)` made a missing
+        # value 0, which the `if n_enc and ...` guards read as "skip the width check" -- the
+        # check passed on absent data. A missing key now raises (caught below -> load refused).
+        n_enc = int(checkpoint["n_features"])
         fm = checkpoint.get("feature_mask")
         if fm is not None:
             n_masked = int(np.asarray(fm, dtype=bool).sum())
-            if n_enc and n_enc != n_masked:
+            if n_enc != n_masked:
                 logger.error(
                     "Transformer %s: n_features=%s != feature_mask active count %s; retrain",
                     ticker,
@@ -1736,7 +1753,7 @@ def _load_transformer(ticker: str) -> bool:
             from lstm_data import encoded_width_5m_for_checkpoint
 
             enc_base = encoded_width_5m_for_checkpoint(checkpoint)
-            if n_enc and n_enc != enc_base:
+            if n_enc != enc_base:
                 logger.error(
                     "Transformer %s: n_features=%s != encoder width %s; retrain",
                     ticker,
@@ -1748,7 +1765,7 @@ def _load_transformer(ticker: str) -> bool:
         from transformer_train import build_transformer
         model = build_transformer(
             checkpoint["n_features"],
-            seq_len=checkpoint.get("seq_len", 20),
+            seq_len=checkpoint.get("seq_len", 20),  # caps-ok: 20 is transformer_train.SEQUENCE_LENGTH, the fixed window every transformer checkpoint was trained at; the writer stores it as seq_len, a checkpoint predating that field was trained at the same 20
         )
         model.load_state_dict(checkpoint["model_state"])
         model.eval()
@@ -1805,7 +1822,7 @@ def _predict_transformer(
         )
 
         tf = timeframe or CANONICAL_TIMEFRAME
-        seq_len = checkpoint.get("seq_len", 20)
+        seq_len = checkpoint.get("seq_len", 20)  # caps-ok: 20 is transformer_train.SEQUENCE_LENGTH (unchanged across the file's whole history), the window every transformer checkpoint was trained at and the value the writer stores as seq_len
         n_enc_base = encoded_width_5m_for_checkpoint(checkpoint)
         try:
             assert_lstm_encoder_checkpoint_compatible(checkpoint)
@@ -1855,7 +1872,7 @@ def _predict_transformer(
         except ValueError as e:
             raise TransformerSequenceInputError(str(e)) from e
 
-        snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])
+        snap = snapshot if snapshot is not None else _snap_dict(merged_window[-1])  # caps-ok: with no caller snapshot the overlay is the newest REAL row of the same causal window the sequence ends on; it only feeds the non-parallel cascade upstream XGB/LSTM calls, and parallel runtime raises before that
         seq = [
             encode_lstm_structure_sequence_bar_for_checkpoint(s, ref_spot, checkpoint)
             for s in merged_window
@@ -1871,7 +1888,7 @@ def _predict_transformer(
             return None
 
         fm = np.asarray(
-            checkpoint.get("feature_mask", np.ones(base.shape[2], dtype=bool)),
+            checkpoint.get("feature_mask", np.ones(base.shape[2], dtype=bool)),  # caps-ok: mask-less transformer checkpoint was admitted by _load_transformer only with n_features == full encoder width, so all-True is its true column set; the width check right below still rejects a mismatch
             dtype=bool,
         )
 
@@ -2612,7 +2629,7 @@ def run_cascade_models_once(
 
     Lineage kwargs enforce parity with shared training cache when set (evaluation harness).
     """
-    tkr = ticker or snapshot.get("ticker", "") or ""
+    tkr = ticker or snapshot.get("ticker", "") or ""  # caps-ok: "" is only the no-ticker sentinel and is rejected on the next line (CascadeChallengerError), never used as a ticker
     if not tkr:
         raise CascadeChallengerError("cascade challenger: empty ticker")
 
@@ -2740,7 +2757,7 @@ def get_model_outputs_for_fusion(
     """
     Return structured outputs for fusion. Delegates to run_unified_stack_ml_once — single inference truth per tick.
     """
-    tkr = ticker or snapshot.get("ticker", "") or ""
+    tkr = ticker or snapshot.get("ticker", "") or ""  # caps-ok: "" is only the no-ticker sentinel; the next line returns all three models as None (unavailable), never a prediction
     if not tkr:
         return {"xgb": None, "lstm": None, "transformer": None}
     return run_unified_stack_ml_once(
@@ -2771,7 +2788,7 @@ def get_model_outputs(
             "transformer": {"available": bool, "dominant": str|None, "confidence": float|None, "approved": bool},
         }
     """
-    tkr = ticker or snapshot.get("ticker", "")
+    tkr = ticker or snapshot.get("ticker", "")  # caps-ok: "" is only the no-ticker sentinel; the next line reports every model available=False, never a fabricated output
     if not tkr:
         return {
             "xgb": {"available": False, "dominant": None, "confidence": None, "approved": False},
@@ -2804,7 +2821,7 @@ def predict_direction(
         db:       EdDB instance (needed for LSTM/Transformer sequence access)
         inference_snapshot_v1: required InferenceSnapshotV1 dict for XGB MVP path
     """
-    tkr = ticker or snapshot.get("ticker", "")
+    tkr = ticker or snapshot.get("ticker", "")  # caps-ok: "" is only the no-ticker sentinel; the next line returns None (no prediction), never a fabricated one
     if not tkr:
         return None
     return run_unified_stack_ml_once(

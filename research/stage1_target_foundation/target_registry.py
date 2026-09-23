@@ -128,7 +128,7 @@ def validate_registry(reg: dict) -> list[str]:
 
     seen_ids: set[str] = set()
     for t in reg.get("targets") or []:
-        tid = t.get("target_id", "<missing>")
+        tid = t.get("target_id", "<missing>")  # caps-ok: validator error-message label; a target without target_id is itself reported by the REQUIRED_TARGET_FIELDS check in this loop
         if tid in seen_ids:
             errs.append(f"{tid}: duplicate target_id")
         seen_ids.add(tid)
@@ -162,7 +162,7 @@ def validate_registry(reg: dict) -> list[str]:
         if bv not in barrier_versions:
             errs.append(f"{tid}: barrier_version {bv!r} not declared in barrier_versions")
         # economic targets must name a versioned (non-NONE) cost model
-        marker = (t.get("family", "") + " " + tid).lower()
+        marker = (t.get("family", "") + " " + tid).lower()  # caps-ok: validator: family is in REQUIRED_TARGET_FIELDS, so a target lacking it already fails validation above; '' only keeps this marker scan from raising
         if any(m in marker for m in _ECONOMIC_MARKERS) and cmv == "NONE":
             errs.append(f"{tid}: economic target must name a versioned cost model (got NONE)")
 
@@ -223,7 +223,7 @@ def stage2_eligible_targets(reg: dict) -> list[str]:
 def targets_by_status(reg: dict) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for t in reg.get("targets") or []:
-        out.setdefault(t.get("promotion_status", "?"), []).append(t.get("target_id"))
+        out.setdefault(t.get("promotion_status", "?"), []).append(t.get("target_id"))  # caps-ok: report grouping: targets without a status are listed under an explicit '?' bucket (and fail validate_registry), never merged into a real status
     return out
 
 

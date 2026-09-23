@@ -52,7 +52,7 @@ bid = 1.0
 ask = 2.0
 mid = (bid + ask) / 2
 q = {}
-v = q.get("volume", 0)
+v = q.get("volume", 0)  # caps-ok: scanner false positive: line of a source-string fixture the derivation catalog must flag as DICT_GET_MARKET_DEFAULT
 '''
     f = tmp_path / "x.py"
     f.write_text(src, encoding="utf-8")

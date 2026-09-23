@@ -208,7 +208,7 @@ def write_flow_e2e_fixture() -> None:
         shutil.rmtree(root, ignore_errors=True)
     payload = json.loads(out.strip().splitlines()[-1])   # import-time log lines may precede it
     # The only machine-specific VALUE: the child's temp stream-DB path. Keys are untouched.
-    ident = payload.get("streaming_plane", {}).get("stream_db_identity")
+    ident = payload.get("streaming_plane", {}).get("stream_db_identity")  # caps-ok: fixture-regeneration normaliser: rewrites the machine-specific path only when present; a payload missing the block is written as-is and the key-path contract test then fails on it
     if isinstance(ident, dict) and "server_resolved_path" in ident:
         ident["server_resolved_path"] = "<isolated-runtime>/data/stream_capture.db"
     path = _flow_e2e_fixture_path()

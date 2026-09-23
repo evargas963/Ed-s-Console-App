@@ -49,9 +49,9 @@ def _classname_and_message(testcase: ET.Element) -> tuple[str, str] | None:
     skipped = testcase.find("skipped")
     if skipped is None:
         return None
-    classname = testcase.get("classname", "") or ""
-    name = testcase.get("name", "") or ""
-    message = skipped.get("message", "") or ""
+    classname = testcase.get("classname", "") or ""  # caps-ok: JUnit attribute; a blank classname yields a node id no ledger file stem matches, so the skip is reported
+    name = testcase.get("name", "") or ""  # caps-ok: JUnit attribute; display part of the node id, never a pass condition
+    message = skipped.get("message", "") or ""  # caps-ok: a skip with no message carries no PRODUCTION-DATA-ONLY marker and matches no reason_contains, so it is reported
     return f"{classname}::{name}", message
 
 

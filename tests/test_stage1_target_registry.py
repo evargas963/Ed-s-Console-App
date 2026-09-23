@@ -37,7 +37,7 @@ def test_no_target_is_production_approved():
     """HARD Stage 1 rule: nothing may be PRODUCTION_APPROVED."""
     reg = load_registry()
     by_status = targets_by_status(reg)
-    assert by_status.get("PRODUCTION_APPROVED", []) == []
+    assert by_status.get("PRODUCTION_APPROVED", []) == []  # caps-ok: the assertion is that NO target is production-approved; targets_by_status only creates keys for statuses that occur, so a missing key is exactly the asserted outcome
     for st in by_status:
         assert st in STATUS_ENUM
 
@@ -45,7 +45,7 @@ def test_no_target_is_production_approved():
 def test_zero_targets_are_experiment_eligible():
     """Truthful Stage 1 classification: NOTHING is experiment-eligible."""
     reg = load_registry()
-    assert targets_by_status(reg).get("EXPERIMENT_ELIGIBLE", []) == []
+    assert targets_by_status(reg).get("EXPERIMENT_ELIGIBLE", []) == []  # caps-ok: the assertion is that NO target is experiment-eligible; targets_by_status only creates keys for statuses that occur, so a missing key is exactly the asserted outcome
     assert stage2_eligible_targets(reg) == []
 
 
@@ -139,7 +139,7 @@ def test_production_approved_entry_is_rejected():
 def test_economic_target_without_cost_model_is_rejected():
     reg = copy.deepcopy(load_registry())
     for t in reg["targets"]:
-        if "cost_adjusted" in t["target_id"] or "cost_threshold" in t.get("family", ""):
+        if "cost_adjusted" in t["target_id"] or "cost_threshold" in t.get("family", ""):  # caps-ok: mutation-target selector: a target without a family is simply not selected; if none is selected the error assertion below fails
             t["cost_model_version"] = "NONE"
             break
     errs = validate_registry(reg)

@@ -64,11 +64,11 @@ def _truthy(v: str | None) -> bool:
 
 def load_notification_delivery_config_from_env() -> NotificationDeliveryConfig:
     return NotificationDeliveryConfig(
-        file_sink_enabled=_truthy(os.environ.get("ED_NOTIFICATION_SINK_FILE", "1")),
-        webhook_enabled=_truthy(os.environ.get("ED_NOTIFICATION_WEBHOOK_ENABLED", "0")),
+        file_sink_enabled=_truthy(os.environ.get("ED_NOTIFICATION_SINK_FILE", "1")),  # caps-ok: documented env default: the local file sink is on unless ED_NOTIFICATION_SINK_FILE=0
+        webhook_enabled=_truthy(os.environ.get("ED_NOTIFICATION_WEBHOOK_ENABLED", "0")),  # caps-ok: documented opt-in env flag: webhook delivery is off unless explicitly enabled
         webhook_url=(os.environ.get("ED_NOTIFICATION_WEBHOOK_URL") or "").strip(),
-        email_enabled=_truthy(os.environ.get("ED_NOTIFICATION_SINK_EMAIL_ENABLED", "0")),
-        slack_enabled=_truthy(os.environ.get("ED_NOTIFICATION_SINK_SLACK_ENABLED", "0")),
+        email_enabled=_truthy(os.environ.get("ED_NOTIFICATION_SINK_EMAIL_ENABLED", "0")),  # caps-ok: documented opt-in env flag: email delivery is off unless explicitly enabled
+        slack_enabled=_truthy(os.environ.get("ED_NOTIFICATION_SINK_SLACK_ENABLED", "0")),  # caps-ok: documented opt-in env flag: slack delivery is off unless explicitly enabled
     )
 
 
@@ -127,10 +127,10 @@ def _dedup_fingerprint(sink: str, alert: dict[str, Any]) -> str:
     raw = "|".join(
         [
             sink,
-            str(alert.get("suppression_key", "")),
-            str(alert.get("reason_code", "")),
-            str(alert.get("severity", "")),
-            str(alert.get("routing_class", "")),
+            str(alert.get("suppression_key", "")),  # caps-ok: dedup-hash input only; an absent field hashes as '' identically at write and lookup, so the fingerprint stays stable and asserts nothing
+            str(alert.get("reason_code", "")),  # caps-ok: dedup-hash input only; an absent field hashes as '' identically at write and lookup, so the fingerprint stays stable and asserts nothing
+            str(alert.get("severity", "")),  # caps-ok: dedup-hash input only; an absent field hashes as '' identically at write and lookup, so the fingerprint stays stable and asserts nothing
+            str(alert.get("routing_class", "")),  # caps-ok: dedup-hash input only; an absent field hashes as '' identically at write and lookup, so the fingerprint stays stable and asserts nothing
             json.dumps(alert.get("evidence_refs"), sort_keys=True, default=str),
         ]
     )
@@ -359,7 +359,7 @@ def process_notification_deliveries(
     alerts = ar.get("alerts") or []
     had_alert_validation_error = False
     dedup_state = _load_dedup_state(dedup_path)
-    fingerprints: dict[str, Any] = dedup_state.setdefault("delivered_fingerprints", {})
+    fingerprints: dict[str, Any] = dedup_state.setdefault("delivered_fingerprints", {})  # caps-ok: persisted dedup store initialisation; a fresh state file has no delivered fingerprints yet
     if not isinstance(fingerprints, dict):
         fingerprints = {}
         dedup_state["delivered_fingerprints"] = fingerprints

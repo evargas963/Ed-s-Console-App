@@ -58,7 +58,7 @@ def _write_summary_csv(path: Path, horizon_manifests: list[dict]) -> None:
         w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         w.writeheader()
         for man in horizon_manifests:
-            hz = man.get("ml_horizon_slug", "")
+            hz = man["ml_horizon_slug"]  # main() stamps ml_horizon_slug on every manifest
             for cfg, m in (man.get("metrics_by_config") or {}).items():
                 row = {"ml_horizon_slug": hz, "config": cfg, **m}
                 w.writerow(row)
@@ -67,7 +67,7 @@ def _write_summary_csv(path: Path, horizon_manifests: list[dict]) -> None:
 def _write_calibration_json(path: Path, horizon_manifests: list[dict]) -> None:
     out = {"schema_version": "1", "by_horizon": {}}
     for man in horizon_manifests:
-        hz = man.get("ml_horizon_slug", "")
+        hz = man["ml_horizon_slug"]  # main() stamps ml_horizon_slug on every manifest
         block = {}
         for cfg, m in (man.get("metrics_by_config") or {}).items():
             block[cfg] = {
@@ -95,7 +95,7 @@ def _write_authority_md(path: Path, horizon_manifests: list[dict]) -> None:
         "",
     ]
     for man in horizon_manifests:
-        hz = man.get("ml_horizon_slug", "")
+        hz = man["ml_horizon_slug"]  # main() stamps ml_horizon_slug on every manifest
         lines.append(f"### {hz}")
         lines.append("")
         auth = man.get("authority_decision") or {}

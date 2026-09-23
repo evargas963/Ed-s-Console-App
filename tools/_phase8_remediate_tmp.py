@@ -15,7 +15,7 @@ from db_authority import canonical_console_db_path
 phase8=json.load(open('data/phase8_calibration_global_v1.json'))
 readiness=json.load(open('data/ticker_readiness_matrix_v1.json'))
 allowed=sorted(r['ticker'] for r in readiness['tickers'] if r['final_readiness_verdict']=='READY_GLOBAL_STANDARD' and r['policy_status']=='POLICY_ELIGIBLE')
-excluded=set(tuple(s.split(':')) for s in phase8.get('excluded_family_horizon',[]))
+excluded=set(tuple(s.split(':')) for s in phase8.get('excluded_family_horizon',[]))  # caps-ok: optional exclusion list in the phase8 artifact; absent means no family/horizon is excluded
 horizons=['1c','3c','5c','8c','13c','15c','60c']
 
 def deciles(pred,y):
@@ -101,7 +101,7 @@ for family,colp,colo,valdir in [('move','pred_move_prob','outcome_move',False),(
       br=brier(cp,y)
       methods[m]={'monotonic':mono(emp),'brier':br,'rank_diff':rd,'rank_preserved':(rd is not None and base_rank is not None and rd>=base_rank-0.005),'model':model}
     cands=[(m,v) for m,v in methods.items() if v['rank_preserved']]
-    best=min(cands,key=lambda kv: kv[1]['brier'])[0] if cands else max(methods.items(), key=lambda kv: kv[1]['rank_diff'] if kv[1]['rank_diff'] is not None else -9)[0]
+    best=min(cands,key=lambda kv: kv[1]['brier'])[0] if cands else max(methods.items(), key=lambda kv: kv[1]['rank_diff'] if kv[1]['rank_diff'] is not None else -9)[0]  # caps-ok: sort key only; a method with no rank_diff ranks last and its None stays in methods[best]['rank_diff'], which the verdict below checks for None
     b=methods[best]
     brier_raw=brier(p,y); bdelta=brier_raw-b['brier']
     classif='RESEARCH_ONLY'; verdict='FAIL'

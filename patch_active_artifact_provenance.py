@@ -50,7 +50,7 @@ def patch_meta(path: Path) -> bool:
         changed = True
     ru = data.get("rows_used")
     if not ru:
-        alt = int(data.get("samples") or data.get("n_train") or 0)
+        alt = int(data.get("samples") or data.get("n_train") or 0)  # caps-ok: 0 only means "no alternate row count found" and is never written -- the `if alt:` guard below skips the patch, leaving rows_used unset
         if alt:
             data["rows_used"] = alt
             changed = True

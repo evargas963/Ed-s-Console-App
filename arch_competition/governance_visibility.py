@@ -59,7 +59,7 @@ log = logging.getLogger(__name__)
 
 def _record_persistence_failure(base: dict[str, Any], operation: str, error: OSError) -> None:
     log.warning("governance_visibility: %s failed: %s", operation, error)
-    failures = base.setdefault("persistence_failures", [])
+    failures = base.setdefault("persistence_failures", [])  # caps-ok: accumulator: first persistence failure creates the list the failures are appended to
     failures.append({"operation": operation, "error": str(error)})
 
 
@@ -294,7 +294,7 @@ def build_governance_panel_payload(
     gc = arch_t.get("governed_competition") if isinstance(arch_t.get("governed_competition"), dict) else None
 
     audits = load_recent_audit_records(model_dir, limit=audit_limit)
-    audits_ticker = [a for a in audits if ticker_storage_key(str(a.get("ticker", ""))) == tku]  # RC-345/F25
+    audits_ticker = [a for a in audits if ticker_storage_key(str(a.get("ticker", ""))) == tku]  # RC-345/F25  # caps-ok: filter: an audit record without a ticker cannot belong to this ticker and is excluded, never counted as its audit
 
     rollback_ok = _rollback_checkpoint_available(model_dir, hz, tku)
 
@@ -317,7 +317,7 @@ def build_governance_panel_payload(
             "would_promote_challenger": record.get("would_promote_challenger"),
             "blocked_promotion_flags": record.get("blocked_promotion_flags"),
             "reason_codes": record.get("reason_codes"),
-            "rollback_demotion_ready": (gc or {}).get("rollback_demotion_ready", record.get("rollback_demotion_ready")),
+            "rollback_demotion_ready": (gc or {}).get("rollback_demotion_ready", record.get("rollback_demotion_ready")),  # caps-ok: falls back to the promotion record's own flag, and to None if neither carries it; nothing asserted true/false
             "manifest_paths": {
                 "evaluation_manifest": str(ev_path.resolve()),
                 "promotion_decision": str(pr_path.resolve()),
@@ -393,13 +393,13 @@ def is_governance_ui_actions_enabled() -> bool:
     """POST /api/governance/* mutations require this env (and localhost unless allow-remote)."""
     import os
 
-    return os.environ.get("ED_GOVERNANCE_UI_ACTIONS", "").strip().lower() in ("1", "true", "yes", "on")
+    return os.environ.get("ED_GOVERNANCE_UI_ACTIONS", "").strip().lower() in ("1", "true", "yes", "on")  # caps-ok: documented opt-in env flag; unset means OFF, which keeps governance mutations disabled (fail-closed)
 
 
 def allow_governance_remote() -> bool:
     import os
 
-    return os.environ.get("ED_GOVERNANCE_ALLOW_REMOTE", "").strip().lower() in ("1", "true", "yes", "on")
+    return os.environ.get("ED_GOVERNANCE_ALLOW_REMOTE", "").strip().lower() in ("1", "true", "yes", "on")  # caps-ok: documented opt-in env flag; unset means localhost-only governance mutations (fail-closed)
 
 
 def client_may_run_governance_action(host: str | None) -> bool:

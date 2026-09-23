@@ -102,7 +102,7 @@ def test_api_governance_panel_emit_notifications_query(monkeypatch, tmp_path: Pa
     from fastapi.testclient import TestClient
 
     c = TestClient(server.app)
-    r = c.get("/api/governance/panel", params={"ticker": "SPY", "horizon": "1c", "emit_notifications": "false"})
+    r = c.get("/api/governance/panel", params={"ticker": "SPY", "horizon": "1c", "emit_notifications": "false"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
     assert r.status_code == 200
     body = r.json()
     assert body.get("ok") is True

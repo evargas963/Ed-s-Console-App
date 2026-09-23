@@ -262,9 +262,11 @@ class DerivationVisitor(ast.NodeVisitor):
         self.file_rel = file_rel
         self.findings = findings
 
-    def _add(self, node: ast.AST, kind: str, summary: str, tokens: set[str]) -> None:
-        line = getattr(node, "lineno", 0) or 0
-        col = getattr(node, "col_offset", 0) or 0
+    def _add(self, node: ast.expr, kind: str, summary: str, tokens: set[str]) -> None:
+        # Every caller passes an ast.expr (BinOp/BoolOp/IfExp/Call), which always carries a
+        # real location; no fabricated line 0 / col 0 in the catalog.
+        line = node.lineno
+        col = node.col_offset
         self.findings.append(
             Finding(
                 path=self.file_rel,

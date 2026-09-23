@@ -33,7 +33,7 @@ def test_real_computation_matches_compute_net_charm_directly():
     result = srv._charm_for_state("ZZZ_CHARM_MATCH", contracts, 100.5, "2026-10-16")
 
     raw = math_exposure.compute_net_charm(contracts, 100.5, "2026-10-16", drift_toward_strike=None)
-    assert raw.get("contracts_used", 0) > 0, "fixture must produce real, non-degenerate charm data"
+    assert raw["contracts_used"] > 0, "fixture must produce real, non-degenerate charm data"
     assert result.charm_net == raw["net_charm_daily"]
     assert result.charm_dir == raw["charm_direction"]
     assert result.charm_toward == raw.get("drift_toward")

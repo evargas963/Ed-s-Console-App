@@ -106,7 +106,7 @@ def test_chart_page_route_serves_static_chart_html():
     r = client.get("/chart")
     assert r.status_code == 200
     assert "terrain on price" in r.text
-    assert "no-store" in r.headers.get("cache-control", ""), (
+    assert "no-store" in r.headers["cache-control"], (
         "chart shell must never be browser-cached (stale-JS class, RC on 2026-07-22)")
 
 

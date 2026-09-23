@@ -603,7 +603,7 @@ def main():
             print(f"   {tkr}: {status}")
             if not r["compliant"]:
                 non_compliant.append(tkr)
-                for iss in r.get("issues", [])[:3]:
+                for iss in r["issues"][:3]:  # check_artifact_compliance always returns "issues"
                     print(f"      ! {iss}")
         if non_compliant:
             print("\n   Run: python ml_scheduler.py --run-now --force-retrain")

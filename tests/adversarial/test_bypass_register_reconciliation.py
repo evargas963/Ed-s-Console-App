@@ -32,24 +32,25 @@ def _reconciled_bypass_register() -> dict:
 
 def test_bypass_register_has_reconciliation_summary():
     data = _reconciled_bypass_register()
-    recon = data.get("reconciliation") or {}
-    assert recon.get("bypass_paths_total", 0) > 0
+    recon = data["reconciliation"]
+    assert recon["bypass_paths_total"] > 0
     counted = (
-        int(recon.get("open", 0))
-        + int(recon.get("partially_mitigated", 0))
-        + int(recon.get("closed_by_runtime_gate", 0))
-        + int(recon.get("closed_by_adversarial_test", 0))
-        + int(recon.get("classified_non_production", 0))
-        + int(recon.get("still_unproven", 0))
+        int(recon["open"])
+        + int(recon["partially_mitigated"])
+        + int(recon["closed_by_runtime_gate"])
+        + int(recon["closed_by_adversarial_test"])
+        + int(recon["classified_non_production"])
+        + int(recon["still_unproven"])
     )
     assert counted == recon["bypass_paths_total"]
 
 
 def test_closed_bypasses_have_evidence():
     data = _reconciled_bypass_register()
-    for entry in data.get("entries") or []:
+    assert data["entries"], "an empty register would pass this loop vacuously"
+    for entry in data["entries"]:
         for bp in entry.get("bypass_paths") or []:
-            state = bp.get("reconciliation_state", "open")
+            state = bp["reconciliation_state"]
             assert state in VALID_STATES
             if state in ("closed_by_runtime_gate", "closed_by_adversarial_test"):
                 assert bp.get("evidence") or bp.get("evidence_test"), (
@@ -63,8 +64,8 @@ def test_i28_wrong_price_bypasses_reconciled_closed():
     closed = {
         bp["path"]: bp.get("reconciliation_state")
         for bp in i28.get("bypass_paths") or []
-        if "wrong but finite price" in bp.get("path", "")
-        or "R-005 no_valid_expiry" in bp.get("path", "")
+        if "wrong but finite price" in bp["path"]
+        or "R-005 no_valid_expiry" in bp["path"]
     }
     assert closed.get("wrong but finite price (e.g. SPY 0.01 or 50000)") == "closed_by_runtime_gate"
     assert closed.get("R-005 no_valid_expiry synthetic bundle without live quotes") in (

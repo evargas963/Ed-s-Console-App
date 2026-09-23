@@ -124,7 +124,7 @@ def naming_violations(reg: dict | None = None) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else "")
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else "")  # caps-ok: argparse help text only (docstring stripped under -OO)
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--measure", action="store_true",
                     help="also print which fields are covered by this gate")

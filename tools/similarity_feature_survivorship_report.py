@@ -47,7 +47,7 @@ def main() -> int:
 
     db = EdDB(
         args.db,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: argparse flag from register_allow_noncanonical_flag; absent/False keeps the canonical-DB-only restriction (fail-closed safety flag, not data)
     )
     extra: list[str] = []
     if not args.spy_qqq_only:

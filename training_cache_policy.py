@@ -37,7 +37,7 @@ def training_repo_root() -> Path:
 
 
 def env_disable_torch_resume() -> bool:
-    return os.environ.get("ED_DISABLE_TORCH_RESUME", "").strip().lower() in ("1", "true", "yes")
+    return os.environ.get("ED_DISABLE_TORCH_RESUME", "").strip().lower() in ("1", "true", "yes")  # caps-ok: operator opt-in env flag; unset = resume allowed (the *_CHECKPOINT_RESUME_ALLOWED policy below)
 
 
 # ── Rolling RTH *sessions* (trading days in DB), not calendar days. 0 = full history. ──
@@ -45,24 +45,24 @@ def env_disable_torch_resume() -> bool:
 ROLLING_WINDOW_RTH_SESSIONS_TABULAR: int = int(
     os.environ.get(
         "ED_TRAIN_ROLLING_RTH_SESSIONS_TABULAR",
-        os.environ.get("ED_TRAIN_ROLLING_DAYS_TABULAR", "0"),
+        os.environ.get("ED_TRAIN_ROLLING_DAYS_TABULAR", "0"),  # caps-ok: legacy env fallback; "0" is the documented "full history" window (section comment above)
     )
 )
 ROLLING_WINDOW_RTH_SESSIONS_SEQUENCE: int = int(
     os.environ.get(
         "ED_TRAIN_ROLLING_RTH_SESSIONS_SEQUENCE",
-        os.environ.get("ED_TRAIN_ROLLING_DAYS_SEQUENCE", "0"),
+        os.environ.get("ED_TRAIN_ROLLING_DAYS_SEQUENCE", "0"),  # caps-ok: legacy env fallback; "0" is the documented "full history" window (section comment above)
     )
 )
 
 # ── Staleness ───────────────────────────────────────────────────────────────
-MANIFEST_SKIP_MAX_AGE_DAYS: int = int(os.environ.get("ED_MANIFEST_MAX_AGE_DAYS", "7"))
+MANIFEST_SKIP_MAX_AGE_DAYS: int = int(os.environ.get("ED_MANIFEST_MAX_AGE_DAYS", "7"))  # caps-ok: operator env knob with a documented 7-day manifest staleness default (a policy threshold, not a measurement)
 # Force full train+eval after this many consecutive scheduler runs ended in cache skip (0 = off).
-MAX_CONSECUTIVE_SCHEDULER_SKIPS: int = int(os.environ.get("ED_MAX_CONSECUTIVE_SKIPS", "14"))
+MAX_CONSECUTIVE_SCHEDULER_SKIPS: int = int(os.environ.get("ED_MAX_CONSECUTIVE_SKIPS", "14"))  # caps-ok: operator env knob; documented default forces a full retrain after 14 consecutive cache skips (comment above)
 
 # ── XGBoost ─────────────────────────────────────────────────────────────────
 # Default: full refit. Optional native continuation (see ml_train.train_ticker).
-XGBOOST_INCREMENTAL_TRAIN_ALLOWED: bool = os.environ.get("ED_XGB_INCREMENTAL", "").strip().lower() in (
+XGBOOST_INCREMENTAL_TRAIN_ALLOWED: bool = os.environ.get("ED_XGB_INCREMENTAL", "").strip().lower() in (  # caps-ok: operator opt-in env flag; unset = the documented default full refit (comment above)
     "1",
     "true",
     "yes",
@@ -73,7 +73,7 @@ LSTM_CHECKPOINT_RESUME_ALLOWED: bool = True
 TRANSFORMER_CHECKPOINT_RESUME_ALLOWED: bool = True
 LSTM_RESUME_REQUIRES_SAME_DATA_FINGERPRINT: bool = True
 TRANSFORMER_RESUME_REQUIRES_SAME_DATA_FINGERPRINT: bool = True
-TORCH_CHECKPOINT_EVERY_N_EPOCHS: int = int(os.environ.get("ED_TORCH_CHECKPOINT_EVERY_N_EPOCHS", "5"))
+TORCH_CHECKPOINT_EVERY_N_EPOCHS: int = int(os.environ.get("ED_TORCH_CHECKPOINT_EVERY_N_EPOCHS", "5"))  # caps-ok: operator env knob; checkpoint cadence default of 5 epochs is a runtime config value
 
 
 # ── Training epochs (runtime lever; full history preserved) ──────────────────
@@ -100,14 +100,14 @@ TRANSFORMER_TRAIN_EPOCHS: int = _env_epochs("ED_TRAIN_EPOCHS_TRANSFORMER", 60)
 # PATIENCE epochs, then best_state (best val epoch) is restored. Only fires when a real holdout
 # exists (thin tickers select on train loss in-sample and must NOT early-stop on it). Default ON.
 # Disable with ED_TRAIN_EARLY_STOP=0; widen/narrow with the patience vars; MIN_DELTA filters noise.
-EARLY_STOP_ENABLED: bool = os.environ.get("ED_TRAIN_EARLY_STOP", "1").strip().lower() not in (
+EARLY_STOP_ENABLED: bool = os.environ.get("ED_TRAIN_EARLY_STOP", "1").strip().lower() not in (  # caps-ok: operator env switch; "1" is the documented "Default ON" (comment above)
     "0",
     "false",
     "no",
 )
 LSTM_EARLY_STOP_PATIENCE: int = _env_epochs("ED_TRAIN_EARLY_STOP_PATIENCE_LSTM", 8)
 TRANSFORMER_EARLY_STOP_PATIENCE: int = _env_epochs("ED_TRAIN_EARLY_STOP_PATIENCE_TRANSFORMER", 8)
-EARLY_STOP_MIN_DELTA: float = float(os.environ.get("ED_TRAIN_EARLY_STOP_MIN_DELTA", "0.0001"))
+EARLY_STOP_MIN_DELTA: float = float(os.environ.get("ED_TRAIN_EARLY_STOP_MIN_DELTA", "0.0001"))  # caps-ok: operator env knob; documented noise-filter default for val-loss improvement
 
 
 def should_early_stop(*, enabled: bool, has_holdout: bool, patience: int, epochs_no_improve: int) -> bool:
@@ -120,14 +120,14 @@ def should_early_stop(*, enabled: bool, has_holdout: bool, patience: int, epochs
     return bool(enabled and has_holdout and patience > 0 and epochs_no_improve >= patience)
 
 # ── Feature cache retention (models/cache/features/) ─────────────────────────
-FEATURE_CACHE_RETAIN_MAX_DIRS: int = int(os.environ.get("ED_FEATURE_CACHE_MAX_DIRS", "96"))
-FEATURE_CACHE_MIN_AGE_SEC_BEFORE_DELETE: int = int(os.environ.get("ED_FEATURE_CACHE_MIN_AGE_SEC", "3600"))
+FEATURE_CACHE_RETAIN_MAX_DIRS: int = int(os.environ.get("ED_FEATURE_CACHE_MAX_DIRS", "96"))  # caps-ok: operator env knob; cache retention cap (disk housekeeping config, not data)
+FEATURE_CACHE_MIN_AGE_SEC_BEFORE_DELETE: int = int(os.environ.get("ED_FEATURE_CACHE_MIN_AGE_SEC", "3600"))  # caps-ok: operator env knob; minimum cache age before pruning (disk housekeeping config, not data)
 
 # ── Model artifact archive + prune (never delete live active/ candidate in-place without archive) ──
-MODEL_ARCHIVE_ENABLED: bool = os.environ.get("ED_MODEL_ARCHIVE", "1").strip().lower() not in ("0", "false", "no")
+MODEL_ARCHIVE_ENABLED: bool = os.environ.get("ED_MODEL_ARCHIVE", "1").strip().lower() not in ("0", "false", "no")  # caps-ok: operator env switch; archive-before-prune is ON unless explicitly disabled (section comment)
 MODEL_ARCHIVE_SUBDIR: str = "_artifact_archive"
-MODEL_ARCHIVE_MAX_SNAPSHOTS_PER_TICKER_ARCH: int = int(os.environ.get("ED_MODEL_ARCHIVE_MAX_SNAPSHOTS", "8"))
-MODEL_ARCHIVE_MAX_AGE_DAYS: int = int(os.environ.get("ED_MODEL_ARCHIVE_MAX_AGE_DAYS", "120"))
+MODEL_ARCHIVE_MAX_SNAPSHOTS_PER_TICKER_ARCH: int = int(os.environ.get("ED_MODEL_ARCHIVE_MAX_SNAPSHOTS", "8"))  # caps-ok: operator env knob; archive retention count (housekeeping config, not data)
+MODEL_ARCHIVE_MAX_AGE_DAYS: int = int(os.environ.get("ED_MODEL_ARCHIVE_MAX_AGE_DAYS", "120"))  # caps-ok: operator env knob; archive retention age (housekeeping config, not data)
 
 # ── Compare runs ─────────────────────────────────────────────────────────────
 COMPARE_MANIFEST_FILENAME: str = "compare_run_manifest.json"

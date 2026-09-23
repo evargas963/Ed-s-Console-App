@@ -41,7 +41,7 @@ def _seed_cache(srv, ticker: str, expiry: str, ms_dict: dict, *, age_sec: float 
     gen = now - age_sec
     key = (ticker, expiry)
     ms = dict(ms_dict)
-    ms.setdefault("_server_build_ts", gen)
+    ms.setdefault("_server_build_ts", gen)  # caps-ok: fixture builder: a caller-supplied _server_build_ts wins, otherwise the seeded entry is stamped with the fixture's own generation time
     srv._state_cache[key] = {
         "ms_dict": ms,
         "ts": gen,
@@ -658,7 +658,7 @@ def test_log_only_touch_version_monotonic_across_logger_interleave():
         srv._log_only_cache_touch(key, tkr, "2026-07-07", 1.0, 100.0, 15.0)
         prev_ent = srv._state_cache.get(key) or {}
         # Same expression as the full-publish site (_next_ver).
-        assert int(prev_ent.get("analytics_version", 0)) + 1 == 8
+        assert int(prev_ent.get("analytics_version", 0)) + 1 == 8  # caps-ok: deliberately the same expression as server's full-publish _next_ver site; a lost version reads 0 and 0+1 != 8 fails the assertion
         assert srv._analytics_cache_entry_is_full_bundle(prev_ent) is True
     finally:
         _clear_fixture_cache_keys(srv, tkr)
@@ -750,7 +750,7 @@ def test_log_only_branch_routes_through_guard_source_lock():
     # The old inline clobber wrote ms_dict {} directly at the log_only branch;
     # the only remaining empty-ms_dict cache write lives inside the guarded helper.
     tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")  # caps-ok: scanner false positive: next() here has NO default argument; a missing match raises StopIteration and fails the test
     for sub in ast.walk(fn):
         if isinstance(sub, ast.Assign):
             for tgt in sub.targets:
@@ -859,8 +859,10 @@ def test_fix_b_payload_shape_keys_still_served():
     SELECT lives in the tail's own file now (server_state_persistence_tail.py); the
     ms_dict keys it feeds are still assembled in server.py's own body."""
     src = _fetch_state_source()
-    assert 'ms_dict["total_snapshots"]  = db_counts.get("total", 0)' in src
-    assert 'ms_dict["filled_snapshots"] = db_counts.get("filled", 0)' in src
+    # CAPS RC-REHAB-1: the counts are now read from the always-keyed db_counts dict (None =
+    # unknown when no DB / failed query) instead of a `.get(..., 0)` served-zero default.
+    assert 'ms_dict["total_snapshots"]  = db_counts["total"]' in src
+    assert 'ms_dict["filled_snapshots"] = db_counts["filled"]' in src
     assert 'ms_dict["accuracy_scope"] = "rth_0930_1600_et"' in src
     # The pre-read count SELECT (read-only) still precedes the block.
     assert "db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)" in _persistence_tail_source()

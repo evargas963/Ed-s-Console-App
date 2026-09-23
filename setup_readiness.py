@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any, List, Optional
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> int:
@@ -43,6 +43,9 @@ READINESS_LEVEL_POINTS = {"trigger": 20, "near": 15, "far": 5, "unknown": 8}
 READINESS_PROB_BANDS = ((0.60, 15, "strong"), (0.56, 11, "acceptable"), (0.52, 7, "needs_more"))
 READINESS_PROB_WEAK_POINTS = 3
 READINESS_PROB_WRONG_DIRECTION_POINTS = 1
+# A missing/unreadable probability is NOT a measured 0% and NOT a measured "weak" read:
+# it earns no probabilistic support and is reported as unavailable, never as "current 0.00%".
+READINESS_PROB_UNAVAILABLE_POINTS = 0
 READINESS_CONFLUENCE_POINTS = {"supportive": 15, "mixed": 7, "weak": 5}
 READINESS_VALIDATION_POINTS = 10
 READINESS_ACTIVE_MIN = 80
@@ -57,7 +60,7 @@ def score_readiness(
     structure_tier: str,
     level_tier: str,
     direction_matches: bool,
-    prob: float,
+    prob: Optional[float],
     confluence_tier: str,
     validation_passed: bool,
 ) -> dict:
@@ -75,7 +78,9 @@ def score_readiness(
     structure_score = READINESS_STRUCTURE_POINTS[structure_tier]
     level_score = READINESS_LEVEL_POINTS[level_tier]
 
-    if direction_matches:
+    if direction_matches and prob is None:
+        prob_score, prob_band = READINESS_PROB_UNAVAILABLE_POINTS, "unavailable"
+    elif direction_matches:
         for floor, points, band in READINESS_PROB_BANDS:
             if prob >= floor:
                 prob_score, prob_band = points, band
@@ -86,7 +91,7 @@ def score_readiness(
         prob_score, prob_band = READINESS_PROB_WRONG_DIRECTION_POINTS, "wrong_direction"
 
     confluence_score = READINESS_CONFLUENCE_POINTS[confluence_tier]
-    validation_score = READINESS_VALIDATION_POINTS if validation_passed else 0
+    validation_score = READINESS_VALIDATION_POINTS if validation_passed else 0  # caps-ok: 0 is the policy's point award for "validation not passed" (a scored tier, not a missing measurement); the caller passes call_engine's _post_gate_ok bool
 
     total_score = _clamp(
         trend_score
@@ -129,11 +134,14 @@ def score_readiness(
     }
 
 
-def _prob_float(raw: Any) -> float:
+def _prob_float(raw: Any) -> Optional[float]:
+    """Parse the dominant probability; None when absent or unreadable (never a fabricated 0.0)."""
+    if raw is None:
+        return None
     try:
-        return float(raw or 0.0)
+        return float(raw)
     except (TypeError, ValueError):
-        return 0.0  # absence-ok: readiness scores an unreadable probability as 0.0 BY DESIGN — it lands in the weakest band (3 points, "too weak"), i.e. no probabilistic support, the fail-closed reading; identical semantics to the pre-RC-338 inline handlers
+        return None
 
 
 def _confluence_tier(confluence_read: str, directional_keyword: str) -> str:
@@ -177,15 +185,15 @@ def compute_call_readiness(call_input: dict) -> dict:
     """
     regime = _safe_lower(call_input.get("regime"))
     trend = _safe_lower(call_input.get("trend"))
-    structure_confirmation = _safe_lower(call_input.get("structure_confirmation", ""))
-    structure_higher_tf = _safe_lower(call_input.get("structure_higher_tf", ""))
+    structure_confirmation = _safe_lower(call_input.get("structure_confirmation"))
+    structure_higher_tf = _safe_lower(call_input.get("structure_higher_tf"))
     prediction_direction = _safe_lower(call_input.get("prediction_direction"))
     confluence_read = _safe_lower(call_input.get("confluence_read"))
     level_proximity = _safe_lower(call_input.get("level_proximity"))
-    prob = _prob_float(call_input.get("prediction_dominant_prob", 0.0))
-    validation_passed = bool(call_input.get("validation_passed", False))
-    near_support = bool(call_input.get("near_support", False))
-    breakout_ready = bool(call_input.get("breakout_ready", False))
+    prob = _prob_float(call_input.get("prediction_dominant_prob"))
+    validation_passed = bool(call_input.get("validation_passed", False))  # caps-ok: fail-closed — an unasserted validation is "not passed" (0 validation points, "Validation has not passed."); call_engine always supplies _post_gate_ok
+    near_support = bool(call_input.get("near_support", False))  # caps-ok: optional trigger flag — absent means "not asserted near", and the tier then falls through to level_proximity / the explicit "unknown" tier rather than asserting a distance
+    breakout_ready = bool(call_input.get("breakout_ready", False))  # caps-ok: optional trigger flag — absent means no breakout trigger asserted; level tier then comes from near_support / level_proximity / "unknown"
 
     reasons: List[str] = []
     missing: List[str] = []
@@ -254,6 +262,8 @@ def compute_call_readiness(call_input: dict) -> dict:
         missing.append(f"Need stronger probability; current {prob:.2%}.")
     elif prob_band == "weak":
         missing.append(f"Probability is too weak for a CALL; current {prob:.2%}.")
+    elif prob_band == "unavailable":
+        missing.append("Dominant probability is unavailable.")
     else:
         missing.append("Prediction direction is not bullish.")
 
@@ -283,15 +293,17 @@ def compute_put_readiness(put_input: dict) -> dict:
     """
     regime = _safe_lower(put_input.get("regime"))
     trend = _safe_lower(put_input.get("trend"))
-    structure_confirmation = _safe_lower(put_input.get("structure_confirmation", ""))
-    structure_higher_tf = _safe_lower(put_input.get("structure_higher_tf", ""))
+    structure_confirmation = _safe_lower(put_input.get("structure_confirmation"))
+    structure_higher_tf = _safe_lower(put_input.get("structure_higher_tf"))
     prediction_direction = _safe_lower(put_input.get("prediction_direction"))
     confluence_read = _safe_lower(put_input.get("confluence_read"))
     level_proximity = _safe_lower(put_input.get("level_proximity"))
-    prob = _prob_float(put_input.get("prediction_dominant_prob", 0.0))
-    validation_passed = bool(put_input.get("validation_passed", False))
-    near_resistance = bool(put_input.get("near_resistance", put_input.get("near_support", False)))
-    breakdown_ready = bool(put_input.get("breakdown_ready", put_input.get("breakout_ready", False)))
+    prob = _prob_float(put_input.get("prediction_dominant_prob"))
+    validation_passed = bool(put_input.get("validation_passed", False))  # caps-ok: fail-closed — an unasserted validation is "not passed" (0 validation points, "Validation has not passed."); call_engine always supplies _post_gate_ok
+    # PUT-side keys only: the CALL keys near_support / breakout_ready mean the OPPOSITE
+    # side's trigger (support bounce / upside breakout) and must never stand in for them.
+    near_resistance = bool(put_input.get("near_resistance", False))  # caps-ok: optional trigger flag — absent means "not asserted near resistance"; the tier then falls through to level_proximity / the explicit "unknown" tier
+    breakdown_ready = bool(put_input.get("breakdown_ready", False))  # caps-ok: optional trigger flag — absent means no breakdown trigger asserted; level tier then comes from near_resistance / level_proximity / "unknown"
 
     reasons: List[str] = []
     missing: List[str] = []
@@ -359,6 +371,8 @@ def compute_put_readiness(put_input: dict) -> dict:
         missing.append(f"Need stronger probability; current {prob:.2%}.")
     elif prob_band == "weak":
         missing.append(f"Probability is too weak for a PUT; current {prob:.2%}.")
+    elif prob_band == "unavailable":
+        missing.append("Dominant probability is unavailable.")
     else:
         missing.append("Prediction direction is not bearish.")
 

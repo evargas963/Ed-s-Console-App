@@ -253,10 +253,19 @@ def test_load_lstm_feature_cache_accepts_valid_meta(tmp_path: Path):
         "tickers": ["SPY"],
         "timestamps": [1.0, 2.0],
         "days": ["2026-05-05"],
+        # Every key save_lstm_feature_cache writes (CAPS: a meta missing any is an invalid cache).
+        "training_timeframe": "1m",
+        "target_column": "outcome_1c",
+        "ml_horizon_slug": "1c",
+        "target_definition": "test",
         "n_features_5m": 3,
         "n_features_1m": 3,
         "n_confluence": 3,
         "n_samples": 2,
+        "n_days": 1,
+        "n_tickers": 1,
+        "class_distribution": {"up": 1, "down": 1},
+        "skipped_reasons": {},
         **training_canonical_lineage_header(),
     }
     (cache_dir / "lstm_dataset_meta.json").write_text(json.dumps(meta), encoding="utf-8")
@@ -283,6 +292,13 @@ def test_load_lstm_feature_cache_accepts_valid_meta(tmp_path: Path):
     ds = load_lstm_feature_cache(cache_dir, "SPY", data_fp, feature_key)
     assert ds is not None
     assert ds.n_features_5m == 3
+
+    # CAPS: dropping any saver-written key invalidates the cache (miss), never a dataset
+    # carrying fabricated empty days/tickers or zero n_days.
+    for drop in ("days", "n_days", "training_timeframe"):
+        partial = {k: v for k, v in meta.items() if k != drop}
+        (cache_dir / "lstm_dataset_meta.json").write_text(json.dumps(partial), encoding="utf-8")
+        assert load_lstm_feature_cache(cache_dir, "SPY", data_fp, feature_key) is None, drop
 
 
 # ── Training epochs runtime override (per-anchor production retrain lever, 2026-06-03) ──

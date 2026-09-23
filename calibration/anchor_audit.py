@@ -475,7 +475,7 @@ def run_anchor_audit(
         ).fetchone()[0]
     )
     cal_detail = _audit_trusted_calibration_anchors(conn, bar_ends_map, CANONICAL_TIMEFRAME)
-    cal_miss = int(cal_detail.get("trusted_rows_without_anchor", 0))
+    cal_miss = int(cal_detail["trusted_rows_without_anchor"])
     frac_miss, frac_gate = _miss_rate_gated(cal_miss, n_cal_trusted)
     out["calibration_decision_log"] = {
         "rows_total": n_cal_trusted + n_cal_legacy,
@@ -517,8 +517,10 @@ def main() -> int:
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="calibration.anchor_audit", write_capable=False)
-    lim = None if args.full_scan else max(1, args.sample)
-    data = run_anchor_audit(args.db, sample_limit=lim, seed_sample=not args.full_scan)
+    # --sample 0 means full scan per its help text (it used to be clamped to a 1-row sample).
+    full_scan = bool(args.full_scan or args.sample <= 0)
+    lim = None if full_scan else args.sample  # caps-ok: None is run_anchor_audit's explicit no-LIMIT (full scan) contract
+    data = run_anchor_audit(args.db, sample_limit=lim, seed_sample=not full_scan)
     print(json.dumps(data, indent=2))
     if "error" in data:
         return 1

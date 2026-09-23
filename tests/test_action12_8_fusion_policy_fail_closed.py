@@ -57,5 +57,5 @@ def test_fusion_policy_contract_no_third_defaults():
     text = (Path(__file__).resolve().parent.parent / "features" / "fusion_policy_contract.py").read_text(
         encoding="utf-8"
     )
-    assert 'getattr(fusion, "prob_up", 1' not in text
+    assert 'getattr(fusion, "prob_up", 1' not in text  # caps-ok: scanner false positive: forbidden-pattern literal this test asserts is ABSENT from fusion_policy_contract.py
     assert " or 0.0)" not in text

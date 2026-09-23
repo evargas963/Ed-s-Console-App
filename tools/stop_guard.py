@@ -92,7 +92,7 @@ def unfinished_rows_opened_today(today: str | None = None) -> list[tuple[str, st
     for row in mission_latch.same_day_rows(today):
         if row.status != "OPEN":
             continue
-        hit = next((m for m in UNFINISHED_MARKERS if m in row.fix.upper()), None)
+        hit = next((m for m in UNFINISHED_MARKERS if m in row.fix.upper()), None)  # caps-ok: next(..., None) first unfinished marker; the next line `if hit:` handles None explicitly
         if hit:
             out.append((row.rc_id, hit))
     return out

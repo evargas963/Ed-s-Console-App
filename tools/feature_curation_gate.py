@@ -196,7 +196,7 @@ def ablation_cell_accounting(
             mf = str(s.get("model_family") or "")
             runnable_by_model[mf] = runnable_by_model.get(mf, 0) + 1
         else:
-            reason = str(s.get("grid_skip_reason") or "unknown")
+            reason = str(s.get("grid_skip_reason") or "unknown")  # caps-ok: skip-reason histogram key; a non-runnable spec without a stamped reason is tallied under an explicit 'unknown' bucket, never as a real reason
             skip_by_reason[reason] = skip_by_reason.get(reason, 0) + 1
     groups = ablation_grid_groups(manifest)
     dbp = str(DB_PATH) if Path(DB_PATH).is_file() else None
@@ -206,10 +206,10 @@ def ablation_cell_accounting(
     hz_n = len(_required_ablation_horizons(manifest))
     stack_n = len(list(manifest["ablation_method"].get("full_stack_layers") or FULL_STACK_LAYERS))
     if not_wired_groups > 0:
-        skip_by_reason["not_wired"] = skip_by_reason.get("not_wired", 0) + (
+        skip_by_reason["not_wired"] = skip_by_reason.get("not_wired", 0) + (  # caps-ok: counter accumulation into the skip-reason histogram
             not_wired_groups * stack_n * hz_n
         )
-    schwab = sum(1 for g in groups if str(g.get("group_id", "")).startswith("schwab__"))
+    schwab = sum(1 for g in groups if str(g["group_id"]).startswith("schwab__"))
     from governed_stack_contract import meta_tabular_feature_order
 
     return {
@@ -221,7 +221,7 @@ def ablation_cell_accounting(
         "manifest_groups": len(groups),
         "manifest_in_cone": in_cone,
         "manifest_schwab_catalog": schwab,
-        "meta_runnable": int(runnable_by_model.get("meta") or 0),
+        "meta_runnable": int(runnable_by_model.get("meta") or 0),  # caps-ok: runnable_by_model is a tally built just above; no meta key means zero meta cells were counted runnable
         "meta_tabular_ingest": (
             "Meta-learner v2: stacked base probabilities (9) plus fusion-overlay tabular "
             f"context ({len(meta_tabular_feature_order())} raw columns via "
@@ -289,7 +289,7 @@ def _finalize_whole_stack_scored_cell(cell: dict) -> dict:
     """Fail-closed: never leave status=ok when knockout permuted zero columns."""
     if (
         cell.get("status") == "ok"
-        and int(cell.get("columns_permuted_count") or 0) == 0
+        and int(cell.get("columns_permuted_count") or 0) == 0  # caps-ok: fail-closed: an ok cell with no permuted-count is demoted to skipped/noop_knockout, never left ok
     ):
         cell = dict(cell)
         cell["status"] = "skipped"
@@ -332,9 +332,9 @@ def _protected_db_columns() -> set[str]:
         return set()
     data = json.loads(OVERRIDES_PATH.read_text(encoding="utf-8"))
     out: set[str] = set()
-    for group in data.get("keep_all_members", []):
+    for group in data.get("keep_all_members", []):  # caps-ok: operator overrides file: keep_all_members is an optional list; absent means no protected columns
         if isinstance(group, dict):
-            for col in group.get("members", []):
+            for col in group.get("members", []):  # caps-ok: optional members list inside an overrides group; absent contributes no protected columns
                 if isinstance(col, str) and col.strip():
                     out.add(col.strip())
     return out
@@ -371,13 +371,21 @@ def run(tickers, null_thresh, cluster_thresh):
         f"SELECT COUNT(*) FROM snapshots_1m_normalized WHERE ticker IN ({tk_clause}) AND timeframe='1m'",
         tickers,
     ).fetchone()[0]
+    if not total:
+        conn.close()
+        # Zero rows means population is unmeasured, not 0% populated: refuse rather than
+        # declare every registered column dead.
+        raise SystemExit(
+            f"no snapshots_1m_normalized 1m rows for tickers {list(tickers)}; "
+            "population cannot be measured"
+        )
     pop = {}
     for c in present:
         nn = conn.execute(
             f'SELECT COUNT("{c}") FROM snapshots_1m_normalized WHERE ticker IN ({tk_clause}) AND timeframe=\'1m\'',
             tickers,
         ).fetchone()[0]
-        pop[c] = (nn / total) if total else 0.0
+        pop[c] = nn / total
     dead = [c for c in present if pop[c] <= (1.0 - null_thresh)]  # ~all-NULL
     live = [c for c in present if c not in dead]
 
@@ -468,8 +476,8 @@ def load_ablation_manifest(path: Path | None = None) -> dict:
 def ablation_groups(manifest: dict) -> list[dict]:
     """Groups with disposition ABLATE — full cartesian grid targets (no horizon pre-cull)."""
     return sorted(
-        (g for g in manifest.get("groups", []) if g.get("disposition") == "ABLATE"),
-        key=lambda g: str(g.get("group_id", "")),
+        (g for g in manifest["groups"] if g.get("disposition") == "ABLATE"),
+        key=lambda g: str(g["group_id"]),
     )
 
 
@@ -640,7 +648,7 @@ def _ablation_columns_for_atomic_feature(
 
     registered = _registered_ml_columns()
     if model_family == "xgb":
-        if column not in registered.get("xgb", set()):
+        if column not in registered["xgb"]:
             return []
         cols = set(xgb_engineered_members_to_raw_snapshot([column]))
         if column.startswith("cf_"):
@@ -652,9 +660,9 @@ def _ablation_columns_for_atomic_feature(
         return offline_v2_knockout_snapshot_columns(column, model_family)
     if model_family == "lstm":
         out: set[str] = set()
-        if column in registered.get("lstm_5m", set()):
+        if column in registered["lstm_5m"]:
             out.add(column)
-        if column in registered.get("lstm_1m", set()):
+        if column in registered["lstm_1m"]:
             out.add(column)
         return sorted(out)
     if model_family == "transformer":
@@ -743,8 +751,8 @@ def _per_model_permute_members(group: dict, model_family: str) -> dict[str, list
         lstm_cols = _ablation_columns_for_atomic_feature(col, "lstm")
         return {
             "xgb_members": [],
-            "lstm_5m_members": [c for c in lstm_cols if c in reg.get("lstm_5m", set())],
-            "lstm_1m_members": [c for c in lstm_cols if c in reg.get("lstm_1m", set())],
+            "lstm_5m_members": [c for c in lstm_cols if c in reg["lstm_5m"]],
+            "lstm_1m_members": [c for c in lstm_cols if c in reg["lstm_1m"]],
         }
     return {
         "xgb_members": [],
@@ -1027,7 +1035,7 @@ def audit_ablation_score_path_bias() -> dict:
         gate_text,
         re.MULTILINE | re.DOTALL,
     )
-    eval_opts_block = eval_opts_m.group(0) if eval_opts_m else ""
+    eval_opts_block = eval_opts_m.group(0) if eval_opts_m else ""  # caps-ok: fail-closed self-check: if the function block is not found the empty text fails the max_rows=None assertion
     _record(
         "ablation_full_history_default",
         "opts.max_rows = None" in eval_opts_block,
@@ -1180,12 +1188,12 @@ def _ablation_eval_options():
     from arch_competition.stack_bundle_eval_v1 import StackBundleEvalOptions
 
     opts = StackBundleEvalOptions(min_paired_rows=50)
-    full_hist = os.environ.get("ED_ABLATION_FULL_HISTORY", "").strip().lower() in (
+    full_hist = os.environ.get("ED_ABLATION_FULL_HISTORY", "").strip().lower() in (  # caps-ok: env flag; unset means full-history mode is off
         "1",
         "true",
         "yes",
     )
-    raw_max = os.environ.get("ED_ABLATION_MAX_ROWS", "").strip()
+    raw_max = os.environ.get("ED_ABLATION_MAX_ROWS", "").strip()  # caps-ok: env override; unset falls through to the explicit else branch below
     if full_hist:
         opts.max_rows = None
     elif raw_max:
@@ -1304,7 +1312,7 @@ def run_ablation_preflight(
                 "SELECT COUNT(*) FROM snapshots WHERE ticker=?",
                 (ticker_storage_key(anchors[0]),),  # RC-345/F25: DB bind consumes canonical identity
             ).fetchone()
-            result["snapshot_rows_sample_ticker"] = int(row[0]) if row else 0
+            result["snapshot_rows_sample_ticker"] = int(row[0])  # COUNT(*) always returns one row
             if result["snapshot_rows_sample_ticker"] < 100:
                 result["issues"].append(
                     f"insufficient snapshots for {anchors[0]}: {result['snapshot_rows_sample_ticker']}"
@@ -1314,7 +1322,7 @@ def run_ablation_preflight(
     except Exception as ex:
         result["issues"].append(f"db_read_failed:{type(ex).__name__}:{ex}")
 
-    db_ok = dbp.is_file() and result.get("snapshot_rows_sample_ticker", 0) >= 100
+    db_ok = dbp.is_file() and result.get("snapshot_rows_sample_ticker", 0) >= 100  # caps-ok: fail-closed: when the DB read failed the count is absent and db_ok evaluates False
     whole_stack_ok = True
 
     from arch_competition.stack_bundle_eval_v1 import ABLATION_SCORING_PASS_ENV
@@ -1472,8 +1480,8 @@ def build_ablation_survivor_summary(
         model = str(cell.get("model_family") or "")
         if not model:
             continue
-        key = (model, str(cell.get("horizon_slug", "")))
-        by_mh[key][str(cell.get("group_id", ""))].append(cell)
+        key = (model, str(cell["horizon_slug"]))
+        by_mh[key][str(cell["group_id"])].append(cell)
 
     by_model_horizon: dict = {}
     flat_groups: list[dict] = []
@@ -1556,7 +1564,7 @@ def build_ablation_experiment_integrity(
     runnable_terminal = sum(
         1 for c in runnable_cells if c.get("status") in ("ok", "skipped")
     )
-    run_status = str(run_meta.get("status") or "unknown")
+    run_status = str(run_meta.get("status") or "unknown")  # caps-ok: explicit 'unknown' label; only status=='complete' drives the completeness checks, so a missing status never passes them
 
     skew_flags: list[dict] = []
     trace_cells: list[dict] = []
@@ -1588,7 +1596,16 @@ def build_ablation_experiment_integrity(
             fix_direction="Resume with --ablation-resume or fix skip storm before trusting survivor_summary.",
         )
 
-    if not preflight.get("ready_for_whole_stack", True) and ok_cells:
+    preflight_ready = preflight.get("ready_for_whole_stack")
+    if preflight_ready is None and ok_cells:
+        _flag(
+            "FAIL",
+            "PREFLIGHT_MISSING_BUT_SCORING",
+            "run_meta.preflight carries no ready_for_whole_stack verdict but ok cells exist on disk",
+            evidence={"preflight": preflight},
+            fix_direction="Run --ablation-preflight and record its verdict before interpreting deltas.",
+        )
+    elif preflight_ready is not None and not preflight_ready and ok_cells:
         _flag(
             "FAIL",
             "PREFLIGHT_NOT_READY_BUT_SCORING",
@@ -1615,7 +1632,7 @@ def build_ablation_experiment_integrity(
     in_cone_runnable_by_model: dict[str, int] = defaultdict(int)
     for c in runnable_cells:
         if c.get("ingest_status") == "in_cone":
-            in_cone_runnable_by_model[str(c.get("model_family") or "")] += 1
+            in_cone_runnable_by_model[str(c.get("model_family") or "")] += 1  # caps-ok: a runnable cell without model_family lands in its own '' bucket, which makes counts unequal and raises PREPLACEMENT_UNEQUAL_MODEL_RUNNABLE rather than hiding it
     in_cone_counts = list(in_cone_runnable_by_model.values())
     if in_cone_counts and len(set(in_cone_counts)) > 1:
         _flag(
@@ -1636,7 +1653,7 @@ def build_ablation_experiment_integrity(
             "FAIL",
             "PLACEMENT_LAYER_MISMATCH",
             f"{len(placement_mismatch)} cells have group_columns but stack_entry_layers != [model_family]",
-            evidence={"sample": placement_mismatch[0] if placement_mismatch else {}},
+            evidence={"sample": placement_mismatch[0] if placement_mismatch else {}},  # caps-ok: inside `if placement_mismatch:`, so the else arm is unreachable; evidence always carries a real sample
             fix_direction="Fix _whole_stack_group_columns_for_family / governed_stack_contract registries.",
         )
 
@@ -1656,7 +1673,7 @@ def build_ablation_experiment_integrity(
     noop_scored = [
         c for c in cells
         if c.get("status") == "ok"
-        and int(c.get("columns_permuted_count") or 0) == 0
+        and int(c.get("columns_permuted_count") or 0) == 0  # caps-ok: fail-closed: an ok cell with no permuted-count is counted as a noop knockout and fails NOOP_KNOCKOUT_SCORED_OK
         and _ablation_cell_is_runnable(c)
     ]
     if noop_scored:
@@ -1668,10 +1685,21 @@ def build_ablation_experiment_integrity(
             fix_direction="Trace _ablation_columns_for_atomic_feature + row column presence; fix encoder/offline_v2 cone.",
         )
 
+    ok_missing_delta = [c for c in ok_cells if c.get("log_loss_delta") is None]
+    if ok_missing_delta:
+        _flag(
+            "FAIL",
+            "OK_CELL_MISSING_DELTA",
+            f"{len(ok_missing_delta)} ok cells carry no log_loss_delta — scored status without a score",
+            evidence={"sample": ok_missing_delta[:3]},
+            fix_direction="Trace the scorer that stamped status=ok without writing log_loss_delta.",
+        )
+
     zero_delta_with_cols = [
         c for c in ok_cells
-        if int(c.get("columns_permuted_count") or 0) > 0
-        and abs(float(c.get("log_loss_delta") or 0.0)) <= 1e-6
+        if int(c.get("columns_permuted_count") or 0) > 0  # caps-ok: a missing count is excluded here because NOOP_KNOCKOUT_SCORED_OK above already fails it as a zero-column knockout
+        and c.get("log_loss_delta") is not None
+        and abs(float(c["log_loss_delta"])) <= 1e-6
     ]
     if zero_delta_with_cols:
         rate = len(zero_delta_with_cols) / max(1, len(ok_cells))
@@ -1686,7 +1714,7 @@ def build_ablation_experiment_integrity(
 
     skip_reason_rollup: dict[str, int] = defaultdict(int)
     for c in skipped_cells:
-        reason = str(c.get("reason") or c.get("grid_skip_reason") or "unknown")
+        reason = str(c.get("reason") or c.get("grid_skip_reason") or "unknown")  # caps-ok: skip-reason rollup key; a skipped cell without a reason is tallied under an explicit 'unknown' bucket
         skip_reason_rollup[reason] += 1
         for sub, cnt in (c.get("skip_reason_counts") or {}).items():
             skip_reason_rollup[f"row:{sub}"] += int(cnt)
@@ -1714,7 +1742,7 @@ def build_ablation_experiment_integrity(
             ]
             zero_delta = sum(1 for d in deltas if abs(d) <= 1e-6)
             matters = sum(1 for c in mh_ok if c.get("group_matters"))
-            noop_ok = sum(1 for c in mh_ok if int(c.get("columns_permuted_count") or 0) == 0)
+            noop_ok = sum(1 for c in mh_ok if int(c.get("columns_permuted_count") or 0) == 0)  # caps-ok: noop tally: a missing permuted-count is counted as noop (the suspicious side), consistent with NOOP_KNOCKOUT_SCORED_OK
             skip_rate = len(mh_skip) / max(1, len(mh_runnable))
             zero_rate = zero_delta / max(1, len(mh_ok))
             pos = sum(1 for d in deltas if d > 1e-6)
@@ -1765,8 +1793,9 @@ def build_ablation_experiment_integrity(
     if meta_ok:
         meta_zero = sum(
             1 for c in meta_ok
-            if abs(float(c.get("log_loss_delta") or 0.0)) <= 1e-6
-            and int(c.get("columns_permuted_count") or 0) > 0
+            if c.get("log_loss_delta") is not None
+            and abs(float(c["log_loss_delta"])) <= 1e-6
+            and int(c.get("columns_permuted_count") or 0) > 0  # caps-ok: a missing count is already failed as a zero-column knockout by NOOP_KNOCKOUT_SCORED_OK, so it is excluded from this knockout-with-zero-delta tally
         )
         if meta_zero / len(meta_ok) >= 0.95:
             _flag(
@@ -1792,9 +1821,12 @@ def build_ablation_experiment_integrity(
             )
 
     def _trace_rank(c: dict) -> tuple:
-        noop = int(c.get("columns_permuted_count") or 0) == 0
-        zero_d = abs(float(c.get("log_loss_delta") or 0.0)) <= 1e-6
-        return (0 if noop else 1, 0 if zero_d else 1, -abs(float(c.get("log_loss_delta") or 0.0)))
+        # Trace ORDER only: a cell with a missing count or delta is ranked with the most
+        # suspicious (noop / zero-delta) cells so it is traced first; nothing is reported as a value.
+        noop = int(c.get("columns_permuted_count") or 0) == 0  # caps-ok: sort key only; missing count ranks as noop so the suspicious cell is traced first
+        delta = c.get("log_loss_delta")
+        zero_d = delta is None or abs(float(delta)) <= 1e-6
+        return (0 if noop else 1, 0 if zero_d else 1, -abs(float(delta)) if delta is not None else 0.0)  # caps-ok: sort key only; None delta already ranked zero_d=True (most suspicious) and gets no magnitude
 
     trace_pool = noop_scored + zero_delta_with_cols + skipped_cells[:50]
     seen_keys: set[tuple] = set()
@@ -1918,7 +1950,7 @@ def _stack_layer_lifts(
         lifts[layer_id] = {
             "baseline_mode": cmp.get("baseline"),
             "treatment_mode": cmp.get("treatment"),
-            "metric": cmp.get("metric", "multiclass_log_loss"),
+            "metric": cmp.get("metric", "multiclass_log_loss"),  # caps-ok: the delta in this row is computed from multiclass_log_loss (b_ll/t_ll above), so the label is true regardless of cmp
             "description": cmp.get("description"),
             "baseline_log_loss": b_ll,
             "treatment_log_loss": t_ll,
@@ -1991,7 +2023,7 @@ def run_stack_layer_ablation_cell(
                 options=eval_opts,
                 modes=mode_pair,
             )
-            pr = int(manifest.get("paired_rows_all_modes") or 0)
+            pr = int(manifest["paired_rows_all_modes"])
             min_paired = pr if min_paired is None else min(min_paired, pr)
             for mode, metric in (manifest.get("metrics_by_config") or {}).items():
                 merged_metrics[mode] = metric
@@ -2040,7 +2072,8 @@ def run_stack_layer_ablation_cell(
         min_rows=eval_opts.min_paired_rows,
         min_delta_log_loss=eval_opts.min_delta_log_loss,
     )
-    paired = int(min_paired or 0)
+    # comparisons is non-empty (guarded above), so every loop pass set min_paired.
+    paired = int(min_paired)
     lifts_ok = _stack_lift_sections_scored(lifts, base_model_lifts)
     cell_status = "ok" if lifts_ok else "failed"
     return {
@@ -2118,7 +2151,7 @@ def build_stack_authority_rescore_report(
     if out_path.is_file():
         report = json.loads(out_path.read_text(encoding="utf-8"))
     db = db_path or str(DB_PATH)
-    os.environ.setdefault("ED_STACK_EVAL_BUNDLE", "parallel")
+    os.environ.setdefault("ED_STACK_EVAL_BUNDLE", "parallel")  # caps-ok: env config: prefer parallel bundles unless the operator already chose one
     cells: list[dict] = []
     section = build_stack_authority_ablation_section(
         manifest,
@@ -2132,7 +2165,7 @@ def build_stack_authority_rescore_report(
     report["stack_authority_cells"] = cells
     report["stack_layer_cells"] = cells
     report.update(section)
-    report.setdefault("run_meta", {})["stack_authority_rescore_at"] = datetime.now(
+    report.setdefault("run_meta", {})["stack_authority_rescore_at"] = datetime.now(  # caps-ok: creates the run_meta container to stamp a timestamp; no value is fabricated
         timezone.utc
     ).isoformat()
     write_ablation_report(report, out_path)
@@ -2279,7 +2312,7 @@ def build_whole_stack_feature_ablation_section(
         )
         if resumed is not None:
             cell = _finalize_whole_stack_scored_cell(resumed)
-            cell.setdefault("runnable", is_runnable)
+            cell.setdefault("runnable", is_runnable)  # caps-ok: legacy resumed cells lacked the flag; the value supplied is the spec's computed runnability, not a guess
         else:
             cached = baseline_cache.get(spec["horizon_slug"])
             if cached is None:
@@ -2318,10 +2351,10 @@ def build_whole_stack_feature_ablation_section(
             if cached.get("status") != "ok":
                 cell = {
                     "model_family": spec["model_family"],
-                    "horizon_slug": cached.get("hz", spec["horizon_slug"]),
+                    "horizon_slug": cached.get("hz", spec["horizon_slug"]),  # caps-ok: falls back to the real spec horizon this cell was built for
                     "group_id": spec["group_id"],
                     "status": "skipped",
-                    "reason": cached.get("reason", "baseline_prep_failed"),
+                    "reason": cached.get("reason", "baseline_prep_failed"),  # caps-ok: status is already non-ok (skipped); the label names the failed step when prep gave no reason
                     "runnable": is_runnable,
                     "ablation_kind": "whole_stack_feature_group",
                     "stack_entry_layers": entry_layers,
@@ -2429,10 +2462,10 @@ def build_per_model_feature_ablation_section(
                 cell = {
                     "anchor_ticker": spec["anchor_ticker"],
                     "model_family": model,
-                    "horizon_slug": prepared.get("hz", spec["horizon_slug"]),
+                    "horizon_slug": prepared.get("hz", spec["horizon_slug"]),  # caps-ok: falls back to the real spec horizon this cell was built for
                     "group_id": spec["group_id"],
                     "status": "skipped",
-                    "reason": prepared.get("reason", "prep_failed"),
+                    "reason": prepared.get("reason", "prep_failed"),  # caps-ok: status is already non-ok (skipped); the label names the failed step when prep gave no reason
                     "ablation_kind": "per_model_feature_group",
                 }
             else:
@@ -2494,7 +2527,7 @@ def _drop_members_for_model(
     import lstm_data as l
     from tools.build_feature_assignment_matrix_v2 import _registered_ml_columns
 
-    by_id = {g["group_id"]: g for g in manifest.get("groups", [])}
+    by_id = {g["group_id"]: g for g in manifest["groups"]}
     reg = _registered_ml_columns()
     cf = set(l.CONFLUENCE_FEATURES)
     xgb, m5, m1, conf = [], [], [], []
@@ -2505,12 +2538,12 @@ def _drop_members_for_model(
             continue
         xgb += _ablation_columns_for_atomic_feature(col, "xgb")
         if col in cf:
-            if col in reg.get("lstm_5m", set()) | reg.get("lstm_1m", set()):
+            if col in reg["lstm_5m"] | reg["lstm_1m"]:
                 conf.append(col)
         else:
-            if col in reg.get("lstm_5m", set()):
+            if col in reg["lstm_5m"]:
                 m5.append(col)
-            if col in reg.get("lstm_1m", set()):
+            if col in reg["lstm_1m"]:
                 m1.append(col)
     return sorted(set(xgb)), sorted(set(m5)), sorted(set(m1)), sorted(set(conf))
 
@@ -2606,7 +2639,7 @@ def build_per_model_confirm_pass_section(
         if prep.get("status") != "ok":
             cell = {
                 "anchor_ticker": anc, "model_family": model, "horizon_slug": hz,
-                "status": "skipped", "reason": prep.get("reason", "prep_failed"),
+                "status": "skipped", "reason": prep.get("reason", "prep_failed"),  # caps-ok: status is skipped; the label names the failed step when prep gave no reason
                 "ablation_kind": "per_model_confirm_drop", "dropped_groups": drop_ids,
                 "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
             }
@@ -2650,7 +2683,7 @@ def build_whole_stack_confirm_pass_section(
         run_whole_stack_feature_group_confirm_drop,
     )
 
-    groups_by_id = {g["group_id"]: g for g in manifest.get("groups", [])}
+    groups_by_id = {g["group_id"]: g for g in manifest["groups"]}
     anchors = [ticker_storage_key(t) for t in (tickers or manifest["ablation_method"]["anchors"]) if str(t).strip()]  # RC-345/F25: anchor identity canonical, not local .upper()
     cells = cells_out if cells_out is not None else []
     resume_cells = resume_cells or {}
@@ -2722,10 +2755,10 @@ def build_whole_stack_confirm_pass_section(
             if cached.get("status") != "ok":
                 cell = {
                     "anchor_ticker": anc,
-                    "horizon_slug": cached.get("hz", hz),
+                    "horizon_slug": cached.get("hz", hz),  # caps-ok: falls back to the real loop horizon this cell was built for
                     "group_id": gid,
                     "status": "skipped",
-                    "reason": cached.get("reason", "baseline_prep_failed"),
+                    "reason": cached.get("reason", "baseline_prep_failed"),  # caps-ok: status is skipped; the label names the failed step when prep gave no reason
                     "ablation_kind": "whole_stack_confirm_drop",
                     "stack_entry_layers": entry_layers,
                     "confirm_path_version": ABLATION_CONFIRM_PATH_VERSION,
@@ -2860,7 +2893,7 @@ def build_ablation_confirm_report(
                         "completed_at": (
                             datetime.now(timezone.utc).isoformat()
                             if path_version == ABLATION_CONFIRM_PATH_VERSION
-                            else surv.get("confirm_pass", {}).get("completed_at")
+                            else surv.get("confirm_pass", {}).get("completed_at")  # caps-ok: carries a prior completion stamp forward; absent stays None (not completed)
                         ),
                     }
                     surv["primary_pass_only"] = False
@@ -2902,7 +2935,7 @@ def build_ablation_confirm_report(
                     if c.get("status") == "ok" and c.get("safe_to_drop")
                 ),
             }
-            report.setdefault("run_meta", {})["confirm_pass_at"] = datetime.now(
+            report.setdefault("run_meta", {})["confirm_pass_at"] = datetime.now(  # caps-ok: creates the run_meta container to stamp a timestamp; no value is fabricated
                 timezone.utc
             ).isoformat()
             confirm_cells = report.get("whole_stack_confirm_drop_cells") or []
@@ -2910,7 +2943,7 @@ def build_ablation_confirm_report(
             surv = report.get("survivor_summary") or survivor
             from arch_competition.stack_bundle_eval_v1 import ABLATION_CONFIRM_PATH_VERSION
 
-            expected = int(ws_confirm_section.get("whole_stack_confirm_drop_cell_count") or 0)
+            expected = int(ws_confirm_section.get("whole_stack_confirm_drop_cell_count") or 0)  # caps-ok: fail-closed: confirm_complete requires expected > 0, so an absent count can never read complete
             all_v2 = all(
                 c.get("confirm_path_version") == ABLATION_CONFIRM_PATH_VERSION
                 for c in confirm_cells
@@ -2979,7 +3012,7 @@ def stamp_primary_ablation_authority(
     ss = report.get("survivor_summary") or build_ablation_survivor_summary(
         report.get("whole_stack_feature_cells") or []
     )
-    scored = int(ss.get("scored_cell_count") or 0)
+    scored = int(ss.get("scored_cell_count") or 0)  # caps-ok: fail-closed: an absent scored count is < matrix_target and the authority stamp raises
     matrix_target = ablation_full_matrix_cell_target()
     if matrix_target <= 0 or scored < matrix_target:
         raise RuntimeError(
@@ -3017,7 +3050,7 @@ def stamp_primary_ablation_authority(
     ss["primary_pass_only"] = True
     ss.pop("confirm_pass", None)
     report["survivor_summary"] = ss
-    report.setdefault("run_meta", {})["primary_authority_stamped_at"] = report[
+    report.setdefault("run_meta", {})["primary_authority_stamped_at"] = report[  # caps-ok: creates the run_meta container to stamp a timestamp; no value is fabricated
         "confirm_drop_summary"
     ]["stamped_at"]
     out_path = report_path or ABLATION_REPORT_PATH
@@ -3669,7 +3702,7 @@ def build_ablation_report(
         resume_stack = _index_stack_authority_cells(
             prior.get("stack_authority_cells") or prior.get("stack_layer_cells") or []
         )
-        started_at = prior.get("run_meta", {}).get("started_at") or started_at
+        started_at = prior.get("run_meta", {}).get("started_at") or started_at  # caps-ok: resume bookkeeping: keeps the original start when recorded, else this invocation's start is the earliest start known for the report
 
     report: dict = {
         "schema_version": "3",
@@ -3687,9 +3720,9 @@ def build_ablation_report(
         "whole_stack_catalog_cell_count": accounting["catalog_target"],
         "whole_stack_runnable_cell_count": accounting["runnable_target"],
         "per_model_feature_cell_count": manifest["totals"]["per_model_feature_cell_count"],
-        "stack_authority_cell_count": int(
-            (manifest.get("totals") or {}).get("stack_authority_cell_count") or 0
-        ),
+        # None when the manifest carries no stack-authority grid (that pass is retired from
+        # this entrypoint) — not a measured count of zero.
+        "stack_authority_cell_count": (manifest.get("totals") or {}).get("stack_authority_cell_count"),
         "grid_cell_count": int(
             (manifest.get("totals") or {}).get("grid_cell_count")
             or manifest["totals"]["per_model_feature_cell_count"]
@@ -3739,7 +3772,7 @@ def build_ablation_report(
         "Whole-stack scores all seven models × four horizons via offline v2/v3 encoder lineage."
     )
     eval_opts = _ablation_eval_options()
-    full_hist = os.environ.get("ED_ABLATION_FULL_HISTORY", "").strip().lower() in (
+    full_hist = os.environ.get("ED_ABLATION_FULL_HISTORY", "").strip().lower() in (  # caps-ok: env flag; unset means full-history mode is off
         "1",
         "true",
         "yes",
@@ -3962,7 +3995,13 @@ def acquire_ablation_run_lock(*, run_kind: str = "primary") -> None:
     """Single-instance guard — refuse a second scored ablation/confirm on this host."""
     existing = _read_ablation_lock()
     if existing:
-        pid = int(existing.get("pid") or 0)
+        if existing.get("pid") is None:
+            # The lock writer always stamps pid; a lock without one cannot prove its owner
+            # is dead, so refuse instead of clearing it and starting a second run.
+            raise SystemExit(
+                f"ablation lock {ABLATION_LOCK_PATH} has no pid; inspect and remove it manually"
+            )
+        pid = int(existing["pid"])
         if _pid_alive(pid):
             kind = str(existing.get("run_kind") or "ablation")
             raise SystemExit(
@@ -3993,8 +4032,14 @@ def ablation_report_status(report_path: Path | None = None) -> dict:
     """Certified on-disk ablation progress (runnable-cell denominator — not catalog slots)."""
     out_path = report_path or ABLATION_REPORT_PATH
     lock = _read_ablation_lock()
-    lock_pid = int((lock or {}).get("pid") or 0)
-    lock_live = _pid_alive(lock_pid) if lock else False
+    raw_lock_pid = (lock or {}).get("pid")
+    lock_pid = int(raw_lock_pid) if raw_lock_pid is not None else None
+    if not lock:
+        lock_live: bool | None = False  # no lock file: no run holds the lock
+    elif lock_pid is None:
+        lock_live = None  # lock present but pid unreadable: liveness unknown, not dead
+    else:
+        lock_live = _pid_alive(lock_pid)
     catalog_target = whole_stack_catalog_cell_target()
     runnable_target = whole_stack_runnable_cell_target()
     base: dict = {
@@ -4254,7 +4299,7 @@ def pipeline_status() -> dict:
                 trains.append({"pid": int(pid_s), "command": cmd[:240]})
     except (OSError, subprocess.CalledProcessError, ValueError):
         pass
-    survivors_env = os.environ.get("ED_APPLY_ABLATION_SURVIVORS", "")
+    survivors_env = os.environ.get("ED_APPLY_ABLATION_SURVIVORS", "")  # caps-ok: env flag read for status display; unset means survivors are not applied
     from arch_competition.stack_bundle_eval_v1 import (
         ablation_confirm_pass_complete,
         ablation_primary_pass_authority_active,
@@ -4392,7 +4437,7 @@ def run_survivor_stack_refit_backtest(
     min_n = int(
         min_paired_rows
         if min_paired_rows is not None
-        else os.environ.get("ED_SURVIVOR_MIN_PAIRED_ROWS", str(SURVIVOR_MIN_PAIRED_ROWS_POWERED))
+        else os.environ.get("ED_SURVIVOR_MIN_PAIRED_ROWS", str(SURVIVOR_MIN_PAIRED_ROWS_POWERED))  # caps-ok: env override of a documented constant floor SURVIVOR_MIN_PAIRED_ROWS_POWERED
     )
     manifest = load_ablation_manifest()
     out: dict = {
@@ -4490,8 +4535,8 @@ def run_survivor_stack_refit_backtest(
                     if full_prep.get("status") != "ok" or surv_prep.get("status") != "ok":
                         out["issues"].append(
                             f"refit_failed:{anc}/{model}/{hz_n}:"
-                            f"full={full_prep.get('reason', full_prep.get('status'))}:"
-                            f"surv={surv_prep.get('reason', surv_prep.get('status'))}"
+                            f"full={full_prep.get('reason', full_prep.get('status'))}:"  # caps-ok: issue-message text; falls back to the real status when no reason was given
+                            f"surv={surv_prep.get('reason', surv_prep.get('status'))}"  # caps-ok: issue-message text; falls back to the real status when no reason was given
                         )
                     elif not cell["powered"]:
                         out["issues"].append(
@@ -4505,7 +4550,7 @@ def run_survivor_stack_refit_backtest(
             os.environ["ED_SURVIVOR_VALIDATION_QUICK"] = prev_quick
 
     powered = [c for c in out["base_model_cells"] if c.get("powered")]
-    edge_powered = [c for c in powered if int(c.get("drop_group_count") or 0) > 0]
+    edge_powered = [c for c in powered if int(c["drop_group_count"]) > 0]
     better = [c for c in edge_powered if c.get("survivor_better")]
     out["summary"] = {
         "base_cells_total": len(out["base_model_cells"]),
@@ -4627,7 +4672,7 @@ def run_survivor_validation_run(
                         cell["parity_ok"] = prep.get("status") == "ok"
                     if not cell["parity_ok"]:
                         out["issues"].append(
-                            f"validation_failed:{anc}/{model}/{hz_n}:{prep.get('reason', prep.get('status'))}"
+                            f"validation_failed:{anc}/{model}/{hz_n}:{prep.get('reason', prep.get('status'))}"  # caps-ok: issue-message text; falls back to the real status when no reason was given
                         )
                     out["cells"].append(cell)
     finally:
@@ -4682,7 +4727,7 @@ def run_survivor_edge_probe(
         return out
     report = json.loads(report_path.read_text(encoding="utf-8"))
     ss = report.get("survivor_summary") or {}
-    scored = int(ss.get("scored_cell_count") or 0)
+    scored = int(ss.get("scored_cell_count") or 0)  # caps-ok: fail-closed: an absent scored count is < matrix_target and appends ablation_matrix_incomplete
     matrix_target = ablation_full_matrix_cell_target()
     if matrix_target <= 0 or scored < matrix_target:
         out["issues"].append(f"ablation_matrix_incomplete:{scored}/{matrix_target}")
@@ -4842,7 +4887,7 @@ def run_survivor_retrain_preflight(
     out["survivor_mask_enabled"] = survivors_on
     out["survivor_drop_group_ids"] = drop_ids
     out["survivor_drop_column_count"] = len(drop_cols)
-    out.setdefault("notes", [])
+    out.setdefault("notes", [])  # caps-ok: creates the notes list container
     if survivors_on:
         from arch_competition.stack_bundle_eval_v1 import (
             ABLATION_CONFIRM_PATH_VERSION,
@@ -4917,12 +4962,12 @@ def run_survivor_retrain_preflight(
                     **stats,
                 }
                 per_ticker.append(row)
-                if int(stats.get("labeled_rows") or 0) < int(MIN_ROWS_FOR_PROMOTION):
+                if int(stats.get("labeled_rows") or 0) < int(MIN_ROWS_FOR_PROMOTION):  # caps-ok: fail-closed: absent labeled_rows blocks promotion (ready=False) and the issue prints the raw None
                     out["ready"] = False
                     out["issues"].append(
                         f"{tkr}/{hz}: labeled_rows={stats.get('labeled_rows')} < {MIN_ROWS_FOR_PROMOTION}"
                     )
-                if int(stats.get("usable_days") or 0) < int(MIN_USABLE_DAYS_FOR_PROMOTION):
+                if int(stats.get("usable_days") or 0) < int(MIN_USABLE_DAYS_FOR_PROMOTION):  # caps-ok: fail-closed: absent usable_days blocks promotion (ready=False)
                     out["ready"] = False
                     out["issues"].append(
                         f"{tkr}/{hz}: usable_days={stats.get('usable_days')} < {MIN_USABLE_DAYS_FOR_PROMOTION}"
@@ -4996,11 +5041,11 @@ def build_survivor_retrain_monitor_report(
         lines.append(
             "%-22s %-5s %-4s %-8s %-12s %s"
             % (
-                str(r.get("timestamp", ""))[:22],
+                str(r.get("timestamp", ""))[:22],  # caps-ok: display-only column in a printed status table; blank cell, never parsed back
                 r.get("ticker"),
                 r.get("horizon"),
                 str(r.get("promoted")),
-                str(r.get("outcome", ""))[:12],
+                str(r.get("outcome", ""))[:12],  # caps-ok: display-only column in a printed status table; blank cell, never parsed back
                 str(gate)[:40],
             )
         )
@@ -5017,7 +5062,7 @@ def build_survivor_retrain_monitor_report(
                 ok.append(hz)
             else:
                 iss = chk.get("issues") or []
-                bad.append("%s(%s)" % (hz, iss[0][:30] if iss else "incomplete"))
+                bad.append("%s(%s)" % (hz, iss[0][:30] if iss else "incomplete"))  # caps-ok: display label for a non-compliant bundle; the bundle is already listed under MISSING
         lines.append(
             "  %s  OK=[%s]  MISSING=%s" % (t, ",".join(ok) or "-", ",".join(bad) if bad else "none")
         )
@@ -5348,9 +5393,9 @@ def main():
         out_p = write_ablation_report(report, report_path)
         summary = report.get("confirm_drop_summary") or {}
         print(
-            f"wrote {out_p}  confirm_cells={summary.get('cells_total', 0)}  "
-            f"confirm_ok={summary.get('cells_ok', 0)}  "
-            f"safe={summary.get('cells_safe_to_drop', 0)}",
+            f"wrote {out_p}  confirm_cells={summary.get('cells_total')}  "
+            f"confirm_ok={summary.get('cells_ok')}  "
+            f"safe={summary.get('cells_safe_to_drop')}",
             flush=True,
         )
         raise SystemExit(0)
@@ -5407,7 +5452,7 @@ def main():
             f"horizons={method['horizons']}  "
             f"pool_tickers={pool}  "
             f"full_stack_layers={report.get('full_stack_layers')}  "
-            f"dry_run={report.get('dry_run', False)}  "
+            f"dry_run={report.get('dry_run')}  "
             f"status={meta.get('status')}  "
             f"survivor_groups={len(surv.get('by_group') or surv.get('groups') or {})}"
         )

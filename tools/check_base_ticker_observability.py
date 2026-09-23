@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Wrote", args.markdown_out)
 
     ok = all(r["coverage_status"] == PASS_BASE_OBSERVABILITY for r in report["tickers"])
-    return 0 if ok else 1
+    return 0 if ok else 1  # caps-ok: exit code IS the verdict; --tickers is nargs='+' so the all() above is never vacuous
 
 
 if __name__ == "__main__":

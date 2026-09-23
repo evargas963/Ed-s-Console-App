@@ -160,9 +160,11 @@ def _layer_flag(ok: bool) -> str:
 def _summarize_full_stack_layers(d: dict[str, Any]) -> dict[str, str]:
     """All seven stack models — operator binding (governed_stack_contract.FULL_STACK_MODEL_LAYERS)."""
     mo = d.get("model_outputs") if isinstance(d.get("model_outputs"), dict) else {}
-    xgb_ok = bool(mo.get("xgb", {}).get("available")) if isinstance(mo.get("xgb"), dict) else bool(d.get("xgb_available"))
-    lstm_ok = bool(mo.get("lstm", {}).get("available")) if isinstance(mo.get("lstm"), dict) else bool(d.get("lstm_available"))
-    tr_ok = bool(mo.get("transformer", {}).get("available")) if isinstance(mo.get("transformer"), dict) else bool(d.get("transformer_available"))
+    # A layer counts as ok only on an explicit truthy `available`; an absent flag reports the
+    # layer as missing (stack_layer_failures is fail-closed), never as present.
+    xgb_ok = bool(mo["xgb"].get("available")) if isinstance(mo.get("xgb"), dict) else bool(d.get("xgb_available"))
+    lstm_ok = bool(mo["lstm"].get("available")) if isinstance(mo.get("lstm"), dict) else bool(d.get("lstm_available"))
+    tr_ok = bool(mo["transformer"].get("available")) if isinstance(mo.get("transformer"), dict) else bool(d.get("transformer_available"))
     meta_mo = mo.get("meta") if isinstance(mo.get("meta"), dict) else {}
     meta_ok = bool(meta_mo.get("available")) if meta_mo else (
         xgb_ok and lstm_ok and tr_ok and bool(d.get("fusion_available"))
@@ -210,7 +212,11 @@ def _alignment_explainer(d: dict[str, Any]) -> str:
         normalize_alignment_state,
     )
 
-    align = normalize_alignment_state(str(d.get("alignment_state_display") or "unknown"))
+    raw_align = d.get("alignment_state_display")
+    if not raw_align:
+        # Say the field is absent instead of normalizing a fabricated "unknown" state.
+        return "alignment=ABSENT: payload carries no alignment_state_display"
+    align = normalize_alignment_state(str(raw_align))
     ph = d.get("primary_horizon") or "?"
     if align not in (ALIGNMENT_STATE_NO_PRIMARY, ALIGNMENT_STATE_UNUSABLE_LEGACY):
         return (
@@ -244,7 +250,7 @@ def summarize(ticker: str, d: dict[str, Any]) -> list[str]:
     print(f"fusion_available={fus} canonical/dominant_dir={can_d} confidence={can_c} prov={can_p}")
     print(f"alignment: {_alignment_explainer(d)}")
     print(f"primary_horizon={d.get('primary_horizon')} final_quality={d.get('final_quality')} entry_state={d.get('entry_state')}")
-    print(f"call_signal={d.get('call_signal')} final_bias={d.get('final_bias')} wait_reason-ish: {str(d.get('validation_summary',''))[:80]}")
+    print(f"call_signal={d.get('call_signal')} final_bias={d.get('final_bias')} wait_reason-ish: {str(d.get('validation_summary'))[:80]}")
     for hz in ("1c", "5c", "15c", "60c"):
         t = _hz_probs(d, hz)
         print(f"  {hz}: any_none={t['any_none']} up={t['up']} down={t['down']} flat={t['flat']}")
@@ -261,7 +267,7 @@ def summarize(ticker: str, d: dict[str, Any]) -> list[str]:
 
 
 def main() -> int:
-    base = (os.environ.get("ED_DIAG_BASE") or "http://127.0.0.1:8000").rstrip("/")
+    base = (os.environ.get("ED_DIAG_BASE") or "http://127.0.0.1:8000").rstrip("/")  # caps-ok: env override ED_DIAG_BASE with documented default of the local console URL (127.0.0.1 per repo probe rule); a connection target, not data
     exp = os.environ.get("ED_DIAG_EXPIRY") or ""
     token = os.environ.get("ED_DIAG_TOKEN") or None
     argv = [a for a in sys.argv[1:] if a]
@@ -270,7 +276,7 @@ def main() -> int:
         argv = [a for a in argv if a != "--ui-maximize-probe"]
 
     if ui_maximize_probe:
-        ta = (argv[0] if argv else DEFAULT_DIAG_TICKERS[0]).upper().strip()
+        ta = (argv[0] if argv else DEFAULT_DIAG_TICKERS[0]).upper().strip()  # caps-ok: CLI positional ticker with default to the first DEFAULT_DIAG_TICKERS anchor for the --ui-maximize-probe run; an argument choice, not a measured value
         return _ui_maximize_probe(base, ta, exp, token)
 
     tickers = [t.upper().strip() for t in argv] if argv else list(DEFAULT_DIAG_TICKERS)

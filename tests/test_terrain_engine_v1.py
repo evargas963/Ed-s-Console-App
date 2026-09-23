@@ -117,7 +117,7 @@ def test_posture_is_never_issued_without_a_supportable_at_spot_sign() -> None:
     elif snap.confidence == GAMMA_FLIP_LEVEL_APPROX:
         # the middle tier MAY issue a posture — but must never present the level as placed
         assert snap.regime != "UNAVAILABLE"
-        assert "APPROXIMATE" in " ".join(getattr(snap, "lines", []) or []), (
+        assert "APPROXIMATE" in " ".join(snap.lines), (
             "LEVEL_APPROX issued a regime without disclosing the flip level is approximate")
 
 
@@ -319,15 +319,23 @@ def _bucket_for_pin(exposures: dict, pin: float) -> dict | None:
     return None
 
 
+def _bucket_oi(bucket: dict) -> float | None:
+    """OI of the contracts that cleared the OI gate at one strike; None when neither side did.
+    A side whose call_oi/put_oi is None had no contract clear the gate, so it adds none."""
+    co, po = bucket.get("call_oi"), bucket.get("put_oi")
+    if co is None and po is None:
+        return None
+    return (float(co) if co is not None else 0.0) + (float(po) if po is not None else 0.0)
+
+
 def _book_oi(exposures: dict) -> float | None:
     total = None
     for v in exposures.values():
         if not isinstance(v, dict):
             continue
-        co, po = v.get("call_oi"), v.get("put_oi")
-        if co is None and po is None:
+        add = _bucket_oi(v)
+        if add is None:
             continue
-        add = (float(co) if co is not None else 0.0) + (float(po) if po is not None else 0.0)
         total = (total or 0.0) + add
     return total
 
@@ -370,14 +378,14 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     extra = []
     for c in chain:
         try:
-            if float(c.get("strikePrice") or 0) != float(pin):
+            if float(c["strikePrice"]) != float(pin):
                 continue
         except (TypeError, ValueError):
             continue
         d = dict(c)
-        d["daysToExpiration"] = int(c.get("daysToExpiration") or 0) + 30
+        d["daysToExpiration"] = int(c["daysToExpiration"]) + 30
         d["expirationDate"] = "2026-08-16"
-        d["openInterest"] = float(c.get("openInterest") or 0) + 50_000
+        d["openInterest"] = float(c["openInterest"]) + 50_000
         extra.append(d)
     assert extra, "the pin strike must exist on the captured chain"
     wide = chain + extra
@@ -392,9 +400,9 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     sel_gex = total_gex_dollars_at_strike(sb)
     assert wide_gex != sel_gex
     assert terrain.absolute_gamma_gex_dollars == wide_gex
-    assert terrain.absolute_gamma_oi != (
-        (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
-    )
+    sel_pin_oi = _bucket_oi(sb)
+    assert sel_pin_oi is not None, "the selected-expiry pin strike must carry real OI"
+    assert terrain.absolute_gamma_oi != sel_pin_oi
     wide_score = compute_pin_score(
         terrain.absolute_gamma_gex_dollars,
         (terrain.absolute_gamma_oi / terrain.book_oi_total)
@@ -403,10 +411,7 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     )
     sel_score = compute_pin_score(
         sel_gex,
-        (
-            (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
-            / _book_oi(sel_ex)
-        )
+        (sel_pin_oi / _book_oi(sel_ex))
         if _book_oi(sel_ex)
         else None,
     )

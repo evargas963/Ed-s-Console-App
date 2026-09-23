@@ -31,7 +31,7 @@ def test_fast_quote_endpoint_returns_fast_fields(monkeypatch):
     from starlette.testclient import TestClient
 
     with TestClient(srv.app) as client:
-        r = client.get("/api/fast-quote", params={"ticker": "SPY"})
+        r = client.get("/api/fast-quote", params={"ticker": "SPY"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r.status_code == 200
         b = r.json()
         assert b["ticker"] == "SPY"
@@ -80,7 +80,7 @@ def test_fast_quote_auth_failure_serves_carried_forward_plane(monkeypatch):
     from starlette.testclient import TestClient
 
     with TestClient(srv.app) as client:
-        r = client.get("/api/fast-quote", params={"ticker": "SPY"})
+        r = client.get("/api/fast-quote", params={"ticker": "SPY"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r.status_code == 200
         body = r.json()
         assert body["spot"] == 749.73
@@ -109,8 +109,8 @@ def test_fast_quote_missing_token_file_returns_401_not_503(monkeypatch):
     from starlette.testclient import TestClient
 
     with TestClient(srv.app) as client:
-        r = client.get("/api/fast-quote", params={"ticker": "SPY"})
+        r = client.get("/api/fast-quote", params={"ticker": "SPY"})  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r.status_code == 401
         body = r.json()
         assert body.get("error") == "token_invalid"
-        assert "reauth_schwab" in str(body.get("remediation", ""))
+        assert "reauth_schwab" in str(body["remediation"])

@@ -756,3 +756,33 @@ def test_meta_basis_gate_wired_before_active_copy_auto_path_only():
     guard = s[:gate_at].rfind("if not is_manual:")
     assert guard > 0, "meta basis gate must be scheduler/auto-path only"
     assert "meta_basis_not_promotion_clean" in s
+
+
+def test_caps_promotion_gate_refuses_unrecorded_incumbent_score_and_rows():
+    """CAPS: an incumbent with no recorded promotion_score, or a candidate with no recorded
+    rows_used, must be refused -- never compared as a fabricated 0 that any candidate beats."""
+    from training_provenance import TrainingProvenance, provenance_rows, validate_for_promotion
+
+    cand = _honest_candidate_prov()
+    incumbent = TrainingProvenance.from_dict({
+        "model_type": "XGBClassifier", "ticker": "SPY",
+        "training_timeframe": CANONICAL_TIMEFRAME, "target_column": "outcome_1c",
+        "target_definition": "", "rows_used": 1000,
+    })
+    assert incumbent.promotion_score is None
+    ok, reason = validate_for_promotion(
+        cand, 0.45, existing_provenance=incumbent, balanced_accuracy=0.45, horizon_slug="1c",
+    )
+    assert ok is False and "no promotion_score" in reason
+
+    no_rows = TrainingProvenance.from_dict({
+        "model_type": "XGBClassifier", "ticker": "SPY",
+        "training_timeframe": CANONICAL_TIMEFRAME, "target_column": "outcome_1c",
+        "target_definition": "", "promotion_score": 0.45,
+    })
+    assert no_rows.rows_used is None and provenance_rows({}) is None
+    ok, reason = validate_for_promotion(no_rows, 0.45, balanced_accuracy=0.45, horizon_slug="1c")
+    assert ok is False and "rows_used not recorded" in reason
+
+    # A meta with no target_column is non-compliant, not silently the 1c default.
+    assert TrainingProvenance.from_dict({"training_timeframe": CANONICAL_TIMEFRAME}).target_column == ""

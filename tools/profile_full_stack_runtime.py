@@ -418,7 +418,7 @@ def main() -> int:
             pct = (total_t / sum_iter * 100.0) if sum_iter > 0 else 0.0
             summary_rows.append((key, avg_ms, pct, cnt))
 
-        rbm_t = agg.totals.get("run_unified_stack_ml_once", 0.0)
+        rbm_t = agg.totals.get("run_unified_stack_ml_once", 0.0)  # caps-ok: profiler accumulator (Agg.totals is a defaultdict(float) of timed seconds); a never-timed key accumulated exactly 0.0s this run, and its call count is printed alongside
         sub_keys = [
             ("run_unified_stack_ml_once.xgb", "  (breakdown) xgb"),
             ("run_unified_stack_ml_once.lstm", "  (breakdown) lstm"),
@@ -480,8 +480,8 @@ def main() -> int:
 
         print()
         print("Nested under run_unified_stack_ml_once (NOT additive to iteration % - subset of RBM time)")
-        eng_t = agg.totals.get("inference_snapshot_v1_to_engineering_snapshot", 0.0)
-        eng_cnt = agg.counts.get("inference_snapshot_v1_to_engineering_snapshot", 0)
+        eng_t = agg.totals.get("inference_snapshot_v1_to_engineering_snapshot", 0.0)  # caps-ok: profiler accumulator: never-timed key = 0.0s accumulated (count printed on the next line)
+        eng_cnt = agg.counts.get("inference_snapshot_v1_to_engineering_snapshot", 0)  # caps-ok: profiler call counter (defaultdict(int)); a never-called key has a true count of 0
         eng_avg_ms = (eng_t / n_iter) * 1000.0
         eng_pct_rbm = (eng_t / rbm_t * 100.0) if rbm_t > 0 else 0.0
         print(

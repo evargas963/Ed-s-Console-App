@@ -144,7 +144,9 @@ def check_zero_bias_ablation_contract() -> list[str]:
     try:
         import lstm_data
 
-        conf = set(getattr(lstm_data, "CONFLUENCE_FEATURES", []) or [])
+        # lstm_data always defines CONFLUENCE_FEATURES; a missing attribute raises into the
+        # except below and is reported as an error instead of silently checking nothing.
+        conf = set(lstm_data.CONFLUENCE_FEATURES)
         wire_scoring_cols: set[str] = set()
         try:
             from db import DB_PATH as _DBP
@@ -484,7 +486,7 @@ def _check_ablation_seven_model_four_horizon_grid_impl() -> list[str]:
         manifest, specs, enriched_rows=enriched_rows_for_spec_build(enriched)
     )
     catalog_target = whole_stack_catalog_cell_target(manifest)
-    runnable_target = int(accounting.get("runnable_target") or 0)
+    runnable_target = int(accounting["runnable_target"])  # ablation_cell_accounting always returns it
     catalog_formula = len(captured) * len(required_models) * len(required_horizons)
     scoring_formula = len(scoring) * len(required_models) * len(required_horizons)
 
@@ -654,7 +656,7 @@ def check_ablation_equal_layer_consumers() -> list[str]:
         s
         for s in specs
         if s.get("model_family") in STACK_AUTHORITY_LAYERS
-        and len(s.get("stack_entry_layers") or []) > 1
+        and len(s.get("stack_entry_layers") or []) > 1  # caps-ok: this check targets only the more-than-one-layer violation; a spec with no entry layers is one with no knockout columns (layers = [model_family] only when group_columns exist)
     ]
     if multi_base_upper:
         sample = multi_base_upper[0]

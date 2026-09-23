@@ -87,7 +87,7 @@ def main() -> None:
     if pick:
         db = EdDB(
             args.db,
-            allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+            allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: flag from register_allow_noncanonical_flag; absent keeps the canonical-DB guard on
         )
         try:
             rows = db.get_similar_setups(

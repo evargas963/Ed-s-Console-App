@@ -77,7 +77,7 @@ def _expected_move_for_state(
     em_lo = None
     em_band_source = "unavailable"  # RC-345 / F06: which EM methodology produced the band
     from time_et import hours_until_session_close_et as _hours_until_close
-    hours_rem = _hours_until_close(now_et_dt) or 0.0
+    hours_rem = _hours_until_close(now_et_dt) or 0.0  # caps-ok: hours_until_session_close_et returns None only when no session is open -- 0 trading hours remaining is then the TRUE value, and the IV-EM path skips on hours_rem <= 0
     kl_em_anchor = "unavailable"
     mc_iv_level = None
     mc_iv_source = "unavailable"

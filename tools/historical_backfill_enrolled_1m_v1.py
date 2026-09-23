@@ -185,8 +185,10 @@ def _apply_backfill_outcome_summary(audit: dict) -> None:
     """Populate candles_fetched, bars_upsert_count, db_locked, persistence_success, final_status."""
     windows: list[dict] = list(audit.get("windows") or [])
     dry = bool(audit.get("dry_run"))
-    candles_fetched = sum(int(w.get("n_candles") or 0) for w in windows)
-    bars_upsert_count = sum(int(w.get("bars_upsert_count") or 0) for w in windows)
+    # Every window log is created with measured n_candles / bars_upsert_count fields (run loop);
+    # index them so a malformed window fails loudly instead of summing as zero.
+    candles_fetched = sum(int(w["n_candles"]) for w in windows)
+    bars_upsert_count = sum(int(w["bars_upsert_count"]) for w in windows)
     audit["candles_fetched"] = candles_fetched
     audit["bars_upsert_count"] = bars_upsert_count
 
@@ -211,8 +213,8 @@ def _apply_backfill_outcome_summary(audit: dict) -> None:
     for w in windows:
         if w.get("http_status") != 200:
             continue
-        nc = int(w.get("n_candles") or 0)
-        bu = int(w.get("bars_upsert_count") or 0)
+        nc = int(w["n_candles"])
+        bu = int(w["bars_upsert_count"])
         if nc > 0 and bu == 0 and not w.get("error"):
             msg = {
                 "phase": "persistence",
@@ -266,7 +268,7 @@ def _apply_backfill_outcome_summary(audit: dict) -> None:
         return
 
     needs_rows = any(
-        w.get("http_status") == 200 and int(w.get("n_candles") or 0) > 0 for w in windows
+        w.get("http_status") == 200 and int(w["n_candles"]) > 0 for w in windows
     )
     if needs_rows:
         ok = bars_upsert_count > 0
@@ -340,11 +342,11 @@ def _per_ticker_bar_stats(db: EdDB, tickers: list[str]) -> list[dict]:
             out.append(
                 {
                     "ticker": t,
-                    "price_bars_1m_count": int(r["n"] or 0),
+                    "price_bars_1m_count": int(r["n"]),  # COUNT(*) is never NULL
                     "bar_start_min": r["mn"],
                     "bar_start_max": r["mx"],
-                    "distinct_bar_utc_days": int(days or 0),
-                    "snapshots_1m_count": int(sn["n"] or 0),
+                    "distinct_bar_utc_days": int(days),  # COUNT(DISTINCT ...) is never NULL
+                    "snapshots_1m_count": int(sn["n"]),  # COUNT(*) is never NULL
                     "snapshot_ts_min": sn["mn"],
                     "snapshot_ts_max": sn["mx"],
                 }
@@ -372,7 +374,7 @@ def run(
     if only_under_covered:
         filt: list[str] = []
         for row in _per_ticker_bar_stats(db, tickers):
-            if int(row["price_bars_1m_count"] or 0) < under_covered_max_bars:
+            if int(row["price_bars_1m_count"]) < under_covered_max_bars:
                 filt.append(row["ticker"])
         tickers = filt
     tickers = sorted(set(tickers))
@@ -507,7 +509,7 @@ def run(
                 is_lock = _sqlite_busy_or_locked(e)
                 wl["db_locked"] = is_lock
                 windows_log.append(wl)
-                audit.setdefault("window_errors", []).append(
+                audit.setdefault("window_errors", []).append(  # caps-ok: creates the window_errors list on first failure to append the real error record
                     {
                         "ticker": sym_upper,
                         "window_start": wl["window_start_utc"],
@@ -602,7 +604,7 @@ def main() -> int:
         return 1
     if out.get("window_errors"):
         return 1
-    if not out.get("persistence_success", False):
+    if not out.get("persistence_success", False):  # caps-ok: fail-closed exit gate: an audit that never recorded persistence_success exits 1
         return 1
     fs = out.get("final_status")
     if fs not in ("SUCCESS", "VACUOUS_SUCCESS", "DRY_RUN"):

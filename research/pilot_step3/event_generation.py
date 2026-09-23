@@ -138,13 +138,16 @@ def build_sigma_for_cusum(
     ``bar_starts`` is required for API compatibility; continuous EWM does not use calendar reset.
     """
     _ = bar_starts
-    sc = cg.get("sigma_contract") or {}
-    span = int(sc.get("ewm_span_bars", cg.get("ewm_span_bars", 390)))
+    # The preregistration is the only authority for these parameters (every prereg JSON and the
+    # F1 draft config declare them). A missing key raises KeyError; coded fallbacks (390 / on /
+    # M=120 / phi=0.25) would silently run an unregistered sigma contract.
+    sc = cg["sigma_contract"]
+    span = int(sc["ewm_span_bars"])
     sigma_raw = _ewm_std_continuous_rth(closes, span=span)
-    rf = sc.get("relative_floor") or {}
-    if bool(rf.get("enabled", True)):
-        M = int(rf.get("M", 120))
-        phi = float(rf.get("phi", 0.25))
+    rf = sc["relative_floor"]
+    if bool(rf["enabled"]):
+        M = int(rf["M"])
+        phi = float(rf["phi"])
         return _apply_relative_sigma_floor(sigma_raw, M=M, phi=phi)
     return sigma_raw
 
@@ -175,10 +178,10 @@ def generate_events(
     k = float(cusum_cfg["k"])
     h = float(cusum_cfg["h_threshold"])
     min_gap = int(cg["min_bar_gap"])
-    exclude_first_30 = bool(cg.get("exclude_first_30min_rth", True))
+    exclude_first_30 = bool(cg["exclude_first_30min_rth"])  # prereg-declared; no coded default
     sma_fast_n = int(cg["sma"]["fast"])
     sma_slow_n = int(cg["sma"]["slow"])
-    sma_tol = float(cg.get("sma", {}).get("near_equal_tolerance", 1e-9))
+    sma_tol = float(cg["sma"]["near_equal_tolerance"])  # prereg-declared; no coded default
     gen_id = str(cg["candidate_generator_id"])
 
     closes = np.array([b.close for b in bars], dtype=float)

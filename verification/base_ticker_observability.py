@@ -67,10 +67,12 @@ def evaluate_ticker_observability(
 ) -> dict[str, Any]:
     t = ticker.upper()
     thr = thresholds or observability_thresholds()
-    min_snap = int(thr.get("min_snapshot_rows_rth", 300))
-    min_norm = int(thr.get("min_normalized_rows_rth", 300))
-    max_med = float(thr.get("max_median_gap_seconds", 90))
-    max_gap_thr = float(thr.get("max_gap_seconds", 300))
+    # The contract (reports/artifacts/base_ticker_money_path_contract.json) is the single owner of
+    # these gate thresholds; a missing key raises instead of a shadow in-code default.
+    min_snap = int(thr["min_snapshot_rows_rth"])
+    min_norm = int(thr["min_normalized_rows_rth"])
+    max_med = float(thr["max_median_gap_seconds"])
+    max_gap_thr = float(thr["max_gap_seconds"])
 
     snap = conn.execute(
         "SELECT COUNT(*), MIN(ts_utc), MAX(ts_utc) FROM snapshots WHERE ticker=? AND ts_utc BETWEEN ? AND ?",
@@ -88,7 +90,7 @@ def evaluate_ticker_observability(
             "SELECT COUNT(*), MIN(ts_utc), MAX(ts_utc) FROM snapshots_1m_normalized WHERE ticker=? AND ts_utc BETWEEN ? AND ?",
             (t, rth_start, rth_end),
         ).fetchone()
-        norm_count = int(norm[0] or 0)
+        norm_count = int(norm[0])  # COUNT(*) is never NULL
         norm_min, norm_max = norm[1], norm[2]
 
     cal_count = 0
@@ -105,7 +107,7 @@ def evaluate_ticker_observability(
             ).fetchone()[0]
         )
 
-    snap_count = int(snap[0] or 0)
+    snap_count = int(snap[0])  # COUNT(*) is never NULL
     has_logger_source = _snapshots_has_logger_source(conn)
     base_snap_count: Optional[int] = None
     base_median_gap: Optional[float] = None

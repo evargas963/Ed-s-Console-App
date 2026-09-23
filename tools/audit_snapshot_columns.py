@@ -233,8 +233,10 @@ def classify(col, null_pct, *, feature, active_lbl, infra, writer, prod_consumer
     has_writer = col in writer
     has_prod = bool(prod_consumers)
     has_tool = bool(tooling_consumers)
-    all_null = null_pct >= 100.0
-    if has_writer and null_pct >= 99.0:
+    # null_pct is None when the table has no rows: population is unmeasured, so neither the
+    # all-NULL cull branch nor the pending-data branch may fire on it.
+    all_null = null_pct is not None and null_pct >= 100.0
+    if has_writer and null_pct is not None and null_pct >= 99.0:
         return "WIRED_PENDING_DATA", "writer present; column ~100% NULL (upstream/credential gap)"
     if has_writer and has_prod:
         return "KEEP_LIVE", "writer + production consumer"
@@ -270,7 +272,7 @@ def build_ledger(db_path: Path) -> dict:
         nulls = table_facts[t]["nulls"]
         rows = []
         for col in sorted(nulls.keys()):
-            null_pct = (nulls[col] / total * 100.0) if total else 0.0
+            null_pct = (nulls[col] / total * 100.0) if total else None  # caps-ok: empty table -> null share unmeasured (None); classify() refuses to cull or flag on it
             cref = refs.get(col, {"production": set(), "tooling": set(), "producer": set()})
             prod_consumers = sorted(cref["production"])
             tooling_consumers = sorted(cref["tooling"])
@@ -283,7 +285,7 @@ def build_ledger(db_path: Path) -> dict:
             )
             rows.append({
                 "column": col,
-                "null_pct": round(null_pct, 2),
+                "null_pct": round(null_pct, 2) if null_pct is not None else None,
                 "writer": col in writer,
                 "production_consumer_files": prod_consumers,
                 "tooling_consumer_files": tooling_consumers,

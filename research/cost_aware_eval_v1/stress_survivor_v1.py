@@ -80,11 +80,25 @@ def evaluate(signed_raw: list[float], dates: list[str], signs: list[float], cost
     day_nets: dict[str, list[float]] = {}
     for d, v in zip(dates, nets):
         day_nets.setdefault(d, []).append(float(v))
+    if not nets:
+        # Zero scored rows: nothing measured, so no mean/CI and no KILL/SURVIVE verdict.
+        return {
+            "cost_round_trip_bp": cost_bp,
+            "n_scored": 0,
+            "n_trades": 0,
+            "mean_net_bp_all_rows": None,
+            "mean_net_bp_trades_only": None,
+            "bootstrap_ci95_mean_net_bp_all_rows": None,
+            "verdict": "UNDER_SAMPLED",
+            "kill_reasons": [],
+        }
     arr = np.asarray(nets, dtype=np.float64)
-    tarr = np.asarray(trade_nets, dtype=np.float64) if trade_nets else np.asarray([0.0])
     ci = _day_bootstrap_ci(day_nets, B, SEED)
-    mean_all = float(arr.mean()) if len(arr) else 0.0
-    mean_tr = float(tarr.mean()) if trade_nets else 0.0
+    if ci is None:
+        raise RuntimeError("evaluate: non-empty nets but no dated days (dates misaligned)")
+    mean_all = float(arr.mean())
+    # All-abstain rows -> no trades -> trades-only mean is undefined (None), not 0.0 bp.
+    mean_tr = float(np.mean(trade_nets)) if trade_nets else None
     kill = mean_all <= 0.0 or (ci[0] <= 0.0 <= ci[1])
     return {
         "cost_round_trip_bp": cost_bp,
@@ -139,6 +153,10 @@ def main() -> int:
     args = ap.parse_args()
     db = args.db or Path(__import__("db").DB_PATH)
     signed_raw, dates, signs = _oof_signed_raw(Path(db))
+    if not signed_raw:
+        # No OOS rows: a stress verdict (SURVIVE or KILL) would be fabricated. Refuse loudly.
+        print("fp13 stress — UNDER_SAMPLED: zero OOS scored rows; no stress verdict produced")
+        return 1
     costs = [1.0, 2.0, 5.0]
     by_cost = {f"{c:g}bp": evaluate(signed_raw, dates, signs, c) for c in costs}
     shuffle = sign_shuffle_control(signed_raw, dates, signs, 1.0)
@@ -186,7 +204,7 @@ def main() -> int:
     for k, v in by_cost.items():
         print(
             f"  {k}: mean_all={v['mean_net_bp_all_rows']:.4f} "
-            f"mean_tr={v['mean_net_bp_trades_only']:.4f} "
+            f"mean_tr={'n/a' if v['mean_net_bp_trades_only'] is None else format(v['mean_net_bp_trades_only'], '.4f')} "
             f"ci={v['bootstrap_ci95_mean_net_bp_all_rows']} -> {v['verdict']}"
         )
     print(

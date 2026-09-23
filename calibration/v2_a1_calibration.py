@@ -264,8 +264,8 @@ def write_a1_calibration_artifact(artifact_dir: Path, artifact: dict[str, Any]) 
 
 def apply_isotonic_model(model: dict[str, Any], raw_probability: float) -> float:
     """Apply JSON-serialized isotonic step function with clipped bounds."""
-    xs = [float(x) for x in model.get("x_thresholds", [])]
-    ys = [float(y) for y in model.get("y_thresholds", [])]
+    xs = [float(x) for x in model.get("x_thresholds", [])]  # caps-ok: fail-closed; missing thresholds become [] and hit the explicit "invalid isotonic model thresholds" ValueError on the next line (v2_decision/a1_isotonic_runtime turns that into None)
+    ys = [float(y) for y in model.get("y_thresholds", [])]  # caps-ok: fail-closed; missing thresholds become [] and hit the explicit "invalid isotonic model thresholds" ValueError on the next line
     if not xs or not ys or len(xs) != len(ys):
         raise ValueError("invalid isotonic model thresholds")
     x_raw = float(raw_probability)

@@ -576,7 +576,7 @@ def _weighting_md(rep: dict) -> list[str]:
         s = sc.get(name) or {}
         h = hh.get(name) or {}
         lines.append(
-            f"| {label} | {s.get('n_both_classified', 0)} | "
+            f"| {label} | {s.get('n_both_classified') if s.get('n_both_classified') is not None else '—'} | "
             f"{_pct(s.get('hit_oi_pct'))} | {_pct(s.get('hit_vol_pct'))} | "
             f"{_pct(s.get('placebo_pct'))} | "
             f"{h.get('rho_oi') if h.get('rho_oi') is not None else '—'} | "
@@ -638,10 +638,11 @@ def render_md(rep: dict) -> str:
         # RC-130: the denominator's exclusion is stated, never silent — hold% only covers
         # walls on the working side at 10:00 ET; breached-at-observation rows are counted.
         f"_Excluded as breached at observation (wall on the wrong side of spot at 10:00 ET; "
-        f"hold undefined): ALL rows — call {rep['wall_hold_all'].get('call_excluded_breached_at_obs', 0)}, "
-        f"put {rep['wall_hold_all'].get('put_excluded_breached_at_obs', 0)}; TRUSTED — call "
-        f"{rep['wall_hold_trusted'].get('call_excluded_breached_at_obs', 0)}, put "
-        f"{rep['wall_hold_trusted'].get('put_excluded_breached_at_obs', 0)}._",
+        # wall_hold_stats() always returns both *_excluded_breached_at_obs counts.
+        f"hold undefined): ALL rows — call {rep['wall_hold_all']['call_excluded_breached_at_obs']}, "
+        f"put {rep['wall_hold_all']['put_excluded_breached_at_obs']}; TRUSTED — call "
+        f"{rep['wall_hold_trusted']['call_excluded_breached_at_obs']}, put "
+        f"{rep['wall_hold_trusted']['put_excluded_breached_at_obs']}._",
         "",
         "_Bar to clear: beat the placebo, not 50%. Narrow-chain rows are structurally "
         "LOW_CONFIDENCE (20-strike history) — the TRUSTED row is the honest one._",
@@ -729,7 +730,7 @@ def _append_history(rep: dict, day: str, coverage: int) -> list[dict]:
                  "ab_n": ab.get("n_both_classified"),
                  "ab_hit_oi_pct": ab.get("hit_oi_pct"),
                  "ab_hit_vol_pct": ab.get("hit_vol_pct")})
-    hist.sort(key=lambda r: r.get("day", ""))
+    hist.sort(key=lambda r: r.get("day", ""))  # caps-ok: sort key only: history lines lacking "day" are kept verbatim and ordered first; no value is written into the row
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     HISTORY.write_text("\n".join(json.dumps(r) for r in hist) + "\n", encoding="utf-8")
     return hist

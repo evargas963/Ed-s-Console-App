@@ -79,7 +79,7 @@ def liquidity_zone_tradeable_score(
     """Spot-normalized liquidity zone tradeability score (LM-1 authority)."""
     if spot is None:
         return round(3.0 * n_tags + 2.5 * n_opt, 2)
-    return round(3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
+    return round(3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)  # caps-ok: `inside` is a computed bool param; 0.0 is the score term for "spot not inside the zone", not a missing value
 
 
 _SCHWAB_PRICEHISTORY_SOURCE = "schwab_pricehistory"
@@ -181,7 +181,7 @@ def _bars_to_list(bars) -> list[dict]:
             if ts is None:
                 continue
         else:
-            ts = getattr(b, "timestamp", getattr(b, "ts", None))
+            ts = getattr(b, "timestamp", getattr(b, "ts", None))  # caps-ok: attribute-alias resolution (timestamp, else ts) that ends in None; a None ts is carried as _ts=None and the bar is dropped by every dt-based filter
             row = {
                 "open": getattr(b, "open", None),
                 "high": getattr(b, "high", None),
@@ -257,7 +257,9 @@ def merge_schwab_bars_with_live_overlay(schwab_bars: list, live_overlay: list) -
             continue
         by_min[int(dt.timestamp()) // 60] = b
 
-    return sorted(by_min.values(), key=lambda x: x.get("_ts") or 0)
+    # Order by the minute key every kept bar already resolved (dt is not None above); the old
+    # `_ts or 0` key sent a bar whose time lived only in "timestamp" to epoch 0 (the front).
+    return [by_min[k] for k in sorted(by_min)]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -636,7 +638,9 @@ def compute_atr_from_bars(
     if not rth_bars or len(rth_bars) < period + 1:
         return None
 
-    rth_bars = sorted(rth_bars, key=lambda x: (x.get("_ts") or 0))
+    # _filter_rth_bars kept only bars with a resolvable ET datetime; sort on that, never on an
+    # epoch-0 stand-in that would put a "timestamp"-only bar first and corrupt the TR sequence.
+    rth_bars = sorted(rth_bars, key=_bar_dt_et)
     # RC-345 / F08: the TR + SMA arithmetic is owned by the ONE ATR authority,
     # math_volatility.compute_atr. This function owns only the RTH-session SCOPE
     # (filtering, no-lookahead cutoff, prev-day fallback) — it is not a second ATR formula.
@@ -1182,7 +1186,7 @@ def _classify_value_state_and_vwap_relation(
     identically three times)."""
     value_state = "unchanged"
     if poc and prev_pd_poc:
-        d = (poc - prev_pd_poc) / prev_pd_poc if prev_pd_poc else 0
+        d = (poc - prev_pd_poc) / prev_pd_poc  # guarded non-zero by the enclosing `if`
         if d > 0.002:
             value_state = "shifted_higher"
         elif d < -0.002:

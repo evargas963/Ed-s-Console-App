@@ -120,17 +120,17 @@ def build_l1_operational_assessment(
     of_total = eng + reuse
     of_reuse_ratio = (reuse / of_total) if of_total > 0 else None
 
-    cold = int(reasons.get("cold_start", 0))
-    stale_http = int(reasons.get("http_serve_stale_rebuild", 0))
-    force = int(reasons.get("http_force_refresh", 0))
+    cold = int(reasons.get("cold_start", 0))  # caps-ok: rebuild-reason counter histogram -- a reason key is only created on its first increment, so an absent key is a true count of 0
+    stale_http = int(reasons.get("http_serve_stale_rebuild", 0))  # caps-ok: rebuild-reason counter histogram, absent key = 0 occurrences
+    force = int(reasons.get("http_force_refresh", 0))  # caps-ok: rebuild-reason counter histogram, absent key = 0 occurrences
     http_miss_like = cold + stale_http + force
     http_den = int(l1_http_cache_hit_total) + http_miss_like
     http_hit_ratio = (l1_http_cache_hit_total / http_den) if http_den > 0 else None
 
-    stale_reason = int(reasons.get("http_serve_stale_rebuild", 0)) + int(reasons.get("quote_path_serve_age", 0))
+    stale_reason = int(reasons.get("http_serve_stale_rebuild", 0)) + int(reasons.get("quote_path_serve_age", 0))  # caps-ok: rebuild-reason counter histogram, absent keys = 0 occurrences
     stale_per_min = (stale_reason / max(uptime_sec, 1e-6)) * 60.0
 
-    scope_pressure = (cache_scope_count / max(1, l1_max_cache_scopes)) if l1_max_cache_scopes else 0.0
+    scope_pressure = (cache_scope_count / max(1, l1_max_cache_scopes)) if l1_max_cache_scopes else 0.0  # caps-ok: a 0 scope cap means uncapped (no LRU cap to press against), so pressure 0 is the true ratio; the served cap is the constant l1_runtime.L1_MAX_CACHE_SCOPES=128
 
     rates_reliable = uptime_sec >= L1_OP_MIN_UPTIME_SEC_FOR_RATES
 
@@ -297,7 +297,10 @@ def build_l1_operational_assessment(
         "interpretation": st_msg,
     }
 
-    statuses = [str(a.get("status", "unknown")) for a in areas.values()]
+    # CAPS RC-REHAB-1: every area above is built in this function WITH status and
+    # interpretation, so both are read directly -- the old "unknown"/"" defaults could only
+    # have hidden an area that forgot its verdict (it would silently drop out of the rollup).
+    statuses = [str(a["status"]) for a in areas.values()]
     material = [s for s in statuses if s != "unknown"]
     if not material:
         verdict = "unknown"
@@ -310,13 +313,13 @@ def build_l1_operational_assessment(
     for key, v in areas.items():
         if key == "build_load":
             for sub in ("latency", "rate"):
-                s = v.get(sub) or {}
-                if s.get("status") in ("warning", "critical"):
-                    parts.append(str(s.get("interpretation", "")))
-            if v.get("status") in ("warning", "critical") and not parts:
-                parts.append(str(v.get("interpretation", "")))
-        elif v.get("status") in ("warning", "critical"):
-            parts.append(str(v.get("interpretation", "")))
+                s = v[sub]
+                if s["status"] in ("warning", "critical"):
+                    parts.append(str(s["interpretation"]))
+            if v["status"] in ("warning", "critical") and not parts:
+                parts.append(str(v["interpretation"]))
+        elif v["status"] in ("warning", "critical"):
+            parts.append(str(v["interpretation"]))
     summary = "; ".join(parts) if parts else "All assessed L1 operational areas are within thresholds."
 
     return {

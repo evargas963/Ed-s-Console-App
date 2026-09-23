@@ -97,7 +97,9 @@ def run_audit():
         for r in rows:
             o = r["candle_open"]
             if o is not None and prev_open is not None and abs(float(o) - float(prev_open)) > 0.001:
-                gap = r["ts_utc"] - prev_ts if prev_ts else 0
+                # prev_open is only non-None after a prior row set prev_ts, so prev_ts is real here;
+                # a 0 gap would have been fabricated (and `if prev_ts` also mis-read ts 0).
+                gap = r["ts_utc"] - prev_ts
                 open_changes.append((prev_ts, r["ts_utc"], gap))
             if o is not None:
                 prev_open = o

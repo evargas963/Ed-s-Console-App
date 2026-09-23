@@ -145,7 +145,7 @@ def build_plan(*, db_path: str, ticker: str, hz: str, seed: int) -> dict:
         "head_sha": _head_sha(),
         "train_sessions": len(train_days),
         "val_sessions": len(val_days),
-        "train_day_range": [train_days[0], train_days[-1]] if train_days else [],
+        "train_day_range": [train_days[0], train_days[-1]] if train_days else None,
         "val_days": list(val_days),
         "train_label_histogram": hist,
         "preregistered_tolerance": {

@@ -43,10 +43,11 @@ def _instrument(
     k = float(cg["cusum"]["k"])
     h = float(cg["cusum"]["h_threshold"])
     min_gap = int(cg["min_bar_gap"])
-    exclude_first_30 = bool(cg.get("exclude_first_30min_rth", True))
+    # Prereg-declared parameters, read exactly as event_generation.generate_events reads them.
+    exclude_first_30 = bool(cg["exclude_first_30min_rth"])
     sma_fast_n = int(cg["sma"]["fast"])
     sma_slow_n = int(cg["sma"]["slow"])
-    sma_tol = float(cg.get("sma", {}).get("near_equal_tolerance", 1e-9))
+    sma_tol = float(cg["sma"]["near_equal_tolerance"])
 
     closes = np.array([b.close for b in bars], dtype=float)
     starts = np.array([b.bar_start_ts_utc for b in bars], dtype=float)
@@ -128,7 +129,9 @@ def main() -> int:
     cg = prereg["candidate_generator"]
     closes = np.array([b.close for b in bars], dtype=float)
     starts = np.array([b.bar_start_ts_utc for b in bars], dtype=float)
-    span = int((cg.get("sigma_contract") or {}).get("ewm_span_bars", cg["ewm_span_bars"]))
+    # Same span the new contract uses (build_sigma_for_cusum reads sigma_contract.ewm_span_bars),
+    # so the legacy-vs-new comparison differs only in the sigma construction.
+    span = int(cg["sigma_contract"]["ewm_span_bars"])
 
     sigma_legacy = _ewm_std_by_rth_day_legacy(closes, starts, span=span)
     sigma_new = build_sigma_for_cusum(closes, starts, cg)

@@ -304,7 +304,7 @@ def run_study(db_path: str) -> dict[str, Any]:
             "bootstrap": baseline.bootstrap,
         },
         "conditions": verdicts,
-        "n_survivors": 0 if halted else len(survivors),
+        "n_survivors": 0 if halted else len(survivors),  # caps-ok: preregistered hard halt ('no real survivors may be reported'); status HALT_* and placebo.hard_halt_engaged carry why the count is 0
         "survivors": [] if halted else survivors,
         "placebo_day_shuffle": {
             "n_survivors": len(placebo_survivors), "survivors": placebo_survivors,

@@ -33,7 +33,7 @@ def _expected_volume_by_strike() -> dict[float, int]:
     out: dict[float, int] = {}
     for c in CHAIN:
         k = float(c["strikePrice"])
-        out[k] = out.get(k, 0) + int(c.get("totalVolume") or 0)
+        out[k] = out.get(k, 0) + int(c["totalVolume"])
     return out
 
 

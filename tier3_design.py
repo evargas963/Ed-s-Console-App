@@ -287,8 +287,8 @@ def build_tier3_feature_decisions_v1() -> dict[str, Any]:
             "INCLUDE",
             "TIER3_SOFT",
             "MEDIUM",
-            f"Survivorship: classification={m.get('regime_primary',{}).get('classification')}, "
-            f"inclusion_frequency≈{m.get('regime_primary',{}).get('inclusion_frequency')} — recurrent in top configs.",
+            f"Survivorship: classification={m.get('regime_primary',{}).get('classification')}, "  # caps-ok: display-only reasoning text; the {} only avoids AttributeError when the validation JSON is absent, and the value then renders as a visible "None", nothing fabricated
+            f"inclusion_frequency≈{m.get('regime_primary',{}).get('inclusion_frequency')} — recurrent in top configs.",  # caps-ok: display-only reasoning text; the {} only avoids AttributeError when the validation JSON is absent, and the value then renders as a visible "None", nothing fabricated
         ),
         _c(
             "vix_bucket",

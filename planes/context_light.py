@@ -211,8 +211,8 @@ def build_l1_context(
     l2_ver_used: int = 0
     src_ts = 0.0
     if ent:
-        l2_ver_used = int(ent.get("analytics_version", 0))
-        src_ts = float(ent.get("generated_at") or ent.get("ts") or 0.0)
+        l2_ver_used = int(ent.get("analytics_version", 0))  # caps-ok: 0 is the repo-wide "no analytics version yet" sentinel of the L2 cache entry (analytics_bg_recompute seeds entries with 0; l1_runtime.compute_l2_version uses the same), a generation counter, not a measurement
+        src_ts = float(ent.get("generated_at") or ent.get("ts") or 0.0)  # caps-ok: internal sentinel -- 0.0 is never served as a time: `if src_ts > 0` below leaves structural_age None (context marked STALE) and l2_snapshot_ts_used_iso None
         md = ent.get("ms_dict") or {}
 
     spot_f = _safe_float(ctx.l0_row.get("spot")) if ctx.l0_row else None

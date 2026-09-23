@@ -208,8 +208,11 @@ def test_per_hz_audit_unavailable_horizon_flat_matches_snap():
     audit = synth.ml_live_audit["per_horizon"]["1c"]
     assert snap is not None
     assert snap.horizon_fusion_available is False
-    assert snap.dominant_direction == "flat"
-    assert audit["fusion_dominant_direction"] == "flat"
+    assert snap.dominant_direction == "flat"   # the unavailable snapshot's max-entropy placeholder
+    # CAPS RC-REHAB-1: the audit no longer republishes that placeholder as the horizon's fusion
+    # read -- an unavailable horizon has NO dominant direction / top probability.
+    assert audit["fusion_dominant_direction"] is None
+    assert audit["fusion_top_probability"] is None
     assert audit["fusion_ml_available"] is False
 
 

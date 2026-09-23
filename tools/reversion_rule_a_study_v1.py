@@ -146,7 +146,8 @@ def _event_for(cand: RuleACandidate) -> PilotEvent:
         T_close_ts_utc=cand.signal_ts,
         side="LONG" if cand.side == "LONG" else "SHORT",
         sma_fast=0.0, sma_slow=0.0, cusum_pos=0.0, cusum_neg=0.0,
-        z_trigger=cand.deviation / cand.sigma if cand.sigma else 0.0,
+        # scan_rule_a_candidates only emits candidates whose sigma is a positive float.
+        z_trigger=cand.deviation / cand.sigma,
         candidate_generator_id="RULE_A_VWAP_FADE_POSGAMMA_V1",
     )
 
@@ -295,8 +296,9 @@ def run_study(db_path: str) -> dict[str, Any]:
         "n_candidates_labeled": len(rows),
         "n_no_fresh_gamma": n_no_gamma,
         "arms": verdicts,
-        "n_survivors": 0 if halted else len(survivors),
-        "survivors": [] if halted else survivors,
+        # A placebo edge voids the real-arm survivor count (None), it does not measure 0.
+        "n_survivors": None if halted else len(survivors),
+        "survivors": None if halted else survivors,
         "placebo_day_shuffle": {
             "n_survivors": len(placebo_survivors), "survivors": placebo_survivors,
             "hard_halt_engaged": halted,

@@ -194,8 +194,8 @@ def build_arch_competition_summary_tick(
         "manifest_paths": paths,
         "evaluation_manifest_schema": manifest.get("schema_version"),
         "promotion_record_schema": promotion_record.get("schema_version"),
-        "n_rows_scored_parallel": (manifest.get("metrics") or {}).get("parallel", {}).get("n_rows_scored"),
-        "n_rows_scored_cascade": (manifest.get("metrics") or {}).get("cascade", {}).get("n_rows_scored"),
+        "n_rows_scored_parallel": (manifest.get("metrics") or {}).get("parallel", {}).get("n_rows_scored"),  # caps-ok: intermediate {} only reaches the leaf; an absent n_rows_scored stays None in the visibility payload
+        "n_rows_scored_cascade": (manifest.get("metrics") or {}).get("cascade", {}).get("n_rows_scored"),  # caps-ok: intermediate {} only reaches the leaf; an absent n_rows_scored stays None in the visibility payload
     }
 
 
@@ -263,7 +263,7 @@ def _merge_summary_file(path: Path, ticker: str, tick_summary: dict[str, Any]) -
     prev: dict[str, Any] = {}
     if path.exists():
         prev = _read_json_object_file(path, context="_merge_summary_file")
-    prev_tickers = prev.get("tickers", {})
+    prev_tickers = prev.get("tickers", {})  # caps-ok: a summary file with no tickers yet starts an empty per-ticker map; a non-dict raises right below
     if not isinstance(prev_tickers, dict):
         raise PromotionGovernanceError(
             f"_merge_summary_file: existing summary {path} has non-dict 'tickers' "

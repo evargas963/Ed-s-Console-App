@@ -89,7 +89,7 @@ def data_coverage_row(
         (t, rth_start, rth_end),
     ).fetchone()
     notes: list[str] = []
-    n_rows = int(norm[0] or 0)
+    n_rows = int(norm[0])  # COUNT(*) is never NULL
     if n_rows == 0:
         notes.append("no normalized snapshots in RTH window")
     elif n_rows < 100:
@@ -110,10 +110,10 @@ def data_coverage_row(
                 notes.append(f"median inter-row gap {med:.0f}s (~{med/60:.1f} min) — not 1m continuity")
     return {
         "ticker": t,
-        "snapshot_rows_rth": int(snap[0] or 0),
+        "snapshot_rows_rth": int(snap[0]),  # COUNT(*) is never NULL
         "normalized_rows_rth": n_rows,
-        "calibration_decision_log_rows_rth": int(cal[0] or 0),
-        "first_ts_et": ts_et_label(float(norm[1])) if norm[1] is not None else None,
+        "calibration_decision_log_rows_rth": int(cal[0]),  # COUNT(*) is never NULL
+        "first_ts_et": ts_et_label(float(norm[1])) if norm[1] is not None else None,  # caps-ok: scanner false positive: the else-branch is None (no normalized rows -> no first timestamp); the regex matched the index literal norm[1]
         "last_ts_et": ts_et_label(float(norm[2])) if norm[2] is not None else None,
         "median_gap_seconds": sorted(gaps)[len(gaps) // 2] if gaps else None,
         "data_quality_notes": notes,
@@ -176,7 +176,7 @@ def classify_suppression_layer(probe: dict[str, Any]) -> str:
     if probe.get("fusion_available") is False:
         return "fusion_unavailable"
     wr = str(probe.get("wait_reason") or "").lower()
-    wb = probe.get("call_readiness", {}).get("wait_blocker") or probe.get("wait_blocker") or {}
+    wb = probe.get("call_readiness", {}).get("wait_blocker") or probe.get("wait_blocker") or {}  # caps-ok: absent wait_blocker yields an empty dict whose missing "reason" matches no blocker class, so classification falls through to the wait_reason text checks and finally the explicit "policy_other" label; no reason is fabricated
     if isinstance(wb, dict):
         reason = str(wb.get("reason") or "").lower()
         if reason == "time":
@@ -257,7 +257,12 @@ def probe_snapshot_row(db, row: dict) -> dict[str, Any]:
         fd = sig.multi_horizon_bundle.final_decision if sig.multi_horizon_bundle else None
         plan = getattr(fd, "final_trade_plan", None) if fd else None
 
-        out["fusion_available"] = bool(getattr(sig.fusion, "available", False)) if sig.fusion else False
+        if not sig.fusion:
+            out["fusion_available"] = False  # no fusion result was produced at all
+        else:
+            # A fusion object without an `available` flag is unknown (None), not "unavailable".
+            _avail = getattr(sig.fusion, "available", None)
+            out["fusion_available"] = None if _avail is None else bool(_avail)
         out["fusion_triplets"] = {
             hz: {
                 "up": getattr(pred, f"up_prob_{hz}", None),
@@ -268,7 +273,7 @@ def probe_snapshot_row(db, row: dict) -> dict[str, Any]:
         }
         mhap = []
         if fd:
-            for a in getattr(fd, "supporting_assessments", []) or []:
+            for a in fd.supporting_assessments:  # FinalDecision.supporting_assessments: list (always set)
                 mhap.append(
                     {
                         "horizon": getattr(a, "horizon", None),
@@ -308,7 +313,7 @@ def classify_ticker_evidence(
     replays: list[dict[str, Any]],
 ) -> list[str]:
     tags: list[str] = []
-    n_norm = coverage.get("normalized_rows_rth") or 0
+    n_norm = coverage["normalized_rows_rth"]  # data_coverage_row always sets it (int COUNT)
     if n_norm == 0 or n_norm < 100:
         tags.append(CLASS_SIGNAL_MISSING_DUE_TO_DATA)
 
@@ -363,9 +368,9 @@ def run_probe(*, day: datetime.date, tickers: list[str], db_path: Path) -> dict[
         rows_by_ticker[tu] = [{k: r[k] for k in r.keys()} for r in cur.fetchall()]
     conn.close()
 
-    os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-key")
-    os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-secret")
-    os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")
+    os.environ.setdefault("SCHWAB_API_KEY", "ci-placeholder-key")  # caps-ok: offline replay: import-time config requires the Schwab env vars to exist; setdefault never overrides real credentials and the replay path makes no Schwab call (a stray call would fail auth loudly with this placeholder)
+    os.environ.setdefault("SCHWAB_APP_SECRET", "ci-placeholder-secret")  # caps-ok: same offline-replay import-time placeholder; never overrides a real secret
+    os.environ.setdefault("SCHWAB_CALLBACK_URL", "https://127.0.0.1:8182")  # caps-ok: same offline-replay import-time placeholder callback URL; never overrides a real value
 
     from db import EdDB
 

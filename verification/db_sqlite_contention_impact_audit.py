@@ -183,15 +183,15 @@ def merge_runtime_metrics(
         "sqlite_tier1_fail_count",
     ):
         metrics_val = getattr(metrics, key)
-        runtime_val = int(runtime.get(key, 0) or 0)
+        runtime_val = int(runtime.get(key, 0) or 0)  # caps-ok: max-merge of non-negative counters; an absent runtime key contributes no evidence and 0 is the identity for max(), so the log-parsed value stands unchanged
         setattr(metrics, key, max(int(metrics_val), runtime_val))
     metrics.sqlite_lock_wait_total_ms = max(
         metrics.sqlite_lock_wait_total_ms,
-        float(runtime.get("sqlite_lock_wait_total_ms", 0) or 0),
+        float(runtime.get("sqlite_lock_wait_total_ms", 0) or 0),  # caps-ok: max-merge of a non-negative ms total; absent runtime value adds no evidence and 0 is max()'s identity, so the log-parsed total stands
     )
     metrics.sqlite_lock_wait_max_ms = max(
         metrics.sqlite_lock_wait_max_ms,
-        float(runtime.get("sqlite_lock_wait_max_ms", 0) or 0),
+        float(runtime.get("sqlite_lock_wait_max_ms", 0) or 0),  # caps-ok: max-merge of a non-negative ms maximum; absent runtime value adds no evidence and 0 is max()'s identity, so the log-parsed max stands
     )
     for bucket, attr in (
         ("operations_affected", "operations_affected"),
@@ -238,36 +238,48 @@ def derive_db_contention_operator_status(
     proven locked/failed write is a hard flag for the process).
     """
     now = float(time.time() if now_utc is None else now_utc)
+    # db_sqlite_utils.record_sqlite_contention_event stamps every event with ts_utc and wait_ms.
+    # An event without ts_utc used to read as ts=0 (ancient) and silently drop out of the recent
+    # window -- a lock event could vanish from the pill. It now raises KeyError.
     recent = [
         e
         for e in (metrics.get("recent_events") or [])
-        if isinstance(e, dict) and float(e.get("ts_utc") or 0) >= now - float(recent_window_sec)
+        if isinstance(e, dict) and float(e["ts_utc"]) >= now - float(recent_window_sec)
     ]
     recent_kinds = {str(e.get("kind") or "") for e in recent}
 
-    lock_wait_count = int(metrics.get("sqlite_lock_wait_count") or 0)
-    lock_wait_max = float(metrics.get("sqlite_lock_wait_max_ms") or 0.0)
-    busy_retry = int(metrics.get("sqlite_busy_retry_count") or 0)
-    db_locked = int(metrics.get("sqlite_database_locked_count") or 0)
-    tier1_fail = int(metrics.get("sqlite_tier1_fail_count") or 0)
+    def _lifetime(key: str) -> Optional[float]:
+        # Lifetime counters: absent stays None (unknown), never a fabricated 0 in metrics_summary.
+        v = metrics.get(key)
+        return None if v is None else float(v)
+
+    lock_wait_count = _lifetime("sqlite_lock_wait_count")
+    lock_wait_max = _lifetime("sqlite_lock_wait_max_ms")
+    busy_retry = _lifetime("sqlite_busy_retry_count")
+    db_locked = _lifetime("sqlite_database_locked_count")
+    tier1_fail = _lifetime("sqlite_tier1_fail_count")
     cfg = metrics.get("config") if isinstance(metrics.get("config"), dict) else {}
-    warn_ms = float(cfg.get("lock_wait_warn_ms") or 100.0)  # fake-default-ok: config warn-threshold default; read-only audit tool
+    from db_sqlite_utils import SQLITE_LOCK_WAIT_WARN_MS
+
+    # The producer's config block carries lock_wait_warn_ms; absent (partial dict), fall back to the
+    # SAME owner constant the producer reports, not a second hard-coded threshold.
+    warn_ms = float(cfg.get("lock_wait_warn_ms", SQLITE_LOCK_WAIT_WARN_MS))  # caps-ok: warn threshold sourced from its single owner db_sqlite_utils.SQLITE_LOCK_WAIT_WARN_MS when the snapshot's config block is absent
 
     recent_busy_retries = [e for e in recent if str(e.get("kind") or "") == "busy_retry"]
     recent_meaningful_waits = [
         e
         for e in recent
         if str(e.get("kind") or "") == "lock_wait"
-        and float(e.get("wait_ms") or 0.0) >= warn_ms
+        and float(e["wait_ms"]) >= warn_ms
     ]
     recent_wait_max = max(
-        (float(e.get("wait_ms") or 0.0) for e in recent_meaningful_waits), default=0.0
+        (float(e["wait_ms"]) for e in recent_meaningful_waits), default=0.0  # caps-ok: max over an empty meaningful-wait list is 0 ms waited in the measured window (recent_window_summary), not missing data
     )
 
     state = "OK"
     if (
-        db_locked > 0
-        or tier1_fail > 0
+        (db_locked is not None and db_locked > 0)
+        or (tier1_fail is not None and tier1_fail > 0)
         or "database_locked" in recent_kinds
         or "tier1_fail" in recent_kinds
     ):
@@ -283,7 +295,10 @@ def derive_db_contention_operator_status(
 
     headline, detail = _DB_STATE_COPY[state]
     label = f"{headline} — {detail}" if headline and detail else headline
-    last_ts = max((float(e.get("ts_utc") or 0) for e in recent), default=None)
+    last_ts = max((float(e["ts_utc"]) for e in recent), default=None)  # caps-ok: None = no event in the recent window; served as null last_event_ts_utc
+
+    def _count(v: Optional[float]) -> Optional[int]:
+        return None if v is None else int(v)
 
     return {
         "state": state,
@@ -300,12 +315,15 @@ def derive_db_contention_operator_status(
             else ""
         ),
         "metrics_summary": {
-            "sqlite_lock_wait_count": lock_wait_count,
-            "sqlite_lock_wait_max_ms": round(lock_wait_max, 3),
-            "sqlite_busy_retry_count": busy_retry,
-            "sqlite_database_locked_count": db_locked,
-            "sqlite_tier1_fail_count": tier1_fail,
+            "sqlite_lock_wait_count": _count(lock_wait_count),
+            "sqlite_lock_wait_max_ms": None if lock_wait_max is None else round(lock_wait_max, 3),
+            "sqlite_busy_retry_count": _count(busy_retry),
+            "sqlite_database_locked_count": _count(db_locked),
+            "sqlite_tier1_fail_count": _count(tier1_fail),
         },
+        # False = a lifetime counter was absent, so DB_LOCKED was judged on recent events only.
+        "lifetime_counters_complete": None
+        not in (lock_wait_count, lock_wait_max, busy_retry, db_locked, tier1_fail),
         "recent_window_summary": {
             "lock_wait_count": len(recent_meaningful_waits),
             "lock_wait_max_ms": round(recent_wait_max, 3),
@@ -405,7 +423,9 @@ def scan_db_configuration(db_path: Optional[Path]) -> dict[str, Any]:
             try:
                 jm = conn.execute("PRAGMA journal_mode").fetchone()
                 cfg["journal_mode"] = str(jm[0]) if jm else None
-                cfg["wal_mode_enabled"] = str(jm[0]).lower() == "wal" if jm else False
+                # No PRAGMA row -> journal mode unknown: leave the seeded None, never assert "WAL off".
+                if jm:
+                    cfg["wal_mode_enabled"] = str(jm[0]).lower() == "wal"
                 bt = conn.execute("PRAGMA busy_timeout").fetchone()
                 if bt:
                     cfg["busy_timeout_ms"] = int(bt[0])
@@ -523,7 +543,9 @@ def answer_audit_questions(
         "10_calibration_gaps": (
             "RISK when ED_CALIBRATION_LOG=1 — writer retries busy/locked then may skip silently"
         ),
-        "11_errors_swallowed": json.dumps(writer_map.get("errors_swallowed_paths", [])),
+        # scan_writer_contention_surfaces() always emits both lists; a missing one raises instead of
+        # answering "[]" (= "no swallowed paths / no competing loops found").
+        "11_errors_swallowed": json.dumps(writer_map["errors_swallowed_paths"]),
         "12_ui_surfaces_db": (
             f"operator_db_degraded_surface={ui.get('operator_db_degraded_surface')} — "
             "STALE/LOADING do not cite DB"
@@ -531,7 +553,7 @@ def answer_audit_questions(
         "13_write_frequency": (
             "Base capture ~1/min/ticker concurrent; UI path throttled per-minute; Tier C writes on refresh"
         ),
-        "14_shared_writer_contention": json.dumps(writer_map.get("competing_loops", [])),
+        "14_shared_writer_contention": json.dumps(writer_map["competing_loops"]),
         "15_wal_mode": str(db_cfg.get("wal_mode_enabled")),
         "16_busy_timeout": str(db_cfg.get("busy_timeout_ms")),
         "17_batching": "one-row insert_snapshot; upsert_1m_bars batched per bar batch",
@@ -685,12 +707,14 @@ def format_contention_markdown(report: dict[str, Any]) -> str:
     lines = [
         "> **Classification:** Audit Report | **Scope:** SQLite contention impact on UI/data freshness",
         "",
-        f"**Branch:** `{report.get('branch', '')}`",
-        f"**Date/session audited:** {report.get('audit_date', '')} (offline_static + log scrape)",
+        # build_contention_impact_report always sets these header keys; index so a malformed
+        # report fails instead of rendering an unattributed, undated audit.
+        f"**Branch:** `{report['branch']}`",
+        f"**Date/session audited:** {report['audit_date']} (offline_static + log scrape)",
         "",
         "## Operating stance",
         "",
-        report.get("operating_stance", ""),
+        report["operating_stance"],
         "",
         "## Lock wait evidence",
         "",
@@ -736,7 +760,7 @@ def format_contention_markdown(report: dict[str, Any]) -> str:
             "",
             "## Card Trust Contract tie-back",
             "",
-            report.get("card_trust_contract", ""),
+            report["card_trust_contract"],
             "",
             "## Prior observations (not standalone proof)",
             "",

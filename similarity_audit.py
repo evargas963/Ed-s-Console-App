@@ -236,7 +236,9 @@ def structured_constraints_for_tier(tier_num: int, ctx: dict[str, Any]) -> dict[
             if as_of is not None
             else {"constraint": "none"}
         ),
-        "order_by_recency_desc_limit": ctx.get("n_similar_limit", 500),
+        # Required: query_context_for_similarity always sets it; a fabricated 500 would
+        # misreport the LIMIT the SQL actually ran with.
+        "order_by_recency_desc_limit": ctx["n_similar_limit"],
     }
 
     if tier_num == 1:
@@ -314,8 +316,10 @@ def widening_summary_from_tiers(trace_tiers: list[dict], chosen_tier: int) -> di
                 }
             )
         else:
-            nrows = int(entry.get("row_count_after_query_limit") or 0)
-            tsv = entry.get("tier_stop_viable", entry.get("empirically_viable"))
+            # Both keys are always written by db_snapshots._append_tier; a missing count must
+            # raise, not be reported as "zero_rows_in_limited_pool".
+            nrows = int(entry["row_count_after_query_limit"])
+            tsv = entry["tier_stop_viable"]
             per.append(
                 {
                     "tier": tier,
@@ -514,10 +518,10 @@ def similarity_trace_machine_summary(trace: dict[str, Any]) -> dict[str, Any]:
         "schema": "similarity_trace_summary_v1",
         "ticker": trace.get("ticker"),
         "timeframe": trace.get("timeframe"),
-        "final_selected_tier": trace.get("final_selected_tier", trace.get("chosen_tier")),
-        "final_selected_row_count": trace.get("final_selected_row_count", trace.get("final_similar_count")),
+        "final_selected_tier": trace.get("final_selected_tier", trace.get("chosen_tier")),  # caps-ok: chosen_tier is the same value under its older name (db_snapshots._finish writes both); both absent -> None, nothing fabricated
+        "final_selected_row_count": trace.get("final_selected_row_count", trace.get("final_similar_count")),  # caps-ok: final_similar_count is the same len(out) under its older name (db_snapshots._finish writes both); both absent -> None
         "stop_reason": trace.get("stop_reason"),
-        "final_tier_stop_viable": trace.get("final_tier_stop_viable", trace.get("final_empirically_viable")),
+        "final_tier_stop_viable": trace.get("final_tier_stop_viable", trace.get("final_empirically_viable")),  # caps-ok: final_empirically_viable is the same ftsv value under its older name (db_snapshots._finish writes both); both absent -> None
         "final_all_tracked_viable": trace.get("final_all_tracked_viable"),
         "tier_stop_outcome_columns": trace.get("tier_stop_outcome_columns"),
         "labeled_counts_final": dict(fc) if fc else {},
@@ -533,7 +537,11 @@ def build_similar_inspection_bundle(
     max_rows: int = 100,
 ) -> dict[str, Any]:
     """Developer-facing bundle: trace header + projected rows (Issue 21 Part B)."""
-    tier = int(trace.get("final_selected_tier") or trace.get("chosen_tier") or 0)
+    # Tiers are 1..5; an unknown tier stays None rather than a fabricated tier 0.
+    _tier_raw = trace.get("final_selected_tier")
+    if _tier_raw is None:
+        _tier_raw = trace.get("chosen_tier")
+    tier = int(_tier_raw) if _tier_raw is not None else None
     lim = max(0, min(max_rows, len(rows)))
     projected = [inspection_row_projection(r) for r in rows[:lim]]
     return {

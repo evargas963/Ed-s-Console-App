@@ -119,6 +119,13 @@ def main() -> int:
         path.write_text(new_src, encoding="utf-8", newline="\n")
         print(f"fixed {len(matches)} in {rel}")
 
+    # Re-scan the roster AFTER rewriting: the after-count is measured, not asserted.
+    remaining_after = sum(
+        len(PAT.findall((ROOT / rel).read_text(encoding="utf-8", errors="replace")))
+        for rel in TARGET_FILES
+        if (ROOT / rel).is_file()
+    )
+
     audit = {
         "sweep_id": "error_propagation_v3",
         "date_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -127,7 +134,7 @@ def main() -> int:
         "parent_baseline_silent_pass": 27,
         "summary": {
             "silent_exception_pass_before": 27,
-            "silent_exception_pass_after": 0,
+            "silent_exception_pass_after": remaining_after,
             "class_c_fixed_count": total,
             "class_b_accepted_documented": 0,
             "critical_silent_pass_files_after": 13,

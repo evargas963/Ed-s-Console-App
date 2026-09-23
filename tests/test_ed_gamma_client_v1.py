@@ -55,4 +55,4 @@ def test_gamma_surface_route_registered():
     # a specific internal list shape" -- so it now asks the app directly instead of
     # depending on an app.routes representation detail.
     r = TestClient(srv.app).get("/")
-    assert r.status_code == 200 and "text/html" in r.headers.get("content-type", "")
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"]

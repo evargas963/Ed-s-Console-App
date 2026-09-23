@@ -36,10 +36,17 @@ from math_exposure import (
 
 
 def _fixture_exposures():
+    # Per-side dollar GEX is carried as a real bucket carries it (net = call - put, the
+    # compute_exposures_by_strike convention). Without the per-side keys
+    # exposures_have_dollar_gex() is False, aggregate_net_gex() returns None, and the
+    # hedging-flow comparison below used to agree with production on a fabricated 0.0 GEX.
     return {
-        445.0: {"net_dex_dollars": 1000.0, "call_oi": 500, "put_oi": 300, "call_vanna": 10.0, "put_vanna": -5.0, "net_gex_1pct": 2000.0},
-        450.0: {"net_dex_dollars": -500.0, "call_oi": 800, "put_oi": 600, "call_vanna": 20.0, "put_vanna": -8.0, "net_gex_1pct": -1000.0},
-        455.0: {"net_dex_dollars": 700.0, "call_oi": 400, "put_oi": 200, "call_vanna": 5.0, "put_vanna": -3.0, "net_gex_1pct": 1500.0},
+        445.0: {"net_dex_dollars": 1000.0, "call_oi": 500, "put_oi": 300, "call_vanna": 10.0, "put_vanna": -5.0,
+                "call_gex_1pct": 2500.0, "put_gex_1pct": 500.0, "net_gex_1pct": 2000.0},
+        450.0: {"net_dex_dollars": -500.0, "call_oi": 800, "put_oi": 600, "call_vanna": 20.0, "put_vanna": -8.0,
+                "call_gex_1pct": 500.0, "put_gex_1pct": 1500.0, "net_gex_1pct": -1000.0},
+        455.0: {"net_dex_dollars": 700.0, "call_oi": 400, "put_oi": 200, "call_vanna": 5.0, "put_vanna": -3.0,
+                "call_gex_1pct": 2000.0, "put_gex_1pct": 500.0, "net_gex_1pct": 1500.0},
     }
 
 
@@ -79,7 +86,10 @@ def test_full_pipeline_matches_the_original_computation_chain():
     expected_dpi = compute_dealer_pressure_index(sum_dex, _gex_raw, sum_oi)
     assert result.dpi == expected_dpi
 
-    sum_gex = float(_gex_raw or 0.0)
+    # The fixture carries real gamma, so the net GEX is a measured number; an `or 0.0` here
+    # would let expected and actual agree on a fabricated zero.
+    assert _gex_raw is not None, "fixture must produce a real net GEX"
+    sum_gex = float(_gex_raw)
     max_gex, max_dex = max(abs(sum_gex), 1.0), max(abs(sum_dex), 1.0)
     max_charm, max_vanna = max(abs(12.5), 1.0), max(abs(sum_vanna), 1.0)
     expected_hedging = compute_hedging_flow_score(

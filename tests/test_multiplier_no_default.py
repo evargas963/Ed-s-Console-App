@@ -79,7 +79,9 @@ def test_exposures_skip_missing_bidsize_instead_of_coercing_schwab_none_to_zero(
     exposures, diag = compute_exposures_by_strike([ct], spot=500.0)
 
     assert diag.contracts_used == 1
-    assert exposures[500.0]["call_bid_size"] == 0.0
+    # CAPS RC-REHAB-1: a strike whose only leg omitted bidSize has an UNKNOWN size (None),
+    # not a measured 0.0 -- the old assertion encoded the fabricated default.
+    assert exposures[500.0]["call_bid_size"] is None
 
 
 def test_flow_backfill_normalizer_does_not_default_missing_multiplier_to_100():

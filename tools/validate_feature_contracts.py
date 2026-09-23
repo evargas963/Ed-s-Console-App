@@ -31,7 +31,7 @@ def main() -> int:
             print(f"  - {w}")
     print("\nDetails JSON:")
     print(json.dumps(report.to_dict(), indent=2))
-    return 0 if report.passed else 1
+    return 0 if report.passed else 1  # caps-ok: scanner false positive: process exit code (0 = contracts passed, 1 = failed), not a value default
 
 
 if __name__ == "__main__":

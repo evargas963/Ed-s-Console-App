@@ -76,7 +76,7 @@ def main() -> int:
             "I-25": {
                 "modules": ["release_object.py", "server.py GET /api/release/current", "/api/build release_id"],
                 "pytest": i25_tests,
-                "proposed_maturity": "L2" if i25_tests.get("collected", 0) >= 2 else "L1",
+                "proposed_maturity": "L2" if i25_tests.get("collected", 0) >= 2 else "L1",  # caps-ok: fail-closed: an unparsed pytest run proposes only the lowest maturity L1
                 "maturity_upgrade_rejected_without": [
                     "approval_record workflow",
                     "every production decision references release_id in live DB audit",
@@ -84,7 +84,7 @@ def main() -> int:
             },
             "adversarial": {
                 "pytest": adv_tests,
-                "bypass_detection_implemented": adv_tests.get("collected", 0) > 0,
+                "bypass_detection_implemented": adv_tests.get("collected", 0) > 0,  # caps-ok: fail-closed: no collected adversarial tests means bypass detection is NOT claimed
             },
         },
         "maturity_changes_proposed": [],

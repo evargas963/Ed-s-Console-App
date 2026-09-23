@@ -253,7 +253,7 @@ def _assert_sse_cache_bypass_for_key(
             424200 + len(calls),
             server_build_ts=fetch_ts,
         )
-        ck = (t.upper().strip(), e if e is not None else cache_key[1])
+        ck = (t.upper().strip(), e if e is not None else cache_key[1])  # caps-ok: fake fetch mirrors server cache keying: an auto (None) expiry writes to the auto-expiry slot the test registered, a real expiry to its own slot
         srv._state_cache[ck] = _issue20_cache_envelope(
             out,
             spot_val,
@@ -273,7 +273,7 @@ def _assert_sse_cache_bypass_for_key(
         # Viewer-owned: SSE subscriber present → REST serves the stale-labeled cache
         # and must NOT schedule a recompute (loop owns the key).
         srv._sse_subscribers[cache_key] = 1
-        r_owned = client.get("/api/state", params=_state_api_params(ticker, expiry))
+        r_owned = client.get("/api/state", params=_state_api_params(ticker, expiry))  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r_owned.status_code == 200
         body = r_owned.json()
         assert body.get(_ISSUE20_SPOT) == 1.0
@@ -283,18 +283,18 @@ def _assert_sse_cache_bypass_for_key(
 
         # No viewer: the stale REST read self-schedules (cold/poll-only fallback).
         srv._sse_subscribers.pop(cache_key, None)
-        r_cold = client.get("/api/state", params=_state_api_params(ticker, expiry))
+        r_cold = client.get("/api/state", params=_state_api_params(ticker, expiry))  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r_cold.status_code == 200
         for _ in range(100):
             time.sleep(0.02)
             if calls:
                 break
         assert fetch_key in calls
-        r3 = client.get("/api/state", params=_state_api_params(ticker, expiry))
+        r3 = client.get("/api/state", params=_state_api_params(ticker, expiry))  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r3.status_code == 200
         body3 = r3.json()
-        assert body3.get(_ISSUE20_SPOT, 0) > 1.0
-        assert body3.get("decision_generation_id", 0) >= 424201
+        assert body3[_ISSUE20_SPOT] > 1.0
+        assert body3["decision_generation_id"] >= 424201
 
         # force=true is the manual override — schedules even when viewer-owned.
         srv._sse_subscribers[cache_key] = 1
@@ -303,7 +303,7 @@ def _assert_sse_cache_bypass_for_key(
         n_before = len(calls)
         params_force = dict(_state_api_params(ticker, expiry))
         params_force["force"] = "true"
-        r_force = client.get("/api/state", params=params_force)
+        r_force = client.get("/api/state", params=params_force)  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
         assert r_force.status_code == 200
         for _ in range(100):
             time.sleep(0.02)
@@ -399,7 +399,7 @@ def test_api_state_cache_isolation_across_ticker_expiry_keys(monkeypatch):
             9000 + len(calls),
             server_build_ts=fetch_ts,
         )
-        ck = (t.upper().strip(), e if e is not None else key_a[1])
+        ck = (t.upper().strip(), e if e is not None else key_a[1])  # caps-ok: fake fetch mirrors server cache keying: an auto (None) expiry writes to the auto-expiry slot the test registered, a real expiry to its own slot
         srv._state_cache[ck] = _issue20_cache_envelope(
             out,
             spot_val,
@@ -420,10 +420,10 @@ def test_api_state_cache_isolation_across_ticker_expiry_keys(monkeypatch):
     try:
         with TestClient(srv.app) as client:
             srv._sse_subscribers[key_a] = 1
-            r_a = client.get("/api/state", params=_state_api_params(ticker_a, exp_a))
+            r_a = client.get("/api/state", params=_state_api_params(ticker_a, exp_a))  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
             assert r_a.status_code == 200
             assert r_a.json().get(_ISSUE20_SPOT) == 1.0
-            r_b = client.get("/api/state", params=_state_api_params(ticker_b, exp_b))
+            r_b = client.get("/api/state", params=_state_api_params(ticker_b, exp_b))  # caps-ok: scanner false positive: HTTP GET via TestClient (path + query params), not a dict read with a default
             assert r_b.status_code == 200
             for _ in range(100):
                 time.sleep(0.02)

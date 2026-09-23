@@ -65,22 +65,24 @@ def main() -> None:
 
     n = len(rows)
     move_labels = [r[o_move] for r in rows if r[o_move] in ("move", "no_move")]
-    cov_move = len(move_labels) / n if n else 0.0
+    # Coverage over zero snapshots is undefined (None), not 0% coverage.
+    cov_move = round(len(move_labels) / n, 6) if n > 0 else None
     mc = Counter(move_labels)
 
     vdir = f"valid_dir_{hz}"
     dir_rows = [r for r in rows if r[o_dir] in ("up", "down")]
     dc = Counter(r[o_dir] for r in dir_rows)
+    vd_ones: int | None
     try:
         vd_ones = sum(1 for r in rows if r[vdir] == 1)
     except (KeyError, IndexError, TypeError):
-        vd_ones = 0
+        vd_ones = None  # valid_dir column absent: count unknown, not zero
 
     out: dict = {
         "meta": meta,
         "horizon": hz,
         "n_snapshots": n,
-        "outcome_move_coverage": round(cov_move, 6),
+        "outcome_move_coverage": cov_move,
         "outcome_move_counts": dict(mc),
         "outcome_dir_conditional_n": len(dir_rows),
         "outcome_dir_balance": dict(dc),

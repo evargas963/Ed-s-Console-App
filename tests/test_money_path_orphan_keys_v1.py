@@ -2,7 +2,7 @@
 
 A misspelled or stale key is not an error in Python — it is a silent None. RC-15 (`spot_f` where
 the producer emits `spot`) and RC-20 (`artifact_sha256` where the verifier emits `actual_sha256`)
-both shipped that way, and RC-85 did it again: `_charm_raw.get("top_drivers", [])` reads a key
+both shipped that way, and RC-85 did it again: `_charm_raw.get("top_drivers", [])` reads a key  # caps-ok: scanner false positive: module docstring quoting the RC-85 defect
 compute_net_charm has never emitted, so MarketState.charm_top_drivers has been permanently empty.
 
 MEASURED 2026-07-27: the money path held 15 such reads. Four were CHECKER blind spots on correct

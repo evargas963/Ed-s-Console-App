@@ -180,7 +180,7 @@ def run_meta(
         import pickle
         from sklearn.linear_model import LogisticRegression
         from ml_train import load_data, encode_target
-        from ml_predict import _predict_xgb, _predict_lstm, _predict_transformer, CLASS_NAMES
+        from ml_predict import _predict_xgb, _predict_lstm, _predict_transformer, _stack_probs
     except ImportError as e:
         print(f"  ERROR: {e}")
         return {}
@@ -222,7 +222,7 @@ def run_meta(
                 df = load_data(db_path, ticker=tkr, ml_horizon_slug=hz)
                 if len(df) < 10:
                     continue
-                _meta_cap = int(os.environ.get("ED_META_TRAIN_MAX_ROWS", "0") or "0")
+                _meta_cap = int(os.environ.get("ED_META_TRAIN_MAX_ROWS", "0") or "0")  # caps-ok: operator env row cap; unset/empty is the documented "0 = all rows" (run_meta docstring), a config value not a measurement
                 if _meta_cap > 0 and len(df) > _meta_cap:
                     df = df.iloc[-_meta_cap:].reset_index(drop=True)
                     print(f"  meta: ED_META_TRAIN_MAX_ROWS={_meta_cap} — using last {_meta_cap} rows")
@@ -255,14 +255,14 @@ def run_meta(
                             tr_p = _predict_transformer(
                                 tkr, hist_db, inference_snapshot_v1=inf_v1
                             )
-                    if xgb_p is None:
+                    # ONE computation: the live meta input is ml_predict._stack_probs, which is
+                    # fail-closed (None unless all three legs return complete triplets). Training
+                    # rows are built by that same function; a row the live path could never score
+                    # is skipped, never filled with a fabricated 0.333 uniform prior.
+                    _stack = _stack_probs(xgb_p, lstm_p, tr_p)
+                    if _stack is None:
                         continue
-                    vec = (
-                        [xgb_p.get(c, 0.333) for c in CLASS_NAMES] +
-                        ([lstm_p.get(c, 0.333) for c in CLASS_NAMES] if lstm_p else [0.333, 0.333, 0.334]) +
-                        ([tr_p.get(c, 0.333) for c in CLASS_NAMES] if tr_p else [0.333, 0.333, 0.334]) +
-                        meta_tabular_vector_from_overlay(row)
-                    )
+                    vec = [float(v) for v in _stack.ravel()] + meta_tabular_vector_from_overlay(row)
                     stacked.append(vec)
                     ys.append(y[i])
                 conn.close()
@@ -312,7 +312,7 @@ class _HistoricalDB:
         if timeframe != CANONICAL_TIMEFRAME:
             return []
         table = SNAPSHOT_TABLE_1M
-        filled = "AND outcome_filled = 1" if filled_only else ""
+        filled = "AND outcome_filled = 1" if filled_only else ""  # caps-ok: scanner false positive — chooses an optional SQL WHERE fragment from the filled_only flag; "" means "no extra filter", not a data value
         bound = float(as_of_ts_utc) if as_of_ts_utc is not None else float(self.ts_utc)
         ts_cmp = "ts_utc < ?" if as_of_ts_utc is not None else "ts_utc <= ?"
         self.conn.row_factory = sqlite3.Row

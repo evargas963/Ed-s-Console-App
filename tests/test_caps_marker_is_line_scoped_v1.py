@@ -3,7 +3,7 @@
 After RC-286 scoped the CAPS scanner to the git index, exactly two production hits
 remained and BOTH are correct code:
 
-    terrain_engine.py  _dte_of        `d if d is not None else 999.0` — a SORT KEY,
+    terrain_engine.py  _dte_of        `d if d is not None else 999.0` — a SORT KEY,  # caps-ok: scanner false positive: module docstring quoting the retired terrain_engine sort-key line
                                       never rendered; 999 places an unparseable DTE
                                       last, where a missing one already sorts. The
                                       alternative is a NaN, which makes every
@@ -31,31 +31,31 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.anti_pattern_sweep import (  # noqa: E402
-    CAPS_PREFIX_ALLOWLIST,
-    find_unallowlisted_hits,
+    find_unmarked_hits,
     iter_py_files,
     line_carries_caps_marker,
 )
 
 
 def test_the_gate_passes_on_merit():
-    hits = find_unallowlisted_hits(production_only=True)
+    hits = find_unmarked_hits()
     assert hits == [], f"CAPS is red again: {hits}"
 
 
 def test_the_pass_did_not_come_from_a_collapsed_scope():
     """A gate that passes because it stopped looking is worse than one that fails."""
-    rels = {p.relative_to(REPO).as_posix() for p in iter_py_files(production_only=True)}
-    assert len(rels) > 200, f"production scope collapsed to {len(rels)}"
+    rels = {p.relative_to(REPO).as_posix() for p in iter_py_files()}
+    assert len(rels) > 1000, f"scan scope collapsed to {len(rels)}"
     for must in ("server.py", "terrain_engine.py", "math_levels.py", "desk_store.py"):
         assert must in rels, f"{must} fell out of the scan"
 
 
 def test_terrain_engine_was_not_exempted_wholesale():
-    """The tempting fix was a file prefix. That is RC-276 in a second gate."""
-    prefixes = {p for p, _ in CAPS_PREFIX_ALLOWLIST}
-    assert "terrain_engine.py" not in prefixes, (
-        "terrain_engine.py is exempt as a FILE — 400+ lines silenced to excuse two")
+    """The tempting fix was a file prefix. That is RC-276 in a second gate -- and since
+    RC-REHAB-1 (2026-09-23) there is no file-prefix exemption mechanism left to reach for."""
+    import tools.anti_pattern_sweep as A
+
+    assert not hasattr(A, "CAPS_PREFIX_ALLOWLIST"), "a file-scoped exemption table is back"
 
 
 def test_a_marker_without_a_reason_does_not_suppress(tmp_path, monkeypatch):
@@ -108,7 +108,7 @@ def test_the_two_false_reasons_are_gone_and_their_sites_are_repaired():
     for dead in ("SORT KEY only", "genuinely traded zero"):
         assert not [ln for ln in live if dead in ln], (
             f"a reason Cursor proved false is an active exemption again: {dead!r}")
-    assert "return d if d is not None else 999.0" not in src, "the 999.0 stand-in is back"
+    assert "return d if d is not None else 999.0" not in src, "the 999.0 stand-in is back"  # caps-ok: scanner false positive: literal asserted ABSENT from terrain_engine.py
     assert '"volume": 0.0}' not in src, "the fabricated zero volume is back"
 
 
@@ -153,6 +153,6 @@ def test_the_marker_is_checked_at_the_hit_site():
 
     import tools.anti_pattern_sweep as A
 
-    src = inspect.getsource(A.find_unallowlisted_hits)
+    src = inspect.getsource(A.find_unmarked_hits)
     assert "line_carries_caps_marker(rel, lineno)" in src
     assert line_carries_caps_marker("terrain_engine.py", 1) is False

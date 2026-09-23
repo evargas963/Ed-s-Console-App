@@ -644,7 +644,7 @@ def test_guest_switch_sla_report_classifications():
     )
 
     report = build_guest_switch_sla_report(audit_date="2026-06-18")
-    for tag in report.get("classifications", []):
+    for tag in report["classifications"]:
         assert tag in GUEST_SWITCH_SLA_CLASSIFICATIONS
     # GUEST_COLD_START_UX_GAP_FIXED was dropped from this assertion here (/console cutover,
     # operator directive 2026-09-14): it requires legacy static/index.html's

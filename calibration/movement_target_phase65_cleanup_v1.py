@@ -66,8 +66,12 @@ def _proper_subset_dims(d_broad: dict[str, str], d_narrow: dict[str, str]) -> bo
     return True
 
 
+# Only ACCEPTED records reach _n/_acc/_prior/hard_filter's gates. movement_target_phase65_isolation_v1
+# ._evaluate_slice gives every ACCEPTED record metrics (binary_classification_report), baselines
+# (binary_baselines_move/dir, n > 0) and oos.n_oos, so those keys are indexed directly: a missing
+# baseline must raise, never become 0.0 that any accuracy trivially "beats".
 def _n(rec: dict) -> int:
-    return int(rec.get("metrics", {}).get("n") or rec.get("n_eligible") or 0)
+    return int(rec["metrics"]["n"])
 
 
 def _acc(rec: dict) -> float:
@@ -75,10 +79,10 @@ def _acc(rec: dict) -> float:
 
 
 def _prior(rec: dict) -> float:
-    b = rec.get("baselines") or {}
-    if "prior_majority_accuracy" in b:
+    b = rec["baselines"]
+    if rec["family"] == "move":
         return float(b["prior_majority_accuracy"])
-    return float(b.get("conditional_majority_accuracy", 0))
+    return float(b["conditional_majority_accuracy"])
 
 
 def hard_filter(rec: dict) -> tuple[bool, str | None]:
@@ -90,26 +94,26 @@ def hard_filter(rec: dict) -> tuple[bool, str | None]:
     if n < min_n:
         return False, "FAIL_SAMPLE"
 
-    b = rec.get("baselines") or {}
+    b = rec["baselines"]
     acc = _acc(rec)
     prior = _prior(rec)
     if acc <= prior:
         return False, "FAIL_BASELINE"
-    fam = rec.get("family") or ""
+    fam = rec["family"]
     if fam == "move":
-        if acc <= float(b.get("always_move_accuracy", 0)) or acc <= float(b.get("always_no_move_accuracy", 0)):
+        if acc <= float(b["always_move_accuracy"]) or acc <= float(b["always_no_move_accuracy"]):
             return False, "FAIL_BASELINE"
     else:
-        if acc <= float(b.get("always_up_accuracy", 0)) or acc <= float(b.get("always_down_accuracy", 0)):
+        if acc <= float(b["always_up_accuracy"]) or acc <= float(b["always_down_accuracy"]):
             return False, "FAIL_BASELINE"
-    if acc <= float(b.get("random_accuracy_mean", 0)):
+    if acc <= float(b["random_accuracy_mean"]):
         return False, "FAIL_BASELINE"
 
     if acc - prior < MIN_EFFECT_VS_PRIOR:
         return False, "FAIL_EFFECT_SIZE"
 
-    oos = rec.get("oos") or {}
-    n_oos = int(oos.get("n_oos") or 0)
+    oos = rec["oos"]
+    n_oos = int(oos["n_oos"])
     oa = oos.get("oos_model_accuracy")
     op = oos.get("oos_prior_from_is_mode_accuracy")
     if n_oos < MIN_OOS_N:

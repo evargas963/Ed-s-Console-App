@@ -258,7 +258,7 @@ def build_operational_policy_payload(
 
     # Audit failures (governed log only)
     for a in recent_audit_records:
-        if ticker_storage_key(str(a.get("ticker", ""))) != tku:  # RC-345/F25
+        if ticker_storage_key(str(a.get("ticker", ""))) != tku:  # RC-345/F25  # caps-ok: filter: an audit record without a ticker cannot belong to this ticker and is skipped
             continue
         if "action" not in a or "outcome" not in a:
             log.warning(

@@ -123,10 +123,10 @@ def test_step2_honest_viewer_cadence_and_no_websocket():
 
     _env = __import__("os").environ
     assert srv.VIEWER_SSE_REFRESH_SEC == float(
-        _env.get("ED_VIEWER_SSE_REFRESH_SEC", "5.0")
+        _env.get("ED_VIEWER_SSE_REFRESH_SEC", "5.0")  # caps-ok: mirrors server's documented env default (5.0s) so the assertion holds whether or not the operator env sets it
     )
     assert srv.VIEWER_STATE_CACHE_TTL_SEC == float(
-        _env.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "5.0")
+        _env.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "5.0")  # caps-ok: mirrors server's documented env default (5.0s) so the assertion holds whether or not the operator env sets it
     )
     assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
     src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")

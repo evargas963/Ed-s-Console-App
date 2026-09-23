@@ -487,7 +487,7 @@ def run(tickers: list[str]) -> dict:
             if r[0] and is_trading_day_et(str(r[0]))
         ]
         mf_census[tk] = {
-            "raw": int(raw[0] or 0),
+            "raw": int(raw[0]),  # SELECT COUNT(*) never returns NULL
             "trading_days": len(days),
             "min_et": raw[1],
             "max_et": raw[2],
@@ -511,8 +511,8 @@ def run(tickers: list[str]) -> dict:
             drops["short_session"] += 1
             continue
         atr = _causal_atr_pre_obs(sb)
-        if atr <= 0:
-            drops["atr_zero"] += 1
+        if atr is None or atr <= 0:
+            drops["atr_unmeasurable_or_zero"] += 1
             continue
         post = [b for b in sb if b["min_of_day"] >= OUTCOME_START_MIN]
         if len(post) < MIN_POST_BARS:
@@ -534,7 +534,7 @@ def run(tickers: list[str]) -> dict:
             drops["thin_band"] += 1
             continue
         rows = _attach_targets(sig_rows, post, atr)
-        faucet = str(meta.get("faucet") or "unknown")
+        faucet = str(meta["faucet"])  # _sticky._load_obs_chains sets "faucet" on every obs entry
         faucet_counts[faucet] += 1
 
         # Regime label if available (net GEX at spot)
@@ -652,7 +652,12 @@ def run(tickers: list[str]) -> dict:
     overall = "FAIL"
     if r_pass > 0:
         overall = "PASS"
-    elif r_weak > 0 and ranked_resid and (ranked_resid[0].get("edge_vs_placebo") or 0) > 0.02:
+    elif (
+        r_weak > 0
+        and ranked_resid
+        and ranked_resid[0].get("edge_vs_placebo") is not None
+        and ranked_resid[0]["edge_vs_placebo"] > 0.02
+    ):
         overall = "WEAK_FAIL"
     elif r_under == len(resid_cells) and resid_cells:
         overall = "UNDERPOWERED"
@@ -795,7 +800,7 @@ def write_reports(result: dict) -> None:
         f"**OVERALL VERDICT:** `{result['overall_verdict']}` "
         f"(basis: `{result.get('overall_verdict_basis')}`)",
         "",
-        f"**NOTE:** {result.get('raw_geometry_note', '')}",
+        f"**NOTE:** {result['raw_geometry_note']}",
         "",
         "Reproduce:",
         "```",
@@ -913,7 +918,7 @@ def write_reports(result: dict) -> None:
         "| Rank | Signal | Target | mean IC | IR | hit% | edge vs plc | Verdict |",
         "|---:|---|---|---:|---:|---:|---:|---|",
     ]
-    for i, c in enumerate(result.get("ranked_resid_by_mean_ic") or [], 1):
+    for i, c in enumerate(result["ranked_resid_by_mean_ic"], 1):
         lines.append(
             f"| {i} | {c['signal']} | {c['target']} | {_fmt(c['mean_ic'])} | "
             f"{_fmt(c['ic_ir'], 3)} | {_pct(c['hit_rate'])} | "

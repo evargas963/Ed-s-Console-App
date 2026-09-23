@@ -42,7 +42,9 @@ def _selected_ids(rows: list[dict]) -> list[Any]:
 def _feature_importance_rank(ablations: list[dict]) -> list[dict[str, Any]]:
     ranked = []
     for a in ablations:
-        j = float(a["overlap_vs_full_weighted"].get("jaccard") or 0.0)
+        # _overlap_metrics always writes a numeric jaccard; a missing one must not rank as
+        # maximal divergence (1 - 0.0).
+        j = float(a["overlap_vs_full_weighted"]["jaccard"])
         ranked.append(
             {
                 "feature": a["feature_removed"],
@@ -61,12 +63,12 @@ def _recommendation_flags(
     redundant: list[str] = []
     core: list[str] = []
     for a in ablations:
-        j = float(a["overlap_vs_full_weighted"].get("jaccard") or 0.0)
+        j = float(a["overlap_vs_full_weighted"]["jaccard"])
         if j >= 0.93:
             redundant.append(a["feature_removed"])
         if weighted_viable and not a["tier_stop_viable"]:
             core.append(a["feature_removed"])
-    rec = comp_hw.get("overlap", {}).get("recall_vs_a")
+    rec = comp_hw["overlap"]["recall_vs_a"]  # compare_heuristic_to_shadow always writes overlap metrics
     suboptimal = rec is not None and float(rec) < 0.25
     return {
         "feature_likely_redundant_high_jaccard_when_removed": sorted(set(redundant)),
@@ -107,7 +109,7 @@ def build_adaptive_shadow_report(
     )
     h_ids = _selected_ids(similar_h)
     h_fc = dict(trace.get("final_selected_labeled_counts") or trace.get("final_labeled_counts") or {})
-    h_tv = bool(trace.get("final_tier_stop_viable", trace.get("final_empirically_viable")))
+    h_tv = bool(trace.get("final_tier_stop_viable", trace.get("final_empirically_viable")))  # caps-ok: db_snapshots._finish writes the same ftsv under both names on every finished selection; a trace with neither is treated as not tier-stop viable (the conservative reading) in this analysis-only report
 
     shadow_baseline = run_baseline_control(
         db,
@@ -253,7 +255,7 @@ def main() -> int:
 
     db = EdDB(
         args.db,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),  # caps-ok: argparse flag registered by register_allow_noncanonical_flag; absent means the canonical-DB guard stays on (fail-closed)
     )
     report = build_adaptive_shadow_report(
         db,

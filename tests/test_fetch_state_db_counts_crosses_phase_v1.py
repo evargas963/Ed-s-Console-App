@@ -46,7 +46,8 @@ def test_full_pipeline_matches_expected_counts_and_crosses():
 def test_missing_ed_db_yields_no_data_defaults_without_querying():
     walls = [SimpleNamespace(call_gamma_wall=100.0, put_gamma_wall=95.0)]
     result = srv._db_counts_and_crosses_for_state("ZZZ_DBCC_NONE", None, walls)
-    assert result.db_counts == {"total": 0, "filled": 0}
+    # CAPS RC-REHAB-1: no DB -> counts UNKNOWN (None), not a served "0 snapshots".
+    assert result.db_counts == {"total": None, "filled": None}
     assert result.ceil_tests == 0
     assert result.floor_tests == 0
     assert result.recent_crosses == []
@@ -59,7 +60,8 @@ def test_db_query_exception_fails_closed_to_defaults_never_raises():
 
     walls = [SimpleNamespace(call_gamma_wall=100.0, put_gamma_wall=95.0)]
     result = srv._db_counts_and_crosses_for_state("ZZZ_DBCC_BOOM", _BoomDB(), walls)
-    assert result.db_counts == {"total": 0, "filled": 0}
+    # CAPS RC-REHAB-1: failed count query -> counts UNKNOWN (None), not a served 0.
+    assert result.db_counts == {"total": None, "filled": None}
     assert result.ceil_tests == 0
     assert result.floor_tests == 0
     assert result.recent_crosses == []

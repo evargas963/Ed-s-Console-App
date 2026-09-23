@@ -100,7 +100,7 @@ def count_candidates(
         """,
         (float(ceiling_ts_utc),),
     ).fetchone()
-    return int(row[0]) if row else 0
+    return int(row[0])  # an aggregate COUNT(*) always returns exactly one row
 
 
 def count_mismatched(
@@ -253,7 +253,7 @@ def backfill_table(
         "skipped": False,
         "scanned": scanned,
         "would_update": would_update,
-        "updated": updated if apply else 0,
+        "updated": updated,  # only incremented under apply=True, so a dry run reports its true 0
     }
 
 
@@ -292,7 +292,8 @@ def run_backfill(
             )
             per_table.append(stats)
             if remaining_budget is not None:
-                used = int(stats.get("would_update") or 0) if not apply else int(stats.get("updated") or 0)
+                # backfill_table() returns both counters on every path (including skipped).
+                used = int(stats["updated"]) if apply else int(stats["would_update"])
                 remaining_budget = max(0, remaining_budget - used)
 
         if apply:

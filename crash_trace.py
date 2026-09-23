@@ -7,7 +7,7 @@ import os
 import logging
 import traceback
 
-_diag = os.environ.get("DIAG", "").strip().lower() in ("1", "true", "yes")
+_diag = os.environ.get("DIAG", "").strip().lower() in ("1", "true", "yes")  # caps-ok: opt-in debug env flag; unset means diagnostics OFF
 log = logging.getLogger("ed_server")
 
 

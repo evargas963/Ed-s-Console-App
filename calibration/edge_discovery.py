@@ -100,7 +100,7 @@ def _bootstrap_gated(
     if gate_ok:
         return {**boot, "gate_sufficient": True}
     return {
-        "n": boot.get("n", len(actual)),
+        "n": boot["n"],  # every _bootstrap_delta return and the len<2 stub carry "n"
         "gate_sufficient": False,
         "mean_delta": None,
         "ci95_low": None,
@@ -572,7 +572,7 @@ def run_discovery_rows(
         "population_notes": {
             "filters": "trusted + canonical 1m + outcome_5c NOT NULL + BAR_ANCHOR_V1",
             "rows_used": len(rows),
-            "signal_fn": getattr(signal_fn, "__name__", str(signal_fn)) if signal_fn else "canonical_effective_default",
+            "signal_fn": getattr(signal_fn, "__name__", str(signal_fn)) if signal_fn else "canonical_effective_default",  # caps-ok: provenance label only; callables without __name__ (functools.partial) fall back to their repr, and None names the _effective_directional_signal default row_metrics actually uses
         },
         "marginal_slice_count": len(marginal),
         "two_d_slice_count": len(two_d),
@@ -631,7 +631,7 @@ def main() -> int:
     db_path = pick_db_path(args.db)
     enforce_resolved_path(
         db_path,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(args.allow_noncanonical_db),  # registered just above
         tool_name="calibration.edge_discovery",
         write_capable=False,
     )

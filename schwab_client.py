@@ -48,7 +48,7 @@ def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=Non
     from authlib.integrations.httpx_client import OAuth2Client
 
     if base_url is None:
-        base_url = getattr(auth, "DEFAULT_BASE_URL", "https://api.schwabapi.com")
+        base_url = getattr(auth, "DEFAULT_BASE_URL", "https://api.schwabapi.com")  # caps-ok: schwab-py library constant; older schwab.auth builds lack the attribute, and the fallback is Schwab's documented production API host, the same value the library defines
     endpoint = (
         auth._auth_endpoint(base_url)
         if hasattr(auth, "_auth_endpoint")
@@ -291,7 +291,7 @@ def run_login_flow(api_key: str, app_secret: str, callback_url: str, token_path:
                 token_path=token_path,
                 enforce_enums=False,
                 interactive=False,
-                callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),
+                callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),  # caps-ok: operator env config -- OAuth callback wait, documented default 900s
             )
         except BaseException as e:
             exc_holder.append(e)
@@ -369,8 +369,8 @@ def complete_oauth_from_redirect_url(
         return False, "Redirect URL is empty."
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
-    state = (qs.get("state") or [None])[0]
-    if not (qs.get("code") or [None])[0]:
+    state = (qs.get("state") or [None])[0]  # caps-ok: parse_qs omits absent query params; a redirect without `state` yields None, exactly _get_auth_context_with_scope's own state=None default (no state carried), not an invented value
+    if not (qs.get("code") or [None])[0]:  # caps-ok: absent OAuth `code` -> None -> the request is REJECTED on the next line, never exchanged
         return False, "Redirect URL missing OAuth code query parameter."
 
     resolved = _resolve_token_path(token_path)
@@ -401,7 +401,7 @@ class SchwabAuthError(Exception):
 
 
 _schwab_auth_failure_until_mono: float = 0.0
-_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))
+_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))  # caps-ok: operator env config -- auth-failure latch window, documented default 300s
 
 
 def _is_token_error(exc: BaseException) -> bool:

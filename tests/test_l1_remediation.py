@@ -81,7 +81,7 @@ def test_l1_no_l2_cache_merge_unacknowledged(l1_clean_spy):
     srv = l1_clean_spy
     out = srv._project_l1("SPY", None, reason="test")
     assert out.get("l2_merge_acknowledged") is False
-    assert (out.get("l2_snapshot_version_used") or 0) == 0
+    assert out["l2_snapshot_version_used"] == 0
 
 
 def test_l1_inflight_semantics(l1_clean_spy, monkeypatch):
@@ -132,7 +132,7 @@ def test_l1_quote_hook_persists_snapshot(l1_clean_spy):
     srv._l1_on_quote_updated("SPY")
     assert ("SPY", "2099-02-01") in srv._l1_snapshot_cache
     snap = srv._l1_snapshot_cache[("SPY", "2099-02-01")]
-    assert snap.get("l1_instrumentation", {}).get("l1_build_reason") == "quote_material"
+    assert snap["l1_instrumentation"]["l1_build_reason"] == "quote_material"
 
 
 def test_l1_project_never_calls_tier_c_merge_into_state(monkeypatch, l1_clean_spy):
@@ -161,10 +161,10 @@ def test_quote_material_skip_when_inputs_unchanged(l1_clean_spy):
 def test_l1_instrumentation_fields(l1_clean_spy):
     srv = l1_clean_spy
     out = srv._project_l1("SPY", None, reason="unit_test")
-    inst = out.get("l1_instrumentation") or {}
-    assert inst.get("l1_build_reason") == "unit_test"
-    assert inst.get("l1_build_scope", {}).get("ticker") == "SPY"
-    assert inst.get("l1_build_scope", {}).get("expiry") == "__auto__"
+    inst = out["l1_instrumentation"]
+    assert inst["l1_build_reason"] == "unit_test"
+    assert inst["l1_build_scope"]["ticker"] == "SPY"
+    assert inst["l1_build_scope"]["expiry"] == "__auto__"
     assert "l1_build_total" in inst and inst["l1_build_total"] >= 1
     assert "l2_merge_acknowledged" in inst
 
@@ -177,7 +177,7 @@ def test_quote_of_signature_change_triggers_rebuild(l1_clean_spy):
     new_sig = (("order_flow_verdict", "NEWVERDICT"),)
     srv._l1_snapshot_cache[k]["_l1_of_signature"] = old_sig
     srv._l1_maybe_rebuild_quote_scope("SPY", None, of_sig=new_sig)
-    assert int(srv._l1_instrumentation["l1_build_by_reason"].get("quote_material_of", 0)) >= 1
+    assert int(srv._l1_instrumentation["l1_build_by_reason"]["quote_material_of"]) >= 1
 
 
 def test_http_cache_hit_includes_order_flow_freshness_fields(monkeypatch):
@@ -193,7 +193,7 @@ def test_http_cache_hit_includes_order_flow_freshness_fields(monkeypatch):
     assert "order_flow_stale" in d1
     assert d1.get("order_flow_as_of_ts") is not None
     d2 = l1_events.notify_ticker_expiry_changed("SPY", None)
-    assert d2.get("l1_projection", {}).get("mode") == "authoritative_cache_read"
+    assert d2["l1_projection"]["mode"] == "authoritative_cache_read"
     assert "order_flow_age_sec" in d2
 
 
@@ -240,10 +240,10 @@ def test_notify_ticker_expiry_changed_cold_start_then_cache_read(monkeypatch):
     monkeypatch.setattr(srv._lmp, "apply_l1_live_quote_overlay", lambda *a, **k: None)
     srv._l1_snapshot_cache.pop(("SPY", "__auto__"), None)
     d = l1_events.notify_ticker_expiry_changed("SPY", None)
-    assert d.get("l1_instrumentation", {}).get("l1_build_reason") == "cold_start"
+    assert d["l1_instrumentation"]["l1_build_reason"] == "cold_start"
     d2 = l1_events.notify_ticker_expiry_changed("SPY", None)
-    assert d2.get("l1_projection", {}).get("mode") == "authoritative_cache_read"
-    assert d2.get("l1_instrumentation", {}).get("l1_projection_read") is True
+    assert d2["l1_projection"]["mode"] == "authoritative_cache_read"
+    assert d2["l1_instrumentation"]["l1_projection_read"] is True
 
 
 def test_l1_diagnostics_endpoint_exposes_ed_l1(monkeypatch):

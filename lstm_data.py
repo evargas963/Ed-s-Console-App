@@ -224,7 +224,7 @@ def encoded_width_1m() -> int:
 
 
 def checkpoint_encoder_schema_version(checkpoint: Mapping[str, Any]) -> int:
-    return int(checkpoint.get("encoder_schema_version", 1))
+    return int(checkpoint.get("encoder_schema_version", 1))  # caps-ok: checkpoints written before this key existed ARE the pre-versioning v1 encoder; v1 < LEGACY_ENCODER_SCHEMA_VERSION (2), so every width/compat consumer raises "unsupported" (fail-closed)
 
 
 def encoded_width_5m_for_checkpoint(checkpoint: Mapping[str, Any]) -> int:
@@ -675,15 +675,20 @@ def extract_rth_snapshots(
                 skipped_non_rth += 1
                 continue
         else:
-            h = d.get("et_hour", 0)
-            m = d.get("et_minute", 0)
-            ts_et = d.get("ts_et", "")
-            day_key = ts_et[:10] if len(ts_et) >= 10 else "unknown"
+            # Missing ET clock/date stays None and the row is skipped below; it is never read as
+            # a fabricated 00:00 clock or an "unknown" day bucket.
+            h = d.get("et_hour")
+            m = d.get("et_minute")
+            ts_et = d.get("ts_et")
+            day_key = ts_et[:10] if isinstance(ts_et, str) and len(ts_et) >= 10 else None
+            if day_key is None or h is None or m is None:
+                skipped_non_rth += 1
+                continue
             # RC-345 / F09: with no ts_utc this path used a CLOCK-ONLY _is_rth, which admits a
             # weekend/holiday reading (the RC-278 hole). Use the row's ET DATE for the calendar
             # test so the fallback is calendar-aware like the canonical is_tradable_session_ts_utc,
             # and FAIL CLOSED when the date is unusable — never a silent clock-only RTH.
-            if day_key == "unknown" or not is_trading_day_et(day_key) or not _is_rth(h, m):
+            if not is_trading_day_et(day_key) or not _is_rth(h, m):
                 skipped_non_rth += 1
                 continue
 
@@ -1225,7 +1230,7 @@ def build_lstm_dataset(
                 all_X_conf.append(conf_vec)
                 all_y.append(target)
                 all_tickers.append(ticker)
-                all_timestamps.append(current.get("ts_et", ""))
+                all_timestamps.append(current.get("ts_et"))  # None when the row has no ts_et (not "")
                 all_days.append(day_key)
 
     # ── Convert to numpy arrays ───────────────────────────────────────────────

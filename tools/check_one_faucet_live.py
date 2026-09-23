@@ -299,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
     for field, faucets in sorted(disagreeing.items(), key=lambda kv: -len(kv[1])):
         values = list(faucets.values())
         spread = max(values) - min(values)
-        base_value = min((abs(v) for v in values if v), default=0) or 1
+        base_value = min((abs(v) for v in values if v), default=0) or 1  # caps-ok: only reached when every faucet value is 0, where spread is also 0 and spread_pct is truly 0
         findings.append({
             "field": field,
             "faucets": len(faucets),
@@ -317,7 +317,11 @@ def main(argv: list[str] | None = None) -> int:
             "disagreeing": len(disagreeing),
             "findings": findings,
         }, indent=2, sort_keys=True))
-        return 1 if disagreeing else 0
+        if disagreeing:
+            return 1
+        # An endpoint that did not answer was never compared: agreement among the rest is
+        # not a pass (exit contract: 2 = unreachable).
+        return 2 if unreachable else 0  # caps-ok: exit code IS the verdict; any unreachable endpoint withholds the pass
 
     print(f"one-faucet live check -- {args.base} -- {args.ticker}")
     print(f"  endpoints compared : {len(SINGLE_SUBJECT) - len(unreachable)}")
@@ -335,6 +339,10 @@ def main(argv: list[str] | None = None) -> int:
         for endpoint, value in finding["values"].items():
             print(f"          {value!s:<24} {endpoint}")
 
+    if not disagreeing and unreachable:
+        print(f"\n  INCOMPLETE -- {len(unreachable)} endpoint(s) unreachable, so their fields were "
+              "never compared; not a pass.")
+        return 2
     if not disagreeing:
         print("\n  PASS -- every shared field agrees across every faucet.")
         return 0

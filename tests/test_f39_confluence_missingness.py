@@ -53,7 +53,7 @@ def test_f39_enumerates_every_weighted_push_producer(repo_index):
                     child.value, ast.Call
                 ):
                     fn = child.value.func
-                    name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", "")
+                    name = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", "")  # caps-ok: AST duck typing: a returned Call whose func is neither Name nor Attribute has no name, and '' never matches ConfluenceRead
                     if name == "ConfluenceRead":
                         found.add(f"{rel}:{node.name}")
     compute = {s for s in found if s.startswith("market_context.py:_build_")}
@@ -67,7 +67,7 @@ def test_f39_enumerates_every_weighted_push_producer(repo_index):
 
 
 def test_f39_no_confluence_key_literal_anywhere_in_server_ast():
-    """RC-378 (Cursor gate-width residual: `ms_dict.setdefault("cf_weighted_push", 0)`
+    """RC-378 (Cursor gate-width residual: `ms_dict.setdefault("cf_weighted_push", 0)`  # caps-ok: scanner false positive: docstring quoting the RC-378 pattern this test locks out of server.py
     passes BOTH regex shapes below). The typed mapper line carries no key literals, so
     the lock is a zero-count over the AST: NO confluence display key may appear as a
     string constant anywhere in server.py. setdefault, `|=`, dict(...), __setitem__ —

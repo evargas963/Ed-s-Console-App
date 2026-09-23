@@ -3,8 +3,8 @@
 CURSOR'S [P2]. `server.py` returned `{"status": "LIVE", ..., "edge": 0}` for a
 provenance-compliant model whose metadata omits the edge metric:
 
-    raw  = _m.get(edge_key, _m.get("val_accuracy", 0))
-    edge = ... float(raw or 0)
+    raw  = _m.get(edge_key, _m.get("val_accuracy", 0))  # caps-ok: scanner false positive: module docstring quoting the removed server.py line
+    edge = ... float(raw or 0)  # caps-ok: scanner false positive: module docstring quoting the removed server.py line
 
 I had annotated that line `# silent-zero-ok: RC-276 residual, dashboard-only, edge=0 is
 this endpoint's existing missing convention`. Cursor's verdict on that defence: an existing
@@ -44,9 +44,9 @@ def test_no_write_site_fabricates_a_zero_edge():
 def test_the_metadata_read_has_no_zero_default():
     """`.get(key, 0)` is the same fabrication one layer earlier."""
     src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert '_m.get(edge_key, _m.get("val_accuracy", 0))' not in src, (
+    assert '_m.get(edge_key, _m.get("val_accuracy", 0))' not in src, (  # caps-ok: scanner false positive: literal asserted ABSENT from server.py
         "the zero default is back in the metadata read")
-    assert 'float(raw or 0)' not in src
+    assert 'float(raw or 0)' not in src  # caps-ok: scanner false positive: literal asserted ABSENT from server.py
 
 
 def test_the_retired_justification_is_not_reinstated():

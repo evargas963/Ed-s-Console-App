@@ -108,7 +108,7 @@ def test_a_second_heavy_wave_is_refused_while_the_first_runs(tmp_path):
         # RC-REHAB-1 (2026-09-22): matches _run's timeout increase -- this "first" process is
         # itself an 8-worker pytest run, nested inside an already-heavy outer suite.
         first.wait(timeout=150)
-    assert first.returncode == 0, first.stdout.read() if first.stdout else ""
+    assert first.returncode == 0, first.stdout.read() if first.stdout else ""  # caps-ok: assertion-message text only: prints captured stdout when a pipe exists
 
 
 def test_the_override_env_var_lets_a_second_wave_through(tmp_path):

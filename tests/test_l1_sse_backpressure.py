@@ -21,10 +21,10 @@ def test_client_asyncio_queue_evict_oldest_preserves_latest():
     srv._l1_put_l1_client_queue(q, {"n": 1})
     srv._l1_put_l1_client_queue(q, {"n": 2})
     assert q.qsize() == 2
-    d0 = int(srv._l1_sse_diag.get("l1_light_sse_client_queue_evicted_oldest", 0))
+    d0 = int(srv._l1_sse_diag["l1_light_sse_client_queue_evicted_oldest"])
     srv._l1_put_l1_client_queue(q, {"n": 3})
     assert q.qsize() == 2
-    assert int(srv._l1_sse_diag.get("l1_light_sse_client_queue_evicted_oldest", 0)) >= d0 + 1
+    assert int(srv._l1_sse_diag["l1_light_sse_client_queue_evicted_oldest"]) >= d0 + 1
     assert q.get_nowait()["n"] == 2
     assert q.get_nowait()["n"] == 3
 
@@ -38,10 +38,10 @@ def test_thread_queue_evict_oldest_preserves_latest(monkeypatch):
     srv._l1_put_thread_queue_notify(sk, {"a": 1})
     srv._l1_put_thread_queue_notify(sk, {"a": 2})
     assert small.qsize() == 2
-    d0 = int(srv._l1_sse_diag.get("l1_light_sse_thread_queue_evicted_oldest", 0))
+    d0 = int(srv._l1_sse_diag["l1_light_sse_thread_queue_evicted_oldest"])
     srv._l1_put_thread_queue_notify(sk, {"a": 3})
     assert small.qsize() == 2
-    assert int(srv._l1_sse_diag.get("l1_light_sse_thread_queue_evicted_oldest", 0)) >= d0 + 1
+    assert int(srv._l1_sse_diag["l1_light_sse_thread_queue_evicted_oldest"]) >= d0 + 1
     assert small.get_nowait()[1]["a"] == 2
     assert small.get_nowait()[1]["a"] == 3
 
@@ -71,10 +71,10 @@ def test_same_gen_ts_non_material_diff_does_not_increment_identity_violation():
         "l1_instrumentation": {"x": 2},
         "l1_projection": {"cache_age_sec": 99.0, "mode": "y"},
     }
-    v0 = int(srv._l1_sse_diag.get("l1_payload_identity_violation", 0))
+    v0 = int(srv._l1_sse_diag["l1_payload_identity_violation"])
     srv._l1_record_payload_identity(sk, 7, p1)
     srv._l1_record_payload_identity(sk, 7, p2)
-    assert int(srv._l1_sse_diag.get("l1_payload_identity_violation", 0)) == v0
+    assert int(srv._l1_sse_diag["l1_payload_identity_violation"]) == v0
 
 
 def test_same_gen_ts_material_diff_increments_identity_violation():
@@ -91,10 +91,10 @@ def test_same_gen_ts_material_diff_increments_identity_violation():
         "spot": 500.0,
     }
     p2 = {**p1, "spot": 501.0}
-    v0 = int(srv._l1_sse_diag.get("l1_payload_identity_violation", 0))
+    v0 = int(srv._l1_sse_diag["l1_payload_identity_violation"])
     srv._l1_record_payload_identity(sk, 7, p1)
     srv._l1_record_payload_identity(sk, 7, p2)
-    assert int(srv._l1_sse_diag.get("l1_payload_identity_violation", 0)) >= v0 + 1
+    assert int(srv._l1_sse_diag["l1_payload_identity_violation"]) >= v0 + 1
 
 
 def test_diagnostics_l1_sse_light_has_policy_and_semantics():

@@ -102,8 +102,8 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
             (CALIBRATION_TRUST_LEGACY,),
         ).fetchone()[0]
     )
-    tc = "calibration_trust = 'trusted'" if trusted_only else "1=1"
-    cc = "c.calibration_trust = 'trusted'" if trusted_only else "1=1"
+    tc = "calibration_trust = 'trusted'" if trusted_only else "1=1"  # caps-ok: SQL predicate chosen by the explicit trusted_only flag; "1=1" is the deliberate include-legacy scope, not a stand-in value
+    cc = "c.calibration_trust = 'trusted'" if trusted_only else "1=1"  # caps-ok: SQL predicate chosen by the explicit trusted_only flag; "1=1" is the deliberate include-legacy scope, not a stand-in value
     out["rows_with_outcomes"] = int(
         conn.execute(
             f"SELECT COUNT(*) FROM calibration_decision_log WHERE outcome_5c IS NOT NULL AND ({tc})"
@@ -261,7 +261,7 @@ def analyze(db_path: Path, *, trusted_only: bool = True) -> dict[str, Any]:
     )
     out["binary_pass_strict_production"] = bool(
         out["binary_pass"]
-        and (not trusted_only or int(out.get("rows_pending_outcomes") or 0) == 0)
+        and (not trusted_only or int(out["rows_pending_outcomes"]) == 0)  # set from COUNT(*) above
     )
     return out
 

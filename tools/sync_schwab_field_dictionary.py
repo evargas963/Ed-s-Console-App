@@ -102,7 +102,7 @@ def capture_live(strike_count: int = 6) -> dict[str, Any]:
             print(f"  {name:14s} NOT OBSERVED ({type(exc).__name__}: {str(exc)[:60]})")
             continue
         if getattr(resp, "status_code", None) != 200:
-            print(f"  {name:14s} NOT OBSERVED (HTTP {getattr(resp, 'status_code', '?')})")
+            print(f"  {name:14s} NOT OBSERVED (HTTP {getattr(resp, 'status_code', '?')})")  # caps-ok: display-only console label: "?" is printed when the response object has no status_code; the endpoint is reported NOT OBSERVED and skipped
             continue
         out[name] = resp.json()
         print(f"  {name:14s} observed ({len(resp.text):,} bytes)")
@@ -157,13 +157,13 @@ def merge(
             eps.add(endpoint)
             row["source_endpoints"] = ";".join(sorted(eps))
             row["last_seen"] = today
-            row.setdefault("first_seen", "")
+            row.setdefault("first_seen", "")  # caps-ok: CSV encoding of "not recorded": legacy dictionary rows predate first_seen tracking, and the true first sighting is unknown (not today); the empty cell is never parsed as a date
             refreshed.append(field)
     # Rows never observed in this capture keep their history untouched — unobserved is
     # not absent, and this is the single line that makes a partial capture safe.
     for field, row in merged.items():
-        row.setdefault("first_seen", "")
-        row.setdefault("last_seen", "")
+        row.setdefault("first_seen", "")  # caps-ok: CSV encoding of "not recorded" for rows that predate first_seen tracking; unobserved history is kept, not invented
+        row.setdefault("last_seen", "")  # caps-ok: CSV encoding of "not recorded" for rows that predate last_seen tracking and were not observed in this capture
     return merged, added, refreshed
 
 

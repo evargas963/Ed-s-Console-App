@@ -394,7 +394,7 @@ def install_ed_server_file_sink(
     for h in list(root_logger.handlers):
         if isinstance(h, logging.FileHandler):
             try:
-                existing = str(Path(getattr(h, "baseFilename", "")).resolve())
+                existing = str(Path(getattr(h, "baseFilename", "")).resolve())  # caps-ok: logging-handler dedup -- a FileHandler without baseFilename resolves to the cwd path, which only affects whether a duplicate log handler is added, never data
             except (OSError, TypeError, ValueError):
                 existing = ""
             if existing == abs_target:
@@ -412,7 +412,7 @@ def install_ed_server_file_sink(
 
 def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     """Replace any default root handlers with one that adds the level marker."""
-    use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())
+    use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())  # caps-ok: duck typing on an optional stream method -- a stderr replacement without isatty() is not a TTY, so no ANSI colouring (console cosmetics only)
     handler = logging.StreamHandler()
     handler.setFormatter(
         _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=use_ansi)
@@ -819,7 +819,7 @@ class _ChainGateV2:
                     if remaining is not None and remaining <= 0:
                         self.metrics["timeouts"] += 1
                         return False
-                    self._cond.wait(min(remaining, 1.0) if remaining is not None else 1.0)
+                    self._cond.wait(min(remaining, 1.0) if remaining is not None else 1.0)  # caps-ok: condition-variable poll slice -- no deadline (remaining None) waits in 1s slices and re-checks, a scheduling interval not a data value
             finally:
                 if priority:
                     self._priority_waiting -= 1
@@ -1012,7 +1012,7 @@ def _hard_exit(reason: str) -> None:
     """
     try:
         log.warning("HARD EXIT: %s", reason)
-        for h in list(getattr(log, "handlers", []) or []):
+        for h in list(getattr(log, "handlers", []) or []):  # caps-ok: hard-exit flush loop -- a logger without handlers has nothing to flush
             # A handler that cannot flush must not stop the exit — that would reintroduce
             # exactly the hang this function exists to end.
             with contextlib.suppress(Exception):
@@ -1314,8 +1314,8 @@ CACHE_TTL = 5                     # seconds — default REST cache & idle SSE lo
 # background loop is the only steady-state recompute scheduler for viewed keys, at a
 # cadence the full pipeline (2–8s chain+quote+ML+DB) can actually sustain. TTL equals
 # the cadence so "stale" is a truth statement, not a 1s fantasy.
-VIEWER_SSE_REFRESH_SEC: float = float(os.environ.get("ED_VIEWER_SSE_REFRESH_SEC", "5.0"))
-VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "5.0"))
+VIEWER_SSE_REFRESH_SEC: float = float(os.environ.get("ED_VIEWER_SSE_REFRESH_SEC", "5.0"))  # caps-ok: operator env config -- viewer SSE cadence, documented default 5.0s (see comment above)
+VIEWER_STATE_CACHE_TTL_SEC: float = float(os.environ.get("ED_VIEWER_STATE_CACHE_TTL_SEC", "5.0"))  # caps-ok: operator env config -- viewer cache TTL, documented default 5.0s (= cadence)
 # A viewed bundle is STALE only after a full recompute cycle was missed:
 # age >= ANALYTICS_STALE_GRACE_CYCLES × TTL. Drives analytics_stale and the
 # card_freshness_v1 analytics_age_exceeded stale-reason code (one authority).
@@ -1338,22 +1338,22 @@ IDLE_KEY_REFRESH_MAX_PER_TICK: int = 1
 # SCHWAB_CSV_CHECKED
 # T5 — bounded SSE recompute wait; cache fanout keeps Tier C SSE alive when _fetch_state is slow.
 SSE_RECOMPUTE_FETCH_TIMEOUT_SEC: float = float(
-    os.environ.get("ED_SSE_RECOMPUTE_FETCH_TIMEOUT_SEC", "12.0")
+    os.environ.get("ED_SSE_RECOMPUTE_FETCH_TIMEOUT_SEC", "12.0")  # caps-ok: operator env config -- bounded SSE recompute wait, documented default 12.0s
 )
 # UI-MAXIMIZE — panel warm list + binding SLA budgets (mirrored on /api/build + static ED_UI_MAXIMIZE_SLA_MS).
 UI_MAXIMIZE_PANEL_WARM_TICKERS: tuple[str, ...] = tuple(
     t.strip().upper()
-    for t in os.environ.get("ED_UI_PANEL_WARM_TICKERS", "SPY,QQQ,IWM").split(",")
+    for t in os.environ.get("ED_UI_PANEL_WARM_TICKERS", "SPY,QQQ,IWM").split(",")  # caps-ok: operator env config -- which panels to pre-warm, documented default SPY,QQQ,IWM
     if t.strip()
 ) or ("SPY", "QQQ", "IWM")
-UI_MAXIMIZE_WARM_STAGGER_SEC: float = float(os.environ.get("ED_UI_MAXIMIZE_WARM_STAGGER_SEC", "2.0"))
+UI_MAXIMIZE_WARM_STAGGER_SEC: float = float(os.environ.get("ED_UI_MAXIMIZE_WARM_STAGGER_SEC", "2.0"))  # caps-ok: operator env config -- warm stagger, documented default 2.0s
 UI_MAXIMIZE_SLA_MS: dict[str, int] = {
-    "first_quote": int(os.environ.get("ED_UI_SLA_FIRST_QUOTE_MS", "500")),
-    "fusion_cards_panel_warm": int(os.environ.get("ED_UI_SLA_FUSION_PANEL_MS", "2000")),
-    "fusion_cards_guest_cold": int(os.environ.get("ED_UI_SLA_FUSION_GUEST_MS", "15000")),
+    "first_quote": int(os.environ.get("ED_UI_SLA_FIRST_QUOTE_MS", "500")),  # caps-ok: operator env config -- UI SLA budget, documented default 500ms
+    "fusion_cards_panel_warm": int(os.environ.get("ED_UI_SLA_FUSION_PANEL_MS", "2000")),  # caps-ok: operator env config -- UI SLA budget, documented default 2000ms
+    "fusion_cards_guest_cold": int(os.environ.get("ED_UI_SLA_FUSION_GUEST_MS", "15000")),  # caps-ok: operator env config -- UI SLA budget, documented default 15000ms
 }
 # Layer A: push in-memory live quote plane over SSE (no Schwab/DB) — sub-second feel vs analytical loop.
-LIVE_QUOTE_SSE_INTERVAL_SEC: float = float(os.environ.get("ED_LIVE_QUOTE_SSE_INTERVAL_SEC", "0.12"))
+LIVE_QUOTE_SSE_INTERVAL_SEC: float = float(os.environ.get("ED_LIVE_QUOTE_SSE_INTERVAL_SEC", "0.12"))  # caps-ok: operator env config -- live quote SSE interval, documented default 0.12s
 
 # ── DB snapshot insert throttle (TQM: bound raw row explosion from SSE + logger) ─
 # At most one INSERT per ticker per UTC-minute bucket (matches normalized 1m bucketing).
@@ -1371,7 +1371,7 @@ _db_snapshot_gate_lock = threading.Lock()
 
 
 def _snapshot_throttle_enabled() -> bool:
-    v = os.environ.get("ED_DB_SNAPSHOT_THROTTLE", "1").strip().lower()
+    v = os.environ.get("ED_DB_SNAPSHOT_THROTTLE", "1").strip().lower()  # caps-ok: operator env switch, documented default "1" = throttle ON; only an explicit 0/false/no/off disables it
     return v not in ("0", "false", "no", "off")
 
 
@@ -1512,7 +1512,7 @@ def _l1_light_sse_try_reserve(request: Request, key: tuple[str, str]) -> tuple[a
         n_total = len(_l1_light_sse_clients)
         n_scope = sum(1 for _, csk in _l1_light_sse_clients if csk == key)
         if n_total >= MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL:
-            _l1_sse_diag["l1_light_sse_rejected_total"] = int(_l1_sse_diag.get("l1_light_sse_rejected_total", 0)) + 1
+            _l1_sse_diag["l1_light_sse_rejected_total"] = int(_l1_sse_diag.get("l1_light_sse_rejected_total", 0)) + 1  # caps-ok: diagnostics counter increment -- an absent key means no rejection counted yet
             log.warning(
                 "L1 light SSE rejected: global cap %s (current=%s)",
                 MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL,
@@ -1526,7 +1526,7 @@ def _l1_light_sse_try_reserve(request: Request, key: tuple[str, str]) -> tuple[a
                 ),
             )
         if n_scope >= MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE:
-            _l1_sse_diag["l1_light_sse_rejected_total"] = int(_l1_sse_diag.get("l1_light_sse_rejected_total", 0)) + 1
+            _l1_sse_diag["l1_light_sse_rejected_total"] = int(_l1_sse_diag.get("l1_light_sse_rejected_total", 0)) + 1  # caps-ok: diagnostics counter increment -- an absent key means no rejection counted yet
             log.warning(
                 "L1 light SSE rejected: per-scope cap %s (scope=%s current=%s)",
                 MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE,
@@ -1543,7 +1543,7 @@ def _l1_light_sse_try_reserve(request: Request, key: tuple[str, str]) -> tuple[a
         dup = int(_l1_light_sse_remote_scope.get(rs_key, 0))
         if dup >= 1:
             _l1_sse_diag["l1_light_sse_duplicate_scope_same_client_warn_total"] = int(
-                _l1_sse_diag.get("l1_light_sse_duplicate_scope_same_client_warn_total", 0)
+                _l1_sse_diag.get("l1_light_sse_duplicate_scope_same_client_warn_total", 0)  # caps-ok: diagnostics counter increment, absent = none counted yet
             ) + 1
             # RC-230 severity calibration (quiet-gate finding, reasoning on record): a SAME-client
             # duplicate is the operator's own multi-tab/multi-monitor viewing — designed-normal,
@@ -1567,9 +1567,9 @@ def _l1_light_sse_try_reserve(request: Request, key: tuple[str, str]) -> tuple[a
         _l1_light_sse_remote_scope[rs_key] = dup + 1
         q: asyncio.Queue = asyncio.Queue(maxsize=8)
         _l1_light_sse_clients.append((q, key))
-        _l1_sse_diag["l1_light_sse_connections"] = int(_l1_sse_diag.get("l1_light_sse_connections", 0)) + 1
+        _l1_sse_diag["l1_light_sse_connections"] = int(_l1_sse_diag.get("l1_light_sse_connections", 0)) + 1  # caps-ok: live-connection gauge increment, absent = no connection counted yet
         cur = len(_l1_light_sse_clients)
-        peak = max(int(_l1_sse_diag.get("l1_light_sse_connections_peak", 0)), cur)
+        peak = max(int(_l1_sse_diag.get("l1_light_sse_connections_peak", 0)), cur)  # caps-ok: running-max gauge -- no recorded peak yet is 0, immediately replaced by the real current count
         _l1_sse_diag["l1_light_sse_connections_peak"] = peak
     return q, rs_key
 
@@ -1580,7 +1580,7 @@ def _l1_light_sse_release(q: asyncio.Queue, key: tuple[str, str], rs_key: tuple[
             if pair[0] is q and pair[1] == key:
                 _l1_light_sse_clients.pop(i)
                 break
-        _l1_sse_diag["l1_light_sse_connections"] = max(0, int(_l1_sse_diag.get("l1_light_sse_connections", 0)) - 1)
+        _l1_sse_diag["l1_light_sse_connections"] = max(0, int(_l1_sse_diag.get("l1_light_sse_connections", 0)) - 1)  # caps-ok: live-connection gauge decrement, floored at 0
         left = int(_l1_light_sse_remote_scope.get(rs_key, 0)) - 1
         if left <= 0:
             _l1_light_sse_remote_scope.pop(rs_key, None)
@@ -1622,13 +1622,13 @@ def _l1_payload_fingerprint(payload: dict) -> str:
 def _l1_record_payload_identity(sk: tuple[str, str | None], gen: int, payload: dict) -> tuple[float, str]:
     """Update per-scope identity; increment violation if same (gen, ts) yields a different fingerprint."""
     warn_l1_payload_key_drift(payload, logger=log)
-    ts = float(payload.get("_server_build_ts") or payload.get("as_of_ts") or 0.0)  # silent-zero-ok: epoch-0 is the ANCIENT sentinel — a missing build stamp must read as maximally stale, never fresh
+    ts = float(payload.get("_server_build_ts") or payload.get("as_of_ts") or 0.0)  # silent-zero-ok: epoch-0 is the ANCIENT sentinel — a missing build stamp must read as maximally stale, never fresh  # caps-ok: identity/freshness comparison key only; epoch 0 always compares oldest, never presented as a time
     fp = _l1_payload_fingerprint(payload)
     prev = _l1_last_emit_identity.get(sk)
     if prev is not None:
         pg, pt, pfp = prev
         if gen == pg and abs(ts - pt) < 1e-6 and fp != pfp:
-            _l1_sse_diag["l1_payload_identity_violation"] = int(_l1_sse_diag.get("l1_payload_identity_violation", 0)) + 1
+            _l1_sse_diag["l1_payload_identity_violation"] = int(_l1_sse_diag.get("l1_payload_identity_violation", 0)) + 1  # caps-ok: violation counter increment, absent = none counted yet
     _l1_last_emit_identity[sk] = (gen, ts, fp)
     return ts, fp
 
@@ -1642,17 +1642,17 @@ def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
     while True:
         try:
             q.put_nowait(env)
-            _l1_sse_diag["l1_light_sse_events_delivered"] = int(_l1_sse_diag.get("l1_light_sse_events_delivered", 0)) + 1
+            _l1_sse_diag["l1_light_sse_events_delivered"] = int(_l1_sse_diag.get("l1_light_sse_events_delivered", 0)) + 1  # caps-ok: diagnostics counter increment, absent = none counted yet
             return
         except asyncio.QueueFull:
             try:
                 q.get_nowait()
                 _l1_sse_diag["l1_light_sse_client_queue_evicted_oldest"] = int(
-                    _l1_sse_diag.get("l1_light_sse_client_queue_evicted_oldest", 0)
+                    _l1_sse_diag.get("l1_light_sse_client_queue_evicted_oldest", 0)  # caps-ok: diagnostics counter increment, absent = none counted yet
                 ) + 1
                 _l1_sse_last_drop_mono = time.monotonic()
             except asyncio.QueueEmpty:
-                _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
+                _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1  # caps-ok: diagnostics counter increment, absent = none counted yet
                 return
 
 
@@ -1672,17 +1672,17 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
     while True:
         try:
             _l1_sse_thread_queue.put_nowait((sk, env))
-            _l1_sse_diag["l1_light_sse_events_queued"] = int(_l1_sse_diag.get("l1_light_sse_events_queued", 0)) + 1
+            _l1_sse_diag["l1_light_sse_events_queued"] = int(_l1_sse_diag.get("l1_light_sse_events_queued", 0)) + 1  # caps-ok: diagnostics counter increment, absent = none counted yet
             return
         except queue.Full:
             try:
                 _l1_sse_thread_queue.get_nowait()
                 _l1_sse_diag["l1_light_sse_thread_queue_evicted_oldest"] = int(
-                    _l1_sse_diag.get("l1_light_sse_thread_queue_evicted_oldest", 0)
+                    _l1_sse_diag.get("l1_light_sse_thread_queue_evicted_oldest", 0)  # caps-ok: diagnostics counter increment, absent = none counted yet
                 ) + 1
                 _l1_sse_last_drop_mono = time.monotonic()
             except queue.Empty:
-                _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
+                _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1  # caps-ok: diagnostics counter increment, absent = none counted yet
                 return
 
 
@@ -1860,7 +1860,7 @@ _operator_priority_executor: Optional[ThreadPoolExecutor] = None
 _priority_leaf_executor: Optional[ThreadPoolExecutor] = None
 _mkt_ctx_refresh_executor: Optional[ThreadPoolExecutor] = None
 ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES = int(
-    os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")
+    os.environ.get("ED_ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES", "3")  # caps-ok: operator env config -- background analytics failure cap, documented default 3
 )
 
 
@@ -2114,7 +2114,7 @@ def _log_only_cache_touch(
             "ts": time.time(), "ms_dict": {}, "pcr_val": pcr_val, "spot_f": spot_f,
             "vix": vix,
             "price_levels": (existing or {}).get("price_levels"),
-            "pl_date":      (existing or {}).get("pl_date", ""),
+            "pl_date":      (existing or {}).get("pl_date", ""),  # caps-ok: price-level cache-validity key carried forward; "" never equals today's date, so a carrier without it is a cache MISS (refetch)
             "pl_generation": (existing or {}).get("pl_generation"),
             "pl_mono":      (existing or {}).get("pl_mono"),
         }
@@ -2142,7 +2142,7 @@ def _attach_analytics_freshness_contract(
         in_prog = inflight_key in _analytics_inflight
     if entry and entry.get("ms_dict"):
         gen_ts = _analytics_generated_ts(entry)
-        ver = int(entry.get("analytics_version", 0))
+        ver = int(entry.get("analytics_version", 0))  # caps-ok: 0 is the analytics generation counter's documented "no version yet" sentinel (the missing-bundle branch below publishes the same 0); a counter, not a market value
         if gen_ts is None:
             # RC-282: a bundle that exists but cannot be DATED is not a fresh bundle. The
             # old `else 0.0` published age zero and analytics_stale False. This is the same
@@ -2274,8 +2274,8 @@ def _record_tier_c_broadcast_identity(payload: dict) -> None:
             return
         key = (str(t).upper().strip(), payload.get("selected_exp"))
         _last_tier_c_broadcast_identity[key] = (
-            float(payload.get("_server_build_ts") or 0.0),  # silent-zero-ok: epoch-0 ancient sentinel, compared not displayed
-            int(payload.get("analytics_version") or 0),  # silent-zero-ok: version 0 means "no analytics version yet", the pre-first-run state this comparison exists to detect
+            float(payload.get("_server_build_ts") or 0.0),  # silent-zero-ok: epoch-0 ancient sentinel, compared not displayed  # caps-ok: broadcast-dedup identity tuple only -- an unstamped payload's epoch-0 can never equal a real build ts, so it is never suppressed as a duplicate
+            int(payload.get("analytics_version") or 0),  # silent-zero-ok: version 0 means "no analytics version yet", the pre-first-run state this comparison exists to detect  # caps-ok: dedup identity only -- 0 is the analytics generation counter's "no version yet" sentinel
             _sse_conn_epoch,
         )
     except Exception as e:
@@ -2294,8 +2294,8 @@ def _tier_c_fanout_is_duplicate(ticker: str, expiry: Optional[str]) -> bool:
     md = entry["ms_dict"]
     ck = data_cache_key or (ticker.upper().strip(), md.get("selected_exp"))
     ident = (
-        float(md.get("_server_build_ts") or 0.0),  # silent-zero-ok: epoch-0 ancient sentinel, compared not displayed
-        int(entry.get("analytics_version") or 0),  # silent-zero-ok: version 0 means "no analytics version yet", the pre-first-run state this comparison exists to detect
+        float(md.get("_server_build_ts") or 0.0),  # silent-zero-ok: epoch-0 ancient sentinel, compared not displayed  # caps-ok: dedup identity tuple only -- compared against the recorded broadcast identity, never displayed or persisted
+        int(entry.get("analytics_version") or 0),  # silent-zero-ok: version 0 means "no analytics version yet", the pre-first-run state this comparison exists to detect  # caps-ok: dedup identity only -- 0 is the analytics generation counter's "no version yet" sentinel
         _sse_conn_epoch,
     )
     return _last_tier_c_broadcast_identity.get(ck) == ident
@@ -2580,13 +2580,13 @@ def _publish_progressive_tier_c_cache(
     _state_cache[cache_key] = {
         "ts": now,
         "generated_at": now,
-        "analytics_version": int(prev_ent.get("analytics_version", 0)),
+        "analytics_version": int(prev_ent.get("analytics_version", 0)),  # caps-ok: carries the previous entry's generation counter; 0 = the documented "no analytics version yet" sentinel for a first write
         "ms_dict": md,
         "pcr_val": pcr_val,
         "spot_f": spot_f,
         "vix": prev_ent.get("vix"),
         "price_levels": prev_ent.get("price_levels"),
-        "pl_date": prev_ent.get("pl_date", ""),
+        "pl_date": prev_ent.get("pl_date", ""),  # caps-ok: price-level cache-validity key carried forward; "" never matches today's date -> cache MISS (refetch)
         "pl_generation": prev_ent.get("pl_generation"),
         "pl_mono": prev_ent.get("pl_mono"),
     }
@@ -2663,7 +2663,7 @@ def _schedule_startup_analytics_warm() -> None:
     tickers = UI_MAXIMIZE_PANEL_WARM_TICKERS
     stagger = max(0.0, UI_MAXIMIZE_WARM_STAGGER_SEC)
 
-    if _analytics_bg_shutdown or os.environ.get("ED_DISABLE_STARTUP_ANALYTICS_WARM", "").strip().lower() in (
+    if _analytics_bg_shutdown or os.environ.get("ED_DISABLE_STARTUP_ANALYTICS_WARM", "").strip().lower() in (  # caps-ok: operator env opt-out; unset means startup warm RUNS
         "1",
         "true",
         "yes",
@@ -2715,7 +2715,7 @@ def _startup_model_prewarm_sweep_worker() -> None:
 def _schedule_startup_model_prewarm_sweep() -> None:
     """One sequential background thread — never floods CPU, never touches the
     request path, fail-open per ticker (prewarm worker swallows and logs)."""
-    if os.environ.get("ED_DISABLE_STARTUP_MODEL_PREWARM", "").strip().lower() in (
+    if os.environ.get("ED_DISABLE_STARTUP_MODEL_PREWARM", "").strip().lower() in (  # caps-ok: operator env opt-out; unset means model prewarm RUNS
         "1", "true", "yes", "on",
     ):
         return
@@ -3240,9 +3240,9 @@ def _get_prediction_override(ticker: str) -> Optional[dict]:
 # Tick-triggered coherent refresh throttling (Issue 20/23 — no partial ms_dict patches)
 _tick_coherent_lock = threading.Lock()
 _last_tick_coherent_gate_mono: float = 0.0
-TICK_COHERENT_GATE_SEC: float = float(os.environ.get("ED_TICK_COHERENT_GATE_SEC", "0.5"))
+TICK_COHERENT_GATE_SEC: float = float(os.environ.get("ED_TICK_COHERENT_GATE_SEC", "0.5"))  # caps-ok: operator env config -- tick-coherent gate, documented default 0.5s
 _last_tick_coherent_fetch_mono_by_ticker: dict[str, float] = {}
-TICK_COHERENT_MIN_SEC: float = float(os.environ.get("ED_TICK_COHERENT_MIN_SEC", "0.45"))
+TICK_COHERENT_MIN_SEC: float = float(os.environ.get("ED_TICK_COHERENT_MIN_SEC", "0.45"))  # caps-ok: operator env config -- tick-coherent minimum spacing, documented default 0.45s
 
 
 def _latest_cached_ms_and_key_for_ticker(ticker: str) -> tuple[Optional[dict], Optional[tuple]]:
@@ -3257,7 +3257,7 @@ def _latest_cached_ms_and_key_for_ticker(ticker: str) -> tuple[Optional[dict], O
         md = entry.get("ms_dict")
         if not isinstance(md, dict) or not md:
             continue
-        ts = float(entry.get("ts") or 0.0)  # silent-zero-ok: epoch-0 ancient sentinel — an undated entry must never win a freshest-wins comparison
+        ts = float(entry.get("ts") or 0.0)  # silent-zero-ok: epoch-0 ancient sentinel — an undated entry must never win a freshest-wins comparison  # caps-ok: selection sort key only (freshest cache entry), never served as a time
         if ts > best_ts:
             best_ts = ts
             best_md = md
@@ -3481,7 +3481,7 @@ _STORED_CHAIN_TIMEFRAMES: tuple[str, ...] = (CANONICAL_TIMEFRAME, "5m")
 #: the currently open bar. Quote polls run ~1.5s apart, so a gap beyond one bar length means
 #: the cumulative delta necessarily spans bars and cannot be attributed to any single minute.
 ACCUM_VOL_MAX_ATTRIBUTION_GAP_SEC: float = float(
-    os.environ.get("ED_ACCUM_VOL_MAX_GAP_SEC", "60")
+    os.environ.get("ED_ACCUM_VOL_MAX_GAP_SEC", "60")  # caps-ok: operator env config -- max cumulative-volume attribution gap, documented default 60s
 )
 
 
@@ -3579,7 +3579,7 @@ class _CandleAccumulator:
             cur["l"] = min(cur["l"], price)
             cur["c"] = price
             if vol_delta is not None:
-                cur["v"] = (cur.get("v") or 0.0) + vol_delta  # silent-zero-ok: RC-168/RC-277 — totalVolume is CUMULATIVE, so a bar's FIRST reading has no predecessor and vol_delta is None BY CONSTRUCTION; None means "no delta counted yet", not a missing measurement, and 0.0 is the correct identity to open the sum
+                cur["v"] = (cur.get("v") or 0.0) + vol_delta  # silent-zero-ok: RC-168/RC-277 — totalVolume is CUMULATIVE, so a bar's FIRST reading has no predecessor and vol_delta is None BY CONSTRUCTION; None means "no delta counted yet", not a missing measurement, and 0.0 is the correct identity to open the sum  # caps-ok: sum accumulator -- only runs when a REAL vol_delta exists; an unopened bar sum (None) starts from the additive identity 0.0, so the stored volume is exactly the sum of observed deltas
             cur["volume_source"] = vol_source
 
     def get_bars(self, ticker: str) -> list[Candle]:
@@ -3742,7 +3742,7 @@ CORE_TICKERS:   list[str] = [
 ]
 LOG_INTERVAL:   int       = 30    # seconds — 12 tickers × 3 calls + 17 global ≈ 106/min
 STAGGER_SECS:   float     = 2.0  # seconds between each ticker fetch in a cycle
-LOGGER_STARTUP_DELAY_SEC: float = float(os.environ.get("ED_LOGGER_STARTUP_DELAY_SEC", "60"))
+LOGGER_STARTUP_DELAY_SEC: float = float(os.environ.get("ED_LOGGER_STARTUP_DELAY_SEC", "60"))  # caps-ok: operator env config -- logger startup delay, documented default 60s
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
 # Issue 22 — persistent universe for non-core symbols (see logging_universe in EdDB).
@@ -3773,7 +3773,7 @@ def _sync_market_context_panel_into_logging_universe(db, now_ts: float) -> None:
 
 
 def _logging_universe_fifo_eviction_enabled() -> bool:
-    return os.environ.get("ED_LOGGING_UNIVERSE_FIFO_EVICTION", "").strip().lower() in (
+    return os.environ.get("ED_LOGGING_UNIVERSE_FIFO_EVICTION", "").strip().lower() in (  # caps-ok: operator env opt-in; unset means FIFO eviction stays OFF
         "1",
         "true",
         "yes",
@@ -3783,7 +3783,7 @@ def _logging_universe_fifo_eviction_enabled() -> bool:
 
 def _max_user_persisted_cap_resolved() -> int | None:
     """Effective cap when FIFO eviction is enabled; None = unlimited."""
-    raw = os.environ.get("ED_MAX_USER_PERSISTED_LOGGING_TICKERS", "").strip()
+    raw = os.environ.get("ED_MAX_USER_PERSISTED_LOGGING_TICKERS", "").strip()  # caps-ok: operator env override; unset ("") falls through to the documented default cap below
     if raw:
         try:
             n = int(raw)
@@ -4469,7 +4469,7 @@ def _logger_fetch_and_log(ticker: str) -> str:
         with _logger_lock:
             _logger_stats.setdefault(ticker, {})
             _logger_stats[ticker]["last_logged"] = logger_cycle_touch_wall_ts
-            _logger_stats[ticker]["count"]       = _logger_stats[ticker].get("count", 0) + 1
+            _logger_stats[ticker]["count"]       = _logger_stats[ticker].get("count", 0) + 1  # caps-ok: per-ticker log-cycle counter increment, absent = none logged yet
             _logger_stats[ticker]["last_error"]  = None
             _logger_stats[ticker]["source"]      = "fetch"
 
@@ -4664,7 +4664,7 @@ def _base_money_path_capture_one(ticker: str):
         with _logger_lock:
             _logger_stats.setdefault(t, {})
             _logger_stats[t]["last_logged"] = touch_ts
-            _logger_stats[t]["count"] = _logger_stats[t].get("count", 0) + 1
+            _logger_stats[t]["count"] = _logger_stats[t].get("count", 0) + 1  # caps-ok: per-ticker log-cycle counter increment, absent = none logged yet
             _logger_stats[t]["last_error"] = None
             _logger_stats[t]["source"] = LOGGER_SOURCE_BASE_MONEY_PATH
 
@@ -4712,7 +4712,7 @@ def _base_money_path_logger_loop():
     global _base_money_path_logger_running
     interval = base_money_path_capture_interval_sec()
     tickers = base_money_path_logger_tickers()
-    timeout_sec = float(os.environ.get("ED_BASE_CAPTURE_TIMEOUT_SEC", "45"))
+    timeout_sec = float(os.environ.get("ED_BASE_CAPTURE_TIMEOUT_SEC", "45"))  # caps-ok: operator env config -- base capture timeout, documented default 45s
     log.info(
         "Base money-path logger started — %s every %.0fs concurrent quote-only (UI-independent)",
         list(tickers),
@@ -5308,7 +5308,7 @@ def _l1_next_generation(key: tuple) -> int:
         _l1_generation[key] = new_gen
         _l1_last_generation_seen[key] = new_gen
         _l1_instrumentation["l1_generation_assign_total"] = (
-            int(_l1_instrumentation.get("l1_generation_assign_total", 0)) + 1
+            int(_l1_instrumentation.get("l1_generation_assign_total", 0)) + 1  # caps-ok: instrumentation counter increment, absent = none assigned yet
         )
         return new_gen
 
@@ -5766,7 +5766,7 @@ def _l1_notify_sse_after_authoritative_build(ticker: str, expiry: Optional[str])
             return
         _l1_sse_last_emit_mono[sk] = now_m
     payload = _l1_http_get_projection(ticker, expiry, force=False)
-    gen = int(payload.get("l1_generation") or 0)  # silent-zero-ok: generation 0 is the pre-first-publish state; every real generation is >= 1 so 0 can never impersonate one
+    gen = int(payload.get("l1_generation") or 0)  # silent-zero-ok: generation 0 is the pre-first-publish state; every real generation is >= 1 so 0 can never impersonate one  # caps-ok: generation counter sentinel -- 0 = pre-first-publish, real generations start at 1
     ts, fp = _l1_record_payload_identity(sk, gen, payload)
     env = {
         "l1_sse_schema": 1,
@@ -5825,7 +5825,7 @@ def _latest_cache_entry_for_ticker(ticker: str) -> Optional[tuple[tuple, dict]]:
             continue
         if not v.get("ms_dict"):
             continue
-        ts = float(v.get("ts") or 0.0)  # silent-zero-ok: epoch-0 ancient sentinel — an undated entry sorts oldest, never freshest
+        ts = float(v.get("ts") or 0.0)  # silent-zero-ok: epoch-0 ancient sentinel — an undated entry sorts oldest, never freshest  # caps-ok: selection sort key only (freshest cache entry), never served as a time
         if ts >= best_ts:
             best_ts = ts
             best_k = k
@@ -5979,7 +5979,7 @@ def _price_levels_for_state(
     pl_snap = canonical_price_level_snapshot(ticker)
     pl_bucket = _state_cache.get(cache_key, {})
     pl_cache_entry = pl_bucket.get("price_levels")
-    pl_cache_date  = pl_bucket.get("pl_date", "")
+    pl_cache_date  = pl_bucket.get("pl_date", "")  # caps-ok: cache-validity key -- "" never equals today's date, so an entry without pl_date is a cache MISS and levels are refetched
     pl_cache_gen   = pl_bucket.get("pl_generation")
 
     if carried_price_levels_match_snapshot(
@@ -6002,16 +6002,18 @@ def _price_levels_for_state(
             vwap=price_levels.vwap,
             session_date=now_et_dt.date(),
             now_et_dt=now_et_dt,
-            session_rth_positive_volume_bars=int(
-                getattr(price_levels, "session_rth_positive_volume_bars", 0) or 0
-            ),
+            # CAPS RC-REHAB-1: PriceLevels declares session_rth_positive_volume_bars (set by
+            # fetch_price_levels from count_session_rth_positive_volume_bars), so the attribute
+            # is read directly -- a getattr 0 default could only have mis-classified a missing
+            # count as "no RTH volume bars" and hidden a VWAP producer failure.
+            session_rth_positive_volume_bars=int(price_levels.session_rth_positive_volume_bars),
         )
         if vwap_status == SESSION_VWAP_RTH_PRODUCER_FAILURE:
             log.warning(
                 "PriceLevels: %s RTH producer failure — %s same-session RTH volume bars "
                 "but canonical session VWAP is None (generation=%s)",
                 ticker,
-                getattr(price_levels, "session_rth_positive_volume_bars", 0),
+                price_levels.session_rth_positive_volume_bars,
                 getattr(price_levels, "level_generation", None),
             )
         elif price_levels.vwap is not None:
@@ -6020,7 +6022,7 @@ def _price_levels_for_state(
             log.debug(
                 "PriceLevels: %s session VWAP expected-absent (bars_today=%s rth_vol_bars=%s)",
                 ticker, price_levels.bars_today,
-                getattr(price_levels, "session_rth_positive_volume_bars", 0),
+                price_levels.session_rth_positive_volume_bars,
             )
     except _LevelCarrierConflict:
         raise
@@ -6174,8 +6176,8 @@ def _zone_tracking_for_state(ticker: str, consensus_summary) -> dict:
 
     zone_bars_1m = _candles_1m.get_bars(ticker)
     zone_bars_5m = _candles_5m.get_bars(ticker)
-    latest_bar_ts_1m = zone_bars_1m[-1].ts if zone_bars_1m else 0.0
-    latest_bar_ts_5m = zone_bars_5m[-1].ts if zone_bars_5m else 0.0
+    latest_bar_ts_1m = zone_bars_1m[-1].ts if zone_bars_1m else 0.0  # caps-ok: internal tracker sentinel (epoch 0 = "no bar yet"); it can never exceed a stored bar ts, so no bar is counted -- never served as a time
+    latest_bar_ts_5m = zone_bars_5m[-1].ts if zone_bars_5m else 0.0  # caps-ok: internal tracker sentinel (epoch 0 = "no bar yet"); no 5m bar is counted from it -- never served as a time
 
     zt = _zone_tracker.get(ticker, {
         "zone": cur_zone, "prev_zone": cur_zone,
@@ -6190,10 +6192,10 @@ def _zone_tracking_for_state(ticker: str, consensus_summary) -> dict:
         zt["last_bar_ts_1m"] = latest_bar_ts_1m
         zt["last_bar_ts_5m"] = latest_bar_ts_5m
     else:
-        if latest_bar_ts_1m > zt.get("last_bar_ts_1m", 0.0):
+        if latest_bar_ts_1m > zt.get("last_bar_ts_1m", 0.0):  # caps-ok: tracker dict is always created with last_bar_ts_1m (epoch-0 "no bar counted yet" sentinel), so any real bar ts counts as new
             zt["since_bars_1m"]  += 1
             zt["last_bar_ts_1m"]  = latest_bar_ts_1m
-        if latest_bar_ts_5m > zt.get("last_bar_ts_5m", 0.0):
+        if latest_bar_ts_5m > zt.get("last_bar_ts_5m", 0.0):  # caps-ok: tracker dict is always created with last_bar_ts_5m (epoch-0 "no bar counted yet" sentinel), so any real bar ts counts as new
             zt["since_bars_5m"]  += 1
             zt["last_bar_ts_5m"]  = latest_bar_ts_5m
     _zone_tracker[ticker] = zt
@@ -6219,7 +6221,9 @@ def _db_counts_and_crosses_for_state(
     its pre-initialized "no data" default, exactly as the original inline try/except did."""
     if _diag_on():
         _diag_step("pre_db_counts", ticker)
-    db_counts = {"total": 0, "filled": 0}
+    # CAPS RC-REHAB-1: without a DB (or on a failed count query) the snapshot counts are
+    # UNKNOWN -> None, not a served "0 snapshots / 0 filled" (the old pre-initialised zeros).
+    db_counts = {"total": None, "filled": None}
     ceil_tests = floor_tests = 0
     recent_crosses = []
 
@@ -6239,8 +6243,10 @@ def _db_counts_and_crosses_for_state(
             rc = ed_db.get_recent_crosses(ticker, n=RECENT_CROSSES_DISPLAY_LIMIT)
             recent_cross_eval_wall_ts = time.time()
             for c in rc:
+                # CAPS RC-REHAB-1: level_crosses.ts_utc is NOT NULL (db_schema), so it is read
+                # directly; the old epoch-0 default would have invented a ~29-million-bar age.
                 bars_ago = int(
-                    (recent_cross_eval_wall_ts - c.get("ts_utc", 0)) / 60
+                    (recent_cross_eval_wall_ts - c["ts_utc"]) / 60
                 )  # 1m bar cadence (canonical)
                 recent_crosses.append({
                     "level_name": c.get("level_name"),
@@ -6330,7 +6336,7 @@ def _additive_context_for_state(
     try:
         from news_sentiment import refresh_and_context_for_ui
 
-        news_throttle = float(os.environ.get("ED_NEWS_THROTTLE_SEC", "90"))
+        news_throttle = float(os.environ.get("ED_NEWS_THROTTLE_SEC", "90"))  # caps-ok: operator env config -- news throttle, documented default 90s (same default as news_sentiment)
         ms.news_context = refresh_and_context_for_ui(
             ticker.upper(),
             db=ed_db,
@@ -6893,8 +6899,8 @@ def _fetch_state(
         ceiling_tests_today=ceil_tests,
         floor_tests_today=floor_tests,
         recent_crosses=recent_crosses,
-        total_snapshots=db_counts.get("total", 0),
-        filled_snapshots=db_counts.get("filled", 0),
+        total_snapshots=db_counts["total"],  # always keyed (count_snapshots / _db_counts_and_crosses_for_state); None = unknown
+        filled_snapshots=db_counts["filled"],
         et_hour=et_h,
         et_minute=et_m,
         mins_to_close=mins_to_close,
@@ -7347,16 +7353,22 @@ def _fetch_state(
         ms_dict["kl_net_gex_regime"] = gex_regime_label(_net_gex_f)
     else:
         ms_dict["kl_net_gex_disp"] = "—"
-        ms_dict["kl_net_gex_mag"] = "negligible"
-        ms_dict["kl_net_gex_regime"] = "neutral"
+        # CAPS RC-REHAB-1: no net GEX -> no magnitude / regime read. These used to be served
+        # as "negligible" / "neutral" -- a measured-looking regime for an absent value.
+        # (context_light carries structural keys only when non-None, so L1 now omits them.)
+        ms_dict["kl_net_gex_mag"] = None
+        ms_dict["kl_net_gex_regime"] = None
     ms_dict["kl_expiry_source"] = _kl_expiry_source
     ms_dict["kl_level_window"] = "selected_expiry"
     ms_dict["kl_metrics_dollarized"] = bool(exposures and exposures_have_dollar_gex(exposures))
     ms_dict["kl_institutional_ready"] = ms_dict["kl_metrics_dollarized"]
-    _kl_contracts_total = max(int(getattr(diag, "contracts_total", 0) or 0), 1)
-    ms_dict["kl_gex_input_completeness"] = round(
-        float(getattr(diag, "contracts_used", 0) or 0) / _kl_contracts_total,
-        4,
+    # CAPS RC-REHAB-1: diag is always an ExposureDiagnostics (compute_exposures_by_strike), so
+    # its counts are read directly. Completeness of an EMPTY chain (0 contracts) is undefined
+    # -> None; it used to be forced to 0/1 = 0.0 via max(total, 1).
+    _kl_contracts_total = int(diag.contracts_total)
+    ms_dict["kl_gex_input_completeness"] = (
+        round(float(diag.contracts_used) / _kl_contracts_total, 4)
+        if _kl_contracts_total > 0 else None
     )
     _em_up_straddle = _fv(_em_straddle.get("upper"))
     _em_lo_straddle = _fv(_em_straddle.get("lower"))
@@ -7422,8 +7434,8 @@ def _fetch_state(
         log.debug(f"Gamma void: gex_low={_gex_low}, oi_low={_oi_low}, both_low={_both_low} (need 2+ consecutive)")
 
     # ── Top GEX/DEX drivers (which strikes are driving the walls) ─────────────
-    ms_dict["top_gex_drivers"] = getattr(cs, "top_gex_drivers", []) or []
-    ms_dict["top_dex_drivers"] = getattr(cs, "top_dex_drivers", []) or []
+    ms_dict["top_gex_drivers"] = getattr(cs, "top_gex_drivers", []) or []  # caps-ok: a LIST of driver strikes -- with no consensus summary there are no identified drivers, and an empty list states exactly that (no strike or value is invented)
+    ms_dict["top_dex_drivers"] = getattr(cs, "top_dex_drivers", []) or []  # caps-ok: a LIST of driver strikes -- empty = none identified, no strike or value invented
 
     # ── Synthetic forward (parity level) ──────────────────────────────────────
     try:
@@ -7521,40 +7533,44 @@ def _fetch_state(
     ms_dict["last_sweep_type"]       = getattr(ms, "last_sweep_type", None)
     ms_dict["last_sweep_level"]      = getattr(ms, "last_sweep_level", None)
     ms_dict["last_sweep_held"]       = getattr(ms, "last_sweep_held", None)
-    ms_dict["n_sweeps_today"]        = getattr(ms, "n_sweeps_today", 0)
+    # CAPS RC-REHAB-1: `ms` is always a MarketState here (build_market_state re-raises on
+    # failure), and every field read below with direct attribute access is DECLARED on it --
+    # the old getattr(..., <default>) copies were a second, server-side default authority
+    # for values market_state.py already owns.
+    ms_dict["n_sweeps_today"]        = ms.n_sweeps_today
 
     # ── Trade Validation Gate ─────────────────────────────────────────────────
     ms_dict["validation_passed"]     = getattr(ms, "validation_passed", None)
     ms_dict["structure_valid"]       = getattr(ms, "structure_valid", None)
     ms_dict["probability_valid"]     = getattr(ms, "probability_valid", None)
     ms_dict["risk_valid"]            = getattr(ms, "risk_valid", None)
-    ms_dict["validation_summary"]    = getattr(ms, "validation_summary", "")
+    ms_dict["validation_summary"]    = ms.validation_summary
 
     # ── Call Readiness (from MarketState; computed in call_engine.py) ──────────
     ms_dict["call_readiness"] = {
-        "call_state": getattr(ms, "call_state", "WAIT"),
-        "forecast_state": getattr(ms, "call_forecast_state", "dormant"),
-        "readiness_score": getattr(ms, "call_readiness_score", 0),
-        "reasons": list(getattr(ms, "call_readiness_reasons", []) or []),
-        "missing_conditions": list(getattr(ms, "call_missing_conditions", []) or []),
-        "component_scores": dict(getattr(ms, "call_readiness_component_scores", {}) or {}),
+        "call_state": ms.call_state,
+        "forecast_state": ms.call_forecast_state,
+        "readiness_score": ms.call_readiness_score,
+        "reasons": list(ms.call_readiness_reasons),
+        "missing_conditions": list(ms.call_missing_conditions),
+        "component_scores": dict(ms.call_readiness_component_scores),
         "wait_blocker": getattr(ms, "call_wait_blocker", None),
     }
 
     # ── Put Readiness (from MarketState; computed in call_engine.py) ────────────
     ms_dict["put_readiness"] = {
-        "call_state": getattr(ms, "put_state", "WAIT"),
-        "forecast_state": getattr(ms, "put_forecast_state", "dormant"),
-        "readiness_score": getattr(ms, "put_readiness_score", 0),
-        "reasons": list(getattr(ms, "put_readiness_reasons", []) or []),
-        "missing_conditions": list(getattr(ms, "put_missing_conditions", []) or []),
-        "component_scores": dict(getattr(ms, "put_readiness_component_scores", {}) or {}),
+        "call_state": ms.put_state,
+        "forecast_state": ms.put_forecast_state,
+        "readiness_score": ms.put_readiness_score,
+        "reasons": list(ms.put_readiness_reasons),
+        "missing_conditions": list(ms.put_missing_conditions),
+        "component_scores": dict(ms.put_readiness_component_scores),
     }
 
     # ── Formal Position Sizing ────────────────────────────────────────────────
     ms_dict["r_units"]               = getattr(ms, "r_units", None)
-    ms_dict["execution_mode"]        = getattr(ms, "execution_mode", "NO_TRADE")
-    ms_dict["sizing_summary"]        = getattr(ms, "sizing_summary", "")
+    ms_dict["execution_mode"]        = ms.execution_mode
+    ms_dict["sizing_summary"]        = ms.sizing_summary
 
     # ── Volatility Envelope ───────────────────────────────────────────────────
     ms_dict["vol_env_upper"]         = _vol_envelope.get("upper")
@@ -7640,16 +7656,16 @@ def _fetch_state(
     ms_dict["qqq_last"]       = _fv(getattr(mkt_ctx, "qqq_last",  None))
     ms_dict["iwm_last"]       = _fv(getattr(mkt_ctx, "iwm_last",  None))
     # CME index futures (optional — full contract symbols via ED_FUTURES_ES / NQ / RTY)
-    ms_dict["fut_es_symbol"]   = getattr(mkt_ctx, "fut_es_symbol", "") or ""
+    ms_dict["fut_es_symbol"]   = getattr(mkt_ctx, "fut_es_symbol", "") or ""  # caps-ok: optional configured contract SYMBOL (ED_FUTURES_ES); "" = none configured, a label not a quote -- the price/chg fields beside it stay None
     ms_dict["fut_es_last"]     = _fv(getattr(mkt_ctx, "fut_es_last", None))
     ms_dict["fut_es_chg_pct"]  = getattr(mkt_ctx, "fut_es_chg_pct", None)
-    ms_dict["fut_nq_symbol"]   = getattr(mkt_ctx, "fut_nq_symbol", "") or ""
+    ms_dict["fut_nq_symbol"]   = getattr(mkt_ctx, "fut_nq_symbol", "") or ""  # caps-ok: optional configured contract SYMBOL (ED_FUTURES_NQ); "" = none configured, a label not a quote
     ms_dict["fut_nq_last"]     = _fv(getattr(mkt_ctx, "fut_nq_last", None))
     ms_dict["fut_nq_chg_pct"]  = getattr(mkt_ctx, "fut_nq_chg_pct", None)
-    ms_dict["fut_rty_symbol"]  = getattr(mkt_ctx, "fut_rty_symbol", "") or ""
+    ms_dict["fut_rty_symbol"]  = getattr(mkt_ctx, "fut_rty_symbol", "") or ""  # caps-ok: optional configured contract SYMBOL (ED_FUTURES_RTY); "" = none configured, a label not a quote
     ms_dict["fut_rty_last"]    = _fv(getattr(mkt_ctx, "fut_rty_last", None))
     ms_dict["fut_rty_chg_pct"] = getattr(mkt_ctx, "fut_rty_chg_pct", None)
-    ms_dict["vix_implication"] = getattr(mkt_ctx, "vix_implication", "")
+    ms_dict["vix_implication"] = getattr(mkt_ctx, "vix_implication", "")  # caps-ok: display-only prose sentence; blank when the market context carries none, never parsed as data
 
     # RC-365/F39: absent weighted_push stays None (not 0). Dots None when the push is absent.
     ms_dict.update(stamp_confluence_display_fields(mkt_ctx))
@@ -7693,7 +7709,7 @@ def _fetch_state(
     for sq in (getattr(mkt_ctx, "iwm_sectors", None) or []):
         _iwm_sectors.append({
             "symbol":       sq.symbol,
-            "label":        getattr(sq, "label", ""),
+            "label":        getattr(sq, "label", ""),  # caps-ok: display-only sector caption; blank when the proxy row has none, the symbol/chg fields carry the data
             "chg_pct":      sq.chg_pct,
             "weight":       sq.weight,
             "contribution": sq.contribution,
@@ -7707,8 +7723,10 @@ def _fetch_state(
         ms_dict["logger_running"] = _logger_running
 
     # ── DB snapshot counts (for counter display) ──────────────────────────────
-    ms_dict["total_snapshots"]  = db_counts.get("total", 0)
-    ms_dict["filled_snapshots"] = db_counts.get("filled", 0)
+    # CAPS RC-REHAB-1: always keyed by _db_counts_and_crosses_for_state; None = counts unknown
+    # (no DB / failed query), never a served 0.
+    ms_dict["total_snapshots"]  = db_counts["total"]
+    ms_dict["filled_snapshots"] = db_counts["filled"]
 
     # ── Accuracy (from cache — never blocks the main response) ────────────────
     # Primary block is RTH-scoped with baseline edge (operator decision
@@ -7867,7 +7885,7 @@ def _fetch_state(
 
     _prev_ent = _state_cache.get(_cache_key) or {}
     _gen_ts = time.time()
-    _next_ver = int(_prev_ent.get("analytics_version", 0)) + 1
+    _next_ver = int(_prev_ent.get("analytics_version", 0)) + 1  # caps-ok: generation counter increment -- no previous version means 0 so the first published bundle is version 1
     if not _prev_ent:
         # Version restarts at 1 — a cold entry write (fresh key or prior eviction).
         _analytics_cache_observability["cold_entry_writes"] += 1
@@ -7915,7 +7933,7 @@ def _fetch_state(
         # this is the value the next cycle's market_iv_change diffs against.
         "vix": vol_ctx.market_iv_level,
         "price_levels": _prev_ent.get("price_levels"),
-        "pl_date":      _prev_ent.get("pl_date", ""),
+        "pl_date":      _prev_ent.get("pl_date", ""),  # caps-ok: price-level cache-validity key carried forward; "" never matches today's date -> cache MISS (refetch)
         "pl_generation": _prev_ent.get("pl_generation"),
         "pl_mono":      _prev_ent.get("pl_mono"),
     }
@@ -8079,11 +8097,11 @@ async def _app_lifespan(app):
             def _validate_schwab_quote_sync(client):
                 try:
                     r = client.get_quote("SPY")
-                    if not r or getattr(r, "status_code", 0) != 200:
+                    if not r or getattr(r, "status_code", 0) != 200:  # caps-ok: fail-closed token check -- a response without a status code is treated as NOT 200 and the token validation warning fires
                         log.warning(
                             "Schwab token validation failed (SPY quote returned %s). "
                             "Token may be expired. Remediation: python reauth_schwab.py",
-                            getattr(r, "status_code", "None"),
+                            getattr(r, "status_code", "None"),  # caps-ok: log-message text only -- prints "None" when there was no response/status
                         )
                     else:
                         log.info("Schwab auth validated at startup (background)")
@@ -8147,7 +8165,7 @@ async def _app_lifespan(app):
     # Schwab CSV authority checked: yes
     # CSV row(s): NO_SCHWAB_EQUIVALENT — process scheduling and DB write batching only;
     #   no market field read, derivation, or emission changed.
-    if os.environ.get("ED_ENABLE_BACKGROUND_SCHEDULER", "0").strip().lower() in ("1", "true", "yes", "on"):
+    if os.environ.get("ED_ENABLE_BACKGROUND_SCHEDULER", "0").strip().lower() in ("1", "true", "yes", "on"):  # caps-ok: operator env opt-in, documented default "0" = background scheduler OFF
         try:
             from ml_scheduler import start_background_scheduler
             start_background_scheduler()
@@ -8418,7 +8436,7 @@ def _tier_c_analytics_json_response(
 
     ttl = _sse_viewer_cache_ttl(
         ticker,
-        data_cache_key[1] if data_cache_key else expiry,
+        data_cache_key[1] if data_cache_key else expiry,  # caps-ok: TTL lookup key -- the resolved cache key's expiry when one was found, else the caller's requested expiry (both real identifiers)
     )
     # RC-282: this reached the RIGHT verdict for an undated entry by accident — `now - 0.0`
     # is ~1.8e9 seconds, which trips the grace window. The rule is now stated instead of
@@ -8449,7 +8467,7 @@ def _tier_c_analytics_json_response(
 
             emit_api_state_cache(
                 ticker=ticker,
-                expiry=expiry if expiry is not None else (data_cache_key[1] if data_cache_key else None),
+                expiry=expiry if expiry is not None else (data_cache_key[1] if data_cache_key else None),  # caps-ok: telemetry expiry label -- requested expiry, else the resolved cache key's, else None; no value invented
                 cache_hit=True,
                 ttl=ttl,
             )
@@ -9096,7 +9114,7 @@ def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
     except Exception as e:
         log.warning("morning wide capture persist failed ticker=%s: %s", tk, e)
         return
-    status = str(result.get("status", ""))
+    status = str(result.get("status", ""))  # caps-ok: fail-closed -- a capture result without status is not "ok", so nothing is persisted as a successful morning capture
     if status == "ok":
         with _morning_capture_lock:
             _morning_capture_done.add(key)
@@ -9278,7 +9296,13 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         flip = payload.get("gamma_flip")
         if flip is None:
             return
-        _ts = round(float(payload.get("computed_ts_utc") or time.time()), 1)
+        # CAPS RC-REHAB-1: an undated terrain payload is NOT logged. It used to be stamped with
+        # the log-append wall clock, filing the flip under a time it was never computed at
+        # (a measurement row with an invented timestamp). Gaps read as gaps.
+        _computed_ts = payload.get("computed_ts_utc")
+        if not _computed_ts:
+            return
+        _ts = round(float(_computed_ts), 1)
         # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
         # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
         # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
@@ -9957,7 +9981,7 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                 ts_recv = _leg_stream_ts_recv(greeks)
                 leg_out = {
                     "symbol": sym, "state": leg_state, "ts_recv": ts_recv,
-                    "age_sec": (round(now - ts_recv, 1) if ts_recv is not None else None),
+                    "age_sec": (round(now - ts_recv, 1) if ts_recv is not None else None),  # caps-ok: age stays None when the leg has no receive timestamp -- honest absence
                 }
                 if leg_state == "rejected":
                     leg_out["rejected_reason"] = rejected_symbols.get(sym)
@@ -10059,7 +10083,9 @@ def _gamma_surface_coverage_summary(surface: dict) -> dict:
                 counts[state] += 1
             else:
                 counts["unavailable"] += 1
-    live_pct = round(100.0 * counts["live"] / relevant, 1) if relevant else 0.0
+    # CAPS RC-REHAB-1: a live percentage over ZERO contract-bearing cells is undefined -> None
+    # (was a served 0.0 "0% live" for a surface with nothing to be live).
+    live_pct = round(100.0 * counts["live"] / relevant, 1) if relevant else None
     return {
         # Independent-review finding (2026-09-16): explicit, machine-readable scope
         # disclosure, not just a docstring comment -- this whole dict describes the
@@ -10604,7 +10630,7 @@ def _radar_row(t: dict, spot: float, atr: "AtrPair", status: str, level_name: st
         "ticker": t.get("ticker"), "spot": spot, "regime": t.get("regime"),
         "posture": t.get("posture"), "status": status,
         "wall_name": level_name, "wall": level,
-        "distance_pct": round(gap / spot * 100, 3) if gap is not None else None,
+        "distance_pct": round(gap / spot * 100, 3) if gap is not None else None,  # caps-ok: distance stays None when there is no gap to a wall -- honest absence
         "distance_atr": round(gap_atr, 3) if gap_atr is not None else None,
         "distance_atr_15m": (round(abs(gap) / atr.m15, 2)
                              if (atr.m15 and gap is not None) else None),
@@ -11098,7 +11124,7 @@ def _backfill_gex_cells_from_last_valid(tk: str, surface: dict) -> None:
         for cell in (surface.get("cells") or []):
             strike = cell.get("strike")
             gex_row, dex_row, vanna_row = cell.get("gex") or [], cell.get("dex") or [], cell.get("vanna") or []
-            snapshot_row = cell.setdefault("value_snapshot_ts_utc", [None] * len(exp_keys))
+            snapshot_row = cell.setdefault("value_snapshot_ts_utc", [None] * len(exp_keys))  # caps-ok: per-cell timestamp row initialised to None per expiry (unknown until stamped below), not a fabricated time
             for j, exp in enumerate(exp_keys):
                 if j >= len(gex_row):
                     continue
@@ -11315,13 +11341,13 @@ def _sse_event_name_for_envelope(env) -> str:
     existed; `_next_gamma_surface_seq`'s gamma-surface publish notify is the one caller that
     sets it, to "gamma_surface_seq". A small pure function (not inlined in the generator) so it
     is directly unit-testable without driving the async generator/SSE connection."""
-    return env.get("_sse_event_name", "l1_projection") if isinstance(env, dict) else "l1_projection"
+    return env.get("_sse_event_name", "l1_projection") if isinstance(env, dict) else "l1_projection"  # caps-ok: SSE event-name routing -- envelopes that do not name an event are the default L1 projection stream by contract (only the gamma surface stamps its own name)
 
 
 def _l1_sse_light_diag_payload() -> dict[str, Any]:
     """Authoritative counters + derived health hints for operators (see l1_sse_field_semantics)."""
     now_m = time.monotonic()
-    drop_m = float(_l1_sse_last_drop_mono or 0.0)  # silent-zero-ok: 0 means "no drop ever recorded" and every consumer below gates on drop_m > 0.0 before deriving an age
+    drop_m = float(_l1_sse_last_drop_mono or 0.0)  # silent-zero-ok: 0 means "no drop ever recorded" and every consumer below gates on drop_m > 0.0 before deriving an age  # caps-ok: 0.0 = "no drop ever recorded" sentinel; the age is None unless drop_m > 0
     drop_age_sec = float(now_m - drop_m) if drop_m > 0.0 else None
     out: dict[str, Any] = {**dict(_l1_sse_diag)}
     out["l1_sse_backpressure_policy"] = (
@@ -11333,7 +11359,7 @@ def _l1_sse_light_diag_payload() -> dict[str, Any]:
     )
     out["l1_sse_last_drop_age_sec"] = drop_age_sec
     out["l1_sse_saturated_recent"] = bool(drop_m > 0.0 and drop_age_sec is not None and drop_age_sec < 60.0)
-    viol = int(out.get("l1_payload_identity_violation", 0) or 0)  # silent-zero-ok: a violation COUNTER — absent means none were recorded, which is what 0 states
+    viol = int(out.get("l1_payload_identity_violation", 0) or 0)  # silent-zero-ok: a violation COUNTER — absent means none were recorded, which is what 0 states  # caps-ok: violation counter, absent = none counted
     if viol > 0:
         out["l1_sse_health_hint"] = "identity_violation"
     elif out["l1_sse_saturated_recent"]:
@@ -11487,7 +11513,7 @@ async def _sse_background_loop() -> None:
             with _sse_lock:
                 subs = list(_sse_subscribers.keys())
             # No viewers: sleep long to avoid idle churn.
-            interval = max(0.5, VIEWER_SSE_REFRESH_SEC) if subs else float(CACHE_TTL)
+            interval = max(0.5, VIEWER_SSE_REFRESH_SEC) if subs else float(CACHE_TTL)  # caps-ok: loop scheduling -- no viewers sleeps the slower CACHE_TTL cadence (documented idle behaviour), not a data value
             # IDLE_SENTINEL_FRESHNESS_V1 — standing producer for unowned keys:
             # runs on EVERY tick (with or without viewers) so unviewed cards can
             # never age unbounded; viewed keys keep the existing owner below.

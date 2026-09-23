@@ -555,8 +555,8 @@ def _extract_canonical_book(data: dict, *, now_ts: Optional[float] = None) -> di
     if ask_size is not None and ask_size < 0:
         ask_size = None
 
-    bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
-    ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
+    bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []  # caps-ok: no book -> no levels; absence is carried by has_book=False, and every consumer (_book_side_depth_total/_book_slope/_book_concentration) returns None on an empty side
+    ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []  # caps-ok: no book -> no levels; has_book=False carries absence and empty-side depth/slope/concentration all return None
     mark, mark_leaf = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,

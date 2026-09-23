@@ -64,10 +64,10 @@ def main() -> None:
     out = {
         "total_snapshots_1m": total_1m,
         "no_anchor_count": len(miss),
-        "pct_of_all_1m": round(100.0 * len(miss) / total_1m, 6) if total_1m else 0,
+        "pct_of_all_1m": round(100.0 * len(miss) / total_1m, 6) if total_1m else None,  # caps-ok: no 1m rows -> share undefined (None), total_snapshots_1m shows the 0
         "trusted_calib_no_anchor": tr,
         "trusted_calib_total": tot_tr,
-        "pct_trusted_no_anchor": round(100.0 * tr / tot_tr, 6) if tot_tr else 0,
+        "pct_trusted_no_anchor": round(100.0 * tr / tot_tr, 6) if tot_tr else None,  # caps-ok: no trusted rows -> share undefined (None), trusted_calib_total shows the 0
         "unique_tickers_affected": len(by_ticker),
         "by_ticker_miss_count": dict(sorted(by_ticker.items(), key=lambda x: -x[1])),
         "per_ticker_ts_range": {

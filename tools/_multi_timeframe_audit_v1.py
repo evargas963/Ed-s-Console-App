@@ -84,9 +84,10 @@ def main() -> None:
             ).fetchall()
         ]
         rpc = {
-            "min": min(per_ticker) if per_ticker else 0,
+            # No rows for this timeframe -> min/max undefined (None), matching _median.
+            "min": min(per_ticker) if per_ticker else None,  # caps-ok: no tickers -> min undefined, None like _median
             "median": _median([float(x) for x in per_ticker]),
-            "max": max(per_ticker) if per_ticker else 0,
+            "max": max(per_ticker) if per_ticker else None,  # caps-ok: no tickers -> max undefined, None like _median
         }
 
         dup_groups = int(
@@ -161,8 +162,8 @@ def main() -> None:
         ]
         coverage[tf] = {
             "days_observed_with_at_least_one_row": len(day_rows),
-            "min_rows_any_day": min(day_rows) if day_rows else 0,
-            "max_rows_any_day": max(day_rows) if day_rows else 0,
+            "min_rows_any_day": min(day_rows) if day_rows else None,  # caps-ok: no observed days -> undefined (None), days_observed carries the 0
+            "max_rows_any_day": max(day_rows) if day_rows else None,  # caps-ok: no observed days -> undefined (None), days_observed carries the 0
         }
 
     sch_by_tf: dict[str, list] = {}

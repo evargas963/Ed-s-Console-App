@@ -127,7 +127,7 @@ def test_analyze_model_by_regime_buckets_separates_missing_from_unknown(tmp_path
         lambda _c, _t, _ts: True,
     )
     out = analyze(db_path)
-    keys = set(out.get("model_by_regime_buckets", {}).keys())
+    keys = set(out["model_by_regime_buckets"].keys())
     assert f"{axis_reliability_bucket_value(None)}|{axis_reliability_bucket_value(None)}" in keys
     assert f"unknown|{axis_reliability_bucket_value(None)}" in keys
     assert f"compression|{axis_reliability_bucket_value(None)}" in keys
@@ -144,7 +144,7 @@ def test_analyze_regime_buckets_separates_missing_from_unknown(tmp_path, monkeyp
         lambda _c, _t, _ts: True,
     )
     out = analyze(db_path)
-    rb = out.get("regime_buckets", {})
+    rb = out["regime_buckets"]
     missing = axis_reliability_bucket_value(None)
     assert missing in rb
     assert rb[missing]["n"] == 2

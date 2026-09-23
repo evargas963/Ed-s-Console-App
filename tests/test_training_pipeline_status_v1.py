@@ -14,8 +14,8 @@ def test_enrollment_category_counts(tmp_path: Path):
     edb.logging_universe_upsert_pinned("IWM", enrollment_source="test", now_ts=1716380000.0)
 
     counts = enrollment_category_counts(db_path)
-    assert counts.get("core", 0) >= 2
-    assert counts.get("pinned", 0) >= 1
+    assert counts["core"] >= 2
+    assert counts["pinned"] >= 1
     assert counts["total"] >= 3
 
 

@@ -117,7 +117,7 @@ def test_active_option_contract_post_calls_the_real_setter(monkeypatch):
 
     calls = []
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contract",
-                        lambda c, **kw: calls.append(c) or True)
+                        lambda c, **kw: calls.append(c) or True)  # caps-ok: recording-stub idiom: list.append returns None, so `or True` makes the stub return True; not a data default
     import server as srv
 
     resp = asyncio.run(srv.post_streaming_active_option_contract(
@@ -161,7 +161,7 @@ def test_active_option_contract_post_surfaces_setter_failure(monkeypatch):
     assert isinstance(invoked.get("generation"), int), (
         "production must pass a real command_generation — a stub that cannot accept it "
         "would fail for the wrong reason")
-    assert "signal write failed" in body.get("error", ""), (
+    assert "signal write failed" in body["error"], (
         "the surfaced error must be THE intended failure, not an incidental TypeError")
 
 
@@ -177,7 +177,7 @@ def test_active_option_contracts_post_defaults_to_empty(monkeypatch):
 
     calls = []
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts",
-                        lambda c, **kw: calls.append(c) or True)
+                        lambda c, **kw: calls.append(c) or True)  # caps-ok: recording-stub idiom: list.append returns None, so `or True` makes the stub return True; not a data default
     import server as srv
 
     resp = asyncio.run(srv.post_streaming_active_option_contracts(payload={}))
@@ -193,7 +193,7 @@ def test_active_option_contracts_post_calls_the_real_setter(monkeypatch):
 
     calls = []
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts",
-                        lambda c, **kw: calls.append(c) or True)
+                        lambda c, **kw: calls.append(c) or True)  # caps-ok: recording-stub idiom: list.append returns None, so `or True` makes the stub return True; not a data default
     import server as srv
 
     resp = asyncio.run(srv.post_streaming_active_option_contracts(
@@ -225,7 +225,7 @@ def test_active_option_contracts_post_surfaces_setter_failure(monkeypatch):
     assert body["ok"] is False
     assert invoked.get("contracts") == [_SPY_CONTRACT]
     assert isinstance(invoked.get("generation"), int)
-    assert "signal write failed" in body.get("error", "")
+    assert "signal write failed" in body["error"]
 
 
 def test_active_option_contracts_post_surfaces_stale_command(monkeypatch):

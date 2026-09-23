@@ -226,8 +226,8 @@ def directional_diagnostics(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def failure_identification(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    fj0 = _lj(rows[0].get("fusion_json")) if rows else {}
-    cj0 = _lj(rows[0].get("canonical_json")) if rows else {}
+    fj0 = _lj(rows[0].get("fusion_json")) if rows else {}  # caps-ok: feeds only sample_fusion_keys (a key-name listing); no rows -> no keys to list, an empty list is the truthful answer
+    cj0 = _lj(rows[0].get("canonical_json")) if rows else {}  # caps-ok: feeds only sample_canonical_keys (a key-name listing); no rows -> no keys to list, an empty list is the truthful answer
     return {
         "why_canonical_defaults_long": [
             "_effective_directional_signal uses canonical triplet; tie-break order is p_up >= p_dn >= p_fl → 'long' when equal or up wins.",
@@ -284,14 +284,18 @@ def filter_vix_bucket_set(r: dict[str, Any]) -> bool:
 
 def filter_utc_us_cash_hours(r: dict[str, Any]) -> bool:
     """Rough US equity session in UTC (not holiday-aware)."""
-    h = int(_features(r).get("utc_hour") or 0)
-    return 13 <= h <= 21
+    h = _features(r).get("utc_hour")
+    if h is None:
+        return False  # no derived hour -> cannot be placed in the window; exclude, never hour 0
+    return 13 <= int(h) <= 21
 
 
 def filter_utc_hour_0_5(r: dict[str, Any]) -> bool:
     """Matches harness DB where decision_ts maps to utc_hour==3."""
-    h = int(_features(r).get("utc_hour") or 0)
-    return 0 <= h <= 5
+    h = _features(r).get("utc_hour")
+    if h is None:
+        return False  # a row without a derived hour used to become hour 0 and pass this window
+    return 0 <= int(h) <= 5
 
 
 def filter_all_rows(_r: dict[str, Any]) -> bool:
@@ -504,7 +508,7 @@ def main() -> int:
     db = pick_db_path(args.db)
     enforce_resolved_path(
         db,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(args.allow_noncanonical_db),  # registered just above
         tool_name="calibration.signal_engineering",
         write_capable=False,
     )

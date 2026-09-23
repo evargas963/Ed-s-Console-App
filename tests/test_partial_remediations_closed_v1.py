@@ -124,4 +124,4 @@ def test_the_fallback_is_gone_from_the_source():
     src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
     assert 'raw = _fin_edge(_m.get("val_accuracy"))' not in src, (
         "the val_accuracy fallback is back; a coin-flip model will read as 55 points of edge")
-    assert '_m.get(edge_key, _m.get("val_accuracy", 0))' not in src
+    assert '_m.get(edge_key, _m.get("val_accuracy", 0))' not in src  # caps-ok: scanner false positive: literal asserted ABSENT from server.py

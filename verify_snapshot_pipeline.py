@@ -166,8 +166,8 @@ def check_snapshot_timeframe_canonical(conn):
     by_tf = dict(cur.fetchall())
     print("Rows by timeframe:", by_tf)
 
-    n_1m = by_tf.get("1m", 0)
-    n_5m = by_tf.get("5m", 0)
+    n_1m = by_tf.get("1m", 0)  # caps-ok: by_tf is `SELECT timeframe, COUNT(*) ... GROUP BY timeframe`; GROUP BY emits no row for a timeframe with zero rows, so an absent key IS a measured count of 0
+    n_5m = by_tf.get("5m", 0)  # caps-ok: by_tf is `SELECT timeframe, COUNT(*) ... GROUP BY timeframe`; GROUP BY emits no row for a timeframe with zero rows, so an absent key IS a measured count of 0
     n_other = sum(v for k, v in by_tf.items() if k not in ("1m", "5m"))
 
     if n_other:

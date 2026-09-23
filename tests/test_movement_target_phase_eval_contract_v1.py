@@ -35,8 +35,9 @@ def test_run_bundle_script_exists():
 )
 def test_phase5_json_has_label_statistics_when_present():
     data = json.loads((ROOT / "data" / "movement_target_phase5_discrimination_v1.json").read_text(encoding="utf-8"))
-    hz = data.get("horizons", {}).get("5c", {})
-    assert "label_statistics" in hz or hz == {}
+    # the phase-5 producer writes every HORIZONS_MV horizon (5c included) with label_statistics
+    hz = data["horizons"]["5c"]
+    assert "label_statistics" in hz
 
 
 def test_json_no_invalid_nan_literals_in_phase6_sample():

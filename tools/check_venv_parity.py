@@ -25,7 +25,7 @@ def _in_ci() -> bool:
 def venv_parity_violations(executable: str | None = None) -> list[str]:
     if _in_ci():
         return []
-    if os.environ.get("ED_CONSOLE_ALLOW_SYSTEM_PYTHON", "").strip() in {"1", "true", "yes"}:
+    if os.environ.get("ED_CONSOLE_ALLOW_SYSTEM_PYTHON", "").strip() in {"1", "true", "yes"}:  # caps-ok: documented bootstrap escape env flag; unset keeps the parity check on
         return []  # bootstrap escape only — not for routine agent work
     venv = (REPO / ".venv").resolve()
     if not venv.is_dir():

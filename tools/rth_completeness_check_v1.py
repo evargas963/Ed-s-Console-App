@@ -172,7 +172,7 @@ def vendor_reconcile(db_path: str, et_date: str, tickers: list[str]) -> dict:
     import os
     from datetime import datetime, timedelta, timezone
 
-    os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # server import without lifespan
+    os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # server import without lifespan  # caps-ok: import-guard env flag so importing server skips its lifespan startup; setdefault keeps a real pytest value; not data
     from bar_rehydration_issue19_v1 import _fetch_minute_window
     from server import get_client
 

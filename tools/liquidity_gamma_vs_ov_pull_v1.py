@@ -231,7 +231,10 @@ def _strike_gex_vol(chain_raw: str, spot: float) -> list[dict]:
         g = bucket_metric(bucket, "net_gex_1pct")
         if g is None:
             g = total_gamma_raw_at_strike(bucket)
-        g = float(g or 0.0)
+        if g is None:
+            # Neither net GEX nor raw gamma at this strike: unmeasured, not a zero-gamma strike.
+            continue
+        g = float(g)
         if not math.isfinite(g):
             continue
         vol = float(vol_by_k.get(sk, 0.0))
@@ -393,7 +396,7 @@ def _run_session(
     if len(sb) < 60:
         return None
     atr = _causal_atr_pre_obs(sb)
-    if atr <= 0:
+    if atr is None or atr <= 0:
         return None
     post_all = [b for b in sb if b["min_of_day"] >= OUTCOME_START_MIN]
     if len(post_all) < MIN_POST_BARS:
@@ -635,7 +638,7 @@ def _verdict_scores(ic_g: dict, ic_v: dict, ic_eq: dict, sessions: int) -> str:
         return "BLANK"
     edge = mg - mv
     if (mg >= PASS["min_ic"] and edge >= PASS["min_ic_edge_g_vs_v"]
-            and (ic_g.get("hit_rate") or 0) >= 0.55):
+            and ic_g.get("hit_rate") is not None and ic_g["hit_rate"] >= 0.55):
         return "PASS"
     if mg > mv and mg > 0:
         return "WEAK"
@@ -1261,7 +1264,7 @@ def _render_md(p: dict) -> str:
         "",
         "## Plain-English verdict",
         "",
-        p.get("plain_english_verdict", "—"),
+        p["plain_english_verdict"],
         "",
         "---",
         "",

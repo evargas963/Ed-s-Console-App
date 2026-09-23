@@ -141,7 +141,7 @@ def _snapshot_fallback(conn: sqlite3.Connection) -> dict[str, Any]:
             excluded_by_reason={
                 "snapshots_1m_unlabeled_outcome_5c": unlabeled,
                 "snapshots_non_1m_rows_ignored_by_contract": int(
-                    gate.get("snapshots_rows_non_canonical_timeframe_in_db", 0)
+                    gate["snapshots_rows_non_canonical_timeframe_in_db"]
                 ),
             },
         ),
@@ -209,22 +209,26 @@ def _phase3_attach_statistical_integrity(out: dict[str, Any]) -> None:
         if g and not g.get("sufficient_sample"):
             insufficient[key] = insufficient.get(key, 0) + 1
 
-    for row in out.get("reliability_by_canonical_confidence", {}).values():
+    # analyze() initialises every bucket section below; index them directly so a renamed or
+    # dropped section raises instead of silently reporting zero insufficient buckets.
+    for row in out["reliability_by_canonical_confidence"].values():
         _inc(row.get("sample_gate"), "reliability_confidence_buckets")
-    for row in out.get("regime_buckets", {}).values():
+    for row in out["regime_buckets"].values():
         _inc(row.get("sample_gate"), "regime_buckets")
-    for row in out.get("model_by_regime_buckets", {}).values():
+    for row in out["model_by_regime_buckets"].values():
         _inc(row.get("sample_gate"), "model_by_regime_buckets")
     for cell in (out.get("threshold_grid") or {}).get("thresholds_tried") or []:
         _inc(cell.get("sample_gate"), "threshold_grid_cells")
-    for row in out.get("probability_bucket_expectancy_5c_pts", {}).values():
+    for row in out["probability_bucket_expectancy_5c_pts"].values():
         _inc(row.get("sample_gate"), "probability_buckets")
     _inc(out.get("brier_sample_gate"), "brier_aggregate")
 
-    sf = out.get("snapshots_fallback") or {}
+    sf = out.get("snapshots_fallback")
     insufficient["snapshot_fallback_by_conviction"] = 0
-    for row in sf.get("by_combined_conviction", {}).values():
-        _inc(row.get("sample_gate"), "snapshot_fallback_by_conviction")
+    if sf:
+        # _snapshot_fallback() always emits by_combined_conviction; absent sf = fallback not run.
+        for row in sf["by_combined_conviction"].values():
+            _inc(row.get("sample_gate"), "snapshot_fallback_by_conviction")
 
     leak_ok = verify_phase3_no_numeric_leak(out)
     out["statistical_integrity"] = {
@@ -482,12 +486,12 @@ def main() -> int:
         json.dumps(
             {
                 "wrote": str(outp),
-                "binary_pass": data.get("statistical_integrity", {}).get("binary_pass"),
+                "binary_pass": data["statistical_integrity"]["binary_pass"],
             },
             indent=2,
         )
     )
-    return 0 if data.get("statistical_integrity", {}).get("binary_pass") else 3
+    return 0 if data["statistical_integrity"]["binary_pass"] else 3
 
 
 if __name__ == "__main__":

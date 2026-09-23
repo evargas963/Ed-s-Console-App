@@ -44,6 +44,11 @@ GEX_NEAR_SPOT_RADIUS: float = 2.0   # strikes within $2 of spot are "near spot"
 VOID_DIST_FALLOFF:   float = 5.0    # $5 from void edge -> factor decays to 0
 
 
+def _unit(x: Optional[float]) -> Optional[float]:
+    """Scale an aggregate into -1..+1 by its own magnitude (floored at 1.0); None stays None."""
+    return None if x is None else x / max(abs(x), 1.0)
+
+
 class _PredictivePositioningForState(NamedTuple):
     dpi: dict
     hedging_flow: dict
@@ -100,50 +105,40 @@ def _predictive_positioning_for_state(
     regime_gamma_at_spot: Optional[float] = None
     try:
         # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
-        # RC-REHAB-1 CAPS fix: preserve the honest None here for DPI below --
-        # compute_dealer_pressure_index already returns null-shaped output on
-        # net_gex=None (math_probabilities.py) -- the 0.0-fallback `sum_gex` below only
-        # feeds the normalization math further down, computed AFTER dpi.
-        _gex_raw = aggregate_net_gex(exposures, cons_strikes)
-        sum_dex = 0.0
-        sum_oi = None
-        sum_vanna = 0.0
+        # RC-REHAB-1 (2026-09-23, CAPS review): every aggregate stays None until a real value
+        # contributes -- the same shape sum_oi already used. Previously an absent net GEX
+        # became 0.0 (under a marker claiming the normalization "has no null-safe path") and
+        # sum_dex / sum_vanna started at 0.0, so a chain with no dex/vanna data reported a
+        # measured zero. Every consumer below handles None by EXCLUDING the term:
+        # compute_dealer_pressure_index returns null-shaped output, compute_hedging_flow_score
+        # re-weights over the terms present, compute_vol_expansion_signal drops the GEX part.
+        # A fabricated 0.0 instead took a full weight share and pulled scores toward neutral.
+        sum_gex = aggregate_net_gex(exposures, cons_strikes)
+        sum_dex: Optional[float] = None
+        sum_oi: Optional[float] = None
+        sum_vanna: Optional[float] = None
         for bkt in exposures.values():
             dex = bucket_metric(bkt, "net_dex_dollars")
             if dex is not None:
-                sum_dex += dex
+                sum_dex = (sum_dex or 0.0) + dex
             bucket_oi = _srv._bucket_total_oi(bkt)
             if bucket_oi is not None:
                 sum_oi = (sum_oi or 0.0) + bucket_oi
-            cv = bucket_metric(bkt, "call_vanna")
-            pv = bucket_metric(bkt, "put_vanna")
-            if cv is not None:
-                sum_vanna += cv
-            if pv is not None:
-                sum_vanna += pv
+            for leg in ("call_vanna", "put_vanna"):
+                v = bucket_metric(bkt, leg)
+                if v is not None:
+                    sum_vanna = (sum_vanna or 0.0) + v
 
-        # 1. DPI — honest None passthrough; compute_dealer_pressure_index already
-        # returns a null-shaped result ({"raw": None, ...}) when net_gex is None.
-        dpi = compute_dealer_pressure_index(sum_dex, _gex_raw, sum_oi)
+        # 1. DPI — null-shaped result when net GEX, net DEX or OI is absent.
+        dpi = compute_dealer_pressure_index(sum_dex, sum_gex, sum_oi)
 
-        # 2. Hedging Flow Score — normalize inputs to -1..+1. This normalization has no
-        # null-safe path of its own, so it falls back to 0.0 here, AFTER dpi already got
-        # the honest None above -- not a substitute for DPI's own real-data check.
-        sum_gex = float(_gex_raw or 0.0)  # caps-ok: normalization-only fallback, dpi already saw the honest None above  # silent-zero-ok: same reasoning -- this 0.0 only scales a -1..+1 ratio, dpi's own read of net_gex already happened above with the honest None
-        max_gex = max(abs(sum_gex), 1.0)
-        max_dex = max(abs(sum_dex), 1.0)
-        max_charm = max(abs(charm_net), 1.0) if charm_net is not None else 1.0  # caps-ok: charm_net: Optional[float] param, guarded by the same is-not-None check right here
-        max_vanna = max(abs(sum_vanna), 1.0)
-        charm_norm = (
-            charm_net / max_charm
-            if charm_net is not None and max_charm > 0
-            else None
-        )
+        # 2. Hedging Flow Score — each input normalized to -1..+1 by its own magnitude
+        # (floored at 1.0); an absent input stays None and is excluded from the score.
         hedging_flow = compute_hedging_flow_score(
-            net_gex_normalized=sum_gex / max_gex if max_gex > 0 else 0,
-            net_dex_normalized=sum_dex / max_dex if max_dex > 0 else 0,
-            charm_normalized=charm_norm,
-            vanna_normalized=sum_vanna / max_vanna if max_vanna > 0 else 0,
+            net_gex_normalized=_unit(sum_gex),
+            net_dex_normalized=_unit(sum_dex),
+            charm_normalized=_unit(charm_net),
+            vanna_normalized=_unit(sum_vanna),
         )
 
         # 3. Gamma Gradient

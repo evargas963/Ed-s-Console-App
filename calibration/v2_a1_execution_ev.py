@@ -239,7 +239,11 @@ def validate_execution_cost_model(model: dict[str, Any]) -> dict[str, Any]:
             min_fill_history_n = -1
     else:
         min_fill_history_n = A1_EXECUTION_EV_DEFAULT_MIN_FILL_HISTORY_N
-    fill_history_n = int(model.get("fill_history_n") or 0)
+    # An unstated fill history is unknown (None), not a measured 0 fills; it is reported as
+    # None and fails the fill-history floor below on its own terms.
+    fill_history_n: int | None = None
+    if model.get("fill_history_n") is not None:
+        fill_history_n = int(model["fill_history_n"])
     base = {
         "model_id": model.get("model_id"),
         "source": model.get("source"),
@@ -276,7 +280,7 @@ def validate_execution_cost_model(model: dict[str, Any]) -> dict[str, Any]:
             "status": "execution_ev_skipped_missing_execution_cost_model",
             "reason": "execution_cost_model_not_validated",
         }
-    if fill_history_n < min_fill_history_n:
+    if fill_history_n is None or fill_history_n < min_fill_history_n:
         return {
             **base,
             "ok": False,

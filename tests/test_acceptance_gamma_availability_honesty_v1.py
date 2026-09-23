@@ -14,7 +14,7 @@ runs inside the SAME required `pytest-full` CI gate as every other test here (no
 job, no new lock file, nothing to remember to invoke separately).
 
 THE PROMISE UNDER TEST. `app/api/routes/options.py`'s CAPS-audit fix (2026-09-20):
-`surf.get("gamma_available", False)` must fail CLOSED when a live-cached surface is
+`surf.get("gamma_available", False)` must fail CLOSED when a live-cached surface is  # caps-ok: scanner false positive: module docstring describing the fail-closed read under test
 missing its `gamma_available` key. Every real producer (`project_gamma_surface` and its
 refresh-path siblings) always sets this key; a missing key means a malformed/incomplete
 surface reached the cache, and defaulting to True would silently claim a "LIVE" signal a
@@ -60,8 +60,8 @@ def _clear(tk: str) -> None:
 
 
 def test_a_malformed_surface_reports_unavailable_not_a_fabricated_true():
-    """The mutation this test must catch: `surf.get("gamma_available", False)` reverting
-    to `surf.get("gamma_available", True)`. A surface missing the key entirely (never
+    """The mutation this test must catch: `surf.get("gamma_available", False)` reverting  # caps-ok: scanner false positive: docstring naming the mutation this test catches
+    to `surf.get("gamma_available", True)`. A surface missing the key entirely (never  # caps-ok: scanner false positive: docstring naming the mutation this test catches
     produced by any real producer -- this is what a malformed/incomplete surface looks
     like) must never read back to the API caller as available."""
     import time

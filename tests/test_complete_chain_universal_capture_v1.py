@@ -371,7 +371,7 @@ def _real_contracts_at(expiry_str: str, n: int):
                                  [_TSLA_CONTRACTS[i % len(_TSLA_CONTRACTS)] for i in range(n)]):
         row = copy.deepcopy(template)
         row["expirationDate"] = f"{expiry_str}T20:00:00.000+00:00"
-        row["symbol"] = f"{row.get('symbol', 'X')}_{expiry_str}_{i}"
+        row["symbol"] = f"{row['symbol']}_{expiry_str}_{i}"
         out.append(row)
     return out
 

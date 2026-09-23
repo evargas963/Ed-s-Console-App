@@ -99,20 +99,20 @@ def _rows(con: sqlite3.Connection, ticker: str) -> list[dict]:
         out.append({
             "dt": dt,
             "open": float(o), "high": float(h), "low": float(l),
-            "close": float(c), "volume": float(v or 0.0),
+            "close": float(c), "volume": None if v is None else float(v),
             "min_of_day": dt.hour * 60 + dt.minute,
         })
     return out
 
 
-def _causal_atr_pre_obs(sb: list[dict]) -> float:
+def _causal_atr_pre_obs(sb: list[dict]) -> float | None:
     """Median 1m range from RTH open through last bar BEFORE outcome window — no afternoon lookahead."""
     pre = [
         b for b in sb
         if RTH_OPEN_MIN <= b["min_of_day"] < OUTCOME_START_MIN and b["high"] > b["low"]
     ]
     if len(pre) < 5:
-        return 0.0
+        return None  # ATR unmeasurable (fewer than 5 ranged pre-window bars); callers drop the day
     return statistics.median(b["high"] - b["low"] for b in pre)
 
 
@@ -178,8 +178,15 @@ def _load_obs_chains(
 # ── Strike mass from observation chain ───────────────────────────────────────
 
 def _aggregate_strike_mass(contracts: list[dict], spot: float) -> dict[float, dict]:
-    """Per-strike OI + as-of options volume (call+put summed). Causal: obs chain only."""
+    """Per-strike OI + as-of options volume (call+put summed). Causal: obs chain only.
+
+    CAPS (CALL_OR_DEFAULT, 2026-09-23): a contract that reported no openInterest or
+    totalVolume used to contribute 0 to its strike's totals, understating that strike in every
+    ranking, quantile and IC the three sibling studies compute. A strike with ANY unreported
+    leg is now excluded (its totals are unknown, not smaller); fully-reported strikes are
+    unchanged."""
     by_k: dict[float, dict] = {}
+    incomplete: set[float] = set()
     min_dte = None
     for ct in contracts:
         if not isinstance(ct, dict):
@@ -187,17 +194,22 @@ def _aggregate_strike_mass(contracts: list[dict], spot: float) -> dict[float, di
         sk = float_finite_or_none(ct.get("strikePrice"))
         if sk is None:
             continue
-        oi = float_nonnegative_or_none(ct.get("openInterest")) or 0.0
-        vol = float_nonnegative_or_none(ct.get("totalVolume")) or 0.0
+        oi = float_nonnegative_or_none(ct.get("openInterest"))
+        vol = float_nonnegative_or_none(ct.get("totalVolume"))
         dte = float_finite_or_none(ct.get("daysToExpiration"))
-        b = by_k.setdefault(sk, {"oi": 0.0, "vol": 0.0, "min_dte": None})
-        b["oi"] += oi
-        b["vol"] += vol
+        b = by_k.setdefault(sk, {"oi": 0.0, "vol": 0.0, "min_dte": None})  # caps-ok: per-strike sum identity; only reported legs are added, a strike with an unreported leg is dropped below
+        if oi is None or vol is None:
+            incomplete.add(sk)
+        else:
+            b["oi"] += oi
+            b["vol"] += vol
         if dte is not None:
             if b["min_dte"] is None or dte < b["min_dte"]:
                 b["min_dte"] = dte
             if min_dte is None or dte < min_dte:
                 min_dte = dte
+    for sk in incomplete:
+        del by_k[sk]
     for sk, b in by_k.items():
         b["moneyness"] = (sk - spot) / spot if spot else None
         b["turnover"] = (b["vol"] / b["oi"]) if b["oi"] > 0 else None
@@ -583,7 +595,6 @@ def _half_edge(
     for name, pred in (("first", lambda s: s < cut), ("second", lambda s: s >= cut)):
         sub = [e for d, e in dated if pred(d)]
         m = _mean(sub)
-        _wins = m is not None and ((m > 0) if higher_better else (m < 0))
         # For higher_better, positive edge is good; for pin distance we pass
         # improvement already as positive = better.
         if higher_better:
@@ -603,8 +614,13 @@ def _half_edge(
 
 
 def _verdict_arm(summary: dict) -> str:
-    """PASS only if A or B beats moneyness-matched placebo AND survives score-shuffle null."""
-    n_sess = summary.get("n_sessions", 0)
+    """PASS only if A or B beats moneyness-matched placebo AND survives score-shuffle null.
+
+    `summary` is the per-arm dict built in main(); it always carries n_sessions,
+    n_pierce_real/n_pierce_shuffle and the *_halves dicts (each with halves_agree), so
+    they are indexed directly: a missing key is a broken summary, not a zero count.
+    """
+    n_sess = summary["n_sessions"]
     if n_sess < PASS["min_sessions"]:
         return "FAIL"
     a_edge = summary.get("time_in_band_edge")
@@ -612,30 +628,28 @@ def _verdict_arm(summary: dict) -> str:
     a_ok = (
         a_edge is not None
         and a_edge >= PASS["min_edge_pp_time_in_band"]
-        and summary.get("time_in_band_halves", {}).get("halves_agree")
+        and summary["time_in_band_halves"]["halves_agree"]
     )
-    b_powered = summary.get("n_pierce_real", 0) >= PASS["min_pierce_events"]
+    b_powered = summary["n_pierce_real"] >= PASS["min_pierce_events"]
     b_ok = (
         b_powered
         and b_edge is not None
         and b_edge >= PASS["min_edge_pp_failed_break"]
-        and summary.get("failed_break_halves", {}).get("halves_agree")
+        and summary["failed_break_halves"]["halves_agree"]
     )
     # Hard null: must also beat score-shuffle on the same family that cleared placebo
-    shuf_a = summary.get("beats_score_shuffle_tib")
-    shuf_b = summary.get("beats_score_shuffle_fb")
-    # beats_* flags are set after first verdict call — compute inline here too
+    # (beats_* flags are set after this verdict call, so compute inline here).
     tib_vs = summary.get("time_in_band_edge_vs_shuffle")
     fb_vs = summary.get("failed_break_edge_vs_shuffle")
     shuf_a = bool(
         tib_vs is not None
         and tib_vs >= PASS["min_edge_pp_time_in_band"]
-        and summary.get("time_in_band_shuffle_halves", {}).get("halves_agree")
+        and summary["time_in_band_shuffle_halves"]["halves_agree"]
     )
     shuf_b = bool(
         fb_vs is not None
         and fb_vs >= PASS["min_edge_pp_failed_break"]
-        and summary.get("n_pierce_shuffle", 0) >= PASS["min_pierce_events"]
+        and summary["n_pierce_shuffle"] >= PASS["min_pierce_events"]
     )
     if (a_ok and shuf_a) or (b_ok and shuf_b):
         return "PASS"
@@ -698,8 +712,8 @@ def run(tickers: list[str]) -> dict:
             continue
 
         atr = _causal_atr_pre_obs(sb)
-        if atr <= 0:
-            drops["atr_zero"] += 1
+        if atr is None or atr <= 0:
+            drops["atr_unmeasurable_or_zero"] += 1
             continue
 
         post = [b for b in sb if b["min_of_day"] >= OUTCOME_START_MIN]
@@ -723,7 +737,7 @@ def run(tickers: list[str]) -> dict:
             if _in_moneyness(sk, spot)
         )
 
-        faucet = str(meta.get("faucet") or "unknown")
+        faucet = str(meta["faucet"])  # _load_obs_chains sets "faucet" on every obs entry
         faucet_counts[faucet] += 1
 
         day_arm: dict[str, dict] = {}
@@ -1198,11 +1212,11 @@ def write_report(result: dict) -> None:
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for arm in ARMS:
-        a = result["arm_summaries"].get(arm) or {}
+        a = result["arm_summaries"][arm]  # arm_days is pre-seeded for every ARM -> always summarized
         lines.append(
             "| {arm} | {n} | {tr} | {tp} | {ts} | {te} | {fr} | {fp} | {fs} | {fe} | {pi} | `{v}` |".format(
                 arm=arm,
-                n=a.get("n_sessions", 0),
+                n=a["n_sessions"],
                 tr=_fmt_pct(a.get("time_in_band_real")),
                 tp=_fmt_pct(a.get("time_in_band_placebo")),
                 ts=_fmt_pct(a.get("time_in_band_shuffle")),
@@ -1212,7 +1226,7 @@ def write_report(result: dict) -> None:
                 fs=_fmt_pct(a.get("failed_break_shuffle_pooled")),
                 fe=_fmt_pct(a.get("failed_break_edge")),
                 pi=_fmt_pct(a.get("pin_improvement")),
-                v=a.get("verdict", "?"),
+                v=a["verdict"],
             )
         )
 
@@ -1237,9 +1251,9 @@ def write_report(result: dict) -> None:
         "|---|---:|---:|---:|---:|",
     ]
     for arm in ARMS:
-        a = result["arm_summaries"].get(arm) or {}
+        a = result["arm_summaries"][arm]
         lines.append(
-            f"| {arm} | {a.get('pin_near_expiry_n_sessions', 0)} | "
+            f"| {arm} | {a['pin_near_expiry_n_sessions']} | "
             f"{_fmt_num(a.get('pin_near_expiry_dist_real'), 3)} | "
             f"{_fmt_num(a.get('pin_near_expiry_dist_placebo'), 3)} | "
             f"{_fmt_pct(a.get('pin_near_expiry_improvement'))} |"

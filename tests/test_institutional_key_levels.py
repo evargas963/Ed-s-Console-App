@@ -223,12 +223,12 @@ def _wide_vs_selected_wall_books():
     chain, spot = fx["chain"], float(fx["spot"])
     src = next(
         c for c in chain
-        if str(c.get("putCall", "")).upper() == "CALL"
-        and float(c.get("strikePrice") or 0) == 745.0
+        if str(c["putCall"]).upper() == "CALL"
+        and float(c["strikePrice"]) == 745.0
     )
     extra = dict(src)
     extra["strikePrice"] = 760.0
-    extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
+    extra["daysToExpiration"] = int(src["daysToExpiration"]) + 30
     extra["expirationDate"] = "2026-08-16"
     extra["openInterest"] = 500_000
     extra["symbol"] = "SPY   260816C00760000"
@@ -274,7 +274,7 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
     from math_probabilities import compute_wall_score_components
 
     prox, _, audit = compute_wall_score_components(760.0, spot, "CALL", bound)
-    levels_scored = [d["level"] for d in audit.get("proximity_detail", [])]
+    levels_scored = [d["level"] for d in audit["proximity_detail"]]
     assert bound[0].dom_delta_wall is None
     assert "call_delta_wall" in levels_scored
     assert "put_delta_wall" in levels_scored
@@ -318,7 +318,7 @@ def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
     assert "strike_in_call_gamma_wall_approach_zone" in (audit.get("bias_notes") or [])
     assert bias == 0.85
     assert all("dom_gamma" not in n for n in (audit.get("bias_notes") or []))
-    assert all(d["level"] != "dom_gamma_wall" for d in audit.get("proximity_detail", []))
+    assert all(d["level"] != "dom_gamma_wall" for d in audit["proximity_detail"])
     # Negative: even a fabricated dominant CALL wall at the call strike must NOT
     # revive +0.45 or a third proximity contrib (pre-fix did both).
     fake = replace(
@@ -331,7 +331,7 @@ def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
     )
     prox2, bias2, audit2 = compute_wall_score_components(760.0, spot, "CALL", [fake])
     notes2 = audit2.get("bias_notes") or []
-    levels2 = [d["level"] for d in audit2.get("proximity_detail", [])]
+    levels2 = [d["level"] for d in audit2["proximity_detail"]]
     assert "dom_gamma_call_confluence" not in notes2
     assert "dom_gamma_wall" not in levels2
     assert bias2 == 0.85  # approach only — not 0.85+0.45
@@ -342,7 +342,7 @@ def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
     _, _, audit3 = compute_wall_score_components(
         float(unbound[0].dom_gamma_wall), spot, "PUT", unbound
     )
-    levels3 = [d["level"] for d in audit3.get("proximity_detail", [])]
+    levels3 = [d["level"] for d in audit3["proximity_detail"]]
     assert "dom_gamma_wall" not in levels3
     assert all("dom_gamma" not in n for n in (audit3.get("bias_notes") or []))
 
@@ -891,7 +891,7 @@ def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
             "spot": 755.0,
         }
     snaps = srv._terrain_snapshots_for_radar()
-    spy = next((s for s in snaps if s.get("ticker") == "SPY"), None)
+    spy = next((s for s in snaps if s.get("ticker") == "SPY"), None)  # caps-ok: None is asserted against on the very next line (assert spy is not None), so a missing SPY snapshot fails the test
     assert spy is not None
     assert spy["levels_stale"] is True
     assert "levels_stale_reason" in spy
@@ -905,7 +905,7 @@ def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
             "spot": 755.0,
         }
     fresh_snaps = srv._terrain_snapshots_for_radar()
-    fresh_spy = next((s for s in fresh_snaps if s.get("ticker") == "SPY"), None)
+    fresh_spy = next(s for s in fresh_snaps if s.get("ticker") == "SPY")
     assert fresh_spy["levels_stale"] is False
 
 

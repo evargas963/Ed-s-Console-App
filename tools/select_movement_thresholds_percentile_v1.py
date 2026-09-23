@@ -57,7 +57,7 @@ def _eval_threshold(abs_pts: list[float], thr: float) -> dict:
     nomove = [x for x in abs_pts if x < thr]
     # dir balance needs signed pts aligned — use paired list in caller
     cov = len(move) / n
-    maj_move = max(len(move), len(nomove)) / n if n else 0.0
+    maj_move = max(len(move), len(nomove)) / n  # n > 0: the n == 0 case returned above
     return {
         "n": n,
         "retained_coverage": round(cov, 6),
@@ -135,8 +135,11 @@ def main() -> None:
             ups = sum(1 for i in retained_idx if signed[i] > 0)
             dns = sum(1 for i in retained_idx if signed[i] < 0)
             tdir = ups + dns
-            bal = abs(ups - dns) / tdir if tdir else 1.0
-            maj_dir = max(ups, dns) / tdir if tdir else 0.5
+            # thr > 0 and every retained |pts| >= thr, so each retained row is signed (up or
+            # down) and cov >= 0.25 makes the set non-empty: tdir > 0 always here. The old
+            # 1.0 / 0.5 fallbacks were unreachable fabrications; divide directly.
+            bal = abs(ups - dns) / tdir
+            maj_dir = max(ups, dns) / tdir
             ev = _eval_threshold(abs_pts, thr)
             cand = {
                 "percentile": p,

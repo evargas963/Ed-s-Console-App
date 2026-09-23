@@ -126,7 +126,7 @@ class HorizonMLFusionSnapshot:
     prob_flat: float
     dominant_direction: str
     top_probability: float
-    fusion_confidence_label: str
+    fusion_confidence_label: str | None  # None = the fusion payload stated no (valid) label
     fusion_confidence_score: float | None
     mc_available: bool
     contributing_models: tuple[str, ...] = field(default_factory=tuple)
@@ -210,9 +210,13 @@ def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnap
     dom = direction_from_normalized_triplet(pu, pd, pf)
     vals = sorted([pu, pd, pf], reverse=True)
     top = float(vals[0])
-    fcl = str(getattr(fus, "fusion_confidence", "low") or "low").strip().lower()
+    # CAPS RC-REHAB-1: FusionPayload.fusion_confidence is Optional[str]. A missing or
+    # unrecognised label used to be recorded as "low" -- a confidence read the fusion never
+    # made. It now stays None (no label).
+    _fcl_raw = getattr(fus, "fusion_confidence", None)
+    fcl = str(_fcl_raw).strip().lower() if _fcl_raw is not None else None
     if fcl not in ("low", "medium", "high"):
-        fcl = "low"
+        fcl = None
     fcs = float_finite_or_none(getattr(fus, "fusion_confidence_score", None))
     cm = tuple(str(x) for x in (getattr(fus, "contributing_models", None) or []) if x)
     mm = tuple(str(x) for x in (getattr(fus, "missing_models", None) or []) if x)
@@ -226,7 +230,7 @@ def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnap
         top_probability=top,
         fusion_confidence_label=fcl,
         fusion_confidence_score=fcs,
-        mc_available=bool(getattr(fus, "mc_available", False)),
+        mc_available=bool(getattr(fus, "mc_available", False)),  # caps-ok: boolean capability flag -- FusionPayload.mc_available itself defaults False ("Monte Carlo did not contribute"); a payload without the attribute had no MC input, so False is the true state
         contributing_models=cm,
         missing_models=mm,
         provenance=prov,

@@ -71,7 +71,7 @@ def _wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
 def _chi2_independence(table: list[list[int]]) -> tuple[float, int]:
     """Pearson chi-square; table[r][c]. Returns (chi2, df)."""
     rows = len(table)
-    cols = len(table[0]) if rows else 0
+    cols = len(table[0]) if rows else 0  # caps-ok: an empty table has zero columns; the n == 0 branch right below returns before any statistic is computed from it
     n = sum(sum(row) for row in table)
     if n == 0:
         return (0.0, 0)
@@ -219,7 +219,7 @@ def main() -> None:
         near_uniform = sum(1 for m in max_probs if m < 0.34)
 
         # Collapse: dominant predicted class share
-        top_share = ctr_p.most_common(1)[0][1] / totp if ctr_p else 0.0
+        top_share = ctr_p.most_common(1)[0][1] / totp  # n_pred > 0 (guarded above), so ctr_p is non-empty
 
         # Conditional outcome rates
         cond: dict[str, Any] = {}
@@ -233,22 +233,22 @@ def main() -> None:
             nn = len(idxs)
             cond[pcl] = {
                 "n": nn,
-                "pct_actual_up": round(100.0 * co.get("up", 0) / nn, 6),
-                "pct_actual_down": round(100.0 * co.get("down", 0) / nn, 6),
-                "pct_actual_flat": round(100.0 * co.get("flat", 0) / nn, 6),
+                "pct_actual_up": round(100.0 * co.get("up", 0) / nn, 6),  # caps-ok: Counter tally of actual outcomes; no key means zero rows had that outcome
+                "pct_actual_down": round(100.0 * co.get("down", 0) / nn, 6),  # caps-ok: Counter tally of actual outcomes; no key means zero rows had that outcome
+                "pct_actual_flat": round(100.0 * co.get("flat", 0) / nn, 6),  # caps-ok: Counter tally of actual outcomes; no key means zero rows had that outcome
             }
         # Uplift vs baseline (percentage points)
         p_base_up = float(bl["pct_up"]) / 100.0
         p_base_dn = float(bl["pct_down"]) / 100.0
         p_base_fl = float(bl["pct_flat"]) / 100.0
         for pcl in ("up", "down", "flat"):
-            if cond[pcl].get("n", 0) == 0:
+            if cond[pcl]["n"] == 0:  # every cond entry above is written with n
                 continue
             nn = cond[pcl]["n"]
             co = Counter(outcomes[i] for i in range(len(outcomes)) if pred_classes[i] == pcl)
-            cond[pcl]["uplift_vs_baseline_up_pp"] = round(100.0 * (co.get("up", 0) / nn - p_base_up), 6)
-            cond[pcl]["uplift_vs_baseline_down_pp"] = round(100.0 * (co.get("down", 0) / nn - p_base_dn), 6)
-            cond[pcl]["uplift_vs_baseline_flat_pp"] = round(100.0 * (co.get("flat", 0) / nn - p_base_fl), 6)
+            cond[pcl]["uplift_vs_baseline_up_pp"] = round(100.0 * (co.get("up", 0) / nn - p_base_up), 6)  # caps-ok: Counter tally of actual outcomes; no key means zero rows had that outcome
+            cond[pcl]["uplift_vs_baseline_down_pp"] = round(100.0 * (co.get("down", 0) / nn - p_base_dn), 6)  # caps-ok: Counter tally of actual outcomes; no key means zero rows had that outcome
+            cond[pcl]["uplift_vs_baseline_flat_pp"] = round(100.0 * (co.get("flat", 0) / nn - p_base_fl), 6)  # caps-ok: Counter tally of actual outcomes; no key means zero rows had that outcome
 
         # 3x3 table predicted x actual
         labels = ["up", "down", "flat"]

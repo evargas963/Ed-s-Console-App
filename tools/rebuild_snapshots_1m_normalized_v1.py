@@ -144,7 +144,8 @@ def execute_clone(
             f"(free={audit.get('disk_free_gb')}GB db={audit.get('db_size_gb')}GB; need db+2GB)"
         )
         return audit
-    if not audit.get("snapshots_prior_net_gamma", {}).get("ok"):
+    # measure() always records snapshots_prior_net_gamma (a _probe_prior_net_gamma dict with "ok").
+    if not audit["snapshots_prior_net_gamma"]["ok"]:
         audit["ok"] = False
         audit["error"] = "source snapshots unreadable — refuse clone"
         return audit
@@ -216,7 +217,7 @@ def execute_clone(
                     try:
                         dst.execute(sql)
                     except sqlite3.Error as e:
-                        audit.setdefault("nonfatal_schema_errs", []).append(
+                        audit.setdefault("nonfatal_schema_errs", []).append(  # caps-ok: list accumulator: appends each non-fatal index/view/trigger DDL error to the audit list, creating it on first error
                             f"{typ} {name}: {e}"
                         )
             dst.commit()
@@ -254,9 +255,11 @@ def execute_clone(
         con.close()
 
     if not (
-        audit.get("materialize", {}).get("success")
-        and audit.get("repaired_prior", {}).get("ok")
-        and audit.get("repaired_count", 0) > 0
+        # All three are assigned unconditionally just above; index them so a refactor that
+        # drops one fails loudly instead of reading as a (fail-closed) falsy default.
+        audit["materialize"]["success"]
+        and audit["repaired_prior"]["ok"]
+        and audit["repaired_count"] > 0
     ):
         audit["ok"] = False
         audit["error"] = "repaired DB failed prove — live DB untouched"
@@ -281,7 +284,7 @@ def execute_clone(
     finally:
         con.close()
     audit["quarantine"] = str(quar_path)
-    audit["ok"] = bool(audit.get("live_prior", {}).get("ok"))
+    audit["ok"] = bool(audit["live_prior"]["ok"])
     audit["ended_at_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     return audit
 

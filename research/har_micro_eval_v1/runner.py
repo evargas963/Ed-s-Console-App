@@ -79,7 +79,7 @@ def run_study(db_path: Path | str) -> dict[str, Any]:
                 xs.append(np.concatenate([feats[j], mf]))
                 ys.append(y)
                 dates.append(_et_date(ts))
-            X = np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, N_FEATS))
+            X = np.asarray(xs, dtype=np.float64) if xs else np.zeros((0, N_FEATS))  # caps-ok: zero-row design matrix of the correct width (no values invented); X.shape[0]==0 / no folds routes the cell to verdict UNDER_SAMPLED with mcc None
             day_list = sorted(set(dates))
             folds = expanding_window_oof_folds(day_list, n_folds=n_folds)
             if X.shape[0] == 0 or not folds:

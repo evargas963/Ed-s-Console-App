@@ -474,7 +474,7 @@ def run_grid(db_path: str, ticker: str = "SPY") -> dict[str, Any]:
         "preflight": pf,
         "loader": loader_info,
         "n_cells": len(verdicts),
-        "n_survivors": 0 if halted else len(survivors),
+        "n_survivors": 0 if halted else len(survivors),  # caps-ok: preregistered hard halt ('no real survivors may be reported'); status HALT_* and placebo.hard_halt_engaged carry why the count is 0
         "survivors": [] if halted else survivors,
         "anti_signal_cells": anti,
         "placebo": {

@@ -25,7 +25,7 @@ def test_stale_cache_revalidation_quarantines_bad_spot():
     # one The Call computed when the data was fresh.
     assert out.get("call_signal") == "long"
     assert out.get("call_conviction") == "high"
-    assert (out.get("market_data_quarantine") or {}).get("active") is True
+    assert out["market_data_quarantine"]["active"] is True
     assert out.get("analytics_stale") is True
     assert md.get("call_signal") == "long"  # the cached bundle itself is untouched
 

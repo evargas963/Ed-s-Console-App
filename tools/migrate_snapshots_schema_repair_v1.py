@@ -184,7 +184,10 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 def _integrity_check(conn: sqlite3.Connection) -> str:
     row = conn.execute("PRAGMA integrity_check").fetchone()
-    return str(row[0] if row else "")
+    if row is None:
+        # SQLite always returns >=1 row; report the anomaly instead of an empty verdict string.
+        return "integrity_check returned no row"
+    return str(row[0])
 
 
 def _table_info(conn: sqlite3.Connection, table: str) -> list[sqlite3.Row]:
@@ -196,9 +199,9 @@ def _column_dict(row: sqlite3.Row | dict[str, Any], *, source: str) -> dict[str,
         "cid": int(row["cid"]) if "cid" in row.keys() else 0,
         "name": str(row["name"]),
         "type": str(row["type"] or ""),
-        "notnull": int(row["notnull"] or 0),
+        "notnull": int(row["notnull"]),  # PRAGMA table_info notnull is always 0/1
         "dflt_value": row["dflt_value"],
-        "pk": int(row["pk"] or 0),
+        "pk": int(row["pk"]),  # PRAGMA table_info pk is always an int (0 = not PK)
         "source": source,
     }
 
@@ -297,8 +300,9 @@ def _snapshot_schema_probe(conn: sqlite3.Connection, table: str) -> dict[str, An
         "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
         (table,),
     ).fetchone()
-    first_type = str(first["type"] or "").upper() if first else ""
-    first_pk = int(first["pk"] or 0) if first else 0
+    # Absent table -> no first column: type/pk are None, not a fabricated ""/0 shape.
+    first_type = str(first["type"] or "").upper() if first else None
+    first_pk = int(first["pk"]) if first else None
     return {
         "table": table,
         "exists": bool(cols),
@@ -338,14 +342,14 @@ def _id_assignment_preview(conn: sqlite3.Connection) -> dict[str, Any]:
         FROM snapshots
         """
     ).fetchone()
-    max_id = int(row["max_snapshot_id"] or 0)
-    null_count = int(row["null_count"] or 0)
+    max_id = int(row["max_snapshot_id"])  # SQL COALESCE(MAX, 0): new ids start at 1 on an empty table
+    null_count = int(row["null_count"] or 0)  # caps-ok: SUM() over zero rows is NULL in SQLite; an empty snapshots table has exactly 0 NULL snapshot_ids, so 0 is the true count (drives first/last_new_snapshot_id = None)
     return {
         "max_existing_snapshot_id": max_id,
         "null_count": null_count,
         "first_new_snapshot_id": max_id + 1 if null_count else None,
         "last_new_snapshot_id": max_id + null_count if null_count else None,
-        "total_rows": int(row["total"] or 0),
+        "total_rows": int(row["total"]),  # COUNT(*) is never NULL
     }
 
 
@@ -361,7 +365,7 @@ def _collision_count(conn: sqlite3.Connection) -> int:
           )
         """
     ).fetchone()
-    return int(row[0] or 0)
+    return int(row[0])  # COUNT(*) is never NULL
 
 
 def _index_sql(conn: sqlite3.Connection, table: str) -> dict[str, str]:
@@ -401,7 +405,7 @@ def _column_definition(col: dict[str, Any], *, normalized: bool = False) -> str:
     if normalized and name == "normalized_from_subminute":
         return "normalized_from_subminute INTEGER NOT NULL DEFAULT 0"
     parts = [_quote_ident(name), ctype]
-    if int(col["notnull"] or 0):
+    if col["notnull"]:  # _column_dict already int()-normalized PRAGMA notnull
         parts.append("NOT NULL")
     default = col["dflt_value"]
     if default is not None:
@@ -476,7 +480,9 @@ def _migrate_snapshots(conn: sqlite3.Connection, audit: dict[str, Any]) -> None:
     conn.execute("ALTER TABLE snapshots_new RENAME TO snapshots")
     for sql in REQUIRED_INDEXES.values():
         conn.execute(sql)
-    for name, sql in audit.get("indexes_before", {}).items():
+    # main() always captures indexes_before before any rebuild; a missing capture must fail
+    # loudly, not silently drop the non-required indexes.
+    for name, sql in audit["indexes_before"].items():
         if name not in REQUIRED_INDEXES:
             conn.execute(sql)
     conn.execute("ANALYZE snapshots")
@@ -526,7 +532,7 @@ def _success(audit: dict[str, Any]) -> dict[str, Any]:
 def _fail(audit: dict[str, Any], status: str, message: str) -> dict[str, Any]:
     audit["success"] = False
     audit["status"] = status
-    audit.setdefault("errors", []).append(message)
+    audit.setdefault("errors", []).append(message)  # caps-ok: list accumulator: appends this failure message to the audit error list, creating the list on first error
     return audit
 
 

@@ -39,7 +39,7 @@ def test_record_analytics_bg_failure_marks_stale_after_threshold(_bg_fail_spy):
     assert cache_key in srv._state_cache
     md = srv._state_cache[cache_key]["ms_dict"]
     assert md.get("state_error") == "analytics_refresh_failed"
-    assert "boom" in str(md.get("state_error_detail", ""))
+    assert "boom" in str(md["state_error_detail"])
     assert md.get("analytics_stale") is True
     assert inflight_key not in srv._analytics_bg_fail_counts
 
@@ -60,7 +60,7 @@ def test_record_analytics_bg_failure_writes_cold_cache_error_shell(_bg_fail_spy)
     assert md.get("state_error") == "token_invalid"
     assert md.get("analytics_pending_shell") is False
     assert md.get("error") == "token_invalid"
-    assert "reauth_schwab" in str(md.get("remediation", ""))
+    assert "reauth_schwab" in str(md["remediation"])
 
 
 def test_schedule_analytics_recompute_wires_fail_counter(monkeypatch, _bg_fail_spy):
@@ -173,7 +173,7 @@ def test_analytics_stale_not_sse_connected_only():
     )
     assert md.get("analytics_stale") is False
     assert md.get("analytics_refresh_due") is True
-    assert md.get("analytics_age_sec", 99) < 2.0
+    assert md["analytics_age_sec"] < 2.0
 
 
 def test_resolve_ticker_param_symbol_alias():
@@ -328,7 +328,7 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
     assert md.get("expiries") == [exp, "2099-06-08"]
     assert md.get("selected_exp") == exp
     assert md.get("kl_call_gamma_wall") == 510.0
-    assert len(md.get("summary_rows") or []) == 1
+    assert len(md["summary_rows"]) == 1
     srv._state_cache.pop(cache_key, None)
     with srv._terrain_cache_lock:
         srv._terrain_cache.pop(ticker.upper(), None)

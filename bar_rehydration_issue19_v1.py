@@ -245,7 +245,9 @@ def run_rehydration(
     post_path.write_text(json.dumps(post, indent=2, default=str) + "\n", encoding="utf-8")
     out["post_rehydration_json"] = str(post_path)
 
-    feasible = int(post.get("pin_neutral_anchor_feasible_count") or 0)
+    # collect_bar_recovery_audit always sets this count; strict so a producer change cannot
+    # silently read as "0 feasible" and skip the schema flag / repair.
+    feasible = int(post["pin_neutral_anchor_feasible_count"])
     out["pin_neutral_anchor_feasible_after"] = feasible
 
     if feasible > 0:
@@ -275,7 +277,7 @@ def run_rehydration(
         rp.write_text(json.dumps(repair_audit, indent=2, default=str) + "\n", encoding="utf-8")
         out["pin_neutral_repair_json"] = str(rp)
 
-        updates = int(repair_audit.get("updates_executed") or 0)
+        updates = int(repair_audit["updates_executed"])  # fill_outcomes_pin_neutral_backfill_v1 always sets it
         if updates > 0 and not skip_normalized_refresh:
             import subprocess
 
@@ -322,7 +324,7 @@ def main() -> None:
         start_buffer_sec=args.start_buffer_sec,
         run_repair_after=not args.no_repair,
         skip_normalized_refresh=args.no_normalized_refresh,
-        allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)),
+        allow_noncanonical=bool(args.allow_noncanonical_db),  # registered by register_allow_noncanonical_flag above
     )
     summary_path = args.db.parent / "bar_rehydration_issue19_v1_last_run.json"
     summary_path.write_text(json.dumps(r, indent=2, default=str) + "\n", encoding="utf-8")

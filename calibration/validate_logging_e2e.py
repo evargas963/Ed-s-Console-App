@@ -16,7 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-os.environ.setdefault("ED_CALIBRATION_LOG", "1")
+os.environ.setdefault("ED_CALIBRATION_LOG", "1")  # caps-ok: this harness exists to prove the writer persists rows, so it enables the default-OFF flag for its own process; an explicit operator value is respected and a disabled writer then shows as a failed row-count check
 
 from db import DB_PATH, EdDB  # noqa: E402
 from signal_types import SignalInput  # noqa: E402

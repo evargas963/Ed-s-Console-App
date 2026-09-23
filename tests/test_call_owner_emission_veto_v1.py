@@ -151,11 +151,11 @@ def test_stale_cache_serve_blocks_actionability_and_manufactures_no_wait():
 def test_server_validates_the_emission_facts_once_before_build_and_hands_them_to_the_owner():
     src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(src)
-    fetch = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")
+    fetch = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")  # caps-ok: scanner false positive: next() here has NO default argument; a missing function raises StopIteration and fails the test
     calls = {}
     for n in ast.walk(fetch):
         if isinstance(n, ast.Call):
-            name = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")
+            name = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")  # caps-ok: AST duck typing: a Call.func that is neither Name nor Attribute (Subscript, Call, Lambda) has no name, and '' never matches the callees being counted
             if name in ("validate_trade_impacting_gate", "build_market_state", "resolve_fetch_state_decision_route"):
                 calls.setdefault(name, []).append(n)
     assert len(calls["validate_trade_impacting_gate"]) == 1
@@ -169,14 +169,14 @@ def test_server_validates_the_emission_facts_once_before_build_and_hands_them_to
 def test_market_state_hands_the_facts_to_signal_input_and_derives_identity_after_the_call():
     src = (REPO / "market_state.py").read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_market_state")
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_market_state")  # caps-ok: scanner false positive: next() here has NO default argument; a missing function raises StopIteration and fails the test
     assert any(a.arg == "emission_gate" for a in fn.args.kwonlyargs)
-    sig = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)
+    sig = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)  # caps-ok: scanner false positive: next() here has NO default argument; a missing call raises StopIteration and fails the test
                and isinstance(n.func, ast.Name) and n.func.id == "SignalInput")
     kws = {k.arg for k in sig.keywords}
     assert {"production_emission_allowed", "emission_block_reasons"} <= kws
     # Option identity derives from ms.call_signal AFTER the call: one verdict, coherent fields.
-    oe = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)
+    oe = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)  # caps-ok: scanner false positive: next() here has NO default argument; a missing call raises StopIteration and fails the test
               and isinstance(n.func, ast.Name) and n.func.id == "recommend_option_expression")
     assert any(k.arg == "call_signal" and ast.unparse(k.value) == "ms.call_signal" for k in oe.keywords)
     assert oe.lineno > sig.lineno

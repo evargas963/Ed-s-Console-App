@@ -274,7 +274,7 @@ def served_routes(rels: tuple[str, ...] = ("server.py",)) -> list[tuple[str, str
 
 def market_state_fields(rel: str = "market_state.py") -> list[str]:
     src = (REPO / rel).read_text(encoding="utf-8", errors="replace")
-    cls = next(n for n in ast.parse(src).body if isinstance(n, ast.ClassDef) and n.name == "MarketState")
+    cls = next(n for n in ast.parse(src).body if isinstance(n, ast.ClassDef) and n.name == "MarketState")  # caps-ok: scanner false positive: next() has NO default (the comma is inside the generator); a missing MarketState raises StopIteration
     return [b.target.id for b in cls.body if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)]
 
 
@@ -335,7 +335,10 @@ def roots(roots_data, idx) -> list[Root]:
     # B2 also covers keys the serializer ADDS to a carried payload outside MarketState (the
     # card's expected-move bands and analytics freshness flags live in server.py, not on the
     # dataclass); they are roots exactly like fields.
-    for key, (category, producer) in getattr(roots_data, "PAYLOAD_EXTRAS", {}).items():
+    # RC-REHAB-1 (2026-09-23): was getattr(roots_data, "PAYLOAD_EXTRAS", {}) -- a renamed or
+    # deleted PAYLOAD_EXTRAS silently dropped every payload root out of the provenance gate.
+    # Read directly, like MARKET_STATE / ENGINE_INPUTS / ROUTES beside it.
+    for key, (category, producer) in roots_data.PAYLOAD_EXTRAS.items():
         if category in ROOT_CATEGORIES:
             out.append(Root("payload", key, category, producer))
     for (file, fn), args in roots_data.ENGINE_INPUTS.items():

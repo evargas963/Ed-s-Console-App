@@ -176,12 +176,15 @@ WAIT_BLOCKER_REASON_ADMISSION = "decision_path_admission"
 WAIT_BLOCKER_REASON_EMISSION = "market_data_emission_gate"
 
 
-def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[str, float]:
-    """Withhold tradable direction/probability from readiness when canonical is non-tradable."""
-    prov = str(getattr(canonical, "provenance", "") or "")
-    if not canonical_provenance_is_tradable(prov):
-        return "flat", 0.0
-    return (canonical.direction or "flat", canonical.dominant_probability())
+def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[Optional[str], Optional[float]]:
+    """Withhold tradable direction/probability from readiness when canonical is non-tradable.
+
+    Withheld = (None, None): setup_readiness treats a None direction as not-matching and a None
+    probability as unavailable. It never receives a fabricated "flat" / 0.0 read.
+    """
+    if not canonical_provenance_is_tradable(canonical.provenance):
+        return None, None
+    return (canonical.direction, canonical.dominant_probability())
 
 
 def _mh_size_tier_from_modifier(mh_mod: float) -> int:
@@ -324,7 +327,7 @@ def _time_qualifier(micro_regime: str, trade_type: str) -> str:
 
 def _mc_reasoning_snippet(fusion, final_signal: str) -> str:
     """Build Monte Carlo snippet for call reasoning when MC is available and relevant."""
-    if not fusion or not getattr(fusion, 'mc_available', False):
+    if not fusion or not getattr(fusion, 'mc_available', False):  # caps-ok: fail-closed; MC reasoning text only when FusionPayload.mc_available is explicitly True, missing -> no MC snippet
         return ""
     cont = getattr(fusion, 'mc_containment', None)
     exp = getattr(fusion, 'mc_expansion', None)
@@ -338,7 +341,7 @@ def _mc_reasoning_snippet(fusion, final_signal: str) -> str:
     if exp is not None and cont is not None:
         is_expansion = exp >= cont
         mode = "expansion" if is_expansion else "containment"
-        pct = int(100 * (exp if is_expansion else cont))
+        pct = int(100 * (exp if is_expansion else cont))  # caps-ok: scanner false positive: picks between two measured MC probabilities (both proven non-None above), no default
     elif exp is not None:
         mode = "expansion"
         pct = int(100 * exp)
@@ -371,14 +374,17 @@ def _build_call_headlines(final_signal, conviction, trade_type,
     type_label = TRADE_TYPE_LABELS.get(trade_type, trade_type)
 
     if final_signal == "wait":
+        # Every wait_blocker producer in compute_call sets the keys its reason branch reads
+        # below; index them strictly so a producer drift fails loudly instead of rendering a
+        # fabricated "0 long, 0 short" count or a canned detail. No blocker -> generic WAIT text.
         blocker = wait_blocker or {}
-        reason = blocker.get("reason", "unknown")
+        reason = blocker.get("reason")
         if reason == "stack":
-            lc = blocker.get("long_count", 0)
-            sc = blocker.get("short_count", 0)
-            th = blocker.get("threshold", 2)
-            ln = blocker.get("long_names", [])
-            sn = blocker.get("short_names", [])
+            lc = blocker["long_count"]
+            sc = blocker["short_count"]
+            th = blocker["threshold"]
+            ln = blocker["long_names"]
+            sn = blocker["short_names"]
             headline = f"WAIT — stack: {lc} long, {sc} short (need {th}+ in one direction)."
             reasoning = (
                 f"Stack: {lc} long ({', '.join(ln) or '—'}), {sc} short ({', '.join(sn) or '—'}). "
@@ -388,17 +394,17 @@ def _build_call_headlines(final_signal, conviction, trade_type,
                 "no cross-ETF veto. all_consolidated is the skill-weighted ALL pooled ML consensus."
             )
         elif reason == "vol_regime":
-            detail = blocker.get("detail", "unstable — require stronger confirmation")
+            detail = blocker["detail"]
             headline = f"WAIT — vol regime: {detail}."
-            reasoning = blocker.get("full_detail", detail)
+            reasoning = blocker["full_detail"]
         elif reason == "gates":
-            gate_reasons = blocker.get("gate_reasons", [])
+            gate_reasons = blocker["gate_reasons"]
             headline = f"WAIT — gated: {', '.join(gate_reasons) if gate_reasons else 'validation failed'}."
             reasoning = f"Validation gates: {'; '.join(gate_reasons)}."
         elif reason == "time":
-            detail = blocker.get("detail", "≤30 min to close")
+            detail = blocker["detail"]
             headline = f"WAIT — {detail}."
-            reasoning = blocker.get("full_detail", f"Only {detail} — no new entries.")
+            reasoning = blocker["full_detail"]
         elif reason == WAIT_BLOCKER_REASON_ADMISSION:
             gated = blocker.get("gated_signal")
             suffix = f" (stack read: {gated})" if gated in ("long", "short") else ""
@@ -517,8 +523,11 @@ def _canonical_stack_vote(canonical: CanonicalForecast) -> int:
     treat that as a withholding (no vote) — placeholder 1/3-each must never
     contribute to a stack vote even when conf is artificially elevated.
     """
-    pred_dir = str(getattr(canonical, "direction", "") or "").strip().lower()
-    pred_conf = str(getattr(canonical, "confidence", "") or "").strip().lower()
+    # direction / confidence are required CanonicalForecast fields (and dominant_probability()
+    # is called on the same object below), so read them strictly: no "" stand-in for a
+    # missing attribute.
+    pred_dir = str(canonical.direction or "").strip().lower()
+    pred_conf = str(canonical.confidence or "").strip().lower()
     try:
         dom_p_raw = canonical.dominant_probability()
     except (TypeError, ValueError):
@@ -867,11 +876,13 @@ def _conviction_from_canonical_forecast(
     """
     if final_signal == "wait" or not pred_agrees:
         return "low"
-    c = str(getattr(canonical, "confidence", "low") or "low").strip().lower()
+    # CanonicalForecast.confidence is required; a missing/None/unrecognised value is handled
+    # explicitly below as the conviction floor ("low", logged), not silently pre-defaulted.
+    c = str(canonical.confidence or "").strip().lower()
     if c not in _CONV_ORDER:
         log.debug(
             "call_engine._conviction_from_canonical_forecast: invalid confidence %r — using low",
-            getattr(canonical, "confidence", None),
+            canonical.confidence,
         )
         c = "low"
     # LIVE-UI-A: dominant_probability() now returns Optional[float] (None for non-tradable);
@@ -980,8 +991,8 @@ def compute_position_size(
     mc_expansion: float | None = None,
     # Fusion
     model_agreement: float | None = None,
-    fusion_confidence: str = "low",
-    n_models_active: int = 0,
+    fusion_confidence: str | None = None,
+    n_models_active: int | None = None,
     # Level quality
     dist_to_nearest_opposing_wall: float | None = None,
     has_void_ahead: bool = False,
@@ -1283,6 +1294,9 @@ def _validate_trade(
 
     spot = inp.spot
     if spot is None or spot <= 0:
+        # Fail CLOSED: this early return used to leave trade_valid=True (its initial value), so a
+        # directional call with no canonical spot passed the final gate in compute_call.
+        result["trade_valid"] = False
         result["structure_valid"] = False
         result["structure_reason"] = "missing canonical spot"
         result["summary"] = "missing canonical spot"
@@ -1328,7 +1342,9 @@ def _validate_trade(
     prob_fails = []
 
     _fusion_available = fusion_has_tradable_direction(fusion)
-    _vol_unstable = vol_regime and getattr(vol_regime, 'vol_regime', '') == "unstable"
+    # VolRegimePayload.vol_regime is a required field; no vol regime -> not "unstable" here, and
+    # compute_call has already forced WAIT for any directional call without a vol regime.
+    _vol_unstable = vol_regime is not None and vol_regime.vol_regime == "unstable"
     # Slightly lenient in normal vol: 0.25 veto'd almost all multi-model splits; stack still needs 2+ votes.
     _agree_threshold = AGREE_THRESHOLD_UNSTABLE if _vol_unstable else AGREE_THRESHOLD_DEFAULT
 
@@ -1363,7 +1379,7 @@ def _validate_trade(
             prob_fails.append(f"canonical forward UP {pup:.0%} vs short call")
 
     # 2c. Bayesian posterior strongly favors opposite outcome
-    symbol = getattr(inp, 'ticker', '?') or '?'
+    symbol = getattr(inp, 'ticker', '?') or '?'  # caps-ok: debug-log label only (the two log.debug calls below); never compared, persisted or served
     if _fusion_available:
         try:
             if final_signal == "long":
@@ -1411,11 +1427,11 @@ def _validate_trade(
     risk_fails = []
 
     # 3a. MC adverse excursion exceeds stop distance — regime-aware threshold
-    if _fusion_available and getattr(fusion, 'mc_available', False):
+    if _fusion_available and getattr(fusion, 'mc_available', False):  # caps-ok: MC EAE gate runs only on explicit mc_available=True; mc_eae None is then handled explicitly (no gate verdict fabricated)
         mc_eae = getattr(fusion, 'mc_eae', None)
         _risk_mult = 1.0
         if vol_regime is not None:
-            _risk_mult = getattr(vol_regime, "risk_multiplier", 1.0) or 1.0
+            _risk_mult = vol_regime.risk_multiplier  # required VolRegimePayload field
         stop_dist = _stop_distance(inp, risk_multiplier=_risk_mult)
         if mc_eae is not None and stop_dist > 0:
             # Regime-aware EAE threshold: breakout/expansion tolerate larger EAE
@@ -1435,7 +1451,7 @@ def _validate_trade(
         risk_fails.append(f"VIX at {vix:.1f} — extreme volatility, reduced reliability")
 
     # 3c. Compression detected — risk of violent breakout in either direction
-    if micro and getattr(micro, 'is_compressing', False):
+    if micro and getattr(micro, 'is_compressing', False):  # caps-ok: mirrors MicroState's own declared field default (is_compressing: bool = False, micro_structure.py); no compression flag = compression not detected
         comp_bars = getattr(micro, 'compression_bars', None)
         if comp_bars is not None and comp_bars >= COMPRESSION_BARS_RISK:
             risk_fails.append(f"compression ({comp_bars} bars) — risk of unpredictable breakout")
@@ -1519,12 +1535,24 @@ def compute_call(
 
     # ── STACK ORDER 8: Decision Policy Layer (The Call) ────────────────────────
     # Consumes vol_regime for trade permissibility, conviction, probability gating.
-    _vol_regime   = getattr(vol_regime, 'vol_regime', 'unknown') if vol_regime else 'unknown'
-    _vol_permissive = getattr(vol_regime, 'trade_permissive', True) if vol_regime else True
-    _vol_conv_mult = getattr(vol_regime, 'conviction_multiplier', 1.0) or 1.0
-    _vol_risk_mult = getattr(vol_regime, 'risk_multiplier', 1.0) or 1.0
-    _vol_breakout_bias  = getattr(vol_regime, 'breakout_bias', 0.6) or 0.6
-    _vol_reversal_bias  = getattr(vol_regime, 'reversal_bias', 0.5) or 0.5  # fake-default-ok: regime-parameter default (identity-ish bias), not data absence
+    # A present VolRegimePayload is read strictly: every policy knob is a required field, and the
+    # old `or 1.0` / `or 0.6` coercions would have turned a real 0.0 conviction_multiplier (inside
+    # the payload's documented range) into "no dampening". breakout_bias is read strictly at its
+    # single consumer (the compression branch below). (reversal_bias had no consumer; dropped.)
+    if vol_regime is not None:
+        _vol_regime = vol_regime.vol_regime
+        _vol_permissive = vol_regime.trade_permissive
+        _vol_conv_mult = vol_regime.conviction_multiplier
+        _vol_risk_mult = vol_regime.risk_multiplier
+    else:
+        # No vol regime: every directional call is forced WAIT below (Layer 5 CE6,
+        # "vol_regime unavailable"). The knobs take the policy's explicit no-regime values:
+        # permissive False (fail-closed), and IDENTITY multipliers so WAIT-path plan geometry /
+        # stop distance apply no vol scaling rather than an invented one.
+        _vol_regime = "unknown"
+        _vol_permissive = False
+        _vol_conv_mult = 1.0
+        _vol_risk_mult = 1.0
 
     # ══════════════════════════════════════════════════════════════════════════
     # 1. STACK-DERIVED SIGNAL — tape/structure votes + single ALL consolidated ML slot
@@ -1532,7 +1560,10 @@ def compute_call(
     # Live-horizon fusion remains for MC/risk/sizing only — not a duplicate stack vote.
     # ══════════════════════════════════════════════════════════════════════════
     _fusion_available = fusion_has_tradable_direction(fusion)
-    _regime_label = getattr(regime, 'primary', 'unknown') if regime else 'unknown'
+    # RegimePayload.primary is required when a regime exists. No regime -> the explicit
+    # "unknown" label, which is not a REGIMES member: no regime vote, no regime-specific sizing
+    # branch matches it, and readiness reads it as not-bullish/not-bearish.
+    _regime_label = regime.primary if regime is not None else "unknown"  # caps-ok: "unknown" is the declared absence label (not in regime_engine REGIMES); no consumer branch treats it as a measured regime
     # UI-04 P1C charm vote gate (operator-approved 2026-07-10): charm's
     # analytic sign convention / units / horizon semantics / predictive
     # validity are UNPROVEN. Charm stays computed, logged, and displayed on
@@ -1543,8 +1574,15 @@ def compute_call(
     _charm_vote_direction = (
         inp.charm_direction if CHARM_VOTE_VALIDATION_STATUS == "APPROVED" else None
     )
-    greek_b = greek_bias(inp.net_delta, _charm_vote_direction, inp.put_call_oi_ratio,
-                         dex_magnitude=inp.dex_magnitude or "moderate",
+    # DEX magnitude has no live producer (market_state sets dex_magnitude=None). An unknown
+    # magnitude cannot scale the net-delta term, so the term is WITHHELD (net_delta passed as
+    # None) — never scaled by an invented label ("moderate" here, or the constant "negligible"
+    # market_state used to fabricate, which silently zeroed it). greek_bias's own default is
+    # then irrelevant because it only scales a present net_delta.
+    _dex_mag = inp.dex_magnitude
+    greek_b = greek_bias(inp.net_delta if _dex_mag is not None else None,
+                         _charm_vote_direction, inp.put_call_oi_ratio,
+                         **({"dex_magnitude": _dex_mag} if _dex_mag is not None else {}),
                          charm_magnitude=inp.charm_magnitude or "moderate")
     cross_sig = _cross_instrument_signal(inp)
 
@@ -1565,8 +1603,13 @@ def compute_call(
     of_vote = 0
 
     # Live-horizon fusion retained for MC/risk/sizing — not a separate stack vote (Phase 3).
-    _fus_dir = getattr(fusion, 'fusion_dominant_direction', None) or getattr(fusion, 'dominant_direction', 'flat') if _fusion_available else "flat"
-    _fus_dir = str(_fus_dir or "flat").strip().lower()
+    # FusionPayload.dominant_direction (Optional). Unavailable fusion or no dominant direction ->
+    # None (withheld, vote 0), never a fabricated "flat" read. (`fusion_dominant_direction` is a
+    # snapshot-row column name, not a FusionPayload attribute; the old lookup of it was dead.)
+    _fus_dir: Optional[str] = None
+    if _fusion_available:
+        _fd = getattr(fusion, "dominant_direction", None)
+        _fus_dir = str(_fd).strip().lower() if _fd is not None else None
     _fus_dom_raw = 1 if _fus_dir == "up" else (-1 if _fus_dir == "down" else 0)
 
     # Regime + zone directional bias (breakout/breakdown from derive_zone)
@@ -1611,7 +1654,7 @@ def compute_call(
         final_signal, _mh_promoted_directional, _all_wait_blocker = _resolve_call_direction_from_all_pool(
             mh_policy=mh_policy,
             tape_stack_signal=tape_stack_signal,
-            canonical_provenance=str(getattr(canonical, "provenance", "") or ""),
+            canonical_provenance=canonical.provenance,  # required CanonicalForecast field
         )
         wait_blocker = _all_wait_blocker
     else:
@@ -1626,7 +1669,7 @@ def compute_call(
 
     # ── Fusion / canonical posterior policy (Issue 13): provenance drives behavior ──
     # Uniform max-entropy posterior is not a tradable forecast — force WAIT, not a parallel stack call.
-    _prov = str(getattr(canonical, "provenance", "") or "")
+    _prov = canonical.provenance  # required CanonicalForecast field; allow-list check is fail-closed
     if (
         not canonical_provenance_is_tradable(_prov)
         and final_signal in ("long", "short")
@@ -1658,7 +1701,12 @@ def compute_call(
     # ══════════════════════════════════════════════════════════════════════════
     # 2. CONVICTION — canonical forecast (confidence + marginal p) + env downgrades only
     # ══════════════════════════════════════════════════════════════════════════
-    zone_fresh_bars_1m  = (inp.zone_since_bars_1m or inp.zone_since_bars) or 0   # execution timing
+    # CAPS (CALL_OR_DEFAULT), same fix regime_engine already carries: `a or b or 0` turned a
+    # real 0 (zone entered THIS bar) into the alias and an unknown age into "0 bars = fresh".
+    # 1m age if known, else the alias; unknown -> no freshness claim (the downgrade is skipped).
+    zone_fresh_bars_1m = inp.zone_since_bars_1m
+    if zone_fresh_bars_1m is None:
+        zone_fresh_bars_1m = inp.zone_since_bars   # execution timing
     prev_z = (inp.prev_zone or "").lower()
 
     if final_signal == "wait":
@@ -1688,7 +1736,8 @@ def compute_call(
         conviction = _downgrade(conviction)
 
     # ── Zone transition: downgrades only (no confluence/fusion upgrades) ───────
-    if zone_fresh_bars_1m <= ZONE_FRESH_BARS_DOWNGRADE_MAX and prev_z != zone and final_signal != "wait":
+    if (zone_fresh_bars_1m is not None and zone_fresh_bars_1m <= ZONE_FRESH_BARS_DOWNGRADE_MAX
+            and prev_z != zone and final_signal != "wait"):
         if is_pin_zone(zone) and prev_z in ("breakout", "breakdown"):
             conviction = _downgrade(conviction)
 
@@ -1726,7 +1775,7 @@ def compute_call(
                 conviction = "low"
                 confluence_detail = "vol regime: unstable — require stronger confirmation"
                 wait_blocker = {"reason": WAIT_BLOCKER_REASON_VOL_REGIME, "detail": "unstable — require 4+ confluence", "full_detail": "Vol regime: unstable — require 4+ confluence for directional trade."}
-        elif _vol_regime == "compression" and _is_breakout_setup and _vol_breakout_bias < 0.5:
+        elif _vol_regime == "compression" and _is_breakout_setup and vol_regime.breakout_bias < 0.5:
             # Compression + breakout setup: require stronger confirmation (breakout_bias low)
             if _vol_confluence_effective < 4:
                 final_signal = "wait"
@@ -1767,7 +1816,7 @@ def compute_call(
     # None (no fact supplied: replay, offline callers) is not a veto — only an explicit False.
     # ══════════════════════════════════════════════════════════════════════════
     if final_signal in ("long", "short") and getattr(inp, "production_emission_allowed", None) is False:
-        _emission_reasons = [str(r) for r in (getattr(inp, "emission_block_reasons", ()) or ())]
+        _emission_reasons = [str(r) for r in (inp.emission_block_reasons or ())]  # declared SignalInput field (tuple, default ())
         wait_blocker = {
             "reason": WAIT_BLOCKER_REASON_EMISSION,
             "detail": "production emission not allowed",
@@ -1804,11 +1853,12 @@ def compute_call(
         conviction = "low"
         _gate_reasons = []
         if not gate_result["structure_valid"]:
-            _gate_reasons.append(gate_result.get("structure_reason", "structure failed"))
+            # _validate_trade always sets each *_reason key (to the joined failures when invalid).
+            _gate_reasons.append(gate_result["structure_reason"])
         if not gate_result["probability_valid"]:
-            _gate_reasons.append(gate_result.get("probability_reason", "probability failed"))
+            _gate_reasons.append(gate_result["probability_reason"])
         if not gate_result["risk_valid"]:
-            _gate_reasons.append(gate_result.get("risk_reason", "risk failed"))
+            _gate_reasons.append(gate_result["risk_reason"])
         confluence_detail = "GATED: " + "; ".join(_gate_reasons)
         wait_blocker = {"reason": WAIT_BLOCKER_REASON_GATES, "gate_reasons": _gate_reasons}
 
@@ -1867,7 +1917,6 @@ def compute_call(
 
     # Check if void exists ahead of price in trade direction
     _void_ahead = False
-    _micro_sweeps = getattr(micro, 'sweeps', []) if micro else []
     # (void detection already handled via sweep_score in server.py — approximate here)
 
     _sizing = compute_position_size(
@@ -1877,7 +1926,7 @@ def compute_call(
         confluence_count=confluence_count,
         confluence_total=confluence_total,
         regime_label=_regime_label,
-        regime_confidence=getattr(regime, 'confidence', 'low') if regime else 'low',
+        regime_confidence=regime.confidence if regime is not None else "low",  # caps-ok: no regime -> "low" confidence is the sizing policy's most conservative tier (applies the low-confidence size cut), never an up-size
         atr=inp.atr,  # SignalInput.atr field (was incorrectly '_atr')
         iv_level=inp.iv_level,
         vix=inp.vix_level,
@@ -1887,9 +1936,11 @@ def compute_call(
         mc_containment=getattr(fusion, 'mc_containment', None) if _fusion_available else None,
         mc_expansion=getattr(fusion, 'mc_expansion', None) if _fusion_available else None,
         model_agreement=getattr(fusion, 'model_agreement', None) if _fusion_available else None,
-        fusion_confidence=getattr(fusion, 'fusion_confidence', 'low') if _fusion_available else 'low',
+        # Fusion without a tradable direction -> None (unknown), not a fabricated "low"/0; the
+        # sizer only boosts on fusion_confidence == "high" and on n_models_active >= 2.
+        fusion_confidence=getattr(fusion, 'fusion_confidence', None) if _fusion_available else None,
         n_models_active=(
-            getattr(fusion, 'n_sources_active', None) if _fusion_available else 0
+            getattr(fusion, 'n_sources_active', None) if _fusion_available else None
         ),
         dist_to_nearest_opposing_wall=_opp_wall_dist,
         has_void_ahead=_void_ahead,
@@ -1996,9 +2047,11 @@ def compute_call(
         _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _call_input = {
             "regime": _regime_label or "unknown",
-            "trend": getattr(rules, "zone_label", "") or zone or "",
-            "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
-            "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
+            # RulesCard.zone_label is a required field. Missing timeframe reads pass through as
+            # None (setup_readiness._safe_lower -> "" -> structure tier "none", listed missing).
+            "trend": rules.zone_label or zone or "",
+            "structure_confirmation": _tf.get("15m"),   # ~15m structure read
+            "structure_higher_tf": _tf.get("60m"),      # ~60m trend read
             "prediction_direction": _rdy_dir,
             "prediction_dominant_prob": _rdy_dom_p,
             "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
@@ -2011,11 +2064,12 @@ def compute_call(
         _rs = _rdy.get("readiness_score")
         if _rs is not None:
             _readiness_score = _rs
-        _readiness_call_state = _rdy.get("call_state", "WAIT")
-        _readiness_forecast_state = _rdy.get("forecast_state", "dormant")
-        _readiness_reasons = _rdy.get("reasons", []) or []
-        _readiness_missing = _rdy.get("missing_conditions", []) or []
-        _readiness_component_scores = _rdy.get("component_scores", {}) or {}
+        # compute_call_readiness (score_readiness + side wording) always returns these keys.
+        _readiness_call_state = _rdy["call_state"]
+        _readiness_forecast_state = _rdy["forecast_state"]
+        _readiness_reasons = _rdy["reasons"]
+        _readiness_missing = _rdy["missing_conditions"]
+        _readiness_component_scores = _rdy["component_scores"]
     except Exception as _re:
         log.warning("call_readiness: %s", _re)
 
@@ -2043,9 +2097,9 @@ def compute_call(
         _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _put_input = {
             "regime": _regime_label or "unknown",
-            "trend": getattr(rules, "zone_label", "") or zone or "",
-            "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
-            "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
+            "trend": rules.zone_label or zone or "",  # required RulesCard field
+            "structure_confirmation": _tf.get("15m"),   # ~15m structure read (None passes through)
+            "structure_higher_tf": _tf.get("60m"),      # ~60m trend read (None passes through)
             "prediction_direction": _rdy_dir,
             "prediction_dominant_prob": _rdy_dom_p,
             "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
@@ -2058,11 +2112,12 @@ def compute_call(
         _ps = _prdy.get("readiness_score")
         if _ps is not None:
             _put_score = _ps
-        _put_state = _prdy.get("call_state", "WAIT")
-        _put_forecast = _prdy.get("forecast_state", "dormant")
-        _put_reasons = _prdy.get("reasons", []) or []
-        _put_missing = _prdy.get("missing_conditions", []) or []
-        _put_component_scores = _prdy.get("component_scores", {}) or {}
+        # compute_put_readiness always returns these keys.
+        _put_state = _prdy["call_state"]
+        _put_forecast = _prdy["forecast_state"]
+        _put_reasons = _prdy["reasons"]
+        _put_missing = _prdy["missing_conditions"]
+        _put_component_scores = _prdy["component_scores"]
     except Exception as _re:
         log.warning("put_readiness: %s", _re)
 
@@ -2087,7 +2142,7 @@ def compute_call(
         structure_valid=gate_result["structure_valid"],
         probability_valid=gate_result["probability_valid"],
         risk_valid=gate_result["risk_valid"],
-        validation_summary=gate_result.get("summary", ""),
+        validation_summary=gate_result["summary"],  # _validate_trade always sets summary
         r_units=_sizing["r_units"],
         execution_mode=_sizing["execution_mode"],
         sizing_multipliers=_sizing["multipliers"],

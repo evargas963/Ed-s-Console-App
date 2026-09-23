@@ -167,8 +167,8 @@ def _expand_bypass_from_register(reg_row: dict) -> dict:
             audit = "mutable"
         bypass_paths.append(
             _bp(
-                v.get("vector", "unknown"),
-                v.get("classification", "unacceptable"),
+                v.get("vector", "unknown"),  # caps-ok: descriptive label for a bypass vector with no text; the literal 'unknown' is shown, not a claim
+                v.get("classification", "unacceptable"),  # caps-ok: fail-closed: an unclassified bypass vector is recorded as unacceptable, never as accepted
                 audit,
                 "none" if not v.get("audit_event_generated") else "mutable",
                 "unknown",
@@ -179,7 +179,7 @@ def _expand_bypass_from_register(reg_row: dict) -> dict:
             bypass_paths.append(_bp(bp, "unacceptable", "none", "none", "unknown"))
 
     enforcement_points = [
-        _ep("code path", loc, "runtime" if reg_row.get("enforcement_surface", {}).get("runtime") else "build")
+        _ep("code path", loc, "runtime" if reg_row.get("enforcement_surface", {}).get("runtime") else "build")  # caps-ok: a control without a runtime flag is labelled build-time only; it never claims runtime enforcement it did not declare
         for loc in (reg_row.get("enforcement_code_paths") or [])[:6]
     ]
     if reg_row.get("checker_location"):
@@ -190,10 +190,10 @@ def _expand_bypass_from_register(reg_row: dict) -> dict:
 
     return {
         "control_id": cid,
-        "title": reg_row.get("title", cid),
-        "lowest_defensible_maturity": reg_row.get("validated_maturity", "L1"),
+        "title": reg_row.get("title", cid),  # caps-ok: display title falls back to the control id itself
+        "lowest_defensible_maturity": reg_row.get("validated_maturity", "L1"),  # caps-ok: fail-closed: an unvalidated control is assigned the lowest maturity L1, never a higher one
         "matrix_claimed_status": reg_row.get("matrix_claimed_status"),
-        "coverage_percent": reg_row.get("coverage_percent", 0),
+        "coverage_percent": reg_row.get("coverage_percent"),  # None when unmeasured, never a claimed 0%
         "enforcement_points": enforcement_points,
         "bypass_paths": bypass_paths,
         "adversarial_tests_required": reg_row.get("adversarial_test_suite") or [],

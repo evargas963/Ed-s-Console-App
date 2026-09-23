@@ -85,9 +85,11 @@ def main() -> int:
     latest_ts = {}
     for t in all_tickers:
         row = conn.execute("SELECT MAX(ts_utc) FROM snapshots WHERE ticker=? AND timeframe='1m'", (t,)).fetchone()
-        latest_ts[t] = float(row[0] or 0.0)
-    global_last_ts = max(latest_ts.values()) if latest_ts else 0.0
-    minutes_stale = (ts - global_last_ts) / 60.0 if global_last_ts > 0 else float("inf")
+        # No rows -> None (no data timestamp), never epoch 0.0.
+        latest_ts[t] = float(row[0]) if row[0] is not None else None  # caps-ok: MAX(ts_utc) is NULL when the ticker has no rows; None is carried as 'no data timestamp', not a value
+    known_ts = [v for v in latest_ts.values() if v is not None]
+    global_last_ts = max(known_ts) if known_ts else None
+    minutes_stale = (ts - global_last_ts) / 60.0 if global_last_ts is not None else float("inf")  # caps-ok: no data timestamp at all means infinitely stale, which raises the BLOCK data_freshness alert
 
     # missing bars proxy: no price bar in last stale window
     stale_cut = ts - (float(args.stale_minutes) * 60.0)
@@ -99,14 +101,17 @@ def main() -> int:
     )
 
     readiness_counts = Counter(r["final_readiness_verdict"] for r in readiness["tickers"])
-    readiness_lookup = lookup.get("lookup", {})
+    readiness_lookup = lookup["lookup"]
 
     # model/artifact health
     contract_violation_count = 0
     contract_violation_tickers = []
     if reconciled:
-        exp_rows = reconciled.get("expected_artifact_matrix", {}).get("grouped_by_ticker_horizon_model_head", [])
-        min_rows = reconciled.get("ticker_minimum_requirements", [])
+        # The expected-artifact matrix is the evidence the artifact gate reads; a reconciliation
+        # file without it must fail loudly, not report zero missing artifacts.
+        exp_rows = reconciled["expected_artifact_matrix"]["grouped_by_ticker_horizon_model_head"]
+        # Optional stricter per-ticker contract; absent selects the expected-matrix path below.
+        min_rows = reconciled.get("ticker_minimum_requirements")
         if min_rows:
             bad = [r for r in min_rows if not r.get("minimum_met")]
             contract_violation_count = len(bad)
@@ -115,20 +120,22 @@ def main() -> int:
         else:
             required_rows = [r for r in exp_rows if r.get("required")]
             missing_artifact_count = sum(1 for r in required_rows if not r.get("exists"))
-        artifact_load_fail_count = 0
+        artifact_load_fail_count = None  # the reconciliation path does not load artifacts: unmeasured
         # Optional (non-blocking) artifact gaps for monitoring context.
         optional_missing_count = sum(
             1
             for r in exp_rows
             if r.get("head_type") == "direction" and (not r.get("exists"))
         )
-        extra_artifact_count = len(reconciled.get("extra_artifacts", []))
+        extra = reconciled.get("extra_artifacts")
+        extra_artifact_count = len(extra) if extra is not None else None  # None = not reported
     else:
         missing_artifact_count = sum(1 for r in inventory["rows"] if not r.get("native_model_present_y"))
         artifact_load_fail_count = sum(1 for r in inventory["rows"] if r.get("native_model_present_y") and not r.get("loadable_y"))
-        optional_missing_count = 0
-        extra_artifact_count = 0
-    inference_fail_count = sum(1 for dt in phase10.get("decision_traces", []) if "INFERENCE_NULL" in dt.get("failure_flags", []))
+        # The inventory path has no expected-matrix or extra-artifact evidence: unmeasured.
+        optional_missing_count = None
+        extra_artifact_count = None
+    inference_fail_count = sum(1 for dt in phase10["decision_traces"] if "INFERENCE_NULL" in dt.get("failure_flags", []))  # caps-ok: per-trace failure_flags is an optional list; a trace without it carries no INFERENCE_NULL flag
 
     # prediction health
     horizons = ["1c", "3c", "5c", "8c", "13c", "15c", "60c"]
@@ -164,8 +171,9 @@ def main() -> int:
                 if fv < 0 or fv > 1:
                     oob_count += 1
         pred_cov[hz] = {
-            "move": (n_m / n if n else 0.0),
-            "dir": (n_d / n if n else 0.0),
+            # No governed rows -> coverage unmeasured (None), and coverage_ok treats None as failing.
+            "move": (n_m / n) if n > 0 else None,
+            "dir": (n_d / n) if n > 0 else None,
         }
         def _dist(xs):
             if not xs:
@@ -189,40 +197,43 @@ def main() -> int:
         for hz, st in phase8.get(f"{fam_key}_calibration_results", {}).items():
             if st.get("excluded"):
                 continue
-            if not phase8.get("final_calibration_functions", {}).get(out_key, {}).get(hz):
+            if not phase8.get("final_calibration_functions", {}).get(out_key, {}).get(hz):  # caps-ok: fail-toward-flag: a missing calibration map increments map_missing, which raises the recalibration trigger
                 map_missing += 1
-            b = st.get("cal_deciles", [])
+            b = st["cal_deciles"]  # non-excluded result must carry its deciles
             if b:
                 conf_bucket_acc[f"{out_key}:{hz}"] = [x["emp_rate"] for x in b]
                 rank_spread[f"{out_key}:{hz}"] = b[-1]["emp_rate"] - b[0]["emp_rate"]
                 mono_status[f"{out_key}:{hz}"] = bool(st.get("cal_monotonic"))
 
     # policy health from phase9 remediated
-    sig_rate = float(phase9.get("sanity_new_policy", {}).get("signal_rate") or 0.0)
-    int(phase9.get("sanity_new_policy", {}).get("signals_generated") or 0)
+    # Policy metrics are read strictly: a missing phase9 value raises instead of becoming a
+    # 0.0 rate/edge that the drift and live-gate logic below would read as measured.
+    policy = phase9["sanity_new_policy"]
+    sig_rate = float(policy["signal_rate"])
     no_trade_rate = max(0.0, 1.0 - sig_rate)
     thr_pass_rate_h = {}
-    for hz in phase9.get("edge_positive_horizons", []):
-        n = int(phase9.get("horizon_edge", {}).get(hz, {}).get("n") or 0)
+    for hz in phase9["edge_positive_horizons"]:
+        n = int(phase9["horizon_edge"][hz]["n"])
         total_h = int(conn.execute(f"SELECT COUNT(*) FROM snapshots WHERE {GOV_WHERE} AND outcome_move_{hz} IS NOT NULL").fetchone()[0])
-        thr_pass_rate_h[hz] = (n / total_h) if total_h else 0.0
+        thr_pass_rate_h[hz] = (n / total_h) if total_h > 0 else None  # no labeled rows -> rate unmeasured
 
     # signal count by ticker/horizon from remediated examples is sample; use synthetic from policy traces if present
-    sig_by_ticker = Counter(s.get("ticker") for s in phase9.get("signal_examples", []))
-    sig_by_horizon = Counter(s.get("horizon") for s in phase9.get("signal_examples", []))
+    sig_by_ticker = Counter(s.get("ticker") for s in phase9["signal_examples"])
+    sig_by_horizon = Counter(s.get("horizon") for s in phase9["signal_examples"])
 
     # edge health
-    recent_hit = float(phase9.get("sanity_new_policy", {}).get("hit_rate") or 0.0)
-    baseline_move = float(phase9.get("sanity_new_policy", {}).get("baseline_move_rate") or 0.0)
-    recent_edge = float(phase9.get("sanity_new_policy", {}).get("edge_delta") or 0.0)
-    edge_h = {hz: float(v.get("edge_delta") or 0.0) for hz, v in phase9.get("horizon_edge", {}).items()}
+    recent_hit = float(policy["hit_rate"])
+    baseline_move = float(policy["baseline_move_rate"])
+    recent_edge = float(policy["edge_delta"])
+    edge_h = {hz: float(v["edge_delta"]) for hz, v in phase9["horizon_edge"].items()}
 
-    # system health
-    api_health_status = "PASS"
-    sse_health_status = "PASS"
+    # system health: this tool never probes the API or SSE, so it reports them as unmeasured
+    # (None) rather than a hardcoded PASS.
+    api_health_status = None
+    sse_health_status = None
     decision_trace_integrity = all(
         dt.get("decision") in ("TRADE", "NO_TRADE") and bool(dt.get("reason"))
-        for dt in phase10.get("decision_traces", [])
+        for dt in phase10["decision_traces"]
     )
     readiness_lookup_integrity = set(readiness_lookup.keys()) >= set(all_tickers)
 
@@ -234,7 +245,7 @@ def main() -> int:
         for hz, st in phase8.get(f"{fam_key}_calibration_results", {}).items():
             if st.get("excluded"):
                 continue
-            raw = st.get("raw_deciles", [])
+            raw = st["raw_deciles"]  # non-excluded result must carry its deciles
             if not raw:
                 continue
             ref_mean = statistics.fmean(x["pred_mean"] for x in raw)
@@ -251,7 +262,7 @@ def main() -> int:
     drift["prediction_distribution"] = pred_drift
 
     # signal-rate drift vs phase9 reference
-    ref_sig_rate = float(phase9.get("sanity_new_policy", {}).get("signal_rate") or 0.0)
+    ref_sig_rate = float(policy["signal_rate"])
     sig_delta = abs(sig_rate - ref_sig_rate)
     drift["signal_rate"] = {
         "reference": ref_sig_rate,
@@ -261,7 +272,7 @@ def main() -> int:
     }
 
     # edge drift
-    ref_edge = float(phase9.get("sanity_new_policy", {}).get("edge_delta") or 0.0)
+    ref_edge = float(policy["edge_delta"])
     edge_drop = ref_edge - recent_edge
     drift["edge"] = {
         "reference_edge_delta": ref_edge,
@@ -271,7 +282,7 @@ def main() -> int:
     }
 
     # readiness drift
-    ready_now = readiness_counts.get("READY_GLOBAL_STANDARD", 0)
+    ready_now = readiness_counts.get("READY_GLOBAL_STANDARD", 0)  # caps-ok: Counter tally over the readiness matrix; no key means zero tickers carry that verdict
     ready_ref = ready_now  # locked snapshot baseline in this run
     ready_delta = ready_ref - ready_now
     drift["readiness"] = {
@@ -334,8 +345,8 @@ def main() -> int:
     ticker_state = []
     for t in all_tickers:
         rr = readiness_lookup.get(t, {})
-        lts = latest_ts.get(t, 0.0)
-        stale = ((ts - lts) / 60.0) if lts > 0 else float("inf")
+        lts = latest_ts[t]  # every ticker in all_tickers was queried above; None = no rows
+        stale = ((ts - lts) / 60.0) if lts is not None else float("inf")  # caps-ok: a ticker with no rows is infinitely stale, which forces its alert tier to BLOCK
         is_ready = rr.get("final_readiness_verdict") == "READY_GLOBAL_STANDARD" and rr.get("policy_status") == "POLICY_ELIGIBLE"
         tier = _tier_for_condition((not is_ready) or stale >= float(args.stale_minutes), stale >= 10)
         ticker_state.append(
@@ -365,8 +376,11 @@ def main() -> int:
 
     # -------- Live readiness gate ----------
     critical_block = any(a["tier"] == "BLOCK" for a in alerts)
-    coverage_ok = all(v["move"] >= 0.95 and v["dir"] >= 0.95 for v in pred_cov.values())
-    readiness_valid = readiness_counts.get("READY_GLOBAL_STANDARD", 0) > 0 and readiness_lookup_integrity
+    coverage_ok = all(
+        v["move"] is not None and v["dir"] is not None and v["move"] >= 0.95 and v["dir"] >= 0.95
+        for v in pred_cov.values()
+    )
+    readiness_valid = readiness_counts.get("READY_GLOBAL_STANDARD", 0) > 0 and readiness_lookup_integrity  # caps-ok: Counter tally; zero ready tickers makes readiness_valid False (fail-closed)
     edge_ok = recent_edge > 0.0
     live_ready = (not critical_block) and coverage_ok and readiness_valid and edge_ok
     live_gate = {

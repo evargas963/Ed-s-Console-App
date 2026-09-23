@@ -264,7 +264,7 @@ def run_discrimination(db_path: Path) -> dict[str, Any]:
                 fusion_near_flat is not None and fusion_near_flat < 0.02
             ),
             "layer_policy_single_bucket": (
-                len(set(layer_policies)) <= 1 if layer_policies else True
+                len(set(layer_policies)) <= 1 if layer_policies else True  # caps-ok: warning flag fails loud; zero logged layer policies is the most degenerate case, so it RAISES the single-bucket flag rather than hiding it
             ),
         },
     }

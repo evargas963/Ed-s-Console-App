@@ -165,7 +165,7 @@ def test_negative_control_the_old_strip_drops_the_first_filenames_leading_char(t
 # ── the blocking secrets gate ──────────────────────────────────────────────────────────────
 def _staged_diff_fails(monkeypatch, rc: int = 128) -> None:
     def _boom(*a, **k):
-        return subprocess.CompletedProcess(a[0] if a else [], rc, "", "fatal: index file corrupt")
+        return subprocess.CompletedProcess(a[0] if a else [], rc, "", "fatal: index file corrupt")  # caps-ok: subprocess.run stub: echoes the argv it was called with into the fake CompletedProcess; the failure under test is the rc/stderr
     monkeypatch.setattr(CL.subprocess, "run", _boom)
 
 

@@ -23,7 +23,6 @@ import json
 import hashlib
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -139,12 +138,16 @@ class TrainingProvenance:
     train_end: str = ""
     validation_start: str = ""
     validation_end: str = ""
-    rows_used: int = 0
+    # None = not recorded. validate_for_promotion refuses an unknown rows_used and refuses to
+    # compare against an incumbent with an unknown promotion_score (a fabricated 0 would let
+    # any candidate pass both checks). 0.0 remains the DELIBERATE reconcile value written by
+    # arch_competition.promotion_execution._reset_pre_b_incumbent_meta.
+    rows_used: Optional[int] = None
     trained_at: str = ""
     promoted_at: str = ""
     source_cache_key: str = ""
     promotion_metric: str = ""
-    promotion_score: float = 0.0
+    promotion_score: Optional[float] = None
     balanced_accuracy: Optional[float] = None  # per-class recall avg when available
 
     def to_dict(self) -> dict:
@@ -155,12 +158,21 @@ class TrainingProvenance:
         def _get(k: str, default):
             return d.get(k) if d.get(k) is not None else default
 
+        # promotion_score falls back to the builders' own score sources (xgb: train_accuracy,
+        # lstm/transformer: val_accuracy); none recorded -> None, never a fabricated 0.
+        _ps_raw = next(  # caps-ok: None is the explicit "no score recorded" result, handled by validate_for_promotion
+            (d[k] for k in ("promotion_score", "train_accuracy", "val_accuracy") if d.get(k) is not None),
+            None,
+        )
         return cls(
             model_type=_get("model_type", ""),
             ticker=_get("ticker", ""),
             training_timeframe=_get("training_timeframe", ""),
             target_definition=_get("target_definition", ""),
-            target_column=_get("target_column", EXPECTED_TARGET_COLUMN),
+            # No fabricated target: a meta without target_column must read as NON-compliant
+            # (is_provenance_compliant / validate_for_promotion compare it to the horizon's
+            # outcome column), never as the 1c default that would pass that check.
+            target_column=_get("target_column", ""),
             feature_schema_version=_get("feature_schema_version", ""),
             preprocessing_version=_get("preprocessing_version", ""),
             sequence_length=d.get("sequence_length"),
@@ -173,7 +185,7 @@ class TrainingProvenance:
             promoted_at=_get("promoted_at", ""),
             source_cache_key=_get("source_cache_key", ""),
             promotion_metric=_get("promotion_metric", ""),
-            promotion_score=float(_get("promotion_score", d.get("train_accuracy", d.get("val_accuracy", 0))) or 0),
+            promotion_score=float(_ps_raw) if _ps_raw is not None else None,  # caps-ok: absence stays None (see _ps_raw above)
             balanced_accuracy=d.get("balanced_accuracy"),
         )
 
@@ -261,6 +273,9 @@ def validate_for_promotion(
     if provenance.target_definition and sub not in (provenance.target_definition or ""):
         return False, f"target_definition missing {sub!r} for horizon {slug}: {provenance.target_definition}"
 
+    if provenance.rows_used is None:
+        return False, "rows_used not recorded in provenance"
+
     if provenance.rows_used < MIN_ROWS_FOR_PROMOTION:
         return False, f"rows_used={provenance.rows_used} < {MIN_ROWS_FOR_PROMOTION}"
 
@@ -274,6 +289,11 @@ def validate_for_promotion(
         existing_compliant = is_provenance_compliant(existing_provenance, horizon_slug=slug)
         if force_replace_non_compliant and not existing_compliant:
             pass  # allow promotion to replace non-compliant
+        elif existing_provenance.promotion_score is None:
+            return False, (
+                "existing active provenance has no promotion_score — score comparison impossible "
+                "(reconcile the incumbent via reconcile_pre_b_incumbent_scores)"
+            )
         elif promotion_metric < existing_provenance.promotion_score:
             return False, f"new eval_accuracy {promotion_metric:.4f} < existing {existing_provenance.promotion_score:.4f}"
         elif promotion_metric == existing_provenance.promotion_score and balanced_accuracy is not None:
@@ -298,9 +318,13 @@ def load_provenance(meta_path: Path) -> Optional[TrainingProvenance]:
         return None
 
 
-def provenance_rows(data: dict) -> int:
-    """Infer rows_used from common meta keys."""
-    return int(data.get("rows_used") or data.get("n_train") or data.get("samples") or 0)
+def provenance_rows(data: dict) -> Optional[int]:
+    """Infer rows_used from common meta keys; None when none is recorded (never a fabricated 0)."""
+    for k in ("rows_used", "n_train", "samples"):
+        v = data.get(k)
+        if v is not None:
+            return int(v)
+    return None
 
 
 def build_xgb_provenance(
@@ -330,11 +354,11 @@ def build_xgb_provenance(
         validation_start=train_start,
         validation_end=train_end,
         rows_used=len(df),
-        trained_at=meta.get("trained_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        trained_at=meta["trained_at"],  # required: ml_train writes it; never stamp "now" as a training time
         promoted_at="",
         source_cache_key=cache_key(ticker, CANONICAL_TIMEFRAME, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="accuracy",
-        promotion_score=float(meta.get("train_accuracy", 0)),
+        promotion_score=float(meta["train_accuracy"]),  # required: a missing score must raise, not seed a 0 incumbent
         balanced_accuracy=meta.get("balanced_accuracy"),
     )
 
@@ -351,10 +375,13 @@ def build_lstm_provenance(
         getattr(dataset, "ml_horizon_slug", None) or horizon_slug
     )
     col = getattr(dataset, "target_column", None) or outcome_column(slug)
-    timestamps = getattr(dataset, "timestamps", []) or []
-    train_start = str(timestamps[0])[:19] if timestamps else ""
-    train_end = str(timestamps[-1])[:19] if timestamps else ""
-    tf = getattr(dataset, "training_timeframe", None) or CANONICAL_TIMEFRAME
+    timestamps = dataset.timestamps  # declared LSTMDataset field (lstm_data.LSTMDataset)
+    train_start = str(timestamps[0])[:19] if timestamps else ""  # caps-ok: "" is TrainingProvenance's declared "not recorded" value for this str field; only an empty (untrainable) dataset reaches it and no consumer parses it as a date
+    train_end = str(timestamps[-1])[:19] if timestamps else ""  # caps-ok: "" is TrainingProvenance's declared "not recorded" value for this str field; only an empty (untrainable) dataset reaches it and no consumer parses it as a date
+    # The dataset's own timeframe (lstm_data.build_lstm_dataset sets it). An empty value stays
+    # empty so validate_for_promotion refuses it ("missing training_timeframe") instead of
+    # the provenance asserting the canonical timeframe it never recorded.
+    tf = dataset.training_timeframe
     target_def = getattr(dataset, "target_definition", None) or horizon_target_definition(slug)
     return TrainingProvenance(
         model_type="dual_stream_lstm",
@@ -369,12 +396,12 @@ def build_lstm_provenance(
         train_end=train_end,
         validation_start=train_start,
         validation_end=train_end,
-        rows_used=getattr(dataset, "n_samples", 0),
-        trained_at=meta.get("trained_at", datetime.now().isoformat()),
+        rows_used=dataset.n_samples,
+        trained_at=meta["trained_at"],  # required: lstm_model writes it; never stamp "now" as a training time
         promoted_at="",
         source_cache_key=cache_key(ticker, tf, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="val_accuracy",
-        promotion_score=float(meta.get("val_accuracy", 0)),
+        promotion_score=float(meta["val_accuracy"]),  # required: a missing score must raise, not seed a 0 incumbent
         balanced_accuracy=meta.get("balanced_accuracy"),
     )
 
@@ -391,8 +418,8 @@ def build_transformer_provenance(
     slug = normalize_ml_horizon_slug(horizon_slug)
     col = outcome_column(slug)
     tdef = horizon_target_definition(slug)
-    train_start = str(timestamps[0])[:19] if timestamps else ""
-    train_end = str(timestamps[-1])[:19] if timestamps else ""
+    train_start = str(timestamps[0])[:19] if timestamps else ""  # caps-ok: "" is TrainingProvenance's declared "not recorded" value for this str field; only an empty day list reaches it and no consumer parses it as a date
+    train_end = str(timestamps[-1])[:19] if timestamps else ""  # caps-ok: "" is TrainingProvenance's declared "not recorded" value for this str field; only an empty day list reaches it and no consumer parses it as a date
     return TrainingProvenance(
         model_type="transformer_encoder",
         ticker=ticker,
@@ -407,10 +434,10 @@ def build_transformer_provenance(
         validation_start=train_start,
         validation_end=train_end,
         rows_used=n_samples,
-        trained_at=meta.get("trained_at", datetime.now().isoformat()),
+        trained_at=meta["trained_at"],  # required: transformer_train writes it; never stamp "now" as a training time
         promoted_at="",
         source_cache_key=cache_key(ticker, CANONICAL_TIMEFRAME, col, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10] if train_start else "", train_end[:10] if train_end else ""),
         promotion_metric="val_accuracy",
-        promotion_score=float(meta.get("val_accuracy", 0)),
+        promotion_score=float(meta["val_accuracy"]),  # required: a missing score must raise, not seed a 0 incumbent
         balanced_accuracy=meta.get("balanced_accuracy"),
     )
