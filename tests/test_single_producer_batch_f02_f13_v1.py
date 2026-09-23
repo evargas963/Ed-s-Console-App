@@ -1350,7 +1350,11 @@ def test_rc345_operator_em_band_carries_its_methodology() -> None:
     # _em_band_source = _em.em_band_source (the rebind) stayed in server.py's own
     # _fetch_state body, unaffected.
     ss = _read("server_state_signals.py")
-    assert "_em_band_source" in srv and "STRADDLE_IMPLIED" in ss and "IV_MODEL" in ss
+    # RC-REHAB-1 (thirty-sixth slice): _fetch_state's dead `_em_band_source` alias was deleted;
+    # the methodology travels on the phase result itself, beside the band it labels.
+    from server_state_signals import _ExpectedMoveForState
+    assert {"em_up", "em_lo", "em_band_source"} <= set(_ExpectedMoveForState._fields)
+    assert "STRADDLE_IMPLIED" in ss and "IV_MODEL" in ss
     assert '_em_up = _em_straddle.get("upper") or _em_iv.get("upper")' not in srv
     # RC-433: density congestion must bind terrain IV_SIGMA_1D, not remaining-risk binders.
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved

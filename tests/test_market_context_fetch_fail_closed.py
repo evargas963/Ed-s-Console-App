@@ -429,9 +429,18 @@ def test_vol_context_bound_outside_any_try():
                 f"{enclosing}) — it must execute on every path that reaches its consumers"
             )
 
-    _check_unconditional_bindings(
-        (_REPO / "server.py").read_text(encoding="utf-8", errors="replace"), 1, "server.py",
-    )
+    # RC-REHAB-1 (thirty-sixth slice): _fetch_state no longer unpacks vol_ctx at all -- every
+    # consumer reads `_ves.vol_ctx` off the phase result. server.py therefore has ZERO
+    # vol_ctx bindings, and the property moves to the `_ves = ...` binding, which must itself
+    # be unconditional (never inside a swallowing try/if).
+    server_src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    _check_unconditional_bindings(server_src, 0, "server.py")
+    tree = _ast.parse(server_src)
+    fetch = next(n for n in tree.body if isinstance(n, _ast.FunctionDef) and n.name == "_fetch_state")  # caps-ok: scanner false positive: next() has NO default argument; a missing _fetch_state raises StopIteration and fails the test
+    ves_binds = [st for st in fetch.body if isinstance(st, _ast.Assign)
+                 and any(isinstance(t, _ast.Name) and t.id == "_ves" for t in st.targets)]
+    assert len(ves_binds) == 1, "the _ves phase result must be bound exactly once, at _fetch_state's top level"
+    assert "_ves.vol_ctx" in server_src
     _check_unconditional_bindings(
         (_REPO / "server_state_vol_envelope_sector.py").read_text(encoding="utf-8", errors="replace"),
         1, "server_state_vol_envelope_sector.py",

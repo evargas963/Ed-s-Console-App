@@ -72,68 +72,41 @@ def _post_publish_persistence_tail(
     ticker: str,
     client,
     mkt_ctx,
-    vol_ctx,
-    spot,
-    spot_f: float,
     contracts_use: list,
     selected_exp,
     session_label,
-    walls: list,
-    totals: list,
-    consensus_summary,
     price_levels,
     zt: dict,
     pcr_val,
-    parsed_bid,
-    parsed_ask,
-    _session_q: dict,
     now_et,
-    et_h: int,
-    et_m: int,
     _ed_db,
     update_source,
     logger_source,
     _refresh_ts_utc: float,
-    _total_vol,
-    _quote_spread,
-    _candle_dir,
-    _candle_body,
-    _c_vol,
-    _atr,
-    _charm_net,
-    _charm_dir,
-    _charm_toward,
-    _charm_mag,
-    _dpi: dict,
-    _hedging_flow: dict,
-    _gamma_gradient,
-    _breakout_score: dict,
-    _pin_score_val: dict,
-    _vol_expansion: dict,
-    _sweep_score: dict,
-    _iv_skew: dict,
-    _realized_vol,
-    _iv_rank,
-    _iv_percentile,
-    _vol_oi_ratio: dict,
-    _flow_imb_norm,
-    _flow_imb_source,
-    _smart_money: dict,
-    _iv_model_spread: dict,
-    _vol_envelope: dict,
-    _level_density: dict,
-    _sector_strength: dict,
-    _index_strength: dict,
-    _spy_strength: dict,
-    _iwm_deep: dict,
-    _xid_do_snapshot_insert: bool,
-    _xid_model_derived: bool,
-    _stage_marks: list,
+    q,
+    exp,
+    gfvz,
+    cd,
+    c_vol,
+    vs,
+    charm,
+    pp,
+    sweep_score: dict,
+    ofs,
+    ves,
+    xid_do_snapshot_insert: bool,
+    xid_model_derived: bool,
+    stage_marks: list,
 ) -> None:
     """RC-REHAB-1 (Phase 4, _fetch_state decomposition, nineteenth slice): the
     post-publish Persistence Tail (DB snapshot logging + periodic accuracy tracking +
     V2 calibration logging), promoted from a nested closure inside _fetch_state to a
     module-level function, extracted verbatim otherwise.
+
+    RC-REHAB-1 (thirty-sixth slice): the ~60 scalar keyword parameters became the phase
+    NamedTuples (q / exp / gfvz / cd / vs / charm / pp / ofs / ves) plus the few genuinely
+    cycle-level values; they are bound to the body's historical local names once, at the
+    top of the body. Original rationale, kept for the history:
 
     This was the single most closure-heavy phase in _fetch_state: symtable analysis
     (not manual counting) found 61 free variables read from the enclosing scope. Every
@@ -178,6 +151,31 @@ def _post_publish_persistence_tail(
       preserved exactly, not treated as a bug to fix here.
     """
     import server as _srv
+
+    # RC-REHAB-1 (thirty-sixth slice): the caller hands over each phase's own NamedTuple
+    # instead of ~60 pre-unpacked locals; they are bound ONCE here under the names the body
+    # below has always used, so the body itself is unchanged.
+    spot, spot_f, walls, totals = q.spot, exp.spot_f, exp.walls, exp.totals
+    consensus_summary = gfvz.consensus_summary
+    vol_ctx = ves.vol_ctx
+    parsed_bid, parsed_ask, _session_q = q.bid, q.ask, q.session_q
+    et_h, et_m = now_et.hour, now_et.minute
+    _total_vol, _quote_spread = q.total_vol, q.spread_pts
+    _candle_dir, _candle_body, _c_vol = cd.candle_dir, cd.candle_body, c_vol
+    _atr, _iv_skew, _realized_vol = vs.atr, vs.iv_skew, vs.realized_vol
+    _iv_rank, _iv_percentile = vs.iv_rank, vs.iv_percentile
+    _charm_net, _charm_dir = charm.charm_net, charm.charm_dir
+    _charm_toward, _charm_mag = charm.charm_toward, charm.charm_mag
+    _dpi, _hedging_flow, _gamma_gradient = pp.dpi, pp.hedging_flow, pp.gamma_gradient
+    _breakout_score, _pin_score_val, _vol_expansion = pp.breakout_score, pp.pin_score_val, pp.vol_expansion
+    _sweep_score = sweep_score
+    _vol_oi_ratio, _flow_imb_norm, _flow_imb_source = ofs.vol_oi_ratio, ofs.flow_imb_norm, ofs.flow_imb_source
+    _smart_money, _iv_model_spread = ofs.smart_money, ofs.iv_model_spread
+    _vol_envelope, _level_density = ves.vol_envelope, ves.level_density
+    _sector_strength, _index_strength = ves.sector_strength, ves.index_strength
+    _spy_strength, _iwm_deep = ves.spy_strength, ves.iwm_deep
+    _xid_do_snapshot_insert, _xid_model_derived = xid_do_snapshot_insert, xid_model_derived
+    _stage_marks = stage_marks
 
     # ── DB snapshot logging ───────────────────────────────────────────────────
     # Initialized outside `if _ed_db` so the calibration gate below can read it.

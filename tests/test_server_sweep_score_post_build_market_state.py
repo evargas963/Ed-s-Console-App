@@ -105,11 +105,12 @@ def test_void_factor_default_hoisted_outside_section_8_try():
     src = _fetch_state_source()
     sec8 = src.find("Section 8 — Predictive Positioning Signals")
     assert sec8 > 0, "Section 8 header marker must remain"
+    # RC-REHAB-1 (thirty-sixth slice): the `_void_factor = _pp.void_factor` alias was deleted;
+    # the sweep call reads the field off the phase result directly. `_pp` is bound at
+    # _fetch_state's top level (unconditionally) after the Section 8 marker.
     call_window = src[sec8 : sec8 + 1500]
-    assert "_void_factor = _pp.void_factor" in call_window, (
-        "_fetch_state must unconditionally bind _void_factor from the extracted "
-        "phase's return value right after the Section 8 marker"
-    )
+    assert "_pp = _predictive_positioning_for_state(" in call_window
+    assert "_post_build_sweep_score_for_state(ms, _vs.atr, _cd.candle_body, _pp.void_factor)" in src
     # The real guarantee: the extracted function itself pre-initializes void_factor
     # before its own try block, exactly as _fetch_state's inline code used to.
     pp_src = inspect.getsource(server._predictive_positioning_for_state)

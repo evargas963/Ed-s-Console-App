@@ -6410,15 +6410,6 @@ def _fetch_state(
         ticker, expiry, client, log_only=log_only, update_source=update_source,
         window_marks=_chain_window_marks,
     )
-    c_json = _cq.c_json
-    contracts = _cq.contracts
-    q_json = _cq.q_json
-    _chain_priority = _cq.chain_priority
-    _chain_gate_wait_sec = _cq.chain_gate_wait_sec
-    _chain_fetch_pure_sec = _cq.chain_fetch_pure_sec
-    _t_after_chain_mono = _cq.t_after_chain_mono
-    _t_after_quote_mono = _cq.t_after_quote_mono
-    _t_after_quote_wall = _cq.t_after_quote_wall
 
     # ── Compute-stage instrumentation (lane 3, 2026-07-05) — diagnostic only.
     # The transport audit measured _compute_ms at 13–27s but could not attribute it;
@@ -6439,22 +6430,10 @@ def _fetch_state(
     # single-authority spot (RC-14), bid/ask spread with carry-forward, and the
     # stream -> chain-underlying -> quote totalVolume resolution moved to
     # server_state_quote.py.
-    _q = _quote_and_spread_for_state(ticker, c_json, q_json, _t_after_quote_wall)
-    _session_q = _q.session_q
-    parsed_bid = bid = _q.bid
-    parsed_ask = ask = _q.ask
-    parsed_quote_time = _q.quote_time
-    parsed_trade_time = _q.trade_time
-    spot = _q.spot
-    _quote_spread_pts = _quote_spread = _q.spread_pts
-    _quote_spread_frac = _q.spread_frac
-    _quote_spread_source = _q.spread_source
-    _quote_spread_frac_source = _q.spread_frac_source
-    _quote_spread_age_ms = _q.spread_age_ms
-    _total_vol = _q.total_vol
+    _q = _quote_and_spread_for_state(ticker, _cq.c_json, _cq.q_json, _cq.t_after_quote_wall)
 
     # ── Select expiry ─────────────────────────────────────────────────────────
-    expiries     = _expiries_from_contracts(contracts)
+    expiries     = _expiries_from_contracts(_cq.contracts)
     _today_str   = now_et.strftime("%Y-%m-%d")
     if expiry and expiry < _today_str:
         log.warning("Rejecting past expiry %s for %s (today=%s) — using default", expiry, ticker, _today_str)
@@ -6463,11 +6442,11 @@ def _fetch_state(
     if not selected_exp:
         log.warning("_fetch_state: no valid expiry for %s — skipping", ticker)
         return _no_valid_expiry_state(
-            ticker, expiries=expiries, today_str=_today_str, spot=spot,
+            ticker, expiries=expiries, today_str=_today_str, spot=_q.spot,
             session_label=session_label, update_source=update_source,
             fetch_start_mono=_fetch_start_mono, cq=_cq,
         )
-    contracts_use, _exp_slice_source = _filter_contracts_by_selected_expiry(contracts, selected_exp)
+    contracts_use, _exp_slice_source = _filter_contracts_by_selected_expiry(_cq.contracts, selected_exp)
     _kl_expiry_source = _kl_expiry_source_label(
         expiry_param=expiry,
         slice_source=_exp_slice_source,
@@ -6480,12 +6459,12 @@ def _fetch_state(
         )
         return _expiry_slice_empty_state(
             ticker, selected_exp=selected_exp, expiries=expiries, today_str=_today_str,
-            spot=spot, session_label=session_label, kl_expiry_source=_kl_expiry_source,
+            spot=_q.spot, session_label=session_label, kl_expiry_source=_kl_expiry_source,
             update_source=update_source,
         )
 
     # ── Exposures ─────────────────────────────────────────────────────────────
-    if spot is None:
+    if _q.spot is None:
         return _missing_spot_state(
             ticker, selected_exp=selected_exp, expiries=expiries, today_str=_today_str, q=_q,
         )
@@ -6494,21 +6473,9 @@ def _fetch_state(
     # because the candle-seed path may rebind it via get_client() -- preserved exactly as
     # the original inline rebinding did (get_client() is a cached singleton in practice).
     _exp = _exposures_for_state(
-        ticker, client, spot, contracts_use, parsed_quote_time, parsed_trade_time,
-        _total_vol, log_only, _chain_priority,
+        ticker, client, _q.spot, contracts_use, _q.quote_time, _q.trade_time,
+        _q.total_vol, log_only, _cq.chain_priority,
     )
-    spot_f = _exp.spot_f
-    _tick_ts = _exp.tick_ts
-    _bars_5m_count = _exp.bars_5m_count
-    _bars_1m_count = _exp.bars_1m_count
-    exposures = _exp.exposures
-    diag = _exp.diag
-    _cons_strikes = _exp.cons_strikes
-    _gamma_strikes = _exp.gamma_strikes
-    _institutional_pin = _exp.institutional_pin
-    rows = _exp.rows
-    walls = _exp.walls
-    totals = _exp.totals
     client = _exp.client
 
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, tenth slice): extracted to
@@ -6518,31 +6485,19 @@ def _fetch_state(
     # that function's own docstring. origin/main independently ported the same RC-569
     # fix onto the pre-decomposition inline code; this decomposed call supersedes it,
     # not a second implementation of the fix.
-    _gfvz = _gamma_flip_and_void_zones_for_state(ticker, contracts_use, spot_f, exposures, totals, rows)
-    _gamma_flip = _gfvz.gamma_flip
-    _gamma_flip_conf = _gfvz.gamma_flip_conf
-    _gamma_flip_diag = _gfvz.gamma_flip_diag
-    _gamma_voids = _gfvz.gamma_voids
-    _atm_iv = _gfvz.atm_iv
-    _iv_direction = _gfvz.iv_direction
-    consensus_summary = _gfvz.consensus_summary
+    _gfvz = _gamma_flip_and_void_zones_for_state(ticker, contracts_use, _exp.spot_f, _exp.exposures, _exp.totals, _exp.rows)
     _stage_marks.append(("exposures_key_levels", time.perf_counter()))
 
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, eleventh slice): extracted to
     # _charm_for_state (defined above). Computed before build_market_state so signals
     # engine receives real values; charm_direction uses raw strings
     # "buying"/"selling"/"neutral" which is what signals.py expects for Greek bias scoring.
-    _charm = _charm_for_state(ticker, contracts_use, spot_f, selected_exp)
-    _charm_net = _charm.charm_net
-    _charm_dir = _charm.charm_dir
-    _charm_toward = _charm.charm_toward
-    _charm_mag = _charm.charm_mag
-    _charm_drivers = _charm.charm_drivers
+    _charm = _charm_for_state(ticker, contracts_use, _exp.spot_f, selected_exp)
 
     # ── PCR ──────────────────────────────────────────────────────────────────
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, second slice): extracted to
     # _pcr_val_for_state (defined just above this function).
-    pcr_val = _pcr_val_for_state(totals)
+    pcr_val = _pcr_val_for_state(_exp.totals)
 
     _stage_marks.append(("charm_pcr", time.perf_counter()))
 
@@ -6556,24 +6511,24 @@ def _fetch_state(
             selected_exp=selected_exp,
             expiries=expiries,
             today_str=_today_str,
-            spot_f=spot_f,
-            bid=bid,
-            ask=ask,
+            spot_f=_exp.spot_f,
+            bid=_q.bid,
+            ask=_q.ask,
             session_label=session_label,
-            rows=rows,
-            walls=walls,
-            totals=totals,
-            consensus_summary=consensus_summary,
-            exposures=exposures,
-            gamma_flip=_gamma_flip,
-            gamma_voids=_gamma_voids,
-            charm_net=_charm_net,
-            charm_dir=_charm_dir,
-            charm_toward=_charm_toward,
+            rows=_exp.rows,
+            walls=_exp.walls,
+            totals=_exp.totals,
+            consensus_summary=_gfvz.consensus_summary,
+            exposures=_exp.exposures,
+            gamma_flip=_gfvz.gamma_flip,
+            gamma_voids=_gfvz.gamma_voids,
+            charm_net=_charm.charm_net,
+            charm_dir=_charm.charm_dir,
+            charm_toward=_charm.charm_toward,
             pcr_val=pcr_val,
             kl_expiry_source=_kl_expiry_source,
-            quote_spread_pts=_quote_spread,
-            quote_spread_source=_quote_spread_source,
+            quote_spread_pts=_q.spread_pts,
+            quote_spread_source=_q.spread_source,
             update_source=update_source,
         )
 
@@ -6583,13 +6538,6 @@ def _fetch_state(
     # _c_open/_c_high/_c_low/_c_close/_c_range are REASSIGNED again later in this function
     # from the forming/live bar under a different branch -- untouched by this extraction.
     _cd = _candle_direction_for_state(ticker)
-    _candle_dir = _cd.candle_dir
-    _candle_body = _cd.candle_body
-    _c_open = _cd.c_open
-    _c_high = _cd.c_high
-    _c_low = _cd.c_low
-    _c_close = _cd.c_close
-    _c_range = _cd.c_range
     # ── Global market context (PCR update if we have fresh data) ─────────────
     if pcr_val is not None:
         mkt_ctx.pcr = pcr_val
@@ -6598,22 +6546,13 @@ def _fetch_state(
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixth slice): extracted to
     # _price_levels_for_state (defined above). Still reads/writes the shared
     # _state_cache directly (module-level dict), exactly as the original inline block did.
-    price_levels = _price_levels_for_state(ticker, client, q_json, now_et, _cache_key)
+    price_levels = _price_levels_for_state(ticker, client, _cq.q_json, now_et, _cache_key)
     _stage_marks.append(("progressive_publish_price_levels", time.perf_counter()))
 
     # ── Expected Move (straddle + IV-based) ──────────────────────────────────
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, seventh slice): extracted to
     # _expected_move_for_state (defined above _price_levels_for_state).
-    _em = _expected_move_for_state(now_et, price_levels, contracts_use, spot_f, _atm_iv)
-    _em_straddle = _em.em_straddle
-    _em_iv = _em.em_iv
-    _em_progress = _em.em_progress
-    _em_up = _em.em_up
-    _em_lo = _em.em_lo
-    _em_band_source = _em.em_band_source
-    _kl_em_anchor = _em.kl_em_anchor
-    _mc_iv_level = _em.mc_iv_level
-    _mc_iv_source = _em.mc_iv_source
+    _em = _expected_move_for_state(now_et, price_levels, contracts_use, _exp.spot_f, _gfvz.atm_iv)
 
     # ── Volatility signals — IV Skew, Realized Vol, ATR, IV Rank/Percentile ──
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourth slice): extracted to
@@ -6622,29 +6561,18 @@ def _fetch_state(
     # previously had no pre-initializer here, so a cold ticker (_bars empty) left it
     # unbound and the GARCH call site's bare `_closes` argument reference raised an
     # uncaught NameError. See _volatility_signals_for_state's own docstring.
-    _vs = _volatility_signals_for_state(ticker, contracts_use, spot_f, _atm_iv, _ed_db, _tick_ts)
-    _iv_skew = _vs.iv_skew
-    _realized_vol = _vs.realized_vol
-    _atr = _vs.atr
-    _iv_rank = _vs.iv_rank
-    _iv_percentile = _vs.iv_percentile
-    _closes = _vs.closes
+    _vs = _volatility_signals_for_state(ticker, contracts_use, _exp.spot_f, _gfvz.atm_iv, _ed_db, _exp.tick_ts)
 
     # ── GARCH Volatility Forecast ─────────────────────────────────────────────
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, first slice): extracted to
     # _garch_sigma_bars_for_state (defined just above this function) with an explicit
     # input/output contract. Same computation, same exception handling, same result.
-    _garch_sigma_bars = _garch_sigma_bars_for_state(_closes, _atm_iv, _realized_vol, spot_f)
+    _garch_sigma_bars = _garch_sigma_bars_for_state(_vs.closes, _gfvz.atm_iv, _vs.realized_vol, _exp.spot_f)
 
     # ── Order Flow Signals (from option volume + bid/ask size) ────────────────
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, third slice): extracted to
     # _order_flow_signals_for_state (defined just above this function).
-    _ofs = _order_flow_signals_for_state(exposures, spot_f, contracts_use)
-    _vol_oi_ratio = _ofs.vol_oi_ratio
-    _flow_imb_norm = _ofs.flow_imb_norm
-    _flow_imb_source = _ofs.flow_imb_source
-    _smart_money = _ofs.smart_money
-    _iv_model_spread = _ofs.iv_model_spread
+    _ofs = _order_flow_signals_for_state(_exp.exposures, _exp.spot_f, contracts_use)
 
     # ── Section 8 — Predictive Positioning Signals ───────────────────────────
     # Sweep score post-build_market_state needs _void_factor even if Section 8 raised early.
@@ -6654,17 +6582,8 @@ def _fetch_state(
     # _bucket_total_oi was promoted to a module-level function -- the Level Density
     # sub-phase far below still calls it via the same module-level name.
     _pp = _predictive_positioning_for_state(
-        ticker, exposures, _cons_strikes, spot_f, _charm_net, _gamma_voids, _iv_direction,
+        ticker, _exp.exposures, _exp.cons_strikes, _exp.spot_f, _charm.charm_net, _gfvz.gamma_voids, _gfvz.iv_direction,
     )
-    _dpi = _pp.dpi
-    _hedging_flow = _pp.hedging_flow
-    _gamma_gradient = _pp.gamma_gradient
-    _breakout_score = _pp.breakout_score
-    _pin_score_val = _pp.pin_score_val
-    _vol_expansion = _pp.vol_expansion
-    _void_factor = _pp.void_factor
-    _pin_strike = _pp.pin_strike
-    _regime_gamma_at_spot = _pp.regime_gamma_at_spot
 
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): extracted to
     # _vol_envelope_and_sector_for_state (defined above).
@@ -6682,27 +6601,17 @@ def _fetch_state(
     #   confluence, vix_bucket all consume this one frozen vol_ctx (MSD-001
     #   parity locks in tests/test_market_context_fetch_fail_closed.py).
     # SCHWAB_CSV_CHECKED
-    _ves = _vol_envelope_and_sector_for_state(ticker, spot_f, _atr, walls, mkt_ctx, _cache_key)
-    vol_ctx = _ves.vol_ctx
-    _vol_envelope = _ves.vol_envelope
-    _level_density = _ves.level_density
-    _sector_strength = _ves.sector_strength
-    _index_strength = _ves.index_strength
-    _spy_strength = _ves.spy_strength
-    _iwm_deep = _ves.iwm_deep
+    _ves = _vol_envelope_and_sector_for_state(ticker, _exp.spot_f, _vs.atr, _exp.walls, mkt_ctx, _cache_key)
     _stage_marks.append(("vol_flow_signals", time.perf_counter()))
 
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, twelfth slice): extracted to
     # _zone_tracking_for_state (defined above).
-    zt = _zone_tracking_for_state(ticker, consensus_summary)
+    zt = _zone_tracking_for_state(ticker, _gfvz.consensus_summary)
 
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirteenth slice): extracted to
     # _db_counts_and_crosses_for_state (defined above).
-    _dbcc = _db_counts_and_crosses_for_state(ticker, _ed_db, walls)
-    db_counts = _dbcc.db_counts
+    _dbcc = _db_counts_and_crosses_for_state(ticker, _ed_db, _exp.walls)
 
-    et_h = now_et.hour
-    et_m = now_et.minute
 
     # RC-REHAB-1 (route-extraction/decomposition audit fix): _candle_volume_for_state
     # is called BEFORE _order_flow_data_for_state, restoring the original inline
@@ -6717,7 +6626,7 @@ def _fetch_state(
 
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, fourteenth slice): extracted to
     # _order_flow_data_for_state (defined above).
-    _order_flow_data = _order_flow_data_for_state(ticker, q_json, c_json, now_et)
+    _order_flow_data = _order_flow_data_for_state(ticker, _cq.q_json, _cq.c_json, now_et)
 
     # ── Build MarketState ─────────────────────────────────────────────────────
     _stage_marks.append(("db_reads_orderflow_input", time.perf_counter()))
@@ -6728,7 +6637,7 @@ def _fetch_state(
     # directly), the v2 decision and the execution-identity anchor moved to
     # server_state_decision.py.
     _decision_route, _emission_gate = _emission_gate_for_state(
-        update_source, ticker=ticker, spot_f=spot_f, spread_age_ms=_quote_spread_age_ms,
+        update_source, ticker=ticker, spot_f=_exp.spot_f, spread_age_ms=_q.spread_age_ms,
     )
     ms = _build_market_state_for_state(
         ticker=ticker, selected_exp=selected_exp, session_label=session_label,
@@ -6746,7 +6655,7 @@ def _fetch_state(
     # _post_build_sweep_score_for_state (defined above). Must run AFTER build_market_state
     # -- ms.nearest_above_dist/nearest_below_dist are populated by build_market_state from
     # walls + price_levels, the only point at which those inputs are actually available.
-    _sweep_score = _post_build_sweep_score_for_state(ms, _atr, _candle_body, _void_factor)
+    _sweep_score = _post_build_sweep_score_for_state(ms, _vs.atr, _cd.candle_body, _pp.void_factor)
 
     # REST fallback: when streamer has no tape, inject polling-based cum_delta.
     # Streamer value takes precedence when available.
@@ -6757,8 +6666,8 @@ def _fetch_state(
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, eighteenth slice): extracted to
     # _additive_context_for_state (defined above). Mutates `ms` in place, no return value.
     _additive_context_for_state(
-        ms, ticker, _ed_db, spot_f, _c_open, _c_high, _c_low, _c_close, _c_vol,
-        _flow_imb_norm, _atr, _c_range, _candle_body,
+        ms, ticker, _ed_db, _exp.spot_f, _cd.c_open, _cd.c_high, _cd.c_low, _cd.c_close, _c_vol,
+        _ofs.flow_imb_norm, _vs.atr, _cd.c_range, _cd.candle_body,
     )
     _stage_marks.append(("context_news", time.perf_counter()))
 
@@ -6804,6 +6713,19 @@ def _fetch_state(
     # vol_ctx (market_iv_change); no per-surface recapture.
 
 
+    # One argument set for both tail call sites (log_only and full publish): the phase
+    # NamedTuples plus the cycle-level values (RC-REHAB-1, thirty-sixth slice).
+    _tail_kwargs = dict(
+        ms=ms, ticker=ticker, client=client, mkt_ctx=mkt_ctx, contracts_use=contracts_use,
+        selected_exp=selected_exp, session_label=session_label, price_levels=price_levels,
+        zt=zt, pcr_val=pcr_val, now_et=now_et, _ed_db=_ed_db, update_source=update_source,
+        logger_source=logger_source, _refresh_ts_utc=_refresh_ts_utc, q=_q, exp=_exp,
+        gfvz=_gfvz, cd=_cd, c_vol=_c_vol, vs=_vs, charm=_charm, pp=_pp,
+        sweep_score=_sweep_score, ofs=_ofs, ves=_ves,
+        xid_do_snapshot_insert=_xid_do_snapshot_insert, xid_model_derived=_xid_model_derived,
+        stage_marks=_stage_marks,
+    )
+
     # ── If log_only, persist then touch cache (clobber-guarded) and return ────
     # ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1: never replace a publishable
     # bundle with an empty-ms_dict minimal entry (see _log_only_cache_touch).
@@ -6811,75 +6733,13 @@ def _fetch_state(
     # its persistence order is unchanged — tail first, exactly as before.
     if log_only:
         _post_publish_persistence_tail(
-        None, _v2_decision_for_response,
-        ms=ms,
-        ticker=ticker,
-        client=client,
-        mkt_ctx=mkt_ctx,
-        vol_ctx=vol_ctx,
-        spot=spot,
-        spot_f=spot_f,
-        contracts_use=contracts_use,
-        selected_exp=selected_exp,
-        session_label=session_label,
-        walls=walls,
-        totals=totals,
-        consensus_summary=consensus_summary,
-        price_levels=price_levels,
-        zt=zt,
-        pcr_val=pcr_val,
-        parsed_bid=parsed_bid,
-        parsed_ask=parsed_ask,
-        _session_q=_session_q,
-        now_et=now_et,
-        et_h=et_h,
-        et_m=et_m,
-        _ed_db=_ed_db,
-        update_source=update_source,
-        logger_source=logger_source,
-        _refresh_ts_utc=_refresh_ts_utc,
-        _total_vol=_total_vol,
-        _quote_spread=_quote_spread,
-        _candle_dir=_candle_dir,
-        _candle_body=_candle_body,
-        _c_vol=_c_vol,
-        _atr=_atr,
-        _charm_net=_charm_net,
-        _charm_dir=_charm_dir,
-        _charm_toward=_charm_toward,
-        _charm_mag=_charm_mag,
-        _dpi=_dpi,
-        _hedging_flow=_hedging_flow,
-        _gamma_gradient=_gamma_gradient,
-        _breakout_score=_breakout_score,
-        _pin_score_val=_pin_score_val,
-        _vol_expansion=_vol_expansion,
-        _sweep_score=_sweep_score,
-        _iv_skew=_iv_skew,
-        _realized_vol=_realized_vol,
-        _iv_rank=_iv_rank,
-        _iv_percentile=_iv_percentile,
-        _vol_oi_ratio=_vol_oi_ratio,
-        _flow_imb_norm=_flow_imb_norm,
-        _flow_imb_source=_flow_imb_source,
-        _smart_money=_smart_money,
-        _iv_model_spread=_iv_model_spread,
-        _vol_envelope=_vol_envelope,
-        _level_density=_level_density,
-        _sector_strength=_sector_strength,
-        _index_strength=_index_strength,
-        _spy_strength=_spy_strength,
-        _iwm_deep=_iwm_deep,
-        _xid_do_snapshot_insert=_xid_do_snapshot_insert,
-        _xid_model_derived=_xid_model_derived,
-        _stage_marks=_stage_marks,
-    )
+        None, _v2_decision_for_response, **_tail_kwargs)
         _log_only_cache_touch(
             _cache_key,
             ticker,
             selected_exp,
             pcr_val,
-            spot_f,
+            _exp.spot_f,
             # VOL_INPUT_CONTRACT 1.0.0 single-source: the published "vix"
             # (next cycle's prev source) comes from the per-cycle context.
             # Schwab CSV authority checked: yes
@@ -6890,7 +6750,7 @@ def _fetch_state(
             #   now consume vol_ctx; zero raw reads outside the canonical conversion
             #   (AST lock in tests/test_market_context_fetch_fail_closed.py).
             # SCHWAB_CSV_CHECKED
-            vol_ctx.market_iv_level,
+            _ves.vol_ctx.market_iv_level,
         )
         return {}
 
@@ -6901,11 +6761,11 @@ def _fetch_state(
     ms_dict = _project_state_payload(
         ms,
         ticker=ticker, expiries=expiries, today_str=_today_str, selected_exp=selected_exp,
-        q=_q, vol_ctx=vol_ctx, pcr_val=pcr_val, consensus_summary=consensus_summary,
-        kl_expiry_source=_kl_expiry_source, exposures=exposures, diag=diag, em=_em,
-        gamma_voids=_gamma_voids, contracts_use=contracts_use, spot_f=spot_f,
+        q=_q, vol_ctx=_ves.vol_ctx, pcr_val=pcr_val, consensus_summary=_gfvz.consensus_summary,
+        kl_expiry_source=_kl_expiry_source, exposures=_exp.exposures, diag=_exp.diag, em=_em,
+        gamma_voids=_gfvz.gamma_voids, contracts_use=contracts_use, spot_f=_exp.spot_f,
         price_levels=price_levels, vs=_vs, pp=_pp, sweep_score=_sweep_score, ves=_ves,
-        ofs=_ofs, mkt_ctx=mkt_ctx, db_counts=db_counts,
+        ofs=_ofs, mkt_ctx=mkt_ctx, db_counts=_dbcc.db_counts,
     )
     _attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
     _stage_marks.append(("stack_runtime_governance_attach", time.perf_counter()))
@@ -6942,9 +6802,9 @@ def _fetch_state(
     _t_pipeline_end_mono = time.monotonic()
     ms_dict["_server_build_ts"] = time.time()
     ms_dict["_pipeline_ms"] = round((_t_pipeline_end_mono - _fetch_start_mono) * 1000)
-    ms_dict["_chain_ms"] = round((_t_after_chain_mono - _fetch_start_mono) * 1000)
-    ms_dict["_quote_ms"] = round((_t_after_quote_mono - _t_after_chain_mono) * 1000)
-    ms_dict["_compute_ms"] = round((_t_pipeline_end_mono - _t_after_quote_mono) * 1000)
+    ms_dict["_chain_ms"] = round((_cq.t_after_chain_mono - _fetch_start_mono) * 1000)
+    ms_dict["_quote_ms"] = round((_cq.t_after_quote_mono - _cq.t_after_chain_mono) * 1000)
+    ms_dict["_compute_ms"] = round((_t_pipeline_end_mono - _cq.t_after_quote_mono) * 1000)
     # Lane-3 diagnostic: stage split of _compute_ms (+ chain/quote copies for one-stop reads).
     _stage_ms: dict[str, float] = {}
     _stage_prev_pc = _stage_t0
@@ -6954,11 +6814,11 @@ def _fetch_state(
     # Chain gate: schwab_chain_ms is the PURE Schwab fetch (helper-measured);
     # gate wait is split out; _chain_ms keeps its wall-clock-to-chain meaning.
     _stage_ms["schwab_chain_ms"] = (
-        round(_chain_fetch_pure_sec * 1000.0, 1)
-        if _chain_fetch_pure_sec is not None
+        round(_cq.chain_fetch_pure_sec * 1000.0, 1)
+        if _cq.chain_fetch_pure_sec is not None
         else float(ms_dict["_chain_ms"])
     )
-    _stage_ms["chain_gate_wait_ms"] = round(_chain_gate_wait_sec * 1000.0, 1)
+    _stage_ms["chain_gate_wait_ms"] = round(_cq.chain_gate_wait_sec * 1000.0, 1)
     _stage_ms["schwab_quote_ms"] = float(ms_dict["_quote_ms"])
     # UI_05 tail attribution: consecutive deltas across the _chain_ms window
     # (preamble | mkt_ctx | leaf submit->result wall | contracts parse).
@@ -6966,7 +6826,7 @@ def _fetch_state(
     for _cw_name, _cw_mono in _chain_window_marks:
         _stage_ms[_cw_name] = round((_cw_mono - _cw_prev_mono) * 1000.0, 1)
         _cw_prev_mono = _cw_mono
-    ms_dict["chain_gate_wait_sec"] = _chain_gate_wait_sec
+    ms_dict["chain_gate_wait_sec"] = _cq.chain_gate_wait_sec
     ms_dict["_compute_breakdown"] = dict(_stage_ms)
     log.info(
         f"_fetch_state: {ticker} pipeline_ms={ms_dict['_pipeline_ms']} "
@@ -6997,12 +6857,12 @@ def _fetch_state(
             from live_decision_bundle import _key_levels_from_ms_dict as _kl_for_cross
             _prev_spot_for_cross = _prev_ent.get("spot_f")
             _levels_for_cross = _kl_for_cross(ms_dict)
-            if _prev_spot_for_cross is not None and spot_f is not None and _levels_for_cross:
+            if _prev_spot_for_cross is not None and _exp.spot_f is not None and _levels_for_cross:
                 _ts_et_str = _eastern_now().strftime("%Y-%m-%d %H:%M:%S ET")
                 _crosses = _ed_db.detect_and_log_level_crosses(
                     ticker=ticker,
                     prev_spot=float(_prev_spot_for_cross),
-                    cur_spot=float(spot_f),
+                    cur_spot=float(_exp.spot_f),
                     levels=_levels_for_cross,
                     ts_utc=_gen_ts,
                     ts_et=_ts_et_str,
@@ -7026,10 +6886,10 @@ def _fetch_state(
         "ts": _gen_ts,
         "generated_at": _gen_ts,
         "analytics_version": _next_ver,
-        "ms_dict": ms_dict, "pcr_val": pcr_val, "spot_f": spot_f,
+        "ms_dict": ms_dict, "pcr_val": pcr_val, "spot_f": _exp.spot_f,
         # VOL_INPUT_CONTRACT 1.0.0 single-source: publish the context level —
         # this is the value the next cycle's market_iv_change diffs against.
-        "vix": vol_ctx.market_iv_level,
+        "vix": _ves.vol_ctx.market_iv_level,
         "price_levels": _prev_ent.get("price_levels"),
         "pl_date":      _prev_ent.get("pl_date", ""),  # caps-ok: price-level cache-validity key carried forward; "" never matches today's date -> cache MISS (refetch)
         "pl_generation": _prev_ent.get("pl_generation"),
@@ -7055,69 +6915,7 @@ def _fetch_state(
     # generated_at-stamping publish above, same worker, same cycle; the SERVED
     # decision object (ms_dict["v2_decision"]) is the logged object.
     _post_publish_persistence_tail(
-        _next_ver, ms_dict["v2_decision"],
-        ms=ms,
-        ticker=ticker,
-        client=client,
-        mkt_ctx=mkt_ctx,
-        vol_ctx=vol_ctx,
-        spot=spot,
-        spot_f=spot_f,
-        contracts_use=contracts_use,
-        selected_exp=selected_exp,
-        session_label=session_label,
-        walls=walls,
-        totals=totals,
-        consensus_summary=consensus_summary,
-        price_levels=price_levels,
-        zt=zt,
-        pcr_val=pcr_val,
-        parsed_bid=parsed_bid,
-        parsed_ask=parsed_ask,
-        _session_q=_session_q,
-        now_et=now_et,
-        et_h=et_h,
-        et_m=et_m,
-        _ed_db=_ed_db,
-        update_source=update_source,
-        logger_source=logger_source,
-        _refresh_ts_utc=_refresh_ts_utc,
-        _total_vol=_total_vol,
-        _quote_spread=_quote_spread,
-        _candle_dir=_candle_dir,
-        _candle_body=_candle_body,
-        _c_vol=_c_vol,
-        _atr=_atr,
-        _charm_net=_charm_net,
-        _charm_dir=_charm_dir,
-        _charm_toward=_charm_toward,
-        _charm_mag=_charm_mag,
-        _dpi=_dpi,
-        _hedging_flow=_hedging_flow,
-        _gamma_gradient=_gamma_gradient,
-        _breakout_score=_breakout_score,
-        _pin_score_val=_pin_score_val,
-        _vol_expansion=_vol_expansion,
-        _sweep_score=_sweep_score,
-        _iv_skew=_iv_skew,
-        _realized_vol=_realized_vol,
-        _iv_rank=_iv_rank,
-        _iv_percentile=_iv_percentile,
-        _vol_oi_ratio=_vol_oi_ratio,
-        _flow_imb_norm=_flow_imb_norm,
-        _flow_imb_source=_flow_imb_source,
-        _smart_money=_smart_money,
-        _iv_model_spread=_iv_model_spread,
-        _vol_envelope=_vol_envelope,
-        _level_density=_level_density,
-        _sector_strength=_sector_strength,
-        _index_strength=_index_strength,
-        _spy_strength=_spy_strength,
-        _iwm_deep=_iwm_deep,
-        _xid_do_snapshot_insert=_xid_do_snapshot_insert,
-        _xid_model_derived=_xid_model_derived,
-        _stage_marks=_stage_marks,
-    )
+        _next_ver, ms_dict["v2_decision"], **_tail_kwargs)
     return ms_dict
 
 
