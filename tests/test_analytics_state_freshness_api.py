@@ -417,14 +417,17 @@ def test_chain_fetch_call_shape_and_gated_site_source_lock():
     # width, and every kwarg named — rather than a frozen literal that goes stale the moment a
     # legitimate argument is added.
     assert "resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,\n                              to_date=to_date, from_date=from_date)" in src
-    assert "_gated_safe_get_chain, client, ticker," in src
+    intake = _intake_source()
+    assert "pool.submit(_srv._gated_safe_get_chain, client, ticker, **chain_kwargs)" in intake
+    assert "_srv._gated_safe_get_chain(\n                client, ticker, **chain_kwargs)" in intake
     # Width comes from the faucet, never a bare constant (enforced repo-wide by
     # tools/check_institutional_correctness.py::check_chain_width_single_faucet).
-    assert "strike_count=resolve_chain_strike_count(ticker)" in src
-    assert "CHAIN_STRIKE_COUNT, priority=_chain_priority" not in src, (
+    assert "strike_count=_srv.resolve_chain_strike_count(ticker)" in intake
+    assert "CHAIN_STRIKE_COUNT" not in intake, (
         "the console chain fetch regressed to the hardcoded 20-strike width (RC-59)"
     )
-    assert "priority=_chain_priority," in src
+    assert "priority=chain_priority," in intake
+    assert "_fetch_chain_and_quote_for_state(" in src
     assert 'ms_dict["chain_gate_wait_sec"]' in src
     assert '_stage_ms["chain_gate_wait_ms"]' in src
 
@@ -792,6 +795,14 @@ def _fetch_state_source() -> str:
     return (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
 
 
+def _intake_source() -> str:
+    """RC-REHAB-1 (thirty-fourth slice): the chain/quote pool selection, chain gate call and
+    inline-vs-pooled arms moved from _fetch_state's body to server_state_intake.py."""
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parent.parent / "server_state_intake.py").read_text(encoding="utf-8")
+
+
 def _persistence_tail_source() -> str:
     """RC-REHAB-1 (2026-09-23, module extraction, twentieth slice):
     _post_publish_persistence_tail moved out of server.py into its own file. Tests that
@@ -1056,8 +1067,8 @@ def test_step1_log_only_inline_source_lock():
     arm (both its inline check and its pooled arm) moved with _exposures_for_state
     into server_state_exposures.py; the chain/quote arm stays in _fetch_state's own
     body, in server.py. Checked against each site's own file."""
-    src = _fetch_state_source()
-    assert "if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):" in src
+    src = _intake_source()
+    assert "if _srv._analytics_bg_shutdown or _srv._log_only_inline_leaf_fetches(log_only):" in src
     from pathlib import Path
 
     exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
@@ -1067,7 +1078,7 @@ def test_step1_log_only_inline_source_lock():
     i_pool_seed = exp_src.index("_seed_pool = (")
     assert i_inline_seed < i_pool_seed, "inline seed arm must precede the pooled arm"
     # Operator-facing bounded parallelism intact (submits still present).
-    assert "_cq_pool.submit(" in src or "_chain_fut = _cq_pool.submit(" in src
+    assert "chain_fut = pool.submit(" in src
     assert "_f5 = _seed_pool.submit(_seed_candles, 5)" in exp_src
     assert "_f1 = _seed_pool.submit(_seed_candles, 1)" in exp_src
 
@@ -1109,8 +1120,8 @@ def test_step1_ticker_matrix_invariance():
 
 def test_step1_shutdown_inline_branch_preserved():
     """Shutdown keeps its pre-existing inline behavior via the call-site or."""
-    src = _fetch_state_source()
-    assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
+    src = _intake_source()
+    assert "_srv._analytics_bg_shutdown or _srv._log_only_inline_leaf_fetches(log_only)" in src
 
 
 # ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 ───────────────────────────────
@@ -1147,24 +1158,24 @@ def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
                         and node.name != "_get_recompute_leaf_executor"):
                     callers.append(node.name)
     exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
-    exp_tree = ast.parse(exp_src)
-    for node in ast.walk(exp_tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for sub in ast.walk(node):
-                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
-                        and sub.func.attr == "_get_recompute_leaf_executor"):
-                    callers.append(node.name)
-    # Nested walk double-counts under enclosing defs; the set must be exactly
-    # _fetch_state + _exposures_for_state (call sites live directly in their own
-    # bodies, not in further-nested defs).
-    assert set(callers) == {"_fetch_state", "_exposures_for_state"}, (
+    intake_src = _intake_source()
+    for extracted in (exp_src, intake_src):
+        for node in ast.walk(ast.parse(extracted)):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for sub in ast.walk(node):
+                    if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                            and sub.func.attr == "_get_recompute_leaf_executor"):
+                        callers.append(node.name)
+    # Nested walk double-counts under enclosing defs; the set must be exactly the two
+    # extracted leaf sites -- the chain/quote leg (server_state_intake, thirty-fourth
+    # slice) and the candle-seed leg (server_state_exposures). server.py itself no longer
+    # calls the leaf executor anywhere except its own definition.
+    assert set(callers) == {"_fetch_chain_and_quote_for_state", "_exposures_for_state"}, (
         f"unexpected callers: {sorted(set(callers))}"
     )
-    src = _fetch_state_source()
-    # Call sites only (the bare substring also matches the def line).
-    # UI_05 residual: both sites are now conditional expressions selecting the
-    # priority lane vs the shared leaf pool.
-    assert src.count("else _get_recompute_leaf_executor()") == 1  # chain/quote
+    # UI_05 residual: both sites are conditional expressions selecting the priority lane vs
+    # the shared leaf pool.
+    assert intake_src.count("else _srv._get_recompute_leaf_executor()") == 1  # chain/quote
     assert exp_src.count("else _srv._get_recompute_leaf_executor()") == 1  # seeds
 
 
@@ -1238,20 +1249,20 @@ def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
     executor calls are `_srv._get_priority_leaf_executor()`/
     `_srv._get_recompute_leaf_executor()` (the lazy `import server as _srv` pattern)
     rather than bare names -- checked per-file below instead of one shared count."""
-    src = _fetch_state_source()
+    src = _intake_source()
     from pathlib import Path
 
     exp_src = (Path(__file__).resolve().parent.parent / "server_state_exposures.py").read_text(encoding="utf-8")
     # UI_05 residual: both leaf sites select the bounded PRIORITY leaf lane
     # for operator-priority recomputes and the shared leaf pool otherwise —
     # the route pool stays banned at both sites.
-    assert src.count("if _chain_priority") >= 1
+    assert src.count("if chain_priority") >= 1
     assert exp_src.count("if chain_priority") >= 1
-    assert src.count("else _get_recompute_leaf_executor()") == 1
+    assert src.count("else _srv._get_recompute_leaf_executor()") == 1
     assert exp_src.count("else _srv._get_recompute_leaf_executor()") == 1
-    assert src.count("_get_priority_leaf_executor()") >= 1
+    assert src.count("_srv._get_priority_leaf_executor()") >= 1
     assert exp_src.count("_srv._get_priority_leaf_executor()") >= 1
-    assert "_cq_pool = _get_route_offload_executor()" not in src
+    assert "_get_route_offload_executor" not in src
     assert "_seed_pool = _get_route_offload_executor()" not in exp_src
 
 
@@ -1263,9 +1274,9 @@ def test_step2_log_only_uses_neither_pool_for_nested_work():
     site (both its inline check and its pooled arm) moved with _exposures_for_state
     into server_state_exposures.py; the chain/quote site stays in _fetch_state's own
     body, in server.py."""
-    src = _fetch_state_source()
-    i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
-    i_pool_cq = src.index("_cq_pool = (")
+    src = _intake_source()
+    i_inline_cq = src.index("if _srv._analytics_bg_shutdown or _srv._log_only_inline_leaf_fetches(log_only):")
+    i_pool_cq = src.index("pool = (")
     assert i_inline_cq < i_pool_cq
 
     from pathlib import Path
@@ -1283,7 +1294,7 @@ def test_step2_shutdown_order_and_inline_branch():
     i_analytics_shutdown = src.index("_shutdown_analytics_executor(wait=True)")
     i_leaf_teardown = src.index("_recompute_leaf_executor.shutdown(wait=True, cancel_futures=True)")
     assert i_analytics_shutdown < i_leaf_teardown
-    assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
+    assert "_srv._analytics_bg_shutdown or _srv._log_only_inline_leaf_fetches(log_only)" in _intake_source()
 
 
 def test_step2_no_ticker_session_horizon_literals():
@@ -1816,10 +1827,10 @@ def test_ui05r_leaf_pool_selection_source_lock():
     leaf-executor calls are `_srv._get_priority_leaf_executor()`/
     `_srv._get_recompute_leaf_executor()` (the lazy `import server as _srv`
     pattern)."""
-    src = _fetch_state_source()
-    i_cq = src.index("_cq_pool = (")
-    assert "_get_priority_leaf_executor()" in src[i_cq:i_cq + 200]
-    assert "else _get_recompute_leaf_executor()" in src[i_cq:i_cq + 260]
+    src = _intake_source()
+    i_cq = src.index("pool = (")
+    assert "_srv._get_priority_leaf_executor()" in src[i_cq:i_cq + 200]
+    assert "else _srv._get_recompute_leaf_executor()" in src[i_cq:i_cq + 280]
 
     from pathlib import Path
 
@@ -2072,7 +2083,13 @@ def test_mkt_ctx_refresh_executor_single_worker_and_chain_window_marks():
 
     ex = srv._get_mkt_ctx_refresh_executor()
     assert ex._max_workers == 1
-    fetch_src = inspect.getsource(srv._fetch_state)
+    # RC-REHAB-1 (thirty-fourth slice): the two leaf marks are appended by the intake phase
+    # into the SAME list _fetch_state owns (window_marks=_chain_window_marks).
+    import server_state_intake
+
+    fetch_src = inspect.getsource(srv._fetch_state) + inspect.getsource(
+        server_state_intake._fetch_chain_and_quote_for_state)
+    assert "window_marks=_chain_window_marks" in inspect.getsource(srv._fetch_state)
     for mark in (
         "chain_window_preamble_ms",
         "chain_window_mkt_ctx_ms",

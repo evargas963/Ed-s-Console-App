@@ -57,7 +57,14 @@ def test_fetch_state_never_submits_to_analytics_pool() -> None:
     must use a pool whose tasks never wait on analytics futures."""
     fn = _find_function(SERVER_TREE, "_fetch_state")
     assert fn is not None, "server._fetch_state not found"
-    calls = _called_names(fn)
+    # RC-REHAB-1 (thirty-fourth slice): the chain/quote leg moved to server_state_intake.py;
+    # _fetch_state must delegate to it, and neither body may submit into the analytics pool.
+    assert "_fetch_chain_and_quote_for_state" in _called_names(fn)
+    intake_tree = ast.parse((ROOT / "server_state_intake.py").read_text(encoding="utf-8"))
+    intake_fn = _find_function(intake_tree, "_fetch_chain_and_quote_for_state")
+    assert intake_fn is not None
+    assert "_submit_analytics_task" not in _called_names(fn)
+    calls = _called_names(intake_fn)
     assert "_submit_analytics_task" not in calls, (
         "_fetch_state submits work back into the analytics executor — this is the "
         "nested submit+.result() self-deadlock class fixed at 3a0d338 (py-spy proof "
