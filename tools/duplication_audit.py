@@ -44,8 +44,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE = "http://127.0.0.1:8000"
 SKIP_DIRS = {".venv", "node_modules", "__pycache__", "site-packages", ".git",
              ".mypy_cache", ".pytest_cache", "backups", "scratchpad"}
-PROD_SKIP = SKIP_DIRS | {"tests", "reports", "docs", "governance",
-                         "arch_competition", "research", "calibration"}
+# calibration/ and arch_competition/ are NOT skipped: both are imported by live routes
+# (app/api/routes/ops.py, app/options/...), so they are production code (RC-REHAB-1).
+PROD_SKIP = SKIP_DIRS | {"tests", "reports", "docs", "governance", "research", "archive"}
 
 
 @dataclass
@@ -292,14 +293,34 @@ def scan_values() -> list[Finding]:
     return out
 
 
+_ROUTE_DECORATOR = re.compile(r"@(?:app|router)\.(?:get|post|delete|put|patch)\(\s*[\"']([^\"']+)")
+
+
 def scan_dead_endpoints() -> list[Finding]:
-    srv = _read(os.path.join(REPO, "server.py"))
-    defined = {p for _, p in re.findall(
-        r"@app\.(get|post|delete|put)\(\s*[\"']([^\"']+)", srv) if p.startswith("/api/")}
-    front = "".join(_read(p) for p in _files(("static/*.html",)))
+    """An /api/ route defined anywhere in the repo that nothing in the repo calls.
+
+    RC-REHAB-1 (2026-09-23): the first version read `@app.` routes from server.py alone and
+    looked for callers only in static/*.html. The decomposition moved every route into
+    app/api/routes/*.py as `@router.` routes, and the /console rebuild moved the callers into
+    static/js/*.js, so this scan found 0 routes and reported 0 dead endpoints over nothing.
+    Routes are now collected from every production .py file, and a caller is ANY reference in
+    any static page/script or any non-test .py / .ps1 / .bat / .cmd file (an ops script or
+    another service calling the endpoint is a real consumer), with the defining decorator
+    lines themselves stripped so a route never counts as its own caller.
+    """
+    defined: set[str] = set()
+    callers: list[str] = []
+    for p in _files(("**/*.py",), PROD_SKIP):
+        text = _read(p)
+        defined.update(r for r in _ROUTE_DECORATOR.findall(text) if r.startswith("/api/"))
+        callers.append(_ROUTE_DECORATOR.sub("", text))
+    for p in _files(("static/**/*.html", "static/**/*.js", "**/*.ps1", "**/*.bat", "**/*.cmd"),
+                    PROD_SKIP):
+        callers.append(_read(p))
+    surface = "\n".join(callers)
     return [Finding("D-DEAD", f"D-DEAD:{e}", "built, never called by any surface", [e])
             for e in sorted(defined)
-            if (e.split("{")[0].rstrip("/") or "@") not in front]
+            if (e.split("{")[0].rstrip("/") or "@") not in surface]
 
 
 #: Domain magic numbers that must live in exactly one place.

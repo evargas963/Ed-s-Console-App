@@ -96,27 +96,14 @@ _RESET_GUARD_SAFE_RE = __import__("re").compile(
     r"|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
     __import__("re").I)
 
-#: RC-252: the STATIC inventory of what must never be wiped, independent of any mission.
-#: LOCK-2 originally drew its targeted reach from PROTECTED_PATHS plus the ACTIVE mission's
-#: scope_paths — so protection contracted whenever a mission narrowed, which is what a good
-#: mission does. Under axiom-brand-landing-v1 that left `git restore -- static/chart.html`,
-#: `git checkout -- server.py` and `git restore -- math_levels.py` all silent. Mission scope
-#: is gone (2026-08-24 teardown); this static inventory alone defines LOCK-2 reach.
-PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
-    "db.py",
-    "server.py",
-    "time_et.py",
-    "math_exposure_core.py",
-    "math_levels.py",
-    "liquidity_value_engine.py",
-    "liquidity_models.py",
-    "ml_predict.py",
-    "ml_data_common.py",
-    "static/",
-    "calibration/",
-    "features/",
-    "tools/",
-)
+#: RC-252 -> RC-REHAB-1 (2026-09-23): LOCK-2's CLASS rule used to reach a STATIC inventory of
+#: 13 "product" paths (db.py, server.py, time_et.py, static/, tools/, ...) plus bare whole-tree
+#: forms. Every other path was wipeable: `git restore server_state_quote.py` or
+#: `git stash push -- app/api/routes/terrain.py` passed silently, because the server.py
+#: decomposition moved the product into ~50 modules the list never named -- and any NEW file
+#: was unprotected by construction. A maintained list of what matters is always one file
+#: behind. The class rule now refuses every non-safe form on ANY path; the safe list
+#: (_RESET_GUARD_SAFE_RE) is the only way through, exactly as the hard forms already work.
 
 
 #: RC-253: a command that pipes its heredoc INTO an interpreter is one where the body IS the
@@ -167,16 +154,11 @@ def _reset_class_violation(seg: str) -> list[str]:
     """The CLASS rule for ONE statement (RC-525): a chain cannot launder a later wipe."""
     if not _RESET_GUARD_RE.search(seg) or _RESET_GUARD_SAFE_RE.search(seg):
         return []
-    touched = [p for p in PROTECTED_PATHS + PRODUCT_WIPE_PROTECTED if p in seg]
-    bare = not any(tok in seg for tok in (" -- ", ".py", ".html", ".json"))
-    if touched or bare:
-        return [
-            "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
-            f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
-            "— three 2026-08-03 wipes used exactly this class. Not subject-disableable "
-            "(Architecture A / RC-450)."
-        ]
-    return []
+    return [
+        "RESET_GUARD (LOCK-2/RC-231): tree-destructive git on any path of the repo — three "
+        "2026-08-03 wipes used exactly this class. Safe forms: reset --soft, restore --staged, "
+        "stash list, checkout -b, clean -n. Not subject-disableable (Architecture A / RC-450)."
+    ]
 
 
 def reset_guard_violations(command: str) -> list[str]:
@@ -186,8 +168,10 @@ def reset_guard_violations(command: str) -> list[str]:
     `clean -f`, `push --force`/`-f`) discard work whatever they name, so they refuse on sight,
     on ANY target (host-wide; the checkout in front of the command is irrelevant — RC-258 kept
     these unscoped on purpose). The CLASS forms (the wider reset/restore/checkout--/clean/stash
-    family) refuse when they touch a protected/product path or take a bare whole-tree shape,
+    family) refuse on ANY path and in bare whole-tree shape alike,
     judged PER STATEMENT (RC-525) so a safe first statement cannot launder a later one.
+    The class forms refuse on ANY path (RC-REHAB-1): a maintained list of protected paths
+    left every module it did not name wipeable.
 
     Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
     `git reset --soft`, `git restore --staged` (index-only), `git stash list`,

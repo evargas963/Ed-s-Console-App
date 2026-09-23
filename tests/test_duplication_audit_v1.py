@@ -266,3 +266,20 @@ def test_validation_summary_exemption_is_real_not_a_guess():
     assert reason, "the validation_summary exemption is missing"
     assert "call_engine.py" in reason, (
         "the exemption no longer names the traced producer -- re-verify before keeping it")
+
+
+def test_dead_endpoint_scan_sees_router_modules_and_js_callers(tmp_path, monkeypatch):
+    """RC-REHAB-1 (2026-09-23): the scan read `@app.` routes from server.py alone and looked
+    for callers only in static/*.html, so once routes moved to app/api/routes (`@router.`)
+    and the console's callers moved to static/js, it found 0 routes and reported 0 dead.
+    A route defined in any module is in scope, a JS caller counts, and a route never
+    counts as its own caller."""
+    routes = tmp_path / "app" / "api" / "routes"
+    routes.mkdir(parents=True)
+    (routes / "x.py").write_text(
+        '@router.get("/api/used")\ndef a():\n    pass\n\n'
+        '@router.post("/api/orphan")\ndef b():\n    pass\n', encoding="utf-8")
+    (tmp_path / "static" / "js").mkdir(parents=True)
+    (tmp_path / "static" / "js" / "ed-x.js").write_text("fetch('/api/used')\n", encoding="utf-8")
+    monkeypatch.setattr(DA, "REPO", str(tmp_path), raising=True)
+    assert [f.ident for f in DA.scan_dead_endpoints()] == ["D-DEAD:/api/orphan"]
