@@ -371,7 +371,9 @@ def test_rc354_gsf_grc_wired_producer_to_consumer():
     assert snap.gsf is None and snap.grc is None
     assert snap.gsf_state == "UNAVAILABLE"
 
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-ninth slice): the kl_* stamp
+    # site (_terrain_kl_overlay) moved out of server.py into terrain_kl_overlay.py.
+    srv = Path(__file__).resolve().parent.parent.joinpath("terrain_kl_overlay.py").read_text(encoding="utf-8")
     for key in ('md["kl_gsf"]', 'md["kl_grc"]', 'md["kl_gsf_state"]', 'md["kl_gsf_state_disp"]'):
         assert key in srv, f"server must stamp {key} from the terrain book"
 
@@ -400,7 +402,8 @@ def test_rc357_zero_dte_share_wired_end_to_end():
     snap = compute_terrain("SPY", [], 780.0)
     assert hasattr(snap, "zero_dte_gamma_share_pct")
     assert snap.zero_dte_gamma_share_pct is None
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-23, twenty-ninth slice): stamp site moved to terrain_kl_overlay.py.
+    srv = Path(__file__).resolve().parent.parent.joinpath("terrain_kl_overlay.py").read_text(encoding="utf-8")
     assert 'md["kl_zero_dte_share"]' in srv
 
 
@@ -439,7 +442,8 @@ def test_rc358_rr25_wired_end_to_end():
 
     snap = compute_terrain("SPY", [], 780.0)
     assert hasattr(snap, "rr_25d") and snap.rr_25d is None
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-23, twenty-ninth slice): stamp site moved to terrain_kl_overlay.py.
+    srv = Path(__file__).resolve().parent.parent.joinpath("terrain_kl_overlay.py").read_text(encoding="utf-8")
     assert 'md["kl_rr25_pts"]' in srv and 'md["kl_rr25_dte"]' in srv
 
 
@@ -464,7 +468,8 @@ def test_rc362_vanna_wired_end_to_end():
 
     snap = compute_terrain("SPY", [], 780.0)
     assert hasattr(snap, "vanna_agg") and snap.vanna_agg is None
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-23, twenty-ninth slice): stamp site moved to terrain_kl_overlay.py.
+    srv = Path(__file__).resolve().parent.parent.joinpath("terrain_kl_overlay.py").read_text(encoding="utf-8")
     assert 'md["kl_vanna_net_dollars"]' in srv
 
 
@@ -486,7 +491,8 @@ def test_rc361_dex_wired_end_to_end():
 
     snap = compute_terrain("SPY", [], 780.0)
     assert hasattr(snap, "dex_dollars") and snap.dex_dollars is None
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-23, twenty-ninth slice): stamp site moved to terrain_kl_overlay.py.
+    srv = Path(__file__).resolve().parent.parent.joinpath("terrain_kl_overlay.py").read_text(encoding="utf-8")
     assert 'md["kl_dex_net"]' in srv
 
 
@@ -536,16 +542,17 @@ def test_rc359_doi_wired_end_to_end():
     snap = compute_terrain("SPY", [], 780.0)
     assert hasattr(snap, "oi_by_strike")
     assert "oi_by_strike" not in snap.to_dict()        # heavy field stays out of the poll
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
     # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): the DOI banking
     # write site (bank_daily_strike_oi/prev_session_strike_oi) moved with
-    # _terrain_refresh_one into terrain_refresh.py; the md["kl_doi_*"] stamps that read
-    # delta_oi_walls back out stay in server.py.
+    # _terrain_refresh_one into terrain_refresh.py. RC-REHAB-1 (2026-09-23, twenty-ninth
+    # slice): the md["kl_doi_*"] stamps that read delta_oi_walls back out moved with
+    # _terrain_kl_overlay into terrain_kl_overlay.py.
     tr = Path(__file__).resolve().parent.parent.joinpath("terrain_refresh.py").read_text(encoding="utf-8")
+    kl = Path(__file__).resolve().parent.parent.joinpath("terrain_kl_overlay.py").read_text(encoding="utf-8")
     for k, where in (
         ('bank_daily_strike_oi(', tr), ('prev_session_strike_oi(', tr),
-        ('md["kl_doi_call_strike"]', srv), ('md["kl_doi_put_strike"]', srv),
-        ('md["kl_doi_unwind_strike"]', srv),
+        ('md["kl_doi_call_strike"]', kl), ('md["kl_doi_put_strike"]', kl),
+        ('md["kl_doi_unwind_strike"]', kl),
     ):
         assert k in where, f"expected {k} to be wired"
     # The UI half of this test (a ΔOI ladder row in static/index.html) was retired here

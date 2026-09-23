@@ -475,8 +475,10 @@ ENGINE_INPUTS: dict[tuple[str, str], dict[str, str | None]] = {
 PAYLOAD_EXTRAS: dict[str, tuple[str, str | None]] = {
     'em_straddle_upper': ('MARKET', 'server.py:_fetch_state'),
     'em_straddle_lower': ('MARKET', 'server.py:_fetch_state'),
-    'kl_em_upper': ('MARKET', 'server.py:_terrain_kl_overlay'),
-    'kl_em_lower': ('MARKET', 'server.py:_terrain_kl_overlay'),
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-ninth slice): _terrain_kl_overlay
+    # moved out of server.py into terrain_kl_overlay.py.
+    'kl_em_upper': ('MARKET', 'terrain_kl_overlay.py:_terrain_kl_overlay'),
+    'kl_em_lower': ('MARKET', 'terrain_kl_overlay.py:_terrain_kl_overlay'),
     'analytics_stale': ('CONTROL', 'server.py:_attach_analytics_freshness_contract'),
     'analytics_pending_shell': ('CONTROL', 'server.py:_attach_analytics_freshness_contract'),
     'analytics_refresh_in_progress': ('CONTROL', 'server.py:_attach_analytics_freshness_contract'),

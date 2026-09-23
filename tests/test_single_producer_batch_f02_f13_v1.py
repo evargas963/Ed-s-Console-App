@@ -1323,9 +1323,12 @@ def test_rc345_operator_em_band_carries_its_methodology() -> None:
     # F06 END-TO-END: the OPERATOR-FACING kl_em band (terrain implied-1d-move) carries its
     # methodology to the served payload — kl_em_source travels beside kl_em_upper/lower, and
     # is 'unavailable' (never dropped) when the band is absent.
-    assert 'md["kl_em_source"] = "IV_SIGMA_1D"' in srv and 'md["kl_em_source"] = "unavailable"' in srv, (
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-ninth slice): the stamp site
+    # (_terrain_kl_overlay) moved out of server.py entirely, into terrain_kl_overlay.py.
+    kl_overlay_src = _read("terrain_kl_overlay.py")
+    assert 'md["kl_em_source"] = "IV_SIGMA_1D"' in kl_overlay_src and 'md["kl_em_source"] = "unavailable"' in kl_overlay_src, (
         "the operator kl_em band must carry its methodology to the payload (F06/RC-345)")
-    kl = srv[srv.index('md["kl_em_upper"] = round'):]
+    kl = kl_overlay_src[kl_overlay_src.index('md["kl_em_upper"] = round'):]
     kl = kl[:900]
     assert "kl_em_source" in kl, "kl_em_source must be emitted with kl_em_upper (F06/RC-345)"
     # the diagnostic straddle/iv path still records its own source too. RC-REHAB-1
