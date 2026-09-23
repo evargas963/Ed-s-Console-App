@@ -14,6 +14,7 @@ from config import DEFAULT_TICKER
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
 
 router = APIRouter()
 
@@ -114,7 +115,7 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
         if rows_t:
             d1, s1, c1 = rows_t[0]
             spot1 = float(s1)
-            per, _diag = _cebs(json.loads(c1), spot=spot1)
+            per, _diag = _cebs(decode_json_blob(c1), spot=spot1)
 
             def _f(v: dict, k: str) -> float:
                 x = v.get(k)
@@ -173,7 +174,7 @@ def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
             if not d0 or not is_trading_day_et(str(d0)):
                 continue
             sp = float(s0)
-            per, _diag = _cebs(json.loads(c0), spot=sp)
+            per, _diag = _cebs(decode_json_blob(c0), spot=sp)
             rws = []
             for k, v in sorted(per.items()):
                 if abs(float(k) - sp) > sp * 0.05:

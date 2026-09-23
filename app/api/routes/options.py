@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import Optional
@@ -11,6 +10,7 @@ from config import DEFAULT_TICKER
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
 
 router = APIRouter()
 log = logging.getLogger("ed_server")
@@ -360,7 +360,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         if rows_t:
             et_date, s1, c1, ts1 = rows_t[0]
             spot1 = float(s1)
-            surface = project_gamma_surface(json.loads(c1), spot1)
+            surface = project_gamma_surface(decode_json_blob(c1), spot1)
             # Always-live heatmap mandate (2026-09-15): a banked-morning reference has no stream
             # overlay input at all -- every leg on every cell stamps 'unavailable' UNLESS the
             # daemon is already, independently, requesting that leg's contract (a genuine

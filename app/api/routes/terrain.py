@@ -15,6 +15,7 @@ from config import DEFAULT_TICKER
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
 
 router = APIRouter()
 
@@ -302,7 +303,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
             _prior_row = rows[1] if len(rows) > 1 else (rows[0] if today_src else None)
             if _prior_row is not None:
                 d1, s1, c1 = _prior_row
-                prior = _per_strike(json.loads(c1), float(s1))
+                prior = _per_strike(decode_json_blob(c1), float(s1))
                 prior_src = f"wide_capture:{d1}"
     except Exception as e:
         log.debug("terrain strikes wide read failed %s: %s", tk, e)

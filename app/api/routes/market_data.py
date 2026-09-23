@@ -9,7 +9,6 @@ shared infrastructure in server.py and stays there, imported back lazily.
 from __future__ import annotations
 
 import asyncio
-import json
 import threading
 import time
 
@@ -17,6 +16,7 @@ from config import DEFAULT_TICKER
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
 
 router = APIRouter()
 
@@ -112,8 +112,8 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
         rows = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:2]
         if len(rows) >= 2:
             (d1, s1, c1), (d0, s0, c0) = rows[0], rows[1]
-            per1 = _cebs(json.loads(c1), spot=float(s1))[0]
-            per0 = _cebs(json.loads(c0), spot=float(s0))[0]
+            per1 = _cebs(decode_json_blob(c1), spot=float(s1))[0]
+            per0 = _cebs(decode_json_blob(c0), spot=float(s0))[0]
 
             def _g(v: dict, k: str) -> float:
                 x = v.get(k)
@@ -127,7 +127,7 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
             charm_below = charm_above = None
             charm_err = None
             try:
-                chain1 = json.loads(c1)
+                chain1 = decode_json_blob(c1)
                 contracts = chain1 if isinstance(chain1, list) else (
                     (chain1.get("contracts") if isinstance(chain1, dict) else None) or [])
                 per_ch = _ccs(contracts, spot1) if contracts else {}
