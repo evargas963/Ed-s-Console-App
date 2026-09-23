@@ -2538,7 +2538,8 @@ ROWS: tuple[Row, ...] = (
         justification='Reads the most recent stored Schwab chain and spot for a ticker, read-only; no Schwab call, no derivation.',
     ),
     Row(
-        file='server.py', derivation='_learn_strike_geometry', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (2026-09-23, thirty-eighth slice): moved to chain_width.py.
+        file='chain_width.py', derivation='_learn_strike_geometry', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Caches (spot, strike increment) per ticker from a chain already fetched by the traced terrain path; no new Schwab field read.',
     ),
@@ -3000,7 +3001,8 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (reset_schwab_client).',
     ),
     Row(
-        file='server.py', derivation='resolve_chain_strike_count', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (2026-09-23, thirty-eighth slice): moved to chain_width.py.
+        file='chain_width.py', derivation='resolve_chain_strike_count', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-59 single chain-width faucet (renamed from _terrain_strike_count, which survives as a back-compat alias): strike-count REQUEST parameter derived from learned geometry and the span bar; consumes no Schwab response field.',
     ),
