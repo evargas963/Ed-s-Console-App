@@ -220,7 +220,9 @@ def test_server_accuracy_surfaces_are_rth_primary() -> None:
                     v = kw["rth_only"]
                     rth_flags.append(isinstance(v, _ast.Constant) and v.value is True)
     assert any(rth_flags), "no RTH-primary compute_accuracy call remains in server.py"
-    assert '"accuracy_scope"' in src and 'rth_0930_1600_et' in src, (
+    # RC-REHAB-1 (thirty-third slice): the payload projection moved to server_state_payload.py.
+    payload_src = (repo_root / "server_state_payload.py").read_text(encoding="utf-8")
+    assert '"accuracy_scope"' in payload_src and 'rth_0930_1600_et' in payload_src, (
         "payload/API accuracy scope stamp missing"
     )
     ops = (repo_root / "static" / "ops.html").read_text(encoding="utf-8")

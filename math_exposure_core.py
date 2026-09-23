@@ -152,6 +152,19 @@ def bucket_metric_abs(bucket: dict, key: str) -> float | None:
     return abs(v) if v is not None else None
 
 
+def bucket_total_oi(bucket: dict) -> float | None:
+    """Call + put open interest of one exposure bucket; None when neither leg reports OI.
+
+    RC-REHAB-1 (2026-09-23): moved here from server.py (`_bucket_total_oi`) beside the other
+    bucket readers. Its callers are server_state_predictive_positioning (DPI denominator)
+    and server_state_payload (the no-gamma-void diagnostic); server.py no longer calls it."""
+    call_oi = bucket.get("call_oi")
+    put_oi = bucket.get("put_oi")
+    if call_oi is None and put_oi is None:
+        return None
+    return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
+
+
 # ── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)

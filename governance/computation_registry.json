@@ -15,6 +15,7 @@
 "server_state_order_flow.py",
 "server_state_persistence_tail.py",
 "server_state_predictive_positioning.py",
+"server_state_payload.py",
 "server_state_quote.py",
 "server_state_signals.py",
 "server_state_vol_envelope_sector.py",

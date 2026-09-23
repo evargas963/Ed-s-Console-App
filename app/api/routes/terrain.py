@@ -138,16 +138,15 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     # gets a chance to run. `import server as _server` defers resolution to each call
     # site, already inside its own try/except.
     import server as _server
+    from math_exposure_core import bucket_metric, total_gamma_raw_at_strike
     from server import (
         TERRAIN_STALE_AFTER_SEC,
         _note_gamma_surface_demand,
-        bucket_metric,
         latest_accrual_rows,
         log,
         resolve_spot,
         terrain_cache_get,
         terrain_staleness,
-        total_gamma_raw_at_strike,
     )
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority

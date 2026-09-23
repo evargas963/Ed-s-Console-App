@@ -125,7 +125,10 @@ def test_f39_missing_confluence_is_none_not_zero_at_consumer():
     assert stamped["cf_dot_total"] is None
     assert stamp_confluence_display_fields(None)["cf_weighted_push"] is None
 
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (thirty-third slice): the payload projection moved to server_state_payload.py;
+    # the uniqueness scan below covers both files.
+    server = (ROOT / "server.py").read_text(encoding="utf-8") + "\n" + (
+        ROOT / "server_state_payload.py").read_text(encoding="utf-8")
     assert "ms_dict.update(stamp_confluence_display_fields(mkt_ctx))" in server
     # RC-375 (Cursor audit: existence of the mapper line does not prove uniqueness):
     # the mapper must be the ONLY /api/state confluence stamp — no direct ms_dict

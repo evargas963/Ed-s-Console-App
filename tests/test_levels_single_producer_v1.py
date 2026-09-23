@@ -807,18 +807,30 @@ def test_price_levels_route_retired_410():
 
 def test_state_level_family_serves_raw_not_rounded():
     """PDH_PRECISION: the state payload's level family uses the raw finite reader, never
-    the 2dp _fv — /api/levels and state must serve the same digits."""
-    import re as _re
-    for field in ("pdh", "pdl", "pdc", "vwap", "orb_high", "orb_low",
-                  "today_poc", "today_vah", "today_val",
-                  "pd_poc", "pd_vah", "pd_val",
-                  "overnight_high", "overnight_low", "orb_midpoint",
-                  "vwap_p1", "vwap_m1", "vwap_p2", "vwap_m2"):
-        m = _re.search(rf'ms_dict\["{field}"\]\s*=\s*(\w+)\(', _SERVER_SRC)
-        assert m, f"state no longer serves {field}"
-        assert m.group(1) == "_raw_level", (
-            f"state serves {field} through {m.group(1)} — the 2dp precision faucet is back"
-        )
+    the 2dp _fv — /api/levels and state must serve the same digits.
+
+    RC-REHAB-1 (thirty-third slice): executed, not string-matched -- the payload projection
+    (server_state_payload.py) is driven with a 3-decimal value for every level field and must
+    serve it unrounded."""
+    from types import SimpleNamespace
+
+    import server_state_payload as P
+
+    fields = ("pdh", "pdl", "pdc", "vwap", "orb_high", "orb_low",
+              "today_poc", "today_vah", "today_val",
+              "pd_poc", "pd_vah", "pd_val",
+              "overnight_high", "overnight_low", "orb_midpoint",
+              "vwap_p1", "vwap_m1", "vwap_p2", "vwap_m2")
+    assert set(fields) <= set(P._RAW_PRICE_LEVEL_FIELDS), "a level field fell out of the payload"
+    pl = SimpleNamespace(**{f: 748.895 for f in fields})
+    em = SimpleNamespace(em_straddle={}, em_iv={}, em_progress={})
+    vs = SimpleNamespace(iv_skew={}, realized_vol=None, atr=None, iv_rank=None, iv_percentile=None)
+    pp = SimpleNamespace(dpi={}, hedging_flow={}, gamma_gradient=None, breakout_score={},
+                         pin_score_val={}, vol_expansion={})
+    out: dict = {}
+    P._signal_fields(out, price_levels=pl, em=em, vs=vs, pp=pp, sweep_score={})
+    for f in fields:
+        assert out[f] == 748.895, f"state serves {f} as {out[f]!r} — the 2dp precision faucet is back"
 
 
 def test_domain_faucet_registry_negative_control():

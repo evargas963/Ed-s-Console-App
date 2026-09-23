@@ -858,12 +858,15 @@ def test_fix_b_payload_shape_keys_still_served():
     RC-REHAB-1 (2026-09-23, module extraction, twentieth slice): the pre-read count
     SELECT lives in the tail's own file now (server_state_persistence_tail.py); the
     ms_dict keys it feeds are still assembled in server.py's own body."""
-    src = _fetch_state_source()
-    # CAPS RC-REHAB-1: the counts are now read from the always-keyed db_counts dict (None =
+    # RC-REHAB-1 (thirty-third slice): the payload projection moved to server_state_payload.py.
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "server_state_payload.py").read_text(encoding="utf-8")
+    # CAPS RC-REHAB-1: the counts are read from the always-keyed db_counts dict (None =
     # unknown when no DB / failed query) instead of a `.get(..., 0)` served-zero default.
-    assert 'ms_dict["total_snapshots"]  = db_counts["total"]' in src
+    assert 'ms_dict["total_snapshots"] = db_counts["total"]' in src
     assert 'ms_dict["filled_snapshots"] = db_counts["filled"]' in src
-    assert 'ms_dict["accuracy_scope"] = "rth_0930_1600_et"' in src
+    assert '"rth_0930_1600_et" if ms_dict["accuracy"] is not None else None' in src
     # The pre-read count SELECT (read-only) still precedes the block.
     assert "db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)" in _persistence_tail_source()
 

@@ -25,6 +25,7 @@ from unittest import mock
 
 import server as srv
 import server_state_predictive_positioning as spp
+from math_exposure_core import bucket_total_oi
 from math_exposure import (
     aggregate_net_gex,
     bucket_metric,
@@ -51,10 +52,10 @@ def _fixture_exposures():
 
 
 def test_bucket_total_oi_promoted_to_module_level_matches_original_arithmetic():
-    assert srv._bucket_total_oi({"call_oi": 100, "put_oi": 50}) == 150.0
-    assert srv._bucket_total_oi({"call_oi": None, "put_oi": None}) is None
-    assert srv._bucket_total_oi({"call_oi": 100, "put_oi": None}) == 100.0
-    assert srv._bucket_total_oi({"call_oi": None, "put_oi": 50}) == 50.0
+    assert bucket_total_oi({"call_oi": 100, "put_oi": 50}) == 150.0
+    assert bucket_total_oi({"call_oi": None, "put_oi": None}) is None
+    assert bucket_total_oi({"call_oi": 100, "put_oi": None}) == 100.0
+    assert bucket_total_oi({"call_oi": None, "put_oi": 50}) == 50.0
 
 
 def test_full_pipeline_matches_the_original_computation_chain():
@@ -78,7 +79,7 @@ def test_full_pipeline_matches_the_original_computation_chain():
     # still coerces None to 0.0 (that math has no null-safe path of its own).
     _gex_raw = aggregate_net_gex(exposures, cons_strikes)
     sum_dex = sum(bucket_metric(b, "net_dex_dollars") for b in exposures.values())
-    sum_oi = sum(srv._bucket_total_oi(b) for b in exposures.values())
+    sum_oi = sum(bucket_total_oi(b) for b in exposures.values())
     sum_vanna = (
         sum(bucket_metric(b, "call_vanna") for b in exposures.values())
         + sum(bucket_metric(b, "put_vanna") for b in exposures.values())
@@ -197,9 +198,13 @@ def test_fetch_state_calls_the_extracted_function_exactly_once():
             f"_fetch_state still calls {leaked} directly -- the predictive-positioning "
             f"phase was not fully extracted, a second inline computation site survived"
         )
-    # _bucket_total_oi's later Level Density call site must still resolve (it stays as a
-    # direct call in _fetch_state's own body -- only its DEFINITION moved to module level).
-    assert calls_in_fetch_state.count("_bucket_total_oi") >= 1, (
-        "the Level Density sub-phase's call to _bucket_total_oi must survive in "
-        "_fetch_state's own body -- only the nested def moved, not this call site"
-    )
+    # The per-bucket OI helper's SECOND caller (the no-gamma-void diagnostic) moved with the
+    # payload projection into server_state_payload.py (thirty-third slice); both callers now
+    # import the one definition, math_exposure_core.bucket_total_oi.
+    import inspect
+
+    import server_state_payload
+
+    assert "bucket_total_oi(" in inspect.getsource(server_state_payload._log_why_no_gamma_voids)
+    assert "bucket_total_oi(" in inspect.getsource(spp._predictive_positioning_for_state)
+    assert not hasattr(srv, "_bucket_total_oi"), "a second copy of the OI helper is back in server.py"

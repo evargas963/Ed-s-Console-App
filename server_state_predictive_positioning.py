@@ -9,11 +9,10 @@ _predictive_positioning_for_state and its private return type
 (_PredictivePositioningForState, a NamedTuple with no external reader confirmed by a
 repo-wide search before moving) move together as one unit.
 
-MONKEYPATCH/RUNTIME-STATE NOTE: this function calls 2 server.py-local helpers that have
-OTHER callers elsewhere in server.py (confirmed before moving, so they correctly stay in
-server.py rather than moving too): _bucket_total_oi (a second call site in _fetch_state's
-own Level Density sub-phase) and terrain_cache_get. Reached via the same lazy `import
-server` pattern proven in prior slices.
+MONKEYPATCH/RUNTIME-STATE NOTE: terrain_cache_get is server.py-local and reached via the
+lazy `import server` pattern proven in prior slices. (bucket_total_oi, formerly server.py's
+_bucket_total_oi, now lives in math_exposure_core and is imported directly -- RC-REHAB-1,
+thirty-third slice.)
 
 aggregate_net_gex, bucket_metric, compute_breakout_score, compute_dealer_pressure_index,
 compute_gamma_gradient, compute_hedging_flow_score, compute_pin_score, and
@@ -27,6 +26,7 @@ from typing import NamedTuple, Optional
 
 log = logging.getLogger(__name__)
 
+from math_exposure_core import bucket_total_oi
 from math_exposure import (
     aggregate_net_gex,
     bucket_metric,
@@ -81,10 +81,8 @@ def _predictive_positioning_for_state(
     ms.nearest_above_dist/ms.nearest_below_dist, only available after build_market_state
     runs. `_fetch_state` keeps that pre-initializer itself, unmoved.
 
-    `_bucket_total_oi` was promoted to a module-level function (see its own docstring)
-    since a SECOND call site much later in _fetch_state's body (the Level Density
-    sub-phase) also needs it and a nested def would not have been visible there once
-    Section 8 became its own top-level function.
+    The per-bucket OI sum (formerly a nested closure, then server._bucket_total_oi) is
+    math_exposure_core.bucket_total_oi.
 
     Pre-initialization ordering preserved deliberately (gamma-audit 2026-08-26 finding,
     already documented at the original call site): pin_strike/regime_gamma_at_spot are
@@ -121,7 +119,7 @@ def _predictive_positioning_for_state(
             dex = bucket_metric(bkt, "net_dex_dollars")
             if dex is not None:
                 sum_dex = (sum_dex or 0.0) + dex
-            bucket_oi = _srv._bucket_total_oi(bkt)
+            bucket_oi = bucket_total_oi(bkt)
             if bucket_oi is not None:
                 sum_oi = (sum_oi or 0.0) + bucket_oi
             for leg in ("call_vanna", "put_vanna"):

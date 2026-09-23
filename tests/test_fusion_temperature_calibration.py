@@ -369,7 +369,8 @@ def test_server_payload_attaches_fusion_calibration_provenance():
     raw probabilities (no artifact) is detectable from any probe."""
     from pathlib import Path
 
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (thirty-third slice): the payload projection moved to server_state_payload.py.
+    src = (Path(__file__).resolve().parent.parent / "server_state_payload.py").read_text(encoding="utf-8")
     assert 'ms_dict["fusion_calibration_v1"]' in src, (
         "payload lost the fusion-calibration provenance block"
     )

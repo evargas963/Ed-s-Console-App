@@ -244,8 +244,8 @@ def build_findings() -> list[dict]:
             "concept": "display precision (prior-day family)",
             "severity": "P2",
             "producers": {
-                "state payload rounds (pdh 748.89)":
-                    _sites("server.py", r'ms_dict\["pdh"\]', 1),
+                "state payload (serves the level family RAW since the PDH_PRECISION kill)":
+                    _sites("server_state_payload.py", r'"vwap", "pdh", "pdl"', 1),
                 "/api/levels + /api/price-levels serve raw (748.895)":
                     _sites("server.py", r'family": "prior_day"|_append_level', 1),
             },

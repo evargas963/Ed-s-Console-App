@@ -329,7 +329,8 @@ def test_three_surfaces_consume_the_one_context():
     """SignalInput stamp, snapshot row, and ms_dict must all read
     vol_ctx.market_iv_* — no surface recomputes vs-prev or re-reads the
     tracker independently (MSD-001 route parity by construction)."""
-    server_src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    # RC-REHAB-1 (thirty-third slice): the ms_dict projection moved to server_state_payload.py.
+    server_src = (_REPO / "server_state_payload.py").read_text(encoding="utf-8", errors="replace")
     ms_src = (_REPO / "market_state.py").read_text(encoding="utf-8", errors="replace")
     assert 'ms_dict["vix"] = vol_ctx.market_iv_level' in server_src
     assert 'ms_dict["vix_direction"] = vol_ctx.market_iv_direction' in server_src

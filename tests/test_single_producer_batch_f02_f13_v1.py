@@ -487,7 +487,8 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     # body already reads (see the two assertions below, unchanged).
     assert "flow_imb_norm, flow_imb_source = flow_imbalance_normalized_with_fallback" in ss, (
         "live server must capture the flow_imbalance SOURCE, not discard it (F11/RC-345)")
-    assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in srv, (
+    # RC-REHAB-1 (thirty-third slice): the payload projection lives in server_state_payload.py.
+    assert 'ms_dict["flow_imbalance_source"] = ofs.flow_imb_source' in _read("server_state_payload.py"), (
         "the flow_imbalance source must reach the payload beside the value (F11/RC-345)")
     # F11 residual (2026-08-19): label must classify the SAME number, not a
     # second book-only compute. MEASURED: empty ATM book + call-heavy volume
@@ -498,7 +499,11 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
         "live server must not independently compute the book-only kernel (F11)")
     assert "compute_option_flow_imbalance(" not in ss_code, (
         "server_state_signals must not independently compute the book-only kernel (F11)")
-    assert "flow_imbalance_label_from_normalized(_flow_imb_norm)" in srv, (
+    payload_src = _read("server_state_payload.py")
+    payload_code = "\n".join(ln for ln in payload_src.splitlines() if not ln.lstrip().startswith("#"))
+    assert "compute_option_flow_imbalance(" not in payload_code, (
+        "the payload projection must not independently compute the book-only kernel (F11)")
+    assert "flow_imbalance_label_from_normalized(ofs.flow_imb_norm)" in payload_src, (
         "flow_imbalance_label must be a function of the wrapper number (F11)")
     from math_probabilities import (
         compute_option_flow_imbalance,
@@ -564,7 +569,8 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
     }
     book = compute_option_flow_imbalance(exposures, 100.0)
     val, src = flow_imbalance_normalized_with_fallback(exposures, 100.0)
-    label = srv.flow_imbalance_label_from_normalized(val)
+    from math_probabilities import flow_imbalance_label_from_normalized
+    label = flow_imbalance_label_from_normalized(val)
     assert src == "volume" and val == 0.6
     assert label == "strong_call_demand"
     assert label != book.get("label")
@@ -1295,7 +1301,7 @@ def test_rc345_kwargs_contract_caller_callee_match() -> None:
     # the source book DOES persist on the snapshot row and IS served in the payload
     from db import SnapshotRow
     assert "flow_imbalance_source" in SnapshotRow.__dataclass_fields__
-    assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in src
+    assert 'ms_dict["flow_imbalance_source"] = ofs.flow_imb_source' in _read("server_state_payload.py")
     assert "flow_imbalance_source" not in set(inspect.signature(build_market_state).parameters)
 
 
@@ -1380,7 +1386,7 @@ def test_rc345_net_gex_books_are_consumer_separated() -> None:
         "terrain net_gex_at_spot must come from the repriced profile book (F02/RC-345)")
     html = _read("static/js/ed-trade-desk.js")
     assert "d.net_gex_at_spot" in html, "the repriced profile-at-spot book name is missing"
-    srv = _read("server.py")
+    srv = _read("server_state_payload.py")  # RC-REHAB-1: payload projection moved here
     assert '_net_gex_raw = getattr(cs, "net_gamma", None)' in srv, (
         "kl_net_gex must be the vendor aggregate (cs.net_gamma), same book as net_gamma")
     # the gex label/regime helpers are book-agnostic PURE functions (take a value arg).
