@@ -511,8 +511,9 @@ def _snapshot_expansion_columns(registered: dict[str, set[str]]) -> list[dict]:
             continue
         if verdict not in ("KEEP", "KEEP_LIVE", "WIRED_PENDING_DATA"):
             continue
-        # Missing null_pct -> population unknown -> skip. (The old `or 100.0` also turned a real
-        # 0.0 null_pct — a fully populated column — into 100.0 and dropped it.)
+        # Missing null_pct -> population unknown -> skip. (The old fallback to a hundred percent
+        # also turned a real 0.0 null_pct -- a fully populated column -- into fully-null and
+        # dropped it.)
         raw_null_pct = col.get("null_pct")
         if raw_null_pct is None:
             continue
