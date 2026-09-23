@@ -49,6 +49,7 @@ from instrument_identity import (
     vendor_option_root,
 )
 from stream_spine import (
+    EQUITY_SYMBOLS_MAX_HELD,
     OPTION_CONTRACTS_MAX_HELD,
     PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,
@@ -61,6 +62,7 @@ from stream_spine import (
     write_active_option_contract_signal,
     write_active_option_contracts_signal,
     write_active_ticker_signal,
+    write_equity_symbols_signal,
 )
 
 from app.options.order_flow.state import (
@@ -847,11 +849,65 @@ def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
         return
     set_active_option_contract(sym)
 
+#: Which stocks/indexes a screen shows a live price for, by source. The daemon streams its
+#: fixed --symbols roster only; everything else is requested here (the no-fallback rule
+#: means an unstreamed symbol reads UNAVAILABLE, so every shown symbol must be requested).
+_EQUITY_DEMAND_ORDER = ("watchlist", "board")
+_equity_demand: "dict[str, list[str]]" = {k: [] for k in _EQUITY_DEMAND_ORDER}
+_equity_not_admitted: "dict[str, str]" = {}
+_equity_last_written: "list[str] | None" = None
+_equity_lock = threading.Lock()
+
+
+def rank_equity_symbols(active: "str | None", demand: "dict[str, list[str]]",
+                        budget: int = EQUITY_SYMBOLS_MAX_HELD,
+                        ) -> "tuple[list[str], dict[str, str]]":
+    """(admitted, {not_admitted: reason}). Order of importance: the active ticker, then the
+    watchlist in its own order, then the gamma board. Duplicates count once, at their
+    most important place; everything past the budget is named, never silently cut."""
+    ordered: list[str] = []
+    for sym in [active, *[s for k in _EQUITY_DEMAND_ORDER for s in demand.get(k, [])]]:
+        t = ticker_storage_key(sym or "")
+        if t and t not in ordered:
+            ordered.append(t)
+    admitted = ordered[:max(budget, 0)]
+    not_admitted = {t: f"not streamed: outside the live equity budget ({budget})"
+                    for t in ordered[max(budget, 0):]}
+    return admitted, not_admitted
+
+
+def _publish_equity_symbols() -> None:
+    """Re-rank and hand the daemon the list (written only when it changed)."""
+    global _equity_last_written, _equity_not_admitted
+    with _equity_lock:
+        admitted, not_admitted = rank_equity_symbols(_active_ticker, _equity_demand)
+        _equity_not_admitted = not_admitted
+        if sorted(admitted) == _equity_last_written:
+            return
+        _equity_last_written = sorted(admitted)
+    write_equity_symbols_signal(admitted)
+
+
+def declare_equity_symbols(kind: str, symbols: "list[str]") -> "dict[str, str]":
+    """A screen's set of symbols whose live price it shows (`kind` = watchlist | board).
+    Returns the symbols left unstreamed, with the reason."""
+    if kind not in _equity_demand:
+        raise ValueError(f"unknown equity demand kind {kind!r}")
+    with _equity_lock:
+        _equity_demand[kind] = [t for t in (ticker_storage_key(s or "") for s in symbols or []) if t]
+    _publish_equity_symbols()
+    return get_equity_symbols_not_admitted()
+
+
+def get_equity_symbols_not_admitted() -> "dict[str, str]":
+    with _equity_lock:
+        return dict(_equity_not_admitted)
+
+
 def set_streaming_active_ticker(ticker: str) -> bool:
-    """Request book depth + begin replaying L1 for this symbol. The daemon adds/drops
-    its own NASDAQ_BOOK/NYSE_BOOK subscription for `ticker` on its own poll cadence
-    (stream_active_ticker.json) — L1 replay here starts immediately since the daemon
-    already captures LEVELONE_EQUITIES for its whole roster."""
+    """Make `ticker` the active symbol: the daemon adds its NASDAQ_BOOK/NYSE_BOOK depth
+    (stream_active_ticker.json) and, when it is outside the daemon's roster, its
+    LEVELONE_EQUITIES stream (stream_equity_symbols.json, ranked first)."""
     global _active_ticker, _last_subscribe_completed_ts, _streaming_last_update_ts
     t = ticker_storage_key(ticker)
     if not t:
@@ -864,6 +920,7 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     forget_unsubscribed_symbols(old, [t])
     write_active_ticker_signal(t)
     _active_ticker = t
+    _publish_equity_symbols()
     _last_subscribe_completed_ts = time.time()
     _streaming_last_update_ts = None
     log.info("Live-plane feed active ticker -> %s", t)

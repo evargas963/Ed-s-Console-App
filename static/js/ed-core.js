@@ -728,8 +728,20 @@
     if (host) host.classList.remove('wl-degraded');
     _wlLastGoodTs = Date.now();
   }
+  // The daemon streams only what is asked for: hand it the watchlist whenever it changes
+  // (and once at start), so every row can be a streamed quote.
+  var _wlDeclared = null;
+  function declareWatchlistStream(list) {
+    var key = list.join(',');
+    if (key === _wlDeclared) return;
+    _wlDeclared = key;
+    fetch('/api/streaming/watchlist-symbols', { method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
+      .catch(function () { _wlDeclared = null; });   // retried on the next poll
+  }
   function pollWatchlistQuotes() {
     var list = loadWL();
+    declareWatchlistStream(list);
     if (!list.length) return;
     var myGen = ++_wlPollGen;
     fetch('/api/watchlist-quotes?tickers=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })

@@ -463,6 +463,33 @@ def write_active_option_contracts_signal(
     _write_json_list_signal("contract_symbols", symbols, path=dest)
 
 
+def default_equity_symbols_signal_path(db_path: Path | str | None = None) -> Path:
+    """The console's requested LEVELONE_EQUITIES symbols beyond the daemon's fixed roster."""
+    return resolve_stream_db_path(db_path).with_name("stream_equity_symbols.json")
+
+
+def write_equity_symbols_signal(symbols: "list[str]", *, path: Path | None = None) -> None:
+    """The console's write of every stock/index whose live price a screen shows (active
+    ticker, watchlist, gamma board). Already cut to EQUITY_SYMBOLS_MAX_HELD by the console."""
+    dest = path if path is not None else default_equity_symbols_signal_path()
+    _write_json_list_signal("symbols", symbols, path=dest)
+
+
+def read_equity_symbols_signal(*, path: Path | None = None) -> "list[str]":
+    """The daemon's read of that list; [] when absent or malformed (fail closed)."""
+    dest = path if path is not None else default_equity_symbols_signal_path()
+    return _read_json_list_signal("symbols", path=dest)
+
+
+#: How many LEVELONE_EQUITIES symbols (beyond the daemon's --symbols roster) the shared
+#: socket carries on the console's request. Equity L1 is light next to options: the
+#: measured socket deaths were driven by tens of thousands of option subscriptions
+#: (OPTION_CONTRACTS_MAX_HELD below), and the daemon ran its first months on a ~60-symbol
+#: equity roster. The console ranks what it asks for (active ticker, then watchlist, then
+#: gamma board) and names every symbol it leaves out.
+EQUITY_SYMBOLS_MAX_HELD = 150
+
+
 #: How many ADDITIONAL option contracts the ONE shared Schwab streaming socket may hold.
 #:
 #: MEASURED 2026-09-23 (stream_capture.db, 08:30-15:00 CT each day): LEVELONE_OPTIONS load

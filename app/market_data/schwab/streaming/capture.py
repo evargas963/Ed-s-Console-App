@@ -56,6 +56,8 @@ from stream_spine import (  # noqa: E402
     read_active_option_contracts_signal,
     enforce_option_contracts_budget,
     read_active_ticker_signal,
+    read_equity_symbols_signal,
+    EQUITY_SYMBOLS_MAX_HELD,
     resolve_stream_db_path,
 )
 from time_et import is_capturable_session  # noqa: E402
@@ -321,6 +323,63 @@ async def _apply_active_ticker_book_subs(stream, current: str | None) -> str | N
             print(f"book sub {requested}: {e}")
             return current
     return requested
+
+
+async def _apply_equity_symbol_subs(stream, roster: "list[str]", held: frozenset,
+                                    status: dict) -> frozenset:
+    """Hold LEVELONE_EQUITIES for every symbol the console asked for (beyond the roster,
+    which is subscribed at connect): ADD the new ones, UNSUBS the dropped ones.
+
+    The console ranks and cuts its request to EQUITY_SYMBOLS_MAX_HELD; a request over it
+    means the console broke that contract and is refused whole (named in `status`), never
+    trimmed here -- only the console knows which symbols matter most. A vendor error on
+    ADD/UNSUBS leaves `held` as it truly is, so the next tick retries."""
+    in_roster = {s.upper() for s in roster}
+    requested = [s for s in read_equity_symbols_signal() if s not in in_roster]
+    if len(requested) > EQUITY_SYMBOLS_MAX_HELD:
+        status["refused"] = (f"request of {len(requested)} symbols exceeds the equity budget "
+                             f"({EQUITY_SYMBOLS_MAX_HELD}); the console must rank before sending")
+        desired: frozenset = frozenset()
+    else:
+        status["refused"] = None
+        desired = frozenset(requested)
+    drop = sorted(held - desired)
+    if drop:
+        try:
+            await stream.level_one_equity_unsubs(drop)
+            held = held - frozenset(drop)
+        except Exception as e:  # noqa: BLE001 -- retried next tick
+            print(f"equity unsubs {drop[:5]}...: {type(e).__name__}: {e}")
+    add = sorted(desired - held)
+    if add:
+        try:
+            await stream.level_one_equity_add(add)
+            held = held | frozenset(add)
+            print(f"equity L1 added {len(add)} console-requested symbols (held {len(held)})")
+        except Exception as e:  # noqa: BLE001 -- retried next tick
+            print(f"equity add {add[:5]}...: {type(e).__name__}: {e}")
+    status["held"] = sorted(held)
+    return held
+
+
+async def _equity_symbols_poll_loop(get_stream, get_held, set_held, roster: "list[str]",
+                                    status: dict, stop: asyncio.Event,
+                                    interval_sec: float = 1.0) -> None:
+    """Fast poll of the console's equity-symbols signal. Re-created per stream generation
+    (a fresh StreamClient holds nothing, so `held` restarts empty with it)."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval_sec)
+            return
+        except asyncio.TimeoutError:
+            pass
+        stream = get_stream()
+        if stream is None:
+            continue
+        try:
+            set_held(await _apply_equity_symbol_subs(stream, roster, get_held(), status))
+        except Exception as e:  # noqa: BLE001 -- poll loop must survive one bad tick
+            print(f"equity-symbols poll: {type(e).__name__}: {e}")
 
 
 async def _active_ticker_book_poll_loop(get_stream, get_current, set_current,
@@ -1572,7 +1631,8 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
                  stats: CaptureStats, max_qdepth: int,
                  epoch_state: dict | None = None,
                  rejected_state: "dict[str, str] | None" = None,
-                 push_stats: "dict | None" = None) -> None:
+                 push_stats: "dict | None" = None,
+                 equity_status: "dict | None" = None) -> None:
     # PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS (Gap 2): the producer identity/liveness
     # signal now lives INSIDE stream_capture.db itself (write_heartbeat), on the SAME
     # cadence as this file-based status write -- one call site, one clock, not a second
@@ -1599,6 +1659,8 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
         "writer_thread_backlog": writer.writer_backlog(),
         # the local push channel to the console (clients connected, messages sent/dropped)
         "live_push": dict(push_stats) if push_stats is not None else None,
+        # console-requested LEVELONE_EQUITIES beyond the roster: held now / refused reason
+        "equity_symbols": dict(equity_status) if equity_status is not None else None,
         "per_service": stats.per_service,
         "handle_ms_p50": stats.p(50), "handle_ms_p99": stats.p(99),
         # PR214_RTH_DEFECT_REMEDIATION_V1: the resolved ABSOLUTE stream DB identity
@@ -2040,6 +2102,9 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     #: closure-captured local, because BOTH the recycle path here and the poll loop's
     #: coroutine need to read/write the SAME current values.
     book_state: dict = {"stream": None, "ticker": None}
+    #: console-requested LEVELONE_EQUITIES beyond the roster (held resets with each generation)
+    equity_state: dict = {"held": frozenset()}
+    equity_status: dict = {"held": [], "refused": None}
     #: Same shared-dict shape, for the options-contract poll loop — a SEPARATE signal
     #: (stream_active_option_contract.json) and a separate pair of Schwab services, so it
     #: is tracked independently rather than folded into book_state. "contract" holds the
@@ -2084,6 +2149,9 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             started.append(asyncio.create_task(_active_ticker_book_poll_loop(
                 lambda: book_state["stream"], lambda: book_state["ticker"],
                 lambda t: book_state.__setitem__("ticker", t), stop)))
+            started.append(asyncio.create_task(_equity_symbols_poll_loop(
+                lambda: book_state["stream"], lambda: equity_state["held"],
+                lambda h: equity_state.__setitem__("held", h), symbols, equity_status, stop)))
             started.append(asyncio.create_task(_active_option_contract_poll_loop(
                 lambda: option_state["stream"], lambda: option_state["contract"],
                 lambda c: option_state.__setitem__("contract", c), stop,
@@ -2137,7 +2205,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             write_status(bus, health, writer, stats, max_qdepth,
                          epoch_state=option_epoch_state,
                          rejected_state=option_rejected_state,
-                         push_stats=push_stats)
+                         push_stats=push_stats, equity_status=equity_status)
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
             seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0  # caps-ok: diagnostic unseen-count; 0 means never seen
@@ -2193,6 +2261,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 last_reconnect = time.monotonic()
                 recycle_surrendered_ts = time.time()
                 book_state["stream"] = None   # poll loop must not use the dying stream
+                equity_state["held"] = frozenset()   # a fresh stream holds nothing
                 option_state["stream"] = None
                 # RETIRE THE WHOLE GENERATION FIRST — control tasks (cancelled AND
                 # awaited), then the pump, then the session itself. Only after this is it

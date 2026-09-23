@@ -13632,6 +13632,13 @@ def _terrain_loop() -> None:
         # "dictionary changed size during iteration" here.
         _viewed_now = [tk for tk in list(_gamma_surface_demand.keys()) if _gamma_surface_wanted(tk)]
         _previewed = [tk for tk in _viewed_now if tk not in tickers]
+        # Every board ticker's spot is the streamed LAST_PRICE only, so the daemon must
+        # stream each one (its fixed roster is just --symbols).
+        try:
+            from app.options.order_flow.streaming import declare_equity_symbols
+            declare_equity_symbols("board", tickers + _previewed)
+        except Exception as e:  # noqa: BLE001 -- the cycle itself must still run
+            log.warning("equity stream declaration failed: %s", e)
         # RC-146: a skip reason is only true for the cycle that recorded it. Cleared at the TOP
         # of every cycle so a pause that has ended cannot keep telling the operator to wait —
         # the branch below re-records it while, and only while, it still applies.
@@ -16627,6 +16634,19 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "contract": c}, status_code=500)
     return JSONResponse(out)
+
+
+@app.post("/api/streaming/watchlist-symbols")
+async def post_streaming_watchlist_symbols(payload: dict = Body(default={})):
+    """The browser's watchlist, so the daemon streams each row's LEVELONE_EQUITIES (the
+    daemon's fixed roster is only its --symbols). Returns the symbols left unstreamed with
+    the reason -- a row that can't be streamed says why instead of borrowing a REST quote."""
+    from app.options.order_flow.streaming import declare_equity_symbols
+    syms = payload.get("symbols") if isinstance(payload, dict) else None
+    if not isinstance(syms, list):
+        raise HTTPException(status_code=400, detail="symbols must be a list")
+    not_admitted = declare_equity_symbols("watchlist", [str(x) for x in syms])
+    return {"ok": True, "not_streamed": not_admitted}
 
 
 @app.post("/api/streaming/active-option-contracts")
