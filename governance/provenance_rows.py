@@ -2535,7 +2535,8 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_l1_touch_scope).',
     ),
     Row(
-        file='server.py', derivation='_latest_chain_and_spot', disposition='SCHWAB_LEAF',
+        # RC-REHAB-1 (2026-09-23): moved to stored_chain.py.
+        file='stored_chain.py', derivation='_latest_chain_and_spot', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.callExpDateMap.*.openInterest',
         justification='Reads the most recent stored Schwab chain and spot for a ticker, read-only; no Schwab call, no derivation.',
     ),
@@ -2665,7 +2666,7 @@ ROWS: tuple[Row, ...] = (
     Row(
         # RC-REHAB-1 (2026-09-23, forty-fourth slice): moved to terrain_loop.py.
         file='terrain_loop.py', derivation='_seed_strike_geometry_from_storage', disposition='DERIVED',
-        producer_refs=('server.py:_latest_chain_and_spot',),
+        producer_refs=('stored_chain.py:_latest_chain_and_spot',),
         justification='Replays stored chains through _learn_strike_geometry at boot; stored rows were produced by traced writers.',
     ),
     Row(
@@ -2682,11 +2683,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_spot_from_quote', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_quote',),
         justification='Live-quote leg of the spot authority: delegates to Schwab transport, parses via the canonical quote-node parser.',
-    ),
-    Row(
-        file='server.py', derivation='_spot_from_stored', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON; lowest-precedence leg of the spot authority.',
     ),
     Row(
         file='server.py', derivation='_sse_background_loop', disposition='ALLOWLISTED',
@@ -2826,7 +2822,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='app/api/routes/chain.py', derivation='get_chain', disposition='DERIVED',
-        producer_refs=('server.py:_latest_chain_and_spot',),
+        producer_refs=('stored_chain.py:_latest_chain_and_spot',),
         justification='OPTIONS_ORDER_FLOW_V1 contract-selection surface: serializes the stored per-contract chain (symbol/putCall/strikePrice/bid/ask/greeks/OI/volume) verbatim from _latest_chain_and_spot, the SAME stored-chain reader terrain/radar/order-flow-microstructure already use — no new Schwab fetch, no reshaping.',
     ),
     Row(
@@ -3109,7 +3105,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='terrain_engine.py', derivation='compute_terrain', disposition='DERIVED',
-        producer_refs=('server.py:_latest_chain_and_spot',),
+        producer_refs=('stored_chain.py:_latest_chain_and_spot',),
         justification='Assembles the terrain payload (regime, walls, pin, HVL, max pain, charm walls) from one chain; no model stack.',
     ),
     Row(

@@ -35,6 +35,7 @@ from terrain_schedule import (
     TERRAIN_CONTENTION_START_MINS,
     terrain_cycle_tickers,
 )
+import stored_chain
 
 log = logging.getLogger(__name__)
 
@@ -236,7 +237,7 @@ def _seed_strike_geometry_from_storage() -> None:
     seeded = 0
     for tk in tickers:
         try:
-            contracts, stored_spot, _stored_ts = _srv._latest_chain_and_spot(tk)
+            contracts, stored_spot, _stored_ts = stored_chain._latest_chain_and_spot(tk)
         except Exception:
             continue
         if _learn_strike_geometry(tk, contracts, stored_spot):

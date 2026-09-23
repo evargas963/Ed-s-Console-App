@@ -18,6 +18,7 @@ import terrain_state
 from instrument_identity import ticker_storage_key
 from terrain_atr import RING_REGIME, AtrPair, atr_distance, compute_atr_pair, ring_for
 from terrain_engine import compute_terrain
+import stored_chain
 
 log = logging.getLogger(__name__)
 
@@ -336,7 +337,7 @@ def _radar_fallback_recompute() -> list[dict] | None:
         if tk in cached:
             continue
         try:
-            contracts, spot, _stored_ts = _srv._latest_chain_and_spot(tk)
+            contracts, spot, _stored_ts = stored_chain._latest_chain_and_spot(tk)
             if not contracts or not spot:
                 continue
             # NO live quote per ticker here. The radar sweeps ~51 symbols; calling

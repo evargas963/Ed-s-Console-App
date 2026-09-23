@@ -100,10 +100,10 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
     from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
     from calibration.complete_chain_capture import latest_complete_chain_capture, persist_complete_chain_capture
     from calibration.complete_chain_capture import COMPLETENESS_BASIS_STRIKE_RANGE_ALL
+    from stored_chain import _latest_chain_and_spot
     from server import (
         _fetch_expiries_light,
         _gated_safe_get_chain,
-        _latest_chain_and_spot,
         _touch_tracked_ticker_view,
         flatten_chain_contracts,
         get_client,

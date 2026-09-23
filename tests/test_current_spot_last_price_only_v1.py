@@ -43,7 +43,6 @@ def test_parser_rejects_mark_close_and_midpoint() -> None:
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None:
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote", lambda _c, tk, **_k: _no_last_price_quote(tk))
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (742.48, 1.0))
     L._by_ticker.pop("SPY", None)
     spot, source, _ts = server.resolve_spot(
         "SPY",
@@ -127,7 +126,6 @@ def test_merge_and_l1_overlay_ignore_mark_plane_spot() -> None:
 def test_reprice_and_api_spot_do_not_use_bar_close_or_snapshot(monkeypatch) -> None:
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote", lambda _c, tk, **_k: _no_last_price_quote(tk))
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (745.10, 1.0))
     cached = {
         "ticker": "SPY",
         "spot": 745.10,

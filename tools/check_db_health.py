@@ -273,6 +273,7 @@ def run_bars_present_check(con: sqlite3.Connection, tables: set[str]) -> Check:
         c.error = "price_bars_1m table missing"
         return c
     try:
+        # session-universe-ok: a presence probe over the whole table (every session stored by design) -- no RTH assumption, no measurement
         has_row = con.execute("select 1 from price_bars_1m limit 1").fetchone() is not None
     except sqlite3.Error as exc:
         c.violations = 1

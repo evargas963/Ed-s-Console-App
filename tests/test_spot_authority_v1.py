@@ -134,7 +134,6 @@ def test_resolve_spot_prefers_the_quote_over_the_stored_snapshot(monkeypatch) ->
         server, "safe_get_quote",
         lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 999.99}}}),
     )
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
     spot, source, _ts = server.resolve_spot("SPY")
     assert spot == 999.99
     assert source == server.SPOT_SOURCE_QUOTE
@@ -256,7 +255,6 @@ def test_resolve_spot_never_promotes_stored_or_chain_when_last_price_is_absent(m
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
                         lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"mark": 111.11}}}))
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
     spot, source, _ts = server.resolve_spot(
         "SPY", chain_json={"underlying": {"last": 743.29, "mark": 743.20, "close": 743.10}}
     )
@@ -419,9 +417,11 @@ def test_server_queries_actually_carry_the_timeframe_predicate():
     """Guards the real call sites, not just a query string written in this test."""
     from pathlib import Path
 
-    src = Path(__file__).resolve().parent.parent / "server.py"
+    # RC-REHAB-1: the stored-chain read lives in stored_chain.py; _spot_from_stored was deleted
+    # (dead since RC-564 made resolve_spot LAST_PRICE-only).
+    src = Path(__file__).resolve().parent.parent / "stored_chain.py"
     text = src.read_text(encoding="utf-8", errors="replace")
-    for marker in ("def _spot_from_stored", "def _latest_chain_and_spot"):
+    for marker in ("def _latest_chain_and_spot",):
         i = text.index(marker)
         body = text[i : i + 3000]
         # Match the EXECUTED sql, not prose: these functions document the defect in their

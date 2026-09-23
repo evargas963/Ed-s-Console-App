@@ -33,6 +33,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import calibration.complete_chain_capture as ccc_mod  # noqa: E402
 import app.api.routes.chain
+import stored_chain
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -112,7 +113,7 @@ def test_chain_fails_closed_with_no_stored_chain(monkeypatch, tmp_path):
 
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (None, None, None))
+    monkeypatch.setattr(stored_chain, "_latest_chain_and_spot", lambda t: (None, None, None))
     body = json.loads(app.api.routes.chain.get_chain(ticker="ZZZZ", expiry=None).body)
     assert body["ticker"] == "ZZZZ"
     assert body["contracts"] == []
@@ -128,7 +129,7 @@ def test_chain_falls_back_to_stored_contracts_verbatim_on_live_failure(monkeypat
 
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_latest_chain_and_spot",
+    monkeypatch.setattr(stored_chain, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(app.api.routes.chain.get_chain(ticker="SPY", expiry=None).body)
     assert body["contracts"] == _REAL_CONTRACTS   # byte-for-byte pass-through
@@ -147,7 +148,7 @@ def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
     def _spy(t):
         seen.append(t)
         return None, None, None
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", _spy)
+    monkeypatch.setattr(stored_chain, "_latest_chain_and_spot", _spy)
     body = json.loads(app.api.routes.chain.get_chain(ticker=" spy ", expiry=None).body)
     assert body["ticker"] == "SPY"
     assert seen == ["SPY"]
@@ -720,7 +721,7 @@ def test_chain_live_fetch_non_200_falls_back_to_stored_snapshot(monkeypatch, tmp
     monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_REAL_EXPIRY])
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
                         lambda *a, **k: (_FakeResp(502, {}), 0.0, 0.1))
-    monkeypatch.setattr(srv, "_latest_chain_and_spot",
+    monkeypatch.setattr(stored_chain, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(app.api.routes.chain.get_chain(ticker="SPY", expiry=None).body)
     assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
@@ -740,7 +741,7 @@ def test_chain_live_fetch_exception_falls_back_to_stored_snapshot(monkeypatch, t
     def _boom(*a, **k):
         raise RuntimeError("simulated vendor error")
     monkeypatch.setattr(srv, "_gated_safe_get_chain", _boom)
-    monkeypatch.setattr(srv, "_latest_chain_and_spot",
+    monkeypatch.setattr(stored_chain, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(app.api.routes.chain.get_chain(ticker="SPY", expiry=None).body)
     assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
