@@ -29,13 +29,10 @@ import server
 # (module-level, not lazily via `import server`) -- a mock targeting it must patch
 # that module's own binding, not server's re-export, to be picked up.
 import gamma_surface_eager_refresh as gse
-from server import (
-    refresh_gamma_surface_from_spot_tick,
-    refresh_gamma_surface_from_stream,
-    _dispatch_spot_gamma_refresh,
-    project_gamma_surface,
-    ticker_storage_key,
-)
+from gamma_surface_eager_refresh import refresh_gamma_surface_from_spot_tick, refresh_gamma_surface_from_stream
+from gamma_surface_projection import project_gamma_surface
+from instrument_identity import ticker_storage_key
+from server import _dispatch_spot_gamma_refresh
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))

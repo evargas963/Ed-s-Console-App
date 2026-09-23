@@ -95,6 +95,7 @@ def get_liquidity_snapshot(
 ):
     """Return liquidity & value playbook snapshot (zones, summary, raw_levels) for ticker/session.
     Uses PlaybookConfig(clustering_mode='percent'). ``live`` uses min(now,RTH close) cutoff; checkpoints unchanged."""
+    from time_et import now_et
     from server import (
         _build_raw_levels_used,
         _liquidity_fusion_from_cache,
@@ -103,7 +104,6 @@ def get_liquidity_snapshot(
         _touch_tracked_ticker_view,
         canonical_price_level_snapshot,
         get_client,
-        now_et,
         resolve_spot,
     )
 
@@ -298,7 +298,8 @@ def get_liquidity_playbook_state(
 ):
     """Return full PlaybookState with all four snapshots (premarket, opening, midday, afternoon).
     Each snapshot uses only data through its cutoff time (no lookahead)."""
-    from server import _touch_tracked_ticker_view, get_client, now_et
+    from time_et import now_et
+    from server import _touch_tracked_ticker_view, get_client
 
     try:
         from polling_adapter import fetch_bars_via_schwab_for_session

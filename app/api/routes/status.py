@@ -140,7 +140,7 @@ def api_vol_observability(ticker: str | None = Query(default=None)):
     """VOL_OBSERVABILITY_V1: read-only projection of the per-cycle vol-index
     observations ($VIX consumed; $VXN/$RVX FETCHED_UNCONSUMED) plus the
     ratified ticker-class mapping candidate. Never feeds the money path."""
-    from server import vol_observability_payload
+    from vol_observability import vol_observability_payload
 
     return vol_observability_payload(ticker)
 

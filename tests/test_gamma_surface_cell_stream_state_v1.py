@@ -18,14 +18,11 @@ import time
 from pathlib import Path
 
 import server
-from server import (
-    _stamp_gamma_surface_cell_stream_state,
-    _gamma_surface_cell_state_counts,
-    get_options_gamma_surface,
-    refresh_gamma_surface_from_stream,
-    project_gamma_surface,
-    ticker_storage_key,
-)
+from app.api.routes.options import get_options_gamma_surface
+from gamma_surface_eager_refresh import refresh_gamma_surface_from_stream
+from gamma_surface_projection import project_gamma_surface
+from instrument_identity import ticker_storage_key
+from server import _stamp_gamma_surface_cell_stream_state, _gamma_surface_cell_state_counts
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -263,7 +260,8 @@ def test_rest_only_cycle_marks_desired_contract_stale_never_live(monkeypatch):
 
     # Drive it through the same code path _terrain_refresh_one uses for stamping, without a
     # live vendor fetch: call the overlay + stamp directly, matching server.py's own sequence.
-    from server import _gamma_surface_contracts_with_stream_overlay, _desired_stream_greeks_for_ticker
+    from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
+    from server import _desired_stream_greeks_for_ticker
     overlaid, n, overlay_syms = _gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS, newer_than_ts=time.time())
     assert n == 0   # too stale to overlay at all
     surface = project_gamma_surface(overlaid, _SPOT)
@@ -275,7 +273,8 @@ def test_rest_only_cycle_marks_desired_contract_stale_never_live(monkeypatch):
 
 def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch):
     import app.options.order_flow.streaming as _ofs
-    from server import _gamma_surface_contracts_with_stream_overlay, _desired_stream_greeks_for_ticker
+    from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
+    from server import _desired_stream_greeks_for_ticker
     _put_rest_baseline(computed_ts_utc=time.time())
     _ofs._active_option_contract = None   # coverage genuinely ended -- no longer desired at all
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: None)
@@ -509,6 +508,11 @@ def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path,
     from time_et import ET
     _FROZEN = _dt(2026, 7, 17, 10, 0, tzinfo=ET)
     monkeypatch.setattr(server, "now_et", lambda: _FROZEN)
+    # RC-REHAB-1: the gamma-surface route imports now_et from time_et (its real home), not
+    # through server -- freeze the authority itself.
+    import time_et
+
+    monkeypatch.setattr(time_et, "now_et", lambda: _FROZEN)
     tk = ticker_storage_key("ZZZTEST3")
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)

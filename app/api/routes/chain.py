@@ -97,18 +97,17 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
     # run, turning both into dead code for that failure mode. `import server as
     # _server` defers resolution to each call site, already inside its own try/except.
     import server as _server
+    from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
+    from calibration.complete_chain_capture import latest_complete_chain_capture, persist_complete_chain_capture
     from server import (
         COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
         _fetch_expiries_light,
-        _gamma_surface_contracts_with_stream_overlay,
         _gated_safe_get_chain,
         _latest_chain_and_spot,
         _touch_tracked_ticker_view,
         flatten_chain_contracts,
         get_client,
-        latest_complete_chain_capture,
         log,
-        persist_complete_chain_capture,
         resolve_spot,
     )
 

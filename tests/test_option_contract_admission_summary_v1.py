@@ -12,7 +12,8 @@ from __future__ import annotations
 import time
 
 import server
-from server import _option_contract_admission_summary, ticker_storage_key
+from instrument_identity import ticker_storage_key
+from server import _option_contract_admission_summary
 
 TK = ticker_storage_key("ZZZADMISSIONTEST")
 _SYM_ACTIVE = "AAA   260918C00100000"

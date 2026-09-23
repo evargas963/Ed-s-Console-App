@@ -89,7 +89,8 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
     # above for why the blanket import defeats this route's own try/except
     # DB-failure fallback below.
     import server as _server
-    from server import _charm_book_scope, _FORCES_CACHE, is_trading_day_et
+    from time_et import is_trading_day_et
+    from server import _charm_book_scope, _FORCES_CACHE
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()

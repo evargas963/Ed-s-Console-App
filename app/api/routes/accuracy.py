@@ -31,10 +31,10 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
     # this exact failure mode. `import server as _server` defers `get_db`'s resolution
     # to an attribute access at the point of use, after `_HAS_SIGNALS` is known.
     import server as _server
+    from timeframe_config import CANONICAL_TIMEFRAME
     from server import (
         ACCURACY_HISTORY_LIMIT,
         ACCURACY_INTERVAL,
-        CANONICAL_TIMEFRAME,
         _HAS_SIGNALS,
         _accuracy_cache,
         _current_pred_model_version,

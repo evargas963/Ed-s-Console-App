@@ -542,7 +542,7 @@ def test_sqlite_contention_diagnostics_route_includes_operator():
     itself, not something the routing layer supplies."""
     import json
 
-    from server import get_sqlite_contention_diagnostics
+    from app.api.routes.diagnostics import get_sqlite_contention_diagnostics
 
     body = json.loads(get_sqlite_contention_diagnostics().body)
     assert "operator" in body

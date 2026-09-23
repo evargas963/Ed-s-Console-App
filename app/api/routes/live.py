@@ -31,12 +31,8 @@ async def get_live_state(
     Tier A — instant live quote plane + session + identity. No chain, exposures, DB, news, or heavy compute.
     Primary driver for responsive UI; use GET /api/analytics/state for full analytical bundle.
     """
-    from server import (
-        _get_quote_hot_executor,
-        _resolve_ticker_param,
-        _tier_a_live_state_dict,
-        _touch_tracked_ticker_view,
-    )
+    from tier_a_live_state import _tier_a_live_state_dict
+    from server import _get_quote_hot_executor, _resolve_ticker_param, _touch_tracked_ticker_view
 
     t = _resolve_ticker_param(ticker, symbol)
     # SWITCH-LATENCY FIX: this route is async, so ANY blocking work here stalls the whole

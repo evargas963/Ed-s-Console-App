@@ -187,6 +187,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     # designed DB-failure handling) ever gets a chance to run. `import server as
     # _server` defers resolution to the point of use, already inside that try.
     import server as _server
+    from time_et import is_trading_day_et, now_et
+    from gamma_surface_projection import project_gamma_surface
     from server import (
         _desired_option_symbols_for_ticker,
         _gamma_surface_cell_state_counts,
@@ -198,9 +200,6 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         _stamp_gamma_surface_cell_stream_state,
         _stamp_surface_session,
         _ticker_on_terrain_board,
-        is_trading_day_et,
-        now_et,
-        project_gamma_surface,
         terrain_cache_get,
     )
 

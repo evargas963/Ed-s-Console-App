@@ -29,7 +29,9 @@ from datetime import timedelta
 
 import server
 from math_exposure_core import compute_exposures_by_strike
-from server import get_options_gamma_surface, project_gamma_surface, ticker_storage_key
+from app.api.routes.options import get_options_gamma_surface
+from gamma_surface_projection import project_gamma_surface
+from instrument_identity import ticker_storage_key
 from terrain_engine import _per_strike_rows
 from time_et import ET, is_trading_day_et, now_et
 
@@ -219,6 +221,11 @@ def test_a_same_session_banked_chain_is_served_with_a_real_disclosed_age(tmp_pat
 
     _FROZEN = _dt(2026, 7, 17, 10, 0, tzinfo=ET)
     monkeypatch.setattr(server, "now_et", lambda: _FROZEN)
+    # RC-REHAB-1: the gamma-surface route imports now_et from time_et (its real home), not
+    # through server -- freeze the authority itself.
+    import time_et
+
+    monkeypatch.setattr(time_et, "now_et", lambda: _FROZEN)
     tk = ticker_storage_key("ZZTESTTODAY")
     _clear_gamma_surface(tk)
     db = tmp_path / "today.db"

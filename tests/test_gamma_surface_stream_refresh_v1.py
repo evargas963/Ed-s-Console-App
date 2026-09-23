@@ -19,11 +19,9 @@ import server
 # lazily via `import server`) -- mocks targeting those three must patch that
 # module's own binding, not server's re-export, to be picked up.
 import gamma_surface_eager_refresh as gse
-from server import (
-    refresh_gamma_surface_from_stream,
-    project_gamma_surface,
-    ticker_storage_key,
-)
+from gamma_surface_eager_refresh import refresh_gamma_surface_from_stream
+from gamma_surface_projection import project_gamma_surface
+from instrument_identity import ticker_storage_key
 from math_exposure_core import overlay_streamed_contract_fields
 
 _FX = Path(__file__).resolve().parent / "fixtures"

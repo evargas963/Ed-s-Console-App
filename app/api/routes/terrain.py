@@ -139,10 +139,10 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     # site, already inside its own try/except.
     import server as _server
     from math_exposure_core import bucket_metric, total_gamma_raw_at_strike
+    from calibration.option_chain_morning_full import latest_accrual_rows
     from server import (
         TERRAIN_STALE_AFTER_SEC,
         _note_gamma_surface_demand,
-        latest_accrual_rows,
         log,
         resolve_spot,
         terrain_cache_get,
@@ -380,11 +380,8 @@ def get_terrain_scorecard():
     The budget counts TRADING days, so Friday's scorecard is still current on
     Monday and stale on Tuesday. A wall-clock budget would condemn every
     scorecard each weekend and teach the operator to ignore the warning."""
-    from server import (
-        SCORECARD_MAX_TRADING_DAY_AGE,
-        _artifact_reports_dir,
-        scorecard_trading_day_age,
-    )
+    from runtime_layout import reports_dir as _artifact_reports_dir
+    from server import SCORECARD_MAX_TRADING_DAY_AGE, scorecard_trading_day_age
 
     p = _artifact_reports_dir() / "terrain_backtest_latest.json"    # RC-523: artifacts root
     try:
@@ -423,11 +420,11 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     background collection had to be throttled to keep it responsive. Terrain is ~5 ms of
     math on the same chain, so it never needs to compete for that budget.
     """
+    from terrain_refresh import _terrain_refresh_one
+    from terrain_engine import compute_terrain
     from server import (
         _reprice_cached_terrain,
         _terrain_refresh_last_error,
-        _terrain_refresh_one,
-        compute_terrain,
         resolve_spot,
         terrain_cache_get,
         terrain_staleness,

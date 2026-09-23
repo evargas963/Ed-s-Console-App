@@ -18,13 +18,8 @@ import inspect
 import json
 from pathlib import Path
 
-from server import (
-    project_gamma_surface,
-    project_gamma_surface_update_expiry,
-    _per_strike_exposures_by_expiry,
-    _merge_all_expiry_exposures,
-    _per_strike_view_from_contracts,
-)
+from gamma_surface_projection import project_gamma_surface, project_gamma_surface_update_expiry
+from server import _per_strike_exposures_by_expiry, _merge_all_expiry_exposures, _per_strike_view_from_contracts
 # RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
 # _per_strike_view_update_expiry moved out of server.py entirely, into
 # gamma_surface_eager_refresh.py, along with its sole caller.
@@ -210,7 +205,7 @@ def test_G_malformed_expiry_excluded_not_reassigned():
 
 # H. SPX / SPXW — canonical underlying->option-chain identity is unchanged; no UI translation.
 def test_H_spx_identity_unchanged():
-    from server import ticker_storage_key
+    from instrument_identity import ticker_storage_key
     assert ticker_storage_key("SPX") == "$SPX"
     assert ticker_storage_key("$SPX") == "$SPX"
     # an SPXW-rooted contract projects without any symbol rewriting. No real SPX capture exists

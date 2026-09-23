@@ -42,7 +42,8 @@ from math_exposure_core import (
     vendor_greeks_unavailable,
     MISSING_GREEK_SENTINEL,
 )
-from server import project_gamma_surface, ticker_storage_key
+from gamma_surface_projection import project_gamma_surface
+from instrument_identity import ticker_storage_key
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 

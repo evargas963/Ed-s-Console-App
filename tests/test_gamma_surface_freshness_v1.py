@@ -6,7 +6,8 @@ import json
 import time
 
 import server
-from server import get_options_gamma_surface, ticker_storage_key
+from app.api.routes.options import get_options_gamma_surface
+from instrument_identity import ticker_storage_key
 
 _SURF = {
     "expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [580.0, 583.0, 586.0],

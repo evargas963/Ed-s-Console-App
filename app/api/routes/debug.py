@@ -25,6 +25,7 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
     from chain_width import _chain_to_date_for, resolve_chain_strike_count
     from math_exposure import MISSING_GREEK_SENTINEL, gamma_is_plausible
     from schwab_client import safe_get_chain
+    from instrument_identity import ticker_storage_key
     from server import (
         _default_expiry,
         _expiries_from_contracts,
@@ -32,7 +33,6 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
         flatten_chain_contracts,
         get_client,
         resolve_spot,
-        ticker_storage_key,
     )
 
     try:
@@ -145,7 +145,8 @@ def debug_prediction(ticker: str = DEFAULT_TICKER):
     # `if _HAS_SIGNALS:` guard below ever runs. `import server as _server` defers
     # resolution to after that guard has already passed.
     import server as _server
-    from server import _HAS_SIGNALS, _fetch_state, CANONICAL_TIMEFRAME
+    from timeframe_config import CANONICAL_TIMEFRAME
+    from server import _HAS_SIGNALS, _fetch_state
 
     if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):  # caps-ok: env-var config read is the endpoint's own feature-flag gate itself, not a Schwab/market field default
         raise HTTPException(status_code=404, detail="debug endpoints disabled")

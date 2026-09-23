@@ -54,7 +54,8 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
     (_order_flow_data_for_state) moved with it, confirmed by a repo-wide search first.
     """
     global _rest_cum_delta, _rest_cum_delta_session
-    from server import RTH_OPEN_MINS, RTH_CLOSE_MINS, _safe_float_quote
+    from time_et import RTH_OPEN_MINS
+    from server import RTH_CLOSE_MINS, _safe_float_quote
     try:
         hour, minute = now_et.hour, now_et.minute
         mins = hour * 60 + minute
