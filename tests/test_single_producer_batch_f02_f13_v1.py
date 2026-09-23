@@ -297,7 +297,9 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     assert close_assign and "RTH_END_MINS" in close_assign[0] and "960" not in close_assign[0]
     mkt_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("MARKET_CLOSE_HOUR")]
     assert mkt_assign and "RTH_END_MINS" in mkt_assign[0] and "16.0" not in mkt_assign[0]
-    cont_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("TERRAIN_CONTENTION_START_MINS")]
+    # RC-REHAB-1 (forty-first slice): the contention guard's constants live in terrain_schedule.py.
+    sched = _read("terrain_schedule.py")
+    cont_assign = [ln.split("#", 1)[0] for ln in sched.splitlines() if ln.startswith("TERRAIN_CONTENTION_START_MINS")]
     assert cont_assign and "RTH_OPEN_MINS" in cont_assign[0] and "570" not in cont_assign[0]
 
     # F09 repo-wide (2026-08-19): frontend + research/tools/training consume time_et,

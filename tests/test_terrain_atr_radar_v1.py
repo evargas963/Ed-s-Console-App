@@ -21,6 +21,8 @@ from terrain_atr import (
     atr_distance,
     ring_for,
 )
+import flip_drift_log  # noqa: E402
+import terrain_capture  # noqa: E402
 
 
 def test_rings_are_ordered_and_distinct() -> None:
@@ -115,8 +117,6 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
     JSONL row; flip=None is absence and appends nothing. Drives the REAL logger."""
     import json as _json
 
-    import server as srv
-
     # RC-58: the timestamp must be a REAL trading session. The question this log answers is
     # INTRADAY flip drift, and its first week was 784 of 784 rows from one SUNDAY window (spot
     # frozen), which measured a median 0.023% move and would have been read as "the flip is
@@ -125,13 +125,13 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
     NON_TRADING_TS = 1784383200.0          # Sat 2026-07-18 10:00 ET
 
     p = tmp_path / "flip_drift_log.jsonl"
-    monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", p)
-    srv._log_flip_drift("SPY", {"gamma_flip": 745.25, "spot": 746.1,
+    monkeypatch.setattr(flip_drift_log, "_FLIP_DRIFT_LOG_PATH", p)
+    flip_drift_log._log_flip_drift("SPY", {"gamma_flip": 745.25, "spot": 746.1,
                                 "confidence": "TRUSTED",
                                 "computed_ts_utc": RTH_TS})
-    srv._log_flip_drift("QQQ", {"gamma_flip": None, "spot": 500.0})
+    flip_drift_log._log_flip_drift("QQQ", {"gamma_flip": None, "spot": 500.0})
     # Market-closed computes must NOT be logged — they manufacture a false "flip is stable".
-    srv._log_flip_drift("IWM", {"gamma_flip": 222.0, "spot": 223.0,
+    flip_drift_log._log_flip_drift("IWM", {"gamma_flip": 222.0, "spot": 223.0,
                                 "confidence": "TRUSTED",
                                 "computed_ts_utc": NON_TRADING_TS})
     lines = p.read_text(encoding="utf-8").strip().splitlines()
@@ -154,7 +154,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     import terrain_refresh
 
     calls: list = []
-    real = srv._log_flip_drift
+    real = flip_drift_log._log_flip_drift
 
     def _spy(tk, payload):
         calls.append((tk, payload.get("gamma_flip")))
@@ -166,10 +166,10 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     # assertion would pass or fail depending on the day the suite happens to run (RC-58).
     import time_et as _te
     monkeypatch.setattr(_te, "is_tradable_session_ts_utc", lambda _ts: True)
-    monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
-    monkeypatch.setattr(srv, "_log_flip_drift", _spy)
+    monkeypatch.setattr(flip_drift_log, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
+    monkeypatch.setattr(flip_drift_log, "_log_flip_drift", _spy)
     monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_universal_capture_wanted", lambda _tk: (False, None))
+    monkeypatch.setattr(terrain_capture, "_universal_capture_wanted", lambda _tk: (False, None))
     monkeypatch.setattr(srv, "_terrain_strike_count", lambda _tk: 20)
 
     class _Resp:
@@ -199,7 +199,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     assert (tmp_path / "flip.jsonl").is_file()
 
     # Fail-soft: non-numeric flip would raise inside float() — terrain must stay ok:
-    monkeypatch.setattr(srv, "_log_flip_drift", real)
+    monkeypatch.setattr(flip_drift_log, "_log_flip_drift", real)
 
     class _BadSnap:
         confidence = "TRUSTED"
@@ -404,7 +404,6 @@ def _scorecard_body(tmp_path, monkeypatch, generated_utc):
         }), encoding="utf-8")
     monkeypatch.setattr(srv, "APP_DIR", str(tmp_path), raising=True)
     # RC-523: the scorecard is read from the ARTIFACTS root, not APP_DIR.
-    monkeypatch.setattr(srv, "_artifact_reports_dir", lambda: tmp_path / "reports", raising=True)
     # RC-REHAB-1: /api/terrain/scorecard imports reports_dir from runtime_layout (its real
     # home), not through server -- point the authority itself at tmp.
     import runtime_layout

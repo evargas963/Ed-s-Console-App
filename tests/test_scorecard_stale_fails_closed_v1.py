@@ -20,6 +20,7 @@ import pytest  # noqa: E402
 
 import server  # noqa: E402
 import terrain_quarantine  # noqa: E402
+import terrain_freshness  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CHART = ROOT / "static" / "chart.html"
@@ -116,15 +117,15 @@ def test_schwab_token_countdown_urgency_tiers():
     """7-day hard limit: quiet before day 5, warn at 5, red at 6, honest unknown on no file."""
     import time
     now = time.time()
-    ok = server.schwab_token_countdown(now - 2 * 86400)
+    ok = terrain_freshness.schwab_token_countdown(now - 2 * 86400)
     assert ok["schwab_token_urgency"] == "ok" and ok["schwab_token_note"] == ""
-    warn = server.schwab_token_countdown(now - 5.5 * 86400)
+    warn = terrain_freshness.schwab_token_countdown(now - 5.5 * 86400)
     assert warn["schwab_token_urgency"] == "warn"
     assert "reauth_schwab.py" in warn["schwab_token_note"], "the warning must carry the remedy"
-    red = server.schwab_token_countdown(now - 6.5 * 86400)
+    red = terrain_freshness.schwab_token_countdown(now - 6.5 * 86400)
     assert red["schwab_token_urgency"] == "red"
     assert "reauth_schwab.py" in red["schwab_token_note"]
-    unknown = server.schwab_token_countdown(None)
+    unknown = terrain_freshness.schwab_token_countdown(None)
     assert unknown["schwab_token_urgency"] == "unknown"
     assert unknown["schwab_token_age_days"] is None, "an unreadable file must never fake an age"
 
@@ -132,10 +133,10 @@ def test_schwab_token_countdown_urgency_tiers():
 def test_terrain_staleness_carries_the_token_countdown():
     """The countdown rides the SAME payload the levels ride — one faucet, every terrain reply,
     including the no-snapshot stub (which is exactly the state a dead token produces)."""
-    stub = server.terrain_staleness(None)
+    stub = terrain_freshness.terrain_staleness(None)
     assert "schwab_token_urgency" in stub and "schwab_token_note" in stub
     import time
-    live = server.terrain_staleness(time.time())
+    live = terrain_freshness.terrain_staleness(time.time())
     assert "schwab_token_urgency" in live
 
 
@@ -175,22 +176,22 @@ def test_terrain_staleness_prefers_the_producers_reason_over_the_clock():
     'inside its window but not producing' for a scheduler working as designed sent the operator
     hunting a bug that did not exist."""
     import time
-    old = time.time() - (server.TERRAIN_STALE_AFTER_SEC + 600.0)
+    old = time.time() - (terrain_freshness.TERRAIN_STALE_AFTER_SEC + 600.0)
     try:
-        blind = server.terrain_staleness(old, "MSFT")
+        blind = terrain_freshness.terrain_staleness(old, "MSFT")
         assert blind["levels_stale"] is True
         assert blind["levels_paused_on_purpose"] is False, (
             "no recorded skip must never be dressed up as a deliberate pause"
         )
         terrain_quarantine._note_terrain_skip(["MSFT"], "the morning wide-chain capture holds the chain slots")
-        told = server.terrain_staleness(old, "MSFT")
+        told = terrain_freshness.terrain_staleness(old, "MSFT")
         assert told["levels_paused_on_purpose"] is True
         assert "chain slots" in told["levels_stale_reason"], (
             "the producer's own reason must reach the payload, not a clock-derived guess"
         )
         assert "not producing" not in told["levels_stale_reason"]
         # a ticker that was NOT skipped keeps the honest clock-only reason
-        other = server.terrain_staleness(old, "SPY")
+        other = terrain_freshness.terrain_staleness(old, "SPY")
         assert other["levels_paused_on_purpose"] is False
     finally:
         terrain_quarantine._clear_terrain_skips()
@@ -202,10 +203,10 @@ def test_recorded_failure_reaches_the_payload_once_a_snapshot_exists():
     snapshot that branch was dead, so a ticker failing every refresh reported error '' and a
     generic clock sentence ($SPX, 2,737 s old, chain_basis already degraded to dte<=120)."""
     import time
-    old = time.time() - (server.TERRAIN_STALE_AFTER_SEC + 600.0)
+    old = time.time() - (terrain_freshness.TERRAIN_STALE_AFTER_SEC + 600.0)
     try:
         server._terrain_refresh_last_error["$SPX"] = "chain fetch failed (HTTP 400)"
-        told = server.terrain_staleness(old, "$SPX")
+        told = terrain_freshness.terrain_staleness(old, "$SPX")
         assert told["levels_failing"] is True
         assert "HTTP 400" in told["levels_stale_reason"], (
             "the recorded exception must reach the payload once a snapshot exists — this is the "
@@ -213,18 +214,18 @@ def test_recorded_failure_reaches_the_payload_once_a_snapshot_exists():
         )
         assert told["levels_paused_on_purpose"] is False, "a failure is not a deliberate pause"
         # the no-snapshot branch must carry it too (RTY/XXT: rejected symbol, never computed)
-        never = server.terrain_staleness(None, "$SPX")
+        never = terrain_freshness.terrain_staleness(None, "$SPX")
         assert never["levels_failing"] is True and "HTTP 400" in never["levels_stale_reason"]
         # a DELIBERATE pause outranks a stale prior failure — it is why it is not refreshing now
         terrain_quarantine._note_terrain_skip(["$SPX"], "paused until 10:00 ET")
-        paused = server.terrain_staleness(old, "$SPX")
+        paused = terrain_freshness.terrain_staleness(old, "$SPX")
         assert paused["levels_paused_on_purpose"] is True
         assert paused["levels_failing"] is False
         assert "HTTP 400" not in paused["levels_stale_reason"]
     finally:
         server._terrain_refresh_last_error.pop("$SPX", None)
         terrain_quarantine._clear_terrain_skips()
-    clean = server.terrain_staleness(old, "$SPX")
+    clean = terrain_freshness.terrain_staleness(old, "$SPX")
     assert clean["levels_failing"] is False, "a cleared failure must not linger"
 
 
@@ -322,17 +323,17 @@ def test_quarantine_state_is_distinguishable_from_pause_and_failure():
     RC-146/147 removed."""
     import time
     tk = "ZZTESTFLAGS"
-    old = time.time() - (server.TERRAIN_STALE_AFTER_SEC + 600.0)
+    old = time.time() - (terrain_freshness.TERRAIN_STALE_AFTER_SEC + 600.0)
     try:
         for _ in range(terrain_quarantine.TERRAIN_QUARANTINE_HARD_FAILS):
             terrain_quarantine._note_terrain_failure(tk, "chain fetch failed (HTTP 400)", "hard")
-        s = server.terrain_staleness(old, tk)
+        s = terrain_freshness.terrain_staleness(old, tk)
         assert s["levels_quarantined"] is True
         assert s["levels_failing"] is True, "a vendor-refused symbol is failing, not merely idle"
         assert s["levels_paused_on_purpose"] is False, "a quarantine does not resume on its own"
         assert "QUARANTINED" in s["levels_stale_reason"]
         # and on the no-snapshot branch, which is exactly RTY/XXT's state
-        n = server.terrain_staleness(None, tk)
+        n = terrain_freshness.terrain_staleness(None, tk)
         assert n["levels_quarantined"] is True and n["levels_failing"] is True
         assert "QUARANTINED" in n["levels_stale_reason"]
     finally:
@@ -442,7 +443,7 @@ def test_terrain_not_ready_branch_carries_structured_state_too():
         "machine-readable failure state on /api/terrain"
     )
     # and the contract itself: the stub must actually carry the flags
-    stub = server.terrain_staleness(None, "ZZTESTNOTREADY")
+    stub = terrain_freshness.terrain_staleness(None, "ZZTESTNOTREADY")
     for k in ("levels_stale", "levels_failing", "levels_quarantined",
               "levels_stale_reason", "levels_refresh_active"):
         assert k in stub, f"{k} missing from the no-snapshot payload"

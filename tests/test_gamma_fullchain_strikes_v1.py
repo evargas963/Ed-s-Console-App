@@ -14,14 +14,17 @@ from calibration.option_chain_morning_full import (
     maybe_persist_morning_full_chain,
 )
 from time_et import ET
+import terrain_capture  # noqa: E402
 
 
 def test_gex_full_chain_strike_count_is_wide_not_ui_20() -> None:
     assert GEX_FULL_CHAIN_STRIKE_COUNT == 100
     import server as srv
+    import terrain_refresh
 
     assert srv.CHAIN_STRIKE_COUNT == 20
-    assert srv.GEX_FULL_CHAIN_STRIKE_COUNT == 100
+    # the terrain producer's wide fetch binds THE faucet's own object, not a second 100
+    assert terrain_refresh.GEX_FULL_CHAIN_STRIKE_COUNT is GEX_FULL_CHAIN_STRIKE_COUNT
 
 
 def test_has_morning_full_capture_false_then_true(tmp_path: Path) -> None:
@@ -182,21 +185,21 @@ def test_server_helper_honours_the_persist_verdict(monkeypatch, tmp_path):
         db_path = tmp_path / "t.db"
 
     monkeypatch.setattr(server, "get_db", lambda: _Db())
-    server._morning_capture_done.clear()
+    terrain_capture._morning_capture_done.clear()
 
     # a persist that reports NOTHING WRITTEN must not memoise
-    monkeypatch.setattr(server, "maybe_persist_morning_full_chain",
+    monkeypatch.setattr(terrain_capture, "maybe_persist_morning_full_chain",
                         lambda *_a, **_k: {"status": "skipped", "reason": "outside_capture_span"})
-    server._persist_universal_capture("SPY", ("SPY", "2026-07-20"), 100, [{}], 745.0)
-    assert ("SPY", "2026-07-20") not in server._morning_capture_done, (
+    terrain_capture._persist_universal_capture("SPY", ("SPY", "2026-07-20"), 100, [{}], 745.0)
+    assert ("SPY", "2026-07-20") not in terrain_capture._morning_capture_done, (
         "a skipped persist was memoised as done — the silent-suppression defect"
     )
 
     # a persist that reports ok MUST memoise
-    monkeypatch.setattr(server, "maybe_persist_morning_full_chain",
+    monkeypatch.setattr(terrain_capture, "maybe_persist_morning_full_chain",
                         lambda *_a, **_k: {"status": "ok", "n_contracts": 40})
-    server._persist_universal_capture("SPY", ("SPY", "2026-07-20"), 100, [{}], 745.0)
-    assert ("SPY", "2026-07-20") in server._morning_capture_done
+    terrain_capture._persist_universal_capture("SPY", ("SPY", "2026-07-20"), 100, [{}], 745.0)
+    assert ("SPY", "2026-07-20") in terrain_capture._morning_capture_done
 
 
 def test_capture_attempts_are_bounded(monkeypatch, tmp_path):
@@ -207,15 +210,15 @@ def test_capture_attempts_are_bounded(monkeypatch, tmp_path):
         db_path = tmp_path / "t.db"
 
     monkeypatch.setattr(server, "get_db", lambda: _Db())
-    monkeypatch.setattr(server, "gex_et_date_and_mins",
+    monkeypatch.setattr(terrain_capture, "gex_et_date_and_mins",
                         lambda _ts=None: ("2026-07-20", MORNING_END_MINS + 10))
-    monkeypatch.setattr(server, "has_morning_full_capture", lambda *_a: False)
-    server._morning_capture_done.clear()
-    server._morning_capture_attempts.clear()
+    monkeypatch.setattr(terrain_capture, "has_morning_full_capture", lambda *_a: False)
+    terrain_capture._morning_capture_done.clear()
+    terrain_capture._morning_capture_attempts.clear()
 
-    wants = [server._universal_capture_wanted("ZZZT")[0] for _ in range(6)]
+    wants = [terrain_capture._universal_capture_wanted("ZZZT")[0] for _ in range(6)]
     assert wants[:3] == [True, True, True], "first attempts must proceed"
     assert wants[3:] == [False, False, False], (
         "after the cap the loop must stop paying for wide fetches"
     )
-    assert ("ZZZT", "2026-07-20") in server._morning_capture_done
+    assert ("ZZZT", "2026-07-20") in terrain_capture._morning_capture_done

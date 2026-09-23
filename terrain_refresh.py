@@ -50,6 +50,9 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 
+import flip_drift_log as _fdl  # RC-REHAB-1 forty-first slice
+import terrain_capture as _tcap  # RC-REHAB-1 forty-first slice
+import terrain_schedule as _tsch  # RC-REHAB-1 forty-first slice
 import terrain_quarantine as _tq  # RC-REHAB-1 fortieth slice: the quarantine book's own home
 
 log = logging.getLogger(__name__)
@@ -324,7 +327,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         return "skip:quarantined"
     try:
         client = _srv.get_client()
-        want_capture, cap_key = _srv._universal_capture_wanted(tk)
+        want_capture, cap_key = _tcap._universal_capture_wanted(tk)
         _width = _srv._terrain_strike_count(tk)
         if want_capture:
             _width = max(_width, GEX_FULL_CHAIN_STRIKE_COUNT)
@@ -363,7 +366,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # ONE spot authority (RC-14) — never the chain underlying on its own.
         spot, spot_source, spot_ts = _srv.resolve_spot(tk, chain_json=c_json)
         if want_capture and contracts:
-            _srv._persist_universal_capture(tk, cap_key, _width, contracts, spot)
+            _tcap._persist_universal_capture(tk, cap_key, _width, contracts, spot)
         if contracts:
             # Deliberately NOT gated on want_capture: that flag reflects the SIBLING
             # wide-fetch's own once-per-day "done" state, and this function needs its
@@ -373,7 +376,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             # operator-caught defect this fixes). It self-gates on window/trading-day/
             # remaining-work internally, so a no-op call here costs one cheap DB check,
             # never a vendor call.
-            _srv._persist_universal_complete_chain(tk, client, contracts)
+            _tcap._persist_universal_complete_chain(tk, client, contracts)
         # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
         # requests the width its +/-5% span actually needs instead of a tabulated guess.
         # RC-149: tell the learner WHICH basis produced this chain. A narrowed window under-counts
@@ -416,8 +419,8 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # it persists what RC-68 kept in memory and then discarded every cycle. Sentinels bank
         # every minute; the rest of the board every five, because 40 tickers x 1/min of
         # per-strike JSON is hundreds of MB a day for data no surface reads at that resolution.
-        _srv._accrue_chain_observation(tk, snap)
-        _srv._log_flip_drift(tk, payload)
+        _tsch._accrue_chain_observation(tk, snap)
+        _fdl._log_flip_drift(tk, payload)
         _srv._terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _tq._note_terrain_success(tk)                   # RC-148: and the failure streak with it
         _bank_daily_atm_iv_from_payload(tk, payload)

@@ -2365,7 +2365,8 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_VIXTracker.vs_prev).',
     ),
     Row(
-        file='server.py', derivation='_accrue_chain_observation', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (2026-09-23, forty-first slice): moved to terrain_schedule.py.
+        file='terrain_schedule.py', derivation='_accrue_chain_observation', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Banks one wide-chain per-strike observation into option_chain_accrual and never raises into the producer; the per-strike values are already derived upstream.',
     ),

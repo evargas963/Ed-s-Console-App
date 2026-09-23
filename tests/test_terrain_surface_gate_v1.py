@@ -11,6 +11,9 @@ import server
 import terrain_quarantine
 import terrain_refresh
 import gamma_surface_projection
+import flip_drift_log  # noqa: E402
+import terrain_capture  # noqa: E402
+import terrain_schedule  # noqa: E402
 
 #: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
 #: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
@@ -35,12 +38,12 @@ def _stub_terrain(monkeypatch, proj):
 
     monkeypatch.setattr(terrain_quarantine, "_terrain_quarantine_blocks", lambda t: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "_universal_capture_wanted", lambda t: (False, None))
+    monkeypatch.setattr(terrain_capture, "_universal_capture_wanted", lambda t: (False, None))
     monkeypatch.setattr(server, "_terrain_strike_count", lambda t: 60)
     monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (100.0, "stub", 0.0))
-    monkeypatch.setattr(server, "_persist_universal_complete_chain", lambda *a, **k: None)
+    monkeypatch.setattr(terrain_capture, "_persist_universal_complete_chain", lambda *a, **k: None)
     monkeypatch.setattr(server, "_learn_strike_geometry", lambda *a, **k: None)
     # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
     # moved to terrain_refresh.py, which imports compute_terrain directly (module-level,
@@ -50,8 +53,8 @@ def _stub_terrain(monkeypatch, proj):
     # binding is picked up on the next call. Both must be patched on their real homes, not
     # on server's re-export.
     monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *a, **k: Snap())
-    monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
-    monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
+    monkeypatch.setattr(terrain_schedule, "_accrue_chain_observation", lambda *a, **k: None)
+    monkeypatch.setattr(flip_drift_log, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_radar_atr", lambda t: types.SimpleNamespace(daily=None, m15=None))
     monkeypatch.setattr(terrain_quarantine, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(gamma_surface_projection, "project_gamma_surface", proj)

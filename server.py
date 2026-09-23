@@ -41,7 +41,7 @@ import concurrent.futures
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
@@ -279,8 +279,6 @@ from app.api.routes.sse import (  # noqa: F401
 )
 # RC-REHAB-1 (Phase 3): eighteenth extraction slice -- get_expiries/get_chain now live in
 # app/api/routes/chain.py (mounted below via app.include_router(chain_router)).
-# COMPLETENESS_BASIS_STRIKE_RANGE_ALL has another caller in server.py and stays there,
-# imported back lazily along with every other shared dependency.
 from app.api.routes.chain import (  # noqa: F401
     router as chain_router,
     get_expiries,
@@ -371,7 +369,7 @@ class _FlushingFileHandler(logging.FileHandler):
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
 # RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
 # ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
-from runtime_layout import logs_dir as _runtime_logs_dir, reports_dir as _artifact_reports_dir  # noqa: E402
+from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
 
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
@@ -3422,42 +3420,10 @@ from timeframe_config import CANONICAL_TIMEFRAME
 # the server AT BOOT -- loud, immediate, and impossible to trade through unnoticed. This
 # also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
 # path now has no failure mode to pick a policy for.
-from calibration.option_chain_morning_full import (
-    # RC-REHAB-1 (2026-09-23, twenty-fifth slice): GEX_FULL_CHAIN_STRIKE_COUNT's sole
-    # caller, _terrain_refresh_one, moved to terrain_refresh.py, which imports it
-    # directly -- but test_gamma_fullchain_strikes_v1.py checks `server.
-    # GEX_FULL_CHAIN_STRIKE_COUNT` against the same faucet's own re-import (proving
-    # one faucet, not two independently-set 100s), so the name must stay bound here
-    # as that re-export surface.
-    GEX_FULL_CHAIN_STRIKE_COUNT,  # noqa: F401
-    MAX_DTE_DAYS as COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS,
-    # RC-161: the MORNING_* aliases are gone from this import because the scheduler no longer
-    # reads them. That coupling WAS the defect — the archive's write window was steering the
-    # terrain loop's contention guard. The guard now owns TERRAIN_CONTENTION_*, and the archive
-    # keeps MORNING_* to itself, so neither can move the other by accident again.
-    accrual_window as gex_accrual_window,
-    # RC-REHAB-1 (Phase 3): latest_accrual_rows' only caller, get_terrain_strikes, moved to
-    # app/api/routes/terrain.py, which imports it back lazily via `from server import
-    # latest_accrual_rows` -- the name must stay bound here as that re-export surface even
-    # though nothing in server.py's own body calls it directly anymore.
-    latest_accrual_rows,  # noqa: F401
-    persist_chain_accrual,
-    SOURCE_WIDE as GEX_SOURCE_WIDE,
-    et_date_and_mins as gex_et_date_and_mins,
-    has_morning_full_capture,
-    maybe_persist_morning_full_chain,
-    universal_capture_window,
-)
-from calibration.complete_chain_capture import (
-    eligible_near_term_expiries,
-    has_complete_chain_capture_today,
-    # RC-REHAB-1 (Phase 3): latest_complete_chain_capture's only caller, get_chain, moved to
-    # app/api/routes/chain.py, which imports it back lazily via `from server import
-    # latest_complete_chain_capture` -- the name must stay bound here as that re-export surface.
-    latest_complete_chain_capture,  # noqa: F401
-    next_capture_batch,
-    persist_complete_chain_capture,
-)
+# RC-REHAB-1 (2026-09-23, forty-first slice): every other option_chain_morning_full /
+# complete_chain_capture name server.py used to bind moved with its only consumer
+# (terrain_capture.py, terrain_schedule.py, terrain_refresh.py, the terrain/chain routes).
+from calibration.option_chain_morning_full import et_date_and_mins as gex_et_date_and_mins
 
 #: Timeframes to try, in order, when reading stored snapshot rows. The timeframe MUST be
 #: named in any query that orders by ts_utc: the only usable index is
@@ -7380,460 +7346,6 @@ def terrain_cache_size() -> int:
         return len(_terrain_cache)
 
 
-#: (ticker, et_date) pairs whose morning wide capture is already persisted — in-process
-#: memo so the loop does not hit the DB with has_morning_full_capture every 60s.
-_morning_capture_done: set[tuple[str, str]] = set()
-_morning_capture_lock = threading.Lock()
-
-
-def _universal_capture_wanted(tk: str) -> tuple[bool, tuple[str, str]]:
-    """Does `tk` still need today's wide morning capture?
-
-    UNIVERSAL MORNING CAPTURE (operator 2026-07-20). The sentinel-only capture rides the
-    money-path logger, which RC-1's operator-mode gate skips for non-sentinels whenever a
-    viewer is connected — measured result: 3 of ~51 tickers captured today. The terrain
-    loop touches EVERY ticker each cycle, so it closes the gap in the post-window span
-    (10:00-11:30 ET, deliberately AFTER the money-path window): one wide fetch serves
-    both terrain and the archive. Idempotent per (ticker, ET day); DB checked once per
-    day per ticker, then memoised in-process.
-    """
-    cap_date, cap_mins = gex_et_date_and_mins()
-    key = (tk, cap_date)
-    if not universal_capture_window(cap_mins):
-        return False, key
-    with _morning_capture_lock:
-        if key in _morning_capture_done:
-            return False, key
-        attempts = _morning_capture_attempts.get(key, 0)
-        if attempts >= _MORNING_CAPTURE_MAX_ATTEMPTS:
-            # Three wide fetches produced nothing persistable — stop paying for wide
-            # width every cycle; the day is a miss for this ticker, said out loud once.
-            _morning_capture_done.add(key)
-            log.warning("morning wide capture GIVEN UP ticker=%s after %d attempts",
-                        tk, attempts)
-            return False, key
-        _morning_capture_attempts[key] = attempts + 1
-    if has_morning_full_capture(get_db().db_path, tk, cap_date):
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-        return False, key
-    return True, key
-
-
-#: Per-(ticker, et_date) persist attempts. Bugbot MEDIUM (confirmed): an empty flatten
-#: skipped persist WITHOUT memoising, so the loop re-forced the wide width every ~60s for
-#: the entire 90-minute span. Three strikes and the day is done for that ticker.
-_morning_capture_attempts: dict[tuple[str, str], int] = {}
-_MORNING_CAPTURE_MAX_ATTEMPTS = 3
-
-
-def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
-                               contracts: list, spot: float | None) -> None:
-    """Persist the wide chain just fetched. Archive concern — terrain must still serve.
-
-    Bugbot 2026-07-20 (HIGH — confirmed): the first version ignored the persist RETURN
-    DICT and memoised + logged success on any non-exception — including the status
-    dicts that mean "nothing was written". A silently-discarded capture then read as
-    captured for the rest of the ET day. The dict is now the arbiter:
-      ok / idempotent_skip            -> memoise (done for the day), log accordingly
-      too_few_near_term_contracts    -> memoise WITH WARNING (a thin chain will not
-                                         thicken intraday; retrying burns wide fetches)
-      anything else                  -> warn, do NOT memoise, bounded by the attempt cap
-    """
-    try:
-        result = maybe_persist_morning_full_chain(
-            get_db().db_path, ticker=tk, contracts=contracts,
-            spot=float(spot) if spot is not None else None,
-            ts_utc=time.time(), source=GEX_SOURCE_WIDE,
-        )
-    except Exception as e:
-        log.warning("morning wide capture persist failed ticker=%s: %s", tk, e)
-        return
-    status = str(result.get("status", ""))  # caps-ok: fail-closed -- a capture result without status is not "ok", so nothing is persisted as a successful morning capture
-    if status == "ok":
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-        log.info("morning wide capture persisted ticker=%s width=%d n=%s",
-                 tk, width, result.get("n_contracts"))
-    elif status == "idempotent_skip":
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-    elif result.get("reason") == "too_few_near_term_contracts":
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-        log.warning("morning wide capture SKIPPED for the day ticker=%s: only %s "
-                    "near-term contracts", tk, result.get("n"))
-    else:
-        log.warning("morning wide capture not persisted ticker=%s status=%s reason=%s",
-                    tk, status, result.get("reason"))
-
-
-#: OPTIONS_ORDER_FLOW_V1 round 4 (material-defect-lifecycle review, 2026-08-31): the
-#: PROVEN-complete strike_range=ALL fetch built for /api/chain (round 3) had NO
-#: systematic producer -- persist_complete_chain_capture only ever ran from that
-#: operator-triggered endpoint, so an expiry earned a proven-complete record ONLY if a
-#: human happened to click it in /options. The systematic collector below reuses the
-#: SAME once-daily universal-capture WINDOW (`universal_capture_window`) the
-#: sentinel/whole-roster wide fetch already uses, and discovers this ticker's listed
-#: expiries from the REGULAR per-cycle terrain chain fetch it is called with -- the
-#: SAME unwindowed "full"-basis request _terrain_refresh_one already makes every cycle
-#: (server.py:_terrain_refresh_one's basis ladder), at ZERO extra vendor cost for
-#: discovery. Only the per-expiry strike_range=ALL fetches below are new vendor calls,
-#: through the same rate-limited/coalesced _gated_safe_get_chain gate every other
-#: chain read uses.
-#:
-#: OPERATOR-CAUGHT DEFECT (2026-08-31, same day): the first version sliced
-#: `eligible[:CAP]` BEFORE filtering out already-captured expiries. Once the first CAP
-#: expiries were captured, every later cycle kept re-selecting that SAME first-CAP
-#: slice (all already done, so the loop body no-opped on every one) -- expiry #(CAP+1)
-#: and beyond were NEVER attempted, on ANY cycle, ANY day: a bounded per-cycle vendor
-#: budget had silently become a PERMANENT completeness ceiling. Fixed by filtering to
-#: `still_needed` (not yet proven complete today, not yet given up on today) FIRST,
-#: THEN slicing the per-cycle budget from THAT -- so once today's first CAP are
-#: captured, they drop out of `still_needed` and the NEXT cycle's slice naturally
-#: advances to the next uncaptured expiries. This also required decoupling this
-#: function from the sibling `_persist_universal_capture`'s once-per-day "done" gate
-#: (it previously only ran once per ticker per day, piggybacked on that gate, so
-#: "successive cycles" never actually happened in production regardless of the slice
-#: bug) -- it is now called every terrain cycle inside the capture window and
-#: self-gates on whether there is still real work, so it gets many chances per day.
-#:
-#: Bounded to _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER new-work items per CALL (not
-#: per day) so an unusually weekly-heavy name cannot unboundedly inflate one cycle's
-#: vendor cost; a chronically-failing expiry gives up after
-#: _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS attempts THE SAME ET day (mirrors
-#: _MORNING_CAPTURE_MAX_ATTEMPTS's existing give-up convention) so it cannot
-#: permanently occupy a budget slot ahead of expiries never yet attempted; both a
-#: truncation and a give-up are logged, never silent.
-_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER = 8
-_COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS = 3
-#: (ticker, expiry, et_date) -> attempts. In-memory, like _morning_capture_attempts --
-#: a restart simply grants a fresh attempt budget, which is safe: the DURABLE state
-#: that must survive restart is COMPLETION (has_complete_chain_capture_today, DB-
-#: backed), not the give-up bookkeeping for a same-day chronic failure.
-_complete_chain_capture_attempts: dict[tuple[str, str, str], int] = {}
-
-
-def _persist_universal_complete_chain(tk: str, client, contracts: list,
-                                      ts_utc: float | None = None) -> None:
-    """Systematic near-term COMPLETE-chain capture, one expiry at a time, into
-    complete_chain_captures -- the same table and completeness basis /api/chain's
-    on-demand path already uses, extended to run universally without waiting on an
-    operator's click. Self-gated: returns immediately (zero vendor calls) outside the
-    capture window, on a non-trading day, or once every eligible near-term expiry is
-    already proven complete (or given up on) for today.
-
-    `ts_utc` (defaults to real now) is the ONE clock read this call uses -- derived
-    into et_date/mins AND threaded through to every persisted row, so the idempotency
-    check and the row it is checking against can never disagree about which ET day
-    they mean (a prior draft read `time.time()` twice, separately, for exactly that
-    purpose, and a same-day re-entry test caught it re-fetching every expiry).
-    """
-    ts = float(ts_utc if ts_utc is not None else time.time())
-    et_date, mins = gex_et_date_and_mins(ts)
-    if not universal_capture_window(mins) or not is_trading_day_et(et_date):
-        return
-    all_exps = {
-        str(c.get("expirationDate") or "")[:10]
-        for c in contracts if isinstance(c, dict) and c.get("expirationDate")
-    }
-    eligible = eligible_near_term_expiries(
-        all_exps, max_dte_days=COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS, now_et_date=et_date)
-    db_path = get_db().db_path
-    already_captured = {
-        expiry for expiry in eligible
-        if has_complete_chain_capture_today(db_path, tk, expiry, et_date)
-    }
-    given_up = {
-        expiry for expiry in eligible
-        if _complete_chain_capture_attempts.get((tk, expiry, et_date), 0)
-        >= _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS
-    }
-    still_needed_count = sum(1 for e in eligible if e not in already_captured and e not in given_up)
-    if not still_needed_count:
-        return
-    batch = next_capture_batch(
-        eligible, already_captured=already_captured, given_up=given_up,
-        batch_size=_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER)
-
-    attempted = captured = failed = 0
-    for expiry in batch:
-        attempt_key = (tk, expiry, et_date)
-        n_attempts = _complete_chain_capture_attempts.get(attempt_key, 0) + 1
-        _complete_chain_capture_attempts[attempt_key] = n_attempts
-        attempted += 1
-        try:
-            d = date.fromisoformat(expiry)
-            c_resp, _gw, _fs = _gated_safe_get_chain(
-                client, tk, strike_range="ALL", from_date=d, to_date=d, priority=False)
-            if c_resp is None or c_resp.status_code != 200:
-                failed += 1
-                continue
-            c_json = c_resp.json()
-            exp_contracts = flatten_chain_contracts(c_json)
-            returned_exps = sorted({
-                str(c.get("expirationDate") or "")[:10]
-                for c in exp_contracts if isinstance(c, dict) and c.get("expirationDate")
-            })
-            if returned_exps != [expiry]:
-                log.warning(
-                    "complete-chain systematic capture: expiry scope mismatch "
-                    "ticker=%s requested=%s returned=%s -- not persisting",
-                    tk, expiry, returned_exps)
-                failed += 1
-                continue
-            exp_spot, _ss, _sa = resolve_spot(tk, chain_json=c_json)
-            result = persist_complete_chain_capture(
-                db_path, ticker=tk, expiry=expiry, contracts=exp_contracts,
-                spot=exp_spot, completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
-                ts_utc=ts)
-            if result.get("status") == "written":
-                captured += 1
-            else:
-                failed += 1
-        except Exception as e:
-            failed += 1
-            log.warning("complete-chain systematic capture failed ticker=%s expiry=%s: %s",
-                        tk, expiry, e)
-        if n_attempts >= _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS and not has_complete_chain_capture_today(
-            db_path, tk, expiry, et_date
-        ):
-            log.warning(
-                "complete-chain systematic capture: ticker=%s expiry=%s given up for "
-                "today after %d attempts", tk, expiry, n_attempts)
-    if still_needed_count > _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER:
-        log.warning(
-            "complete-chain systematic capture: ticker=%s truncated to %d of %d "
-            "still-needed near-term expiries this cycle -- the remainder are "
-            "carried to the next cycle, never dropped", tk,
-            _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER, still_needed_count)
-    if attempted:
-        log.info(
-            "complete-chain systematic capture ticker=%s et_date=%s attempted=%d "
-            "captured=%d failed=%d still_needed=%d eligible=%d", tk, et_date, attempted,
-            captured, failed, still_needed_count, len(eligible))
-
-
-#: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
-#: proven (gamma depends on spot/IV/time) but the intraday MAGNITUDE of flip movement
-#: is unmeasured. Every terrain-loop compute appends one JSONL row here so a week of
-#: cycles yields per-ticker intraday min/max/range. reports/ file, not a table — the
-#: operational DB grows by zero bytes (RC-6 discipline). flip=None is absence and is
-#: not logged; gaps read as gaps from the timestamps.
-_FLIP_DRIFT_LOG_PATH = _artifact_reports_dir() / "flip_drift_log.jsonl"   # RC-523: artifacts root
-_flip_drift_lock = threading.Lock()
-
-
-def _log_flip_drift(tk: str, payload: dict) -> None:
-    """Append one flip-drift row. Never raises — terrain refresh must stay ok:x
-    even if logging row assembly or disk write fails (measurement only)."""
-    try:
-        flip = payload.get("gamma_flip")
-        if flip is None:
-            return
-        # CAPS RC-REHAB-1: an undated terrain payload is NOT logged. It used to be stamped with
-        # the log-append wall clock, filing the flip under a time it was never computed at
-        # (a measurement row with an invented timestamp). Gaps read as gaps.
-        _computed_ts = payload.get("computed_ts_utc")
-        if not _computed_ts:
-            return
-        _ts = round(float(_computed_ts), 1)
-        # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
-        # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
-        # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
-        # would have been reported as "the flip is stable intraday". Market-closed rows do not
-        # add noise here, they manufacture the null.
-        from time_et import is_tradable_session_ts_utc as _tradable
-        if not _tradable(_ts):
-            return
-        row = {"ts_utc": _ts,
-               "ticker": tk, "flip": round(float(flip), 4),
-               "spot": payload.get("spot"), "confidence": payload.get("confidence")}
-        with _flip_drift_lock, open(_FLIP_DRIFT_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(row) + "\n")
-    except Exception as e:
-        log.warning("flip drift log append failed: %s", e)
-
-
-#: How old the terrain snapshot may be before it must stop calling itself current. DERIVED from
-#: the loop's own cadence: TERRAIN_REFRESH_SEC=60 plus one full cycle's slack for fetch time, so a
-#: healthy loop never trips it and a stopped one trips within two cycles.
-TERRAIN_STALE_AFTER_SEC: float = 180.0
-
-
-#: RC-108: Schwab refresh tokens die at 7 days, hard. The 2026-07-28 open went fully dark
-#: because the expiry sat in schwab_token.json for a week with no forward warning — the system
-#: only screamed AFTER the data was lost. Warn from day 5, red from day 6.
-_SCHWAB_TOKEN_WARN_DAYS = 5.0
-_SCHWAB_TOKEN_RED_DAYS = 6.0
-
-
-def schwab_token_countdown(creation_ts: float | None) -> dict:
-    """Pure urgency computation from the token file's creation_timestamp (unit-tested)."""
-    if creation_ts is None:
-        return {"schwab_token_age_days": None, "schwab_token_urgency": "unknown",
-                "schwab_token_note": "token file unreadable — collection may be dead"}
-    age_days = round((time.time() - float(creation_ts)) / 86400.0, 2)
-    if age_days >= _SCHWAB_TOKEN_RED_DAYS:
-        urgency, note = "red", (f"Schwab token is {age_days:.1f} days old (7-day hard limit) — "
-                                f"re-auth NOW: python reauth_schwab.py --manual")
-    elif age_days >= _SCHWAB_TOKEN_WARN_DAYS:
-        urgency, note = "warn", (f"Schwab token is {age_days:.1f} days old — re-auth before "
-                                 f"day 7 kills collection: python reauth_schwab.py --manual")
-    else:
-        urgency, note = "ok", ""
-    return {"schwab_token_age_days": age_days, "schwab_token_urgency": urgency,
-            "schwab_token_note": note}
-
-
-def _schwab_token_creation_ts() -> float | None:
-    """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
-    try:
-        raw = json.loads((Path(APP_DIR) / "schwab_token.json").read_text(encoding="utf-8"))
-        return float(raw["creation_timestamp"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-
-
-def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) -> dict:
-    """Whether the levels are current, and WHY NOT when they are not (RC-91).
-
-    RC-146 — the reason must come from the PRODUCER, not be inferred from a clock. Age alone
-    cannot tell a deliberate pause from a broken loop, so this function used to answer "inside
-    its window but not producing" for a scheduler that was working exactly as designed. When a
-    ticker was skipped on purpose, `terrain_skip_reason` has the real sentence and it wins.
-    Pass `ticker` wherever it is known; omitting it degrades to the old clock-only reason.
-
-    MEASURED 2026-07-27 18:02 ET: /api/terrain computed_ts_utc did not advance across 90s against
-    a 60s cadence, the gamma panel served data 90 MINUTES old under a `terrain_live_cache` label,
-    and spot beside it was 3 seconds old. The terrain loop refreshes only while
-    _is_loggable_session() is true, which ends at LOGGER_BUFFER_MINS (16:30 ET) — 210 minutes
-    before the capture window closes. That function is the BACKGROUND LOGGING gate; using it to
-    decide whether the screen is current answered a different question with the same switch.
-
-    Stopping the loop after the post-market buffer may well be correct. Serving its last output
-    under a live label is not: staleness that is budget-justified gets LABELLED, staleness that is
-    not gets removed (the RC-78 rule, applied to the scorecard that day and never to terrain).
-    """
-    refreshing = _is_loggable_session()
-    token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
-    skipped = _tq.terrain_skip_reason(ticker)   # RC-146: the producer's own words, when it has any
-    # RC-147: the FAILURE channel, which RC-146 left unread. `_terrain_refresh_last_error` was
-    # consulted at exactly ONE call site — the not-ready branch of /api/terrain, reachable only
-    # when NO snapshot exists. The moment a ticker has any cached snapshot, that branch is dead
-    # and the recorded exception becomes unreachable, so a ticker failing every single refresh
-    # reported `error: ""` and a generic "inside its window but not producing". MEASURED
-    # 2026-07-30 10:16 ET: $SPX served levels 2,737 s old (45.6 min) with volume bars painting
-    # beside them, chain_basis already degraded to `dte<=120`, and no surface anywhere naming
-    # the cause. Precedence: a pause recorded for THIS cycle is why it is not refreshing right
-    # now and wins; otherwise the last failure is the live reason; the clock is the last resort.
-    # RC-148: quarantine outranks both. A quarantined ticker is not merely failing — it is not
-    # being REQUESTED, which is a different fact and a different operator action (re-admit it,
-    # or accept it is gone). Precedence for the REASON: quarantine > this-cycle pause > last
-    # failure > clock. The FLAGS stay orthogonal on purpose: a hard quarantine is still FAILING
-    # (the vendor refuses the symbol) and is emphatically NOT "paused, resumes on its own", so
-    # collapsing it into either single flag would restore the ambiguity RC-146/147 removed.
-    q_entry = _tq.terrain_quarantine_state(ticker)
-    quarantined = _tq.terrain_quarantine_reason(ticker)
-    failure = "" if (skipped or quarantined) else str(_terrain_refresh_last_error.get(
-        ticker_storage_key(ticker) if ticker else "", "") or "")
-    hard_quarantine = bool(q_entry.get("permanent"))
-    if computed_ts_utc is None:
-        return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
-                "levels_stale_reason": (
-                    quarantined or skipped
-                    or (f"no terrain snapshot has been computed yet — {failure}" if failure
-                        else "no terrain snapshot has been computed yet")),
-                "levels_paused_on_purpose": bool(skipped and not quarantined),
-                "levels_quarantined": bool(quarantined),
-                "levels_failing": bool(failure or hard_quarantine), **token}
-    age = round(time.time() - float(computed_ts_utc), 1)
-    # RC-165: judge age against the cycle the loop ACTUALLY delivers, not the nominal floor.
-    # `TERRAIN_REFRESH_SEC` (60s) is a sleep floor between cycles; the delivered spacing is
-    # whatever a full sweep costs, and MEASURED 2026-07-31 12:57 ET that was a 156s median on
-    # SPY. With a fixed 180s threshold and a 60s sentence, a ticker 234s old — barely 1.5
-    # cycles, entirely healthy — was reported to the operator as "the loop is inside its window
-    # but not producing". That is RC-146's defect returning through a different door: a
-    # correctly-working scheduler described as broken, this time because the yardstick was a
-    # number the loop cannot reach rather than a silence nobody recorded.
-    observed = _terrain_last_cycle_sec if _terrain_last_cycle_sec > 0 else TERRAIN_REFRESH_SEC
-    expected = max(float(TERRAIN_REFRESH_SEC), float(observed))
-    # Stale only past the FLOOR *and* past two delivered cycles — one missed sweep is normal
-    # jitter, two is a real gap. The floor is retained so a fast loop cannot hide staleness.
-    stale_after = max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * expected)
-    stale = age > stale_after
-    reason = ""
-    if stale:
-        reason = (f"levels are {age:.0f}s old — {quarantined}" if quarantined else
-                  f"levels are {age:.0f}s old — {skipped}" if skipped else
-                  f"levels are {age:.0f}s old and every refresh since is failing — {failure}"
-                  if failure else
-                  f"levels are {age:.0f}s old; the terrain loop is not refreshing "
-                  f"(outside the background-logging window, which closes at "
-                  f"{LOGGER_BUFFER_MINS // 60:02d}:{LOGGER_BUFFER_MINS % 60:02d} ET)"
-                  if not refreshing else
-                  f"levels are {age:.0f}s old — over two full sweeps at the loop's DELIVERED "
-                  f"cycle of {expected:.0f}s (nominal floor {TERRAIN_REFRESH_SEC:.0f}s), so this "
-                  f"ticker is genuinely behind rather than merely between sweeps")
-    return {"levels_stale": stale, "levels_age_sec": age,
-            "levels_refresh_active": refreshing, "levels_stale_reason": reason,
-            # RC-146: a stale panel must be able to distinguish "paused by design, resumes at a
-            # known time" from "should be refreshing and is not". They are different operator
-            # actions — wait, versus go find out what broke.
-            "levels_paused_on_purpose": bool(stale and skipped and not quarantined),
-            # RC-147: and the third state — actively FAILING — is a different action again
-            # (the chain call is erroring, the levels will not come back on their own).
-            "levels_failing": bool(stale and (failure or hard_quarantine)),
-            # RC-148: the fourth — not even being REQUESTED. Distinct from failing: re-admission
-            # is an operator act, not something the loop will do on its own.
-            "levels_quarantined": bool(quarantined), **token}
-
-
-#: RC-159 accrual cadence, stated rather than implied. Sentinels every minute (they ARE the
-#: money path); the rest of the enrolled board every five. These are FLOORS between writes, not
-#: a schedule — the terrain loop's own cadence still governs when a chain exists to bank.
-ACCRUAL_MIN_INTERVAL_SENTINEL_SEC: float = 60.0
-ACCRUAL_MIN_INTERVAL_OTHER_SEC: float = 300.0
-ACCRUAL_SENTINELS: tuple[str, ...] = ("SPY", "QQQ", "IWM")
-_accrual_last_write: dict[str, float] = {}
-_accrual_lock = threading.Lock()
-
-
-def _accrue_chain_observation(tk: str, snap) -> None:
-    """Bank one wide-chain per-strike observation. Never raises into the producer.
-
-    A failure to ARCHIVE must never take down the loop that FEEDS the screen: collection is
-    downstream of display, and losing a row is recoverable while losing the refresh is not.
-    """
-    try:
-        _d, mins = gex_et_date_and_mins()
-        if not gex_accrual_window(mins):
-            return
-        floor = (ACCRUAL_MIN_INTERVAL_SENTINEL_SEC if tk in ACCRUAL_SENTINELS
-                 else ACCRUAL_MIN_INTERVAL_OTHER_SEC)
-        now = time.time()
-        with _accrual_lock:
-            if now - _accrual_last_write.get(tk, 0.0) < floor:
-                return
-            _accrual_last_write[tk] = now
-        rows = (getattr(snap, "per_strike", None) or {}).get("all") or []
-        if not rows:
-            return                      # absence stays absence; never bank an empty observation
-        res = persist_chain_accrual(
-            get_db().db_path, ticker=tk, per_strike_rows=rows,
-            spot=getattr(snap, "spot", None), ts_utc=now)
-        if res.get("status") != "written":
-            log.debug("chain accrual %s: %s", tk, res)
-    except Exception as e:
-        log.warning("chain accrual failed for %s: %s", tk, e)
-
-
-#: RC-161 — the morning contention guard's OWN start, decoupled from the archive write gate.
-#: RC-159 widened `MORNING_START_MINS` 570 -> 555 so the once-daily archive could open at the
-#: mandated 09:15 ET. That constant was ALSO the scheduler's sentinel-only filter, so the same
-#: edit lengthened non-sentinel starvation by 15 minutes at precisely the moment the accrual
-#: mandate begins. One constant was answering two different questions: "when may the archive
-#: accept a first write" and "when is the chain gate too busy for a full sweep".
 #: RC-165: the DELIVERED cycle time, published by `_terrain_loop` from the duration it already
 #: measures. `TERRAIN_REFRESH_SEC` is a sleep FLOOR, not a promise — a full sweep over ~40
 #: tickers on 2 workers against a 2-slot chain gate costs more than that, and judging freshness
@@ -7841,42 +7353,17 @@ def _accrue_chain_observation(tk: str, snap) -> None:
 #: which case readers fall back to the nominal floor.
 _terrain_last_cycle_sec: float = 0.0
 
-TERRAIN_CONTENTION_START_MINS: int = RTH_OPEN_MINS  # F09: cash open = time_et.RTH_OPEN_MINS
-TERRAIN_CONTENTION_END_MINS: int = 600     # 10:00 ET
 
-
-def terrain_cycle_tickers(
-    all_tickers: list[str], mins: int, cycle_n: int
-) -> tuple[list[str], list[str]]:
-    """Which tickers this cycle refreshes, and which are DEFERRED to a later cycle.
-
-    RC-161. The morning guard used to DROP every non-sentinel for a full half hour, which made
-    the accrual mandate sentinel-only in [555, 600) — a universal claim that three tickers were
-    meeting. Exclusion is now ROTATION: no enrolled ticker is ever removed from the board, it is
-    scheduled later within the window.
-
-    The rotation depth is derived from the accrual cadence, not guessed: a non-sentinel needs one
-    refresh per ACCRUAL_MIN_INTERVAL_OTHER_SEC, so with a TERRAIN_REFRESH_SEC cycle it needs to
-    appear once every `depth` cycles. Refreshing it more often would spend vendor budget on a
-    write the accrual floor would throw away, so this rotation costs nothing the mandate does not
-    already require — and it keeps the original budget intent (RC-146: do not pile a 54-ticker
-    sweep on top of the money-path wide fetches at the open) by spreading, not by starving.
-
-    Returns (refresh_now, deferred_this_cycle). Outside the contention window every ticker
-    refreshes, exactly as before.
-    """
-    sentinels = [t for t in all_tickers if str(t).upper() in ACCRUAL_SENTINELS]
-    others = [t for t in all_tickers if str(t).upper() not in ACCRUAL_SENTINELS]
-    if not (TERRAIN_CONTENTION_START_MINS <= int(mins) <= TERRAIN_CONTENTION_END_MINS):
-        return list(all_tickers), []
-    # integer ceiling division — server.py has no module-level `math`, and adding an import for
-    # one division would be a wider change than the fix
-    _cyc = max(1, int(TERRAIN_REFRESH_SEC))
-    depth = max(1, -(-int(ACCRUAL_MIN_INTERVAL_OTHER_SEC) // _cyc))
-    idx = int(cycle_n) % depth
-    slice_now = others[idx::depth]
-    deferred = [t for t in others if t not in set(slice_now)]
-    return sentinels + slice_now, deferred
+# RC-REHAB-1 (2026-09-23, forty-first slice): the universal capture producers moved to
+# terrain_capture.py, the flip-drift log to flip_drift_log.py, the freshness authority to
+# terrain_freshness.py, and the accrual cadence + morning rotation to terrain_schedule.py.
+from terrain_freshness import TERRAIN_STALE_AFTER_SEC, terrain_staleness  # noqa: E402,F401
+from terrain_schedule import (  # noqa: E402
+    ACCRUAL_MIN_INTERVAL_OTHER_SEC,
+    TERRAIN_CONTENTION_END_MINS,
+    TERRAIN_CONTENTION_START_MINS,
+    terrain_cycle_tickers,
+)
 
 
 # RC-UI-1 #1: gamma-surface demand registry — the /api/options/gamma-surface endpoint marks a
@@ -9889,35 +9376,6 @@ async def _sse_background_loop() -> None:
             await asyncio.sleep(interval)
         except Exception as e:
             log.warning(f"SSE background loop error: {e}", exc_info=True)
-
-
-#: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed, round 2): a
-#: fixed strike_count is NEVER proof of completeness — it is by definition a BOUND (N
-#: strikes above/below ATM), and MEASURED live 2026-08-30 it silently truncated a real
-#: chain: SPY's near expiry at strike_count=250 returned 388 contracts (194 strikes,
-#: 645.0-950.0); the SAME expiry via schwab-py's `strike_range=Options.StrikeRange.ALL` —
-#: a DIFFERENT vendor selection dimension, not a wider count — returned 526 contracts (263
-#: strikes, 420.0-950.0): 69 real strikes strike_count=250 never showed. `strike_range=
-#: "ALL"` was independently confirmed to be the vendor's actual complete set (not itself
-#: silently bounded) by a saturation check: an unrelated strike_count=500 request on the
-#: SAME expiry returned the IDENTICAL strike set, byte-for-byte — the two independent
-#: request shapes converged, which a still-truncated response could not do. TSLA's near
-#: expiry: strike_count=250 and strike_range=ALL happened to already agree (236 contracts,
-#: 118 strikes, 160.0-630.0, 27 fractional) — evidence that a bound merely CAN coincide with
-#: completeness on a given day, never proof that it reliably does, which is exactly why
-#: `strike_range=ALL` (never a strike_count bound) is now the completeness basis. Real
-#: capture evidence: tests/fixtures/real_tsla_complete_chain_strike_range_all.json,
-#: tests/fixtures/real_spy_strike_count_vs_strike_range_all_evidence.json.
-#:
-#: SAFE BY CONSTRUCTION regardless of strike width: this repo's own measured 502s (SPY/QQQ
-#: at strikeCount>=150, $SPX at 80-100, server.py:11090-11091) were ALL multi-expiry
-#: requests (strikeCount * 2 sides * ~35-55 expiries in ONE response) — bounding one
-#: request to exactly ONE expiry via from_date=to_date keeps `strike_range=ALL`'s contract
-#: count scoped to that single expiry's real strike population (measured 236-526 contracts
-#: above), an order of magnitude under SCHWAB_CHAIN_CONTRACT_BUDGET=6600, regardless of how
-#: many strikes that population actually has — the vendor 502 was never about strike width
-#: alone, it was strike width MULTIPLIED across every expiry in an unwindowed request.
-COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 
 
 def _repo_git_head_sha() -> Optional[str]:

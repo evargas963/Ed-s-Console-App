@@ -62,7 +62,7 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
     exactly one expiry, through _gated_safe_get_chain — the SAME single, rate-limited,
     coalesced chain-fetch faucet every other chain read in this file already uses (RC-59/
     RC-127/Cursor-audit F2's chain_width_single_faucet invariant) — using
-    `strike_range="ALL"` (see COMPLETENESS_BASIS_STRIKE_RANGE_ALL's comment in server.py for
+    `strike_range="ALL"` (see COMPLETENESS_BASIS_STRIKE_RANGE_ALL's comment in calibration/complete_chain_capture.py for
     the measured proof this is genuinely complete, not merely wide), never a bare
     strike_count bound, and never a second per-contract parsing path (reuses
     flatten_chain_contracts/resolve_spot verbatim, same as every other chain consumer).
@@ -99,8 +99,8 @@ def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
     import server as _server
     from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
     from calibration.complete_chain_capture import latest_complete_chain_capture, persist_complete_chain_capture
+    from calibration.complete_chain_capture import COMPLETENESS_BASIS_STRIKE_RANGE_ALL
     from server import (
-        COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
         _fetch_expiries_light,
         _gated_safe_get_chain,
         _latest_chain_and_spot,

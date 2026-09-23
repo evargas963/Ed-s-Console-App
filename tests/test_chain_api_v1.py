@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+import calibration.complete_chain_capture as ccc_mod  # noqa: E402
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -187,7 +188,7 @@ def test_chain_live_fetch_uses_strike_range_all_never_a_bare_count(monkeypatch, 
     body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
     assert body["status"] == "ok"
     assert body["scope"]["kind"] == "complete_single_expiry"
-    assert body["scope"]["completeness_basis"] == srv.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
+    assert body["scope"]["completeness_basis"] == ccc_mod.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
     assert len(body["contracts"]) == len(_TSLA_CONTRACTS)
     all_calls = [c for c in calls if c["strike_range"] == "ALL"]
     assert len(all_calls) >= 1
@@ -606,7 +607,7 @@ def test_chain_live_fetch_persists_the_complete_capture(monkeypatch, tmp_path):
 
     cap = latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY)
     assert cap is not None, "the complete capture must be durably persisted, not merely served"
-    assert cap["completeness_basis"] == srv.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
+    assert cap["completeness_basis"] == ccc_mod.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
     persisted_symbols = {c["symbol"] for c in cap["contracts"]}
     vendor_symbols = {c["symbol"] for c in _TSLA_CONTRACTS}
     assert persisted_symbols == vendor_symbols, "exact contract-symbol set equality, vendor -> PERSISTED"

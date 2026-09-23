@@ -314,3 +314,32 @@ def _nearest_complete_chain_capture_uncached(
     return {"ticker": tk, "expiry": str(row[0]), "ts_utc": float(row[1]), "spot": row[2],
             "n_contracts": int(row[3]), "completeness_basis": row[4],
             "contracts": contracts, "source": str(row[6])}
+
+
+#: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed, round 2): a
+#: fixed strike_count is NEVER proof of completeness — it is by definition a BOUND (N
+#: strikes above/below ATM), and MEASURED live 2026-08-30 it silently truncated a real
+#: chain: SPY's near expiry at strike_count=250 returned 388 contracts (194 strikes,
+#: 645.0-950.0); the SAME expiry via schwab-py's `strike_range=Options.StrikeRange.ALL` —
+#: a DIFFERENT vendor selection dimension, not a wider count — returned 526 contracts (263
+#: strikes, 420.0-950.0): 69 real strikes strike_count=250 never showed. `strike_range=
+#: "ALL"` was independently confirmed to be the vendor's actual complete set (not itself
+#: silently bounded) by a saturation check: an unrelated strike_count=500 request on the
+#: SAME expiry returned the IDENTICAL strike set, byte-for-byte — the two independent
+#: request shapes converged, which a still-truncated response could not do. TSLA's near
+#: expiry: strike_count=250 and strike_range=ALL happened to already agree (236 contracts,
+#: 118 strikes, 160.0-630.0, 27 fractional) — evidence that a bound merely CAN coincide with
+#: completeness on a given day, never proof that it reliably does, which is exactly why
+#: `strike_range=ALL` (never a strike_count bound) is now the completeness basis. Real
+#: capture evidence: tests/fixtures/real_tsla_complete_chain_strike_range_all.json,
+#: tests/fixtures/real_spy_strike_count_vs_strike_range_all_evidence.json.
+#:
+#: SAFE BY CONSTRUCTION regardless of strike width: this repo's own measured 502s (SPY/QQQ
+#: at strikeCount>=150, $SPX at 80-100, server.py, measured 2026-08-30) were ALL multi-expiry
+#: requests (strikeCount * 2 sides * ~35-55 expiries in ONE response) — bounding one
+#: request to exactly ONE expiry via from_date=to_date keeps `strike_range=ALL`'s contract
+#: count scoped to that single expiry's real strike population (measured 236-526 contracts
+#: above), an order of magnitude under SCHWAB_CHAIN_CONTRACT_BUDGET=6600, regardless of how
+#: many strikes that population actually has — the vendor 502 was never about strike width
+#: alone, it was strike width MULTIPLIED across every expiry in an unwindowed request.
+COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
