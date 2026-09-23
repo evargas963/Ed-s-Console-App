@@ -151,7 +151,8 @@ def test_resolve_spot_prefers_a_fresh_streaming_plane_row_over_the_rest_quote(mo
     tk = "ZZPLANESPOT"
     L._by_ticker[tk] = {"spot": 700.42, "server_received_ts": _t.time(),
                          "exchange_quote_ts": 1_800_000_000.0,
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
+                         "quote_source_detail": {"spot": "LAST_PRICE"},
+                         "quote_ingestion": "schwab_streaming_level_one"}
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
@@ -178,7 +179,8 @@ def test_resolve_spot_falls_through_when_the_plane_row_is_stale(monkeypatch) -> 
     L._by_ticker[tk] = {"spot": 700.42,
                          "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0),
                          "exchange_quote_ts": 1_800_000_000.0,
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
+                         "quote_source_detail": {"spot": "LAST_PRICE"},
+                         "quote_ingestion": "schwab_streaming_level_one"}
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
@@ -222,7 +224,8 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
     L._by_ticker[tk] = {"spot": 812.5, "server_received_ts": _t.time(),
                          "exchange_quote_ts": 1_800_000_000.0, "bid": 812.4, "ask": 812.6,
                          "spot_disp": "812.50", "bid_disp": "812.40", "ask_disp": "812.60",
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
+                         "quote_source_detail": {"spot": "LAST_PRICE"},
+                         "quote_ingestion": "schwab_streaming_level_one"}
     try:
         # A REST call here would prove nothing (the plane must win first) -- if either
         # consumer fell through to it, this distinct value would surface the divergence.
@@ -455,7 +458,8 @@ def test_merge_into_state_applies_a_fresh_plane_row(monkeypatch) -> None:
 
     tk = "ZZMERGEFRESH"
     L._by_ticker[tk] = {"spot": 850.0, "server_received_ts": _t.time(),
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
+                         "quote_source_detail": {"spot": "LAST_PRICE"},
+                         "quote_ingestion": "schwab_streaming_level_one"}
     try:
         ms = {"spot": 700.42, "ticker": tk}
         L.merge_into_state(ms, tk)

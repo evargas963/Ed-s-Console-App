@@ -91,6 +91,7 @@ def test_stale_plane_last_price_beats_mark_but_is_labelled_stale(monkeypatch) ->
         "server_received_ts": time.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0),
         "exchange_quote_ts": 1_800_000_000.0,
         "quote_source_detail": {"spot": "LAST_PRICE"},
+        "quote_ingestion": "schwab_streaming_level_one",
     }
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())

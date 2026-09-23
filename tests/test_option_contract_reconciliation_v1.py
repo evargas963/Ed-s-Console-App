@@ -1334,6 +1334,9 @@ def test_multi_A2_thirty_extra_symbols_admit_in_one_vendor_call_not_thirty(
     symbols = sorted(f"MSFT  260918C00{300 + i:03d}000" for i in range(30))
     monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
     monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: symbols)
+    # chunking is the defense for a budget ABOVE the chunk size; lift the shared-socket
+    # budget so this test still exercises it (the budget itself is tested separately)
+    monkeypatch.setattr(rsc, "OPTION_CONTRACTS_MAX_HELD", 100_000)
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
     epoch_state: dict = {}
@@ -1378,6 +1381,9 @@ def test_multi_A3_a_batch_over_the_size_ceiling_is_chunked_not_sent_whole(
     assert len(symbols) == n
     monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
     monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: symbols)
+    # chunking is the defense for a budget ABOVE the chunk size; lift the shared-socket
+    # budget so this test still exercises it (the budget itself is tested separately)
+    monkeypatch.setattr(rsc, "OPTION_CONTRACTS_MAX_HELD", 100_000)
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
     epoch_state: dict = {}
@@ -1416,6 +1422,9 @@ def test_multi_A4_dropping_a_batch_over_the_size_ceiling_is_also_chunked(
     assert len(symbols) == n
     monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
     monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: symbols)
+    # chunking is the defense for a budget ABOVE the chunk size; lift the shared-socket
+    # budget so this test still exercises it (the budget itself is tested separately)
+    monkeypatch.setattr(rsc, "OPTION_CONTRACTS_MAX_HELD", 100_000)
     stream = _FlakyOptionStream()
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
     epoch_state: dict = {}

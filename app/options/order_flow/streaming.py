@@ -45,9 +45,11 @@ from instrument_identity import (
     vendor_option_root,
 )
 from stream_spine import (
+    OPTION_CONTRACTS_MAX_HELD,
     PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,
     read_open_coverage_symbols,
+    prioritize_option_contracts,
     read_producer_heartbeat,
     read_rejected_option_contracts,
     resolve_stream_db_path,
@@ -1168,6 +1170,20 @@ def set_active_option_contract(contract_symbol: str,
 #: signal (stream_spine.write_active_option_contracts_signal) has a server-side writer
 #: symmetric to the existing singular one.
 _active_option_contracts: "list[str]" = []
+#: Contracts the last plural request asked for that did not fit the shared socket's budget.
+_option_contracts_over_budget: "list[str]" = []
+
+
+def get_option_contracts_over_budget() -> "list[str]":
+    """Contracts the last plural request asked for that the socket budget left out."""
+    return list(_option_contracts_over_budget)
+
+
+def get_option_contracts_budget_state() -> dict:
+    """What the last plural request was admitted to, against the shared-socket budget."""
+    return {"admitted_count": len(_active_option_contracts),
+            "over_budget_count": len(_option_contracts_over_budget),
+            "budget": OPTION_CONTRACTS_MAX_HELD}
 
 #: Independent generation counter for plural commands (see _option_command_seq for the
 #: primary slot's identical mechanism). Kept SEPARATE rather than shared: the primary and
@@ -1203,9 +1219,16 @@ def set_active_option_contracts(contract_symbols: "list[str]",
     Same command-generation staleness guard as the primary slot (see
     set_active_option_contract's docstring for why), on the independent counter above so
     ordering a plural command never depends on how many primary commands ran meanwhile."""
-    global _active_option_contracts
-    symbols = sorted({ticker_storage_key(s) for s in (contract_symbols or [])
-                      if ticker_storage_key(s)})
+    global _active_option_contracts, _option_contracts_over_budget
+    requested = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: no symbols requested is an empty request, which clears the set
+                        if ticker_storage_key(s)})
+    # The shared Schwab socket's budget (stream_spine.OPTION_CONTRACTS_MAX_HELD, measured):
+    # publish only what the daemon may hold, ranked nearest-expiry / nearest-the-money, and
+    # remember how many were left out so the caller can say so instead of showing them as
+    # pending forever.
+    admitted, over_budget = prioritize_option_contracts(requested)
+    symbols = sorted(admitted)
+    _option_contracts_over_budget = over_budget
     with _option_contracts_command_lock:
         if command_generation is not None and command_generation < _option_contracts_command_seq:
             _log_stream("OPTION_CONTRACTS_COMMAND_SUPERSEDED",

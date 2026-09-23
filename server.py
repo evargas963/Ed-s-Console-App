@@ -884,10 +884,17 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
         else None
     )
 
+    # 2026-09-23 (live RTH): the plane also holds rows the 20s REST anchor refresher wrote
+    # (quote_ingestion "rest_anchor_lane_refresher"). Those were served as
+    # spot_source=streaming_plane / spot_state=live while the Schwab stream had been dead
+    # for minutes, so the header claimed a live stream it did not have. A plane row is
+    # the STREAMING source only when the stream wrote it; a REST-written row is labelled
+    # the REST last price it is, and a stale one is never promoted.
+    _plane_streamed = _plane_last is not None and _lmp.plane_row_is_streamed(_plane_last)
     if _plane_last and _lmp.quote_is_fresh(_plane_last):
         return (
             float(_plane_last["spot"]),
-            SPOT_SOURCE_PLANE,
+            SPOT_SOURCE_PLANE if _plane_streamed else SPOT_SOURCE_QUOTE,
             _plane_last.get("exchange_quote_ts"),
         )
 
@@ -901,7 +908,7 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
         if spot is not None:
             return spot, SPOT_SOURCE_QUOTE, ts
 
-    if _plane_last:
+    if _plane_last and _plane_streamed:
         return (
             float(_plane_last["spot"]),
             SPOT_SOURCE_PLANE,
@@ -921,7 +928,8 @@ def current_spot_state(source: str, ticker: str) -> str:
             row = _lmp.get_quote(ticker)
         except Exception:
             return "stale"
-        if row and _lmp.plane_spot_is_last_price(row) and _lmp.quote_is_fresh(row):
+        if (row and _lmp.plane_spot_is_last_price(row) and _lmp.plane_row_is_streamed(row)
+                and _lmp.quote_is_fresh(row)):
             return "live"
         return "stale"
     return "unavailable"
@@ -12749,10 +12757,17 @@ def _option_contract_admission_summary(tk: str) -> dict:
         elif daemon_available:
             pending.append(sym)
         # else: daemon unavailable -- genuinely unknown, omitted from every bucket
+    # Requested by the view but left out by the shared Schwab socket's budget
+    # (stream_spine.OPTION_CONTRACTS_MAX_HELD): a capacity decision, reported as itself --
+    # never as pending (it is not coming) nor as a vendor rejection (the vendor never saw it).
+    from app.options.order_flow.streaming import (
+        contract_matches_underlying, get_option_contracts_over_budget)
+    not_admitted = sorted(s for s in get_option_contracts_over_budget()
+                          if contract_matches_underlying(s, tk))
     return {
         "daemon_available": daemon_available,
         "admitted": sorted(admitted), "active": sorted(active), "observed": sorted(observed),
-        "pending": sorted(pending), "rejected": rejected,
+        "pending": sorted(pending), "rejected": rejected, "not_admitted": not_admitted,
     }
 
 
@@ -16837,8 +16852,10 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 
     def _apply():
         from app.options.order_flow.streaming import set_active_option_contracts
+        from app.options.order_flow.streaming import get_option_contracts_budget_state
         ok = set_active_option_contracts(contracts, command_generation=generation)
-        return {"ok": ok, "contracts": contracts, "command_generation": generation}
+        return {"ok": ok, "contracts": contracts, "command_generation": generation,
+                **get_option_contracts_budget_state()}
     try:
         out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
     except StaleOptionCommandError as e:

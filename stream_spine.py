@@ -470,6 +470,70 @@ def write_active_option_contracts_signal(
     _write_json_list_signal("contract_symbols", symbols, path=dest)
 
 
+#: How many ADDITIONAL option contracts the ONE shared Schwab streaming socket may hold.
+#:
+#: MEASURED 2026-09-23 (stream_capture.db, 08:30-15:00 CT each day): LEVELONE_OPTIONS load
+#: on the socket that also carries LEVELONE_EQUITIES / books / chart kills the WHOLE socket,
+#: and every Schwab service (SPY's live price included) goes dark until a recycle:
+#:   9/15    10 option subscriptions opened  ->  0 recycles, 0 SPY gaps >60s (max 24s)
+#:   9/16  4,442                              ->  4 recycles, 5 gaps (max 131s)
+#:   9/22 48,333 (~850-2,500 held at once)    -> 39 recycles, 41 gaps (max 824s)
+#:   9/23 53,754 (~850-5,200 held at once)    -> 42 recycles, 49 gaps (max 1,341s)
+#: Deaths arrive every 3-4 min with ~2,500 held and every 4-20 min with ~850 held, and every
+#: one of them lands as `ConnectionClosedError: no close frame` (3,223 of 3,224 rejections
+#: recorded on 9/23). Alpaca write volume is NOT the driver (5.0M rows on the clean 9/15).
+#: Schwab allows ONE streamer connection per account, so options cannot move to a second
+#: socket. The budget below is the starting bound, set well under the smallest held count
+#: that still died (~850); tools/stream_socket_budget_probe.py re-measures recycles/hour
+#: against the held count at the next RTH, and this number moves only on that evidence.
+OPTION_CONTRACTS_MAX_HELD = 200
+
+
+def _option_contract_rank_key(symbol: str) -> tuple:
+    """(root, expiry, strike) parsed from an OCC/Schwab option symbol, e.g.
+    'SPY   261030P00750000' -> ('SPY', '261030', 750.0). Unparseable -> None fields."""
+    s = str(symbol or "")  # caps-ok: fail-closed -- a missing symbol parses as unrankable (ranked last), never as a contract
+    if len(s) >= 21:
+        root, tail = s[:6].strip(), s[6:]
+        try:
+            return root, tail[:6], int(tail[7:15]) / 1000.0
+        except ValueError:
+            pass
+    return None, None, None
+
+
+def prioritize_option_contracts(symbols, budget: int = OPTION_CONTRACTS_MAX_HELD
+                                ) -> "tuple[list[str], list[str]]":
+    """Split desired option contracts into (admitted, over_budget) under `budget`.
+
+    Order carries no meaning on the way in (the signal is a set), so priority comes from
+    the contracts themselves: nearest expiry first, then nearest to the MIDDLE strike the
+    caller asked for on that root and expiry (a heatmap/chain view is centred on the money,
+    so its median strike is the at-the-money anchor without reading any price). Ties break
+    on the symbol, so the same request always admits the same contracts."""
+    uniq = sorted({str(s).upper().strip() for s in symbols or ()} - {""})
+    if budget <= 0:
+        return [], uniq
+    groups: dict = {}
+    for s in uniq:
+        root, exp, strike = _option_contract_rank_key(s)
+        if strike is not None:
+            groups.setdefault((root, exp), []).append(strike)
+    centre = {}
+    for k, strikes in groups.items():
+        strikes = sorted(strikes)
+        centre[k] = strikes[len(strikes) // 2]
+
+    def _key(s: str) -> tuple:
+        root, exp, strike = _option_contract_rank_key(s)
+        if strike is None:
+            return (1, "", 0.0, s)                      # unparseable: last, but still ranked
+        return (0, exp, abs(strike - centre[(root, exp)]), s)
+
+    ranked = sorted(uniq, key=_key)
+    return ranked[:budget], ranked[budget:]
+
+
 def read_active_option_contracts_signal(
     *, path: Path | None = None,
 ) -> "list[str]":

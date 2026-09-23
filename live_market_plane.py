@@ -261,6 +261,12 @@ def get_quote(ticker: str) -> Optional[dict[str, Any]]:
 PLANE_QUOTE_STALE_SEC: float = 30.0
 
 
+def plane_row_is_streamed(row: dict) -> bool:
+    """True only for a row the Schwab LEVELONE_EQUITIES stream wrote. Rows the REST
+    refreshers write carry their own quote_ingestion tag and are NOT stream identity."""
+    return (row or {}).get("quote_ingestion") == "schwab_streaming_level_one"  # caps-ok: fail-closed -- no row is not a streamed row
+
+
 def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
     """True only when this plane row's spot is a native Schwab LAST_PRICE."""
     if not row or not isinstance(row, dict):

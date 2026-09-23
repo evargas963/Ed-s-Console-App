@@ -46,6 +46,7 @@ from stream_spine import (  # noqa: E402
     CaptureWriter,
     CoverageWriteError,
     HealthRegistry,
+    OPTION_CONTRACTS_MAX_HELD,
     MessageBus,
     bar_msg,
     book_msg,
@@ -54,6 +55,7 @@ from stream_spine import (  # noqa: E402
     quote_msg,
     read_active_option_contract_signal,
     read_active_option_contracts_signal,
+    prioritize_option_contracts,
     read_active_ticker_signal,
     resolve_stream_db_path,
 )
@@ -540,6 +542,13 @@ class OptionCoverageCompensationError(RuntimeError):
     loop escalates into the EXISTING stream-recycle path (which tears the session down,
     closes epochs, and rebuilds from the operator's current desired contract) rather
     than being absorbed as an ordinary bad tick."""
+
+
+class OptionStreamConnectionLost(OptionCoverageCompensationError):
+    """The shared Schwab websocket died mid-subscribe (2026-09-23). A subclass of the
+    compensation error ON PURPOSE: the poll loop's one escalation path for it already
+    requests a stream recycle, which retires every held contract and resubscribes a fresh
+    generation -- exactly what a dead socket needs, and nothing more."""
 
 
 #: epoch_state key -> the Schwab service its coverage epoch belongs to. The ONE place the
@@ -1138,6 +1147,27 @@ def _subs_or_add(contract_state: dict, svc_key: str, exclude_key: str, subs_fn, 
 #: a genuinely vendor-poisoned individual symbol (unrelated to payload size).
 OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS = 500
 
+#: rejected_state reason for a desired contract the daemon did not offer to the vendor
+#: because the shared socket's budget was full -- a capacity decision, not a vendor refusal.
+OPTION_OVER_BUDGET_REASON = (
+    f"not admitted: over the shared-socket option budget ({OPTION_CONTRACTS_MAX_HELD})")
+
+
+def _is_connection_death(exc: BaseException) -> bool:
+    """True when `exc` means the shared websocket itself is gone (1009 message-too-big, a
+    dropped TCP connection with no close frame, any websockets ConnectionClosed). Such an
+    error says nothing about the symbols in the request -- every later call on the same
+    socket fails the same way."""
+    for e in (exc, exc.__cause__, exc.__context__):
+        if e is None:
+            continue
+        if "ConnectionClosed" in type(e).__name__:
+            return True
+        text = str(e)
+        if "no close frame" in text or "1009" in text or "message too big" in text:
+            return True
+    return False
+
 
 async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitted) -> "list[tuple[str, str]]":
     """Subscribe `symbols` to the vendor in as FEW network round trips as possible
@@ -1180,6 +1210,14 @@ async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitt
         on_admitted(list(symbols))
         return []
     except Exception as e:
+        if _is_connection_death(e):
+            # 2026-09-23: bisecting here ran every remaining half on a DEAD socket and
+            # stamped 3,223 healthy contracts "rejected: no close frame". Stop at once --
+            # no further chunk, no rejection -- and take the existing recycle path.
+            raise OptionStreamConnectionLost(
+                f"{EXTRA_OPTION_CONTRACT_SERVICE_NAME}: the shared Schwab socket closed "
+                f"during a {len(symbols)}-contract subscribe ({type(e).__name__}: {e}); "
+                f"forcing one stream recycle, no symbol marked rejected") from e
         if len(symbols) == 1:
             return [(symbols[0], f"{type(e).__name__}: {e}")]
         mid = len(symbols) // 2
@@ -1574,7 +1612,20 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
     vendor silent" for EVERY concurrently-held contract, not just the primary one.
     Optional: tests exercising only the subscribe-diff behavior can omit both."""
     requested = read_active_option_contract_signal()
-    plural_requested_raw = set(read_active_option_contracts_signal())
+    # The ONE shared Schwab socket holds at most OPTION_CONTRACTS_MAX_HELD additional
+    # contracts (see its measured table in stream_spine): demanding more is what killed the
+    # socket -- and SPY's live price with it -- 42 times on 2026-09-23. The daemon owns the
+    # socket, so it enforces the budget whatever the server asks for; over-budget contracts
+    # are reported as NOT ADMITTED (never as a vendor rejection) so the heatmap can say so.
+    _admitted, _over_budget = prioritize_option_contracts(
+        read_active_option_contracts_signal(), budget=OPTION_CONTRACTS_MAX_HELD)
+    plural_requested_raw = set(_admitted)
+    if rejected_state is not None:
+        for _sym in [k for k, v in rejected_state.items() if v == OPTION_OVER_BUDGET_REASON]:
+            if _sym not in _over_budget:
+                rejected_state.pop(_sym, None)
+        for _sym in _over_budget:
+            rejected_state[_sym] = OPTION_OVER_BUDGET_REASON
     # Role-transfer pre-pass (independent-review finding, 2026-09-12): must run before
     # any reconcile call this tick — see _apply_option_primary_role_transfer's docstring.
     #
@@ -1724,7 +1775,58 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
     }, indent=2), encoding="utf-8")
 
 
+class _TimestampedLog:
+    """Line-buffered append log that stamps each line with local wall time."""
+
+    def __init__(self, fh) -> None:
+        self._fh = fh
+        self._at_line_start = True
+
+    def write(self, text: str) -> int:
+        out = []
+        for part in text.splitlines(keepends=True):
+            if self._at_line_start and part.strip():
+                out.append(time.strftime("%Y-%m-%d %H:%M:%S "))
+            out.append(part)
+            self._at_line_start = part.endswith(chr(10))
+        self._fh.write("".join(out))
+        self._fh.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        self._fh.flush()
+
+
+STREAM_CAPTURE_LOG_MAX_BYTES = 50 * 1024 * 1024
+
+
+def _ensure_daemon_output_is_recorded() -> "Path | None":
+    """The scheduled task runs this daemon under pythonw.exe, where sys.stdout and
+    sys.stderr are None: every print() -- subscribe failures, socket-close reasons,
+    recycles -- was silently discarded. MEASURED 2026-09-23: the Schwab socket died 42
+    times that session and not one close reason existed anywhere on disk. When there is
+    no console, output goes to <runtime>/logs/stream_capture.log (one rotation at 50 MB).
+    With a console (a manual run), nothing changes."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return None
+    from runtime_layout import logs_dir
+    path = logs_dir() / "stream_capture.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if path.exists() and path.stat().st_size > STREAM_CAPTURE_LOG_MAX_BYTES:
+            path.replace(path.with_suffix(".log.1"))
+    except OSError:
+        pass
+    sink = _TimestampedLog(open(path, "a", encoding="utf-8", buffering=1))
+    if sys.stdout is None:
+        sys.stdout = sink
+    if sys.stderr is None:
+        sys.stderr = sink
+    return path
+
+
 async def run(symbols: list[str], duration_min: float, db_path: str | Path | None = None) -> int:
+    _ensure_daemon_output_is_recorded()
     # ONE canonical stream DB and ONE owner lock. RC-523/RC-534 root the stream DB in
     # runtime_layout, so a worktree daemon and production converge on the same path and the
     # ambient STREAM_CAPTURE_DB_PATH authority is gone. The lock still binds to the resolved
