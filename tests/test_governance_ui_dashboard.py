@@ -10,6 +10,7 @@ from arch_competition.manual_control import (
     MANUAL_PROMOTE_PARALLEL_INTENT,
     MANUAL_ROLLBACK_INTENT,
 )
+import app.api.routes.ops
 
 
 def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
@@ -26,9 +27,8 @@ def test_governance_route_serves_dashboard_html():
     at /static -- a disjoint prefix -- so there is no route-shadowing question of the
     kind test_single_producer_batch_f02_f13_v1 guards for the RTH-clock route. The
     HTTP round trip re-proved nothing the response object does not already carry."""
-    import server
 
-    resp = server.governance_visibility_page()
+    resp = app.api.routes.ops.governance_visibility_page()
     assert resp.status_code == 200
     text = resp.body.decode("utf-8")
     assert "sec-architecture" in text

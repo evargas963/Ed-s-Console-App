@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 import analytics_bg_recompute
+import app.api.routes.analytics_state
+import app.api.routes.status
 
 
 @pytest.fixture()
@@ -34,10 +36,10 @@ def test_record_analytics_bg_failure_marks_stale_after_threshold(_bg_fail_spy):
     ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
     threshold = srv.ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES
     for i in range(threshold - 1):
-        srv._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
+        analytics_bg_recompute._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
         assert cache_key in srv._state_cache
         assert srv._analytics_bg_fail_counts.get(inflight_key) == i + 1
-    srv._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
+    analytics_bg_recompute._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
     assert cache_key in srv._state_cache
     md = srv._state_cache[cache_key]["ms_dict"]
     assert md.get("state_error") == "analytics_refresh_failed"
@@ -49,7 +51,7 @@ def test_record_analytics_bg_failure_marks_stale_after_threshold(_bg_fail_spy):
 def test_record_analytics_bg_failure_writes_cold_cache_error_shell(_bg_fail_spy):
     ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
     srv._state_cache.pop(cache_key, None)
-    srv._record_analytics_bg_failure(
+    analytics_bg_recompute._record_analytics_bg_failure(
         inflight_key,
         ticker,
         reason="schwab_auth",
@@ -204,7 +206,7 @@ def test_api_state_symbol_alias_routes_to_symbol(monkeypatch):
         return JSONResponse({"ticker": ticker, "update_source": update_source})
 
     monkeypatch.setattr(srv, "_tier_c_analytics_json_response", fake_tier)
-    resp = srv.get_state(symbol="QQQ")
+    resp = app.api.routes.analytics_state.get_state(symbol="QQQ")
     body = json.loads(resp.body)
     assert body["ticker"] == "QQQ"
     assert seen["ticker"] == "QQQ"
@@ -221,7 +223,7 @@ def test_api_build_exposes_git_sha(monkeypatch):
     import server as srv
 
     monkeypatch.setattr(srv, "_repo_git_head_sha", lambda: "abc123deadbeef")
-    body = srv.api_build()
+    body = app.api.routes.status.api_build()
     assert body["git_sha"] == body["process_identity"]["startup_git_sha"]
     assert body["repository_state_now"]["repo_head_now"] == "abc123deadbeef"
     assert body["git_sha_semantics"] == "startup_process_identity"
@@ -359,7 +361,7 @@ def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
     # symbol/expiry must be passed explicitly: calling the handler directly bypasses
     # FastAPI's Query(...) dependency resolution, so an omitted Query-typed param
     # stays the unresolved Query() sentinel object rather than its declared default.
-    resp = asyncio.run(srv.post_analytics_warm(ticker="SPY", symbol=None, expiry=None))
+    resp = asyncio.run(app.api.routes.analytics_state.post_analytics_warm(ticker="SPY", symbol=None, expiry=None))
     body = json.loads(resp.body)
     assert body.get("ok") is True
     assert body.get("ticker") == "SPY"
@@ -374,7 +376,7 @@ def test_api_build_exposes_ui_maximize_sla():
     added nothing a direct call doesn't already prove."""
     import server as srv
 
-    body = srv.api_build()
+    body = app.api.routes.status.api_build()
     sla = body.get("ui_maximize_sla_ms") or {}
     assert sla.get("first_quote") == srv.UI_MAXIMIZE_SLA_MS["first_quote"]
     assert sla.get("fusion_cards_panel_warm") == srv.UI_MAXIMIZE_SLA_MS["fusion_cards_panel_warm"]

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import server
 from time_et import ET
+import app.api.routes.options
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -22,7 +23,7 @@ _SPOT = float(_REAL["spot"])
 _CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
 # The captured fixture's every contract shares one expirationDate, frozen at capture time
 # ("2026-09-18T20:00:00.000+00:00"). math_levels._contract_inputs computes time-to-expiry from
-# REAL wall-clock now_et() with no injection point reachable through server.get_charm_by_strike
+# REAL wall-clock now_et() with no injection point reachable through app.api.routes.options.get_charm_by_strike
 # (an HTTP route, no `now` parameter) -- once real time passes that captured date, t_years <= 0
 # and EVERY contract fails closed, so `available` silently flips to False (REPRODUCED
 # 2026-09-21: real time had already passed it). This test proves the WIRING (see module
@@ -76,13 +77,13 @@ def teardown_function(_fn):
 
 
 def test_vanna_by_strike_unavailable_with_no_cached_chain():
-    body = json.loads(server.get_vanna_by_strike(ticker="CRWD").body)
+    body = json.loads(app.api.routes.options.get_vanna_by_strike(ticker="CRWD").body)
     assert body["available"] is False
     assert "reason" in body
 
 
 def test_charm_by_strike_unavailable_with_no_cached_chain():
-    body = json.loads(server.get_charm_by_strike(ticker="CRWD").body)
+    body = json.loads(app.api.routes.options.get_charm_by_strike(ticker="CRWD").body)
     assert body["available"] is False
     assert "reason" in body
 
@@ -92,7 +93,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     _put_live_chain()
     from math_exposure_core import compute_exposures_by_strike as cebs
 
-    body = json.loads(server.get_vanna_by_strike(ticker="CRWD").body)
+    body = json.loads(app.api.routes.options.get_vanna_by_strike(ticker="CRWD").body)
     assert body["available"] is True
     assert body["spot"] == _SPOT
     rows = {r[0]: r[1] for r in body["rows"]}
@@ -132,7 +133,7 @@ def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_stri
     _put_live_chain()
     from math_levels import compute_charm_by_strike as ccs
 
-    body = json.loads(server.get_charm_by_strike(ticker="CRWD").body)
+    body = json.loads(app.api.routes.options.get_charm_by_strike(ticker="CRWD").body)
     assert body["available"] is True
     rows = {r[0]: r[1] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"
@@ -152,7 +153,7 @@ def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_stri
 
 def test_vanna_and_charm_rows_are_sorted_by_strike_ascending():
     _put_live_chain()
-    v_rows = json.loads(server.get_vanna_by_strike(ticker="CRWD").body)["rows"]
-    c_rows = json.loads(server.get_charm_by_strike(ticker="CRWD").body)["rows"]
+    v_rows = json.loads(app.api.routes.options.get_vanna_by_strike(ticker="CRWD").body)["rows"]
+    c_rows = json.loads(app.api.routes.options.get_charm_by_strike(ticker="CRWD").body)["rows"]
     assert [r[0] for r in v_rows] == sorted(r[0] for r in v_rows)
     assert [r[0] for r in c_rows] == sorted(r[0] for r in c_rows)

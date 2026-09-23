@@ -22,6 +22,9 @@ import ast
 from pathlib import Path
 import calibration.option_chain_morning_full as ocmf
 import gamma_surface_state
+import app.api.routes.liquidity
+import app.api.routes.status
+import app.api.routes.terrain
 
 SERVER = Path(__file__).resolve().parent.parent / "server.py"
 SRC = SERVER.read_text(encoding="utf-8")
@@ -551,7 +554,7 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
 
-    resp = srv.get_levels(ticker="SPY")
+    resp = app.api.routes.liquidity.get_levels(ticker="SPY")
     payload = json.loads(bytes(resp.body))
 
     assert payload["schema_version"] == 1
@@ -683,7 +686,7 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
     # the route imports latest_accrual_rows from its real home at call time -- stub THAT
     # (a stub on server's old re-export never reached the route: RC-441 hermeticity was lost)
     monkeypatch.setattr(ocmf, "latest_accrual_rows", lambda *a, **k: None)
-    resp = srv.get_terrain_strikes(ticker="SPY")
+    resp = app.api.routes.terrain.get_terrain_strikes(ticker="SPY")
     payload = json.loads(bytes(resp.body))
     ss = payload["today_side_sums"]
     assert ss["gex_below"] == 10.0 and ss["gex_above"] == -4.0
@@ -715,7 +718,7 @@ def test_terrain_strikes_registers_viewing_demand(monkeypatch):
     gamma_surface_state._gamma_surface_demand.pop(tk, None)
     try:
         assert gamma_surface_state._gamma_surface_wanted(tk) is False, "must start with no recorded demand"
-        resp = srv.get_terrain_strikes(ticker="ZZDEMANDONLY")
+        resp = app.api.routes.terrain.get_terrain_strikes(ticker="ZZDEMANDONLY")
         json.loads(bytes(resp.body))   # a real, well-formed response — not the point of this test
         assert gamma_surface_state._gamma_surface_wanted(tk) is True, (
             "GET /api/terrain/strikes must register viewing demand for its ticker, the same as "
@@ -803,9 +806,8 @@ def test_price_levels_route_retired_410():
     """B6: the second HTTP surface hard-fails with a pointer — never a silent alias."""
     import json
 
-    import server as srv
 
-    resp = srv.get_price_levels(ticker="SPY")
+    resp = app.api.routes.status.get_price_levels(ticker="SPY")
     assert resp.status_code == 410
     payload = json.loads(bytes(resp.body))
     assert payload["error"] == "retired" and "/api/levels" in payload["replacement"]
@@ -932,7 +934,7 @@ def test_api_levels_truncated_accumulator_falls_through_to_banked(monkeypatch, t
         db_path = str(dbf)
     monkeypatch.setattr(srv, "get_db", lambda: _Db())
 
-    payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
+    payload = json.loads(bytes(app.api.routes.liquidity.get_levels(ticker="SPY").body))
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     assert by_id["PDL"]["price"] == 749.59, (
         "truncated accumulator served its partial min — the t12 fallthrough is dead"

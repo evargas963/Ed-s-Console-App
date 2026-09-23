@@ -115,7 +115,7 @@ def test_rest_cum_delta_is_updated_from_merged_quote_and_extended():
 
     # RC-REHAB-1 (2026-09-22): _order_flow_data_for_state now lives in
     # server_state_order_flow.py alongside _update_rest_cum_delta and resolves it as a
-    # bare module-local name -- patching srv._update_rest_cum_delta would be a no-op.
+    # bare module-local name -- patching server_state_order_flow._update_rest_cum_delta would be a no-op.
     with mock.patch.object(sof, "_update_rest_cum_delta") as mock_update:
         srv._order_flow_data_for_state(ticker, q_json, c_json, now_et)
     assert mock_update.call_count == 1

@@ -32,6 +32,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import calibration.complete_chain_capture as ccc_mod  # noqa: E402
+import app.api.routes.chain
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -112,7 +113,7 @@ def test_chain_fails_closed_with_no_stored_chain(monkeypatch, tmp_path):
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
     monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (None, None, None))
-    body = json.loads(srv.get_chain(ticker="ZZZZ", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="ZZZZ", expiry=None).body)
     assert body["ticker"] == "ZZZZ"
     assert body["contracts"] == []
     assert body["status"] == "no_chain"
@@ -129,7 +130,7 @@ def test_chain_falls_back_to_stored_contracts_verbatim_on_live_failure(monkeypat
     _fake_db(monkeypatch, srv, tmp_path)
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
-    body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="SPY", expiry=None).body)
     assert body["contracts"] == _REAL_CONTRACTS   # byte-for-byte pass-through
     assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
 
@@ -147,7 +148,7 @@ def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
         seen.append(t)
         return None, None, None
     monkeypatch.setattr(srv, "_latest_chain_and_spot", _spy)
-    body = json.loads(srv.get_chain(ticker=" spy ", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker=" spy ", expiry=None).body)
     assert body["ticker"] == "SPY"
     assert seen == ["SPY"]
 
@@ -185,7 +186,7 @@ def test_chain_live_fetch_uses_strike_range_all_never_a_bare_count(monkeypatch, 
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
     calls = []
     monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, calls))
-    body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="TSLA", expiry=None).body)
     assert body["status"] == "ok"
     assert body["scope"]["kind"] == "complete_single_expiry"
     assert body["scope"]["completeness_basis"] == ccc_mod.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
@@ -211,7 +212,7 @@ def test_chain_fractional_strikes_survive_vendor_to_api_unchanged(monkeypatch, t
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
                         _fake_gated_isolating_ALL(c_json, []))
-    body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="TSLA", expiry=None).body)
 
     vendor_symbols = {c["symbol"] for c in _TSLA_CONTRACTS}
     api_symbols = {c["symbol"] for c in body["contracts"]}
@@ -317,7 +318,7 @@ def test_chain_overlays_streamed_volume_onto_the_rest_snapshot(monkeypatch, tmp_
         c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
         monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
 
-        body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+        body = json.loads(app.api.routes.chain.get_chain(ticker="TSLA", expiry=None).body)
     finally:
         ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
         from app.options.order_flow.state import clear_symbol
@@ -388,7 +389,7 @@ def test_chain_does_not_let_an_older_streamed_volume_replace_a_newer_rest_value(
         c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
         monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
 
-        body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+        body = json.loads(app.api.routes.chain.get_chain(ticker="TSLA", expiry=None).body)
     finally:
         ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
         from app.options.order_flow.state import clear_symbol
@@ -442,7 +443,7 @@ def test_chain_persists_the_pre_overlay_rest_capture_not_the_blended_response(mo
         c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
         monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
 
-        srv.get_chain(ticker="TSLA", expiry=None)
+        app.api.routes.chain.get_chain(ticker="TSLA", expiry=None)
     finally:
         ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
         from app.options.order_flow.state import clear_symbol
@@ -572,7 +573,7 @@ def test_chain_overlay_does_not_let_one_fresh_field_borrow_another_fields_freshn
         monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
 
         import json
-        body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+        body = json.loads(app.api.routes.chain.get_chain(ticker="TSLA", expiry=None).body)
     finally:
         ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
         clear_symbol(target_symbol)
@@ -603,7 +604,7 @@ def test_chain_live_fetch_persists_the_complete_capture(monkeypatch, tmp_path):
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
                         _fake_gated_isolating_ALL(c_json, []))
-    srv.get_chain(ticker="TSLA", expiry=None)
+    app.api.routes.chain.get_chain(ticker="TSLA", expiry=None)
 
     cap = latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY)
     assert cap is not None, "the complete capture must be durably persisted, not merely served"
@@ -633,7 +634,7 @@ def test_chain_persisted_capture_serves_as_fallback_when_live_fails(monkeypatch,
     def _boom(*a, **k):
         raise RuntimeError("simulated live-fetch outage")
     monkeypatch.setattr(srv, "_gated_safe_get_chain", _boom)
-    body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="TSLA", expiry=None).body)
     assert body["scope"]["kind"] == "persisted_complete_capture_fallback"
     assert body["scope"]["completeness_basis"] == "strike_range=ALL"
     assert body["scope"]["captured_age_sec"] is not None
@@ -660,7 +661,7 @@ def test_chain_expiry_mismatch_never_claims_complete_single_expiry(monkeypatch, 
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
                         lambda *a, **k: (_FakeResp(200, c_json), 0.0, 0.1))
-    body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="TSLA", expiry=None).body)
     assert body["scope"]["kind"] != "complete_single_expiry"
     assert body["scope"]["kind"] == "expiry_scope_mismatch"
     assert body["scope"]["requested_expiry"] == _TSLA_EXPIRY
@@ -685,7 +686,7 @@ def test_chain_expiry_mismatch_does_not_persist_a_complete_capture(monkeypatch, 
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
                         lambda *a, **k: (_FakeResp(200, c_json), 0.0, 0.1))
-    srv.get_chain(ticker="TSLA", expiry=None)
+    app.api.routes.chain.get_chain(ticker="TSLA", expiry=None)
     assert latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY) is None
 
 
@@ -703,7 +704,7 @@ def test_chain_live_fetch_accepts_explicit_expiry_param(monkeypatch, tmp_path):
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
                         lambda *a, **k: (_FakeResp(200, c_json), 0.0, 0.1))
-    body = json.loads(srv.get_chain(ticker="TSLA", expiry=_TSLA_EXPIRY).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="TSLA", expiry=_TSLA_EXPIRY).body)
     assert body["expiry"] == _TSLA_EXPIRY
     # An explicit expiry must skip the nearest-expiry lookup entirely.
     assert fetch_expiries_called == []
@@ -721,7 +722,7 @@ def test_chain_live_fetch_non_200_falls_back_to_stored_snapshot(monkeypatch, tmp
                         lambda *a, **k: (_FakeResp(502, {}), 0.0, 0.1))
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
-    body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="SPY", expiry=None).body)
     assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
     assert body["status"] == "ok"
     assert len(body["contracts"]) == 40
@@ -741,7 +742,7 @@ def test_chain_live_fetch_exception_falls_back_to_stored_snapshot(monkeypatch, t
     monkeypatch.setattr(srv, "_gated_safe_get_chain", _boom)
     monkeypatch.setattr(srv, "_latest_chain_and_spot",
                         lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
-    body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
+    body = json.loads(app.api.routes.chain.get_chain(ticker="SPY", expiry=None).body)
     assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
 
 

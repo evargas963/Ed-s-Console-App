@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 import server as srv
+import app.api.routes.diagnostics
 
 
 def _fresh_gate(monkeypatch):
@@ -347,7 +348,7 @@ def test_gate_metrics_snapshot_shape(monkeypatch):
 
 def test_diagnostics_endpoint_serves_snapshot(monkeypatch):
     _fresh_gate(monkeypatch)
-    body = srv.api_chain_gate_diagnostics()
+    body = app.api.routes.diagnostics.api_chain_gate_diagnostics()
     assert body["gate"]["global_slots_max"] == 2
     assert body["breaker_failure_threshold"] == srv.CHAIN_GATE_BREAKER_FAILURE_THRESHOLD
     assert isinstance(body["inflight_tickers"], list)

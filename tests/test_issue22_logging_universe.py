@@ -16,6 +16,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db import EdDB
+import app.api.routes.accuracy
+import app.api.routes.logger
 
 
 def _tickers_by_cat(db: EdDB) -> dict[str, set[str]]:
@@ -349,7 +351,7 @@ def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
                         merged.append(t)
             srv._logger_tickers[:] = merged
 
-        body = json.loads(srv.logger_universe().body)
+        body = json.loads(app.api.routes.logger.logger_universe().body)
         assert body.get("schema") == "logging_universe_audit_v2"
         assert "protected_symbols" in body
         assert "eviction_candidates_fifo_user_persisted" in body
@@ -363,7 +365,7 @@ def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
         assert by_t["AUD1"]["eviction_status"] == "eligible"
         for key in ("category", "enrollment_source", "enrolled_ts_utc", "last_seen_ts_utc"):
             assert key in by_t["AUD1"]
-        rcat = json.loads(srv.logger_universe_by_category(category="pinned").body)
+        rcat = json.loads(app.api.routes.logger.logger_universe_by_category(category="pinned").body)
         assert rcat["count"] == 1
         assert rcat["rows"][0]["ticker"].upper() == "AUDP"
     finally:
@@ -556,13 +558,13 @@ def test_ticker_preview_view_endpoint_no_enroll_track_enrolls(monkeypatch, tmp_p
         srv.CORE_TICKERS[:] = ["SPY"]
 
         # VIEW: peek accuracy for an un-enrolled ticker → no enrollment.
-        srv.get_accuracy(ticker="ZVQ")
+        app.api.routes.accuracy.get_accuracy(ticker="ZVQ")
         users = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
                  if r["category"] == "user_persisted"}
         assert "ZVQ" not in users, "VIEW endpoint /api/accuracy must not enroll"
 
         # TRACK: explicit add → enrolls.
-        srv.logger_add(ticker="ZTK")
+        app.api.routes.logger.logger_add(ticker="ZTK")
         users2 = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
                   if r["category"] == "user_persisted"}
         assert "ZTK" in users2, "explicit track /api/logger/add must enroll"
@@ -584,7 +586,7 @@ def test_step3_fetch_state_does_not_enroll_viewed_ticker():
     src = inspect.getsource(srv._fetch_state)
     assert "_register_tracked_ticker(" not in src, "_fetch_state must not auto-enroll viewed tickers"
     assert "_touch_tracked_ticker_view(ticker)" in src
-    add_src = inspect.getsource(srv.logger_add)
+    add_src = inspect.getsource(app.api.routes.logger.logger_add)
     assert "_register_tracked_ticker(" in add_src, "explicit track route remains the enrollment path"
 
 

@@ -9,6 +9,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import app.api.routes.debug
+import app.api.routes.prediction
+import tier_a_live_state
 
 ROOT = Path(__file__).resolve().parent.parent
 SERVER_PY = ROOT / "server.py"
@@ -18,10 +21,11 @@ def _server_src() -> str:
     return SERVER_PY.read_text(encoding="utf-8", errors="replace")
 
 
-def _fn_src(name: str) -> str:
-    import server
+def _fn_src(name: str, module: str = "server") -> str:
+    """Source of `name` from the module that DEFINES it (server.py re-exports nothing)."""
+    import importlib
 
-    return inspect.getsource(getattr(server, name))
+    return inspect.getsource(getattr(importlib.import_module(module), name))
 
 
 def _unresolved_free_names_in_module(source: str) -> list[tuple[str, int]]:
@@ -235,7 +239,7 @@ def test_rth_open_mins_constant_exists_and_used():
     import server
 
     assert server.RTH_OPEN_MINS == 570
-    src = _fn_src("_update_rest_cum_delta")
+    src = _fn_src("_update_rest_cum_delta", "server_state_order_flow")
     assert "9 * 60 + 30" not in src
     assert "RTH_OPEN_MINS" in src
 
@@ -271,7 +275,7 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
         payload = server._build_rest_fast_quote_payload("SPY", "test")
         assert payload.get("spread_semantic") == "fraction"
 
-        tier = server._tier_a_live_state_dict("SPY", None)
+        tier = tier_a_live_state._tier_a_live_state_dict("SPY", None)
         assert tier.get("spread_semantic") == "dollar"
 
 
@@ -418,7 +422,7 @@ def test_stack_mode_value_is_authority_only():
     src = _server_src() + (_P(__file__).resolve().parent.parent / "server_state_publish.py").read_text(encoding="utf-8")
     assert 'sr["stack_mode"] = "signals_engine_error"' not in src
     assert 'sr["signals_engine_failed"] = True' in src
-    attach = _fn_src("_attach_stack_runtime_and_governance")
+    attach = _fn_src("_attach_stack_runtime_and_governance", "stack_runtime_governance")
     assert "classify_stack_health" in attach
 
 
@@ -435,10 +439,9 @@ def test_prediction_override_rejects_empty_direction():
     import pytest
     from fastapi import HTTPException
 
-    import server
 
     with pytest.raises(HTTPException) as exc:
-        server.prediction_override(ticker="SPY", direction="", source="user")
+        app.api.routes.prediction.prediction_override(ticker="SPY", direction="", source="user")
     assert exc.value.status_code == 400
     assert "up, flat, or down" in str(exc.value.detail)
 
@@ -486,7 +489,7 @@ def test_debug_prediction_returns_populated_distribution(monkeypatch):
             gdb.return_value = MagicMock(
                 get_zone_distribution=MagicMock(return_value={"pin_bull": 3})
             )
-            body = server.debug_prediction(ticker="SPY")
+            body = app.api.routes.debug.debug_prediction(ticker="SPY")
     assert "error" not in body
     assert body.get("db_zone_distribution") == {"pin_bull": 3}
 

@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 
 import pytest
+import app.api.routes.order_flow
+import app.api.routes.streaming
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -44,10 +46,9 @@ def test_options_microstructure_fails_closed_with_no_replayed_content(monkeypatc
     import json
 
     import app.options.order_flow.state as ofls
-    import server as srv
 
     ofls.clear_all_live_state()
-    body = json.loads(srv.api_order_flow_options_microstructure(
+    body = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
         contract="QQQ   260820C00450000").body)
     assert body["contract"] == "QQQ   260820C00450000"
     assert body["status"] == "no_book"
@@ -60,7 +61,6 @@ def test_options_microstructure_serves_replayed_content(monkeypatch):
     import json
 
     import app.options.order_flow.state as ofls
-    import server as srv
 
     ofls.clear_all_live_state()
     content = {"key": _SPY_CONTRACT, "BOOK_TIME": 1787234093764,
@@ -68,7 +68,7 @@ def test_options_microstructure_serves_replayed_content(monkeypatch):
               "ASKS": [{"ASK_PRICE": 1.30, "TOTAL_VOLUME": 1533}]}
     ofls.push_book(_SPY_CONTRACT, content)
 
-    body = json.loads(srv.api_order_flow_options_microstructure(contract=_SPY_CONTRACT).body)
+    body = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(contract=_SPY_CONTRACT).body)
     assert body["contract"] == _SPY_CONTRACT
     assert body["status"] == "ok"
     assert body["depth"]["1"]["imbalance"] is not None
@@ -83,14 +83,13 @@ def test_options_microstructure_streaming_plane_reflects_real_diagnostics(monkey
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = None
     ofs._option_last_subscribe_completed_ts = None
     try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
+        plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
         assert plane["option_contract"] == _SPY_CONTRACT
         assert plane["streaming_connected"] is True
@@ -104,9 +103,8 @@ def test_active_option_contract_post_requires_contract(monkeypatch):
     import asyncio
     import json
 
-    import server as srv
 
-    resp = asyncio.run(srv.post_streaming_active_option_contract(payload={}))
+    resp = asyncio.run(app.api.routes.streaming.post_streaming_active_option_contract(payload={}))
     assert resp.status_code == 400
     assert json.loads(resp.body)["ok"] is False
 
@@ -118,9 +116,8 @@ def test_active_option_contract_post_calls_the_real_setter(monkeypatch):
     calls = []
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contract",
                         lambda c, **kw: calls.append(c) or True)  # caps-ok: recording-stub idiom: list.append returns None, so `or True` makes the stub return True; not a data default
-    import server as srv
 
-    resp = asyncio.run(srv.post_streaming_active_option_contract(
+    resp = asyncio.run(app.api.routes.streaming.post_streaming_active_option_contract(
         payload={"contract": _SPY_CONTRACT}))
     assert resp.status_code == 200
     body = json.loads(resp.body)
@@ -149,9 +146,8 @@ def test_active_option_contract_post_surfaces_setter_failure(monkeypatch):
         invoked["generation"] = command_generation
         raise RuntimeError("signal write failed")
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contract", _boom)
-    import server as srv
 
-    resp = asyncio.run(srv.post_streaming_active_option_contract(
+    resp = asyncio.run(app.api.routes.streaming.post_streaming_active_option_contract(
         payload={"contract": _SPY_CONTRACT}))
     assert resp.status_code == 500
     body = json.loads(resp.body)
@@ -178,9 +174,8 @@ def test_active_option_contracts_post_defaults_to_empty(monkeypatch):
     calls = []
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts",
                         lambda c, **kw: calls.append(c) or True)  # caps-ok: recording-stub idiom: list.append returns None, so `or True` makes the stub return True; not a data default
-    import server as srv
 
-    resp = asyncio.run(srv.post_streaming_active_option_contracts(payload={}))
+    resp = asyncio.run(app.api.routes.streaming.post_streaming_active_option_contracts(payload={}))
     assert resp.status_code == 200
     body = json.loads(resp.body)
     assert body["ok"] is True and body["contracts"] == []
@@ -194,9 +189,8 @@ def test_active_option_contracts_post_calls_the_real_setter(monkeypatch):
     calls = []
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts",
                         lambda c, **kw: calls.append(c) or True)  # caps-ok: recording-stub idiom: list.append returns None, so `or True` makes the stub return True; not a data default
-    import server as srv
 
-    resp = asyncio.run(srv.post_streaming_active_option_contracts(
+    resp = asyncio.run(app.api.routes.streaming.post_streaming_active_option_contracts(
         payload={"contracts": [_SPY_CONTRACT, _QQQ_CONTRACT]}))
     assert resp.status_code == 200
     body = json.loads(resp.body)
@@ -216,9 +210,8 @@ def test_active_option_contracts_post_surfaces_setter_failure(monkeypatch):
         invoked["generation"] = command_generation
         raise RuntimeError("signal write failed")
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts", _boom)
-    import server as srv
 
-    resp = asyncio.run(srv.post_streaming_active_option_contracts(
+    resp = asyncio.run(app.api.routes.streaming.post_streaming_active_option_contracts(
         payload={"contracts": [_SPY_CONTRACT]}))
     assert resp.status_code == 500
     body = json.loads(resp.body)
@@ -362,14 +355,13 @@ def test_additional_contract_confirms_on_levelone_options_alone(monkeypatch, tmp
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_CONTRACT)]
     _seed_multi_contract_producer_epochs(
         ofs, monkeypatch, tmp_path, primary=_QQQ_CONTRACT, extra=[_SPY_CONTRACT])
     try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
+        plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
         assert plane["contract_match"] is True, (
             "an additional-only contract, confirmed on its one required service, must "
@@ -386,14 +378,13 @@ def test_additional_contract_not_yet_producer_confirmed_fails_closed(monkeypatch
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_CONTRACT)]
     # Only QQQ (primary) is producer-confirmed; SPY has no open epoch at all.
     _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, primary=_QQQ_CONTRACT)
     try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
+        plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
         assert plane["contract_match"] is False
         assert plane["streaming_healthy"] is False
@@ -409,7 +400,6 @@ def test_additional_contract_never_requires_options_book(monkeypatch, tmp_path):
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_CONTRACT)]
@@ -425,7 +415,7 @@ def test_additional_contract_never_requires_options_book(monkeypatch, tmp_path):
         con.close()
     assert ofs.ticker_storage_key(_SPY_CONTRACT) not in {r[0] for r in rows}
     try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
+        plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
         assert plane["contract_match"] is True
     finally:
@@ -446,7 +436,6 @@ def test_additional_only_contract_healthy_with_no_primary_at_all(monkeypatch, tm
     import time as _t
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _reset_option_plane(ofs)
     ofs._feed_running = True
@@ -455,7 +444,7 @@ def test_additional_only_contract_healthy_with_no_primary_at_all(monkeypatch, tm
     ofs._option_contract_last_update_ts = {ofs.ticker_storage_key(_SPY_CONTRACT): _t.time()}
     _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, extra=[_SPY_CONTRACT])
     try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
+        plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
         assert plane["contract_match"] is True
         assert plane["streaming_healthy"] is True, (
@@ -480,7 +469,6 @@ def test_per_contract_freshness_not_borrowed_between_primary_and_additional(monk
     import time as _t
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _reset_option_plane(ofs)
     ofs._feed_running = True
@@ -497,7 +485,7 @@ def test_per_contract_freshness_not_borrowed_between_primary_and_additional(monk
     _seed_multi_contract_producer_epochs(
         ofs, monkeypatch, tmp_path, primary=_QQQ_CONTRACT, extra=[_SPY_CONTRACT])
     try:
-        primary_plane = json.loads(srv.api_order_flow_options_microstructure(
+        primary_plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_QQQ_CONTRACT).body)["streaming_plane"]
         assert primary_plane["contract_match"] is True    # requested + producer-confirmed
         assert primary_plane["streaming_healthy"] is False, (
@@ -505,7 +493,7 @@ def test_per_contract_freshness_not_borrowed_between_primary_and_additional(monk
             f"SPY's fresher tick through a shared clock: {primary_plane}")
         assert primary_plane["streaming_staleness_ms"] >= 30_000.0
 
-        extra_plane = json.loads(srv.api_order_flow_options_microstructure(
+        extra_plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
         assert extra_plane["contract_match"] is True
         assert extra_plane["streaming_healthy"] is True, (
@@ -521,11 +509,10 @@ def test_blocker1a_query_a_while_active_b_fails_closed():
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)          # plane is bound to B
     try:
-        body = json.loads(srv.api_order_flow_options_microstructure(
+        body = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)                  # ...but A is queried
         plane = body["streaming_plane"]
         assert body["contract"] == _SPY_CONTRACT, "payload must still identify A"
@@ -548,12 +535,11 @@ def test_blocker1a_query_a_while_active_a_is_normal_health(monkeypatch, tmp_path
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _force_live_option_plane(ofs, _SPY_CONTRACT)
     _seed_producer_epochs(ofs, monkeypatch, tmp_path, l1=_SPY_CONTRACT, book=_SPY_CONTRACT)
     try:
-        body = json.loads(srv.api_order_flow_options_microstructure(
+        body = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)
         plane = body["streaming_plane"]
         assert plane["server_requested_contract"] == ofs.ticker_storage_key(_SPY_CONTRACT)
@@ -576,13 +562,12 @@ def test_gap1a_requested_b_while_producer_still_a_is_not_confirmed(monkeypatch, 
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)          # server REQUESTED B
     _seed_producer_epochs(ofs, monkeypatch, tmp_path,     # producer still holds A
                           l1=_SPY_CONTRACT, book=_SPY_CONTRACT)
     try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
+        plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_QQQ_CONTRACT).body)["streaming_plane"]
         assert plane["server_requested_contract"] == ofs.ticker_storage_key(_QQQ_CONTRACT)
         assert plane["producer_l1_contract"] == ofs.ticker_storage_key(_SPY_CONTRACT)
@@ -600,12 +585,11 @@ def test_gap1a_producer_switches_to_b_then_identity_is_confirmed(monkeypatch, tm
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     _seed_producer_epochs(ofs, monkeypatch, tmp_path, l1=_QQQ_CONTRACT, book=_QQQ_CONTRACT)
     try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
+        plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_QQQ_CONTRACT).body)["streaming_plane"]
         assert plane["contract_match"] is True
         assert plane["streaming_healthy"] is True
@@ -628,7 +612,6 @@ def test_duplicate_symbol_ledger_fails_closed_not_newest_row_wins(monkeypatch, t
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
     from stream_spine import CaptureWriter, read_open_coverage_symbols
 
     db = tmp_path / "duplicate_symbol.db"
@@ -668,7 +651,7 @@ def test_duplicate_symbol_ledger_fails_closed_not_newest_row_wins(monkeypatch, t
     monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
+        plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
             contract=_QQQ_CONTRACT).body)["streaming_plane"]
         assert plane["producer_l1_contract"] is None
         assert plane["contract_match"] is False, (
@@ -753,7 +736,6 @@ def test_gap1a_partial_producer_state_is_not_a_fully_healthy_plane(monkeypatch, 
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     for i, book_state in enumerate((_SPY_CONTRACT, None)):  # BOOK on the OLD contract, or absent
         # A fresh DB per case: reusing one would hit the 2B duplicate-open guard on the
@@ -764,7 +746,7 @@ def test_gap1a_partial_producer_state_is_not_a_fully_healthy_plane(monkeypatch, 
         _seed_producer_epochs(ofs, monkeypatch, case_dir,
                               l1=_QQQ_CONTRACT, book=book_state)
         try:
-            plane = json.loads(srv.api_order_flow_options_microstructure(
+            plane = json.loads(app.api.routes.order_flow.api_order_flow_options_microstructure(
                 contract=_QQQ_CONTRACT).body)["streaming_plane"]
             assert plane["producer_l1_contract"] == ofs.ticker_storage_key(_QQQ_CONTRACT)
             assert plane["contract_match"] is False, (
@@ -796,7 +778,6 @@ def test_blocker1a_post_ack_health_is_bound_to_the_requested_contract(monkeypatc
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     # Setter stubbed to a no-op FAILURE so the active contract stays on B while the
@@ -804,7 +785,7 @@ def test_blocker1a_post_ack_health_is_bound_to_the_requested_contract(monkeypatc
     monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contract",
                         lambda _c, **kw: False)
     try:
-        resp = asyncio.run(srv.post_streaming_active_option_contract(
+        resp = asyncio.run(app.api.routes.streaming.post_streaming_active_option_contract(
             payload={"contract": _SPY_CONTRACT}))
         body = json.loads(resp.body)
         assert body["contract"] == _SPY_CONTRACT
@@ -865,7 +846,6 @@ def test_gap2_superseded_command_endpoint_reports_conflict_not_success(monkeypat
     import json
 
     import app.options.order_flow.streaming as ofs
-    import server as srv
 
     signal = tmp_path / "stream_active_option_contract.json"
     monkeypatch.setattr(ofs, "write_active_option_contract_signal",
@@ -879,7 +859,7 @@ def test_gap2_superseded_command_endpoint_reports_conflict_not_success(monkeypat
 
         # A stale command body then runs: force its generation below the newest.
         monkeypatch.setattr(ofs, "begin_option_contract_command", lambda: 1)
-        resp = asyncio.run(srv.post_streaming_active_option_contract(
+        resp = asyncio.run(app.api.routes.streaming.post_streaming_active_option_contract(
             payload={"contract": _SPY_CONTRACT}))
         assert resp.status_code == 409
         body = json.loads(resp.body)

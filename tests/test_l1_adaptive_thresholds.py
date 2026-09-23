@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+import app.api.routes.diagnostics
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -201,9 +202,8 @@ def test_diagnostics_endpoint_includes_adaptive_block():
     round trip added nothing a direct call doesn't already prove."""
     import json
 
-    import server as srv
 
-    j = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
+    j = json.loads(app.api.routes.diagnostics.get_l1_diagnostics().body)["ed_l1"]
     assert "l1_adaptive_materiality" in j
     assert "sample_spy_adaptive" in j["l1_adaptive_materiality"]
     assert "static_defaults_reference" in j["l1_adaptive_materiality"]

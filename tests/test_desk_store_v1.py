@@ -15,6 +15,8 @@ os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")  # caps-ok: test-boot env s
 import pytest  # noqa: E402
 
 import desk_store as ds  # noqa: E402
+import app.api.routes.desk
+import app.api.routes.pages
 
 
 def _t(offset_sec: float) -> float:
@@ -225,9 +227,8 @@ def test_endpoint_is_wired_to_the_real_reader_and_defaults_to_now():
     """Seam: the route drives `desk_store`, not a private copy of the logic."""
     import inspect
 
-    import server as s
 
-    src = inspect.getsource(s.get_desk_radar)
+    src = inspect.getsource(app.api.routes.desk.get_desk_radar)
     assert "desk_store.radar_rows" in src, "the endpoint no longer calls the real reader"
     assert "time.time()" in src, "as_of=0 must mean now"
     assert "rows\": []" in src or '"rows": []' in src, (
@@ -240,9 +241,8 @@ def test_desk_page_is_served_and_carries_no_fixture_data():
     import inspect
     from pathlib import Path
 
-    import server as s
 
-    assert "desk.html" in inspect.getsource(s.desk_page)
+    assert "desk.html" in inspect.getsource(app.api.routes.pages.desk_page)
     ui = (Path(__file__).resolve().parent.parent / "static" / "desk.html").read_text(
         encoding="utf-8")
     assert "/api/desk/radar" in ui, "the page never calls the endpoint"
@@ -511,15 +511,14 @@ def test_every_desk_endpoint_exists_and_fails_closed():
     than a fabricated shape."""
     import inspect
 
-    import server as s
 
-    for fn, producer in ((s.get_desk_dossier, "desk_store.dossier"),
-                         (s.get_desk_evidence, "desk_store.evidence_rows"),
-                         (s.get_desk_structure, "desk_store.terminal_distribution"),
-                         (s.get_desk_brief, "desk_store.latest_brief")):
+    for fn, producer in ((app.api.routes.desk.get_desk_dossier, "desk_store.dossier"),
+                         (app.api.routes.desk.get_desk_evidence, "desk_store.evidence_rows"),
+                         (app.api.routes.desk.get_desk_structure, "desk_store.terminal_distribution"),
+                         (app.api.routes.desk.get_desk_brief, "desk_store.latest_brief")):
         src = inspect.getsource(fn)
         assert producer in src, f"{fn.__name__} does not call {producer}"
-    assert "empty_reason" in inspect.getsource(s.get_desk_brief)
+    assert "empty_reason" in inspect.getsource(app.api.routes.desk.get_desk_brief)
 
 
 def test_desk_page_renders_every_subtab_from_an_endpoint_or_says_not_built():
@@ -612,7 +611,6 @@ def test_materialize_is_not_reachable_by_a_speculative_get():
     """
     import inspect
 
-    import server as s
     from app.api.routes import desk as desk_routes
 
     src = inspect.getsource(desk_routes)
@@ -625,7 +623,7 @@ def test_materialize_is_not_reachable_by_a_speculative_get():
     assert '@router.get("/api/desk/materialize")' not in src
     # server.post_desk_materialize must still resolve to the SAME function object — a stale
     # re-export pointing at a copy, not the real route handler, would defeat this check's point.
-    assert s.post_desk_materialize is desk_routes.post_desk_materialize
+    assert app.api.routes.desk.post_desk_materialize is desk_routes.post_desk_materialize
 
 
 def test_payoff_refuses_a_non_positive_price():

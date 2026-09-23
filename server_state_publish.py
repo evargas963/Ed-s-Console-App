@@ -32,6 +32,7 @@ from typing import Optional
 from v2_decision import build_module_a_a1_decision
 from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
 from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
+import stack_runtime_governance
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def _finalize_decision(ms_dict: dict, ms, *, ticker: str, decision_route: str,
                        stage_marks: list) -> None:
     import server as _srv
 
-    _srv._attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
+    stack_runtime_governance._attach_stack_runtime_and_governance(ms_dict, ticker=ticker)
     stage_marks.append(("stack_runtime_governance_attach", time.perf_counter()))
     if ms_dict.get("signals_engine_failed"):
         sr = ms_dict.get("stack_runtime")

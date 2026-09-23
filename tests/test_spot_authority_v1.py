@@ -18,6 +18,8 @@ from __future__ import annotations
 import pytest
 
 import server
+import app.api.routes.terrain
+import tier_a_live_state
 
 
 def test_quote_parser_key_contract() -> None:
@@ -237,7 +239,7 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
             lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 1.0}}}),
         )
         terrain_spot, terrain_source, _ts = server.resolve_spot(tk)
-        header_out = server._tier_a_live_state_dict(tk, None)
+        header_out = tier_a_live_state._tier_a_live_state_dict(tk, None)
         assert terrain_spot == 812.5 and terrain_source == server.SPOT_SOURCE_PLANE
         assert header_out.get("spot") == terrain_spot, (
             f"header spot {header_out.get('spot')} != terrain/resolve_spot spot {terrain_spot} "
@@ -327,7 +329,7 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     monkeypatch.setitem(server._terrain_profile_cache, "SPY",
                         [(700.0, -5.0), (745.00, 0.0), (760.0, 5.0)])
 
-    served = server.get_terrain(ticker="SPY")
+    served = app.api.routes.terrain.get_terrain(ticker="SPY")
 
     assert served["spot"] == 744.93, (
         "the endpoint served a frozen cached spot; the card would lag the header"

@@ -16,6 +16,7 @@ import terrain_capture  # noqa: E402
 import terrain_schedule  # noqa: E402
 import gamma_surface_state
 import per_strike_view
+import chain_width
 
 #: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
 #: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
@@ -41,7 +42,7 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(terrain_quarantine, "_terrain_quarantine_blocks", lambda t: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(terrain_capture, "_universal_capture_wanted", lambda t: (False, None))
-    monkeypatch.setattr(server, "_terrain_strike_count", lambda t: 60)
+    monkeypatch.setattr(chain_width, "_terrain_strike_count", lambda t: 60)
     monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (100.0, "stub", 0.0))

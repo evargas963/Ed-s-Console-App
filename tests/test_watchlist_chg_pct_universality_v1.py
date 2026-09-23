@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import market_context as mc
+import tier_a_live_state
 
 
 def test_extract_pct_change_prefers_net_percent_change():
@@ -114,7 +115,7 @@ def test_live_state_rest_backfill_survives_merge_into_state(monkeypatch):
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _FakeResp())
 
-    out = srv._tier_a_live_state_dict(ticker, None)
+    out = tier_a_live_state._tier_a_live_state_dict(ticker, None)
     assert out["chg_pct"] == 7.77, (
         f"REST backfill (7.77) was overwritten by the plane overlay's stale chg_pct=None "
         f"-- got {out['chg_pct']!r}"
@@ -188,7 +189,7 @@ def test_chg_pct_backfill_is_the_shared_authority_for_live_state_and_l1(monkeypa
     import inspect
     import server as srv
 
-    assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._tier_a_live_state_dict)
+    assert "_chg_pct_with_rest_backfill" in inspect.getsource(tier_a_live_state._tier_a_live_state_dict)
     assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._project_l1)
     assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._l1_http_get_projection)
 

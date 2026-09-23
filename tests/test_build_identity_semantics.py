@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import app.api.routes.status
 
 _REPO = Path(__file__).resolve().parent.parent
 
@@ -17,7 +18,7 @@ def _api_build(monkeypatch, repo_head: str):
     import server as srv
 
     monkeypatch.setattr(srv, "_repo_git_head_sha", lambda: repo_head)
-    return srv.api_build()
+    return app.api.routes.status.api_build()
 
 
 def test_git_sha_is_startup_process_identity(monkeypatch):

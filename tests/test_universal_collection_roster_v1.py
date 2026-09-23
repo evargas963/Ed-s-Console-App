@@ -20,6 +20,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from db import EdDB  # noqa: E402
+import chain_width
 
 
 def test_panel_auto_enters_the_background_roster(monkeypatch, tmp_path):
@@ -58,10 +59,10 @@ def test_index_book_width_is_fixed_and_date_bounded_under_budget():
     import server as srv
 
     w = srv.resolve_chain_strike_count("$SPX")
-    assert w == srv.INDEX_CHAIN_STRIKE_COUNT
+    assert w == chain_width.INDEX_CHAIN_STRIKE_COUNT
     # The 45-day horizon bounds SPX to ~34 expiries; even a conservative 55 stays under budget.
-    assert w * 2 * 55 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET, (
-        f"index width {w} x 55 expiries blows the {srv.SCHWAB_CHAIN_CONTRACT_BUDGET} budget")
+    assert w * 2 * 55 <= chain_width.SCHWAB_CHAIN_CONTRACT_BUDGET, (
+        f"index width {w} x 55 expiries blows the {chain_width.SCHWAB_CHAIN_CONTRACT_BUDGET} budget")
     # The index date bound is set; equities fetch the full book (None).
     assert srv._chain_to_date_for("$SPX") is not None
     assert srv._chain_to_date_for("$VIX") is not None
@@ -88,7 +89,7 @@ def test_bare_index_root_gets_index_protections_f1():
 
     for bare, dollar in (("SPX", "$SPX"), ("RUT", "$RUT"), ("VIX", "$VIX"), ("NDX", "$NDX")):
         assert ticker_storage_key(bare) == dollar
-        assert srv.resolve_chain_strike_count(bare) == srv.INDEX_CHAIN_STRIKE_COUNT, (
+        assert srv.resolve_chain_strike_count(bare) == chain_width.INDEX_CHAIN_STRIKE_COUNT, (
             f"bare {bare} bypassed the fixed index width")
         assert srv._chain_to_date_for(bare) is not None, f"bare {bare} bypassed the index date bound"
         assert srv._chain_to_date_for(bare) == srv._chain_to_date_for(dollar)
@@ -109,7 +110,7 @@ def test_far_selected_index_expiry_is_single_expiry_window_f2():
     # RC-496: faucets return datetime.date objects (not ISO strings) — what schwab-py wants.
     assert srv._chain_to_date_for("$SPX", far) == date.fromisoformat(far)
     assert srv._chain_from_date_for("$SPX", far) == date.fromisoformat(far)
-    assert srv.INDEX_CHAIN_STRIKE_COUNT * 2 * 1 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET
+    assert chain_width.INDEX_CHAIN_STRIKE_COUNT * 2 * 1 <= chain_width.SCHWAB_CHAIN_CONTRACT_BUDGET
     # auto path / no expiry: open near end (Schwab defaults to today), bounded far end (horizon)
     assert srv._chain_from_date_for("$SPX", None) is None
     assert srv._chain_from_date_for("$SPX") is None

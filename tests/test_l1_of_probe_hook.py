@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import app.api.routes.diagnostics
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -71,6 +72,6 @@ def test_diagnostics_includes_of_hook_counters(monkeypatch):
         "get_quote",
         lambda t: {"spot": 400.0, "bid": 399.0, "ask": 401.0},
     )
-    j = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
+    j = json.loads(app.api.routes.diagnostics.get_l1_diagnostics().body)["ed_l1"]
     assert "l1_of_quote_hook_engine_total" in j
     assert "l1_of_quote_hook_reuse_total" in j

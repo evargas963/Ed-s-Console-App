@@ -26,6 +26,7 @@ from math_exposure_core import overlay_streamed_contract_fields
 import gamma_surface_state
 import per_strike_view
 import terrain_refresh
+import gamma_surface_projection
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -455,7 +456,7 @@ def test_a_second_tick_with_a_moved_spot_forces_a_full_recompute_not_a_stale_spl
         cached_after_1 = server._terrain_cache[TK]["_gamma_surface"]
     assert cached_after_1["spot"] == spot1
 
-    real_update_expiry = server.project_gamma_surface_update_expiry
+    real_update_expiry = gamma_surface_projection.project_gamma_surface_update_expiry
     calls = []
 
     def _spy_update_expiry(prior_surface, chain, spot, target_expiry, *, prior_spot):
@@ -588,8 +589,8 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.5, "gamma_ts_recv": now})
 
-    orig_project = server.project_gamma_surface
-    orig_update_expiry = server.project_gamma_surface_update_expiry
+    orig_project = gamma_surface_projection.project_gamma_surface
+    orig_update_expiry = gamma_surface_projection.project_gamma_surface_update_expiry
     fresh_marker = {"expirations": [], "strikes": [], "cells": [], "marker": "FRESH_REST_GENERATION"}
 
     def _simulate_race():
@@ -622,8 +623,8 @@ def test_a_rest_refresh_landing_mid_computation_is_not_overwritten_by_the_stale_
     try:
         status = refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now)
     finally:
-        server.project_gamma_surface = orig_project
-        server.project_gamma_surface_update_expiry = orig_update_expiry
+        gamma_surface_projection.project_gamma_surface = orig_project
+        gamma_surface_projection.project_gamma_surface_update_expiry = orig_update_expiry
     assert status == "stale_baseline_superseded"
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]

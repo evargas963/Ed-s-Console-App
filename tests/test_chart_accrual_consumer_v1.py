@@ -30,6 +30,8 @@ TURN_AUDIT_OWNS = [
 ]
 
 from tests.conftest import most_recent_trading_day_et  # noqa: E402
+import app.api.routes.terrain
+import terrain_freshness
 
 #: RC-160: a sentinel AND a non-sentinel enrolled ticker. One of each, never SPY alone.
 SENTINEL = "SPY"
@@ -137,9 +139,8 @@ def test_endpoint_prefers_live_and_falls_back_only_when_stale():
     snapshot is absent or older than TERRAIN_STALE_AFTER_SEC, and only when it is NEWER."""
     import time
 
-    import server as s
 
-    stale_after = s.TERRAIN_STALE_AFTER_SEC
+    stale_after = terrain_freshness.TERRAIN_STALE_AFTER_SEC
     now = time.time()
 
     def live_is_stale(live_ts, today_present):
@@ -156,9 +157,8 @@ def test_endpoint_wires_the_bank_reader_and_labels_it_distinctly():
     staleness, must stamp its own source, and must NOT let the prior-day archive become today."""
     import inspect
 
-    import server as s
 
-    src = inspect.getsource(s.get_terrain_strikes)
+    src = inspect.getsource(app.api.routes.terrain.get_terrain_strikes)
     assert "latest_accrual_rows" in src, "the strikes endpoint still has no bank reader"
     assert "TERRAIN_STALE_AFTER_SEC" in src, "the fallback is not gated on staleness"
     assert "accrual_bank:" in src, "banked rows are not stamped with their own source"

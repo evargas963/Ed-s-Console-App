@@ -34,6 +34,7 @@ from gamma_surface_projection import project_gamma_surface
 from instrument_identity import ticker_storage_key
 from terrain_engine import _per_strike_rows
 from time_et import ET, is_trading_day_et, now_et
+import app.api.routes.options
 
 
 def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0, dte=5,
@@ -94,7 +95,7 @@ def test_vanna_by_strike_route_omits_no_oi_strikes_instead_of_a_fabricated_zero(
         server._terrain_cache[tk] = {"_contracts_rest": chain, "_contracts_rest_spot": SPOT}
     try:
         import json
-        body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
+        body = json.loads(app.api.routes.options.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
         assert body["available"] is True
         assert body["rows"] == [], f"a no-OI chain must yield zero rows, not fabricated ones: {body['rows']}"
     finally:

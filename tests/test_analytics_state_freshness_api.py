@@ -13,6 +13,7 @@ import json
 import time
 
 import pytest
+import analytics_bg_recompute
 
 
 
@@ -249,7 +250,7 @@ def test_cache_observability_counters_are_passive_observation_only():
             == before["expiry_evictions"] + 1
         )
 
-        srv._invalidate_analytics_cache_after_bg_failures(
+        analytics_bg_recompute._invalidate_analytics_cache_after_bg_failures(
             ("ZZZ_OBS2", "2099-01-01"), "ZZZ_OBS2", reason="test_reason"
         )
         marked = srv._state_cache[("ZZZ_OBS2", "2099-01-01")]["ms_dict"]

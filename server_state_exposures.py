@@ -49,8 +49,11 @@ from schwab_client import safe_get_price_history
 
 log = logging.getLogger(__name__)
 
-# RC-REHAB-1: moved with _exposures_for_state -- confirmed the only reader anywhere
-# in server.py before moving.
+# Re-seed the in-memory 1m grid from Schwab pricehistory (canonical OHLCV leaf
+# pricehistory.candles[]) whenever the last completed bar is older than this gap.
+# Root cause (2026-06-11): seeding ran once per server lifetime, so background-logged
+# tickers (visited ~1x/15min) built ~6%-density tick grids -- fill_outcomes could not
+# find forward bars at +1/+5/+15/+60m and the daily scoreboard never scored them.
 CANDLE_RESEED_GAP_SECONDS: float = 180.0  # 3 missed canonical bars → grid is stale
 EXPOSURE_WINDOWS: list = [5, 10, 15, 20]   # window sizes passed to build_*_rows
 

@@ -17,6 +17,7 @@ if str(REPO) not in sys.path:
 
 from tools.phase2a_inprocess_sample_v1 import CONSOLE_DB, _body, _ReadOnlyDBHandle  # noqa: E402
 from tools.phase2a_live_sample_v1 import _levels_side, _liquidity_side  # noqa: E402
+import app.api.routes.liquidity
 
 
 def _fetch(url: str) -> dict:
@@ -31,9 +32,9 @@ def main() -> int:
 
     import server as srv
     srv.get_db = lambda *a, **k: _ReadOnlyDBHandle(CONSOLE_DB)  # type: ignore[assignment]
-    new_payload = _body(srv.get_levels(ticker="SPY"))
+    new_payload = _body(app.api.routes.liquidity.get_levels(ticker="SPY"))
     new_a, _ = _levels_side(new_payload)
-    new_b, _ = _liquidity_side(_body(srv.get_liquidity_snapshot(
+    new_b, _ = _liquidity_side(_body(app.api.routes.liquidity.get_liquidity_snapshot(
         ticker="SPY", date=None, snapshot="live", expiry=None, fusion=True)))
 
     print()

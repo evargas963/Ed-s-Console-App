@@ -63,266 +63,31 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-# RC-REHAB-1 (Phase 3): the six get_desk_*/post_desk_materialize names are re-exported
-# (not otherwise called in this file) so existing callers/tests that reference
-# server.get_desk_* keep working; the real definitions and route registration now live
-# in app/api/routes/desk.py (mounted below via app.include_router(desk_router)).
-from app.api.routes.desk import (  # noqa: F401
-    router as desk_router,
-    get_desk_radar,
-    get_desk_dossier,
-    get_desk_evidence,
-    get_desk_structure,
-    get_desk_brief,
-    post_desk_materialize,
-)
-# RC-REHAB-1 (Phase 3): same re-export rationale as the desk import above -- root/favicon/
-# guide_*/chart_page/exposure_page/options_page/desk_page now live in
-# app/api/routes/pages.py (mounted below via app.include_router(pages_router)).
-from app.api.routes.pages import (  # noqa: F401
-    router as pages_router,
-    root,
-    favicon,
-    guide_data_stewardship,
-    guide_training_and_maintenance,
-    guide_pipeline_quality,
-    chart_page,
-    exposure_page,
-    options_page,
-    desk_page,
-)
-# RC-REHAB-1 (Phase 3): third extraction slice -- ops_panel/api_ops_status/
-# api_level_crosses/api_ops_calibration_rowcount/api_ops_run/governance_visibility_page/
-# api_governance_panel/api_internal_reload_models/api_governance_manual_promote/
-# api_governance_manual_rollback/api_ops_run_sequence now live in app/api/routes/ops.py
-# (mounted below via app.include_router(ops_router)).
-from app.api.routes.ops import (  # noqa: F401
-    router as ops_router,
-    ops_panel,
-    api_ops_status,
-    api_level_crosses,
-    api_ops_calibration_rowcount,
-    api_ops_run,
-    governance_visibility_page,
-    api_governance_panel,
-    api_internal_reload_models,
-    api_governance_manual_promote,
-    api_governance_manual_rollback,
-    api_ops_run_sequence,
-)
+# RC-REHAB-1: every HTTP route lives in app/api/routes/<domain>.py; server.py only mounts
+# the routers (app.include_router below). Handlers are imported from their own modules,
+# never through server -- server.py re-exports none of them.
+from app.api.routes.accuracy import router as accuracy_router
+from app.api.routes.analytics_light import router as analytics_light_router
+from app.api.routes.analytics_state import router as analytics_state_router
+from app.api.routes.chain import router as chain_router
+from app.api.routes.debug import router as debug_router
+from app.api.routes.desk import router as desk_router
+from app.api.routes.diagnostics import router as diagnostics_router
+from app.api.routes.exposure import router as exposure_router
+from app.api.routes.liquidity import router as liquidity_router
+from app.api.routes.live import router as live_router
+from app.api.routes.logger import router as logger_router
+from app.api.routes.market_data import router as market_data_router
+from app.api.routes.ops import router as ops_router
+from app.api.routes.options import router as options_router
 from app.api.routes.options_order_flow import router as options_order_flow_router
-# RC-REHAB-1 (Phase 3): fourth and fifth extraction slices -- get_vanna_by_strike/
-# get_charm_by_strike/get_options_tape/get_options_gamma_surface now live in
-# app/api/routes/options.py (mounted below via app.include_router(options_router)). Every
-# helper get_options_gamma_surface uses (_GAMMA_SURFACE_CACHE, terrain_cache_get, etc.) has
-# other callers still in server.py and stays here as shared infrastructure -- only the route
-# handler itself moved, importing them back lazily.
-from app.api.routes.options import (  # noqa: F401
-    router as options_router,
-    get_vanna_by_strike,
-    get_charm_by_strike,
-    get_options_tape,
-    get_options_gamma_surface,
-)
-# RC-REHAB-1 (Phase 3): sixth extraction slice -- logger_status/logger_universe/
-# logger_universe_by_category/logger_pin/logger_unpin/logger_add/logger_remove now live
-# in app/api/routes/logger.py (mounted below via app.include_router(logger_router)). Their
-# shared state (_logger_lock/_logger_tickers/_logger_stats/_logger_running), helpers
-# (_hydrate_logger_tickers_from_db/_register_tracked_ticker/_is_loggable_session/
-# _market_context_panel_auto_candidates/_user_persisted_enrollment_policy) and config
-# constants (CORE_TICKERS/LOG_INTERVAL/STAGGER_SECS/RTH_ONLY/PRE_MARKET_MINS/
-# LOGGER_BUFFER_MINS/MAX_PINNED_LOGGING_TICKERS/MAX_USER_PERSISTED_LOGGING_TICKERS) all
-# have other callers still in server.py and stay here as shared infrastructure -- only the
-# route handlers themselves moved, importing everything back lazily.
-from app.api.routes.logger import (  # noqa: F401
-    router as logger_router,
-    logger_status,
-    logger_universe,
-    logger_universe_by_category,
-    logger_pin,
-    logger_unpin,
-    logger_add,
-    logger_remove,
-)
-# RC-REHAB-1 (Phase 3): seventh extraction slice -- get_terrain_radar/
-# get_terrain_producer_diagnostics/post_terrain_quarantine_release/get_terrain_strikes/
-# get_terrain_scorecard/get_terrain now live in app/api/routes/terrain.py (mounted below via
-# app.include_router(terrain_router)). The background terrain-refresh loop still lives here
-# and shares mutable module state (locks, caches, quarantine dicts) and private helpers
-# (_reprice_cached_terrain, _radar_atr, etc.) with these routes -- all of that stays in
-# server.py as shared infrastructure and is imported back lazily by the moved handlers.
-from app.api.routes.terrain import (  # noqa: F401
-    router as terrain_router,
-    get_terrain_radar,
-    get_terrain_producer_diagnostics,
-    post_terrain_quarantine_release,
-    get_terrain_strikes,
-    get_terrain_scorecard,
-    get_terrain,
-)
-# RC-REHAB-1 (Phase 3): eighth extraction slice -- the five remaining /api/diagnostics/*
-# routes (l1, ticker-switch x2, sqlite-contention, chain-gate) now live in
-# app/api/routes/diagnostics.py (mounted below via app.include_router(diagnostics_router)).
-# Unlike terrain-producer (which moved with its own domain), these five span five unrelated
-# subsystems and share nothing with each other -- grouped only by URL namespace, same as
-# ops.py. Every dependency with other callers in server.py stays here, lazily imported.
-from app.api.routes.diagnostics import (  # noqa: F401
-    router as diagnostics_router,
-    get_l1_diagnostics,
-    post_ticker_switch_diagnostics,
-    get_ticker_switch_diagnostics,
-    get_sqlite_contention_diagnostics,
-    api_chain_gate_diagnostics,
-)
-# RC-REHAB-1 (Phase 3): ninth extraction slice -- the three /api/streaming/* routes now live
-# in app/api/routes/streaming.py (mounted below via app.include_router(streaming_router)).
-# Each offloads to server.py's shared fast-quote thread pool (_get_fast_quote_executor) and
-# reads the shared live-market-plane singleton (_lmp) -- both have other callers and stay
-# here, imported back lazily.
-from app.api.routes.streaming import (  # noqa: F401
-    router as streaming_router,
-    post_streaming_active_option_contract,
-    post_streaming_active_option_contracts,
-    post_streaming_active_ticker,
-)
-# RC-REHAB-1 (Phase 3): tenth extraction slice -- the three /api/order-flow/* routes now
-# live in app/api/routes/order_flow.py (mounted below via app.include_router(order_flow_router)).
-# Each is a thin serializer over app/options/order_flow/*.py with no book/imbalance math of
-# its own; _touch_tracked_ticker_view and _lmp have other callers in server.py and stay
-# here, imported back lazily.
-from app.api.routes.order_flow import (  # noqa: F401
-    router as order_flow_router,
-    get_order_flow_book_heatmap,
-    api_order_flow_microstructure,
-    api_order_flow_options_microstructure,
-)
-# RC-REHAB-1 (Phase 3): eleventh extraction slice -- the three /api/exposure/* routes now
-# live in app/api/routes/exposure.py (mounted below via app.include_router(exposure_router)).
-# Each route's own cache dict (_EXPOSURE_FLOW_CACHE/_EXPOSURE_BOOK_CACHE/
-# _EXPOSURE_HISTORY_CACHE) is private to that route but stays in server.py alongside
-# is_trading_day_et/get_db, which have other callers, and is imported back lazily.
-from app.api.routes.exposure import (  # noqa: F401
-    router as exposure_router,
-    get_exposure_flow,
-    get_exposure_book,
-    get_exposure_history,
-)
-# RC-REHAB-1 (Phase 3): twelfth extraction slice -- health/release/decision-lookup/build/
-# vol-observability/the retired price-levels stub now live in app/api/routes/status.py
-# (mounted below via app.include_router(status_router)). api_build reads
-# PROCESS_IDENTITY_V1, a singleton captured exactly once at THIS module's own import time
-# (see _capture_process_identity below) -- it stays here and is imported back lazily, along
-# with every other dependency that has other callers.
-from app.api.routes.status import (  # noqa: F401
-    router as status_router,
-    health,
-    api_release_current,
-    api_decision_by_id,
-    api_build,
-    api_vol_observability,
-    get_price_levels,
-)
-# RC-REHAB-1 (Phase 3): thirteenth extraction slice -- Tier A (see
-# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md), the instant live-quote-plane routes, now live
-# in app/api/routes/live.py (mounted below via app.include_router(live_router)). These depend
-# only on the already-modular live_market_plane singleton (_lmp) -- never on _fetch_state or
-# any Tier C state -- which is why this tier was the boundary doc's recommended first cut.
-from app.api.routes.live import (  # noqa: F401
-    router as live_router,
-    get_live_state,
-    api_live_plane,
-    fast_quote,
-)
-# RC-REHAB-1 (Phase 3): fourteenth extraction slice -- Tier L1 (see
-# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md), the light context plane routes, now live in
-# app/api/routes/analytics_light.py (mounted below via app.include_router(analytics_light_router)).
-# Both are thin dispatchers into the already-separate planes/ subsystem -- never into
-# _fetch_state or any Tier C state -- matching the boundary doc's recommended second cut.
-from app.api.routes.analytics_light import (  # noqa: F401
-    router as analytics_light_router,
-    get_analytics_light,
-    get_analytics_light_stream,
-)
-# RC-REHAB-1 (Phase 3): fifteenth extraction slice -- Tier C's route layer (see
-# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md), now lives in
-# app/api/routes/analytics_state.py (mounted below via app.include_router(analytics_state_router)).
-# These three routes never call _fetch_state inline -- _tier_c_analytics_json_response
-# (the stale-while-refresh cache view), _schedule_analytics_warm/_schedule_analytics_recompute
-# (the scheduling layer), and _fetch_state itself (the ~3,400-line compute core) all stay in
-# server.py per the boundary doc's explicit recommendation, imported back lazily.
-from app.api.routes.analytics_state import (  # noqa: F401
-    router as analytics_state_router,
-    get_analytics_state,
-    post_analytics_warm,
-    get_state,
-)
-# RC-REHAB-1 (Phase 3): sixteenth extraction slice -- get_bars1m/get_forces (simple,
-# self-contained banked-chain routes with no cross-tier coupling) now live in
-# app/api/routes/market_data.py (mounted below via app.include_router(market_data_router)).
-from app.api.routes.market_data import (  # noqa: F401
-    router as market_data_router,
-    get_bars1m,
-    get_forces,
-    get_spot,
-    api_watchlist_quotes,
-)
-# RC-REHAB-1 (Phase 3): seventeenth extraction slice -- the legacy full-market-state SSE
-# stream now lives in app/api/routes/sse.py (mounted below via app.include_router(sse_router)).
-# The SSE connection registry (_sse_lock/_sse_clients/_sse_subscribers) and _sse_conn_epoch
-# are also touched by server.py's own background SSE loops and stay there; _sse_conn_epoch
-# specifically is mutated through the server MODULE OBJECT (not a lazy value import), since a
-# bare `global` in the new file would silently bind to the wrong module's namespace -- see
-# app/api/routes/sse.py's own docstring.
-from app.api.routes.sse import (  # noqa: F401
-    router as sse_router,
-    sse_stream,
-)
-# RC-REHAB-1 (Phase 3): eighteenth extraction slice -- get_expiries/get_chain now live in
-# app/api/routes/chain.py (mounted below via app.include_router(chain_router)).
-from app.api.routes.chain import (  # noqa: F401
-    router as chain_router,
-    get_expiries,
-    get_chain,
-)
-# RC-REHAB-1 (Phase 3): nineteenth extraction slice -- prediction_override/
-# prediction_override_clear now live in app/api/routes/prediction.py (mounted below via
-# app.include_router(prediction_router)). _pred_overrides has a reader used elsewhere in
-# server.py's decision pipeline and stays there, imported back lazily.
-from app.api.routes.prediction import (  # noqa: F401
-    router as prediction_router,
-    prediction_override,
-    prediction_override_clear,
-)
-# RC-REHAB-1 (Phase 3): twentieth extraction slice -- get_levels/get_liquidity_snapshot/
-# get_liquidity_playbook_state now live in app/api/routes/liquidity.py (mounted below via
-# app.include_router(liquidity_router)). Every private helper these routes use
-# (_build_raw_levels_used, _liquidity_live_1m_overlay_bars, _liquidity_fusion_from_cache,
-# _liquidity_zone_tradeable_fields) was verified to have at least one other real caller in
-# server.py's Phase 2A canonical-levels machinery and stays there, imported back lazily.
-from app.api.routes.liquidity import (  # noqa: F401
-    router as liquidity_router,
-    get_levels,
-    get_liquidity_snapshot,
-    get_liquidity_playbook_state,
-)
-# RC-REHAB-1 (Phase 3): twenty-first (final route) extraction slice -- debug_charm/
-# debug_prediction now live in app/api/routes/debug.py, and get_accuracy in
-# app/api/routes/accuracy.py (both mounted below). debug_prediction is the ONE route that
-# calls _fetch_state directly and synchronously, by design (see
-# docs/ANALYTICS_STATE_TIER_BOUNDARIES_V1.md) -- _fetch_state itself stays in server.py.
-# Every other shared dependency (chain-fetch helpers, the accuracy cache, get_db) has other
-# callers and stays here too, imported back lazily. This closes out server.py's entire
-# @app.get/@app.post route surface -- everything remaining in server.py from here is
-# shared infrastructure, background loops, and _fetch_state's own not-yet-decomposed body.
-from app.api.routes.debug import (  # noqa: F401
-    router as debug_router,
-    debug_charm,
-    debug_prediction,
-)
-from app.api.routes.accuracy import (  # noqa: F401
-    router as accuracy_router,
-    get_accuracy,
-)
+from app.api.routes.order_flow import router as order_flow_router
+from app.api.routes.pages import router as pages_router
+from app.api.routes.prediction import router as prediction_router
+from app.api.routes.sse import router as sse_router
+from app.api.routes.status import router as status_router
+from app.api.routes.streaming import router as streaming_router
+from app.api.routes.terrain import get_terrain_radar, router as terrain_router
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
@@ -522,7 +287,6 @@ from market_context import (
 # imports it directly; ruff -F401 caught the now-genuinely-dead top-level import.
 # RC-REHAB-1 (thirty-fifth slice): build_market_state is called from server_state_decision.py.
 from market_state import derive_zone
-from vol_observability import vol_observability_payload  # noqa: F401
 # RC-REHAB-1 (Phase 3): vol_observability_payload's only caller, api_vol_observability, moved
 # to app/api/routes/status.py, which imports it back lazily via `from server import
 # vol_observability_payload` -- the name must stay bound here as that re-export surface.
@@ -1973,18 +1737,8 @@ def _log_only_inline_leaf_fetches(log_only: bool) -> bool:
 # _analytics_bg_error_detail, _write_analytics_bg_error_shell) moved to
 # analytics_bg_recompute.py (thirtieth slice).
 from analytics_bg_recompute import (  # noqa: F401
-    _invalidate_analytics_cache_after_bg_failures,
-    _reset_analytics_bg_fail_count,
-    _record_analytics_bg_failure,
-    _fetch_state_sse_bounded,
     _schedule_analytics_recompute,
-    _stamp_analytics_freshness_on_completed_fetch,
-    _analytics_bg_error_detail,
-    _write_analytics_bg_error_shell,
 )
-
-
-
 
 
 def _charm_book_scope(contracts: object) -> str:
@@ -2172,8 +1926,6 @@ def _attach_analytics_freshness_contract(
             md["analytics_last_error"] = last_err
 
 
-
-
 def _resolve_tier_c_cache_entry_for_sse(
     ticker: str, expiry: Optional[str]
 ) -> tuple[Optional[tuple], Optional[dict]]:
@@ -2321,8 +2073,6 @@ def _maybe_broadcast_sse_cache_fanout(
     return True
 
 
-
-
 # SESSION_OPEN_ANCHOR_WARM_SLICE_V1 (additive instrumentation): last completed
 # Tier C recompute duration per ticker — proves/refutes the RTH-open latency
 # composition (root-cause packet 2026-07-06: cycles ran 15–21s vs the 10s
@@ -2404,17 +2154,10 @@ def _record_post_publish_failure(kind, ticker, published_version, exc):
         pass
 
 
-
-
-
 def _any_sse_viewer_for_ticker(ticker: str) -> bool:
     t = ticker.upper().strip()
     with _sse_lock:
         return any(tk == t and n > 0 for (tk, _), n in _sse_subscribers.items())
-
-
-
-
 
 
 def _minimal_analytics_pending_dict(ticker: str, expiry: Optional[str]) -> dict:
@@ -3360,20 +3103,11 @@ MARKET_CLOSE_HOUR:   float = RTH_END_MINS / 60.0  # F09: 16:00 ET from the one R
 # Canonical timeframe: 1m. See timeframe_config.py for CANONICAL_TIMEFRAME.
 CANDLE_5M_SECONDS:   int   = 300    # 5-minute bar period (derived context)
 CANDLE_1M_SECONDS:   int   = 60     # 1-minute bar period (canonical)
-# Re-seed the in-memory 1m grid from Schwab pricehistory (canonical OHLCV leaf
-# pricehistory.candles[]) whenever the last completed bar is older than this gap.
-# Root cause (2026-06-11): seeding ran once per server lifetime, so background-logged
-# tickers (visited ~1×/15min) built ~6%-density tick grids — fill_outcomes could not
-# find forward bars at +1/+5/+15/+60m and the daily scoreboard never scored them.
-# CANDLE_RESEED_GAP_SECONDS moved to server_state_exposures.py along with its sole
-# reader, _exposures_for_state (RC-REHAB-1, twenty-third slice).
 
 # IV tracker
 IV_TRACKER_MAX_READINGS: int   = 6      # readings before direction is meaningful
 IV_DIRECTION_THRESHOLD:  float = 0.02   # ±2% relative change to call expanding/contracting
 
-# VIX_DIRECTION_THRESHOLD moved to server_state_vol_envelope_sector.py along with its
-# sole reader, _VIXTracker (RC-REHAB-1, twenty-second slice).
 
 # ETF zone classification (spy_zone / qqq_zone / iwm_zone)
 ETF_ZONE_THRESHOLD_PCT:  float = 0.3   # chg_pct beyond ±0.3% → bullish/bearish_trend
@@ -3385,11 +3119,6 @@ CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab (li
 # ("aligned with calibration" by hand), i.e. two faucets for one constant. The import is
 # the single source; ruff F811 caught the duplicate the moment both were in scope.
 
-# EXPOSURE_WINDOWS moved to server_state_exposures.py along with its sole reader,
-# _exposures_for_state (RC-REHAB-1, twenty-third slice).
-
-# GEX_NEAR_SPOT_RADIUS / VOID_DIST_FALLOFF moved to server_state_predictive_positioning.py
-# along with their sole caller (RC-REHAB-1, twenty-first slice).
 
 # GARCH_HORIZON_BARS / IV_HISTORY_LOOKBACK moved to server_state_volatility.py along with
 # the functions that use them (RC-REHAB-1, 2026-09-22, _fetch_state decomposition) -- both
@@ -3657,7 +3386,6 @@ class _IVTracker:
         return "flat"
 
 _iv_tracker = _IVTracker()
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -4845,12 +4573,6 @@ def _apply_trader_horizon_contract(ms_dict: dict) -> None:
             _reads["60m"] = _legacy_1h
 
 
-# RC-REHAB-1 (2026-09-23): _attach_stack_runtime_and_governance moved to
-# stack_runtime_governance.py, along with the private _TRADER_UI_PRODUCT_HORIZONS
-# constant it alone used (twenty-eighth slice).
-from stack_runtime_governance import _attach_stack_runtime_and_governance  # noqa: F401
-
-
 def _trader_accuracy_subset(results: dict) -> dict:
     """Subset of compute_accuracy() results exposed on UI-oriented APIs."""
     if not isinstance(results, dict):
@@ -5153,12 +4875,6 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     }
 
 
-# RC-REHAB-1 (2026-09-22): moved to server_state_order_flow.py along with its private
-# module-level state (_rest_cum_delta/_rest_cum_delta_session) and its sole caller
-# (_order_flow_data_for_state).
-from server_state_order_flow import _update_rest_cum_delta  # noqa: F401
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2A (operator 2026-08-08): `_compute_vwap_from_bars` was DELETED here.
 # It was a second, independent VWAP implementation — a fallback for
@@ -5168,12 +4884,6 @@ from server_state_order_flow import _update_rest_cum_delta  # noqa: F401
 # liquidity_value_engine.compute_session_vwap_path, reached only through the
 # canonical PriceLevelSnapshot. Absent VWAP persists NULL (RC-68).
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-# RC-REHAB-1 (2026-09-23): _last_spread_by_ticker / _last_spread_ts_by_ticker moved to
-# server_state_quote.py with their sole reader/writer. A stale duplicate
-# _dpi_normalized_prev_by_ticker left here by the persistence-tail slice (its real owner
-# is server_state_persistence_tail.py; this copy had zero readers) is deleted.
 
 
 # L1 generation counter per (ticker, expiry|__auto__) — monotonic for this process.
@@ -5829,12 +5539,6 @@ def _chg_pct_with_rest_backfill(tkr: str, row: Optional[dict], *, client=None) -
     return None
 
 
-# RC-REHAB-1 (2026-09-23): _tier_a_live_state_dict (GET /api/live/state) moved to
-# tier_a_live_state.py (twenty-sixth slice); app/api/routes/live.py also imports it
-# externally via `from server import _tier_a_live_state_dict`, so this re-export stays.
-from tier_a_live_state import _tier_a_live_state_dict  # noqa: F401
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # CORE DATA FETCH — runs the full pipeline, returns MarketState dict
 # When log_only=True: runs the full pipeline for DB logging but returns
@@ -5884,17 +5588,7 @@ def carried_price_levels_match_snapshot(entry, pl_date, pl_generation, today: st
     return cached_gen == snap_gen and entry_gen_i == snap_gen
 
 
-# RC-REHAB-1 (2026-09-22): expected-move phase moved to server_state_signals.py.
-from server_state_signals import _ExpectedMoveForState  # noqa: F401
-
-
-# RC-REHAB-1 (2026-09-23): _bucket_total_oi moved to math_exposure_core.bucket_total_oi
-# (beside bucket_metric); its two callers are server_state_predictive_positioning and
-# server_state_payload, and nothing in server.py calls it any more.
-
-
 from server_state_signals import _expected_move_for_state  # noqa: F401
-
 
 
 from server_state_predictive_positioning import _predictive_positioning_for_state  # noqa: F401  (RC-REHAB-1: moved to its own module, re-exported for tests/callers)
@@ -5987,11 +5681,8 @@ def _price_levels_for_state(
 # (second real module-level slice of the _fetch_state decomposition, alongside
 # server_state_volatility.py). Re-exported for existing module-attribute test callers.
 from server_state_candles import (  # noqa: F401
-    _CandleDirectionForState,
     _candle_direction_for_state,
 )
-
-
 
 
 # RC-REHAB-1 (2026-09-22): volatility-signals phase moved to server_state_volatility.py
@@ -6003,27 +5694,21 @@ from server_state_candles import (  # noqa: F401
 # test_fetch_state_garch_phase_v1.py (srv.GARCH_HORIZON_BARS) and tests/
 # test_audit_cand_server_py_full_read_v1.py (`from server import ... IV_HISTORY_LOOKBACK`).
 from server_state_volatility import (  # noqa: F401
-    _VolatilitySignalsForState,
     _volatility_signals_for_state,
     _garch_sigma_bars_for_state,
     _pcr_val_for_state,
-    GARCH_HORIZON_BARS,
-    IV_HISTORY_LOOKBACK,
 )
-
 
 
 # RC-REHAB-1 (2026-09-22): order-flow-signals phase moved to server_state_signals.py.
 from server_state_signals import (  # noqa: F401
-    _OrderFlowSignalsForState,
     _order_flow_signals_for_state,
 )
 
 
-
 # RC-REHAB-1 (2026-09-23): exposures phase moved to server_state_exposures.py, along
 # with the private CANDLE_RESEED_GAP_SECONDS/EXPOSURE_WINDOWS constants it alone used.
-from server_state_exposures import _ExposuresForState, _exposures_for_state  # noqa: F401
+from server_state_exposures import _exposures_for_state  # noqa: F401
 
 
 class _GammaFlipAndVoidZonesForState(NamedTuple):
@@ -6098,10 +5783,8 @@ def _gamma_flip_and_void_zones_for_state(
 
 # RC-REHAB-1 (2026-09-22): charm phase moved to server_state_signals.py.
 from server_state_signals import (  # noqa: F401
-    _CharmForState,
     _charm_for_state,
 )
-
 
 
 def _zone_tracking_for_state(ticker: str, consensus_summary) -> dict:
@@ -6218,8 +5901,6 @@ from server_state_order_flow import _order_flow_data_for_state  # noqa: F401
 from server_state_candles import _candle_volume_for_state  # noqa: F401
 
 
-
-
 # RC-REHAB-1 (2026-09-23): volatility-envelope/level-density/sector-strength phase
 # moved to server_state_vol_envelope_sector.py, along with the private _VIXTracker it
 # alone drove.
@@ -6229,7 +5910,7 @@ from server_state_vol_envelope_sector import _vol_envelope_and_sector_for_state 
 # RC-REHAB-1 (2026-09-22): sweep-score phase moved to server_state_candles.py.
 from server_state_candles import _post_build_sweep_score_for_state  # noqa: F401
 # RC-REHAB-1 (2026-09-23): quote/spot/spread/volume phase moved to server_state_quote.py.
-from server_state_quote import _QuoteForState, _quote_and_spread_for_state  # noqa: F401
+from server_state_quote import _quote_and_spread_for_state  # noqa: F401
 # RC-REHAB-1 (2026-09-23): full-bundle payload projection moved to server_state_payload.py.
 from server_state_payload import _project_state_payload
 # RC-REHAB-1 (2026-09-23): chain+quote intake and the three early exits moved to
@@ -6250,8 +5931,6 @@ from server_state_intake import (  # noqa: E402
     _missing_spot_state,
     _no_valid_expiry_state,
 )
-
-
 
 
 def _additive_context_for_state(
@@ -7107,16 +6786,6 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 # ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
 
-# RC-REHAB-1 (Phase 3): /, /favicon.ico, and /guide/* moved to app/api/routes/pages.py
-# (second extraction slice, same pattern as desk.py -- see that module's docstring).
-
-
-# RC-REHAB-1 (Phase 3): ops_panel/api_ops_status/api_level_crosses/
-# api_ops_calibration_rowcount/api_ops_run/governance_visibility_page/
-# api_governance_panel/api_internal_reload_models/api_governance_manual_promote/
-# api_governance_manual_rollback/api_ops_run_sequence moved to app/api/routes/ops.py
-# (third extraction slice, same pattern as desk.py/pages.py).
-
 
 def _tier_c_analytics_json_response(
     ticker: str,
@@ -7292,19 +6961,12 @@ RADAR_WATCH_PCT: float = 0.0075  # in the sector, worth watching
 # constants, vendor contract budget, index DTE horizon, learned strike geometry,
 # resolve_chain_strike_count and the index date bounds) moved to chain_width.py.
 from chain_width import (  # noqa: E402,F401
-    INDEX_CHAIN_DTE_HORIZON_DAYS,
-    INDEX_CHAIN_STRIKE_COUNT,
-    SCHWAB_CHAIN_CONTRACT_BUDGET,
     TERRAIN_STRIKE_COUNT_COLD_START,
     TERRAIN_STRIKE_COUNT_MAX,
     TERRAIN_STRIKE_COUNT_MIN,
     _chain_from_date_for,
     _chain_to_date_for,
     _learn_strike_geometry,
-    _strike_expiry_count,
-    _strike_geometry,
-    _strike_geometry_lock,
-    _terrain_strike_count,
     resolve_chain_strike_count,
 )
 
@@ -7357,7 +7019,7 @@ _terrain_last_cycle_sec: float = 0.0
 # RC-REHAB-1 (2026-09-23, forty-first slice): the universal capture producers moved to
 # terrain_capture.py, the flip-drift log to flip_drift_log.py, the freshness authority to
 # terrain_freshness.py, and the accrual cadence + morning rotation to terrain_schedule.py.
-from terrain_freshness import TERRAIN_STALE_AFTER_SEC, terrain_staleness  # noqa: E402,F401
+from terrain_freshness import terrain_staleness  # noqa: E402,F401
 from terrain_schedule import (  # noqa: E402
     ACCRUAL_MIN_INTERVAL_OTHER_SEC,
     TERRAIN_CONTENTION_END_MINS,
@@ -7390,7 +7052,6 @@ def _ticker_on_terrain_board(tk: str) -> bool:
     # core), read under the existing lock — NOT a new registry, and NOT merely "a snapshot exists".
     with _logger_lock:
         return tk in _logger_tickers or tk in CORE_TICKERS
-
 
 
 # RC-REHAB-1 (2026-09-23): _terrain_refresh_one (RC-80, THE SINGLE PRODUCER OF
@@ -8377,22 +8038,6 @@ def _backfill_gex_cells_from_last_valid(tk: str, surface: dict) -> None:
     # this cycle) exactly as it was -- backfill found nothing to offer either.
 
 
-# RC-REHAB-1 (2026-09-23): gamma-surface (strike x expiry) chain projection moved to
-# gamma_surface_projection.py -- not a server_state_* fetch_state phase (called from
-# three independent places: the terrain-refresh loop, the streamed-tick eager-refresh
-# path, and the gamma-surface route's banked fallback), so it gets its own top-level
-# name. _project_gamma_expiry_slice/_gamma_surface_cell_fields/
-# _gamma_surface_unavailable_reason (each confirmed to have no other caller anywhere
-# in server.py) moved with it.
-from gamma_surface_projection import (  # noqa: F401
-    _gamma_surface_cell_fields,
-    _gamma_surface_unavailable_reason,
-    _project_gamma_expiry_slice,
-    project_gamma_surface,
-    project_gamma_surface_update_expiry,
-)
-
-
 def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
     """Session identity for a projected surface, stamped by the ONE ET clock (server side — a
     browser never decides what day it is): today's ET session date, whether the surface is a
@@ -8464,10 +8109,6 @@ def scorecard_trading_day_age(generated_utc: object) -> int | None:
         if is_trading_day_et(day.isoformat()):
             age += 1
     return age
-
-
-# RC-REHAB-1 (Phase 3): /chart, /exposure, /options, and /desk (the page shells) moved to
-# app/api/routes/pages.py alongside /, /favicon.ico, and /guide/* (second extraction slice).
 
 
 # RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):

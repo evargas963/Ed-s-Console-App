@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 import pytest
+import app.api.routes.analytics_light
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -327,9 +328,8 @@ def test_api_analytics_light_is_tier_b_fast_path():
     import asyncio
     import json
 
-    import server as srv
 
-    j = json.loads(asyncio.run(srv.get_analytics_light(ticker="SPY", expiry=None)).body)
+    j = json.loads(asyncio.run(app.api.routes.analytics_light.get_analytics_light(ticker="SPY", expiry=None)).body)
     assert j.get("plane") == "L1_context"
     assert j.get("merge_rule") == "L0_plus_acknowledged_L2_snapshot"
     assert j.get("_tier") == "B_light"

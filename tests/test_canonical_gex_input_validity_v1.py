@@ -45,6 +45,7 @@ from math_exposure_core import (
 from gamma_surface_projection import project_gamma_surface
 from instrument_identity import ticker_storage_key
 import gamma_surface_state
+import app.api.routes.options
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -454,7 +455,7 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
                 "_gamma_surface": outage_surface, "computed_ts_utc": computed_ts, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
             }
-        d = json.loads(server.get_options_gamma_surface(tk).body)
+        d = json.loads(app.api.routes.options.get_options_gamma_surface(tk).body)
         assert d["available"] is True, "a restart must not erase previously valid data"
         assert d["cells"][0]["gex"] == [12345678]
         assert d["reason"] is None
@@ -489,7 +490,7 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
                 "_gamma_surface": good_surface, "computed_ts_utc": computed_ts, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
             }
-        d = json.loads(server.get_options_gamma_surface(tk).body)
+        d = json.loads(app.api.routes.options.get_options_gamma_surface(tk).body)
         assert d["available"] is True and d["cells"][0]["gex"] == [12345678]
 
         # Now the live vendor outage: this cycle's own surface has zero usable cells at all
@@ -510,7 +511,7 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
                 "_gamma_surface": outage_surface, "computed_ts_utc": computed_ts2, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts2, "chain_basis": "full",
             }
-        d2 = json.loads(server.get_options_gamma_surface(tk).body)
+        d2 = json.loads(app.api.routes.options.get_options_gamma_surface(tk).body)
         assert d2["available"] is True, "current vendor failure must not erase previously valid data"
         assert d2["cells"][0]["gex"] == [12345678]
         assert d2["reason"] is None

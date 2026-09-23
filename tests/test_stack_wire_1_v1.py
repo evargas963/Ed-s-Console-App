@@ -10,6 +10,7 @@ from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stac
 from live_decision_bundle import stamp_decision_bundle
 from market_state import MarketState
 from signals import canonical_forecast_from_fusion
+import stack_runtime_governance
 
 
 def test_decision_generation_id_always_present():
@@ -58,7 +59,6 @@ def test_server_build_ts_always_set():
 
 
 def test_stack_runtime_fields_propagate():
-    import server
 
     ms_dict = {
         "fusion_available": True,
@@ -70,7 +70,7 @@ def test_stack_runtime_fields_propagate():
         "transformer_available": True,
         "fusion_contributing_models": ["xgb", "transformer"],
     }
-    server._attach_stack_runtime_and_governance(ms_dict, ticker="SPY")
+    stack_runtime_governance._attach_stack_runtime_and_governance(ms_dict, ticker="SPY")
     rt = ms_dict["stack_runtime"]
     assert rt["fusion_active"] is True
     assert rt["mc_participated"] is True
@@ -85,7 +85,6 @@ def test_stack_runtime_fusion_active_uses_tradability_gate_not_bare_flag():
     ``stack_mode=INVALID`` — otherwise the Decision Command stack chip lies to the
     operator while v2 tradability is blocked.
     """
-    import server
 
     # Split-brain case 1: canonical_forecast missing → fusion_available stays True but
     # canonical is unsafe to read as tradable.
@@ -97,7 +96,7 @@ def test_stack_runtime_fusion_active_uses_tradability_gate_not_bare_flag():
         "lstm_available": True,
         "transformer_available": True,
     }
-    server._attach_stack_runtime_and_governance(ms_missing, ticker="SPY")
+    stack_runtime_governance._attach_stack_runtime_and_governance(ms_missing, ticker="SPY")
     rt = ms_missing["stack_runtime"]
     assert rt["fusion_active"] is False, "tradability gate must veto fusion_active when provenance non-tradable"
     assert rt["stack_mode"] == "INVALID"
@@ -109,7 +108,7 @@ def test_stack_runtime_fusion_active_uses_tradability_gate_not_bare_flag():
         "mc_available": True,
         "xgb_available": True,
     }
-    server._attach_stack_runtime_and_governance(ms_empty, ticker="SPY")
+    stack_runtime_governance._attach_stack_runtime_and_governance(ms_empty, ticker="SPY")
     assert ms_empty["stack_runtime"]["fusion_active"] is False
     assert ms_empty["stack_runtime"]["stack_mode"] == "INVALID"
 
@@ -132,12 +131,12 @@ def test_stack_runtime_fusion_active_uses_tradability_gate_not_bare_flag():
         "stack_directional_authorized": True,
         "stack_directional_authorization_reason": "composition_complete:xgb+lstm+transformer",
     }
-    server._attach_stack_runtime_and_governance(ms_ok, ticker="SPY")
+    stack_runtime_governance._attach_stack_runtime_and_governance(ms_ok, ticker="SPY")
     assert ms_ok["stack_runtime"]["fusion_active"] is True
     assert ms_ok["stack_runtime"]["stack_mode"] == "FULL"
 
     # Source-level guarantee: server keys off the contract gate, not the bare flag.
-    attach_src = inspect.getsource(server._attach_stack_runtime_and_governance)
+    attach_src = inspect.getsource(stack_runtime_governance._attach_stack_runtime_and_governance)
     assert "is_ms_dict_fusion_authoritative(ms_dict)" in attach_src
     assert 'bool(ms_dict.get("fusion_available"))' not in attach_src
 

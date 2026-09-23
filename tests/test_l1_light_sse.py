@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+import app.api.routes.diagnostics
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,9 +20,8 @@ def test_l1_sse_diagnostics_exposed():
     round trip added nothing a direct call doesn't already prove."""
     import json
 
-    import server as srv
 
-    ed = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
+    ed = json.loads(app.api.routes.diagnostics.get_l1_diagnostics().body)["ed_l1"]
     assert "l1_sse_light" in ed
     assert "l1_light_sse_connections" in ed["l1_sse_light"]
 

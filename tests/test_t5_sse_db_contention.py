@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
+import analytics_bg_recompute
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -352,7 +353,7 @@ def test_t5_sse_fetch_bounded_uses_timeout_executor(srv_module, monkeypatch):
 
     monkeypatch.setattr(srv, "_get_sse_fetch_timeout_executor", lambda: _FakePool())
     monkeypatch.setattr(srv, "SSE_RECOMPUTE_FETCH_TIMEOUT_SEC", 7.5)
-    out = srv._fetch_state_sse_bounded(
+    out = analytics_bg_recompute._fetch_state_sse_bounded(
         "SPY", None, update_source="sse_loop", timeout_sec=7.5
     )
     assert out is None

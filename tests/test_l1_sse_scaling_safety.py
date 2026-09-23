@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
+import app.api.routes.diagnostics
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -192,7 +193,7 @@ def test_diagnostics_include_scaling_fields():
 
     import server as srv
 
-    d = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
+    d = json.loads(app.api.routes.diagnostics.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
     assert "l1_light_sse_connections_by_scope" in d
     assert d["l1_light_sse_limit_max_total"] == srv.MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL
     assert d["l1_light_sse_limit_max_per_scope"] == srv.MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE

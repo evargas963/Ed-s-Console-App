@@ -30,6 +30,7 @@ from market_state import build_market_state
 from v2_decision import build_module_a_a1_decision
 from v2_decision.a1_conformal_artifact_attachment import attach_a1_conformal_artifact_to_ms_dict
 from v2_decision.a1_isotonic_calibration_attachment import attach_a1_isotonic_calibration_to_ms_dict
+import stack_runtime_governance
 
 log = logging.getLogger(__name__)
 
@@ -148,7 +149,7 @@ def _v2_decision_for_state(ms, *, ticker: str, selected_exp: str,
         logging_ms_dict["selected_exp"] = selected_exp
         logging_ms_dict["decision_time_ms"] = int(refresh_ts_utc * 1000)
         logging_ms_dict["_server_build_ts"] = time.time()
-        _srv._attach_stack_runtime_and_governance(logging_ms_dict, ticker=ticker)
+        stack_runtime_governance._attach_stack_runtime_and_governance(logging_ms_dict, ticker=ticker)
         _srv._apply_trader_horizon_contract(logging_ms_dict)
         stamp_decision_bundle(logging_ms_dict)
         attach_a1_conformal_artifact_to_ms_dict(logging_ms_dict, ticker=ticker)

@@ -23,6 +23,8 @@ from terrain_atr import (
 )
 import flip_drift_log  # noqa: E402
 import terrain_capture  # noqa: E402
+import app.api.routes.market_data
+import chain_width
 
 
 def test_rings_are_ordered_and_distinct() -> None:
@@ -89,9 +91,8 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
     calls its handler directly, so this is the established pattern here."""
     import json
 
-    import server as srv
 
-    body = json.loads(srv.get_bars1m(ticker="SPY", limit=5).body)
+    body = json.loads(app.api.routes.market_data.get_bars1m(ticker="SPY", limit=5).body)
     assert body["ticker"] == "SPY" and isinstance(body["bars"], list)
     if body["bars"]:
         row = body["bars"][-1]
@@ -170,7 +171,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(flip_drift_log, "_log_flip_drift", _spy)
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(terrain_capture, "_universal_capture_wanted", lambda _tk: (False, None))
-    monkeypatch.setattr(srv, "_terrain_strike_count", lambda _tk: 20)
+    monkeypatch.setattr(chain_width, "_terrain_strike_count", lambda _tk: 20)
 
     class _Resp:
         status_code = 200
@@ -303,7 +304,7 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
     slock = th.Lock()
 
     def _call():
-        resp = srv.get_spot(ticker="SPY")
+        resp = app.api.routes.market_data.get_spot(ticker="SPY")
         body = _json.loads(resp.body.decode("utf-8"))
         with slock:
             results.append(body.get("spot"))
@@ -320,7 +321,7 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
     assert results == [123.45] * 4
     assert calls["n"] == 1, f"concurrent misses must single-flight, got {calls['n']}"
 
-    resp2 = srv.get_spot(ticker="SPY")
+    resp2 = app.api.routes.market_data.get_spot(ticker="SPY")
     assert _json.loads(resp2.body.decode("utf-8"))["spot"] == 123.45
     assert calls["n"] == 1, "TTL hit must not resolve again"
     srv._spot_poll_cache.clear()
@@ -337,9 +338,8 @@ def test_spot_endpoint_shape_single_authority():
     directly, so the direct seam is the established pattern for this endpoint."""
     import json
 
-    import server as srv
 
-    body = json.loads(srv.get_spot(ticker="SPY").body)
+    body = json.loads(app.api.routes.market_data.get_spot(ticker="SPY").body)
     assert body["ticker"] == "SPY"
     assert set(body) == {"ticker", "spot", "spot_source", "spot_state", "spot_as_of_ts_utc"}
 

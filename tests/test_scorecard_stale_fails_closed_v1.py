@@ -21,6 +21,8 @@ import pytest  # noqa: E402
 import server  # noqa: E402
 import terrain_quarantine  # noqa: E402
 import terrain_freshness  # noqa: E402
+import app.api.routes.terrain
+import chain_width
 
 ROOT = Path(__file__).resolve().parent.parent
 CHART = ROOT / "static" / "chart.html"
@@ -82,7 +84,7 @@ def test_unusable_stamps_are_never_fresh():
 
 def test_stale_report_withholds_the_numbers_and_says_why():
     """The failure the operator actually suffers: a present, parseable, OUT-OF-DATE report."""
-    body = json.loads(bytes(server.get_terrain_scorecard().body).decode())
+    body = json.loads(bytes(app.api.routes.terrain.get_terrain_scorecard().body).decode())
     if not body:
         return                                  # no report on disk — covered by the absent case
     if body.get("stale"):
@@ -358,14 +360,14 @@ def test_narrowed_chain_never_lowers_the_expiry_count():
     tk = "ZZTESTGEO"
     try:
         assert server._learn_strike_geometry(tk, _fake_chain(54), 7400.0) is True
-        with server._strike_geometry_lock:
-            assert server._strike_expiry_count[tk] == 54
+        with chain_width._strike_geometry_lock:
+            assert chain_width._strike_expiry_count[tk] == 54
         wide = server.resolve_chain_strike_count(tk)
         # a NARROWED chain reports fewer expiries — it must not overwrite the full-basis truth
         assert server._learn_strike_geometry(tk, _fake_chain(12), 7400.0,
                                              date_window_narrowed=True) is True
-        with server._strike_geometry_lock:
-            assert server._strike_expiry_count[tk] == 54, (
+        with chain_width._strike_geometry_lock:
+            assert chain_width._strike_expiry_count[tk] == 54, (
                 "a date-narrowed chain lowered the expiry count — the next full request will be "
                 "sized for 12 expiries and asked over all 54"
             )
@@ -373,15 +375,15 @@ def test_narrowed_chain_never_lowers_the_expiry_count():
             "the width authority moved on a narrowed rung; this is the 502 feedback loop"
         )
         # ...but it may still SEED an instrument we know nothing about
-        with server._strike_geometry_lock:
-            server._strike_expiry_count.pop(tk, None)
+        with chain_width._strike_geometry_lock:
+            chain_width._strike_expiry_count.pop(tk, None)
         server._learn_strike_geometry(tk, _fake_chain(12), 7400.0, date_window_narrowed=True)
-        with server._strike_geometry_lock:
-            assert server._strike_expiry_count[tk] == 12, "a floor must still seed an unknown"
+        with chain_width._strike_geometry_lock:
+            assert chain_width._strike_expiry_count[tk] == 12, "a floor must still seed an unknown"
     finally:
-        with server._strike_geometry_lock:
-            server._strike_geometry.pop(tk, None)
-            server._strike_expiry_count.pop(tk, None)
+        with chain_width._strike_geometry_lock:
+            chain_width._strike_geometry.pop(tk, None)
+            chain_width._strike_expiry_count.pop(tk, None)
 
 
 def test_width_budget_shrinks_as_expiries_grow():
@@ -393,15 +395,15 @@ def test_width_budget_shrinks_as_expiries_grow():
         server._learn_strike_geometry(b, _fake_chain(54), 7400.0)
         wa, wb = server.resolve_chain_strike_count(a), server.resolve_chain_strike_count(b)
         assert wb <= wa, f"more expiries got a wider ask ({b}={wb} vs {a}={wa})"
-        assert wb * 2 * 54 <= server.SCHWAB_CHAIN_CONTRACT_BUDGET, (
+        assert wb * 2 * 54 <= chain_width.SCHWAB_CHAIN_CONTRACT_BUDGET, (
             f"width {wb} over 54 expiries implies {wb * 2 * 54} contracts, above the "
-            f"{server.SCHWAB_CHAIN_CONTRACT_BUDGET} budget the vendor 502s on"
+            f"{chain_width.SCHWAB_CHAIN_CONTRACT_BUDGET} budget the vendor 502s on"
         )
     finally:
-        with server._strike_geometry_lock:
+        with chain_width._strike_geometry_lock:
             for t in (a, b):
-                server._strike_geometry.pop(t, None)
-                server._strike_expiry_count.pop(t, None)
+                chain_width._strike_geometry.pop(t, None)
+                chain_width._strike_expiry_count.pop(t, None)
 
 
 def test_ladder_narrows_on_over_budget_status_not_only_on_timeout():

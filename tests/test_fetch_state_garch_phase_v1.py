@@ -18,6 +18,7 @@ import random
 import server as srv
 import server_state_volatility as sv
 from math_exposure import compute_garch_forecast, blend_garch_sigma
+import server_state_volatility
 
 
 def _synthetic_closes(n: int = 61, seed: int = 42, start: float = 450.0) -> list[float]:
@@ -41,7 +42,7 @@ def test_matches_the_original_inline_computation_chain_exactly():
 
     result = srv._garch_sigma_bars_for_state(closes, atm_iv, realized_vol, spot_f)
 
-    garch_raw = compute_garch_forecast(closes, horizon=srv.GARCH_HORIZON_BARS)
+    garch_raw = compute_garch_forecast(closes, horizon=server_state_volatility.GARCH_HORIZON_BARS)
     expected = blend_garch_sigma(
         garch_raw,
         vol_percent_to_decimal(atm_iv),
@@ -51,8 +52,8 @@ def test_matches_the_original_inline_computation_chain_exactly():
     )
 
     assert result is not None, "GARCH extraction returned None on a real, adequate close series"
-    assert len(result) == srv.GARCH_HORIZON_BARS, (
-        f"expected {srv.GARCH_HORIZON_BARS} per-bar sigmas, got {len(result)}"
+    assert len(result) == server_state_volatility.GARCH_HORIZON_BARS, (
+        f"expected {server_state_volatility.GARCH_HORIZON_BARS} per-bar sigmas, got {len(result)}"
     )
     assert all(s > 0 for s in result), "every per-bar sigma must be a real, positive value"
     assert result == expected, "extraction diverged from the original inline call chain"

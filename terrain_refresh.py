@@ -62,6 +62,7 @@ log = logging.getLogger(__name__)
 from calibration.option_chain_morning_full import GEX_FULL_CHAIN_STRIKE_COUNT
 from instrument_identity import ticker_storage_key
 from terrain_engine import compute_terrain
+import chain_width
 
 
 def _gamma_surface_contracts_with_stream_overlay(
@@ -329,7 +330,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     try:
         client = _srv.get_client()
         want_capture, cap_key = _tcap._universal_capture_wanted(tk)
-        _width = _srv._terrain_strike_count(tk)
+        _width = chain_width._terrain_strike_count(tk)
         if want_capture:
             _width = max(_width, GEX_FULL_CHAIN_STRIKE_COUNT)
         # RC-127: the FULL multi-year index book ($SPX: weeklies + quarterlies + LEAPS) can

@@ -36,6 +36,7 @@ from gamma_surface_eager_refresh import _dispatch_spot_gamma_refresh
 import gamma_surface_eager_refresh
 import gamma_surface_state
 import per_strike_view
+import gamma_surface_projection
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -217,7 +218,7 @@ def test_a_stale_baseline_generation_is_discarded_not_published(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT + 5.0, "stub", time.time()))
 
     fresh_marker = {"expirations": [], "strikes": [], "cells": [], "marker": "NEWER_REST_GENERATION"}
-    orig_project = server.project_gamma_surface
+    orig_project = gamma_surface_projection.project_gamma_surface
 
     def racing_project(contracts_arg, spot_arg):
         with server._terrain_cache_lock:
@@ -231,7 +232,7 @@ def test_a_stale_baseline_generation_is_discarded_not_published(monkeypatch):
     try:
         status = refresh_gamma_surface_from_spot_tick(TK)
     finally:
-        server.project_gamma_surface = orig_project
+        gamma_surface_projection.project_gamma_surface = orig_project
     assert status == "stale_baseline_superseded"
     with server._terrain_cache_lock:
         assert server._terrain_cache[TK]["_gamma_surface"] is fresh_marker, (

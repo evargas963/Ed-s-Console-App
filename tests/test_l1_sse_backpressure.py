@@ -7,6 +7,7 @@ import asyncio
 import queue
 import sys
 from pathlib import Path
+import app.api.routes.diagnostics
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -103,9 +104,8 @@ def test_diagnostics_l1_sse_light_has_policy_and_semantics():
     round trip added nothing a direct call doesn't already prove."""
     import json
 
-    import server as srv
 
-    light = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
+    light = json.loads(app.api.routes.diagnostics.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
     assert "l1_sse_backpressure_policy" in light
     assert "evict_oldest" in light["l1_sse_backpressure_policy"]
     assert "l1_sse_thread_queue_fairness_policy" in light

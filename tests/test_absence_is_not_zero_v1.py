@@ -40,6 +40,7 @@ if str(REPO) not in sys.path:
 import desk_store as DS  # noqa: E402
 import terrain_engine as TE  # noqa: E402
 from liquidity_models import volume_profile_poc_vah_val  # noqa: E402
+import app.api.routes.terrain
 
 
 def _facts(db: Path) -> list[sqlite3.Row]:
@@ -314,9 +315,8 @@ def test_the_server_strike_row_builder_draws_no_bar_for_unknown_gamma():
     Driven through the real endpoint helper rather than asserted about the source text,
     because the source text was what the allowlist was hiding.
     """
-    import server as srv
 
-    src = inspect.getsource(srv.get_terrain_strikes)
+    src = inspect.getsource(app.api.routes.terrain.get_terrain_strikes)
     assert "round(float(g or 0.0), 1)" not in src, (  # caps-ok: scanner false positive: literal the test asserts is ABSENT from get_terrain_strikes
         "the per-strike row builder fabricates a 0.0 gamma bar again")
     assert "if g is None:" in src and "continue" in src
