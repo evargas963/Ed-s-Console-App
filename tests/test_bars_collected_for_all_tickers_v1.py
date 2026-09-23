@@ -8,6 +8,7 @@ architecture assertions now live in tests/test_bars_collection_service_v1.py; wh
 is the numeric contract of the accumulator itself.
 """
 from __future__ import annotations
+import bars_loop
 
 
 def test_accumulator_builds_bars_from_collection_service_call_shape():
@@ -59,7 +60,7 @@ def test_accumulator_rejects_a_nonpositive_price_at_the_service_boundary(monkeyp
         # The real Schwab per-ticker node shape, so the real parser runs too.
         monkeypatch.setattr(srv, "_memoized_quote_response",
                             lambda tk, client=None: _Q({"quote": quote}))
-        return srv._bars_collect_one("ZZGUARD")
+        return bars_loop._bars_collect_one("ZZGUARD")
 
     # Every shape of "no usable price" must reach the same honest verdict and tick nothing.
     for quote in ({}, {"lastPrice": 0.0, "mark": 0.0},

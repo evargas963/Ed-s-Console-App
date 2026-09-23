@@ -2384,7 +2384,8 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_attach_stack_runtime_and_governance).',
     ),
     Row(
-        file='server.py', derivation='_bars_collect_one', disposition='DERIVED',
+        # RC-REHAB-1 (2026-09-23, forty-fifth slice): moved to bars_loop.py.
+        file='bars_loop.py', derivation='_bars_collect_one', disposition='DERIVED',
         producer_refs=('server.py:_memoized_quote_response', 'server.py:_parse_quote_node_session_fields'),
         justification='Quote to accumulator to price_bars_1m for ONE ticker, never raising. The price comes from the parsed session fields through numeric_contract.float_positive_or_none, so an absent, zero, negative, NaN or infinite price returns skip:no_price and the accumulator is never ticked — absence reads as absence, never a fabricated bar (RC-38/RC-308).',
     ),

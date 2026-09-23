@@ -5,6 +5,7 @@ import ast
 import threading
 import time
 from pathlib import Path
+import bars_loop
 
 
 def _collect_window_session_open_ts() -> float:
@@ -197,17 +198,15 @@ def test_rc243_bars_pool_is_sized_against_the_write_seam_not_the_api():
     SQLite's busy handler). The constant had NO test at all; this pins the ceiling and the
     reason, so a future edit must argue with the measurement rather than the old comment.
     """
-    import server as srv
-
-    assert srv.BARS_WORKERS <= 2, (
-        f"BARS_WORKERS={srv.BARS_WORKERS} — every worker contends for the single "
+    assert bars_loop.BARS_WORKERS <= 2, (
+        f"BARS_WORKERS={bars_loop.BARS_WORKERS} — every worker contends for the single "
         f"db._TIER1_SNAPSHOT_WRITE_LOCK; raising it adds queueing, not throughput (RC-243)"
     )
-    assert srv.BARS_WORKERS >= 1, "the bar loop must keep at least one collector"
+    assert bars_loop.BARS_WORKERS >= 1, "the bar loop must keep at least one collector"
 
     # The pool must still be the ONE place the sweep fans out, under its own thread name, so
     # contention telemetry stays attributable per RC-166's diagnosis.
-    src = Path(srv.__file__).read_text(encoding="utf-8")
+    src = Path(bars_loop.__file__).read_text(encoding="utf-8")   # the loop's own home
     assert 'thread_name_prefix="ed_bars"' in src
     assert src.count("max_workers=BARS_WORKERS") == 1, (
         "a second bar pool would re-create the unbounded fan-in this row measured"

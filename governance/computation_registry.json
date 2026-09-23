@@ -31,6 +31,7 @@
 "terrain_schedule.py",
 "gamma_surface_state.py",
 "terrain_loop.py",
+"bars_loop.py",
 "tier_a_live_state.py",
 "app/api/routes/accuracy.py",
 "app/api/routes/analytics_light.py",
