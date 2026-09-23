@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob, encode_json_blob
 
 log = logging.getLogger(__name__)
 
@@ -171,19 +172,19 @@ def persist_production_decision(
         "ticker": ticker_storage_key(ms_dict.get("ticker")),  # RC-345/F25: canonical persisted decision identity
         "route": route,
         "release_id": release_id,
-        "release_json": _json_dumps(release),
+        "release_json": encode_json_blob(release),
         "git_sha": release.get("git_sha"),
-        "market_inputs_json": _json_dumps(_extract_market_inputs(ms_dict)),
-        "risk_state_json": _json_dumps(risk),
+        "market_inputs_json": encode_json_blob(_extract_market_inputs(ms_dict)),
+        "risk_state_json": encode_json_blob(risk),
         "validation_summary": risk.get("validation_summary") if isinstance(risk.get("validation_summary"), str) else _json_dumps(risk.get("validation_summary")),
-        "model_outputs_json": _json_dumps(ms_dict.get("mhap_rows") or ms_dict.get("model_outputs")),
-        "fusion_json": _json_dumps(ms_dict.get("fusion") or ms_dict.get("fusion_by_horizon")),
+        "model_outputs_json": encode_json_blob(ms_dict.get("mhap_rows") or ms_dict.get("model_outputs")),
+        "fusion_json": encode_json_blob(ms_dict.get("fusion") or ms_dict.get("fusion_by_horizon")),
         "final_signal": ms_dict.get("call_signal"),
         "call_conviction": ms_dict.get("call_conviction"),
-        "overrides_json": _json_dumps(ms_dict.get("pred_override")),
-        "staleness_json": _json_dumps(_extract_staleness(ms_dict)),
-        "quarantine_json": _json_dumps(_extract_quarantine(ms_dict)),
-        "reconstruction_json": _json_dumps(reconstruction),
+        "overrides_json": encode_json_blob(ms_dict.get("pred_override")),
+        "staleness_json": encode_json_blob(_extract_staleness(ms_dict)),
+        "quarantine_json": encode_json_blob(_extract_quarantine(ms_dict)),
+        "reconstruction_json": encode_json_blob(reconstruction),
         "created_at_utc": time.time(),
         "execution_identity_sha256": (str(execution_identity_sha256).lower()
                                        if execution_identity_sha256 else None),
@@ -271,7 +272,7 @@ def get_production_decision_by_id(
         ).fetchone()
         if not row:
             return None
-        return json.loads(row["reconstruction_json"])
+        return decode_json_blob(row["reconstruction_json"])
     finally:
         conn.close()
 

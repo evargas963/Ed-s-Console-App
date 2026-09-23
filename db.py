@@ -3497,6 +3497,21 @@ class EdDB:
         d = asdict(snap)
         d.pop("snapshot_id", None)  # let DB assign
 
+        # RC-REHAB-3 (2026-09-23): option_chain_json/replay_context_json (19.46 GB
+        # combined, measured) are DELIBERATELY NOT compressed here. Investigated and
+        # deferred: 20+ files read these two columns (live_vs_replay_validation.py,
+        # realized_contract_eval.py, replay_bundle_coverage.py, a dozen tools/liquidity_*
+        # research scripts, tools/measure_post_fix_theta_v1.py, and more), several using a
+        # SQL-level `length(option_chain_json) > REPLAY_BUNDLE_MIN_JSON_LENGTH` (==10)
+        # sanity filter to distinguish real content from a trivial/near-empty value.
+        # MEASURED: gzip's own fixed per-blob overhead is 22-24 bytes even for the most
+        # trivial content ("[]", "{}", "null") -- exceeding that threshold on its own, so
+        # compressing this column would silently turn that filter into a permanent no-op
+        # across every consumer that uses it, not a crash. That is a correctness
+        # regression, not just a storage question, and needs its own dedicated pass
+        # (auditing every LENGTH()-based filter's threshold, not just wiring the codec)
+        # rather than being rushed through alongside the other tables.
+
         # execution_identity_v1 fail-closed coherence: a MODEL_DERIVED row must
         # carry its identity pair; a NOT_APPLICABLE (quote-only) row must not.
         # When identity fields arrive without a class, the row IS model-derived.

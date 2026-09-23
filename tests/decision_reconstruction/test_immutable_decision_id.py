@@ -1,11 +1,12 @@
 """I-31 — immutable decision_id persistence and blind reconstruction."""
 from __future__ import annotations
 
-import json
 import sqlite3
 import uuid
 
 import pytest
+
+from json_blob_codec import decode_json_blob
 
 
 @pytest.fixture
@@ -106,7 +107,7 @@ def test_blind_reconstruction_single_query(tmp_path, release_ready):
     finally:
         conn.close()
     assert row is not None
-    payload = json.loads(row[0])
+    payload = decode_json_blob(row[0])
     ok, missing = reconstruction_complete(payload)
     assert ok, missing
     assert payload["ticker"] == "QQQ"

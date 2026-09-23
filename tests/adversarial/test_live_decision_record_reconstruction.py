@@ -1,10 +1,11 @@
 """Adversarial — production-like decision record proof (NOT audit seed)."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
+
+from json_blob_codec import decode_json_blob
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -91,7 +92,7 @@ def test_production_like_blind_reconstruction_single_query(release_ready, tmp_pa
     finally:
         conn.close()
     assert row is not None
-    payload = json.loads(row[0])
+    payload = decode_json_blob(row[0])
     ok, missing = reconstruction_complete(payload)
     assert ok, missing
 

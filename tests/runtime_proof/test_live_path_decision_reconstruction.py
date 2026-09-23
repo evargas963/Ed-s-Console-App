@@ -1,11 +1,12 @@
 """Runtime proof — live_path_simulation via server._finalize_production_decision."""
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
 import pytest
+
+from json_blob_codec import decode_json_blob
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -91,7 +92,7 @@ def test_live_path_blind_reconstruction(release_ready, tmp_path, monkeypatch):
     finally:
         conn.close()
     assert row is not None
-    payload = json.loads(row[0])
+    payload = decode_json_blob(row[0])
     ok, missing = reconstruction_complete(payload)
     assert ok, missing
 

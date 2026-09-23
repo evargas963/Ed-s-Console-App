@@ -47,6 +47,7 @@ from calibration.backfill_outcomes import backfill
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
+from json_blob_codec import decode_json_blob
 # SCHWAB_CSV_CHECKED: COH-SA-2 timezone-authority redirect only.
 # This edit reads, derives, renames, emits, and maps no Schwab market-data field;
 # CSV row authority does not apply to this non-market-field change.
@@ -130,8 +131,9 @@ def _per_horizon_prediction_rows(
         if not is_rth_ts_utc(float(row["decision_ts_utc"])):
             continue  # after-hours decisions have no snapshot/outcome row to score against
         try:
-            bundle = json.loads(row["model_outputs_json"] or "{}")
-        except (TypeError, ValueError):
+            _mo = row["model_outputs_json"]
+            bundle = decode_json_blob(_mo) if _mo else {}
+        except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile
             continue
         sb = bundle.get("stack_probs_bundle")
         mh = (sb or {}).get("multi_horizon_ml_fusion_bundle") or {}
@@ -210,8 +212,9 @@ def _all_card_row(row: sqlite3.Row) -> Optional[dict[str, Any]]:
     the trade plan (entry/stop/targets/hold) is built on.
     """
     try:
-        mh = json.loads(row["multi_horizon_json"] or "null")
-    except (TypeError, ValueError):
+        _mhj = row["multi_horizon_json"]
+        mh = decode_json_blob(_mhj) if _mhj else None
+    except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile
         return None
     if not isinstance(mh, dict):
         return None
@@ -278,8 +281,9 @@ def rolling_horizon_log_loss(
             if not is_rth_ts_utc(float(row["decision_ts_utc"])):
                 continue  # same RTH gate as _per_horizon_prediction_rows — skill must score RTH rows only
             try:
-                bundle = json.loads(row["model_outputs_json"] or "{}")
-            except (TypeError, ValueError):
+                _mo = row["model_outputs_json"]
+                bundle = decode_json_blob(_mo) if _mo else {}
+            except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile
                 continue
             by_hz = (
                 (bundle.get("stack_probs_bundle") or {}).get("multi_horizon_ml_fusion_bundle")
@@ -444,8 +448,9 @@ def _production_tallies(
             t["n_untrusted"] += 1
             continue
         try:
-            bundle = json.loads(row["model_outputs_json"] or "{}")
-        except (TypeError, ValueError):
+            _mo = row["model_outputs_json"]
+            bundle = decode_json_blob(_mo) if _mo else {}
+        except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile
             t["n_unparseable"] += 1
             continue
         by_hz = (
