@@ -5214,11 +5214,10 @@ from server_state_order_flow import _update_rest_cum_delta  # noqa: F401
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-# Per-ticker previous DPI normalized score (dealer pressure trend between refreshes)
-_dpi_normalized_prev_by_ticker: dict[str, Optional[float]] = {}
-# Last good bid-ask width (pts) when quote had both sides — reused if a poll drops one side
-_last_spread_by_ticker: dict[str, float] = {}
-_last_spread_ts_by_ticker: dict[str, float] = {}
+# RC-REHAB-1 (2026-09-23): _last_spread_by_ticker / _last_spread_ts_by_ticker moved to
+# server_state_quote.py with their sole reader/writer. A stale duplicate
+# _dpi_normalized_prev_by_ticker left here by the persistence-tail slice (its real owner
+# is server_state_persistence_tail.py; this copy had zero readers) is deleted.
 
 
 # L1 generation counter per (ticker, expiry|__auto__) — monotonic for this process.
@@ -6279,6 +6278,8 @@ from server_state_vol_envelope_sector import _vol_envelope_and_sector_for_state 
 
 # RC-REHAB-1 (2026-09-22): sweep-score phase moved to server_state_candles.py.
 from server_state_candles import _post_build_sweep_score_for_state  # noqa: F401
+# RC-REHAB-1 (2026-09-23): quote/spot/spread/volume phase moved to server_state_quote.py.
+from server_state_quote import _QuoteForState, _quote_and_spread_for_state  # noqa: F401
 
 
 
@@ -6469,20 +6470,6 @@ def _fetch_state(
     _t_after_chain_mono = time.monotonic()
     _chain_window_marks.append(("chain_window_contracts_parse_ms", _t_after_chain_mono))
 
-    # totalVolume: WebSocket TOTAL_VOLUME preferred; else chain underlying (include_underlying_quote)
-    _total_vol = None
-    try:
-        from app.options.order_flow.state import get_stream_volume
-        _stream_vol = get_stream_volume(ticker)
-        if _stream_vol is not None:
-            _total_vol = _stream_vol
-    except (ImportError, AttributeError):
-        pass
-    if _total_vol is None:
-        _chain_underlying = c_json.get("underlying") or {}
-        if isinstance(_chain_underlying, dict):
-            _total_vol = _safe_float_quote(_chain_underlying.get("totalVolume"))
-
     # Quote fetched in parallel with chain above — parse here after chain JSON work.
     if q_resp is None or q_resp.status_code != 200:
         raise HTTPException(status_code=502,   # Cursor-audit F4: carry vendor status (see chain raise)
@@ -6506,75 +6493,25 @@ def _fetch_state(
     _stage_t0 = time.perf_counter()
     _stage_marks: list[tuple[str, float]] = []
 
-    _node_q = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
-    _session_q = _parse_quote_node_session_fields(_node_q)
-    parsed_last = _session_q["last"]
-    parsed_mark = _session_q["mark"]
-    parsed_bid = _session_q["bid"]
-    parsed_ask = _session_q["ask"]
-    parsed_quote_time = _session_q["quote_time"]
-    parsed_trade_time = _session_q["trade_time"]
-    # SINGLE SPOT AUTHORITY (RC-14): route the analytics-card spot through resolve_spot,
-    # reusing the quote node already fetched above (no extra round-trip). It now carries the
-    # same value + precedence as /api/spot and the terrain card, and gains the stored-trade
-    # fallback this path lacked (an empty live quote used to yield None / a bare mark here).
-    spot, _spot_source, _spot_ts = resolve_spot(ticker, quote_node=_node_q, chain_json=None)
-    bid    = parsed_bid
-    ask    = parsed_ask
-
-    global _last_spread_by_ticker, _last_spread_ts_by_ticker
-    _quote_spread_pts = (
-        round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None
-    )
-    # single source: finite mark (the bare `> 0` gate let +inf through -> inf mid -> inf spread_frac)
-    from numeric_contract import float_finite_or_none as _fin_mk
-    _pm = _fin_mk(parsed_mark)
-    _quote_mid_for_spread = _pm if (_pm is not None and _pm > 0) else None
-    _quote_spread_frac = (
-        round(_quote_spread_pts / _quote_mid_for_spread, 6)
-        if (
-            _quote_spread_pts is not None
-            and _quote_mid_for_spread is not None
-            and _quote_mid_for_spread > 0
-        )
-        else None
-    )
-    _quote_spread = _quote_spread_pts
-    _quote_spread_source = "schwab_bid_ask_live" if _quote_spread_pts is not None else "unavailable_missing_bid_or_ask"
-    _quote_spread_frac_source = (
-        "derived_bid_ask_fraction_schwab_mark_denom"
-        if _quote_spread_frac is not None
-        else None
-    )
-    _quote_spread_age_ms = 0 if _quote_spread_pts is not None else None
-    if _quote_spread_pts is not None:
-        _last_spread_by_ticker[ticker] = _quote_spread_pts
-        _last_spread_ts_by_ticker[ticker] = _t_after_quote_wall
-    elif ticker in _last_spread_by_ticker and ticker in _last_spread_ts_by_ticker:
-        _quote_spread_source = "cached_last_valid_not_tradeable"
-        _quote_spread_age_ms = max(0, int((_t_after_quote_wall - _last_spread_ts_by_ticker[ticker]) * 1000))
-
-    # Remaining volume fields from quote REST if stream + chain underlying had none
-    if _total_vol is None:
-        _quote_node = _node_q if isinstance(_node_q, dict) else {}
-        if not (_quote_node.get("quote") or _quote_node.get("extended")):
-            _quote_node = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
-            if not isinstance(_quote_node, dict):
-                if isinstance(q_json, list):
-                    for item in q_json:
-                        if isinstance(item, dict) and (item.get("symbol") or item.get("key") or "").upper() == ticker.upper():
-                            _quote_node = item
-                            break
-                else:
-                    _quote_node = {}
-            if not _quote_node and isinstance(q_json, dict) and (q_json.get("quote") or q_json.get("regular")):
-                _quote_node = q_json
-        _quote_dict = _quote_node.get("quote") or {} if isinstance(_quote_node, dict) else {}
-        _extended = _quote_node.get("extended") or {} if isinstance(_quote_node, dict) else {}
-        _total_vol = (
-            _safe_float_quote(_quote_dict.get("totalVolume"))
-            or _safe_float_quote(_extended.get("totalVolume"))
-        )
+    # RC-REHAB-1 (Phase 4, _fetch_state decomposition, thirty-second slice): quote parse,
+    # single-authority spot (RC-14), bid/ask spread with carry-forward, and the
+    # stream -> chain-underlying -> quote totalVolume resolution moved to
+    # server_state_quote.py.
+    _q = _quote_and_spread_for_state(ticker, c_json, q_json, _t_after_quote_wall)
+    _session_q = _q.session_q
+    parsed_last = _q.parsed_last
+    parsed_mark = _q.parsed_mark
+    parsed_bid = bid = _q.bid
+    parsed_ask = ask = _q.ask
+    parsed_quote_time = _q.quote_time
+    parsed_trade_time = _q.trade_time
+    spot = _q.spot
+    _quote_spread_pts = _quote_spread = _q.spread_pts
+    _quote_spread_frac = _q.spread_frac
+    _quote_spread_source = _q.spread_source
+    _quote_spread_frac_source = _q.spread_frac_source
+    _quote_spread_age_ms = _q.spread_age_ms
+    _total_vol = _q.total_vol
 
     # ── Select expiry ─────────────────────────────────────────────────────────
     expiries     = _expiries_from_contracts(contracts)
@@ -6678,14 +6615,7 @@ def _fetch_state(
             "ask": ask,
             "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
             "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
-            "quote_source_detail": {
-                "spot": "unavailable_missing_last_and_mark",
-                "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
-                "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
-                "spread": _quote_spread_source,
-                "spread_age_ms": _quote_spread_age_ms,
-                "carried_forward": _quote_spread_source == "cached_last_valid_not_tradeable",
-            },
+            "quote_source_detail": _q.quote_source_detail(spot_label="unavailable_missing_last_and_mark"),
             "server_ts": time.time(),
         })
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, ninth slice): extracted to
@@ -7304,14 +7234,9 @@ def _fetch_state(
     ms_dict["analytics_partial_tier_c"] = False
     ms_dict["expiries"] = [e for e in expiries if e >= _today_str]
     ms_dict["selected_exp"] = selected_exp
-    ms_dict["quote_source_detail"] = {
-        "spot": "lastPrice" if parsed_last and parsed_last > 0 else ("mark" if parsed_mark and parsed_mark > 0 else "unavailable_missing_last_and_mark"),
-        "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
-        "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
-        "spread": _quote_spread_source,
-        "spread_age_ms": _quote_spread_age_ms,
-        "carried_forward": _quote_spread_source == "cached_last_valid_not_tradeable",
-    }
+    ms_dict["quote_source_detail"] = _q.quote_source_detail(
+        spot_label="lastPrice" if parsed_last and parsed_last > 0 else ("mark" if parsed_mark and parsed_mark > 0 else "unavailable_missing_last_and_mark"),
+    )
     ms_dict["spread"] = _quote_spread_pts
     ms_dict["spread_frac"] = _quote_spread_frac
     ms_dict["spread_pts"] = _quote_spread_pts
