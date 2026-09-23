@@ -133,9 +133,11 @@ def _quote_and_spread_for_state(
         if _spread_pts is not None and _mid_for_spread is not None
         else None
     )
-    _spread_source = "schwab_bid_ask_live" if _spread_pts is not None else "unavailable_missing_bid_or_ask"
-    _spread_age_ms = 0 if _spread_pts is not None else None
+    _spread_source = "unavailable_missing_bid_or_ask"
+    _spread_age_ms: Optional[int] = None
     if _spread_pts is not None:
+        _spread_source = "schwab_bid_ask_live"
+        _spread_age_ms = 0  # observed on this very quote
         _last_spread_by_ticker[ticker] = _spread_pts
         _last_spread_ts_by_ticker[ticker] = quote_wall_ts
     elif ticker in _last_spread_by_ticker and ticker in _last_spread_ts_by_ticker:
