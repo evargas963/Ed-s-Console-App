@@ -81,7 +81,7 @@ def load_cell_rows(
     cells: dict[tuple[str, str], list[dict[str, Any]]] = {
         (t, hz): [] for t in tickers for hz in horizons
     }
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         sql = (

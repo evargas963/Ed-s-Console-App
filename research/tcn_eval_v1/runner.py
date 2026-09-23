@@ -79,7 +79,7 @@ def _load_closes(db: Path, ticker: str, *, session: str = "rth") -> tuple[np.nda
 
     if session not in ("rth", "all"):
         raise ValueError(f"unknown session universe {session!r} — 'rth' or 'all', never implicit")
-    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = con.execute(
         "SELECT bar_end_ts_utc, close FROM price_bars_1m WHERE ticker=? ORDER BY bar_end_ts_utc",
         (ticker,),
@@ -148,7 +148,7 @@ def _load_labeled_rows(
 
     if session not in ("rth", "all"):
         raise ValueError(f"unknown session universe {session!r} — 'rth' or 'all', never implicit")
-    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = con.execute(
         f"SELECT ts_utc, {label_col} FROM {SNAPSHOT_TABLE_1M} "
         f"WHERE ticker=? AND {label_col} IS NOT NULL ORDER BY ts_utc",

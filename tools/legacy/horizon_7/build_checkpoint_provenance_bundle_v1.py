@@ -127,7 +127,7 @@ def build_provenance_rows() -> list[dict]:
 def cold_start_table(db: Path, n_sample: int = 48) -> list[dict]:
     reset_caches()
     ml_predict._xgb_movehead_registry.clear()
-    conn = sqlite3.connect(str(db))
+    conn = sqlite3.connect(str(db), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     tickers = [r[0] for r in conn.execute(f"SELECT DISTINCT ticker FROM snapshots WHERE {GOV_WHERE} ORDER BY RANDOM() LIMIT 12")]

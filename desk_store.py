@@ -135,7 +135,7 @@ class DeskFactError(ValueError):
 def _connect(db_path: str | Path, *, read_only: bool = False) -> sqlite3.Connection:
     p = str(db_path)
     if read_only:
-        con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=15.0)
+        con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=30.0)
     else:
         con = sqlite3.connect(p, timeout=30.0)
         con.execute("PRAGMA journal_mode=WAL")

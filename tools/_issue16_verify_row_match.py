@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT))
 from db import DB_PATH, get_snapshot_sql
 
 p = DB_PATH
-c = sqlite3.connect(str(p))
+c = sqlite3.connect(str(p), timeout=30.0)
 c.row_factory = sqlite3.Row
 
 row = c.execute(

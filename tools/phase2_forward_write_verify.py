@@ -161,7 +161,7 @@ def main() -> None:
         )
         db.insert_snapshot(snap)
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     def q(sql: str, params: tuple = ()) -> sqlite3.Cursor:
         return conn.execute(sql, params)
 

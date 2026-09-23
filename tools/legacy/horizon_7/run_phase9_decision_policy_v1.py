@@ -104,7 +104,7 @@ def main() -> int:
         if cur is None or float(r["edge_delta"]) > float(cur["edge_delta"]):
             thr_map[key] = r
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 

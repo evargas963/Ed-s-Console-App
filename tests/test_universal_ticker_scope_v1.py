@@ -117,10 +117,28 @@ def test_check_universal_ticker_scope_screams_on_injected_tool(tmp_path, monkeyp
     )
 
 
-def test_live_tree_liquidity_defaults_are_not_spy_only():
-    """Sanity: committed liquidity_* tools must not currently violate (no grandfathering)."""
-    for path in U.experiment_tool_paths(ROOT):
+def test_live_tree_ticker_defaults_are_not_spy_only():
+    """Sanity: no committed production module violates (no grandfathering). RC-REHAB-1: this
+    walked only the liquidity_*/experiment/lp01 tool globs; the gate now covers every module."""
+    for path in C._production_py_files():
         hits = U.spy_only_ticker_default_violations(
             path, path.read_text(encoding="utf-8", errors="ignore")
         )
         assert hits == [], f"{path.name} has SPY-only ticker default: {hits}"
+
+
+def test_gate_polices_every_module_and_every_static_script(tmp_path, monkeypatch):
+    """RC-REHAB-1 (2026-09-23): rule 1 walked only liquidity_*/experiment/lp01 tool names and
+    rule 2 only static/chart.html -- tools/check_card_signal_fidelity.py shipped a SPY-only
+    --tickers default unseen. Both shapes, planted where the old globs never looked."""
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "check_some_audit.py").write_text(
+        'import argparse\nap = argparse.ArgumentParser()\n'
+        'ap.add_argument("--tickers", nargs="+", default=["SPY"])\n', encoding="utf-8")
+    (tmp_path / "static" / "js").mkdir(parents=True)
+    (tmp_path / "static" / "js" / "ed-x.js").write_text(
+        "function paint() {\n  if (tk === 'SPY') {\n    drawStormHighlight();\n  }\n}\n",
+        encoding="utf-8")
+    monkeypatch.setattr(C, "REPO", tmp_path)
+    hits = sorted(v.path.name for v in C.check_universal_ticker_scope())
+    assert hits == ["check_some_audit.py", "ed-x.js"], hits

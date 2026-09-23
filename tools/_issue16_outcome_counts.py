@@ -30,7 +30,7 @@ def counts(c, tbl: str):
 
 
 def main():
-    c = sqlite3.connect(str(p))
+    c = sqlite3.connect(str(p), timeout=30.0)
     for tbl in ("snapshots_1m_normalized", "snapshots"):
         try:
             n, o1, o5, o15, o60 = counts(c, tbl)
@@ -47,7 +47,7 @@ def main():
 
 
 def filled_vs_gaps():
-    c = sqlite3.connect(str(p))
+    c = sqlite3.connect(str(p), timeout=30.0)
     q1 = c.execute(
         get_snapshot_sql("tools/_issue16_outcome_counts.py:47")
     ).fetchone()[0]
@@ -64,7 +64,7 @@ def filled_vs_gaps():
 
 def last_in_bucket_15c():
     """How often does last snapshot per minute (resampling pick) have 15c?"""
-    c = sqlite3.connect(str(p))
+    c = sqlite3.connect(str(p), timeout=30.0)
     c.row_factory = sqlite3.Row
     rows = c.execute(
         get_snapshot_sql("tools/_issue16_outcome_counts.py:67")

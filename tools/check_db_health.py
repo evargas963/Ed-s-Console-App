@@ -261,7 +261,7 @@ def run_capacity_checks(db_path: str) -> list[Check]:
 
 
 def collect(db_path: str) -> list[Check]:
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     try:
         tables = {r[0] for r in con.execute(
             "select name from sqlite_master where type='table'")}

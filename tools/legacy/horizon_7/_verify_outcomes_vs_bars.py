@@ -30,7 +30,7 @@ def main() -> None:
     args = ap.parse_args()
     db_path = args.db.resolve()
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     outcome_cols = [s[0] for s in OUTCOME_BAR_SPECS]

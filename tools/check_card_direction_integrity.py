@@ -60,7 +60,7 @@ from tools.replay_money_path_probe import probe_snapshot_row, rth_window_utc
 
 
 def _connect_ro(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     conn.row_factory = sqlite3.Row
     return conn
 

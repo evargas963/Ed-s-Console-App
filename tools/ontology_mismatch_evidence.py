@@ -25,7 +25,7 @@ def main() -> None:
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="tools.ontology_mismatch_evidence", write_capable=False)
     dbp = args.db
-    conn = sqlite3.connect(str(dbp))
+    conn = sqlite3.connect(str(dbp), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     out: dict = {"db_path": str(dbp.resolve()), "sections": {}}

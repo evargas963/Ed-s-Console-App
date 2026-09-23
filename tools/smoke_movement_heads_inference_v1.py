@@ -31,7 +31,7 @@ def main() -> int:
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="smoke_movement_heads_inference_v1", write_capable=False)
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     tickers = sorted({r[0] for r in conn.execute(f"SELECT DISTINCT ticker FROM snapshots WHERE {GOV}")})

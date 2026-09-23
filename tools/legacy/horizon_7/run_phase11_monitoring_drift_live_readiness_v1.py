@@ -77,7 +77,7 @@ def main() -> int:
     )
     all_tickers = sorted(r["ticker"] for r in readiness["tickers"])
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 

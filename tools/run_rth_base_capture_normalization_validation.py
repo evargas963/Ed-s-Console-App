@@ -28,7 +28,7 @@ def _count_rows(db_path: Path) -> dict[str, Any]:
     out: dict[str, Any] = {"raw": {}, "normalized": {}}
     if not db_path.is_file():
         return {"error": f"db missing: {db_path}", **out}
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     try:
         for t in BASE_TICKERS:
             try:

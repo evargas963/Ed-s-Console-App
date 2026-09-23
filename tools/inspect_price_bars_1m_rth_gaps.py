@@ -94,7 +94,7 @@ def main() -> int:
         print(f"DB not found: {db_path}", file=sys.stderr)
         return 2
     tkr = args.ticker.strip()
-    conn = sqlite3.connect(str(db_path.resolve()))
+    conn = sqlite3.connect(str(db_path.resolve()), timeout=30.0)
     try:
         gs = _gap_stats_bars(conn, tkr)
         pairs = iter_severe_pairs(conn, tkr, weekday_only=not args.include_weekend_et, limit=args.limit)

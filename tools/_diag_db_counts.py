@@ -24,7 +24,7 @@ def labeled_in_snapshots(cur, tkr: str, col: str) -> int:
 
 def main() -> None:
     print("DB_PATH:", DB_PATH, "exists:", DB_PATH.exists())
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]

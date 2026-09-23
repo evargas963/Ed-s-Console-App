@@ -360,7 +360,7 @@ def run(tickers, null_thresh, cluster_thresh):
     # Union of all numeric feature columns we can pull from the normalized table.
     candidate_cols = sorted(set(cone["xgb"]) | set(cone["lstm_5m"]) | set(cone["lstm_1m"]))
 
-    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=30.0)
     have = {r[1] for r in conn.execute("PRAGMA table_info(snapshots_1m_normalized)")}
     tk_clause = ",".join("?" for _ in tickers)
     present = [c for c in candidate_cols if c in have]
@@ -505,7 +505,7 @@ def ablation_db_column_names(db_path: str, *, table: str = ABLATION_SNAPSHOT_TAB
     dbp = Path(db_path)
     if not dbp.is_file():
         return set()
-    con = sqlite3.connect(str(dbp))
+    con = sqlite3.connect(str(dbp), timeout=30.0)
     try:
         return {str(r[1]) for r in con.execute(f"PRAGMA table_info({table})")}
     finally:
@@ -1298,7 +1298,7 @@ def run_ablation_preflight(
         result["issues"].append(f"database missing: {dbp}")
         return result
     try:
-        con = sqlite3.connect(str(dbp))
+        con = sqlite3.connect(str(dbp), timeout=30.0)
         try:
             row = con.execute(
                 "SELECT COUNT(*) FROM snapshots WHERE ticker=?",

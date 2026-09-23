@@ -50,7 +50,7 @@ def main() -> None:
     require_canonical_db_target(args, tool_name="report_pred_1c_governed_remediation_v1", write_capable=False)
 
     db_path = args.db.resolve()
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     n_gov = int(conn.execute(f"SELECT COUNT(*) FROM snapshots s WHERE {GOV_WHERE}").fetchone()[0])

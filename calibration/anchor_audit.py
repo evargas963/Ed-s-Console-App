@@ -30,12 +30,7 @@ from calibration.statistical_integrity import bucket_gate, verify_anchor_audit_n
 from math_probabilities import MIN_SAMPLES_STATISTICAL
 from timeframe_config import CANONICAL_TIMEFRAME
 
-try:
-    from db import configure_sqlite_connection
-except Exception:
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 from db import get_snapshot_sql
 from instrument_identity import ticker_storage_key

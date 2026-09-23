@@ -31,7 +31,7 @@ def load_prereg() -> dict[str, Any]:
 def _load_pts_rows(db: Path, ticker: str, hz: str) -> list[tuple[float, str, float]]:
     lab = f"outcome_{hz}"
     pts = f"outcome_{hz}_pts"
-    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     # normalized table may use same names
     cols = {r[1] for r in con.execute(f"PRAGMA table_info({SNAPSHOT_TABLE_1M})")}
     if pts not in cols or lab not in cols:

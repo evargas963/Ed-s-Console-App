@@ -673,7 +673,7 @@ def _random_levels_uniform(
 def run(tickers: list[str]) -> dict:
     t0 = time.time()
     rnd = random.Random(SEED)
-    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30.0)
 
     mf_counts = _morning_full_counts(con, tickers)
     obs = _load_obs_chains(con, tickers)

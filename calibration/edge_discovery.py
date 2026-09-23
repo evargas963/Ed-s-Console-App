@@ -49,16 +49,7 @@ from db_authority import canonical_console_db_path
 
 log = logging.getLogger(__name__)
 
-try:
-    from db import configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.configure_sqlite_connection not available — using no-op stub: %s",
-        e,
-    )
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 MIN_N = MIN_SAMPLES_STATISTICAL
 AXIS_INVALID = "__invalid__"
@@ -186,7 +177,7 @@ def _bootstrap_delta(
 
 
 def load_labeled_rows(db_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
@@ -478,7 +469,7 @@ def pick_db_path(explicit: Path | None) -> Path:
     for p in candidates:
         if not p.is_file():
             continue
-        conn = sqlite3.connect(str(p))
+        conn = sqlite3.connect(str(p), timeout=30.0)
         n = int(
             conn.execute(
                 f"SELECT COUNT(*) FROM calibration_decision_log WHERE outcome_5c IS NOT NULL AND ({TRUSTED_PREDICATE_SQL})"

@@ -159,7 +159,7 @@ def main() -> int:
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="run_final_fused_vs_xgb_comparison_v1", write_capable=False)
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 

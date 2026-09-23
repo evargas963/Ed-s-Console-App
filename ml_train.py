@@ -370,7 +370,7 @@ def load_data(
     except Exception as _e:
         logging.getLogger("ml_train.normsync").warning("normalized_training_sync: %s", _e)
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     _extra_dir = ""
     if label_col == directional_label_column(_hz_norm):
         _extra_dir = f" AND CAST(valid_dir_{_hz_norm} AS INTEGER) = 1"

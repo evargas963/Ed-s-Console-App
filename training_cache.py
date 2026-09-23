@@ -118,7 +118,7 @@ def db_training_fingerprint(
     from timeframe_config import CANONICAL_TIMEFRAME
 
     t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity for SQL bind AND fingerprint["ticker"]
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     if not _snapshots_1m_normalized_table_exists(conn):
         conn.close()
         return _empty_db_training_fingerprint(t)
@@ -174,7 +174,7 @@ def db_training_floor_stats(
     from training_provenance import USABLE_RTH_DAY_MIN_ROWS
 
     ticker = ticker_storage_key(ticker)  # RC-345/F25: canonical identity for SQL bind AND emitted ticker field
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     if not _snapshots_1m_normalized_table_exists(conn):
         conn.close()
         return {
@@ -318,7 +318,7 @@ def db_distinct_rth_et_dates_for_ticker(
     from timeframe_config import CANONICAL_TIMEFRAME
 
     t = ticker_storage_key(ticker)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
         f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where} ORDER BY ts_utc",
@@ -435,7 +435,7 @@ def min_ts_utc_for_last_n_rth_sessions(
     from ml_data_common import et_date_str_from_ts_utc, filter_ts_utc_list_to_rth, training_base_where_clause
     from timeframe_config import CANONICAL_TIMEFRAME
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     where = training_base_where_clause(label_column, include_ticker=True)
     rows = conn.execute(
         f"SELECT ts_utc FROM snapshots_1m_normalized WHERE {where}",

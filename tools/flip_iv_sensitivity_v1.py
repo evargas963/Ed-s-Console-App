@@ -169,7 +169,7 @@ def load_wide_chains(db_path: str) -> list[tuple[float, float, list[dict]]]:
     """
     from time_et import is_trading_day_et
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         rows = conn.execute(
             "SELECT spot, ts_utc, chain_json, et_date FROM option_chain_morning_full "

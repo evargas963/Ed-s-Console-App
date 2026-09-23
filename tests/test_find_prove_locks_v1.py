@@ -115,6 +115,19 @@ def test_collect_datasheet_staged_live_clean():
     assert check_collect_datasheet_staged() == []
 
 
+def test_new_table_names_in_diff_sees_every_create_table_form():
+    """RC-REHAB-1 (2026-09-23): only `CREATE TABLE IF NOT EXISTS` was recognised, so a plain
+    or quoted-name CREATE TABLE never counted as a new table needing a datasheet."""
+    from tools.find_prove_locks import new_table_names_in_diff
+
+    diff = [
+        "+CREATE TABLE plain_new (id INTEGER)",
+        '+    cur.execute("CREATE TABLE \\"quoted_new\\" (x)")',
+        "+CREATE TABLE IF NOT EXISTS guarded_new (id INTEGER)",
+    ]
+    assert new_table_names_in_diff(diff) == {"plain_new", "quoted_new", "guarded_new"}
+
+
 def test_new_table_names_in_diff_only_reads_added_lines():
     from tools.find_prove_locks import new_table_names_in_diff
 

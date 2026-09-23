@@ -182,12 +182,17 @@ def decision_path_wired_violations(source: str | None = None) -> list[str]:
 _DATASHEET_REQUIRED = frozenset({"motivation", "composition", "collection", "recommended_uses"})
 
 
+#: RC-REHAB-1 (2026-09-23): matched only `CREATE TABLE IF NOT EXISTS`, so a plain
+#: `CREATE TABLE foo (...)` was never a "new table" and never needed a datasheet.
+_CREATE_TABLE_RE = re.compile(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?\\?[\"'`]?(\w+)", re.I)
+
+
 def new_table_names_in_diff(diff_lines: list[str]) -> set[str]:
     names: set[str] = set()
     for ln in diff_lines:
         if not ln.startswith("+") or ln.startswith("+++"):
             continue
-        m = re.search(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", ln, re.I)
+        m = _CREATE_TABLE_RE.search(ln)
         if m:
             names.add(m.group(1).lower())
     return names
@@ -203,7 +208,7 @@ def removed_table_names_in_diff(diff_lines: list[str]) -> set[str]:
     for ln in diff_lines:
         if not ln.startswith("-") or ln.startswith("---"):
             continue
-        m = re.search(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", ln, re.I)
+        m = _CREATE_TABLE_RE.search(ln)
         if m:
             names.add(m.group(1).lower())
     return names

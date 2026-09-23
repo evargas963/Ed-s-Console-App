@@ -35,7 +35,7 @@ def _load(db: Path, ticker: str, hz: str):
         f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL "
         f"AND realized_vol IS NOT NULL AND spread IS NOT NULL"
     )
-    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = c.execute(q, (ticker,)).fetchall()
     c.close()
     return [(float(a), str(b), float(d), float(e)) for a, b, d, e in rows]

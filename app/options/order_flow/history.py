@@ -37,7 +37,7 @@ def hydrate_option_content(
     if not path.is_file():
         return []
     try:
-        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return []
     try:
@@ -127,7 +127,7 @@ def tape_rows_for_symbol(
     if not path.is_file():
         return []
     try:
-        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return []
     try:
@@ -241,7 +241,7 @@ def book_heatmap_for_ticker(
     if not path.is_file():
         return {"ticker": sym, "available": False, "reason": "no stream capture database"}
     try:
-        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return {"ticker": sym, "available": False, "reason": "database unavailable"}
     try:

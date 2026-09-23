@@ -647,7 +647,7 @@ def run_blind_reconstruction_test() -> dict:
         reconstruction_complete,
     )
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         ensure_production_decision_schema(conn)

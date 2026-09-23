@@ -75,7 +75,7 @@ F1_DRAFT_CANDIDATE_CONFIG: dict[str, Any] = {
 def preflight(db_path: str, ticker: str = "SPY") -> dict[str, Any]:
     """Row counts + source distribution (read-only) before any heavy work."""
     tk = str(ticker).upper().strip()
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     try:
         t0 = time.perf_counter()
         n, ts_min, ts_max = con.execute(

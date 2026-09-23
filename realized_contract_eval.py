@@ -640,7 +640,7 @@ def compute_replay_coverage_stats(
 
 
 def save_replay_coverage_report(db_path: str, table: str, *, ticker: str | None = None) -> None:
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     by_ticker: dict[str, Any] = {}
     if ticker:
@@ -831,7 +831,7 @@ def evaluate_realized_contract_trades_for_rows(
     Appends to arch-specific realized_contract_trade_log_*.csv.
     """
     table = snapshot_table or SNAPSHOT_TABLE_1M
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     trades_out: list[dict] = []

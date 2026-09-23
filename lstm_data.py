@@ -497,7 +497,7 @@ def _connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
     """Read-only connection to the snapshot database."""
     if not db_path.exists():
         raise FileNotFoundError("Database not found: " + str(db_path))
-    conn = sqlite3.connect(str(db_path), timeout=10)
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     return conn
 

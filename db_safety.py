@@ -143,7 +143,7 @@ def _validate_backup(
     expected_schema: tuple[tuple[str, str, str, str], ...],
     required_tables: set[str],
 ) -> str:
-    conn = sqlite3.connect(f"{backup_path.as_uri()}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"{backup_path.as_uri()}?mode=ro", uri=True, timeout=30.0)
     try:
         rows = [str(row[0]) for row in conn.execute("PRAGMA quick_check")]
         if rows != ["ok"]:

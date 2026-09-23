@@ -118,7 +118,7 @@ def _mi_discrete(x: list[float], y: list[float], bins: int = 8) -> float | None:
 
 
 def run_discrimination(db_path: Path) -> dict[str, Any]:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     configure_sqlite_connection(conn)
     conn.row_factory = sqlite3.Row
 

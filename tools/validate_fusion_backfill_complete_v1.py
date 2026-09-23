@@ -31,7 +31,7 @@ def main() -> int:
     require_canonical_db_target(args, tool_name="validate_fusion_backfill_complete_v1", write_capable=False)
 
     tf = CANONICAL_TIMEFRAME
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     configure_sqlite_connection(conn)
 
     summary_path = ROOT / "data" / "fusion_backfill_complete_summary_v1.json"

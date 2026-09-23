@@ -21,7 +21,7 @@ def main() -> None:
     if not DB.is_file():
         print(json.dumps({"error": "db_not_found", "path": str(DB)}))
         return
-    c = sqlite3.connect(str(DB))
+    c = sqlite3.connect(str(DB), timeout=30.0)
     out: dict = {}
 
     def q(sql: str, params: tuple = ()) -> int:

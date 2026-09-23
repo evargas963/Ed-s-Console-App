@@ -105,7 +105,7 @@ def load_spy_1m_bars(
         batch_id=batch_id,
         staging_mode=staging,
     )
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         if staging:

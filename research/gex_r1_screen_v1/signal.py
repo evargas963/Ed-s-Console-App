@@ -99,7 +99,7 @@ def load_morning_signals(
     """First snapshot/day with option_chain_json in the morning ET window."""
     if start_mins is None:
         start_mins = RTH_START_MINS
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     conn.row_factory = sqlite3.Row
     out: list[MorningSignal] = []
     for ticker in tickers:

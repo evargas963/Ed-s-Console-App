@@ -179,7 +179,7 @@ def main() -> int:
 
     ml_predict._xgb_movehead_registry.clear()
 
-    conn = sqlite3.connect(str(dbp))
+    conn = sqlite3.connect(str(dbp), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     bar_ends = _load_bar_ends(conn)

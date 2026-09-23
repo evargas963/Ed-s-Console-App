@@ -215,7 +215,7 @@ def _blind_reconstruction_with_source(phase2) -> dict:
     source = "unknown"
     sample_route = None
     if DB_PATH.is_file():
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
         try:
             ensure_production_decision_schema(conn)
             row = conn.execute(

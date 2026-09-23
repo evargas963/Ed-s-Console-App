@@ -46,7 +46,7 @@ MIN_REAL_BAR_SHARE = 0.50       # majority of the tape must be known-real
 
 def discover_universe(db_path: str) -> dict[str, int]:
     """Ticker -> bar count from price_bars_1m (the storage watchlist)."""
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     try:
         return {
             str(r[0]): int(r[1])

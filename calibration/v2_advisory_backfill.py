@@ -23,16 +23,7 @@ from v2_decision import SCHEMA_VERSION, V2_STATUS, build_module_a_a1_decision
 
 log = logging.getLogger(__name__)
 
-try:
-    from db import configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.configure_sqlite_connection not available — using no-op stub: %s",
-        e,
-    )
-
-    def configure_sqlite_connection(conn: sqlite3.Connection, **kwargs: Any) -> None:
-        return None
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION = "1"

@@ -215,7 +215,7 @@ def _canonical_snapshots_columns() -> list[dict[str, Any]]:
     from db import EdDB
 
     EdDB(temp_db, allow_noncanonical=True)
-    conn = sqlite3.connect(str(temp_db))
+    conn = sqlite3.connect(str(temp_db), timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         cols = [_column_dict(r, source="db_py") for r in _table_info(conn, "snapshots")]

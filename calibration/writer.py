@@ -494,7 +494,7 @@ def compute_calibration_rate_health(
     prior_24h: int = 0
     table_present: bool = False
     try:
-        conn = sqlite3.connect(str(path))
+        conn = sqlite3.connect(str(path), timeout=30.0)
         conn.row_factory = sqlite3.Row
         try:
             try:

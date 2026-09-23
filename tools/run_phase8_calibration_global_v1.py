@@ -101,7 +101,7 @@ def main() -> int:
         if s.get("cloned_or_non_native_inference_touches_slice"):
             excluded_family_hz.add((str(s.get("family")), str(s.get("horizon"))))
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 

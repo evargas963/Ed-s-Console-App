@@ -89,7 +89,7 @@ def _build(proof_db: Path) -> int:
     _ = EdDB(proof_db)
     db_mod.DB_PATH = proof_db
 
-    conn = sqlite3.connect(str(proof_db))
+    conn = sqlite3.connect(str(proof_db), timeout=30.0)
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
 

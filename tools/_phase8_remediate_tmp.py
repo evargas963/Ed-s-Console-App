@@ -67,7 +67,7 @@ def method_preds(name,p,y):
         return pred,model
     raise ValueError
 
-conn=sqlite3.connect(canonical_console_db_path()); conn.row_factory=sqlite3.Row
+conn=sqlite3.connect(canonical_console_db_path(), timeout=30.0); conn.row_factory=sqlite3.Row
 results=[]; final_funcs={}; thresholds=[]; robustness=[]
 for family,colp,colo,valdir in [('move','pred_move_prob','outcome_move',False),('dir','pred_dir_up_prob','outcome_dir',True)]:
   final_funcs[family]={}

@@ -418,7 +418,7 @@ def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
     if db_path is None:
         db_path = resolve_stream_db_path(STREAM_DB_DEFAULT)
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
         # Autocommit: the feed reuses this handle across poll ticks. Default
         # isolation_level="" opens a deferred snapshot on the first SELECT and
         # holds it until commit — later CaptureWriter commits (fresh

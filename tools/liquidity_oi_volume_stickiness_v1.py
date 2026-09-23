@@ -647,7 +647,7 @@ def _verdict_arm(summary: dict) -> str:
 def run(tickers: list[str]) -> dict:
     t0 = time.time()
     rnd = random.Random(SEED)
-    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30.0)
 
     obs = _load_obs_chains(con, tickers)
     bars_by_tk = {tk: _rows(con, tk) for tk in tickers}

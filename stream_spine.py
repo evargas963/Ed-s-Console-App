@@ -670,7 +670,7 @@ class CaptureWriter:
         #: None therefore means "unchanged", not "clear"; pass {} explicitly to clear it.
         self._last_rejected_contracts: "dict[str, str] | None" = None
         self._closed = False
-        self._conn = sqlite3.connect(str(p))
+        self._conn = sqlite3.connect(str(p), timeout=30.0)
         try:
             self._conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
             self._conn.executescript(STREAM_SCHEMA_SQL)

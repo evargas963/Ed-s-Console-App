@@ -113,7 +113,7 @@ MIN_META_ROWS = 1000
 def _connect():
     if not DB_PATH.exists():
         raise FileNotFoundError(f"Database not found: {DB_PATH}")
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -194,7 +194,7 @@ def evaluate_training_readiness(db_path: Path | None = None) -> dict:
             "training_ok": False,
             "reasons": [f"database not found: {path}"],
         }
-    conn = sqlite3.connect(str(path), timeout=10)
+    conn = sqlite3.connect(str(path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         rth_total = _count(conn)

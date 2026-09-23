@@ -274,7 +274,7 @@ def rolling_horizon_log_loss(
         sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
         params.extend(tickers)
     acc: dict[str, dict[str, float]] = {hz: {"n": 0.0, "nll_sum": 0.0} for hz in HORIZON_SLUGS}
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         for row in conn.execute(sql, params):
@@ -1287,7 +1287,7 @@ def build_daily_scoreboard(
     if run_backfill:
         backfill_stats = backfill(Path(db_path), tol_sec=BACKFILL_JOIN_TOL_SEC)
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     ensure_calibration_schema(conn)
 
@@ -1663,7 +1663,7 @@ def build_actionability_report(
     """Report-only actionability segmentation of the date's decision rows."""
     budget = read_freshness_budget_sec(server_py)
     annotations, harness_files = load_harness_annotations(et_date, ui_transport_dir)
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     ensure_calibration_schema(conn)
     try:

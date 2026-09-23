@@ -38,7 +38,7 @@ def main() -> None:
 
     import sqlite3
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     g = conn.execute(

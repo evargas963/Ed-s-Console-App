@@ -112,7 +112,7 @@ def has_complete_chain_capture_today(
     if not tk or not exp or not day:
         return False
     try:
-        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return False
     try:
@@ -202,7 +202,7 @@ def latest_complete_chain_capture(
     if not tk or not exp:
         return None
     try:
-        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return None
     try:
@@ -285,7 +285,7 @@ def _nearest_complete_chain_capture_uncached(
     if not path.is_file():
         return None
     try:
-        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error:
         return None
     try:

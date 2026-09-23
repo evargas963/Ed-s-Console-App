@@ -192,7 +192,7 @@ def run(out_db: Path) -> dict[str, Any]:
         _ = EdDB(out_db)
         db_mod.DB_PATH = out_db
 
-        conn = sqlite3.connect(str(out_db))
+        conn = sqlite3.connect(str(out_db), timeout=30.0)
         configure_sqlite_connection(conn)
         ensure_calibration_schema(conn)
 
@@ -261,7 +261,7 @@ def run(out_db: Path) -> dict[str, Any]:
         bf2 = backfill(out_db, tol_sec=0.0)
         join2 = analyze_outcome_join(out_db)
 
-        conn = sqlite3.connect(str(out_db))
+        conn = sqlite3.connect(str(out_db), timeout=30.0)
         configure_sqlite_connection(conn)
         conn.row_factory = sqlite3.Row
         dups = _duplicate_key_groups(conn)

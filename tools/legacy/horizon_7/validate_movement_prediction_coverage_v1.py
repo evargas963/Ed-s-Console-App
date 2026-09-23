@@ -59,7 +59,7 @@ def main() -> int:
         print(json.dumps({"error": "missing db"}))
         return 2
 
-    conn = sqlite3.connect(str(dbp))
+    conn = sqlite3.connect(str(dbp), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 

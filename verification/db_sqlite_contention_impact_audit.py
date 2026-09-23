@@ -401,7 +401,7 @@ def scan_db_configuration(db_path: Optional[Path]) -> dict[str, Any]:
         cfg["busy_max_retries"] = 8
     if db_path and db_path.exists():
         try:
-            conn = sqlite3.connect(str(db_path), timeout=2.0)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             try:
                 jm = conn.execute("PRAGMA journal_mode").fetchone()
                 cfg["journal_mode"] = str(jm[0]) if jm else None

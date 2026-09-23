@@ -1879,43 +1879,56 @@ def check_sqlite_wal_contract() -> list[Violation]:
 
     OBSERVED (2026-07-25): concurrent agent/server writers lock a DELETE-mode
     DB; EdDB._connect already sets timeout=30 + configure_sqlite_connection
-    (WAL/NORMAL), but ad-hoc connects can skip both. VALIDATED: AST/source
-    contract on db.py — configure_sqlite_connection body + every
-    sqlite3.connect(…, timeout=…) site.
+    (WAL/NORMAL), but ad-hoc connects can skip both.
 
-    RC-REHAB-1 (2026-09-22): configure_sqlite_connection's body (the PRAGMA/
-    busy_timeout content) moved to db_sqlite_utils.py in the db.py decomposition
-    -- zero EdDB coupling, ~70 external callers already treated it as standalone.
-    db.py's own sqlite3.connect(...) call sites (EdDB._connect, EdDB.get_db_stats)
-    stayed in db.py and are still checked there; the PRAGMA/busy_timeout content
-    check follows configure_sqlite_connection to its real home.
+    SCOPE (RC-REHAB-1, 2026-09-23): the rule is about AD-HOC connects, and the first version
+    read exactly one file for them -- db.py, the one module that was already compliant.
+    MEASURED on the switch to a repo-wide AST scan: 267 sqlite3.connect calls in production
+    code, 169 with no timeout (Python's default is 5 s) or one under 30 s, including live
+    writers (app/options/order_flow/history.py + streaming.py, calibration/writer.py, the
+    chain-capture writers, desk_store.py). All 169 now pass timeout=30.0. Every
+    `sqlite3.connect(...)` in every production module must pass `timeout=`; a constant one
+    must be >= 30. configure_sqlite_connection's PRAGMA content is checked wherever it is
+    defined (it moved to db_sqlite_utils.py in the db.py decomposition), and exactly one
+    definition must exist.
     """
     out: list[Violation] = []
-    db_path = REPO / "db.py"
-    utils_path = REPO / "db_sqlite_utils.py"
-    try:
-        db_src = db_path.read_text(encoding="utf-8")
-    except OSError as e:
-        return [Violation(db_path, 0, f"cannot read db.py: {e}")]
-    try:
-        utils_src = utils_path.read_text(encoding="utf-8")
-    except OSError as e:
-        return [Violation(utils_path, 0, f"cannot read db_sqlite_utils.py: {e}")]
-    if "PRAGMA journal_mode=WAL" not in utils_src:
-        out.append(Violation(utils_path, 0, "configure_sqlite_connection missing PRAGMA journal_mode=WAL"))
-    if "PRAGMA synchronous=NORMAL" not in utils_src:
-        out.append(Violation(utils_path, 0, "configure_sqlite_connection missing PRAGMA synchronous=NORMAL"))
-    if "busy_timeout" not in utils_src:
-        out.append(Violation(utils_path, 0, "configure_sqlite_connection missing busy_timeout pragma"))
-    # Every sqlite3.connect in db.py must pass timeout= (no default 5s lock storms).
-    for i, line in enumerate(db_src.splitlines(), 1):
-        if "sqlite3.connect(" not in line:
-            continue
-        if "timeout=" not in line:
-            out.append(Violation(
-                db_path, i,
-                "sqlite3.connect without timeout= — require timeout>=30.0 "
-                "(multi-agent / async lock storm class)"))
+    helpers: list[tuple[Path, ast.AST]] = []
+    for path, tree in _production_asts():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "configure_sqlite_connection":
+                helpers.append((path, node))
+                continue
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "connect"
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id == "sqlite3"):
+                continue
+            if any(k.arg is None for k in node.keywords):
+                continue  # **kwargs: the timeout is not statically knowable here
+            timeout = next((k.value for k in node.keywords if k.arg == "timeout"), None)
+            if timeout is None:
+                out.append(Violation(
+                    path, node.lineno,
+                    "sqlite3.connect without timeout= — require timeout>=30.0 "
+                    "(multi-agent / async lock storm class; Python's default is 5 s)"))
+            elif (isinstance(timeout, ast.Constant) and isinstance(timeout.value, (int, float))
+                  and timeout.value < 30):
+                out.append(Violation(
+                    path, node.lineno,
+                    f"sqlite3.connect timeout={timeout.value} — require timeout>=30.0"))
+    if len(helpers) != 1:
+        where = ", ".join(f"{h.relative_to(REPO).as_posix()}:{n.lineno}" for h, n in helpers) or "nowhere"
+        out.append(Violation(REPO / "db_sqlite_utils.py", 0,
+                             f"expected exactly one configure_sqlite_connection, found "
+                             f"{len(helpers)} ({where})"))
+    for path, node in helpers:
+        body = ast.get_source_segment(path.read_text(encoding="utf-8"), node) or ""
+        for needle, what in (("PRAGMA journal_mode=WAL", "PRAGMA journal_mode=WAL"),
+                             ("PRAGMA synchronous=NORMAL", "PRAGMA synchronous=NORMAL"),
+                             ("busy_timeout", "busy_timeout pragma")):
+            if needle not in body:
+                out.append(Violation(path, node.lineno,
+                                     f"configure_sqlite_connection missing {what}"))
     return out
 
 
@@ -2880,10 +2893,9 @@ def check_universal_ticker_scope() -> list[Violation]:
     operator mandate: UNIVERSAL for everything we do, enforced with Cursor and Claude.
 
     Rule (practical — does NOT retro-flag historical report prose):
-      1. tools/liquidity_*.py, *_experiment*.py, lp01_*.py must not default --tickers / TICKERS
-         to SPY alone (AST). Escape: `# universal-scope-ok:` / OUT-OF-SCOPE / operator waiver.
-      2. static/chart.html must keep parameterized ticker fetches and must not gate
-         storm/highlight/combo/accrual on `=== 'SPY'` (or hardcode `ticker=SPY` APIs).
+      1. No production module may default --tickers / TICKERS to SPY alone (AST). Escape: `# universal-scope-ok:` / OUT-OF-SCOPE / operator waiver.
+      2. No static page or script may gate storm/highlight/combo/accrual on `=== 'SPY'` (or
+         hardcode `ticker=SPY` APIs); static/chart.html must keep its parameterized fetches.
       3. STAGED prompt / agent-instruction .md files (reports/*prompt*, .cursor/rules/,
          .claude/*.md, AGENTS.md, …) must not add SPY-only / sentinel-complete framing without
          UNIVERSAL / enrolled-universe / OUT-OF-SCOPE language.
@@ -2897,25 +2909,34 @@ def check_universal_ticker_scope() -> list[Violation]:
     from tools.universal_scope_lock import (
         chart_spy_only_feature_violations,
         chart_ticker_path_violations,
-        experiment_tool_paths,
         spy_only_ticker_default_violations,
     )
 
     out: list[Violation] = []
 
-    for path in experiment_tool_paths(REPO):
+    # SCOPE (RC-REHAB-1, 2026-09-23): rule 1 used to police only tools/liquidity_*.py,
+    # *_experiment*.py and lp01_*.py, and rule 2's feature scan only static/chart.html. The law
+    # is UNIVERSAL for everything we do, so both now run over every production module and every
+    # static page/script. MEASURED on the switch: 1 new hit in 694 .py files
+    # (tools/check_card_signal_fidelity.py --tickers default=["SPY"], fixed to the enrolled
+    # universe) and 0 in static/. chart_ticker_path_violations stays chart.html-specific: it
+    # asserts that page's own parameterized fetches are still PRESENT, a per-page contract.
+    for path in _production_py_files():
         src = _read_or_empty(path)
         if not src:
             continue
         for lineno, msg in spy_only_ticker_default_violations(path, src):
             out.append(Violation(path, lineno, msg))
 
-    chart = REPO / "static" / "chart.html"
-    if chart.exists():
-        csrc = _read_or_empty(chart)
-        for lineno, msg in chart_ticker_path_violations(csrc):
-            out.append(Violation(chart, lineno, msg))
+    static = REPO / "static"
+    web = sorted(static.rglob("*.html")) + sorted(static.rglob("*.js")) if static.is_dir() else []
+    for page in web:
+        csrc = _read_or_empty(page)
         for lineno, msg in chart_spy_only_feature_violations(csrc):
+            out.append(Violation(page, lineno, msg))
+    chart = static / "chart.html"
+    if chart.exists():
+        for lineno, msg in chart_ticker_path_violations(_read_or_empty(chart)):
             out.append(Violation(chart, lineno, msg))
 
     # BEDROCK 2026-09-06: rule 3 (SPY-only PHRASES in staged prompt prose) is retired. It was
@@ -3128,7 +3149,7 @@ def check_collect_datasheet_staged() -> list[Violation]:
     WHAT WAS OBSERVED: new tables could land without motivation/composition documentation —
     BCBS 239 / FAIR data-provenance gap on schema migrations.
 
-    Rule: staged diff adding CREATE TABLE in db.py, db_schema.py, or calibration/*.py must ship
+    Rule: staged diff adding CREATE TABLE in any production .py file must ship
     a datasheet YAML with motivation, composition, collection, recommended_uses. Existing tables
     grandfathered (diff-scoped only).
 
@@ -3155,10 +3176,12 @@ def check_collect_datasheet_staged() -> list[Violation]:
             collect_datasheet_violations, new_table_names_in_diff, removed_table_names_in_diff,
         )
     all_staged = [s.strip().replace("\\", "/") for s in staged if s.strip()]
-    targets = [
-        s for s in all_staged
-        if s in ("db.py", "db_schema.py") or s.startswith("calibration/")
-    ]
+    # SCOPE (RC-REHAB-1, 2026-09-23): targets were db.py, db_schema.py and calibration/*.py
+    # only, while tables are created in desk_store.py, decision_record.py, execution_identity.py,
+    # override_registry.py, stream_spine.py, db_logging_universe.py, server.py and a dozen
+    # tools -- a new table in any of them landed with no datasheet. Every staged production
+    # .py file is a target now (tests/ excluded: fixture DDL is not a Collect table).
+    targets = [s for s in all_staged if s.endswith(".py") and not s.startswith("tests/")]
     if not targets:
         return []
     tables: set[str] = set()

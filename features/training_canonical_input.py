@@ -213,7 +213,7 @@ def preflight_tickers_for_training(
     tickers_no_data: list[str] = []
 
     try:
-        conn = sqlite3.connect(str(db_path), timeout=10.0)
+        conn = sqlite3.connect(str(db_path), timeout=30.0)
     except sqlite3.Error as e:
         return {
             "ok": False,

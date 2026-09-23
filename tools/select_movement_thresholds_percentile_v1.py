@@ -85,7 +85,7 @@ def main() -> None:
     max_rows = int(args.max_rows)
     fetch_limit = max(max_rows * _RTH_FETCH_OVERSAMPLE, max_rows)
 
-    conn = sqlite3.connect(str(dbp))
+    conn = sqlite3.connect(str(dbp), timeout=30.0)
     configure_sqlite_connection(conn)
 
     report: dict = {"db": str(dbp), "horizons": {}}

@@ -24,16 +24,7 @@ from timeframe_config import CANONICAL_TIMEFRAME
 
 log = logging.getLogger(__name__)
 
-try:
-    from db import configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.configure_sqlite_connection not available — using no-op stub: %s",
-        e,
-    )
-
-    def configure_sqlite_connection(conn: sqlite3.Connection, **kwargs: Any) -> None:
-        return None
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 A1_CALIBRATION_ARTIFACT_SCHEMA_VERSION = "1"

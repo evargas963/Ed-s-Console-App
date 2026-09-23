@@ -18,7 +18,7 @@ def main() -> None:
     register_allow_noncanonical_flag(p)
     args = p.parse_args()
     require_canonical_db_target(args, tool_name="tools.canonical_timeframe_db_evidence_v1", write_capable=False)
-    c = sqlite3.connect(str(args.db))
+    c = sqlite3.connect(str(args.db), timeout=30.0)
     bars = [
         r[0]
         for r in c.execute(

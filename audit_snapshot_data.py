@@ -33,7 +33,7 @@ TICKERS = ["SPY", "QQQ", "IWM"]
 def connect():
     if not DB_PATH.exists():
         raise FileNotFoundError(f"DB not found: {DB_PATH}")
-    return sqlite3.connect(str(DB_PATH))
+    return sqlite3.connect(str(DB_PATH), timeout=30.0)
 
 
 def run_audit():

@@ -25,7 +25,7 @@ def main() -> None:
     register_allow_noncanonical_flag(ap)
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="tools.repair_validation_counts_v1", write_capable=False)
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     r1 = conn.execute(

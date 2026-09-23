@@ -64,7 +64,7 @@ def _head_sha() -> str:
 
 
 def label_histogram(db_path: str, ticker: str, label_col: str, days: set[str]) -> dict[str, int]:
-    con = sqlite3.connect(db_path)
+    con = sqlite3.connect(db_path, timeout=30.0)
     try:
         rows = con.execute(
             f"SELECT {label_col}, COUNT(*) FROM {_snapshot_table()} "
@@ -89,8 +89,8 @@ def build_control_db(
 ) -> dict:
     """Copy source → control (sqlite backup API), then permute ONLY the label
     column on train-window rows of the ticker. Returns the permutation record."""
-    src = sqlite3.connect(source_db)
-    dst = sqlite3.connect(control_db)
+    src = sqlite3.connect(source_db, timeout=30.0)
+    dst = sqlite3.connect(control_db, timeout=30.0)
     try:
         src.backup(dst)
     finally:

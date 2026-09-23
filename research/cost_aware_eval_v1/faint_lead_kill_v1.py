@@ -97,7 +97,7 @@ def _load_l1_with_js(db: Path, ticker: str, hz: str):
         f"FROM snapshots_1m_normalized "
         f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL"
     )
-    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = c.execute(q, (ticker,)).fetchall()
     c.close()
     ends, closes = _load_closes(db, ticker)
@@ -142,7 +142,7 @@ def _load_of_with_js(db: Path, ticker: str, hz: str):
         f"SELECT ts_utc, {label}, {cols} FROM snapshots_1m_normalized "
         f"WHERE ticker=? AND timeframe='1m' AND {label} IS NOT NULL"
     )
-    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = c.execute(q, (ticker,)).fetchall()
     c.close()
     ends, closes = _load_closes(db, ticker)

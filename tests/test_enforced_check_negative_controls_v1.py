@@ -701,3 +701,27 @@ def test_faucet_audit_traces_routes_in_any_module_and_fails_closed_on_none(tmp_p
     import pytest as _pytest
     with _pytest.raises(RuntimeError):
         A.run("/dev/null/no-db")
+
+
+def test_sqlite_wal_check_sees_connects_and_stub_helpers_in_every_module(tmp_path, monkeypatch):
+    """RC-REHAB-1 (2026-09-23): the rule is about AD-HOC connects, yet it read db.py alone --
+    169 of 267 production connects had no timeout or one under 30 s, and 16 modules defined a
+    silent no-op configure_sqlite_connection fallback. Both shapes, planted outside db.py."""
+    good_utils = (
+        "def configure_sqlite_connection(conn):\n    conn.execute('PRAGMA journal_mode=WAL')\n"
+        "    conn.execute('PRAGMA synchronous=NORMAL')\n    conn.execute('PRAGMA busy_timeout=30000')\n")
+    M = _tree(tmp_path, monkeypatch, {
+        "db_sqlite_utils.py": good_utils,
+        "app/options/x.py": "c = sqlite3.connect(p, uri=True)\nd = sqlite3.connect(p, timeout=10)\n",
+        "calibration/y.py": ("try:\n    from db import configure_sqlite_connection\n"
+                             "except ImportError:\n    def configure_sqlite_connection(conn, **kw):\n"
+                             "        pass\n"),
+    })
+    hits = [(v.path.name, v.line, v.msg) for v in M.check_sqlite_wal_contract()]
+    assert ("x.py", 1) in [(n, ln) for n, ln, _ in hits] and ("x.py", 2) in [(n, ln) for n, ln, _ in hits]
+    assert any("exactly one configure_sqlite_connection" in m for _, _, m in hits)
+    (tmp_path / "app/options/x.py").write_text(
+        "c = sqlite3.connect(p, uri=True, timeout=30.0)\n", encoding="utf-8")
+    (tmp_path / "calibration/y.py").write_text(
+        "from db_sqlite_utils import configure_sqlite_connection\n", encoding="utf-8")
+    assert M.check_sqlite_wal_contract() == []

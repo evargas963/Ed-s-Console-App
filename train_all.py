@@ -231,7 +231,7 @@ def run_meta(
 
                 rows = records_for_mvp_from_dataframe(df)
                 stacked, ys = [], []
-                conn = sqlite3.connect(db_path)
+                conn = sqlite3.connect(db_path, timeout=30.0)
                 from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
 
                 from features.fusion_model_input import meta_tabular_vector_from_overlay
@@ -387,7 +387,7 @@ def preload_historical_db_for_eval(
     """
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     where = "ticker = ? AND timeframe = ? AND ts_utc < ?"
     params: list = [ticker, CANONICAL_TIMEFRAME, float(max_as_of_ts_utc)]

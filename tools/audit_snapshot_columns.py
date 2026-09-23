@@ -105,7 +105,7 @@ LEGACY_LABEL_RE = re.compile(r"_(3c|8c|13c)(_|$)|(^|_)(outcome|pred|fused|valid_
 
 # ──────────────────────────── DB facts ────────────────────────────
 def db_columns_with_nulls(db_path: Path, table: str) -> tuple[int, dict[str, int]]:
-    con = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True, timeout=30.0)
     try:
         cur = con.cursor()
         cols = [r[1] for r in cur.execute(f'PRAGMA table_info("{table}")').fetchall()]

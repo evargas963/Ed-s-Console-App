@@ -46,7 +46,7 @@ def print_header(title):
 
 def connect_db():
     try:
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
         return conn
     except Exception as e:
         print("[FAIL] DB CONNECTION FAILED:", e)

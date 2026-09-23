@@ -41,16 +41,7 @@ from calibration.v2_a1_calibration import axis_reliability_bucket_value
 
 log = logging.getLogger(__name__)
 
-try:
-    from db import configure_sqlite_connection
-except ImportError as e:
-    log.warning(
-        "db.configure_sqlite_connection not available — using no-op stub: %s",
-        e,
-    )
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 def _effective_directional_signal(r: dict[str, Any]) -> str:
@@ -142,7 +133,7 @@ def analyze_edge(db_path: Path) -> dict[str, Any]:
         out["error"] = "db missing"
         return out
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)

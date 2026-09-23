@@ -42,7 +42,7 @@ def _load_rows(db: Path, ticker: str, hz: str):
         # Session-only pa_vwap_zscore: exclude roll-fallback contamination (vwap NULL).
         f"AND vwap IS NOT NULL"
     )
-    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     rows = c.execute(q, (ticker,)).fetchall()
     c.close()
     xs, ys, dates = [], [], []

@@ -128,7 +128,7 @@ def main() -> None:
     )
 
     edb = EdDB(db_path, allow_noncanonical=bool(getattr(args, "allow_noncanonical_db", False)))
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     gov_extra = ""

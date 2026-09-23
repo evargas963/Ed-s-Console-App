@@ -48,7 +48,7 @@ def db_coverage_report(
     timeframe: str = CANONICAL_TIMEFRAME,
 ) -> dict[str, Any]:
     path = Path(db_path or DB_PATH)
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]

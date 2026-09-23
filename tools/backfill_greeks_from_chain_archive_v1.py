@@ -195,7 +195,7 @@ def _iter_chain_rows(
     min_ts: float | None,
     stride: int,
 ) -> Iterator[sqlite3.Row]:
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     con.row_factory = sqlite3.Row
     sql = (
         "SELECT snapshot_id, ticker, ts_utc, spot, net_gamma, option_chain_json "
@@ -219,7 +219,7 @@ def _iter_chain_rows(
 
 
 def _sql_counts(db_path: str, tickers: list[str] | None) -> list[dict[str, Any]]:
-    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     sql = (
         "SELECT ticker, COUNT(*), MIN(ts_utc), MAX(ts_utc), SUM(LENGTH(option_chain_json)) "
         "FROM snapshots WHERE timeframe='1m' "
@@ -569,7 +569,7 @@ def run_p2(db_path: str, tickers: list[str] | None, limit: int) -> dict[str, Any
     n_skipped_existing = ctr.n_skipped
     n_parse_fail = ctr.n_parse_fail
     n_low_trust = ctr.n_low_trust
-    rcon = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    rcon = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     try:
         ready = recomputed_greeks_ready(rcon)
     finally:

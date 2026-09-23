@@ -103,7 +103,7 @@ def main() -> int:
     }
     failures: list[dict[str, Any]] = []
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 

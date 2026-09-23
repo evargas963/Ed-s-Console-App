@@ -120,7 +120,7 @@ def main() -> int:
     require_canonical_db_target(args, tool_name="enforce_universal_ticker_readiness_v1", write_capable=True)
 
     db_path = str(args.db.resolve())
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
 

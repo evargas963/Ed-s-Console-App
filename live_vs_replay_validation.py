@@ -187,7 +187,7 @@ def run_live_vs_replay_validation(
             f"table must be one of {sorted(_VALIDATION_TABLES)}; got {table!r}"
         )
     ticker_u = ticker.upper() if ticker else None
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     # RC-6: the option_chain_json / replay_context_json blobs live ONLY in `snapshots`

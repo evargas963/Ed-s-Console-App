@@ -167,7 +167,7 @@ def section_db() -> dict:
         return {"unmeasurable": "data/ed_console.db missing"}
     out: dict = {"size_gb": round(db.stat().st_size / 1024 ** 3, 2)}
     try:
-        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=20)
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error as e:
         return {"unmeasurable": str(e)}
     try:

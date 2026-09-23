@@ -661,7 +661,7 @@ def main() -> int:
     t0 = time.time()
     rnd = random.Random(SEED)
 
-    con = sqlite3.connect(args.db)
+    con = sqlite3.connect(args.db, timeout=30.0)
     obs_map = _load_obs_chains(con, tickers)
     bars_by_tk = {tk: _rows(con, tk) for tk in tickers}
     con.close()

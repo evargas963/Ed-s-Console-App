@@ -134,7 +134,7 @@ def main() -> None:
     db_path = args.db.resolve()
     tz_eval = time.time()
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     selection_sql = """

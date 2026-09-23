@@ -21,12 +21,7 @@ from horizon_outcomes import (
 from instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME
 
-try:
-    from db import configure_sqlite_connection
-except Exception:
-
-    def configure_sqlite_connection(conn, **kwargs):
-        pass
+from db_sqlite_utils import configure_sqlite_connection  # RC-REHAB-1: no silent no-op fallback
 
 
 @dataclass

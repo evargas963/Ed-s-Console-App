@@ -456,7 +456,7 @@ def run(tickers: list[str]) -> dict:
     t0 = time.time()
     rnd = random.Random(SEED)
     boot_rnd = random.Random(SEED + 7)
-    con = sqlite3.connect(str(DB))
+    con = sqlite3.connect(str(DB), timeout=30.0)
     con.row_factory = sqlite3.Row
 
     obs = _load_obs_chains(con, tickers)

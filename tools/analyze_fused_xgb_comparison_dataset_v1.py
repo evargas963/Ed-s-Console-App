@@ -55,7 +55,7 @@ def main() -> int:
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="analyze_fused_xgb_comparison_dataset_v1", write_capable=False)
 
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     configure_sqlite_connection(conn)
 
     tf = CANONICAL_TIMEFRAME

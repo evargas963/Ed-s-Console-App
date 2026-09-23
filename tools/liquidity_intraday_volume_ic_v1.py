@@ -542,7 +542,7 @@ def run(tickers: list[str]) -> dict:
     t0 = time.time()
     rnd = random.Random(SEED)
     boot_rnd = random.Random(SEED + 11)
-    con = sqlite3.connect(str(DB))
+    con = sqlite3.connect(str(DB), timeout=30.0)
     con.row_factory = sqlite3.Row
 
     census = _census_snapshots(con, tickers)

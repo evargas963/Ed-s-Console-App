@@ -124,7 +124,7 @@ def main() -> int:
     ap.add_argument("--calls", type=int, default=3, help="Number of compute_signals invocations")
     args = ap.parse_args()
     n_calls = max(1, args.calls)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
     before = conn.execute("SELECT COUNT(*) FROM calibration_decision_log").fetchone()[0]
@@ -173,7 +173,7 @@ def main() -> int:
         print(f"call {i} signal={out.call.signal} refresh_ts_utc={rts:.3f} wall_s=[{t0:.3f},{t1:.3f}]")
         time.sleep(0.15)
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
     configure_sqlite_connection(conn)
     ensure_calibration_schema(conn)
     after = conn.execute("SELECT COUNT(*) FROM calibration_decision_log").fetchone()[0]

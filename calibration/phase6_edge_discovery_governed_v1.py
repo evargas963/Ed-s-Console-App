@@ -163,7 +163,7 @@ def load_rows(
     *,
     min_ts_utc: float | None = None,
 ) -> tuple[list[sqlite3.Row], dict[str, Any]]:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     configure_sqlite_connection(conn)
     bar_ends = _load_bar_ends(conn)

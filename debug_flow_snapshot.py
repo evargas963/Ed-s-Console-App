@@ -70,7 +70,7 @@ def main() -> None:
     args = ap.parse_args()
     require_canonical_db_target(args, tool_name="debug_flow_snapshot", write_capable=False)
 
-    conn = sqlite3.connect(str(args.db))
+    conn = sqlite3.connect(str(args.db), timeout=30.0)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     if args.latest:

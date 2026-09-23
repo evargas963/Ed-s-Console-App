@@ -26,7 +26,7 @@ def main() -> None:
         help="Exit 1 if any distinct 1m snapshot ticker is missing from logging_universe (Issue 22 drift).",
     )
     args = ap.parse_args()
-    conn = sqlite3.connect(str(args.db.resolve()))
+    conn = sqlite3.connect(str(args.db.resolve()), timeout=30.0)
     conn.row_factory = sqlite3.Row
 
     rows = conn.execute(

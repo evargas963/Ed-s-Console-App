@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
 
 from db_authority import canonical_console_db_path  # noqa: E402
 
-conn = sqlite3.connect(str(canonical_console_db_path()))
+conn = sqlite3.connect(str(canonical_console_db_path()), timeout=30.0)
 conn.row_factory = sqlite3.Row
 
 total = conn.execute("SELECT COUNT(*) AS n FROM snapshots WHERE timeframe='1m'").fetchone()["n"]

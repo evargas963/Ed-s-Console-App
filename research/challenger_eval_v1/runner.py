@@ -78,7 +78,7 @@ def challenger_prediction(
 
 def load_bars(db_path: Path | str, tickers: list[str]) -> dict[str, tuple[list[float], list[float]]]:
     """Per ticker: (bar_end_ts sorted ascending, closes aligned) — read-only."""
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     try:
         out: dict[str, tuple[list[float], list[float]]] = {}
         for t in tickers:
@@ -107,7 +107,7 @@ def load_decision_rows(
     cells: dict[tuple[str, str], list[dict[str, Any]]] = {
         (t, hz): [] for t in tickers for hz in horizons
     }
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         sql = (

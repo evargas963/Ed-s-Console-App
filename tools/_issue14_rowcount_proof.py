@@ -25,7 +25,7 @@ if not p.exists():
     print("NO_DB at", p)
     raise SystemExit(0)
 
-conn = sqlite3.connect(str(p))
+conn = sqlite3.connect(str(p), timeout=30.0)
 tf = CANONICAL_TIMEFRAME
 base = f"timeframe='{tf}' AND ({weekday_where_clause()})"
 

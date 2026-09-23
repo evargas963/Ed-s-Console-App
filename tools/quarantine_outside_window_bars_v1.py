@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS price_bars_1m_quarantine (
 
 def _write_lock_free(db_path: str) -> tuple[bool, str | None]:
     try:
-        conn = sqlite3.connect(db_path, timeout=2.0)
+        conn = sqlite3.connect(db_path, timeout=30.0)
         try:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute("COMMIT")

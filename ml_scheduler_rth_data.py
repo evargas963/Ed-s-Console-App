@@ -58,7 +58,7 @@ def _get_tickers_with_rth_data(
             f"_get_tickers_with_rth_data: canonical 1m only; got timeframe={_tf!r}"
         )
     table = SNAPSHOT_TABLE_1M
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     where = training_base_where_clause(label_column, include_ticker=False)
     rows = conn.execute(
         f"SELECT ticker, ts_utc FROM {table} WHERE {where} ORDER BY ticker",
@@ -111,7 +111,7 @@ def _load_rth_rows_for_ticker(
             f"_load_rth_rows_for_ticker: canonical 1m only; got timeframe={_tf!r}"
         )
     table = SNAPSHOT_TABLE_1M
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     where = training_base_where_clause(label_column, include_ticker=False)
     rows = conn.execute(
