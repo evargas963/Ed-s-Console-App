@@ -214,7 +214,8 @@ def evaluate() -> tuple[list[str], list[str], int]:
 
 
 def unregistered_payload_fields() -> list[str]:
-    """Payload keys emitted by server.py that no registry entry governs — NOT_PROVEN."""
+    """Payload keys emitted by the declared payload surfaces (server.py and every module
+    extracted from it) that no registry entry governs — NOT_PROVEN."""
     # RC-325: absence must FAIL CLOSED where the surface is DECLARED, and be silent only
     # where none is declared. A first version returned [] on any missing server.py, which
     # turned "I could not inspect the payload surface" into "there is nothing to report" —
@@ -228,15 +229,24 @@ def unregistered_payload_fields() -> list[str]:
             f"registry declares payload surface(s) {missing} which do not exist under "
             f"{REPO}. Producer authority over their fields cannot be established, so the "
             f"gate FAILS CLOSED rather than reporting zero unresolved fields (SP-05).")
-    src = "\n".join((REPO / rel).read_text(encoding="utf-8", errors="replace")
-                    for rel in declared)
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
-        return []
-    keys = {k.value for n in ast.walk(tree) if isinstance(n, ast.Dict)
-            for k in n.keys
-            if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+    # RC-REHAB-1 (2026-09-23): each surface is parsed ON ITS OWN. The first version joined
+    # every declared file into one string and parsed that, which is only correct while the
+    # list holds one file: a second file opening with `from __future__ import annotations`
+    # is a SyntaxError mid-string, and the old `except SyntaxError: return []` converted
+    # that into "zero NOT_PROVEN fields" -- the exact fail-open this function exists to
+    # prevent. A surface that does not parse is now a raised finding, not an empty result.
+    keys: set[str] = set()
+    for rel in declared:
+        src = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+        try:
+            tree = ast.parse(src)
+        except SyntaxError as exc:
+            raise PayloadSurfaceMissing(
+                f"declared payload surface {rel} does not parse ({exc}); its fields cannot "
+                f"be classified, so the gate FAILS CLOSED (SP-05).") from exc
+        keys.update(k.value for n in ast.walk(tree) if isinstance(n, ast.Dict)
+                    for k in n.keys
+                    if isinstance(k, ast.Constant) and isinstance(k.value, str))
     reg = load_registry().get("fields") or {}
     covered = set(reg)
     for spec in reg.values():

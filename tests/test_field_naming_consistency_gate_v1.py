@@ -158,8 +158,12 @@ def test_absent_payload_surface_fails_closed_when_declared(tmp_path, monkeypatch
 def test_this_repository_declares_its_payload_surface():
     """The production registry must declare, or the naming gate can never fire here."""
     reg = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    assert reg.get("payload_surfaces") == ["server.py"]
-    assert (REPO / "server.py").exists()
+    surfaces = reg.get("payload_surfaces") or []
+    assert surfaces and surfaces[0] == "server.py"
+    assert all((REPO / rel).exists() for rel in surfaces)
+    # RC-REHAB-1 (2026-09-23): the decomposition moved _terrain_kl_overlay -- the kl_gsf/
+    # gsf writer this gate was built for -- out of server.py; it must stay declared.
+    assert "terrain_kl_overlay.py" in surfaces
 
 
 def test_the_repository_currently_registers_gsf_and_grc_for_this_gate():
