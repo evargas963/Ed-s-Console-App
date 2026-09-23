@@ -300,17 +300,25 @@ def test_query_endpoints_canonicalize_through_the_authority(repo_index):
 
     TEST_SYSTEM_REHAB_V2 (recurrence-lock remediation): reads server.py and
     app/api/routes/*.py from the shared `repo_index` observation instead of a
-    private `.glob("*.py")` scan of the current tree."""
+    private `.glob("*.py")` scan of the current tree.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): the producer's
+    own canonicalization line moved with _terrain_refresh_one into terrain_refresh.py."""
     src = ""
+    tr_src = ""
     all_src = ""
     for rel, text, _tree in repo_index.items():
         posix = rel.as_posix()
         if posix == "server.py":
             src = text
             all_src += text
+        elif posix == "terrain_refresh.py":
+            tr_src = text
+            all_src += text
         elif posix.startswith("app/api/routes/") and posix.endswith(".py"):
             all_src += text
     assert src, "server.py is missing from repo_index"
+    assert tr_src, "terrain_refresh.py is missing from repo_index"
     assert all_src.count("ticker_storage_key(ticker or DEFAULT_TICKER)") >= 4, (
         "the terrain/spot/bars endpoints no longer canonicalize the typed symbol"
     )
@@ -318,4 +326,4 @@ def test_query_endpoints_canonicalize_through_the_authority(repo_index):
         "a raw upper/strip endpoint boundary is back — bare index symbols will go dark again"
     )
     # the producer canonicalizes too: background callers don't pass the endpoints
-    assert "tk = ticker_storage_key(ticker)   # RC-126" in src
+    assert "tk = ticker_storage_key(ticker)   # RC-126" in tr_src

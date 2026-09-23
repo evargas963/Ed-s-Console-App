@@ -22,12 +22,18 @@ import server  # noqa: E402
 
 SRC = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
 TREE = ast.parse(SRC)
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
+# moved out of server.py entirely, into terrain_refresh.py.
+_TR_SRC = (Path(__file__).resolve().parent.parent / "terrain_refresh.py").read_text(encoding="utf-8")
+_TR_TREE = ast.parse(_TR_SRC)
+_SOURCES = ((SRC, TREE), (_TR_SRC, _TR_TREE))
 
 
 def _fn(name: str) -> str:
-    for n in ast.walk(TREE):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
-            return ast.get_source_segment(SRC, n) or ""
+    for src, tree in _SOURCES:
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
+                return ast.get_source_segment(src, n) or ""
     raise AssertionError(f"{name} not found")
 
 

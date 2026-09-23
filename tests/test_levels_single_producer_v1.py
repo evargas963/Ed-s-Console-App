@@ -26,9 +26,7 @@ SRC = SERVER.read_text(encoding="utf-8")
 TREE = ast.parse(SRC)
 
 # RC-REHAB-1 (Phase 3, seventh extraction slice): get_terrain/get_terrain_radar/
-# get_terrain_strikes moved out of server.py into app/api/routes/terrain.py. _producers()
-# below still only needs to scan server.py -- the one real (non-UNAVAILABLE) compute_terrain
-# call sites both remain there (the background terrain loop and _terrain_refresh_one) -- but
+# get_terrain_strikes moved out of server.py into app/api/routes/terrain.py.
 # _fn/_calls_in must also be able to find a function that moved, since they answer questions
 # about a NAMED function's own body regardless of which file currently owns it.
 _TERRAIN_ROUTES = (
@@ -36,7 +34,18 @@ _TERRAIN_ROUTES = (
 )
 _TERRAIN_ROUTES_SRC = _TERRAIN_ROUTES.read_text(encoding="utf-8")
 _TERRAIN_ROUTES_TREE = ast.parse(_TERRAIN_ROUTES_SRC)
-_SOURCES = ((SRC, TREE), (_TERRAIN_ROUTES_SRC, _TERRAIN_ROUTES_TREE))
+# RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
+# (and its own real, non-UNAVAILABLE compute_terrain call) moved out of server.py entirely,
+# into terrain_refresh.py -- _producers() below now scans _SOURCES (all three files), not
+# just server.py's own TREE, so this real producer site is still found.
+_TERRAIN_REFRESH = Path(__file__).resolve().parent.parent / "terrain_refresh.py"
+_TERRAIN_REFRESH_SRC = _TERRAIN_REFRESH.read_text(encoding="utf-8")
+_TERRAIN_REFRESH_TREE = ast.parse(_TERRAIN_REFRESH_SRC)
+_SOURCES = (
+    (SRC, TREE),
+    (_TERRAIN_ROUTES_SRC, _TERRAIN_ROUTES_TREE),
+    (_TERRAIN_REFRESH_SRC, _TERRAIN_REFRESH_TREE),
+)
 
 
 def _fn(name: str) -> str:
@@ -48,7 +57,8 @@ def _fn(name: str) -> str:
 
 
 def _producers() -> list[tuple[int, str]]:
-    """(line, enclosing function) for every compute_terrain call fed REAL contracts.
+    """(line, enclosing function) for every compute_terrain call fed REAL contracts, across
+    every source _SOURCES tracks (server.py, app/api/routes/terrain.py, terrain_refresh.py).
 
     `compute_terrain(tk, None, ...)` is the UNAVAILABLE constructor — it computes no levels from
     data and is therefore not a producer."""
@@ -73,7 +83,8 @@ def _producers() -> list[tuple[int, str]]:
                     out.append((n.lineno, self.fn or "<module>"))
             self.generic_visit(n)
 
-    V().visit(TREE)
+    for _src, tree in _SOURCES:
+        V().visit(tree)
     return out
 
 

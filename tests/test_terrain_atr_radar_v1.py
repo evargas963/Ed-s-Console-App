@@ -148,6 +148,10 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     from types import SimpleNamespace
 
     import server as srv
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
+    # moved to terrain_refresh.py, which imports compute_terrain directly (module-level,
+    # not lazily via `import server`), so it must be patched on its real home.
+    import terrain_refresh
 
     calls: list = []
     real = srv._log_flip_drift
@@ -186,7 +190,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
         def to_dict(self):
             return {"gamma_flip": 99.5, "spot": 100.0, "confidence": "TRUSTED"}
 
-    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _Snap())
+    monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *_a, **_k: _Snap())
     monkeypatch.setattr(srv, "_radar_atr", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
 
     out = srv._terrain_refresh_one("SPY")
@@ -204,7 +208,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
         def to_dict(self):
             return {"gamma_flip": object(), "spot": 100.0, "confidence": "TRUSTED"}
 
-    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _BadSnap())
+    monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *_a, **_k: _BadSnap())
     out2 = srv._terrain_refresh_one("SPY")
     assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
 

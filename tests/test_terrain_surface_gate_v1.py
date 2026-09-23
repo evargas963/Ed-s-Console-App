@@ -8,6 +8,8 @@ import types
 from pathlib import Path
 
 import server
+import terrain_refresh
+import gamma_surface_projection
 
 #: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
 #: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
@@ -39,12 +41,19 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (100.0, "stub", 0.0))
     monkeypatch.setattr(server, "_persist_universal_complete_chain", lambda *a, **k: None)
     monkeypatch.setattr(server, "_learn_strike_geometry", lambda *a, **k: None)
-    monkeypatch.setattr(server, "compute_terrain", lambda *a, **k: Snap())
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
+    # moved to terrain_refresh.py, which imports compute_terrain directly (module-level,
+    # not lazily via `import server`) -- and its own _apply_gamma_surface_projection helper
+    # re-imports project_gamma_surface from gamma_surface_projection.py fresh on every call
+    # (that import statement lives inside the function body), so patching that module's own
+    # binding is picked up on the next call. Both must be patched on their real homes, not
+    # on server's re-export.
+    monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *a, **k: Snap())
     monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_radar_atr", lambda t: types.SimpleNamespace(daily=None, m15=None))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
-    monkeypatch.setattr(server, "project_gamma_surface", proj)
+    monkeypatch.setattr(gamma_surface_projection, "project_gamma_surface", proj)
 
 
 def _cached_surface(tk):
@@ -406,7 +415,9 @@ def test_a_stream_observation_between_rest_fetch_and_computation_completion_is_a
                 "_overlaid_gamma": contracts[0].get("gamma")}
 
     _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "compute_terrain", slow_compute_terrain)
+    # RC-REHAB-1 (2026-09-23, twenty-fifth slice): overrides _stub_terrain's own
+    # terrain_refresh.compute_terrain patch (see that helper's comment).
+    monkeypatch.setattr(terrain_refresh, "compute_terrain", slow_compute_terrain)
     monkeypatch.setattr(
         "app.options.order_flow.streaming.get_active_option_contract",
         lambda: contract_symbol)

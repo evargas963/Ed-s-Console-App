@@ -407,7 +407,9 @@ def test_ladder_narrows_on_over_budget_status_not_only_on_timeout():
     time out — the vendor answers HTTP 502 — so `break` fired on rung 1 and the ladder built for
     exactly this case was never reached."""
     import re
-    src = (ROOT / "server.py").read_text(encoding="utf-8")
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): the ladder moved
+    # out of server.py entirely, into terrain_refresh.py's own _terrain_chain_fetch_ladder.
+    src = (ROOT / "terrain_refresh.py").read_text(encoding="utf-8")
     i = src.find('for _basis, _to_days in (("full", None)')
     assert i > 0, "the timeout ladder is gone"
     body = re.sub(r"#.*$", "", src[i:i + 1400], flags=re.M)

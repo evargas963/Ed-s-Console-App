@@ -537,9 +537,17 @@ def test_rc359_doi_wired_end_to_end():
     assert hasattr(snap, "oi_by_strike")
     assert "oi_by_strike" not in snap.to_dict()        # heavy field stays out of the poll
     srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    for k in ('bank_daily_strike_oi(', 'prev_session_strike_oi(', 'md["kl_doi_call_strike"]',
-              'md["kl_doi_put_strike"]', 'md["kl_doi_unwind_strike"]'):
-        assert k in srv, f"server must wire {k}"
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): the DOI banking
+    # write site (bank_daily_strike_oi/prev_session_strike_oi) moved with
+    # _terrain_refresh_one into terrain_refresh.py; the md["kl_doi_*"] stamps that read
+    # delta_oi_walls back out stay in server.py.
+    tr = Path(__file__).resolve().parent.parent.joinpath("terrain_refresh.py").read_text(encoding="utf-8")
+    for k, where in (
+        ('bank_daily_strike_oi(', tr), ('prev_session_strike_oi(', tr),
+        ('md["kl_doi_call_strike"]', srv), ('md["kl_doi_put_strike"]', srv),
+        ('md["kl_doi_unwind_strike"]', srv),
+    ):
+        assert k in where, f"expected {k} to be wired"
     # The UI half of this test (a ΔOI ladder row in static/index.html) was retired here
     # (/console cutover, operator directive 2026-09-14), alongside the same-shaped UI
     # assertions in the GSF/GRC, 0DTE share, RR25, Vanna, and DEX tests above -- none of
@@ -570,8 +578,10 @@ def test_rc354_iv_banking_upsert_last_write_wins(tmp_path):
                     ("SPY", "2026-08-15", 21.0),   # upsert: closing value, not first
                     ("SPY", "2026-08-16", 19.0)]
     # the terrain-refresh hook is wired (source assertion on the one write site)
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    assert "bank_daily_atm_iv(" in srv and "iv_pct_atm" in srv
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): the IV banking
+    # write site moved with _terrain_refresh_one into terrain_refresh.py.
+    tr = Path(__file__).resolve().parent.parent.joinpath("terrain_refresh.py").read_text(encoding="utf-8")
+    assert "bank_daily_atm_iv(" in tr and "iv_pct_atm" in tr
 
 
 def test_snap_to_shelf_only_within_tolerance_and_side():

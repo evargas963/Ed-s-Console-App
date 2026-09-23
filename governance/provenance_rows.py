@@ -2700,7 +2700,9 @@ ROWS: tuple[Row, ...] = (
         justification='W3-C1 / RC-122: overlays the terrain wall book onto the key-levels payload so ONE wall book reaches the screen; consumes already-derived terrain output and reads no vendor leaf.',
     ),
     Row(
-        file='server.py', derivation='_terrain_refresh_one', disposition='DERIVED',
+        # RC-REHAB-1 (2026-09-23, module extraction, twenty-fifth slice): _terrain_refresh_one
+        # moved out of server.py into terrain_refresh.py.
+        file='terrain_refresh.py', derivation='_terrain_refresh_one', disposition='DERIVED',
         producer_refs=('server.py:flatten_chain_contracts',),
         justification='Fetches one chain and computes terrain into the cache; no model stack, never raises.',
     ),
