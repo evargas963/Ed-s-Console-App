@@ -20,18 +20,18 @@ router = APIRouter()
 # SWITCH-LATENCY FIX: sync def → threadpool (blocking chain fetch, no await).
 def debug_charm(ticker: str = DEFAULT_TICKER):
     """Diagnose why charm is not computing."""
+    # RC-REHAB-1 (thirty-eighth slice): pure helpers come from their own modules, not
+    # through server.py; only server-owned runtime names are imported from server.
+    from chain_width import _chain_to_date_for, resolve_chain_strike_count
+    from math_exposure import MISSING_GREEK_SENTINEL, gamma_is_plausible
+    from schwab_client import safe_get_chain
     from server import (
-        MISSING_GREEK_SENTINEL,
-        _chain_to_date_for,
         _default_expiry,
         _expiries_from_contracts,
         _touch_tracked_ticker_view,
         flatten_chain_contracts,
-        gamma_is_plausible,
         get_client,
-        resolve_chain_strike_count,
         resolve_spot,
-        safe_get_chain,
         ticker_storage_key,
     )
 
