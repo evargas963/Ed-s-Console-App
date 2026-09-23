@@ -35,6 +35,7 @@ from instrument_identity import ticker_storage_key
 from terrain_engine import _per_strike_rows
 from time_et import ET, is_trading_day_et, now_et
 import app.api.routes.options
+import terrain_state
 
 
 def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0, dte=5,
@@ -91,16 +92,16 @@ def test_vanna_by_strike_route_omits_no_oi_strikes_instead_of_a_fabricated_zero(
     tk = server.ticker_storage_key("ZZTESTNOOI")
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
              _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_contracts_rest": chain, "_contracts_rest_spot": SPOT}
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"_contracts_rest": chain, "_contracts_rest_spot": SPOT}
     try:
         import json
         body = json.loads(app.api.routes.options.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
         assert body["available"] is True
         assert body["rows"] == [], f"a no-OI chain must yield zero rows, not fabricated ones: {body['rows']}"
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
 
 
 # ---------------------------------------------------------- 2. a genuine zero still renders ----
@@ -173,8 +174,8 @@ def _seed_morning_full(path, ticker: str, et_date: str, ts_utc: float, spot: flo
 
 
 def _clear_gamma_surface(tk):
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(tk, None)
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 

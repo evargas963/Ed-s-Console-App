@@ -23,6 +23,8 @@ import terrain_quarantine  # noqa: E402
 import terrain_freshness  # noqa: E402
 import app.api.routes.terrain
 import chain_width
+import terrain_state
+import terrain_refresh
 
 ROOT = Path(__file__).resolve().parent.parent
 CHART = ROOT / "static" / "chart.html"
@@ -207,7 +209,7 @@ def test_recorded_failure_reaches_the_payload_once_a_snapshot_exists():
     import time
     old = time.time() - (terrain_freshness.TERRAIN_STALE_AFTER_SEC + 600.0)
     try:
-        server._terrain_refresh_last_error["$SPX"] = "chain fetch failed (HTTP 400)"
+        terrain_state._terrain_refresh_last_error["$SPX"] = "chain fetch failed (HTTP 400)"
         told = terrain_freshness.terrain_staleness(old, "$SPX")
         assert told["levels_failing"] is True
         assert "HTTP 400" in told["levels_stale_reason"], (
@@ -225,7 +227,7 @@ def test_recorded_failure_reaches_the_payload_once_a_snapshot_exists():
         assert paused["levels_failing"] is False
         assert "HTTP 400" not in paused["levels_stale_reason"]
     finally:
-        server._terrain_refresh_last_error.pop("$SPX", None)
+        terrain_state._terrain_refresh_last_error.pop("$SPX", None)
         terrain_quarantine._clear_terrain_skips()
     clean = terrain_freshness.terrain_staleness(old, "$SPX")
     assert clean["levels_failing"] is False, "a cleared failure must not linger"
@@ -267,7 +269,7 @@ def test_hard_rejection_quarantines_and_stops_touching_the_gate():
             "a hold with no stated way back is a deletion the operator never approved"
         )
         # the producer must refuse BEFORE spending any vendor budget, priority or not
-        assert server._terrain_refresh_one(tk, priority=True) == "skip:quarantined"
+        assert terrain_refresh._terrain_refresh_one(tk, priority=True) == "skip:quarantined"
         assert terrain_quarantine._terrain_quarantine_skips.get(tk, 0) >= 1, "avoided fetches are not counted"
         # a permanent hold NEVER self-releases, however long you wait
         with terrain_quarantine._terrain_quarantine_lock:

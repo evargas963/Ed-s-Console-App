@@ -37,6 +37,7 @@ from math_exposure import (
     compute_pin_score,
     compute_vol_expansion_signal,
 )
+import terrain_loop
 
 # RC-REHAB-1: moved with _predictive_positioning_for_state -- confirmed no other
 # reference anywhere in server.py before moving.
@@ -90,7 +91,6 @@ def _predictive_positioning_for_state(
     in this phase still leaves them safely None for build_market_state to read rather
     than raising NameError there instead -- this function preserves that same ordering.
     """
-    import server as _srv
 
     dpi: dict = {}
     hedging_flow: dict = {}
@@ -167,7 +167,7 @@ def _predictive_positioning_for_state(
         # Never consensus_summary.net_gex_peak (analytics |net GEX$| peak) and never analytics
         # `exposures` for magnitude at that strike. RC-292 rename: the terrain payload field
         # is absolute_gamma_strike — the raw total-gamma concentration; pin_score grades it.
-        t_pin_snap = _srv.terrain_cache_get(ticker) or {}
+        t_pin_snap = terrain_loop.terrain_cache_get(ticker) or {}
         pin_strike = (
             t_pin_snap.get("absolute_gamma_strike")
             if t_pin_snap and not t_pin_snap.get("levels_stale")

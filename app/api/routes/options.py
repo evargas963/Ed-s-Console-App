@@ -198,12 +198,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         _option_contract_admission_summary,
         _stamp_gamma_surface_cell_stream_state,
     )
-    from server import (
-        _GAMMA_SURFACE_CACHE,
-        _stamp_surface_session,
-        _ticker_on_terrain_board,
-        terrain_cache_get,
-    )
+    from terrain_loop import _ticker_on_terrain_board, terrain_cache_get
+    from server import _GAMMA_SURFACE_CACHE, _stamp_surface_session
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
     now = time.time()

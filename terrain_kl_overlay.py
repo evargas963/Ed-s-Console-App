@@ -12,6 +12,7 @@ elsewhere in server.py, so it stays there, reached via the established lazy
 `import server` pattern.
 """
 from __future__ import annotations
+import terrain_loop
 
 
 def _terrain_kl_overlay(md: dict, ticker: str) -> None:
@@ -28,9 +29,8 @@ def _terrain_kl_overlay(md: dict, ticker: str) -> None:
     OI/vanna walls, inflections, and oi_center stay blank: terrain does not compute them,
     so analytics must never stand in for an absent SSOT value (RC-128 / RC-422).
     """
-    import server as _srv
 
-    t = dict(_srv.terrain_cache_get(ticker) or {})
+    t = dict(terrain_loop.terrain_cache_get(ticker) or {})
     fresh = bool(t) and not t.get("levels_stale")
     # RC-124/RC-292: kl_absolute_gamma_strike carries the total-gamma concentration under
     # its metric's name (formerly kl_gamma_pin — a pin claim the metric had not earned);

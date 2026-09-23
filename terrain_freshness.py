@@ -3,9 +3,9 @@ current and, when it is not, the producer's own reason -- quarantine > this-cycl
 last failure > clock -- plus the Schwab refresh-token countdown every freshness payload
 carries. Extracted from server.py (RC-REHAB-1, 2026-09-23, forty-first slice).
 
-Server-owned runtime (the logging-session gate, the per-ticker failure dict, the loop's
-delivered cycle time -- a module global the terrain loop REBINDS -- the cadence floor and
-APP_DIR) is read through a lazy `import server as _srv` at call time, never copied.
+The per-ticker failure dict, the cadence floor and the loop's delivered-cycle clock (which
+the loop REBINDS) are read from terrain_state at call time; the server-owned logging-session
+gate, LOGGER_BUFFER_MINS and APP_DIR through a lazy `import server as _srv`. Never copied.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 import terrain_quarantine
+import terrain_state
 from instrument_identity import ticker_storage_key
 
 
@@ -101,7 +102,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
     # collapsing it into either single flag would restore the ambiguity RC-146/147 removed.
     q_entry = terrain_quarantine.terrain_quarantine_state(ticker)
     quarantined = terrain_quarantine.terrain_quarantine_reason(ticker)
-    failure = "" if (skipped or quarantined) else str(_srv._terrain_refresh_last_error.get(
+    failure = "" if (skipped or quarantined) else str(terrain_state._terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
     hard_quarantine = bool(q_entry.get("permanent"))
     if computed_ts_utc is None:
@@ -122,9 +123,9 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
     # but not producing". That is RC-146's defect returning through a different door: a
     # correctly-working scheduler described as broken, this time because the yardstick was a
     # number the loop cannot reach rather than a silence nobody recorded.
-    observed = (_srv._terrain_last_cycle_sec if _srv._terrain_last_cycle_sec > 0
-                else _srv.TERRAIN_REFRESH_SEC)
-    expected = max(float(_srv.TERRAIN_REFRESH_SEC), float(observed))
+    observed = (terrain_state._terrain_last_cycle_sec if terrain_state._terrain_last_cycle_sec > 0
+                else terrain_state.TERRAIN_REFRESH_SEC)
+    expected = max(float(terrain_state.TERRAIN_REFRESH_SEC), float(observed))
     # Stale only past the FLOOR *and* past two delivered cycles — one missed sweep is normal
     # jitter, two is a real gap. The floor is retained so a fast loop cannot hide staleness.
     stale_after = max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * expected)
@@ -140,7 +141,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                   f"{_srv.LOGGER_BUFFER_MINS // 60:02d}:{_srv.LOGGER_BUFFER_MINS % 60:02d} ET)"
                   if not refreshing else
                   f"levels are {age:.0f}s old — over two full sweeps at the loop's DELIVERED "
-                  f"cycle of {expected:.0f}s (nominal floor {_srv.TERRAIN_REFRESH_SEC:.0f}s), so this "
+                  f"cycle of {expected:.0f}s (nominal floor {terrain_state.TERRAIN_REFRESH_SEC:.0f}s), so this "
                   f"ticker is genuinely behind rather than merely between sweeps")
     return {"levels_stale": stale, "levels_age_sec": age,
             "levels_refresh_active": refreshing, "levels_stale_reason": reason,

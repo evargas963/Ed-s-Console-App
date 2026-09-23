@@ -27,6 +27,7 @@ from math_exposure import (
     compute_exposures_by_strike,
 )
 from server_state_exposures import EXPOSURE_WINDOWS
+import terrain_state
 
 
 def _fixture_contracts():
@@ -92,14 +93,14 @@ def test_gamma_flip_reads_the_terrain_ssot_snapshot_when_one_is_cached():
 
     sentinel_flip = 999.5   # a value the fixture's own narrow-chain compute would never produce
     sentinel_diag = {"reason": "test_sentinel_no_real_crossing"}
-    srv._terrain_cache[tk] = {
+    terrain_state._terrain_cache[tk] = {
         "gamma_flip": sentinel_flip, "flip_diag": sentinel_diag,
         "computed_ts_utc": time.time(),   # fresh -- terrain_cache_get derives levels_stale from this
     }
     try:
         result = srv._gamma_flip_and_void_zones_for_state(ticker, contracts, spot_f, exposures, totals, rows)
     finally:
-        srv._terrain_cache.pop(tk, None)
+        terrain_state._terrain_cache.pop(tk, None)
 
     assert result.gamma_flip == sentinel_flip
     assert result.gamma_flip_diag == sentinel_diag
@@ -118,14 +119,14 @@ def test_gamma_flip_fails_closed_on_a_stale_terrain_snapshot():
     tk = srv.ticker_storage_key(ticker)
     exposures, rows, _walls, totals = _build_exposures_rows_walls_totals(contracts, spot_f)
 
-    srv._terrain_cache[tk] = {
+    terrain_state._terrain_cache[tk] = {
         "gamma_flip": 123.0, "flip_diag": {},
         "computed_ts_utc": time.time() - 3600.0,   # an hour old -- terrain_staleness must call this stale
     }
     try:
         result = srv._gamma_flip_and_void_zones_for_state(ticker, contracts, spot_f, exposures, totals, rows)
     finally:
-        srv._terrain_cache.pop(tk, None)
+        terrain_state._terrain_cache.pop(tk, None)
 
     assert result.gamma_flip is None
 

@@ -57,6 +57,7 @@ log = logging.getLogger(__name__)
 from gamma_surface_projection import project_gamma_surface, project_gamma_surface_update_expiry
 from instrument_identity import ticker_storage_key
 from terrain_engine import compute_terrain
+import terrain_state
 
 
 def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
@@ -163,11 +164,11 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         from app.options.order_flow.streaming import contract_matches_underlying
         if not vendor_option_root(contract_symbol):
             return "not_an_option_symbol"
-        with _srv._terrain_cache_lock:
-            tk = next((k for k in _srv._terrain_cache if contract_matches_underlying(contract_symbol, k)), None)  # caps-ok: None means "genuinely no cached ticker matches this contract", checked explicitly on the next line and triggers an early "no_cached_ticker" return -- not a silent default
+        with terrain_state._terrain_cache_lock:
+            tk = next((k for k in terrain_state._terrain_cache if contract_matches_underlying(contract_symbol, k)), None)  # caps-ok: None means "genuinely no cached ticker matches this contract", checked explicitly on the next line and triggers an early "no_cached_ticker" return -- not a silent default
             if tk is None:
                 return "no_cached_ticker"
-            payload = _srv._terrain_cache.get(tk) or {}
+            payload = terrain_state._terrain_cache.get(tk) or {}
             base_contracts = payload.get("_contracts_rest")
             read_generation = payload.get("_contracts_rest_computed_ts")
             prior_gamma_surface = payload.get("_gamma_surface")
@@ -340,8 +341,8 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             new_terrain_fields = _terrain_snap.to_dict()
         except Exception as _terr_e:  # institutional-swallow-ok: never load-bearing
             log.debug("eager terrain refresh skipped for %s: %s", tk, _terr_e)
-        with _srv._terrain_cache_lock:
-            payload = _srv._terrain_cache.get(tk)
+        with terrain_state._terrain_cache_lock:
+            payload = terrain_state._terrain_cache.get(tk)
             if payload is None:      # evicted/replaced between the read above and now
                 return "cache_evicted"
             if payload.get("_contracts_rest_computed_ts") != read_generation:
@@ -422,8 +423,8 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
         tk = ticker_storage_key(ticker or "")
         if not tk:
             return "no_ticker"
-        with _srv._terrain_cache_lock:
-            payload = _srv._terrain_cache.get(tk)
+        with terrain_state._terrain_cache_lock:
+            payload = terrain_state._terrain_cache.get(tk)
             if payload is None:
                 return "no_cached_ticker"
             base_contracts = payload.get("_contracts_rest")
@@ -491,8 +492,8 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
             new_terrain_fields = _terrain_snap.to_dict()
         except Exception as _terr_e:  # institutional-swallow-ok: never load-bearing
             log.debug("eager terrain refresh (spot tick) skipped for %s: %s", tk, _terr_e)
-        with _srv._terrain_cache_lock:
-            payload = _srv._terrain_cache.get(tk)
+        with terrain_state._terrain_cache_lock:
+            payload = terrain_state._terrain_cache.get(tk)
             if payload is None:
                 return "cache_evicted"
             if payload.get("_contracts_rest_computed_ts") != read_generation:

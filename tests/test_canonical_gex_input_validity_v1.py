@@ -46,6 +46,7 @@ from gamma_surface_projection import project_gamma_surface
 from instrument_identity import ticker_storage_key
 import gamma_surface_state
 import app.api.routes.options
+import terrain_state
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -425,8 +426,8 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
     console restart during a live vendor problem would produce. Proven through the actual
     /api/options/gamma-surface route, not just the backfill helper."""
     tk = ticker_storage_key("ZSPXRESTART")
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(tk, None)
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
     try:
         good_surface = {
@@ -450,8 +451,8 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
         }
         server._backfill_gex_cells_from_last_valid(tk, outage_surface)
         computed_ts = time.time()
-        with server._terrain_cache_lock:
-            server._terrain_cache[tk] = {
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[tk] = {
                 "_gamma_surface": outage_surface, "computed_ts_utc": computed_ts, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
             }
@@ -460,8 +461,8 @@ def test_endpoint_survives_a_simulated_restart_spx_style():
         assert d["cells"][0]["gex"] == [12345678]
         assert d["reason"] is None
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
         server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
@@ -472,8 +473,8 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
     prior cycle's valid surface exists, exactly what an operator hitting the real endpoint
     during a live outage would see."""
     tk = ticker_storage_key("ZSPXENDPOINT")
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(tk, None)
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
     try:
         good_surface = {
@@ -485,8 +486,8 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
         }
         server._backfill_gex_cells_from_last_valid(tk, good_surface)   # seeds the store
         computed_ts = time.time()
-        with server._terrain_cache_lock:
-            server._terrain_cache[tk] = {
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[tk] = {
                 "_gamma_surface": good_surface, "computed_ts_utc": computed_ts, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
             }
@@ -506,8 +507,8 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
         }
         server._backfill_gex_cells_from_last_valid(tk, outage_surface)
         computed_ts2 = time.time()
-        with server._terrain_cache_lock:
-            server._terrain_cache[tk] = {
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[tk] = {
                 "_gamma_surface": outage_surface, "computed_ts_utc": computed_ts2, "spot": 7580.0,
                 "spot_source": "last", "spot_as_of_ts_utc": computed_ts2, "chain_basis": "full",
             }
@@ -516,8 +517,8 @@ def test_endpoint_serves_the_backfilled_surface_end_to_end_spx_style():
         assert d2["cells"][0]["gex"] == [12345678]
         assert d2["reason"] is None
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
         server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 

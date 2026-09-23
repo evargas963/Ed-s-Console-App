@@ -1,8 +1,8 @@
 """Terrain loop scheduling: the RC-159 accrual cadence (sentinels every minute, the rest of
 the board every five), the per-ticker accrual banker `_accrue_chain_observation`, and the
 RC-161 morning-contention rotation `terrain_cycle_tickers`. Extracted from server.py
-(RC-REHAB-1, 2026-09-23, forty-first slice). The loop's delivered cycle time
-(`_terrain_last_cycle_sec`) stays in server.py because `_terrain_loop` rebinds it.
+(RC-REHAB-1, 2026-09-23, forty-first slice). The cadence floor it derives the rotation depth
+from is terrain_state.TERRAIN_REFRESH_SEC.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from calibration.option_chain_morning_full import (
     persist_chain_accrual,
 )
 from time_et import RTH_OPEN_MINS
+import terrain_state
 
 log = logging.getLogger(__name__)
 
@@ -97,9 +98,8 @@ def terrain_cycle_tickers(
     if not (TERRAIN_CONTENTION_START_MINS <= int(mins) <= TERRAIN_CONTENTION_END_MINS):
         return list(all_tickers), []
     # integer ceiling division
-    import server as _srv                      # runtime: the loop's cadence floor
 
-    _cyc = max(1, int(_srv.TERRAIN_REFRESH_SEC))
+    _cyc = max(1, int(terrain_state.TERRAIN_REFRESH_SEC))
     depth = max(1, -(-int(ACCRUAL_MIN_INTERVAL_OTHER_SEC) // _cyc))
     idx = int(cycle_n) % depth
     slice_now = others[idx::depth]

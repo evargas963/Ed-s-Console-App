@@ -44,6 +44,7 @@ from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
 from realized_contract_eval import serialize_option_chain_for_eval, build_replay_context_payload
 from time_et import is_capturable_session
 from timeframe_config import CANONICAL_TIMEFRAME
+import terrain_loop
 
 try:
     from crash_trace import step as _diag_step, step_done as _diag_done, trace_crash as _diag_crash, _on as _diag_on
@@ -398,7 +399,7 @@ def _post_publish_persistence_tail(
                 # total-gamma, read from the renamed payload field. The DB column
                 # stays `gamma_pin` (historical schema; time_et.py owns its era
                 # semantics) so no third era is created by the rename.
-                _t_pin_snap = _srv.terrain_cache_get(ticker) or {}
+                _t_pin_snap = terrain_loop.terrain_cache_get(ticker) or {}
                 _ssot_gamma_pin = (
                     _t_pin_snap.get("absolute_gamma_strike")
                     if _t_pin_snap and not _t_pin_snap.get("levels_stale")

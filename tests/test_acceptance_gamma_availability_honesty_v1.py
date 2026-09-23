@@ -29,6 +29,7 @@ import json
 import server
 from app.api.routes.options import get_options_gamma_surface
 from instrument_identity import ticker_storage_key
+import terrain_state
 
 _BASE_SURF = {
     "expirations": [{"expiry": "2026-09-25", "dte": 5}],
@@ -46,8 +47,8 @@ def _call(tk: str) -> dict:
 def _put_live(tk: str, surf: dict, *, computed_ts: float) -> None:
     import time as _time
 
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "_gamma_surface": surf, "computed_ts_utc": computed_ts, "spot": 583.41,
             "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
         }
@@ -55,8 +56,8 @@ def _put_live(tk: str, surf: dict, *, computed_ts: float) -> None:
 
 
 def _clear(tk: str) -> None:
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(tk, None)
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 

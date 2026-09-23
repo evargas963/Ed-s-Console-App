@@ -34,6 +34,7 @@ from math_exposure import (
     compute_hedging_flow_score,
     compute_pin_score,
 )
+import terrain_loop
 
 
 def _fixture_exposures():
@@ -69,7 +70,7 @@ def test_full_pipeline_matches_the_original_computation_chain():
         "book_oi_total": 3000.0,
         "net_gex_at_spot": -1200.0,
     }
-    with mock.patch.object(srv, "terrain_cache_get", return_value=fake_terrain_snap):
+    with mock.patch.object(terrain_loop, "terrain_cache_get", return_value=fake_terrain_snap):
         result = srv._predictive_positioning_for_state(
             "SPY", exposures, cons_strikes, 450.0, 12.5, [{"contains_spot": False, "lower": 448.0, "upper": 452.0}], "expanding",
         )
@@ -118,7 +119,7 @@ def test_no_gex_data_reports_honest_none_dpi_not_a_fabricated_zero():
     built to handle net_gex=None this way; the old code coerced it to 0.0 before it
     ever got there."""
     exposures = _fixture_exposures()
-    with mock.patch.object(srv, "terrain_cache_get", return_value=None):
+    with mock.patch.object(terrain_loop, "terrain_cache_get", return_value=None):
         result = srv._predictive_positioning_for_state(
             "SPY", exposures, [], 450.0, 5.0, [], "flat",
         )
@@ -129,7 +130,7 @@ def test_no_gex_data_reports_honest_none_dpi_not_a_fabricated_zero():
 
 def test_stale_terrain_snapshot_withholds_pin_and_regime():
     exposures = _fixture_exposures()
-    with mock.patch.object(srv, "terrain_cache_get", return_value={"absolute_gamma_strike": 450.0, "levels_stale": True}):
+    with mock.patch.object(terrain_loop, "terrain_cache_get", return_value={"absolute_gamma_strike": 450.0, "levels_stale": True}):
         result = srv._predictive_positioning_for_state("SPY", exposures, [450.0], 450.0, 5.0, [], "flat")
     assert result.pin_strike is None
     assert result.regime_gamma_at_spot is None
@@ -137,7 +138,7 @@ def test_stale_terrain_snapshot_withholds_pin_and_regime():
 
 def test_missing_terrain_snapshot_withholds_pin_and_regime():
     exposures = _fixture_exposures()
-    with mock.patch.object(srv, "terrain_cache_get", return_value=None):
+    with mock.patch.object(terrain_loop, "terrain_cache_get", return_value=None):
         result = srv._predictive_positioning_for_state("SPY", exposures, [450.0], 450.0, 5.0, [], "flat")
     assert result.pin_strike is None
     assert result.regime_gamma_at_spot is None

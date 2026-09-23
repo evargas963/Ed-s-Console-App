@@ -2655,7 +2655,8 @@ ROWS: tuple[Row, ...] = (
         justification='Schwab get_quote wrapper with token retry.',
     ),
     Row(
-        file='server.py', derivation='_seed_strike_geometry_from_storage', disposition='DERIVED',
+        # RC-REHAB-1 (2026-09-23, forty-fourth slice): moved to terrain_loop.py.
+        file='terrain_loop.py', derivation='_seed_strike_geometry_from_storage', disposition='DERIVED',
         producer_refs=('server.py:_latest_chain_and_spot',),
         justification='Replays stored chains through _learn_strike_geometry at boot; stored rows were produced by traced writers.',
     ),

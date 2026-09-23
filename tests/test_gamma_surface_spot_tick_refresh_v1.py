@@ -37,6 +37,7 @@ import gamma_surface_eager_refresh
 import gamma_surface_state
 import per_strike_view
 import gamma_surface_projection
+import terrain_state
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -50,9 +51,9 @@ _CDE = json.loads((_FX / "real_cde_complete_chain_half_dollar.json").read_text(e
 
 
 def _clear_caches():
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
-        server._terrain_cache.pop(TK2, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(TK, None)
+        terrain_state._terrain_cache.pop(TK2, None)
     with server._LAST_VALID_GEX_CELLS_LOCK:
         server._LAST_VALID_GEX_CELLS.pop(TK, None)
         server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
@@ -77,8 +78,8 @@ def _put_rest_baseline_with_spot(tk, contracts, spot, *, computed_ts_utc=None):
     surf["spot"] = float(spot)
     surf["spot_source"] = "stub"
     surf["spot_as_of_ts_utc"] = ts
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "_contracts_rest": contracts,
             "_contracts_rest_spot": spot,
             "_contracts_rest_computed_ts": ts,
@@ -104,9 +105,9 @@ def teardown_function(_fn):
 def test_spot_only_tick_recomputes_surface_bumps_generation_and_changes_gex(monkeypatch):
     new_spot = _SPOT + 5.0   # a real, material move -- no option tick involved at all
     _put_rest_baseline_with_spot(TK, _CONTRACTS, _SPOT)
-    with server._terrain_cache_lock:
-        seq_before = server._terrain_cache[TK]["_gamma_surface"].get("surface_seq")
-        gex_before = [row["gex"] for row in server._terrain_cache[TK]["_gamma_surface"]["cells"]]
+    with terrain_state._terrain_cache_lock:
+        seq_before = terrain_state._terrain_cache[TK]["_gamma_surface"].get("surface_seq")
+        gex_before = [row["gex"] for row in terrain_state._terrain_cache[TK]["_gamma_surface"]["cells"]]
     # No option contract is desired at all -- proves this path needs none.
     monkeypatch.setattr("app.options.order_flow.streaming.get_active_option_contracts", lambda: [])
     monkeypatch.setattr("app.options.order_flow.streaming.get_active_option_contract", lambda: None)
@@ -116,8 +117,8 @@ def test_spot_only_tick_recomputes_surface_bumps_generation_and_changes_gex(monk
     assert status == "ok"
 
     expected = project_gamma_surface(_CONTRACTS, new_spot)
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert cached["spot"] == new_spot
     assert cached.get("spot_tick_triggered") is True
     # surface_seq strictly advanced -- a post-tick render is only proven by a NEWER generation.
@@ -160,14 +161,14 @@ def test_spot_unchanged_never_recomputes(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
     status = refresh_gamma_surface_from_spot_tick(TK)
     assert status == "spot_unchanged"
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert cached is surf, "an unchanged spot must not rebuild the surface at all -- same object"
 
 
 def test_no_prior_surface_is_a_safe_noop(monkeypatch):
-    with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[TK] = {
             "_contracts_rest": _CONTRACTS, "_contracts_rest_spot": _SPOT,
             "_contracts_rest_computed_ts": time.time(), "computed_ts_utc": time.time(),
         }   # no "_gamma_surface" key at all yet
@@ -176,8 +177,8 @@ def test_no_prior_surface_is_a_safe_noop(monkeypatch):
 
 
 def test_no_rest_baseline_is_a_safe_noop():
-    with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {"_gamma_surface": {"spot": _SPOT}}
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[TK] = {"_gamma_surface": {"spot": _SPOT}}
     assert refresh_gamma_surface_from_spot_tick(TK) == "no_rest_baseline"
 
 
@@ -202,8 +203,8 @@ def test_a_spot_tick_for_one_ticker_never_touches_a_different_ticker(monkeypatch
     monkeypatch.setattr("app.options.order_flow.streaming.get_active_option_contract", lambda: None)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT + 5.0, "stub", time.time()))
     assert refresh_gamma_surface_from_spot_tick(TK) == "ok"
-    with server._terrain_cache_lock:
-        untouched = server._terrain_cache[TK2]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        untouched = terrain_state._terrain_cache[TK2]["_gamma_surface"]
     assert untouched is other_surf, "SPY's own spot tick must never repaint a different ticker's surface"
 
 
@@ -221,8 +222,8 @@ def test_a_stale_baseline_generation_is_discarded_not_published(monkeypatch):
     orig_project = gamma_surface_projection.project_gamma_surface
 
     def racing_project(contracts_arg, spot_arg):
-        with server._terrain_cache_lock:
-            server._terrain_cache[TK] = {
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache[TK] = {
                 "_contracts_rest": _CONTRACTS, "_contracts_rest_spot": _SPOT,
                 "_contracts_rest_computed_ts": time.time(),   # NEW generation lands mid-flight
                 "_gamma_surface": fresh_marker, "computed_ts_utc": time.time(),
@@ -234,8 +235,8 @@ def test_a_stale_baseline_generation_is_discarded_not_published(monkeypatch):
     finally:
         gamma_surface_projection.project_gamma_surface = orig_project
     assert status == "stale_baseline_superseded"
-    with server._terrain_cache_lock:
-        assert server._terrain_cache[TK]["_gamma_surface"] is fresh_marker, (
+    with terrain_state._terrain_cache_lock:
+        assert terrain_state._terrain_cache[TK]["_gamma_surface"] is fresh_marker, (
             "the newer REST generation's own surface must survive untouched")
 
 
@@ -257,8 +258,8 @@ def test_changed_spot_across_two_expiries_matches_an_independent_full_recompute(
 
     assert refresh_gamma_surface_from_spot_tick(TK) == "ok"
     expected = project_gamma_surface(chain, new_spot)
-    with server._terrain_cache_lock:
-        cached = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached = terrain_state._terrain_cache[TK]["_gamma_surface"]
     # every field exact (this function never calls the incremental per-expiry splice at
     # all, so there is no vanna-drift tolerance to make here -- both are fresh full
     # recomputes from the SAME frozen clock).
@@ -362,13 +363,13 @@ def test_option_only_tick_unaffected_by_the_spot_tick_path_coexisting(monkeypatc
     _ofs._active_option_contracts = []
     try:
         assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
-        with server._terrain_cache_lock:
-            seq_after_option_tick = server._terrain_cache[TK]["_gamma_surface"]["surface_seq"]
+        with terrain_state._terrain_cache_lock:
+            seq_after_option_tick = terrain_state._terrain_cache[TK]["_gamma_surface"]["surface_seq"]
 
         status = refresh_gamma_surface_from_spot_tick(TK)
         assert status == "spot_unchanged"
-        with server._terrain_cache_lock:
-            assert server._terrain_cache[TK]["_gamma_surface"]["surface_seq"] == seq_after_option_tick
+        with terrain_state._terrain_cache_lock:
+            assert terrain_state._terrain_cache[TK]["_gamma_surface"]["surface_seq"] == seq_after_option_tick
     finally:
         _ofs._active_option_contract = prior_contract
         _ofs._active_option_contracts = prior_contracts
@@ -403,9 +404,9 @@ def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(mo
 
     new_spot = _SPOT + 7.0   # a real, material move -- proves every surface below actually
     _put_rest_baseline_with_spot(TK, _CONTRACTS, _SPOT)             # used the NEW spot, not
-    with server._terrain_cache_lock:                                # a leftover stale one.
-        server._terrain_cache[TK]["gamma_flip"] = "SENTINEL_STALE"
-        server._terrain_cache[TK]["call_wall"] = "SENTINEL_STALE"
+    with terrain_state._terrain_cache_lock:                                # a leftover stale one.
+        terrain_state._terrain_cache[TK]["gamma_flip"] = "SENTINEL_STALE"
+        terrain_state._terrain_cache[TK]["call_wall"] = "SENTINEL_STALE"
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (new_spot, "stub", time.time()))
 
     t0 = time.monotonic()
@@ -416,8 +417,8 @@ def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(mo
 
     # ---- 1. Heatmap grid ----
     expected_surface = project_gamma_surface(_CONTRACTS, new_spot)
-    with server._terrain_cache_lock:
-        cached_surface = server._terrain_cache[TK]["_gamma_surface"]
+    with terrain_state._terrain_cache_lock:
+        cached_surface = terrain_state._terrain_cache[TK]["_gamma_surface"]
     assert cached_surface["spot"] == new_spot
     # _backfill_gex_cells_from_last_valid also stamps a `value_snapshot_ts_utc` provenance
     # list onto each cell (server.py:15068) -- an orthogonal disclosure layered on top of the
@@ -435,14 +436,14 @@ def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(mo
 
     # ---- 2. Strike Detail / GEX-by-strike (per_strike) ----
     expected_per_strike = per_strike_view._per_strike_view_from_contracts(_CONTRACTS, new_spot)
-    with server._terrain_cache_lock:
-        cached_per_strike = server._terrain_cache[TK]["_per_strike"]
+    with terrain_state._terrain_cache_lock:
+        cached_per_strike = terrain_state._terrain_cache[TK]["_per_strike"]
     assert cached_per_strike == expected_per_strike
 
     # ---- 3. Key Levels (gamma_flip/call_wall/put_wall/absolute_gamma_strike/net_gex_peak) ----
     expected_terrain = server.compute_terrain(TK, _CONTRACTS, new_spot).to_dict()
-    with server._terrain_cache_lock:
-        cached = dict(server._terrain_cache[TK])
+    with terrain_state._terrain_cache_lock:
+        cached = dict(terrain_state._terrain_cache[TK])
     assert cached["gamma_flip"] != "SENTINEL_STALE"
     assert cached["call_wall"] != "SENTINEL_STALE"
     assert cached["gamma_flip"] == expected_terrain["gamma_flip"]

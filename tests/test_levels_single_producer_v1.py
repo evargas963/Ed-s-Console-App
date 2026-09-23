@@ -25,6 +25,8 @@ import gamma_surface_state
 import app.api.routes.liquidity
 import app.api.routes.status
 import app.api.routes.terrain
+import terrain_loop
+import terrain_state
 
 SERVER = Path(__file__).resolve().parent.parent / "server.py"
 SRC = SERVER.read_text(encoding="utf-8")
@@ -192,7 +194,7 @@ def _overlay(cache_entry, monkeypatch):
             )
     else:
         entry = None
-    monkeypatch.setattr(S, "_terrain_cache",
+    monkeypatch.setattr(terrain_state, "_terrain_cache",
                         {"SPY": entry} if entry is not None else {})
     md = {"kl_call_gamma_wall": 111.0, "kl_put_gamma_wall": 222.0, "kl_gamma_flip": 333.0,
           "kl_absolute_gamma_strike": 444.0, "kl_hvl": 555.0, "kl_max_pain": 666.0,
@@ -306,7 +308,7 @@ def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
     import time
 
     import server as S
-    monkeypatch.setattr(S, "_terrain_cache", {
+    monkeypatch.setattr(terrain_state, "_terrain_cache", {
         "SPY": {
             "absolute_gamma_strike": 745.0,
             "absolute_gamma_strength_pct": 59.4,
@@ -672,7 +674,7 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
 
     import server as srv
 
-    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
+    monkeypatch.setattr(terrain_loop, "terrain_cache_get", lambda tk: {
         "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
                         "near": [], "far": []},
         "spot": 100.0, "computed_ts_utc": 1.0,
@@ -707,7 +709,7 @@ def test_terrain_strikes_registers_viewing_demand(monkeypatch):
 
     import server as srv
 
-    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
+    monkeypatch.setattr(terrain_loop, "terrain_cache_get", lambda tk: {
         "_per_strike": {"all": [], "near": [], "far": []}, "spot": 100.0, "computed_ts_utc": 1.0,
     })
     monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))

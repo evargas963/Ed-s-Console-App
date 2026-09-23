@@ -77,7 +77,8 @@ def get_terrain_producer_diagnostics():
     ticker not refreshing" — the question that cost a session on $SPX (RC-126) and another on
     RTY/XXT. Read-only, no Schwab call, no model stack."""
     from terrain_freshness import TERRAIN_STALE_AFTER_SEC
-    from server import TERRAIN_REFRESH_SEC, _terrain_refresh_last_error, terrain_cache_size
+    from terrain_state import TERRAIN_REFRESH_SEC, _terrain_refresh_last_error
+    from terrain_loop import terrain_cache_size
     from terrain_quarantine import (
         TERRAIN_QUARANTINE_HARD_FAILS,
         TERRAIN_QUARANTINE_LEDGER,
@@ -140,7 +141,8 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     from calibration.option_chain_morning_full import latest_accrual_rows
     from terrain_freshness import TERRAIN_STALE_AFTER_SEC, terrain_staleness
     from gamma_surface_state import _note_gamma_surface_demand
-    from server import log, resolve_spot, terrain_cache_get
+    from terrain_loop import terrain_cache_get
+    from server import log, resolve_spot
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
@@ -416,12 +418,9 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     from terrain_refresh import _terrain_refresh_one
     from terrain_engine import compute_terrain
     from terrain_freshness import terrain_staleness
-    from server import (
-        _reprice_cached_terrain,
-        _terrain_refresh_last_error,
-        resolve_spot,
-        terrain_cache_get,
-    )
+    from terrain_state import _terrain_refresh_last_error
+    from terrain_loop import terrain_cache_get
+    from server import _reprice_cached_terrain, resolve_spot
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     cached = terrain_cache_get(tk)

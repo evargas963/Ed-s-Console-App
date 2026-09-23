@@ -46,6 +46,7 @@ from math_exposure import (
     pick_net_gex_peak_strike,
 )
 from schwab_client import safe_get_price_history
+import terrain_loop
 
 log = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ def _exposures_for_state(
     # RC-420: CONSENSUS gamma/delta wall strikes are terrain SSOT (wide chain).
     # Selected-expiry analytics must not occupy walls[0] while kl_* paints terrain.
     from math_levels import consensus_walls_bind_terrain_ssot
-    walls = consensus_walls_bind_terrain_ssot(walls, _srv.terrain_cache_get(ticker) or {})
+    walls = consensus_walls_bind_terrain_ssot(walls, terrain_loop.terrain_cache_get(ticker) or {})
     totals = build_totals_rows(exposures, spot_f, windows=EXPOSURE_WINDOWS, contracts_for_iv=contracts_use)
 
     return _ExposuresForState(

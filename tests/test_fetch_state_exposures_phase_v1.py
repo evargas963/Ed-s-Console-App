@@ -35,6 +35,7 @@ from unittest import mock
 
 import server as srv
 import server_state_exposures as ses
+import terrain_loop
 
 
 def _fixture_contracts():
@@ -72,7 +73,7 @@ def test_full_pipeline_matches_the_original_computation_chain():
         rows2 = ses.build_summary_rows(exposures2, 100.5, windows=ses.EXPOSURE_WINDOWS)
         walls2 = ses.build_walls_rows(exposures2, 100.5)
         from math_levels import consensus_walls_bind_terrain_ssot
-        walls2 = consensus_walls_bind_terrain_ssot(walls2, srv.terrain_cache_get(ticker) or {})
+        walls2 = consensus_walls_bind_terrain_ssot(walls2, terrain_loop.terrain_cache_get(ticker) or {})
         totals2 = ses.build_totals_rows(exposures2, 100.5, windows=ses.EXPOSURE_WINDOWS, contracts_for_iv=contracts)
 
         assert result.spot_f == 100.5

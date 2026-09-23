@@ -63,6 +63,7 @@ from calibration.option_chain_morning_full import GEX_FULL_CHAIN_STRIKE_COUNT
 from instrument_identity import ticker_storage_key
 from terrain_engine import compute_terrain
 import chain_width
+import terrain_state
 
 
 def _gamma_surface_contracts_with_stream_overlay(
@@ -133,7 +134,7 @@ def _terrain_chain_fetch_ladder(client, tk: str, width: int, priority: bool) -> 
             )
             _code = getattr(resp, "status_code", None)
             if _code in _OVER_BUDGET_CODES and _to_days != 45:
-                _srv._terrain_refresh_last_error[tk] = (
+                terrain_state._terrain_refresh_last_error[tk] = (
                     f"chain fetch HTTP {_code} at basis {_basis!r} — trying a narrower window")
                 resp = None          # do NOT keep a failed response as the answer
                 continue
@@ -142,7 +143,7 @@ def _terrain_chain_fetch_ladder(client, tk: str, width: int, priority: bool) -> 
         except Exception as _fe:
             if type(_fe).__name__ not in ("ReadTimeout", "ConnectTimeout", "TimeoutException"):
                 raise
-            _srv._terrain_refresh_last_error[tk] = (
+            terrain_state._terrain_refresh_last_error[tk] = (
                 f"chain fetch timeout at basis {_basis!r} — trying a narrower window")
             continue
     return resp, chain_basis
@@ -296,9 +297,9 @@ def _bank_daily_strike_oi_and_walls(tk, snap) -> None:
                 [(k, c, p) for k, (c, p) in _oi_map.items()], time.time())
             _prev_oi = _srv.get_db().prev_session_strike_oi(tk, _oi_date)
             _walls = _doiw(_oi_map, _prev_oi)
-            with _srv._terrain_cache_lock:
-                if tk in _srv._terrain_cache:
-                    _srv._terrain_cache[tk]["delta_oi_walls"] = _walls
+            with terrain_state._terrain_cache_lock:
+                if tk in terrain_state._terrain_cache:
+                    terrain_state._terrain_cache[tk]["delta_oi_walls"] = _walls
     except Exception as _oi_e:
         # institutional-swallow-ok: same accrual doctrine as iv_daily above — log,
         # never break the refresh; a missing day is a visible gap.
@@ -344,7 +345,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         if resp is None or getattr(resp, "status_code", None) != 200:
             _code = getattr(resp, "status_code", None)
             _msg = f"chain fetch failed (HTTP {_code if _code is not None else 'timeout-at-all-rungs'})"
-            _srv._terrain_refresh_last_error[tk] = _msg
+            terrain_state._terrain_refresh_last_error[tk] = _msg
             # RC-148: classify so the response fits the cause. A 4xx is the vendor refusing THIS
             # SYMBOL and will refuse it identically forever; a timeout or 5xx is the venue being
             # busy and deserves a backoff, not a death sentence.
@@ -410,10 +411,10 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         payload["_per_strike"] = getattr(snap, "per_strike", None) or {}
         stamp_surface_seq = _apply_gamma_surface_projection(
             tk, payload, contracts, spot, spot_source, spot_ts, _rest_fetch_ts)
-        with _srv._terrain_cache_lock:
+        with terrain_state._terrain_cache_lock:
             if stamp_surface_seq:
                 payload["_gamma_surface"]["surface_seq"] = _gss._next_gamma_surface_seq(tk)
-            _srv._terrain_cache[tk] = payload
+            terrain_state._terrain_cache[tk] = payload
             _srv._terrain_profile_cache[tk] = snap.profile
         # RC-159 (operator mandate 2026-07-30): ACCRUE the wide chain across
         # [09:15, 16:15] ET == [08:15, 15:15] CT. The chain is already fetched and the
@@ -423,7 +424,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # per-strike JSON is hundreds of MB a day for data no surface reads at that resolution.
         _tsch._accrue_chain_observation(tk, snap)
         _fdl._log_flip_drift(tk, payload)
-        _srv._terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
+        terrain_state._terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _tq._note_terrain_success(tk)                   # RC-148: and the failure streak with it
         _bank_daily_atm_iv_from_payload(tk, payload)
         _bank_daily_strike_oi_and_walls(tk, snap)
@@ -432,7 +433,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # RC-126: DEBUG here meant $SPX failed silently for a full session while the operator
         # stared at 'not_ready' with no reason. The failure is WARNING-visible AND kept, so
         # the endpoint can tell the operator WHY instead of an eternal shrug.
-        _srv._terrain_refresh_last_error[tk] = f"{type(e).__name__}: {e}"
+        terrain_state._terrain_refresh_last_error[tk] = f"{type(e).__name__}: {e}"
         # RC-148: an exception is never a symbol rejection (those arrive as a 4xx RESPONSE), so
         # it always classifies soft — backoff, never a permanent hold. A crash in our own code
         # must not be able to evict a real instrument from the board.

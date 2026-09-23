@@ -16,6 +16,7 @@ from pathlib import Path
 import server
 from time_et import ET
 import app.api.routes.options
+import terrain_state
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -57,13 +58,13 @@ _FROZEN_NOW = datetime.datetime(2026, 9, 2, 14, 30, tzinfo=ET)
 
 
 def _clear_cache():
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(TK, None)
 
 
 def _put_live_chain():
-    with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[TK] = {
             "_contracts_rest": _CONTRACTS, "_contracts_rest_spot": _SPOT,
         }
 

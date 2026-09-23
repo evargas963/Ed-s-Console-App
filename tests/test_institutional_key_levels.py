@@ -25,6 +25,8 @@ from math_levels import (
     pick_gamma_wall_strikes,
     WallsRow,
 )
+import terrain_loop
+import terrain_state
 
 
 def _dollarized_exposures():
@@ -430,21 +432,21 @@ def test_terrain_cache_get_derives_staleness_from_computed_ts():
 
     tk = srv.ticker_storage_key("SPY")
     old_ts = time.time() - 99999.0
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "computed_ts_utc": old_ts,
             "call_wall": 760.0,
             "put_wall": 745.0,
         }
-    got = srv.terrain_cache_get("SPY")
+    got = terrain_loop.terrain_cache_get("SPY")
     assert got is not None
     assert got["call_wall"] == 760.0
     assert got["levels_stale"] is True
     assert "levels_stale_reason" in got
     fresh_ts = time.time()
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {"computed_ts_utc": fresh_ts, "call_wall": 760.0}
-    fresh = srv.terrain_cache_get("SPY")
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"computed_ts_utc": fresh_ts, "call_wall": 760.0}
+    fresh = terrain_loop.terrain_cache_get("SPY")
     assert fresh["levels_stale"] is False
 
 
@@ -460,9 +462,9 @@ def test_consensus_walls_withhold_when_cache_stale_via_computed_ts():
     tk = srv.ticker_storage_key("SPY")
     stale_entry = dict(terrain)
     stale_entry["computed_ts_utc"] = time.time() - 99999.0
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = stale_entry
-    merged = srv.terrain_cache_get("SPY")
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = stale_entry
+    merged = terrain_loop.terrain_cache_get("SPY")
     assert merged["levels_stale"] is True
     bound = consensus_walls_bind_terrain_ssot(walls, merged)
     assert bound[0].call_gamma_wall is None
@@ -471,9 +473,9 @@ def test_consensus_walls_withhold_when_cache_stale_via_computed_ts():
     assert bound[0].put_delta_wall is None
     fresh_entry = dict(terrain)
     fresh_entry["computed_ts_utc"] = time.time()
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = fresh_entry
-    merged_fresh = srv.terrain_cache_get("SPY")
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = fresh_entry
+    merged_fresh = terrain_loop.terrain_cache_get("SPY")
     assert merged_fresh["levels_stale"] is False
     bound_fresh = consensus_walls_bind_terrain_ssot(walls, merged_fresh)
     assert bound_fresh[0].call_gamma_wall == 760.0
@@ -882,8 +884,8 @@ def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
 
     tk = srv.ticker_storage_key("SPY")
     old_ts = time.time() - 99999.0
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "ticker": "SPY",
             "computed_ts_utc": old_ts,
             "call_wall": 760.0,
@@ -896,8 +898,8 @@ def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
     assert spy["levels_stale"] is True
     assert "levels_stale_reason" in spy
     fresh_ts = time.time()
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "ticker": "SPY",
             "computed_ts_utc": fresh_ts,
             "call_wall": 760.0,

@@ -10,6 +10,8 @@ import terrain_quarantine
 from app.api.routes.options import get_options_gamma_surface
 from instrument_identity import ticker_storage_key
 import gamma_surface_state
+import terrain_loop
+import terrain_state
 
 _SURF = {
     "expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [580.0, 583.0, 586.0],
@@ -24,16 +26,16 @@ def _call(tk):
 
 
 def _put_live(tk, *, computed_ts):
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {
             "_gamma_surface": _SURF, "computed_ts_utc": computed_ts, "spot": 583.41,
             "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
         }
 
 
 def _clear(tk):
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(tk, None)
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
@@ -58,7 +60,7 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy():
     tk = ticker_storage_key("SPY")
     _clear(tk); _put_live(tk, computed_ts=time.time() - 240)   # 4 min old — a 5-min roster cadence is legitimate
     try:
-        live = server.terrain_cache_get(tk)                    # the one authority
+        live = terrain_loop.terrain_cache_get(tk)                    # the one authority
         d = _call(tk)
         assert d["stale"] == bool(live.get("levels_stale"))
         assert d["age_sec"] == live.get("levels_age_sec")
@@ -85,8 +87,8 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
     # #1.3: WARMING is claimed only when the terrain producer can actually refresh THIS ticker,
     # reusing terrain_staleness's canonical output (levels_refresh_active + not quarantined/paused).
     tk = ticker_storage_key("SPY")
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
     monkeypatch.setattr(terrain_quarantine, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_reason", lambda t: None)
@@ -100,8 +102,8 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
         d2 = _call(tk)
         assert d2["warming"] is False and d2["requested"] is True           # still on the board -> requested
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
         server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
@@ -116,8 +118,8 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
         had = tk in server._logger_tickers
         if had:
             server._logger_tickers.remove(tk)
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # snapshot, no surface
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # snapshot, no surface
     server._GAMMA_SURFACE_CACHE.pop(tk, None)
     # session/quarantine are eligible — the ONLY thing withholding warming is board membership
     monkeypatch.setattr(terrain_quarantine, "terrain_skip_reason", lambda t: None)
@@ -125,14 +127,14 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
     monkeypatch.setattr(terrain_quarantine, "terrain_quarantine_state", lambda t: {})
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     try:
-        assert server._ticker_on_terrain_board(tk) is False
+        assert terrain_loop._ticker_on_terrain_board(tk) is False
         d = _call(tk)
         assert d["requested"] is True
         assert d["on_board"] is False
         assert d["warming"] is False        # snapshot present + session eligible, but NOT on the board
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with terrain_state._terrain_cache_lock:
+            terrain_state._terrain_cache.pop(tk, None)
         server._GAMMA_SURFACE_CACHE.pop(tk, None)
         gamma_surface_state._gamma_surface_demand.pop(tk, None)
         if had:
@@ -149,8 +151,8 @@ def test_surface_session_identity_is_stamped_by_the_server_clock():
     tk = ticker_storage_key("SPY")
     surf = dict(_SURF, expirations=[{"expiry": "2000-01-03", "dte": 0}, {"expiry": "2999-01-15", "dte": 9}])
     _clear(tk)
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 583.41,
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 583.41,
                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)

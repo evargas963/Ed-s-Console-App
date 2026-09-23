@@ -9,6 +9,7 @@ import pytest
 import analytics_bg_recompute
 import app.api.routes.analytics_state
 import app.api.routes.status
+import terrain_state
 
 
 @pytest.fixture()
@@ -243,8 +244,8 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
     srv._state_cache.pop(cache_key, None)
     # RC-128/134: kl_* walls come only from terrain overlay — seed a fresh terrain row
     # so the progressive shell proves carriage, not a resurrected analytics wall book.
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[(ticker.upper())] = {
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache[(ticker.upper())] = {
             "call_wall": 510.0,
             "put_wall": 490.0,
             "computed_ts_utc": time.time(),
@@ -334,8 +335,8 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
     assert md.get("kl_call_gamma_wall") == 510.0
     assert len(md["summary_rows"]) == 1
     srv._state_cache.pop(cache_key, None)
-    with srv._terrain_cache_lock:
-        srv._terrain_cache.pop(ticker.upper(), None)
+    with terrain_state._terrain_cache_lock:
+        terrain_state._terrain_cache.pop(ticker.upper(), None)
 
 
 def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):

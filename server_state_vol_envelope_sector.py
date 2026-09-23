@@ -41,6 +41,7 @@ from math_exposure import (
     compute_volatility_envelope,
 )
 from vol_observability import record_market_vol_observation
+import terrain_loop
 
 # RC-REHAB-1: moved with _vol_envelope_and_sector_for_state -- confirmed the only
 # reader anywhere in server.py before moving.
@@ -142,7 +143,7 @@ def _vol_envelope_and_sector_for_state(
         # RC-432: density is a live congestion read. It must count the SAME terrain-bound
         # walls and terrain flip the KL table paints.
         all_levels: dict = {}
-        t_dens = _srv.terrain_cache_get(ticker) or {}
+        t_dens = terrain_loop.terrain_cache_get(ticker) or {}
         dens_fresh = bool(t_dens) and not t_dens.get("levels_stale")
         if dens_fresh and t_dens.get("absolute_gamma_strike") is not None:
             all_levels["absolute_gamma_strike"] = float(t_dens["absolute_gamma_strike"])

@@ -32,6 +32,8 @@ TURN_AUDIT_OWNS = [
 from tests.conftest import most_recent_trading_day_et  # noqa: E402
 import app.api.routes.terrain
 import terrain_freshness
+import terrain_loop
+import terrain_state
 
 #: RC-160: a sentinel AND a non-sentinel enrolled ticker. One of each, never SPY alone.
 SENTINEL = "SPY"
@@ -216,13 +218,13 @@ def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
     import server as s
 
     now = time.time()
-    prev = s._terrain_last_cycle_sec
+    prev = terrain_state._terrain_last_cycle_sec
     prev_gate = s._is_loggable_session
     try:
         # Pin the branch instead of the clock: this test is about the CADENCE yardstick, so the
         # loop must be inside its window for the whole of it, whatever hour the suite runs at.
         s._is_loggable_session = lambda *a, **k: True
-        s._terrain_last_cycle_sec = 156.0
+        terrain_state._terrain_last_cycle_sec = 156.0
         healthy = s.terrain_staleness(now - 234, "ZZTEST")
         assert healthy["levels_stale"] is False, (
             "234s at a 156s delivered cycle is 1.5 sweeps — flagging it stale calls a healthy "
@@ -238,26 +240,26 @@ def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
             "the retired sentence asserted a malfunction from a cadence the loop never meets"
         )
         # a FAST loop must not be allowed to hide staleness: the floor still applies
-        s._terrain_last_cycle_sec = 10.0
+        terrain_state._terrain_last_cycle_sec = 10.0
         assert s.terrain_staleness(now - 200, "ZZTEST")["levels_stale"] is True, (
             "a fast cycle dropped the floor — staleness could be hidden by a quick sweep"
         )
         # before the first cycle completes, fall back to the nominal floor rather than 0
-        s._terrain_last_cycle_sec = 0.0
+        terrain_state._terrain_last_cycle_sec = 0.0
         assert s.terrain_staleness(now - 400, "ZZTEST")["levels_stale"] is True
 
         # And the branch that legitimately owns the OTHER sentence: outside its window the loop
         # is not refreshing on purpose, and saying so is correct — the defect was asserting the
         # in-window wording while the clock had chosen the out-of-window path.
         s._is_loggable_session = lambda *a, **k: False
-        s._terrain_last_cycle_sec = 156.0
+        terrain_state._terrain_last_cycle_sec = 156.0
         paused = s.terrain_staleness(now - 400, "ZZTEST")
         assert paused["levels_stale"] is True
         assert "DELIVERED" not in paused["levels_stale_reason"], (
             "a loop stopped by design must not be described by the cadence yardstick"
         )
     finally:
-        s._terrain_last_cycle_sec = prev
+        terrain_state._terrain_last_cycle_sec = prev
         s._is_loggable_session = prev_gate
 
 
@@ -266,14 +268,13 @@ def test_loop_publishes_the_cycle_duration_it_already_measures():
     left comparing against the floor."""
     import inspect
 
-    import server as s
 
-    src = inspect.getsource(s._terrain_loop)
+    src = inspect.getsource(terrain_loop._terrain_loop)
     assert "_terrain_last_cycle_sec" in src, (
         "the loop still keeps its measured cycle duration to itself"
     )
     assert "elapsed" in src
-    assert isinstance(s._terrain_last_cycle_sec, float)
+    assert isinstance(terrain_state._terrain_last_cycle_sec, float)
 
 
 def test_decide_untouched_admissions_empty():

@@ -6,11 +6,9 @@ vendor contract budget, the index DTE horizon, the learned per-instrument geomet
 read or write it -- _learn_strike_geometry, resolve_chain_strike_count (RC-59: THE width
 faucet), _chain_to_date_for / _chain_from_date_for (RC-494 / Cursor-audit F2 date bounds).
 
-Nothing here touches a server.py runtime object; the geometry dicts are mutated in place
-(never rebound), so server.py's re-export of them is the same object tests and the terrain
-producer read. Callers that monkeypatch `server._terrain_strike_count` /
-`server._learn_strike_geometry` keep working because their consumers (terrain_refresh,
-server_state_intake) read those names through `server` at call time.
+Nothing here touches a server.py runtime object; the geometry dicts are mutated in place,
+never rebound. Consumers (terrain_refresh, server_state_intake, the enrollment probe) read
+these names from this module, and tests patch them here.
 """
 from __future__ import annotations
 

@@ -20,6 +20,7 @@ import pytest
 import server
 import app.api.routes.terrain
 import tier_a_live_state
+import terrain_state
 
 
 def test_quote_parser_key_contract() -> None:
@@ -320,7 +321,7 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote",
                         lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
-    monkeypatch.setitem(server._terrain_cache, "SPY", {
+    monkeypatch.setitem(terrain_state._terrain_cache, "SPY", {
         "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
         "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
         "gamma_flip": 745.00, "call_wall": 750.0, "put_wall": 740.0,

@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+import terrain_state
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -223,7 +224,7 @@ def test_kl_overlay_maps_each_name_from_its_declared_terrain_source(monkeypatch)
         "computed_ts_utc": time.time(),
         "levels_stale": False,
     }
-    monkeypatch.setattr(S, "_terrain_cache", {"SPY": dict(cache)})
+    monkeypatch.setattr(terrain_state, "_terrain_cache", {"SPY": dict(cache)})
     md: dict = {}
     S._terrain_kl_overlay(md, "SPY")
     assert md["kl_absolute_gamma_strike"] == 745.0

@@ -194,7 +194,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *_a, **_k: _Snap())
     monkeypatch.setattr(srv, "_radar_atr", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
 
-    out = srv._terrain_refresh_one("SPY")
+    out = terrain_refresh._terrain_refresh_one("SPY")
     assert out == "ok:TRUSTED"
     assert calls == [("SPY", 99.5)], "logger must run on the terrain refresh seam"
     assert (tmp_path / "flip.jsonl").is_file()
@@ -210,7 +210,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
             return {"gamma_flip": object(), "spot": 100.0, "confidence": "TRUSTED"}
 
     monkeypatch.setattr(terrain_refresh, "compute_terrain", lambda *_a, **_k: _BadSnap())
-    out2 = srv._terrain_refresh_one("SPY")
+    out2 = terrain_refresh._terrain_refresh_one("SPY")
     assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
 
 

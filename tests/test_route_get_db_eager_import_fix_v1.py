@@ -22,6 +22,7 @@ from __future__ import annotations
 from unittest import mock
 
 import server
+import terrain_loop
 
 
 def _without_get_db():
@@ -112,7 +113,7 @@ def test_get_options_gamma_surface_falls_back_cleanly_when_get_db_unbound():
 
     had, saved = _without_get_db()
     try:
-        with mock.patch.object(server, "terrain_cache_get", return_value=None), \
+        with mock.patch.object(terrain_loop, "terrain_cache_get", return_value=None), \
              mock.patch.object(server, "_GAMMA_SURFACE_CACHE", {}):
             response = get_options_gamma_surface(ticker="ZZZ_AUDIT_TEST")  # must not raise
         assert response.status_code == 200
@@ -125,7 +126,7 @@ def test_get_terrain_strikes_falls_back_cleanly_when_get_db_unbound():
 
     had, saved = _without_get_db()
     try:
-        with mock.patch.object(server, "terrain_cache_get", return_value=None):
+        with mock.patch.object(terrain_loop, "terrain_cache_get", return_value=None):
             response = get_terrain_strikes(ticker="ZZZ_AUDIT_TEST")  # must not raise
         assert response.status_code == 200
     finally:
