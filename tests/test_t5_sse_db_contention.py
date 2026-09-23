@@ -67,12 +67,18 @@ def test_t5_sse_uses_cached_snapshot_when_fetch_in_flight(srv_module, monkeypatc
 
 def test_t5_sse_recompute_timeout_does_not_starve_broadcast(srv_module, monkeypatch):
     srv = srv_module
+    # RC-REHAB-1 (2026-09-23, module extraction, thirtieth slice):
+    # _schedule_analytics_recompute moved out of server.py, into
+    # analytics_bg_recompute.py; its own _work() closure calls
+    # _fetch_state_sse_bounded as a bare name, resolved against that module's
+    # own globals -- a mock must patch it there, not on server's re-export.
+    import analytics_bg_recompute as abr
     ticker, expiry, ck = _seed_spy_cache(srv)
     inflight_key = srv._tier_c_inflight_key(ticker, expiry)
     with srv._sse_lock:
         srv._sse_subscribers[ck] = 1
 
-    monkeypatch.setattr(srv, "_fetch_state_sse_bounded", lambda *a, **k: None)
+    monkeypatch.setattr(abr, "_fetch_state_sse_bounded", lambda *a, **k: None)
     fanouts: list[str] = []
 
     def _capture_fanout(t, e, *, inflight_key, fanout_reason):

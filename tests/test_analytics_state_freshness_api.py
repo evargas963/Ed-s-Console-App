@@ -160,6 +160,13 @@ def test_freshness_constants_unchanged_by_warm_slice():
 def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
     """Completed recompute records additive duration (module dict + payload field) pre-stamp."""
     import server as srv
+    # RC-REHAB-1 (2026-09-23, module extraction, thirtieth slice):
+    # _schedule_analytics_recompute moved out of server.py, into
+    # analytics_bg_recompute.py; its own _work() closure calls
+    # _stamp_analytics_freshness_on_completed_fetch as a bare name, resolved
+    # against that module's own globals -- a mock must patch it there, not on
+    # server's re-export, to be picked up.
+    import analytics_bg_recompute as abr
 
     ticker = "ZZZ_WARMDUR"
     stamped: dict = {}
@@ -171,7 +178,7 @@ def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
         lambda t, e, update_source=None: {"ticker": t, "selected_exp": None},
     )
     monkeypatch.setattr(
-        srv,
+        abr,
         "_stamp_analytics_freshness_on_completed_fetch",
         lambda md, t, k: stamped.update(md),
     )
@@ -191,6 +198,9 @@ def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
 def test_executor_queue_wait_recorded_on_completed_recompute(monkeypatch):
     """Completed recompute carries analytics_executor_queue_wait_sec (>= 0, additive)."""
     import server as srv
+    # RC-REHAB-1 (2026-09-23, thirtieth slice): see the identical comment in
+    # test_analytics_recompute_duration_instrumentation_recorded above.
+    import analytics_bg_recompute as abr
 
     ticker = "ZZZ_QWAIT"
     stamped: dict = {}
@@ -202,7 +212,7 @@ def test_executor_queue_wait_recorded_on_completed_recompute(monkeypatch):
         lambda t, e, update_source=None: {"ticker": t, "selected_exp": None},
     )
     monkeypatch.setattr(
-        srv,
+        abr,
         "_stamp_analytics_freshness_on_completed_fetch",
         lambda md, t, k: stamped.update(md),
     )
@@ -264,13 +274,16 @@ def test_stage_timer_surfaces_present_in_fetch_state_source():
     """Source lock: stage marks + additive timing fields exist in the Tier C recompute path.
 
     RC-REHAB-1 (2026-09-23): _post_publish_persistence_tail (one of these stage marks'
-    home, `db_snapshot_write_accuracy`) moved to server_state_persistence_tail.py -- check
-    both files' source, not just server.py's."""
+    home, `db_snapshot_write_accuracy`) moved to server_state_persistence_tail.py.
+    RC-REHAB-1 (2026-09-23, thirtieth slice): _schedule_analytics_recompute (the
+    other stage marks' home, and the queue-wait field's own stamp site) moved to
+    analytics_bg_recompute.py. Check all three files' source, not just server.py's."""
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
     src = (root / "server.py").read_text(encoding="utf-8")
     src += (root / "server_state_persistence_tail.py").read_text(encoding="utf-8")
+    src += (root / "analytics_bg_recompute.py").read_text(encoding="utf-8")
     for needle in (
         '_stage_marks.append(("stack_runtime_governance_attach"',
         '_stage_marks.append(("db_snapshot_write_accuracy"',
