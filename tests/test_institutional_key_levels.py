@@ -510,11 +510,13 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     assert "g-Inflection" not in nearest
     assert "D-Inflection" not in nearest
     assert "Call OI Wall" not in nearest
-    srv = Path("server.py").read_text(encoding="utf-8")
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
     # into _vol_envelope_and_sector_for_state, and its local names dropped their
     # underscore-prefix scratch-var spelling (_all_levels -> all_levels, _level_density ->
     # level_density) in the process.
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function itself
+    # moved out of server.py into server_state_vol_envelope_sector.py.
+    srv = Path("server_state_vol_envelope_sector.py").read_text(encoding="utf-8")
     dens = srv.split("# Build levels dict for density check", 1)[1].split("level_density", 1)[0]
     dens_body = dens.split("all_levels: dict = {}", 1)[1]
     assert 'getattr(consensus_summary, "oi_center"' not in dens_body
@@ -570,10 +572,12 @@ def test_level_density_uses_terrain_bound_walls_not_dead_locals():
     assert "put_gamma_wall" in (fixed["level_names"] or [])
     assert fixed["density_label"] == "light"
     assert fixed["count"] == 1
-    src = Path("server.py").read_text(encoding="utf-8")
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block moved
     # into _vol_envelope_and_sector_for_state, dropping its underscore-prefix scratch-var
     # spelling (_all_levels -> all_levels, _level_density -> level_density, _w0 -> w0).
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function itself
+    # moved out of server.py into server_state_vol_envelope_sector.py.
+    src = Path("server_state_vol_envelope_sector.py").read_text(encoding="utf-8")
     dens = src.split("# Build levels dict for density check", 1)[1].split(
         "level_density = compute_level_density", 1
     )[0]
@@ -631,7 +635,9 @@ def test_level_density_uses_terrain_iv_sigma_em_not_remaining_risk_em():
     # RC-REHAB-1 (Phase 4, _fetch_state decomposition, sixteenth slice): this block
     # moved into _vol_envelope_and_sector_for_state, dropping its underscore-prefix
     # scratch-var spelling (_all_levels -> all_levels, _level_density -> level_density).
-    dens = Path("server.py").read_text(encoding="utf-8").split(
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function
+    # itself moved out of server.py into server_state_vol_envelope_sector.py.
+    dens = Path("server_state_vol_envelope_sector.py").read_text(encoding="utf-8").split(
         "# Build levels dict for density check", 1
     )[1].split("level_density = compute_level_density", 1)[0]
     body = dens.split("all_levels: dict = {}", 1)[1]

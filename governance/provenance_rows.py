@@ -2358,7 +2358,9 @@ ROWS: tuple[Row, ...] = (
         justification='Poll-synthesized OHLCV from spot ticks + totalVolume delta.',
     ),
     Row(
-        file='server.py', derivation='_VIXTracker.vs_prev', disposition='ALLOWLISTED',
+        # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): _VIXTracker
+        # moved out of server.py into server_state_vol_envelope_sector.py.
+        file='server_state_vol_envelope_sector.py', derivation='_VIXTracker.vs_prev', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_VIXTracker.vs_prev).',
     ),

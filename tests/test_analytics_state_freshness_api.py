@@ -949,15 +949,26 @@ def test_fix_b_tail_never_touches_state_cache():
     capture moved from _fetch_state's own body into _vol_envelope_and_sector_for_state
     (a module-level function, like the persistence tail below), and its scratch-var
     name dropped its underscore prefix (_vol_prev_published_vix -> vol_prev_published_vix,
-    _cache_key -> cache_key, the function's own parameter). Checked against that
-    function's own AST node directly, from the SAME parsed tree as _fetch_state so the
-    line-number ordering check below still compares real, comparable positions."""
-    import ast
+    _cache_key -> cache_key, the function's own parameter).
 
-    tree = ast.parse(_fetch_state_source())
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function
+    itself moved out of server.py entirely, into server_state_vol_envelope_sector.py,
+    and the capture's _state_cache read became a `_srv._state_cache` attribute access
+    (the established lazy `import server as _srv` pattern for server.py-local state
+    with other callers) rather than a bare name. Since the capture now lives in a
+    different file than the publish sites it must precede, the line-number ordering
+    check below compares the CALL SITE of _vol_envelope_and_sector_for_state (which
+    is what actually runs the capture) against the publish sites' line numbers within
+    _fetch_state's own body, instead of comparing the capture's own (now foreign,
+    incomparable) line number directly."""
+    import ast
+    from pathlib import Path
+
+    ves_src = (Path(__file__).resolve().parent.parent / "server_state_vol_envelope_sector.py").read_text(encoding="utf-8")
+    ves_tree = ast.parse(ves_src)
     fetch, tail = _fetch_state_ast()
     vol_fn = next(
-        n for n in tree.body
+        n for n in ves_tree.body
         if isinstance(n, ast.FunctionDef) and n.name == "_vol_envelope_and_sector_for_state"
     )
     names = {s.id for s in ast.walk(tail) if isinstance(s, ast.Name)}
@@ -979,11 +990,22 @@ def test_fix_b_tail_never_touches_state_cache():
     inner = outer.func.value
     assert isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
     assert inner.func.attr == "get"
-    assert isinstance(inner.func.value, ast.Name)
-    assert inner.func.value.id == "_state_cache", "prev vix must come from the state cache"
+    assert isinstance(inner.func.value, ast.Attribute), (
+        "prev vix must come from the lazily-imported _srv._state_cache attribute access"
+    )
+    assert inner.func.value.attr == "_state_cache", "prev vix must come from the state cache"
+    assert isinstance(inner.func.value.value, ast.Name) and inner.func.value.value.id == "_srv"
     assert any(
         isinstance(a, ast.Name) and a.id == "cache_key" for a in inner.args
     ), "prev vix must read the exact per-cycle cache key"
+
+    call_sites = [
+        node for node in ast.walk(fetch)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "_vol_envelope_and_sector_for_state"
+    ]
+    assert len(call_sites) == 1, "_fetch_state must call _vol_envelope_and_sector_for_state exactly once"
+    call_site = call_sites[0]
 
     publishes = [
         node for node in ast.walk(fetch)
@@ -999,8 +1021,9 @@ def test_fix_b_tail_never_touches_state_cache():
         }
     ]
     assert publishes, "expected a vix-carrying _state_cache publish in _fetch_state"
-    assert all(cap.lineno < p.lineno for p in publishes), (
-        "the prev-vix capture must precede every vix-carrying publish"
+    assert all(call_site.lineno < p.lineno for p in publishes), (
+        "the _vol_envelope_and_sector_for_state call (which runs the prev-vix capture) "
+        "must precede every vix-carrying publish"
     )
 
 

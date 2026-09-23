@@ -1342,7 +1342,10 @@ def test_rc345_operator_em_band_carries_its_methodology() -> None:
     # local variable names dropped their underscore-prefix scratch-var spelling in the
     # process (_all_levels -> all_levels, _level_density -> level_density). The marker text
     # below matches the new spelling/location; the invariant itself is unchanged.
-    dens = srv.split("# Build levels dict for density check", 1)[1].split(
+    # RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function itself
+    # moved out of server.py into server_state_vol_envelope_sector.py.
+    ves = _read("server_state_vol_envelope_sector.py")
+    dens = ves.split("# Build levels dict for density check", 1)[1].split(
         "level_density = compute_level_density", 1
     )[0]
     dens_code = "\n".join(

@@ -311,11 +311,18 @@ def test_vol_context_absence_is_explicit_not_directional():
 
 
 def test_single_tracker_tick_site_lock():
-    """Exactly ONE _vix_tracker.tick site may exist in server.py — the
-    per-cycle vol-context computation. Extra per-surface ticks re-tick the
-    same value and force direction to flat (pre-fix defect class)."""
+    """Exactly ONE _vix_tracker.tick site may exist — the per-cycle vol-context
+    computation. Extra per-surface ticks re-tick the same value and force
+    direction to flat (pre-fix defect class).
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): _vix_tracker
+    and its one tick site moved with _vol_envelope_and_sector_for_state into
+    server_state_vol_envelope_sector.py; server.py no longer references it at all.
+    """
     server_src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert server_src.count("_vix_tracker.tick(") == 1
+    ves_src = (_REPO / "server_state_vol_envelope_sector.py").read_text(encoding="utf-8", errors="replace")
+    assert server_src.count("_vix_tracker.tick(") == 0
+    assert ves_src.count("_vix_tracker.tick(") == 1
 
 
 def test_three_surfaces_consume_the_one_context():
@@ -331,15 +338,18 @@ def test_three_surfaces_consume_the_one_context():
     # assignment moved with _post_publish_persistence_tail to its own module.
     tail_src = (_REPO / "server_state_persistence_tail.py").read_text(encoding="utf-8", errors="replace")
     assert "_vix_vs_prev = vol_ctx.market_iv_change" in tail_src   # snapshot row
-    assert "vix_level=vol_ctx.market_iv_level" in server_src         # snapshot row
+    assert "vix_level=vol_ctx.market_iv_level" in tail_src           # snapshot row
     assert "vol_ctx=vol_ctx" in server_src                           # build_market_state call
     assert "vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None)" in ms_src
     assert "vix_direction=(vol_ctx.market_iv_direction if vol_ctx is not None else None)" in ms_src
     # [REAL-GATE:VOL-CTX-SINGLE-SOURCE] closure lock: zero raw mkt_ctx.vix
-    # attribute reads outside the canonical conversion site. server.py may
-    # read mkt_ctx.vix exactly ONCE (the float() conversion feeding vol_ctx);
-    # market_state.py exactly TWICE, both as the ratified vol_ctx=None
-    # rollback fallbacks (vix_level stamp + vix_bucket source).
+    # attribute reads outside the canonical conversion site. RC-REHAB-1
+    # (2026-09-23, twenty-second slice): that conversion site moved with
+    # _vol_envelope_and_sector_for_state into server_state_vol_envelope_sector.py,
+    # so server.py itself must now read mkt_ctx.vix ZERO times; the new module
+    # carries the one canonical read instead. market_state.py stays at exactly
+    # TWO, both as the ratified vol_ctx=None rollback fallbacks (vix_level stamp
+    # + vix_bucket source).
     def _raw_vix_reads(src: str) -> list[int]:
         tree = _ast.parse(src)
         return sorted(
@@ -348,9 +358,15 @@ def test_three_surfaces_consume_the_one_context():
             and isinstance(n.value, _ast.Name) and n.value.id == "mkt_ctx"
         )
     server_reads = _raw_vix_reads(server_src)
-    assert len(server_reads) == 1, (
-        f"raw mkt_ctx.vix reads in server.py at {server_reads} — only the "
-        f"canonical vol_ctx conversion site may read the raw quote"
+    assert len(server_reads) == 0, (
+        f"raw mkt_ctx.vix reads in server.py at {server_reads} — the canonical "
+        f"vol_ctx conversion site moved to server_state_vol_envelope_sector.py"
+    )
+    ves_src = (_REPO / "server_state_vol_envelope_sector.py").read_text(encoding="utf-8", errors="replace")
+    ves_reads = _raw_vix_reads(ves_src)
+    assert len(ves_reads) == 1, (
+        f"raw mkt_ctx.vix reads in server_state_vol_envelope_sector.py at {ves_reads} "
+        f"— only the canonical vol_ctx conversion site may read the raw quote"
     )
     ms_reads = _raw_vix_reads(ms_src)
     assert len(ms_reads) == 2, (
@@ -378,29 +394,47 @@ def test_vol_context_bound_outside_any_try():
     real binding, both of which must independently be unconditional. A third
     apparent "binding" is _VolEnvelopeAndSectorForState's own NamedTuple field
     annotation (`vol_ctx: MarketVolContextV1`, an AnnAssign with no value) --
-    not a real runtime assignment, excluded here."""
-    tree = _ast.parse((_REPO / "server.py").read_text(encoding="utf-8", errors="replace"))
-    parents: dict[_ast.AST, _ast.AST] = {}
-    for node in _ast.walk(tree):
-        for child in _ast.iter_child_nodes(node):
-            parents[child] = node
-    bindings = [
-        n for n in _ast.walk(tree)
-        if isinstance(n, _ast.Name) and n.id == "vol_ctx" and isinstance(n.ctx, _ast.Store)
-        and not isinstance(parents.get(n), _ast.AnnAssign)
-    ]
-    assert len(bindings) == 2, f"expected exactly two real vol_ctx bindings, got {len(bindings)}"
-    for b in bindings:
-        cur: _ast.AST = b
-        enclosing: list[str] = []
-        while cur in parents:
-            cur = parents[cur]
-            if isinstance(cur, (_ast.Try, _ast.If, _ast.For, _ast.While)):
-                enclosing.append(f"{type(cur).__name__}@{cur.lineno}")
-        assert enclosing == [], (
-            f"vol_ctx binding at line {b.lineno} is conditional/swallowable (inside "
-            f"{enclosing}) — it must execute on every path that reaches its consumers"
+    not a real runtime assignment, excluded here.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the
+    construction site itself moved out of server.py entirely, into
+    server_state_vol_envelope_sector.py -- server.py now carries only the
+    unconditional unpack (`vol_ctx = _ves.vol_ctx`), the new module carries the
+    construction. Both files' real bindings are counted and checked
+    independently."""
+    def _check_unconditional_bindings(src: str, expected_count: int, label: str) -> None:
+        tree = _ast.parse(src)
+        parents: dict[_ast.AST, _ast.AST] = {}
+        for node in _ast.walk(tree):
+            for child in _ast.iter_child_nodes(node):
+                parents[child] = node
+        bindings = [
+            n for n in _ast.walk(tree)
+            if isinstance(n, _ast.Name) and n.id == "vol_ctx" and isinstance(n.ctx, _ast.Store)
+            and not isinstance(parents.get(n), _ast.AnnAssign)
+        ]
+        assert len(bindings) == expected_count, (
+            f"expected exactly {expected_count} real vol_ctx binding(s) in {label}, got {len(bindings)}"
         )
+        for b in bindings:
+            cur: _ast.AST = b
+            enclosing: list[str] = []
+            while cur in parents:
+                cur = parents[cur]
+                if isinstance(cur, (_ast.Try, _ast.If, _ast.For, _ast.While)):
+                    enclosing.append(f"{type(cur).__name__}@{cur.lineno}")
+            assert enclosing == [], (
+                f"vol_ctx binding at {label}:{b.lineno} is conditional/swallowable (inside "
+                f"{enclosing}) — it must execute on every path that reaches its consumers"
+            )
+
+    _check_unconditional_bindings(
+        (_REPO / "server.py").read_text(encoding="utf-8", errors="replace"), 1, "server.py",
+    )
+    _check_unconditional_bindings(
+        (_REPO / "server_state_vol_envelope_sector.py").read_text(encoding="utf-8", errors="replace"),
+        1, "server_state_vol_envelope_sector.py",
+    )
 
 
 def test_canonical_signal_input_construction_lock(repo_index):

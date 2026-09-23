@@ -9,6 +9,13 @@ OUTSIDE the try/except that wraps envelope/density/sector-strength/iwm-deep. vol
 must be bound on every path that reaches build_market_state / the persistence tail /
 ms_dict -- a swallowed envelope exception must degrade envelope fields only, never
 unbind the vol context (a NameError there would break the whole serve cycle).
+
+RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the function itself
+moved out of server.py into server_state_vol_envelope_sector.py (ves below);
+server.py keeps a re-export so srv._vol_envelope_and_sector_for_state still resolves,
+but compute_volatility_envelope/compute_sector_strength/etc. are no longer bound on
+srv -- they're imported directly here from math_exposure, matching what ves itself
+does.
 """
 from __future__ import annotations
 
@@ -16,6 +23,8 @@ from types import SimpleNamespace
 from unittest import mock
 
 import server as srv
+import server_state_vol_envelope_sector as ves
+from math_exposure import compute_sector_strength, compute_volatility_envelope
 
 
 def _fixture_mkt_ctx(vix=18.5):
@@ -47,10 +56,10 @@ def test_full_pipeline_matches_the_original_computation_chain():
 
     result = srv._vol_envelope_and_sector_for_state("ZZZ_VES_MATCH", 100.0, 2.5, walls, mkt_ctx, cache_key)
 
-    assert result.vol_envelope == srv.compute_volatility_envelope(100.0, 2.5)
-    assert result.index_strength == srv.compute_sector_strength({"SPY": 0.5, "QQQ": 0.3, "IWM": -0.2})
-    assert result.spy_strength == srv.compute_sector_strength({"AAPL": 1.2, "MSFT": -0.4})
-    assert result.sector_strength == srv.compute_sector_strength({"KRE": 0.8, "XBI": -1.1})
+    assert result.vol_envelope == compute_volatility_envelope(100.0, 2.5)
+    assert result.index_strength == compute_sector_strength({"SPY": 0.5, "QQQ": 0.3, "IWM": -0.2})
+    assert result.spy_strength == compute_sector_strength({"AAPL": 1.2, "MSFT": -0.4})
+    assert result.sector_strength == compute_sector_strength({"KRE": 0.8, "XBI": -1.1})
     assert result.vol_ctx.market_iv_level == 18.5
     assert result.vol_ctx.quality_status == "VALID"
     assert result.iwm_deep, "fixture must produce a real, non-degenerate iwm_deep result"
@@ -62,7 +71,10 @@ def test_vol_ctx_stays_bound_when_envelope_computation_raises():
     cache_key = "ZZZ_VES_FAIL|None"
     srv._state_cache.pop(cache_key, None)
 
-    with mock.patch.object(srv, "compute_volatility_envelope", side_effect=RuntimeError("boom")):
+    # Patched on server_state_vol_envelope_sector, not srv: compute_volatility_envelope
+    # is imported directly there (module-level, not lazily via `import server`), so
+    # that is the name the real call site actually resolves against.
+    with mock.patch.object(ves, "compute_volatility_envelope", side_effect=RuntimeError("boom")):
         result = srv._vol_envelope_and_sector_for_state("ZZZ_VES_FAIL", 100.0, 2.5, walls, mkt_ctx, cache_key)
 
     assert result.vol_ctx.market_iv_level == 18.5, (

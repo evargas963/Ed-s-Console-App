@@ -141,8 +141,13 @@ def test_money_path_modules_do_not_import_observability():
 def test_server_recorder_call_is_statement_only_and_unconsumed():
     """server.py may call record_market_vol_observation exactly once, as a
     bare statement (no assignment), and vol_observability_payload only from
-    the read-only endpoint — nothing feeds the pipeline."""
-    src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
+    the read-only endpoint — nothing feeds the pipeline.
+
+    RC-REHAB-1 (2026-09-23, module extraction, twenty-second slice): the recorder's
+    one call site moved with _vol_envelope_and_sector_for_state into
+    server_state_vol_envelope_sector.py.
+    """
+    src = (_REPO / "server_state_vol_envelope_sector.py").read_text(encoding="utf-8", errors="replace")
     tree = ast.parse(src)
     record_calls = []
     parents: dict[ast.AST, ast.AST] = {}
