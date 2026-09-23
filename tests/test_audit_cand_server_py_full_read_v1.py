@@ -266,7 +266,13 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
         payload = server._build_rest_fast_quote_payload("SPY", "test")
         assert payload.get("spread_semantic") == "fraction"
 
-        tier = server._tier_a_live_state_dict("SPY", None)
+        # /api/live/state is stream-only: give it the fresh streamed row it serves from
+        import time as _t
+        with patch.object(server._lmp, "get_quote", return_value={
+                "spot": 100.0, "bid": 99.9, "ask": 100.1, "server_received_ts": _t.time(),
+                "quote_source_detail": {"spot": "LAST_PRICE"},
+                "quote_ingestion": "schwab_streaming_level_one"}):
+            tier = server._tier_a_live_state_dict("SPY", None)
         assert tier.get("spread_semantic") == "dollar"
 
 

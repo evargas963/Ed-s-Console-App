@@ -49,6 +49,13 @@ def spot_authority(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot",
                         lambda tk, **_k: (spots.get(tk), server.SPOT_SOURCE_PLANE, 1.0)
                         if tk in spots else (None, "none", None))
+    # the ranking reads each contract's own Schwab fields from the chain the console holds
+    chains = {"SPY": [{"symbol": _SPY_CONTRACT, "strikePrice": 767.0,
+                       "expirationDate": "2026-08-20T20:00:00.000+00:00"}],
+              "QQQ": [{"symbol": _QQQ_CONTRACT, "strikePrice": 450.0,
+                       "expirationDate": "2026-08-20T20:00:00.000+00:00"}]}
+    for tk, cts in chains.items():
+        monkeypatch.setitem(server._terrain_cache, tk, {"_contracts_rest": cts})
     return spots
 
 

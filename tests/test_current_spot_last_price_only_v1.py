@@ -84,7 +84,9 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     L._by_ticker.pop("KEEPLAST", None)
 
 
-def test_stale_plane_last_price_beats_mark_but_is_labelled_stale(monkeypatch) -> None:
+def test_a_stale_streamed_last_price_is_withheld_not_served(monkeypatch) -> None:
+    """Operator rule 2026-09-23: a stale streamed LAST_PRICE is not current spot and is not
+    served labelled "stale" either -- spot is UNAVAILABLE until the stream delivers."""
     tk = "STALELAST"
     L._by_ticker[tk] = {
         "spot": 700.42,
@@ -97,9 +99,8 @@ def test_stale_plane_last_price_beats_mark_but_is_labelled_stale(monkeypatch) ->
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(server, "safe_get_quote", lambda _c, _tk, **_k: _no_last_price_quote(_tk))
         spot, source, _ts = server.resolve_spot(tk)
-        assert spot == 700.42
-        assert source == server.SPOT_SOURCE_PLANE
-        assert server.current_spot_state(source, tk) == "stale"
+        assert spot is None and source == "none"
+        assert server.current_spot_state(source, tk) == "unavailable"
     finally:
         L._by_ticker.pop(tk, None)
 

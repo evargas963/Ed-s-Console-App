@@ -853,67 +853,23 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
                  quote_node: dict | None = None) -> tuple[float | None, str, float | None]:
     """THE single current-spot authority. Returns (spot, source, as_of_ts_utc).
 
-    Fresh native Schwab LAST_PRICE is the sole producer of current live spot.
-    Transports (streaming plane, REST lastPrice) may differ; the value, provenance,
-    and generation may not. MARK, midpoint, chain underlying, regular close, stored
-    snapshot, cache, and bar close never become current spot.
+    SPOT IS Schwab LEVELONE_EQUITIES LAST_PRICE, as streamed -- 0 hops, one source.
+    It is served only while that streamed value is fresh. There is NO second source:
+    no REST quote, no stale stream value, no MARK/mid/close/chain/snapshot/cache/bar.
+    If the stream is not delivering a fresh LAST_PRICE, spot is UNAVAILABLE
+    (None, "none", None) so the failure is visible and gets fixed (operator rule,
+    2026-09-23: "I would rather know that a field is not working than fallback").
 
-    `allow_stored` and `chain_json` remain on the signature so existing callers do
-    not grow a second selector. They are ignored for current live spot: a missing
-    or stale LAST_PRICE is None / a stale LAST_PRICE, never a substitute.
-
-    Precedence:
-      0. fresh streaming-plane LAST_PRICE
-      1. REST quote/extended lastPrice
-      2. stale streaming-plane LAST_PRICE (still LAST_PRICE; callers label STALE)
-      else None / "none" (UNAVAILABLE)
-    """
-    _ = chain_json, allow_stored
+    `chain_json`, `allow_stored` and `quote_node` stay on the signature for existing
+    callers and are ignored."""
+    _ = chain_json, allow_stored, quote_node
     tk = ticker_storage_key(ticker) or (ticker or "").upper().strip()
     if not tk:
         return None, "none", None
-
-    try:
-        _plane_row = _lmp.get_quote(tk)
-    except Exception as e:
-        log.debug("resolve_spot plane leg failed for %s: %s", tk, e, exc_info=True)
-        _plane_row = None
-    _plane_last = (
-        _plane_row
-        if _plane_row and _lmp.plane_spot_is_last_price(_plane_row)
-        else None
-    )
-
-    # 2026-09-23 (live RTH): the plane also holds rows the 20s REST anchor refresher wrote
-    # (quote_ingestion "rest_anchor_lane_refresher"). Those were served as
-    # spot_source=streaming_plane / spot_state=live while the Schwab stream had been dead
-    # for minutes, so the header claimed a live stream it did not have. A plane row is
-    # the STREAMING source only when the stream wrote it; a REST-written row is labelled
-    # the REST last price it is, and a stale one is never promoted.
-    _plane_streamed = _plane_last is not None and _lmp.plane_row_is_streamed(_plane_last)
-    if _plane_last and _lmp.quote_is_fresh(_plane_last):
-        return (
-            float(_plane_last["spot"]),
-            SPOT_SOURCE_PLANE if _plane_streamed else SPOT_SOURCE_QUOTE,
-            _plane_last.get("exchange_quote_ts"),
-        )
-
-    if quote_node is not None:
-        _pq = _parse_quote_node_session_fields(quote_node)
-        _sp = _pq.get("spot")
-        if _pq.get("spot_source") == "lastPrice" and _sp and _sp > 0:
-            return float(_sp), SPOT_SOURCE_QUOTE, _pq.get("trade_time")
-    else:
-        spot, ts = _spot_from_quote(tk)
-        if spot is not None:
-            return spot, SPOT_SOURCE_QUOTE, ts
-
-    if _plane_last and _plane_streamed:
-        return (
-            float(_plane_last["spot"]),
-            SPOT_SOURCE_PLANE,
-            _plane_last.get("exchange_quote_ts"),
-        )
+    row = _lmp.get_quote(tk)
+    if (row and _lmp.plane_spot_is_last_price(row) and _lmp.plane_row_is_streamed(row)
+            and _lmp.quote_is_fresh(row)):
+        return float(row["spot"]), SPOT_SOURCE_PLANE, row.get("exchange_quote_ts")
     return None, "none", None
 
 
@@ -6125,7 +6081,7 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
     # /api/live/state already gets, closing the gap where the SSE-pushed header stayed
     # blank even after that route was fixed (caught in review — a route-level fix does not
     # reach a browser path that never calls that route).
-    out["chg_pct"] = _chg_pct_with_rest_backfill(tkr, row)
+    out["chg_pct"] = _streamed_chg_pct(tkr, row)
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
@@ -6302,7 +6258,7 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
     # plane row happens to carry a usable one, or clobber it to a stale row's None — it
     # cannot backfill. Re-resolve fresh (stream, then the row the overlay just applied,
     # then REST) so a cache-hit SSE/HTTP read gets the same live answer a fresh build would.
-    out["chg_pct"] = _chg_pct_with_rest_backfill(tkr, _lmp.get_quote(tkr))
+    out["chg_pct"] = _streamed_chg_pct(tkr, _lmp.get_quote(tkr))
     _l1_touch_scope(key)
     built = float(out.get("as_of_ts") or out.get("_server_build_ts") or l1_eval_wall_ts)
     age = max(0.0, l1_eval_wall_ts - built)
@@ -6436,43 +6392,13 @@ def _latest_cache_entry_for_ticker(ticker: str) -> Optional[tuple[tuple, dict]]:
     return (best_k, _state_cache[best_k])
 
 
-def _chg_pct_with_rest_backfill(tkr: str, row: Optional[dict], *, client=None) -> Optional[float]:
-    """
-    ONE backfill implementation, shared by /api/live/state (_tier_a_live_state_dict) and the
-    L1/SSE projection build (_project_l1) — a duplicate second copy of this exact backfill
-    was the reason /api/live/state got a real chg_pct while the SSE-pushed header stayed
-    blank (caught in review): each consumer of the L0 row needs the same treatment, not its
-    own copy of it.
-
-    market_context.resolve_chg_pct first (stream-primary, REST-row-fallback). If still None:
-    MEASURED (this preview, live) — a ticker with plane_quote_authority=="streaming" can have
-    a real, fresh streamed SPOT while its streamed percent-change field genuinely never lands
-    (the L1 subscription's field set decides that, not this function), and REST is otherwise
-    skipped once spot is already streaming. Spot and percent-change are different vendor
-    fields; one streaming does not guarantee the other. Backfill via the same memoized REST
-    quote /api/fast-quote already shares (RC-112) — usually a cache hit, not a second network
-    call — rather than leaving a consumer blank while another one (e.g. the watchlist, which
-    always polls REST) shows a real number for the same ticker.
-    """
-    from market_context import resolve_chg_pct
-
-    chg_pct = resolve_chg_pct(tkr, (row or {}).get("chg_pct"))
-    if chg_pct is not None:
-        return chg_pct
-    if client is None:
-        try:
-            client = get_client()
-        except HTTPException:
-            return None
-    try:
-        q_resp = _memoized_quote_response(tkr, client=client)
-        if q_resp and q_resp.status_code == 200:
-            _qj = q_resp.json()
-            _node = _qj.get(tkr.upper()) or _qj.get(tkr) or {}
-            return resolve_chg_pct(tkr, _parse_quote_node_session_fields(_node).get("chg_pct"))
-    except Exception as e:
-        log.debug("chg_pct REST backfill failed for %s: %s", tkr, e)
-    return None
+def _streamed_chg_pct(tkr: str, row: Optional[dict]) -> Optional[float]:
+    """chg_pct ONLY from a fresh streamed LEVELONE_EQUITIES row (REGULAR_MARKET_CHANGE_PERCENT,
+    0 hops). No REST backfill, no stale row: otherwise None (operator rule 2026-09-23)."""
+    from numeric_contract import float_finite_or_none as _fin
+    if not (row and _lmp.plane_row_is_streamed(row) and _lmp.quote_is_fresh(row)):
+        return None
+    return _fin(row.get("chg_pct"))
 
 
 def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
@@ -6484,179 +6410,34 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     t0_mono = time.monotonic()
     tkr = ticker.upper().strip()
     sess = _derive_session()
+    # STREAM ONLY (operator rule, 2026-09-23: no fallbacks of any kind). Spot, bid, ask and
+    # chg_pct all come from ONE fresh streamed LEVELONE_EQUITIES row -- 0 hops each. There
+    # is no REST bootstrap, no REST chg_pct backfill, no stale row: without a fresh streamed
+    # LAST_PRICE the route answers stream_unavailable so the broken feed is visible.
     row = _lmp.get_quote(tkr)
-    client = None
-    try:
-        client = get_client()
-    except HTTPException as he:
-        if _schwab_auth_http_unavailable(he) and not _plane_fast_quote_has_spot(row):
-            return {
-                "_tier": "A_live",
-                "ticker": tkr,
-                "selected_exp": expiry,
-                "session_label": sess,
-                "state_error": "token_invalid",
-                "error": "token_invalid",
-                "state_error_detail": str(he.detail or ""),
-                "remediation": "Run: python reauth_schwab.py --manual",
-                "_server_build_ts": time.time(),
-                "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
-                "_endpoint": "/api/live/state",
-            }
-        client = None
-    # Operator-reproduced defect (2026-09-14, spot 360 audit): this gate previously trusted
-    # ANY plane row with a spot, however old — if the streaming websocket silently stalled,
-    # the header kept painting that stopped price as live forever, with no fallback, while
-    # resolve_spot()'s OWN new plane leg (same _CARD_FRESHNESS_V1_QUOTE_STALE_SEC boundary)
-    # would already have fallen through to a fresher REST quote — reopening the exact
-    # divergence this file's spot authority exists to prevent, just in the other direction.
-    # An over-age row is now treated the same as no row: fall through to the REST bootstrap.
-    #
-    # Operator-reproduced defect, round 2 (LIVE, 2026-09-14): the pre-existing `and client`
-    # gate here silently abandoned this bootstrap whenever the EARLIER get_client() call (the
-    # try/except above, whose only job is a DIFFERENT question -- "is there a plane row to
-    # fall back on at all if auth is down") happened to raise -- leaving `client = None` with
-    # no retry, ever, for THIS request. Before this file had any freshness concept that was a
-    # harmless no-op (the plane was trusted regardless), so a transient auth hiccup was
-    # invisible. Now that a stale row is correctly rejected above, that same transient hiccup
-    # left the header STUCK: MEASURED live, a plane row 2.9 hours old kept being served
-    # (quote_ingestion: schwab_streaming_level_one, unchanged) across repeated requests, while
-    # /api/fast-quote -- which resolves get_client() itself, independently, on every call --
-    # succeeded immediately and returned a genuinely fresh price. _memoized_quote_response
-    # already resolves its own client when none is supplied; call it that way and let it
-    # retry, instead of trusting a client this function decided not to need for anything else.
-    _row_fresh = bool(row) and _lmp.quote_is_fresh(row)
-    _quote_node_for_resolve = None
-    if not row or row.get("spot") is None or not _row_fresh:
-        q_resp = None
-        try:
-            q_resp = _memoized_quote_response(tkr, client=client)   # RC-112/W3-C8: one vendor faucet
-        except HTTPException:
-            # get_client() failed again on this attempt too -- fall through to whatever `row`
-            # already holds (a stale-but-present plane row, honestly labelled by its own
-            # quote_ingestion/server_received_ts, or the "no_quote" fail-closed response
-            # below if there was never a row at all). Never a silent 500 for a display route.
-            pass
-        if q_resp and q_resp.status_code == 200:
-            q_json = q_resp.json()
-            _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
-            _quote_node_for_resolve = _node
-            pq = _parse_quote_node_session_fields(_node)
-            spot_source = pq["spot_source"]
-            spot = pq["spot"]
-            bid, ask = pq["bid"], pq["ask"]
-            if spot and float(spot) > 0:
-                sf = float(spot)
-                quote_ts = pq["quote_ts"]
-                server_received_ts = time.time()
-                from market_context import resolve_chg_pct
-                chg_pct = resolve_chg_pct(tkr, pq.get("chg_pct"))
-                row = {
-                    "ticker": tkr,
-                    "spot": sf,
-                    "chg_pct": chg_pct,
-                    "bid": bid,
-                    "ask": ask,
-                    "spot_disp": f"{sf:.2f}",
-                    "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
-                    "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
-                    "spread": None,
-                    "spread_pts": None,
-                    "quote_ingestion": "rest_tier_a",
-                    "exchange_quote_ts": quote_ts,
-                    "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
-                    "server_received_ts": server_received_ts,
-                    "fast_generation_id": _lmp.next_fast_generation(tkr),
-                    "quote_source_detail": {
-                        "spot": "LAST_PRICE" if spot_source == "lastPrice" else None,
-                        "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
-                        "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
-                        "mid": "unavailable_missing_mark_and_bid_ask",
-                        "spread": "unavailable_missing_bid_or_ask",
-                        "quote_ts": pq["quote_ts_clock"],  # M6: exchange clock carried in exchange_quote_ts
-                        "carried_forward": False,
-                    },
-                }
-                mid = pq["quote_mid"]
-                mid_src = pq["mid_source"]
-                if mid is not None:
-                    row["quote_mid"] = mid
-                    row["mid_source"] = mid_src
-                row["quote_source_detail"]["mid"] = mid_src or "unavailable_missing_mark_and_bid_ask"
-                if bid is not None and ask is not None:
-                    try:
-                        b_px, a_px = float(bid), float(ask)
-                        raw_spread = round(a_px - b_px, 4)
-                        row["spread_pts"] = raw_spread if raw_spread >= 0.0 else None
-                        row["spread_pts_source"] = "derived_bid_ask_pts"
-                        if mid is not None and mid > 0:
-                            row["spread"] = (a_px - b_px) / mid
-                            row["spread_source"] = (
-                                "derived_bid_ask_mid_fraction"
-                                if mid_src == "derived_bid_ask_mid"
-                                else "derived_bid_ask_fraction_schwab_mark_denom"
-                            )
-                        row["quote_source_detail"]["spread"] = "schwab_bid_ask"
-                    except (TypeError, ValueError):
-                        pass
-    if not row or row.get("spot") is None:
-        return {
-            "_tier": "A_live",
-            "ticker": tkr,
-            "selected_exp": expiry,
-            "session_label": sess,
-            "state_error": "no_quote",
-            "state_error_detail": "No live plane or REST quote available yet.",
-            "_server_build_ts": time.time(),
-            "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
-            "_endpoint": "/api/live/state",
-        }
-    # ONE spot faucet (operator directive, 2026-09-15, repo-wide audit): this route used to
-    # decide spot purely from its OWN plane-then-REST precedence check (_row_fresh above) --
-    # a second, independently-coded implementation of resolve_spot's exact same precedence,
-    # not a call to it (resolve_spot's own docstring already documented this exact bypass as
-    # a known, unfixed gap: "the header/analytics stack... reads [the plane] directly,
-    # bypassing this function entirely"). The decision criteria are structurally identical
-    # (same _lmp.get_quote/_lmp.quote_is_fresh calls, same REST-quote fallback), so this call
-    # reuses the quote node already fetched above (no second vendor round-trip) and simply
-    # makes resolve_spot's own answer authoritative for the SERVED number, instead of trusting
-    # a parallel implementation that could theoretically diverge from it. allow_stored=False
-    # preserves this endpoint's existing "Tier A — live-only... no chain/DB" contract: an
-    # outage still fails closed to no_quote below, never silently serves a stored snapshot.
-    _rs_spot, _rs_source, _rs_ts = resolve_spot(tkr, quote_node=_quote_node_for_resolve, allow_stored=False)
+    _rs_spot, _rs_source, _rs_ts = resolve_spot(tkr)
     if _rs_spot is None:
-        # Independent review, 2026-09-16 (CORRECTED): the first version of this fix fell back
-        # to row["spot"] here -- exactly the "a consumer independently selects/serves a second
-        # source when the ONE authority has nothing" pattern this whole change exists to ban,
-        # reintroduced by the fix itself. Structurally this branch should not fire (identical
-        # precedence to what built `row`), but "should not happen" is not a license to serve a
-        # value resolve_spot did not produce. Fail closed instead, the same contract every
-        # other resolve_spot-backed route in this file already uses.
-        log.warning("Tier A live/state: resolve_spot found nothing for %s while row had a "
-                    "spot (%.4f) -- failing closed rather than serving row's own value, this "
-                    "divergence should not happen given identical precedence and needs "
-                    "investigation.", tkr, float(row["spot"]))
         return {
             "_tier": "A_live",
             "ticker": tkr,
             "selected_exp": expiry,
             "session_label": sess,
-            "state_error": "no_quote",
-            "state_error_detail": "No live plane or REST quote available yet.",
+            "state_error": "stream_unavailable",
+            "state_error_detail": (f"No fresh streamed LEVELONE_EQUITIES LAST_PRICE for {tkr}: "
+                                   f"the stream is not delivering. Spot is withheld, not "
+                                   f"substituted."),
             "_server_build_ts": time.time(),
             "_pipeline_ms": round((time.monotonic() - t0_mono) * 1000),
             "_endpoint": "/api/live/state",
         }
     spot_f = float(_rs_spot)
     from numeric_contract import float_finite_or_none as _fin
-    # single source: finite bid/ask (raw float() admitted NaN into spread AND the bid/ask
-    # echoed into `out` below); canonical reader also removes the try/except.
     bid = _fin(row.get("bid"))
     ask = _fin(row.get("ask"))
     spread_dollar = None
     if bid is not None and ask is not None:
         spread_dollar = round(ask - bid, 4)
-    chg_pct = _chg_pct_with_rest_backfill(tkr, row, client=client)
+    chg_pct = _streamed_chg_pct(tkr, row)
     out: dict = {
         "_tier": "A_live",
         "ticker": tkr,

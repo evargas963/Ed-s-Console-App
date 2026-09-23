@@ -22,7 +22,7 @@ import stream_spine
 from stream_spine import (
     OPTION_CONTRACTS_MAX_HELD,
     enforce_option_contracts_budget,
-    rank_option_contracts_by_spot,
+    rank_option_contracts,
 )
 
 
@@ -30,40 +30,57 @@ def _sym(root: str, exp: str, cp: str, strike: float) -> str:
     return f"{root:<6}{exp}{cp}{int(round(strike * 1000)):08d}"
 
 
-# ── the console ranks by SPOT; the daemon only guards ───────────────────────────────
+# ── the console ranks on canonical Schwab fields; the daemon only guards ──────────────
 
-SPOT = {"SPY": 820.0}
+def _contract(root: str, exp: str, cp: str, strike: float) -> dict:
+    """A chain contract as Schwab sends it: symbol, strikePrice, expirationDate."""
+    yy, mm, dd = exp[:2], exp[2:4], exp[4:6]
+    return {"symbol": _sym(root, exp, cp, strike), "strikePrice": float(strike),
+            "expirationDate": f"20{yy}-{mm}-{dd}T20:00:00.000+00:00", "putCall": "CALL" if cp == "C" else "PUT"}
 
 
-def test_ranking_is_nearest_expiry_then_nearest_spot():
-    near = [_sym("SPY", "260924", "C", k) for k in range(700, 841)]
-    far = [_sym("SPY", "261030", "P", k) for k in range(700, 941)]
-    admitted, not_admitted = rank_option_contracts_by_spot(near + far, SPOT, budget=150)
-    assert len(admitted) == 150 and len(not_admitted) == len(near) + len(far) - 150
-    assert set(near) <= set(admitted), "the nearest expiry fills the budget first"
-    far_in = [int(s[-8:]) / 1000 for s in admitted if "261030" in s]
+def _inputs(contracts: list, spot):
+    return {c["symbol"]: {"expirationDate": c["expirationDate"], "strikePrice": c["strikePrice"],
+                          "spot": spot} for c in contracts}
+
+
+def test_ranking_is_nearest_expiration_then_nearest_spot():
+    near = [_contract("SPY", "260924", "C", k) for k in range(700, 841)]
+    far = [_contract("SPY", "261030", "P", k) for k in range(700, 941)]
+    syms = [c["symbol"] for c in near + far]
+    admitted, not_admitted = rank_option_contracts(syms, _inputs(near + far, 820.0), budget=150)
+    assert len(admitted) == 150 and len(not_admitted) == len(syms) - 150
+    assert {c["symbol"] for c in near} <= set(admitted), "the nearest expirationDate fills first"
+    far_in = [c["strikePrice"] for c in far if c["symbol"] in admitted]
     assert far_in and max(abs(k - 820.0) for k in far_in) <= 5, "then nearest the SPOT"
 
 
-def test_ranking_uses_spot_not_the_middle_of_the_request():
-    syms = [_sym("SPY", "260924", "C", k) for k in range(500, 1001)]       # middle = 750
-    admitted, _ = rank_option_contracts_by_spot(syms, SPOT, budget=21)
-    strikes = sorted(int(s[-8:]) / 1000 for s in admitted)
-    assert strikes[0] == 810 and strikes[-1] == 830
+def test_ranking_uses_canonical_fields_not_the_symbol_text():
+    c = _contract("SPY", "260924", "C", 800)
+    inp = {c["symbol"]: {"expirationDate": c["expirationDate"], "strikePrice": 815.0, "spot": 815.0}}
+    other = _contract("SPY", "260924", "C", 810)
+    inp[other["symbol"]] = {"expirationDate": other["expirationDate"], "strikePrice": 810.0,
+                            "spot": 815.0}
+    admitted, _ = rank_option_contracts([c["symbol"], other["symbol"]], inp, budget=1)
+    assert admitted == [c["symbol"]], "strikePrice comes from the chain field, never the symbol"
 
 
-def test_no_spot_means_nothing_admitted_and_it_says_why():
-    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 720)]
-    admitted, not_admitted = rank_option_contracts_by_spot(syms, {}, budget=200)
-    assert admitted == []
-    assert all(r == "not admitted: no live spot for SPY to rank by"
-               for r in not_admitted.values())
+def test_any_missing_canonical_input_means_not_admitted_and_says_which():
+    c = _contract("SPY", "260924", "C", 800)
+    for missing in ("expirationDate", "strikePrice", "spot"):
+        inp = _inputs([c], 820.0)
+        inp[c["symbol"]][missing] = None
+        admitted, not_admitted = rank_option_contracts([c["symbol"]], inp, budget=10)
+        assert admitted == [] and not_admitted[c["symbol"]] == f"not admitted: no {missing}"
+    admitted, not_admitted = rank_option_contracts([c["symbol"]], {}, budget=10)
+    assert admitted == [] and "not in the console's current Schwab chain" in not_admitted[c["symbol"]]
 
 
 def test_ranking_is_deterministic_and_order_free():
-    syms = [_sym("SPY", "260924", "C", k) for k in range(600, 900)]
-    a1, _ = rank_option_contracts_by_spot(syms, SPOT, budget=40)
-    a2, _ = rank_option_contracts_by_spot(list(reversed(syms)), SPOT, budget=40)
+    cs = [_contract("SPY", "260924", "C", k) for k in range(600, 900)]
+    syms = [c["symbol"] for c in cs]
+    a1, _ = rank_option_contracts(syms, _inputs(cs, 820.0), budget=40)
+    a2, _ = rank_option_contracts(list(reversed(syms)), _inputs(cs, 820.0), budget=40)
     assert a1 == a2
 
 
@@ -203,15 +220,14 @@ def _no_rest(monkeypatch, server):
     monkeypatch.setattr(server, "_spot_from_quote", lambda _tk: (None, None))
 
 
-def test_rest_written_plane_row_is_labelled_rest_not_streaming(monkeypatch):
+def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
+    """Spot is the streamed LAST_PRICE only -- a REST-written row is never spot, labelled
+    or not (operator rule 2026-09-23: no fallbacks, a broken feed must look broken)."""
     import server
-    _no_rest(monkeypatch, server)
     tk = "ZZRESTROW"
     L._by_ticker[tk] = _row("rest_anchor_lane_refresher", 1.0)
     try:
-        spot, source, _ = server.resolve_spot(tk)
-        assert spot == 700.42 and source == server.SPOT_SOURCE_QUOTE
-        assert source != server.SPOT_SOURCE_PLANE
+        assert server.resolve_spot(tk) == (None, "none", None)
     finally:
         L._by_ticker.pop(tk, None)
 
@@ -229,27 +245,37 @@ def test_streamed_plane_row_keeps_streaming_identity(monkeypatch):
         L._by_ticker.pop(tk, None)
 
 
-def test_a_stale_rest_row_is_never_promoted_to_spot(monkeypatch):
+def test_a_stale_streamed_price_is_not_spot(monkeypatch):
+    """A streamed LAST_PRICE past its freshness bound is UNAVAILABLE, never served stale."""
     import server
-    _no_rest(monkeypatch, server)
-    tk = "ZZSTALEREST"
-    L._by_ticker[tk] = _row("rest_anchor_lane_refresher", L.PLANE_QUOTE_STALE_SEC + 30)
+    tk = "ZZSTALESTREAM"
+    L._by_ticker[tk] = _row("schwab_streaming_level_one", L.PLANE_QUOTE_STALE_SEC + 30)
     try:
-        spot, source, _ = server.resolve_spot(tk)
-        assert spot is None and source == "none"
+        assert server.resolve_spot(tk) == (None, "none", None)
     finally:
         L._by_ticker.pop(tk, None)
+
+
+def test_no_rest_quote_is_ever_consulted_for_spot(monkeypatch):
+    import server
+
+    def _boom(*_a, **_k):
+        raise AssertionError("resolve_spot must not call the REST quote")
+    monkeypatch.setattr(server, "_spot_from_quote", _boom)
+    monkeypatch.setattr(server, "_memoized_quote_response", _boom)
+    assert server.resolve_spot("ZZNOSTREAM") == (None, "none", None)
 
 
 def test_console_publishes_only_the_budget_and_reports_the_rest(monkeypatch, tmp_path):
     import app.options.order_flow.streaming as st
     import server
-    monkeypatch.setattr(st, "_active_ticker", "SPY")
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (820.0, server.SPOT_SOURCE_PLANE, 1.0))
+    chain = [_contract("SPY", "260924", "C", k) for k in range(700, 700 + OPTION_CONTRACTS_MAX_HELD + 37)]
+    monkeypatch.setitem(server._terrain_cache, "SPY", {"_contracts_rest": chain})
     written: list = []
     monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: written.append(list(syms)))
     monkeypatch.setattr(st, "_active_option_contracts", [])
-    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 700 + OPTION_CONTRACTS_MAX_HELD + 37)]
+    syms = [c["symbol"] for c in chain]
     assert st.set_active_option_contracts(syms) is True
     assert len(written[-1]) == OPTION_CONTRACTS_MAX_HELD
     state = st.get_option_contracts_budget_state()
@@ -314,31 +340,31 @@ def test_a_dead_pump_is_detected_but_our_own_teardown_and_placeholders_are_not()
         "a dead socket must recycle faster than the quiet-feed watchdog")
 
 
-def test_console_ranks_by_resolve_spot(monkeypatch):
+def test_console_ranks_on_the_chain_fields_and_streamed_spot(monkeypatch):
     import app.options.order_flow.streaming as st
     import server
-    monkeypatch.setattr(st, "_active_ticker", "SPY")
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (820.0, server.SPOT_SOURCE_PLANE, 1.0))
     monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: None)
     monkeypatch.setattr(st, "_active_option_contracts", [])
-    syms = [_sym("SPY", "260924", "C", k) for k in range(500, 1001)]       # middle = 750
-    st.set_active_option_contracts(syms)
-    strikes = sorted(int(s[-8:]) / 1000 for s in st.get_active_option_contracts())
-    assert strikes[0] >= 720 and strikes[-1] <= 920
-    assert abs(strikes[len(strikes) // 2] - 820) <= 1, "centred on SPOT"
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (820.0, server.SPOT_SOURCE_PLANE, 1.0))
+    chain = [_contract("SPY", "260924", "C", k) for k in range(500, 1001)]
+    monkeypatch.setitem(server._terrain_cache, "SPY", {"_contracts_rest": chain})
+    st.set_active_option_contracts([c["symbol"] for c in chain])
+    held = set(st.get_active_option_contracts())
+    strikes = sorted(c["strikePrice"] for c in chain if c["symbol"] in held)
+    assert abs(strikes[len(strikes) // 2] - 820) <= 1, "centred on the streamed LAST_PRICE"
 
 
-def test_console_admits_nothing_without_a_spot(monkeypatch):
+def test_console_admits_nothing_without_a_streamed_spot(monkeypatch):
     import app.options.order_flow.streaming as st
     import server
-    monkeypatch.setattr(st, "_active_ticker", "SPY")
     monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: None)
     monkeypatch.setattr(st, "_active_option_contracts", [])
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (None, "none", None))
-    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 720)]
-    st.set_active_option_contracts(syms)
+    chain = [_contract("SPY", "260924", "C", k) for k in range(700, 720)]
+    monkeypatch.setitem(server._terrain_cache, "SPY", {"_contracts_rest": chain})
+    st.set_active_option_contracts([c["symbol"] for c in chain])
     assert st.get_active_option_contracts() == []
-    assert set(st.get_option_contracts_not_admitted()) == set(syms)
+    assert set(st.get_option_contracts_not_admitted().values()) == {"not admitted: no spot"}
 
 
 def test_post_returns_the_admitted_set_not_an_echo_of_the_request(monkeypatch):
@@ -346,11 +372,12 @@ def test_post_returns_the_admitted_set_not_an_echo_of_the_request(monkeypatch):
 
     import app.options.order_flow.streaming as st
     import server
-    monkeypatch.setattr(st, "_active_ticker", "SPY")
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (820.0, server.SPOT_SOURCE_PLANE, 1.0))
     monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: None)
     monkeypatch.setattr(st, "_active_option_contracts", [])
-    syms = [_sym("SPY", "260924", "C", k) for k in range(700, 700 + OPTION_CONTRACTS_MAX_HELD + 9)]
+    chain = [_contract("SPY", "260924", "C", k) for k in range(700, 700 + OPTION_CONTRACTS_MAX_HELD + 9)]
+    monkeypatch.setitem(server._terrain_cache, "SPY", {"_contracts_rest": chain})
+    syms = [c["symbol"] for c in chain]
     body = TestClient(server.app).post("/api/streaming/active-option-contracts",
                                        json={"contracts": syms}).json()
     assert body["ok"] is True

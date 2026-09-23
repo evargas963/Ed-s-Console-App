@@ -49,7 +49,7 @@ from stream_spine import (
     PRODUCER_CLAIM_TTL_SEC,
     STREAM_DB_DEFAULT,
     read_open_coverage_symbols,
-    rank_option_contracts_by_spot,
+    rank_option_contracts,
     read_producer_heartbeat,
     read_rejected_option_contracts,
     resolve_stream_db_path,
@@ -1175,30 +1175,30 @@ _active_option_contracts: "list[str]" = []
 _option_contracts_not_admitted: "dict[str, str]" = {}
 
 
-def _spot_by_root(symbols: "list[str]") -> "dict[str, float]":
-    """{option root: SPOT of that root's own underlying}, from resolve_spot -- the one spot
-    authority (1 hop: the Schwab LAST_PRICE it serves). A root's underlying is identified
-    by contract_matches_underlying (the vendor root in the Schwab `symbol`, plus the banked
-    chain for weekly roots such as SPXW -> $SPX); the candidates are the active streaming
-    ticker, the root itself and its $-index form. A root whose underlying cannot be
-    identified, or whose spot resolve_spot does not return, is absent -- its contracts are
-    not admitted, and rank_option_contracts_by_spot says why. Nothing is guessed."""
+def _contract_ranking_inputs(symbols: "list[str]") -> "dict[str, dict]":
+    """{symbol: {expirationDate, strikePrice, spot}} for every requested symbol found in a
+    Schwab chain the console currently holds (the terrain cache's raw REST contracts).
+    expirationDate and strikePrice are that contract's own fields; spot is resolve_spot of
+    the ticker whose chain holds the contract (streamed LAST_PRICE, or None). A symbol in
+    no held chain is absent, and rank_option_contracts reports it as not admitted."""
     import server as _srv
-    from stream_spine import _option_contract_rank_key
 
-    out: "dict[str, float]" = {}
-    seen: set = set()
-    for s in symbols:
-        root = _option_contract_rank_key(s)[0]
-        if not root or root in seen:
-            continue
-        seen.add(root)
-        for tkr in dict.fromkeys(t for t in (_active_ticker, root, f"${root}") if t):
-            if contract_matches_underlying(s, tkr):
-                spot, _source, _ts = _srv.resolve_spot(tkr)
-                if spot is not None:
-                    out[root] = float(spot)
-                break
+    wanted = set(symbols)
+    out: "dict[str, dict]" = {}
+    with _srv._terrain_cache_lock:
+        chains = [(tk, list(payload.get("_contracts_rest") or []))
+                  for tk, payload in _srv._terrain_cache.items()]
+    spot_by_ticker: "dict[str, float | None]" = {}
+    for tk, contracts in chains:
+        for ct in contracts:
+            sym = ticker_storage_key(ct.get("symbol")) if isinstance(ct, dict) else None
+            if not sym or sym not in wanted or sym in out:
+                continue
+            if tk not in spot_by_ticker:
+                spot_by_ticker[tk] = _srv.resolve_spot(tk)[0]
+            out[sym] = {"expirationDate": ct.get("expirationDate"),
+                        "strikePrice": ct.get("strikePrice"),
+                        "spot": spot_by_ticker[tk]}
     return out
 
 
@@ -1256,10 +1256,10 @@ def set_active_option_contracts(contract_symbols: "list[str]",
     requested = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: no symbols requested is an empty request, which clears the set
                         if ticker_storage_key(s)})
     # The shared Schwab socket's budget (stream_spine.OPTION_CONTRACTS_MAX_HELD, measured):
-    # publish only what the daemon may hold, ranked by SPOT (nearest expiry, then nearest
-    # the spot), and remember what was left out and why, so the caller can say so instead
-    # of showing it as pending forever. No spot, no rank, nothing admitted -- never a guess.
-    admitted, not_admitted = rank_option_contracts_by_spot(requested, _spot_by_root(requested))
+    # publish only what the daemon may hold, ranked on canonical Schwab fields (the chain
+    # contract's expirationDate, then |strikePrice - streamed LAST_PRICE|), and remember
+    # what was left out and why. Any input missing: not admitted, never a guess.
+    admitted, not_admitted = rank_option_contracts(requested, _contract_ranking_inputs(requested))
     symbols = sorted(admitted)
     _option_contracts_not_admitted = not_admitted
     with _option_contracts_command_lock:

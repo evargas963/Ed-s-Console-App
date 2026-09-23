@@ -489,44 +489,37 @@ def write_active_option_contracts_signal(
 OPTION_CONTRACTS_MAX_HELD = 200
 
 
-def _option_contract_rank_key(symbol: str) -> tuple:
-    """(root, expiry, strike) parsed from an OCC/Schwab option symbol, e.g.
-    'SPY   261030P00750000' -> ('SPY', '261030', 750.0). Unparseable -> None fields."""
-    s = str(symbol or "")  # caps-ok: fail-closed -- a missing symbol parses as unrankable (ranked last), never as a contract
-    if len(s) >= 21:
-        root, tail = s[:6].strip(), s[6:]
-        try:
-            return root, tail[:6], int(tail[7:15]) / 1000.0
-        except ValueError:
-            pass
-    return None, None, None
-
-
-def rank_option_contracts_by_spot(symbols, spot_by_root: "dict[str, float]",
-                                  budget: int = OPTION_CONTRACTS_MAX_HELD,
-                                  ) -> "tuple[list[str], dict[str, str]]":
+def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
+                          budget: int = OPTION_CONTRACTS_MAX_HELD,
+                          ) -> "tuple[list[str], dict[str, str]]":
     """(admitted, {not_admitted_symbol: reason}) -- the ONE ranking of which contracts the
-    shared socket carries, done by the console, which owns the spot authority.
+    shared socket carries, done by the console.
 
-    Rank = nearest expiry, then |strike - SPOT|, then symbol (deterministic). `spot_by_root`
-    is the live underlying price per option root from resolve_spot. No spot means no rank:
-    a contract whose root has no spot is NOT admitted and says so -- nothing is guessed from
-    the request's own strikes. Unparseable symbols are not admitted either."""
-    uniq = sorted({str(s).upper().strip() for s in symbols or ()} - {""})
+    Inputs are canonical Schwab fields only, supplied per requested symbol in
+    `contract_inputs[symbol]`:
+      expirationDate -- the chain contract's own field, compared as sent   (0 hops)
+      strikePrice    -- the chain contract's own field                     (0 hops)
+      spot           -- the underlying's streamed LEVELONE_EQUITIES LAST_PRICE (0 hops)
+    Rank = expirationDate, then |strikePrice - spot| (1 hop: one subtraction of two
+    canonical fields), then symbol. A symbol with ANY input missing is not admitted and
+    says which -- nothing is parsed out of the symbol text and nothing is guessed."""
     not_admitted: "dict[str, str]" = {}
     rankable = []
-    for s in uniq:
-        root, exp, strike = _option_contract_rank_key(s)
-        if strike is None:
-            not_admitted[s] = "not admitted: unparseable option symbol"
-        elif (spot_by_root or {}).get(root) is None:  # caps-ok: no spot for this root is an explicit not-admitted outcome, never a guessed rank
-            not_admitted[s] = f"not admitted: no live spot for {root} to rank by"
-        else:
-            rankable.append((exp, abs(strike - float(spot_by_root[root])), s))
+    for sym in sorted({str(s).upper().strip() for s in requested or ()} - {""}):
+        inp = contract_inputs.get(sym)
+        if inp is None:
+            not_admitted[sym] = "not admitted: contract not in the console's current Schwab chain"
+            continue
+        missing = [k for k in ("expirationDate", "strikePrice", "spot") if inp.get(k) is None]
+        if missing:
+            not_admitted[sym] = f"not admitted: no {', '.join(missing)}"
+            continue
+        rankable.append((str(inp["expirationDate"]),
+                         abs(float(inp["strikePrice"]) - float(inp["spot"])), sym))
     rankable.sort()
-    admitted = [s for _e, _d, s in rankable[:max(budget, 0)]]
-    for _e, _d, s in rankable[max(budget, 0):]:
-        not_admitted[s] = f"not admitted: outside the live-stream budget ({budget})"
+    admitted = [sym for _e, _d, sym in rankable[:max(budget, 0)]]
+    for _e, _d, sym in rankable[max(budget, 0):]:
+        not_admitted[sym] = f"not admitted: outside the live-stream budget ({budget})"
     return admitted, not_admitted
 
 
