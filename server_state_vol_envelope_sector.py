@@ -179,8 +179,8 @@ def _vol_envelope_and_sector_for_state(
 
         # Group 2: SPY top holdings (from mkt_ctx.constituents)
         spy_holdings = {}
-        for cq in getattr(mkt_ctx, 'constituents', []):
-            sym = getattr(cq, 'symbol', '').upper()
+        for cq in getattr(mkt_ctx, 'constituents', []):  # caps-ok: market_context.MarketContextV1.constituents is a dataclass field with default_factory=list -- always present, default never fires
+            sym = getattr(cq, 'symbol', '').upper()  # caps-ok: ConstituentQuote.symbol is a required (non-Optional, no default) dataclass field -- always present, default never fires
             chg = getattr(cq, 'chg_pct', None)
             if sym and chg is not None:
                 spy_holdings[sym] = float(chg)
@@ -188,8 +188,8 @@ def _vol_envelope_and_sector_for_state(
 
         # Group 3: IWM sector proxies (from mkt_ctx.iwm_sectors)
         sector_data = {}
-        for sq in getattr(mkt_ctx, 'iwm_sectors', []):
-            sym = getattr(sq, 'symbol', '').upper()
+        for sq in getattr(mkt_ctx, 'iwm_sectors', []):  # caps-ok: market_context.MarketContextV1.iwm_sectors is a dataclass field with default_factory=list -- always present, default never fires
+            sym = getattr(sq, 'symbol', '').upper()  # caps-ok: SectorQuote.symbol is a required (non-Optional, no default) dataclass field -- always present, default never fires
             chg = getattr(sq, 'chg_pct', None)
             if sym and chg is not None:
                 sector_data[sym] = float(chg)
