@@ -46,8 +46,12 @@ way, unchanged.
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
+import gamma_surface_state as _gss  # RC-REHAB-1 forty-second slice
+import per_strike_view as _psv  # RC-REHAB-1 forty-second slice
 log = logging.getLogger(__name__)
 
 from gamma_surface_projection import project_gamma_surface, project_gamma_surface_update_expiry
@@ -88,7 +92,6 @@ def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
     two chips are refreshed at the normal REST cadence (`_terrain_refresh_one`), same as
     the expirations list, walls, and regime already are; only the primary aggregate gets
     the eager, per-tick, incremental treatment the operator's mandate targets."""
-    import server as _srv
 
     if not prior_by_expiry or not affected_expiries:
         return None
@@ -98,7 +101,7 @@ def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
     new_by_expiry = dict(prior_by_expiry)
     for exp in affected_expiries:
         exp_contracts = [ct for ct in overlaid if isinstance(ct, dict)
-                         and _srv._contract_expiry_str(ct) == exp]
+                         and _psv._contract_expiry_str(ct) == exp]
         if not exp_contracts:
             return None   # nothing to recompute this expiry's contribution from -- unsafe
         try:
@@ -107,7 +110,7 @@ def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
         except Exception:
             return None
         new_by_expiry[exp] = exposures
-    merged = _srv._merge_all_expiry_exposures(new_by_expiry)
+    merged = _psv._merge_all_expiry_exposures(new_by_expiry)
     new_view = {
         "all": _per_strike_rows(merged, overlaid),
         "near": (prior_view or {}).get("near", []),  # caps-ok: prior_view: "dict | None" -- neither guard clause above checks it for None, so a genuinely-absent prior view honestly carries over an empty near/far chip, never a fabricated non-empty value
@@ -184,7 +187,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         if not base_contracts:
             return "no_rest_baseline"
         from math_exposure_core import overlay_streamed_contract_fields
-        streamed = _srv._desired_stream_greeks_for_ticker(tk)
+        streamed = _gss._desired_stream_greeks_for_ticker(tk)
         if contract_symbol not in streamed:
             # The contract whose tick triggered THIS call has nothing to offer (already
             # stale-gated, or its coverage ended between the hook firing and this running)
@@ -194,7 +197,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             return "no_streamed_greeks"
         overlaid, n = overlay_streamed_contract_fields(
             base_contracts, streamed,
-            newer_than_ts=read_generation, max_staleness_sec=_srv.GAMMA_SURFACE_STREAM_STALENESS_SEC)
+            newer_than_ts=read_generation, max_staleness_sec=_gss.GAMMA_SURFACE_STREAM_STALENESS_SEC)
         if n == 0:
             return "no_change"
         # ONE spot faucet (operator directive, 2026-09-15, SECOND pass): "streamed GEX must
@@ -215,7 +218,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
         spot, spot_source, spot_ts = _srv.resolve_spot(tk)
         if not spot:
             return "no_current_spot"
-        _overlaid_syms_now = _srv._overlaid_symbols(base_contracts, overlaid)
+        _overlaid_syms_now = _gss._overlaid_symbols(base_contracts, overlaid)
         # Audit finding #2 (2026-09-16): a streamed tick only ever freshens the specific
         # contracts _desired_stream_greeks_for_ticker found newer data for -- each one
         # belongs to exactly one expiry (an option symbol encodes its own expiry) -- so
@@ -270,7 +273,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             new_per_strike, new_per_strike_by_expiry = _incremental_ps
         if new_per_strike is None:
             new_per_strike_by_expiry = {}
-            new_per_strike = _srv._per_strike_view_from_contracts(
+            new_per_strike = _psv._per_strike_view_from_contracts(
                 overlaid, spot, by_expiry_out=new_per_strike_by_expiry)
         if new_surface is not None:
             # ONE spot faucet (operator directive, 2026-09-15): stamp the EXACT resolve_spot
@@ -288,10 +291,10 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
             # likely to move a cell from 'stale'/'unavailable' into 'live'.
             from app.options.order_flow.streaming import (
                 read_producer_rejected_option_contracts, is_option_producer_daemon_available)
-            _srv._stamp_gamma_surface_cell_stream_state(
+            _gss._stamp_gamma_surface_cell_stream_state(
                 new_surface, streamed, set(_overlaid_syms_now),
                 read_producer_rejected_option_contracts(),
-                set(_srv._desired_option_symbols_for_ticker(tk)),
+                set(_gss._desired_option_symbols_for_ticker(tk)),
                 daemon_available=is_option_producer_daemon_available())
             try:
                 # Best-effort enhancement -- a bug here must never block publishing an
@@ -347,7 +350,7 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
                 # this stale-baseline result over them would silently regress the cache to
                 # older data while claiming success. Discard rather than overwrite.
                 return "stale_baseline_superseded"
-            seq = _srv._next_gamma_surface_seq(tk)
+            seq = _gss._next_gamma_surface_seq(tk)
             if new_surface is not None:
                 new_surface["surface_seq"] = seq
             payload["_gamma_surface"] = new_surface
@@ -441,21 +444,21 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
         # uses, so an option contract's own tick freshness is respected here too, even
         # though THIS call was triggered by spot, not by that contract's own tick.
         from math_exposure_core import overlay_streamed_contract_fields
-        streamed = _srv._desired_stream_greeks_for_ticker(tk)
+        streamed = _gss._desired_stream_greeks_for_ticker(tk)
         overlaid, n = overlay_streamed_contract_fields(
             base_contracts, streamed,
-            newer_than_ts=read_generation, max_staleness_sec=_srv.GAMMA_SURFACE_STREAM_STALENESS_SEC)
-        _overlaid_syms_now = _srv._overlaid_symbols(base_contracts, overlaid)
+            newer_than_ts=read_generation, max_staleness_sec=_gss.GAMMA_SURFACE_STREAM_STALENESS_SEC)
+        _overlaid_syms_now = _gss._overlaid_symbols(base_contracts, overlaid)
         new_surface = project_gamma_surface(overlaid, spot)
         new_surface["spot"] = float(spot)
         new_surface["spot_source"] = spot_source
         new_surface["spot_as_of_ts_utc"] = spot_ts
         from app.options.order_flow.streaming import (
             read_producer_rejected_option_contracts, is_option_producer_daemon_available)
-        _srv._stamp_gamma_surface_cell_stream_state(
+        _gss._stamp_gamma_surface_cell_stream_state(
             new_surface, streamed, set(_overlaid_syms_now),
             read_producer_rejected_option_contracts(),
-            set(_srv._desired_option_symbols_for_ticker(tk)),
+            set(_gss._desired_option_symbols_for_ticker(tk)),
             daemon_available=is_option_producer_daemon_available())
         try:
             _srv._backfill_gex_cells_from_last_valid(tk, new_surface)
@@ -471,7 +474,7 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
         # The per-strike aggregate is equally spot-dependent for every expiry — always a
         # full recompute here too, never an incremental per-expiry merge.
         new_per_strike_by_expiry: dict = {}
-        new_per_strike = _srv._per_strike_view_from_contracts(
+        new_per_strike = _psv._per_strike_view_from_contracts(
             overlaid, spot, by_expiry_out=new_per_strike_by_expiry)
         # RC-570 (2026-09-21, operator directive: "this live fix applied to the app repo
         # wide... i better not find out you only made targeted fixes"): this function is
@@ -494,7 +497,7 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
                 return "cache_evicted"
             if payload.get("_contracts_rest_computed_ts") != read_generation:
                 return "stale_baseline_superseded"
-            new_surface["surface_seq"] = _srv._next_gamma_surface_seq(tk)
+            new_surface["surface_seq"] = _gss._next_gamma_surface_seq(tk)
             payload["_gamma_surface"] = new_surface
             payload["_per_strike"] = new_per_strike
             payload["_per_strike_expiry_raw"] = new_per_strike_by_expiry
@@ -512,3 +515,68 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
     except Exception as e:  # never let a best-effort freshening take the feed loop down
         log.debug("refresh_gamma_surface_from_spot_tick failed for %s: %s", ticker, e)
         return f"error:{type(e).__name__}"
+
+
+# RC-REHAB-1 (2026-09-23, forty-second slice): the coalesced spot-tick dispatcher moved here
+# from server.py, beside the refresh it dispatches.
+#: Coalesced per-ticker dispatch for refresh_gamma_surface_from_spot_tick (2026-09-17).
+#: One lifecycle owner (this module-level executor + state), at most one recompute in
+#: flight per ticker, a tick arriving mid-flight coalesces into exactly one trailing
+#: rerun (never an unbounded queue), latest-state convergence (the rerun always reads
+#: CURRENT resolve_spot/_terrain_cache state fresh, never a stale captured snapshot),
+#: and CAS protection via the SAME `_contracts_rest_computed_ts` compare-and-swap the
+#: underlying function already publishes through. Reimplemented here (rather than
+#: reusing app.options.order_flow.streaming's own option-tick hook dispatcher) because
+#: that one's coalescing state is a private closure of its `_feed_loop`, not exposed for
+#: reuse from this module — this is the smallest complete mechanism with the identical
+#: properties, on its own dedicated single-worker executor so a slow recompute never
+#: blocks the daemon-plane-feed's own DB-read thread that calls this callback.
+_spot_gamma_refresh_executor: "ThreadPoolExecutor | None" = None
+_spot_gamma_refresh_inflight: "set[str]" = set()
+_spot_gamma_refresh_pending: "set[str]" = set()
+_spot_gamma_refresh_lock = threading.Lock()
+
+
+def _get_spot_gamma_refresh_executor() -> ThreadPoolExecutor:
+    global _spot_gamma_refresh_executor
+    if _spot_gamma_refresh_executor is None:
+        _spot_gamma_refresh_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="spot-gamma-refresh")
+    return _spot_gamma_refresh_executor
+
+
+def _run_spot_gamma_refresh(tk: str) -> None:
+    try:
+        refresh_gamma_surface_from_spot_tick(tk)
+    except Exception as e:  # institutional-swallow-ok: best-effort background refresh, never load-bearing
+        log.debug("spot-triggered gamma refresh failed for %s: %s", tk, e)
+    finally:
+        rerun = False
+        with _spot_gamma_refresh_lock:
+            _spot_gamma_refresh_inflight.discard(tk)
+            if tk in _spot_gamma_refresh_pending:
+                _spot_gamma_refresh_pending.discard(tk)
+                _spot_gamma_refresh_inflight.add(tk)
+                rerun = True
+    if rerun:
+        _get_spot_gamma_refresh_executor().submit(_run_spot_gamma_refresh, tk)
+
+
+def _dispatch_spot_gamma_refresh(ticker: str) -> None:
+    """Registered as start_order_flow_stream's `on_tick_callback` — invoked synchronously,
+    per qualifying equity row, on the daemon-plane-feed's own single-worker DB executor
+    thread (app.options.order_flow.streaming._feed_loop). Must return immediately: all
+    this does is coalesce-and-submit to this module's own dedicated executor, never the
+    recompute itself."""
+    try:
+        tk = ticker_storage_key(ticker or "")
+    except Exception:  # institutional-swallow-ok: a malformed ticker is simply skipped
+        return
+    if not tk:
+        return
+    with _spot_gamma_refresh_lock:
+        if tk in _spot_gamma_refresh_inflight:
+            _spot_gamma_refresh_pending.add(tk)
+            return
+        _spot_gamma_refresh_inflight.add(tk)
+    _get_spot_gamma_refresh_executor().submit(_run_spot_gamma_refresh, tk)

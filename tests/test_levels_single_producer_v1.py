@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import calibration.option_chain_morning_full as ocmf
+import gamma_surface_state
 
 SERVER = Path(__file__).resolve().parent.parent / "server.py"
 SRC = SERVER.read_text(encoding="utf-8")
@@ -674,11 +676,13 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
     })
     monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
     # RC-441: computed_ts_utc=1.0 forces the RC-162 stale-path accrual-bank read
-    # (server.get_terrain_strikes -> latest_accrual_rows). Without stubbing it, this "unit"
+    # (app/api/routes/terrain.py:get_terrain_strikes -> latest_accrual_rows). Without stubbing it, this "unit"
     # test calls latest_accrual_rows against the live DB, so `today` is silently overridden by
     # whatever real SPY rows exist — the test then passes on an empty DB but fails on a
     # populated one (env-dependent, non-hermetic). Stub it so the fixture stays authoritative.
-    monkeypatch.setattr(srv, "latest_accrual_rows", lambda *a, **k: None)
+    # the route imports latest_accrual_rows from its real home at call time -- stub THAT
+    # (a stub on server's old re-export never reached the route: RC-441 hermeticity was lost)
+    monkeypatch.setattr(ocmf, "latest_accrual_rows", lambda *a, **k: None)
     resp = srv.get_terrain_strikes(ticker="SPY")
     payload = json.loads(bytes(resp.body))
     ss = payload["today_side_sums"]
@@ -704,19 +708,21 @@ def test_terrain_strikes_registers_viewing_demand(monkeypatch):
         "_per_strike": {"all": [], "near": [], "far": []}, "spot": 100.0, "computed_ts_utc": 1.0,
     })
     monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
-    monkeypatch.setattr(srv, "latest_accrual_rows", lambda *a, **k: None)
+    # the route imports latest_accrual_rows from its real home at call time -- stub THAT
+    # (a stub on server's old re-export never reached the route: RC-441 hermeticity was lost)
+    monkeypatch.setattr(ocmf, "latest_accrual_rows", lambda *a, **k: None)
     tk = srv.ticker_storage_key("ZZDEMANDONLY")
-    srv._gamma_surface_demand.pop(tk, None)
+    gamma_surface_state._gamma_surface_demand.pop(tk, None)
     try:
-        assert srv._gamma_surface_wanted(tk) is False, "must start with no recorded demand"
+        assert gamma_surface_state._gamma_surface_wanted(tk) is False, "must start with no recorded demand"
         resp = srv.get_terrain_strikes(ticker="ZZDEMANDONLY")
         json.loads(bytes(resp.body))   # a real, well-formed response — not the point of this test
-        assert srv._gamma_surface_wanted(tk) is True, (
+        assert gamma_surface_state._gamma_surface_wanted(tk) is True, (
             "GET /api/terrain/strikes must register viewing demand for its ticker, the same as "
             "/api/options/gamma-surface already does -- otherwise the terrain loop never learns "
             "anyone is watching a ticker that only this route serves")
     finally:
-        srv._gamma_surface_demand.pop(tk, None)
+        gamma_surface_state._gamma_surface_demand.pop(tk, None)
 
 
 def test_chart_level_titles_carry_session_scope_and_vendor_basis():

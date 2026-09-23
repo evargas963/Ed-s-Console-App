@@ -29,6 +29,7 @@
 "terrain_capture.py",
 "terrain_freshness.py",
 "terrain_schedule.py",
+"gamma_surface_state.py",
 "tier_a_live_state.py",
 "app/api/routes/accuracy.py",
 "app/api/routes/analytics_light.py",

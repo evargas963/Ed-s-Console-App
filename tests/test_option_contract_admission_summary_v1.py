@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import time
 
-import server
 from instrument_identity import ticker_storage_key
-from server import _option_contract_admission_summary
+from gamma_surface_state import _option_contract_admission_summary
+import gamma_surface_state
 
 TK = ticker_storage_key("ZZZADMISSIONTEST")
 _SYM_ACTIVE = "AAA   260918C00100000"
@@ -24,8 +24,8 @@ _SYM_REJECTED = "EEE   260918C00100000"
 
 
 def _wire(monkeypatch, *, desired, streamed, admitted_l1, rejected, daemon_available):
-    monkeypatch.setattr(server, "_desired_option_symbols_for_ticker", lambda tk: list(desired))
-    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk: dict(streamed))
+    monkeypatch.setattr(gamma_surface_state, "_desired_option_symbols_for_ticker", lambda tk: list(desired))
+    monkeypatch.setattr(gamma_surface_state, "_desired_stream_greeks_for_ticker", lambda tk: dict(streamed))
     monkeypatch.setattr(
         "app.options.order_flow.streaming.read_producer_admitted_option_contracts",
         lambda: {"LEVELONE_OPTIONS": list(admitted_l1)})
@@ -40,7 +40,7 @@ def _wire(monkeypatch, *, desired, streamed, admitted_l1, rejected, daemon_avail
 def test_active_requires_a_tick_within_the_staleness_window_not_merely_ever(monkeypatch):
     now = time.time()
     fresh = {"gamma_ts_recv": now}
-    stale = {"gamma_ts_recv": now - (server.GAMMA_SURFACE_STREAM_STALENESS_SEC + 5.0)}
+    stale = {"gamma_ts_recv": now - (gamma_surface_state.GAMMA_SURFACE_STREAM_STALENESS_SEC + 5.0)}
     _wire(monkeypatch,
           desired=[_SYM_ACTIVE, _SYM_OBSERVED_STALE],
           streamed={_SYM_ACTIVE: fresh, _SYM_OBSERVED_STALE: stale},
@@ -108,7 +108,7 @@ def test_every_bucket_together_partitions_the_desired_set_exactly_once(monkeypat
           desired=[_SYM_ACTIVE, _SYM_OBSERVED_STALE, _SYM_ADMITTED_NO_TICK, _SYM_PENDING, _SYM_REJECTED],
           streamed={
               _SYM_ACTIVE: {"gamma_ts_recv": now},
-              _SYM_OBSERVED_STALE: {"gamma_ts_recv": now - (server.GAMMA_SURFACE_STREAM_STALENESS_SEC + 5.0)},
+              _SYM_OBSERVED_STALE: {"gamma_ts_recv": now - (gamma_surface_state.GAMMA_SURFACE_STREAM_STALENESS_SEC + 5.0)},
           },
           admitted_l1=[_SYM_ADMITTED_NO_TICK],
           rejected={_SYM_REJECTED: "RuntimeError: refused"},

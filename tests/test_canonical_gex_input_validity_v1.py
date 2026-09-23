@@ -44,6 +44,7 @@ from math_exposure_core import (
 )
 from gamma_surface_projection import project_gamma_surface
 from instrument_identity import ticker_storage_key
+import gamma_surface_state
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -532,7 +533,7 @@ def test_backfill_never_labels_a_snapshot_live_stream_state_stays_honest():
 
     bad = _surf(100.0, "2026-09-15", None)
     bad["cells"][0]["contracts"] = [{"call": "SYMC", "put": "SYMP"}]
-    server._stamp_gamma_surface_cell_stream_state(bad, {}, set())   # nothing streaming this cycle
+    gamma_surface_state._stamp_gamma_surface_cell_stream_state(bad, {}, set())   # nothing streaming this cycle
     server._backfill_gex_cells_from_last_valid(tk, bad)
     cell = bad["cells"][0]
     assert cell["gex"] == [1000]                       # the real snapshot value, never blanked

@@ -9,6 +9,7 @@ it, and the generator picks the wire event name from the envelope instead of alw
 from __future__ import annotations
 
 import server
+import gamma_surface_state
 
 
 def test_sse_event_name_defaults_to_l1_projection_for_an_ordinary_envelope():
@@ -42,7 +43,7 @@ def _drain_l1_sse_thread_queue():
 
 def test_next_gamma_surface_seq_pushes_a_gamma_surface_seq_envelope_when_a_subscriber_exists():
     tk = server.ticker_storage_key("SPY")
-    server._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     import asyncio
     q = asyncio.Queue(maxsize=10)
     key = (tk, "__auto__")
@@ -50,7 +51,7 @@ def test_next_gamma_surface_seq_pushes_a_gamma_surface_seq_envelope_when_a_subsc
     _drain_l1_sse_thread_queue()
     try:
         n0 = server._l1_sse_thread_queue.qsize()
-        seq = server._next_gamma_surface_seq(tk)
+        seq = gamma_surface_state._next_gamma_surface_seq(tk)
         assert seq == 1
         assert server._l1_sse_thread_queue.qsize() == n0 + 1
         pushed_key, env = server._l1_sse_thread_queue.get_nowait()
@@ -67,20 +68,20 @@ def test_next_gamma_surface_seq_still_bumps_the_counter_with_no_subscribers():
     """The push is best-effort -- an empty thread queue push still must not affect the
     counter itself, which is the load-bearing part for revision-key correctness."""
     tk = server.ticker_storage_key("QQQ")
-    server._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     server._l1_light_sse_clients.clear()
-    assert server._next_gamma_surface_seq(tk) == 1
-    assert server._next_gamma_surface_seq(tk) == 2
+    assert gamma_surface_state._next_gamma_surface_seq(tk) == 1
+    assert gamma_surface_state._next_gamma_surface_seq(tk) == 2
 
 
 def test_next_gamma_surface_seq_survives_a_push_failure(monkeypatch):
     tk = server.ticker_storage_key("SPY")
-    server._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
 
     def _boom(sk, env):
         raise RuntimeError("simulated queue failure")
 
     monkeypatch.setattr(server, "_l1_put_thread_queue_notify", _boom)
-    assert server._next_gamma_surface_seq(tk) == 1, (
+    assert gamma_surface_state._next_gamma_surface_seq(tk) == 1, (
         "a failed SSE push must never prevent the counter (the load-bearing part) from advancing"
     )

@@ -23,6 +23,9 @@ from gamma_surface_eager_refresh import refresh_gamma_surface_from_stream
 from gamma_surface_projection import project_gamma_surface
 from instrument_identity import ticker_storage_key
 from math_exposure_core import overlay_streamed_contract_fields
+import gamma_surface_state
+import per_strike_view
+import terrain_refresh
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -119,7 +122,7 @@ def _put_rest_baseline(*, computed_ts_utc=None, contracts=None):
             "_gamma_surface": project_gamma_surface(cts, _SPOT),
             "computed_ts_utc": ts,
         }
-    server._gamma_surface_seq.pop(TK, None)
+    gamma_surface_state._gamma_surface_seq.pop(TK, None)
 
 
 def _backfilled(surface):
@@ -313,7 +316,7 @@ def test_a_fresh_streamed_update_recomputes_and_caches_the_overlaid_surface(monk
     overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed})
     assert n == 1
     expected_surface = _backfilled(project_gamma_surface(overlaid, _SPOT))
-    expected_per_strike = server._per_strike_view_from_contracts(overlaid, _SPOT)
+    expected_per_strike = per_strike_view._per_strike_view_from_contracts(overlaid, _SPOT)
 
     with server._terrain_cache_lock:
         cached = server._terrain_cache[TK]["_gamma_surface"]
@@ -657,7 +660,7 @@ def test_gamma_surface_contracts_with_stream_overlay_ignores_a_foreign_ticker(mo
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": time.time()})
-    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(
+    out, n, syms = terrain_refresh._gamma_surface_contracts_with_stream_overlay(
         ticker_storage_key("SPY"), _CONTRACTS)  # asking for SPY, not CRWD
     assert n == 0
     assert out == _CONTRACTS
@@ -671,7 +674,7 @@ def test_gamma_surface_contracts_with_stream_overlay_applies_for_the_matching_ti
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": time.time()})
-    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = terrain_refresh._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 1
     assert out[0]["gamma"] == 0.99
     assert syms == [_CONTRACT_SYMBOL]
@@ -680,7 +683,7 @@ def test_gamma_surface_contracts_with_stream_overlay_applies_for_the_matching_ti
 def test_gamma_surface_contracts_with_stream_overlay_noop_with_no_active_contract(monkeypatch):
     monkeypatch.setattr(
         "app.options.order_flow.streaming.get_active_option_contract", lambda: None)
-    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = terrain_refresh._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 0
     assert out is _CONTRACTS
     assert syms == []
@@ -707,7 +710,7 @@ def test_a_volume_only_streamed_update_reaches_both_per_strike_and_gamma_surface
     overlaid, n = overlay_streamed_contract_fields(_CONTRACTS, {_CONTRACT_SYMBOL: streamed})
     assert n == 1
     assert overlaid[0]["totalVolume"] == 999999.0
-    expected_per_strike = server._per_strike_view_from_contracts(overlaid, _SPOT)
+    expected_per_strike = per_strike_view._per_strike_view_from_contracts(overlaid, _SPOT)
 
     with server._terrain_cache_lock:
         cached_per_strike = server._terrain_cache[TK]["_per_strike"]
@@ -907,11 +910,11 @@ def test_desired_stream_greeks_excludes_an_additional_contract_on_a_foreign_tick
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.99, "gamma_ts_recv": now} if sym == foreign else None)
 
-    streamed = server._desired_stream_greeks_for_ticker(TK)
+    streamed = gamma_surface_state._desired_stream_greeks_for_ticker(TK)
     assert streamed == {}, (
         f"a foreign ticker's additional contract must never overlay onto CRWD: {streamed}")
 
-    out, n, syms = server._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
+    out, n, syms = terrain_refresh._gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS)
     assert n == 0
     assert out == _CONTRACTS
     assert syms == []

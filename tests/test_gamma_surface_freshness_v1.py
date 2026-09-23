@@ -9,6 +9,7 @@ import server
 import terrain_quarantine
 from app.api.routes.options import get_options_gamma_surface
 from instrument_identity import ticker_storage_key
+import gamma_surface_state
 
 _SURF = {
     "expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [580.0, 583.0, 586.0],
@@ -73,11 +74,11 @@ def test_surface_demand_gate_only_projects_viewed_tickers():
     # perf gate (#1): the terrain loop projects the (measurable) surface ONLY for tickers whose
     # surface was requested within the TTL — an unviewed ticker pays no surface cost.
     tk = ticker_storage_key("NFLX")
-    server._gamma_surface_demand.pop(tk, None)
-    assert server._gamma_surface_wanted(tk) is False        # unviewed -> loop skips the projection
+    gamma_surface_state._gamma_surface_demand.pop(tk, None)
+    assert gamma_surface_state._gamma_surface_wanted(tk) is False        # unviewed -> loop skips the projection
     _call(tk)                                               # a request marks it wanted
-    assert server._gamma_surface_wanted(tk) is True
-    server._gamma_surface_demand.pop(tk, None)
+    assert gamma_surface_state._gamma_surface_wanted(tk) is True
+    gamma_surface_state._gamma_surface_demand.pop(tk, None)
 
 
 def test_warming_true_only_when_terrain_eligible(monkeypatch):
@@ -133,7 +134,7 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
         server._GAMMA_SURFACE_CACHE.pop(tk, None)
-        server._gamma_surface_demand.pop(tk, None)
+        gamma_surface_state._gamma_surface_demand.pop(tk, None)
         if had:
             with server._logger_lock:
                 if tk not in server._logger_tickers:

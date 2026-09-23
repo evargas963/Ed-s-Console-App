@@ -55,6 +55,8 @@ import terrain_capture as _tcap  # RC-REHAB-1 forty-first slice
 import terrain_schedule as _tsch  # RC-REHAB-1 forty-first slice
 import terrain_quarantine as _tq  # RC-REHAB-1 fortieth slice: the quarantine book's own home
 
+import gamma_surface_state as _gss  # RC-REHAB-1 forty-second slice
+import per_strike_view as _psv  # RC-REHAB-1 forty-second slice
 log = logging.getLogger(__name__)
 
 from calibration.option_chain_morning_full import GEX_FULL_CHAIN_STRIKE_COUNT
@@ -80,18 +82,17 @@ def _gamma_surface_contracts_with_stream_overlay(
 
     Fails closed to the unmodified `contracts` on any error or when nothing applies — this is
     a best-effort freshening, never a precondition for the projection to run at all."""
-    import server as _srv
 
     try:
         from math_exposure_core import overlay_streamed_contract_fields
 
-        streamed = _srv._desired_stream_greeks_for_ticker(tk)
+        streamed = _gss._desired_stream_greeks_for_ticker(tk)
         if not streamed:
             return contracts, 0, []
         overlaid, n = overlay_streamed_contract_fields(
             contracts, streamed,
-            newer_than_ts=newer_than_ts, max_staleness_sec=_srv.GAMMA_SURFACE_STREAM_STALENESS_SEC)
-        return overlaid, n, _srv._overlaid_symbols(contracts, overlaid)
+            newer_than_ts=newer_than_ts, max_staleness_sec=_gss.GAMMA_SURFACE_STREAM_STALENESS_SEC)
+        return overlaid, n, _gss._overlaid_symbols(contracts, overlaid)
     except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
         log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
         return contracts, 0, []
@@ -171,7 +172,7 @@ def _apply_gamma_surface_projection(tk, payload, contracts, spot, spot_source, s
 
     stamp_surface_seq = False
     try:
-        if spot and _srv._gamma_surface_wanted(tk):
+        if spot and _gss._gamma_surface_wanted(tk):
             _overlaid_contracts, _overlay_n, _overlay_syms = _gamma_surface_contracts_with_stream_overlay(
                 tk, contracts, newer_than_ts=rest_fetch_ts)
             payload["_gamma_surface"] = project_gamma_surface(_overlaid_contracts, float(spot))
@@ -191,10 +192,10 @@ def _apply_gamma_surface_projection(tk, payload, contracts, spot, spot_source, s
                 # when nothing was fresh enough to overlay this particular cycle.
                 from app.options.order_flow.streaming import (
                     read_producer_rejected_option_contracts, is_option_producer_daemon_available)
-                _srv._stamp_gamma_surface_cell_stream_state(
-                    payload["_gamma_surface"], _srv._desired_stream_greeks_for_ticker(tk),
+                _gss._stamp_gamma_surface_cell_stream_state(
+                    payload["_gamma_surface"], _gss._desired_stream_greeks_for_ticker(tk),
                     set(_overlay_syms), read_producer_rejected_option_contracts(),
-                    set(_srv._desired_option_symbols_for_ticker(tk)),
+                    set(_gss._desired_option_symbols_for_ticker(tk)),
                     daemon_available=is_option_producer_daemon_available())
                 try:
                     # Best-effort enhancement, like the overlay above -- a bug here must
@@ -214,7 +215,7 @@ def _apply_gamma_surface_projection(tk, payload, contracts, spot, spot_source, s
                 # observation must reflect what the VENDOR's REST chain actually reported,
                 # never a streamed freshening, so `snap` itself is never built from
                 # `_overlaid_contracts`.
-                payload["_per_strike"] = _srv._per_strike_view_from_contracts(_overlaid_contracts, float(spot))
+                payload["_per_strike"] = _psv._per_strike_view_from_contracts(_overlaid_contracts, float(spot))
             if payload["_gamma_surface"] is not None:
                 payload["_gamma_surface"]["stream_overlay_contracts"] = _overlay_n
                 # A SIXTH independent review (2026-09-13): the COUNT alone cannot tell a
@@ -410,7 +411,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             tk, payload, contracts, spot, spot_source, spot_ts, _rest_fetch_ts)
         with _srv._terrain_cache_lock:
             if stamp_surface_seq:
-                payload["_gamma_surface"]["surface_seq"] = _srv._next_gamma_surface_seq(tk)
+                payload["_gamma_surface"]["surface_seq"] = _gss._next_gamma_surface_seq(tk)
             _srv._terrain_cache[tk] = payload
             _srv._terrain_profile_cache[tk] = snap.profile
         # RC-159 (operator mandate 2026-07-30): ACCRUE the wide chain across

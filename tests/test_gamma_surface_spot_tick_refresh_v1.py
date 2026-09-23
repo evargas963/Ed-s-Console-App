@@ -32,7 +32,10 @@ import gamma_surface_eager_refresh as gse
 from gamma_surface_eager_refresh import refresh_gamma_surface_from_spot_tick, refresh_gamma_surface_from_stream
 from gamma_surface_projection import project_gamma_surface
 from instrument_identity import ticker_storage_key
-from server import _dispatch_spot_gamma_refresh
+from gamma_surface_eager_refresh import _dispatch_spot_gamma_refresh
+import gamma_surface_eager_refresh
+import gamma_surface_state
+import per_strike_view
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -56,11 +59,11 @@ def _clear_caches():
         server._LAST_VALID_GEX_CELLS.pop(TK2, None)
         server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK2)
         server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK2] = time.time()
-    with server._spot_gamma_refresh_lock:
-        server._spot_gamma_refresh_inflight.discard(TK)
-        server._spot_gamma_refresh_pending.discard(TK)
-        server._spot_gamma_refresh_inflight.discard(TK2)
-        server._spot_gamma_refresh_pending.discard(TK2)
+    with gamma_surface_eager_refresh._spot_gamma_refresh_lock:
+        gamma_surface_eager_refresh._spot_gamma_refresh_inflight.discard(TK)
+        gamma_surface_eager_refresh._spot_gamma_refresh_pending.discard(TK)
+        gamma_surface_eager_refresh._spot_gamma_refresh_inflight.discard(TK2)
+        gamma_surface_eager_refresh._spot_gamma_refresh_pending.discard(TK2)
 
 
 def _put_rest_baseline_with_spot(tk, contracts, spot, *, computed_ts_utc=None):
@@ -81,7 +84,7 @@ def _put_rest_baseline_with_spot(tk, contracts, spot, *, computed_ts_utc=None):
             "_gamma_surface": surf,
             "computed_ts_utc": ts,
         }
-    server._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     return surf
 
 
@@ -136,13 +139,13 @@ def test_spot_only_tick_bumps_the_sse_generation_counter(monkeypatch):
     monkeypatch.setattr("app.options.order_flow.streaming.get_active_option_contract", lambda: None)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT + 1.0, "stub", time.time()))
     seq_calls = []
-    real_next_seq = server._next_gamma_surface_seq
+    real_next_seq = gamma_surface_state._next_gamma_surface_seq
 
     def _spy(tk):
         n = real_next_seq(tk)
         seq_calls.append(n)
         return n
-    monkeypatch.setattr(server, "_next_gamma_surface_seq", _spy)
+    monkeypatch.setattr(gamma_surface_state, "_next_gamma_surface_seq", _spy)
     assert refresh_gamma_surface_from_spot_tick(TK) == "ok"
     assert len(seq_calls) == 1
 
@@ -283,7 +286,7 @@ def test_dispatcher_coalesces_a_burst_into_at_most_two_underlying_calls(monkeypa
         started.set()
         release.wait(timeout=5.0)
         return "ok"
-    monkeypatch.setattr(server, "refresh_gamma_surface_from_spot_tick", _slow_refresh)
+    monkeypatch.setattr(gamma_surface_eager_refresh, "refresh_gamma_surface_from_spot_tick", _slow_refresh)
     try:
         _dispatch_spot_gamma_refresh(TK)
         assert started.wait(timeout=2.0), "the first dispatch must actually start running"
@@ -298,9 +301,9 @@ def test_dispatcher_coalesces_a_burst_into_at_most_two_underlying_calls(monkeypa
     finally:
         release.set()
     assert len(calls) <= 2, f"a burst of 10 dispatches must coalesce, not queue: {calls}"
-    with server._spot_gamma_refresh_lock:
-        assert TK not in server._spot_gamma_refresh_inflight
-        assert TK not in server._spot_gamma_refresh_pending
+    with gamma_surface_eager_refresh._spot_gamma_refresh_lock:
+        assert TK not in gamma_surface_eager_refresh._spot_gamma_refresh_inflight
+        assert TK not in gamma_surface_eager_refresh._spot_gamma_refresh_pending
 
 
 def test_dispatcher_keeps_two_tickers_data_isolated(monkeypatch):
@@ -321,7 +324,7 @@ def test_dispatcher_keeps_two_tickers_data_isolated(monkeypatch):
             started.set()
             release.wait(timeout=5.0)
         return "ok"
-    monkeypatch.setattr(server, "refresh_gamma_surface_from_spot_tick", _slow_refresh)
+    monkeypatch.setattr(gamma_surface_eager_refresh, "refresh_gamma_surface_from_spot_tick", _slow_refresh)
     try:
         _dispatch_spot_gamma_refresh(TK)
         assert started.wait(timeout=2.0)
@@ -430,7 +433,7 @@ def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(mo
     )
 
     # ---- 2. Strike Detail / GEX-by-strike (per_strike) ----
-    expected_per_strike = server._per_strike_view_from_contracts(_CONTRACTS, new_spot)
+    expected_per_strike = per_strike_view._per_strike_view_from_contracts(_CONTRACTS, new_spot)
     with server._terrain_cache_lock:
         cached_per_strike = server._terrain_cache[TK]["_per_strike"]
     assert cached_per_strike == expected_per_strike

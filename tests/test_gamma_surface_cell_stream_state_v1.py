@@ -22,7 +22,8 @@ from app.api.routes.options import get_options_gamma_surface
 from gamma_surface_eager_refresh import refresh_gamma_surface_from_stream
 from gamma_surface_projection import project_gamma_surface
 from instrument_identity import ticker_storage_key
-from server import _stamp_gamma_surface_cell_stream_state, _gamma_surface_cell_state_counts
+from gamma_surface_state import _stamp_gamma_surface_cell_stream_state, _gamma_surface_cell_state_counts
+import gamma_surface_state
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -199,7 +200,7 @@ def _put_rest_baseline(*, computed_ts_utc=None):
             "_gamma_surface": project_gamma_surface(_CONTRACTS, _SPOT),
             "computed_ts_utc": ts,
         }
-    server._gamma_surface_seq.pop(TK, None)
+    gamma_surface_state._gamma_surface_seq.pop(TK, None)
 
 
 def _drain_l1_sse_thread_queue():
@@ -261,7 +262,7 @@ def test_rest_only_cycle_marks_desired_contract_stale_never_live(monkeypatch):
     # Drive it through the same code path _terrain_refresh_one uses for stamping, without a
     # live vendor fetch: call the overlay + stamp directly, matching server.py's own sequence.
     from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
-    from server import _desired_stream_greeks_for_ticker
+    from gamma_surface_state import _desired_stream_greeks_for_ticker
     overlaid, n, overlay_syms = _gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS, newer_than_ts=time.time())
     assert n == 0   # too stale to overlay at all
     surface = project_gamma_surface(overlaid, _SPOT)
@@ -274,7 +275,7 @@ def test_rest_only_cycle_marks_desired_contract_stale_never_live(monkeypatch):
 def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch):
     import app.options.order_flow.streaming as _ofs
     from terrain_refresh import _gamma_surface_contracts_with_stream_overlay
-    from server import _desired_stream_greeks_for_ticker
+    from gamma_surface_state import _desired_stream_greeks_for_ticker
     _put_rest_baseline(computed_ts_utc=time.time())
     _ofs._active_option_contract = None   # coverage genuinely ended -- no longer desired at all
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: None)

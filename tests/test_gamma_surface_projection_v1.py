@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 
 from gamma_surface_projection import project_gamma_surface, project_gamma_surface_update_expiry
-from server import _per_strike_exposures_by_expiry, _merge_all_expiry_exposures, _per_strike_view_from_contracts
+from per_strike_view import _per_strike_exposures_by_expiry, _merge_all_expiry_exposures, _per_strike_view_from_contracts
 # RC-REHAB-1 (2026-09-23, module extraction, twenty-seventh slice):
 # _per_strike_view_update_expiry moved out of server.py entirely, into
 # gamma_surface_eager_refresh.py, along with its sole caller.

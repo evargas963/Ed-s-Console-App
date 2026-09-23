@@ -13,6 +13,7 @@ import time
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 from stream_spine import CaptureWriter, options_quote_msg
+import gamma_surface_state
 
 _SPY_CONTRACT = "SPY   260820C00767000"
 
@@ -461,7 +462,7 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
             "_contracts_rest_spot": spot,
             "_contracts_rest_computed_ts": _t.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (spot, "stub", _t.time()))
     try:
         # Baseline: measure ONE real call's cost directly against the real consumer. A
@@ -633,7 +634,7 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
         ofs._active_option_contracts = []
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-        srv._gamma_surface_seq.pop(tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(tk, None)
         _drain_l1_sse_thread_queue()
 
 
@@ -671,7 +672,7 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
             "_contracts_rest": contracts, "_contracts_rest_spot": 400.0,
             "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     try:
         ofs._active_option_contract = ofs.ticker_storage_key(_CONTRACT_A)
         ofs._active_option_contracts = [ofs.ticker_storage_key(_CONTRACT_B), ofs.ticker_storage_key(_CONTRACT_C)]
@@ -755,7 +756,7 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
         ofs._active_option_contracts = []
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-        srv._gamma_surface_seq.pop(tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(tk, None)
         _drain_l1_sse_thread_queue()
 
 
@@ -801,7 +802,7 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
             "_contracts_rest_spot": 400.0,
             "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(tk, None)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (400.0, "stub", time.time()))
     try:
         monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks",
@@ -866,7 +867,7 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
         ofs._active_option_contract = None
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(tk, None)
-        srv._gamma_surface_seq.pop(tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(tk, None)
         _drain_l1_sse_thread_queue()
 
 
@@ -911,8 +912,8 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
             ],
             "_contracts_rest_spot": 300.0, "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(spy_tk, None)
-    srv._gamma_surface_seq.pop(qqq_tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(spy_tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(qqq_tk, None)
     _spot_by_tk = {spy_tk: 400.0, qqq_tk: 300.0}
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (_spot_by_tk.get(t), "stub", time.time()))
     try:
@@ -980,8 +981,8 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(spy_tk, None)
             srv._terrain_cache.pop(qqq_tk, None)
-        srv._gamma_surface_seq.pop(spy_tk, None)
-        srv._gamma_surface_seq.pop(qqq_tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(spy_tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(qqq_tk, None)
         _drain_l1_sse_thread_queue()
 
 
@@ -1047,7 +1048,7 @@ def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_p
             ],
             "_contracts_rest_spot": 5600.0, "_contracts_rest_computed_ts": time.time() - 30.0,
         }
-    srv._gamma_surface_seq.pop(spx_tk, None)
+    gamma_surface_state._gamma_surface_seq.pop(spx_tk, None)
     try:
         ofs._active_option_contract = ofs.ticker_storage_key(_SPX_A)
         ofs._active_option_contracts = [ofs.ticker_storage_key(_SPXW_A)]
@@ -1086,7 +1087,7 @@ def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_p
         ofs._active_option_contracts = []
         with srv._terrain_cache_lock:
             srv._terrain_cache.pop(spx_tk, None)
-        srv._gamma_surface_seq.pop(spx_tk, None)
+        gamma_surface_state._gamma_surface_seq.pop(spx_tk, None)
         _drain_l1_sse_thread_queue()
 
 

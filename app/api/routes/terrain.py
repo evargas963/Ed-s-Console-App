@@ -139,12 +139,8 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
     from math_exposure_core import bucket_metric, total_gamma_raw_at_strike
     from calibration.option_chain_morning_full import latest_accrual_rows
     from terrain_freshness import TERRAIN_STALE_AFTER_SEC, terrain_staleness
-    from server import (
-        _note_gamma_surface_demand,
-        log,
-        resolve_spot,
-        terrain_cache_get,
-    )
+    from gamma_surface_state import _note_gamma_surface_demand
+    from server import log, resolve_spot, terrain_cache_get
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
     # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
