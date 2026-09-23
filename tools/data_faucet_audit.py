@@ -7,7 +7,7 @@ it?* Every answer was agent prose. That is how a 2.1-hour-frozen volume panel, a
 bind, a 110-hour-old scorecard file and a 19.1-minute bar lag all survived inside a system that
 had already declared the law. A law with no instrument is enforced only by whoever happens to look.
 
-WHAT THIS DOES. Statically traces every UI endpoint in server.py to the sources it reads, measures
+WHAT THIS DOES. Statically traces every UI endpoint in the repo to the sources it reads, measures
 each source's real AGE against the live DB, and counts how many distinct faucets feed each logical
 data concept. It replaces narrative with a number.
 
@@ -303,14 +303,66 @@ def _fmt(a: float | None) -> str:
     return f"{a/3600:.1f}h" if a >= 3600 else f"{a/60:.0f}m"
 
 
+#: Tracked path prefixes whose `/api/` decorators are not served routes (test fixtures build
+#: throwaway apps; archive is frozen legacy).
+_NON_SERVING_PREFIXES = ("tests/", "archive/")
+
+
+def repo_endpoint_sources(root: Path | None = None) -> dict[str, list[dict]]:
+    """endpoint_sources() over EVERY tracked production .py file, not one named file.
+
+    RC-REHAB-1 (2026-09-23): this used to read server.py alone. The decomposition moved every
+    route into app/api/routes/*.py, and the scan found 0 endpoints on the branch against 74 on
+    main -- so the ENFORCED single_faucet_provenance gate reported "0 violations" over nothing.
+    Discovery is by git's tracked-file list, not a maintained file list, so a route that moves
+    again stays in scope automatically. Measured on the switch: the 74 main endpoints all
+    reappear with byte-identical traced faucets (plus 1 route added since).
+    """
+    import subprocess
+
+    root = root or _ROOT
+    proc = subprocess.run(["git", "ls-files", "-z", "--", "*.py"], cwd=root,
+                          capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError("git ls-files failed, so the endpoint scan scope is unknown: "
+                           + proc.stderr.strip()[:160])
+    out: dict[str, list[dict]] = {}
+    for rel in sorted(p for p in proc.stdout.split("\0") if p):
+        rel = rel.replace("\\", "/")
+        if rel.startswith(_NON_SERVING_PREFIXES):
+            continue
+        src = (root / rel).read_text(encoding="utf-8", errors="ignore")
+        if "/api/" not in src:
+            continue
+        try:
+            found = endpoint_sources(src)
+        except SyntaxError:
+            continue
+        for path, hits in found.items():
+            bucket = out.setdefault(path, [])
+            for h in hits:
+                if h not in bucket:
+                    bucket.append(h)
+    return out
+
+
 def run(db_path: str) -> dict:
-    src = (_ROOT / "server.py").read_text(encoding="utf-8", errors="ignore")
-    eps = endpoint_sources(src)
+    eps = repo_endpoint_sources()
+    if not eps:
+        # Unmeasurable is not compliant: an empty trace must never read as "0 violations".
+        raise RuntimeError("the endpoint scan found no /api/ routes anywhere in the repo")
     ages = measure_ages(db_path)
     violations = []
     concepts = {}
     for concept, paths in CONCEPTS.items():
         faucets: list[str] = []
+        unserved = [p for p in paths if p not in eps]
+        if unserved:
+            # A concept whose endpoint is found nowhere is untraced, not single-faucet.
+            violations.append({"concept": concept,
+                               "undeclared": [f"<{p} is served by no route in the repo>"
+                                              for p in unserved],
+                               "declared": sorted(DECLARED_FAUCETS.get(concept, frozenset()))})
         for p in paths:
             for h in eps.get(p, []):
                 if h["faucet"] in UNIVERSAL_AUTHORITIES:

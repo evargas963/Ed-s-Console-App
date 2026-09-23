@@ -35,6 +35,7 @@ import ast
 import datetime
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -103,41 +104,51 @@ def check_single_spot_authority() -> list[Violation]:
     RC-14: four independent spot sources existed (live quote, chain underlying,
     price_bars close, stored snapshot) and each consumer picked one, so the terrain card
     and the console header showed different prices for the same ticker at the same moment.
-    `server.resolve_spot()` is now the single authority; this forbids reintroducing a
-    second faucet.
+    `resolve_spot()` is now the single authority; this forbids reintroducing a second faucet.
+
+    SCOPE (RC-REHAB-1, 2026-09-23): EVERY production .py file, by AST. The first version
+    read three named files (server.py, terrain_engine.py, live_market_plane.py) by line text,
+    so a direct chain_underlying_spot() call in any module the server.py decomposition
+    created -- or in any new module -- was invisible, and the rule text itself would have
+    matched as a violation had its own file been scanned. AST reads calls, not strings.
+    Also new: a SECOND `def resolve_spot` anywhere is a second authority and is flagged, and
+    a missing one fails closed instead of guarding nothing.
     """
     out: list[Violation] = []
-    banned = ("chain_underlying_spot(",)
-    allowed_lines = ("def chain_underlying_spot",)
-    for rel in ("server.py", "terrain_engine.py"):
-        f = REPO / rel
-        if not f.exists():
-            continue
-        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), start=1):
-            stripped = line.strip()
-            if any(b in stripped for b in banned) and not any(a in stripped for a in allowed_lines):
-                out.append(Violation(f, n,
+    authorities: list[tuple[Path, ast.AST]] = []
+    for path, tree in _production_asts():
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "resolve_spot":
+                authorities.append((path, node))
+            elif isinstance(node, ast.Call) and _call_name(node) == "chain_underlying_spot":
+                out.append(Violation(path, node.lineno,
                                      "spot must be read through resolve_spot() - the single "
                                      "authority (RC-14). Do not call chain_underlying_spot directly."))
-    server_txt = (REPO / "server.py").read_text(encoding="utf-8")
-    rs_start = server_txt.find("def resolve_spot(")
-    if rs_start < 0:
-        out.append(Violation(REPO / "server.py", 1, "resolve_spot is missing"))
-    else:
-        rs_end = server_txt.find("\ndef ", rs_start + 1)
-        rs_body = server_txt[rs_start:rs_end if rs_end > 0 else None]
-        for needle, why in (
-            ("_spot_from_stored(", "resolve_spot must not promote snapshots.spot to current live spot"),
-            ("chain_underlying_spot(", "resolve_spot must not promote chain underlying to current live spot"),
-        ):
-            if needle in rs_body:
-                out.append(Violation(REPO / "server.py", server_txt[:rs_start].count("\n") + 1, why))
-    plane = REPO / "live_market_plane.py"
-    if plane.exists():
-        for n, line in enumerate(plane.read_text(encoding="utf-8").splitlines(), start=1):
-            if "spot_f = last or mark" in line or "last or mark" in line:
-                out.append(Violation(plane, n,
-                                     "plane current spot must be LAST_PRICE only; MARK is not spot"))
+            elif (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)
+                  and [getattr(v, "id", None) for v in node.values[:2]] == ["last", "mark"]):
+                out.append(Violation(path, node.lineno,
+                                     "current spot must be LAST_PRICE only; MARK is not spot "
+                                     "(`last or mark` silently promotes the mark)"))
+    if not authorities:
+        out.append(Violation(REPO / "server.py", 1,
+                             "resolve_spot is missing from every production module - the "
+                             "spot-authority check is guarding nothing"))
+    elif len(authorities) > 1:
+        for path, node in authorities:
+            out.append(Violation(path, node.lineno,
+                                 f"{len(authorities)} functions named resolve_spot exist - two "
+                                 f"definitions are two spot authorities (RC-14)"))
+    for path, node in authorities:
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Call):
+                continue
+            name = _call_name(sub)
+            if name == "_spot_from_stored":
+                out.append(Violation(path, node.lineno,
+                                     "resolve_spot must not promote snapshots.spot to current live spot"))
+            elif name == "chain_underlying_spot":
+                out.append(Violation(path, node.lineno,
+                                     "resolve_spot must not promote chain underlying to current live spot"))
     return out
 
 
@@ -1178,15 +1189,48 @@ MAX_COMPLEXITY = 15  # cyclomatic; above this a function is too hard to understa
 
 
 def _production_py_files() -> list[Path]:
+    # Pruned walk: skipped directories are never descended into (rglob walked the whole
+    # .venv and reports/ trees before filtering; same population, a fraction of the I/O).
+    # tests have their own check; archive is frozen legacy.
+    skip = _SKIP_DIR_PARTS | {"archive", "tests"}
     out: list[Path] = []
-    for p in REPO.rglob("*.py"):
-        parts = p.relative_to(REPO).parts
-        if any(d in _SKIP_DIR_PARTS for d in parts):
-            continue
-        if "archive" in parts or "tests" in parts:
-            continue  # tests have their own check; archive is frozen legacy
-        out.append(p)
+    for dirpath, dirnames, filenames in os.walk(REPO):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        out.extend(Path(dirpath) / f for f in filenames if f.endswith(".py"))
     return sorted(out)
+
+
+def _production_asts() -> list[tuple[Path, ast.AST]]:
+    """(path, parsed tree) for every production .py file — the repo-wide population the
+    single-authority checks scan. A file that does not parse is skipped here; the ruff E9 /
+    syntax gates own that failure. Parsed trees are cached per (path, mtime, size), so the
+    several repo-wide checks in one gate run parse each file once, and a file rewritten
+    between calls (the negative-control tests do exactly that) is re-parsed."""
+    out: list[tuple[Path, ast.AST]] = []
+    for p in _production_py_files():
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        key = (str(p), st.st_mtime_ns, st.st_size)
+        tree = _AST_CACHE.get(key)
+        if tree is None:
+            try:
+                tree = ast.parse(p.read_text(encoding="utf-8", errors="ignore"), filename=str(p))
+            except (SyntaxError, ValueError):
+                continue
+            _AST_CACHE[key] = tree
+        out.append((p, tree))
+    return out
+
+
+_AST_CACHE: dict[tuple[str, int, int], ast.AST] = {}
+
+
+def _call_name(node: ast.Call) -> str | None:
+    """`f(...)` -> "f", `mod.f(...)` -> "f"."""
+    f = node.func
+    return f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
 
 
 def _marker_in_span(lines: list[str], node: ast.AST, marker: str) -> bool:
@@ -1770,43 +1814,46 @@ def check_shutdown_is_bounded() -> list[Violation]:
     REPRODUCED in isolation: a process with one wedged non-daemon thread never exits
     (>15 s, killed); with the watchdog armed it exits in 2.4 s.
 
-    HOW THE RULE WAS VALIDATED: prototyped against the current file -- the lifespan does
-    arm the watchdog, so this check is 0 today and only fires on regression.
+    SCOPE (RC-REHAB-1, 2026-09-23): every production module, by AST. The first version read
+    server.py alone and returned [] when `_app_lifespan` was not in it -- so moving the
+    lifespan into its own module would have turned the check silently green. Every
+    `*lifespan*` coroutine that joins with wait=True must arm the watchdog; every
+    `_arm_shutdown_watchdog` must refuse under pytest; finding no lifespan at all is a
+    violation, not a pass.
     """
     out: list[Violation] = []
-    server = REPO / "server.py"
-    if not server.exists():
-        return out
-    text = server.read_text(encoding="utf-8", errors="replace")
-    marker = "async def _app_lifespan"
-    if marker not in text:
-        return out
-    body = text[text.index(marker):]
-    end = body.find("\n@app.")
-    if end > 0:
-        body = body[:end]
-    if "wait=True" in body and "_arm_shutdown_watchdog" not in body:
-        out.append(Violation(
-            server, text[: text.index(marker)].count("\n") + 1,
-            "the lifespan joins background workers (wait=True) without arming "
-            "_arm_shutdown_watchdog — one blocked worker makes the console unkillable "
-            "by Ctrl+C (OBSERVED 2026-07-20)"))
-    # The watchdog itself must refuse under pytest. OBSERVED 2026-07-20: TestClient runs
-    # the lifespan inside the TEST process; an unguarded watchdog os._exit(0)'d PYTEST
-    # 12 s later, mid-suite, silently, exit code 0 — tests/adversarial "passed" with zero
-    # output and the full suite read as a hang (Cursor audit). RC-10 class.
-    wd = "def _arm_shutdown_watchdog"
-    if wd in text:
-        wd_body = text[text.index(wd):]
-        wd_end = wd_body.find("\ndef ")
-        if wd_end > 0:
-            wd_body = wd_body[:wd_end]
-        if "PYTEST_CURRENT_TEST" not in wd_body:
-            out.append(Violation(
-                server, text[: text.index(wd)].count("\n") + 1,
-                "_arm_shutdown_watchdog does not refuse under pytest — armed inside the "
-                "test process it os._exit(0)'s the RUNNER mid-suite with a success code "
-                "(OBSERVED 2026-07-20: silent zero-output 'pass')"))
+    lifespans = 0
+    for path, tree in _production_asts():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AsyncFunctionDef) and "lifespan" in node.name:
+                lifespans += 1
+                calls = [c for c in ast.walk(node) if isinstance(c, ast.Call)]
+                joins = any(kw.arg == "wait" and isinstance(kw.value, ast.Constant)
+                            and kw.value.value is True for c in calls for kw in c.keywords)
+                armed = any(_call_name(c) == "_arm_shutdown_watchdog" for c in calls)
+                if joins and not armed:
+                    out.append(Violation(
+                        path, node.lineno,
+                        "the lifespan joins background workers (wait=True) without arming "
+                        "_arm_shutdown_watchdog — one blocked worker makes the console unkillable "
+                        "by Ctrl+C (OBSERVED 2026-07-20)"))
+            elif (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  and node.name == "_arm_shutdown_watchdog"):
+                # The watchdog itself must refuse under pytest. OBSERVED 2026-07-20: TestClient
+                # runs the lifespan inside the TEST process; an unguarded watchdog os._exit(0)'d
+                # PYTEST 12 s later, mid-suite, silently, exit code 0 (RC-10 class).
+                guarded = any(isinstance(c, ast.Constant) and c.value == "PYTEST_CURRENT_TEST"
+                              for c in ast.walk(node))
+                if not guarded:
+                    out.append(Violation(
+                        path, node.lineno,
+                        "_arm_shutdown_watchdog does not refuse under pytest — armed inside the "
+                        "test process it os._exit(0)'s the RUNNER mid-suite with a success code "
+                        "(OBSERVED 2026-07-20: silent zero-output 'pass')"))
+    if lifespans == 0:
+        out.append(Violation(REPO / "server.py", 1,
+                             "no app lifespan coroutine found in any production module — the "
+                             "shutdown-bound check is guarding nothing"))
     return out
 
 
@@ -2571,37 +2618,46 @@ def check_chain_width_single_faucet() -> list[Violation]:
     across 52 chains the fixed count was wrong in BOTH directions (~48 equities need under 20 and
     got 40; $SPX needs ~150 and got 40) — so a hardcoded literal cannot be right for any universe.
 
-    Rule: in server.py, a `strike_count=` argument on a chain fetch must be
-    `resolve_chain_strike_count(...)` (or a variable derived from it), never a bare constant —
-    unless the line declares `chain-width-faucet-ok: <reason>` for a fetch that provably computes
-    no levels (e.g. the expiry-list dropdown).
+    Rule: in EVERY production module, a `strike_count=` keyword must not be a bare constant — an
+    UPPER_CASE name or an integer literal — unless the call declares
+    `chain-width-faucet-ok: <reason>` for a fetch that provably computes no levels (e.g. the
+    expiry-list dropdown) or deliberately takes max width (the wide research capture).
 
-    HOW THE RULE WAS VALIDATED: prototyped against server.py before enforcing — it flags exactly
-    the bare-constant fetches and passes the faucet-routed ones and the single declared exemption;
-    scoped to server.py because that is where the live fetches live, so it cannot cry wolf across
-    offline tools that legitimately choose their own width.
+    SCOPE (RC-REHAB-1, 2026-09-23): the first version read server.py line by line on the theory
+    that "that is where the live fetches live". The decomposition moved three of them out
+    (app/api/routes/debug.py, terrain_refresh.py, server_state_persistence_tail.py) and the
+    check stopped seeing them. It also never matched an integer literal (`strike_count=40`),
+    the plainest form of the defect. MEASURED on the switch to repo-wide AST: 2 constant-width
+    calls in 694 production files, both already carrying a reviewed exemption — the wider scope
+    does not cry wolf.
     """
     out: list[Violation] = []
-    path = REPO / "server.py"
-    try:
-        src = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return out
-    for n, line in enumerate(src.splitlines(), start=1):
-        if "strike_count=" not in line or "def " in line:
-            continue
-        if "chain-width-faucet-ok" in line:
-            continue
-        arg = line.split("strike_count=", 1)[1].strip().rstrip(",)").strip()
-        if not arg or arg.startswith(("resolve_chain_strike_count", "_width", "_terrain_strike_count")):
-            continue
-        if arg.isidentifier() and arg.isupper():          # a bare CONSTANT is the defect
-            out.append(Violation(
-                path, n,
-                f"chain fetch sizes itself from the bare constant {arg!r} instead of the ONE "
-                f"width authority resolve_chain_strike_count(ticker) (RC-59). A fixed count is "
-                f"wrong in both directions across a real universe. Use the faucet, or declare "
-                f"'chain-width-faucet-ok: <reason>' if this fetch computes no levels."))
+    for path, tree in _production_asts():
+        lines: list[str] | None = None
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords:
+                if kw.arg != "strike_count":
+                    continue
+                v = kw.value
+                if isinstance(v, ast.Constant) and isinstance(v.value, int) and not isinstance(v.value, bool):
+                    shown = repr(v.value)
+                elif isinstance(v, ast.Name) and v.id.isupper():
+                    shown = v.id
+                else:
+                    continue
+                if lines is None:
+                    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+                span = "\n".join(lines[node.lineno - 1: (node.end_lineno or node.lineno)])
+                if "chain-width-faucet-ok" in span:
+                    continue
+                out.append(Violation(
+                    path, v.lineno,
+                    f"chain fetch sizes itself from the bare constant {shown} instead of the ONE "
+                    f"width authority resolve_chain_strike_count(ticker) (RC-59). A fixed count is "
+                    f"wrong in both directions across a real universe. Use the faucet, or declare "
+                    f"'chain-width-faucet-ok: <reason>' if this fetch computes no levels."))
     return out
 
 

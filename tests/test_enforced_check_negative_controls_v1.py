@@ -618,3 +618,86 @@ def test_enforced_gate_execution_closure_has_no_application_module():
     r = subprocess.run([_sys.executable, "-c", probe], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", check=True)
     assert r.stdout.strip() == "False False", r.stdout + r.stderr
+
+
+# ── RC-REHAB-1 (2026-09-23): the single-authority checks scan EVERY production module ──────
+# Each of these checks used to read server.py (plus, for spot, two more named files) and was
+# silently blind to anything the server.py decomposition moved out. These controls plant the
+# defect in a module that is NOT server.py -- the exact shape that used to pass.
+
+_RESOLVE_SPOT_OK = "def resolve_spot(ticker):\n    return None\n"
+
+
+def test_chain_width_check_catches_a_constant_width_fetch_outside_server_py(tmp_path, monkeypatch):
+    M = _tree(tmp_path, monkeypatch, {
+        "server.py": "x = 1\n",
+        "app/api/routes/debugx.py": "c = safe_get_chain(cl, t, strike_count=CHAIN_STRIKE_COUNT)\n",
+        "terrain_x.py": "c = safe_get_chain(cl, t,\n    strike_count=40)\n",
+    })
+    hits = sorted((v.path.name, v.line) for v in M.check_chain_width_single_faucet())
+    assert hits == [("debugx.py", 1), ("terrain_x.py", 2)], hits
+    (tmp_path / "terrain_x.py").write_text(
+        "c = safe_get_chain(cl, t,\n    strike_count=40)  # chain-width-faucet-ok: expiry list only\n",
+        encoding="utf-8")
+    (tmp_path / "app/api/routes/debugx.py").write_text(
+        "c = safe_get_chain(cl, t, strike_count=resolve_chain_strike_count(t))\n", encoding="utf-8")
+    assert M.check_chain_width_single_faucet() == []
+
+
+def test_spot_authority_check_catches_a_second_faucet_outside_server_py(tmp_path, monkeypatch):
+    M = _tree(tmp_path, monkeypatch, {
+        "server.py": _RESOLVE_SPOT_OK,
+        "server_state_x.py": "s = chain_underlying_spot(c)\n",
+        "planes/y.py": "spot_f = last or mark\n",
+    })
+    hits = sorted(v.path.name for v in M.check_single_spot_authority())
+    assert hits == ["server_state_x.py", "y.py"], hits
+    # A second resolve_spot anywhere is a second authority.
+    (tmp_path / "server_state_x.py").write_text(_RESOLVE_SPOT_OK, encoding="utf-8")
+    (tmp_path / "planes/y.py").write_text("spot_f = last\n", encoding="utf-8")
+    msgs = [v.msg for v in M.check_single_spot_authority()]
+    assert len(msgs) == 2 and all("two spot authorities" in m for m in msgs), msgs
+    (tmp_path / "server_state_x.py").write_text("x = 1\n", encoding="utf-8")
+    assert M.check_single_spot_authority() == []
+    # And a deleted authority fails closed instead of guarding nothing.
+    (tmp_path / "server.py").write_text("x = 1\n", encoding="utf-8")
+    assert any("guarding nothing" in v.msg for v in M.check_single_spot_authority())
+
+
+def test_shutdown_check_follows_the_lifespan_out_of_server_py(tmp_path, monkeypatch):
+    unarmed = ("async def _app_lifespan(app):\n    pool.shutdown(wait=True)\n\n"
+               "def _arm_shutdown_watchdog():\n    pass\n")
+    M = _tree(tmp_path, monkeypatch, {"server.py": "x = 1\n", "app_lifespan.py": unarmed})
+    msgs = [v.msg for v in M.check_shutdown_is_bounded()]
+    assert len(msgs) == 2, msgs
+    (tmp_path / "app_lifespan.py").write_text("x = 1\n", encoding="utf-8")
+    assert any("guarding nothing" in v.msg for v in M.check_shutdown_is_bounded())
+
+
+def test_faucet_audit_traces_routes_in_any_module_and_fails_closed_on_none(tmp_path, monkeypatch):
+    """single_faucet_provenance read server.py alone and found 0 endpoints once every route
+    moved to app/api/routes/ -- '0 violations' over nothing. Discovery is now repo-wide."""
+    import subprocess
+
+    from tools import data_faucet_audit as A
+
+    route = (tmp_path / "app" / "api" / "routes" / "x.py")
+    route.parent.mkdir(parents=True)
+    route.write_text(
+        '@router.get("/api/bars1m")\n'
+        'def bars():\n'
+        '    return q("SELECT * FROM price_bars_1m")\n'
+        '    return q("SELECT * FROM snapshots ")\n', encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "fixture.py").write_text(
+        '@app.get("/api/spot")\ndef s():\n    return safe_get_chain()\n', encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    eps = A.repo_endpoint_sources(tmp_path)
+    assert set(eps) == {"/api/bars1m"}, "test fixtures must not count as served routes"
+    assert {h["faucet"] for h in eps["/api/bars1m"]} == {"price_bars_1m", "snapshots"}
+
+    monkeypatch.setattr(A, "repo_endpoint_sources", lambda root=None: {})
+    import pytest as _pytest
+    with _pytest.raises(RuntimeError):
+        A.run("/dev/null/no-db")
