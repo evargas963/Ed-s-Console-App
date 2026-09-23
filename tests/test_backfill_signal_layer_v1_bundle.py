@@ -8,6 +8,7 @@ import sqlite3
 from calibration.backfill_signal_layer_v1_bundle import backfill
 from calibration.schema import ensure_calibration_schema
 from db import EdDB, configure_sqlite_connection
+from json_blob_codec import decode_json_blob
 
 BASE_TS = 1_910_000_000.0
 
@@ -58,7 +59,7 @@ def test_backfill_recomputes_empty_signal_layer_when_bars_exist(tmp_path) -> Non
     conn = sqlite3.connect(str(db_path))
     row = conn.execute("SELECT raw_bundle_json FROM calibration_decision_log").fetchone()
     conn.close()
-    payload = json.loads(row[0])
+    payload = decode_json_blob(row[0])
     assert int(payload["signal_layer_v1"].get("meta.n_bars") or 0) > 0
 
 

@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
 
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
+from json_blob_codec import decode_json_blob
 from calibration.trust import TRUSTED_PREDICATE_SQL
 from db import configure_sqlite_connection
 from features.signal_layer_v1 import (
@@ -151,7 +152,7 @@ def run_discrimination(db_path: Path) -> dict[str, Any]:
         fj = r["fusion_json"]
         if fj:
             try:
-                d = json.loads(fj)
+                d = decode_json_blob(fj)
                 pu_raw = d.get("prob_up")
                 pd_raw = d.get("prob_down")
                 pf_raw = d.get("prob_flat")
@@ -170,7 +171,7 @@ def run_discrimination(db_path: Path) -> dict[str, Any]:
                             fusion_n_missing += 1
                 else:
                     fusion_n_missing += 1
-            except (json.JSONDecodeError, TypeError):
+            except (json.JSONDecodeError, TypeError, OSError):   # OSError: gzip.BadGzipFile
                 fusion_n_missing += 1
         else:
             fusion_n_missing += 1

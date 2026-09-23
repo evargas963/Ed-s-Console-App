@@ -12,7 +12,6 @@ Written from the SAME live single-expiry fetch that serves GET /api/chain
 
 from __future__ import annotations
 
-import json
 import math
 import sqlite3
 import time
@@ -20,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob, encode_json_blob
 
 TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS complete_chain_captures (
@@ -87,7 +87,7 @@ def persist_complete_chain_capture(
             (tk, exp, ts,
              float(spot) if spot is not None and math.isfinite(float(spot)) else None,
              len(clean), str(completeness_basis),
-             json.dumps(clean, default=str), str(source)),
+             encode_json_blob(clean, default=str), str(source)),
         )
         conn.commit()
     finally:
@@ -223,8 +223,8 @@ def latest_complete_chain_capture(
     if not row:
         return None
     try:
-        contracts = json.loads(row[4])
-    except (TypeError, ValueError):
+        contracts = decode_json_blob(row[4])
+    except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile on a corrupt blob
         return None
     if not isinstance(contracts, list) or not contracts:
         return None
@@ -306,8 +306,8 @@ def _nearest_complete_chain_capture_uncached(
     if not row:
         return None
     try:
-        contracts = json.loads(row[5])
-    except (TypeError, ValueError):
+        contracts = decode_json_blob(row[5])
+    except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile on a corrupt blob
         return None
     if not isinstance(contracts, list) or not contracts:
         return None

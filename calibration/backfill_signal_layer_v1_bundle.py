@@ -27,6 +27,7 @@ from calibration.json_utils import dumps_compact
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from calibration.schema import ensure_calibration_schema
+from json_blob_codec import decode_json_blob, encode_text_blob
 from calibration.trust import TRUSTED_PREDICATE_SQL
 
 try:
@@ -75,8 +76,8 @@ def backfill(
         bundle: dict[str, Any] = {}
         if raw:
             try:
-                bundle = json.loads(raw)
-            except json.JSONDecodeError as e:
+                bundle = decode_json_blob(raw)
+            except (json.JSONDecodeError, OSError) as e:   # OSError: gzip.BadGzipFile
                 errors.append({"id": rid, "error": f"json_decode:{e}"})
                 continue
 
@@ -99,7 +100,7 @@ def backfill(
             continue
 
         bundle["signal_layer_v1"] = layer
-        new_json = dumps_compact(bundle)
+        new_json = encode_text_blob(dumps_compact(bundle))
         if not dry_run:
             conn.execute(
                 "UPDATE calibration_decision_log SET raw_bundle_json = ? WHERE id = ?",

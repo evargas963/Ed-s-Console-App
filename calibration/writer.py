@@ -20,6 +20,7 @@ from calibration.schema import ensure_calibration_schema
 from calibration.trust import CALIBRATION_TRUST_TRUSTED
 from calibration.v2_advisory_backfill import ADVISORY_V2_ADAPTER_VERSION, ADVISORY_V2_SNAPSHOT_SCHEMA_VERSION
 from instrument_identity import ticker_storage_key
+from json_blob_codec import encode_text_blob
 from timeframe_config import CANONICAL_TIMEFRAME
 
 log = logging.getLogger(__name__)
@@ -192,8 +193,12 @@ def append_calibration_decision(
     vix_bkt = getattr(inp, "vix_bucket", None)
     sess_bkt = getattr(inp, "session_bucket", None)
 
-    fusion_json = dumps_compact(fusion) if fusion is not None else None
-    canonical_json = dumps_compact(canonical) if canonical is not None else None
+    # RC-REHAB-3: each *_json value below is gzip-compressed for storage via
+    # encode_text_blob -- applied to the ALREADY-serialized dumps_compact() text (not
+    # re-parsed and re-dumped through encode_json_blob), so the exact bytes dumps_compact
+    # would have produced are always recoverable via decode_text_blob, byte-for-byte.
+    fusion_json = encode_text_blob(dumps_compact(fusion)) if fusion is not None else None
+    canonical_json = encode_text_blob(dumps_compact(canonical)) if canonical is not None else None
     # Single JSON encode: xgb/lstm/transformer are objects in the outer JSON (not nested JSON strings).
     # Downstream readers still accept legacy double-encoded string values via isinstance(blk, str).
     model_outputs = {
@@ -202,14 +207,14 @@ def append_calibration_decision(
         "transformer": transformer_out,
         "stack_probs_bundle": ml_bundle,
     }
-    model_outputs_json = dumps_compact(model_outputs)
-    monte_carlo_json = dumps_compact(mc_out)
+    model_outputs_json = encode_text_blob(dumps_compact(model_outputs))
+    monte_carlo_json = encode_text_blob(dumps_compact(mc_out))
 
     mh_dec = getattr(mh_bundle, "final_decision", None) if mh_bundle is not None else None
     multi_horizon_json = None
     if mh_dec is not None:
         ar = getattr(mh_dec, "alignment_report", None)
-        multi_horizon_json = dumps_compact(
+        multi_horizon_json = encode_text_blob(dumps_compact(
             {
                 "primary_horizon": getattr(mh_dec, "primary_horizon", None),
                 "trade_mode": getattr(mh_dec, "trade_mode", None),
@@ -221,16 +226,16 @@ def append_calibration_decision(
                 "wait_reason": getattr(mh_dec, "wait_reason", None),
                 "sizing_modifier": getattr(mh_dec, "sizing_modifier", None),
             }
-        )
+        ))
 
     raw_bundle = {
         "predictive_card_excerpt": _json_excerpt(pred),
         "fusion_excerpt": _json_excerpt(fusion),
         "signal_layer_v1": signal_layer_v1,
     }
-    raw_bundle_json = dumps_compact(raw_bundle)
+    raw_bundle_json = encode_text_blob(dumps_compact(raw_bundle))
     advisory_v2_decision_snapshot_json = (
-        dumps_compact(advisory_v2_decision_snapshot)
+        encode_text_blob(dumps_compact(advisory_v2_decision_snapshot))
         if advisory_v2_decision_snapshot is not None
         else None
     )
@@ -294,13 +299,13 @@ def append_calibration_decision(
         vwap_side,
         na,
         nb,
-        dumps_compact(structural),
+        encode_text_blob(dumps_compact(structural)),
         regime_primary,
         regime_confidence,
         vol_r,
         vix_bkt,
         sess_bkt,
-        dumps_compact({"regime": regime_primary, "vol_regime": vol_r}),
+        encode_text_blob(dumps_compact({"regime": regime_primary, "vol_regime": vol_r})),
         model_outputs_json,
         monte_carlo_json,
         fusion_json,

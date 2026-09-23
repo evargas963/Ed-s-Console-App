@@ -231,6 +231,7 @@ from schwab_client import (
     SchwabAuthError,
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
 from math_exposure import (
     MISSING_GREEK_SENTINEL,
     gamma_is_plausible,
@@ -14718,7 +14719,7 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
             _prior_row = rows[1] if len(rows) > 1 else (rows[0] if today_src else None)
             if _prior_row is not None:
                 d1, s1, c1 = _prior_row
-                prior = _per_strike(json.loads(c1), float(s1))
+                prior = _per_strike(decode_json_blob(c1), float(s1))
                 prior_src = f"wide_capture:{d1}"
     except Exception as e:
         log.debug("terrain strikes wide read failed %s: %s", tk, e)
@@ -15061,8 +15062,8 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
         rows = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:2]
         if len(rows) >= 2:
             (d1, s1, c1), (d0, s0, c0) = rows[0], rows[1]
-            per1 = _cebs(json.loads(c1), spot=float(s1))[0]
-            per0 = _cebs(json.loads(c0), spot=float(s0))[0]
+            per1 = _cebs(decode_json_blob(c1), spot=float(s1))[0]
+            per0 = _cebs(decode_json_blob(c0), spot=float(s0))[0]
 
             def _g(v: dict, k: str) -> float:
                 x = v.get(k)
@@ -15076,7 +15077,7 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
             charm_below = charm_above = None
             charm_err = None
             try:
-                chain1 = json.loads(c1)
+                chain1 = decode_json_blob(c1)
                 contracts = chain1 if isinstance(chain1, list) else (
                     (chain1.get("contracts") if isinstance(chain1, dict) else None) or [])
                 per_ch = _ccs(contracts, spot1) if contracts else {}
@@ -15221,7 +15222,7 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
         if rows_t:
             d1, s1, c1 = rows_t[0]
             spot1 = float(s1)
-            per, _diag = _cebs(json.loads(c1), spot=spot1)
+            per, _diag = _cebs(decode_json_blob(c1), spot=spot1)
 
             def _f(v: dict, k: str) -> float:
                 x = v.get(k)
@@ -15959,7 +15960,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
         if rows_t:
             et_date, s1, c1, ts1 = rows_t[0]
             spot1 = float(s1)
-            surface = project_gamma_surface(json.loads(c1), spot1)
+            surface = project_gamma_surface(decode_json_blob(c1), spot1)
             # Always-live heatmap mandate (2026-09-15): a banked-morning reference has no stream
             # overlay input at all -- every leg on every cell stamps 'unavailable' UNLESS the
             # daemon is already, independently, requesting that leg's contract (a genuine
@@ -16033,7 +16034,7 @@ def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
             if not d0 or not is_trading_day_et(str(d0)):
                 continue
             sp = float(s0)
-            per, _diag = _cebs(json.loads(c0), spot=sp)
+            per, _diag = _cebs(decode_json_blob(c0), spot=sp)
             rws = []
             for k, v in sorted(per.items()):
                 if abs(float(k) - sp) > sp * 0.05:
