@@ -59,6 +59,7 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
     ok = L.record_from_level_one_equity(
         "MARKNEVER",
         {"key": "MARKNEVER", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
+        received_ts=time.time(),
     )
     assert ok is False
     assert L.get_quote("MARKNEVER") is None
@@ -72,10 +73,12 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     assert L.record_from_level_one_equity(
         "KEEPLAST",
         {"key": "KEEPLAST", "LAST_PRICE": 50.0, "MARK": 50.2, "BID_PRICE": 49.9, "ASK_PRICE": 50.1},
+        received_ts=time.time(),
     )
     assert L.record_from_level_one_equity(
         "KEEPLAST",
         {"key": "KEEPLAST", "MARK": 99.99, "BID_PRICE": 99.9, "ASK_PRICE": 100.1},
+        received_ts=time.time(),
     )
     row = L.get_quote("KEEPLAST")
     assert row is not None

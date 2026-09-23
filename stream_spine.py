@@ -505,6 +505,8 @@ def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
     Rank = expirationDate, then |strikePrice - spot| (1 hop: one subtraction of two
     canonical fields), then symbol. A symbol with ANY input missing is not admitted and
     says which -- nothing is parsed out of the symbol text and nothing is guessed."""
+    from numeric_contract import float_finite_or_none
+
     not_admitted: "dict[str, str]" = {}
     rankable = []
     for sym in sorted({str(s).upper().strip() for s in requested or ()} - {""}):
@@ -512,12 +514,14 @@ def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
         if inp is None:
             not_admitted[sym] = "not admitted: contract not in the console's current Schwab chain"
             continue
-        missing = [k for k in ("expirationDate", "strikePrice", "spot") if inp.get(k) is None]
+        strike = float_finite_or_none(inp.get("strikePrice"))
+        spot = float_finite_or_none(inp.get("spot"))
+        missing = [k for k, v in (("expirationDate", inp.get("expirationDate")),
+                                  ("strikePrice", strike), ("spot", spot)) if v is None]
         if missing:
             not_admitted[sym] = f"not admitted: no {', '.join(missing)}"
             continue
-        rankable.append((str(inp["expirationDate"]),
-                         abs(float(inp["strikePrice"]) - float(inp["spot"])), sym))
+        rankable.append((str(inp["expirationDate"]), abs(strike - spot), sym))
     rankable.sort()
     admitted = [sym for _e, _d, sym in rankable[:max(budget, 0)]]
     for _e, _d, sym in rankable[max(budget, 0):]:
@@ -608,6 +612,11 @@ class MessageBus:
         sub = Subscription(prefix=prefix, policy=policy, queue=asyncio.Queue(maxsize=maxsize))
         self._subs.append(sub)
         return sub
+
+    def unsubscribe(self, sub: Subscription) -> None:
+        """Stop delivering to `sub` (a disconnected push client must not accumulate)."""
+        if sub in self._subs:
+            self._subs.remove(sub)
 
     def publish(self, topic: str, msg: Any) -> None:
         self.cache[topic] = msg

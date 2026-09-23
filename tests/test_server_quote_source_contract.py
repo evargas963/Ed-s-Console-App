@@ -203,7 +203,7 @@ def test_parse_quote_node_session_fields_carries_raw_order_flow_primitives():
 def _fresh_streamed_row(spot=501.25):
     import time as _t
     return {"spot": spot, "bid": 501.2, "ask": 501.3, "chg_pct": 0.42,
-            "server_received_ts": _t.time(), "exchange_quote_ts": _t.time(),
+            "server_received_ts": _t.time(), "spot_received_ts": _t.time(), "exchange_quote_ts": _t.time(),
             "quote_source_detail": {"spot": "LAST_PRICE"},
             "quote_ingestion": "schwab_streaming_level_one"}
 
@@ -240,7 +240,8 @@ def test_tier_a_live_state_withholds_a_stale_streamed_row(monkeypatch):
     import time as _t
 
     stale_row = dict(_fresh_streamed_row(999.0),
-                     server_received_ts=_t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0))
+                     server_received_ts=_t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0),
+                     spot_received_ts=_t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0))
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: dict(stale_row))
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())

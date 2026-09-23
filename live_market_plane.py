@@ -83,10 +83,16 @@ def _epoch_seconds_from_millis(val: Any) -> Optional[float]:
     return f / 1000.0
 
 
-def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
+def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
+                                 received_ts: float) -> bool:
     """
     Ingest one Schwab streaming LEVEL_ONE_EQUITY content row into the plane.
     Returns True if the stored row changed (new generation recorded).
+
+    `received_ts` is REQUIRED: the capture daemon's own receive time for this message
+    (its `ts_recv`). It is what every freshness check judges -- never the time the
+    console happened to process the message (a replayed or delayed message stamped
+    "now" read as live; 2026-09-23 audit P0).
     """
     if not item or not isinstance(item, dict):
         return False
@@ -105,6 +111,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         pbid = prev.get("bid") if prev else None
         pask = prev.get("ask") if prev else None
         prev_spot_source = None
+        prev_spot_received_ts = prev.get("spot_received_ts") if prev else None
         if prev:
             _prev_qsd = prev.get("quote_source_detail")
             if isinstance(_prev_qsd, dict):
@@ -113,17 +120,24 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     # Current live spot is LAST_PRICE only. MARK is the vendor mid and may update
     # quote_mid; it must never become spot. A bid/ask-only tick keeps the prior
     # LAST_PRICE rather than inventing a substitute.
+    spot_carried_forward = False
     if last is not None:
         spot_f = last
         spot_source = "LAST_PRICE"
+        spot_received_ts = float(received_ts)
     elif (
         prev is not None
         and pspot is not None
         and pspot > 0
         and prev_spot_source == "LAST_PRICE"
     ):
+        # Schwab LEVELONE sends only CHANGED fields: an unchanged LAST_PRICE is not resent,
+        # so the last trade price stands -- but its age is the age of THAT trade message,
+        # never the bid/ask tick that happens to be arriving now.
         spot_f = pspot
         spot_source = "LAST_PRICE"
+        spot_received_ts = prev_spot_received_ts
+        spot_carried_forward = True
     else:
         return False
     bid_source = "BID_PRICE" if bid is not None else None
@@ -139,12 +153,12 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     # server wall clock) is machine-pinned by tools/check_schwab_market_field_semantics (M5).
     _qtm = _epoch_seconds_from_millis(item.get("QUOTE_TIME_MILLIS"))
     _ttm = _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
+    # QUOTE_TIME_MILLIS only (operator rule 2026-09-23: no fallbacks) -- TRADE_TIME_MILLIS
+    # is a different clock and never stands in for the quote time.
+    _ = _ttm
     if _qtm is not None:
         quote_ts = _qtm
         quote_ts_clock = "QUOTE_TIME_MILLIS"
-    elif _ttm is not None:
-        quote_ts = _ttm
-        quote_ts_clock = "TRADE_TIME_MILLIS_proxy"
     else:
         quote_ts = None
         quote_ts_clock = "unavailable"
@@ -173,7 +187,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         pass
 
-    server_received_ts = time.time()
+    server_received_ts = float(received_ts)
     out = {
         "ticker": t,
         "spot": float(spot_f),
@@ -202,6 +216,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
         "exchange_quote_ts": quote_ts,
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
         "server_received_ts": server_received_ts,
+        "spot_received_ts": spot_received_ts,
         "quote_ingestion": "schwab_streaming_level_one",
         "quote_source_detail": {
             "spot": spot_source,
@@ -210,7 +225,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any]) -> bool:
             "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
             "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
             "quote_ts": quote_ts_clock,  # M6: which exchange clock exchange_quote_ts carries (QUOTE_TIME_MILLIS, or TRADE_TIME_MILLIS_proxy on fallback)
-            "carried_forward": False,
+            "carried_forward": spot_carried_forward,
             "previous_spot_available": pspot is not None,
             "previous_bid_available": pbid is not None,
             "previous_ask_available": pask is not None,
@@ -280,6 +295,16 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
     return qsd.get("spot") == "LAST_PRICE"
 
 
+def spot_is_fresh(q: dict[str, Any]) -> bool:
+    """Is this row's LAST_PRICE a live value right now -- judged by when THAT trade price
+    arrived (`spot_received_ts`), not by the latest bid/ask tick. Missing: not fresh."""
+    received = _safe_float((q or {}).get("spot_received_ts"))  # caps-ok: fail-closed -- no row or no receive time is not fresh
+    if received is None:
+        return False
+    age = time.time() - received
+    return age >= 0.0 and age < PLANE_QUOTE_STALE_SEC
+
+
 def quote_is_fresh(q: dict[str, Any]) -> bool:
     """Is this plane row trustworthy as a LIVE value right now.
 
@@ -317,7 +342,8 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     # (a genuinely-absent percent-change must overwrite a stale one, never leave it standing)
     # is a different, already-correct property this fix does not touch.
     fresh = quote_is_fresh(q)
-    last_price_spot = plane_spot_is_last_price(q)
+    # spot rides only while its OWN LAST_PRICE is fresh (spot_is_fresh), not merely the row
+    last_price_spot = plane_spot_is_last_price(q) and spot_is_fresh(q)
     # Provenance always travels, even on a stale or non-LAST_PRICE row — the
     # flags are how a consumer knows not to treat the number as live.
     if "quote_source_detail" in q and q["quote_source_detail"] is not None:
@@ -384,7 +410,8 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
     # own already-correct spot, set at build time by _project_l1, stands untouched), chg_pct
     # keeps its pre-existing unconditional-overwrite contract below unchanged.
     fresh = quote_is_fresh(q)
-    last_price_spot = plane_spot_is_last_price(q)
+    # spot rides only while its OWN LAST_PRICE is fresh (spot_is_fresh), not merely the row
+    last_price_spot = plane_spot_is_last_price(q) and spot_is_fresh(q)
     if "quote_source_detail" in q and q["quote_source_detail"] is not None:
         l1_payload["quote_source_detail"] = q["quote_source_detail"]
     if fresh:

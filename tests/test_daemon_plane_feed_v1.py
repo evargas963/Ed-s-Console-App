@@ -1,9 +1,11 @@
-"""SINGLE-STREAM-AUTHORITY root fix — end-to-end proof that the live plane hydrates from
-rows the canonical capture daemon ALREADY wrote, with zero Schwab connection of its own.
+"""SINGLE-STREAM-AUTHORITY root fix — the live plane is fed by the canonical capture daemon,
+with zero Schwab connection of its own.
 
-This is the seam that used to be a second `schwab.streaming.StreamClient`. These tests
-drive the REAL CaptureWriter (what the daemon calls) and the REAL replay path
-(order_flow_streaming._replay_new_rows / _feed_loop), never a synthetic shortcut.
+This is the seam that used to be a second `schwab.streaming.StreamClient`. Since 2026-09-23
+the daemon PUSHES each message (live_push); these tests drive the REAL message constructors
+the daemon publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
+(order_flow_streaming._ingest_pushed). The socket end to end is
+tests/test_live_push_channel_v1.py.
 """
 
 from __future__ import annotations
@@ -11,11 +13,13 @@ from __future__ import annotations
 import ast
 import asyncio
 import inspect
+import time
 
 import pytest
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 from stream_spine import CaptureWriter, book_msg, quote_msg
 
 
@@ -29,13 +33,13 @@ def _reset(tmp_path):
     ofs._active_ticker = None
     ofs._streaming_last_update_ts = None
     ofs._last_subscribe_completed_ts = None
-    ofs._l1_cursor = {}
-    ofs._book_cursor = {}
     ofls.clear_all_live_state()
     return tmp_path / "stream_capture.db"
 
 
 def _write_l1_row(db, symbol, native, ts_recv):
+    """A capture DB with one row -- for the producer-identity checks below, which read the
+    daemon's heartbeat from stream_capture.db (health, not a live value)."""
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert(f"quote.{symbol}", quote_msg(symbol=symbol, bid=native.get("BID_PRICE"),
                                           src="schwab_l1", ts_recv=ts_recv, native=native))
@@ -43,12 +47,16 @@ def _write_l1_row(db, symbol, native, ts_recv):
     w.close()
 
 
-def _write_book_row(db, symbol, content, ts_recv):
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert(f"book.{symbol}", book_msg(symbol=symbol, service="NASDAQ_BOOK", content=content,
-                                        src="schwab_book", ts_recv=ts_recv))
-    w.commit()
-    w.close()
+def _push_l1(symbol, native, ts_recv):
+    ofs._ingest_pushed(f"quote.{symbol}", quote_msg(
+        symbol=symbol, bid=native.get("BID_PRICE"), src="schwab_l1", ts_recv=ts_recv,
+        native=native))
+
+
+def _push_book(symbol, content, ts_recv):
+    ofs._ingest_pushed(f"book.{symbol}", book_msg(
+        symbol=symbol, service="NASDAQ_BOOK", content=content, src="schwab_book",
+        ts_recv=ts_recv))
 
 
 def test_no_schwab_import_anywhere_in_this_module():
@@ -63,79 +71,42 @@ def test_no_schwab_import_anywhere_in_this_module():
             assert (node.module or "").split(".")[0] != "schwab"
 
 
-def test_l1_row_replays_into_both_planes(tmp_path, monkeypatch):
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+def test_l1_message_lands_in_both_planes(tmp_path, monkeypatch):
+    _reset(tmp_path)
+    monkeypatch.setattr(lmp, "_by_ticker", {})
     native = {"key": "SPY", "BID_PRICE": 449.98, "ASK_PRICE": 450.02, "LAST_PRICE": 450.0,
-             "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1000, "TOTAL_VOLUME": 5000}
-    _write_l1_row(db, "SPY", native, ts_recv=1.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_new_rows(con, "SPY")
-    con.close()
+              "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1000, "TOTAL_VOLUME": 5000}
+    _push_l1("SPY", native, ts_recv=time.time())
 
     top = ofls.get_content_for_symbol("SPY")
     assert any(item.get("LAST_PRICE") == 450.0 for item in top)
-    import live_market_plane as lmp
     assert lmp.get_quote("SPY")["spot"] == 450.0
 
 
-def test_replay_cursor_never_reprocesses_the_same_row(tmp_path, monkeypatch):
-    """Prevents duplicate tape prints / duplicate live_market_plane generations from one
-    row surviving across two poll ticks."""
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    native = {"key": "SPY", "LAST_PRICE": 450.0, "LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1}
-    _write_l1_row(db, "SPY", native, ts_recv=1.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_new_rows(con, "SPY")
-    ofs._replay_new_rows(con, "SPY")   # second tick, no new rows
-    con.close()
-
-    tape = ofls.get_content_for_symbol("SPY")
-    prints = [x for x in tape if "LAST_PRICE" in x and "BIDS" not in x]
-    assert len(prints) == 1
-
-
-def test_book_row_replays_verbatim(tmp_path, monkeypatch):
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
+def test_book_message_lands_verbatim(tmp_path):
+    _reset(tmp_path)
     content = {"key": "SPY", "BIDS": [{"BID_PRICE": 449.9, "BID_SIZE": 100}],
-              "ASKS": [{"ASK_PRICE": 450.1, "ASK_SIZE": 200}], "BOOK_TIME": 555}
-    _write_book_row(db, "SPY", content, ts_recv=1.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_new_rows(con, "SPY")
-    con.close()
+               "ASKS": [{"ASK_PRICE": 450.1, "ASK_SIZE": 200}], "BOOK_TIME": 555}
+    _push_book("SPY", content, ts_recv=time.time())
 
     items = ofls.get_content_for_symbol("SPY")
     assert any(i.get("BIDS") == content["BIDS"] for i in items)
 
 
-def test_mismatched_ticker_rows_are_not_replayed(tmp_path, monkeypatch):
-    """The daemon captures its whole roster; the feed must only replay the ONE symbol
-    it was told is active — otherwise QQQ ticks would corrupt SPY's live state."""
-    db = _reset(tmp_path)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    _write_l1_row(db, "QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=1.0)
+def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
+    """Every roster symbol is applied (the watchlist reads each one's streamed LAST_PRICE),
+    each into its OWN state: a QQQ tick must never appear in SPY's."""
+    _reset(tmp_path)
+    monkeypatch.setattr(lmp, "_by_ticker", {})
+    ofs._active_ticker = "SPY"
+    _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time.time())
 
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_new_rows(con, "SPY")
-    con.close()
-
-    # app.options.order_flow.state's clear() zeroes _top's dict value rather than deleting the
-    # key (pre-existing behavior, unrelated to this repair), so a bare `== []` is not the
-    # right invariant — assert the thing that would actually indicate cross-symbol leakage:
-    # the QQQ row's price must not appear anywhere in SPY's replayed content.
-    items = ofls.get_content_for_symbol("SPY")
-    assert not any(i.get("LAST_PRICE") == 380.0 for i in items)
-    # QQQ's own row was never replayed either (only "SPY" was passed to _replay_new_rows) —
-    # confirms the mismatch was "wrong symbol filtered out", not "nothing ran at all".
-    con2 = ofs._open_capture_db_readonly(db)
-    ofs._replay_new_rows(con2, "QQQ")
-    con2.close()
+    assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
     assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
+    assert lmp.get_quote("QQQ")["spot"] == 380.0
+    assert lmp.get_quote("SPY") is None
+    # the ACTIVE ticker's feed-health clock is not advanced by another symbol's tick
+    assert ofs._streaming_last_update_ts is None
 
 
 def test_missing_capture_db_is_handled_not_fatal(tmp_path, monkeypatch):
@@ -146,17 +117,13 @@ def test_missing_capture_db_is_handled_not_fatal(tmp_path, monkeypatch):
     assert ofs._open_capture_db_readonly(db) is None
 
 
-def test_authority_is_streaming_after_replay_and_active_ticker_set(tmp_path, monkeypatch):
+def test_authority_is_streaming_after_a_pushed_tick_for_the_active_ticker(tmp_path, monkeypatch):
     db = _reset(tmp_path)
     monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
     monkeypatch.setattr("stream_spine.write_active_ticker_signal", lambda *_a, **_k: None)
     ofs._feed_running = True
     ofs.set_streaming_active_ticker("SPY")
-    _write_l1_row(db, "SPY", {"key": "SPY", "LAST_PRICE": 450.0}, ts_recv=1.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_new_rows(con, "SPY")
-    con.close()
+    _push_l1("SPY", {"key": "SPY", "LAST_PRICE": 450.0}, ts_recv=time.time())
 
     assert ofs.get_plane_authority_for_ticker("SPY") == "streaming"
     assert ofs.get_plane_authority_for_ticker("QQQ") == "rest_mismatch"

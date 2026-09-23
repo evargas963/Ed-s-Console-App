@@ -33,7 +33,13 @@ def _sym(root: str, exp: str, cp: str, strike: float) -> str:
 # ── the console ranks on canonical Schwab fields; the daemon only guards ──────────────
 
 def _contract(root: str, exp: str, cp: str, strike: float) -> dict:
-    """A chain contract as Schwab sends it: symbol, strikePrice, expirationDate."""
+    """A chain contract as Schwab sends it: symbol, strikePrice, expirationDate.
+
+    # institutional-synthetic-ok: the ranking is pure geometry (expiration order, then
+    # |strike - spot|), and these tests need exact strike grids spanning MORE than the
+    # budget across TWO expirations to pin which contracts are admitted; no committed real
+    # chain has that shape (the real single-expiry TSLA chain is exercised separately in
+    # test_ranking_on_a_real_schwab_chain)."""
     yy, mm, dd = exp[:2], exp[2:4], exp[4:6]
     return {"symbol": _sym(root, exp, cp, strike), "strikePrice": float(strike),
             "expirationDate": f"20{yy}-{mm}-{dd}T20:00:00.000+00:00", "putCall": "CALL" if cp == "C" else "PUT"}
@@ -42,6 +48,36 @@ def _contract(root: str, exp: str, cp: str, strike: float) -> dict:
 def _inputs(contracts: list, spot):
     return {c["symbol"]: {"expirationDate": c["expirationDate"], "strikePrice": c["strikePrice"],
                           "spot": spot} for c in contracts}
+
+
+def test_ranking_on_a_real_schwab_chain():
+    """The real, complete TSLA chain Schwab returned (236 contracts, one expiry, fractional
+    strikes included) ranked against a streamed spot: exactly the budget's worth nearest the
+    spot are admitted, every other contract is refused with the budget reason."""
+    import json
+    from pathlib import Path
+
+    chain = json.loads((Path(__file__).parent / "fixtures" /
+                        "real_tsla_complete_chain_strike_range_all.json").read_text())["chain"]
+    assert len(chain) > OPTION_CONTRACTS_MAX_HELD
+    spot = 342.5
+    inputs = {c["symbol"]: {"expirationDate": c["expirationDate"],
+                            "strikePrice": c["strikePrice"], "spot": spot} for c in chain}
+    admitted, not_admitted = rank_option_contracts(list(inputs), inputs)
+    expected = [c["symbol"] for c in sorted(
+        chain, key=lambda c: (abs(c["strikePrice"] - spot), c["symbol"]))][:OPTION_CONTRACTS_MAX_HELD]
+    assert sorted(admitted) == sorted(expected)
+    assert set(not_admitted) == set(inputs) - set(expected)
+    assert all("outside the live-stream budget" in r for r in not_admitted.values())
+
+
+def test_a_non_finite_strike_or_spot_is_not_admitted():
+    admitted, not_admitted = rank_option_contracts(
+        ["A", "B"], {"A": {"expirationDate": "2026-09-24", "strikePrice": float("nan"), "spot": 1.0},
+                     "B": {"expirationDate": "2026-09-24", "strikePrice": 1.0, "spot": "x"}})
+    assert admitted == []
+    assert not_admitted == {"A": "not admitted: no strikePrice",
+                            "B": "not admitted: no spot"}
 
 
 def test_ranking_is_nearest_expiration_then_nearest_spot():
@@ -211,7 +247,7 @@ def test_a_genuinely_refused_symbol_is_still_bisected_and_rejected():
 # ── the console: honest spot identity, budgeted demand ─────────────────────────────────
 
 def _row(ingestion, age_sec):
-    return {"spot": 700.42, "server_received_ts": time.time() - age_sec,
+    return {"spot": 700.42, "server_received_ts": time.time() - age_sec, "spot_received_ts": time.time() - age_sec,
             "exchange_quote_ts": time.time() - age_sec,
             "quote_source_detail": {"spot": "LAST_PRICE"}, "quote_ingestion": ingestion}
 

@@ -361,7 +361,7 @@ def test_history_requests_are_isolated_from_live_and_each_other(
     live_state.clear_all_live_state()
 
 
-def test_live_replay_cursor_preserves_later_rows_with_equal_receive_time(
+def test_live_push_keeps_later_messages_with_equal_receive_time(
     tmp_path, monkeypatch
 ):
     sample = _sample("TSLA  260831C00367500")
@@ -383,13 +383,21 @@ def test_live_replay_cursor_preserves_later_rows_with_equal_receive_time(
     _point_history_at(monkeypatch, db)
     monkeypatch.setattr(time, "time", lambda: 5_001.0)
     live_state.clear_all_live_state()
-    streaming._option_l1_cursor = {}
-    streaming._option_book_cursor = {}
 
-    con = streaming._open_capture_db_readonly(db)
-    assert con is not None
-    streaming._replay_option_contract_rows(con, sample["symbol"])
-    con.close()
+    # The live side receives every message over the daemon's push, in arrival order --
+    # two messages with the SAME receive time are both applied, neither dropped.
+    def _push(event, ts_recv):
+        if event["kind"] == "l1":
+            streaming._ingest_pushed(f"optquote.{sample['symbol']}", {
+                "symbol": sample["symbol"], "ts_recv": ts_recv,
+                "content": event["content"], "src": event["source"]})
+        else:
+            streaming._ingest_pushed(f"book.{sample['symbol']}", {
+                "symbol": sample["symbol"], "ts_recv": ts_recv, "service": "OPTIONS_BOOK",
+                "content": event["content"], "src": event["source"]})
+
+    _push(l1_rows[0], 5_000.0)
+    _push(book_rows[0], 5_000.0)
 
     con = sqlite3.connect(db)
     try:
@@ -418,10 +426,8 @@ def test_live_replay_cursor_preserves_later_rows_with_equal_receive_time(
     finally:
         con.close()
 
-    con = streaming._open_capture_db_readonly(db)
-    assert con is not None
-    streaming._replay_option_contract_rows(con, sample["symbol"])
-    con.close()
+    _push(l1_rows[1], 5_000.0)
+    _push(book_rows[1], 5_000.0)
 
     expected = live_state.get_content_for_symbol(sample["symbol"])
     actual = history.hydrate_option_content(
@@ -430,10 +436,6 @@ def test_live_replay_cursor_preserves_later_rows_with_equal_receive_time(
     assert actual == expected
     assert len(live_state.get_receive_log(sample["symbol"])) == 2
     assert len([row for row in expected if "BIDS" in row]) == 2
-    assert streaming._option_l1_cursor[sample["symbol"]][0] == 5_000.0
-    assert streaming._option_l1_cursor[sample["symbol"]][1] > 1
-    assert streaming._option_book_cursor[sample["symbol"]][0] == 5_000.0
-    assert streaming._option_book_cursor[sample["symbol"]][1] > 1
     live_state.clear_all_live_state()
 
 

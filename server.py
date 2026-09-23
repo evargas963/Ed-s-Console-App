@@ -867,8 +867,10 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
     if not tk:
         return None, "none", None
     row = _lmp.get_quote(tk)
+    # spot_is_fresh judges the LAST_PRICE's own arrival (spot_received_ts), not the
+    # newest bid/ask tick: a price carried across quote-only ticks ages as what it is.
     if (row and _lmp.plane_spot_is_last_price(row) and _lmp.plane_row_is_streamed(row)
-            and _lmp.quote_is_fresh(row)):
+            and _lmp.spot_is_fresh(row)):
         return float(row["spot"]), SPOT_SOURCE_PLANE, row.get("exchange_quote_ts")
     return None, "none", None
 
@@ -885,7 +887,7 @@ def current_spot_state(source: str, ticker: str) -> str:
         except Exception:
             return "stale"
         if (row and _lmp.plane_spot_is_last_price(row) and _lmp.plane_row_is_streamed(row)
-                and _lmp.quote_is_fresh(row)):
+                and _lmp.spot_is_fresh(row)):
             return "live"
         return "stale"
     return "unavailable"
@@ -3450,7 +3452,7 @@ def _fetch_fast_quote_payload(ticker: str) -> dict:
             prev
             and prev.get("quote_ingestion") == "schwab_streaming_level_one"
             and _lmp.plane_spot_is_last_price(prev)
-            and _lmp.quote_is_fresh(prev)
+            and _lmp.spot_is_fresh(prev)
         ):
             return dict(prev)
         if (
@@ -6396,7 +6398,9 @@ def _streamed_chg_pct(tkr: str, row: Optional[dict]) -> Optional[float]:
     """chg_pct ONLY from a fresh streamed LEVELONE_EQUITIES row (REGULAR_MARKET_CHANGE_PERCENT,
     0 hops). No REST backfill, no stale row: otherwise None (operator rule 2026-09-23)."""
     from numeric_contract import float_finite_or_none as _fin
-    if not (row and _lmp.plane_row_is_streamed(row) and _lmp.quote_is_fresh(row)):
+    # REGULAR_MARKET_CHANGE_PERCENT moves with LAST_PRICE (Schwab derives it from the last
+    # trade), so it is live exactly while the streamed LAST_PRICE is.
+    if not (row and _lmp.plane_row_is_streamed(row) and _lmp.spot_is_fresh(row)):
         return None
     return _fin(row.get("chg_pct"))
 
@@ -12211,11 +12215,11 @@ GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0
 #: already exceeds any reasonable debounce window by the time the next one can even arrive --
 #: sequential bursts each still paid the full per-call cost. Worse, a debounced call was
 #: silently dropped with nothing scheduling a trailing publication, so the LAST update of a
-#: burst could go permanently unpublished. Replaced with per-batch coalescing in
-#: app.options.order_flow.streaming._replay_option_contract_rows itself: every row in a poll
-#: batch still updates OrderFlowState, but the (expensive) hook fires ONCE per batch using the
-#: freshest row, not once per row -- bounding the real worst-case rate to "one recompute per
-#: poll-loop iteration that has new data" without ever silently discarding the batch's own
+#: burst could go permanently unpublished. Replaced with per-burst coalescing in
+#: app.options.order_flow.streaming (HookBurst + one in-flight call per underlying): every
+#: pushed message still updates OrderFlowState, but the (expensive) hook fires ONCE per burst
+#: using the freshest message, not once per message -- bounding the real worst-case rate to
+#: one running plus one trailing recompute per underlying without ever silently discarding the batch's own
 #: latest observation. See that function's own comment for the full reasoning, and
 #: tests/test_streamed_greeks_hook_v1.py::test_hook_coalescing_avoids_the_real_per_call_
 #: cost_at_spxw_scale for the actual, reproducible, rerunnable per-call latency this hook's
@@ -13275,8 +13279,8 @@ def _run_spot_gamma_refresh(tk: str) -> None:
 
 def _dispatch_spot_gamma_refresh(ticker: str) -> None:
     """Registered as start_order_flow_stream's `on_tick_callback` — invoked synchronously,
-    per qualifying equity row, on the daemon-plane-feed's own single-worker DB executor
-    thread (app.options.order_flow.streaming._feed_loop). Must return immediately: all
+    per pushed equity message for the active ticker, on the event loop that runs the live
+    feed (app.options.order_flow.streaming._feed_loop). Must return immediately: all
     this does is coalesce-and-submit to this module's own dedicated executor, never the
     recompute itself."""
     try:
@@ -17014,7 +17018,7 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
         need_fetch: list[str] = []
         for t in seen:
             row = _lmp.get_quote(t)
-            if row and _lmp.quote_is_fresh(row) and _lmp.plane_spot_is_last_price(row):
+            if row and _lmp.spot_is_fresh(row) and _lmp.plane_spot_is_last_price(row):
                 out[t] = {
                     "spot": row["spot"],
                     "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",

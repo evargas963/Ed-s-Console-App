@@ -5,12 +5,17 @@ capture daemon (app.market_data.schwab.streaming.capture), never a second Schwab
 SINGLE-STREAM-AUTHORITY LAW (root-fixed here): this module used to own its own
 `schwab.streaming.StreamClient`, logging into Schwab independently of the canonical
 capture daemon — two authenticated sockets on one account, racing each other for the
-same market truth. It now opens ZERO Schwab connections. The daemon is the one producer;
-this module polls `stream_capture.db` (read-only) for the rows the daemon already wrote,
-and replays them into the same in-process planes (`app.options.order_flow.state`,
-`live_market_plane`) the old socket handlers fed — so every downstream consumer
-(`/api/fast-quote`, streaming diagnostics, the active-ticker switch endpoint) needs no
-changes and cannot tell the difference except by dropped/added latency.
+same market truth. It now opens ZERO Schwab connections. The daemon is the one producer.
+
+LIVE PUSH (2026-09-23): the daemon forwards every Schwab stream message to this module over
+a local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8765) the
+moment it arrives, and this module applies it to the in-process planes
+(`app.options.order_flow.state`, `live_market_plane`). The database is NOT in the live
+path: it used to be -- this module polled `stream_capture.db` every 0.5s -- which put a
+disk write, a commit and a poll between Schwab and the screen. stream_capture.db stays the
+permanent record (options history reads it); nothing live reads it. If the push connection
+drops, the live values go stale and the screen says so; nothing falls back to the database
+(operator rule 2026-09-23: no fallbacks).
 
 Dynamic ticker switching survives the process boundary via a small signal file
 (`stream_spine.write_active_ticker_signal` / `read_active_ticker_signal`): this module
@@ -28,7 +33,6 @@ server.py): `start_order_flow_stream` / `stop_order_flow_stream` /
 from __future__ import annotations
 
 import asyncio
-import functools
 import json
 import logging
 import sqlite3
@@ -71,12 +75,12 @@ import live_market_plane as _lmp
 
 log = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 0.5   # daemon commits every batch_sec=0.25s; sub-second feed latency
-# First poll after bind is a snapshot tail, not a lifetime replay. A long-lived
-# stream_book_raw (equity NASDAQ/NYSE) would otherwise block OPTIONS_BOOK ingest
-# for minutes and leave the live plane no_book while /api/options/history hydrates.
-FIRST_TICK_L1_LIMIT = 200
-FIRST_TICK_BOOK_LIMIT = 1
+#: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push). Module
+#: attribute, read at connect time, so a test can point the feed at its own server.
+LIVE_PUSH_URL = "ws://127.0.0.1:8765"
+#: Wait between reconnect attempts when the daemon's push server is down. While it is down
+#: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
+PUSH_RECONNECT_SEC = 1.0
 
 # ── Runtime state (single asyncio task inside the SAME event loop as the server —
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
@@ -99,25 +103,23 @@ _feed_generation = 0
 _active_ticker: Optional[str] = None
 _streaming_last_update_ts: Optional[float] = None
 _last_subscribe_completed_ts: Optional[float] = None
-#: Per-symbol read cursor (ts_recv of the newest row already replayed) so a poll tick
-#: reads only NEW rows — never replays history, never misses a row between polls.
-_l1_cursor: dict[str, float] = {}
-_book_cursor: dict[str, float] = {}
+#: Push connection state for diagnostics: when the current connection opened (None while
+#: disconnected) and how many messages it has applied.
+_push_connected_ts: Optional[float] = None
+_push_messages_applied = 0
 
 #: The one option CONTRACT (OSI symbol) whose LEVELONE_OPTIONS/OPTIONS_BOOK rows this feed
 #: replays — a SEPARATE slot from _active_ticker (an equity ticker and an option contract
 #: on that same underlying can be watched at once; they are different symbol identities in
 #: every table and signal file).
 _active_option_contract: Optional[str] = None
-_option_l1_cursor: dict[str, tuple[float, int]] = {}
-_option_book_cursor: dict[str, tuple[float, int]] = {}
 #: Own staleness clock, separate from the equity ticker's — an option contract watched
 #: alongside a ticker must be able to go stale (or come up fresh) independently.
 _option_streaming_last_update_ts: Optional[float] = None
 _option_last_subscribe_completed_ts: Optional[float] = None
 #: PER-CONTRACT staleness clock (RC-UI-3 finding #4, 2026-09-12, REPRODUCED): the single
-#: scalar above is updated by ANY contract's row -- primary OR any additional one (see
-#: _replay_option_contract_rows) -- so a fresh additional contract can mask a genuinely
+#: scalar above is updated by ANY contract's message -- primary OR any additional one (see
+#: _ingest_pushed) -- so a fresh additional contract can mask a genuinely
 #: stale primary, and vice versa: querying one contract's health answered with another
 #: contract's heartbeat. Keyed by the SAME ticker_storage_key identity
 #: set_active_option_contract/set_active_option_contracts already normalize to.
@@ -125,19 +127,18 @@ _option_contract_last_update_ts: dict[str, float] = {}
 
 _on_tick_callback: Optional[Callable[[str], None]] = None
 
-#: Called with (contract_symbol, ts_recv) at most ONCE per _replay_option_contract_rows poll
-#: batch that carries at least one row with GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME (ts_recv is
-#: the FRESHEST such row's own receive time, not every qualifying row's) -- lets a consumer
+#: Called with (contract_symbol, ts_recv) at most ONCE per underlying per burst of pushed
+#: messages carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME (ts_recv is the FRESHEST such
+#: message's own receive time -- see HookBurst) -- lets a consumer
 #: (server.py's gamma-surface cache) freshen itself the instant new Greeks/OI/volume are known,
 #: instead of waiting for the next wide-chain REST cycle. TOTAL_VOLUME is included (not just
 #: the Greeks) so a volume-only tick -- no Greeks/OI change -- still reaches the per-strike
 #: volume column and compute_exposures_by_strike's own call/put volume aggregation, not just
 #: the ticker-level header display; independent-review finding (2026-09-12): "the current hook
 #: is triggered by GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update
-#: delivery." Once-per-batch (not once-per-row) is itself a fix for a separate independent-
-#: review finding (2026-09-12), REPRODUCED: calling this per row meant a burst of N rows in one
-#: poll batch triggered N sequential expensive recomputes on the consumer side -- see
-#: _replay_option_contract_rows's own comment for the measurement and full reasoning. Same
+#: delivery." Once-per-burst (not once-per-message) is itself a fix for a separate independent-
+#: review finding (2026-09-12), REPRODUCED: calling this per row meant a burst of N rows
+#: triggered N sequential expensive recomputes on the consumer side. Same
 #: shape/precedent as `_on_tick_callback` above; kept separate because ITS payload (an option
 #: contract symbol + the field's own receive time) is different from a bare ticker, and a
 #: caller wanting only one of the two must not be forced to filter the other's calls.
@@ -145,9 +146,9 @@ _streamed_greeks_hook: Optional[Callable[[str, float], None]] = None
 
 
 def set_streamed_greeks_hook(fn: Optional[Callable[[str, float], None]]) -> None:
-    """Register (or clear, with None) the callback `_replay_option_contract_rows` invokes at
-    most once per poll batch that contains a row carrying GAMMA/DELTA/OPEN_INTEREST/
-    TOTAL_VOLUME. One slot, like `_on_tick_callback` -- the daemon has exactly one composition
+    """Register (or clear, with None) the callback `_feed_loop` dispatches at most once per
+    underlying per burst of pushed messages carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME.
+    One slot, like `_on_tick_callback` -- the daemon has exactly one composition
     root (server.py's startup) that wires this, not a list of subscribers to fan out to."""
     global _streamed_greeks_hook
     _streamed_greeks_hook = fn
@@ -193,16 +194,14 @@ STREAMING_STALE_MS = 25_000.0
 GRACE_AFTER_SUBSCRIBE_SEC = 8.0
 
 #: FRESHNESS/HEALTH SEMANTIC AUDIT (OPTIONS_ORDER_FLOW_V1, 2026-08-30): this module's own
-#: streaming_connected/streaming_healthy answer ONE question — "is my local read-only DB-
-#: poll task alive, and did a row land in stream_capture.db recently" — which is a PROXY
-#: for daemon health, not the daemon's Schwab-socket truth itself. A stale row sitting in
-#: the DB could let this proxy read "healthy" while the daemon's actual upstream Schwab
-#: connection for that exact service has gone dark; the reverse is also possible right
-#: after a fresh daemon (re)connect, before this module's poll has caught up. The daemon
+#: streaming_connected/streaming_healthy answer ONE question — "is my live-push feed
+#: running, and did a message for the active symbol arrive recently (by its own receive
+#: time)" — which is a PROXY for daemon health, not the daemon's Schwab-socket truth itself:
+#: a quiet symbol and a dead socket look alike to it. The daemon
 #: itself already computes the REAL truth per Schwab service (stream_spine.HealthRegistry,
 #: fed by health.beat() calls inside the actual message handlers in tools/
 #: run_stream_capture.py) and writes it to STATUS_PATH every ~10s — but nothing ever read
-#: it back into the UI-facing diagnostics until now. "local DB poll task exists" must never
+#: it back into the UI-facing diagnostics until now. "local feed task exists" must never
 #: masquerade as "Schwab stream connected" — _read_daemon_upstream_health is the ground
 #: truth for that distinct question, surfaced as its own field, never blended into
 #: streaming_healthy.
@@ -398,7 +397,7 @@ def get_streaming_diagnostics() -> dict[str, Any]:
         "streaming_healthy": healthy,
         # Ground truth for the Schwab socket itself (see _read_daemon_upstream_health's
         # docstring) — distinct from streaming_healthy above, which only proves this
-        # module's own local DB-poll replay is alive and recently updated.
+        # module's own live-push feed is alive and recently updated.
         "daemon_upstream_health": _read_daemon_upstream_health(("LEVELONE_EQUITIES",)),
         "stream_db_identity": db_identity,
     }
@@ -421,279 +420,85 @@ def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
         db_path = resolve_stream_db_path(STREAM_DB_DEFAULT)
     try:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        # Autocommit: the feed reuses this handle across poll ticks. Default
-        # isolation_level="" opens a deferred snapshot on the first SELECT and
-        # holds it until commit — later CaptureWriter commits (fresh
-        # LEVELONE_OPTIONS / OPTIONS_BOOK) stay invisible. History opens a new
-        # connection and hydrates; the live plane then stays no_book. Not a
-        # second reader — the same handle, one statement = one snapshot.
+        # Autocommit: a caller that reuses this handle must see later CaptureWriter
+        # commits. Default isolation_level="" opens a deferred snapshot on the first
+        # SELECT and holds it until commit, hiding them. One statement = one snapshot.
         con.isolation_level = None
         return con
     except sqlite3.OperationalError:
         return None   # daemon has not created the DB yet (cold start) — retry next tick
 
 
-def _replay_new_rows(con: sqlite3.Connection, ticker: str) -> None:
-    """One poll tick: read rows newer than the cursor for `ticker`, replay them through
-    the SAME plane-ingest functions the old direct-socket handlers called.
+def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
+    """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
-    The first tick for a symbol is a bounded snapshot tail. Cursor default 0 against a
-    long-lived capture DB would replay the entire equity book lifetime and starve the
-    option-contract replay on the same single-thread executor.
-    """
-    global _streaming_last_update_ts
+    The same plane-ingest calls the DB replay made, now fed straight from the daemon's
+    bus. Every timestamp written is the message's own `ts_recv` -- the daemon's receive
+    time for it -- never the time this console processed it (a delayed message must not
+    read as fresh; 2026-09-23 audit P0).
 
-    first_l1 = ticker not in _l1_cursor
-    if first_l1:
-        rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_quotes_raw "
-            "WHERE symbol = ? AND native_json IS NOT NULL "
-            "ORDER BY ts_recv DESC LIMIT ?", (ticker, FIRST_TICK_L1_LIMIT)).fetchall()
-        rows = list(reversed(rows))
-    else:
-        rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_quotes_raw "
-            "WHERE symbol = ? AND ts_recv > ? AND native_json IS NOT NULL "
-            "ORDER BY ts_recv", (ticker, _l1_cursor[ticker])).fetchall()
-    for ts_recv, native_json in rows:
+      quote.SYM    LEVELONE_EQUITIES -> order-flow state + live_market_plane (every roster
+                   symbol; the plane serves each one's streamed LAST_PRICE)
+      book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
+                   contract's book
+      optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
+
+    Returns (contract, ts_recv) when an option L1 message carried GAMMA/DELTA/
+    OPEN_INTEREST/TOTAL_VOLUME/VOLUME -- the caller dispatches the streamed-greeks hook,
+    coalesced per underlying -- else None. A message missing its symbol, its receive time
+    or its Schwab payload is dropped whole: nothing is applied with a guessed part."""
+    global _streaming_last_update_ts, _option_streaming_last_update_ts, _push_messages_applied
+    if not isinstance(msg, dict):
+        return None
+    sym = msg.get("symbol")
+    ts = msg.get("ts_recv")
+    if not sym or not isinstance(ts, (int, float)):
+        return None
+    ts = float(ts)
+    kind = topic.split(".", 1)[0]
+    if kind == "quote":
+        item = msg.get("native")
+        if not isinstance(item, dict):
+            return None
+        push_level_one(sym, item, ts_recv=ts)
         try:
-            item = json.loads(native_json)
-        except (TypeError, ValueError):
-            continue
-        push_level_one(ticker, item, ts_recv=ts_recv)
-        try:
-            _lmp.record_from_level_one_equity(ticker, item)
-        except Exception as e:
-            log.debug("live_market_plane ingest: %s", e)
-        _streaming_last_update_ts = time.time()
-        if _on_tick_callback:
-            try:
-                _on_tick_callback(ticker)
-            except Exception as e:
-                log.debug("Tick callback: %s", e)
-        _l1_cursor[ticker] = ts_recv
-    if first_l1 and ticker not in _l1_cursor:
-        _l1_cursor[ticker] = 0.0
-
-    first_book = ticker not in _book_cursor
-    if first_book:
-        rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? ORDER BY ts_recv DESC LIMIT ?",
-            (ticker, FIRST_TICK_BOOK_LIMIT)).fetchall()
-        rows = list(reversed(rows))
-    else:
-        rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? AND ts_recv > ? ORDER BY ts_recv",
-            (ticker, _book_cursor[ticker])).fetchall()
-    for ts_recv, native_json in rows:
-        try:
-            item = json.loads(native_json)
-        except (TypeError, ValueError):
-            continue
-        push_book(ticker, item)
-        _streaming_last_update_ts = time.time()
-        _book_cursor[ticker] = ts_recv
-    if first_book and ticker not in _book_cursor:
-        _book_cursor[ticker] = 0.0
-
-
-#: Safety bound for _prefetch_option_l1_batch's shared query window (2026-09-21, live-RTH
-#: finding): a symbol whose own L1 cursor is older than this is excluded from the ONE shared
-#: batched query and falls back to its own per-symbol incremental query instead -- this keeps
-#: the shared query's `ts_recv > ?` floor from ever collapsing toward epoch. A symbol whose
-#: first-tick snapshot found zero rows gets cursor (0.0, 0); without this bound, a single such
-#: symbol in the batch would drag the shared floor back to 0.0 for EVERY symbol, turning one
-#: cheap query into a near-full-table scan of stream_options_quotes_raw.
-OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC = 120.0
-
-
-def _prefetch_option_l1_batch(con: sqlite3.Connection,
-                               contract_symbols: "list[str]") -> "dict[str, list[tuple]]":
-    """ONE query's worth of new stream_options_quotes_raw L1 rows for every symbol in
-    `contract_symbols` that already has an L1 cursor, grouped by symbol -- the batched
-    replacement for `_feed_loop` calling `_replay_option_contract_rows`'s own per-symbol L1
-    query once per contract, every poll tick.
-
-    MEASURED 2026-09-21 (live-RTH finding, root cause of "gamma heatmap doesn't render all
-    cells... it used to"): 910 sequential per-symbol queries (RC-UI-3's uncapped 'additional
-    contracts' mandate removed the old 240-contract ceiling that had kept this loop's own cost
-    proportionally small) took 1.55s in an isolated read-only measurement against this exact
-    live capture DB -- already 3x the 0.5s poll interval -- and substantially longer under the
-    live server's real concurrent DB write load plus 910 separate run_in_executor thread-pool
-    dispatches: the live gamma-surface's own `age_sec` climbed past 70s and never refreshed
-    across a 24-second observation window. By the time a tick was actually processed,
-    GAMMA_SURFACE_STREAM_STALENESS_SEC (10s) had already elapsed for nearly every contract
-    regardless of how fresh the underlying Schwab data genuinely was, collapsing the heatmap's
-    live cell count toward zero even with abundant fresh data arriving (902 of META's ~910
-    contracts ticked within the prior 30 seconds at the time of measurement). This is the SAME
-    architectural mistake RC-560 already fixed once for the DAEMON's own vendor-facing SUBSCRIBE
-    calls ("a design proven safe at N=1 was never re-examined at N=100+") recurring in a SIBLING
-    mechanism -- this console-side replay loop -- that was never re-examined for the same scale.
-
-    A symbol still on its first tick (no cursor yet), or whose cursor has fallen further behind
-    than OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC, is excluded here and left to its existing per-symbol
-    query in `_replay_option_contract_rows` -- both are one-time or rare-straggler costs, never
-    the routine per-tick cost this function fixes. A batched symbol with zero new rows still
-    gets an explicit `[]` entry (so the caller can tell "checked via batch, nothing new" from
-    "not batched, still needs its own query" -- see `_replay_option_contract_rows`'s
-    `prefetched_l1` parameter)."""
-    known = [s for s in dict.fromkeys(contract_symbols) if s in _option_l1_cursor]
-    out: "dict[str, list[tuple]]" = {}
-    if not known:
-        return out
-    floor_ts = time.time() - OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC
-    batched = [s for s in known if _option_l1_cursor[s][0] >= floor_ts]
-    for s in batched:
-        out[s] = []
-    if not batched:
-        return out
-    min_ts, min_rowid = min(_option_l1_cursor[s] for s in batched)
-    placeholders = ",".join("?" for _ in batched)
-    rows = con.execute(
-        f"SELECT rowid, ts_recv, symbol, native_json FROM stream_options_quotes_raw "
-        f"WHERE symbol IN ({placeholders}) AND (ts_recv > ? OR (ts_recv = ? AND rowid > ?)) "
-        f"ORDER BY ts_recv, rowid",
-        (*batched, min_ts, min_ts, min_rowid)).fetchall()
-    for rowid, ts_recv, sym, native_json in rows:
-        cur_ts, cur_rowid = _option_l1_cursor.get(sym, (0.0, 0))
-        if ts_recv > cur_ts or (ts_recv == cur_ts and rowid > cur_rowid):
-            out.setdefault(sym, []).append((rowid, ts_recv, native_json))
-    return out
-
-
-def _replay_option_contract_rows(con: sqlite3.Connection, contract_symbol: str, *,
-                                  prefetched_l1: "list[tuple] | None" = None) -> "float | None":
-    """Same replay shape as _replay_new_rows, for the one option CONTRACT this feed is
-    tracking. LEVELONE_OPTIONS rows read via push_level_one and OPTIONS_BOOK rows via
-    push_book — app.options.order_flow.state's functions are symbol-generic (they read Schwab's
-    native field names, not an equity-specific schema) and the captured field shapes
-    (reports/of_capability_probe/options_20260820T1354Z/) carry every field either reads:
-    BID_PRICE/ASK_PRICE/LAST_PRICE/LAST_SIZE/TOTAL_VOLUME/TRADE_TIME_MILLIS for L1;
-    BIDS/ASKS/BOOK_TIME for book. No new plane, no new ingest function — the SAME producer
-    app.options.order_flow.state already is, called with a different symbol.
-
-    First tick is a snapshot tail so a late UI bind hydrates the current book instead
-    of walking every OPTIONS_BOOK row ever stored for the contract.
-
-    `prefetched_l1` (2026-09-21), when given (even an empty list), is used verbatim in place of
-    this function's own per-symbol L1 query -- the batched result from
-    `_prefetch_option_l1_batch`, already filtered to rows newer than this symbol's own cursor.
-    `None` (the default) preserves the exact original per-symbol-query behavior unchanged, so
-    every existing direct caller (including this file's own tests) is unaffected.
-
-    Returns the freshest ts_recv among this call's own L1 rows that carried GAMMA/DELTA/
-    OPEN_INTEREST/TOTAL_VOLUME/VOLUME (None if none did) -- the CALLER (_feed_loop) is
-    responsible for invoking `_streamed_greeks_hook`, coalescing across every contract
-    replayed in the same poll iteration, not just across this one contract's own rows.
-    This function no longer calls the hook itself (see _feed_loop's own comment for why)."""
-    global _option_streaming_last_update_ts
-    first_l1 = contract_symbol not in _option_l1_cursor
-    if first_l1:
-        rows = con.execute(
-            "SELECT rowid, ts_recv, native_json FROM stream_options_quotes_raw "
-            "WHERE symbol = ? ORDER BY ts_recv DESC, rowid DESC LIMIT ?",
-            (contract_symbol, FIRST_TICK_L1_LIMIT)).fetchall()
-        rows = list(reversed(rows))
-    elif prefetched_l1 is not None:
-        rows = prefetched_l1
-    else:
-        cursor_ts, cursor_rowid = _option_l1_cursor[contract_symbol]
-        rows = con.execute(
-            "SELECT rowid, ts_recv, native_json FROM stream_options_quotes_raw "
-            "WHERE symbol = ? AND (ts_recv > ? OR (ts_recv = ? AND rowid > ?)) "
-            "ORDER BY ts_recv, rowid",
-            (contract_symbol, cursor_ts, cursor_ts, cursor_rowid)).fetchall()
-    # Independent-review finding (2026-09-12), REPRODUCED: calling the hook once PER ROW meant
-    # a burst of N rows landing in one poll batch triggered N sequential expensive recomputes,
-    # because a leading-edge time debounce cannot throttle calls whose own prior duration
-    # already exceeds the debounce window; by the time call #2 arrives, more than enough
-    # wall-clock time has always already elapsed. Independent-review performance-assurance
-    # finding (2026-09-12), separately: the original "~3.1s each, three calls, 9.3s total"
-    # figure cited here was an ad-hoc session claim with no reproducible benchmark committed
-    # to the repo, and a call-count test alone ("fires once, not three times") proves an
-    # opportunity for repeated computation existed, not real production latency saved.
-    # tests/test_streamed_greeks_hook_v1.py::test_hook_coalescing_avoids_the_real_per_call_
-    # cost_at_spxw_scale now measures the REAL production hook (server.refresh_gamma_surface_
-    # from_stream, the actual function wired here) against a real-scale (42,001-contract)
-    # SYNTHETIC SCALE BASELINE with the app's own wall clock, rerunnable on demand: MEASURED
-    # 2026-09-12 ~1.95s for one real call, and a genuine 3-row poll batch through this exact
-    # coalescing path cost ~2.09s total (not ~3x) -- both numbers trace to that test's own
-    # output, not to this comment. The fix is not a bigger
-    # scheduler: this loop already reads a BATCH of every row new since the last poll tick, so
-    # every row's push_level_one still runs (app.options.order_flow.state always holds the
-    # true latest observation), but the hook -- the expensive part -- fires ONCE for the whole
-    # batch, using the LAST qualifying row's ts_recv (the freshest observation in this batch).
-    # This bounds the worst-case recompute rate, FOR THIS ONE CONTRACT, to "at most one per
-    # poll-loop iteration that actually has new data" (POLL_INTERVAL_SEC, currently 0.5s, or
-    # the computation's own duration if longer -- never per-tick), reusing this existing
-    # replay owner's own natural batching instead of adding a second scheduler/queue/daemon.
-    # It also closes a second finding (a leading-edge debounce could silently and permanently
-    # drop the LAST update of a burst, with nothing scheduling a trailing publication): there
-    # is no silent rejection here at all -- every batch that has qualifying rows gets exactly
-    # one real attempt.
-    #
-    # Independent-review finding (2026-09-12), REPRODUCED at the level ABOVE this one: this
-    # per-contract coalescing bounds repeats WITHIN one contract's own batch, but with
-    # multiple desired contracts (a primary plus one or more additional -- RC-UI-3), _feed_loop
-    # used to call this function once per contract EVERY poll tick, and each call fired the
-    # hook independently whenever ITS contract had a qualifying row -- three contracts each
-    # ticking in the same poll iteration still cost three full expensive whole-surface
-    # recomputes, even though the hook's own consumer (server.refresh_gamma_surface_from_stream
-    # -> _desired_stream_greeks_for_ticker) already re-gathers EVERY currently-desired
-    # contract's live state fresh on every single call -- making the first two of three calls
-    # pure waste, superseded before their own result could even be read. Fixed by no longer
-    # calling the hook here at all: this function only RETURNS its own freshest qualifying
-    # ts_recv (or None); _feed_loop coalesces across every contract replayed in the SAME poll
-    # iteration and fires the hook at most once per underlying ticker per tick (see its own
-    # comment). No captured event is lost by this change: every row for every contract still
-    # updates OrderFlowState below, unconditionally, exactly as before -- only the expensive
-    # hook invocation moved up one level to where the real redundancy actually lived.
-    last_qualifying_ts_recv: float | None = None
-    for rowid, ts_recv, native_json in rows:
-        try:
-            item = json.loads(native_json)
-        except (TypeError, ValueError):
-            continue
-        push_level_one(contract_symbol, item, ts_recv=ts_recv)
-        _option_streaming_last_update_ts = time.time()
-        _option_contract_last_update_ts[contract_symbol] = _option_streaming_last_update_ts
-        if ("GAMMA" in item or "DELTA" in item or "OPEN_INTEREST" in item
-                or "TOTAL_VOLUME" in item or "VOLUME" in item):
-            last_qualifying_ts_recv = float(ts_recv)
-        _option_l1_cursor[contract_symbol] = (float(ts_recv), int(rowid))
-    if first_l1 and contract_symbol not in _option_l1_cursor:
-        _option_l1_cursor[contract_symbol] = (0.0, 0)
-
-    first_book = contract_symbol not in _option_book_cursor
-    if first_book:
-        rows = con.execute(
-            "SELECT rowid, ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? AND service = 'OPTIONS_BOOK' "
-            "ORDER BY ts_recv DESC, rowid DESC LIMIT ?",
-            (contract_symbol, FIRST_TICK_BOOK_LIMIT)).fetchall()
-        rows = list(reversed(rows))
-    else:
-        cursor_ts, cursor_rowid = _option_book_cursor[contract_symbol]
-        rows = con.execute(
-            "SELECT rowid, ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? AND service = 'OPTIONS_BOOK' "
-            "AND (ts_recv > ? OR (ts_recv = ? AND rowid > ?)) "
-            "ORDER BY ts_recv, rowid",
-            (contract_symbol, cursor_ts, cursor_ts, cursor_rowid)).fetchall()
-    for rowid, ts_recv, native_json in rows:
-        try:
-            item = json.loads(native_json)
-        except (TypeError, ValueError):
-            continue
-        push_book(contract_symbol, item)
-        _option_streaming_last_update_ts = time.time()
-        _option_contract_last_update_ts[contract_symbol] = _option_streaming_last_update_ts
-        _option_book_cursor[contract_symbol] = (float(ts_recv), int(rowid))
-    if first_book and contract_symbol not in _option_book_cursor:
-        _option_book_cursor[contract_symbol] = (0.0, 0)
-    return last_qualifying_ts_recv
+            _lmp.record_from_level_one_equity(sym, item, received_ts=ts)
+        except Exception as e:  # noqa: BLE001 -- one malformed row must not end the feed
+            log.debug("live_market_plane ingest %s: %s", sym, e)
+        _push_messages_applied += 1
+        if sym == _active_ticker:
+            _streaming_last_update_ts = ts
+            if _on_tick_callback:
+                try:
+                    _on_tick_callback(sym)
+                except Exception as e:  # noqa: BLE001
+                    log.debug("Tick callback: %s", e)
+        return None
+    if kind == "book":
+        content = msg.get("content")
+        if not isinstance(content, dict):
+            return None
+        push_book(sym, content)
+        _push_messages_applied += 1
+        if msg.get("service") == "OPTIONS_BOOK":
+            _option_streaming_last_update_ts = ts
+            _option_contract_last_update_ts[sym] = ts
+        elif sym == _active_ticker:
+            _streaming_last_update_ts = ts
+        return None
+    if kind == "optquote":
+        content = msg.get("content")
+        if not isinstance(content, dict):
+            return None
+        push_level_one(sym, content, ts_recv=ts)
+        _push_messages_applied += 1
+        _option_streaming_last_update_ts = ts
+        _option_contract_last_update_ts[sym] = ts
+        if ("GAMMA" in content or "DELTA" in content or "OPEN_INTEREST" in content
+                or "TOTAL_VOLUME" in content or "VOLUME" in content):
+            return sym, ts
+        return None
+    return None
 
 
 def _hook_grouping_key(symbol: str) -> str:
@@ -732,29 +537,49 @@ def _hook_grouping_key(symbol: str) -> str:
     return root
 
 
+class HookBurst:
+    """Qualifying option ticks that arrived together, one entry per underlying.
+
+    The streamed-greeks hook re-gathers EVERY desired contract of an underlying on each call,
+    so ticks that arrive together need ONE call per underlying (grouped by
+    `_hook_grouping_key`), carrying the freshest tick's receive time. Across bursts,
+    `_dispatch_hook_background` keeps at most one call in flight per underlying plus one
+    trailing re-run."""
+
+    def __init__(self) -> None:
+        self._by_root: "dict[str, tuple[str, float]]" = {}
+
+    def note(self, sym: str, ts: float) -> bool:
+        """Record one qualifying tick. True when it opens a new burst (schedule a flush)."""
+        opens = not self._by_root
+        root = _hook_grouping_key(sym)
+        cur = self._by_root.get(root)
+        if cur is None or ts >= cur[1]:
+            self._by_root[root] = (sym, ts)
+        return opens
+
+    def take(self) -> "list[tuple[str, float]]":
+        out = list(self._by_root.values())
+        self._by_root.clear()
+        return out
+
+
 async def _feed_loop() -> None:
-    """A sqlite3.Connection is THREAD-AFFINE (check_same_thread=True by default) — it may
-    only be touched from the OS thread that created it. This loop opens ONE read-only
-    connection and reuses it across every poll tick's two replay calls, but the default
-    executor `asyncio.to_thread` schedules onto (min(32, cpu_count+4) worker threads with
-    no affinity guarantee between calls — a real defect, not a test artifact: measured via
-    a genuinely flaky integration test ("SQLite objects created in a thread can only be
-    used in that same thread") that reproduced under real cross-call thread reuse, not a
-    synthetic shortcut. Fixed at the root: every DB touch in this loop's lifetime — open
-    AND both replay calls — runs on a DEDICATED single-worker executor, so `con` never
-    crosses threads. The executor is scoped to this loop's own lifetime, not module-level,
-    so a start/stop/restart cycle never risks a stale worker thread from a prior run."""
+    """Consume the daemon's live push (LIVE_PUSH_URL) until the feed stops.
+
+    Each frame is one Schwab stream message; it is applied the moment it arrives
+    (_ingest_pushed) -- no poll interval, no database read. A dropped connection is retried
+    every PUSH_RECONNECT_SEC; while it is down, the live values age out through their own
+    freshness checks and the screen shows them stale. There is no second source."""
     global _feed_running
     # This lifecycle's own identity (see `_feed_generation`'s module-level docstring) --
     # captured ONCE here, not re-read per dispatch, so every hook task this ONE loop
     # invocation ever submits carries the SAME generation number regardless of how many
     # times `_feed_generation` itself is bumped by a LATER, unrelated restart.
     my_generation = _feed_generation
-    con: Optional[sqlite3.Connection] = None
-    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-db")
     # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the
-    # streamed-greeks hook call (below) used to be AWAITED on this SAME single-worker DB
-    # executor before this loop could proceed to the next poll tick -- a real, structurally
+    # streamed-greeks hook call (below) used to be AWAITED on the feed's single-worker DB
+    # executor before the loop could proceed to its next poll tick -- a real, structurally
     # guaranteed cost, not a hypothetical: the hook's own committed benchmark
     # (tests/test_streamed_greeks_hook_v1.py::test_hook_coalescing_avoids_the_real_per_
     # call_cost_at_spxw_scale) MEASURED ~1.95s for one real call at full SPXW scale (42,001
@@ -763,9 +588,8 @@ async def _feed_loop() -> None:
     # returns, a single slow surface recompute for one ticker delayed CAPTURE -- not just
     # publication -- for every ticker, by however long that one ticker's hook took.
     # Fixed by decoupling the two: the hook is dispatched as a background task on its own
-    # dedicated executor (a pure Python computation with no SQLite handle of its own, so it
-    # has no reason to share `executor`, which the thread-affine `con` requires) and this
-    # loop's own progression to the next tick's state capture no longer waits for it.
+    # dedicated executor and the loop's own progression to the next message no longer
+    # waits for it (with the live push, the loop never waits on the hook at all).
     # Safe to run detached: refresh_gamma_surface_from_stream already compare-and-swaps
     # against the cache's own generation marker (_contracts_rest_computed_ts) before
     # publishing, so an overlapping or out-of-order background hook call for the same
@@ -782,8 +606,8 @@ async def _feed_loop() -> None:
     # executor; stopping the feed loop after only the first had started still let the
     # other THREE start running afterward, because each was already an independently
     # submitted `run_in_executor` future the executor's own non-blocking shutdown lets
-    # finish. Coalescing within one tick already existed (the groups.values() loop above);
-    # nothing bounded it ACROSS ticks. Fixed the same way the client-side coalescing
+    # finish. Coalescing within one burst already existed (HookBurst); nothing bounded it
+    # ACROSS bursts. Fixed the same way the client-side coalescing
     # loader does it: at most one call in flight per root, and a call requested while one
     # is already in flight is coalesced into exactly one trailing re-run -- never piled up.
     # The hook itself (_desired_stream_greeks_for_ticker, called fresh every run) always
@@ -832,90 +656,54 @@ async def _feed_loop() -> None:
             return
         _hook_inflight_roots.add(root)
         _start_hook_task(root, rep_sym, rep_ts)
+    global _push_connected_ts
+    from websockets.asyncio.client import connect
+
+    # Frames already received are applied back to back without the loop yielding, so a
+    # flush scheduled with call_soon runs once the whole burst has been applied -- one hook
+    # dispatch per underlying for exactly what arrived together, no timer, no added delay.
+    burst = HookBurst()
+
+    def _flush_burst() -> None:
+        for rep_sym, rep_ts in burst.take():
+            _dispatch_hook_background(rep_sym, rep_ts)
+
+    def _note_qualifying(sym: str, ts: float) -> None:
+        if burst.note(sym, ts):
+            loop.call_soon(_flush_burst)
     try:
         while _feed_running:
-            if con is None:
-                con = await loop.run_in_executor(executor, _open_capture_db_readonly)
-            tkr = _active_ticker
-            contract = _active_option_contract
-            # RC-UI-3 (2026-09-12, independent-review finding): this loop used to replay
-            # ONLY the primary `_active_option_contract`, so an additionally-desired
-            # contract (the plural signal's own set, `_active_option_contracts`) never
-            # reached live state at all -- with only an additional contract requested and
-            # no primary, NOTHING replayed. dict.fromkeys de-duplicates while preserving
-            # order (the primary first, matching the historical single-contract replay
-            # order) in case the caller's additional set happens to also name the primary.
-            contracts_to_replay = [s for s in dict.fromkeys([contract, *_active_option_contracts]) if s]
-            if con is not None and (tkr or contracts_to_replay):
-                try:
-                    # Independent-review finding (2026-09-12), REPRODUCED: with more than one
-                    # desired contract (a primary plus one or more additional -- RC-UI-3), this
-                    # loop used to let EACH contract's own _replay_option_contract_rows call
-                    # fire the (expensive, whole-surface) streamed-greeks hook independently --
-                    # three contracts each ticking in the same poll iteration cost three full
-                    # recomputes, even though the hook's own consumer already re-gathers every
-                    # currently-desired contract's live state fresh on every call, making all
-                    # but the LAST of those calls pure waste. _replay_option_contract_rows no
-                    # longer calls the hook itself; it only returns this contract's own
-                    # freshest qualifying ts_recv (or None). Coalesced HERE, one level up,
-                    # exactly the same way that function already coalesces across a single
-                    # contract's own rows: group this tick's qualifying contracts by vendor
-                    # root (a cheap, symbol-only proxy for "same underlying, same terrain-cache
-                    # entry" -- the identity the hook's own consumer resolves via
-                    # contract_matches_underlying), and fire the hook AT MOST ONCE per
-                    # underlying per poll tick, with that group's freshest ts_recv and any one
-                    # of its symbols (the hook re-gathers every desired contract for that
-                    # ticker regardless of which symbol names the call). No captured event is
-                    # lost: every row for every contract still updates OrderFlowState inside
-                    # _replay_option_contract_rows, unconditionally, exactly as before.
-                    # 2026-09-21 (live-RTH finding): one shared query for every symbol's new
-                    # L1 rows instead of contracts_to_replay separate per-symbol queries --
-                    # see _prefetch_option_l1_batch's own docstring for the measured cost this
-                    # replaces (1.55s+ per poll tick against a 910-contract set, well over the
-                    # 0.5s budget). _replay_option_contract_rows still runs once per symbol
-                    # (book-cursor bookkeeping is unchanged and stays per-symbol, its coverage
-                    # is small), but it now consumes already-fetched rows instead of querying.
-                    prefetched_l1_batch = await loop.run_in_executor(
-                        executor, _prefetch_option_l1_batch, con, contracts_to_replay)
-                    qualifying: list[tuple[str, float]] = []
-                    for sym in contracts_to_replay:
-                        ts = await loop.run_in_executor(
-                            executor, functools.partial(
-                                _replay_option_contract_rows, con, sym,
-                                prefetched_l1=prefetched_l1_batch.get(sym)))
-                        if ts is not None:
-                            qualifying.append((sym, ts))
-                    if qualifying and _streamed_greeks_hook is not None:
-                        groups: dict[str, tuple[str, float]] = {}
-                        for sym, ts in qualifying:
-                            root = _hook_grouping_key(sym)
-                            cur = groups.get(root)
-                            if cur is None or ts > cur[1]:
-                                groups[root] = (sym, ts)
-                        for rep_sym, rep_ts in groups.values():
-                            _dispatch_hook_background(rep_sym, rep_ts)
-                    if tkr:
-                        await loop.run_in_executor(executor, _replay_new_rows, con, tkr)
-                except sqlite3.Error as e:
-                    log.warning("daemon plane feed: db read failed, reopening: %s", e)
-                    try:
-                        await loop.run_in_executor(executor, con.close)
-                    except sqlite3.Error:
-                        pass
-                    con = None
-            await asyncio.sleep(POLL_INTERVAL_SEC)
-    finally:
-        if con is not None:
             try:
-                await loop.run_in_executor(executor, con.close)
-            except sqlite3.Error:
-                pass
-        executor.shutdown(wait=False)
+                async with connect(LIVE_PUSH_URL, max_size=None, open_timeout=5,
+                                   ping_interval=20, ping_timeout=20) as ws:
+                    _push_connected_ts = time.time()
+                    _log_stream("PUSH_CONNECTED", url=LIVE_PUSH_URL)
+                    async for frame in ws:
+                        if not _feed_running:
+                            break
+                        try:
+                            env = json.loads(frame)
+                        except (TypeError, ValueError):
+                            continue
+                        if not isinstance(env, dict):
+                            continue
+                        hit = _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
+                        if hit is not None and _streamed_greeks_hook is not None:
+                            _note_qualifying(hit[0], hit[1])
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
+                log.info("live push unavailable (%s: %s); retrying in %.1fs",
+                         type(e).__name__, e, PUSH_RECONNECT_SEC)
+            _push_connected_ts = None
+            if _feed_running:
+                await asyncio.sleep(PUSH_RECONNECT_SEC)
+    finally:
+        _push_connected_ts = None
         # A background hook dispatch already submitted to hook_executor keeps running on
-        # its worker thread to completion even after this loop stops (same non-blocking
-        # shutdown discipline as `executor` above) -- its CAS in refresh_gamma_surface_
-        # from_stream makes a late publish after a restart harmless (superseded by
-        # whatever the next real cycle computes), never corrupting.
+        # its worker thread to completion even after this loop stops -- its CAS in
+        # refresh_gamma_surface_from_stream makes a late publish after a restart harmless
+        # (superseded by whatever the next real cycle computes), never corrupting.
         hook_executor.shutdown(wait=False)
         _log_stream("FEED_LOOP_STOP_DONE")
 

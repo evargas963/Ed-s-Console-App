@@ -83,7 +83,7 @@ def test_live_state_never_backfills_chg_pct_from_rest(monkeypatch):
 
     ticker = "ZZZTEST"
     plane_row = {"ticker": ticker, "spot": 55.0, "chg_pct": None,
-                 "server_received_ts": _t.time(), "exchange_quote_ts": _t.time(),
+                 "server_received_ts": _t.time(), "spot_received_ts": _t.time(), "exchange_quote_ts": _t.time(),
                  "quote_source_detail": {"spot": "LAST_PRICE"},
                  "quote_ingestion": "schwab_streaming_level_one"}
     monkeypatch.setattr(srv._lmp, "get_quote", lambda t: dict(plane_row))
@@ -176,12 +176,12 @@ def test_streamed_chg_pct_serves_only_a_fresh_streamed_row(monkeypatch):
 
     import server as srv
 
-    fresh = {"spot": 10.0, "chg_pct": 3.33, "server_received_ts": _t.time(),
+    fresh = {"spot": 10.0, "chg_pct": 3.33, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
              "quote_source_detail": {"spot": "LAST_PRICE"},
              "quote_ingestion": "schwab_streaming_level_one"}
     assert srv._streamed_chg_pct("ZZZTEST", fresh) == 3.33
     assert srv._streamed_chg_pct("ZZZTEST", dict(fresh, quote_ingestion="rest_tier_a")) is None
-    assert srv._streamed_chg_pct("ZZZTEST", dict(fresh, server_received_ts=0.0)) is None
+    assert srv._streamed_chg_pct("ZZZTEST", dict(fresh, server_received_ts=0.0, spot_received_ts=0.0)) is None
     assert srv._streamed_chg_pct("ZZZTEST", None) is None
 
 
@@ -260,7 +260,7 @@ def test_watchlist_quotes_reuses_a_fresh_plane_row_with_no_vendor_call(monkeypat
 
     tk = "ZZWLPLANE"
     L._by_ticker[tk] = {"spot": 812.5, "spot_disp": "812.50", "chg_pct": 0.42,
-                         "exchange_quote_ts": 1_800_000_000.0, "server_received_ts": _t.time(),
+                         "exchange_quote_ts": 1_800_000_000.0, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
                          "quote_source_detail": {"spot": "LAST_PRICE"}}
     called = {"n": 0}
 

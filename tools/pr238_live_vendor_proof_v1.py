@@ -4,7 +4,7 @@
 WHAT THIS ANSWERS: does a real Schwab-streamed tick actually reach the new Options/Gamma
 heatmap's own served surface, with correct (ticker, strike, expiry, contract-symbol)
 identity, end to end through the real production pipeline (capture daemon ->
-stream_capture.db -> this console's _feed_loop -> refresh_gamma_surface_from_stream /
+daemon live push -> this console's _feed_loop -> refresh_gamma_surface_from_stream /
 _terrain_refresh_one -> GET /api/options/gamma-surface)? Every prior round proved this
 mechanism against a protocol-faithful SIMULATED stream only (see the PR body's own
 "What remains NOT_PROVEN" section, round 6 onward) — never against a live vendor session.

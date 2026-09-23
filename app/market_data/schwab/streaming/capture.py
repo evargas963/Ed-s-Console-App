@@ -1752,7 +1752,8 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
 def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
                  stats: CaptureStats, max_qdepth: int,
                  epoch_state: dict | None = None,
-                 rejected_state: "dict[str, str] | None" = None) -> None:
+                 rejected_state: "dict[str, str] | None" = None,
+                 push_stats: "dict | None" = None) -> None:
     # PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS (Gap 2): the producer identity/liveness
     # signal now lives INSIDE stream_capture.db itself (write_heartbeat), on the SAME
     # cadence as this file-based status write -- one call site, one clock, not a second
@@ -1777,6 +1778,8 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
         "max_writer_queue_depth": max_qdepth,
         # messages handed to the writer thread and not yet written (None = writer not running)
         "writer_thread_backlog": writer.writer_backlog(),
+        # the local push channel to the console (clients connected, messages sent/dropped)
+        "live_push": dict(push_stats) if push_stats is not None else None,
         "per_service": stats.per_service,
         "handle_ms_p50": stats.p(50), "handle_ms_p99": stats.p(99),
         # PR214_RTH_DEFECT_REMEDIATION_V1: the resolved ABSOLUTE stream DB identity
@@ -2212,6 +2215,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     stream = None
     pump_task = None
     alpaca_task = None
+    push_task = None
+    push_stats: dict = {}
     control_tasks: tuple = ()
     #: Shared with the active-ticker book-poll task (below) — a plain dict, not a
     #: closure-captured local, because BOTH the recycle path here and the poll loop's
@@ -2306,13 +2311,19 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # of a Schwab stream generation: it owns its own Alpaca socket and survives
         # recycles.
         alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
+        # Live push to the console over a local WebSocket (in memory, no database in the
+        # live path). Not part of a Schwab stream generation: it serves the bus, which
+        # survives recycles.
+        from app.market_data.schwab.streaming.live_push import serve_live_push
+        push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats))
         control_tasks = await _start_control_tasks()
         while not stop.is_set():
             await asyncio.sleep(STATUS_LOOP_INTERVAL_SEC)
             max_qdepth = max(max_qdepth, wsub.queue.qsize())
             write_status(bus, health, writer, stats, max_qdepth,
                          epoch_state=option_epoch_state,
-                         rejected_state=option_rejected_state)
+                         rejected_state=option_rejected_state,
+                         push_stats=push_stats)
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
             seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0  # caps-ok: diagnostic unseen-count; 0 means never seen
@@ -2469,7 +2480,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # measured from the decision to surrender instead of the surrender itself.
         shutdown_surrendered_ts = time.time()
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
-                                 extra_producers=(alpaca_task, *control_tasks))
+                                 extra_producers=(alpaca_task, push_task, *control_tasks))
         # The daemon's own Schwab session must not outlive the daemon. _shutdown_sequence
         # cancels the pump, but a cancelled handle_message() is not a logged-out session:
         # nothing in schwab-py logs out on garbage collection, so without this the process

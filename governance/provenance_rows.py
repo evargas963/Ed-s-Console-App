@@ -2119,7 +2119,12 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='app/options/order_flow/streaming.py', derivation='_feed_loop', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
-        justification='Poll loop replacing the retired StreamClient message loop; opens zero Schwab connections (_feed_loop).',
+        justification='Live-push client (2026-09-23): consumes the capture daemon\'s local WebSocket push of Schwab stream messages; opens zero Schwab connections and reads no database (_feed_loop).',
+    ),
+    Row(
+        file='app/options/order_flow/streaming.py', derivation='_ingest_pushed', disposition='ALLOWLISTED',
+        allowlist_id='mega2_schwab_stream_l1',
+        justification="Applies one daemon-pushed Schwab LEVELONE_EQUITIES / book / LEVELONE_OPTIONS message to order_flow_live_state and live_market_plane with the message's own ts_recv -- the same plane-ingest calls the retired DB replay made (_ingest_pushed).",
     ),
     Row(
         file='app/options/order_flow/streaming.py', derivation='_log_stream', disposition='ALLOWLISTED',
@@ -2129,7 +2134,7 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='app/options/order_flow/streaming.py', derivation='_open_capture_db_readonly', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
-        justification='SINGLE-STREAM-AUTHORITY repair 2026-08-30: read-only capture-DB handle for the live-plane feed, replacing the retired second StreamClient (_open_capture_db_readonly).',
+        justification='SINGLE-STREAM-AUTHORITY repair 2026-08-30: read-only capture-DB handle for the producer heartbeat / coverage-epoch reads (health); live values arrive by push since 2026-09-23, not through this handle (_open_capture_db_readonly).',
     ),
     Row(
         file='app/options/order_flow/streaming.py', derivation='_option_streaming_healthy', disposition='ALLOWLISTED',
@@ -2145,16 +2150,6 @@ ROWS: tuple[Row, ...] = (
         file='app/options/order_flow/streaming.py', derivation='_read_producer_option_contracts', disposition='ALLOWLISTED',
         allowlist_id='mega1_diagnostic_log',
         justification="PR214 premerge gap 1A: PRODUCER-side option subscription identity -- the current OPEN coverage epoch symbol per Schwab option service, read from the canonical stream_capture.db, distinct from the server's DESIRED/requested contract (_read_producer_option_contracts).",
-    ),
-    Row(
-        file='app/options/order_flow/streaming.py', derivation='_replay_new_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Replays daemon-captured L1/book rows into order_flow_live_state/live_market_plane, the same plane-ingest calls the retired direct-socket handlers made (_replay_new_rows).',
-    ),
-    Row(
-        file='app/options/order_flow/streaming.py', derivation='_replay_option_contract_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification="Same replay shape as _replay_new_rows for the one active option contract's LEVELONE_OPTIONS/OPTIONS_BOOK rows (_replay_option_contract_rows).",
     ),
     Row(
         file='app/options/order_flow/streaming.py', derivation='_stream_db_identity_status', disposition='ALLOWLISTED',
