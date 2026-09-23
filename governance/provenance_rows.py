@@ -2712,7 +2712,9 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON; merges the live terrain cache over a memoised stored-chain fallback.',
     ),
     Row(
-        file='server.py', derivation='_tier_a_live_state_dict', disposition='DERIVED',
+        # RC-REHAB-1 (2026-09-23, module extraction, twenty-sixth slice):
+        # _tier_a_live_state_dict moved out of server.py into tier_a_live_state.py.
+        file='tier_a_live_state.py', derivation='_tier_a_live_state_dict', disposition='DERIVED',
         producer_refs=('server.py:_fetch_state',),
         justification='Schwab API wrapper or wire JSON ingest path.',
     ),
