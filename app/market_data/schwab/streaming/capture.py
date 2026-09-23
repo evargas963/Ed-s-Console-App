@@ -1775,6 +1775,8 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
         "rows_written": writer.rows_written, "commits": writer.commits,
         "insert_errors": writer.insert_errors,
         "max_writer_queue_depth": max_qdepth,
+        # messages handed to the writer thread and not yet written (None = writer not running)
+        "writer_thread_backlog": writer.writer_backlog(),
         "per_service": stats.per_service,
         "handle_ms_p50": stats.p(50), "handle_ms_p99": stats.p(99),
         # PR214_RTH_DEFECT_REMEDIATION_V1: the resolved ABSOLUTE stream DB identity

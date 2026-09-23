@@ -17,7 +17,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import queue
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -734,11 +736,14 @@ class CaptureWriter:
             self._closed = True
             raise
 
-    def insert(self, topic: str, msg: dict) -> None:
+    def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None) -> None:
+        """Write one bus message. `conn` is the writer thread's own connection in `run`;
+        direct callers (tests, recovery tools) write on the control connection."""
+        db = self._conn if conn is None else conn
         kind = topic.split(".", 1)[0]
         if kind == "quote":
             native = msg.get("native")
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
                 "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -751,7 +756,7 @@ class CaptureWriter:
             content = msg.get("content")
             if content is None:
                 return
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) "
                 "VALUES(?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("service"),
@@ -761,20 +766,20 @@ class CaptureWriter:
             content = msg.get("content")
             if content is None:
                 return
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) "
                 "VALUES(?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), json.dumps(content),
                  msg.get("src", "?")))  # caps-ok: src is a required kwarg on options_quote_msg (no default); same guard as the quote branch above
         elif kind == "print":
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_prints_raw(ts_recv,symbol,price,size,exchange,conditions,"
                 "trade_ts_ms,src) VALUES(?,?,?,?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("price"), msg.get("size"),
                  msg.get("exchange"), msg.get("conditions"), msg.get("trade_ts_ms"),
                  msg.get("src", "?")))  # caps-ok: src is a required kwarg on print_msg (no default); same guard as the quote branch above
         elif kind == "bar1m":
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
                 "volume,src) VALUES(?,?,?,?,?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("bar_start_ms"), msg.get("open"),
@@ -965,40 +970,87 @@ class CaptureWriter:
         except Exception as e:
             raise CoverageWriteError(f"close_coverage_epoch({epoch_id}): {e}") from e
 
-    def _insert_guarded(self, topic: str, msg: Any) -> int:
+    def _insert_guarded(self, topic: str, msg: Any, *,
+                        conn: "sqlite3.Connection | None" = None) -> int:
         """1 if a row landed; insert failures are COUNTED, never kill the writer
         (Cursor review MEDIUM: an uncaught insert() death silently stopped capture)."""
         try:
             before = self.rows_written
-            self.insert(topic, msg)
+            self.insert(topic, msg, conn=conn)
             return self.rows_written - before
         except Exception:  # noqa: BLE001 — counted + surfaced in status; capture continues
             self.insert_errors += 1
             return 0
 
+    #: Sentinel that tells the writer thread to commit what it holds and exit.
+    _WRITER_STOP = object()
+
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
+        """Persist every bus message -- WITHOUT ever blocking the event loop.
+
+        MEASURED 2026-09-23: this used to execute every SQLite insert and commit on the SAME
+        asyncio loop that reads the Schwab and Alpaca websockets. A slow commit (a busy
+        disk, a reader holding the WAL) stalled the socket reads; the writer queue reached
+        6,565 and 9,784 messages were dropped. Now the loop only hands each message to a
+        thread-safe queue (put, never blocks) and a dedicated thread, which owns its own
+        SQLite connection, does all tick inserts and batch commits. The rare control writes
+        (coverage epochs, heartbeat) keep the control connection on the loop thread -- two
+        connections on one WAL database is SQLite's supported pattern.
+
+        Stop semantics are unchanged: everything already delivered to the subscription is
+        handed to the thread, which writes and commits it all before `run` returns."""
+        q: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._writer_queue = q
+        thread = threading.Thread(target=self._writer_thread, args=(q,),
+                                  name="stream-capture-writer", daemon=True)
+        thread.start()
+        try:
+            while not stop.is_set():
+                try:
+                    item = await asyncio.wait_for(sub.get(), timeout=0.25)
+                except asyncio.TimeoutError:
+                    continue
+                q.put(item)
+            while not sub.queue.empty():
+                q.put(await sub.get())
+        finally:
+            q.put(self._WRITER_STOP)
+            await asyncio.to_thread(thread.join)
+            self._writer_queue = None
+
+    def writer_backlog(self) -> "int | None":
+        """Messages handed to the writer thread and not yet written (None when not running)."""
+        q = getattr(self, "_writer_queue", None)  # caps-ok: None before run() starts or after it returns -- the documented "not running" answer
+        return q.qsize() if q is not None else None
+
+    def _writer_thread(self, q: "queue.SimpleQueue") -> None:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
         pending = 0
         last_commit = time.monotonic()
-        while not stop.is_set():
-            timeout = max(self.batch_sec - (time.monotonic() - last_commit), 0.01)
-            try:
-                topic, msg = await asyncio.wait_for(sub.get(), timeout=timeout)
-                pending += self._insert_guarded(topic, msg)
-            except asyncio.TimeoutError:
-                pass
-            if pending and (pending >= self.batch_rows
-                            or time.monotonic() - last_commit >= self.batch_sec):
-                self.commit()
-                pending = 0
-                last_commit = time.monotonic()
-        # DRAIN on stop — Cursor review HIGH: stopping must not vaporize up to a full
-        # queue of buffered rows. Everything already delivered to the subscription is
-        # written and committed before the writer exits.
-        while not sub.queue.empty():
-            topic, msg = await sub.get()
-            pending += self._insert_guarded(topic, msg)
-        if pending:
-            self.commit()
+        try:
+            conn.execute("PRAGMA synchronous=NORMAL")
+            while True:
+                timeout = max(self.batch_sec - (time.monotonic() - last_commit), 0.01)
+                try:
+                    item = q.get(timeout=timeout)
+                except queue.Empty:
+                    item = None
+                if item is self._WRITER_STOP:
+                    break
+                if item is not None:
+                    topic, msg = item
+                    pending += self._insert_guarded(topic, msg, conn=conn)
+                if pending and (pending >= self.batch_rows
+                                or time.monotonic() - last_commit >= self.batch_sec):
+                    conn.commit()
+                    self.commits += 1
+                    pending = 0
+                    last_commit = time.monotonic()
+            if pending:
+                conn.commit()
+                self.commits += 1
+        finally:
+            conn.close()
 
     def close(self) -> None:
         """Idempotent — the daemon closes in a finally that may run after an inner
