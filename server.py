@@ -15067,7 +15067,7 @@ def exposure_page():
     p = static_dir / "exposure.html"
     if not p.exists():
         return HTMLResponse("<p>static/exposure.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
+    return HTMLResponse(_with_live_ui_port(p.read_text(encoding="utf-8")),
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 

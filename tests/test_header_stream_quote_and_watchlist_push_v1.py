@@ -109,7 +109,7 @@ def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:
     points it at a dead port so no test page can ever reach the real daemon."""
     from app.market_data.schwab.streaming import live_ui
     monkeypatch.setattr(live_ui, "LIVE_UI_PORT", 8811)
-    for page in (srv.root(), srv.chart_page()):
+    for page in (srv.root(), srv.chart_page(), srv.exposure_page()):
         html = page.body.decode("utf-8")
         assert '<meta name="ed-live-ui-port" content="8811">' in html
         assert 'content="">' not in html.split("ed-live-ui-port", 1)[1][:12]

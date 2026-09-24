@@ -63,7 +63,12 @@ def test_exposure_kills_cycle_fallback():
     assert "strikes.spot" not in src
     assert "terrain.spot" not in src
     assert "spotBindingAgeLabel" in src
-    assert "spot_as_of_ts_utc" in src
+    assert "msg.rows.forEach(ingestSpotRow)" in src and "q.trade_ts" in src
+    assert "forming = { t: mt" not in src          # the forming candle is the server's
+    assert L.exposure_binding_violations(src) == []
+    polled = src.replace("openSpotStream(); setInterval(checkSpotSilence, 1000);",
+                         "setInterval(() => fetch('/api/spot?ticker=SPY'), 1500);")
+    assert any("/api/spot" in m for m in L.exposure_binding_violations(polled))
 
 
 def test_cycle_fallback_injection_screams():

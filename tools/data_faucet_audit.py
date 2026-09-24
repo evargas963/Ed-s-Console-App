@@ -136,7 +136,9 @@ CLIENT_CONCEPTS: dict[str, dict] = {
             "spotBindingStale",
             "spotBindingAgeLabel",
         ),
-        "writers": ("pollSpot",),
+        # the daemon price socket (Stage 1 of the live-UI architecture) replaced the /api/spot
+        # poll: one row writer plus the silence watchdog that withdraws it
+        "writers": ("ingestSpotRow", "checkSpotSilence"),
         "assign_only": r"\bliveSpot\w*\s*=",
     },
     # RC-77. The console page carries the same defect class on a much larger surface, so its

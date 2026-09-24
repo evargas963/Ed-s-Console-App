@@ -101,8 +101,13 @@ def exposure_binding_violations(text: str) -> list[str]:
         out.append("static/exposure.html: missing spotBindingAgeLabel() as_of surface")
     if "spotBindingAgeLabel()" not in code:
         out.append("static/exposure.html: spotBindingAgeLabel() never called")
-    if "spot_as_of_ts_utc" not in text:
-        out.append("static/exposure.html: poll must read spot_as_of_ts_utc")
+    # the daemon price socket (live_ui) is the binding; its as_of is the row's Schwab trade_ts
+    if ("new WebSocket(url)" not in code or "msg.rows.forEach(ingestSpotRow)" not in code):
+        out.append("static/exposure.html: spot must bind the daemon price socket (live_ui)")
+    if "q.trade_ts" not in code:
+        out.append("static/exposure.html: binding must read the row's trade_ts as_of")
+    if "/api/spot" in code:
+        out.append("static/exposure.html: no /api/spot poll -- prices come from the daemon socket")
     return out
 
 
