@@ -266,7 +266,7 @@ class MarketState:
     size_note:          str             = ""
     # Contract/event (desk framing — not part of OE scoring)
     contract_context:   str             = ""
-    event_risk_level:   str             = "none"   # none | elevated | high
+    event_risk_level:   str             = "unknown"   # high | unknown (event_risk.py: sourced calendars only)
     event_risk_detail:  str             = ""
     # ── Call Readiness (from TheCall / setup_readiness) ───────────────────────
     call_readiness_score:    int         = 0

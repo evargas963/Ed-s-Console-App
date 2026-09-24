@@ -134,7 +134,7 @@ class SignalInput:
     iwm_weighted_push:  Optional[float] = None  # blend: holdings + sector proxies (see market_state)
 
     # ── Event / calendar (stack gating) ─────────────────────────────────────
-    event_risk_level:   str             = "none"   # none | elevated | high
+    event_risk_level:   str             = "unknown"   # high | unknown (event_risk.py)
     event_risk_detail:  str             = ""
 
     # ── VIX ───────────────────────────────────────────────────────────────────

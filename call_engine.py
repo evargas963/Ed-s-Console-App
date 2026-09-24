@@ -561,7 +561,7 @@ def _all_consolidated_stack_vote(
 
 
 def _stack_event_threshold(event_risk_level: str) -> int:
-    _evt = (event_risk_level or "none").strip().lower()
+    _evt = (event_risk_level or "unknown").strip().lower()
     if _evt in ("elevated", "high"):
         return STACK_THRESHOLD_EVENT_RISK
     return STACK_THRESHOLD_DEFAULT
@@ -1461,7 +1461,7 @@ def compute_call(
             regime_vote = 1 if nd >= 0 else (-1 if nd < 0 else 0)
 
     _mh_promoted_directional = False
-    _evt = (getattr(inp, "event_risk_level", None) or "none").strip().lower()
+    _evt = (getattr(inp, "event_risk_level", None) or "unknown").strip().lower()
 
     # Tape/structure votes (non-ML) — used for promote/veto alignment when mh_policy present.
     tape_stack_votes = {
