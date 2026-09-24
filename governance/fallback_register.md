@@ -50,12 +50,12 @@ P1/P2 rows are to be merged here as each file is repaired.
 ### Fusion / model labels persisted as data (bayesian_fusion.py, ml_predict.py, market_state.py)
 | ID | file:line | Violation | Flows to | Status |
 |---|---|---|---|---|
-| F-01 | bayesian_fusion.py:789-796 | fuse returns available=True with 0 active sources | persisted fusion_* columns every tick | OPEN |
-| F-02 | bayesian_fusion.py:182-189 | DEFAULT_PRIORS when regime missing | fusion_* | OPEN |
-| F-03 | bayesian_fusion.py:331-355 | "placeholder likelihoods" rules tables are the only evidence | fusion_* | OPEN |
-| F-04/05 | bayesian_fusion.py:333-336, 378, 508 | getattr(rules, "signal"/"conviction", default) | fusion_* | OPEN |
-| F-06 | bayesian_fusion.py:620-621 | CALIBRATION_PENALTY placeholder | fusion_confidence | OPEN |
-| F-07/08 | bayesian_fusion.py:421, 427-429 | likelihood floor; "fallback to priors" | posteriors | OPEN |
+| F-01 | bayesian_fusion.py:789-796 | fuse returns available=True with 0 active sources | persisted fusion_* columns every tick | FIXED 693ffaa8 |
+| F-02 | bayesian_fusion.py:182-189 | DEFAULT_PRIORS when regime missing | fusion_* | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
+| F-03 | bayesian_fusion.py:331-355 | "placeholder likelihoods" rules tables are the only evidence | fusion_* | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
+| F-04/05 | bayesian_fusion.py:333-336, 378, 508 | getattr(rules, "signal"/"conviction", default) | fusion_* | FIXED 693ffaa8 |
+| F-06 | bayesian_fusion.py:620-621 | CALIBRATION_PENALTY placeholder | fusion_confidence | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
+| F-07/08 | bayesian_fusion.py:421, 427-429 | likelihood floor; "fallback to priors" | posteriors | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
 | L-01 | ml_predict.py:2853-2862 | model_version built from files on disk, not what ran | persisted pred_model_version | OPEN |
 | F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | OPEN |
 | S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | FIXED 739fb9fc |
@@ -127,5 +127,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 46 rows above marked OPEN (several rows group more than one site).
+Re-audit live P0 open: 40 rows above marked OPEN (several rows group more than one site).
 P1 (re-audit): ~70 more, to be merged as files are repaired.
