@@ -851,6 +851,21 @@
     // gamma-surface/per-strike data (ed-gamma.js, ed-gamma-panels.js's GEX-by-strike panel,
     // ed-gamma-chart.js) -- the 12s poll's `ed:refresh{slow}` remains the ONLY thing that
     // drives every other module's slower, session-cadence refresh.
+    // l1_quote: the server's current quote + live verdict, sent on connect and every idle
+    // second (server.py:_l1_quote_event). Painted as-is -- the browser computes nothing but
+    // the display age of the last trade from the two server timestamps it was given.
+    _sse.addEventListener('l1_quote', function (ev) {
+      var q; try { q = JSON.parse(ev.data); } catch (e) { return; }
+      if (!q || String(q.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
+      _sseUp = true; _lastSseTs = Date.now();
+      var live = q.spot_state === 'live' && q.spot != null;
+      var tradeAge = (live && q.trade_ts_ms) ? Math.max(0, Math.round(q.server_ts - q.trade_ts_ms / 1000)) : null;
+      paintQuoteNextFrame({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
+        chgPct: q.chg_pct, spotState: q.spot_state,
+        feedCls: live ? '' : 'stale',
+        feedLabel: live ? 'LIVE' : 'UNAVAILABLE',
+        ageLabel: tradeAge != null ? ('last trade ' + tradeAge + 's') : (live ? 'live' : 'no live feed') });
+    });
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
       if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
@@ -904,7 +919,7 @@
   // label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     _pendingQuote = null;
-    var connecting = _sse && !_sseUp && (Date.now() - _sseOpenedTs <= 9000);
+    var connecting = _sse && !_sseUp && (Date.now() - _sseOpenedTs <= 3000);
     paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null,
       spotState: 'unavailable', feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
@@ -919,7 +934,7 @@
   function liveTick() {
     _tick++;
     if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) pollWatchlistQuotes(); return; }
-    var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 9000);
+    var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 3000);   // l1_quote arrives every second
     if (!sseHealthy) markHeaderPushDown();            // the gap is shown, never filled
     if (!sseHealthy || _tick % 4 === 0) refreshSession();
     if (_tick % 4 === 0) pollWatchlistQuotes();       // every non-active row, same slow cadence

@@ -15225,6 +15225,34 @@ async def get_analytics_light(
     return JSONResponse(out)
 
 
+#: seconds between `l1_quote` events on an idle header stream
+L1_QUOTE_HEARTBEAT_SEC = 1.0
+
+
+def _l1_quote_event(ticker: str) -> dict:
+    """The header quote for `ticker` as it is this instant, from the ONE spot authority
+    (resolve_spot / current_spot_state) and the ONE change-% reader (streamed_chg_pct);
+    bid/ask only while the row's quote is live (quote_is_fresh). Sent on connect and every
+    L1_QUOTE_HEARTBEAT_SEC on an idle stream, so the header shows the live verdict within a
+    second -- it used to wait up to 9 s for a first projection and read OFFLINE on a quiet
+    ticker while the feed was healthy (audit 2026-09-24)."""
+    tk = ticker_storage_key(ticker)
+    spot, source, _as_of = resolve_spot(tk)
+    row = _lmp.get_quote(tk)
+    quote_live = bool(row) and _lmp.quote_is_fresh(row)
+    return {
+        "ticker": tk,
+        "spot": spot,
+        "spot_disp": (f"{spot:.2f}" if spot is not None else None),
+        "spot_state": current_spot_state(source, tk),
+        "bid": row["bid"] if quote_live and "bid" in row else None,
+        "ask": row["ask"] if quote_live and "ask" in row else None,
+        "chg_pct": _lmp.streamed_chg_pct(row),
+        "trade_ts_ms": row["trade_ts"] if spot is not None and "trade_ts" in row else None,
+        "server_ts": time.time(),
+    }
+
+
 def _sse_event_name_for_envelope(env) -> str:
     """The wire `event:` name for one /api/analytics/light/stream envelope. Every existing L1
     envelope omits `_sse_event_name` and gets "l1_projection" exactly as before this function
@@ -15257,17 +15285,20 @@ async def get_analytics_light_stream(
 
     async def event_generator():
         yield ": ok\n\n"
+        # the current quote at once -- the header never waits for a first projection
+        yield f"event: l1_quote\ndata: {json.dumps(_l1_quote_event(t), default=str)}\n\n"
         try:
             while True:
                 try:
-                    env = await asyncio.wait_for(q.get(), timeout=30.0)
+                    env = await asyncio.wait_for(q.get(), timeout=L1_QUOTE_HEARTBEAT_SEC)
                     # RC-UI-2 (independent-review finding, 2026-09-12): this connection/queue/
                     # dispatch pipe is entirely generic (see _l1_light_sse_dispatch_loop's own
                     # docstring — it scope-matches and forwards the raw env, nothing L1-specific)
                     # except the wire event name — see _sse_event_name_for_envelope.
                     yield f"event: {_sse_event_name_for_envelope(env)}\ndata: {json.dumps(env, default=str)}\n\n"
                 except asyncio.TimeoutError:
-                    yield ": heartbeat\n\n"
+                    # idle second: the live verdict and quote, never a bare keep-alive comment
+                    yield f"event: l1_quote\ndata: {json.dumps(_l1_quote_event(t), default=str)}\n\n"
         finally:
             _l1_light_sse_release(q, key, rs_key)
 
