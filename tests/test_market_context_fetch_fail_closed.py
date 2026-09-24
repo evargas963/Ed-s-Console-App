@@ -39,7 +39,7 @@ def test_fetch_market_context_quote_failure_returns_partial_context() -> None:
     assert ctx.vix is None
     assert ctx.vxn is None
     assert ctx.rvx is None
-    assert ctx.spy_last is None
+    assert not hasattr(ctx, "spy_last")     # the retired roster field is gone, not None
     assert ctx.error
 
 

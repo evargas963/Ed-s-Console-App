@@ -50,7 +50,6 @@ def _inp(**kw) -> SignalInput:
         iv_level=0.15, iv_direction="flat", realized_vol=None, atr=1.5,
         put_call_oi_ratio=1.0, oi_center=None,
         recent_crosses=[], ceiling_tests_today=0, floor_tests_today=0,
-        spy_chg_pct=0.05, qqq_chg_pct=0.04, iwm_chg_pct=0.03,
         vix_level=None, vix_vs_prev=None, mins_to_close=None,
         em_upper=452.0, em_lower=448.0,
         order_flow_score=0.0, order_flow_direction="neutral", order_flow_readiness="yellow",

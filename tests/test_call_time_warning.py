@@ -48,7 +48,6 @@ def _minimal_input(mins_to_close: float):
         iv_level=0.15, iv_direction="flat", realized_vol=None, atr=1.5,
         put_call_oi_ratio=0.9, oi_center=None,
         recent_crosses=[], ceiling_tests_today=0, floor_tests_today=0,
-        spy_chg_pct=0.3, qqq_chg_pct=0.4, iwm_chg_pct=0.2,
         vix_level=18.0, mins_to_close=mins_to_close,
         em_upper=452.0, em_lower=448.0,
         order_flow_score=0.25, order_flow_direction="bullish", order_flow_readiness="yellow",
