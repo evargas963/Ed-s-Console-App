@@ -269,16 +269,14 @@ def test_outside_contention_nothing_is_deferred():
         assert deferred == [] and now == board, f"ET minute {mins} deferred unexpectedly"
 
 
-def test_outside_contention_viewed_tickers_rotate_the_rest():
-    """Phase 3 load isolation: while someone is viewing, non-viewed names rotate
-    even outside the morning window. The viewed ticker is never deferred."""
+def test_outside_contention_viewing_never_rotates_the_board():
+    """Collection mandate: outside the contention window every enrolled ticker refreshes every
+    cycle, whoever is viewing. (#280 rotated non-viewed names all session while anyone viewed
+    -- one refresh per >=300 s; this test previously pinned that regression.)"""
     s = _server()
     board = _board()
-    viewed = [board[0]]
-    now, deferred = s.terrain_cycle_tickers(board, 720, 1, viewed=viewed)
-    assert viewed[0] in now
-    assert deferred, "non-viewed tickers must rotate while someone is viewing"
-    assert viewed[0] not in deferred
+    now, deferred = s.terrain_cycle_tickers(board, 720, 1, viewed=[board[0]])
+    assert deferred == [] and now == board
 
 
 def test_storm1_absence_reads_as_absence():

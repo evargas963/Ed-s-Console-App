@@ -1171,6 +1171,11 @@ _sse_cadence_diag_last_log_mono: float = 0.0
 _l1_light_sse_clients: list[tuple[asyncio.Queue, tuple[str, str | None]]] = []
 #: id(asyncio.Queue) -> watchlist tickers that connection also wants as quote_tick
 _l1_light_sse_watch: dict[int, tuple[str, ...]] = {}
+#: id(asyncio.Queue) -> the newest unsent quote_tick per symbol for that connection (latest
+#: wins per symbol; never a bounded FIFO that can drop a symbol's only pending price)
+_l1_qt_pending: dict[int, dict[str, dict]] = {}
+#: id(asyncio.Queue) -> (the connection's event loop, the event that wakes its generator)
+_l1_qt_wake: dict[int, tuple] = {}
 _l1_light_sse_lock = threading.Lock()
 _l1_sse_thread_queue: queue.Queue = queue.Queue(maxsize=500)
 _l1_sse_diag: dict[str, int] = {
@@ -1312,6 +1317,8 @@ def _l1_light_sse_release(q: asyncio.Queue, key: tuple[str, str], rs_key: tuple[
         else:
             _l1_light_sse_remote_scope[rs_key] = left
         _l1_light_sse_watch.pop(id(q), None)
+        _l1_qt_pending.pop(id(q), None)
+        _l1_qt_wake.pop(id(q), None)
 
 
 def _l1_round_floats_for_json(obj: Any) -> Any:
@@ -1366,54 +1373,36 @@ def _l1_bind_sse_watch(q: asyncio.Queue, watched: list[str]) -> None:
 
 
 def _l1_ticker_has_projection_subscriber(ticker: str) -> bool:
-    """True when an L1 light SSE client reserved this ticker (any expiry). Watchlist-only does not count."""
+    """True when an L1 light SSE client reserved this ticker (any expiry). Watchlist-only does
+    not count. Both sides through ticker_storage_key: the stream reserves the request's form
+    ("SPX"), the plane keys the storage form ("$SPX") -- comparing raw never matched an index."""
     t = ticker_storage_key(ticker)
     if not t:
         return False
     with _l1_light_sse_lock:
-        return any(csk[0] == t for _, csk in _l1_light_sse_clients)
+        return any(ticker_storage_key(csk[0]) == t for _, csk in _l1_light_sse_clients)
+
+
+def _quote_tick_targets(t: str) -> list[int]:
+    """Connections that show `t` (storage key): its header ticker, or on its watchlist."""
+    with _l1_light_sse_lock:
+        return [id(q) for q, csk in _l1_light_sse_clients
+                if ticker_storage_key(csk[0]) == t or t in _l1_light_sse_watch.get(id(q), ())]
 
 
 def _quote_tick_has_audience(ticker: str) -> bool:
     t = ticker_storage_key(ticker)
-    if not t:
-        return False
+    return bool(t) and bool(_quote_tick_targets(t))
+
+
+def _l1_bind_quote_tick_sink(q: asyncio.Queue) -> tuple[dict, asyncio.Event]:
+    """Register this connection's latest-per-symbol quote_tick table and its wake event."""
+    pending: dict[str, dict] = {}
+    wake = asyncio.Event()
     with _l1_light_sse_lock:
-        for q, csk in _l1_light_sse_clients:
-            if csk[0] == t:
-                return True
-            if t in _l1_light_sse_watch.get(id(q), ()):
-                return True
-    return False
-
-
-def _l1_put_quote_tick_client_queue(q: asyncio.Queue, env: dict) -> None:
-    """Latest quote_tick per symbol on this connection. Does not evict l1_projection / gamma_surface_seq."""
-    tk = env.get("ticker")
-    kept: list = []
-    try:
-        while True:
-            item = q.get_nowait()
-            if (isinstance(item, dict) and item.get("_sse_event_name") == "quote_tick"
-                    and item.get("ticker") == tk):
-                continue
-            kept.append(item)
-    except asyncio.QueueEmpty:
-        pass
-    for item in kept:
-        try:
-            q.put_nowait(item)
-        except asyncio.QueueFull:
-            _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(
-                _l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
-            return
-    try:
-        q.put_nowait(env)
-        _l1_sse_diag["l1_light_sse_events_delivered"] = int(
-            _l1_sse_diag.get("l1_light_sse_events_delivered", 0)) + 1
-        _l1_sse_diag["quote_tick_delivered"] = int(_l1_sse_diag.get("quote_tick_delivered", 0)) + 1
-    except asyncio.QueueFull:
-        _l1_sse_diag["quote_tick_dropped_full"] = int(_l1_sse_diag.get("quote_tick_dropped_full", 0)) + 1
+        _l1_qt_pending[id(q)] = pending
+        _l1_qt_wake[id(q)] = (asyncio.get_running_loop(), wake)
+    return pending, wake
 
 
 def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
@@ -1530,6 +1519,18 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
 def _get_fast_quote_executor() -> ThreadPoolExecutor:
     """Route-touch pool (Tier C JSON, streaming POST touch). Not L1 light (RC-166)."""
     return _get_route_offload_executor()
+
+
+_l1_sse_dispatch_executor: Optional[ThreadPoolExecutor] = None
+
+
+def _get_l1_sse_dispatch_executor() -> ThreadPoolExecutor:
+    """ONE thread for the L1 SSE fan-in wait -- never shared with /api/analytics/light builds,
+    so a slow cold build can never hold up delivery (audit of #280)."""
+    global _l1_sse_dispatch_executor
+    if _l1_sse_dispatch_executor is None:
+        _l1_sse_dispatch_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ed_l1_sse_dispatch")
+    return _l1_sse_dispatch_executor
 
 
 def _get_l1_light_executor() -> ThreadPoolExecutor:
@@ -6033,21 +6034,14 @@ async def _l1_light_sse_dispatch_loop() -> None:
             return None
 
     while True:
-        item = await loop.run_in_executor(_get_l1_light_executor(), _blocking_get)
+        item = await loop.run_in_executor(_get_l1_sse_dispatch_executor(), _blocking_get)
         if item is None:
             await asyncio.sleep(0.02)
             continue
         sk, env = item
         with _l1_light_sse_lock:
             clients = list(_l1_light_sse_clients)
-            watch_by_q = dict(_l1_light_sse_watch)
-        is_qt = isinstance(env, dict) and env.get("_sse_event_name") == "quote_tick"
-        qt_tk = env.get("ticker") if is_qt else None
         for q, csk in clients:
-            if is_qt:
-                if qt_tk == csk[0] or qt_tk in watch_by_q.get(id(q), ()):
-                    _l1_put_quote_tick_client_queue(q, env)
-                continue
             if csk != sk:
                 continue
             _l1_put_l1_client_queue(q, env)
@@ -11429,16 +11423,16 @@ def terrain_cycle_tickers(
     at least once per CONTENTION_ROTATION_SEC (RC-146: spread the open's vendor budget, never
     starve a ticker).
 
-    Returns (refresh_now, deferred_this_cycle). Outside the contention window, with nobody
-    viewing, every ticker refreshes. While someone is viewing, non-viewed names rotate
-    (Instant-UI Phase 3 load isolation) so the 5s terrain sweep does not hold the chain
-    gate across the whole board.
+    Returns (refresh_now, deferred_this_cycle). Outside the contention window every enrolled
+    ticker refreshes every cycle -- viewing never rotates the board (collection mandate; the
+    audit of #280 found rotation-while-viewing cut every non-viewed ticker to one refresh per
+    300 s or more, all session).
     """
     viewed_set = {str(t).upper() for t in (viewed or [])}
     sentinels = [t for t in all_tickers if str(t).upper() in viewed_set]
     others = [t for t in all_tickers if str(t).upper() not in viewed_set]
     in_contention = TERRAIN_CONTENTION_START_MINS <= int(mins) <= TERRAIN_CONTENTION_END_MINS
-    if not in_contention and not viewed_set:
+    if not in_contention:
         return list(all_tickers), []
     # integer ceiling division — server.py has no module-level `math`, and adding an import for
     # one division would be a wider change than the fix
@@ -13877,11 +13871,11 @@ def overlay_forming_bar_from_plane(bars: list[dict], ticker: str) -> list[dict]:
             and _lmp.spot_is_fresh(row) and row.get("spot") is not None):
         return list(bars)
     px = float(row["spot"])
-    ts = row.get("exchange_quote_ts") or row.get("server_received_ts")
-    if ts is None:
+    trade_ms = row.get("trade_ts")          # Schwab TRADE_TIME_MILLIS of that LAST_PRICE
+    if trade_ms is None:                    # no trade time: the minute's own bar, no live tick
         acc = _candles_1m.forming_bar(ticker)
         return list(bars) if acc is None else _merge_forming_bar(list(bars), acc)
-    ts = float(ts)
+    ts = float(trade_ms) / 1000.0
     bar_t = ts - (ts % CANDLE_1M_SECONDS)
     forming = {"t": bar_t, "o": px, "h": px, "l": px, "c": px, "v": None, "forming": True}
     acc = _candles_1m.forming_bar(ticker)
@@ -15404,11 +15398,31 @@ def _quote_tick_event(ticker: str) -> dict:
 
 
 def _notify_quote_tick(ticker: str) -> None:
-    """Push the current plane row as quote_tick to every subscribed SSE client. No _project_l1."""
-    if not _quote_tick_has_audience(ticker):
+    """Put the current plane row, as quote_tick, into every showing connection's
+    latest-per-symbol table and wake it. No _project_l1, no shared queue: a price for one
+    symbol can never evict another symbol's pending price (audit of #280)."""
+    t = ticker_storage_key(ticker)
+    if not t:
         return
-    env = _quote_tick_event(ticker)
-    _l1_put_thread_queue_notify((env["ticker"], "__quote_tick__"), env)
+    targets = _quote_tick_targets(t)
+    if not targets:
+        return
+    env = _quote_tick_event(t)
+    with _l1_light_sse_lock:
+        wakes = []
+        for qid in targets:
+            pending = _l1_qt_pending.get(qid)
+            wake = _l1_qt_wake.get(qid)
+            if pending is None or wake is None:
+                continue
+            pending[t] = env
+            wakes.append(wake)
+        _l1_sse_diag["quote_tick_delivered"] = int(_l1_sse_diag.get("quote_tick_delivered", 0)) + len(wakes)
+    for loop, ev in wakes:
+        try:
+            loop.call_soon_threadsafe(ev.set)
+        except RuntimeError:                   # that connection's loop already closed
+            _l1_sse_diag["quote_tick_wake_closed"] = int(_l1_sse_diag.get("quote_tick_wake_closed", 0)) + 1
 
 
 def _format_quote_tick_sse(ticker: str) -> str:
@@ -15454,6 +15468,7 @@ async def get_analytics_light_stream(
         if w and w not in watched and w != ticker_storage_key(t):
             watched.append(w)
     _l1_bind_sse_watch(q, watched)
+    qt_pending, qt_wake = _l1_bind_quote_tick_sink(q)
     beat_tickers = [ticker_storage_key(t)] + watched
 
     async def event_generator():
@@ -15462,19 +15477,35 @@ async def get_analytics_light_stream(
             yield _format_quote_tick_sse(tk)
         loop = asyncio.get_running_loop()
         next_beat = loop.time() + QUOTE_TICK_HEARTBEAT_SEC
+        get_task = None
         try:
             while True:
-                wait = max(0.0, next_beat - loop.time())
-                try:
-                    env = await asyncio.wait_for(q.get(), timeout=wait)
+                if get_task is None:
+                    get_task = asyncio.ensure_future(q.get())
+                wake_task = asyncio.ensure_future(qt_wake.wait())
+                done, _ = await asyncio.wait({get_task, wake_task},
+                                             timeout=max(0.0, next_beat - loop.time()),
+                                             return_when=asyncio.FIRST_COMPLETED)
+                if not wake_task.done():
+                    wake_task.cancel()
+                if get_task in done:
+                    env = get_task.result()
+                    get_task = None
                     yield f"event: {_sse_event_name_for_envelope(env)}\ndata: {json.dumps(env, default=str)}\n\n"
-                except asyncio.TimeoutError:
-                    pass
+                if qt_wake.is_set():
+                    qt_wake.clear()
+                    with _l1_light_sse_lock:
+                        ticks = list(qt_pending.values())
+                        qt_pending.clear()
+                    for env in ticks:                          # newest per symbol
+                        yield f"event: quote_tick\ndata: {json.dumps(env, default=str)}\n\n"
                 if loop.time() >= next_beat:
                     for tk in beat_tickers:
                         yield _format_quote_tick_sse(tk)
                     next_beat = loop.time() + QUOTE_TICK_HEARTBEAT_SEC
         finally:
+            if get_task is not None:
+                get_task.cancel()
             _l1_light_sse_release(q, key, rs_key)
 
     return StreamingResponse(
@@ -15579,6 +15610,10 @@ def api_live_plane(ticker: str = Query(...)):
             e,
             exc_info=True,
         )
+    # the displayed-price path's own failures and delivery counters (audit of #280)
+    from planes.l1_events import quote_path_failures as _qpf
+    base["quote_path_failures"] = dict(_qpf)
+    base["quote_tick_delivered"] = int(_l1_sse_diag.get("quote_tick_delivered", 0))
     return JSONResponse(base)
 
 
