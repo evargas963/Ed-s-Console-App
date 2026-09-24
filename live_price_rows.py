@@ -72,6 +72,13 @@ def forming_bar(ticker: str) -> Optional[dict[str, Any]]:
         return dict(bar) if bar else None
 
 
+def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
+    """Seconds since the Schwab trade time; None when no trade is known (never a 0)."""
+    if trade_ts is None:
+        return None
+    return round(max(0.0, now - float(trade_ts)), 1)
+
+
 def price_row(ticker: str) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is this instant."""
     tk = ticker_storage_key(ticker)
@@ -106,7 +113,7 @@ def price_row(ticker: str) -> dict[str, Any]:
         "low_price": field("low_price"),
         "prior_close": field("prior_close"),
         "trade_ts": trade_ts,
-        "trade_age_sec": round(max(0.0, now - float(trade_ts)), 1) if trade_ts is not None else None,
+        "trade_age_sec": _trade_age_sec(trade_ts, now),
         "forming_1m": forming_bar(tk) if spot is not None else None,
         "ts_recv": row.get("server_received_ts") if row else None,
         "quote_ingestion": row.get("quote_ingestion") if row else None,
