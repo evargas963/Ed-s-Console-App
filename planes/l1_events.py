@@ -37,7 +37,7 @@ _rebuild_quote_fn: Optional[Callable[[str], None]] = None
 #: failures on the displayed-price path, by stage -- surfaced in /api/live/plane diagnostics.
 #: A failing quote_tick used to log at DEBUG only: the header held on the 1 s beat and nothing
 #: said the per-tick push was broken (audit of #280).
-quote_path_failures: dict[str, int] = {"quote_tick": 0, "subscriber_gate": 0}
+quote_path_failures: dict[str, int] = {"subscriber_gate": 0}
 
 
 def _note_quote_path_failure(stage: str, ticker: str, ex: BaseException) -> None:
@@ -48,20 +48,13 @@ def _note_quote_path_failure(stage: str, ticker: str, ex: BaseException) -> None
 
 
 def notify_quote_updated(ticker: str) -> None:
-    """Call when the streamed quote row changes.
-
-    quote_tick goes out first (plane row, no projection). L1 rebuild runs only when this
-    ticker has an L1 SSE subscriber — a 43-symbol roster must not _project_l1 for names
-    nobody is viewing. Leading-edge coalesce (one running + one trailing), no timer."""
+    """Plane row listener (registered by the console): rebuild the L1 analytics projection for
+    this ticker when someone is subscribed to its analytics stream -- a 43-symbol roster must
+    not _project_l1 for names nobody is viewing. Leading-edge coalesce (one running + one
+    trailing), no timer. Prices are not pushed from here (the capture daemon serves them)."""
     t = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 key (write+read consistent; idempotent on stream symbols)
     if not t:
         return
-    try:
-        import server as srv
-
-        srv._notify_quote_tick(t)
-    except Exception as ex:  # noqa: BLE001 -- counted + WARNING; one bad tick must not stop ingest
-        _note_quote_path_failure("quote_tick", t, ex)
     # Test hook drives the coalesce proof without an SSE client. Production rebuilds
     # only when someone is subscribed to this ticker's L1 stream.
     if _rebuild_quote_fn is None:

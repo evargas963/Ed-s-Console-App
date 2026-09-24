@@ -243,3 +243,15 @@ def test_exposure_fallback_injection_screams():
         "spot_as_of_ts_utc\n"
     )
     assert any("strikes.spot" in m or "fallback" in m for m in bad), bad
+
+
+def test_chart_spot_rebound_to_the_console_screams():
+    """Negative control: pointing the chart's spot back at the console's stream (instead of
+    the capture daemon's price socket) must BLOCK, both ways it could be done."""
+    src = CHART.read_text(encoding="utf-8")
+    assert L.chart_binding_violations(src) == []
+    unbound = src.replace("new WebSocket(url)", "new EventSource('/api/analytics/light/stream')")
+    assert any("daemon price socket" in m for m in L.chart_binding_violations(unbound))
+    relay = src.replace("function openSpotStream(tk) {",
+                        "function openSpotStream(tk) {\n  es.addEventListener('quote_tick', (ev) => 0);", 1)
+    assert any("no quote_tick listener" in m for m in L.chart_binding_violations(relay))

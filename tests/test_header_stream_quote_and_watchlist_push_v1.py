@@ -1,153 +1,118 @@
-"""quote_tick is the ONE displayed-price event (header + watchlist) from the plane.
+"""The displayed price (header + watchlist + chart) is ONE row: live_price_rows.price_row.
 
-Replaces l1_quote / wl_quote (2026-09-24 Instant-UI Phase 2): emit on plane write, keep a
-1 s idle beat of the same event, never paint last/bid/ask from l1_projection.
+Since the daemon-to-browser change (Stage 1 of the live-UI architecture) the capture daemon
+pushes that row straight to the browser (app/market_data/schwab/streaming/live_ui.py, proven
+end to end in tests/test_live_ui_daemon_to_browser_v1.py). The console keeps no price
+relay: its analytics stream carries gamma/L1 analytics only, and its watchlist route reads
+the same row function -- so a price on screen and a price in a console calculation cannot
+come from two rules.
 """
 from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import time
+from pathlib import Path
 
 import live_market_plane as lmp
+import live_price_rows
 import server as srv
 from planes import l1_events
 from tests.feed_live_helper import feed_live_during
 
-
-def _events(chunks):
-    out = []
-    for c in chunks:
-        c = c.decode() if isinstance(c, bytes) else c
-        if c.startswith("event: "):
-            name, data = c.split("\n", 2)[:2]
-            out.append((name[len("event: "):], json.loads(data[len("data: "):])))
-    return out
+ROOT = Path(__file__).resolve().parent.parent
 
 
-def _read(watch, n, monkeypatch, seconds=3.0):
-    monkeypatch.setattr(srv, "_l1_light_sse_try_reserve", lambda req, key: (asyncio.Queue(), ("r", "t", "e")))
-    monkeypatch.setattr(srv, "_l1_light_sse_release", lambda *a: None)
-    monkeypatch.setattr(srv, "_l1_bind_sse_watch", lambda *a: None)
-
-    async def go():
-        resp = await srv.get_analytics_light_stream(request=None, ticker="ZZHDR", expiry=None, watch=watch)
-        it = resp.body_iterator
-        chunks, end = [], time.monotonic() + seconds
-        while len(chunks) < n and time.monotonic() < end:
-            chunks.append(await asyncio.wait_for(it.__anext__(), timeout=seconds))
-        await it.aclose()
-        return chunks
-    return _events(asyncio.run(go()))
-
-
-def test_quote_tick_payload_is_the_plane_row_not_a_projection(monkeypatch) -> None:
+def test_the_price_row_is_the_plane_row_not_a_projection(monkeypatch) -> None:
     feed_live_during(monkeypatch, "ZZQT")
     projected: list[str] = []
     monkeypatch.setattr(srv, "_project_l1", lambda *a, **k: projected.append("hit") or {})
-    ts = 1_700_000_000.0
+    ts = time.time()
     assert lmp.record_from_level_one_equity(
         "ZZQT",
         {"LAST_PRICE": 11.5, "BID_PRICE": 11.4, "ASK_PRICE": 11.6, "NET_CHANGE_PERCENT": 1.25},
         received_ts=ts,
     )
-    ev = srv._quote_tick_event("ZZQT")
-    assert ev["_sse_event_name"] == "quote_tick"
-    assert ev["ticker"] == "ZZQT"
-    assert ev["spot"] == 11.5
-    assert ev["bid"] == 11.4
-    assert ev["ask"] == 11.6
-    assert ev["chg_pct"] == 1.25
-    assert ev["ts_recv"] == ts
-    assert ev["spot_state"] == "live"
-    assert ev["quote_ingestion"] == "schwab_streaming_level_one"
+    row = live_price_rows.price_row("ZZQT")
+    assert row["ticker"] == "ZZQT"
+    assert row["spot"] == 11.5 and row["spot_disp"] == "11.50"
+    assert row["bid"] == 11.4 and row["ask"] == 11.6
+    assert row["chg_pct"] == 1.25
+    assert row["ts_recv"] == ts
+    assert row["spot_state"] == "live"
+    assert row["quote_ingestion"] == "schwab_streaming_level_one"
     assert projected == []
 
 
-def test_connect_sends_quote_tick_for_header_and_every_watch_symbol(monkeypatch) -> None:
-    feed_live_during(monkeypatch, "ZZHDR", "ZZW1")
-    lmp.record_from_level_one_equity("ZZHDR", {"LAST_PRICE": 10.0}, received_ts=time.time())
+def test_an_unheld_symbol_row_is_unavailable_with_every_quote_field_withheld(monkeypatch) -> None:
+    feed_live_during(monkeypatch, "ZZHELD")
+    lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
+                                     received_ts=time.time())
+    row = live_price_rows.price_row("ZZNOTHELD")
+    assert row["spot"] is None and row["spot_state"] == "unavailable" and row["feed_live"] is False
+    assert row["forming_1m"] is None
+
+
+def test_console_spot_and_watchlist_read_the_same_row_function(monkeypatch) -> None:
+    feed_live_during(monkeypatch, "ZZW1")
     lmp.record_from_level_one_equity("ZZW1", {"LAST_PRICE": 20.0}, received_ts=time.time())
-    ev = _read("ZZW1,ZZW2", 4, monkeypatch)
-    ticks = [e for e in ev if e[0] == "quote_tick"]
-    by_tk = {e[1]["ticker"]: e[1] for e in ticks}
-    assert by_tk["ZZHDR"]["spot"] == 10.0 and by_tk["ZZHDR"]["spot_state"] == "live"
-    assert by_tk["ZZW1"]["spot"] == 20.0 and by_tk["ZZW1"]["spot_state"] == "live"
-    assert by_tk["ZZW2"]["spot"] is None and by_tk["ZZW2"]["spot_state"] == "unavailable"
-    assert all(e[0] != "l1_quote" and e[0] != "wl_quote" for e in ev)
+    spot, src, _ = srv.resolve_spot("ZZW1")
+    assert spot == live_price_rows.live_spot("ZZW1") == 20.0 and src == srv.SPOT_SOURCE_PLANE
+    assert "_lpr.live_spot(" in inspect.getsource(srv.resolve_spot)
+    assert "_lpr.price_row(" in inspect.getsource(srv._watchlist_row)
 
 
-def _live_stream(monkeypatch, header, watch):
-    """Open the REAL stream route with a REAL client registration (reserve/release stubbed only
-    for the connection caps); the beat is pushed out so only pushed ticks arrive."""
-    monkeypatch.setattr(srv, "QUOTE_TICK_HEARTBEAT_SEC", 30.0)
-    reg = {}
+def test_the_console_analytics_stream_carries_no_price(monkeypatch) -> None:
+    """The price relay is gone from the console: no quote_tick producer, no watch list on the
+    stream, and the stream's first frames for a live symbol carry no price."""
+    for name in ("_quote_tick_event", "_notify_quote_tick", "_format_quote_tick_sse",
+                 "_l1_bind_quote_tick_sink", "_l1_light_sse_watch", "QUOTE_TICK_HEARTBEAT_SEC"):
+        assert not hasattr(srv, name), name
+    assert "watch" not in inspect.signature(srv.get_analytics_light_stream).parameters
+    assert "_notify_quote_tick" not in inspect.getsource(l1_events)
 
-    def reserve(req, key):
-        q = asyncio.Queue(maxsize=8)
-        srv._l1_light_sse_clients.append((q, key))
-        reg["q"] = q
-        return q, ("r", key[0], key[1])
-
-    def release(q, key, rs_key):
-        srv._l1_light_sse_clients[:] = [p for p in srv._l1_light_sse_clients if p[0] is not q]
-        srv._l1_light_sse_watch.pop(id(q), None)
-        srv._l1_qt_pending.pop(id(q), None)
-        srv._l1_qt_wake.pop(id(q), None)
-
-    monkeypatch.setattr(srv, "_l1_light_sse_try_reserve", reserve)
-    monkeypatch.setattr(srv, "_l1_light_sse_release", release)
-    return reg
-
-
-def test_every_watched_symbols_newest_price_is_pushed_past_eight_symbols(monkeypatch) -> None:
-    """12 watched symbols (more than the old 8-slot client queue), two ticks each: every
-    symbol's NEWEST price reaches the stream through the real plane write -> notify -> sink
-    path; nothing is dropped (audit of #280: quote_tick_dropped_full / global evict-oldest)."""
-    wl = [f"ZZM{i}" for i in range(12)]
-    feed_live_during(monkeypatch, "ZZHDR", *wl)
-    _live_stream(monkeypatch, "ZZHDR", wl)
+    feed_live_during(monkeypatch, "ZZHDR")
+    lmp.record_from_level_one_equity("ZZHDR", {"LAST_PRICE": 10.0}, received_ts=time.time())
+    monkeypatch.setattr(srv, "_l1_light_sse_try_reserve",
+                        lambda req, key: (asyncio.Queue(), ("r", "t", "e")))
+    monkeypatch.setattr(srv, "_l1_light_sse_release", lambda *a: None)
 
     async def go():
-        resp = await srv.get_analytics_light_stream(request=None, ticker="ZZHDR", expiry=None,
-                                                    watch=",".join(wl))
+        resp = await srv.get_analytics_light_stream(request=None, ticker="ZZHDR", expiry=None)
         it = resp.body_iterator
-        for _ in range(1 + 1 + len(wl)):          # ": ok" + header beat + a beat per symbol
-            await asyncio.wait_for(it.__anext__(), timeout=3)
-        for i, tk in enumerate(wl):
-            lmp.record_from_level_one_equity(tk, {"LAST_PRICE": 10.0 + i}, received_ts=time.time())
-            lmp.record_from_level_one_equity(tk, {"LAST_PRICE": 20.0 + i}, received_ts=time.time())
-        got, end = {}, time.monotonic() + 2.0
-        while len(got) < len(wl) and time.monotonic() < end:
-            chunk = await asyncio.wait_for(it.__anext__(), timeout=2)
-            for name, env in _events([chunk]):
-                if name == "quote_tick":
-                    got[env["ticker"]] = env["spot"]
+        first = await asyncio.wait_for(it.__anext__(), timeout=3)
+        try:
+            await asyncio.wait_for(it.__anext__(), timeout=0.5)
+            extra = True
+        except asyncio.TimeoutError:
+            extra = False
         await it.aclose()
-        return got
-    got = asyncio.run(go())
-    assert got == {tk: 20.0 + i for i, tk in enumerate(wl)}
+        return first, extra
+    first, extra = asyncio.run(go())
+    assert first == ": ok\n\n" and extra is False
 
 
-def test_an_index_header_receives_its_ticks_and_counts_as_a_projection_subscriber(monkeypatch) -> None:
-    """The stream is opened as "SPX"; the plane keys "$SPX". Both sides are compared through
-    ticker_storage_key -- raw comparison never matched an index (audit of #280)."""
-    feed_live_during(monkeypatch, "$SPX")
-    _live_stream(monkeypatch, "SPX", [])
+def test_the_page_paints_prices_only_from_the_daemon_socket() -> None:
+    core = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
+    assert "var url = priceSocketUrl();" in core and "new WebSocket(url)" in core
+    assert "msg.rows.forEach(ingestPriceRow)" in core
+    assert 'meta[name="ed-live-ui-port"]' in core
+    for gone in ("addEventListener('quote_tick'", "addEventListener('l1_quote'",
+                 "addEventListener('wl_quote'", "&watch="):
+        assert gone not in core, gone
+    analytics = core.split("function openAnalyticsStream(")[1].split("\n  }\n")[0]
+    assert "paintQuote" not in analytics and "setWlRow" not in analytics
 
-    async def go():
-        resp = await srv.get_analytics_light_stream(request=None, ticker="SPX", expiry=None, watch=None)
-        it = resp.body_iterator
-        for _ in range(2):                        # ": ok" + header beat
-            await asyncio.wait_for(it.__anext__(), timeout=3)
-        assert srv._l1_ticker_has_projection_subscriber("$SPX")
-        lmp.record_from_level_one_equity("$SPX", {"LAST_PRICE": 6512.25}, received_ts=time.time())
-        chunk = await asyncio.wait_for(it.__anext__(), timeout=2)
-        await it.aclose()
-        return _events([chunk])
-    ev = asyncio.run(go())
-    assert ev and ev[0][0] == "quote_tick" and ev[0][1]["ticker"] == "$SPX" and ev[0][1]["spot"] == 6512.25
+
+def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:
+    """The console fills the page's price-socket port from the daemon's own setting; e2e
+    points it at a dead port so no test page can ever reach the real daemon."""
+    from app.market_data.schwab.streaming import live_ui
+    monkeypatch.setattr(live_ui, "LIVE_UI_PORT", 8811)
+    for page in (srv.root(), srv.chart_page()):
+        html = page.body.decode("utf-8")
+        assert '<meta name="ed-live-ui-port" content="8811">' in html
+        assert 'content="">' not in html.split("ed-live-ui-port", 1)[1][:12]
 
 
 def test_notify_quote_updated_does_not_project_without_a_subscriber(monkeypatch) -> None:
@@ -157,6 +122,13 @@ def test_notify_quote_updated_does_not_project_without_a_subscriber(monkeypatch)
     assert not srv._l1_ticker_has_projection_subscriber("ZZNOP")
     l1_events.notify_quote_updated("ZZNOP")
     assert rebuilt == []
+
+
+def test_the_console_rebuilds_l1_from_its_plane_row_listener() -> None:
+    """The plane no longer imports the console's event module; the console registers it."""
+    assert l1_events.notify_quote_updated in lmp._row_listeners
+    src = inspect.getsource(lmp)
+    assert "from planes" not in src and "import planes" not in src
 
 
 def test_notify_quote_updated_projects_when_an_l1_client_is_subscribed(monkeypatch) -> None:
@@ -180,20 +152,3 @@ def test_notify_quote_updated_projects_when_an_l1_client_is_subscribed(monkeypat
                 srv._l1_sse_thread_queue.get_nowait()
             except Exception:
                 break
-
-
-def test_watchlist_route_and_stream_share_quote_tick() -> None:
-    from pathlib import Path
-
-    assert "_quote_tick_event(" in inspect.getsource(srv._watchlist_row)
-    src = inspect.getsource(srv.get_analytics_light_stream)
-    assert "_format_quote_tick_sse" in src
-    assert "l1_quote" not in src
-    assert "wl_quote" not in src
-    text = (Path(__file__).resolve().parent.parent / "static" / "js" / "ed-core.js").read_text(
-        encoding="utf-8"
-    )
-    assert "addEventListener('quote_tick'" in text
-    assert "addEventListener('l1_quote'" not in text
-    assert "addEventListener('wl_quote'" not in text
-    assert "Displayed last/bid/ask come from quote_tick" in text

@@ -491,9 +491,8 @@
     });
     buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
     declareWatchlistStream(loadWL());
-    // reopen the push only when the watched set actually changed -- reopening on every render
-    // blanked the header to WAITING/OFFLINE on each add/remove (audit of #280)
-    if (state.ticker && _sseWatch !== loadWL().join(',')) openHeaderStream(state.ticker);
+    // the open price socket is told the new set; nothing reconnects, nothing blanks
+    subscribePrices();
   }
   var _wlMsgTimer = null;
   function wlNotify(msg) {   // understandable feedback for invalid/duplicate add — aria-live, self-clearing
@@ -555,8 +554,10 @@
     });
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
-    openHeaderStream(state.ticker);   // (re)subscribe the SSE push to this ticker (one subscription)
-    markHeaderPushDown();             // CONNECTING until the new ticker's first push
+    openAnalyticsStream(state.ticker);   // gamma/L1 analytics pushes for this ticker
+    _priceSubTs = Date.now();
+    subscribePrices();                   // the daemon answers with this ticker's row at once
+    markHeaderPushDown();                // WAITING until that row lands (milliseconds)
     refreshSession();
     emit('ed:ticker', { ticker: state.ticker });
   }
@@ -652,11 +653,12 @@
     if (a) a.textContent = age;
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (age && age !== '—' ? ' · ' + age : '');
   }
-  // ---- header quote: PUSH via /api/analytics/light/stream, event quote_tick -- the plane row
-  //      (server _quote_tick_event), sent on every plane write and each idle second. It is the
+  // ---- header quote + watchlist: PUSHED BY THE CAPTURE DAEMON over WebSocket (port 8800,
+  //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
+  //      price_row) the instant a Schwab message changes it, plus a feed verdict every second.
+  //      No web server is in this path, so no analytics load can delay a price. It is the
   //      ONLY source of the header quote and the watchlist rows (operator rule 2026-09-23: no
-  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote.
-  //      l1_projection on the same stream carries L2/context only. ----
+  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote. ----
   // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
   // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
   // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
@@ -747,8 +749,6 @@
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
       .catch(function () { _wlDeclared = null; });   // retried on the next poll
   }
-  var _sse = null, _sseUp = false, _lastSseTs = 0, _sseOpenedTs = 0, _l1Gen = {}, _l1Ts = {};
-  var _sseWatch = null;   // the watchlist the open stream pushes rows for
   // requestAnimationFrame throttle: pushes can arrive faster than the screen repaints; only the
   // NEWEST quote is painted, once per frame, so a burst never queues stale paints.
   var _pendingQuote = null, _quoteFrame = 0;
@@ -763,70 +763,106 @@
     _quoteFrame = window.requestAnimationFrame ? window.requestAnimationFrame(onFrame)
                                                : setTimeout(onFrame, 16);
   }
-  function closeHeaderStream() { if (_sse) { try { _sse.close(); } catch (e) {} } _sse = null; _sseUp = false; }
-  function openHeaderStream(tk) {
-    closeHeaderStream();
-    _sseOpenedTs = Date.now();
-    if (typeof EventSource === 'undefined') return;
+
+  // ---- the price socket (daemon -> browser) ----
+  var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
+  var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
+  // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
+  // an unfilled page opens no socket and its prices read UNAVAILABLE
+  function priceSocketUrl() {
+    var m = document.querySelector('meta[name="ed-live-ui-port"]');
+    var port = m ? String(m.getAttribute('content') || '') : '';
+    if (!/^\d+$/.test(port)) return null;
+    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
+  }
+  function priceSymbols() {
+    var out = [];
+    if (state.ticker) out.push(String(state.ticker).toUpperCase());
+    loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
+    return out;
+  }
+  function subscribePrices() {
+    if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
+    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
+  }
+  function openPriceSocket() {
+    var url = priceSocketUrl();
+    if (typeof WebSocket === 'undefined' || !url) return;
+    var ws;
+    try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
+    _priceWs = ws;
+    _priceSubTs = Date.now();
+    ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
+    ws.onmessage = function (ev) {
+      var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (!msg || !Array.isArray(msg.rows)) return;
+      _priceUp = true; _lastPriceTs = Date.now();
+      msg.rows.forEach(ingestPriceRow);
+    };
+    ws.onclose = function () {
+      if (_priceWs === ws) { _priceWs = null; _priceUp = false; schedulePriceReconnect(); }
+    };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+  function schedulePriceReconnect() {
+    // 0.25 s, 0.5 s, 1 s, then every 2 s: the daemon restarting is seen and recovered at once
+    var ms = Math.min(2000, 250 * Math.pow(2, _priceRetry++));
+    setTimeout(function () { if (!_priceWs) openPriceSocket(); }, ms);
+  }
+  // ONE row in (the daemon's price_row), every surface painted from it. Every number and
+  // verdict is the server's; the browser only picks the words.
+  function ingestPriceRow(q) {
+    if (!q || !q.ticker) return;
+    // identity: the server keys the storage form ("$SPX"); the operator types "SPX"
+    var sym = String(q.ticker).toUpperCase();
+    var bare = sym.replace(/^\$/, '');
+    if (bare === String(state.ticker || '').toUpperCase().replace(/^\$/, '')) {
+      var live = q.spot_state === 'live' && q.spot != null;
+      paintQuoteNextFrame({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
+        chgPct: q.chg_pct, quoteIngestion: q.quote_ingestion,
+        spotState: q.spot_state,
+        feedCls: live ? '' : 'stale',
+        feedLabel: live ? 'LIVE' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE'),
+        ageLabel: q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
+          : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : 'no live feed')) });
+    }
     var wl = loadWL();
-    _sseWatch = wl.join(',');
-    try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)
-                                 + (wl.length ? '&watch=' + encodeURIComponent(_sseWatch) : '')); }
+    var wlSym = wl.indexOf(sym) !== -1 ? sym : (wl.indexOf(bare) !== -1 ? bare : null);
+    if (wlSym) {
+      setWlRow(wlSym, q.spot_state === 'live' ? q.spot : null,
+        q.spot_state === 'live' ? q.chg_pct : null,
+        q.spot_state || 'unavailable');
+      markWlHealthy();
+    }
+    try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
+  }
+  function pricePushHealthy() { return _priceUp && (Date.now() - _lastPriceTs <= PRICE_SILENCE_MS); }
+  // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
+  function checkPriceSilence() {
+    if (!state.ticker || pricePushHealthy()) return;
+    markHeaderPushDown();
+    var wlHost = document.getElementById('watchlist');
+    if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
+  }
+
+  // ---- analytics stream (console): gamma-surface / L1-projection pushes only, no prices ----
+  var _sse = null;
+  function openAnalyticsStream(tk) {
+    if (_sse) { try { _sse.close(); } catch (e) {} }
+    _sse = null;
+    if (typeof EventSource === 'undefined') return;
+    try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)); }
     catch (e) { _sse = null; return; }
-    _sse.addEventListener('l1_projection', function () {
-      // L2/context only. Displayed last/bid/ask come from quote_tick. Receiving a
-      // projection must not keep the header "up" when the price push is dead.
-    });
-    // Independent-review finding (2026-09-12): the heatmap only ever refetched on the 3s/12s
-    // slow-tick poll (liveTick's `ed:refresh` at tick % 4 === 0) -- a Playwright test that
-    // manually dispatches that event proves rendering after delivery, not TIMELY delivery.
-    // This reuses the ALREADY-OPEN SSE connection (no new daemon/connection) that server.py's
-    // refresh_gamma_surface_from_stream now pushes a `gamma_surface_seq` event on the instant
-    // it publishes -- the browser reacts to the PUSH instead of waiting out the slow poll.
-    //
-    // Audit finding #3 (2026-09-16), FIXED: this used to dispatch the SAME generic `ed:refresh`
-    // event the 12s poll fires -- every one of the ~11 modules that listen to `ed:refresh` for
-    // their OWN, largely UNRELATED endpoint (Chain, Alerts, Trade Desk, Liquidity Map, Order
-    // Flow, Flow, Levels) refetched on EVERY single streamed gamma tick, not just the ones that
-    // actually consume gamma-surface-derived data. A gamma-surface change now dispatches its
-    // own, narrower `ed:gamma-push` event, consumed only by the modules that actually read
-    // gamma-surface/per-strike data (ed-gamma.js, ed-gamma-panels.js's GEX-by-strike panel,
-    // ed-gamma-chart.js) -- the 12s poll's `ed:refresh{slow}` remains the ONLY thing that
-    // drives every other module's slower, session-cadence refresh.
-    _sse.addEventListener('quote_tick', function (ev) {
-      var q; try { q = JSON.parse(ev.data); } catch (e) { return; }
-      if (!q || !q.ticker) return;
-      // identity: the server keys the storage form ("$SPX"); the operator types "SPX"
-      var sym = String(q.ticker).toUpperCase();
-      var bare = sym.replace(/^\$/, '');
-      if (bare === String(state.ticker || '').toUpperCase().replace(/^\$/, '')) {
-        _sseUp = true; _lastSseTs = Date.now();
-        var live = q.spot_state === 'live' && q.spot != null;
-        // every number and verdict below is the server's; the browser only picks the words
-        paintQuoteNextFrame({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
-          chgPct: q.chg_pct, quoteIngestion: q.quote_ingestion,
-          spotState: q.spot_state,
-          feedCls: live ? '' : 'stale',
-          feedLabel: live ? 'LIVE' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE'),
-          ageLabel: q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
-            : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : 'no live feed')) });
-      }
-      var wlSym = loadWL().indexOf(sym) !== -1 ? sym : (loadWL().indexOf(bare) !== -1 ? bare : null);
-      if (wlSym) {
-        sym = wlSym;
-        setWlRow(sym, q.spot_state === 'live' ? q.spot : null,
-          q.spot_state === 'live' ? q.chg_pct : null,
-          q.spot_state || 'unavailable');
-        markWlHealthy();
-      }
-      try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
-    });
+    // A gamma-surface change dispatches its own, narrow `ed:gamma-push` event, consumed only by
+    // the modules that read gamma-surface/per-strike data (ed-gamma.js, ed-gamma-panels.js,
+    // ed-gamma-chart.js) -- the browser reacts to the PUSH instead of waiting out the slow poll,
+    // and the 12s poll's `ed:refresh{slow}` stays the only driver of every other module
+    // (audit finding #3, 2026-09-16).
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
       if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
       emit('ed:gamma-push', { surfaceSeq: env.surface_seq });
     });
-    _sse.onerror = function () { _sseUp = false; };   // the browser reconnects; the header shows the gap
   }
 
   // #6: canonical market session (RTH / Pre-Market / After-Hours / Closed) — a DIFFERENT truth
@@ -874,31 +910,24 @@
   // label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     _pendingQuote = null;
-    var connecting = _sse && !_sseUp && (Date.now() - _sseOpenedTs <= 3000);
+    var connecting = !_priceUp && (Date.now() - _priceSubTs <= PRICE_SILENCE_MS);
     paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null,
       spotState: 'unavailable', feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
       ageLabel: connecting ? 'no push yet' : 'live push down' });
   }
 
-  // ONE coordinated scheduler. The header quote comes ONLY from the SSE push above; this timer
-  // checks that the push is still delivering and drives the SLOW gamma/terrain refresh -- that
+  // ONE coordinated scheduler. The header quote comes ONLY from the daemon price socket above
+  // (checkPriceSilence watches it every second); this timer drives the SLOW gamma/terrain refresh -- that
   // producer changes on a 60s/5min cadence, so coordinated POLLING (not SSE) is the correct,
   // lowest-cost delivery for it. No duplicate subscriptions, no polling storm.
   var _tick = 0;
   function liveTick() {
     _tick++;
     if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) declareWatchlistStream(loadWL()); return; }
-    var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 3000);   // quote_tick idle beat is 1 s
-    if (!sseHealthy) markHeaderPushDown();            // the gap is shown, never filled
-    if (!sseHealthy || _tick % 4 === 0) refreshSession();
-    // watchlist rows arrive as quote_tick. While that push is down the rows are withdrawn
-    // to UNAVAILABLE like the header -- no second delivery path. The daemon is told the
-    // list on the slow tick.
-    var wlHost = document.getElementById('watchlist');
-    if (!sseHealthy && !(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
+    if (!pricePushHealthy() || _tick % 4 === 0) refreshSession();
+    // the daemon is told the watchlist on the slow tick (it streams only what is asked for)
     if (_tick % 4 === 0) declareWatchlistStream(loadWL());
-    if (sseHealthy && _sseWatch !== loadWL().join(',')) openHeaderStream(state.ticker);
     emit('ed:refresh', { tick: _tick, slow: _tick % 4 === 0 });
   }
 
@@ -989,7 +1018,9 @@
     if (state.ticker) setTicker(state.ticker); else paintNoTicker();
     _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
     tickClock(); setInterval(tickClock, 1000);
-    setInterval(liveTick, 3000);   // single scheduler drives header (fast) + gamma (slow)
+    openPriceSocket();                   // prices: daemon -> browser, one socket for the page
+    setInterval(checkPriceSilence, 1000);
+    setInterval(liveTick, 3000);   // session label + the slow gamma/terrain refresh
   }
 
   // Audit finding #4 (2026-09-16): every view module (ed-gamma.js, ed-gamma-panels.js, etc.)

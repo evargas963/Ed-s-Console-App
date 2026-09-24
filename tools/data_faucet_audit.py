@@ -119,7 +119,7 @@ CLIENT_CONCEPTS: dict[str, dict] = {
             "spotBindingAgeLabel",
         ),
         # The only functions allowed to ingest the spot payload and feed the authority. The
-        # binding moved from the 1.5 s /api/spot poll (pollSpot) to the quote_tick push
+        # binding moved from the 1.5 s /api/spot poll (pollSpot) to the daemon's price socket
         # (audit of #280: the poll's success path stopped redrawing) -- the rule is unchanged,
         # the named writers follow the binding.
         "writers": ("ingestQuoteTick", "checkSpotSilence", "_dropLiveSpot"),

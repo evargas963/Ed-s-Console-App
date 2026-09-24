@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- the capture daemon's price socket port: filled in by the console (ED_LIVE_UI_PORT) -->
+<meta name="ed-live-ui-port" content="">
 <title>Ed Chart — terrain on price</title>
 <script src="/static/rth_clock_authority.js"></script> <!-- # ui-mockup-ok: F09 consume served time_et RTH clock; no Chart redesign -->
 <style>
@@ -328,8 +330,8 @@ let scorecard = null;     // latest daily scorecard — coach numbers update wit
 let scorecardStale = null;// present but PAST its freshness budget (RC-78): the reason,
                           // never the numbers, so staleness is stated not implied
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
-let liveSpot = null;      // THE displayed price: quote_tick on /api/analytics/light/stream
-let liveSpotChg = null;   // streamed_chg_pct from the same quote_tick — browser does not compute %
+let liveSpot = null;      // THE displayed price: the capture daemon's price row (live_ui.py, port 8800)
+let liveSpotChg = null;   // streamed_chg_pct from the same row — browser does not compute %
 let liveSpotAge = null;   // server trade_age_sec of that price — browser does not compute ages
 let chartTicker = null;   // ticker whose `raw` bars are loaded — gates spot ticks
 let feedFresh = false;    // newest canonical 1m bar ≤900s (livedot + lastdot)
@@ -2002,7 +2004,8 @@ document.getElementById('tk').addEventListener('change', () => {
 // In-flight guard + spot_as_of_ts_utc: a slow reply never overwrites a fresher tick.
 let liveSpotSource = null;
 // THE CLIENT SPOT AUTHORITY: every rendered spot reads currentSpot(), which is the latest
-// quote_tick (server _quote_tick_event) -- the same event and field the console header paints.
+// daemon price row (live_price_rows.price_row, pushed by live_ui.py) -- the same row and field
+// the console header paints.
 // It used to be a 1.5 s /api/spot poll whose success path stopped redrawing (audit of #280).
 function currentSpot() {
   return liveSpot;
@@ -2024,18 +2027,44 @@ function _dropLiveSpot() {
 function sameSym(a, b) {
   return String(a || '').toUpperCase().replace(/^\$/, '') === String(b || '').toUpperCase().replace(/^\$/, '');
 }
-let spotSse = null, spotSseTicker = null, lastQuoteTickMs = 0;
-function openSpotStream(tk) {
-  if (spotSse && spotSseTicker === tk) return;
-  if (spotSse) { try { spotSse.close(); } catch (e) {} }
-  spotSse = null; spotSseTicker = tk; lastQuoteTickMs = 0;
-  if (!tk || typeof EventSource === 'undefined') return;
-  spotSse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk));
-  spotSse.addEventListener('quote_tick', (ev) => ingestQuoteTick(ev, tk));
+// Prices come straight from the capture daemon over WebSocket (no web server in the path).
+// One socket for the page; a ticker change re-subscribes on it.
+let spotWs = null, spotWsTicker = null, lastQuoteTickMs = 0, spotWsRetry = 0;
+// the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
+// an unfilled page opens no socket and its price reads as no live price
+function spotSocketUrl() {
+  const m = document.querySelector('meta[name="ed-live-ui-port"]');
+  const port = m ? String(m.getAttribute('content') || '') : '';
+  return /^\d+$/.test(port)
+    ? (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/'
+    : null;
 }
-// THE writer of the spot binding: one quote_tick in, the authority's state out.
-function ingestQuoteTick(ev, tk) {
-  let q; try { q = JSON.parse(ev.data); } catch (e) { return; }
+function openSpotStream(tk) {
+  if (spotWsTicker !== tk) { lastQuoteTickMs = 0; spotWsTicker = tk; }
+  if (spotWs && spotWs.readyState === 1) {
+    spotWs.send(JSON.stringify({ op: 'subscribe', symbols: tk ? [tk] : [] }));
+    return;
+  }
+  const url = spotSocketUrl();
+  if (spotWs || typeof WebSocket === 'undefined' || !url) return;   // subscribes on open
+  let ws;
+  try { ws = new WebSocket(url); } catch (e) { return; }
+  spotWs = ws;
+  ws.onopen = () => { spotWsRetry = 0; if (spotWsTicker) ws.send(JSON.stringify({ op: 'subscribe', symbols: [spotWsTicker] })); };
+  ws.onmessage = (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (!msg || !Array.isArray(msg.rows)) return;
+    msg.rows.forEach((q) => ingestQuoteTick(q, spotWsTicker));
+  };
+  ws.onclose = () => {
+    if (spotWs !== ws) return;
+    spotWs = null;
+    setTimeout(() => openSpotStream(spotWsTicker), Math.min(2000, 250 * Math.pow(2, spotWsRetry++)));
+  };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+// THE writer of the spot binding: one daemon price row in, the authority's state out.
+function ingestQuoteTick(q, tk) {
   if (!q || !sameSym(q.ticker, tk) || currentChartTicker() !== tk) return;
   lastQuoteTickMs = Date.now();
   if (q.spot_state === 'live' && q.spot != null && isFinite(Number(q.spot))) {

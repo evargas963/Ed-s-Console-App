@@ -288,15 +288,16 @@ def test_index_html_l1_scope_and_generation_guards():
     same-gen older serverTs reject) is executed against the real shipped JS by
     tests/l1_sse_guards_node.mjs, which stays the authority for it.
 
-    Instant-UI Phase 2 (2026-09-24): the header paints from quote_tick (plane row),
-    not from l1_projection. A late L1 frame cannot overwrite the price because
-    l1_projection is no longer a quote source."""
+    Instant-UI Phase 2 (2026-09-24): the header paints from the plane row, not from
+    l1_projection. Stage 1 of the live-UI architecture: that row comes from the capture
+    daemon's socket; the console's analytics stream paints no price at all, so a late L1
+    frame cannot overwrite the price."""
     core = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
-    assert "addEventListener('quote_tick'" in core
+    assert "msg.rows.forEach(ingestPriceRow)" in core
     assert "addEventListener('l1_quote'" not in core
-    l1_block = core.split("addEventListener('l1_projection'")[1].split("addEventListener('quote_tick'")[0]
-    assert "paintQuoteNextFrame" not in l1_block
-    assert "Displayed last/bid/ask come from quote_tick" in core
+    assert "addEventListener('quote_tick'" not in core
+    analytics = core.split("function openAnalyticsStream(")[1].split("\n  }\n")[0]
+    assert "paintQuoteNextFrame" not in analytics
 
 
 # test_index_html_l1_quote_vs_of_freshness_ui was retired here (/console cutover, operator
