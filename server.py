@@ -251,7 +251,7 @@ from math_exposure import (
     compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
-    aggregate_net_gex, total_gamma_raw_at_strike,
+    aggregate_net_gex, aggregate_net_dex, total_gamma_raw_at_strike,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -7391,42 +7391,41 @@ def _fetch_state(
     _regime_gamma_at_spot = None
     try:
         # Aggregate totals — same full-chain Σ net_gex_1pct as kl_net_gex / ExposureRow CONSENSUS
-        _sum_gex = float(aggregate_net_gex(exposures, _cons_strikes) or 0.0)
-        _sum_dex = 0.0
+        _sum_gex = aggregate_net_gex(exposures, _cons_strikes)   # None stays None (no $0)
+        # net DEX$ over VALID-delta strikes only (audit M-01): was a 0.0-seeded sum of every
+        # bucket's net_dex_dollars, including all-invalid buckets
+        _sum_dex = aggregate_net_dex(exposures, _cons_strikes)
         _sum_oi = None
-        _sum_vanna = 0.0
+        _sum_vanna = None   # None until a valid vanna is seen -- no 0.0 stand-in (S-11)
         for _bkt in exposures.values():
-            _dex = bucket_metric(_bkt, "net_dex_dollars")
-            if _dex is not None:
-                _sum_dex += _dex
             _bucket_oi = _bucket_total_oi(_bkt)
             if _bucket_oi is not None:
                 _sum_oi = (_sum_oi or 0.0) + _bucket_oi
             _cv = bucket_metric(_bkt, "call_vanna")
             _pv = bucket_metric(_bkt, "put_vanna")
             if _cv is not None:
-                _sum_vanna += _cv
+                _sum_vanna = _cv if _sum_vanna is None else _sum_vanna + _cv
             if _pv is not None:
-                _sum_vanna += _pv
+                _sum_vanna = _pv if _sum_vanna is None else _sum_vanna + _pv
 
         # 1. DPI
         _dpi = compute_dealer_pressure_index(_sum_dex, _sum_gex, _sum_oi)
 
         # 2. Hedging Flow Score — normalize inputs to -1..+1
-        _max_gex = max(abs(_sum_gex), 1.0)
-        _max_dex = max(abs(_sum_dex), 1.0)
+        _max_gex = max(abs(_sum_gex), 1.0) if _sum_gex is not None else None
+        _max_dex = max(abs(_sum_dex), 1.0) if _sum_dex is not None else None
         _max_charm = max(abs(_charm_net), 1.0) if _charm_net is not None else 1.0
-        _max_vanna = max(abs(_sum_vanna), 1.0)
+        _max_vanna = max(abs(_sum_vanna), 1.0) if _sum_vanna is not None else None
         _charm_norm = (
             _charm_net / _max_charm
             if _charm_net is not None and _max_charm > 0
             else None
         )
         _hedging_flow = compute_hedging_flow_score(
-            net_gex_normalized=_sum_gex / _max_gex if _max_gex > 0 else 0,
-            net_dex_normalized=_sum_dex / _max_dex if _max_dex > 0 else 0,
+            net_gex_normalized=_sum_gex / _max_gex if _sum_gex is not None else None,
+            net_dex_normalized=_sum_dex / _max_dex if _sum_dex is not None else None,
             charm_normalized=_charm_norm,
-            vanna_normalized=_sum_vanna / _max_vanna if _max_vanna > 0 else 0,
+            vanna_normalized=_sum_vanna / _max_vanna if _sum_vanna is not None else None,
         )
 
         # 3. Gamma Gradient

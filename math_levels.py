@@ -133,10 +133,16 @@ def _pick_inflection_closest_zero(exposures: Dict[float, dict], strikes: List[fl
             key = "net_gex_1pct"
         elif key == "net_delta":
             key = "net_dex_dollars"
+    valid_flag = "has_valid_gamma" if key in ("net_gamma", "net_gex_1pct") else "has_valid_delta"
     best = None
     best_val = None
     for s in strikes:
-        v0 = exposures.get(s, {}).get(key)
+        b = exposures.get(s, {})
+        # An all-invalid bucket keeps net_* = 0.0 from its initialiser -- "closest to zero" by
+        # construction. Only measured buckets compete (audit M-03, 2026-09-24).
+        if not b.get(valid_flag):
+            continue
+        v0 = bucket_metric(b, key)
         if v0 is None:
             continue
         v = abs(v0)
@@ -145,37 +151,32 @@ def _pick_inflection_closest_zero(exposures: Dict[float, dict], strikes: List[fl
             best_val = v
     return best
 
-def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]) -> str:
+def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, strikes: List[float]) -> str | None:
     """High/Med/Low concentration of |net GEX$| at the analytics net-GEX peak vs the median strike.
 
     Not the terrain total-gamma pin's lead % (`gamma_pin_strength_pct`).
     """
+    # None = not measured (no peak, no valid-gamma strikes). "Very Low" is a MEASURED label
+    # (peak within 1.25x of the median); it used to be returned for absence too, which became
+    # bias "Chaos Zone" -> zone "pin_chaos" from no data (audit M-04, 2026-09-24).
     if net_gex_peak is None:
-        return "Very Low"
-    b = exposures.get(net_gex_peak, {}) or exposures.get(float(net_gex_peak), {})
-    if exposures_have_dollar_gex(exposures):
-        gp = abs(net_gex_dollars_at_strike(b))
-        vals = [abs(net_gex_dollars_at_strike(exposures.get(s, {}))) for s in strikes]
-    else:
-        gp_raw = bucket_metric(b, "net_gamma")
-        if gp_raw is None:
-            return "Very Low"
-        gp = abs(gp_raw)
-        vals = [
-            abs(v)
-            for s in strikes
-            if (v := bucket_metric(exposures.get(s, {}), "net_gamma")) is not None
-        ]
-    if gp <= 0:
-        return "Very Low"
+        return None
+    dollar = exposures_have_dollar_gex(exposures)
 
-    vals = [v for v in vals if v > 0]
-    if not vals:
-        return "Very Low"
+    def _mag(bk: dict) -> float | None:
+        if not bk.get("has_valid_gamma"):
+            return None
+        v = net_gex_dollars_at_strike(bk) if dollar else bucket_metric(bk, "net_gamma")
+        return abs(v) if v is not None else None
+
+    gp = _mag(exposures.get(net_gex_peak, {}) or exposures.get(float(net_gex_peak), {}))
+    if gp is None:
+        return None
+    vals = [v for s in strikes if (v := _mag(exposures.get(s, {}))) is not None and v > 0]
+    if gp <= 0 or not vals:
+        return None
     vals_sorted = sorted(vals)
     med = vals_sorted[len(vals_sorted)//2]
-    if med <= 0:
-        return "Very Low"
 
     ratio = gp / med
     if ratio >= 3.0:
@@ -186,9 +187,12 @@ def _pin_strength(exposures: Dict[float, dict], net_gex_peak: float | None, stri
         return "Low"
     return "Very Low"
 
-def _bias_from_net(net_gamma: float | None, net_delta: float | None, pin_strength: str) -> str:
-    if net_gamma is None or net_delta is None:
-        return "Neutral"
+def _bias_from_net(net_gamma: float | None, net_delta: float | None,
+                   pin_strength: str | None) -> str | None:
+    # None = not measured. It used to return "Neutral" -> zone "pin_neutral", persisted and
+    # used for similar-setup matching as if it were a reading (audit M-05, 2026-09-24).
+    if net_gamma is None or net_delta is None or pin_strength is None:
+        return None
     if pin_strength in ("High", "Med"):
         if net_delta > 0 and net_gamma > 0:
             return "Bull"
@@ -216,9 +220,9 @@ def build_summary_rows(
     strikes_all = sorted(list(exposures.keys()))
     if not strikes_all:
         return [
-            ExposureRow("CONSENSUS", None, None, None, None, None, None, None, "Very Low", "Neutral"),
+            ExposureRow("CONSENSUS", None, None, None, None, None, None, None, None, None),
             *[
-                ExposureRow(f"±{w}", w, None, None, None, None, None, None, "Very Low", "Neutral")
+                ExposureRow(f"±{w}", w, None, None, None, None, None, None, None, None)
                 for w in windows
             ],
         ]
@@ -229,7 +233,7 @@ def build_summary_rows(
     rows: List[ExposureRow] = []
 
     cons_strikes = strikes_all
-    cons_gamma_strikes = key_level_strikes_with_gamma(exposures) or cons_strikes
+    cons_gamma_strikes = key_level_strikes_with_gamma(exposures)   # no all-strikes fallback (M-03)
     cons_net_gamma, cons_net_delta = aggregate(cons_strikes)
     cons_net_gex_peak = pick_net_gex_peak_strike(exposures, cons_gamma_strikes)
     cons_delta_inf = _pick_inflection_closest_zero(exposures, cons_gamma_strikes, "net_delta")
@@ -1355,7 +1359,7 @@ def compute_gamma_flip_v2(
     # measurably ~1.4% of spot off was presented as trustworthy — the defect the operator flagged.
     covers_regime = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
     covers_level = lo <= spot * (1.0 - trusted_span_pct) and hi >= spot * (1.0 + trusted_span_pct)
-    covers = covers_level          # TRUSTED is earned by the LEVEL span, never the fetch width
+    # TRUSTED is earned by the LEVEL span, never the fetch width
     _verdict = (GAMMA_FLIP_TRUSTED if covers_level
                 else GAMMA_FLIP_LEVEL_APPROX if covers_regime
                 else GAMMA_FLIP_NARROW)

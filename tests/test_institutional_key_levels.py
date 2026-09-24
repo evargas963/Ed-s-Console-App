@@ -85,9 +85,9 @@ def test_standard_pin_is_total_gamma_with_decisiveness():
     # exactness on a known distribution: leader 300, runner-up 200 -> 33.3% lead
     # institutional-synthetic-ok: strength arithmetic needs known mass.
     synth = {
-        700.0: {"call_gex_1pct": 200.0, "put_gex_1pct": -100.0},   # total 300
-        705.0: {"call_gex_1pct": 120.0, "put_gex_1pct": -80.0},    # total 200
-        710.0: {"call_gex_1pct": 30.0,  "put_gex_1pct": -20.0},    # total 50
+        700.0: {"call_gex_1pct": 200.0, "put_gex_1pct": -100.0, "dollarized": True},  # total 300
+        705.0: {"call_gex_1pct": 120.0, "put_gex_1pct": -80.0, "dollarized": True},   # total 200
+        710.0: {"call_gex_1pct": 30.0,  "put_gex_1pct": -20.0, "dollarized": True},   # total 50
     }
     p2, s2 = pick_pin_and_strength(synth, sorted(synth))
     assert p2 == 700.0 and s2 == round((300 - 200) / 300 * 100, 1)
@@ -130,6 +130,7 @@ def _three_way_split_exposures():
             "call_gex_1pct": 1.0, "put_gex_1pct": -1.0,
             "call_delta": 1.0, "put_delta": 1.0,
             "call_oi": 1.0, "put_oi": 1.0,
+            "dollarized": True,
             "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
         },
         101.0: {
@@ -137,6 +138,7 @@ def _three_way_split_exposures():
             "call_gex_1pct": 999.0, "put_gex_1pct": -1.0,
             "call_delta": 1.0, "put_delta": 1.0,
             "call_oi": 1.0, "put_oi": 1.0,
+            "dollarized": True,
             "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
         },
         120.0: {
@@ -144,6 +146,7 @@ def _three_way_split_exposures():
             "call_gex_1pct": 50.0, "put_gex_1pct": -5000.0,
             "call_delta": 1.0, "put_delta": 1.0,
             "call_oi": 1.0, "put_oi": 1.0,
+            "dollarized": True,
             "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
         },
     }
@@ -970,8 +973,8 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
 
 def test_volatility_points_one_sided_chain_returns_none_side():
     exposures = {
-        100.0: {"net_gex_1pct": 5_000_000.0, "call_gex_1pct": 5_000_000.0},
-        105.0: {"net_gex_1pct": 9_000_000.0, "call_gex_1pct": 9_000_000.0},
+        100.0: {"net_gex_1pct": 5_000_000.0, "call_gex_1pct": 5_000_000.0, "dollarized": True},
+        105.0: {"net_gex_1pct": 9_000_000.0, "call_gex_1pct": 9_000_000.0, "dollarized": True},
     }
     hvp, lvp = pick_volatility_point_strikes(exposures, [100.0, 105.0])
     assert hvp is None      # no negative pocket anywhere

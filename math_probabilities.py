@@ -542,17 +542,14 @@ def compute_hedging_flow_score(
 
     Returns dict with raw_score, normalized (0-100), direction, magnitude.
     """
-    terms: list[tuple[float, float]] = []
-    if net_gex_normalized is not None:
-        terms.append((w_gex, float(net_gex_normalized)))
-    if net_dex_normalized is not None:
-        terms.append((w_dex, float(net_dex_normalized)))
-    if charm_normalized is not None:
-        terms.append((w_charm, float(charm_normalized)))
-    if vanna_normalized is not None:
-        terms.append((w_vanna, float(vanna_normalized)))
-    if not terms:
+    # ALL four legs or no score: it used to drop missing legs and re-weight the rest, so a
+    # 1-leg "composite" was published as the 4-leg score (audit S-11, 2026-09-24).
+    legs = (net_gex_normalized, net_dex_normalized, charm_normalized, vanna_normalized)
+    if any(v is None for v in legs):
         return {"raw": None, "normalized": None, "direction": None, "magnitude": None}
+    terms: list[tuple[float, float]] = [
+        (w_gex, float(net_gex_normalized)), (w_dex, float(net_dex_normalized)),
+        (w_charm, float(charm_normalized)), (w_vanna, float(vanna_normalized))]
     w_sum = sum(w for w, _ in terms)
     raw = sum(w * v for w, v in terms) / w_sum
 
@@ -656,12 +653,18 @@ def compute_breakout_score(
         void_comp = max(0.0, min(1.0, void_factor))
 
     parts = [x for x in (inv_gex, grad_comp, void_comp) if x is not None]
-    if not parts:
+    # All three legs or no score: the /3 normalisation below assumes three. A missing leg
+    # used to count as 0 -- absence read as "low" (audit S-08..10, 2026-09-24: no fallbacks).
+    if len(parts) < 3:
         return {
             "raw": None,
             "normalized": None,
             "label": None,
-            "components": {"inv_gex": None, "gradient": None, "void_factor": None},
+            "components": {
+                "inv_gex": round(inv_gex, 4) if inv_gex is not None else None,
+                "gradient": round(grad_comp, 4) if grad_comp is not None else None,
+                "void_factor": round(void_comp, 4) if void_comp is not None else None,
+            },
         }
 
     raw = sum(parts)  # 0 to ~3 range
@@ -767,12 +770,18 @@ def compute_vol_expansion_signal(
         grad_comp = min(1.0, abs(gamma_gradient))
 
     parts = [x for x in (neg_gex_component, iv_comp, grad_comp) if x is not None]
-    if not parts:
+    # All three legs or no score: the /3 normalisation below assumes three. A missing leg
+    # used to count as 0 -- absence read as "low" (audit S-08..10, 2026-09-24: no fallbacks).
+    if len(parts) < 3:
         return {
             "raw": None,
             "normalized": None,
             "label": None,
-            "components": {"neg_gex": None, "iv_change": None, "gradient": None},
+            "components": {
+                "neg_gex": round(neg_gex_component, 4) if neg_gex_component is not None else None,
+                "iv_change": round(iv_comp, 4) if iv_comp is not None else None,
+                "gradient": round(grad_comp, 4) if grad_comp is not None else None,
+            },
         }
 
     raw = sum(parts)  # 0-3 range
@@ -828,12 +837,18 @@ def compute_sweep_score(
         momentum_comp = max(0.0, min(1.0, momentum_factor))
 
     parts = [x for x in (inv_dist, void_comp, momentum_comp) if x is not None]
-    if not parts:
+    # All three legs or no score: the /3 normalisation below assumes three. A missing leg
+    # used to count as 0 -- absence read as "low" (audit S-08..10, 2026-09-24: no fallbacks).
+    if len(parts) < 3:
         return {
             "raw": None,
             "normalized": None,
             "label": None,
-            "components": {"inv_dist": None, "void_factor": None, "momentum": None},
+            "components": {
+                "inv_dist": round(inv_dist, 4) if inv_dist is not None else None,
+                "void_factor": round(void_comp, 4) if void_comp is not None else None,
+                "momentum": round(momentum_comp, 4) if momentum_comp is not None else None,
+            },
         }
 
     raw = sum(parts)  # 0-3 range

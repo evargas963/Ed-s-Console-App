@@ -164,8 +164,8 @@ class ExposureRow:
     delta_inflection: float | None
     gamma_inflection: float | None
     oi_center: float | None
-    pin_strength: str
-    bias_signal: str
+    pin_strength: str | None   # None = not measured (M-04)
+    bias_signal: str | None    # None = not measured (M-05)
 
 @dataclass(frozen=True)
 class ExposureDiagnostics:
@@ -203,6 +203,13 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # position can net to a genuine zero too -- see net_gex_1pct's own honest-zero
             # test coverage).
             "has_valid_gamma": False,
+            # Same honest-absence signal for delta: True only once a valid delta (with OI)
+            # contributed. A bucket whose deltas were all invalid keeps net_delta 0.0 from its
+            # initialiser -- that 0.0 is NOT data (audit M-01, 2026-09-23).
+            "has_valid_delta": False,
+            # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
+            # real dollar values. Set explicitly at build; never inferred from values.
+            "dollarized": False,
             "call_oi": None,
             "put_oi": None,
             "call_oi_mult": 0.0,
@@ -350,6 +357,7 @@ def compute_exposures_by_strike(
                 b["call_oi_mult"] += oi * mult
             if oi is not None and delta_ok:
                 b["call_delta"] += delta * oi * mult
+                b["has_valid_delta"] = True
             if oi is not None and gamma_ok:
                 b["call_gamma"] += gamma * oi * mult
                 b["has_valid_gamma"] = True
@@ -382,6 +390,7 @@ def compute_exposures_by_strike(
                 b["put_oi_mult"] += oi * mult
             if oi is not None and delta_ok:
                 b["put_delta"] += delta * oi * mult
+                b["has_valid_delta"] = True
             if oi is not None and gamma_ok:
                 b["put_gamma"] += gamma * oi * mult
                 b["has_valid_gamma"] = True
@@ -407,6 +416,7 @@ def compute_exposures_by_strike(
             continue
 
     for strike, b in exposures.items():
+        b["dollarized"] = spot is not None
         b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
         b["net_delta"] = b["call_delta"] + b["put_delta"]
         # Dollarized net fields (remain 0.0 if spot is None)
@@ -572,12 +582,13 @@ KEY_LEVEL_STRIKE_WINDOW: int | None = None
 
 
 def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:
-    """True when spot was provided at bucket build and at least one strike has dollar GEX."""
+    """True when the book was built WITH spot (its dollar fields are real). Read from the
+    explicit `dollarized` flag -- it used to be inferred from "any strike has non-zero dollar
+    GEX", so a spot-built book whose gammas were all invalid looked un-dollarized and every
+    consumer silently fell through to raw-gamma units (audit, 2026-09-24)."""
     for b in exposures.values():
-        c = bucket_metric(b, "call_gex_1pct")
-        p = bucket_metric(b, "put_gex_1pct")
-        if (c is not None and c != 0) or (p is not None and p != 0):
-            return True
+        if isinstance(b, dict) and "dollarized" in b:
+            return bool(b["dollarized"])
     return False
 
 
@@ -999,49 +1010,43 @@ def pick_delta_wall_strikes(
 
 
 def aggregate_net_gex(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
-    """Chain-aggregate net GEX$: Σ net_gex_1pct (institutional); fallback Σ net_gamma."""
-    if not strikes:
+    """Chain-aggregate net GEX$ = sum of net_gex_1pct over strikes whose gamma was VALID, on a
+    spot-built (dollarized) book. None when there is no such strike or no spot -- never a raw
+    net_gamma total in other units, never the 0.0 an all-invalid bucket carries from its
+    initialiser (audit M-02, 2026-09-24: no fallbacks)."""
+    if not strikes or not exposures_have_dollar_gex(exposures):
         return None
-    if exposures_have_dollar_gex(exposures):
-        total = 0.0
-        any_v = False
-        for s in strikes:
-            v = net_gex_dollars_at_strike(exposures.get(s, {}))
-            if v is not None:
-                total += v
-                any_v = True
-        return float(total) if any_v else None
     total = 0.0
-    any_g = False
+    any_v = False
     for s in strikes:
         b = exposures.get(s, {})
-        ng = net_gamma_raw_at_strike(b)
-        if ng is not None:
-            total += ng
-            any_g = True
-    return float(total) if any_g else None
+        if not b.get("has_valid_gamma"):
+            continue
+        v = net_gex_dollars_at_strike(b)
+        if v is not None:
+            total += v
+            any_v = True
+    return float(total) if any_v else None
 
 
 def aggregate_net_dex(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
-    if not strikes:
+    """Chain-aggregate net DEX$ = sum of net_dex_dollars over strikes whose delta was VALID,
+    on a dollarized book. None otherwise. It used to pick its units on a GAMMA test and fall
+    to raw net_delta (shares), and an all-invalid-delta book read 0.0 -- which The Call's
+    regime vote reads as "net delta >= 0" = a LONG vote from no data (audit M-01)."""
+    if not strikes or not exposures_have_dollar_gex(exposures):
         return None
-    if exposures_have_dollar_gex(exposures):
-        total = 0.0
-        any_v = False
-        for s in strikes:
-            v = bucket_metric(exposures.get(s, {}), "net_dex_dollars")
-            if v is not None:
-                total += v
-                any_v = True
-        return float(total) if any_v else None
     total = 0.0
-    any_d = False
+    any_v = False
     for s in strikes:
-        v = bucket_metric(exposures.get(s, {}), "net_delta")
+        b = exposures.get(s, {})
+        if not b.get("has_valid_delta"):
+            continue
+        v = bucket_metric(b, "net_dex_dollars")
         if v is not None:
-            total += float(v)
-            any_d = True
-    return float(total) if any_d else None
+            total += v
+            any_v = True
+    return float(total) if any_v else None
 
 
 def gex_magnitude_label(net_gex: float | None) -> str | None:

@@ -47,7 +47,7 @@ def is_bias_actionable(bias_signal: str | None) -> bool:
 # ZONE DERIVATION — single definition used everywhere
 # Derived from bias_signal + net_delta.
 # ─────────────────────────────────────────────────────────────────────────────
-def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
+def derive_zone(bias_signal: str | None, net_delta: float | None) -> str | None:
     """
     Map bias_signal → zone string consumed by signals engine and prediction DB.
 
@@ -77,7 +77,9 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
         if net_delta is None:
             return "expansion_unknown"
         return "breakout" if float(net_delta) >= 0 else "breakdown"
-    return "pin_neutral"  # safe default
+    # No bias (not measured) or a label this map does not know: no zone. This used to be
+    # "pin_neutral  # safe default" -- persisted and matched on as a real zone (audit M-05).
+    return None
 
 
 # is_pin_zone() lives in math_exposure.py — centralized
@@ -153,8 +155,8 @@ class MarketState:
     ask_disp:           str             = "—"
 
     # ── Regime ────────────────────────────────────────────────────────────────
-    bias_signal:        str             = "Neutral"
-    pin_strength:       str             = "Very Low"
+    bias_signal:        Optional[str]   = None      # None = not measured (M-05)
+    pin_strength:       Optional[str]   = None      # None = not measured (M-04)
     net_delta:          Optional[float] = None      # share-equivalent
     net_gamma:          Optional[float] = None
     gex_magnitude:      Optional[str]   = None  # large/moderate/small/negligible; None = no net GEX
@@ -162,7 +164,7 @@ class MarketState:
     #: "negligible" -- so the Greeks vote's net-delta leg never counted, silently. None says
     #: so; a validated magnitude threshold is a research decision, not a default.
     dex_magnitude:      Optional[str]   = None
-    zone:               str             = "pin"     # pin | breakout | breakdown
+    zone:               Optional[str]   = None      # derive_zone(); None = no measured bias
 
     # Regime colors (derived, not computed inline in UI)
     bias_color_css:     str             = "#9ca3af"
@@ -1136,9 +1138,10 @@ def build_market_state(
 
     # ── 2. Regime — from consensus_summary ──────────────────────────────────
     if consensus_summary is not None:
-        ms.bias_signal  = str(getattr(consensus_summary, "bias_signal",  "") or "Neutral")
+        # None = not measured (audit M-04/M-05): no "Neutral" / "Very Low" stand-ins.
+        ms.bias_signal  = getattr(consensus_summary, "bias_signal", None) or None
         # Categorical |net GEX$| concentration at ExposureRow.net_gex_peak — not terrain pin lead %.
-        ms.pin_strength = str(getattr(consensus_summary, "pin_strength", "") or "Very Low")
+        ms.pin_strength = getattr(consensus_summary, "pin_strength", None) or None
         _nd             = _f(getattr(consensus_summary, "net_delta", None))
         _ng             = _f(getattr(consensus_summary, "net_gamma", None))
         ms.net_delta    = _nd
@@ -1147,8 +1150,8 @@ def build_market_state(
         ms.gex_magnitude = gex_magnitude_label(_ng)
         ms.dex_magnitude = None   # no DEX magnitude producer exists -- see the field note
     else:
-        ms.bias_signal  = "Neutral"
-        ms.pin_strength = "Very Low"
+        ms.bias_signal  = None
+        ms.pin_strength = None
         _nd             = None
         _ng             = None
 

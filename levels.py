@@ -19,8 +19,8 @@ class DisplayRow:
     delta_inf: str
     gamma_inf: str
     oi_center: str
-    pin_strength: str
-    bias_signal: str
+    pin_strength: str | None
+    bias_signal: str | None
 
 
 def _fmt_level(x: float | None) -> str:
@@ -308,7 +308,7 @@ def key_levels_to_plot_rows(
     # ── Regime row ───────────────────────────────────────────────────────────
     rows.append({
         "Metric":      "Regime",
-        "Level":       f"{s.pin_strength} | {s.bias_signal}",
+        "Level":       f"{s.pin_strength or '—'} | {s.bias_signal or '—'}",
         "Side":        "",
         "Strength":    "",
         "S/R":         "",

@@ -29,10 +29,16 @@ def test_dpi_all_none_inputs():
     assert out["raw"] is None
 
 
-def test_hedging_flow_renormalizes_partial_inputs():
-    out = compute_hedging_flow_score(0.5, None, None, None)
-    assert out["raw"] == 0.5
-    assert out["direction"] is not None
+def test_hedging_flow_needs_all_four_legs():
+    """Audit S-11 (2026-09-24, no fallbacks): re-weighting the legs that happen to exist
+    made one leg speak for four. A missing leg -> no score."""
+    for i in range(4):
+        legs = [0.5, 0.5, 0.5, 0.5]
+        legs[i] = None
+        out = compute_hedging_flow_score(*legs)
+        assert out["raw"] is None and out["direction"] is None, i
+    full = compute_hedging_flow_score(0.5, 0.5, 0.5, 0.5)
+    assert full["raw"] is not None and full["direction"] is not None
     all_none = compute_hedging_flow_score(None, None, None, None)
     assert all_none["raw"] is None
     assert all_none["direction"] is None
@@ -42,6 +48,20 @@ def test_breakout_score_none_when_all_inputs_missing():
     out = compute_breakout_score(None, None, None)
     assert out["label"] is None
     assert out["normalized"] is None
+
+
+def test_three_leg_scores_need_all_three_legs():
+    """Audit S-08..10: breakout / vol-expansion / sweep divide by 3; a missing leg used to
+    count as 0, reading absence as "low". A missing leg -> no score; the present legs are
+    still reported as components."""
+    for fn in (compute_breakout_score, compute_vol_expansion_signal, compute_sweep_score):
+        for i in range(3):
+            legs = [0.5, 0.5, 0.5]
+            legs[i] = None
+            out = fn(*legs)
+            assert out["raw"] is None and out["normalized"] is None and out["label"] is None, (fn, i)
+            assert sum(v is not None for v in out["components"].values()) == 2, (fn, i)
+        assert fn(0.5, 0.5, 0.5)["label"] is not None, fn
 
 
 def test_vol_expansion_and_sweep_none_when_all_missing():
