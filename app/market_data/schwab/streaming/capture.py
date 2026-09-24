@@ -2200,7 +2200,10 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     stream = None
     pump_task = None
     push_task = None
+    ui_task = None
     push_stats: dict = {}
+    ui_stats: dict = {}
+    push_stats["live_ui"] = ui_stats        # reported in the status file with the push
     control_tasks: tuple = ()
     #: Shared with the active-ticker book-poll task (below) — a plain dict, not a
     #: closure-captured local, because BOTH the recycle path here and the poll loop's
@@ -2311,6 +2314,11 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
 
         push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats,
                                                         heartbeat_fn=_heartbeat))
+        # Prices straight to the browser: finished rows from this process, no web server in
+        # the path (live_ui.py). Started before the Schwab connection for the same reason.
+        from app.market_data.schwab.streaming.live_ui import serve_live_ui
+        ui_task = asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=_heartbeat,
+                                                    stats=ui_stats))
         await asyncio.sleep(0)   # let it subscribe before the first message is published
         stream, pump_task, option_state["contract"] = await _schwab_connect(
             state, symbols, bus, health, stats, stop,
@@ -2512,7 +2520,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # measured from the decision to surrender instead of the surrender itself.
         shutdown_surrendered_ts = time.time()
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
-                                 extra_producers=(push_task, *control_tasks))
+                                 extra_producers=(push_task, ui_task, *control_tasks))
         # The daemon's own Schwab session must not outlive the daemon. _shutdown_sequence
         # cancels the pump, but a cancelled handle_message() is not a logged-out session:
         # nothing in schwab-py logs out on garbage collection, so without this the process

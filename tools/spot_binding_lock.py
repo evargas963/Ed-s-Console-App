@@ -74,10 +74,15 @@ def chart_binding_violations(text: str) -> list[str]:
         out.append("static/chart.html: spotBindingAgeLabel() never called — as_of not visible")
     if "SPOT_STALE_SEC" not in text:
         out.append("static/chart.html: missing SPOT_STALE_SEC stale threshold")
-    # The binding is the quote_tick push (audit of #280 moved it off the /api/spot poll); its
-    # as_of is the server's trade_age_sec -- still required to be read and shown.
-    if "addEventListener('quote_tick'" not in code:
-        out.append("static/chart.html: spot must bind the quote_tick push")
+    # The binding is the capture daemon's price socket (live_ui.py; audit of #280 moved it off
+    # the /api/spot poll, Stage 1 of the live-UI architecture moved it off the console): every
+    # row it pushes goes through the one writer. Its as_of is the server's trade_age_sec --
+    # still required to be read and shown.
+    if ("new WebSocket(url)" not in code or "spotSocketUrl()" not in code
+            or "msg.rows.forEach((q) => ingestQuoteTick(q" not in code):
+        out.append("static/chart.html: spot must bind the daemon price socket (live_ui)")
+    if "addEventListener('quote_tick'" in code:
+        out.append("static/chart.html: the console serves no price -- no quote_tick listener")
     if "trade_age_sec" not in text:
         out.append("static/chart.html: binding must read the server's trade_age_sec as_of")
     return out
@@ -96,8 +101,13 @@ def exposure_binding_violations(text: str) -> list[str]:
         out.append("static/exposure.html: missing spotBindingAgeLabel() as_of surface")
     if "spotBindingAgeLabel()" not in code:
         out.append("static/exposure.html: spotBindingAgeLabel() never called")
-    if "spot_as_of_ts_utc" not in text:
-        out.append("static/exposure.html: poll must read spot_as_of_ts_utc")
+    # the daemon price socket (live_ui) is the binding; its as_of is the row's Schwab trade_ts
+    if ("new WebSocket(url)" not in code or "msg.rows.forEach(ingestSpotRow)" not in code):
+        out.append("static/exposure.html: spot must bind the daemon price socket (live_ui)")
+    if "q.trade_ts" not in code:
+        out.append("static/exposure.html: binding must read the row's trade_ts as_of")
+    if "/api/spot" in code:
+        out.append("static/exposure.html: no /api/spot poll -- prices come from the daemon socket")
     return out
 
 

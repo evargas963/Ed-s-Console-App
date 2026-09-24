@@ -147,6 +147,25 @@ function analyticsFor(url) {
     analytics_version: version, pcr_val: +(base + 0.01 * (version - BASE_VERSION[exp])).toFixed(2) };
 }
 
+// The capture daemon's price socket (live_ui.py). The console tells the page port 1 under
+// e2e (playwright.config ED_LIVE_UI_PORT), so the page never reaches a real daemon; this
+// stands in for it. `rows` is a list of price rows, each sent 300 ms apart after the page
+// subscribes -- the same frames the daemon sends ({type:'quotes', rows:[...]}).
+function priceRow(ticker, spot, extra) {
+  return Object.assign({ ticker: ticker, spot: spot, spot_disp: spot.toFixed(2), spot_state: 'live',
+    feed_live: true, spot_source: 'streaming_plane', server_ts: Date.now() / 1000,
+    trade_age_sec: 1 }, extra || {});
+}
+async function mockPriceSocket(page, rows) {
+  await page.routeWebSocket(/:1\/$/, (ws) => {
+    ws.onMessage((m) => {
+      let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
+      if (!req || req.op !== 'subscribe') return;
+      rows.forEach((r, i) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [r] })), 300 * i));
+    });
+  });
+}
+
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
@@ -1124,16 +1143,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
-    // The chart's spot is the header's quote_tick (audit of #280 removed the /api/terrain copy,
-    // a second producer): deliver it on the push stream the console opens.
-    const qts = Date.now() / 1000;
-    await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
-      status: 200, contentType: 'text/event-stream',
-      body: 'retry: 500\n\nevent: quote_tick\ndata: ' + JSON.stringify({
-        ticker: 'SPY', spot: 583.41, spot_disp: '583.41', spot_state: 'live', feed_live: true,
-        spot_source: 'streaming_plane', server_ts: qts, trade_age_sec: 1,
-      }) + '\n\n',
-    }));
+    // The chart's spot is the header's price row (audit of #280 removed the /api/terrain copy,
+    // a second producer): the daemon's price socket delivers it.
+    await mockPriceSocket(page, [priceRow('SPY', 583.41)]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
@@ -1154,8 +1166,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('header never paints a quote from a poll: no push -> UNAVAILABLE, not a fallback', async ({ page }) => {
     // Operator rule 2026-09-23 (no fallbacks): /api/live/state still answers (session label),
-    // but its quote is never painted -- with no SSE push the header withdraws the quote.
-    await page.route('**/api/analytics/light/stream**', (route) => route.abort());
+    // but its quote is never painted -- with no price push the header withdraws the quote.
+    await page.routeWebSocket(/:1\/$/, (ws) => ws.close());          // the daemon is down
     await page.route('**/api/live/state**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({ spot: 111.11, spot_disp: '111.11', bid: 111, ask: 111.2, session_label: 'RTH',
@@ -1168,26 +1180,33 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveText('RTH');          // session still read
   });
 
-  test('header consumes the canonical quote_tick SSE push when available', async ({ page }) => {
-    // Instant-UI Phase 2: displayed last/bid/ask come from quote_tick (plane row).
-    // The wire payload is the plane row itself — a parser that still looks for
-    // env.payload.spot would read undefined and never paint.
-    const ts = Date.now() / 1000;
-    await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
-      status: 200, contentType: 'text/event-stream',
-      body: 'event: quote_tick\ndata: ' + JSON.stringify({
-        ticker: 'SPY', spot: 601.23, spot_disp: '601.23',
-        spot_state: 'live', bid: 601.20, ask: 601.25, chg_pct: 0.5,
-        quote_ingestion: 'schwab_streaming_level_one',
-        server_ts: ts, ts_recv: ts, trade_ts_ms: Math.round(ts * 1000),
-      }) + '\n\n',
-    }));
+  test('header paints the daemon price row the moment it arrives', async ({ page }) => {
+    // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
+    // (live_price_rows.price_row) straight to the page; the console is not in the path.
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
+      quote_ingestion: 'schwab_streaming_level_one' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
+    await expect(page.locator('#hBidAsk')).toHaveText('601.20 × 601.25');
   });
 
-  test('header ignores an l1_projection envelope (price is quote_tick only)', async ({ page }) => {
+  test('a price that stops arriving is withdrawn within seconds (the daemon beats every 1 s)', async ({ page }) => {
+    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);   // one row, then silence
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE', { timeout: 6000 });
+  });
+
+  test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
+    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25 })]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => window.EdShell.addSymbol('AMD'));
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
+    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25%');
+  });
+
+  test('header ignores an l1_projection envelope (price comes only from the daemon socket)', async ({ page }) => {
     const ts = Date.now() / 1000;
     await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
       status: 200, contentType: 'text/event-stream',
@@ -2383,28 +2402,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(totalDelta).toBeLessThanOrEqual(4);
   });
 
-  test('the Gamma Chart spot line moves with each quote_tick (the header\'s price), not a terrain refetch', async ({ page }) => {
+  test('the Gamma Chart spot line moves with each price row (the header\'s price), not a terrain refetch', async ({ page }) => {
     // Was (2026-09-17): the chart's spot came from /api/terrain and moved only when a gamma
     // push refetched it. Audit of #280: that was a second producer that could show a different
-    // price than the header. Required now: the chart's spot line/label IS the header's
-    // quote_tick and follows every tick; /api/terrain carries flip/walls only.
-    let n = 0;
-    await page.route('**/api/analytics/light/stream**', (route) => {
-      n += 1;
-      const spot = n === 1 ? 583.41 : 601.23;
-      route.fulfill({
-        status: 200, contentType: 'text/event-stream',
-        body: 'retry: 300\n\nevent: quote_tick\ndata: ' + JSON.stringify({
-          ticker: 'SPY', spot: spot, spot_disp: spot.toFixed(2), spot_state: 'live', feed_live: true,
-          spot_source: 'streaming_plane', server_ts: Date.now() / 1000, trade_age_sec: 1,
-        }) + '\n\n',
-      });
-    });
+    // price than the header. Required now: the chart's spot line/label IS the header's price
+    // row and follows every tick; /api/terrain carries flip/walls only.
+    const rows = [priceRow('SPY', 583.41)];
+    for (let i = 0; i < 20; i++) rows.push(priceRow('SPY', 601.23));   // the next ticks
+    await mockPriceSocket(page, rows);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#chartBody svg')).toContainText(/spot (583\.41|601\.23)/);
-    // the next tick (the stream reconnects and delivers the new price) moves the chart, and
-    // the chart and header show the same number
+    // the next tick moves the chart, and the chart and header show the same number
     await expect(page.locator('#chartBody svg')).toContainText('spot 601.23', { timeout: 8000 });
     await expect(page.locator('#hPx')).toHaveText('601.23');
   });

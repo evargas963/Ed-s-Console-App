@@ -196,13 +196,34 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     }
     with _lock:
         _by_ticker[t] = out
-    try:
-        from planes.l1_events import notify_quote_updated
-
-        notify_quote_updated(t)
-    except Exception as e:
-        log.debug("notify_quote_updated: %s", e, exc_info=True)
+    for fn in list(_row_listeners):
+        try:
+            fn(t)
+        except Exception as e:  # noqa: BLE001 -- counted + WARNING; one bad listener never stops ingest
+            _row_listener_failures[0] += 1
+            n = _row_listener_failures[0]
+            if n & (n - 1) == 0:
+                log.warning("plane row listener %s failed for %s (%s failures): %s",
+                            getattr(fn, "__name__", fn), t, n, e)
     return True
+
+
+#: callables told the ticker of every published row, in the process that owns this plane --
+#: the console registers its L1 rebuild, the capture daemon its browser push, live_price_rows
+#: its forming candle. The plane itself knows no consumer (it used to import the console's
+#: planes.l1_events directly, which tied the price table to the console process).
+_row_listeners: list = []
+_row_listener_failures = [0]
+
+
+def add_row_listener(fn) -> None:
+    if fn not in _row_listeners:
+        _row_listeners.append(fn)
+
+
+def remove_row_listener(fn) -> None:
+    if fn in _row_listeners:
+        _row_listeners.remove(fn)
 
 
 def get_quote(ticker: str) -> Optional[dict[str, Any]]:

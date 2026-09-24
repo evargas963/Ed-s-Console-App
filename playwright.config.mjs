@@ -26,6 +26,8 @@ export const e2eServerEnv = (() => {
   env.ED_CI_OFFLINE = '1';
   // never connect to the real capture daemon's live push (see tests/conftest.py)
   env.ED_LIVE_PUSH_PORT = '1';
+  // pages are told this dead port for the daemon's price socket; specs mock it (routeWebSocket)
+  env.ED_LIVE_UI_PORT = '1';
   env.SCHWAB_API_KEY = 'ci-placeholder-api-key';
   env.SCHWAB_APP_SECRET = 'ci-placeholder-app-secret';
   env.SCHWAB_CALLBACK_URL = 'https://127.0.0.1:8182';

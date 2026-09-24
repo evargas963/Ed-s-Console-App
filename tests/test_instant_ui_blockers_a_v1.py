@@ -219,10 +219,11 @@ def test_daily_roll_up_is_keyed_on_the_et_trading_date():
     assert len(out) == 2 and out[0]["h"] == 3 and out[0]["v"] == 2
 
 
-def test_quote_tick_carries_feed_state_trade_age_and_the_forming_bar(monkeypatch):
+def test_the_price_row_carries_feed_state_trade_age_and_the_forming_bar(monkeypatch):
     import time as _t
 
     import live_market_plane as lmp
+    import live_price_rows
     import server as srv
     from tests.feed_live_helper import mark_feed_live
 
@@ -230,12 +231,12 @@ def test_quote_tick_carries_feed_state_trade_age_and_the_forming_bar(monkeypatch
     now = _t.time()
     lmp.record_from_level_one_equity("ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": int((now - 7) * 1000)},
                                      received_ts=now)
-    ev = srv._quote_tick_event("ZZQF")
+    ev = live_price_rows.price_row("ZZQF")
     assert ev["feed_live"] is True and ev["spot"] == 42.0 and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
     assert 6.0 <= ev["trade_age_sec"] <= 9.0
     f = ev["forming_1m"]
     assert f is not None and f["c"] == 42.0 and f["t"] == (now - 7) - ((now - 7) % 60)
-    held_no_trade = srv._quote_tick_event("ZZNOTRADE")
+    held_no_trade = live_price_rows.price_row("ZZNOTRADE")
     assert held_no_trade["spot"] is None and held_no_trade["forming_1m"] is None
 
 

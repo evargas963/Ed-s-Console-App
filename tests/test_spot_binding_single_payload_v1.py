@@ -63,7 +63,12 @@ def test_exposure_kills_cycle_fallback():
     assert "strikes.spot" not in src
     assert "terrain.spot" not in src
     assert "spotBindingAgeLabel" in src
-    assert "spot_as_of_ts_utc" in src
+    assert "msg.rows.forEach(ingestSpotRow)" in src and "q.trade_ts" in src
+    assert "forming = { t: mt" not in src          # the forming candle is the server's
+    assert L.exposure_binding_violations(src) == []
+    polled = src.replace("openSpotStream(); setInterval(checkSpotSilence, 1000);",
+                         "setInterval(() => fetch('/api/spot?ticker=SPY'), 1500);")
+    assert any("/api/spot" in m for m in L.exposure_binding_violations(polled))
 
 
 def test_cycle_fallback_injection_screams():
@@ -243,3 +248,15 @@ def test_exposure_fallback_injection_screams():
         "spot_as_of_ts_utc\n"
     )
     assert any("strikes.spot" in m or "fallback" in m for m in bad), bad
+
+
+def test_chart_spot_rebound_to_the_console_screams():
+    """Negative control: pointing the chart's spot back at the console's stream (instead of
+    the capture daemon's price socket) must BLOCK, both ways it could be done."""
+    src = CHART.read_text(encoding="utf-8")
+    assert L.chart_binding_violations(src) == []
+    unbound = src.replace("new WebSocket(url)", "new EventSource('/api/analytics/light/stream')")
+    assert any("daemon price socket" in m for m in L.chart_binding_violations(unbound))
+    relay = src.replace("function openSpotStream(tk) {",
+                        "function openSpotStream(tk) {\n  es.addEventListener('quote_tick', (ev) => 0);", 1)
+    assert any("no quote_tick listener" in m for m in L.chart_binding_violations(relay))

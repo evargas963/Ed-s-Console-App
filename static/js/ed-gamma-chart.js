@@ -40,7 +40,8 @@
   var _pin = null;             // {vx, vy} pinned crosshair in viewBox space, or null
   var _lastCtx = null;         // {bars, win, spot, terrain} from the last successful render
   var _lastBarsData = null;    // the latest /api/bars1m payload (null after a failed fetch)
-  // THE displayed price: the same quote_tick the header paints (server _quote_tick_event).
+  // THE displayed price: the same daemon price row the header paints (ed-core dispatches it
+  // as ed:quote_tick; producer live_price_rows.price_row, pushed by the capture daemon).
   // The chart used to take its spot from /api/terrain -- a second producer that could differ.
   var _liveQuote = null;
   function sameSym(a, b) { return String(a || '').toUpperCase().replace(/^\$/, '') === String(b || '').toUpperCase().replace(/^\$/, ''); }
