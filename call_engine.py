@@ -382,14 +382,18 @@ def _build_call_headlines(final_signal, conviction, trade_type,
     type_label = TRADE_TYPE_LABELS.get(trade_type, trade_type)
 
     if final_signal == "wait":
+        # Every WAIT names its OWN blocker from the blocker's own fields -- no defaulted counts /
+        # threshold / detail, and no catch-all "insufficient confirmation" for reasons this
+        # function had no branch for (audit C-08, 2026-09-24: no_measured_stop, emission,
+        # canonical_provenance and multi_horizon_policy all printed that).
         blocker = wait_blocker or {}
-        reason = blocker.get("reason", "unknown")
+        reason = blocker.get("reason")
         if reason == "stack":
-            lc = blocker.get("long_count", 0)
-            sc = blocker.get("short_count", 0)
-            th = blocker.get("threshold", 2)
-            ln = blocker.get("long_names", [])
-            sn = blocker.get("short_names", [])
+            lc = blocker["long_count"]
+            sc = blocker["short_count"]
+            th = blocker["threshold"]
+            ln = blocker["long_names"]
+            sn = blocker["short_names"]
             headline = f"WAIT — stack: {lc} long, {sc} short (need {th}+ in one direction)."
             reasoning = (
                 f"Stack: {lc} long ({', '.join(ln) or '—'}), {sc} short ({', '.join(sn) or '—'}). "
@@ -399,17 +403,13 @@ def _build_call_headlines(final_signal, conviction, trade_type,
                 "the skill-weighted ALL pooled ML consensus."
             )
         elif reason == "vol_regime":
-            detail = blocker.get("detail", "unstable — require stronger confirmation")
+            detail = blocker["detail"]
             headline = f"WAIT — vol regime: {detail}."
-            reasoning = blocker.get("full_detail", detail)
+            reasoning = blocker.get("full_detail") or detail
         elif reason == "gates":
-            gate_reasons = blocker.get("gate_reasons", [])
-            headline = f"WAIT — gated: {', '.join(gate_reasons) if gate_reasons else 'validation failed'}."
+            gate_reasons = blocker["gate_reasons"]
+            headline = f"WAIT — gated: {', '.join(gate_reasons)}."
             reasoning = f"Validation gates: {'; '.join(gate_reasons)}."
-        elif reason == "time":
-            detail = blocker.get("detail", "≤30 min to close")
-            headline = f"WAIT — {detail}."
-            reasoning = blocker.get("full_detail", f"Only {detail} — no new entries.")
         elif reason == WAIT_BLOCKER_REASON_ADMISSION:
             gated = blocker.get("gated_signal")
             suffix = f" (stack read: {gated})" if gated in ("long", "short") else ""
@@ -419,9 +419,14 @@ def _build_call_headlines(final_signal, conviction, trade_type,
                 "No component is ADMITTED in config/decision_path_admissions.json — "
                 "the system abstains until edge is proven and admitted.",
             )
+        elif blocker.get("detail"):
+            # time / no_measured_stop / market_data_emission_gate / canonical_provenance /
+            # multi_horizon_policy: each blocker carries its own detail
+            headline = f"WAIT — {blocker['detail']}."
+            reasoning = blocker.get("full_detail") or confluence_detail or blocker["detail"]
         else:
-            headline = "WAIT — insufficient confirmation."
-            reasoning = confluence_detail or "Await stronger stack consensus or key level."
+            headline = f"WAIT — {reason or 'no blocker recorded'}."
+            reasoning = confluence_detail or headline
         return headline, reasoning
 
     dir_word = "LONG" if final_signal == "long" else "SHORT"

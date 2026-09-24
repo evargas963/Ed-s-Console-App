@@ -330,7 +330,9 @@ def _build_calibration_payload(
     return {
         "inp": inp,
         "ticker": ticker,
-        "canonical_timeframe": getattr(inp, "timeframe", None) or "1m",
+        # the input's own timeframe; the calibration writer refuses a missing one -- `or "1m"`
+        # used to defeat that refusal (audit C-09, 2026-09-24)
+        "canonical_timeframe": getattr(inp, "timeframe", None),
         "regime": regime,
         "vol_regime": vol_regime,
         "fusion": fusion,

@@ -95,3 +95,21 @@ def test_no_serving_model_when_stack_off(monkeypatch):
     import server
     monkeypatch.setattr(signals, "LIVE_MODEL_STACK_ENABLED", False)
     assert server._current_pred_model_version("SPY") is None
+
+
+# ── C-08: every WAIT names its own blocker ────────────────────────────────────
+
+def test_wait_headline_names_its_blocker():
+    import call_engine as ce
+
+    def headline(blocker):
+        return ce._build_call_headlines(
+            "wait", "low", "none", None, None, None, None, 0, 5, "", None, None, None, False,
+            wait_blocker=blocker)[0]
+
+    for reason in (ce.WAIT_BLOCKER_REASON_NO_STOP, ce.WAIT_BLOCKER_REASON_EMISSION,
+                   ce.WAIT_BLOCKER_REASON_CANONICAL_PROVENANCE,
+                   ce.WAIT_BLOCKER_REASON_MULTI_HORIZON_POLICY, ce.WAIT_BLOCKER_REASON_TIME):
+        h = headline({"reason": reason, "detail": f"detail-for-{reason}"})
+        assert f"detail-for-{reason}" in h and "insufficient confirmation" not in h, h
+    assert "some_new_reason" in headline({"reason": "some_new_reason"})
