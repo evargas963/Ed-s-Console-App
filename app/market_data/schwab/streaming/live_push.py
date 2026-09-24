@@ -60,6 +60,9 @@ class FieldHistory:
     def __init__(self) -> None:
         self._by_topic: "dict[str, dict[str, tuple[float, int]]]" = {}
         self._msgs: "dict[int, tuple[str, dict]]" = {}
+        #: how many (topic, field) entries point at each stored message; a message is
+        #: dropped the moment its count reaches 0
+        self._refs: "dict[int, int]" = {}
         self._seq = 0
 
     @staticmethod
@@ -73,13 +76,29 @@ class FieldHistory:
         if body is None or not isinstance(ts, (int, float)):
             return
         self._seq += 1
-        self._msgs[self._seq] = (topic, msg)
+        sid = self._seq
         fields = self._by_topic.setdefault(topic, {})
+        refs = self._refs
+        taken = 0
         for k in body:
-            fields[k] = (float(ts), self._seq)
-        live = {sid for f in self._by_topic.values() for _t, sid in f.values()}
-        if len(self._msgs) > 4 * len(live) + 1024:          # drop messages no field points at
-            self._msgs = {sid: m for sid, m in self._msgs.items() if sid in live}
+            prev = fields.get(k)
+            fields[k] = (float(ts), sid)
+            taken += 1
+            if prev is not None:
+                old = prev[1]
+                left = refs[old] - 1
+                if left:
+                    refs[old] = left
+                else:                                         # no field points at it any more
+                    del refs[old]
+                    del self._msgs[old]
+        if taken:
+            refs[sid] = taken
+            self._msgs[sid] = (topic, msg)
+        # Cost is the message's own field count. This used to rebuild a set of every field of
+        # every topic on EVERY message -- measured 2026-09-24 08:46 CT: the daemon's event loop
+        # was caught inside that rebuild (py-spy) while the whole feed went silent for seconds,
+        # every service read DEGRADED and new push clients timed out on the handshake.
 
     def replay(self) -> "list[tuple[str, dict]]":
         ids = sorted({(ts, sid) for f in self._by_topic.values() for ts, sid in f.values()})
@@ -94,7 +113,12 @@ def encode(topic: str, msg: dict) -> str:
     return json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))
 
 
-async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory) -> None:
+#: seconds between daemon heartbeats on every push connection
+HEARTBEAT_SEC = 1.0
+
+
+async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
+                        heartbeat_fn=None) -> None:
     """Send the last values, then every live message, until the connection closes.
 
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
@@ -111,8 +135,22 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory)
         for topic, msg in list(bus.snapshot().items()):
             if not is_field_delta_topic(topic) and is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
+        loop = asyncio.get_running_loop()
+        next_beat = loop.time()
         while True:
-            topic, msg = await sub.get()
+            if heartbeat_fn is not None and loop.time() >= next_beat:
+                # the daemon's own report of the feed (Schwab socket open, equities held),
+                # sent on this one send path so it can never interleave a frame
+                await ws.send(encode("daemon.heartbeat", heartbeat_fn()))
+                next_beat = loop.time() + HEARTBEAT_SEC
+            try:
+                if heartbeat_fn is None:
+                    topic, msg = await sub.get()
+                else:
+                    topic, msg = await asyncio.wait_for(
+                        sub.get(), timeout=max(0.0, next_beat - loop.time()))
+            except asyncio.TimeoutError:
+                continue
             if is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
                 stats["sent"] += 1
@@ -135,7 +173,7 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory)
 
 async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                           host: str = LIVE_PUSH_HOST, port: int = LIVE_PUSH_PORT,
-                          stats: "dict | None" = None) -> None:
+                          stats: "dict | None" = None, heartbeat_fn=None) -> None:
     """Run the push server until `stop` is set. `stats` (mutated) reports clients/sent/dropped."""
     from websockets.asyncio.server import serve
 
@@ -154,7 +192,7 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                 history.record(topic, msg)
 
     async def handler(ws):
-        await _serve_client(ws, bus, stats, history)
+        await _serve_client(ws, bus, stats, history, heartbeat_fn)
 
     tracker = asyncio.create_task(_track())
     try:

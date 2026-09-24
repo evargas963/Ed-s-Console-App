@@ -261,7 +261,7 @@ def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
     or not (operator rule 2026-09-23: no fallbacks, a broken feed must look broken)."""
     import server
     tk = "ZZRESTROW"
-    L._by_ticker[tk] = _row("rest_anchor_lane_refresher", 1.0)
+    L._by_ticker[tk] = dict(_row("rest_anchor_lane_refresher", 1.0), ticker=tk)
     try:
         assert server.resolve_spot(tk) == (None, "none", None)
     finally:
@@ -269,10 +269,12 @@ def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
 
 
 def test_streamed_plane_row_keeps_streaming_identity(monkeypatch):
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('ZZSTREAMROW')   # the daemon holds it on a live feed
     import server
     _no_rest(monkeypatch, server)
     tk = "ZZSTREAMROW"
-    L._by_ticker[tk] = _row("schwab_streaming_level_one", 1.0)
+    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", 1.0), ticker=tk)
     try:
         _, source, _ = server.resolve_spot(tk)
         assert source == server.SPOT_SOURCE_PLANE
@@ -285,7 +287,7 @@ def test_a_stale_streamed_price_is_not_spot(monkeypatch):
     """A streamed LAST_PRICE past its freshness bound is UNAVAILABLE, never served stale."""
     import server
     tk = "ZZSTALESTREAM"
-    L._by_ticker[tk] = _row("schwab_streaming_level_one", L.PLANE_QUOTE_STALE_SEC + 30)
+    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", L.PLANE_QUOTE_STALE_SEC + 30), ticker=tk)
     try:
         assert server.resolve_spot(tk) == (None, "none", None)
     finally:
@@ -427,7 +429,7 @@ def test_watchlist_never_serves_a_rest_written_row(monkeypatch):
 
     import server
     tk = "ZZWLREST"
-    L._by_ticker[tk] = _row("rest_watchlist_batch", 1.0)
+    L._by_ticker[tk] = dict(_row("rest_watchlist_batch", 1.0), ticker=tk)
     try:
         body = TestClient(server.app).get(f"/api/watchlist-quotes?tickers={tk}").json()
         assert tk not in body["quotes"]

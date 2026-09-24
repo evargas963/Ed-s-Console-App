@@ -138,7 +138,7 @@ def test_resolve_spot_never_serves_a_rest_quote(monkeypatch) -> None:
 def _streamed_row(tk: str, spot: float, age_sec: float = 0.5) -> dict:
     """A plane row as the Schwab LEVELONE_EQUITIES stream writes it."""
     import time as _t
-    return {"spot": spot, "server_received_ts": _t.time() - age_sec, "spot_received_ts": _t.time() - age_sec,
+    return {"ticker": tk, "spot": spot, "server_received_ts": _t.time() - age_sec, "spot_received_ts": _t.time() - age_sec,
             "exchange_quote_ts": _t.time() - age_sec,
             "quote_source_detail": {"spot": "LAST_PRICE"},
             "quote_ingestion": "schwab_streaming_level_one"}
@@ -152,12 +152,14 @@ def test_resolve_spot_prefers_a_fresh_streaming_plane_row_over_the_rest_quote(mo
     that the header/analytics stack (Tier A/B/C) reads directly. Two disciplined producers
     that never checked each other is RC-14's shape one layer up. The plane is now this
     function's own highest-precedence source when fresh."""
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('ZZPLANESPOT')   # the daemon holds it on a live feed
     import time as _t
 
     import live_market_plane as L
 
     tk = "ZZPLANESPOT"
-    L._by_ticker[tk] = {"spot": 700.42, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
+    L._by_ticker[tk] = {"ticker": tk, "spot": 700.42, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
                          "exchange_quote_ts": 1_800_000_000.0,
                          "quote_source_detail": {"spot": "LAST_PRICE"},
                          "quote_ingestion": "schwab_streaming_level_one"}
@@ -211,12 +213,14 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
     streaming plane row, resolve_spot() (terrain / Gamma Chart's own inputs) and
     _tier_a_live_state_dict() (the console header) must return the IDENTICAL spot -- not
     two independently-computed numbers that usually happen to agree."""
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('ZZCONVERGE')   # the daemon holds it on a live feed
     import time as _t
 
     import live_market_plane as L
 
     tk = "ZZCONVERGE"
-    L._by_ticker[tk] = {"spot": 812.5, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
+    L._by_ticker[tk] = {"ticker": tk, "spot": 812.5, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
                          "exchange_quote_ts": 1_800_000_000.0, "bid": 812.4, "ask": 812.6,
                          "spot_disp": "812.50", "bid_disp": "812.40", "ask_disp": "812.60",
                          "quote_source_detail": {"spot": "LAST_PRICE"},
@@ -263,6 +267,8 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
     gamma profile AT that fresh spot, so the regime can never disagree with the price
     printed beside it.
     """
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('SPY')   # the daemon holds it on a live feed
     import live_market_plane as L
     monkeypatch.setitem(L._by_ticker, "SPY", _streamed_row("SPY", 744.93))
 
@@ -307,6 +313,8 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     bug lives. This drives `get_terrain()` with a warm cache, which is the exact path the
     UI polls.
     """
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('SPY')   # the daemon holds it on a live feed
     import live_market_plane as L
     monkeypatch.setitem(L._by_ticker, "SPY", _streamed_row("SPY", 744.93))
     monkeypatch.setitem(server._terrain_cache, "SPY", {
@@ -433,7 +441,7 @@ def test_merge_into_state_skips_a_stale_plane_row(monkeypatch) -> None:
     import live_market_plane as L
 
     tk = "ZZMERGESTALE"
-    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
+    L._by_ticker[tk] = {"ticker": tk, "spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
     try:
         ms = {"spot": 700.42, "ticker": tk}
         L.merge_into_state(ms, tk)
@@ -445,12 +453,14 @@ def test_merge_into_state_skips_a_stale_plane_row(monkeypatch) -> None:
 def test_merge_into_state_applies_a_fresh_plane_row(monkeypatch) -> None:
     """The other half of the same contract: a genuinely fresh row SHOULD overlay -- this
     isn't "never trust the plane", it's "never trust it blindly"."""
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('ZZMERGEFRESH')   # the daemon holds it on a live feed
     import time as _t
 
     import live_market_plane as L
 
     tk = "ZZMERGEFRESH"
-    L._by_ticker[tk] = {"spot": 850.0, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
+    L._by_ticker[tk] = {"ticker": tk, "spot": 850.0, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
                          "quote_source_detail": {"spot": "LAST_PRICE"},
                          "quote_ingestion": "schwab_streaming_level_one"}
     try:
@@ -468,7 +478,7 @@ def test_apply_l1_live_quote_overlay_skips_a_stale_plane_row() -> None:
     import live_market_plane as L
 
     tk = "ZZL1STALE"
-    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
+    L._by_ticker[tk] = {"ticker": tk, "spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
     try:
         l1 = {"spot": 700.42}
         L.apply_l1_live_quote_overlay(l1, tk)
@@ -498,7 +508,7 @@ def test_project_l1_withholds_a_stale_plane_spot(monkeypatch) -> None:
     import server
 
     tk = "ZZL1PROJECT"
-    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0),
+    L._by_ticker[tk] = {"ticker": tk, "spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0),
                         "quote_ingestion": "schwab_streaming_level_one",
                         "quote_source_detail": {"spot": "LAST_PRICE"}}
     try:
