@@ -220,8 +220,8 @@ def test_watchlist_quotes_route_reports_a_dead_stream_distinctly(monkeypatch):
 
 
 def test_watchlist_quotes_route_success_shape(monkeypatch):
-    from tests.feed_live_helper import mark_feed_live
-    mark_feed_live('ZZZTEST')   # the daemon holds it on a live feed
+    from tests.feed_live_helper import feed_live_during
+    feed_live_during(monkeypatch, 'ZZZTEST')   # the daemon holds it on a live feed
     import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
@@ -238,8 +238,8 @@ def test_watchlist_quotes_route_success_shape(monkeypatch):
 def test_watchlist_quotes_serves_the_streamed_row_with_no_vendor_call(monkeypatch):
     """The watchlist's SPY row and every other screen's SPY spot are the SAME streamed
     LAST_PRICE -- no vendor round trip of its own."""
-    from tests.feed_live_helper import mark_feed_live
-    mark_feed_live('ZZWLPLANE')   # the daemon holds it on a live feed
+    from tests.feed_live_helper import feed_live_during
+    feed_live_during(monkeypatch, 'ZZWLPLANE')   # the daemon holds it on a live feed
     import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
@@ -259,8 +259,8 @@ def test_watchlist_quotes_withholds_a_symbol_the_stream_is_not_answering(monkeyp
     """One symbol streamed, one not (or its last trade too old): the streamed one is
     served, the other is simply absent (its row reads UNAVAILABLE) -- nothing is fetched
     or written into the plane on its behalf."""
-    from tests.feed_live_helper import mark_feed_live
-    mark_feed_live('ZZWLLIVE')   # the daemon holds it on a live feed
+    from tests.feed_live_helper import feed_live_during
+    feed_live_during(monkeypatch, 'ZZWLLIVE')   # the daemon holds it on a live feed
 
     import live_market_plane as L
     import server as srv
@@ -288,9 +288,9 @@ def test_watchlist_quotes_route_no_invented_count_cap(monkeypatch):
     many = ["ZZT{}".format(i) for i in range(600)]
     for t in many:
         monkeypatch.setitem(L._by_ticker, t, _streamed_plane_row(10.0, 0.0, t))
-    from tests.feed_live_helper import mark_feed_live
+    from tests.feed_live_helper import feed_live_during
     with TestClient(srv.app) as client:
-        mark_feed_live(*many)
+        feed_live_during(monkeypatch, *many)
         r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(many)})
     assert r.status_code == 200
     assert len(r.json()["quotes"]) == 600  # nothing silently dropped

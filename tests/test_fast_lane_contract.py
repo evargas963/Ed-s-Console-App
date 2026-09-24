@@ -15,8 +15,8 @@ if str(ROOT) not in sys.path:
 def test_fast_quote_is_read_only_from_the_streamed_plane(monkeypatch):
     """2026-09-24: /api/fast-quote never fetches REST and never writes the plane; it returns
     the streamed, fresh LAST_PRICE row or stream_unavailable."""
-    from tests.feed_live_helper import mark_feed_live
-    mark_feed_live('FQLIVE')   # the daemon holds it on a live feed
+    from tests.feed_live_helper import feed_live_during
+    feed_live_during(monkeypatch, 'FQLIVE')   # the daemon holds it on a live feed
     import time
 
     from starlette.testclient import TestClient
