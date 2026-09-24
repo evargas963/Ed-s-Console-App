@@ -70,23 +70,23 @@ P1/P2 rows are to be merged here as each file is repaired.
 | M-03 | math_levels.py:139-145, 232 | inflection picks empty 0.0 buckets; all-strikes fallback | snapshots, SignalInput | FIXED b6c16570 |
 | M-04 | math_levels.py:153-178 | pin_strength "Very Low" for absence | bias, zone | FIXED b6c16570 |
 | M-05 | math_levels.py:190-224 | bias "Neutral"/"Chaos Zone" from absence | persisted zone, matching | FIXED b6c16570 |
-| M-06 | math_levels.py:100-110, 497-506; server.py `_bucket_total_oi` | one-sided-OI strikes dropped from PCR / OI totals; DPI total OI counts a missing leg as 0 (bucket cannot yet tell "no contract listed" from "field missing" -- fix at the producer) | klPcr screen, Greeks vote | OPEN |
-| M-07 | math_levels.py:115-127 | oi_center skips one-sided strikes | snapshots | OPEN |
-| M-08 | math_levels.py:1439-1447 | max pain excludes one-sided strikes | Trade Desk screen | OPEN |
-| M-09 | math_levels.py:527-539 | ATM IV = one leg when the other is missing | IV direction, EM, IV rank | OPEN |
+| M-06 | math_levels.py:100-110, 497-506; server.py `_bucket_total_oi` | one-sided-OI strikes dropped from PCR / OI totals; DPI total OI counts a missing leg as 0 (bucket cannot yet tell "no contract listed" from "field missing" -- fix at the producer) | klPcr screen, Greeks vote | FIXED 65b45a7f |
+| M-07 | math_levels.py:115-127 | oi_center skips one-sided strikes | snapshots | FIXED 65b45a7f |
+| M-08 | math_levels.py:1439-1447 | max pain excludes one-sided strikes | Trade Desk screen | FIXED 65b45a7f |
+| M-09 | math_levels.py:527-539 | ATM IV = one leg when the other is missing | IV direction, EM, IV rank | FIXED 65b45a7f |
 | M-10 | math_levels.py:812-855 | gamma profile silently drops contracts; no counts | flip, regime | OPEN |
-| M-11 | math_levels.py:1562-1575 | void zones drop the OI test with no OI | breakout score | OPEN |
+| M-11 | math_levels.py:1562-1575 | void zones drop the OI test with no OI | breakout score | FIXED 65b45a7f |
 | S-05 | market_state.py:1319-1323 | iv_level: chain ATM IV stands in for straddle IV | vol regime -> The Call | OPEN |
 
 ### Terrain and market context (terrain_engine.py, terrain_read.py, market_context.py)
 | ID | file:line | Violation | Flows to | Status |
 |---|---|---|---|---|
-| T-01 | terrain_engine.py:283-284 | per-strike GEX bar falls back to unsigned raw gamma | GEX-by-strike screen | OPEN |
-| T-02 | terrain_engine.py:259, 293 | missing strike volume shown as 0 | same panel | OPEN |
-| T-03 | terrain_engine.py:703-705 | key-level universe falls back to all strikes | walls, posture | OPEN |
-| T-04 | terrain_engine.py:723-743 | book OI: missing leg = 0; except -> silently skipped | pin gate, PIN SCORE | OPEN |
-| T-05 | terrain_engine.py:332 | wall range from raw gamma, still labelled "GEX mass" | chart | OPEN |
-| T-06 | terrain_engine.py:415-417 | implied move from one leg's IV | EM band, banked IV | OPEN |
+| T-01 | terrain_engine.py:283-284 | per-strike GEX bar falls back to unsigned raw gamma | GEX-by-strike screen | FIXED 65b45a7f |
+| T-02 | terrain_engine.py:259, 293 | missing strike volume shown as 0 | same panel | FIXED 65b45a7f |
+| T-03 | terrain_engine.py:703-705 | key-level universe falls back to all strikes | walls, posture | FIXED 65b45a7f |
+| T-04 | terrain_engine.py:723-743 | book OI: missing leg = 0; except -> silently skipped | pin gate, PIN SCORE | FIXED 65b45a7f |
+| T-05 | terrain_engine.py:332 | wall range from raw gamma, still labelled "GEX mass" | chart | FIXED 65b45a7f |
+| T-06 | terrain_engine.py:415-417 | implied move from one leg's IV | EM band, banked IV | FIXED 65b45a7f |
 | T-07 | terrain_read.py:108-109 | regime from spot-vs-flip when gamma_at_spot == 0 | posture (edge case) | OPEN |
 | T-08 | market_context.py:753-755 | bond_signal guessed when VIX missing | snapshots | OPEN |
 | T-09 | market_context.py:311-321 | %-change ladder: netPercentChange -> regular -> derived | confluence, snapshots | OPEN |
@@ -116,6 +116,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | N-04 | db.py compute_accuracy | RTH scope read a NULL et_minute as :00; "statistical_v1" default version matched zero rows | accuracy surfaces | FIXED 425aa436 |
 | N-05 | v2_decision/a2_lifecycle_sidecar.py | second stop/target producer: VIX/clock stop, VWAP-snapped targets, 2R/T1+1R fallbacks disagreeing with The Call | A2 lifecycle preview (advisory, training rows) | FIXED c36102ec (carries The Call's plan) |
 | N-06 | call_engine.py `_vol_risk_mult`; lifecycle_rule_core.apply_risk_multiplier | vol-regime risk multiplier `or 1.0`; NaN multiplier -> 1.0 | The Call stop distance | OPEN |
+| N-07 | terrain_engine.py compute_terrain | max pain computed over ALL expiries pooled (standard definition is per expiry) | Trade Desk max pain | FIXED 65b45a7f (front expiry, max_pain_dte) |
 
 ### v2 decision (advisory; persisted training rows only)
 | ID | file:line | Violation | Status |
@@ -130,5 +131,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 34 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 23 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.
