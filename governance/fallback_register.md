@@ -39,8 +39,8 @@ P1/P2 rows are to be merged here as each file is repaired.
 | C-05 | call_engine.py:1892-1901, 1939-1948 | readiness defaults 0 / "WAIT" / "dormant", except -> 0 | readiness | FIXED 739fb9fc |
 | C-06 | call_engine.py:1916-1920 | put resistance falls back to support below | put readiness | FIXED 739fb9fc |
 | C-07 | call_engine.py:1880, 1927 | readiness trend: rules.zone_label -> MVP zone | readiness | FIXED 739fb9fc |
-| C-08 | call_engine.py:408-410 | unhandled WAIT reasons print "insufficient confirmation" (incl. no_measured_stop) | The Call headline | OPEN |
-| C-09 | signals.py:330 | calibration timeframe `or "1m"` defeats the writer's refusal | calibration row (env-gated) | OPEN |
+| C-08 | call_engine.py:408-410 | unhandled WAIT reasons print "insufficient confirmation" (incl. no_measured_stop) | The Call headline | FIXED 2066e680 |
+| C-09 | signals.py:330 | calibration timeframe `or "1m"` defeats the writer's refusal | calibration row (env-gated) | FIXED 2066e680 |
 | F-09 | prediction_engine.py:436-446 | 15m/60m "structure approximation" text | readiness | OPEN |
 | F-10 | prediction_engine.py:420, 445-446 | missing charm -> "No clear trend — range" | readiness | OPEN |
 | S-14 | lifecycle_rule_core.py:203-208 | T1 = 2R fallback (also overrides the similar-setups avg5 when it is <= 1.5R) | The Call target | OPEN |
@@ -128,5 +128,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 38 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 36 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.
