@@ -133,3 +133,27 @@ def test_directional_setup_without_a_measured_move_is_wait():
         assert call.signal == "wait", avg5
         assert call.wait_blocker["reason"] == WAIT_BLOCKER_REASON_NO_TARGET
         assert (call.entry, call.stop, call.target, call.target2) == (None, None, None, None)
+
+
+# ── F-09 / F-10: context reads state only what was measured ─────────────────────
+
+def test_timeframe_reads_claim_only_measured_facts():
+    from types import SimpleNamespace
+
+    import prediction_engine as pe
+    from tests.mvp_test_fixtures import minimal_mvp_features
+
+    def reads(zone, vwap, charm):
+        mvp = minimal_mvp_features(zone=zone)
+        mvp = {**mvp, "vwap_side": vwap} if "vwap_side" in mvp else mvp
+        return pe._timeframe_reads(SimpleNamespace(charm_direction=charm), mvp_features=mvp)
+
+    r = reads("pin_bull", "below", None)
+    assert r["60m"] is None                                   # no charm -> no "range" claim
+    assert r["15m"] is None or "lower high" not in r["15m"].lower()   # never an unmeasured pattern
+    r2 = reads("pin_bull", "below", "selling")
+    assert "charm selling" in r2["60m"].lower()
+    for text in (r["15m"], r2["15m"]):
+        if text:
+            for unmeasured in ("lower high", "higher low", "holding", "above gamma walls", "confirmed"):
+                assert unmeasured not in text.lower(), text
