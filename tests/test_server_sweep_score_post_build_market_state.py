@@ -77,13 +77,14 @@ def test_compute_sweep_score_called_after_build_market_state():
 def test_void_factor_default_hoisted_outside_section_8_try():
     """_void_factor must be defined before the Section 8 try block (sweep_score post-build relies on it)."""
     src = _fetch_state_source()
-    # The default-init block above the Section 8 try must include _void_factor = 0.0.
+    # The default-init block above the Section 8 try must define _void_factor -- as None
+    # (not measured), never 0.0: a 0.0 was a present leg the sweep score never measured.
     # Look for the Section 8 marker, then the init block immediately below it.
     sec8 = src.find("Section 8 — Predictive Positioning Signals")
     assert sec8 > 0, "Section 8 header marker must remain"
     init_window = src[sec8 : sec8 + 1500]
-    assert "_void_factor = 0.0" in init_window, (
-        "_void_factor = 0.0 must be initialized in the Section 8 default block "
+    assert "_void_factor = None" in init_window and "_void_factor = 0.0" not in init_window, (
+        "_void_factor = None must be initialized in the Section 8 default block "
         "(before the try) so the post-build sweep_score still has a value when "
         "Section 8 raises early"
     )

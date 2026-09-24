@@ -242,7 +242,6 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
     first_classified_at = None
     gex_changed_at = None
     last_admission: dict = {}
-    last_surf: dict = {}
     deadline = t_requested + MAX_WAIT_SEC
     while time.monotonic() < deadline:
         try:
@@ -252,7 +251,6 @@ def measure_one(base: str, ticker: str, scope: str) -> dict:
             # surfaces as this measurement's own "never resolved" notes below.
             time.sleep(POLL_INTERVAL_SEC)
             continue
-        last_surf = surf
         seq = surf.get("surface_seq")
         if first_usable_at is None and seq is not None and (
                 baseline_seq is None or seq > baseline_seq):

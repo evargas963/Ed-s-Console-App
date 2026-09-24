@@ -1256,7 +1256,7 @@ def compute_volume_oi_ratio(
     }
 
 
-def flow_imbalance_label_from_normalized(normalized: float | None) -> str:
+def flow_imbalance_label_from_normalized(normalized: float | None) -> str | None:
     """ONE label authority for the persisted/served flow_imbalance number.
 
     F11 residual: the live server used to stamp flow_imbalance_label from the
@@ -1266,11 +1266,11 @@ def flow_imbalance_label_from_normalized(normalized: float | None) -> str:
     function of the same normalized value that is persisted and served.
     """
     if normalized is None:
-        return "unknown"
+        return None          # no measured imbalance -> no label (was the string "unknown")
     try:
         x = float(normalized)
     except (TypeError, ValueError):
-        return "unknown"
+        return None
     if x > 0.3:
         return "strong_call_demand"
     if x > 0.1:
@@ -1282,6 +1282,36 @@ def flow_imbalance_label_from_normalized(normalized: float | None) -> str:
     return "balanced"
 
 
+def _atm_window_legs(exposures_by_strike: dict, spot: float, window_pts: float):
+    """Summed strike_flow_legs over strikes within `window_pts` of spot, the strike count, and
+    the per-strike volume activity. None when there is no strike in the window or ANY strike
+    in it has unreported sizes/volume -- never a sum over part of the window."""
+    from math_exposure_core import strike_flow_legs
+    if not exposures_by_strike or not spot:
+        return None
+    sums = {"call_bid": 0.0, "call_ask": 0.0, "put_bid": 0.0, "put_ask": 0.0,
+            "call_volume": 0.0, "put_volume": 0.0}
+    n = 0
+    activity: list[float] = []
+    for strike, bucket in exposures_by_strike.items():
+        try:
+            k = float(strike)
+        except (TypeError, ValueError):
+            return None
+        if abs(k - float(spot)) > window_pts:
+            continue
+        legs = strike_flow_legs(bucket)
+        if legs is None:
+            return None
+        n += 1
+        for key in sums:
+            sums[key] += legs[key]
+        activity.append(legs["call_volume"] + legs["put_volume"])
+    if n == 0:
+        return None
+    return sums, n, activity
+
+
 def compute_option_flow_imbalance(
     exposures_by_strike: dict,
     spot: float,
@@ -1289,57 +1319,25 @@ def compute_option_flow_imbalance(
     window_pts: float = 5.0,
 ) -> dict:
     """
-    Bid/ask size imbalance across strikes near ATM — order flow proxy.
+    Bid/ask size imbalance across strikes near ATM -- a displayed-size proxy for flow.
 
-    Positive imbalance → buyers dominating (bid-side larger). Bullish.
-    Negative imbalance → sellers dominating (ask-side larger). Bearish.
-    Near zero → balanced flow.
-
-    This is the closest to real order flow Schwab gives you without tick data.
-
-    Args:
-        exposures_by_strike: strike → bucket dict with bid_size, ask_size fields
-        spot: current price
-        window_pts: aggregation window from spot
-
-    Returns dict with net_imbalance, normalized (-1 to +1), label, components.
+    net = (call_bid - call_ask) - (put_bid - put_ask); normalized = net / total displayed size.
+    All None when the window has no strike, a strike with unreported sizes, or zero displayed
+    size (2026-09-24): it used to return 0 / "balanced" for no data and sum partial legs.
     """
-    if not exposures_by_strike or not spot:
-        return {"net_imbalance": 0, "normalized": 0, "label": "unknown",
-                "call_imbalance": 0, "put_imbalance": 0}
-
-    call_bid = call_ask = put_bid = put_ask = 0.0
-
-    for strike, bucket in exposures_by_strike.items():
-        k = float(strike)
-        if abs(k - spot) > window_pts:
-            continue
-        cb = bucket_metric(bucket, "call_bid_size")
-        ca = bucket_metric(bucket, "call_ask_size")
-        pb = bucket_metric(bucket, "put_bid_size")
-        pa = bucket_metric(bucket, "put_ask_size")
-        if cb is not None:
-            call_bid += cb
-        if ca is not None:
-            call_ask += ca
-        if pb is not None:
-            put_bid += pb
-        if pa is not None:
-            put_ask += pa
-
-    # Call imbalance: bid > ask = buyers accumulating calls (bullish)
-    call_imb = call_bid - call_ask
-    # Put imbalance: bid > ask = buyers accumulating puts (bearish)
-    put_imb = put_bid - put_ask
-
-    # Net: call buying pressure minus put buying pressure
-    # Positive = more call demand than put demand = bullish flow
+    none = {"net_imbalance": None, "normalized": None, "label": None,
+            "call_imbalance": None, "put_imbalance": None}
+    got = _atm_window_legs(exposures_by_strike, spot, window_pts)
+    if got is None:
+        return none
+    s, _, _ = got
+    total = s["call_bid"] + s["call_ask"] + s["put_bid"] + s["put_ask"]
+    if total <= 0:
+        return none
+    call_imb = s["call_bid"] - s["call_ask"]
+    put_imb = s["put_bid"] - s["put_ask"]
     net = call_imb - put_imb
-
-    # Normalize to -1..+1
-    total = call_bid + call_ask + put_bid + put_ask
-    normalized = net / total if total > 0 else 0
-    normalized = max(-1.0, min(1.0, normalized))
+    normalized = max(-1.0, min(1.0, net / total))
     return {
         "net_imbalance": round(net),
         "normalized": round(normalized, 3),
@@ -1354,98 +1352,34 @@ def atm_flow_window_totals(
     spot: float,
     *,
     window_pts: float = 5.0,
-) -> dict[str, float | int]:
-    """
-    Near-ATM aggregates used for option flow imbalance (same strike window as
-    flow_imbalance_normalized_with_fallback). For inspection / debugging only.
-    """
-    empty: dict[str, float | int] = {
-        "strikes_in_window": 0,
-        "call_vol": 0.0,
-        "put_vol": 0.0,
-        "call_bid": 0.0,
-        "call_ask": 0.0,
-        "put_bid": 0.0,
-        "put_ask": 0.0,
-    }
-    if not exposures_by_strike or not spot:
-        return empty
-    spot_f = float(spot)
-    call_bid = call_ask = put_bid = put_ask = 0.0
-    call_vol = put_vol = 0.0
-    n = 0
-    for strike, bucket in exposures_by_strike.items():
-        try:
-            k = float(strike)
-        except (TypeError, ValueError):
-            continue
-        if abs(k - spot_f) > window_pts:
-            continue
-        n += 1
-        b = bucket or {}
-        cb = bucket_metric(b, "call_bid_size")
-        ca = bucket_metric(b, "call_ask_size")
-        pb = bucket_metric(b, "put_bid_size")
-        pa = bucket_metric(b, "put_ask_size")
-        if cb is not None:
-            call_bid += cb
-        if ca is not None:
-            call_ask += ca
-        if pb is not None:
-            put_bid += pb
-        if pa is not None:
-            put_ask += pa
-        cv = b.get("call_volume")
-        pv = b.get("put_volume")
-        if cv is not None:
-            call_vol += float(cv)
-        if pv is not None:
-            put_vol += float(pv)
-    return {
-        "strikes_in_window": n,
-        "call_vol": call_vol,
-        "put_vol": put_vol,
-        "call_bid": call_bid,
-        "call_ask": call_ask,
-        "put_bid": put_bid,
-        "put_ask": put_ask,
-    }
+) -> dict[str, float | int | None]:
+    """Near-ATM aggregates (inspection / debugging). Values None when the window is unknown
+    (no strike, or a strike with unreported sizes/volume) -- they used to read 0."""
+    got = _atm_window_legs(exposures_by_strike, spot, window_pts)
+    if got is None:
+        return {"strikes_in_window": None, "call_vol": None, "put_vol": None,
+                "call_bid": None, "call_ask": None, "put_bid": None, "put_ask": None}
+    s, n, _ = got
+    return {"strikes_in_window": n, "call_vol": s["call_volume"], "put_vol": s["put_volume"],
+            "call_bid": s["call_bid"], "call_ask": s["call_ask"],
+            "put_bid": s["put_bid"], "put_ask": s["put_ask"]}
 
 
-def flow_imbalance_normalized_with_fallback(
+def option_flow_book_imbalance(
     exposures_by_strike: dict,
     spot: float,
     *,
     window_pts: float = 5.0,
 ) -> tuple[float | None, str]:
-    """
-    Prefer book imbalance (bid/ask sizes) near ATM; if combined book size is ~0,
-    use call vs put volume ratio in the same window (archived chains often lack sizes).
+    """THE flow_imbalance number: the near-ATM displayed-size (book) imbalance, or None.
 
-    Returns (normalized in [-1, 1], source) where source is 'book', 'volume', or 'none'.
+    Returns (normalized, source) with source "book" or "none". This was
+    flow_imbalance_normalized_with_fallback: when displayed size was ~0 it switched to the
+    call-vs-put VOLUME ratio -- a different quantity under the same field (audit S-06,
+    2026-09-24: no fallbacks).
     """
-    sums = atm_flow_window_totals(exposures_by_strike, spot, window_pts=window_pts)
-    if not exposures_by_strike or not spot:
-        return None, "none"
-    spot_f = float(spot)
-    call_bid = float(sums["call_bid"])
-    call_ask = float(sums["call_ask"])
-    put_bid = float(sums["put_bid"])
-    put_ask = float(sums["put_ask"])
-    call_vol = float(sums["call_vol"])
-    put_vol = float(sums["put_vol"])
-    total_book = call_bid + call_ask + put_bid + put_ask
-    if total_book >= 1.0:
-        r = compute_option_flow_imbalance(exposures_by_strike, spot_f, window_pts=window_pts)
-        norm = r.get("normalized")
-        if norm is not None:
-            return float(norm), "book"
-    tot_v = call_vol + put_vol
-    if tot_v > 0:
-        x = (call_vol - put_vol) / tot_v
-        x = max(-1.0, min(1.0, x))
-        return round(x, 3), "volume"
-    return None, "none"
+    norm = compute_option_flow_imbalance(exposures_by_strike, spot, window_pts=window_pts)["normalized"]
+    return (float(norm), "book") if norm is not None else (None, "none")
 
 
 def compute_smart_money_signal(
@@ -1481,78 +1415,40 @@ def compute_smart_money_signal(
         "flow_component": None,
         "concentration_component": None,
     }
-    if not exposures_by_strike or not spot:
+    # Every component must be MEASURED (audit S-07, 2026-09-24): a missing volume / OI / size
+    # leg used to count as 0 -- "no signal" read from absence.
+    got = _atm_window_legs(exposures_by_strike, spot, window_pts)
+    if got is None:
         return dict(_sm_unavailable)
-
-    # Gather data near ATM
-    vol_total = oi_total = 0.0
-    call_bid = call_ask = put_bid = put_ask = 0.0
-    strike_activity = []
-
+    s, _, strike_activity = got
+    from math_exposure_core import strike_total_oi
+    oi_total = 0.0
     for strike, bucket in exposures_by_strike.items():
-        k = float(strike)
-        if abs(k - spot) > window_pts:
+        if abs(float(strike) - float(spot)) > window_pts:
             continue
-        cv_raw = bucket.get("call_volume")
-        pv_raw = bucket.get("put_volume")
-        cv = float(cv_raw) if cv_raw is not None else None
-        pv = float(pv_raw) if pv_raw is not None else None
-        co_raw = bucket.get("call_oi")
-        po_raw = bucket.get("put_oi")
-        co = float(co_raw) if co_raw is not None else None
-        po = float(po_raw) if po_raw is not None else None
-        if cv is not None:
-            vol_total += cv
-        if pv is not None:
-            vol_total += pv
-        if co is not None:
-            oi_total += co
-        if po is not None:
-            oi_total += po
-        cb = bucket_metric(bucket, "call_bid_size")
-        ca = bucket_metric(bucket, "call_ask_size")
-        pb = bucket_metric(bucket, "put_bid_size")
-        pa = bucket_metric(bucket, "put_ask_size")
-        if cb is not None:
-            call_bid += cb
-        if ca is not None:
-            call_ask += ca
-        if pb is not None:
-            put_bid += pb
-        if pa is not None:
-            put_ask += pa
-        strike_act = 0.0
-        has_vol = False
-        if cv is not None:
-            strike_act += cv
-            has_vol = True
-        if pv is not None:
-            strike_act += pv
-            has_vol = True
-        if has_vol:
-            strike_activity.append(strike_act)
-
+        t = strike_total_oi(bucket)
+        if t is None:
+            return dict(_sm_unavailable)
+        oi_total += t
+    vol_total = s["call_volume"] + s["put_volume"]
+    call_bid, call_ask, put_bid, put_ask = s["call_bid"], s["call_ask"], s["put_bid"], s["put_ask"]
     total_size = call_bid + call_ask + put_bid + put_ask
-    if vol_total <= 0 and oi_total <= 0 and total_size <= 0:
-        return dict(_sm_unavailable)
+    if oi_total <= 0 or total_size <= 0 or vol_total <= 0:
+        return dict(_sm_unavailable)     # a ratio with a zero base is undefined, not 0
 
     # Component 1: Volume/OI (0-40)
-    vol_oi = vol_total / oi_total if oi_total > 0 else 0
+    vol_oi = vol_total / oi_total
     vol_oi_score = min(40, vol_oi / 2.0 * 40)  # ratio 2.0 = max score
 
     # Component 2: Flow imbalance (0-40)
     call_imb = call_bid - call_ask
     put_imb = put_bid - put_ask
     net_flow = call_imb - put_imb
-    flow_ratio = abs(net_flow) / total_size if total_size > 0 else 0
+    flow_ratio = abs(net_flow) / total_size
     flow_score = min(40, flow_ratio / 0.5 * 40)  # 50% imbalance = max
 
-    # Component 3: Concentration (0-20)
-    # If activity is concentrated at 1-2 strikes vs spread across many
-    conc_score = 0
-    if strike_activity and max(strike_activity) > 0:
-        top_share = max(strike_activity) / sum(strike_activity) if sum(strike_activity) > 0 else 0
-        conc_score = min(20, top_share * 40)  # 50%+ in one strike = max
+    # Component 3: Concentration (0-20) -- share of window volume at the busiest strike
+    conc_score = min(20, max(strike_activity) / vol_total * 40)  # 50%+ in one strike = max
 
     total_score = min(100, vol_oi_score + flow_score + conc_score)
 

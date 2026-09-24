@@ -437,29 +437,30 @@ def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
 # ------------------------------------------------------------------- F11 options volume imbalance
 def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     """F11: the persisted `flow_imbalance` field is produced by exactly one authority —
-    math_probabilities.flow_imbalance_normalized_with_fallback — on BOTH the live server path
+    math_probabilities.option_flow_book_imbalance (book only; its call/put VOLUME fallback was
+    deleted 2026-09-24, audit S-06) — on BOTH the live server path
     and backfill. The live path used to persist compute_option_flow_imbalance's book-only
     'normalized' (NULL when ATM book was ~0, later filled by backfill's volume fallback): two
     producers for one column and a train/serve skew."""
     srv = _read("server.py")
-    assert "flow_imbalance_normalized_with_fallback" in srv, (
-        "live server must persist flow_imbalance via the one fallback authority")
+    assert "option_flow_book_imbalance" in srv, (
+        "live server must persist flow_imbalance via the one authority")
     assert 'flow_imbalance=_flow_imbalance.get("normalized")' not in srv, (
         "live server still persists the book-only value; it must use the wrapper (F11/RC-345)")
     bf = _read("backfill_flow_imbalance.py")
-    assert "flow_imbalance_normalized_with_fallback" in bf, (
+    assert "option_flow_book_imbalance" in bf, (
         "backfill must use the same one authority as live")
 
     # The authority is governed: it always returns a source discriminator, never a bare value
     # that could silently substitute call/put VOLUME imbalance for bid/ask BOOK imbalance.
-    from math_probabilities import flow_imbalance_normalized_with_fallback
-    val, src = flow_imbalance_normalized_with_fallback({}, 0.0)
+    from math_probabilities import option_flow_book_imbalance
+    val, src = option_flow_book_imbalance({}, 0.0)
     assert val is None and src == "none", "empty input must fail closed with src='none'"
 
     # F11 (reopened) SOURCE travels beside the value: the live server captures the source
     # book and emits flow_imbalance_source into the payload, so a consumer can tell 'book'
     # (bid/ask size) from 'volume' (call/put traded volume) — not a bare generic number.
-    assert "_flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback" in srv, (
+    assert "_flow_imb_norm, _flow_imb_source = option_flow_book_imbalance" in srv, (
         "live server must capture the flow_imbalance SOURCE, not discard it (F11/RC-345)")
     assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in srv, (
         "the flow_imbalance source must reach the payload beside the value (F11/RC-345)")
@@ -474,7 +475,7 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
     from math_probabilities import (
         compute_option_flow_imbalance,
         flow_imbalance_label_from_normalized,
-        flow_imbalance_normalized_with_fallback,
+        option_flow_book_imbalance,
     )
     exposures = {
         100.0: {
@@ -484,27 +485,28 @@ def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
         }
     }
     book = compute_option_flow_imbalance(exposures, 100.0)
-    val, src = flow_imbalance_normalized_with_fallback(exposures, 100.0)
-    assert src == "volume" and val == 0.6
-    assert book.get("label") == "balanced"  # book-only zero — must not be served
-    assert flow_imbalance_label_from_normalized(val) == "strong_call_demand"
+    val, src = option_flow_book_imbalance(exposures, 100.0)
+    # empty displayed book: no imbalance, and no call/put VOLUME ratio standing in (S-06)
+    assert (val, src) == (None, "none")
+    assert book.get("label") is None and book.get("normalized") is None
+    assert flow_imbalance_label_from_normalized(val) is None
 
-    # F11 LIVE-handler contract: the /api/state assignment is these three fields
-    # from one number. A volume-fallback tick must not publish a book-only label.
+    # F11 LIVE-handler contract: the /api/state assignment is these three fields from one
+    # number -- all absent together on this tick.
     served = {
         "flow_imbalance": val,
         "flow_imbalance_source": src,
         "flow_imbalance_label": flow_imbalance_label_from_normalized(val),
     }
-    assert served["flow_imbalance_source"] == "volume"
-    assert served["flow_imbalance_label"] == "strong_call_demand"
-    assert served["flow_imbalance_label"] != book.get("label")
+    assert served == {"flow_imbalance": None, "flow_imbalance_source": "none",
+                      "flow_imbalance_label": None}
 
 
 def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
-    """F11: after app lifespan (desk-start equivalent), GET /api/state serves
-    flow_imbalance + source + label from the same wrapper number on a
-    volume-fallback tick.
+    """F11 + S-06 (2026-09-24): after app lifespan, GET /api/state serves the flow_imbalance
+    triple from the ONE book producer. On an empty ATM book with call-heavy VOLUME the triple
+    is ABSENT (None / "none" / None) -- it used to serve the volume ratio 0.6 under the book
+    field (the deleted volume fallback).
 
     This image has no Schwab token. The persist stamps are the live server
     imports (wrapper + label_from_normalized). The tick is SYNTHETIC_WIRE
@@ -529,11 +531,10 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         }
     }
     book = compute_option_flow_imbalance(exposures, 100.0)
-    val, src = srv.flow_imbalance_normalized_with_fallback(exposures, 100.0)
+    val, src = srv.option_flow_book_imbalance(exposures, 100.0)
     label = srv.flow_imbalance_label_from_normalized(val)
-    assert src == "volume" and val == 0.6
-    assert label == "strong_call_demand"
-    assert label != book.get("label")
+    assert (val, src, label) == (None, "none", None)
+    assert book.get("label") is None
 
     ms = {
         "ticker": "SPY",
@@ -541,7 +542,7 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         "flow_imbalance": val,
         "flow_imbalance_source": src,
         "flow_imbalance_label": label,
-        "f11_wire": "SYNTHETIC_VOLUME_FALLBACK_TICK",
+        "f11_wire": "SYNTHETIC_EMPTY_BOOK_TICK",
     }
     now = time.time()
     cache_key = ("SPY", "2099-01-01")
@@ -565,10 +566,9 @@ def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
         r = client.get("/api/state", params={"ticker": "SPY"})
         assert r.status_code == 200
         body = r.json()
-        assert body.get("flow_imbalance") == 0.6
-        assert body.get("flow_imbalance_source") == "volume"
-        assert body.get("flow_imbalance_label") == "strong_call_demand"
-        assert body["flow_imbalance_label"] != book.get("label")
+        assert body.get("flow_imbalance") is None
+        assert body.get("flow_imbalance_source") == "none"
+        assert body.get("flow_imbalance_label") is None
 
 
 def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) -> None:

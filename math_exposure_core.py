@@ -197,6 +197,11 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # contract that never reported OI is UNKNOWN -- strike_total_oi() reads this so
             # no total ever treats unknown as zero (audit T-04 / M-06..08, 2026-09-24).
             "oi_unreported": 0,
+            # Same discipline for the flow fields (bidSize / askSize / totalVolume): Schwab
+            # reports them on every contract (measured 2026-09-24, 568 real contracts), so an
+            # absent side is a known zero and an unreported one is UNKNOWN.
+            "size_unreported": 0,
+            "volume_unreported": 0,
             # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
             # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
             # question "did any contract that cleared it ALSO report genuine, vendor-
@@ -309,8 +314,12 @@ def compute_exposures_by_strike(
 
         b = _strike_bucket(exposures, strike)
         vol = float_nonnegative_or_none(ct.get("totalVolume"))  # volume: 0 valid, negatives are corruption
-        bsz = _f(ct.get("bidSize"))
-        asz = _f(ct.get("askSize"))
+        bsz = float_nonnegative_or_none(ct.get("bidSize"))   # a size is never negative
+        asz = float_nonnegative_or_none(ct.get("askSize"))
+        if bsz is None or asz is None:
+            b["size_unreported"] += 1
+        if vol is None:
+            b["volume_unreported"] += 1
         if side == "CALL":
             if vol is not None:
                 prev = b.get("call_volume")
@@ -585,6 +594,27 @@ def _window_strikes(strikes: List[float], spot: float, window: int) -> List[floa
 KEY_LEVEL_STRIKE_WINDOW: int | None = None
 
 # Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
+
+
+def strike_flow_legs(bucket: dict) -> dict[str, float] | None:
+    """{call_bid, call_ask, put_bid, put_ask, call_volume, put_volume} at one strike when every
+    contract there reported its sizes and volume; None otherwise. An absent side is a known 0
+    (no contract on it). The ONE reader for option-flow sums (2026-09-24)."""
+    if (not isinstance(bucket, dict) or bucket.get("size_unreported") != 0
+            or bucket.get("volume_unreported") != 0):
+        return None
+    out: dict[str, float] = {}
+    for key, name in (("call_bid_size", "call_bid"), ("call_ask_size", "call_ask"),
+                      ("put_bid_size", "put_bid"), ("put_ask_size", "put_ask"),
+                      ("call_volume", "call_volume"), ("put_volume", "put_volume")):
+        if bucket.get(key) is None:
+            out[name] = 0.0
+            continue
+        v = bucket_metric(bucket, key)
+        if v is None:
+            return None
+        out[name] = v
+    return out
 
 
 def strike_total_oi(bucket: dict) -> float | None:

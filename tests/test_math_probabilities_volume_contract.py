@@ -1,9 +1,9 @@
-"""math_probabilities.compute_volume_oi_ratio/flow_imbalance_normalized_with_fallback
+"""math_probabilities.compute_volume_oi_ratio/option_flow_book_imbalance
 must not treat a missing (None) volume as a dormant zero -- collapsing "unknown" into
 "zero" silently invents a bearish/bullish signal that was never observed."""
 from __future__ import annotations
 
-from math_probabilities import compute_volume_oi_ratio, flow_imbalance_normalized_with_fallback
+from math_probabilities import compute_volume_oi_ratio, option_flow_book_imbalance
 
 
 def test_volume_oi_ratio_does_not_treat_missing_volume_as_dormant_zero():
@@ -50,4 +50,4 @@ def test_flow_imbalance_volume_fallback_fails_closed_when_volume_missing():
         }
     }
 
-    assert flow_imbalance_normalized_with_fallback(exposures, 500.0) == (None, "none")
+    assert option_flow_book_imbalance(exposures, 500.0) == (None, "none")
