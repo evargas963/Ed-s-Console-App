@@ -57,7 +57,7 @@ def test_a_changed_watchlist_row_is_pushed_without_polling(monkeypatch):
     def tick():
         lmp.record_from_level_one_equity("ZZW1", {"key": "ZZW1", "LAST_PRICE": 20.5}, received_ts=time.time())
     t0 = time.monotonic()
-    ev = _read("ZZW1", 4, monkeypatch, during=(2, tick))
+    ev = _read("ZZW1", 4, monkeypatch, during=(3, tick))   # after ": ok", l1_quote, first row
     pushed = [e[1]["row"]["spot"] for e in ev if e[0] == "wl_quote" and e[1]["row"]]
     assert pushed[:2] == [20.0, 20.5]
     assert time.monotonic() - t0 < 1.0                        # checked every 0.1 s, not a 12 s poll
