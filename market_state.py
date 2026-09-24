@@ -1319,11 +1319,12 @@ def build_market_state(
             if consensus_summary:
                 _net_gamma     = _f(getattr(consensus_summary, "net_gamma", None))
                 _net_delta_sig = _f(getattr(consensus_summary, "net_delta", None))
-            if mc_iv_level is not None and mc_iv_level > 0:
-                _iv_level = vol_percent_to_decimal(_f(mc_iv_level))
-            elif totals:
-                t0 = totals[0]
-                _iv_level = vol_percent_to_decimal(_f(getattr(t0, "atm_iv", None)))
+            # ONE definition of the IV level (audit S-05, 2026-09-24): the chain's own ATM IV --
+            # Schwab `volatility` on the ATM call and put, averaged (both legs required, M-09).
+            # It used to take the MC anchor IV first (itself either this value or an IV backed
+            # out of the straddle PRICE, depending on the cycle) and fall back to this one.
+            if totals:
+                _iv_level = vol_percent_to_decimal(_f(getattr(totals[0], "atm_iv", None)))
             _rv_level = vol_percent_to_decimal(_f(realized_vol))
             if totals:
                 t0 = totals[0]
