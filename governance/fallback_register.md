@@ -100,8 +100,8 @@ P1/P2 rows are to be merged here as each file is repaired.
 ### Other persisted scores (math_probabilities.py)
 | ID | file:line | Violation | Flows to | Status |
 |---|---|---|---|---|
-| S-06 | math_probabilities.py:1422-1433 | flow imbalance falls back to call/put volume ratio | snapshots, SignalInput | OPEN |
-| S-07 | math_probabilities.py:1525-1550 | smart-money: missing legs = 0 | snapshots | OPEN |
+| S-06 | math_probabilities.py:1422-1433 | flow imbalance falls back to call/put volume ratio | snapshots, SignalInput | FIXED b5c5aeff |
+| S-07 | math_probabilities.py:1525-1550 | smart-money: missing legs = 0 | snapshots | FIXED b5c5aeff |
 | S-08..10 | math_probabilities.py:658-668, 769-779, 830-840 | breakout / vol-expansion / sweep: missing component = 0 | snapshots | FIXED b6c16570 |
 | S-11 | math_probabilities.py:545-557 | hedging flow re-weights present legs | snapshots | FIXED b6c16570 |
 | S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | OPEN |
@@ -120,7 +120,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | N-08 | server.py /api/fast-quote REST writer; live_market_plane.record_quote; ingest LAST_PRICE carry | REST quotes written into the live plane (replacing stream rows), auth-failure stale carry-forward, REST row restamped as streamed | spot / header / tools | FIXED d944aabf |
 | N-09 | server.py _fetch_state spread + volume | cached-spread label; 4-source volume chain into bar volume | snapshots, candles | FIXED d944aabf |
 | N-10 | server.py _fetch_state | bid/ask/sizes/mark from a per-cycle REST quote while spot is streamed -- two sources and two instants in one persisted row | snapshots, The Call inputs | FIXED e7361e68 |
-| N-11 | server.py _fetch_state expiry select | a requested past expiry is replaced by the default expiry ("using default") instead of refused | state payload | OPEN |
+| N-11 | server.py _fetch_state expiry select | a requested past expiry is replaced by the default expiry ("using default") instead of refused | state payload | FIXED b5c5aeff |
 | N-12 | app/options/order_flow/engine.py, state.py, history.py | order-flow fallbacks: REST quote/extended/regular/underlying + book-top stand-ins for L1 bid/ask/size/mark; rvol 4 current + 5 average sources incl. a candle-average baseline; institutional proxy averaging whichever of 4 legs existed; _weighted_mean_present weight renormalisation; options flow first-contract-only per strike, partial volume/delta sums, put_vol+1e-9; VOLUME for TOTAL_VOLUME; CHANGE_PERCENT (never sent) for change %; ts_recv "now" stamp; tape receipts on the console clock; raw-symbol key; invented 1s span | order-flow payload, snapshots | FIXED e7361e68 |
 | N-13 | server.py _fetch_state | REST Cum Delta "tape" from one polled quote per cycle; candle volume from REST price history (nearest-in-time candle, ms-vs-s magnitude guess, $-stripped retry); plane_quote_authority "rest_*" labels and exception -> "rest_only" | snapshots, cum delta, diagnostics | FIXED e7361e68 |
 | N-14 | live_market_plane vs app/options/order_flow/state | two stores hold the same streamed L1 fields (plane per-field state; order-flow `_top` with its own 25s field freshness) -- not a fallback, a duplicate store that can disagree | order-flow engine vs header | OPEN |
@@ -138,5 +138,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 21 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 18 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.

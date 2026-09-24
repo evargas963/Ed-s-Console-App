@@ -30,7 +30,7 @@ from typing import Any
 
 from backfill_flow_imbalance import _contracts_from_chain_json
 from math_exposure_core import compute_exposures_by_strike
-from math_probabilities import flow_imbalance_normalized_with_fallback
+from math_probabilities import option_flow_book_imbalance
 from calibration.db_guard import register_allow_noncanonical_flag, require_canonical_db_target
 from calibration.paths import DEFAULT_DB
 from snapshot_normalizer import validate_normalization
@@ -154,7 +154,7 @@ def _recomputed_flow(chain_json: str, spot: float) -> tuple[float | None, str]:
     if len(contracts) < 3:
         return None, "skip_few_contracts"
     exposures, _diag = compute_exposures_by_strike(contracts, spot=spot, require_oi=False)
-    flow_norm, src = flow_imbalance_normalized_with_fallback(exposures, spot)
+    flow_norm, src = option_flow_book_imbalance(exposures, spot)
     return flow_norm, src
 
 
