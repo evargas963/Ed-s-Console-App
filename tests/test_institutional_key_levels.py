@@ -379,7 +379,7 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
     from pathlib import Path
 
     from math_probabilities import compute_wall_score_components
-    from v2_decision.a2_lifecycle_sidecar import _structural_levels
+    import v2_decision.a2_lifecycle_sidecar as a2_sidecar
 
     sel_ex, spot, terrain = _wide_vs_selected_wall_books()
     walls = build_walls_rows(sel_ex, spot)
@@ -411,9 +411,10 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
     bind_src = inspect.getsource(consensus_walls_bind_terrain_ssot)
     assert "call_oi_wall=None" in bind_src
     assert "call_vanna_wall=None" in bind_src
-    a2_src = inspect.getsource(_structural_levels)
-    assert "call_oi_wall" not in a2_src
-    assert "put_oi_wall" not in a2_src
+    # The A2 sidecar no longer derives structural levels at all -- it carries The Call's plan
+    # (ONE FAUCET, 2026-09-24) -- so no wall of any kind may be read there.
+    a2_src = inspect.getsource(a2_sidecar)
+    assert "oi_wall" not in a2_src and "gamma_wall" not in a2_src
     oe_src = inspect.getsource(compute_wall_score_components)
     assert "dom_oi_wall" not in oe_src
     ms_src = Path("market_state.py").read_text(encoding="utf-8")

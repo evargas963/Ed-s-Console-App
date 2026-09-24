@@ -171,6 +171,8 @@ WAIT_BLOCKER_REASON_EMISSION = "market_data_emission_gate"
 #: A directional call with no measured stop (no finite ATR) is not a trade -- the stop is
 #: never substituted (operator rule 2026-09-23: no fallbacks).
 WAIT_BLOCKER_REASON_NO_STOP = "no_measured_stop"
+#: Same for the target: no measured T1 -> no plan (S-14).
+WAIT_BLOCKER_REASON_NO_TARGET = "no_measured_target"
 
 
 def _level_proximity_label(dist: Optional[float]) -> Optional[str]:
@@ -702,7 +704,8 @@ def _compute_levels(
     3. T1/T2 = prediction-engine expected moves (empirical move-size stats from
        price history) with R-multiple caps — NO structural-level snapping.
        Key levels / gamma walls are context display only, never plan anchors.
-    4. T2 = predicted move at **primary** horizons (15c / 60c empirical) only.
+       T1 = 5c average move (must pay > MIN_RR); T2 = 15c average move beyond T1.
+    4. A missing / insufficient move is NO target (None) -- never a 2R / T1+1R stand-in.
     5. Maximum R:R cap = 5:1 for T1, 8:1 for T2 (unchanged).
 
     governed_zone is retained for call-site/audit compatibility; it no longer
@@ -714,7 +717,6 @@ def _compute_levels(
     # ── Prediction-based move distances (primary horizons for tradable targets only) ──
     avg5  = pred.avg_5c_pts  if pred and pred.avg_5c_pts is not None else None
     avg15 = pred.avg_15c_pts if pred and pred.avg_15c_pts is not None else None
-    avg60 = pred.avg_60c_pts if pred and pred.avg_60c_pts is not None else None
 
     def _targets(entry, direction, risk):
         return derive_target_levels(
@@ -723,7 +725,6 @@ def _compute_levels(
             risk=risk,
             avg5=avg5,
             avg15=avg15,
-            avg60=avg60,
             structural_levels=[],
         )
 
@@ -1734,6 +1735,16 @@ def compute_call(
         confluence_detail = "no measured stop (no ATR) -- a directional plan needs one"
         wait_blocker = {"reason": WAIT_BLOCKER_REASON_NO_STOP,
                         "detail": "no finite ATR(1m) -- the stop is never guessed"}
+        trade_type = _classify_trade_type(micro_regime, zone, final_signal)
+    elif final_signal in ("long", "short") and target is None:
+        # No measured T1 (no similar-setups 5-bar move, or it pays < MIN_RR): not a trade.
+        # It used to become a flat 2R target (audit S-14).
+        final_signal = "wait"
+        conviction = "low"
+        entry = stop = target2 = None
+        confluence_detail = "no measured target -- the similar-setups 5-bar move is missing or below the minimum R"
+        wait_blocker = {"reason": WAIT_BLOCKER_REASON_NO_TARGET,
+                        "detail": "no measured target (5-bar average move missing or below minimum R)"}
         trade_type = _classify_trade_type(micro_regime, zone, final_signal)
 
     # Reward/risk for T1 and T2

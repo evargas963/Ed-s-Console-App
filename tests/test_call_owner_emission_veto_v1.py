@@ -50,6 +50,7 @@ def _directional_kwargs() -> dict:
         ),
     )
     pred = PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="Lean UP", prediction_dir="up", prediction_target=None,
         historical_5c_dominant_dir="up", historical_5c_dominant_prob=0.47, empirical_confidence="low",
         forward_direction=canonical.direction, forward_prob_up=canonical.probability_up,

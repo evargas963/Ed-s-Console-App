@@ -1210,36 +1210,18 @@ A2_V1_APPROXIMATION_DERIVED_ALLOWLIST: dict[str, str] = {
     "health.soft_gates": "app-side soft-gate list; not a Schwab leaf",
     "health.pin_risk": "derived pin-risk health (no Schwab equivalent)",
     "health.late_day_gamma": "derived late-day-gamma health (no Schwab equivalent)",
-    # lifecycle sidecar derivation_inputs: derived analytics that are NOT
-    # Schwab passthroughs (spot and vix_level are upgraded to v2_compliant
-    # separately and do not appear here).
-    "lifecycle.sidecar.projected_preview.derivation_inputs.mins_elapsed_since_open": (
-        "derived from decision_time_ms / et clock; no Schwab leaf"
-    ),
-    "lifecycle.sidecar.projected_preview.derivation_inputs.risk_multiplier": (
-        "vol regime risk multiplier; app-side derived, no Schwab leaf"
-    ),
-    "lifecycle.sidecar.projected_preview.derivation_inputs.entry": (
-        "app-side trade plan entry price; no Schwab leaf"
-    ),
-    "lifecycle.sidecar.projected_preview.derivation_inputs.direction": (
-        "app-side signal direction (long/short); no Schwab leaf"
-    ),
-    "lifecycle.sidecar.projected_preview.derivation_inputs.risk": (
-        "derived stop distance * spot; no Schwab leaf"
-    ),
-    "lifecycle.sidecar.projected_preview.derivation_inputs.avg5": (
-        "rolling 5c average points; derived analytic"
-    ),
-    "lifecycle.sidecar.projected_preview.derivation_inputs.avg15": (
-        "rolling 15c average points; derived analytic"
-    ),
-    "lifecycle.sidecar.projected_preview.derivation_inputs.avg60": (
-        "rolling 60c average points; derived analytic"
-    ),
-    "lifecycle.sidecar.projected_preview.derivation_inputs.structural_levels": (
-        "derived structural levels (vwap, walls); no Schwab leaf"
-    ),
+    # lifecycle sidecar: the preview carries THE CALL's plan verbatim (ONE FAUCET,
+    # 2026-09-24) -- entry/stop/targets are The Call's own derived plan, not Schwab leaves.
+    # The old re-derivation inputs (clock, VIX multiplier, risk, avg moves, structural
+    # levels) are gone with the second producer.
+    **{
+        f"lifecycle.sidecar.projected_preview.{k}": "The Call's own plan field; not a Schwab leaf"
+        for k in (
+            "derivation_inputs.direction", "derivation_inputs.entry", "derivation_inputs.stop",
+            "derivation_inputs.target", "derivation_inputs.target2",
+            "projected_stop", "projected_target", "projected_target2",
+        )
+    },
 }
 
 

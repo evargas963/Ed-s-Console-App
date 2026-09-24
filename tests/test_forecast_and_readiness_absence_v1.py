@@ -113,3 +113,23 @@ def test_wait_headline_names_its_blocker():
         h = headline({"reason": reason, "detail": f"detail-for-{reason}"})
         assert f"detail-for-{reason}" in h and "insufficient confirmation" not in h, h
     assert "some_new_reason" in headline({"reason": "some_new_reason"})
+
+
+# ── S-14: a directional setup with no measured T1 is WAIT, never a 2R plan ──────
+
+def test_directional_setup_without_a_measured_move_is_wait():
+    import dataclasses
+
+    from call_engine import WAIT_BLOCKER_REASON_NO_TARGET, compute_call
+    from tests.test_call_owner_emission_veto_v1 import _directional_kwargs
+    from tests.test_call_prediction_vote import _inp
+
+    kw = _directional_kwargs()
+    assert compute_call(_inp(), kw.pop("rules"), kw.pop("pred"), **kw).signal == "long"
+    for avg5 in (None, 0.01):   # missing, and measured but below the minimum R
+        kw = _directional_kwargs()
+        pred = dataclasses.replace(kw.pop("pred"), avg_5c_pts=avg5)
+        call = compute_call(_inp(), kw.pop("rules"), pred, **kw)
+        assert call.signal == "wait", avg5
+        assert call.wait_blocker["reason"] == WAIT_BLOCKER_REASON_NO_TARGET
+        assert (call.entry, call.stop, call.target, call.target2) == (None, None, None, None)

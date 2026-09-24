@@ -358,6 +358,7 @@ def test_net_delta_none_propagates_to_call_sizing_decision():
         ),
     )
     pred = PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="Lean UP",
         prediction_dir="up",
         prediction_target=None,

@@ -115,7 +115,6 @@ def test_derive_target_levels_long_preserves_5c_15c_caps_and_snap():
         risk=2.0,
         avg5=6.0,
         avg15=10.0,
-        avg60=None,
         structural_levels=[105.8, 109.8],
     )
 
@@ -127,42 +126,32 @@ def test_derive_target_levels_long_preserves_5c_15c_caps_and_snap():
     assert levels.target2_snapped is True
 
 
-def test_derive_target_levels_fallbacks_and_short_direction():
-    """Audit rows 80/83: missing avg moves preserve 2R and T1 plus 1R fallbacks."""
+def test_derive_target_levels_missing_moves_give_no_target():
+    """Audit S-14..S-16 (2026-09-24, no fallbacks): no 5c move -> NO target, never 2R; a 5c
+    move that pays <= MIN_RR is a measured "not enough", not a reason to invent 2R."""
     levels = derive_target_levels(
-        entry=100.0,
-        direction="short",
-        risk=2.0,
-        avg5=None,
-        avg15=None,
-        avg60=None,
-        structural_levels=[],
-    )
-
-    assert levels.target == pytest.approx(96.0)
-    assert levels.target2 == pytest.approx(94.0)
-    assert levels.target_source == "2r_fallback"
-    assert levels.target2_source == "1r_offset_from_t1"
-    assert levels.target_snapped is False
-    assert levels.target2_snapped is False
+        entry=100.0, direction="short", risk=2.0, avg5=None, avg15=None, structural_levels=[])
+    assert (levels.target, levels.target2) == (None, None)
+    assert levels.target_source == "no_5c_avg_move"
+    below = derive_target_levels(
+        entry=100.0, direction="long", risk=2.0, avg5=2.9, avg15=50.0, structural_levels=[])
+    assert (below.target, below.target2) == (None, None)
+    assert below.target_source == "5c_avg_move_below_min_rr"
 
 
-def test_derive_target_levels_uses_60c_when_15c_missing_and_caps_rr():
-    """Audit row 80: target2 can use 60c and remains capped at 8R."""
+def test_derive_target_levels_t2_is_15c_only_and_caps_rr():
+    """T1 capped at 5R; no 15c move -> no T2 (the 60c move and T1+1R no longer stand in)."""
     levels = derive_target_levels(
-        entry=100.0,
-        direction="long",
-        risk=2.0,
-        avg5=100.0,
-        avg15=None,
-        avg60=100.0,
-        structural_levels=[],
-    )
-
+        entry=100.0, direction="long", risk=2.0, avg5=100.0, avg15=None, structural_levels=[])
     assert levels.target == pytest.approx(110.0)
-    assert levels.target2 == pytest.approx(116.0)
     assert levels.target_source == "5c_avg_move"
-    assert levels.target2_source == "60c_avg_move"
+    assert levels.target2 is None and levels.target2_source == "no_15c_avg_move"
+    capped = derive_target_levels(
+        entry=100.0, direction="long", risk=2.0, avg5=100.0, avg15=100.0, structural_levels=[])
+    assert capped.target2 == pytest.approx(116.0) and capped.target2_source == "15c_avg_move"
+    inside = derive_target_levels(
+        entry=100.0, direction="long", risk=2.0, avg5=8.0, avg15=7.0, structural_levels=[])
+    assert inside.target2 is None and inside.target2_source == "15c_avg_move_within_t1"
 
 
 def test_fire_exit_long_stop_target_and_time_expiry():

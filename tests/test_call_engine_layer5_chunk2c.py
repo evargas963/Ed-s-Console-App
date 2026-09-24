@@ -29,6 +29,7 @@ def _rules_long() -> RulesCard:
 
 def _pred() -> PredictiveCard:
     return PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="",
         prediction_dir="up",
         prediction_target=None,

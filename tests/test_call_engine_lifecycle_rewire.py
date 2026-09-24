@@ -81,7 +81,7 @@ def test_compute_levels_delegates_target_geometry_to_lifecycle_rule_core(monkeyp
     assert calls[0]["direction"] == "long"
     assert calls[0]["avg5"] == pytest.approx(4.0)
     assert calls[0]["avg15"] == pytest.approx(5.0)
-    assert calls[0]["avg60"] == pytest.approx(6.0)
+    assert "avg60" not in calls[0]   # the 60c move no longer stands in for T2 (S-15)
     # Price-action plan (operator 2026-06-11): key levels never enter target
     # geometry — vwap/gamma walls are context display only, not snap anchors.
     assert calls[0]["structural_levels"] == []
@@ -95,13 +95,17 @@ def test_compute_levels_never_snaps_to_structural_levels():
         _inp(spot=1000.0, vwap=1003.5, atr=1.2),
         "long",
         rules=None,
-        pred=_pred(),
+        pred=_pred(avg_5c_pts=3.0, avg_15c_pts=5.0),
         risk_multiplier=1.0,
         governed_zone="",
     )
 
-    # R-multiple ladder off the 1.8-pt stop: T1 = entry + 2R, T2 = entry + 3R.
-    assert result == (1000.0, 998.2, 1003.6, 1005.4)
+    # 1.8-pt stop; T1 = the 3.0 5c move (> 1.5R = 2.7), T2 = the 5.0 15c move -- the VWAP
+    # at 1003.5 does not pull T1.
+    assert result == (1000.0, 998.2, 1003.0, 1005.0)
+    # no measured moves -> entry/stop, but NO targets (not a 2R/3R ladder)
+    assert ce._compute_levels(_inp(spot=1000.0, atr=1.2), "long", rules=None, pred=_pred(),
+                              risk_multiplier=1.0, governed_zone="") == (1000.0, 998.2, None, None)
 
 
 def test_stop_distance_is_atr_only_and_never_guessed():
@@ -143,7 +147,7 @@ def test_compute_levels_preserves_short_targets_and_rr_caps():
         _inp(spot=1000.0, atr=1.2),
         "short",
         rules=None,
-        pred=_pred(avg_5c_pts=100.0, avg_60c_pts=100.0),
+        pred=_pred(avg_5c_pts=100.0, avg_15c_pts=100.0),
         risk_multiplier=1.0,
         governed_zone="",
     )

@@ -141,9 +141,14 @@ def test_projected_preview_status_policy_pending_when_entry_candidate_derivable(
     preview = _a2()["lifecycle"]["sidecar"]["projected_preview"]
 
     assert preview["preview_status"] == "policy_pending"
-    assert preview["projected_stop"]["value"] == 498.98
-    assert preview["projected_target"]["value"] == 503.5
+    # ONE FAUCET (2026-09-24): The Call's own plan, verbatim. This used to re-derive a VIX
+    # stop (498.98) and a VWAP-snapped T1 (503.5) that disagreed with The Call (498.5 / 503.0).
+    assert preview["projected_stop"]["value"] == 498.5
+    assert preview["projected_target"]["value"] == 503.0
     assert preview["projected_target2"]["value"] == 505.0
+    no_t2 = _a2(_ms(target2=None))["lifecycle"]["sidecar"]["projected_preview"]
+    assert no_t2["preview_status"] == "policy_pending"
+    assert no_t2["projected_target2"]["value"] is None   # no T2 on The Call -> none here
 
 
 def test_projected_preview_status_no_entry_candidate_when_a2_has_no_trade_candidate():
@@ -202,40 +207,20 @@ def test_projected_preview_policy_fields_remain_policy_object_pending():
 
 
 def test_projected_preview_derivation_inputs_enumerate_all_contract_keys():
-    """Contract: lifecycle contract L245 - derivation_inputs enumerates attempted inputs."""
+    """The preview's inputs are The Call's plan fields -- no VIX / clock / risk / avg-move
+    re-derivation inputs (ONE FAUCET, 2026-09-24)."""
     inputs = _a2()["lifecycle"]["sidecar"]["projected_preview"]["derivation_inputs"]
 
-    assert set(inputs) == {
-        "spot",
-        "vix_level",
-        "mins_elapsed_since_open",
-        "risk_multiplier",
-        "entry",
-        "direction",
-        "risk",
-        "avg5",
-        "avg15",
-        "avg60",
-        "structural_levels",
-    }
+    assert set(inputs) == {"direction", "entry", "stop", "target", "target2"}
     for payload in inputs.values():
         assert {"value", "source", "source_classification"}.issubset(payload)
-    assert inputs["spot"]["value"] == 499.5
-    # Schwab-direct equity quote ladder; see PILOT_1B_A2_0DTE_CONTRACT.md and
-    # server.py::_extract_quote / market_context.py::_extract_quote.
-    assert inputs["spot"]["source"] == "v2_compliant"
-    assert inputs["spot"]["source_classification"] == "schwab_native_normalized"
-    assert inputs["spot"]["detail"] == "quotes.quote.lastPrice"
-    # Schwab-direct $VIX quote payload (same equity-quote ladder).
-    assert inputs["vix_level"]["value"] == 21.0
-    assert inputs["vix_level"]["source"] == "v2_compliant"
-    assert inputs["vix_level"]["source_classification"] == "schwab_native_normalized"
-    assert inputs["vix_level"]["detail"] == "quotes.$VIX.quote.lastPrice"
-    assert inputs["mins_elapsed_since_open"]["value"] == 60.0
-    # MarketState producer key is `vol_regime_risk_mult` (see market_state.py
-    # ms.vol_regime_risk_mult). The consumer reads the real value, not None.
-    assert inputs["risk_multiplier"]["value"] == 1.0
-    assert inputs["risk_multiplier"]["source_classification"] == "schwab_native_normalized"
+        assert payload["source_classification"] == "the_call_plan"
+    assert inputs["direction"]["value"] == "long"
+    assert (inputs["entry"]["value"], inputs["stop"]["value"]) == (500.0, 498.5)
+    # the direction comes from call_signal only -- final_signal no longer stands in
+    only_final = _ms(call_signal=None, final_signal="long")
+    assert _a2(only_final)["lifecycle"]["sidecar"]["projected_preview"]["derivation_inputs"][
+        "direction"]["value"] is None
 
 
 def test_projected_preview_metadata_source_module_and_timestamp():
