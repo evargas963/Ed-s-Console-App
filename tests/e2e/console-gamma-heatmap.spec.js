@@ -2462,7 +2462,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     const scopeText = await page.locator('#heatScope').textContent();
-    expect(scopeText).toMatch(/STREAMING·50%/);
+    expect(scopeText).toMatch(/OPT CELLS·50%/);
     expect(scopeText).not.toMatch(/LIVE/);   // the literal word must never appear below 100%
     await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 outside the stream budget, 0 unavailable of 2 visible/);
   });

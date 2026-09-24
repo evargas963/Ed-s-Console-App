@@ -490,7 +490,8 @@
       b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
     });
     buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
-    pollWatchlistQuotes();   // don't make a newly-added row (or first load) wait out a full slow tick
+    declareWatchlistStream(loadWL());
+    if (state.ticker) openHeaderStream(state.ticker);
   }
   var _wlMsgTimer = null;
   function wlNotify(msg) {   // understandable feedback for invalid/duplicate add — aria-live, self-clearing
@@ -754,35 +755,8 @@
       .catch(function () { _wlDeclared = null; });   // retried on the next poll
   }
   function pollWatchlistQuotes() {
-    var list = loadWL();
-    declareWatchlistStream(list);
-    if (!list.length) return;
-    var myGen = ++_wlPollGen;
-    fetch('/api/watchlist-quotes?tickers=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('http_' + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        if (myGen !== _wlPollGen) return;   // superseded by a newer poll — drop this stale response
-        if (!data || data.ok === false) {
-          // The WHOLE batch call failed (auth/vendor/transport) -- distinct from a symbol
-          // simply having no data right now (data.quotes just omits it, handled below).
-          markWlDegraded('Quotes unavailable' + (data && data.error ? ' (' + data.error + ')' : ''));
-          return;
-        }
-        markWlHealthy();
-        var quotes = data.quotes || {};
-        list.forEach(function (sym) {
-          var row = quotes[sym];
-          setWlRow(sym, row ? row.spot : null, row ? row.chg_pct : null,
-            row ? row.spot_state : 'unavailable');
-        });
-      })
-      .catch(function () {
-        if (myGen !== _wlPollGen) return;
-        markWlDegraded('Connection lost — quotes unavailable');
-      });
+    // Price source is quote_tick. This only (re)declares the daemon roster.
+    declareWatchlistStream(loadWL());
   }
 
   var _sse = null, _sseUp = false, _lastSseTs = 0, _sseOpenedTs = 0, _l1Gen = {}, _l1Ts = {};
@@ -811,34 +785,9 @@
     try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)
                                  + (wl.length ? '&watch=' + encodeURIComponent(_sseWatch) : '')); }
     catch (e) { _sse = null; return; }
-    _sse.addEventListener('l1_projection', function (ev) {
-      // the server sends an ENVELOPE {l1_sse_schema, scope, l1_generation, l1_server_build_ts,
-      // payload}; the quote fields live on env.payload (server.py:_l1 envelope). Parse envelope,
-      // validate envelope+payload scope, guard the PAYLOAD's generation, render from the payload.
-      var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
-      var p = env && env.payload; if (!p) return;
-      var G = window.EdL1SseGuards;
-      if (G && !G.l1EnvelopeScopeMatches(env.scope, state.ticker, '')) return;
-      if (G && !G.l1PayloadMatchesActiveScope(p.ticker, p.selected_exp, state.ticker, '')) return;
-      var gen = (p.l1_generation != null ? p.l1_generation : env.l1_generation);
-      var bts = (p._server_build_ts != null ? p._server_build_ts : env.l1_server_build_ts);
-      if (G && !G.l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)) return;
-      _sseUp = true; _lastSseTs = Date.now();
-      var ageMs = bts ? Math.max(0, Math.round(Date.now() - bts * 1000)) : null;
-      // TRUTHFUL LIVE: receiving an SSE event only proves the SERVER pushed a projection
-      // promptly — it does not prove the underlying quote is fresh (the server can build
-      // and push on schedule from an L0 row that itself stopped updating). p.l1_stale is
-      // the payload's own real freshness verdict (build_l1_context: stale when the L0
-      // spot is missing or unusable) — use it, not "an event arrived", to label LIVE vs
-      // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
-      var stale = !!p.l1_stale || p.spot_state === 'stale';
-      var unavailable = p.spot_state === 'unavailable' || p.spot == null;
-      paintQuoteNextFrame({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
-        chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
-        spotState: p.spot_state,
-        feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
-        feedLabel: unavailable ? 'UNAVAILABLE' : (stale ? 'STALE' : 'LIVE'),
-        ageLabel: ageMs != null ? ageMs + 'ms' : 'push' });
+    _sse.addEventListener('l1_projection', function () {
+      // L2/context only. Displayed last/bid/ask come from quote_tick. Receiving a
+      // projection must not keep the header "up" when the price push is dead.
     });
     // Independent-review finding (2026-09-12): the heatmap only ever refetched on the 3s/12s
     // slow-tick poll (liveTick's `ed:refresh` at tick % 4 === 0) -- a Playwright test that
@@ -856,29 +805,27 @@
     // gamma-surface/per-strike data (ed-gamma.js, ed-gamma-panels.js's GEX-by-strike panel,
     // ed-gamma-chart.js) -- the 12s poll's `ed:refresh{slow}` remains the ONLY thing that
     // drives every other module's slower, session-cadence refresh.
-    // l1_quote: the server's current quote + live verdict, sent on connect and every idle
-    // second (server.py:_l1_quote_event). Painted as-is -- the browser computes nothing but
-    // the display age of the last trade from the two server timestamps it was given.
-    _sse.addEventListener('l1_quote', function (ev) {
+    _sse.addEventListener('quote_tick', function (ev) {
       var q; try { q = JSON.parse(ev.data); } catch (e) { return; }
-      if (!q || String(q.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
-      _sseUp = true; _lastSseTs = Date.now();
-      var live = q.spot_state === 'live' && q.spot != null;
-      var tradeAge = (live && q.trade_ts_ms) ? Math.max(0, Math.round(q.server_ts - q.trade_ts_ms / 1000)) : null;
-      paintQuoteNextFrame({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
-        chgPct: q.chg_pct, spotState: q.spot_state,
-        feedCls: live ? '' : 'stale',
-        feedLabel: live ? 'LIVE' : 'UNAVAILABLE',
-        ageLabel: tradeAge != null ? ('last trade ' + tradeAge + 's') : (live ? 'live' : 'no live feed') });
-    });
-    // wl_quote: one watchlist row, pushed the moment it changes (server.py:_watchlist_row,
-    // the same row GET /api/watchlist-quotes serves). row null = UNAVAILABLE.
-    _sse.addEventListener('wl_quote', function (ev) {
-      var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-      if (!m || !m.ticker) return;
-      var r = m.row;
-      setWlRow(m.ticker, r ? r.spot : null, r ? r.chg_pct : null, r ? r.spot_state : 'unavailable');
-      markWlHealthy();
+      if (!q || !q.ticker) return;
+      var sym = String(q.ticker).toUpperCase();
+      if (sym === String(state.ticker || '').toUpperCase()) {
+        _sseUp = true; _lastSseTs = Date.now();
+        var live = q.spot_state === 'live' && q.spot != null;
+        var tradeAge = (live && q.trade_ts_ms) ? Math.max(0, Math.round(q.server_ts - q.trade_ts_ms / 1000)) : null;
+        paintQuoteNextFrame({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
+          chgPct: q.chg_pct, quoteIngestion: q.quote_ingestion,
+          spotState: q.spot_state,
+          feedCls: live ? '' : 'stale',
+          feedLabel: live ? 'LIVE' : 'UNAVAILABLE',
+          ageLabel: tradeAge != null ? ('last trade ' + tradeAge + 's') : (live ? 'live' : 'no live feed') });
+      }
+      if (loadWL().indexOf(sym) !== -1) {
+        setWlRow(sym, q.spot_state === 'live' ? q.spot : null,
+          q.spot_state === 'live' ? q.chg_pct : null,
+          q.spot_state || 'unavailable');
+        markWlHealthy();
+      }
     });
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
@@ -947,13 +894,13 @@
   var _tick = 0;
   function liveTick() {
     _tick++;
-    if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) pollWatchlistQuotes(); return; }
-    var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 3000);   // l1_quote arrives every second
+    if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) declareWatchlistStream(loadWL()); return; }
+    var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 3000);   // quote_tick idle beat is 1 s
     if (!sseHealthy) markHeaderPushDown();            // the gap is shown, never filled
     if (!sseHealthy || _tick % 4 === 0) refreshSession();
-    // watchlist rows arrive PUSHED on the header stream (wl_quote). While that push is down
-    // the rows are withdrawn to UNAVAILABLE like the header -- no second delivery path. The
-    // daemon is told the list on the slow tick.
+    // watchlist rows arrive as quote_tick. While that push is down the rows are withdrawn
+    // to UNAVAILABLE like the header -- no second delivery path. The daemon is told the
+    // list on the slow tick.
     var wlHost = document.getElementById('watchlist');
     if (!sseHealthy && !(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
     if (_tick % 4 === 0) declareWatchlistStream(loadWL());

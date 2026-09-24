@@ -288,19 +288,15 @@ def test_index_html_l1_scope_and_generation_guards():
     same-gen older serverTs reject) is executed against the real shipped JS by
     tests/l1_sse_guards_node.mjs, which stays the authority for it.
 
-    Repointed to static/js/ed-core.js (/console cutover, operator directive 2026-09-14):
-    the new console's openHeaderStream() routes every Tier-B paint through the same
-    monotonic guard, just scope-keyed by _l1Gen/_l1Ts (per-ticker dicts) rather than
-    legacy's window._l1GenByScope globals."""
+    Instant-UI Phase 2 (2026-09-24): the header paints from quote_tick (plane row),
+    not from l1_projection. A late L1 frame cannot overwrite the price because
+    l1_projection is no longer a quote source."""
     core = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
-    assert "_l1Gen = {}, _l1Ts = {}" in core
-    assert "l1_generation" in core or "gen" in core
-    assert (
-        "l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)" in core
-    ), (
-        "openHeaderStream must still route every Tier-B paint through the monotonic "
-        "generation guard — a late HTTP poll carrying an older l1_generation must not "
-        "be allowed to repaint over a newer SSE frame")
+    assert "addEventListener('quote_tick'" in core
+    assert "addEventListener('l1_quote'" not in core
+    l1_block = core.split("addEventListener('l1_projection'")[1].split("addEventListener('quote_tick'")[0]
+    assert "paintQuoteNextFrame" not in l1_block
+    assert "Displayed last/bid/ask come from quote_tick" in core
 
 
 # test_index_html_l1_quote_vs_of_freshness_ui was retired here (/console cutover, operator

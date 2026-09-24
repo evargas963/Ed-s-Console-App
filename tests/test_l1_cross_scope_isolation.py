@@ -33,10 +33,9 @@ def test_no_global_l1_generation_mutable_in_ed_core():
 
 
 def test_authority_and_identity_stores_keyed_by_scope_in_source():
-    """Repointed to static/js/ed-core.js: openHeaderStream() passes state.ticker (the scope
-    key) into the shared l1ApplyTierBLightMonotonic guard alongside the scope-match checks,
-    the same invariant legacy's _l1AuthorityByScope / l1TierBPayloadMatchesActiveScope named
-    explicitly in their own identifiers."""
+    """Header paint is quote_tick scoped to state.ticker. A tick for another symbol
+    must not write #hPx. Watchlist rows key off the event ticker against loadWL()."""
     text = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
-    assert "l1PayloadMatchesActiveScope(p.ticker, p.selected_exp, state.ticker" in text
-    assert "l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)" in text
+    assert "addEventListener('quote_tick'" in text
+    assert "sym === String(state.ticker || '').toUpperCase()" in text
+    assert "loadWL().indexOf(sym)" in text
