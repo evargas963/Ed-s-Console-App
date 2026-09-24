@@ -219,6 +219,10 @@ class CaptureStats:
         self.handle_ms: list[float] = []
         self.per_service: dict[str, int] = {}
         self.raw_sampled: set[str] = set()
+        #: The ADMIN QOS outcome for the current session: {"requested", "code", "msg"} --
+        #: None until a session has asked. Reported in the status file so the delivery
+        #: cadence Schwab actually granted is visible, never assumed.
+        self.qos: dict | None = None
 
     def record(self, service: str, dur_ms: float) -> None:
         self.per_service[service] = self.per_service.get(service, 0) + 1
@@ -245,6 +249,45 @@ def _stream_socket_open(stream, pump_task) -> bool:
         return stream._socket.state.name == "OPEN"     # websockets asyncio connection State
     except AttributeError:                              # no socket yet / not a websocket
         return False
+
+
+#: Schwab streamer ADMIN QOS level requested at login. Levels (Schwab / TDA Streamer guide):
+#: 0 Express 500 ms, 1 Real-Time 750 ms, 2 Fast 1000 ms (the server default), 3 Moderate
+#: 1500 ms, 4 Slow 3000 ms, 5 Delayed 5000 ms. MEASURED 2026-09-24 08:27 CT on the live
+#: daemon: every LEVELONE_EQUITIES symbol (43 streamed) arrived on a 1.01 s grid -- the
+#: default level-2 conflation -- so the desk saw one price per second. Express halves it.
+STREAM_QOS_LEVEL = 0
+
+
+async def request_stream_qos(stream, stats: "CaptureStats", level: int = STREAM_QOS_LEVEL) -> dict:
+    """Ask Schwab for delivery level ``level`` on this logged-in session (ADMIN / QOS).
+
+    schwab-py implements only ADMIN LOGIN/LOGOUT, so the request is built with the
+    client's own request/send/await helpers -- the same wire shape as its LOGOUT. The
+    outcome (Schwab's response code and message) is recorded on ``stats.qos`` and printed.
+    A rejection is REPORTED, not hidden and not retried: the stream keeps Schwab's default
+    cadence and the status file says so. Never raises -- QOS changes only the delivery
+    interval, never whether data flows."""
+    outcome: dict = {"requested": level, "code": None, "msg": None}
+    try:
+        request, request_id = stream._make_request(
+            service="ADMIN", command="QOS", parameters={"qoslevel": str(level)})
+        async with stream._lock:
+            await stream._send({"requests": [request]})
+            await stream._await_response(request_id, "ADMIN", "QOS")
+        outcome["code"] = 0
+    except Exception as e:  # noqa: BLE001 -- reported below; the stream itself is unaffected
+        # schwab-py's UnexpectedResponseCode carries Schwab's reply as .response; read the
+        # code/msg off it (duck-typed: no import of the exception class is needed).
+        try:
+            content = e.response["response"][0]["content"]      # Schwab's ADMIN reply
+            outcome["code"] = content["code"]
+            outcome["msg"] = content["msg"]
+        except (AttributeError, KeyError, IndexError, TypeError):  # not a Schwab reply
+            outcome["msg"] = f"{type(e).__name__}: {str(e)[:200]}"
+    stats.qos = outcome
+    print(f"ADMIN QOS request level={level}: code={outcome['code']} msg={outcome['msg']!r}")
+    return outcome
 
 
 def save_raw_sample(service: str, msg: dict, stats: CaptureStats) -> None:
@@ -1669,6 +1712,8 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATUS_PATH.write_text(json.dumps({
         "ts": time.time(), "health": health.report(),
+        # the Schwab delivery level this session asked for and what Schwab answered
+        "qos": stats.qos,
         "published": bus.published, "drops": bus.drop_counts(),
         "rows_written": writer.rows_written, "commits": writer.commits,
         "insert_errors": writer.insert_errors,
@@ -2050,6 +2095,7 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
     """Everything _schwab_connect does once a live session exists. Split out ONLY so the
     ownership boundary above is a single try/except around one call rather than a large
     indented block — every path out of here is covered by that retirement."""
+    await request_stream_qos(stream, stats)
     stream.add_level_one_equity_handler(
         make_handler("LEVELONE_EQUITIES", LEVELONE_FIELDS, "quote", bus, health, stats))
     stream.add_chart_equity_handler(

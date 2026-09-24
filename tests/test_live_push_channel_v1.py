@@ -71,11 +71,19 @@ async def _until(pred, timeout=5.0):
     return False
 
 
-async def _run(port, body):
+def _daemon_heartbeat(socket_open=True, held=("SPY",)):
+    """What capture.py's heartbeat reports for a session holding `held` on LEVELONE_EQUITIES."""
+    return lambda: {"ts": time.time(), "schwab_socket_open": socket_open,
+                    "equities_held": list(held), "health": {}}
+
+
+async def _run(port, body, heartbeat_fn=None):
     bus = MessageBus()
     stop = asyncio.Event()
     stats: dict = {}
-    server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
+    server = asyncio.create_task(live_push.serve_live_push(
+        bus, stop, port=port, stats=stats,
+        heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat()))
     assert await _until(lambda: stats.get("listening"))
     ofs._feed_running = True
     client = asyncio.create_task(ofs._feed_loop())
@@ -98,16 +106,19 @@ def test_a_schwab_trade_reaches_the_plane_with_its_own_receive_time(feed):
         assert row["server_received_ts"] == ts, "freshness must judge the daemon's receive time"
         assert row["spot_received_ts"] == ts
         assert ofs._streaming_last_update_ts == ts
+        assert await _until(lambda: lmp.feed_live_for("SPY"))
         assert lmp.spot_is_fresh(row)
     asyncio.run(_run(feed, body))
 
 
 def test_a_quote_only_tick_does_not_refresh_the_last_trade_age(feed):
-    """Schwab resends only changed fields: a bid/ask tick keeps LAST_PRICE, but the price's
-    age stays the age of the trade that set it -- a stale trade is never made to look new."""
+    """Schwab resends only changed fields: a bid/ask tick keeps LAST_PRICE, and the price's
+    age stays the age of the trade that set it (information, `spot_received_ts`). On a live
+    feed that unchanged LAST_PRICE IS the current last trade -- it stays live however old the
+    trade is (2026-09-24: arrival age blanked quiet names on a healthy feed)."""
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        t_trade = time.time() - 40.0     # older than PLANE_QUOTE_STALE_SEC (30s)
+        t_trade = time.time() - 40.0     # a quiet symbol: last trade 40 s ago
         bus.publish("quote.SPY", _spy_trade(500.0, t_trade))
         assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 500.0)
         t_quote = time.time()
@@ -117,8 +128,36 @@ def test_a_quote_only_tick_does_not_refresh_the_last_trade_age(feed):
         assert await _until(lambda: lmp.get_quote("SPY").get("server_received_ts") == t_quote)
         row = lmp.get_quote("SPY")
         assert row["spot"] == 500.0 and row["spot_received_ts"] == t_trade
-        assert lmp.quote_is_fresh(row) and not lmp.spot_is_fresh(row)
+        assert await _until(lambda: lmp.feed_live_for("SPY"))
+        assert lmp.quote_is_fresh(row) and lmp.spot_is_fresh(row)
     asyncio.run(_run(feed, body))
+
+
+def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
+    """Real push server -> real console feed loop. Live only while heartbeats arrive, the
+    Schwab socket is open and the daemon holds the symbol; the feed is down the moment the
+    push connection ends."""
+    async def body(bus, stats):
+        assert await _until(lambda: stats["clients"] == 1)
+        bus.publish("quote.SPY", _spy_trade(501.0, time.time()))
+        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 501.0)
+        assert await _until(lambda: lmp.feed_live_for("SPY"))
+        assert lmp.spot_is_fresh(lmp.get_quote("SPY"))
+        assert not lmp.feed_live_for("QQQ")                 # not held by the daemon
+    asyncio.run(_run(feed, body))
+    assert not lmp.feed_live_for("SPY")                     # push ended -> feed down
+    assert not lmp.spot_is_fresh(lmp.get_quote("SPY"))
+
+
+def test_a_closed_schwab_socket_is_not_live(feed):
+    async def body(bus, stats):
+        assert await _until(lambda: stats["clients"] == 1)
+        bus.publish("quote.SPY", _spy_trade(501.0, time.time()))
+        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 501.0)
+        await asyncio.sleep(1.3)                            # at least one heartbeat arrived
+        assert not lmp.feed_live_for("SPY")
+        assert not lmp.spot_is_fresh(lmp.get_quote("SPY"))
+    asyncio.run(_run(feed, body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
 
 
 def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):

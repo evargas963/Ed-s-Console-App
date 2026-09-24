@@ -75,6 +75,8 @@ def test_live_state_never_backfills_chg_pct_from_rest(monkeypatch):
     """chg_pct is the streamed REGULAR_MARKET_CHANGE_PERCENT only (operator rule 2026-09-23:
     no fallbacks). A fresh streamed row that carries no chg_pct serves chg_pct=None even when
     a REST quote with netPercentChange is available -- the gap stays visible."""
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('ZZZTEST')   # the daemon holds it on a live feed
     import time as _t
 
     import server as srv
@@ -177,20 +179,22 @@ def test_streamed_chg_pct_serves_only_a_fresh_streamed_row(monkeypatch):
 
     from live_market_plane import streamed_chg_pct
 
-    fresh = {"spot": 10.0, "chg_pct": 3.33, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live("ZZTEST")
+    fresh = {"ticker": "ZZTEST", "spot": 10.0, "chg_pct": 3.33, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
              "quote_source_detail": {"spot": "LAST_PRICE"},
              "quote_ingestion": "schwab_streaming_level_one"}
     assert streamed_chg_pct(fresh) == 3.33
     assert streamed_chg_pct(dict(fresh, chg_pct=0.0)) == 0.0          # a flat day is a value
     assert streamed_chg_pct(dict(fresh, quote_ingestion="rest_tier_a")) is None
-    assert streamed_chg_pct(dict(fresh, server_received_ts=0.0, spot_received_ts=0.0)) is None
+    assert streamed_chg_pct(dict(fresh, ticker="ZZNOTHELD")) is None   # the daemon does not hold it
     assert streamed_chg_pct(None) is None
 
 
-def _streamed_plane_row(spot, chg_pct):
+def _streamed_plane_row(spot, chg_pct, ticker="ZZZTEST"):
     import time as _t
     now = _t.time()
-    return {"spot": spot, "spot_disp": f"{spot:.2f}", "chg_pct": chg_pct,
+    return {"ticker": ticker, "spot": spot, "spot_disp": f"{spot:.2f}", "chg_pct": chg_pct,
             "exchange_quote_ts": now, "server_received_ts": now, "spot_received_ts": now,
             "quote_source_detail": {"spot": "LAST_PRICE"},
             "quote_ingestion": "schwab_streaming_level_one"}
@@ -216,6 +220,8 @@ def test_watchlist_quotes_route_reports_a_dead_stream_distinctly(monkeypatch):
 
 
 def test_watchlist_quotes_route_success_shape(monkeypatch):
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('ZZZTEST')   # the daemon holds it on a live feed
     import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
@@ -232,12 +238,14 @@ def test_watchlist_quotes_route_success_shape(monkeypatch):
 def test_watchlist_quotes_serves_the_streamed_row_with_no_vendor_call(monkeypatch):
     """The watchlist's SPY row and every other screen's SPY spot are the SAME streamed
     LAST_PRICE -- no vendor round trip of its own."""
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('ZZWLPLANE')   # the daemon holds it on a live feed
     import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
 
     tk = "ZZWLPLANE"
-    monkeypatch.setitem(L._by_ticker, tk, _streamed_plane_row(812.5, 0.42))
+    monkeypatch.setitem(L._by_ticker, tk, _streamed_plane_row(812.5, 0.42, tk))
     monkeypatch.setattr("schwab_client.safe_get_quotes", lambda *_a, **_k: (_ for _ in ()).throw(
         AssertionError("no vendor call")))
     with TestClient(srv.app) as client:
@@ -251,14 +259,15 @@ def test_watchlist_quotes_withholds_a_symbol_the_stream_is_not_answering(monkeyp
     """One symbol streamed, one not (or its last trade too old): the streamed one is
     served, the other is simply absent (its row reads UNAVAILABLE) -- nothing is fetched
     or written into the plane on its behalf."""
-    import time as _t
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('ZZWLLIVE')   # the daemon holds it on a live feed
 
     import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
 
-    monkeypatch.setitem(L._by_ticker, "ZZWLLIVE", _streamed_plane_row(61.5, -0.2))
-    old = dict(_streamed_plane_row(70.0, 0.1), spot_received_ts=_t.time() - 120.0)
+    monkeypatch.setitem(L._by_ticker, "ZZWLLIVE", _streamed_plane_row(61.5, -0.2, "ZZWLLIVE"))
+    old = _streamed_plane_row(70.0, 0.1, "ZZWLOLD")     # streamed, but the daemon does not hold it
     monkeypatch.setitem(L._by_ticker, "ZZWLOLD", old)
     L._by_ticker.pop("ZZWLNONE", None)
     with TestClient(srv.app) as client:
@@ -278,8 +287,10 @@ def test_watchlist_quotes_route_no_invented_count_cap(monkeypatch):
 
     many = ["ZZT{}".format(i) for i in range(600)]
     for t in many:
-        monkeypatch.setitem(L._by_ticker, t, _streamed_plane_row(10.0, 0.0))
+        monkeypatch.setitem(L._by_ticker, t, _streamed_plane_row(10.0, 0.0, t))
+    from tests.feed_live_helper import mark_feed_live
     with TestClient(srv.app) as client:
+        mark_feed_live(*many)
         r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(many)})
     assert r.status_code == 200
     assert len(r.json()["quotes"]) == 600  # nothing silently dropped

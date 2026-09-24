@@ -95,6 +95,9 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
 
 
 def test_a_carried_last_price_keeps_the_age_of_its_own_trade():
+    """The unchanged LAST_PRICE keeps its own trade's time (information) and is live exactly
+    while the feed is live for the symbol -- never judged by how long ago it arrived."""
+    from tests.feed_live_helper import mark_feed_down, mark_feed_live
     t_trade = time.time() - 45.0
     _rec("CARRY", {"key": "CARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
          received_ts=t_trade)
@@ -103,7 +106,13 @@ def test_a_carried_last_price_keeps_the_age_of_its_own_trade():
     assert row["spot"] == 10.0
     assert row["field_received_ts"]["LAST_PRICE"] == t_trade
     assert row["spot_received_ts"] == t_trade
-    assert lmp.quote_is_fresh(row) and not lmp.spot_is_fresh(row)
+    assert not lmp.quote_is_fresh(row) and not lmp.spot_is_fresh(row)   # no heartbeat yet
+    mark_feed_live("CARRY")
+    assert lmp.quote_is_fresh(row) and lmp.spot_is_fresh(row)           # quiet, and live
+    mark_feed_live("OTHER")
+    assert not lmp.spot_is_fresh(row)                                    # not held
+    mark_feed_down()
+    assert not lmp.spot_is_fresh(row)
 
 
 def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate():

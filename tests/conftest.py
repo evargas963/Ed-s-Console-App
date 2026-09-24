@@ -84,6 +84,17 @@ def _remove_pytest_runtime_after_session():
 
 
 @pytest.fixture(autouse=True)
+def _live_feed_starts_down():
+    """live_market_plane's feed state (the daemon heartbeat) is process-global: every test
+    starts with NO live feed, so a heartbeat one test marks can never make another test's
+    price live. Tests that need a live price mark it (tests/feed_live_helper.py)."""
+    import live_market_plane as _lmp_feed
+    _lmp_feed.record_feed_down()
+    yield
+    _lmp_feed.record_feed_down()
+
+
+@pytest.fixture(autouse=True)
 def _stream_spine_fallback_stays_isolated(monkeypatch):
     """Tests that remove the env override still cannot fall back to checkout state."""
     import stream_spine

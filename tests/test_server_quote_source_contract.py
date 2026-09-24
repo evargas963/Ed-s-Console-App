@@ -124,7 +124,7 @@ def test_parse_quote_node_session_fields_carries_raw_order_flow_primitives():
 
 def _fresh_streamed_row(spot=501.25):
     import time as _t
-    return {"spot": spot, "bid": 501.2, "ask": 501.3, "chg_pct": 0.42,
+    return {"ticker": "SPY", "spot": spot, "bid": 501.2, "ask": 501.3, "chg_pct": 0.42,
             "server_received_ts": _t.time(), "spot_received_ts": _t.time(), "exchange_quote_ts": _t.time(),
             "quote_source_detail": {"spot": "LAST_PRICE"},
             "quote_ingestion": "schwab_streaming_level_one"}
@@ -148,6 +148,8 @@ def test_tier_a_live_state_never_bootstraps_from_rest(monkeypatch):
 
 def test_tier_a_live_state_serves_the_fresh_streamed_row(monkeypatch):
     """Spot, bid, ask and chg_pct all come from ONE fresh streamed row (0 hops each)."""
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('SPY')   # the daemon holds it on a live feed
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: _fresh_streamed_row())
 
     out = server._tier_a_live_state_dict("SPY", None)
@@ -179,6 +181,8 @@ def test_tier_a_lightweight_carries_the_tier_c_bundle_generation(monkeypatch):
     generation every /api/analytics/state response reports (_attach_analytics_freshness_contract
     reads entry["analytics_version"]), so a consumer caching a Tier C value can see the bundle
     advance on the plane it already polls and re-read once — no second clock, no per-tick read."""
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('SPY')   # the daemon holds it on a live feed
     import time as _t
 
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: _fresh_streamed_row())
