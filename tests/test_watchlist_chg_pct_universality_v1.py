@@ -1,9 +1,6 @@
-"""Universal per-ticker percent-change: one parser, one precedence authority, and proof
-that the /api/live/state route's REST backfill survives the plane overlay that runs
-after it -- an independent review found the route computed a replacement chg_pct and
-then let live_market_plane.merge_into_state's unconditional-overwrite-on-presence
-overlay silently undo it. Negative-controlled below (test_..._survives_merge_into_state
-fails against the pre-fix ordering, restored immediately after)."""
+"""Universal per-ticker percent-change: one REST parser (quote.netPercentChange, for
+symbols the stream does not carry) and one streamed reader
+(live_market_plane.streamed_chg_pct, NET_CHANGE_PERCENT from a fresh streamed row)."""
 from __future__ import annotations
 
 import sys
@@ -17,26 +14,23 @@ import market_context as mc
 
 
 def test_extract_pct_change_prefers_net_percent_change():
-    assert mc.extract_pct_change({"netPercentChange": 1.23}, {}, 100.0) == 1.23
+    assert mc.extract_pct_change({"netPercentChange": 1.23}) == 1.23
 
 
-def test_extract_pct_change_falls_back_to_regular_session_leaf():
-    assert mc.extract_pct_change({}, {"regularMarketPercentChange": 0.45}, 100.0) == 0.45
-
-
-def test_extract_pct_change_derives_from_net_change_when_no_percent_leaf():
-    # last=102, netChange=2 -> prior close 100 -> +2.0%
-    got = mc.extract_pct_change({"netChange": 2.0}, {}, 102.0)
-    assert got is not None and abs(got - 2.0) < 1e-9
+def test_extract_pct_change_does_not_use_regular_or_derived():
+    """T-09: regular-session leaf and netChange derivation are not substitutes."""
+    assert mc.extract_pct_change({"regularMarketPercentChange": 0.45}) is None
+    assert mc.extract_pct_change({"netChange": 2.0}) is None
 
 
 def test_extract_pct_change_preserves_a_real_zero():
     """A flat (0.0) percent change must not be treated as absent."""
-    assert mc.extract_pct_change({"netPercentChange": 0.0}, {}, 100.0) == 0.0
+    assert mc.extract_pct_change({"netPercentChange": 0.0}) == 0.0
 
 
 def test_extract_pct_change_absent_when_nothing_usable():
-    assert mc.extract_pct_change({}, {}, None) is None
+    assert mc.extract_pct_change({}) is None
+    assert mc.extract_pct_change({"netPercentChange": float("nan")}) is None
 
 
 def test_extract_pct_change_is_the_one_parser_both_files_call():
@@ -51,26 +45,30 @@ def test_extract_pct_change_is_the_one_parser_both_files_call():
     assert "extract_pct_change" in inspect.getsource(srv._parse_quote_node_session_fields)
 
 
-def test_resolve_chg_pct_prefers_stream_when_present():
-    got = mc.resolve_chg_pct("SPY", 9.99, stream_chg_pct_fn=lambda t: 1.5)
-    assert got == 1.5
+def test_last_traded_price_is_a_finite_positive_last_price_or_none():
+    """quotes.quote.lastPrice only, coerced by the one numeric contract (audit of #272: a raw
+    float() let NaN/inf through and a non-numeric string raise)."""
+    assert mc._last_traded_price({"lastPrice": 12.5}) == 12.5
+    for bad in (0.0, -1.0, float("nan"), float("inf"), "x", None):
+        assert mc._last_traded_price({"lastPrice": bad}) is None, bad
+    assert mc._last_traded_price({"mark": 12.5}) is None
 
 
-def test_resolve_chg_pct_preserves_a_real_zero_from_stream():
-    got = mc.resolve_chg_pct("SPY", 9.99, stream_chg_pct_fn=lambda t: 0.0)
-    assert got == 0.0
+def test_futures_percent_change_is_the_rest_net_percent_change(monkeypatch):
+    """Futures are not on the equity stream: their chg is quote.netPercentChange (0 hops).
+    Audit of #272: a stream-only resolver discarded it, so it was always None."""
+    class _Resp:
+        status_code = 200
 
+        def __init__(self, sym):
+            self._sym = sym
 
-def test_resolve_chg_pct_falls_back_to_rest_when_stream_absent():
-    got = mc.resolve_chg_pct("SPY", 3.21, stream_chg_pct_fn=lambda t: None)
-    assert got == 3.21
+        def json(self):
+            return {self._sym: {"quote": {"lastPrice": 5000.0, "netPercentChange": -0.42}}}
 
-
-def test_resolve_chg_pct_is_generic_not_a_preferred_symbol_map():
-    """No branch on ticker identity -- an arbitrary, never-listed symbol resolves the
-    same way SPY does."""
-    got = mc.resolve_chg_pct("ZZZTEST_NOT_A_REAL_SYMBOL", 4.56, stream_chg_pct_fn=lambda t: None)
-    assert got == 4.56
+    monkeypatch.setattr(mc, "configured_index_futures_symbols", lambda: {"ES": "/ESZ26"})
+    ctx = mc.fetch_market_context(None, lambda _c, sym: _Resp(sym))
+    assert (ctx.fut_es_symbol, ctx.fut_es_last, ctx.fut_es_chg_pct) == ("/ESZ26", 5000.0, -0.42)
 
 
 def test_live_state_never_backfills_chg_pct_from_rest(monkeypatch):
@@ -160,29 +158,33 @@ def test_safe_get_quotes_retries_once_after_token_refresh(monkeypatch):
 
 
 def test_streamed_chg_pct_is_the_one_authority_for_live_state_and_l1(monkeypatch):
-    """/api/live/state and both L1 builds read chg_pct through the ONE stream-only
-    _streamed_chg_pct -- none of them keeps a REST backfill of its own."""
+    """/api/live/state, the L1 build and the L1 HTTP projection read chg_pct through the ONE
+    live_market_plane.streamed_chg_pct -- none of them keeps a REST backfill of its own."""
     import inspect
-    import server as srv
 
-    for fn in (srv._tier_a_live_state_dict, srv._project_l1, srv._l1_http_get_projection):
+    import server as srv
+    from planes import context_light
+
+    assert not hasattr(srv, "_streamed_chg_pct")
+    for fn in (srv._tier_a_live_state_dict, srv._l1_http_get_projection, context_light.build_l1_context):
         src = inspect.getsource(fn)
-        assert "_streamed_chg_pct" in src, fn.__name__
+        assert "streamed_chg_pct" in src, fn.__name__
         assert "_memoized_quote_response" not in src or fn is not srv._tier_a_live_state_dict
 
 
 def test_streamed_chg_pct_serves_only_a_fresh_streamed_row(monkeypatch):
     import time as _t
 
-    import server as srv
+    from live_market_plane import streamed_chg_pct
 
     fresh = {"spot": 10.0, "chg_pct": 3.33, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
              "quote_source_detail": {"spot": "LAST_PRICE"},
              "quote_ingestion": "schwab_streaming_level_one"}
-    assert srv._streamed_chg_pct("ZZZTEST", fresh) == 3.33
-    assert srv._streamed_chg_pct("ZZZTEST", dict(fresh, quote_ingestion="rest_tier_a")) is None
-    assert srv._streamed_chg_pct("ZZZTEST", dict(fresh, server_received_ts=0.0, spot_received_ts=0.0)) is None
-    assert srv._streamed_chg_pct("ZZZTEST", None) is None
+    assert streamed_chg_pct(fresh) == 3.33
+    assert streamed_chg_pct(dict(fresh, chg_pct=0.0)) == 0.0          # a flat day is a value
+    assert streamed_chg_pct(dict(fresh, quote_ingestion="rest_tier_a")) is None
+    assert streamed_chg_pct(dict(fresh, server_received_ts=0.0, spot_received_ts=0.0)) is None
+    assert streamed_chg_pct(None) is None
 
 
 def _streamed_plane_row(spot, chg_pct):

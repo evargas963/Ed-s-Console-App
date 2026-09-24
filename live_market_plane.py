@@ -253,6 +253,17 @@ def spot_is_fresh(q: dict[str, Any]) -> bool:
     return age >= 0.0 and age < PLANE_QUOTE_STALE_SEC
 
 
+def streamed_chg_pct(row: dict[str, Any] | None) -> Optional[float]:
+    """THE percent change: Schwab LEVELONE_EQUITIES NET_CHANGE_PERCENT (0 hops) from a row the
+    stream wrote, while its LAST_PRICE is fresh -- NET_CHANGE_PERCENT arrives with every
+    LAST_PRICE (measured on 4,039 messages), so it is live exactly while the last is. Otherwise
+    None: no REST value, no stale row (2026-09-24)."""
+    if not (row and plane_row_is_streamed(row) and spot_is_fresh(row)):
+        return None
+    from numeric_contract import float_finite_or_none
+    return float_finite_or_none(row.get("chg_pct"))
+
+
 def quote_is_fresh(q: dict[str, Any]) -> bool:
     """Is this plane row trustworthy as a LIVE value right now.
 

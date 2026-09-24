@@ -209,12 +209,6 @@ def _would_be_long_call(monkeypatch, registry_file):
 
     inp = _strong_long_stack_input()
     inp.order_flow_direction = "neutral"
-    inp.spy_chg_pct = 0.01
-    inp.qqq_chg_pct = 0.01
-    inp.iwm_chg_pct = 0.01
-    inp.spy_weighted_push = 0.0
-    inp.qqq_weighted_push = 0.0
-    inp.iwm_weighted_push = 0.0
     inp.net_delta = 50.0
     inp.zone = "pin_bull"
 

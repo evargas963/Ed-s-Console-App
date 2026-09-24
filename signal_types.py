@@ -114,24 +114,6 @@ class SignalInput:
     floor_tests_today:      int = 0   # times price tested put gamma wall
 
     # ── Cross-instrument (lower weight) ──────────────────────────────────────
-    spy_zone:           Optional[str]  = None
-    spy_vwap_side:      Optional[str]  = None
-    spy_chg_pct:        Optional[float] = None
-
-    qqq_zone:           Optional[str]  = None
-    qqq_vwap_side:      Optional[str]  = None
-    qqq_chg_pct:        Optional[float] = None
-    qqq_vs_spy:         Optional[str]  = None   # 'leading', 'lagging', 'inline'
-    qqq_vs_spy_delta:   Optional[float] = None
-
-    iwm_zone:           Optional[str]  = None
-    iwm_vwap_side:      Optional[str]  = None
-    iwm_chg_pct:        Optional[float] = None
-    iwm_risk_signal:    Optional[str]  = None   # 'risk_on', 'risk_off', 'neutral'
-
-    spy_weighted_push:  Optional[float] = None
-    qqq_weighted_push:  Optional[float] = None
-    iwm_weighted_push:  Optional[float] = None  # blend: holdings + sector proxies (see market_state)
 
     # ── Event / calendar (stack gating) ─────────────────────────────────────
     event_risk_level:   str             = "unknown"   # high | unknown (event_risk.py)

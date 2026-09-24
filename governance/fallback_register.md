@@ -88,14 +88,14 @@ P1/P2 rows are to be merged here as each file is repaired.
 | T-05 | terrain_engine.py:332 | wall range from raw gamma, still labelled "GEX mass" | chart | FIXED 65b45a7f |
 | T-06 | terrain_engine.py:415-417 | implied move from one leg's IV | EM band, banked IV | FIXED 65b45a7f |
 | T-07 | terrain_read.py:108-109 | regime from spot-vs-flip when gamma_at_spot == 0 | posture (edge case) | FIXED fa56b1dd |
-| T-08 | market_context.py:753-755 | bond_signal guessed when VIX missing | snapshots | OPEN |
-| T-09 | market_context.py:311-321 | %-change ladder: netPercentChange -> regular -> derived | confluence, snapshots | OPEN |
-| T-10 | market_context.py:650-657 | resolve_chg_pct: REST when stream missing | fast-quote, context plane | OPEN |
-| T-11 | market_context.py:288 | lastPrice -> extended.lastPrice | VIX, constituents | OPEN |
-| T-12 | market_context.py:365, 412, 494 | weighted push rescaled when < half the weight reports | cf_weighted_push, snapshots | OPEN |
-| T-13 | market_context.py:557-599 | IWM blend: one side alone stands in | snapshots | OPEN |
-| T-14 | market_context.py:54-108 | hardcoded fund weights ("as of Feb 2026") | every weighted push | OPEN |
-| T-15 | market_context.py:524-542 | backfill: tick %-change with no age limit | training rows (ops job) | OPEN |
+| T-08 | market_context.py:753-755 | bond_signal guessed when VIX missing | snapshots | FIXED 3cc34f89 |
+| T-09 | market_context.py:311-321 | %-change ladder: netPercentChange -> regular -> derived | confluence, snapshots | FIXED 3cc34f89 |
+| T-10 | market_context.py:650-657 | resolve_chg_pct: REST when stream missing | fast-quote, context plane | FIXED 3cc34f89 |
+| T-11 | market_context.py:288 | lastPrice -> extended.lastPrice | VIX, constituents | FIXED 3cc34f89 |
+| T-12 | market_context.py:365, 412, 494 | weighted push rescaled when < half the weight reports | cf_weighted_push, snapshots | FIXED 3cc34f89 |
+| T-13 | market_context.py:557-599 | IWM blend: one side alone stands in | snapshots | FIXED 3cc34f89 |
+| T-14 | market_context.py:54-108 | hardcoded fund weights ("as of Feb 2026") | every weighted push | FIXED 3cc34f89 |
+| T-15 | market_context.py:524-542 | backfill: tick %-change with no age limit | training rows (ops job) | FIXED 3cc34f89 |
 
 ### Other persisted scores (math_probabilities.py)
 | ID | file:line | Violation | Flows to | Status |
@@ -104,7 +104,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | S-07 | math_probabilities.py:1525-1550 | smart-money: missing legs = 0 | snapshots | FIXED b5c5aeff |
 | S-08..10 | math_probabilities.py:658-668, 769-779, 830-840 | breakout / vol-expansion / sweep: missing component = 0 | snapshots | FIXED b6c16570 |
 | S-11 | math_probabilities.py:545-557 | hedging flow re-weights present legs | snapshots | FIXED b6c16570 |
-| S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | OPEN |
+| S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | FIXED: compute_iwm_confluence and sector strength deleted with the retired roster (branch fix/retire-index-confluence-audited) |
 | S-13 | math_probabilities.py:221-234 | option-expression score: missing inputs add 0 -> rec_strike | The Call contract | OPEN |
 
 ### Found while repairing (2026-09-24)
@@ -138,5 +138,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 18 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 9 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.

@@ -155,8 +155,6 @@ def test_formula_ownership(repo_index):
         "compute_pin_score": "math_probabilities.py",
         "compute_vol_expansion_signal": "math_probabilities.py",
         "compute_sweep_score": "math_probabilities.py",
-        "compute_sector_strength": "math_probabilities.py",
-        "compute_iwm_confluence": "math_probabilities.py",
         "compute_position_size": "call_engine.py",
     }
 
@@ -463,8 +461,6 @@ def test_wrapper():
             "compute_atr",
             "compute_iv_skew",
             "compute_dealer_pressure_index",
-            "compute_sector_strength",
-            "compute_iwm_confluence",
             "compute_level_density",
             "compute_volatility_envelope",
         ]

@@ -14,9 +14,6 @@ from multi_horizon_decision import build_multi_horizon_bundle
 
 def _mkt_ctx() -> MagicMock:
     ctx = MagicMock()
-    ctx.spy_chg_pct = None
-    ctx.qqq_chg_pct = None
-    ctx.iwm_chg_pct = None
     ctx.vix = None
     ctx.pcr = None
     ctx.pcr_arrow = ""

@@ -1244,7 +1244,6 @@ def build_market_state(
                 _dstep("market_state_pre_signals", ticker)
             # function-local import: signals → market_state cycle via derive_zone; keep local to avoid ImportError at module load.
             from signals import SignalInput, compute_signals
-            from market_context import iwm_blended_participation_push
 
             _vwap_val  = getattr(price_levels, "vwap", None)
             # RC-345 / F21: vwap side (above/below) is classified by the ONE authority,
@@ -1334,22 +1333,6 @@ def build_market_state(
             _charm_net = charm_net
             _charm_toward = charm_drift_toward
 
-            # Cross-instrument
-            _spy_chg  = getattr(mkt_ctx, "spy_chg_pct",  None)
-            _qqq_chg  = getattr(mkt_ctx, "qqq_chg_pct",  None)
-            _iwm_chg  = getattr(mkt_ctx, "iwm_chg_pct",  None)
-            _qqq_delta = (
-                round(_qqq_chg - _spy_chg, 4)
-                if (_spy_chg is not None and _qqq_chg is not None)
-                else None
-            )
-            _qqq_vs_spy = (None if _qqq_delta is None else
-                           "leading" if _qqq_delta > 0.10 else
-                           "lagging" if _qqq_delta < -0.10 else "inline")
-            _iwm_risk = (None if _iwm_chg is None else
-                         "risk_on"  if _iwm_chg > 0.10 else
-                         "risk_off" if _iwm_chg < -0.10 else "neutral")
-
             # Time and volatility regime buckets for prediction matching
             _session_bkt = (
                 _sb_fn(et_hour, et_minute)
@@ -1414,17 +1397,6 @@ def build_market_state(
                 recent_crosses=(recent_crosses or []),
                 ceiling_tests_today=ceiling_tests_today,
                 floor_tests_today=floor_tests_today,
-                spy_zone=None, spy_vwap_side=None,
-                spy_chg_pct=mkt_ctx.spy_chg_pct,
-                qqq_zone=None, qqq_vwap_side=None,
-                qqq_chg_pct=mkt_ctx.qqq_chg_pct,
-                qqq_vs_spy=_qqq_vs_spy, qqq_vs_spy_delta=_qqq_delta,
-                iwm_zone=None, iwm_vwap_side=None,
-                iwm_chg_pct=mkt_ctx.iwm_chg_pct,
-                iwm_risk_signal=_iwm_risk,
-                spy_weighted_push=getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None),
-                qqq_weighted_push=getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None),
-                iwm_weighted_push=iwm_blended_participation_push(mkt_ctx),
                 event_risk_level=ms.event_risk_level,
                 event_risk_detail=ms.event_risk_detail or "",
                 # VOL_INPUT_CONTRACT 1.0.0: live stamp mirrors the per-cycle

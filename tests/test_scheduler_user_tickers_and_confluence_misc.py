@@ -161,15 +161,27 @@ def test_filter_tickers_for_background_logging_is_universal():
     assert out == ["SPY", "PSCI", "QQQ"]
 
 
-def test_missing_confluence_weighted_pushes_detects_qqq_gap():
-    from market_context import MarketContext, ConfluenceRead, missing_confluence_weighted_pushes
-
-    ctx = MarketContext()
-    ctx.confluence = ConfluenceRead(weighted_push=0.1)
-    ctx.qqq_confluence = ConfluenceRead(weighted_push=None)
-    ctx.iwm_confluence = ConfluenceRead(weighted_push=0.05)
-    ctx.iwm_holdings_confluence = ConfluenceRead(weighted_push=0.04)
-    assert missing_confluence_weighted_pushes(ctx) == ["qqq_weighted_push"]
+def test_retired_confluence_code_is_deleted_not_stubbed():
+    """Audit of #272 (2026-09-24): the retirement left None-returning stubs and their callers.
+    Stubs are dead code carrying a retired contract -- they are deleted."""
+    import backfill_snapshot_derived
+    import market_context
+    import math_probabilities
+    import server
+    for mod, name in ((market_context, "missing_confluence_weighted_pushes"),
+                      (market_context, "weighted_pushes_from_snapshot_row"),
+                      (market_context, "iwm_blended_participation_push"),
+                      (market_context, "stamp_confluence_display_fields"),
+                      (market_context, "resolve_chg_pct"),
+                      (market_context, "ConfluenceRead"),
+                      (math_probabilities, "compute_iwm_confluence"),
+                      (math_probabilities, "compute_sector_strength"),
+                      (backfill_snapshot_derived, "backfill_weighted_pushes"),
+                      (server, "_ensure_mkt_ctx_confluence_complete")):
+        assert not hasattr(mod, name), f"{mod.__name__}.{name}"
+    ctx = market_context.MarketContext()
+    for field in ("spy_chg_pct", "constituents", "confluence", "iwm_sectors", "iwm_holdings"):
+        assert not hasattr(ctx, field), field
 
 
 def test_filter_tickers_for_ml_training_excludes_panel_auto():
@@ -243,161 +255,12 @@ def test_confluence_quote_ticks_upsert_and_inventory(tmp_path):
     assert inv["distinct_tickers"] == 1
 
 
-def test_weighted_push_from_constituents_matches_build_confluence():
-    from market_context import (
-        QQQ_TOP,
-        QQQ_TOP_WEIGHT_SUM,
-        _build_confluence,
-        ConstituentQuote,
-        weighted_push_from_constituents,
-        weighted_pushes_from_snapshot_row,
-    )
+def test_retired_chg_map_cannot_alias_goog_onto_googl():
+    """The GOOG/GOOGL alias lived in the retired weighted-push map. Absence is the pin."""
+    import market_context as mc
 
-    chg = {"NVDA": 1.2, "AAPL": 0.5, "MSFT": -0.3}
-    push = weighted_push_from_constituents(chg, QQQ_TOP, QQQ_TOP_WEIGHT_SUM)
-    assert push is not None
-    cqs = [
-        ConstituentQuote(sym, name, w, chg_pct=chg.get(sym))
-        for sym, name, w in QQQ_TOP
-        if sym in chg
-    ]
-    live = _build_confluence(cqs, QQQ_TOP_WEIGHT_SUM)
-    assert live.weighted_push == push
-
-    row = {
-        "nvda_chg_pct": 1.2,
-        "aapl_chg_pct": 0.5,
-        "msft_chg_pct": -0.3,
-        "qqq_weighted_push": None,
-    }
-    out = weighted_pushes_from_snapshot_row(row)
-    assert out["qqq_weighted_push"] == push
-
-
-def test_qqq_weighted_push_full_top_matches_build_confluence():
-    """QQQ backfill must use the full QQQ_TOP roster (incl. WMT), not a 3-name subset."""
-    from market_context import (
-        QQQ_TOP,
-        QQQ_TOP_WEIGHT_SUM,
-        _build_confluence,
-        ConstituentQuote,
-        weighted_pushes_from_snapshot_row,
-    )
-
-    chg = {
-        "NVDA": 1.0,
-        "AAPL": 0.8,
-        "MSFT": -0.2,
-        "AMZN": 0.4,
-        "TSLA": -0.5,
-        "META": 0.3,
-        "GOOGL": 0.1,
-        "WMT": 0.25,
-        "GOOG": 0.15,
-        "AVGO": 0.6,
-    }
-    cqs = [
-        ConstituentQuote(sym, name, w, chg_pct=chg[sym])
-        for sym, name, w in QQQ_TOP
-    ]
-    live = _build_confluence(cqs, QQQ_TOP_WEIGHT_SUM).weighted_push
-    row = {
-        "nvda_chg_pct": 1.0,
-        "aapl_chg_pct": 0.8,
-        "msft_chg_pct": -0.2,
-        "amzn_chg_pct": 0.4,
-        "tsla_chg_pct": -0.5,
-        "meta_chg_pct": 0.3,
-        "googl_chg_pct": 0.1,
-        "avgo_chg_pct": 0.6,
-        "qqq_weighted_push": None,
-    }
-    backfill = weighted_pushes_from_snapshot_row(
-        row, extra_chg={"WMT": 0.25, "GOOG": 0.15}
-    )
-    assert backfill["qqq_weighted_push"] == live
-
-
-def test_snapshot_row_chg_map_does_not_substitute_goog_for_googl():
-    """Independent-review finding (2026-09-12), REPRODUCED: SYMBOL_TO_SNAPSHOT_CHG_COL
-    used to point BOTH "GOOGL" and "GOOG" at the same googl_chg_pct column, so
-    snapshot_row_chg_map() reported out["GOOG"] == out["GOOGL"] from a persisted
-    snapshot row even on a day the two share classes genuinely diverged -- silently
-    double-counting GOOGL's move (once at GOOGL's SPY_TOP/QQQ_TOP weight, once at
-    GOOG's) and discarding GOOG's own price action entirely from every weighted_push
-    backfill/recompute. Fixed with a dedicated goog_chg_pct column (db.py), written
-    from GOOG's own quote (server.py), and its own entry in SYMBOL_TO_SNAPSHOT_CHG_COL.
-
-    Negative control: temporarily pointing "GOOG" back at "googl_chg_pct" (the exact
-    pre-fix mapping) on a row where the two genuinely differ reproduces the collision
-    this test would otherwise miss.
-    """
-    from market_context import SYMBOL_TO_SNAPSHOT_CHG_COL, snapshot_row_chg_map
-
-    row = {"googl_chg_pct": 0.10, "goog_chg_pct": -0.35}
-
-    out = snapshot_row_chg_map(row)
-    assert out["GOOGL"] == 0.10
-    assert out["GOOG"] == -0.35, (
-        "GOOG must read its OWN column, not borrow GOOGL's — these are distinct "
-        "share classes that genuinely diverge")
-    assert out["GOOG"] != out["GOOGL"]
-
-    # Negative control: the pre-fix alias, applied to this exact row, collapses the
-    # two distinct values into one — proving this test can actually detect the defect.
-    pre_fix_map = dict(SYMBOL_TO_SNAPSHOT_CHG_COL)
-    pre_fix_map["GOOG"] = "googl_chg_pct"
-    pre_fix_out = {sym: row.get(col) for sym, col in pre_fix_map.items()}
-    assert pre_fix_out["GOOG"] == pre_fix_out["GOOGL"] == 0.10, (
-        "negative control setup is broken: the pre-fix alias must actually collapse "
-        "GOOG onto GOOGL's value for this test to prove anything")
-
-
-def test_iwm_weighted_push_matches_blended_participation():
-    from market_context import (
-        IWM_HOLDINGS_WEIGHT_SUM,
-        IWM_SECTOR_WEIGHT_SUM,
-        IWM_SECTORS,
-        IWM_TOP_HOLDINGS,
-        MarketContext,
-        ConfluenceRead,
-        blend_iwm_weighted_push,
-        iwm_blended_participation_push,
-        weighted_push_from_constituents,
-        weighted_pushes_from_snapshot_row,
-    )
-
-    chg = {
-        "BE": 0.4,
-        "FN": -0.1,
-        "KRE": 0.2,
-        "XBI": -0.15,
-        "PSCI": 0.05,
-        "XRT": 0.1,
-    }
-    h = weighted_push_from_constituents(chg, IWM_TOP_HOLDINGS, IWM_HOLDINGS_WEIGHT_SUM)
-    s = weighted_push_from_constituents(
-        chg, [(x, y, z) for x, y, z in IWM_SECTORS], IWM_SECTOR_WEIGHT_SUM
-    )
-    blended = blend_iwm_weighted_push(h, s)
-    ctx = MarketContext(
-        iwm_holdings_confluence=ConfluenceRead(weighted_push=h),
-        iwm_confluence=ConfluenceRead(weighted_push=s),
-    )
-    assert iwm_blended_participation_push(ctx) == blended
-
-    row = {
-        "kre_chg_pct": 0.2,
-        "xbi_chg_pct": -0.15,
-        "psci_chg_pct": 0.05,
-        "xrt_chg_pct": 0.1,
-        "iwm_weighted_push": None,
-    }
-    out = weighted_pushes_from_snapshot_row(
-        row, extra_chg={"BE": 0.4, "FN": -0.1}
-    )
-    assert out["iwm_weighted_push"] == blended
-    assert out["iwm_weighted_push"] != s
+    assert not hasattr(mc, "SYMBOL_TO_SNAPSHOT_CHG_COL")
+    assert not hasattr(mc, "snapshot_row_chg_map")
 
 
 def test_fetch_confluence_quote_chg_as_of(tmp_path):
@@ -429,93 +292,6 @@ def test_fetch_confluence_quote_chg_as_of(tmp_path):
     assert got2["WMT"] == 0.22
 
 
-def test_backfill_weighted_pushes_uses_quote_ticks(tmp_path):
-    import sqlite3
-
-    from backfill_snapshot_derived import backfill_weighted_pushes
-    from db import EdDB
-
-    dbp = tmp_path / "bf_wp.db"
-    db = EdDB(dbp, allow_noncanonical=True)
-    db.upsert_confluence_quote_ticks(
-        [
-            {
-                "ticker": "WMT",
-                "ts_utc": 1000.0,
-                "ts_et": "2026-01-02 10:00:00",
-                "last_price": 100.0,
-                "chg_pct": 0.5,
-            }
-        ]
-    )
-    con = sqlite3.connect(str(dbp))
-    con.execute(
-        """
-        INSERT INTO snapshots (
-            ticker, timeframe, ts_utc, ts_et, spot, qqq_weighted_push,
-            nvda_chg_pct, aapl_chg_pct, msft_chg_pct, amzn_chg_pct,
-            googl_chg_pct, avgo_chg_pct, meta_chg_pct, tsla_chg_pct
-        ) VALUES ('SPY', '1m', 1000.0, '2026-01-02 10:00:00', 500.0, NULL,
-                  1.0, 0.5, -0.2, 0.3, 0.1, 0.4, 0.2, -0.1)
-        """
-    )
-    con.commit()
-    con.close()
-
-    stats = backfill_weighted_pushes(dbp)
-    assert stats["qqq_filled"] == 1
-    con = sqlite3.connect(str(dbp))
-    row = con.execute(
-        "SELECT qqq_weighted_push FROM snapshots WHERE ticker='SPY'"
-    ).fetchone()
-    con.close()
-    assert row[0] is not None
-
-
-def test_backfill_weighted_pushes_includes_goog_contribution(tmp_path):
-    """Independent-review finding (2026-09-13), REPRODUCED then FIXED: backfill_weighted_pushes'
-    own SELECT omitted goog_chg_pct even though SYMBOL_TO_SNAPSHOT_CHG_COL maps GOOG to that
-    column and GOOG carries a real, non-trivial SPY_TOP weight -- `row = dict(r)` had no
-    "goog_chg_pct" key at all, so snapshot_row_chg_map's row.get() silently returned None and
-    weighted_push_from_constituents treated GOOG as always-missing.
-
-    This snapshot sets goog_chg_pct as the ONLY populated SPY_TOP constituent (every other
-    SPY_TOP name is NULL): if GOOG is still excluded, weighted_push_from_constituents finds
-    zero usable weight and returns None outright, so this is a decisive presence/absence
-    check, not a numeric-tolerance one -- a non-None spy_weighted_push is only possible if
-    GOOG's column actually reached the computation.
-    """
-    import sqlite3
-
-    from backfill_snapshot_derived import backfill_weighted_pushes
-    from db import EdDB
-
-    dbp = tmp_path / "bf_goog.db"
-    EdDB(dbp, allow_noncanonical=True)   # applies schema + migrations, including goog_chg_pct
-    con = sqlite3.connect(str(dbp))
-    con.execute(
-        """
-        INSERT INTO snapshots (
-            ticker, timeframe, ts_utc, ts_et, spot, spy_weighted_push, goog_chg_pct
-        ) VALUES ('SPY', '1m', 2000.0, '2026-01-02 10:00:00', 500.0, NULL, 1.25)
-        """
-    )
-    con.commit()
-    con.close()
-
-    stats = backfill_weighted_pushes(dbp)
-    assert stats["spy_filled"] == 1
-    con = sqlite3.connect(str(dbp))
-    row = con.execute(
-        "SELECT spy_weighted_push FROM snapshots WHERE ticker='SPY'"
-    ).fetchone()
-    con.close()
-    assert row[0] is not None, (
-        "GOOG's chg_pct was not picked up by the backfill's own SELECT -- "
-        "weighted_push_from_constituents found zero usable weight and returned None"
-    )
-
-
 def test_no_stored_percent_change_patches_a_live_confluence_value():
     """Audit P0 (2026-09-23): a missing live confluence value was patched from the latest
     stored %-change with no age limit. That path is gone -- missing stays missing."""
@@ -526,7 +302,7 @@ def test_no_stored_percent_change_patches_a_live_confluence_value():
     import server
     assert not hasattr(market_context, "patch_context_confluence_from_quote_ticks")
     assert not hasattr(db_mod.EdDB, "fetch_latest_confluence_quote_chg")
-    assert "fetch_latest_confluence_quote_chg" not in inspect.getsource(server._ensure_mkt_ctx_confluence_complete)
+    assert "fetch_latest_confluence_quote_chg" not in inspect.getsource(server)
 
 
 def _logging_universe_rows(rows: list[tuple[str, str]]):

@@ -767,16 +767,6 @@ ROWS: tuple[Row, ...] = (
         justification='Inference on canonical features; no Schwab wire ingest.',
     ),
     Row(
-        file='market_context.py', derivation='_build_confluence', disposition='DERIVED',
-        producer_refs=('market_context.py:fetch_market_context',),
-        justification='Cap-weighted confluence from quote-derived chg_pct inputs.',
-    ),
-    Row(
-        file='market_context.py', derivation='_build_iwm_confluence', disposition='DERIVED',
-        producer_refs=('market_context.py:fetch_market_context',),
-        justification='IWM sector confluence composite.',
-    ),
-    Row(
         file='market_context.py', derivation='_derive_session', disposition='ALLOWLISTED',
         allowlist_id='mega1_session_calendar',
         justification='ET session label; no Schwab session_label leaf.',
@@ -784,12 +774,12 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='market_context.py', derivation='_extract_quote', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
-        justification='Schwab quote hierarchy via _last_traded_price; pct from netChange when percent leaf absent.',
+        justification='Schwab quote.lastPrice via _last_traded_price; pct from quote.netPercentChange only.',
     ),
     Row(
         file='market_context.py', derivation='_last_traded_price', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
-        justification='Trade-only last ladder (quote/extended lastPrice); regularMarketLastPrice close only as last resort (RC-16/RC-18).',
+        justification='quotes.quote.lastPrice only (T-11: no extended.lastPrice stand-in).',
     ),
     Row(
         file='market_context.py', derivation='_vix_regime', disposition='DERIVED',
@@ -819,7 +809,7 @@ ROWS: tuple[Row, ...] = (
         # shared by every chg_pct caller (not just fetch_market_context's sentinels).
         file='market_context.py', derivation='extract_pct_change', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.netPercentChange',
-        justification='Percent-change parser from quote JSON, shared by every chg_pct caller.',
+        justification='quotes.quote.netPercentChange only (T-09); missing stays missing.',
     ),
     Row(
         file='market_context.py', derivation='fetch_market_context._fetch', disposition='SCHWAB_LEAF',
@@ -830,11 +820,6 @@ ROWS: tuple[Row, ...] = (
         file='market_context.py', derivation='fetch_price_levels', disposition='REPLACED',
         schwab_leaf='pricehistory.candles.*.datetime',
         justification='Skip candles missing datetime leaf (fail-closed; no .get(datetime,0)).',
-    ),
-    Row(
-        file='market_context.py', derivation='iwm_blended_participation_push', disposition='DERIVED',
-        producer_refs=('market_context.py:fetch_market_context',),
-        justification='Composes Mega1 producers for iwm_blended_participation_push output fields.',
     ),
     Row(
         file='market_context.py', derivation='market_context_panel_symbols_excluding_core', disposition='SCHWAB_LEAF',
@@ -1397,11 +1382,6 @@ ROWS: tuple[Row, ...] = (
         justification='Hedging flow score.',
     ),
     Row(
-        file='math_probabilities.py', derivation='compute_iwm_confluence', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state', 'market_state.py:build_market_state'),
-        justification='IWM blended participation.',
-    ),
-    Row(
         file='math_probabilities.py', derivation='compute_option_flow_imbalance', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.callExpDateMap.*.bidSize',
         justification='Bid/ask size imbalance from Schwab leaves.',
@@ -1420,11 +1400,6 @@ ROWS: tuple[Row, ...] = (
         file='math_probabilities.py', derivation='compute_probs', disposition='DERIVED',
         producer_refs=('server.py:_fetch_state', 'market_state.py:build_market_state'),
         justification='Historical outcome probabilities.',
-    ),
-    Row(
-        file='math_probabilities.py', derivation='compute_sector_strength', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state', 'market_state.py:build_market_state'),
-        justification='Sector strength from context quotes.',
     ),
     Row(
         file='math_probabilities.py', derivation='compute_smart_money_signal', disposition='DERIVED',
@@ -2694,8 +2669,8 @@ ROWS: tuple[Row, ...] = (
     Row(
         # api_watchlist_quotes (/api/watchlist-quotes): the ONE batched Schwab quote read
         # for a whole client-held watchlist (client.get_quotes), reusing the same
-        # _parse_quote_node_session_fields parser and resolve_chg_pct authority every
-        # other quote route shares -- not a second quote computation.
+        # _parse_quote_node_session_fields parser every other quote route shares -- not a
+        # second quote computation.
         file='server.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
         justification='Batched multi-symbol quote fetch (client.get_quotes) via safe_get_quotes.',

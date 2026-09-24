@@ -255,8 +255,6 @@ from math_exposure import (
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
-    compute_sector_strength,
-    compute_iwm_confluence,
     compute_volume_oi_ratio,
     compute_smart_money_signal,
     flow_imbalance_label_from_normalized,
@@ -267,7 +265,6 @@ from market_context import (
     fetch_market_context,
     fetch_price_levels,
     market_context_panel_symbols_excluding_core,
-    stamp_confluence_display_fields,
     PriceLevels,
     _derive_session,
 )
@@ -3384,7 +3381,6 @@ IV_DIRECTION_THRESHOLD:  float = 0.02   # ±2% relative change to call expanding
 VIX_DIRECTION_THRESHOLD: float = 0.3   # ±0.3 pts tick-to-tick to call rising/falling
 
 # ETF zone classification (spy_zone / qqq_zone / iwm_zone)
-ETF_ZONE_THRESHOLD_PCT:  float = 0.3   # chg_pct beyond ±0.3% → bullish/bearish_trend
 
 # Chain fetch
 CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab (live UI — keep fast)
@@ -3986,7 +3982,7 @@ _logger_thread:   threading.Thread | None = None
 _logger_lock:     threading.Lock   = threading.Lock()
 
 # ── Global market context cache ───────────────────────────────────────────────
-# VIX, SPY/QQQ/IWM quotes, 9 SPY constituents, 4 IWM sectors = 17 API calls.
+# VIX / VXN / RVX / TNX and the configured index futures -- one quote each.
 # This data is IDENTICAL regardless of which ticker we're processing.
 # Cache it once per cycle instead of re-fetching per ticker.
 _cached_mkt_ctx       = None     # MarketContext object
@@ -4001,7 +3997,7 @@ MKT_CTX_TTL           = 25.0     # seconds — refresh once per cycle (LOG_INTER
 # sweep at a time; callers holding a previous context are served immediately.
 _mkt_ctx_refresh_inflight = False   # guarded by _cached_mkt_ctx_lock
 _mkt_ctx_refresh_cond = threading.Condition(_cached_mkt_ctx_lock)
-MKT_CTX_SYNC_JOIN_TIMEOUT_SEC = 30.0   # boot/force_sync bounded join on an in-flight sweep
+MKT_CTX_SYNC_JOIN_TIMEOUT_SEC = 30.0   # boot bounded join on an in-flight sweep
 
 
 def _is_loggable_session() -> bool:
@@ -4248,19 +4244,13 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
     _get_mkt_ctx / _mkt_ctx_background_refresh.
 
     Schwab CSV authority checked: yes
-    CSV row(s): quotes.$VIX.*, quotes.SPY.*, quotes.QQQ.*, quotes.IWM.* and
-      panel constituents via fetch_market_context (unchanged call shape).
+    CSV row(s): quotes.$VIX.*, $VXN, $RVX, $TNX and the configured index futures via
+      fetch_market_context.
     Derived-field disposition: none required — sweep body byte-identical.
     All consumers checked: yes — same MarketContext object stored/returned.
     SCHWAB_CSV_CHECKED"""
     global _cached_mkt_ctx, _cached_mkt_ctx_ts
     mkt_ctx_fetch_started_wall_ts = time.time()
-    _stream_chg_fn = None
-    try:
-        from app.options.order_flow.state import get_stream_chg_pct
-        _stream_chg_fn = get_stream_chg_pct
-    except (ImportError, AttributeError):
-        pass
     try:
         ctx = fetch_market_context(
             client,
@@ -4272,7 +4262,6 @@ def _fetch_and_store_mkt_ctx(client, pcr=None, prev_pcr=None):
                 _tk, client=_c, **_kw),
             pcr=pcr,
             prev_pcr=prev_pcr,
-            stream_chg_pct_fn=_stream_chg_fn,
         )
         if ctx.error:
             log.warning(f"fetch_market_context returned error: {ctx.error}")
@@ -4316,25 +4305,23 @@ def _mkt_ctx_background_refresh(client, pcr=None, prev_pcr=None):
             _mkt_ctx_refresh_cond.notify_all()
 
 
-def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
+def _get_mkt_ctx(client, pcr=None, prev_pcr=None):
     """Return cached global market context; the sweep is single-flight.
 
     Fresh cache: served directly. Stale cache while a PREVIOUS context
-    exists (and force_sync is False): serve the previous context
+    exists: serve the previous context
     immediately and kick at most ONE background sweep — UI_05 measured
     tail cause was every concurrent recompute paying the 17-call sweep
     inline on TTL lapse (8.3-10.5s inside the cold-switch chain window at
     pure chain <=1.8s, gate wait 0; trials @ 1f83a25 and f478208). No
-    context yet (boot) or force_sync=True (_ensure_mkt_ctx_confluence_complete):
-    join an in-flight sweep bounded, else perform it synchronously.
+    context yet (boot): join an in-flight sweep bounded, else perform it synchronously.
 
     Schwab CSV authority checked: yes
     CSV row(s): NO_SCHWAB_EQUIVALENT — refresh scheduling only; the Schwab
       sweep itself lives unchanged in _fetch_and_store_mkt_ctx.
     Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — served context
       is at most TTL + one sweep old, disclosed here; no fabricated values.
-    All consumers checked: yes — _fetch_state (stale-while-refresh) and
-      _ensure_mkt_ctx_confluence_complete (force_sync=True) both audited.
+    All consumers checked: yes — _fetch_state (stale-while-refresh).
     SCHWAB_CSV_CHECKED"""
     global _mkt_ctx_refresh_inflight
     mkt_ctx_cache_eval_wall_ts = time.time()
@@ -4348,7 +4335,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
             if pcr is not None:
                 _cached_mkt_ctx.pcr = pcr
             return _cached_mkt_ctx
-        if _cached_mkt_ctx is not None and not force_sync:
+        if _cached_mkt_ctx is not None:
             if not _mkt_ctx_refresh_inflight:
                 _mkt_ctx_refresh_inflight = True
                 try:
@@ -4360,7 +4347,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
             if pcr is not None:
                 _cached_mkt_ctx.pcr = pcr
             return _cached_mkt_ctx
-        # Boot (no context yet) or force_sync: bounded join on any in-flight
+        # Boot (no context yet): bounded join on any in-flight
         # sweep; take over the sweep if none is running (or the join expires).
         _join_deadline = time.monotonic() + MKT_CTX_SYNC_JOIN_TIMEOUT_SEC
         while _mkt_ctx_refresh_inflight and time.monotonic() < _join_deadline:
@@ -4379,33 +4366,6 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
         with _cached_mkt_ctx_lock:
             _mkt_ctx_refresh_inflight = False
             _mkt_ctx_refresh_cond.notify_all()
-
-
-def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=None):
-    """One forced refresh when weighted_push fields are missing before snapshot persist."""
-    from market_context import missing_confluence_weighted_pushes
-
-    missing = missing_confluence_weighted_pushes(mkt_ctx)
-    if not missing:
-        return mkt_ctx
-    log.warning("Market context missing confluence fields %s — forcing refresh", missing)
-    global _cached_mkt_ctx_ts
-    with _cached_mkt_ctx_lock:
-        _cached_mkt_ctx_ts = 0.0
-    # force_sync: this path just zeroed the cache ts because required
-    # confluence fields are MISSING — a stale-while-refresh serve would
-    # hand back the same incomplete object.
-    fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr, force_sync=True)
-    still = missing_confluence_weighted_pushes(fresh)
-    # A still-missing confluence value stays missing. It used to be patched from the latest
-    # stored confluence_quote_ticks %-change with NO age limit (could be a prior day's) --
-    # audit P0, removed (operator rule 2026-09-23: no fallbacks).
-    if still:
-        log.error(
-            "Confluence fields still missing after refresh: %s (qqq/spy/iwm weighted_push)",
-            still,
-        )
-    return fresh
 
 
 def _live_operator_mode_active() -> bool:
@@ -5358,7 +5318,7 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     # Percent change — the ONE parser (market_context.extract_pct_change), not a second
     # copy of the formula. Generic per the vendor node, not per symbol name.
     from market_context import extract_pct_change
-    pct_chg = extract_pct_change(_q, _reg, last)
+    pct_chg = extract_pct_change(_q)
     return {
         "last": last,
         "regular_close": regular_close,
@@ -5700,13 +5660,7 @@ def _project_l1(ticker: str, expiry: Optional[str], *, reason: str = "unknown") 
         l1_generation=gen,
     )
     out = build_l1_context(ctx, derive_vwap_side_fn=derive_vwap_side)
-    # build_l1_context stays pure (its own contract: no chain/DB/ML/REST) and resolves
-    # chg_pct only from ctx.l0_row (stream-preferred via resolve_chg_pct) — so a ticker
-    # whose spot streams but whose percent-change never does gets the same REST backfill
-    # /api/live/state already gets, closing the gap where the SSE-pushed header stayed
-    # blank even after that route was fixed (caught in review — a route-level fix does not
-    # reach a browser path that never calls that route).
-    out["chg_pct"] = _streamed_chg_pct(tkr, row)
+    # chg_pct: build_l1_context read it from this same row via live_market_plane.streamed_chg_pct.
     out["_l1_input_fingerprint"] = build_input_fingerprint(row, ent)
     of_block = out.get("order_flow") or {}
     out["_l1_of_signature"] = order_flow_compact_signature(of_block)
@@ -5883,7 +5837,7 @@ def _l1_http_get_projection(ticker: str, expiry: Optional[str], *, force: bool =
     # plane row happens to carry a usable one, or clobber it to a stale row's None — it
     # cannot backfill. Re-resolve fresh (stream, then the row the overlay just applied,
     # then REST) so a cache-hit SSE/HTTP read gets the same live answer a fresh build would.
-    out["chg_pct"] = _streamed_chg_pct(tkr, _lmp.get_quote(tkr))
+    out["chg_pct"] = _lmp.streamed_chg_pct(_lmp.get_quote(tkr))
     _l1_touch_scope(key)
     built = float(out.get("as_of_ts") or out.get("_server_build_ts") or l1_eval_wall_ts)
     age = max(0.0, l1_eval_wall_ts - built)
@@ -6017,17 +5971,6 @@ def _latest_cache_entry_for_ticker(ticker: str) -> Optional[tuple[tuple, dict]]:
     return (best_k, _state_cache[best_k])
 
 
-def _streamed_chg_pct(tkr: str, row: Optional[dict]) -> Optional[float]:
-    """chg_pct ONLY from a fresh streamed LEVELONE_EQUITIES row (REGULAR_MARKET_CHANGE_PERCENT,
-    0 hops). No REST backfill, no stale row: otherwise None (operator rule 2026-09-23)."""
-    from numeric_contract import float_finite_or_none as _fin
-    # REGULAR_MARKET_CHANGE_PERCENT moves with LAST_PRICE (Schwab derives it from the last
-    # trade), so it is live exactly while the streamed LAST_PRICE is.
-    if not (row and _lmp.plane_row_is_streamed(row) and _lmp.spot_is_fresh(row)):
-        return None
-    return _fin(row.get("chg_pct"))
-
-
 def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     """
     Tier A — live-only JSON for GET /api/live/state.
@@ -6064,7 +6007,7 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     spread_dollar = None
     if bid is not None and ask is not None:
         spread_dollar = round(ask - bid, 4)
-    chg_pct = _streamed_chg_pct(tkr, row)
+    chg_pct = _lmp.streamed_chg_pct(row)
     out: dict = {
         "_tier": "A_live",
         "ticker": tkr,
@@ -6148,12 +6091,9 @@ def _tier_a_live_state_dict(ticker: str, expiry: Optional[str]) -> dict:
     if lw:
         out["analytics_lightweight"] = lw
     _lmp.merge_into_state(out, tkr)
-    # merge_into_state (correctly, per its own fix) overwrites chg_pct unconditionally
-    # whenever the CURRENT plane row carries the key at all, including a stale/None value —
-    # that row was never told about the resolve_chg_pct/backfill result just computed above
-    # (this route intentionally does not write its transient backfill into the shared plane
-    # cache), so a stale plane-row chg_pct here would silently undo it. The value already
-    # resolved above is this response's actual answer; re-assert it as the last word.
+    # merge_into_state overwrites chg_pct whenever the CURRENT plane row carries the key,
+    # with no freshness check -- a stale row's value would replace the fresh-gated
+    # live_market_plane.streamed_chg_pct answer computed above. Re-assert that answer.
     out["chg_pct"] = chg_pct
     return out
 
@@ -7203,13 +7143,9 @@ def _fetch_state(
     except Exception as e:
         log.debug(f"Section 8 signals calc: {e}")
 
-    # ── Volatility Envelope, Level Density, Sector Strength ──────────────────
+    # ── Volatility Envelope, Level Density ───────────────────────────────────
     _vol_envelope = {}
     _level_density = {}
-    _sector_strength = {}
-    _index_strength = {}
-    _spy_strength = {}
-    _iwm_deep = {}
     # VOL_INPUT_CONTRACT 1.0.0 (lane V1): compute the market-vol context
     # ONCE per cycle. The tracker ticks exactly once here — the previous
     # per-surface ticks (confluence / snapshot / ms_dict) re-ticked the
@@ -7299,48 +7235,8 @@ def _fetch_state(
                 _all_levels["em_upper"] = float(_em_spot) + float(_em_pts)
                 _all_levels["em_lower"] = float(_em_spot) - float(_em_pts)
         _level_density = compute_level_density(_all_levels, spot_f)
-
-        # Sector strength — 3 groups
-        # Group 1: Indices (SPY, QQQ, IWM)
-        _idx_data = {}
-        for _ik, _ig in [('SPY', mkt_ctx.spy_chg_pct), ('QQQ', mkt_ctx.qqq_chg_pct), ('IWM', mkt_ctx.iwm_chg_pct)]:
-            if _ig is not None: _idx_data[_ik] = float(_ig)
-        _index_strength = compute_sector_strength(_idx_data)
-
-        # Group 2: SPY top holdings (from mkt_ctx.constituents)
-        _spy_holdings = {}
-        for _cq in getattr(mkt_ctx, 'constituents', []):
-            _sym = getattr(_cq, 'symbol', '').upper()
-            _chg = getattr(_cq, 'chg_pct', None)
-            if _sym and _chg is not None:
-                _spy_holdings[_sym] = float(_chg)
-        _spy_strength = compute_sector_strength(_spy_holdings)
-
-        # Group 3: IWM sector proxies (from mkt_ctx.iwm_sectors)
-        _sector_data = {}
-        for _sq in getattr(mkt_ctx, 'iwm_sectors', []):
-            _sym = getattr(_sq, 'symbol', '').upper()
-            _chg = getattr(_sq, 'chg_pct', None)
-            if _sym and _chg is not None:
-                _sector_data[_sym] = float(_chg)
-        _sector_strength = compute_sector_strength(_sector_data)
-
-        # VOL_INPUT_CONTRACT 1.0.0: confluence consumes the same per-cycle
-        # context as every other surface (computed above, outside this try).
-        _vix_dir_for_confluence = vol_ctx.market_iv_direction
-        _iwm_deep = compute_iwm_confluence(
-            spy_chg=mkt_ctx.spy_chg_pct,
-            qqq_chg=mkt_ctx.qqq_chg_pct,
-            iwm_chg=mkt_ctx.iwm_chg_pct,
-            kre_chg=_sector_data.get('KRE'),
-            xbi_chg=_sector_data.get('XBI'),
-            psci_chg=_sector_data.get('PSCI'),
-            xrt_chg=_sector_data.get('XRT'),
-            vix_level=vol_ctx.market_iv_level,
-            vix_direction=_vix_dir_for_confluence,
-        )
     except Exception as e:
-        log.debug(f"Envelope/density/sector calc: {e}")
+        log.debug(f"Envelope/density calc: {e}")
     _stage_marks.append(("vol_flow_signals", time.perf_counter()))
 
     # ── Zone tracking ─────────────────────────────────────────────────────────
@@ -7803,12 +7699,6 @@ def _fetch_state(
         Runs post-publish on the full path, pre-return on the log_only path.
         Never mutates _state_cache; never raises (per-section try/except).
         """
-        # FIX_B relocation repair: the confluence-completion rebind
-        # (mkt_ctx = _ensure_mkt_ctx_confluence_complete(...)) was owned by
-        # _fetch_state before the tail extraction; without this declaration the
-        # assignment makes mkt_ctx tail-local and its own RHS read raises
-        # UnboundLocalError, killing every snapshot persist at that line.
-        nonlocal mkt_ctx
         # ── DB snapshot logging ───────────────────────────────────────────────────
         # Initialized outside `if _ed_db` so the calibration gate below can read it.
         _snap_insert_landed = False
@@ -7952,56 +7842,11 @@ def _fetch_state(
                     from math_levels import compute_pin_width_pts
                     _pin_w = compute_pin_width_pts(_cgw, _pgw)
     
-                    # Constituents from market context — wrap each fetch independently for partial results
-                    mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)
-                    _const_map = {}
-                    if hasattr(mkt_ctx, "constituents"):
-                        for cq in mkt_ctx.constituents:
-                            try:
-                                if cq.chg_pct is not None:
-                                    _const_map[cq.symbol.upper()] = round(float(cq.chg_pct), 4)
-                            except Exception as e:
-                                log.warning(f"Constituent {getattr(cq, 'symbol', '?')} chg_pct fetch failed: {e}")
-                    try:
-                        _spw = getattr(getattr(mkt_ctx, "confluence", None), "weighted_push", None)
-                    except Exception as e:
-                        log.warning(f"spy_weighted_push (confluence) failed: {e}")
-                        _spw = None
-                    try:
-                        _qqqw = getattr(getattr(mkt_ctx, "qqq_confluence", None), "weighted_push", None)
-                    except Exception as e:
-                        log.warning(f"qqq_weighted_push (qqq_confluence) failed: {e}")
-                        _qqqw = None
-
-                    # IWM sectors from market context — wrap each fetch independently for partial results
-                    _sect_map = {}
-                    if hasattr(mkt_ctx, "iwm_sectors"):
-                        for sq in mkt_ctx.iwm_sectors:
-                            try:
-                                if sq.chg_pct is not None:
-                                    _sect_map[sq.symbol.upper()] = round(float(sq.chg_pct), 4)
-                            except Exception as e:
-                                log.warning(f"Sector {getattr(sq, 'symbol', '?')} chg_pct fetch failed: {e}")
-                    try:
-                        from market_context import iwm_blended_participation_push
-                        _iwp = iwm_blended_participation_push(mkt_ctx)
-                    except Exception as e:
-                        log.warning(f"iwm_weighted_push (blended participation) failed: {e}")
-                        _iwp = None
-    
                     # VOL_INPUT_CONTRACT 1.0.0: snapshot row consumes the one
                     # per-cycle context (no re-tick, no independent vs-prev).
                     _vix_vs_prev = vol_ctx.market_iv_change
                     _vix_dir = vol_ctx.market_iv_direction
     
-                    # ETF zone helper: derive bullish/bearish/neutral from chg_pct.
-                    # Used for spy_zone / qqq_zone / iwm_zone in snapshot row.
-                    def _etf_zone(chg):
-                        if chg is None: return None
-                        if float(chg) >  ETF_ZONE_THRESHOLD_PCT: return "bullish_trend"
-                        if float(chg) < -ETF_ZONE_THRESHOLD_PCT: return "bearish_trend"
-                        return "neutral"
-
                     # Price-action cone (operator 2026-06-11): persist bar-derived
                     # momentum/structure primitives from the in-memory 1m accumulator
                     # (completed bars only; bar_end <= ts_utc — leak-free). Honest
@@ -8104,34 +7949,6 @@ def _fetch_state(
                         put_call_oi_ratio=pcr_val,
                         oi_center=getattr(consensus_summary, "oi_center", None) if consensus_summary else None,
                         gamma_pin=_ssot_gamma_pin,
-                        spy_spot=mkt_ctx.spy_last, spy_chg_pct=mkt_ctx.spy_chg_pct,
-                        spy_zone=_etf_zone(mkt_ctx.spy_chg_pct), spy_vwap_side=None, spy_net_delta=None,
-                        qqq_spot=mkt_ctx.qqq_last, qqq_chg_pct=mkt_ctx.qqq_chg_pct,
-                        qqq_zone=_etf_zone(mkt_ctx.qqq_chg_pct), qqq_vwap_side=None, qqq_net_delta=None,
-                        qqq_vs_spy=(round(float(mkt_ctx.qqq_chg_pct) - float(mkt_ctx.spy_chg_pct), 4)
-                                    if mkt_ctx.qqq_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
-                        qqq_vs_spy_delta=None,
-                        iwm_spot=mkt_ctx.iwm_last, iwm_chg_pct=mkt_ctx.iwm_chg_pct,
-                        iwm_zone=_etf_zone(mkt_ctx.iwm_chg_pct), iwm_vwap_side=None, iwm_net_delta=None,
-                        iwm_vs_spy=(round(float(mkt_ctx.iwm_chg_pct) - float(mkt_ctx.spy_chg_pct), 4)
-                                    if mkt_ctx.iwm_chg_pct is not None and mkt_ctx.spy_chg_pct is not None else None),
-                        iwm_risk_signal=None,
-                        nvda_chg_pct=_const_map.get("NVDA"),
-                        aapl_chg_pct=_const_map.get("AAPL"),
-                        msft_chg_pct=_const_map.get("MSFT"),
-                        amzn_chg_pct=_const_map.get("AMZN"),
-                        googl_chg_pct=_const_map.get("GOOGL"),
-                        goog_chg_pct=_const_map.get("GOOG"),
-                        avgo_chg_pct=_const_map.get("AVGO"),
-                        meta_chg_pct=_const_map.get("META"),
-                        tsla_chg_pct=_const_map.get("TSLA"),
-                        spy_weighted_push=round(float(_spw), 4) if _spw is not None else None,
-                        qqq_weighted_push=round(float(_qqqw), 4) if _qqqw is not None else None,
-                        kre_chg_pct=_sect_map.get("KRE"),
-                        xbi_chg_pct=_sect_map.get("XBI"),
-                        psci_chg_pct=_sect_map.get("PSCI"),
-                        xrt_chg_pct=_sect_map.get("XRT"),
-                        iwm_weighted_push=round(float(_iwp), 4) if _iwp is not None else None,
                         vix_level=vol_ctx.market_iv_level,
                         vix_direction=_vix_dir,
                         vix_vs_prev=_vix_vs_prev,
@@ -8247,25 +8064,6 @@ def _fetch_state(
                         vol_env_lower=_vol_envelope.get("lower"),
                         level_density_count=_level_density.get("count"),
                         level_density_label=_level_density.get("density_label"),
-                        sector_leader=_sector_strength.get("leader"),
-                        sector_laggard=_sector_strength.get("laggard"),
-                        sector_breadth=_sector_strength.get("breadth"),
-                        sector_risk_signal=_sector_strength.get("risk_signal"),
-                        index_leader=_index_strength.get("leader"),
-                        index_laggard=_index_strength.get("laggard"),
-                        index_breadth=_index_strength.get("breadth"),
-                        index_risk_signal=_index_strength.get("risk_signal"),
-                        spy_holdings_leader=_spy_strength.get("leader"),
-                        spy_holdings_laggard=_spy_strength.get("laggard"),
-                        spy_holdings_breadth=_spy_strength.get("breadth"),
-                        spy_holdings_risk=_spy_strength.get("risk_signal"),
-                        # ── IWM Deep Confluence ────────────────────────────────
-                        iwm_risk_regime=_iwm_deep.get("risk_regime"),
-                        iwm_risk_score=_iwm_deep.get("risk_score"),
-                        spy_iwm_divergence=_iwm_deep.get("spy_iwm_divergence"),
-                        spy_iwm_fragile=_iwm_deep.get("spy_iwm_fragile"),
-                        iwm_early_warning=_iwm_deep.get("early_warning"),
-                        rotation_signal=_iwm_deep.get("rotation_signal"),
                         # ── Bond Yields ────────────────────────────────────────
                         tnx_yield=getattr(mkt_ctx, 'tnx_yield', None),
                         tnx_chg=getattr(mkt_ctx, 'tnx_chg', None),
@@ -8949,40 +8747,6 @@ def _fetch_state(
     ms_dict["level_density_label"]   = _level_density.get("density_label")
     ms_dict["level_density_names"]   = _level_density.get("level_names")
 
-    # ── Sector Strength (3 groups) ───────────────────────────────────────────
-    ms_dict["index_leader"]          = _index_strength.get("leader")
-    ms_dict["index_laggard"]         = _index_strength.get("laggard")
-    ms_dict["index_breadth"]         = _index_strength.get("breadth")
-    ms_dict["index_risk_signal"]     = _index_strength.get("risk_signal")
-    ms_dict["index_spread"]          = _index_strength.get("spread")
-
-    ms_dict["spy_holdings_leader"]   = _spy_strength.get("leader")
-    ms_dict["spy_holdings_laggard"]  = _spy_strength.get("laggard")
-    ms_dict["spy_holdings_breadth"]  = _spy_strength.get("breadth")
-    ms_dict["spy_holdings_risk"]     = _spy_strength.get("risk_signal")
-    ms_dict["spy_holdings_spread"]   = _spy_strength.get("spread")
-
-    ms_dict["sector_leader"]         = _sector_strength.get("leader")
-    ms_dict["sector_laggard"]        = _sector_strength.get("laggard")
-    ms_dict["sector_breadth"]        = _sector_strength.get("breadth")
-    ms_dict["sector_risk_signal"]    = _sector_strength.get("risk_signal")
-    ms_dict["sector_spread"]         = _sector_strength.get("spread")
-
-    # ── IWM Deep Confluence ───────────────────────────────────────────────────
-    ms_dict["iwm_risk_regime"]       = _iwm_deep.get("risk_regime")
-    ms_dict["iwm_risk_confidence"]   = _iwm_deep.get("risk_regime_confidence")
-    ms_dict["spy_iwm_divergence"]    = _iwm_deep.get("spy_iwm_divergence")
-    ms_dict["spy_iwm_div_label"]     = _iwm_deep.get("spy_iwm_divergence_label")
-    ms_dict["spy_iwm_fragile"]       = _iwm_deep.get("spy_iwm_fragile")
-    ms_dict["qqq_iwm_spread"]        = _iwm_deep.get("qqq_iwm_spread")
-    ms_dict["rotation_signal"]       = _iwm_deep.get("rotation_signal")
-    ms_dict["sector_breadth_quality"] = _iwm_deep.get("sector_breadth_quality")
-    ms_dict["iwm_early_warning"]     = _iwm_deep.get("early_warning")
-    ms_dict["iwm_early_warning_type"] = _iwm_deep.get("early_warning_type")
-    ms_dict["iwm_risk_score"]        = _iwm_deep.get("risk_score")
-    ms_dict["iwm_risk_score_label"]  = _iwm_deep.get("risk_score_label")
-    ms_dict["iwm_confluence_summary"] = _iwm_deep.get("summary")
-
     # ── Bond Yields ───────────────────────────────────────────────────────────
     ms_dict["tnx_yield"]             = getattr(mkt_ctx, "tnx_yield", None)
     ms_dict["tnx_chg"]              = getattr(mkt_ctx, "tnx_chg", None)
@@ -9155,13 +8919,6 @@ def _fetch_state(
     ms_dict["active_compliant"] = _comp.get("compliant")
     ms_dict["active_compliance_issues"] = _comp.get("issues")
 
-    # ── Confluence (market context) ────────────────────────────────────────────
-    ms_dict["spy_chg_pct"]    = getattr(mkt_ctx, "spy_chg_pct",  None)
-    ms_dict["qqq_chg_pct"]    = getattr(mkt_ctx, "qqq_chg_pct",  None)
-    ms_dict["iwm_chg_pct"]    = getattr(mkt_ctx, "iwm_chg_pct",  None)
-    ms_dict["spy_last"]       = _fv(getattr(mkt_ctx, "spy_last",  None))
-    ms_dict["qqq_last"]       = _fv(getattr(mkt_ctx, "qqq_last",  None))
-    ms_dict["iwm_last"]       = _fv(getattr(mkt_ctx, "iwm_last",  None))
     # CME index futures (optional — full contract symbols via ED_FUTURES_ES / NQ / RTY)
     ms_dict["fut_es_symbol"]   = getattr(mkt_ctx, "fut_es_symbol", "") or ""
     ms_dict["fut_es_last"]     = _fv(getattr(mkt_ctx, "fut_es_last", None))
@@ -9173,56 +8930,6 @@ def _fetch_state(
     ms_dict["fut_rty_last"]    = _fv(getattr(mkt_ctx, "fut_rty_last", None))
     ms_dict["fut_rty_chg_pct"] = getattr(mkt_ctx, "fut_rty_chg_pct", None)
     ms_dict["vix_implication"] = getattr(mkt_ctx, "vix_implication", "")
-
-    # RC-365/F39: absent weighted_push stays None (not 0). Dots None when the push is absent.
-    ms_dict.update(stamp_confluence_display_fields(mkt_ctx))
-
-    # Constituent dots
-    _constituents = []
-    for cq in (getattr(mkt_ctx, "constituents", None) or []):
-        _constituents.append({
-            "symbol":       cq.symbol,
-            "chg_pct":      cq.chg_pct,
-            "weight":       cq.weight,
-            "contribution": cq.contribution,
-            "dot_color":    cq.dot_color,
-        })
-    ms_dict["constituents"] = _constituents
-
-    _qqq_c = []
-    for cq in (getattr(mkt_ctx, "qqq_constituents", None) or []):
-        _qqq_c.append({
-            "symbol":       cq.symbol,
-            "chg_pct":      cq.chg_pct,
-            "weight":       cq.weight,
-            "contribution": cq.contribution,
-            "dot_color":    cq.dot_color,
-        })
-    ms_dict["qqq_constituents"] = _qqq_c
-
-    _iwm_h = []
-    for cq in (getattr(mkt_ctx, "iwm_holdings", None) or []):
-        _iwm_h.append({
-            "symbol":       cq.symbol,
-            "chg_pct":      cq.chg_pct,
-            "weight":       cq.weight,
-            "contribution": cq.contribution,
-            "dot_color":    cq.dot_color,
-        })
-    ms_dict["iwm_holdings_constituents"] = _iwm_h
-
-    # IWM sector proxies
-    _iwm_sectors = []
-    for sq in (getattr(mkt_ctx, "iwm_sectors", None) or []):
-        _iwm_sectors.append({
-            "symbol":       sq.symbol,
-            "label":        getattr(sq, "label", ""),
-            "chg_pct":      sq.chg_pct,
-            "weight":       sq.weight,
-            "contribution": sq.contribution,
-            "dot_color":    sq.dot_color,
-        })
-    ms_dict["iwm_sectors"] = _iwm_sectors
 
     # ── Logger stats for UI display ───────────────────────────────────────────
     with _logger_lock:
@@ -15655,7 +15362,7 @@ def api_live_plane(ticker: str = Query(...)):
     try:
         from app.options.order_flow.state import get_top_of_book_sizes
 
-        _scp = _streamed_chg_pct(t, _lmp.get_quote(t))   # the plane's NET_CHANGE_PERCENT
+        _scp = _lmp.streamed_chg_pct(_lmp.get_quote(t))   # the plane's NET_CHANGE_PERCENT
         if _scp is not None:
             base["stream_chg_pct"] = _scp
         base.update(get_top_of_book_sizes(t))
@@ -16115,7 +15822,7 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
                 "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
                 "spot_state": "live",
                 "spot_source": SPOT_SOURCE_PLANE,
-                "chg_pct": _streamed_chg_pct(t, row),
+                "chg_pct": _lmp.streamed_chg_pct(row),
                 "exchange_quote_ts": row.get("exchange_quote_ts"),
             }
     if not out:
