@@ -117,6 +117,10 @@ P1/P2 rows are to be merged here as each file is repaired.
 | N-05 | v2_decision/a2_lifecycle_sidecar.py | second stop/target producer: VIX/clock stop, VWAP-snapped targets, 2R/T1+1R fallbacks disagreeing with The Call | A2 lifecycle preview (advisory, training rows) | FIXED c36102ec (carries The Call's plan) |
 | N-06 | call_engine.py `_vol_risk_mult`; lifecycle_rule_core.apply_risk_multiplier | vol-regime risk multiplier `or 1.0`; NaN multiplier -> 1.0 | The Call stop distance | OPEN |
 | N-07 | terrain_engine.py compute_terrain | max pain computed over ALL expiries pooled (standard definition is per expiry) | Trade Desk max pain | FIXED 65b45a7f (front expiry, max_pain_dte) |
+| N-08 | server.py /api/fast-quote REST writer; live_market_plane.record_quote; ingest LAST_PRICE carry | REST quotes written into the live plane (replacing stream rows), auth-failure stale carry-forward, REST row restamped as streamed | spot / header / tools | FIXED d944aabf |
+| N-09 | server.py _fetch_state spread + volume | cached-spread label; 4-source volume chain into bar volume | snapshots, candles | FIXED d944aabf |
+| N-10 | server.py _fetch_state | bid/ask/sizes/mark from a per-cycle REST quote while spot is streamed -- two sources and two instants in one persisted row | snapshots, The Call inputs | OPEN |
+| N-11 | server.py _fetch_state expiry select | a requested past expiry is replaced by the default expiry ("using default") instead of refused | state payload | OPEN |
 
 ### v2 decision (advisory; persisted training rows only)
 | ID | file:line | Violation | Status |
@@ -131,5 +135,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 19 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 21 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.
