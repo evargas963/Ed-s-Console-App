@@ -258,7 +258,7 @@ from math_exposure import (
     compute_volume_oi_ratio,
     compute_smart_money_signal,
     flow_imbalance_label_from_normalized,
-    flow_imbalance_normalized_with_fallback,
+    option_flow_book_imbalance,
 )
 from math_snapshot_derive import derive_pressure_trend, derive_vwap_side
 from market_context import (
@@ -2766,9 +2766,9 @@ def _write_analytics_bg_error_shell(
     if token_invalid:
         md["error"] = "token_invalid"
         md["remediation"] = rem
-    md["call_signal"] = "wait"
+    md["call_signal"] = None       # the refresh failed: no Call was computed (was "wait")
     md["fusion_available"] = False
-    md["mhap_rows"] = []
+    md["mhap_rows"] = None         # no rows were computed (an empty list read as "computed, none")
     _lmp.merge_into_state(md, t)
     _state_cache[ck] = {
         "ts": now,
@@ -2919,10 +2919,12 @@ def _publish_progressive_tier_c_cache(
         "spread": quote_spread_pts,
         "spread_source": quote_spread_source,
         "fusion_available": False,
-        "call_signal": "wait",
-        "call_conviction": "low",
-        "dominant_dir": "flat",
-        "mhap_rows": list(prev_md.get("mhap_rows") or []),
+        # not computed yet in this partial publish -> absent (was WAIT / low / flat, and the
+        # PREVIOUS cycle's mhap_rows carried under this build's timestamp) (2026-09-24)
+        "call_signal": None,
+        "call_conviction": None,
+        "dominant_dir": None,
+        "mhap_rows": None,
         "state_error": None,
         "_server_build_ts": now,
         "_pipeline_ms": 0,
@@ -5239,10 +5241,6 @@ def _default_expiry(expiries: list[str], ticker: str = "?") -> Optional[str]:
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# REST fallback — Cum Delta proxy (polling-based) when streamer unavailable
-# Uses quote.lastPrice, lastSize, bidPrice, askPrice. Accumulates per session.
-# ─────────────────────────────────────────────────────────────────────────────
 def _safe_float_quote(v) -> Optional[float]:
     """Safe float for quote fields. SINGLE SOURCE: delegates to the canonical
     numeric_contract.float_finite_or_none so NaN/±inf are rejected identically everywhere
@@ -6343,10 +6341,14 @@ def _fetch_state(
     # ── Select expiry ─────────────────────────────────────────────────────────
     expiries     = _expiries_from_contracts(contracts)
     _today_str   = now_et.strftime("%Y-%m-%d")
-    if expiry and expiry < _today_str:
-        log.warning("Rejecting past expiry %s for %s (today=%s) — using default", expiry, ticker, _today_str)
-        expiry = None
-    selected_exp = expiry or _default_expiry(expiries, ticker)
+    # N-11 (2026-09-24): a REQUESTED expiry that is past or not in the chain is refused with
+    # its reason -- it used to be replaced by the default expiry ("using default"), so the
+    # operator saw another expiry's book under the one they asked for. No request -> the
+    # front expiry (the defined meaning of "no expiry chosen").
+    _requested_expiry_unavailable = bool(expiry) and (expiry < _today_str or expiry not in expiries)
+    if _requested_expiry_unavailable:
+        log.warning("Requested expiry %s unavailable for %s (today=%s) -- refused", expiry, ticker, _today_str)
+    selected_exp = None if _requested_expiry_unavailable else (expiry or _default_expiry(expiries, ticker))
     if not selected_exp:
         log.warning("_fetch_state: no valid expiry for %s — skipping", ticker)
         try:
@@ -6357,8 +6359,11 @@ def _fetch_state(
             "ticker": ticker.upper(),
             "selected_exp": None,
             "expiries": [e for e in expiries if e >= _today_str],
-            "state_error": "no_valid_expiry",
+            "state_error": ("requested_expiry_unavailable" if _requested_expiry_unavailable
+                            else "no_valid_expiry"),
             "state_error_detail": (
+                f"Requested expiry {expiry} is past or not in this chain."
+                if _requested_expiry_unavailable else
                 "No usable option expiry (empty chain or all expiries past). "
                 "WTDS / Call need an options chain — try another symbol or refresh."
             ),
@@ -6367,10 +6372,10 @@ def _fetch_state(
             "bid_disp": "—",
             "ask_disp": "—",
             "session_label": session_label,
-            "call_signal": "wait",
-            "call_conviction": "low",
+            "call_signal": None,      # no Call was computed (was "wait"/"low"/"flat")
+            "call_conviction": None,
             "fusion_available": False,
-            "dominant_dir": "flat",
+            "dominant_dir": None,
             "rules_headline": "—",
         }
         _minimal_end_mono = time.monotonic()
@@ -6416,10 +6421,10 @@ def _fetch_state(
             "bid_disp": "—",
             "ask_disp": "—",
             "session_label": session_label,
-            "call_signal": "wait",
-            "call_conviction": "low",
+            "call_signal": None,      # no Call was computed (was "wait"/"low"/"flat")
+            "call_conviction": None,
             "fusion_available": False,
-            "dominant_dir": "flat",
+            "dominant_dir": None,
             "rules_headline": "—",
         })
         _exp_err["_server_build_ts"] = time.time()
@@ -6979,14 +6984,14 @@ def _fetch_state(
         log.debug(f"Order flow signals calc: {e}")
     # RC-345 / F11 residual: ONE computation for the served number AND its label.
     # The live path used to call compute_option_flow_imbalance independently for
-    # flow_imbalance_label while persisting flow_imbalance_normalized_with_fallback.
+    # flow_imbalance_label while persisting option_flow_book_imbalance.
     # MEASURED on current main: empty ATM book + call-heavy volume → number 0.6
     # (source=volume) beside label "balanced" (book-only zero). Label is now a
     # function of the same normalized value the wrapper returns.
     _flow_imb_norm = None
     _flow_imb_source = "none"
     try:
-        _flow_imb_norm, _flow_imb_source = flow_imbalance_normalized_with_fallback(exposures, spot_f)
+        _flow_imb_norm, _flow_imb_source = option_flow_book_imbalance(exposures, spot_f)
     except Exception as e:
         log.warning(f"flow_imbalance (one-producer authority) failed: {e}")
     try:
@@ -7006,8 +7011,9 @@ def _fetch_state(
     _pin_score_val = {}
     _vol_expansion = {}
     _sweep_score = {}
-    # Sweep score post-build_market_state needs _void_factor even if Section 8 raised early.
-    _void_factor = 0.0
+    # Sweep score post-build_market_state reads _void_factor even if Section 8 raised early:
+    # None there (not measured) -- a 0.0 here was a present leg the score never measured.
+    _void_factor = None
 
     # Gamma-audit 2026-08-26 (latent NameError, found tracing the F9 regime source): the terrain-SSOT
     # reads below live INSIDE this try, whose `except` only logs (server.py: "Section 8 signals calc")

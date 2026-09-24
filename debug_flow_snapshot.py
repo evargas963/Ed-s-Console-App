@@ -20,7 +20,7 @@ from pathlib import Path
 from math_exposure_core import compute_exposures_by_strike
 from math_probabilities import (
     atm_flow_window_totals,
-    flow_imbalance_normalized_with_fallback,
+    option_flow_book_imbalance,
 )
 
 from timeframe_config import CANONICAL_TIMEFRAME
@@ -107,7 +107,7 @@ def main() -> None:
 
     exposures, _diag = compute_exposures_by_strike(contracts, spot=spot, require_oi=False)
     sums = atm_flow_window_totals(exposures, spot, window_pts=WINDOW)
-    flow_re, src = flow_imbalance_normalized_with_fallback(exposures, spot, window_pts=WINDOW)
+    flow_re, src = option_flow_book_imbalance(exposures, spot, window_pts=WINDOW)
 
     print(f"ATM window +/-{WINDOW:g} pt — strikes_in_window={sums['strikes_in_window']}")
     print(

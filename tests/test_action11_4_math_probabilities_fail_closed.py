@@ -10,7 +10,7 @@ from math_probabilities import (
     compute_smart_money_signal,
     compute_sweep_score,
     compute_vol_expansion_signal,
-    flow_imbalance_normalized_with_fallback,
+    option_flow_book_imbalance,
 )
 
 
@@ -70,7 +70,7 @@ def test_vol_expansion_and_sweep_none_when_all_missing():
 
 
 def test_flow_imbalance_none_when_no_chain_data():
-    assert flow_imbalance_normalized_with_fallback({}, 500.0) == (None, "none")
+    assert option_flow_book_imbalance({}, 500.0) == (None, "none")
 
 
 def test_smart_money_no_data_returns_none_fields():

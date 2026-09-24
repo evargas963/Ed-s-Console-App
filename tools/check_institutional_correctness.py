@@ -2604,7 +2604,9 @@ def _measured_claims_cite_evidence_own_violations() -> list[Violation]:
     out: list[Violation] = []
     for rel in targets:
         path = REPO / rel
-        if not path.is_file():
+        try:
+            path.read_text(encoding="utf-8", errors="ignore")   # unreadable/deleted -> skip
+        except OSError:
             continue
         diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
         for ln in diff:

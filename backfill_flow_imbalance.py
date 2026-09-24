@@ -6,7 +6,7 @@ Uses per-strike buckets from compute_exposures_by_strike(require_oi=False) so OI
 still contribute volume / sizes when present.
 
 When archived rows lack bidSize/askSize, flow_imbalance falls back to call vs put volume
-near ATM (see math_probabilities.flow_imbalance_normalized_with_fallback).
+near ATM (see math_probabilities.option_flow_book_imbalance).
 
 Gate (default, not --force)
 ---------------------------
@@ -40,7 +40,7 @@ from db import get_snapshot_sql
 from math_exposure_core import compute_exposures_by_strike
 from math_probabilities import (
     compute_smart_money_signal,
-    flow_imbalance_normalized_with_fallback,
+    option_flow_book_imbalance,
 )
 from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
 
@@ -122,7 +122,7 @@ def backfill(
         exposures, _diag = compute_exposures_by_strike(
             contracts, spot=spot, require_oi=False
         )
-        flow_norm, src = flow_imbalance_normalized_with_fallback(exposures, spot)
+        flow_norm, src = option_flow_book_imbalance(exposures, spot)
         by_src[src] = by_src.get(src, 0) + 1
         sm = compute_smart_money_signal(exposures, spot, window_pts=3.0)
         sm_score = sm.get("score")

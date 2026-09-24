@@ -240,8 +240,9 @@ def _enclosing_function(tree: ast.AST, lineno: int):
 
 def test_repo_wide_every_verdict_literal_is_a_flagged_no_decision_sentinel(repo_index):
     """A dict literal or key write that carries call_signal outside the owner/carrier must be a
-    no-decision shell (flagged by state_error / pending / partial) and must read 'wait' — never a
-    computed or directional verdict."""
+    no-decision shell (flagged by state_error / pending / partial) and must carry NO verdict
+    (None) — never a computed or directional one. (2026-09-24, operator rule no fallbacks: the
+    shells used to say "wait" / "low" -- a trading instruction nobody computed.)"""
     offenders: list[str] = []
     for rel_path, _text, tree in repo_index.items():
         rel = rel_path.as_posix()
@@ -258,15 +259,15 @@ def test_repo_wide_every_verdict_literal_is_a_flagged_no_decision_sentinel(repo_
                     verdict_vals = [v for k, v in vals.items() if k in VERDICT_KEYS]
                     if not any(isinstance(v, ast.Constant) for v in verdict_vals):
                         continue  # a relay of the owner's value (record / provenance / calibration), not a writer
-                    sig = vals.get("call_signal")
-                    if not (keys & _NO_DECISION_MARKERS) or not (isinstance(sig, ast.Constant) and sig.value == "wait"):
+                    if not (keys & _NO_DECISION_MARKERS) or any(
+                            isinstance(v, ast.Constant) and v.value is not None for v in verdict_vals):
                         offenders.append(f"{rel}:{n.lineno} dict literal")
             if isinstance(n, ast.Assign):
                 for t in n.targets:
                     if isinstance(t, ast.Subscript) and isinstance(t.slice, ast.Constant) and t.slice.value in VERDICT_KEYS:
                         fn = _enclosing_function(tree, n.lineno)
                         body_src = ast.unparse(fn) if fn is not None else ""
-                        if not (isinstance(n.value, ast.Constant) and n.value.value == "wait"
+                        if not (isinstance(n.value, ast.Constant) and n.value.value is None
                                 and any(m in body_src for m in _NO_DECISION_MARKERS)):
                             offenders.append(f"{rel}:{n.lineno} key write")
     assert offenders == [], offenders

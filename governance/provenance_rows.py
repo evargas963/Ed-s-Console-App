@@ -1442,7 +1442,7 @@ ROWS: tuple[Row, ...] = (
         justification='Dominant class from probs.',
     ),
     Row(
-        file='math_probabilities.py', derivation='flow_imbalance_normalized_with_fallback', disposition='DERIVED',
+        file='math_probabilities.py', derivation='option_flow_book_imbalance', disposition='DERIVED',
         producer_refs=('math_probabilities.py:atm_flow_window_totals', 'math_probabilities.py:compute_option_flow_imbalance'),
         justification='Normalized flow with explicit fallback policy.',
     ),
