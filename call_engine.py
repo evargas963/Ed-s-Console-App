@@ -1436,8 +1436,8 @@ def compute_call(
         inp.charm_direction if CHARM_VOTE_VALIDATION_STATUS == "APPROVED" else None
     )
     greek_b = greek_bias(inp.net_delta, _charm_vote_direction, inp.put_call_oi_ratio,
-                         dex_magnitude=inp.dex_magnitude or "moderate",
-                         charm_magnitude=inp.charm_magnitude or "moderate")
+                         dex_magnitude=inp.dex_magnitude,
+                         charm_magnitude=inp.charm_magnitude)
     # No index-ETF votes (operator 2026-09-23: "remove the benchmark votes"). Every ticker used
     # to get three extra tape votes from SPY/QQQ/IWM plus a conviction downgrade when those
     # three disagreed; The Call now reads each ticker on its own data only.

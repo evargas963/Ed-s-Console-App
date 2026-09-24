@@ -157,8 +157,11 @@ class MarketState:
     pin_strength:       str             = "Very Low"
     net_delta:          Optional[float] = None      # share-equivalent
     net_gamma:          Optional[float] = None
-    gex_magnitude:      str             = "negligible"  # large/moderate/small/negligible
-    dex_magnitude:      str             = "negligible"
+    gex_magnitude:      Optional[str]   = None  # large/moderate/small/negligible; None = no net GEX
+    #: No producer computes a DEX magnitude (audit P0, 2026-09-23): it used to default to
+    #: "negligible" -- so the Greeks vote's net-delta leg never counted, silently. None says
+    #: so; a validated magnitude threshold is a research decision, not a default.
+    dex_magnitude:      Optional[str]   = None
     zone:               str             = "pin"     # pin | breakout | breakdown
 
     # Regime colors (derived, not computed inline in UI)
@@ -1140,12 +1143,9 @@ def build_market_state(
         _ng             = _f(getattr(consensus_summary, "net_gamma", None))
         ms.net_delta    = _nd
         ms.net_gamma    = _ng
-        try:
-            from math_exposure_core import gex_magnitude_label
-            ms.gex_magnitude = gex_magnitude_label(_ng)
-        except Exception:
-            ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
-        ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
+        from math_exposure_core import gex_magnitude_label
+        ms.gex_magnitude = gex_magnitude_label(_ng)
+        ms.dex_magnitude = None   # no DEX magnitude producer exists -- see the field note
     else:
         ms.bias_signal  = "Neutral"
         ms.pin_strength = "Very Low"

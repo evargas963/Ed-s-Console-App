@@ -1044,9 +1044,11 @@ def aggregate_net_dex(exposures: Dict[float, dict], strikes: List[float]) -> flo
     return float(total) if any_d else None
 
 
-def gex_magnitude_label(net_gex: float | None) -> str:
+def gex_magnitude_label(net_gex: float | None) -> str | None:
+    """None when there is no net GEX -- absent is never labelled "negligible" (audit,
+    2026-09-23)."""
     if net_gex is None:
-        return "negligible"
+        return None
     a = abs(float(net_gex))
     if a >= 50_000_000:
         return "large"
@@ -1425,17 +1427,20 @@ GREEK_BIAS_THRESHOLD    = 0.5
 
 def greek_bias(net_delta: float | None, charm_direction: str | None,
                put_call_oi_ratio: float | None,
-               dex_magnitude: str = "moderate",
-               charm_magnitude: str = "moderate") -> str:
+               dex_magnitude: str | None = None,
+               charm_magnitude: str | None = None) -> str:
+    """A leg whose magnitude is unknown (None, or a label outside MAG_SCALE) contributes
+    NOTHING -- it used to be scored as "moderate" (0.7), a guessed magnitude (audit P0,
+    2026-09-23: no fallbacks)."""
     MAG_SCALE = {"large": 1.0, "moderate": 0.7, "small": 0.3, "negligible": 0.0}
     score = 0.0
-    delta_scale = MAG_SCALE.get(dex_magnitude, 0.7)
+    delta_scale = MAG_SCALE.get(dex_magnitude, 0.0) if dex_magnitude is not None else 0.0
     if net_delta is not None and delta_scale > 0:
         if net_delta > 0:
             score += GREEK_BIAS_DELTA_WEIGHT * delta_scale
         elif net_delta < 0:
             score -= GREEK_BIAS_DELTA_WEIGHT * delta_scale
-    charm_scale = MAG_SCALE.get(charm_magnitude, 0.7)
+    charm_scale = MAG_SCALE.get(charm_magnitude, 0.0) if charm_magnitude is not None else 0.0
     if charm_direction == "buying":
         score += GREEK_BIAS_CHARM_WEIGHT * charm_scale
     elif charm_direction == "selling":
