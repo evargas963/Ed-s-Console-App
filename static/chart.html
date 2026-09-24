@@ -1497,7 +1497,9 @@ function draw() {
       && Math.abs(Number(spot) - _gammaSpotDrawn) > 1e-9) drawGamma();
   const bl = document.getElementById('biglegend');
   if (spot != null && isFinite(Number(spot))) {
-    // TradingView-style big legend: ticker · price · streamed change % (server, not browser math)
+    // Instant-UI Phase 5: legend change % is streamed_chg_pct from /api/spot
+    // (plane), never browser (dn/pdc*100) and never a roster % field.
+    // Absent chg omits the span — fail-closed, same as RC-213 B3's absent-PDC rule.
     const chg = (liveSpotChg != null && isFinite(Number(liveSpotChg))) ? Number(liveSpotChg) : null;
     const col = chg == null ? PAL.tx : chg >= 0 ? PAL.green : PAL.red;
     const tkEl = document.getElementById('tk');

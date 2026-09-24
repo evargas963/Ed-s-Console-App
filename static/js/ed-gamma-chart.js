@@ -644,8 +644,7 @@
   function applyQuoteTick(q) {
     if (!isChart() || !_lastCtx) return;
     if (!q || String(q.ticker || '').toUpperCase() !== String(ticker()).toUpperCase()) return;
-    var live = q.spot_state === 'live' && q.spot != null;
-    var px = live ? Number(q.spot) : NaN;
+    var px = (q.spot != null && q.spot_state === 'live') ? Number(q.spot) : NaN;
     var bars = (_lastCtx.bars || []).slice();
     if (bars.length && isFinite(px)) {
       var last = {};
