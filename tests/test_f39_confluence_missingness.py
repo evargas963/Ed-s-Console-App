@@ -56,36 +56,18 @@ def test_f39_no_confluence_key_literal_anywhere_in_server_ast():
         "stamp_confluence_display_fields must stay the ONLY faucet (F39/RC-365)")
 
 
-def test_f39_stamp_is_withheld_not_substituted():
-    from market_context import (
-        INDEX_CONFLUENCE_RETIRED_REASON,
-        MarketContext,
-        stamp_confluence_display_fields,
-    )
-
-    stamped = stamp_confluence_display_fields(MarketContext())
-    assert stamped["cf_weighted_push"] is None
-    assert stamped["cf_label"] == "—"
-    assert stamped["cf_dot_green"] is None
-    assert stamped["cf_dot_total"] is None
-    assert stamped["iwm_participation_push"] is None
-    assert stamped["cf_unavailable_reason"] == INDEX_CONFLUENCE_RETIRED_REASON
-    assert stamp_confluence_display_fields(None)["cf_weighted_push"] is None
-
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
-    assert "ms_dict.update(stamp_confluence_display_fields(mkt_ctx))" in server
+def test_f39_no_confluence_display_key_is_served():
+    """The cf_* display keys were stamped on /api/state as permanent placeholders after the
+    roster was retired; no screen read them (audit of #272). They are not served at all."""
     import re as _re
-    for key in ("cf_weighted_push", "cf_label", "cf_color", "cf_dot_green",
-                "cf_dot_total", "qqq_cf_weighted_push", "iwm_cf_push",
-                "iwm_holdings_cf_push", "iwm_participation_push"):
-        direct = _re.findall(rf'ms_dict\[\s*[\'"]{key}[\'"]\s*\]\s*=', server)
-        assert direct == [], (
-            f"a second /api/state confluence stamp writes {key!r} directly — the "
-            "typed mapper must stay the ONLY faucet (F39/RC-365)")
-        dict_form = _re.findall(rf'ms_dict\.update\(\s*\{{[^)]*[\'"]{key}[\'"]', server)
-        assert dict_form == [], (
-            f"a dict-literal ms_dict.update writes {key!r} outside the typed mapper "
-            "(F39/RC-365)")
+
+    import market_context
+    assert not hasattr(market_context, "stamp_confluence_display_fields")
+    server = (ROOT / "server.py").read_text(encoding="utf-8")
+    for key in ("cf_weighted_push", "cf_label", "cf_color", "cf_dot_green", "cf_dot_total",
+                "qqq_cf_weighted_push", "iwm_cf_push", "iwm_holdings_cf_push",
+                "iwm_participation_push", "cf_unavailable_reason"):
+        assert not _re.search(rf'[\'"]{key}[\'"]', server), key
 
 
 def test_retired_roster_tables_are_gone():

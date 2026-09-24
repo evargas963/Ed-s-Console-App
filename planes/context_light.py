@@ -217,10 +217,9 @@ def build_l1_context(
 
     spot_f = _safe_float(ctx.l0_row.get("spot")) if ctx.l0_row else None
     # Percent change travels the SAME L0 row spot already does, through the ONE
-    # market_context.resolve_chg_pct authority every other chg_pct caller uses (not a
-    # separate decision re-made here) — generic for whichever ticker this L1 build is for.
-    from market_context import resolve_chg_pct
-    chg_f = resolve_chg_pct(tkr, ctx.l0_row.get("chg_pct") if ctx.l0_row else None)
+    # live_market_plane.streamed_chg_pct reader every chg_pct caller uses.
+    from live_market_plane import streamed_chg_pct
+    chg_f = streamed_chg_pct(ctx.l0_row)
     l0_usable = (
         ctx.l0_row is not None
         and spot_f is not None

@@ -822,11 +822,6 @@ ROWS: tuple[Row, ...] = (
         justification='Skip candles missing datetime leaf (fail-closed; no .get(datetime,0)).',
     ),
     Row(
-        file='market_context.py', derivation='iwm_blended_participation_push', disposition='DERIVED',
-        producer_refs=('market_context.py:fetch_market_context',),
-        justification='Retired T-13: always None; one side standing in is a fallback.',
-    ),
-    Row(
         file='market_context.py', derivation='market_context_panel_symbols_excluding_core', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
         justification='Schwab API or wire JSON ingest path.',
@@ -1387,11 +1382,6 @@ ROWS: tuple[Row, ...] = (
         justification='Hedging flow score.',
     ),
     Row(
-        file='math_probabilities.py', derivation='compute_iwm_confluence', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state', 'market_state.py:build_market_state'),
-        justification='IWM blended participation.',
-    ),
-    Row(
         file='math_probabilities.py', derivation='compute_option_flow_imbalance', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.callExpDateMap.*.bidSize',
         justification='Bid/ask size imbalance from Schwab leaves.',
@@ -1410,11 +1400,6 @@ ROWS: tuple[Row, ...] = (
         file='math_probabilities.py', derivation='compute_probs', disposition='DERIVED',
         producer_refs=('server.py:_fetch_state', 'market_state.py:build_market_state'),
         justification='Historical outcome probabilities.',
-    ),
-    Row(
-        file='math_probabilities.py', derivation='compute_sector_strength', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state', 'market_state.py:build_market_state'),
-        justification='Sector strength from context quotes.',
     ),
     Row(
         file='math_probabilities.py', derivation='compute_smart_money_signal', disposition='DERIVED',
@@ -2684,8 +2669,8 @@ ROWS: tuple[Row, ...] = (
     Row(
         # api_watchlist_quotes (/api/watchlist-quotes): the ONE batched Schwab quote read
         # for a whole client-held watchlist (client.get_quotes), reusing the same
-        # _parse_quote_node_session_fields parser and resolve_chg_pct authority every
-        # other quote route shares -- not a second quote computation.
+        # _parse_quote_node_session_fields parser every other quote route shares -- not a
+        # second quote computation.
         file='server.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
         justification='Batched multi-symbol quote fetch (client.get_quotes) via safe_get_quotes.',

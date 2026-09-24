@@ -147,12 +147,6 @@ def backfill(db_path: Path) -> dict:
     return {"rows_updated": updated, "vwap_rows_imputed": vwap_filled}
 
 
-def backfill_weighted_pushes(db_path: Path) -> dict[str, int]:
-    """Retired (T-15): do not impute weighted_push from constituent chg of any age."""
-    _ = db_path
-    return {"spy_filled": 0, "qqq_filled": 0, "iwm_filled": 0, "rows_scanned": 0, "retired": 1}
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description="Backfill derived snapshot fields")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -164,8 +158,6 @@ def main() -> None:
         raise SystemExit(f"DB not found: {args.db}")
     stats = backfill(args.db)
     print("backfill_snapshot_derived:", stats)
-    wp = backfill_weighted_pushes(args.db)
-    print("backfill_weighted_pushes:", wp)
     if not args.skip_normalizer:
         from normalized_training_sync import ensure_normalized_training_table
 

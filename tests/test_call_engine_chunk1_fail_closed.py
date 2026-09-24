@@ -75,12 +75,6 @@ def _strong_long_stack_input() -> SignalInput:
         recent_crosses=[],
         ceiling_tests_today=0,
         floor_tests_today=0,
-        spy_chg_pct=0.8,
-        qqq_chg_pct=0.9,
-        iwm_chg_pct=0.7,
-        spy_weighted_push=0.5,
-        qqq_weighted_push=0.5,
-        iwm_weighted_push=0.5,
         vix_level=18.0,
         mins_to_close=240.0,
         em_upper=452.0,
@@ -237,12 +231,6 @@ def test_call_all_pool_promotes_over_tape_wait():
 
     inp = _strong_long_stack_input()
     inp.order_flow_direction = "neutral"
-    inp.spy_chg_pct = 0.01
-    inp.qqq_chg_pct = 0.01
-    inp.iwm_chg_pct = 0.01
-    inp.spy_weighted_push = 0.0
-    inp.qqq_weighted_push = 0.0
-    inp.iwm_weighted_push = 0.0
     # TEST_SYSTEM_REHAB_V2: was net_delta=50.0. Traced (protected CI caught this once
     # the vacuous OR below was removed): net_delta=50.0 makes greek_bias(...) return
     # "bullish", giving the tape stack a SECOND vote ("Greeks", alongside "micro" from

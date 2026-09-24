@@ -104,7 +104,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | S-07 | math_probabilities.py:1525-1550 | smart-money: missing legs = 0 | snapshots | OPEN |
 | S-08..10 | math_probabilities.py:658-668, 769-779, 830-840 | breakout / vol-expansion / sweep: missing component = 0 | snapshots | FIXED b6c16570 |
 | S-11 | math_probabilities.py:545-557 | hedging flow re-weights present legs | snapshots | FIXED b6c16570 |
-| S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | OPEN |
+| S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | FIXED: compute_iwm_confluence and sector strength deleted with the retired roster (branch fix/retire-index-confluence-audited) |
 | S-13 | math_probabilities.py:221-234 | option-expression score: missing inputs add 0 -> rec_strike | The Call contract | OPEN |
 
 ### Found while repairing (2026-09-24)
@@ -138,5 +138,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 21 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 12 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.

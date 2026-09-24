@@ -1499,21 +1499,6 @@ def test_post_publish_last_error_wired_at_both_failure_branches():
     assert i_obs_attach < i_err_attach
 
 
-def test_tail_mkt_ctx_nonlocal_rebind_restored():
-    """The confluence-completion rebind targets _fetch_state's mkt_ctx (nonlocal),
-    matching the pre-relocation inline binding; the completion call remains."""
-    import ast
-
-    _fetch, tail = _fetch_state_ast()
-    declared = set()
-    for node in ast.walk(tail):
-        if isinstance(node, ast.Nonlocal):
-            declared.update(node.names)
-    assert "mkt_ctx" in declared
-    src = _fetch_state_source()
-    assert "mkt_ctx = _ensure_mkt_ctx_confluence_complete(client, mkt_ctx)" in src
-
-
 def test_tail_no_unbound_shadow_of_fetch_state_locals():
     """Relocation-class lock: no name stored in the tail may shadow a
     _fetch_state-level binding AND be read at-or-before its first tail store
@@ -2094,30 +2079,6 @@ def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
     assert len(served) == 6
     assert calls["n"] == 1
     assert all(s is served[0] for s in served), "boot joiners got different contexts"
-    _mkt_ctx_test_reset(srv)
-
-
-def test_mkt_ctx_force_sync_performs_fresh_sweep(monkeypatch):
-    """force_sync (confluence-completion path) must NOT be served the stale
-    object — it fetches (or joins) a real sweep and returns the new context."""
-    import server as srv
-    from market_context import MarketContext
-
-    old_ctx = MarketContext()
-    _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
-    calls = {"n": 0}
-
-    def _fake_sweep(client, **kwargs):
-        calls["n"] += 1
-        return MarketContext()
-
-    monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
-    out = srv._get_mkt_ctx(None, force_sync=True)
-    assert out is not old_ctx
-    assert calls["n"] == 1
-    with srv._cached_mkt_ctx_lock:
-        assert srv._cached_mkt_ctx is out
-        assert srv._mkt_ctx_refresh_inflight is False
     _mkt_ctx_test_reset(srv)
 
 

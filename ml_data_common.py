@@ -744,7 +744,6 @@ def attach_net_gamma_prev_column(df: pd.DataFrame, db_path: str | None = None) -
     from timeframe_config import CANONICAL_TIMEFRAME
 
     out = df.copy()
-    ts_all = pd.to_numeric(out["ts_utc"], errors="coerce")
     prev = pd.Series(np.nan, index=out.index, dtype=float)
     path = db_path or _db_default_path()
     for tk, grp in out.groupby("ticker", sort=False):

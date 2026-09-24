@@ -6,9 +6,7 @@ from math_probabilities import (
     compute_breakout_score,
     compute_dealer_pressure_index,
     compute_hedging_flow_score,
-    compute_iwm_confluence,
     compute_probs,
-    compute_sector_strength,
     compute_smart_money_signal,
     compute_sweep_score,
     compute_vol_expansion_signal,
@@ -71,40 +69,8 @@ def test_vol_expansion_and_sweep_none_when_all_missing():
     assert sweep["label"] is None
 
 
-def test_iwm_confluence_all_none_quotes():
-    out = compute_iwm_confluence(None, None, None)
-    assert out["risk_regime"] is None
-    assert out["rotation_signal"] is None
-    assert out["risk_score"] is None
-
-
-def test_iwm_partial_spy_iwm_divergence_only_when_both_present():
-    partial = compute_iwm_confluence(0.5, None, None)
-    assert partial["spy_iwm_divergence"] is None
-    both = compute_iwm_confluence(0.5, None, -0.2)
-    assert both["spy_iwm_divergence"] is not None
-
-
 def test_flow_imbalance_none_when_no_chain_data():
     assert flow_imbalance_normalized_with_fallback({}, 500.0) == (None, "none")
-
-
-def test_sector_strength_unavailable_when_no_valid_sectors():
-    empty = compute_sector_strength({})
-    assert empty["breadth"] is None
-    assert empty["spread"] is None
-    assert empty["risk_signal"] is None
-    all_none = compute_sector_strength({"KRE": None, "XBI": None})
-    assert all_none["breadth"] is None
-    assert all_none["spread"] is None
-    assert all_none["risk_signal"] is None
-
-
-def test_sector_strength_real_breadth_when_sectors_present():
-    out = compute_sector_strength({"KRE": 0.5, "XBI": -0.2})
-    assert out["breadth"] == 0.5
-    assert out["risk_signal"] == "mixed"
-    assert out["spread"] == 0.7
 
 
 def test_smart_money_no_data_returns_none_fields():

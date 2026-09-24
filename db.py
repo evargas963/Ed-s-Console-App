@@ -536,7 +536,7 @@ class SnapshotRow:
     xbi_chg_pct:        Optional[float] = None  # Healthcare/Biotech
     psci_chg_pct:       Optional[float] = None  # Industrials
     xrt_chg_pct:        Optional[float] = None  # Consumer Discretionary
-    iwm_weighted_push:  Optional[float] = None  # holdings + sector blend (market_context.iwm_blended_participation_push)
+    iwm_weighted_push:  Optional[float] = None  # retired producer (index confluence, 2026-09-24): historical rows only
 
     # ── VIX ───────────────────────────────────────────────────────────────────
     vix_level:          Optional[float] = None

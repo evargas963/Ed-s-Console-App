@@ -10,9 +10,6 @@ from market_state import build_market_state
 
 def _mkt_ctx(**kwargs: object) -> MagicMock:
     ctx = MagicMock()
-    ctx.spy_chg_pct = kwargs.get("spy_chg_pct")
-    ctx.qqq_chg_pct = kwargs.get("qqq_chg_pct")
-    ctx.iwm_chg_pct = kwargs.get("iwm_chg_pct")
     ctx.vix = None
     ctx.pcr = None
     ctx.pcr_arrow = ""
@@ -92,13 +89,14 @@ def test_build_market_state_preserves_zero_net_gamma(_mock_cs):
     assert _COMPUTE_SIGNALS_CALLS[0].net_gamma == 0.0
 
 
-@patch("signals.compute_signals", side_effect=_fake_compute_signals)
-def test_build_market_state_propagates_none_spy_chg(_mock_cs):
-    _COMPUTE_SIGNALS_CALLS.clear()
-    build_market_state(
-        **_base_kwargs(
-            mkt_ctx=_mkt_ctx(spy_chg_pct=None, qqq_chg_pct=None, iwm_chg_pct=None),
-        )
-    )
-    assert len(_COMPUTE_SIGNALS_CALLS) == 1
-    assert _COMPUTE_SIGNALS_CALLS[0].qqq_vs_spy_delta is None
+def test_signal_input_has_no_cross_instrument_fields():
+    """The retired index-confluence roster left SignalInput fields nothing filled (audit of
+    #272, 2026-09-24) -- they are deleted, not carried as permanent None."""
+    import dataclasses
+
+    from signal_types import SignalInput
+    names = {f.name for f in dataclasses.fields(SignalInput)}
+    for gone in ("spy_chg_pct", "qqq_chg_pct", "iwm_chg_pct", "qqq_vs_spy", "qqq_vs_spy_delta",
+                 "iwm_risk_signal", "spy_weighted_push", "qqq_weighted_push", "iwm_weighted_push",
+                 "spy_zone", "qqq_zone", "iwm_zone"):
+        assert gone not in names, gone

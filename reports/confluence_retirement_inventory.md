@@ -66,11 +66,16 @@ Guest-anchor routing in `governed_stack_contract.py` stops importing
 
 | Consumer | File | Class | After retirement |
 |---|---|---|---|
-| SignalInput stamp | `market_state.py` | live/persist path | Reads None; no second producer |
-| IWM blend call | `market_state.py` `iwm_blended_participation_push` | live/persist path | Function remains as a None stub so the import does not invent a value |
-| Sector / index strength | `server.py` + `math_probabilities.compute_sector_strength` | persist path | Empty input maps |
-| IWM deep confluence | `math_probabilities.compute_iwm_confluence` | persist path | Already returns unavailable when spy/qqq/iwm chg are all None |
-| Forced refresh / impute | `server.py` `_ensure_mkt_ctx_confluence_complete` | writer | Becomes a no-op (must not refresh-to-fill) |
+| SignalInput stamp | `market_state.py` / `signal_types.py` | live/persist path | Deleted: the cross-instrument SignalInput fields and their live feature keys |
+| IWM blend call | `market_context.iwm_blended_participation_push` | live/persist path | Deleted (audit of #272: the None stub was itself dead code) |
+| Sector / index strength | `server.py` + `math_probabilities.compute_sector_strength` | persist path | Deleted with its ms_dict keys and snapshot kwargs |
+| IWM deep confluence | `math_probabilities.compute_iwm_confluence` | persist path | Deleted (register S-12) |
+| Forced refresh / impute | `server.py` `_ensure_mkt_ctx_confluence_complete` | writer | Deleted, with `_get_mkt_ctx(force_sync=)` |
+| `/api/state` `cf_*` keys | `market_context.stamp_confluence_display_fields` | display | Deleted: no screen read them |
+| MarketContext roster fields | `spy/qqq/iwm_last`, `*_chg_pct`, constituents, sectors, `ConfluenceRead` | shape | Deleted: never filled after the fetch was retired |
+
+Snapshot DB columns for these fields stay (historical rows); the live writer no longer
+passes them, so new rows store NULL.
 | Panel-auto enrollment | `market_context_panel_symbols_excluding_core` → `server.py` logging universe | collection roster | Shrinks to `$VIX` only. `$TNX` stays unenrolled (no options chain). |
 | Scheduler comments | `scheduler_user_tickers.py` | dead copy | No roster table to enroll |
 

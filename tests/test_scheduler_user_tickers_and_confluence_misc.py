@@ -161,14 +161,27 @@ def test_filter_tickers_for_background_logging_is_universal():
     assert out == ["SPY", "PSCI", "QQQ"]
 
 
-def test_missing_confluence_weighted_pushes_is_empty_because_retired():
-    """T-08..T-15 retired: no weighted-push field is required, so nothing is missing."""
-    from market_context import MarketContext, ConfluenceRead, missing_confluence_weighted_pushes
-
-    ctx = MarketContext()
-    ctx.confluence = ConfluenceRead(weighted_push=0.1)
-    ctx.qqq_confluence = ConfluenceRead(weighted_push=None)
-    assert missing_confluence_weighted_pushes(ctx) == []
+def test_retired_confluence_code_is_deleted_not_stubbed():
+    """Audit of #272 (2026-09-24): the retirement left None-returning stubs and their callers.
+    Stubs are dead code carrying a retired contract -- they are deleted."""
+    import backfill_snapshot_derived
+    import market_context
+    import math_probabilities
+    import server
+    for mod, name in ((market_context, "missing_confluence_weighted_pushes"),
+                      (market_context, "weighted_pushes_from_snapshot_row"),
+                      (market_context, "iwm_blended_participation_push"),
+                      (market_context, "stamp_confluence_display_fields"),
+                      (market_context, "resolve_chg_pct"),
+                      (market_context, "ConfluenceRead"),
+                      (math_probabilities, "compute_iwm_confluence"),
+                      (math_probabilities, "compute_sector_strength"),
+                      (backfill_snapshot_derived, "backfill_weighted_pushes"),
+                      (server, "_ensure_mkt_ctx_confluence_complete")):
+        assert not hasattr(mod, name), f"{mod.__name__}.{name}"
+    ctx = market_context.MarketContext()
+    for field in ("spy_chg_pct", "constituents", "confluence", "iwm_sectors", "iwm_holdings"):
+        assert not hasattr(ctx, field), field
 
 
 def test_filter_tickers_for_ml_training_excludes_panel_auto():
@@ -242,43 +255,12 @@ def test_confluence_quote_ticks_upsert_and_inventory(tmp_path):
     assert inv["distinct_tickers"] == 1
 
 
-def test_weighted_pushes_from_snapshot_row_stay_absent():
-    """T-12/T-14/T-15: constituent chg must not manufacture a weighted push."""
-    from market_context import weighted_pushes_from_snapshot_row
-
-    row = {
-        "nvda_chg_pct": 1.2,
-        "aapl_chg_pct": 0.5,
-        "msft_chg_pct": -0.3,
-        "qqq_weighted_push": None,
-        "spy_weighted_push": None,
-        "iwm_weighted_push": None,
-    }
-    out = weighted_pushes_from_snapshot_row(row, extra_chg={"WMT": 0.25})
-    assert out == {
-        "spy_weighted_push": None,
-        "qqq_weighted_push": None,
-        "iwm_weighted_push": None,
-    }
-
-
 def test_retired_chg_map_cannot_alias_goog_onto_googl():
     """The GOOG/GOOGL alias lived in the retired weighted-push map. Absence is the pin."""
     import market_context as mc
 
     assert not hasattr(mc, "SYMBOL_TO_SNAPSHOT_CHG_COL")
     assert not hasattr(mc, "snapshot_row_chg_map")
-
-
-def test_iwm_blend_stays_absent():
-    """T-13: one side standing in is a fallback — the blend is retired."""
-    from market_context import MarketContext, ConfluenceRead, iwm_blended_participation_push
-
-    ctx = MarketContext(
-        iwm_holdings_confluence=ConfluenceRead(weighted_push=0.4),
-        iwm_confluence=ConfluenceRead(weighted_push=-0.1),
-    )
-    assert iwm_blended_participation_push(ctx) is None
 
 
 def test_fetch_confluence_quote_chg_as_of(tmp_path):
@@ -310,82 +292,6 @@ def test_fetch_confluence_quote_chg_as_of(tmp_path):
     assert got2["WMT"] == 0.22
 
 
-def test_backfill_weighted_pushes_does_not_impute(tmp_path):
-    """T-15: aged constituent ticks must not fill a NULL weighted_push."""
-    import sqlite3
-
-    from backfill_snapshot_derived import backfill_weighted_pushes
-    from db import EdDB
-
-    dbp = tmp_path / "bf_wp.db"
-    db = EdDB(dbp, allow_noncanonical=True)
-    db.upsert_confluence_quote_ticks(
-        [
-            {
-                "ticker": "WMT",
-                "ts_utc": 1000.0,
-                "ts_et": "2026-01-02 10:00:00",
-                "last_price": 100.0,
-                "chg_pct": 0.5,
-            }
-        ]
-    )
-    con = sqlite3.connect(str(dbp))
-    con.execute(
-        """
-        INSERT INTO snapshots (
-            ticker, timeframe, ts_utc, ts_et, spot, qqq_weighted_push,
-            nvda_chg_pct, aapl_chg_pct, msft_chg_pct, amzn_chg_pct,
-            googl_chg_pct, avgo_chg_pct, meta_chg_pct, tsla_chg_pct
-        ) VALUES ('ZZBF', '1m', 1000.0, '2026-01-02 10:00:00', 500.0, NULL,
-                  1.0, 0.5, -0.2, 0.3, 0.1, 0.4, 0.2, -0.1)
-        """
-    )
-    con.commit()
-    con.close()
-
-    stats = backfill_weighted_pushes(dbp)
-    assert stats["qqq_filled"] == 0
-    assert stats["spy_filled"] == 0
-    assert stats["iwm_filled"] == 0
-    con = sqlite3.connect(str(dbp))
-    row = con.execute(
-        "SELECT qqq_weighted_push FROM snapshots WHERE ticker='ZZBF'"
-    ).fetchone()
-    con.close()
-    assert row[0] is None
-
-
-def test_backfill_weighted_pushes_does_not_fill_from_goog_chg(tmp_path):
-    """T-15: a lone goog_chg_pct must not manufacture spy_weighted_push."""
-    import sqlite3
-
-    from backfill_snapshot_derived import backfill_weighted_pushes
-    from db import EdDB
-
-    dbp = tmp_path / "bf_goog.db"
-    EdDB(dbp, allow_noncanonical=True)
-    con = sqlite3.connect(str(dbp))
-    con.execute(
-        """
-        INSERT INTO snapshots (
-            ticker, timeframe, ts_utc, ts_et, spot, spy_weighted_push, goog_chg_pct
-        ) VALUES ('ZZBF', '1m', 2000.0, '2026-01-02 10:00:00', 500.0, NULL, 1.25)
-        """
-    )
-    con.commit()
-    con.close()
-
-    stats = backfill_weighted_pushes(dbp)
-    assert stats["spy_filled"] == 0
-    con = sqlite3.connect(str(dbp))
-    row = con.execute(
-        "SELECT spy_weighted_push FROM snapshots WHERE ticker='ZZBF'"
-    ).fetchone()
-    con.close()
-    assert row[0] is None
-
-
 def test_no_stored_percent_change_patches_a_live_confluence_value():
     """Audit P0 (2026-09-23): a missing live confluence value was patched from the latest
     stored %-change with no age limit. That path is gone -- missing stays missing."""
@@ -396,7 +302,7 @@ def test_no_stored_percent_change_patches_a_live_confluence_value():
     import server
     assert not hasattr(market_context, "patch_context_confluence_from_quote_ticks")
     assert not hasattr(db_mod.EdDB, "fetch_latest_confluence_quote_chg")
-    assert "fetch_latest_confluence_quote_chg" not in inspect.getsource(server._ensure_mkt_ctx_confluence_complete)
+    assert "fetch_latest_confluence_quote_chg" not in inspect.getsource(server)
 
 
 def _logging_universe_rows(rows: list[tuple[str, str]]):

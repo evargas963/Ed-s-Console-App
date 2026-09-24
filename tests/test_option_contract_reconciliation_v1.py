@@ -616,7 +616,6 @@ def test_unsubscribe_old_l1_succeeds_book_unsub_fails(monkeypatch):
     unsub fails, so BOOK must NOT also attempt a new subscribe this tick (would risk two
     live BOOK keys for one service) — it stays on the old (unknown-to-us) symbol, retried
     next tick."""
-    p = "unused"
     monkeypatch.setattr("app.market_data.schwab.streaming.capture.read_active_option_contract_signal",
                         lambda: _QQQ_CONTRACT)
     stream = _FlakyOptionStream(fail_calls={"options_book_unsub"})
@@ -679,7 +678,7 @@ def test_reconnect_with_both_prior_services_active(monkeypatch):
 
     async def go():
         from stream_spine import HealthRegistry, MessageBus
-        bus, health, stats, stop = MessageBus(), object(), object(), asyncio.Event()
+        bus, stop = MessageBus(), asyncio.Event()
         from app.market_data.schwab.streaming.capture import CaptureStats
         stream, task, contract_state = await d._schwab_connect(
             SimpleNamespace(client=object()), ["SPY"], bus, HealthRegistry(), CaptureStats(),

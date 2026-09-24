@@ -11,11 +11,9 @@ A missing value stays missing.
 """
 
 from __future__ import annotations
-import functools
 import os
-from collections.abc import Mapping
-from dataclasses import dataclass, field
-from typing import Callable, Optional, Any
+from dataclasses import dataclass
+from typing import Optional, Any
 import logging
 
 log = logging.getLogger(__name__)
@@ -51,9 +49,6 @@ def configured_index_futures_symbols() -> dict[str, str]:
     return out
 
 
-INDEX_CONFLUENCE_RETIRED_REASON = "index_confluence_retired"
-
-
 def market_context_panel_symbols_excluding_core(core_upper: frozenset[str]) -> list[str]:
     """
     Symbols quoted every ``fetch_market_context`` cycle for snapshot enrollment.
@@ -82,48 +77,6 @@ def market_context_panel_symbols_excluding_core(core_upper: frozenset[str]) -> l
 
 
 @dataclass
-class ConstituentQuote:
-    symbol:     str
-    label:      str
-    weight:     float              # actual SPY index weight (e.g. 0.0748)
-    last:       Optional[float] = None
-    chg_pct:    Optional[float] = None
-    dot_color:  str             = "#d1d5db"
-    contribution: Optional[float] = None   # weight * chg_pct — weighted push contribution
-
-
-@dataclass
-class SectorQuote:
-    """One IWM sector proxy quote."""
-    symbol:       str
-    label:        str
-    weight:       float
-    last:         Optional[float] = None
-    chg_pct:      Optional[float] = None
-    dot_color:    str             = "#d1d5db"
-    contribution: Optional[float] = None
-
-
-@dataclass
-class ConfluenceRead:
-    """
-    Primary confluence signal: weighted push + label.
-
-    weighted_push: sum(weight_i * chg_pct_i) across all constituents with data.
-        Interpretable as approximate % contribution to SPY from these names.
-        e.g. +0.28 means top names are pushing SPY ~+0.28% on net.
-
-    dot_count_green / dot_count_total: raw dot count for reference display.
-    label / color: human-readable directional read driven by weighted_push.
-    """
-    weighted_push:      Optional[float] = None
-    dot_count_green:    int             = 0
-    dot_count_total:    int             = 0
-    label:              str             = "—"
-    color:              str             = "#6b7280"
-
-
-@dataclass
 class MarketContext:
     vix:             Optional[float] = None
     vix_regime:      str             = "—"
@@ -134,27 +87,8 @@ class MarketContext:
     vxn:             Optional[float] = None   # $VXN — Nasdaq-100 native vol (QQQ confluence)
     rvx:             Optional[float] = None   # $RVX — Russell 2000 native vol (IWM confluence)
 
-    spy_last:        Optional[float] = None
-    spy_chg_pct:     Optional[float] = None
-    qqq_last:        Optional[float] = None
-    qqq_chg_pct:     Optional[float] = None
-
-    constituents:    list            = field(default_factory=list)  # list[ConstituentQuote]
-    confluence:      ConfluenceRead  = field(default_factory=ConfluenceRead)
-
-    # QQQ — cap-weighted top N names (same machinery as SPY constituents)
-    qqq_constituents:  list            = field(default_factory=list)
-    qqq_confluence:    ConfluenceRead  = field(default_factory=ConfluenceRead)
-
-    # IWM — top individual holdings + existing sector proxies
-    iwm_holdings:      list            = field(default_factory=list)  # ConstituentQuote
-    iwm_holdings_confluence: ConfluenceRead = field(default_factory=ConfluenceRead)
-
-    # IWM
-    iwm_last:        Optional[float] = None
-    iwm_chg_pct:     Optional[float] = None
-    iwm_sectors:     list            = field(default_factory=list)   # list[SectorQuote]
-    iwm_confluence:  ConfluenceRead  = field(default_factory=ConfluenceRead)
+    # The index-confluence roster (SPY/QQQ/IWM, their constituents and IWM sector proxies) is
+    # retired: nothing fetched it, so those fields were always empty (audit of #272, 2026-09-24).
 
     # CME index futures (optional — symbols from ED_FUTURES_* env; Schwab contract format e.g. /ESH25)
     fut_es_symbol:     str             = ""
@@ -199,7 +133,7 @@ def _vix_regime(vix: float) -> tuple[str, str, str]:
     }.get(vix_tier_token(vix), ("Normal", "#92400e", "Normal vol — gamma exposure reliable"))
 
 
-def _last_traded_price(quote: dict, ext: dict, reg: dict) -> Optional[float]:
+def _last_traded_price(quote: dict) -> Optional[float]:
     """``quotes.quote.lastPrice`` only. Missing stays missing (T-11).
 
     SPOT SEMANTICS (RC-16, 2026-07-19). A last may only be an actual trade.
@@ -207,24 +141,18 @@ def _last_traded_price(quote: dict, ext: dict, reg: dict) -> Optional[float]:
     ``extended.lastPrice`` is a different book — substituting it was T-11.
     ``or`` chaining treated a legitimate 0.0 as absent; 0.0 is not a trade.
     """
-    _ = ext
-    _ = reg
-    candidate = (quote or {}).get("lastPrice")
-    if candidate is not None and float(candidate) > 0:
-        return candidate
-    return None
+    from numeric_contract import float_finite_or_none as _fin
+    last = _fin((quote or {}).get("lastPrice"))
+    return last if last is not None and last > 0 else None
 
 
-def extract_pct_change(quote: dict, regular: dict, last: Optional[float]) -> Optional[float]:
+def extract_pct_change(quote: dict) -> Optional[float]:
     """
     ONE parser: ``quotes.quote.netPercentChange`` only (T-09). Missing stays missing.
 
     Shared by ``_extract_quote`` and ``server._parse_quote_node_session_fields``.
-    ``regular`` / ``last`` stay in the signature so callers do not grow a second parser.
     """
     from numeric_contract import float_finite_or_none as _fin
-    _ = regular
-    _ = last
     return _fin((quote or {}).get("netPercentChange"))
 
 
@@ -233,37 +161,9 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
     try:
         data = q_json.get(symbol, {})
         quote = data.get("quote", {}) or {}
-        ext = data.get("extended", {}) or {}
-        reg = data.get("regular", {}) or {}
-        last = _last_traded_price(quote, ext, reg)
-        from numeric_contract import float_finite_or_none as _fin
-        if last:
-            last = _fin(last)
-        pct_chg = extract_pct_change(quote, reg, last)
-        return last, pct_chg
+        return _last_traded_price(quote), extract_pct_change(quote)
     except Exception:
         return None, None
-
-
-def weighted_pushes_from_snapshot_row(
-    row: Mapping[str, Any],
-    *,
-    extra_chg: Mapping[str, Optional[float]] | None = None,
-) -> dict[str, Optional[float]]:
-    """Retired: never recompute a weighted push from partial or aged constituent chg (T-15)."""
-    _ = row
-    _ = extra_chg
-    return {
-        "spy_weighted_push": None,
-        "qqq_weighted_push": None,
-        "iwm_weighted_push": None,
-    }
-
-
-def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
-    """Retired (T-13). One side standing in for the other is a fallback."""
-    _ = ctx
-    return None
 
 
 def _derive_session() -> str:
@@ -295,35 +195,9 @@ def _derive_session() -> str:
     return "Closed"
 
 
-def resolve_chg_pct(ticker: str, rest_chg_pct: Optional[float], *,
-                     stream_chg_pct_fn: Optional[Callable[[str], Optional[float]]] = None) -> Optional[float]:
-    """
-    Stream percent-change or None (T-10). REST is not a substitute.
-
-    ``rest_chg_pct`` stays in the signature so callers do not grow a second parser.
-    stream_chg_pct_fn defaults to app.options.order_flow.state.get_stream_chg_pct.
-    """
-    _ = rest_chg_pct
-    fn = stream_chg_pct_fn
-    if fn is None:
-        try:
-            from app.options.order_flow.state import get_stream_chg_pct as fn
-        except Exception:
-            fn = None
-    if fn is not None:
-        try:
-            stream_chg = fn(ticker)
-            if stream_chg is not None:
-                return stream_chg
-        except Exception as e:
-            log.debug("resolve_chg_pct: stream_chg_pct_fn failed for %s: %s", ticker, e)
-    return None
-
-
 def fetch_market_context(client, safe_get_quote_fn,
                          pcr: Optional[float] = None,
-                         prev_pcr: Optional[float] = None,
-                         stream_chg_pct_fn: Optional[Callable[[str], Optional[float]]] = None) -> MarketContext:
+                         prev_pcr: Optional[float] = None) -> MarketContext:
     """
     Fetch VIX, optional vol indices, TNX yield, and env-configured futures.
     Index-confluence roster fetches are retired. Never raises — partial on error.
@@ -339,8 +213,6 @@ def fetch_market_context(client, safe_get_quote_fn,
         except Exception as e:
             errors.append(f"{sym}: {e}")
         return {}
-
-    _chg_for = functools.partial(resolve_chg_pct, stream_chg_pct_fn=stream_chg_pct_fn)
 
     # VIX — macro fear gauge; legacy ctx.vix semantics frozen (DUAL_GAUGE_HYBRID macro arm).
     vix_json = _fetch("$VIX")
@@ -373,10 +245,12 @@ def fetch_market_context(client, safe_get_quote_fn,
         ctx.tnx_chg = tnx_chg
 
     # Index futures (ES / NQ / RTY) — same quote path as equities; symbol must be explicit contract.
+    # chg is Schwab quote.netPercentChange (0 hops): futures are not on the equity stream, so
+    # the REST quote is their only source (audit of #272: a stream-only resolver discarded it
+    # for a stream value that never exists, so the futures change was always None).
     for leg, sym in configured_index_futures_symbols().items():
         j = _fetch(sym)
         last, chg = _extract_quote(sym, j)
-        chg = _chg_for(sym, chg)
         if leg == "ES":
             ctx.fut_es_symbol, ctx.fut_es_last, ctx.fut_es_chg_pct = sym, last, chg
         elif leg == "NQ":
@@ -641,35 +515,6 @@ def fetch_price_levels(
         pl.error = (pl.error + f" | levels: {err_str}").strip(" |")
 
     return pl
-
-
-def missing_confluence_weighted_pushes(ctx: MarketContext) -> list[str]:
-    """Retired: no weighted-push field is required, so nothing is "missing"."""
-    _ = ctx
-    return []
-
-
-def stamp_confluence_display_fields(mkt_ctx: "MarketContext | None") -> dict[str, object]:
-    """ONE /api/state faucet for retired index-confluence keys (F39). Always withheld."""
-    _ = mkt_ctx
-    return {
-        "cf_weighted_push": None,
-        "cf_label": "—",
-        "cf_color": "#9ca3af",
-        "cf_unavailable_reason": INDEX_CONFLUENCE_RETIRED_REASON,
-        "qqq_cf_weighted_push": None,
-        "qqq_cf_label": "—",
-        "qqq_cf_color": "#9ca3af",
-        "iwm_holdings_cf_push": None,
-        "iwm_holdings_cf_label": "—",
-        "iwm_holdings_cf_color": "#9ca3af",
-        "iwm_cf_push": None,
-        "iwm_cf_label": "—",
-        "iwm_cf_color": "#9ca3af",
-        "iwm_participation_push": None,
-        "cf_dot_green": None,
-        "cf_dot_total": None,
-    }
 
 
 def confluence_quote_rows_from_context(
