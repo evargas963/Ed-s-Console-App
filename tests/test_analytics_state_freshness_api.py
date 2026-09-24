@@ -476,18 +476,24 @@ def test_regression_existing_trade_fields_unchanged(tier_c_cache_spy):
 # ── SESSION_OPEN_ANCHOR_WARM_SLICE_V1 — RTH-open anchor warm locks ───────────
 
 
-def test_session_open_anchor_warm_schedules_all_base_anchors(monkeypatch):
-    """Warm queues SPY/QQQ/IWM through the shared panel-warm worker with the session source."""
+def test_session_open_warm_schedules_exactly_the_viewed_tickers(monkeypatch):
+    """Warm queues what the operator is viewing (active ticker + watchlist), in that order,
+    through the shared panel-warm worker -- never a named-ETF roster (universality)."""
     import server as srv
+    import app.options.order_flow.streaming as ofs
 
     submitted: list[tuple] = []
+    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["TSLA", "NFLX", "$SPX"])
     monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: submitted.append((fn, a)))
     srv._run_session_open_anchor_warm()
-    assert srv.UI_MAXIMIZE_PANEL_WARM_TICKERS == ("SPY", "QQQ", "IWM")
-    assert [a[0] for _fn, a in submitted] == ["SPY", "QQQ", "IWM"]
+    assert [a[0] for _fn, a in submitted] == ["TSLA", "NFLX", "$SPX"]
     for fn, args in submitted:
         assert fn is srv._warm_panel_ticker_after_delay
         assert args[2] == srv.SESSION_OPEN_ANCHOR_WARM_UPDATE_SOURCE == "session_open_anchor_warm"
+    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: [])
+    submitted.clear()
+    srv._run_session_open_anchor_warm()
+    assert submitted == [], "nothing viewed -> nothing warmed; no ticker is warmed by name"
 
 
 def test_session_open_anchor_warm_uses_existing_recompute_path_and_mutates_no_cache(monkeypatch):
@@ -502,11 +508,13 @@ def test_session_open_anchor_warm_uses_existing_recompute_path_and_mutates_no_ca
         "_schedule_analytics_recompute",
         lambda key, t, e, src: scheduled.append((key, t, e, src)),
     )
+    import app.options.order_flow.streaming as ofs
+    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["TSLA", "AAPL"])
     cache_before = dict(srv._state_cache)
     srv._run_session_open_anchor_warm()
     assert scheduled == [
         (srv._tier_c_inflight_key(t, None), t, None, "session_open_anchor_warm")
-        for t in ("SPY", "QQQ", "IWM")
+        for t in ("TSLA", "AAPL")
     ]
     assert srv._state_cache == cache_before
 
@@ -558,6 +566,9 @@ def test_session_open_anchor_warm_due_predicate_rth_gate_and_daily_latch():
 def test_startup_warm_unchanged_uses_startup_source(monkeypatch):
     """Regression: startup warm still queues the same anchors with update_source=startup_warm."""
     import server as srv
+    import app.options.order_flow.streaming as ofs
+
+    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["SPY", "QQQ", "IWM"])
 
     submitted: list[tuple] = []
     monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
@@ -883,142 +894,16 @@ class _FakePlane:
         return self.rows.get(ticker)
 
 
-def test_anchor_quote_lane_needs_refresh_predicate():
-    """Absent row, missing/garbled exchange_quote_ts, or age > max-age ⇒ refresh; fresh ⇒ skip."""
+def test_no_rest_quote_refresher_feeds_the_live_plane():
+    """The ANCHOR_QUOTE_LANE_REFRESHER re-quoted SPY/QQQ/IWM over REST every 20s into the
+    live plane whenever their streamed quote aged past 20s -- a REST fallback for three named
+    tickers. Deleted (operator rules 2026-09-23: no fallbacks, universality): a stale streamed
+    quote now reads stale."""
+    import inspect
+
     import server as srv
-
-    now = 1_000_000.0
-    max_age = srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC
-    assert srv._anchor_quote_lane_needs_refresh(None, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({}, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": None}, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": "bogus"}, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": now - max_age - 0.1}, now) is True
-    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": now - max_age + 0.1}, now) is False
-    assert srv._anchor_quote_lane_needs_refresh({"exchange_quote_ts": now}, now) is False
-
-
-def test_anchor_lane_refresh_bootstraps_missing_lane(monkeypatch):
-    """Missing-lane case (IWM shape): absent plane row is bootstrapped with prev=None."""
-    import server as srv
-
-    now = 2_000_000.0
-    monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQA",))
-    monkeypatch.setattr(srv, "_lmp", _FakePlane({}))
-    calls: list[tuple] = []
-    monkeypatch.setattr(
-        srv,
-        "_record_rest_fast_quote_with_auth_fallback",
-        lambda tkr, prev, ing: calls.append((tkr, prev, ing)),
-    )
-    boots_before = srv._anchor_quote_lane_refresh_counts["bootstraps"]
-    assert srv._run_anchor_quote_lane_refresh_once(now) == 1
-    assert calls == [("ZZQA", None, "rest_anchor_lane_refresher")]
-    assert srv._anchor_quote_lane_refresh_counts["bootstraps"] == boots_before + 1
-
-
-def test_anchor_lane_refresh_recovers_frozen_lane(monkeypatch):
-    """Frozen-lane case (QQQ shape): old exchange_quote_ts is refreshed, prev row passed through."""
-    import server as srv
-
-    now = 3_000_000.0
-    frozen = {"exchange_quote_ts": now - 7_120.0, "spot": 500.0}
-    monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQB",))
-    monkeypatch.setattr(srv, "_lmp", _FakePlane({"ZZQB": frozen}))
-    calls: list[tuple] = []
-    monkeypatch.setattr(
-        srv,
-        "_record_rest_fast_quote_with_auth_fallback",
-        lambda tkr, prev, ing: calls.append((tkr, prev, ing)),
-    )
-    refreshes_before = srv._anchor_quote_lane_refresh_counts["refreshes"]
-    assert srv._run_anchor_quote_lane_refresh_once(now) == 1
-    assert calls == [("ZZQB", frozen, "rest_anchor_lane_refresher")]
-    assert srv._anchor_quote_lane_refresh_counts["refreshes"] == refreshes_before + 1
-
-
-def test_anchor_lane_refresh_skips_fresh_lane_no_stream_interference(monkeypatch):
-    """A lane younger than max-age (e.g. actively streamed ticker) is left alone entirely."""
-    import server as srv
-
-    now = 4_000_000.0
-    fresh = {"exchange_quote_ts": now - 1.0, "spot": 600.0}
-    monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQC",))
-    monkeypatch.setattr(srv, "_lmp", _FakePlane({"ZZQC": fresh}))
-    calls: list[tuple] = []
-    monkeypatch.setattr(
-        srv,
-        "_record_rest_fast_quote_with_auth_fallback",
-        lambda tkr, prev, ing: calls.append((tkr, prev, ing)),
-    )
-    assert srv._run_anchor_quote_lane_refresh_once(now) == 0
-    assert calls == []
-
-
-def test_anchor_lane_refresh_error_isolated_per_ticker(monkeypatch):
-    """One ticker's REST failure is counted and does not block the rest of the roster."""
-    import server as srv
-
-    now = 5_000_000.0
-    monkeypatch.setattr(srv, "UI_MAXIMIZE_PANEL_WARM_TICKERS", ("ZZQD", "ZZQE"))
-    monkeypatch.setattr(srv, "_lmp", _FakePlane({}))
-    calls: list[str] = []
-
-    def _boom_then_ok(tkr, prev, ing):
-        calls.append(tkr)
-        if tkr == "ZZQD":
-            raise RuntimeError("rest failure")
-
-    monkeypatch.setattr(srv, "_record_rest_fast_quote_with_auth_fallback", _boom_then_ok)
-    errors_before = srv._anchor_quote_lane_refresh_counts["errors"]
-    assert srv._run_anchor_quote_lane_refresh_once(now) == 1
-    assert calls == ["ZZQD", "ZZQE"]
-    assert srv._anchor_quote_lane_refresh_counts["errors"] == errors_before + 1
-
-
-def test_anchor_lane_refresh_ticker_agnostic_no_literals():
-    """AST lock: the refresher functions carry no uppercase ticker string literals."""
-    import ast
-    from pathlib import Path
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    targets = {
-        "_anchor_quote_lane_needs_refresh",
-        "_run_anchor_quote_lane_refresh_once",
-        "_anchor_quote_lane_refresh_loop",
-    }
-    found = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name in targets:
-            found.add(node.name)
-            for sub in ast.walk(node):
-                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                    assert not (sub.value.isalpha() and sub.value.isupper()), (
-                        f"ticker-literal-shaped constant {sub.value!r} in {node.name}"
-                    )
-    assert found == targets
-
-
-def test_anchor_lane_refresh_lifespan_wiring_source_lock():
-    """Lifespan starts the refresher daemon and stops it on shutdown."""
-    from pathlib import Path
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    assert "target=_anchor_quote_lane_refresh_loop" in src
-    assert src.count("_anchor_quote_lane_refresh_stop.set()") == 1
-    assert src.count("_anchor_quote_lane_refresh_stop.clear()") == 1
-
-
-def test_anchor_lane_refresh_constants_inside_trust_threshold():
-    """Lane max-age + poll stay under the 30s quote-trust threshold; TTL/grace untouched."""
-    import server as srv
-
-    assert srv.ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC == 20.0
-    assert srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC == 20.0
-    assert srv.ANCHOR_QUOTE_LANE_MAX_AGE_SEC < srv._CARD_FRESHNESS_V1_QUOTE_STALE_SEC == 30.0
-    assert srv.CACHE_TTL == 5
-    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
+    src = inspect.getsource(srv)
+    assert "_anchor_quote_lane" not in src and "rest_anchor_lane_refresher" not in src
 
 
 # ── ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 ────────────────────────────────
@@ -2059,16 +1944,18 @@ def test_ui05r_priority_leaf_teardown_present():
     assert src.count("_priority_leaf_executor.shutdown(wait=True, cancel_futures=True)") == 1
 
 
-def test_ui05r_prewarm_roster_anchors_first(tmp_path, monkeypatch):
-    import server as srv
+def test_ui05r_prewarm_roster_viewed_first(tmp_path, monkeypatch):
+    import app.options.order_flow.streaming as ofs
     import ml_predict as mp
+    import server as srv
 
     base = tmp_path / "active"
     for t in ("ZZB", "SPY", "QQQ", "AAA1", "IWM"):
         (base / t).mkdir(parents=True)
     monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
+    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["ZZB", "NOTBUNDLED"])
     roster = srv._startup_model_prewarm_roster()
-    assert roster[:3] == ["SPY", "QQQ", "IWM"]
+    assert roster[0] == "ZZB", "the viewed ticker with a bundle goes first -- by viewing, not name"
     assert set(roster) == {"SPY", "QQQ", "IWM", "ZZB", "AAA1"}
 
 

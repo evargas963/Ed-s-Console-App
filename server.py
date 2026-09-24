@@ -1041,11 +1041,16 @@ SSE_RECOMPUTE_FETCH_TIMEOUT_SEC: float = float(
     os.environ.get("ED_SSE_RECOMPUTE_FETCH_TIMEOUT_SEC", "12.0")
 )
 # UI-MAXIMIZE — panel warm list + binding SLA budgets (mirrored on /api/build + static ED_UI_MAXIMIZE_SLA_MS).
-UI_MAXIMIZE_PANEL_WARM_TICKERS: tuple[str, ...] = tuple(
-    t.strip().upper()
-    for t in os.environ.get("ED_UI_PANEL_WARM_TICKERS", "SPY,QQQ,IWM").split(",")
-    if t.strip()
-) or ("SPY", "QQQ", "IWM")
+def panel_warm_tickers() -> tuple[str, ...]:
+    """The tickers to pre-warm: whatever the operator is viewing (active ticker + watchlist,
+    in that order). Universal -- no ticker is warmed because of its name (operator
+    2026-09-23); a ticker nobody is viewing pays its first compute on first view, like any."""
+    try:
+        from app.options.order_flow.streaming import viewed_equity_symbols
+        return tuple(viewed_equity_symbols())
+    except Exception as e:  # noqa: BLE001 -- warming is best-effort; nothing is substituted
+        log.warning("panel warm roster unavailable: %s", e)
+        return ()
 UI_MAXIMIZE_WARM_STAGGER_SEC: float = float(os.environ.get("ED_UI_MAXIMIZE_WARM_STAGGER_SEC", "2.0"))
 UI_MAXIMIZE_SLA_MS: dict[str, int] = {
     "first_quote": int(os.environ.get("ED_UI_SLA_FIRST_QUOTE_MS", "500")),
@@ -3007,8 +3012,8 @@ def _warm_panel_ticker_after_delay(ticker: str, delay_sec: float, update_source:
 
 
 def _schedule_startup_analytics_warm() -> None:
-    """Cold start: warm SPY/QQQ/IWM Tier C (+ model prewarm) before logger hammers Schwab."""
-    tickers = UI_MAXIMIZE_PANEL_WARM_TICKERS
+    """Cold start: warm the viewed tickers' Tier C (+ model prewarm) before the logger runs."""
+    tickers = panel_warm_tickers()
     stagger = max(0.0, UI_MAXIMIZE_WARM_STAGGER_SEC)
 
     if _analytics_bg_shutdown or os.environ.get("ED_DISABLE_STARTUP_ANALYTICS_WARM", "").strip().lower() in (
@@ -3029,7 +3034,7 @@ def _schedule_startup_analytics_warm() -> None:
 
 
 def _startup_model_prewarm_roster() -> list[str]:
-    """Own-bundle tickers under models/active, panel-warm anchors first.
+    """Own-bundle tickers under models/active, the viewed tickers first.
 
     UI_05 residual: a guest whose bundle is its OWN ticker pays 4-horizon
     torch loads (~12s measured, NFLX-class) on first touch. Sweeping those
@@ -3045,10 +3050,10 @@ def _startup_model_prewarm_roster() -> list[str]:
             if p.is_dir() and p.name.upper() == p.name and not p.name.startswith(".")
         )
     except OSError:
-        return list(UI_MAXIMIZE_PANEL_WARM_TICKERS)
-    anchors = [t for t in UI_MAXIMIZE_PANEL_WARM_TICKERS if t in roster]
-    rest = [t for t in roster if t not in anchors]
-    return anchors + rest
+        return list(panel_warm_tickers())
+    viewed = [t for t in panel_warm_tickers() if t in roster]
+    rest = [t for t in roster if t not in viewed]
+    return viewed + rest
 
 
 def _startup_model_prewarm_sweep_worker() -> None:
@@ -3106,20 +3111,17 @@ def _session_open_anchor_warm_due(et_now: datetime, last_warmed_et_date: Optiona
 
 
 def _run_session_open_anchor_warm() -> None:
-    """Queue the RTH-open anchor warm — same roster, stagger, and dedupe as startup warm."""
+    """Queue the RTH-open warm of the viewed tickers — same stagger and dedupe as startup."""
     stagger = max(0.0, UI_MAXIMIZE_WARM_STAGGER_SEC)
-    for i, t in enumerate(UI_MAXIMIZE_PANEL_WARM_TICKERS):
+    warm = panel_warm_tickers()
+    for i, t in enumerate(warm):
         try:
             _submit_analytics_task(
                 _warm_panel_ticker_after_delay, t, i * stagger, SESSION_OPEN_ANCHOR_WARM_UPDATE_SOURCE
             )
         except RuntimeError:
             break
-    log.info(
-        "session-open anchor warm queued: %s stagger=%ss",
-        UI_MAXIMIZE_PANEL_WARM_TICKERS,
-        stagger,
-    )
+    log.info("session-open warm queued: %s stagger=%ss", list(warm), stagger)
 
 
 def _session_open_anchor_warm_loop() -> None:
@@ -3137,87 +3139,10 @@ def _session_open_anchor_warm_loop() -> None:
             log.warning("session-open anchor warm loop error: %s", e)
 
 
-# ── ANCHOR_QUOTE_LANE_REFRESHER_V1 — keep panel-anchor quote lanes fresh ──────
-# Root cause (ANCHOR_QUOTE_LANE_QQQ_FROZEN_TIMESTAMP_TRACE_V1, 2026-07-07):
-# live_market_plane lanes update only for the currently streamed / actively
-# REST-polled ticker and rows never expire — switched-away anchors freeze
-# (QQQ quote_ts frozen 7,120s across three captures), never-polled anchors have
-# no lane at all (IWM missing_quote_ts), and even SPY drifts when unpolled.
-# The frozen/missing quote_ts drives the operator-mirror quote veto and blocks
-# card trust continuously. This loop refreshes stale/missing lanes for the
-# panel roster through the SAME REST fast-quote path the /api/fast-quote
-# endpoint uses (_record_rest_fast_quote_with_auth_fallback → record_quote;
-# auth-latch carry-forward preserved). Ticker-agnostic by construction: the
-# roster is config (UI_MAXIMIZE_PANEL_WARM_TICKERS) and the staleness predicate
-# reads lane fields only. A freshly streamed lane is younger than the threshold
-# and is skipped — streaming behavior is untouched.
-# Schwab CSV authority checked: yes
-# CSV row(s): quotes.*.lastPrice / quotes.*.mark et al via the EXISTING
-#   _build_rest_fast_quote_payload (schwab_client.safe_get_quote) — scheduling
-#   only; no market field read, derivation, or emission changed.
-# Derived-field disposition: none required (no derived field touched).
-# All consumers checked: yes — record_quote rows carry quote_ingestion
-#   "rest_anchor_lane_refresher" (no consumer branches on that value);
-#   card_freshness quote ages simply read fresher exchange_quote_ts.
-# SCHWAB_CSV_CHECKED
 #: t12 (RC-227 residual): a prior-day fact requires plausibly FULL session coverage from
 #: the live accumulator (~390 RTH minutes; floor 300) — below it, /api/levels falls
 #: through to banked canonical bars rather than serving a truncated min/max.
 LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
-
-ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC: float = 20.0
-ANCHOR_QUOTE_LANE_MAX_AGE_SEC: float = 20.0
-_anchor_quote_lane_refresh_stop = threading.Event()
-_anchor_quote_lane_refresh_counts: dict[str, int] = {
-    "refreshes": 0,
-    "bootstraps": 0,
-    "errors": 0,
-}
-
-
-def _anchor_quote_lane_needs_refresh(row: Optional[dict], now: float) -> bool:
-    """Ticker-agnostic lane-staleness predicate: absent row, missing ts, or old ts."""
-    if not row:
-        return True
-    fts = row.get("exchange_quote_ts")
-    if fts is None:
-        return True
-    try:
-        return (now - float(fts)) > ANCHOR_QUOTE_LANE_MAX_AGE_SEC
-    except (TypeError, ValueError):
-        return True
-
-
-def _run_anchor_quote_lane_refresh_once(now: Optional[float] = None) -> int:
-    """Refresh stale/missing plane lanes for the panel roster; returns refresh count."""
-    ts = time.time() if now is None else float(now)
-    done = 0
-    for t in UI_MAXIMIZE_PANEL_WARM_TICKERS:
-        try:
-            prev = _lmp.get_quote(t)
-            if not _anchor_quote_lane_needs_refresh(prev, ts):
-                continue
-            _anchor_quote_lane_refresh_counts["bootstraps" if not prev else "refreshes"] += 1
-            _record_rest_fast_quote_with_auth_fallback(t, prev, "rest_anchor_lane_refresher")
-            done += 1
-        except Exception as e:
-            _anchor_quote_lane_refresh_counts["errors"] += 1
-            log.warning("anchor quote lane refresh failed ticker=%s: %s", t, e)
-    return done
-
-
-def _anchor_quote_lane_refresh_loop() -> None:
-    """Daemon: keep anchor quote lanes inside the trust threshold during sessions."""
-    while not _anchor_quote_lane_refresh_stop.wait(ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC):
-        if _analytics_bg_shutdown:
-            continue
-        try:
-            if now_et().weekday() >= 5 or not _is_loggable_session():
-                continue
-            _run_anchor_quote_lane_refresh_once()
-        except Exception as e:
-            log.warning("anchor quote lane refresh loop error: %s", e)
-
 
 def _sse_viewer_cache_ttl(ticker: str, expiry: Optional[str]) -> float:
     """REST /api/state cache TTL: short while a client is SSE-subscribed to this (ticker, expiry)."""
@@ -4066,16 +3991,12 @@ _vix_tracker = _VIXTracker()
 # chain). 5 core tickers = 10 calls per 30s cycle = well within limits.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Core tickers: always logged, always building prediction databases ─────────
-# Index ETFs + top SPY constituents. These are the same tickers already quoted
-# every cycle by market_context.py for the cross-instrument panel — but those
-# calls only fetch a spot quote. The background logger runs the FULL pipeline
-# (quote + chain + exposures + snapshot) so they accumulate prediction data.
-CORE_TICKERS:   list[str] = [
-    "SPY", "QQQ", "IWM",                              # index ETFs
-    "NVDA", "AAPL", "MSFT", "AMZN", "META", "TSLA",  # mega-caps
-    "GOOGL", "AVGO",                                   # mega-caps
-]
+# ── No built-in ticker list (universality, operator 2026-09-23) ─────────────────
+# This used to hard-code 11 "core" tickers (SPY/QQQ/IWM + 8 mega-caps) that were always
+# enrolled, exempt from the collectability probe, and could not be removed. Every ticker is
+# now enrolled the same way, through the logging_universe table; rows an earlier build
+# wrote with category 'core' stay enrolled as ordinary rows (see the roster loaders).
+CORE_TICKERS:   list[str] = []
 LOG_INTERVAL:   int       = 30    # seconds — 12 tickers × 3 calls + 17 global ≈ 106/min
 STAGGER_SECS:   float     = 2.0  # seconds between each ticker fetch in a cycle
 LOGGER_STARTUP_DELAY_SEC: float = float(os.environ.get("ED_LOGGER_STARTUP_DELAY_SEC", "60"))
@@ -4213,7 +4134,7 @@ def _load_persisted_tickers() -> list[str]:
             # Neutering filter_tickers_for_background_logging was necessary but NOT sufficient
             # — this construction loop was the real gate; it silently dropped every panel_auto
             # ticker (all 17 dark since 2026-05-27) while the docstring claimed full rotation.
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
+            if row.get("category") in ("user_persisted", "pinned", "panel_auto", "core"):
                 t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical enrolled-ticker identity
                 if t and t not in tickers:
                     tickers.append(t)
@@ -4264,7 +4185,7 @@ def _hydrate_logger_tickers_from_db() -> None:
         merged = [ticker_storage_key(t) for t in CORE_TICKERS]  # RC-345/F25: canonical logger hydration
         for row in db.logging_universe_list_rows():
             # UNIVERSAL COLLECTION (RC-482/RC-483): panel_auto joins the roster here too.
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto"):
+            if row.get("category") in ("user_persisted", "pinned", "panel_auto", "core"):
                 t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical (legacy bare rows resolve on-read)
                 if t and t not in merged:
                     merged.append(t)
@@ -4915,14 +4836,17 @@ _base_money_path_logger_thread: threading.Thread | None = None
 
 
 def base_money_path_logger_tickers() -> tuple[str, ...]:
-    """SPY/QQQ/IWM — dedicated RTH capture rotation independent of UI-active ticker."""
-    from money_path_ticker_tiers import BASE_MONEY_PATH_TICKERS
-
-    return BASE_MONEY_PATH_TICKERS
+    """Every enrolled ticker (the logging universe), each captured the same way."""
+    with _logger_lock:
+        return tuple(_logger_tickers)
 
 
 def _base_money_path_capture_one(ticker: str):
-    """Quote-only base capture — tagged logger_source=base_money_path (no full _fetch_state)."""
+    """Quote-only base capture — tagged logger_source=base_money_path (no full _fetch_state).
+
+    Reads the ticker's STREAMED quote (live_market_plane LAST_PRICE / BID / ASK +
+    order-flow sizes and TOTAL_VOLUME) -- no vendor call, and no row when the stream has no
+    fresh trade price for it (operator rule 2026-09-23: no fallbacks)."""
     from base_money_path_capture import (
         BaseCaptureAttempt,
         LOGGER_SOURCE_BASE_MONEY_PATH,
@@ -4936,37 +4860,22 @@ def _base_money_path_capture_one(ticker: str):
         if not _is_loggable_session():
             return BaseCaptureAttempt(t, "skipped:closed", time.monotonic() - t0)
 
-        client = get_client()
-        if client is None:
-            return BaseCaptureAttempt(t, "error:no_client", time.monotonic() - t0)
-
-        q_resp = _memoized_quote_response(t, client=client)   # RC-112/W3-C8: one vendor faucet
-        if q_resp is None or getattr(q_resp, "status_code", None) != 200:
-            code = getattr(q_resp, "status_code", None)
-            return BaseCaptureAttempt(
-                t,
-                f"error:quote_{code if code is not None else 'none'}",
-                time.monotonic() - t0,
-            )
-
-        q_json = q_resp.json()
-        node = q_json.get(t) or q_json.get(ticker) or {}
-        session_q = _parse_quote_node_session_fields(node)
-        parsed_last = session_q.get("last")
-        # Persist lastPrice only as an as-of historical print. MARK / close must
-        # never enter snapshots.spot — that column is mixed-semantics if they do.
-        spot_f = parsed_last if parsed_last and parsed_last > 0 else None
-        if spot_f is None or float(spot_f) <= 0:
-            return BaseCaptureAttempt(t, "error:no_spot", time.monotonic() - t0)
-
+        row = _lmp.get_quote(t)
+        if not (row and _lmp.plane_row_is_streamed(row) and _lmp.plane_spot_is_last_price(row)
+                and _lmp.spot_is_fresh(row)):
+            return BaseCaptureAttempt(t, "skipped:no_fresh_stream_quote", time.monotonic() - t0)
+        from app.options.order_flow.state import get_stream_volume, get_top_of_book_sizes
+        sizes = get_top_of_book_sizes(t)
+        # Persist the streamed LAST_PRICE only as an as-of historical print. MARK / close
+        # never enter snapshots.spot.
         quote_fields = {
-            "spot_f": float(spot_f),
-            "bid": session_q.get("bid"),
-            "ask": session_q.get("ask"),
-            "bid_size": session_q.get("bid_size"),
-            "ask_size": session_q.get("ask_size"),
-            "last_size": session_q.get("last_size"),
-            "total_volume": session_q.get("total_volume"),
+            "spot_f": float(row["spot"]),
+            "bid": row.get("bid"),
+            "ask": row.get("ask"),
+            "bid_size": sizes.get("bid_size"),
+            "ask_size": sizes.get("ask_size"),
+            "last_size": None,   # not carried by the plane; stored as unknown, never guessed
+            "total_volume": get_stream_volume(t),
         }
 
         now_et = _eastern_now()
@@ -5037,23 +4946,18 @@ def _maybe_schedule_base_normalized_refresh() -> None:
 
 def _base_money_path_logger_loop():
     """
-    Dedicated base-ticker capture: SPY, QQQ, IWM at ~1 lightweight snapshot/min each during RTH.
-
-    Concurrent quote-only inserts (logger_source=base_money_path) — independent of UI-active
-    ticker and without full _fetch_state model/card compute.
+    Dedicated capture: every enrolled ticker at ~1 lightweight snapshot/min during RTH, read
+    from the stream (no vendor call), independent of the UI-active ticker and without the
+    full _fetch_state model/card compute. The roster is re-read each cycle.
     """
     from base_money_path_capture import run_base_money_path_capture_cycle
     from money_path_ticker_tiers import base_money_path_capture_interval_sec
 
     global _base_money_path_logger_running
     interval = base_money_path_capture_interval_sec()
-    tickers = base_money_path_logger_tickers()
     timeout_sec = float(os.environ.get("ED_BASE_CAPTURE_TIMEOUT_SEC", "45"))
-    log.info(
-        "Base money-path logger started — %s every %.0fs concurrent quote-only (UI-independent)",
-        list(tickers),
-        interval,
-    )
+    log.info("Snapshot capture started — every enrolled ticker every %.0fs, from the stream",
+             interval)
 
     time.sleep(LOGGER_STARTUP_DELAY_SEC)
 
@@ -5066,20 +4970,23 @@ def _base_money_path_logger_loop():
                 time.sleep(1)
             continue
 
+        tickers = base_money_path_logger_tickers()
+        if not tickers:
+            time.sleep(1)
+            continue
         attempts = run_base_money_path_capture_cycle(
             tickers,
             capture_one=_base_money_path_capture_one,
-            max_workers=len(tickers),
+            max_workers=min(len(tickers), 8),
             per_ticker_timeout_sec=timeout_sec,
             log=log,
         )
+        _by_status: dict[str, list[str]] = {}
         for attempt in attempts:
-            log.info(
-                "Base money-path logger: %s → %s (%.2fs)",
-                attempt.ticker,
-                attempt.status,
-                attempt.duration_sec,
-            )
+            _by_status.setdefault(attempt.status, []).append(attempt.ticker)
+        log.info("Snapshot capture cycle: %s",
+                 "; ".join(f"{st} {len(ts)}: {','.join(ts[:12])}{'...' if len(ts) > 12 else ''}"
+                           for st, ts in sorted(_by_status.items())))
 
         _maybe_schedule_base_normalized_refresh()
 
@@ -8808,7 +8715,9 @@ def _fetch_state(
                     # try/except so live path is untouched on any failure.
                     try:
                         _gex_tk = str(ticker).upper()
-                        if _gex_tk in ("SPY", "QQQ", "IWM"):
+                        # every ticker gets its once-daily morning wide chain (it used to be
+                        # SPY/QQQ/IWM only -- universality, operator 2026-09-23)
+                        if _gex_tk:
                             from calibration.option_chain_morning_full import (
                                 GEX_FULL_CHAIN_STRIKE_COUNT as _GEX_STRIKES,
                                 MORNING_END_MINS as _GEX_END,
@@ -9550,14 +9459,9 @@ def _fetch_state(
         _dashboard_ml_hz = _live_ml_hz_slug()
     except Exception:
         _dashboard_ml_hz = "1c"
-    _arch_path = _models_dir / "arch_state.json"
-    _dashboard_ticker = "SPY"
-    if _arch_path.exists():
-        try:
-            _arch = json.loads(_arch_path.read_text())
-            _dashboard_ticker = next((t for t in ("SPY", "QQQ", "IWM") if t in _arch), next(iter(_arch), "SPY"))
-        except Exception as e:
-            log.debug("dashboard arch_state.json parse failed: %s", e, exc_info=True)
+    # The REQUESTED ticker's own models -- this used to report SPY's bundles for every ticker
+    # (universality, operator 2026-09-23). A ticker with no bundle reads NOT TRAINED.
+    _dashboard_ticker = ticker_storage_key(ticker) or str(ticker).upper()
     _active_dir = _models_dir / "active" / _dashboard_ticker
 
     # Sync missing binaries: if active has meta but not .pt/.pkl, copy from parallel/cascade/flat.
@@ -10212,18 +10116,6 @@ async def _app_lifespan(app):
     ).start()
     log.info("session-open anchor warm loop started (poll=%ss)", SESSION_OPEN_ANCHOR_WARM_POLL_SEC)
 
-    _anchor_quote_lane_refresh_stop.clear()
-    threading.Thread(
-        target=_anchor_quote_lane_refresh_loop,
-        name="ed_anchor_quote_lane_refresh",
-        daemon=True,
-    ).start()
-    log.info(
-        "anchor quote lane refresh loop started (poll=%ss max_age=%ss)",
-        ANCHOR_QUOTE_LANE_REFRESH_POLL_SEC,
-        ANCHOR_QUOTE_LANE_MAX_AGE_SEC,
-    )
-
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
@@ -10237,7 +10129,6 @@ async def _app_lifespan(app):
     # The watchdog guarantees the process dies whether or not the joins below return.
     _arm_shutdown_watchdog()
     _session_open_anchor_warm_stop.set()
-    _anchor_quote_lane_refresh_stop.set()
     _shutdown_analytics_executor(wait=True)
     # Live-plane feed task (reads the canonical capture daemon's DB — no Schwab socket
     # of its own to close here since single-stream-authority root fix 2026-08-30).
@@ -12088,12 +11979,14 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
             "levels_quarantined": bool(quarantined), **token}
 
 
-#: RC-159 accrual cadence, stated rather than implied. Sentinels every minute (they ARE the
-#: money path); the rest of the enrolled board every five. These are FLOORS between writes, not
-#: a schedule — the terrain loop's own cadence still governs when a chain exists to bank.
-ACCRUAL_MIN_INTERVAL_SENTINEL_SEC: float = 60.0
-ACCRUAL_MIN_INTERVAL_OTHER_SEC: float = 300.0
-ACCRUAL_SENTINELS: tuple[str, ...] = ("SPY", "QQQ", "IWM")
+#: RC-159 accrual cadence, stated rather than implied: ONE floor between writes for every
+#: ticker (universality, operator 2026-09-23 -- it used to be 60s for SPY/QQQ/IWM and 300s for
+#: everyone else). A FLOOR, not a schedule: the terrain loop's own cycle still governs when a
+#: chain exists to bank, and a full-board cycle is longer than this floor.
+ACCRUAL_MIN_INTERVAL_SEC: float = 60.0
+#: Rotation depth inside the 09:30-10:00 contention window for tickers nobody is viewing: each
+#: still refreshes at least once per this many seconds.
+CONTENTION_ROTATION_SEC: float = 300.0
 _accrual_last_write: dict[str, float] = {}
 _accrual_lock = threading.Lock()
 
@@ -12108,8 +12001,7 @@ def _accrue_chain_observation(tk: str, snap) -> None:
         _d, mins = gex_et_date_and_mins()
         if not gex_accrual_window(mins):
             return
-        floor = (ACCRUAL_MIN_INTERVAL_SENTINEL_SEC if tk in ACCRUAL_SENTINELS
-                 else ACCRUAL_MIN_INTERVAL_OTHER_SEC)
+        floor = ACCRUAL_MIN_INTERVAL_SEC
         now = time.time()
         with _accrual_lock:
             if now - _accrual_last_write.get(tk, 0.0) < floor:
@@ -12145,7 +12037,8 @@ TERRAIN_CONTENTION_END_MINS: int = 600     # 10:00 ET
 
 
 def terrain_cycle_tickers(
-    all_tickers: list[str], mins: int, cycle_n: int
+    all_tickers: list[str], mins: int, cycle_n: int,
+    viewed: "list[str] | None" = None,
 ) -> tuple[list[str], list[str]]:
     """Which tickers this cycle refreshes, and which are DEFERRED to a later cycle.
 
@@ -12154,24 +12047,24 @@ def terrain_cycle_tickers(
     meeting. Exclusion is now ROTATION: no enrolled ticker is ever removed from the board, it is
     scheduled later within the window.
 
-    The rotation depth is derived from the accrual cadence, not guessed: a non-sentinel needs one
-    refresh per ACCRUAL_MIN_INTERVAL_OTHER_SEC, so with a TERRAIN_REFRESH_SEC cycle it needs to
-    appear once every `depth` cycles. Refreshing it more often would spend vendor budget on a
-    write the accrual floor would throw away, so this rotation costs nothing the mandate does not
-    already require — and it keeps the original budget intent (RC-146: do not pile a 54-ticker
-    sweep on top of the money-path wide fetches at the open) by spreading, not by starving.
+    Priority inside the window is by VIEWING DEMAND, never by symbol name (universality,
+    operator 2026-09-23): the tickers the operator is looking at (`viewed` -- active ticker +
+    watchlist) refresh every cycle; every other enrolled ticker rotates so it still refreshes
+    at least once per CONTENTION_ROTATION_SEC (RC-146: spread the open's vendor budget, never
+    starve a ticker).
 
     Returns (refresh_now, deferred_this_cycle). Outside the contention window every ticker
     refreshes, exactly as before.
     """
-    sentinels = [t for t in all_tickers if str(t).upper() in ACCRUAL_SENTINELS]
-    others = [t for t in all_tickers if str(t).upper() not in ACCRUAL_SENTINELS]
+    viewed_set = {str(t).upper() for t in (viewed or [])}
+    sentinels = [t for t in all_tickers if str(t).upper() in viewed_set]
+    others = [t for t in all_tickers if str(t).upper() not in viewed_set]
     if not (TERRAIN_CONTENTION_START_MINS <= int(mins) <= TERRAIN_CONTENTION_END_MINS):
         return list(all_tickers), []
     # integer ceiling division — server.py has no module-level `math`, and adding an import for
     # one division would be a wider change than the fix
     _cyc = max(1, int(TERRAIN_REFRESH_SEC))
-    depth = max(1, -(-int(ACCRUAL_MIN_INTERVAL_OTHER_SEC) // _cyc))
+    depth = max(1, -(-int(CONTENTION_ROTATION_SEC) // _cyc))
     idx = int(cycle_n) % depth
     slice_now = others[idx::depth]
     deferred = [t for t in others if t not in set(slice_now)]
@@ -13663,7 +13556,13 @@ def _terrain_loop() -> None:
             _d, _mins = gex_et_date_and_mins()
             _terrain_cycle_n += 1
             _all_this_cycle = list(tickers)
-            tickers, _dropped = terrain_cycle_tickers(_all_this_cycle, _mins, _terrain_cycle_n)
+            try:
+                from app.options.order_flow.streaming import viewed_equity_symbols as _viewed_fn
+                _viewed_syms = _viewed_fn()
+            except Exception:  # noqa: BLE001 -- no viewing signal: every ticker rotates alike
+                _viewed_syms = []
+            tickers, _dropped = terrain_cycle_tickers(_all_this_cycle, _mins, _terrain_cycle_n,
+                                                      viewed=_viewed_syms)
             if _dropped:
                 # RC-146: SAY SO. This pause is deliberate and budget-justified, but it was a
                 # silent list filter — nothing anywhere recorded that these tickers were skipped
@@ -13684,7 +13583,7 @@ def _terrain_loop() -> None:
                     f"{TERRAIN_CONTENTION_END_MINS // 60:02d}:"
                     f"{TERRAIN_CONTENTION_END_MINS % 60:02d} ET window, while the morning "
                     f"wide-chain capture holds the chain slots — the enrolled board rotates at "
-                    f"the accrual cadence ({ACCRUAL_MIN_INTERVAL_OTHER_SEC:.0f}s) instead of "
+                    f"the rotation cadence ({CONTENTION_ROTATION_SEC:.0f}s) instead of "
                     f"being held out, so this ticker still accrues inside the window",
                 )
             if _previewed:
@@ -18003,7 +17902,7 @@ def api_build():
         "contract": "meet_or_exceed_v1",
         "release_id": release.get("release_id") if release else None,
         "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
-        "ui_maximize_panel_warm_tickers": list(UI_MAXIMIZE_PANEL_WARM_TICKERS),
+        "ui_maximize_panel_warm_tickers": list(panel_warm_tickers()),
         "process_identity": identity,
         "repository_state_now": {"repo_head_now": repo_head_now},
         "code_drift": {

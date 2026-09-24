@@ -899,6 +899,14 @@ def declare_equity_symbols(kind: str, symbols: "list[str]") -> "dict[str, str]":
     return get_equity_symbols_not_admitted()
 
 
+def viewed_equity_symbols() -> "list[str]":
+    """What the operator is looking at right now: the active ticker, then the watchlist in
+    its own order (no gamma board) -- the one roster for "warm what is being viewed"."""
+    with _equity_lock:
+        admitted, _ = rank_equity_symbols(_active_ticker, {"watchlist": list(_equity_demand["watchlist"])})
+    return admitted
+
+
 def get_equity_symbols_not_admitted() -> "dict[str, str]":
     with _equity_lock:
         return dict(_equity_not_admitted)

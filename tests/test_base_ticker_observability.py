@@ -123,11 +123,13 @@ def test_filter_tickers_for_background_logging_keeps_base_anchors(tmp_path: Path
     assert "NVDA" in tickers
 
 
-def test_base_money_path_logger_tickers_match_anchors():
+def test_snapshot_capture_covers_every_enrolled_ticker(monkeypatch):
+    """Universality (operator 2026-09-23): the per-minute capture is the enrolled universe,
+    re-read each cycle -- not three named ETFs."""
     import server as srv
 
-    assert srv.base_money_path_logger_tickers() == BASE_MONEY_PATH_TICKERS
-    assert len(srv.base_money_path_logger_tickers()) == 3
+    monkeypatch.setattr(srv, "_logger_tickers", ["TSLA", "NFLX", "$SPX"])
+    assert srv.base_money_path_logger_tickers() == ("TSLA", "NFLX", "$SPX")
 
 
 def test_start_logger_launches_base_money_path_thread(monkeypatch):

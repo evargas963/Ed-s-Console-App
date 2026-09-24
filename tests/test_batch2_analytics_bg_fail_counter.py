@@ -366,18 +366,21 @@ def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
     assert scheduled[0][2] == "client_warm_post"
 
 
-def test_api_build_exposes_ui_maximize_sla():
+def test_api_build_exposes_ui_maximize_sla(monkeypatch):
     """TEST_SYSTEM_REHAB_V2 final remediation: api_build is a plain sync handler
     with no auth/middleware/serialization-shaping dependency -- the HTTP round trip
-    added nothing a direct call doesn't already prove."""
+    added nothing a direct call doesn't already prove. The warm list is what the operator
+    is viewing (universality), reported as-is."""
+    import app.options.order_flow.streaming as ofs
     import server as srv
+
+    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["NFLX", "SPY"])
 
     body = srv.api_build()
     sla = body.get("ui_maximize_sla_ms") or {}
     assert sla.get("first_quote") == srv.UI_MAXIMIZE_SLA_MS["first_quote"]
     assert sla.get("fusion_cards_panel_warm") == srv.UI_MAXIMIZE_SLA_MS["fusion_cards_panel_warm"]
-    warm = body.get("ui_maximize_panel_warm_tickers") or []
-    assert "SPY" in warm
+    assert body.get("ui_maximize_panel_warm_tickers") == ["NFLX", "SPY"]
 
 
 def test_candle_seed_does_not_nest_analytics_executor():
