@@ -410,7 +410,7 @@ def test_call_stack_uses_all_consolidated_not_fusion_multi_horizon_slots():
 
     import call_engine as ce
 
-    assert ce.CONFLUENCE_TOTAL_SOURCES == 8
+    assert ce.CONFLUENCE_TOTAL_SOURCES == 5   # no index-ETF votes (operator 2026-09-23)
     src = inspect.getsource(ce.compute_call)
     assert '"all_consolidated":' in src
     idx = src.index("stack_votes = {")

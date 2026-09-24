@@ -50,7 +50,7 @@ log = logging.getLogger(__name__)
 # Stack threshold (event-risk vs default)
 STACK_THRESHOLD_DEFAULT: int = 2
 STACK_THRESHOLD_EVENT_RISK: int = 3
-CONFLUENCE_TOTAL_SOURCES: int = 8
+CONFLUENCE_TOTAL_SOURCES: int = 5   # micro, Greeks, regime, order_flow, all_consolidated
 
 # Conviction margin thresholds
 CONVICTION_HIGH_MARGIN_HIGH: float = 0.12
@@ -154,11 +154,6 @@ VOL_CONV_MULT_DOUBLE_DOWNGRADE_THRESHOLD: float = 0.75
 ZONE_FRESH_BARS_DOWNGRADE_MAX: int = 2
 
 # Cross-instrument signal
-CROSS_INSTRUMENT_STRONG_THRESHOLD: float = 0.40
-CROSS_INSTRUMENT_WEAK_THRESHOLD: float = 0.10
-CROSS_INSTRUMENT_DIR_EPS: float = 0.10
-CROSS_INSTRUMENT_QQQ_LEAD_THRESHOLD: float = 0.20
-CROSS_INSTRUMENT_IWM_RISK_THRESHOLD: float = 0.50
 
 # MH size tier (sizing modifier)
 MH_SIZE_TIER_3_MAX_MOD: float = 0.30
@@ -383,9 +378,9 @@ def _build_call_headlines(final_signal, conviction, trade_type,
             reasoning = (
                 f"Stack: {lc} long ({', '.join(ln) or '—'}), {sc} short ({', '.join(sn) or '—'}). "
                 f"Need at least {th} sources agreeing. "
-                "Note: stack uses 8 layers (micro, Greeks, spy_basket, qqq_basket, iwm_basket, "
-                "regime, order_flow, all_consolidated); each index basket vote is independent — "
-                "no cross-ETF veto. all_consolidated is the skill-weighted ALL pooled ML consensus."
+                "Note: stack uses 5 layers (micro, Greeks, regime, order_flow, all_consolidated), "
+                "all read from THIS ticker's own data -- no index-ETF votes. all_consolidated is "
+                "the skill-weighted ALL pooled ML consensus."
             )
         elif reason == "vol_regime":
             detail = blocker.get("detail", "unstable — require stronger confirmation")
@@ -634,109 +629,6 @@ def _confluence_for_signal(stack_votes: dict[str, int], final_signal: str) -> tu
     detail = " + ".join(names) if names else "no stack alignment"
     return len(names), detail
 
-
-def _index_basket_vote(
-    weighted_push: float | None,
-    etf_chg_pct: float | None,
-    *,
-    min_lean: float = 0.08,
-) -> int:
-    """
-    One index, one vote: cap-weighted basket push if present, else that index's ETF session %.
-    No other instrument can veto this vote (cross-ETF veto removed by policy).
-    Returns: 1 (long lean), -1 (short lean), 0 (flat / insufficient lean).
-    """
-    if weighted_push is not None:
-        try:
-            p = float(weighted_push)
-            if p > min_lean:
-                return 1
-            if p < -min_lean:
-                return -1
-        except (TypeError, ValueError):
-            pass
-    if etf_chg_pct is None:
-        return 0
-    try:
-        c = float(etf_chg_pct)
-    except (TypeError, ValueError):
-        return 0
-    if c > min_lean:
-        return 1
-    if c < -min_lean:
-        return -1
-    return 0
-
-
-def _cross_instrument_signal(inp: SignalInput) -> str | None:
-    """
-    Continuous cross-instrument alignment score for **narrative / notes** only
-    (e.g. `_cross_instrument_notes`, regime copy) — **not** used for stack_vote;
-    see `_index_basket_vote` (three independent index votes) for The Call tape layer.
-
-    Treats direction agreement × magnitude across SPY, QQQ, IWM. Full agreement is
-    a strong contextual label; divergence is a warning in text — not a hard gate.
-    """
-    spy = inp.spy_chg_pct
-    qqq = inp.qqq_chg_pct
-    iwm = inp.iwm_chg_pct
-    present = [v for v in (spy, qqq, iwm) if v is not None]
-    if len(present) < 2:
-        return None
-
-    # Directions for instruments with data (chg_pct in percentage points)
-    dirs = []
-    for v in present:
-        if v > CROSS_INSTRUMENT_DIR_EPS:
-            dirs.append(1)
-        elif v < -CROSS_INSTRUMENT_DIR_EPS:
-            dirs.append(-1)
-        else:
-            dirs.append(0)
-
-    nonzero = [d for d in dirs if d != 0]
-    if len(nonzero) < 2:
-        return "neutral"
-
-    all_same = len(set(nonzero)) == 1
-    has_conflict = 1 in nonzero and -1 in nonzero
-
-    avg_mag = sum(abs(v) for v in present) / len(present)
-    if has_conflict:
-        return "strong_diverge" if avg_mag >= CROSS_INSTRUMENT_STRONG_THRESHOLD else "diverging"
-    elif all_same:
-        return "strong_confirm" if avg_mag >= CROSS_INSTRUMENT_STRONG_THRESHOLD else "confirming"
-    return "neutral"
-
-def _cross_instrument_notes(inp: SignalInput) -> list:
-    """Plain English notes from cross-instrument reads with magnitude context."""
-    notes = []
-
-    spy = inp.spy_chg_pct
-    qqq = inp.qqq_chg_pct
-    iwm = inp.iwm_chg_pct
-
-    if spy is not None and qqq is not None:
-        delta = qqq - spy
-        if abs(delta) > CROSS_INSTRUMENT_QQQ_LEAD_THRESHOLD:
-            if delta > 0:
-                notes.append(f"QQQ leading SPY by {abs(delta):.2f}% — tech pulling market up")
-            else:
-                notes.append(f"QQQ lagging SPY by {abs(delta):.2f}% — tech is a drag")
-
-    if iwm is not None and iwm < -CROSS_INSTRUMENT_IWM_RISK_THRESHOLD:
-        notes.append(f"Small caps down {abs(iwm):.2f}% — risk-off, be careful with longs")
-    elif iwm is not None and iwm > CROSS_INSTRUMENT_IWM_RISK_THRESHOLD:
-        notes.append(f"Small caps up {iwm:.2f}% — risk-on, longs favored")
-
-    cross_sig = _cross_instrument_signal(inp)
-    if cross_sig == "strong_confirm" and spy is not None and qqq is not None and iwm is not None:
-        avg_dir = "bullish" if (spy + qqq + iwm) > 0 else "bearish"
-        notes.append(f"SPY/QQQ/IWM all moving strongly {avg_dir} — broad market conviction")
-    elif cross_sig in ("diverging", "strong_diverge"):
-        notes.append("Index instruments diverging — mixed signals, reduce sizing")
-
-    return notes
 
 # ATR-scaled stop multiple (operator 2026-06-11 price-action plan). Volatility-
 # scaled stops per Wilder (1978) ATR; standard institutional practice is a fixed
@@ -1546,12 +1438,9 @@ def compute_call(
     greek_b = greek_bias(inp.net_delta, _charm_vote_direction, inp.put_call_oi_ratio,
                          dex_magnitude=inp.dex_magnitude or "moderate",
                          charm_magnitude=inp.charm_magnitude or "moderate")
-    cross_sig = _cross_instrument_signal(inp)
-
-    # Broad tape: three independent basket/ETF reads (SPY, QQQ, IWM) — no cross-index veto.
-    spy_basket_vote = _index_basket_vote(inp.spy_weighted_push, inp.spy_chg_pct)
-    qqq_basket_vote = _index_basket_vote(inp.qqq_weighted_push, inp.qqq_chg_pct)
-    iwm_basket_vote = _index_basket_vote(inp.iwm_weighted_push, inp.iwm_chg_pct)
+    # No index-ETF votes (operator 2026-09-23: "remove the benchmark votes"). Every ticker used
+    # to get three extra tape votes from SPY/QQQ/IWM plus a conviction downgrade when those
+    # three disagreed; The Call now reads each ticker on its own data only.
 
     # Order flow direction from SignalInput (stack layer).
     # WITHHELD from the decision (mission TRUTH_V1): order_flow_direction is the sign of
@@ -1587,9 +1476,6 @@ def compute_call(
     tape_stack_votes = {
         "micro":   1 if rules_signal == "long" else (-1 if rules_signal == "short" else 0),
         "Greeks":  1 if greek_b == "bullish" else (-1 if greek_b == "bearish" else 0),
-        "spy_basket": spy_basket_vote,
-        "qqq_basket": qqq_basket_vote,
-        "iwm_basket": iwm_basket_vote,
         "regime": regime_vote,
         "order_flow": of_vote,
     }
@@ -1667,10 +1553,6 @@ def compute_call(
         conviction = _conviction_from_canonical_forecast(
             canonical, pred_agrees=pred_agrees, final_signal=final_signal,
         )
-
-    # Cross-instrument divergence → downgrade (SPY/QQQ/IWM disagree)
-    if cross_sig in ("diverging", "strong_diverge") and final_signal != "wait":
-        conviction = _downgrade(conviction)
 
     # Issuer earnings (or similar) on the traded symbol — extra caution beyond macro "elevated"
     if _evt == "high" and final_signal != "wait":

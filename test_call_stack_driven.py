@@ -126,7 +126,7 @@ def main():
     print("   Market Data (inp) -> Vol Regime -> Market Regime (rules+regime)")
     print("   -> Feature Eng -> ML Models -> Monte Carlo -> Fusion")
     print("   -> compute_call(inp, rules, pred, regime, fusion, vol_regime)")
-    print("   Stack synthesis: 9 votes (micro, Greeks, spy_basket, qqq_basket, iwm_basket, prediction, regime, fusion, order_flow)")
+    print("   Stack synthesis: votes (micro, Greeks, prediction, regime, fusion, order_flow)")
     print("   final_signal = long|short if consensus >= 2, else wait")
     print("   Reasoning from stack_wait_reason (when wait) or confluence_detail")
     print("\n3. CONFIRMATION: Call card populated from full stack result:")

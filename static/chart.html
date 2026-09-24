@@ -1081,8 +1081,8 @@ function draw() {
   // RC-75 one client spot authority — hoisted here (RC-113): the sigma band and off-scale
   // pinning need the frame's spot before the level pass; every later use reads this same const.
   const spot = currentSpot();
-  // Fail-closed lean: SIGN_UNPROVEN, UNAVAILABLE, or non-TRUSTED — never paint BUY/SELL advice
-  const withholdLean = T.regime === 'SIGN_UNPROVEN' || T.regime === 'UNAVAILABLE'
+  // Fail-closed lean: UNAVAILABLE or non-TRUSTED — never paint BUY/SELL advice
+  const withholdLean = T.regime === 'UNAVAILABLE'
     || T.confidence !== 'TRUSTED';
   // RC-86 — the drawn band is the strike's HISTOGRAM BUCKET (± half the median strike spacing),
   // which is the correct binning rule and nothing more. It carries no information about the wall:
