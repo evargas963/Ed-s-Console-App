@@ -65,7 +65,7 @@ class LiveUiServer:
         self.stats = stats
         self.clients: set[_Client] = set()
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
-                     listening=None, last_send_ms=None)
+                     beat_send_failures=0, listening=None, last_send_ms=None)
 
     # -- plane side -------------------------------------------------------------------
 
@@ -163,8 +163,11 @@ class LiveUiServer:
                 rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
                 try:
                     await self._send(c, {"type": "feed", "feed": feed, "rows": rows})
-                except Exception:  # noqa: BLE001 -- that client's own handler ends it
-                    pass
+                except Exception as e:  # noqa: BLE001 -- counted; that client's own handler ends it
+                    # a closed browser fails its send here and its handler removes it; the
+                    # other browsers' beats must still go out
+                    self.stats["beat_send_failures"] += 1
+                    log.debug("live ui beat to a closing client: %s: %s", type(e).__name__, e)
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
