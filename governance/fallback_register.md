@@ -1,0 +1,124 @@
+# Fallback register (operator rule 2026-09-23: NO FALLBACKS)
+
+A value comes from its canonical Schwab field or its ONE canonical derived computation. When
+that is missing, stale or invalid the value is ABSENT (shown absent / decision withheld with a
+named reason). Substituting anything else — a default number or label, an older value, another
+source, a guessed weight, `x or <default>`, re-weighting the legs that happen to exist — is a
+violation, labelled or not.
+
+Status: OPEN | FIXED `<sha>` | DORMANT (code path off today: fix before it is switched on).
+Scope of this register: the 2026-09-24 re-audit (six read-only audits, every line of the named
+files). The 2026-09-23 first-pass audit (653 sites, 16 P0) is tracked by its P0s below; its
+P1/P2 rows are to be merged here as each file is repaired.
+
+## First-pass P0s (2026-09-23)
+
+| ID | What | Status |
+|---|---|---|
+| P0-01 | resolve_spot served REST / stale stream spot | FIXED 65ced8bd |
+| P0-02 | replay stamped old rows "now" | FIXED 270a6213 |
+| P0-03 | gamma heatmap last-valid refill shown as current | FIXED 253607bf |
+| P0-04 | similar-setups tier labels (tier 5 "zone + VWAP") | FIXED 7d76e095 |
+| P0-05 | confluence %-change imputed with no age limit | FIXED 7d76e095 |
+| P0-06..09 | JS Number(null) -> "spot 0.00" on 4 screens | FIXED 96aa1bea |
+| P0-10..11 | exposure page client-computed money | FIXED 7d76e095 |
+| P0-12 | dex_magnitude always "negligible" | FIXED aa2b96cf |
+| P0-13 | call_engine stop VIX/clock fallback | FIXED 53db9c34 |
+| P0-14 | hand-typed event calendar | FIXED 1cb7dace |
+| P0-15..16 | (first-pass ML/decision reports not recoverable; superseded by the re-audit below) | see below |
+
+## Re-audit P0s — live paths (2026-09-24)
+
+### The Call and its inputs (call_engine.py, signals.py, prediction_engine.py, lifecycle_rule_core.py)
+| ID | file:line | Violation | Flows to | Status |
+|---|---|---|---|---|
+| C-01 | signals.py:146-197 | non-tradable canonical becomes a "flat / low / 1/3 each" forecast | persisted prediction_direction / pred_confidence every tick; readiness | OPEN |
+| C-02 | call_engine.py:564 | unknown event risk took the default threshold | stack threshold | FIXED 51a6def0 |
+| C-03 | call_engine.py:178-181 | readiness uses "flat", 0.0 for a withheld forecast | The Call readiness | OPEN |
+| C-04 | call_engine.py:1874-1876, 1921-1923 | missing level distance -> "far" | readiness | OPEN |
+| C-05 | call_engine.py:1892-1901, 1939-1948 | readiness defaults 0 / "WAIT" / "dormant", except -> 0 | readiness | OPEN |
+| C-06 | call_engine.py:1916-1920 | put resistance falls back to support below | put readiness | OPEN |
+| C-07 | call_engine.py:1880, 1927 | readiness trend: rules.zone_label -> MVP zone | readiness | OPEN |
+| C-08 | call_engine.py:408-410 | unhandled WAIT reasons print "insufficient confirmation" (incl. no_measured_stop) | The Call headline | OPEN |
+| C-09 | signals.py:330 | calibration timeframe `or "1m"` defeats the writer's refusal | calibration row (env-gated) | OPEN |
+| F-09 | prediction_engine.py:436-446 | 15m/60m "structure approximation" text | readiness | OPEN |
+| F-10 | prediction_engine.py:420, 445-446 | missing charm -> "No clear trend — range" | readiness | OPEN |
+| S-14 | lifecycle_rule_core.py:203-208 | T1 = 2R fallback (also overrides a measured avg5 <= 1.5R) | The Call target | OPEN |
+| S-15 | lifecycle_rule_core.py:220-228 | T2 falls to avg60, then T1 + 1R | The Call target2 | OPEN |
+| S-16 | lifecycle_rule_core.py:237-240 | T2 <= T1 replaced by T1 + 1R | The Call target2 | OPEN |
+
+### Fusion / model labels persisted as data (bayesian_fusion.py, ml_predict.py, market_state.py)
+| ID | file:line | Violation | Flows to | Status |
+|---|---|---|---|---|
+| F-01 | bayesian_fusion.py:789-796 | fuse returns available=True with 0 active sources | persisted fusion_* columns every tick | OPEN |
+| F-02 | bayesian_fusion.py:182-189 | DEFAULT_PRIORS when regime missing | fusion_* | OPEN |
+| F-03 | bayesian_fusion.py:331-355 | "placeholder likelihoods" rules tables are the only evidence | fusion_* | OPEN |
+| F-04/05 | bayesian_fusion.py:333-336, 378, 508 | getattr(rules, "signal"/"conviction", default) | fusion_* | OPEN |
+| F-06 | bayesian_fusion.py:620-621 | CALIBRATION_PENALTY placeholder | fusion_confidence | OPEN |
+| F-07/08 | bayesian_fusion.py:421, 427-429 | likelihood floor; "fallback to priors" | posteriors | OPEN |
+| L-01 | ml_predict.py:2853-2862 | model_version built from files on disk, not what ran | persisted pred_model_version | OPEN |
+| F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | OPEN |
+| S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | OPEN |
+| S-04 | market_state.py:359-422 | "low"/"rules_v1"/0.0 defaults persisted when signals fail | snapshots | OPEN |
+| L-02 | governed_stack_contract.py:229-254 | non-SPY/QQQ/IWM routed to an "SPY anchor" (+ The Call wait_reason) | The Call label | OPEN |
+
+### Exposure math (math_exposure_core.py, math_levels.py)
+| ID | file:line | Violation | Flows to | Status |
+|---|---|---|---|---|
+| M-01 | math_exposure_core.py:1037-1044 | net_delta: raw-unit switch on a gamma test; no valid delta -> 0.0 | The Call regime vote (0.0 votes LONG), zone, snapshots | OPEN |
+| M-02 | math_exposure_core.py:1014-1022 | net GEX: raw fallback; no valid gamma -> 0.0 | kl_net_gex "$0", regime, snapshots | OPEN |
+| M-03 | math_levels.py:139-145, 232 | inflection picks empty 0.0 buckets; all-strikes fallback | snapshots, SignalInput | OPEN |
+| M-04 | math_levels.py:153-178 | pin_strength "Very Low" for absence | bias, zone | OPEN |
+| M-05 | math_levels.py:190-224 | bias "Neutral"/"Chaos Zone" from absence | persisted zone, matching | OPEN |
+| M-06 | math_levels.py:100-110, 497-506 | one-sided-OI strikes dropped from PCR / OI totals | klPcr screen, Greeks vote | OPEN |
+| M-07 | math_levels.py:115-127 | oi_center skips one-sided strikes | snapshots | OPEN |
+| M-08 | math_levels.py:1439-1447 | max pain excludes one-sided strikes | Trade Desk screen | OPEN |
+| M-09 | math_levels.py:527-539 | ATM IV = one leg when the other is missing | IV direction, EM, IV rank | OPEN |
+| M-10 | math_levels.py:812-855 | gamma profile silently drops contracts; no counts | flip, regime | OPEN |
+| M-11 | math_levels.py:1562-1575 | void zones drop the OI test with no OI | breakout score | OPEN |
+| S-05 | market_state.py:1319-1323 | iv_level: chain ATM IV stands in for straddle IV | vol regime -> The Call | OPEN |
+
+### Terrain and market context (terrain_engine.py, terrain_read.py, market_context.py)
+| ID | file:line | Violation | Flows to | Status |
+|---|---|---|---|---|
+| T-01 | terrain_engine.py:283-284 | per-strike GEX bar falls back to unsigned raw gamma | GEX-by-strike screen | OPEN |
+| T-02 | terrain_engine.py:259, 293 | missing strike volume shown as 0 | same panel | OPEN |
+| T-03 | terrain_engine.py:703-705 | key-level universe falls back to all strikes | walls, posture | OPEN |
+| T-04 | terrain_engine.py:723-743 | book OI: missing leg = 0; except -> silently skipped | pin gate, PIN SCORE | OPEN |
+| T-05 | terrain_engine.py:332 | wall range from raw gamma, still labelled "GEX mass" | chart | OPEN |
+| T-06 | terrain_engine.py:415-417 | implied move from one leg's IV | EM band, banked IV | OPEN |
+| T-07 | terrain_read.py:108-109 | regime from spot-vs-flip when gamma_at_spot == 0 | posture (edge case) | OPEN |
+| T-08 | market_context.py:753-755 | bond_signal guessed when VIX missing | snapshots | OPEN |
+| T-09 | market_context.py:311-321 | %-change ladder: netPercentChange -> regular -> derived | confluence, snapshots | OPEN |
+| T-10 | market_context.py:650-657 | resolve_chg_pct: REST when stream missing | fast-quote, context plane | OPEN |
+| T-11 | market_context.py:288 | lastPrice -> extended.lastPrice | VIX, constituents | OPEN |
+| T-12 | market_context.py:365, 412, 494 | weighted push rescaled when < half the weight reports | cf_weighted_push, snapshots | OPEN |
+| T-13 | market_context.py:557-599 | IWM blend: one side alone stands in | snapshots | OPEN |
+| T-14 | market_context.py:54-108 | hardcoded fund weights ("as of Feb 2026") | every weighted push | OPEN |
+| T-15 | market_context.py:524-542 | backfill: tick %-change with no age limit | training rows (ops job) | OPEN |
+
+### Other persisted scores (math_probabilities.py)
+| ID | file:line | Violation | Flows to | Status |
+|---|---|---|---|---|
+| S-06 | math_probabilities.py:1422-1433 | flow imbalance falls back to call/put volume ratio | snapshots, SignalInput | OPEN |
+| S-07 | math_probabilities.py:1525-1550 | smart-money: missing legs = 0 | snapshots | OPEN |
+| S-08..10 | math_probabilities.py:658-668, 769-779, 830-840 | breakout / vol-expansion / sweep: missing component = 0 | snapshots | OPEN |
+| S-11 | math_probabilities.py:545-557 | hedging flow re-weights present legs | snapshots | OPEN |
+| S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | OPEN |
+| S-13 | math_probabilities.py:221-234 | option-expression score: missing inputs add 0 -> rec_strike | The Call contract | OPEN |
+
+### v2 decision (advisory; persisted training rows only)
+| ID | file:line | Violation | Status |
+|---|---|---|---|
+| V-01 | v2_decision/module_a_adapter.py:186-190 | direction `or prediction_dir or final_bias` | OPEN |
+| V-02 | v2_decision/module_a_adapter.py:196, 81 | unknown -> "neutral" -> WAIT stored as a value | OPEN |
+
+## Dormant (ML stack / Monte Carlo off) — fix before enabling
+ml_predict feature imputation and nan_to_num (L-03..09), Monte Carlo sigma/drift/tail
+fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isotonic map
+(L-14), live-unreachable Call sizing/conviction defaults (C-10..19). Full rows: the
+2026-09-24 audit reports.
+
+## Counts
+Re-audit live P0 open: 59 rows above marked OPEN (several rows group more than one site).
+P1 (re-audit): ~70 more, to be merged as files are repaired.
