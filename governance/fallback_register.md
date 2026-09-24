@@ -43,9 +43,9 @@ P1/P2 rows are to be merged here as each file is repaired.
 | C-09 | signals.py:330 | calibration timeframe `or "1m"` defeats the writer's refusal | calibration row (env-gated) | FIXED 2066e680 |
 | F-09 | prediction_engine.py:436-446 | 15m/60m "structure approximation" text | readiness | OPEN |
 | F-10 | prediction_engine.py:420, 445-446 | missing charm -> "No clear trend — range" | readiness | OPEN |
-| S-14 | lifecycle_rule_core.py:203-208 | T1 = 2R fallback (also overrides the similar-setups avg5 when it is <= 1.5R) | The Call target | OPEN |
-| S-15 | lifecycle_rule_core.py:220-228 | T2 falls to avg60, then T1 + 1R | The Call target2 | OPEN |
-| S-16 | lifecycle_rule_core.py:237-240 | T2 <= T1 replaced by T1 + 1R | The Call target2 | OPEN |
+| S-14 | lifecycle_rule_core.py:203-208 | T1 = 2R fallback (also overrides the similar-setups avg5 when it is <= 1.5R) | The Call target | FIXED c36102ec |
+| S-15 | lifecycle_rule_core.py:220-228 | T2 falls to avg60, then T1 + 1R | The Call target2 | FIXED c36102ec |
+| S-16 | lifecycle_rule_core.py:237-240 | T2 <= T1 replaced by T1 + 1R | The Call target2 | FIXED c36102ec |
 
 ### Fusion / model labels persisted as data (bayesian_fusion.py, ml_predict.py, market_state.py)
 | ID | file:line | Violation | Flows to | Status |
@@ -114,6 +114,8 @@ P1/P2 rows are to be merged here as each file is repaired.
 | N-02 | prediction_engine.py `_empty_prediction` | no-database path seeds every horizon with a 1/3-each product triplet | PredictiveCard up/down/flat per horizon (no-DB only) | OPEN |
 | N-03 | calibration/analyze_phase3.py `_confidence_bucket`; calibration/signal_engineering.py `final_signal or "wait"` | unknown confidence label bucketed as "low"; missing final signal counted as "wait" | offline calibration reports | OPEN |
 | N-04 | db.py compute_accuracy | RTH scope read a NULL et_minute as :00; "statistical_v1" default version matched zero rows | accuracy surfaces | FIXED 425aa436 |
+| N-05 | v2_decision/a2_lifecycle_sidecar.py | second stop/target producer: VIX/clock stop, VWAP-snapped targets, 2R/T1+1R fallbacks disagreeing with The Call | A2 lifecycle preview (advisory, training rows) | FIXED c36102ec (carries The Call's plan) |
+| N-06 | call_engine.py `_vol_risk_mult`; lifecycle_rule_core.apply_risk_multiplier | vol-regime risk multiplier `or 1.0`; NaN multiplier -> 1.0 | The Call stop distance | OPEN |
 
 ### v2 decision (advisory; persisted training rows only)
 | ID | file:line | Violation | Status |
@@ -128,5 +130,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 36 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 34 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.
