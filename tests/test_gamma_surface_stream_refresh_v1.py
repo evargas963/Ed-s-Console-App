@@ -85,22 +85,6 @@ def _surfaces_match_ignoring_vanna_drift(actual, expected, tol=0.1):
 def _clear_cache():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    # Canonical input-validity rules (2026-09-15): _LAST_VALID_GEX_CELLS is a module-level,
-    # cross-call snapshot store (by design -- it must survive the very cache pops this helper
-    # performs, in production). Cleared here too so ONE test's real backfilled values never
-    # leak into a LATER test's "expected" comparison, which calls project_gamma_surface
-    # directly and therefore never goes through backfill itself. _HYDRATED is cleared too so
-    # a later test's first backfill call re-hydrates (a real, but harmless and fail-closed-
-    # empty-for-this-ticker, DB read) rather than silently reusing this run's in-memory state.
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        server._LAST_VALID_GEX_CELLS.pop(TK, None)
-        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
-        # Pre-throttled (not popped) -- this file's tests are about overlay/refresh semantics,
-        # not DB persistence (see test_canonical_gex_input_validity_v1.py for that proof), so
-        # the durability flush is deliberately kept quiet here: real backfill READS still run
-        # (harmless, read-only, fail-closed to {} for this synthetic ticker), but no test in
-        # this file writes rows into the real dev database.
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
 
 
 def _put_rest_baseline(*, computed_ts_utc=None, contracts=None):
@@ -118,18 +102,9 @@ def _put_rest_baseline(*, computed_ts_utc=None, contracts=None):
 
 
 def _backfilled(surface):
-    """Canonical input-validity rules (2026-09-15): every production caller of
-    project_gamma_surface in this file's real code path (_terrain_refresh_one,
-    refresh_gamma_surface_from_stream) immediately runs the result through
-    _backfill_gex_cells_from_last_valid -- an "expected" surface built by calling
-    project_gamma_surface directly, as every test below does, must go through the SAME step
-    to be a true mirror of what the real path actually publishes (this real CRWD fixture can
-    itself carry the same vendor-invalid-greeks contracts the canonical gate now excludes;
-    a strike that has no valid value in THIS computation but does in the shared
-    _LAST_VALID_GEX_CELLS store -- already populated by the real call under test -- is
-    correctly backfilled in production and must be here too, or the comparison is against a
-    path production no longer takes)."""
-    server._backfill_gex_cells_from_last_valid(TK, surface)
+    """The published surface is the projection itself: no last-valid refill exists any more
+    (operator rule 2026-09-23: no fallbacks). Kept as a named identity so every expectation
+    below still reads as "what production publishes"."""
     return surface
 
 
@@ -153,8 +128,7 @@ def _drain_l1_sse_thread_queue():
 
 
 def setup_function(_fn):
-    # Canonical input-validity rules (2026-09-15): _backfill_gex_cells_from_last_valid's DB
-    # hydration calls server.get_db() -- on this PROCESS's first-ever call, that pays a
+    # server.get_db() -- on this PROCESS's first-ever call, that pays a
     # real, one-time schema-migration cost (can be tens to hundreds of ms). Paid HERE, before
     # any timing-sensitive assertion, so it never lands inside the tiny real wall-clock gap
     # these tests compare two independent bs_vanna(t_years) computations across (see

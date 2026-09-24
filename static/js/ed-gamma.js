@@ -331,7 +331,7 @@
           '</div>'
         : '';
       host.innerHTML = b + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
-        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no banked wide chain for this symbol') +
+        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no live surface for this symbol') +
         '</div>' + srcNote + '</div>';
       return;
     }
@@ -839,29 +839,23 @@
       // collecting this symbol". Only the former may promise a next refresh.
       var onBoard = surface.on_board === true;
       var notCollecting = requested && !onBoard;
-      // WHAT is on screen (identity, server-stamped): a banked reference from a PRIOR session is named
-      // as such — a 2026-09-09 morning chain viewed on 2026-09-10 is never dressed as today's structure.
-      var prior = surface.prior_session === true;
-      var refLabel = !live ? ((prior ? 'PRIOR SESSION REFERENCE' : 'MORNING REFERENCE') +
-        (surface.et_date ? ' · ' + escapeHtml(surface.et_date) : '')) : '';
+      // No reference surface exists (operator rule 2026-09-23: no fallbacks) -- a surface that is
+      // not live is simply absent; the state says why.
       // WHERE the live surface stands (state)
       var stateLabel = warming ? 'LIVE SURFACE WARMING'
         : notCollecting ? 'NOT COLLECTING'
         : requested ? 'LIVE SURFACE REQUESTED'
         : (live ? 'STALE' : '');
-      // identity class first (a reference surface always reads as REFERENCE), live-state class beside it
-      var cls = (!live ? 'ref ' : '') + (warming ? 'warming'
+      var cls = warming ? 'warming'
         : (requested && !notCollecting) ? 'warming'
-        : (live ? 'stale' : ''));
+        : (live ? 'stale' : '');
       // CONCISE primary line; the full reason is disclosed in the tooltip (title) — never a paragraph
       // that consumes the analytical panel.
-      var brief = !live
-        ? (prior ? 'banked chain from a prior session — not this session, not intraday' : 'banked morning chain — not intraday')
-        : 'live surface is stale';
+      var brief = !live ? 'no live surface for this symbol' : 'live surface is stale';
       var detail = surface.degraded
         || (notCollecting ? 'live terrain collection is not currently active for this symbol'
           : requested ? 'awaiting next eligible terrain refresh' : brief);
-      var text = [refLabel, stateLabel].filter(Boolean).join(' — ') + ' · ' + brief +
+      var text = [stateLabel].filter(Boolean).join(' — ') + (stateLabel ? ' · ' : '') + brief +
         (notCollecting ? ' · collection is not currently active for this symbol' : '');
       out += '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' + text +
         '</span><span class="hb-more" aria-label="details">details</span></div>';
@@ -934,7 +928,7 @@
       liveWord = 'STREAMING·' + cov.live_pct.toFixed(0) + '%';
     }
     var srcLabel = surface.source === 'terrain_live_cache' ? (liveWord + (surface.complete === false ? '·window' : ''))
-      : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
+      : (surface.source || '');
     var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
     var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
     var el = document.getElementById('heatScope');

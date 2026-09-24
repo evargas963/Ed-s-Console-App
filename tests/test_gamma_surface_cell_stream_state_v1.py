@@ -319,7 +319,6 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
@@ -340,7 +339,6 @@ def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverage():
@@ -374,7 +372,6 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live():
@@ -408,7 +405,6 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
@@ -442,7 +438,6 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
@@ -468,7 +463,6 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 class _FakeDB:
@@ -494,27 +488,3 @@ def _seed_morning_full(path, ticker: str, et_date: str, ts_utc: float, spot: flo
     con.close()
 
 
-def test_banked_morning_reference_never_reports_meets_live_requirement(tmp_path, monkeypatch):
-    # REST-only reference path (RC-UI-1 fallback) must never claim confirmed-live coverage --
-    # "REST may bootstrap or recover the surface, but it cannot satisfy the LIVE state." Uses the
-    # same real-tmp-sqlite-db pattern as tests/test_gamma_exposure_honest_absence_v1.py.
-    from time_et import now_et
-    tk = ticker_storage_key("ZZZTEST3")
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
-
-    db = tmp_path / "morning.db"
-    today_et = now_et().strftime("%Y-%m-%d")
-    _seed_morning_full(db, "ZZZTEST3", today_et, time.time() - 1800.0, _SPOT, json.dumps(_CONTRACTS))
-    monkeypatch.setattr(server, "get_db", lambda: _FakeDB(db))
-    try:
-        d = _call(tk)
-        assert d["source"] == "banked_morning_reference"
-        assert d["stream_coverage"]["meets_live_requirement"] is False
-        assert d["cell_stream_state_counts"]["live"] == 0
-        assert d["cell_stream_state_counts"]["unavailable"] > 0
-    finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)

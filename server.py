@@ -12909,12 +12909,6 @@ def refresh_gamma_surface_from_stream(contract_symbol: str, ts_recv: float) -> s
                 read_producer_rejected_option_contracts(),
                 set(_desired_option_symbols_for_ticker(tk)),
                 daemon_available=is_option_producer_daemon_available())
-            try:
-                # Best-effort enhancement -- a bug here must never block publishing an
-                # otherwise-genuinely-fresh eager refresh.
-                _backfill_gex_cells_from_last_valid(tk, new_surface)
-            except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
-                log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
         # RC-UI-2 latency label (independent-review finding 2026-09-12): this timestamp is the
         # instant the OVERLAID computation finished and was about to be offered for cache
         # publication — it is NOT when the browser received or rendered anything, and it
@@ -13071,10 +13065,6 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
             read_producer_rejected_option_contracts(),
             set(_desired_option_symbols_for_ticker(tk)),
             daemon_available=is_option_producer_daemon_available())
-        try:
-            _backfill_gex_cells_from_last_valid(tk, new_surface)
-        except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
-            log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
         applied_ts = time.time()
         new_surface["stream_overlay_contracts"] = n
         new_surface["stream_overlay_symbols"] = _overlaid_syms_now
@@ -13369,12 +13359,6 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                         set(_overlay_syms), read_producer_rejected_option_contracts(),
                         set(_desired_option_symbols_for_ticker(tk)),
                         daemon_available=is_option_producer_daemon_available())
-                    try:
-                        # Best-effort enhancement, like the overlay above -- a bug here must
-                        # never take down an otherwise-freshly-computed, valid surface.
-                        _backfill_gex_cells_from_last_valid(tk, payload["_gamma_surface"])
-                    except Exception as _bf_e:  # institutional-swallow-ok: never load-bearing
-                        log.debug("gex snapshot backfill skipped for %s: %s", tk, _bf_e)
                 if _overlay_n:
                     # RC-UI-2/finding#2 fix (independent review, 2026-09-12, REPRODUCED): the
                     # heatmap and the Strike Detail / GEX-by-strike panel disagreed on the SAME
@@ -14972,209 +14956,15 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
 # expirationDate (via the existing _filter_contracts_by_selected_expiry slice) and invokes
 # math_exposure_core.compute_exposures_by_strike per slice, shaping net_gex_1pct cells into a grid.
 # No gamma/GEX/multiplier/OI/spot/sign/missingness math lives here.
-# SOURCE (current, post live-terrain rewire): PREFERRED is the live terrain projection —
-# _terrain_refresh_one projects it from the live wide chain + live spot it already fetches each cycle
-# and caches it (in-memory, zero extra vendor calls), demand-gated to viewed tickers. FALLBACK is the
-# banked MORNING wide reference (one DB read, 5-min cache) — labelled stale/not-intraday, never live.
-_GAMMA_SURFACE_CACHE: dict = {}
+# SOURCE: the live terrain projection only — _terrain_refresh_one projects it from the live wide
+# chain + live spot it already fetches each cycle (in-memory, zero extra vendor calls),
+# demand-gated to viewed tickers. No banked-morning fallback (operator rule 2026-09-23).
 
-#: Operator directive (2026-09-15, canonical input-validity rules): "If current inputs are
-#: invalid, display the latest valid timestamped snapshot for that cell. Show — only if no
-#: valid current or historical snapshot exists... current vendor failure must not erase
-#: previously valid data." Per (ticker, strike, expiry) last-known-VALID gex/dex/vanna.
-#:
-#: MUST survive a process restart (operator directive, 2026-09-15, second pass): this
-#: in-memory dict is a WRITE-THROUGH CACHE of the gamma_surface_last_valid table below, in
-#: the SAME database file (get_db().db_path) option_chain_accrual (RC-159) already uses for
-#: exactly this class of problem (durable, always-latest, per-ticker banked observations) --
-#: not a second, disconnected persistence authority.
-#:
-#: Schema + read/write owned by db.EdDB (operator directive, 2026-09-15, DB ownership review,
-#: FOURTH pass): first placed in calibration/option_chain_morning_full.py (wrong module -- that
-#: file's docstring scopes it to once-per-day morning full-chain persistence, a calibration/
-#: forward-collection concern), then moved to server.py directly (also wrong: server.py owning
-#: its own raw sqlite3 connections and CREATE TABLE duplicates db.py's actual job -- EdDB is
-#: "the main database interface for Ed Console" and every other table's schema/migration lives
-#: there, in ONE place, using ONE connection-configuration convention). The table and its
-#: load_gamma_surface_last_valid/persist_gamma_surface_last_valid methods now live in db.py
-#: beside every other table; server.py only calls get_db().load_gamma_surface_last_valid(...)/
-#: get_db().persist_gamma_surface_last_valid(...), the same way it calls every other DB read/
-#: write. This module still owns the RUNTIME (in-memory, per-process) side of the checkpoint --
-#: the write-through cache below, the lock discipline guarding it, and when to hydrate/flush --
-#: because that IS a server.py concern (what the live heatmap shows this cycle); only the
-#: durable storage itself moved.
-#:
-#: LOCK DISCIPLINE (operator directive, 2026-09-15): the first draft of this held
-#: _LAST_VALID_GEX_CELLS_LOCK across the actual blocking SQLite I/O on the write side -- a
-#: real anti-pattern regardless of any specific incident: that lock is shared across EVERY
-#: ticker's terrain cycle and EVERY eager stream refresh, so one slow/contended write could
-#: stall all of them simultaneously. Independent git review (2026-09-15) correctly rejected an
-#: earlier claim that this defect explained a SPECIFIC previously-observed console hang: the
-#: process that hung was running a commit that predates this table's existence entirely, so
-#: this code cannot have caused that incident -- that causal claim is withdrawn, and the
-#: incident's real cause remains unknown. This lock restructuring stands on its own merits as
-#: a correct fix to a genuine bug (a shared lock must never be held across blocking disk I/O),
-#: not as an explanation for any specific past symptom. The lock now only ever guards the
-#: in-memory dict; the DB read (hydrate) and DB write (flush) both happen with the lock
-#: released, and their own connect timeouts are short (db.EdDB.GAMMA_LAST_VALID_DB_TIMEOUT_SEC)
-#: so a genuinely stuck DB fails this best-effort checkpoint fast rather than blocking anything.
-#:
-#: OBSERVABILITY (operator directive, 2026-09-15, THIRD pass): "Database hydrate/flush
-#: failures must be observable and fail honestly; they may not be swallowed at debug level
-#: while the product implies restart durability." Every failure is logged at WARNING and
-#: recorded in _LAST_VALID_GEX_CELLS_ERRORS (surfaced by /api/build) -- restart durability
-#: degrading to in-memory-only-this-session is now a visible, queryable fact, never a silent
-#: one, while still never blocking or failing the live gamma-surface response itself (a
-#: display-durability checkpoint is not allowed to become a new way to break serving data).
-_LAST_VALID_GEX_CELLS: dict[str, dict[tuple[float, str], dict]] = {}
-_LAST_VALID_GEX_CELLS_LOCK = threading.Lock()
-_LAST_VALID_GEX_CELLS_HYDRATED: set[str] = set()
-_LAST_VALID_GEX_CELLS_DB_WRITE_TS: dict[str, float] = {}
-_LAST_VALID_GEX_CELLS_ERRORS: dict[str, dict] = {}
-GAMMA_LAST_VALID_DB_WRITE_FLOOR_SEC = 20.0
-
-
-def _record_last_valid_gex_error(tk: str, op: str, exc: Exception) -> None:
-    log.warning("gamma-surface last-valid DB %s failed for %s: %s", op, tk, exc)
-    _LAST_VALID_GEX_CELLS_ERRORS[tk] = {
-        "op": op, "error": f"{type(exc).__name__}: {exc}", "ts_utc": time.time(),
-    }
-
-
-def _clear_last_valid_gex_error(tk: str, op: str) -> None:
-    """Independent review, 2026-09-16: a ticker's /api/build persistence-error entry is meant
-    to disclose an UNRESOLVED problem, not a permanent scar -- a later successful hydrate/flush
-    for the SAME ticker must clear it, or the endpoint keeps reporting a since-recovered
-    failure as if it were still current (MEASURED live: a TSLA flush failed on
-    'database is locked', a later flush succeeded and persisted newer rows, and the error
-    entry never cleared). Historical observability is retained by the WARNING log line
-    _record_last_valid_gex_error already wrote at failure time (permanent in the log, unlike
-    this in-memory active-state dict) plus the INFO line logged here on recovery -- this
-    function only ever REMOVES a matching active entry, never fabricates or backdates one."""
-    if _LAST_VALID_GEX_CELLS_ERRORS.pop(tk, None) is not None:
-        log.info("gamma-surface last-valid DB %s recovered for %s -- clearing active error", op, tk)
-
-
-def _hydrate_last_valid_gex_cells(tk: str) -> dict[tuple[float, str], dict]:
-    """Lazily rehydrates `tk`'s durable snapshot from the DB exactly once per process
-    lifetime. Acquires _LAST_VALID_GEX_CELLS_LOCK only for the cheap in-memory bookkeeping;
-    the DB read itself runs with NO lock held (see LOCK DISCIPLINE above) -- a slow/stuck read
-    degrades to "this ticker starts cold this process" (logged, recorded, never silent),
-    never to blocking every other ticker's gamma-surface path."""
-    with _LAST_VALID_GEX_CELLS_LOCK:
-        if tk in _LAST_VALID_GEX_CELLS_HYDRATED:
-            return _LAST_VALID_GEX_CELLS.setdefault(tk, {})
-    try:
-        loaded = get_db().load_gamma_surface_last_valid(tk)
-        _clear_last_valid_gex_error(tk, "hydrate")
-    except Exception as e:
-        _record_last_valid_gex_error(tk, "hydrate", e)
-        loaded = {}
-    with _LAST_VALID_GEX_CELLS_LOCK:
-        store = _LAST_VALID_GEX_CELLS.setdefault(tk, {})
-        for key, val in loaded.items():
-            store.setdefault(key, val)   # a same-process value (should not exist yet) always wins
-        _LAST_VALID_GEX_CELLS_HYDRATED.add(tk)
-        return store
-
-
-def _flush_last_valid_gex_cells_to_db(tk: str) -> None:
-    """Throttled durability checkpoint -- the in-memory store is already the live source of
-    truth for this process; this only makes sure a LATER restart does not lose it. Snapshots
-    the store and updates the throttle timestamp under the lock (cheap), then performs the
-    actual DB write with NO lock held (see LOCK DISCIPLINE above)."""
-    now = time.time()
-    with _LAST_VALID_GEX_CELLS_LOCK:
-        last = _LAST_VALID_GEX_CELLS_DB_WRITE_TS.get(tk, 0.0)
-        if now - last < GAMMA_LAST_VALID_DB_WRITE_FLOOR_SEC:
-            return
-        _LAST_VALID_GEX_CELLS_DB_WRITE_TS[tk] = now
-        store_snapshot = dict(_LAST_VALID_GEX_CELLS.get(tk) or {})
-    cells = [
-        {"strike": k[0], "expiry": k[1], "gex": v["gex"], "dex": v["dex"], "vanna": v["vanna"],
-         "captured_ts_utc": v["captured_ts_utc"]}
-        for k, v in store_snapshot.items()
-    ]
-    try:
-        get_db().persist_gamma_surface_last_valid(ticker=tk, cells=cells)
-        _clear_last_valid_gex_error(tk, "flush")
-    except Exception as e:
-        _record_last_valid_gex_error(tk, "flush", e)
-
-
-def _backfill_gex_cells_from_last_valid(tk: str, surface: dict) -> None:
-    """Canonical input-validity/data-authority fix (operator directive, 2026-09-15) -- the
-    ONE place a cell's gex/dex/vanna falls back to its last known valid snapshot instead of
-    a bare None, so the endpoint/heatmap never has to special-case this per-ticker (SPX
-    included) or in the presentation layer. Mutates `surface["cells"]` in place, then
-    recomputes `surface`'s own gamma_available/cells_with_data/gamma_unavailable_reason so a
-    ticker whose CURRENT cycle has zero valid cells (SPX, 2026-09-14/15: real OI outage or
-    all-invalid-greeks) but a real history still reports available=True from the snapshot.
-
-    Never invents a value: a cell with no prior valid snapshot AND no current one stays None
-    (the endpoint's existing '—' path). Never mutates a CURRENTLY valid cell -- backfill is
-    strictly additive to what would otherwise be absent, and a valid cell's own fresh value
-    always updates the store for the NEXT cycle that needs it, so a snapshot itself is never
-    re-stamped as a fresher snapshot (store writes only happen from real, current data)."""
-    expirations = surface.get("expirations") or []
-    exp_keys = [e.get("expiry") for e in expirations]
-    now = time.time()
-    # Rehydrates with NO lock held across the DB read (see _hydrate_last_valid_gex_cells'
-    # own LOCK DISCIPLINE note) -- a no-op, pure in-memory lookup after this ticker's first
-    # call in this process.
-    _hydrate_last_valid_gex_cells(tk)
-    cells_with_data = 0
-    cells_with_oi_but_invalid_greeks = 0
-    wrote_new = False
-    with _LAST_VALID_GEX_CELLS_LOCK:
-        store = _LAST_VALID_GEX_CELLS.setdefault(tk, {})
-        for cell in (surface.get("cells") or []):
-            strike = cell.get("strike")
-            gex_row, dex_row, vanna_row = cell.get("gex") or [], cell.get("dex") or [], cell.get("vanna") or []
-            snapshot_row = cell.setdefault("value_snapshot_ts_utc", [None] * len(exp_keys))
-            for j, exp in enumerate(exp_keys):
-                if j >= len(gex_row):
-                    continue
-                key = (strike, exp)
-                if gex_row[j] is not None:
-                    # Current, real data this cycle -- the ONE write path for this key. Vanna
-                    # can legitimately be None (no IV/TTE) even when gex/dex are real; stored
-                    # as-is, never fabricated on the way in.
-                    store[key] = {
-                        "gex": gex_row[j],
-                        "dex": dex_row[j] if j < len(dex_row) else None,
-                        "vanna": vanna_row[j] if j < len(vanna_row) else None,
-                        "captured_ts_utc": now,
-                    }
-                    cells_with_data += 1
-                    wrote_new = True
-                    continue
-                snap = store.get(key)
-                if snap is None:
-                    continue   # never valid, current or historical -- stays None ('—')
-                gex_row[j] = snap["gex"]
-                if j < len(dex_row):
-                    dex_row[j] = snap["dex"]
-                if j < len(vanna_row):
-                    vanna_row[j] = snap["vanna"]
-                snapshot_row[j] = snap["captured_ts_utc"]
-                cells_with_data += 1
-                cells_with_oi_but_invalid_greeks += 1
-    # Flush runs with NO lock held across the DB write (see _flush_last_valid_gex_cells_to_db's
-    # own LOCK DISCIPLINE note): a shared lock must never be held across blocking disk I/O.
-    # NOT_PROVEN (independent review, 2026-09-16): this is a correct fix to that anti-pattern on
-    # its own merits, not a proven explanation for any specific historical hang -- the process
-    # that hung ran code predating this table entirely, so this cannot have caused it. The
-    # actual cause of that hang is unresolved.
-    if wrote_new:
-        _flush_last_valid_gex_cells_to_db(tk)
-    surface["gamma_available"] = cells_with_data > 0
-    surface["cells_with_data"] = cells_with_data
-    surface["cells_with_oi_but_invalid_greeks"] = cells_with_oi_but_invalid_greeks
-    if cells_with_data > 0:
-        surface["gamma_unavailable_reason"] = None
-    # else: leave project_gamma_surface's own honest reason (no OI at all / invalid greeks
-    # this cycle) exactly as it was -- backfill found nothing to offer either.
+#: NO LAST-VALID BACKFILL (operator rule 2026-09-23: no fallbacks). A heatmap cell with no
+#: valid data THIS cycle stays empty ('—'); it used to be refilled from the last valid value
+#: (computed at an older spot, possibly hours old) while gamma_available read True and the
+#: unavailable reason was cleared. The surface's own cells_with_data / gamma_available /
+#: gamma_unavailable_reason (project_gamma_surface) describe the current cycle only.
 
 
 def _project_gamma_expiry_slice(chain: list, e: str, spot: float):
@@ -15532,16 +15322,13 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
     faucet compute_exposures_by_strike.
 
-    Source order is deliberate. PREFERRED is the LIVE surface: _terrain_refresh_one (the single
-    levels producer) projects it each cycle from the same live wide chain + live spot it already
-    fetches, and caches it (source=terrain_live_cache). FALLBACK is the banked MORNING wide chain,
-    used only when the live cache is cold and labelled a reference (live=false, stale=true) — a
-    morning snapshot is never presented as intraday. Exposes chain/spot as-of, source, and
-    stale/degraded so the UI can fail stale visibly."""
-    import sqlite3 as _sq
+    ONE source: the LIVE surface _terrain_refresh_one (the single levels producer) projects each
+    cycle from the live wide chain + live spot it already fetches (source=terrain_live_cache).
+    With no live surface the answer is "unavailable" with the reason -- there is no second source
+    (operator rule 2026-09-23: no fallbacks; the banked MORNING wide chain used to stand in).
+    Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
 
     tk = ticker_storage_key(ticker or DEFAULT_TICKER)
-    now = time.time()
     _note_gamma_surface_demand(tk)   # mark viewed -> the terrain loop will project this ticker's surface
 
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
@@ -15594,19 +15381,14 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
             "stream_coverage": _coverage,
             "contract_admission": _contract_admission,
             "degraded": live.get("levels_stale_reason") if stale else None,
-            # ONE spot faucet (operator directive, 2026-09-15): prefer the spot stamped
-            # directly ON THIS SURFACE (by _terrain_refresh_one's REST cycle OR the eager
-            # per-tick refresh_gamma_surface_from_stream, whichever produced this exact
-            # surface_seq generation) over the top-level terrain payload's own spot fields --
-            # the eager path can legitimately publish a NEWER resolve_spot value than the
-            # REST cycle's own `live.get("spot")` without the top-level fields having caught
-            # up, and this surface's own cells were computed from ITS stamp, not the top
-            # level's. Falls back to the top-level fields only for a surface predating this
-            # stamp (never expected in production, kept for defensive compatibility).
-            "spot": surf.get("spot", live.get("spot")),
-            "spot_source": surf.get("spot_source", live.get("spot_source")),
+            # ONE spot faucet (operator directive, 2026-09-15): the spot stamped ON THIS SURFACE
+            # (by whichever producer computed this exact surface_seq generation) -- its cells
+            # were computed from that stamp. No fall-through to the terrain payload's own spot
+            # (operator rule 2026-09-23: no fallbacks); an unstamped surface reads no spot.
+            "spot": surf.get("spot"),
+            "spot_source": surf.get("spot_source"),
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
-            "spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc", live.get("spot_as_of_ts_utc")),
+            "spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc"),
             "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
             "refresh_active": live.get("levels_refresh_active"),
             "chain_basis": live.get("chain_basis"),
@@ -15635,10 +15417,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
                        "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
         })
 
-    # ---- FALLBACK: banked MORNING wide chain — REFERENCE ONLY, never presented as intraday ----
-    hit = _GAMMA_SURFACE_CACHE.get(tk)
-    if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
+    # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
     # #1-A: separate the two truths the UI must not conflate.
     #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
     #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
@@ -15647,8 +15426,6 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     #   WARMING   = requested AND on the board AND the terrain producer can refresh THIS ticker right
     #               now — reusing terrain_staleness's canonical output merged onto `live`
     #               (levels_refresh_active, not quarantined, not paused). No copied scheduler policy.
-    # A ticker not on the board is REQUESTED but NOT WARMING and no next refresh can occur for it —
-    # the UI must say collection is not active for this symbol, never "awaiting next refresh".
     _requested = _gamma_surface_wanted(tk)
     _on_board = _ticker_on_terrain_board(tk)
     _warming = (_requested and _on_board and bool(live) and bool(live.get("levels_refresh_active"))
@@ -15656,73 +15433,8 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                      "live": False, "stale": True, "warming": _warming,
                      "requested": _requested, "on_board": _on_board,
-                     "reason": "no live terrain surface and no banked wide chain"}
-    try:
-        db = get_db()
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            cand = con.execute(
-                "SELECT et_date, spot, chain_json, ts_utc FROM option_chain_morning_full "
-                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
-        finally:
-            con.close()
-        # Operator directive (2026-09-14, SPX persisted-fallback hardening): a "morning
-        # reference" that silently reaches back past today's session is not a morning
-        # reference at all -- it is an unlabeled multi-day-old snapshot wearing the same
-        # "banked_morning_reference" name as a genuine same-day one. Require the row's own
-        # et_date to equal THIS session's ET date; anything older falls through to the
-        # explicit "unavailable" payload above rather than being served as if it were today's.
-        _today_et = now_et().strftime("%Y-%m-%d")
-        rows_t = [r for r in cand if r[0] and str(r[0]) == _today_et and is_trading_day_et(str(r[0]))][:1]
-        if not rows_t and any(r[0] and is_trading_day_et(str(r[0])) for r in cand):
-            payload["reason"] = ("no live terrain surface; a banked wide chain exists but is "
-                                  "from a prior session (not today's ET date) -- not served as "
-                                  "a morning reference to avoid presenting stale data as current")
-        if rows_t:
-            et_date, s1, c1, ts1 = rows_t[0]
-            spot1 = float(s1)
-            surface = project_gamma_surface(decode_json_blob(c1), spot1)
-            # Always-live heatmap mandate (2026-09-15): a banked-morning reference has no stream
-            # overlay input at all -- every leg on every cell stamps 'unavailable' UNLESS the
-            # daemon is already, independently, requesting that leg's contract (a genuine
-            # 'pending' -- the caller is honestly waiting on the vendor, not merely looking at a
-            # never-subscribed contract), consistent with "REST may bootstrap or recover the
-            # surface, but it cannot satisfy LIVE".
-            from app.options.order_flow.streaming import is_option_producer_daemon_available
-            _stamp_gamma_surface_cell_stream_state(
-                surface, {}, set(), None, set(_desired_option_symbols_for_ticker(tk)),
-                daemon_available=is_option_producer_daemon_available())
-            _age_sec = round(time.time() - float(ts1), 1) if ts1 is not None else None
-            payload = {
-                "ticker": tk, "symbol": tk, "available": True,
-                "source": "banked_morning_reference", "live": False, "stale": True,
-                "cell_stream_state_counts": _gamma_surface_cell_state_counts(surface),
-                "stream_coverage": _gamma_surface_coverage_summary(surface),
-                "warming": _warming, "requested": _requested, "on_board": _on_board,
-                "degraded": ("live terrain surface unavailable — showing banked morning wide "
-                             "reference (morning spot + morning Greeks; NOT intraday, NOT proven complete)"),
-                "et_date": et_date, "spot": spot1,
-                "chain_as_of_ts_utc": ts1, "spot_as_of_ts_utc": ts1, "age_sec": _age_sec,
-                "chain_basis": "banked_morning", "complete": False,
-                "coverage": {"window": "banked_morning_wide", "strike_count": len(surface.get("strikes") or []),
-                             "note": ("banked morning wide reference — strike-count bounded, not intraday "
-                                      "and not proven complete (not strike_range=ALL)")},
-                **_stamp_surface_session(surface, reference_date=str(et_date)),
-                "provenance": {
-                    "producer": "math_exposure_core.compute_exposures_by_strike",
-                    "source": "newest_banked_wide_chain:option_chain_morning_full",
-                    "classification": "DERIVED", "cell_metric": "net_gex_1pct",
-                    "spot_basis": "captured_morning_spot",
-                },
-                "method": ("REFERENCE: newest banked MORNING wide chain -> per-expiry "
-                           "compute_exposures_by_strike; morning spot/Greeks, not intraday"),
-            }
-    except Exception as e:  # fail-closed to explicit unavailability
-        payload = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                   "live": False, "stale": True, "warming": _warming,
-                   "requested": _requested, "on_board": _on_board,
-                   "reason": f"gamma-surface read failed: {e}"}
-    _GAMMA_SURFACE_CACHE[tk] = (now, payload)
+                     "reason": ("no live gamma surface for this ticker yet -- the terrain loop "
+                                "projects it once the ticker is viewed and on the board")}
     return JSONResponse(payload)
 
 
@@ -17923,7 +17635,6 @@ def api_build():
         # dict means every hydrate/flush this process has attempted succeeded (or none has
         # been attempted yet) -- a non-empty entry is a real, named degradation to
         # in-memory-only-this-session for that ticker, never silent.
-        "gamma_last_valid_persistence_errors": dict(_LAST_VALID_GEX_CELLS_ERRORS),
     }
 
 

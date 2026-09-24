@@ -869,22 +869,19 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveAttribute('title', /SNAPSHOT/);   // relabelled, not silently kept as live
   });
 
-  test('stale/reference gamma surface fails stale visibly (no morning snapshot passed as live)', async ({ page }) => {
+  test('a surface that is not live is shown as absent -- never as a reference', async ({ page }) => {
+    // Operator rule 2026-09-23 (no fallbacks): the server no longer serves a banked morning chain
+    // in place of the live surface; the heatmap says it is unavailable and why.
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, SURFACE, {
-        source: 'banked_morning_reference', live: false, stale: true,
-        degraded: 'live terrain surface unavailable — showing banked MORNING chain (reference only: morning spot + morning Greeks, NOT intraday)',
-      })),
+      body: JSON.stringify({ ticker: 'SPY', available: false, source: 'unavailable', live: false, stale: true,
+        warming: false, requested: true, on_board: true,
+        reason: 'no live gamma surface for this ticker yet' }),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const banner = page.locator('.heat-banner.ref');
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText('MORNING REFERENCE');
-    await expect(banner).toContainText('intraday');
-    await expect(page.locator('#heatScope')).toContainText('REF');
-    // B: the reference surface visually recedes, not just a banner
-    await expect(page.locator('.heat-wrap.recede')).toBeVisible();
+    await expect(page.locator('#heatBody .placeholder .big')).toContainText('Gamma surface unavailable');
+    await expect(page.locator('#heatBody')).not.toContainText('REFERENCE');
+    await expect(page.locator('#heatBody')).not.toContainText('banked');
   });
 
   test('persists workspace/view across reload (D: UI state, not market truth)', async ({ page }) => {
@@ -1048,8 +1045,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // the same row height, and an expired prior-session column is never dressed as current structure.
   test('REAL-DATA VIEWPORT: 116x16 canonical surface -> Auto 11 rows x <=11 unexpired columns; Wider 23; All 116x16 legible + EXPIRED labelled; no data loss', async ({ page }) => {
     const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
+    // The captured population is served as a LIVE surface here: the server no longer serves any
+    // banked reference (operator rule 2026-09-23), and this test is about viewport layout over a
+    // real 116x16 population, not about the retired reference path.
     const stamped = Object.assign({}, REAL, {
-      session_date_et: '2026-09-10', prior_session: true,
+      source: 'terrain_live_cache', live: true, stale: false, degraded: null,
+      session_date_et: '2026-09-10', prior_session: false,
       expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
     });
     expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
@@ -1080,11 +1081,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(rowH).toBeGreaterThanOrEqual(30);
     const cellFont = await page.locator('#heatBody .hcell').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(cellFont).toBeGreaterThanOrEqual(13);
-    // prior-session reference is unmistakable and concise (details in the tooltip, not a paragraph)
-    const banner = page.locator('#heatBody .heat-banner.ref');
-    await expect(banner).toContainText('PRIOR SESSION REFERENCE');
-    await expect(banner).toContainText('2026-09-09');
-    expect((await banner.getAttribute('title') || '').length).toBeGreaterThan(20);
+    await expect(page.locator('#heatBody')).not.toContainText('REFERENCE');   // no reference surface exists
     // WIDER: 23 rows, up to twice the Auto column budget (nearest unexpired first, expired labelled)
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
     await expect(rows).toHaveCount(23);
@@ -1401,40 +1398,24 @@ test.describe('Ed Console shell + gamma heatmap', () => {
           complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
           coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600] }] };
       };
-      var banked = function (etd, warming) {   // an ON-BOARD symbol (on_board:true) -> a refresh is coming
-        return { available: true, source: 'banked_morning_reference', live: false, stale: true, warming: warming, requested: true, on_board: true,
-          chain_as_of_ts_utc: null, spot_as_of_ts_utc: null, chain_basis: 'banked_morning', et_date: etd, age_sec: null,
-          coverage: { window: 'banked_morning_wide' }, degraded: 'banked morning wide reference (not intraday)',
-          expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [100000] }] };
-      };
       // A: same live DATA revision, age changes -> table preserved, scope age updates
       R(host, live(3)); mark(); R(host, live(99));
       var A = { preserved: marked(), scopeHasAge: scope().indexOf('99s') !== -1 };
       // D: stale flips with no cell change -> no rebuild, but the STALE banner appears (not frozen)
       R(host, live(3)); mark(); R(host, live(3, true));
       var D = { preserved: marked(), staleBanner: banner().indexOf('STALE') !== -1 };
-      // B: banked et_date changes -> table rebuilds
-      R(host, banked('2026-09-08', false)); mark(); R(host, banked('2026-09-09', false));
-      var B = { rebuilt: !marked() };
-      // C: warming true->false, SAME banked et_date -> table preserved, banner changes
-      R(host, banked('2026-09-08', true)); mark();
-      var cWarm = banner();
-      R(host, banked('2026-09-08', false));
-      var C = { preserved: marked(), warmToRequested: cWarm.indexOf('WARMING') !== -1 && banner().indexOf('REQUESTED') !== -1 };
-      return { A: A, B: B, C: C, D: D };
+      return { A: A, D: D };
     });
     expect(r.A.preserved).toBe(true); expect(r.A.scopeHasAge).toBe(true);
     expect(r.D.preserved).toBe(true); expect(r.D.staleBanner).toBe(true);
-    expect(r.B.rebuilt).toBe(true);
-    expect(r.C.preserved).toBe(true); expect(r.C.warmToRequested).toBe(true);
   });
 
-  test('#1.3 a warming reference surface shows LIVE SURFACE WARMING (never a final state)', async ({ page }) => {
+  test('#1.3 a warming (not yet live) surface shows LIVE SURFACE WARMING (never a final state)', async ({ page }) => {
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, SURFACE, {
-        source: 'banked_morning_reference', live: false, stale: true, warming: true,
-        degraded: 'live terrain surface unavailable — showing banked morning wide reference',
+        available: false, source: 'unavailable', live: false, stale: true, warming: true,
+        requested: true, on_board: true, reason: 'no live gamma surface for this ticker yet',
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
