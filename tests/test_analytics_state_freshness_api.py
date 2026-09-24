@@ -18,8 +18,6 @@ _CARD_FRESHNESS_V1_REQUIRED_KEYS = frozenset(
         "analytics_ttl_sec",
         "quote_stale_sec",
         "bundle_trust_sec",
-        "fallback_status",
-        "carry_forward_status",
         "source_freshness",
         "stale_reason_codes",
         "quote_ts",
@@ -30,8 +28,6 @@ _CARD_FRESHNESS_V1_REQUIRED_KEYS = frozenset(
         "analytics_stale",
         "analytics_generated_at",
         "analytics_refresh_in_progress",
-        "quote_source_detail.carried_forward",
-        "quote_source_detail.schwab_auth_degraded",
     }
 )
 
@@ -249,7 +245,10 @@ def test_operator_card_actionable_false_on_quote_newer_than_signal(tier_c_cache_
     _assert_operator_mirrors_nested(body)
 
 
-def test_operator_card_actionable_false_on_quote_carried_forward(tier_c_cache_spy, monkeypatch):
+def test_unchanged_streamed_last_price_is_not_an_auth_code(tier_c_cache_spy, monkeypatch):
+    """2026-09-24: the REST auth carry-forward is deleted. The stream's carried_forward only
+    means LAST_PRICE is unchanged since its trade message (its age is quote_age_sec), so a
+    fresh carried quote keeps the card actionable and emits none of the deleted codes."""
     srv = tier_c_cache_spy
     ticker = "ZZZ_OP_CFW"
     expiry = "2099-12-16"
@@ -260,14 +259,13 @@ def test_operator_card_actionable_false_on_quote_carried_forward(tier_c_cache_sp
         "get_quote",
         lambda t: {
             "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": True, "schwab_auth_degraded": False},
+            "quote_source_detail": {"carried_forward": True},
         },
     )
     body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is False
-    assert "quote_carried_forward" in body["operator_stale_reason_codes"]
+    for gone in ("quote_carried_forward", "auth_fallback", "auth_degraded"):
+        assert gone not in body["operator_stale_reason_codes"]
     _assert_operator_mirrors_nested(body)
-
 
 def test_regression_raw_trade_fields_unchanged_via_tier_c_response(tier_c_cache_spy, monkeypatch):
     srv = tier_c_cache_spy
@@ -345,58 +343,6 @@ def test_tier_c_stale_cache_serve_reason_codes(tier_c_cache_spy):
     block = _response_body(resp)["card_freshness_v1"]
     assert "tier_c_cache_stale_serve" in block["stale_reason_codes"]
     assert block["card_trust_state"] in ("STALE", "DEGRADED", "UNAVAILABLE")
-
-
-def test_quote_carried_forward_reason_code(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_CFW"
-    expiry = "2099-12-04"
-    now = time.time()
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0), age_sec=1.0)
-
-    def _carried_quote(t):
-        return {
-            "ticker": t,
-            "spot": 501.0,
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {
-                "carried_forward": True,
-                "schwab_auth_degraded": True,
-            },
-        }
-
-    monkeypatch.setattr(srv._lmp, "get_quote", _carried_quote)
-    resp = srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    block = _response_body(resp)["card_freshness_v1"]
-    assert block["quote_source_detail.carried_forward"] is True
-    assert "quote_carried_forward" in block["stale_reason_codes"]
-    assert "auth_fallback" in block["stale_reason_codes"]
-    assert block["card_actionable"] is False
-
-
-def test_auth_degraded_reason_code(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_AUTH"
-    expiry = "2099-12-05"
-    now = time.time()
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
-
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {
-                "carried_forward": False,
-                "schwab_auth_degraded": True,
-            },
-        },
-    )
-    block = _response_body(
-        srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    )["card_freshness_v1"]
-    assert block["quote_source_detail.schwab_auth_degraded"] is True
-    assert "auth_degraded" in block["stale_reason_codes"]
 
 
 def test_quote_newer_than_signal_simulated(tier_c_cache_spy, monkeypatch):

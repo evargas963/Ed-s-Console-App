@@ -134,6 +134,10 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         and pspot is not None
         and pspot > 0
         and prev_spot_source == "LAST_PRICE"
+        # carry ONLY a streamed LAST_PRICE: a prior row written by anything else (a REST
+        # quote) must never be restamped schwab_streaming_level_one by a bid/ask tick
+        # (independent audit 2026-09-24)
+        and prev.get("quote_ingestion") == "schwab_streaming_level_one"
     ):
         # Schwab LEVELONE sends only CHANGED fields: an unchanged LAST_PRICE is not resent,
         # so the last trade price stands -- but its age is the age of THAT trade message,
@@ -245,21 +249,6 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     except Exception as e:
         log.debug("notify_quote_updated: %s", e, exc_info=True)
     return True
-
-
-def record_quote(ticker: str, payload: dict[str, Any]) -> None:
-    """Persist a full plane row (e.g. REST fast-quote). Replaces prior row for ticker."""
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
-    if not t:
-        return
-    with _lock:
-        _by_ticker[t] = dict(payload)
-    try:
-        from planes.l1_events import notify_quote_updated
-
-        notify_quote_updated(t)
-    except Exception as e:
-        log.debug("notify_quote_updated: %s", e, exc_info=True)
 
 
 def get_quote(ticker: str) -> Optional[dict[str, Any]]:

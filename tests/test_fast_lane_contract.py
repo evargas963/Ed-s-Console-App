@@ -10,107 +10,27 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_fast_quote_endpoint_returns_fast_fields(monkeypatch):
-    import server as srv
-
-    def fake_payload(t: str):
-        return {
-            "ticker": t.upper().strip(),
-            "spot": 100.0,
-            "bid": 99.9,
-            "ask": 100.1,
-            "spot_disp": "100.00",
-            "bid_disp": "99.90",
-            "ask_disp": "100.10",
-            "spread": 0.002,
-            "fast_generation_id": 1,
-            "exchange_quote_ts": 1_700_000_000.0,
-        }
-
-    monkeypatch.setattr(srv, "_fetch_fast_quote_payload", fake_payload)
-    from starlette.testclient import TestClient
-
-    with TestClient(srv.app) as client:
-        r = client.get("/api/fast-quote", params={"ticker": "SPY"})
-        assert r.status_code == 200
-        b = r.json()
-        assert b["ticker"] == "SPY"
-        assert "fast_generation_id" in b and "exchange_quote_ts" in b
-        assert b["spot_disp"] == "100.00"
-        assert "fusion_available" not in b and "call_signal" not in b
-        assert "session_label" not in b
 
 
-def test_fast_quote_auth_failure_serves_carried_forward_plane(monkeypatch):
-    """TEST_SYSTEM_REHAB_V2 final remediation: this used to ALSO call
-    srv._fetch_fast_quote_payload("SPY") directly first and re-assert the exact same
-    two facts (spot, quote_source_detail.carried_forward) before making the real
-    HTTP call below -- a redundant reassertion of the unit-level behavior
-    tests/test_spot_authority_v1.py::test_carried_forward_quote_is_recorded_with_its_degradation
-    already proves more thoroughly (it additionally proves the plane-recording side
-    effect and generation-ID consistency this file never checked). This file's own
-    contract is the /api/fast-quote HTTP response (its docstring), so only the HTTP
-    round trip below remains -- it is what this file exists to prove."""
-    import app.options.order_flow.streaming as ofs
-    import server as srv
-
-    stale = {
-        "ticker": "SPY",
-        "spot": 749.73,
-        "bid": 749.70,
-        "ask": 749.76,
-        "spot_disp": "749.73",
-        "quote_ingestion": "schwab_streaming_level_one",
-        "quote_source_detail": {"spot": "LAST_PRICE", "carried_forward": False},
-    }
-    monkeypatch.setattr(srv._lmp, "get_quote", lambda _t: dict(stale))
-    monkeypatch.setattr(
-        ofs,
-        "get_plane_authority_for_ticker",
-        lambda _t: "rest_only",
-    )
-
-    def _boom(*_a, **_k):
-        raise RuntimeError(
-            'unsupported_token_type: 400 Bad Request: "invalid_grant refresh token revoked"'
-        )
-
-    monkeypatch.setattr(srv, "_build_rest_fast_quote_payload", _boom)
+def test_fast_quote_is_read_only_from_the_streamed_plane(monkeypatch):
+    """2026-09-24: /api/fast-quote never fetches REST and never writes the plane; it returns
+    the streamed, fresh LAST_PRICE row or stream_unavailable."""
+    import time
 
     from starlette.testclient import TestClient
 
-    with TestClient(srv.app) as client:
-        r = client.get("/api/fast-quote", params={"ticker": "SPY"})
-        assert r.status_code == 200
-        body = r.json()
-        assert body["spot"] == 749.73
-        assert body["quote_source_detail"]["carried_forward"] is True
+    import live_market_plane as lmp
+    import server
 
-
-def test_fast_quote_missing_token_file_returns_401_not_503(monkeypatch):
-    import app.options.order_flow.streaming as ofs
-    import server as srv
-    from fastapi import HTTPException
-
-    monkeypatch.setattr(srv._lmp, "get_quote", lambda _t: None)
-    monkeypatch.setattr(
-        ofs,
-        "get_plane_authority_for_ticker",
-        lambda _t: "rest_only",
-    )
-
-    def _no_client(*_a, **_k):
-        raise HTTPException(
-            status_code=503,
-            detail="Schwab auth failed: Token file not found: schwab_token.json",
-        )
-
-    monkeypatch.setattr(srv, "get_client", _no_client)
-    from starlette.testclient import TestClient
-
-    with TestClient(srv.app) as client:
-        r = client.get("/api/fast-quote", params={"ticker": "SPY"})
-        assert r.status_code == 401
-        body = r.json()
-        assert body.get("error") == "token_invalid"
-        assert "reauth_schwab" in str(body.get("remediation", ""))
+    assert not hasattr(server, "_fetch_fast_quote_payload")
+    assert not hasattr(server, "_build_rest_fast_quote_payload")
+    monkeypatch.setattr(server, "_touch_tracked_ticker_view", lambda t: None)
+    client = TestClient(server.app)
+    r = client.get("/api/fast-quote", params={"ticker": "NOSTREAMX"})
+    assert r.status_code == 200 and r.json() == {
+        "ok": False, "ticker": "NOSTREAMX", "error": "stream_unavailable"}
+    lmp.record_from_level_one_equity("FQLIVE", {"key": "FQLIVE", "LAST_PRICE": 12.5},
+                                     received_ts=time.time())
+    body = client.get("/api/fast-quote", params={"ticker": "FQLIVE"}).json()
+    assert body["ok"] is True and body["spot"] == 12.5
+    assert body["quote_ingestion"] == "schwab_streaming_level_one"

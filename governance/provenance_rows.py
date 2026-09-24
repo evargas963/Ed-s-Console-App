@@ -722,11 +722,6 @@ ROWS: tuple[Row, ...] = (
         justification='Delegates to Schwab transport producers for record_from_level_one_equity.',
     ),
     Row(
-        file='live_market_plane.py', derivation='record_quote', disposition='SCHWAB_LEAF',
-        schwab_leaf='quotes.quote.lastPrice',
-        justification='Records REST-shaped quote into plane cache.',
-    ),
-    Row(
         file='live_market_plane.py', derivation='reset_sse_push_cursor', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (reset_sse_push_cursor).',
@@ -923,7 +918,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='market_state.py', derivation='build_market_state', disposition='DERIVED',
-        producer_refs=('server.py:_build_rest_fast_quote_payload', 'server.py:_fetch_state', 'market_context.py:fetch_price_levels'),
+        producer_refs=('server.py:_fetch_state', 'market_context.py:fetch_price_levels'),
         justification='Delegates to Schwab transport producers for build_market_state.',
     ),
     Row(
@@ -2377,11 +2372,6 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_build_raw_levels_used).',
     ),
     Row(
-        file='server.py', derivation='_build_rest_fast_quote_payload', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_quote',),
-        justification='Fail-closed Schwab leaf read: quotes.quote.mark.',
-    ),
-    Row(
         file='server.py', derivation='_canonical_price_level_bars', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Phase 2A: resolves the ONE bar input for the canonical snapshot (live accumulator, else banked price_bars_1m); no direct Schwab read.',
@@ -2405,11 +2395,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_fetch_expiries_light', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_chain',),
         justification='Schwab API wrapper or wire JSON ingest path.',
-    ),
-    Row(
-        file='server.py', derivation='_fetch_fast_quote_payload', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_fetch_fast_quote_payload).',
     ),
     Row(
         file='server.py', derivation='_fetch_state', disposition='DERIVED',

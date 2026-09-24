@@ -258,14 +258,8 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
             }
         },
     )
-    with patch.object(server, "get_client") as gc, \
-         patch.object(server, "_safe_get_quote_with_retry") as sgq:
-        gc.return_value = MagicMock()
-        sgq.return_value = _quote
-
-        payload = server._build_rest_fast_quote_payload("SPY", "test")
-        assert payload.get("spread_semantic") == "fraction"
-
+    # (the REST fast-quote builder is deleted -- the plane has one writer, the stream)
+    if True:
         # /api/live/state is stream-only: give it the fresh streamed row it serves from
         import time as _t
         with patch.object(server._lmp, "get_quote", return_value={
