@@ -307,11 +307,6 @@ class MarketState:
     wait_reason:         str             = ""
     decision_provenance: str             = ""
     mhap_rows:           list            = field(default_factory=list)  # [{horizon, role, call, confidence, entry_ref, effect, row_state}]
-    # Guest anchor — provisional stack on non-authoritative tickers.
-    guest_anchor_active: bool            = False
-    guest_anchor_weights_ticker: Optional[str] = None
-    guest_anchor_affiliation: Optional[str] = None
-    guest_anchor_rationale: Optional[str] = None
     # MODEL_SERVING_PROVENANCE_SURFACE_V1 — which bundle produced this serve
     # (read-only visibility; flows to the payload via _ms_to_dict).
     model_serving_provenance_v1: Optional[dict] = None
@@ -1596,10 +1591,6 @@ def build_market_state(
             ms.risk_note = str(getattr(_mhd, "risk_note", "") or "")
             ms.wait_reason = str(getattr(_mhd, "wait_reason", "") or "")
             ms.decision_provenance = str(getattr(_mhd, "decision_provenance", "") or "")
-            ms.guest_anchor_active = bool(getattr(_sig_out, "guest_anchor_active", False))
-            ms.guest_anchor_weights_ticker = getattr(_sig_out, "guest_anchor_weights_ticker", None)
-            ms.guest_anchor_affiliation = getattr(_sig_out, "guest_anchor_affiliation", None)
-            ms.guest_anchor_rationale = getattr(_sig_out, "guest_anchor_rationale", None)
             if _pt is not None:
                 ms.entry_display_text = str(getattr(_pt, "entry_display_text", ms.entry_display_text) or ms.entry_display_text)
                 ms.stop_display_text = str(getattr(_pt, "stop_display_text", "—") or "—")

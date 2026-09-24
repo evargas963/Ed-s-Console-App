@@ -9,11 +9,7 @@ so offline ablation and live serve converge without silent omission semantics.
 from __future__ import annotations
 
 import math
-import os
-from contextlib import contextmanager
-from contextvars import ContextVar, Token
-from dataclasses import dataclass
-from typing import Any, Iterator, Optional
+from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
 from ml_horizon import ALL_GOVERNED_HORIZONS, ML_HORIZON_SLUGS
@@ -197,131 +193,13 @@ def atomic_column_consumed_by_stack_layer(column: str, model_family: str) -> boo
 ABLATION_ANCHOR_TICKERS: tuple[str, ...] = ("SPY", "QQQ", "IWM")
 # Authoritative ML stack — promoted bundles on disk; fusion cards are authoritative.
 ML_AUTHORITATIVE_TICKERS: tuple[str, ...] = ABLATION_ANCHOR_TICKERS
-# Per-horizon product triplet provenance when guest ticker uses anchor weights + guest features.
-MH_PROB_SOURCE_GUEST_ANCHOR: str = "guest_anchor_fusion"
 STAGE3_ABLATION_HORIZONS: tuple[str, ...] = ("1c", "5c", "15c", "60c")
-# Guest anchor v2 affiliation slugs (operator-visible; not index membership claims).
-GUEST_ANCHOR_AFFILIATION_SPY_BROAD: str = "spy_broad_default"
-GUEST_ANCHOR_AFFILIATION_IWM_SMALL_CAP: str = "iwm_small_cap_sample"
-
-
-def guest_anchor_inference_enabled() -> bool:
-    """Guest tickers borrow SPY/QQQ/IWM promoted weights on live guest features (default on)."""
-    return os.environ.get("ED_GUEST_ANCHOR_INFERENCE", "1").strip().lower() not in (
-        "0",
-        "false",
-        "no",
-    )
 
 
 def is_ml_authoritative_ticker(ticker: str) -> bool:
     return ticker_storage_key(ticker) in {ticker_storage_key(t) for t in ML_AUTHORITATIVE_TICKERS}  # RC-345/F25: canonical membership
 
 
-def resolve_guest_anchor_route(guest_ticker: str) -> tuple[str, str, str]:
-    """
-    Guest-anchor route without a built-in holdings roster.
-
-    The retired IWM_TOP_HOLDINGS table is gone. Every non-empty guest uses the
-    existing broad default. Returns (anchor_ticker, affiliation_slug, operator_rationale).
-    """
-    g = ticker_storage_key(guest_ticker)  # RC-345/F25: canonical guest identity for routing
-    if not g:
-        return (
-            "SPY",
-            GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
-            "Broad market default — SPY anchor",
-        )
-    return (
-        "SPY",
-        GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
-        "No holdings roster — broad SPY anchor (index confluence retired)",
-    )
-
-
-def route_guest_anchor_weights_ticker(guest_ticker: str) -> str:
-    """Anchor weights ticker among SPY / QQQ / IWM (v2: IWM sample holdings or SPY)."""
-    return resolve_guest_anchor_route(guest_ticker)[0]
-
-
-@dataclass(frozen=True)
-class GuestAnchorContext:
-    guest_ticker: str
-    anchor_ticker: str
-    affiliation: str
-    rationale: str
-
-    @property
-    def wait_reason(self) -> str:
-        return (
-            f"Provisional anchor ({self.anchor_ticker}) — {self.rationale} — advisory only"
-        )
-
-
-_guest_anchor_cv: ContextVar[GuestAnchorContext | None] = ContextVar(
-    "guest_anchor_context", default=None
-)
-
-
-def active_guest_anchor_context() -> GuestAnchorContext | None:
-    return _guest_anchor_cv.get()
-
-
-@contextmanager
-def guest_anchor_context_scope(ctx: GuestAnchorContext | None) -> Iterator[None]:
-    if ctx is None:
-        yield
-        return
-    tok: Token = _guest_anchor_cv.set(ctx)
-    try:
-        yield
-    finally:
-        _guest_anchor_cv.reset(tok)
-
-
-def resolve_guest_anchor_for_ticker(ticker: str) -> GuestAnchorContext | None:
-    """None when ticker is authoritative or guest anchor mode is disabled."""
-    if not guest_anchor_inference_enabled():
-        return None
-    g = ticker_storage_key(ticker)  # RC-345/F25: canonical guest identity (callee owns the semantic)
-    if not g or is_ml_authoritative_ticker(g):
-        return None
-    anchor, affiliation, rationale = resolve_guest_anchor_route(g)
-    if not is_ml_authoritative_ticker(anchor):
-        return None
-    return GuestAnchorContext(
-        guest_ticker=g,
-        anchor_ticker=anchor,
-        affiliation=affiliation,
-        rationale=rationale,
-    )
-
-
-def remap_prob_sources_for_guest_anchor(sources: dict[str, str]) -> dict[str, str]:
-    """Stamp guest_anchor_fusion instead of fusion_ml_primary on product horizons."""
-    out: dict[str, str] = {}
-    for hz, src in sources.items():
-        if src == "fusion_ml_primary":
-            out[hz] = MH_PROB_SOURCE_GUEST_ANCHOR
-        else:
-            out[hz] = src
-    return out
-
-
-def guest_anchor_trade_policy() -> dict[str, Any] | None:
-    """Non-tradeable sizing policy while guest anchor is active on this tick."""
-    ctx = active_guest_anchor_context()
-    if ctx is None:
-        return None
-    return {
-        "guest_ticker": ctx.guest_ticker,
-        "anchor_ticker": ctx.anchor_ticker,
-        "affiliation": ctx.affiliation,
-        "rationale": ctx.rationale,
-        "wait_reason": ctx.wait_reason,
-        "tradeable": False,
-        "size_modifier": 0.0,
-    }
 FULL_STACK_MODEL_COUNT: int = len(FULL_STACK_MODEL_LAYERS)
 assert FULL_STACK_MODEL_COUNT == 7
 assert len(FULL_STACK_MODEL_DISPLAY) == FULL_STACK_MODEL_COUNT

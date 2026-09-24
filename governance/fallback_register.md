@@ -60,7 +60,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | FIXED 425aa436 |
 | S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | FIXED 739fb9fc |
 | S-04 | market_state.py:359-422 | "low"/"rules_v1"/0.0 defaults persisted when signals fail | snapshots | FIXED 739fb9fc |
-| L-02 | governed_stack_contract.py:229-254 | non-SPY/QQQ/IWM routed to an "SPY anchor" (+ The Call wait_reason) | The Call label | OPEN |
+| L-02 | governed_stack_contract.py:229-254 | non-SPY/QQQ/IWM routed to an "SPY anchor" (+ The Call wait_reason) | The Call label | FIXED: guest-anchor route deleted; a ticker serves its own bundle or no model (branch fix/l02-no-guest-anchor) |
 
 ### Exposure math (math_exposure_core.py, math_levels.py)
 | ID | file:line | Violation | Flows to | Status |
@@ -138,5 +138,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 9 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 8 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.

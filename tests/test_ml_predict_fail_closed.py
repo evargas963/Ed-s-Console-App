@@ -429,95 +429,29 @@ def test_model_dir_live_ablation_experiment_uses_parallel(tmp_path, monkeypatch)
     assert got == root
 
 
-def test_guest_anchor_bundle_scope_loads_anchor_artifacts(tmp_path, monkeypatch):
-    """Guest ticker features use anchor promoted bundle paths (SPY weights on NVDA tick)."""
-    from active_bundle_contract import active_bundle_dir
+def test_guest_anchor_route_is_deleted_a_ticker_serves_its_own_bundle_or_nothing(tmp_path, monkeypatch):
+    """L-02 (2026-09-24, operator rule: no fallbacks). A ticker without its own promoted bundle
+    used to load SPY's weights on its own features (guest anchor). Now it has no model: the
+    loader resolves the ticker's OWN bundle directory and fails closed when it is absent."""
+    import governed_stack_contract as g
+    import features.shared_sequence_context as ssc
 
+    for name in ("resolve_guest_anchor_for_ticker", "resolve_guest_anchor_route", "GuestAnchorContext",
+                 "guest_anchor_context_scope", "remap_prob_sources_for_guest_anchor",
+                 "route_guest_anchor_weights_ticker", "guest_anchor_trade_policy",
+                 "MH_PROB_SOURCE_GUEST_ANCHOR", "guest_anchor_inference_enabled"):
+        assert not hasattr(g, name), name
+    assert not hasattr(mp, "ml_bundle_ticker_scope")
+    assert not hasattr(ssc, "build_guest_wire_sequence_context")
+    assert mp._bundle_ticker_for_artifacts("NVDA") == "NVDA"
+
+    from active_bundle_contract import active_bundle_dir
     monkeypatch.setenv("ED_XGB_STRICT_ACTIVE_ONLY", "1")
     monkeypatch.setattr(mp, "MODEL_DIR", tmp_path / "models")
     monkeypatch.setattr(mp, "get_ml_infer_horizon_slug", lambda: "1c")
-    spy_dir = active_bundle_dir("SPY", "1c", models_dir=tmp_path / "models")
-    spy_dir.mkdir(parents=True)
-    # MODEL-04 serve policy: bundles must carry honest provenance; the fixture
-    # mirrors the approved SPY vintage (trained_at 2026-06-04).
-    import json as _json
-
-    (spy_dir / "xgb_SPY_1c_meta.json").write_text(
-        _json.dumps({"trained_at": "2026-06-04 04:29:57"}), encoding="utf-8"
-    )
-    import active_bundle_contract as abc
-
-    monkeypatch.setattr(
-        abc,
-        "check_active_bundle_complete",
-        lambda *a, **k: {"compliant": True},
-    )
-    with mp.ml_bundle_ticker_scope("SPY"):
-        resolved = mp._model_dir_for_ticker("NVDA")
-    assert resolved == spy_dir
-
-
-def test_guest_anchor_resolve_and_prob_source_remap(monkeypatch):
-    from governed_stack_contract import (
-        GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
-        MH_PROB_SOURCE_GUEST_ANCHOR,
-        guest_anchor_inference_enabled,
-        is_ml_authoritative_ticker,
-        remap_prob_sources_for_guest_anchor,
-        resolve_guest_anchor_for_ticker,
-        resolve_guest_anchor_route,
-        route_guest_anchor_weights_ticker,
-    )
-
-    monkeypatch.setenv("ED_GUEST_ANCHOR_INFERENCE", "1")
-    assert guest_anchor_inference_enabled()
-    assert is_ml_authoritative_ticker("SPY")
-    assert resolve_guest_anchor_for_ticker("SPY") is None
-    # v2: mega-cap sample names default to SPY (not QQQ_TOP shortcut).
-    nvda_ctx = resolve_guest_anchor_for_ticker("NVDA")
-    assert nvda_ctx is not None
-    assert nvda_ctx.guest_ticker == "NVDA"
-    assert nvda_ctx.anchor_ticker == "SPY"
-    assert nvda_ctx.affiliation == GUEST_ANCHOR_AFFILIATION_SPY_BROAD
-    assert route_guest_anchor_weights_ticker("NVDA") == "SPY"
-    assert route_guest_anchor_weights_ticker("AAPL") == "SPY"
-    # Retired IWM holdings roster: no built-in small-cap shortcut.
-    iwm_anchor, iwm_aff, _ = resolve_guest_anchor_route("BE")
-    assert iwm_anchor == "SPY"
-    assert iwm_aff == GUEST_ANCHOR_AFFILIATION_SPY_BROAD
-    be_ctx = resolve_guest_anchor_for_ticker("BE")
-    assert be_ctx is not None
-    assert be_ctx.anchor_ticker == "SPY"
-    assert route_guest_anchor_weights_ticker("KRE") == "SPY"
-    remapped = remap_prob_sources_for_guest_anchor(
-        {"1c": "fusion_ml_primary", "5c": "fusion_unavailable"}
-    )
-    assert remapped["1c"] == MH_PROB_SOURCE_GUEST_ANCHOR
-    assert remapped["5c"] == "fusion_unavailable"
-
-
-def test_guest_wire_sequence_context_from_live_snapshot():
-    """Guest tickers with insufficient DB history must still build LSTM/TR surface bars."""
-    from features.canonical_contract import get_mvp_feature_names
-    from features.inference_snapshot import build_inference_snapshot_v1_from_feature_row
-    from features.shared_sequence_context import build_guest_wire_sequence_context
-    from lstm_data import STREAM_5M_LOOKBACK
-
-    feats = {k: None for k in get_mvp_feature_names()}
-    feats["price.spot"] = 118.5
-    feats["price.spread_pts"] = 0.03
-    feats["structure.zone"] = "pin_neutral"
-    inf = build_inference_snapshot_v1_from_feature_row(
-        ticker="XOM",
-        expiry=None,
-        as_of_ts=1_700_000_200.0,
-        features=feats,
-    )
-    ctx, err = build_guest_wire_sequence_context(inf)
-    assert err is None
-    assert ctx is not None
-    assert len(ctx.lstm_merged_window) == STREAM_5M_LOOKBACK
-    assert ctx.meta.get("guest_wire_surface") is True
+    active_bundle_dir("SPY", "1c", models_dir=tmp_path / "models").mkdir(parents=True)
+    with pytest.raises(Exception):          # SPY's bundle exists; NVDA's does not -> no model
+        mp._model_dir_for_ticker("NVDA")
 
 
 def test_prewarm_inference_models_for_ticker_all_horizons(monkeypatch):
@@ -531,11 +465,6 @@ def test_prewarm_inference_models_for_ticker_all_horizons(monkeypatch):
     monkeypatch.setattr(mp, "_load_xgb", _fake_load)
     monkeypatch.setattr(mp, "_load_lstm", lambda _t: True)
     monkeypatch.setattr(mp, "_load_transformer", lambda _t: True)
-    import governed_stack_contract as gsc
-
-    monkeypatch.setattr(gsc, "resolve_guest_anchor_for_ticker", lambda _t: None)
-    monkeypatch.setattr(gsc, "guest_anchor_context_scope", mp.ml_bundle_ticker_scope)
-
     out = mp.prewarm_inference_models_for_ticker("SPY")
     assert len(out) == 12
     assert all(v is True for v in out.values())

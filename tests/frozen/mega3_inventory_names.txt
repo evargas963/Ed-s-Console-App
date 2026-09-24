@@ -71,11 +71,9 @@ features/replay_signal_input_v1.py::_positive_float_required
 features/replay_signal_input_v1.py::_replay_vol_decimal
 features/replay_signal_input_v1.py::signal_input_from_snapshot_row_dict
 features/semantic_parity.py::assert_live_db_canonicalization_equivalent
-features/shared_sequence_context.py::_guest_wire_row_from_live
 features/shared_sequence_context.py::_max_transformer_seq_len_for_ticker
 features/shared_sequence_context.py::_require_ticker
 features/shared_sequence_context.py::_seq_len_from_transformer_meta
-features/shared_sequence_context.py::build_guest_wire_sequence_context
 features/shared_sequence_context.py::build_shared_sequence_context
 features/shared_sequence_context.py::transformer_window_chronological
 features/signal_layer_v1.py::_aggregate_bars

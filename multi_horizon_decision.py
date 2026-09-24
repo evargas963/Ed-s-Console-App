@@ -343,8 +343,6 @@ def compute_multi_horizon_synthesis(
     pred,
     canonical,
     mh_ml_bundle: Optional[MultiHorizonMLFusionBundle] = None,
-    *,
-    guest_anchor=None,
 ) -> MultiHorizonSynthesis:
     raw_mode = _infer_trade_mode(inp)
     mode = raw_mode if raw_mode is not None else "unknown"
@@ -532,13 +530,6 @@ def compute_multi_horizon_synthesis(
         "selected_primary_horizon": selected,
         "primary_order_for_mode": list(order),
     }
-
-    if guest_anchor is not None:
-        # RC-533: the guest-anchor veto belongs to the owner of the verdict. A ticker served
-        # on a provisional anchor never trades; the anchor's wait_reason is the verdict's.
-        tradeable = False
-        size = 0.0
-        wait_reason = guest_anchor.wait_reason
 
     return MultiHorizonSynthesis(
         mode=mode,

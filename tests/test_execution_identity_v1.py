@@ -39,10 +39,8 @@ def _bundle_entry(seed: str = "x"):
 def _envelope(**over):
     env = xi.build_execution_envelope(
         release=_release(),
-        requested_ticker=over.pop("requested_ticker", "ZZGST"),
+        requested_ticker=over.pop("requested_ticker", "SPY"),
         bundle_ticker=over.pop("bundle_ticker", "SPY"),
-        guest_anchor=over.pop("guest_anchor", True),
-        guest_anchor_ticker=over.pop("guest_anchor_ticker", "SPY"),
         horizons_attempted=over.pop("horizons_attempted", ["1c", "5c", "15c", "60c"]),
         bundles_by_horizon=over.pop("bundles_by_horizon", {
             "1c": _bundle_entry("1c"), "5c": _bundle_entry("5c"),
@@ -140,7 +138,7 @@ def test_insert_identity_and_ledger_anchor(conn):
     assert sha == xi.execution_identity_sha256(env)
     row = conn.execute("SELECT identity_class, requested_ticker, bundle_ticker "
                        "FROM model_execution_identities").fetchone()
-    assert row == ("FULL_STACK_PINNED", "ZZGST", "SPY")
+    assert row == ("FULL_STACK_PINNED", "SPY", "SPY")
     led = conn.execute("SELECT status FROM decision_persistence_ledger WHERE decision_id='d1'").fetchone()
     assert led[0] == "OPEN"
 
@@ -184,7 +182,7 @@ def test_concurrent_identical_identity_inserts_deduplicate(tmp_path):
 
 def test_same_decision_cannot_bind_two_identities(conn):
     xi.insert_execution_identity(conn, _envelope(), decision_id="d1", expected_surfaces=["decision"])
-    other = _envelope(bundle_ticker="QQQ", guest_anchor=False, guest_anchor_ticker=None,
+    other = _envelope(bundle_ticker="QQQ",
                       requested_ticker="QQQ")
     with pytest.raises(xi.ExecutionIdentityError) as e:
         xi.insert_execution_identity(conn, other, decision_id="d1", expected_surfaces=["decision"])
@@ -230,7 +228,7 @@ def test_dependent_write_identity_without_decision_rejected(conn):
 
 def test_two_surfaces_cannot_carry_different_identities(conn):
     sha1 = xi.insert_execution_identity(conn, _envelope(), decision_id="d1", expected_surfaces=["snapshot", "decision"])
-    env2 = _envelope(requested_ticker="QQQ", bundle_ticker="QQQ", guest_anchor=False, guest_anchor_ticker=None)
+    env2 = _envelope(requested_ticker="QQQ", bundle_ticker="QQQ")
     sha2 = xi.insert_execution_identity(conn, env2, decision_id="d2", expected_surfaces=["snapshot"])
     conn.execute("INSERT INTO snapshots (ticker, ts_utc, decision_id, execution_identity_sha256) VALUES (?,?,?,?)",
                  ("SPY", 1.0, "d1", sha1))
@@ -465,11 +463,12 @@ def test_migration_is_additive_and_preserves_rows(tmp_path):
 # ── envelope semantics ───────────────────────────────────────────────────────
 
 
-def test_guest_ticker_records_requested_and_bundle_ticker():
+def test_routing_records_requested_and_bundle_ticker_and_no_guest_anchor():
     env = _envelope()
     r = env["routing"]
-    assert r["requested_ticker"] == "ZZGST" and r["bundle_ticker"] == "SPY"
-    assert r["guest_anchor"] is True and r["guest_anchor_ticker"] == "SPY"
+    assert r["requested_ticker"] == "SPY" and r["bundle_ticker"] == "SPY"
+    assert "guest_anchor" not in r and "guest_anchor_ticker" not in r     # L-02
+    assert env["envelope_schema_version"] == "2"
 
 
 def test_four_horizon_envelope_and_identity_classes():
@@ -701,8 +700,7 @@ def test_prefix_ordering_reproduction_decision_surface_refused(tmp_path):
     assert c.execute("SELECT COUNT(*) FROM production_decision_records").fetchone()[0] == 0
 
     # 2) the tail then anchors and lands snapshot + calibration (as observed live).
-    env = _envelope(requested_ticker="SPY", bundle_ticker="SPY", guest_anchor=False,
-                    guest_anchor_ticker=None)
+    env = _envelope(requested_ticker="SPY", bundle_ticker="SPY")
     sha = xi.insert_execution_identity(
         c, env, decision_id=stamped_only_id,
         expected_surfaces=["decision", "snapshot", "calibration"],
@@ -739,8 +737,7 @@ def test_fixed_ordering_full_cycle_completes_ledger(tmp_path):
     _dependent_tables(c)
 
     did = "cycle-did-2"
-    env = _envelope(requested_ticker="SPY", bundle_ticker="SPY", guest_anchor=False,
-                    guest_anchor_ticker=None)
+    env = _envelope(requested_ticker="SPY", bundle_ticker="SPY")
     sha = xi.insert_execution_identity(
         c, env, decision_id=did,
         expected_surfaces=["decision", "snapshot", "calibration"],
@@ -777,15 +774,13 @@ def test_ledger_expected_surfaces_adapt_to_cycle_shape(tmp_path):
     _dependent_tables(c)
 
     # log_only + calibration off: snapshot is the only expected surface.
-    env1 = _envelope(requested_ticker="QQQ", bundle_ticker="QQQ", guest_anchor=False,
-                     guest_anchor_ticker=None)
+    env1 = _envelope(requested_ticker="QQQ", bundle_ticker="QQQ")
     xi.insert_execution_identity(c, env1, decision_id="d-snap-only",
                                  expected_surfaces=["snapshot"])
     assert xi.mark_surface_landed(c, "d-snap-only", "snapshot") == xi.LEDGER_COMPLETE
 
     # snapshot throttled + calibration on: calibration completes the cycle.
-    env2 = _envelope(requested_ticker="IWM", bundle_ticker="IWM", guest_anchor=False,
-                     guest_anchor_ticker=None)
+    env2 = _envelope(requested_ticker="IWM", bundle_ticker="IWM")
     xi.insert_execution_identity(c, env2, decision_id="d-cal-only",
                                  expected_surfaces=["calibration"])
     assert xi.mark_surface_landed(c, "d-cal-only", "calibration") == xi.LEDGER_COMPLETE

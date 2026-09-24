@@ -3091,11 +3091,6 @@ ROWS: tuple[Row, ...] = (
         justification='Card freshness block derived from the same cache clock (RC-532).',
     ),
     Row(
-        file='governed_stack_contract.py', derivation='resolve_guest_anchor_for_ticker', disposition='ALLOWLISTED',
-        allowlist_id='mega4_governed_stack_contract',
-        justification='Guest-anchor route from the governed stack contract (authoritative-ticker set, anchor affiliation); None when the ticker is authoritative.',
-    ),
-    Row(
         file='multi_horizon_decision.py', derivation='_horizon_skill_weights_cached', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Rolling horizon skill weights from the calibration DB (TTL-cached); equal weights fail-closed. The ONLY pool-weight source (RC-533: the pool_weights parameter is gone).',
@@ -3157,8 +3152,8 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='multi_horizon_decision.py', derivation='compute_multi_horizon_synthesis', disposition='DERIVED',
-        producer_refs=('market_state.py:build_market_state', 'prediction_engine.py:compute_prediction_core', 'signals.py:canonical_forecast_from_fusion', 'multi_horizon_ml_bundle.py:build_multi_horizon_ml_fusion_bundle', 'multi_horizon_decision.py:_horizon_skill_weights_cached', 'governed_stack_contract.py:resolve_guest_anchor_for_ticker',),
-        justification='THE multi-horizon verdict owner: pooled consensus -> final_bias / tradeable / wait_reason / size; the guest-anchor veto is applied here (RC-533).',
+        producer_refs=('market_state.py:build_market_state', 'prediction_engine.py:compute_prediction_core', 'signals.py:canonical_forecast_from_fusion', 'multi_horizon_ml_bundle.py:build_multi_horizon_ml_fusion_bundle', 'multi_horizon_decision.py:_horizon_skill_weights_cached',),
+        justification='THE multi-horizon verdict owner: pooled consensus -> final_bias / tradeable / wait_reason / size.',
     ),
     Row(
         file='call_engine.py', derivation='_validate_trade', disposition='DERIVED',

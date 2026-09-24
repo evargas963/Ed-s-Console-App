@@ -1,9 +1,8 @@
 """MODEL-04 canonical serve-eligibility policy (operator-approved 2026-07-10).
 
 Single policy owner for whether an ACTIVE bundle may be DIRECTLY served.
-Anchor routing (governed_stack_contract.resolve_guest_anchor_route) is a
-separate, independently governed layer and is never decided here — withholding
-a direct bundle must never silently select a substitute.
+There is no anchor routing: a ticker serves its own bundle or nothing (guest anchor
+deleted, register L-02) — withholding a direct bundle never selects a substitute.
 
 Approved classification (manifest `trained_at` is authoritative; directory
 mtimes are promote/copy dates and are NOT provenance):

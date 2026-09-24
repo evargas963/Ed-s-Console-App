@@ -1713,7 +1713,7 @@ def test_rc345_f25_arch_state_writer_reader_share_canonical_key():
 
 
 def test_rc345_f25_execution_routing_identity_contract():
-    """F25 (Cursor: execution_identity routing). bundle_ticker / guest_anchor_ticker are CANONICAL
+    """F25 (Cursor: execution_identity routing). bundle_ticker is CANONICAL
     routing identity (→ ticker_storage_key); requested_ticker is a REQUEST ECHO kept distinct and
     NEVER substituted for canonical routing. Behavioral: bundle_ticker collapses SPX/$SPX to '$SPX'
     even when it falls back to the request echo. Negative control across the alias matrix."""
@@ -1721,8 +1721,8 @@ def test_rc345_f25_execution_routing_identity_contract():
 
     for req, bun in (("spx", "SPX"), ("$spx", "$SPX"), ("SPX", "spx")):
         env = ei.build_execution_envelope(
-            release={}, requested_ticker=req, bundle_ticker=bun, guest_anchor=False,
-            guest_anchor_ticker=None, horizons_attempted=[], bundles_by_horizon={},
+            release={}, requested_ticker=req, bundle_ticker=bun,
+            horizons_attempted=[], bundles_by_horizon={},
             calibration_by_horizon=None, calibration_logging_enabled=False, stack_pins={},
             runtime_class="X", degradation=None, tradeable_policy=None, executed_at_utc=1.0)
         rt = env["routing"]
@@ -1806,29 +1806,15 @@ def test_rc345_f25_arch_eval_proof_key_canonical(tmp_path):
     assert "ticker.upper()" not in src, "arch eval proof: raw .upper() key faucet reintroduced"
 
 
-def test_rc345_f25_guest_anchor_routing_identity_canonical():
-    """F25 (routing callee). governed_stack_contract guest-anchor resolution owns the guest identity
-    semantic and must consume the canonical authority — SPX and $SPX are ONE guest instrument, so
-    resolve_guest_anchor_for_ticker yields the same GuestAnchorContext.guest_ticker ("$SPX") for both.
-    Also authoritative membership (SPY/QQQ/IWM) is canonical. Mutation: a raw .upper() callee splits them."""
+def test_rc345_f25_authoritative_membership_is_canonical():
+    """F25: authoritative ML membership (SPY/QQQ/IWM) goes through the canonical authority;
+    SPX / $SPX are one instrument and neither is authoritative. (The guest-anchor route this
+    test also covered is deleted, register L-02.)"""
     import governed_stack_contract as g
-    import os
 
     assert g.is_ml_authoritative_ticker("spy") is True
     assert g.is_ml_authoritative_ticker("SPX") is False and g.is_ml_authoritative_ticker("$SPX") is False
+    import ml_predict as mp
+    assert mp._bundle_ticker_for_artifacts("spx") == mp._bundle_ticker_for_artifacts("$SPX") == "$SPX"
 
-    os.environ["ED_GUEST_ANCHOR_INFERENCE"] = "1"
-    try:
-        a = g.resolve_guest_anchor_for_ticker("SPX")
-        b = g.resolve_guest_anchor_for_ticker("$SPX")
-    finally:
-        os.environ.pop("ED_GUEST_ANCHOR_INFERENCE", None)
-    assert a is not None and b is not None
-    assert a.guest_ticker == b.guest_ticker == "$SPX", (
-        f"guest identity split: {a.guest_ticker!r} vs {b.guest_ticker!r}")
 
-    # Source guard: the callee routes guest/authoritative identity through the one authority.
-    body = "\n".join(l for l in _read("governed_stack_contract.py").splitlines()
-                     if not l.lstrip().startswith("#") and "def " not in l)
-    assert 'g = (ticker or "").upper().strip()' not in body, "guest resolver reverted to raw .upper()"
-    assert 'g = (guest_ticker or "").upper().strip()' not in body, "guest route reverted to raw .upper()"

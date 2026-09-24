@@ -328,7 +328,7 @@ def test_unknown_family_rejected():
 # ── MODEL_SERVING_PROVENANCE_SURFACE_V1 ──────────────────────────────────────
 
 _PROVENANCE_KEYS = {
-    "requested_ticker", "bundle_ticker", "guest_anchor", "guest_anchor_ticker",
+    "requested_ticker", "bundle_ticker",
     "horizon", "bundle_dir", "bundle_complete", "missing_artifacts",
     "trained_at", "feature_schema_version", "preprocessing_version",
     "contract_match", "contract_mismatch_reason", "strict_active_only",
@@ -367,7 +367,7 @@ def _make_complete_bundle(models_root, ticker, hz="1c"):
 
 def test_provenance_block_authoritative_ticker(tmp_path, monkeypatch):
     """Required test 1: full-key block for an own-bundle ticker; requested ==
-    bundle; guest_anchor False; complete bundle classes STRICT_ACTIVE_SERVABLE."""
+    bundle; complete bundle classes STRICT_ACTIVE_SERVABLE."""
     import ml_predict as mp
 
     monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
@@ -386,7 +386,6 @@ def test_provenance_block_authoritative_ticker(tmp_path, monkeypatch):
     assert set(prov) == _PROVENANCE_KEYS
     assert prov["requested_ticker"] == t
     assert prov["bundle_ticker"] == t
-    assert prov["guest_anchor"] is False
     assert prov["bundle_complete"] is True
     assert prov["contract_match"] is True
     assert prov["trained_at"] == "2026-07-01 00:00:00"
@@ -394,28 +393,17 @@ def test_provenance_block_authoritative_ticker(tmp_path, monkeypatch):
     assert prov["runtime_class"] == "STRICT_ACTIVE_SERVABLE"
 
 
-def test_provenance_block_guest_routed_ticker(tmp_path, monkeypatch):
-    """Required test 2: under the guest scopes, requested != bundle and the
-    block reports the anchor as bundle_ticker."""
+def test_provenance_block_non_authoritative_ticker_reports_its_own_bundle(tmp_path, monkeypatch):
+    """L-02: a non-authoritative ticker resolves its OWN bundle (none on disk -> fail closed),
+    never an anchor's."""
     import ml_predict as mp
-    from governed_stack_contract import (
-        guest_anchor_context_scope,
-        resolve_guest_anchor_for_ticker,
-    )
 
     monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
     monkeypatch.setattr("lstm_data.sequence_encoder_checkpoint_issues", lambda p: ())
-    guest = "ZZGUEST"
-    ctx = resolve_guest_anchor_for_ticker(guest)
-    assert ctx is not None  # non-authoritative symbols always route to an anchor
-    _make_complete_bundle(tmp_path, ctx.anchor_ticker)
-    with guest_anchor_context_scope(ctx), mp.ml_bundle_ticker_scope(ctx.anchor_ticker):
-        prov = mp.build_model_serving_provenance(guest)
-    assert prov["requested_ticker"] == guest
-    assert prov["bundle_ticker"] == ctx.anchor_ticker
-    assert prov["requested_ticker"] != prov["bundle_ticker"]
-    assert prov["guest_anchor"] is True
-    assert prov["guest_anchor_ticker"] == ctx.anchor_ticker
+    _make_complete_bundle(tmp_path, "SPY")
+    prov = mp.build_model_serving_provenance("ZZGUEST")
+    assert prov["requested_ticker"] == "ZZGUEST" and prov["bundle_ticker"] == "ZZGUEST"
+    assert prov["model_load_status"] == "fail_closed"
 
 
 def test_provenance_surfaces_relaxation_active(tmp_path, monkeypatch):
@@ -461,21 +449,10 @@ def test_provenance_contract_rejection_behavior_unchanged():
     assert 'validate_artifact_contract(meta, "lstm")' in lstm_src
 
 
-def test_provenance_guest_routing_behavior_unchanged():
-    """Required test 6: routing outcomes unchanged and the builder never
-    mutates the routing/bundle contextvars (read-only AST)."""
+def test_provenance_builder_never_mutates_a_contextvar():
+    """Required test 6: the builder is read-only (AST: no contextvar set/reset)."""
     import ast
     from pathlib import Path
-
-    from governed_stack_contract import (
-        ML_AUTHORITATIVE_TICKERS,
-        resolve_guest_anchor_for_ticker,
-    )
-
-    for t in ML_AUTHORITATIVE_TICKERS:
-        assert resolve_guest_anchor_for_ticker(t) is None
-    ctx = resolve_guest_anchor_for_ticker("ZZGUEST")
-    assert ctx is not None and ctx.anchor_ticker in ML_AUTHORITATIVE_TICKERS
 
     root = Path(__file__).resolve().parent.parent
     tree = ast.parse((root / "ml_predict.py").read_text(encoding="utf-8"))
@@ -1114,7 +1091,7 @@ def test_item4_all_governed_loaders_call_verifier_before_deserialization():
 
 def test_provenance_no_serving_behavior_change():
     """Required test 9: the builder is read-only — no registry writes, no model
-    load calls; signals builds it as the first statement inside the scopes."""
+    load calls; signals builds it before the sequence context."""
     import ast
     from pathlib import Path
 
@@ -1132,7 +1109,6 @@ def test_provenance_no_serving_behavior_change():
                 f"model load call {node.func.id} in provenance builder"
             )
     sig_src = (root / "signals.py").read_text(encoding="utf-8")
-    i_scope = sig_src.index("with guest_anchor_context_scope(_guest_anchor), ml_bundle_ticker_scope(")
     i_build = sig_src.index("model_serving_provenance = build_model_serving_provenance(ticker)")
     i_seq = sig_src.index("shared_sequence_context = None")
-    assert i_scope < i_build < i_seq
+    assert i_build < i_seq

@@ -3,9 +3,8 @@
 ONE FAUCET = ONE COMPUTATION for the verdict the operator trades on:
 
 * The multi-horizon verdict (final_bias / tradeable / wait_reason / size) has ONE owner,
-  ``multi_horizon_decision.compute_multi_horizon_synthesis``. The guest-anchor veto that
-  ``signals._compute_signals_impl`` used to write onto the owner's result AFTER the owner
-  returned is now the owner's own input (``guest_anchor=``).
+  ``multi_horizon_decision.compute_multi_horizon_synthesis``. (The guest-anchor veto it once
+  took is gone with the guest-anchor route itself, register L-02.)
 * Two engine parameters that no production caller ever passed are gone: the synthesis
   ``pool_weights`` (an alternate weighting seam; the calibration reader is the one source)
   and the admission gate's ``component`` (a constant).
@@ -18,17 +17,11 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from types import SimpleNamespace
 
-import pytest
 
 import governance.provenance_inventory as P
 import governance.provenance_roots as R
 import governance.provenance_rows as ROWS_MOD
-from governed_stack_contract import GuestAnchorContext
-from multi_horizon_decision import compute_multi_horizon_synthesis
-from tests.test_issue18_multi_horizon_decision import _inp
-from tests.test_multi_horizon_decision_numeric_contract_v1 import _canonical, _pred
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -49,37 +42,12 @@ BATCH_CLOSED = (
 BATCH_NOT_PROVEN = ("call_signal", "call_conviction")
 
 
-def _anchor() -> GuestAnchorContext:
-    return GuestAnchorContext(guest_ticker="XLK", anchor_ticker="QQQ", affiliation="sector", rationale="test")
-
-
 # ── behavioural: the veto lives in the owner ─────────────────────────────────────────────
 
-def test_guest_anchor_veto_is_applied_by_the_synthesis_owner():
-    base = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None)
-    anchored = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None, guest_anchor=_anchor())
-    assert anchored.tradeable is False
-    assert anchored.size_modifier == 0.0
-    assert anchored.wait_reason == _anchor().wait_reason
-    # Everything the anchor does not veto is the same verdict.
-    assert anchored.final_bias == base.final_bias
-    assert anchored.selected == base.selected
-    assert anchored.hmap.keys() == base.hmap.keys()
-
-
-def test_no_anchor_means_the_owner_verdict_is_untouched():
-    a = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None)
-    b = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None, guest_anchor=None)
-    assert (a.tradeable, a.size_modifier, a.wait_reason, a.final_bias) == (
-        b.tradeable, b.size_modifier, b.wait_reason, b.final_bias)
-
-
-def test_the_guest_anchor_is_keyword_only_and_the_alternate_weight_seam_is_gone():
+def test_the_owner_takes_no_guest_anchor_and_no_alternate_weight_seam():
     args = P.function_args("multi_horizon_decision.py", "compute_multi_horizon_synthesis")
     assert "pool_weights" not in args
-    assert "guest_anchor" in args
-    with pytest.raises(TypeError):
-        compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None, _anchor())  # positional refused
+    assert "guest_anchor" not in args
 
 
 def test_admission_gate_has_no_component_parameter():
@@ -131,14 +99,14 @@ def test_mutation_control_the_old_second_writer_is_detected():
     assert [a for _, a in hits] == ["tradeable", "size_modifier", "wait_reason"]
 
 
-def test_the_orchestrator_passes_the_anchor_to_the_owner_and_writes_nothing_after():
+def test_the_orchestrator_calls_the_owner_once_and_writes_nothing_after():
     src = (REPO / "signals.py").read_text(encoding="utf-8", errors="replace")
     assert second_writers_of_synthesis(src) == []
     tree = ast.parse(src)
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
              and isinstance(n.func, ast.Name) and n.func.id == "compute_multi_horizon_synthesis"]
     assert len(calls) == 1
-    assert [k.arg for k in calls[0].keywords] == ["guest_anchor"]
+    assert [k.arg for k in calls[0].keywords] == []
 
 
 _NON_PRODUCTION_PREFIXES = (
@@ -192,14 +160,10 @@ def test_the_former_second_writer_survivors_now_close_on_the_owner():
         assert field not in R.OPEN_ROOTS
 
 
-def test_the_verdict_owner_row_names_the_anchor_as_its_input():
+def test_the_verdict_owner_row_names_its_inputs():
     idx = P.index(ROWS_MOD.ROWS)
     row = idx[("multi_horizon_decision.py", "compute_multi_horizon_synthesis")]
-    assert "governed_stack_contract.py:resolve_guest_anchor_for_ticker" in row.producer_refs
+    assert not any("guest_anchor" in r for r in row.producer_refs)
     assert "multi_horizon_decision.py:_horizon_skill_weights_cached" in row.producer_refs
 
 
-def test_guest_anchor_context_wait_reason_is_the_verdict_text():
-    ctx = SimpleNamespace(wait_reason="anchored")
-    out = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None, guest_anchor=ctx)
-    assert out.wait_reason == "anchored" and out.tradeable is False

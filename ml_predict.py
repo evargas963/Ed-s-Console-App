@@ -111,27 +111,10 @@ _ml_infer_horizon_cv: ContextVar[str] = ContextVar(
     "ml_infer_horizon_slug", default=DEFAULT_ML_HORIZON_SLUG
 )
 
-# Guest anchor: load promoted weights from anchor ticker while features stay on guest ticker.
-_ml_bundle_ticker_cv: ContextVar[str | None] = ContextVar("ml_bundle_ticker_override", default=None)
-
-
-@contextmanager
-def ml_bundle_ticker_scope(bundle_ticker: str | None):
-    """When set, artifact paths/registry keys resolve to ``bundle_ticker`` (anchor weights)."""
-    if not bundle_ticker:
-        yield
-        return
-    tok = _ml_bundle_ticker_cv.set(ticker_storage_key(str(bundle_ticker)))
-    try:
-        yield
-    finally:
-        _ml_bundle_ticker_cv.reset(tok)
-
-
 def _bundle_ticker_for_artifacts(feature_ticker: str) -> str:
-    override = _ml_bundle_ticker_cv.get()
-    if override:
-        return override  # already canonical: set via ticker_storage_key in ml_bundle_ticker_scope
+    """The bundle a ticker's models load from: its OWN canonical ticker. A ticker without its
+    own promoted bundle has no model -- it used to borrow SPY's weights (guest anchor,
+    register L-02, deleted 2026-09-24)."""
     return ticker_storage_key(feature_ticker or "")
 
 
@@ -165,14 +148,12 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
             bundle_artifact_paths,
             check_active_bundle_complete,
         )
-        from governed_stack_contract import active_guest_anchor_context
         from model_contract import meta_matches_system_contract
 
         rt = (requested_ticker or "").upper().strip()  # display echo of the request
         canon = ticker_storage_key(requested_ticker)    # RC-345/F25: canonical routing identity
         bt = _bundle_ticker_for_artifacts(canon)
         hz = get_ml_infer_horizon_slug()
-        ctx = active_guest_anchor_context()
         strict_active_only = os.environ.get(
             "ED_XGB_STRICT_ACTIVE_ONLY", "1"
         ).strip().lower() not in ("0", "false", "no")
@@ -239,12 +220,6 @@ def build_model_serving_provenance(requested_ticker: str) -> dict:
         return {
             "requested_ticker": rt,
             "bundle_ticker": bt,
-            # RC-345/F25: guest-anchor is a CANONICAL-vs-CANONICAL comparison — a bare index alias
-            # (SPX vs $SPX) is the SAME instrument and must not falsely trip guest_anchor.
-            "guest_anchor": ctx is not None or bt != canon,
-            "guest_anchor_ticker": (
-                ctx.anchor_ticker if ctx is not None else (bt if bt != canon else None)
-            ),
             "horizon": hz,
             "bundle_dir": str(bd),
             "bundle_complete": bool(comp.get("compliant")),
@@ -2932,30 +2907,22 @@ def invalidate_model_registry(ticker: str, hz: str | None = None) -> bool:
 def prewarm_inference_models_for_ticker(ticker: str) -> dict[str, bool]:
     """
     UI-MAXIMIZE — load XGB/LSTM/TR artifacts for all primary horizons into registries.
-    Disk I/O only; no forward pass. Honors guest-anchor bundle routing when enabled.
+    Disk I/O only; no forward pass. Loads the ticker's OWN bundle only.
     """
     from ml_horizon import PRIMARY_DECISION_HORIZONS
-    from governed_stack_contract import (
-        guest_anchor_context_scope,
-        resolve_guest_anchor_for_ticker,
-    )
 
-    t = ticker_storage_key(ticker)  # RC-345/F25: guest-anchor routing identity is canonical
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical bundle identity
     if not t:
         return {}
-    guest_ctx = resolve_guest_anchor_for_ticker(t)
     out: dict[str, bool] = {}
-    with guest_anchor_context_scope(guest_ctx), ml_bundle_ticker_scope(
-        guest_ctx.anchor_ticker if guest_ctx else None
-    ):
-        for hz in PRIMARY_DECISION_HORIZONS:
-            tok = set_ml_infer_horizon_slug(hz)
-            try:
-                out[f"xgb_{hz}"] = _load_xgb(t)
-                out[f"lstm_{hz}"] = _load_lstm(t)
-                out[f"transformer_{hz}"] = _load_transformer(t)
-            finally:
-                reset_ml_infer_horizon_slug(tok)
+    for hz in PRIMARY_DECISION_HORIZONS:
+        tok = set_ml_infer_horizon_slug(hz)
+        try:
+            out[f"xgb_{hz}"] = _load_xgb(t)
+            out[f"lstm_{hz}"] = _load_lstm(t)
+            out[f"transformer_{hz}"] = _load_transformer(t)
+        finally:
+            reset_ml_infer_horizon_slug(tok)
     logger.info("prewarm_inference_models_for_ticker %s: %s", t, out)
     return out
 

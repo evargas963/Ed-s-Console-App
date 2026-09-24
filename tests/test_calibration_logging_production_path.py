@@ -54,8 +54,6 @@ def _register_execution_identity_for_test(db_path, decision_id: str) -> str:
                  "config_hash": "c" * 64, "build_generation": "g"},
         requested_ticker="SPY",
         bundle_ticker="SPY",
-        guest_anchor=False,
-        guest_anchor_ticker=None,
         horizons_attempted=["1c"],
         bundles_by_horizon={},
         calibration_by_horizon=None,

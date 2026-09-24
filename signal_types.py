@@ -424,11 +424,6 @@ class SignalOutput:
     calibration_payload: Optional[dict[str, Any]] = None  # writer inputs; server owns persistence timing
     # Display-only wall-clock MC excursions (Key Levels 5m/15m rows); never consumed by The Call.
     mc_display_excursions: Optional[dict[str, Optional[float]]] = None
-    # Guest anchor — provisional ML on non-authoritative tickers (weights from anchor trio).
-    guest_anchor_active: bool = False
-    guest_anchor_weights_ticker: Optional[str] = None
-    guest_anchor_affiliation: Optional[str] = None
-    guest_anchor_rationale: Optional[str] = None
     # MODEL_SERVING_PROVENANCE_SURFACE_V1 — read-only bundle provenance for this
-    # serve (built inside the guest/bundle scopes; visibility only, no behavior).
+    # serve (visibility only, no behavior).
     model_serving_provenance: Optional[dict] = None

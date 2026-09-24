@@ -56,7 +56,7 @@ from json_blob_codec import decode_text_blob, encode_text_blob
 
 log = logging.getLogger(__name__)
 
-ENVELOPE_SCHEMA_VERSION = "1"
+ENVELOPE_SCHEMA_VERSION = "2"   # 2: routing.guest_anchor* removed (L-02)
 REPO_ROOT = Path(__file__).resolve().parent
 CAS_ROOT = REPO_ROOT / "models" / "_artifact_cas"
 
@@ -123,7 +123,7 @@ class ExecutionIdentityError(ValueError):
 REQUIRED_ENVELOPE_KEYS: tuple[str, ...] = (
     "envelope_schema_version",
     "release",        # release_id, git_sha, config_hash, build_generation
-    "routing",        # requested_ticker, bundle_ticker, guest_anchor, horizons
+    "routing",        # requested_ticker, bundle_ticker, horizons
     "bundles",        # per-horizon: manifest sha, per-role artifact sha map, lineage, integrity class
     "calibration",    # per-horizon run/lineage ids, or {"attached": false, "reason": ...}
     "stack_pins",     # feature/preprocessing/label/fusion/regime/mc/rules/ablation identities
@@ -169,8 +169,6 @@ def build_execution_envelope(
     release: dict[str, Any],
     requested_ticker: str,
     bundle_ticker: str,
-    guest_anchor: bool,
-    guest_anchor_ticker: Optional[str],
     horizons_attempted: list[str],
     bundles_by_horizon: dict[str, dict[str, Any]],
     calibration_by_horizon: dict[str, dict[str, Any]] | None,
@@ -210,12 +208,9 @@ def build_execution_envelope(
             # requested_ticker = REQUEST ECHO (what was asked for); explicitly NOT the canonical
             # routing identity and never substituted for it (RC-345/F25).
             "requested_ticker": str(requested_ticker).strip().upper(),
-            # bundle_ticker / guest_anchor_ticker = CANONICAL instrument used for bundle/model/
-            # storage/routing → the one storage-key authority.
+            # bundle_ticker = CANONICAL instrument used for bundle/model/storage/routing →
+            # the one storage-key authority.
             "bundle_ticker": ticker_storage_key(bundle_ticker),
-            "guest_anchor": bool(guest_anchor),
-            "guest_anchor_ticker": (ticker_storage_key(guest_anchor_ticker)
-                                     if guest_anchor_ticker else None),
             "horizons_attempted": sorted(horizons_attempted),
             "horizons_executed": sorted(bundles_by_horizon),
         },
@@ -843,8 +838,6 @@ def anchor_production_execution(
         release=release,
         requested_ticker=requested_ticker,
         bundle_ticker=bundle_ticker,
-        guest_anchor=bool(prov.get("guest_anchor")),
-        guest_anchor_ticker=prov.get("guest_anchor_ticker"),
         horizons_attempted=list(ML_HORIZON_SLUGS),
         bundles_by_horizon=bundles,
         calibration_by_horizon=cal_by_hz,
