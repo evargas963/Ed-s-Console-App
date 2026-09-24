@@ -4612,30 +4612,11 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
 
 
 def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=None):
-    """One forced refresh when weighted_push fields are missing before snapshot persist."""
-    from market_context import missing_confluence_weighted_pushes
-
-    missing = missing_confluence_weighted_pushes(mkt_ctx)
-    if not missing:
-        return mkt_ctx
-    log.warning("Market context missing confluence fields %s — forcing refresh", missing)
-    global _cached_mkt_ctx_ts
-    with _cached_mkt_ctx_lock:
-        _cached_mkt_ctx_ts = 0.0
-    # force_sync: this path just zeroed the cache ts because required
-    # confluence fields are MISSING — a stale-while-refresh serve would
-    # hand back the same incomplete object.
-    fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr, force_sync=True)
-    still = missing_confluence_weighted_pushes(fresh)
-    # A still-missing confluence value stays missing. It used to be patched from the latest
-    # stored confluence_quote_ticks %-change with NO age limit (could be a prior day's) --
-    # audit P0, removed (operator rule 2026-09-23: no fallbacks).
-    if still:
-        log.error(
-            "Confluence fields still missing after refresh: %s (qqq/spy/iwm weighted_push)",
-            still,
-        )
-    return fresh
+    """Retired: index confluence is no longer produced or imputed (T-08..T-15)."""
+    _ = client
+    _ = pcr
+    _ = prev_pcr
+    return mkt_ctx
 
 
 def _live_operator_mode_active() -> bool:

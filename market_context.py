@@ -1,14 +1,17 @@
 """
 market_context.py — External market context for Ed Console.
 
-Fetches VIX, SPY/QQQ, and top constituent quotes via the authenticated Schwab client.
-Uses safe_get_quote per ticker (consistent with existing app patterns).
-All results returned as a MarketContext dataclass — caller manages caching in session_state.
+Fetches VIX (vol regime), optional native vol indices, TNX yield, and
+env-configured index futures. Uses safe_get_quote per ticker.
+All results returned as a MarketContext dataclass — caller manages caching.
+
+The SPY/QQQ/IWM constituent-weight "index confluence" subsystem (hardcoded
+fund tables, weighted pushes, IWM blend, bond_signal, T-08..T-15) is retired.
+A missing value stays missing.
 """
 
 from __future__ import annotations
 import functools
-import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -48,73 +51,16 @@ def configured_index_futures_symbols() -> dict[str, str]:
     return out
 
 
-# ── Top SPY constituents — current weights as of Feb 2026 ────────────────────
-# Source: SPDR SPY holdings. Weights updated periodically — these drive the
-# weighted_push calculation which is the primary confluence signal.
-SPY_TOP = [
-    ("NVDA",  "Nvidia",          0.0748),
-    ("AAPL",  "Apple",           0.0720),
-    ("MSFT",  "Microsoft",       0.0606),
-    ("AMZN",  "Amazon",          0.0385),
-    ("GOOGL", "Alphabet A",      0.0317),
-    ("AVGO",  "Broadcom",        0.0306),
-    ("GOOG",  "Alphabet C",      0.0256),
-    ("META",  "Meta",            0.0237),
-    ("TSLA",  "Tesla",           0.0214),
-]
-
-# Combined weight of the 9 constituents above — used to normalise weighted_push
-# so the output is interpretable as "approx % SPY move from these names alone"
-SPY_TOP_WEIGHT_SUM = sum(w for _, _, w in SPY_TOP)   # ~0.279
-
-# ── QQQ top Nasdaq-100 names (approx index weights; refresh quarterly from fund factsheet)
-QQQ_TOP = [
-    ("NVDA",  "Nvidia",     0.0850),
-    ("AAPL",  "Apple",      0.0750),
-    ("MSFT",  "Microsoft",  0.0570),
-    ("AMZN",  "Amazon",     0.0450),
-    ("TSLA",  "Tesla",      0.0380),
-    ("META",  "Meta",       0.0360),
-    ("GOOGL", "Alphabet A", 0.0340),
-    ("WMT",   "Walmart",    0.0340),
-    ("GOOG",  "Alphabet C", 0.0320),
-    ("AVGO",  "Broadcom",   0.0290),
-]
-QQQ_TOP_WEIGHT_SUM = sum(w for _, _, w in QQQ_TOP)
-
-# ── IWM top holdings (small weights each; Russell 2000 is diffuse — refresh from iShares holdings)
-IWM_TOP_HOLDINGS = [
-    ("BE",   "Bloom Energy",      0.0105),
-    ("FN",   "Fabrinet",         0.0071),
-    ("NXT",  "Nextpower",        0.0062),
-    ("CDE",  "Coeur Mining",     0.0058),
-    ("CRDO", "Credo Tech",       0.0055),
-    ("SATS", "EchoStar",         0.0052),
-    ("KTOS", "Kratos",           0.0047),
-    ("STRL", "Sterling Infra",   0.0044),
-    ("AEIS", "Adv Energy",       0.0041),
-    ("BBIO", "BridgeBio",        0.0039),
-]
-IWM_HOLDINGS_WEIGHT_SUM = sum(w for _, _, w in IWM_TOP_HOLDINGS)
-
-# ── IWM sector proxies — Russell 2000 sector coverage ────────────────────────
-# These 4 ETFs cover ~63% of IWM's weight with meaningful proxies.
-IWM_SECTORS = [
-    ("KRE",  "Financials",   0.18),   # Regional banks — largest IWM sector
-    ("XBI",  "Healthcare",   0.17),   # Biotech/small cap healthcare
-    ("PSCI", "Industrials",  0.17),   # S&P SmallCap Industrials ETF
-    ("XRT",  "Consumer",     0.11),   # Equal-weight retail / consumer disc
-]
-IWM_SECTOR_WEIGHT_SUM = sum(w for _, _, w in IWM_SECTORS)  # ~0.63
+INDEX_CONFLUENCE_RETIRED_REASON = "index_confluence_retired"
 
 
 def market_context_panel_symbols_excluding_core(core_upper: frozenset[str]) -> list[str]:
     """
-    Equity / index symbols whose quotes are pulled every ``fetch_market_context`` cycle for the UI
-    cross-instrument panel (SPY/QQQ/IWM tops, IWM sector ETFs, VIX, 10Y).
+    Symbols quoted every ``fetch_market_context`` cycle for snapshot enrollment.
 
-    Excludes ``core_upper`` so callers do not duplicate ``CORE_TICKERS`` rows in ``logging_universe``.
-    Order is deterministic (tables top-to-bottom, then macro indices).
+    The retired index-confluence roster is gone. Only ``$VIX`` remains (vol regime).
+    Excludes ``core_upper`` so callers do not duplicate ``CORE_TICKERS`` rows.
+    ``$TNX`` stays unenrolled: it has no options chain (RC-495).
     """
     seen: set[str] = set()
     out: list[str] = []
@@ -126,20 +72,7 @@ def market_context_panel_symbols_excluding_core(core_upper: frozenset[str]) -> l
         seen.add(s)
         out.append(s)
 
-    for sym, _, _ in SPY_TOP:
-        add(sym)
-    for sym, _, _ in QQQ_TOP:
-        add(sym)
-    for sym, _, _ in IWM_TOP_HOLDINGS:
-        add(sym)
-    for sym, _, _ in IWM_SECTORS:
-        add(sym)
     add("$VIX")
-    # $TNX (10-Year Treasury yield index, RC-495) is INTENTIONALLY NOT enrolled here: it has
-    # no options chain, so the snapshot logger can never produce a row for it — enrolling it
-    # made it a permanent "enrolled non-collector" against the universal-collection standard.
-    # Its yield still feeds the bond-signal panel via the direct _fetch("$TNX") below (that
-    # quote path is independent of this snapshot-enrollment list).
     return out
 
 
@@ -266,60 +199,33 @@ def _vix_regime(vix: float) -> tuple[str, str, str]:
     }.get(vix_tier_token(vix), ("Normal", "#92400e", "Normal vol — gamma exposure reliable"))
 
 
-def _dot_color(chg_pct: Optional[float]) -> str:
-    if chg_pct is None:   return "#d1d5db"
-    if chg_pct >  0.5:    return "#16a34a"   # strong green
-    if chg_pct >  0.0:    return "#86efac"   # light green
-    if chg_pct > -0.5:    return "#fca5a5"   # light red
-    return "#dc2626"                          # strong red
-
-
 def _last_traded_price(quote: dict, ext: dict, reg: dict) -> Optional[float]:
-    """Most recent actual TRADE, or the regular close only when no trade exists.
+    """``quotes.quote.lastPrice`` only. Missing stays missing (T-11).
 
-    SPOT SEMANTICS (RC-16, 2026-07-19). A "last" ladder may only contain fields that are a
-    real trade. Verified on the wire after hours: `quote.mark` and
-    `reg.regularMarketLastPrice` both read 743.29 (Friday's regular CLOSE) while
-    `quote.lastPrice` read 742.4861 (the true post-market trade). Ranking a close inside a
-    "last" ladder silently reports the previous session's number as the current price.
-
-    `or` chaining was also wrong here: a legitimate 0.0 falls through as falsy.
+    SPOT SEMANTICS (RC-16, 2026-07-19). A last may only be an actual trade.
+    ``quote.mark`` and ``regularMarketLastPrice`` are the regular close, not last.
+    ``extended.lastPrice`` is a different book — substituting it was T-11.
+    ``or`` chaining treated a legitimate 0.0 as absent; 0.0 is not a trade.
     """
-    for candidate in (quote.get("lastPrice"), ext.get("lastPrice")):
-        if candidate is not None and float(candidate) > 0:
-            return candidate
-    # Regular close is a different quantity. It must not become last-traded / current spot.
+    _ = ext
     _ = reg
+    candidate = (quote or {}).get("lastPrice")
+    if candidate is not None and float(candidate) > 0:
+        return candidate
     return None
 
 
 def extract_pct_change(quote: dict, regular: dict, last: Optional[float]) -> Optional[float]:
     """
-    ONE parser for a Schwab quote node's percent-change: quote.netPercentChange, then the
-    regular-session leaf, then a netChange/last derivation (external-key-ok: Schwab /quotes
-    leaves quotes.netPercentChange / regular.regularMarketPercentChange /
-    quotes.netChange / regular.regularMarketNetChange, per schwab_field_dictionary.csv).
+    ONE parser: ``quotes.quote.netPercentChange`` only (T-09). Missing stays missing.
 
-    Shared by _extract_quote below (SPY/QQQ/IWM/sectors/constituents/futures) and
-    server._parse_quote_node_session_fields (any other ticker) — the formula existed in
-    both files as two separately-maintained copies until this extraction (caught in
-    review); now there is exactly one, called from both.
+    Shared by ``_extract_quote`` and ``server._parse_quote_node_session_fields``.
+    ``regular`` / ``last`` stay in the signature so callers do not grow a second parser.
     """
     from numeric_contract import float_finite_or_none as _fin
-    q = quote or {}
-    r = regular or {}
-    pct_chg = _fin(q.get("netPercentChange"))
-    if pct_chg is None:
-        pct_chg = _fin(r.get("regularMarketPercentChange"))
-    if pct_chg is not None:
-        return pct_chg  # already finite via the canonical reader above
-    net_chg = _fin(q.get("netChange"))
-    if net_chg is None:
-        net_chg = _fin(r.get("regularMarketNetChange"))
-    if net_chg is not None and last and (float(last) - net_chg) != 0:
-        # single source: finite netChange (a NaN change would produce a NaN pct)
-        return net_chg / (float(last) - net_chg) * 100.0
-    return None
+    _ = regular
+    _ = last
+    return _fin((quote or {}).get("netPercentChange"))
 
 
 def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional[float]]:
@@ -339,264 +245,25 @@ def _extract_quote(symbol: str, q_json: dict) -> tuple[Optional[float], Optional
         return None, None
 
 
-def _build_confluence(constituents: list, weight_sum_ref: float,
-                      mod_thr: float = 0.15, strong_thr: float = 0.30) -> ConfluenceRead:
-    """
-    Cap-weighted participation: sum(weight_i * chg_pct_i), normalised to weight_sum_ref.
-
-    weight_sum_ref: SPY_TOP_WEIGHT_SUM, QQQ_TOP_WEIGHT_SUM, or IWM_HOLDINGS_WEIGHT_SUM.
-    Thresholds (mod_thr / strong_thr) are in the same units as SPY top-9 read (~pct points).
-    """
-    push        = 0.0
-    weight_used = 0.0
-    greens      = 0
-    total       = 0
-
-    for cq in constituents:
-        total += 1
-        if cq.chg_pct is not None:
-            contrib      = cq.weight * cq.chg_pct
-            cq.contribution = contrib
-            push         += contrib
-            weight_used  += cq.weight
-            if cq.chg_pct > 0:
-                greens += 1
-
-    if weight_used > 0 and weight_used < weight_sum_ref * 0.5:
-        push = push / weight_used * weight_sum_ref
-
-    weighted_push = round(push, 3) if weight_used > 0 else None
-
-    if weighted_push is None:
-        label, color = "No data", "#9ca3af"
-    elif weighted_push >  strong_thr:
-        label, color = "Strong bull confluence", "#166534"
-    elif weighted_push >  mod_thr:
-        label, color = "Moderate bull confluence", "#92400e"
-    elif weighted_push < -strong_thr:
-        label, color = "Strong bear confluence", "#991b1b"
-    elif weighted_push < -mod_thr:
-        label, color = "Moderate bear confluence", "#b45309"
-    else:
-        label, color = "Mixed — no clear directional confluence", "#6b7280"
-
-    return ConfluenceRead(
-        weighted_push=weighted_push,
-        dot_count_green=greens,
-        dot_count_total=total,
-        label=label,
-        color=color,
-    )
-
-
-def _build_iwm_confluence(sectors: list) -> ConfluenceRead:
-    """
-    Compute weighted push from IWM sector proxies.
-    Same logic as _build_confluence but uses IWM_SECTOR_WEIGHT_SUM.
-    """
-    push        = 0.0
-    weight_used = 0.0
-    greens      = 0
-    total       = 0
-
-    for sq in sectors:
-        total += 1
-        if sq.chg_pct is not None:
-            contrib       = sq.weight * sq.chg_pct
-            sq.contribution = contrib
-            push         += contrib
-            weight_used  += sq.weight
-            if sq.chg_pct > 0:
-                greens += 1
-
-    if weight_used > 0 and weight_used < IWM_SECTOR_WEIGHT_SUM * 0.5:
-        push = push / weight_used * IWM_SECTOR_WEIGHT_SUM
-
-    weighted_push = round(push, 3) if weight_used > 0 else None
-
-    if weighted_push is None:
-        label, color = "No data", "#9ca3af"
-    elif weighted_push >  0.20:
-        label, color = "Risk ON — sectors bullish", "#166534"
-    elif weighted_push >  0.08:
-        label, color = "Mild risk ON", "#92400e"
-    elif weighted_push < -0.20:
-        label, color = "Risk OFF — sectors bearish", "#991b1b"
-    elif weighted_push < -0.08:
-        label, color = "Mild risk OFF", "#b45309"
-    else:
-        label, color = "Neutral — mixed sectors", "#6b7280"
-
-    return ConfluenceRead(
-        weighted_push=weighted_push,
-        dot_count_green=greens,
-        dot_count_total=total,
-        label=label,
-        color=color,
-    )
-
-
-# Snapshot column for each symbol used in confluence backfill / row recompute.
-#
-# Independent-review finding (2026-09-12), REPRODUCED: GOOG used to point at this same
-# googl_chg_pct column. GOOG (Alphabet class C) and GOOGL (Alphabet class A) are distinct
-# instruments with their own weights in SPY_TOP/QQQ_TOP below and can genuinely diverge
-# intraday -- aliasing GOOG onto GOOGL's column made snapshot_row_chg_map() report
-# out["GOOG"] == out["GOOGL"] always, so weighted_push_from_constituents() double-counted
-# GOOGL's move (once at each symbol's weight) and silently discarded GOOG's own. GOOG now
-# has its own db.py column (goog_chg_pct), written from its own quote, same as every other
-# constituent here.
-SYMBOL_TO_SNAPSHOT_CHG_COL: dict[str, str] = {
-    "NVDA": "nvda_chg_pct",
-    "AAPL": "aapl_chg_pct",
-    "MSFT": "msft_chg_pct",
-    "AMZN": "amzn_chg_pct",
-    "GOOGL": "googl_chg_pct",
-    "GOOG": "goog_chg_pct",
-    "AVGO": "avgo_chg_pct",
-    "META": "meta_chg_pct",
-    "TSLA": "tsla_chg_pct",
-    "KRE": "kre_chg_pct",
-    "XBI": "xbi_chg_pct",
-    "PSCI": "psci_chg_pct",
-    "XRT": "xrt_chg_pct",
-}
-
-
-def _float_chg(v: Any) -> Optional[float]:
-    if v is None:
-        return None
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(f):
-        return None
-    return f
-
-
-def weighted_push_from_constituents(
-    chg_by_symbol: Mapping[str, Optional[float]],
-    constituents: list[tuple[str, str, float]],
-    weight_sum_ref: float,
-) -> Optional[float]:
-    """Cap-weighted push from symbol→chg map (same math as ``_build_confluence``)."""
-    push = 0.0
-    weight_used = 0.0
-    for sym, _name, weight in constituents:
-        chg = _float_chg(chg_by_symbol.get(sym))
-        if chg is None:
-            continue
-        push += weight * chg
-        weight_used += weight
-    if weight_used <= 0:
-        return None
-    if weight_used < weight_sum_ref * 0.5:
-        push = push / weight_used * weight_sum_ref
-    return round(push, 3)
-
-
-def snapshot_row_chg_map(row: Mapping[str, Any]) -> dict[str, Optional[float]]:
-    """Build symbol→chg_pct from a snapshot / normalized row dict."""
-    out: dict[str, Optional[float]] = {}
-    for sym, col in SYMBOL_TO_SNAPSHOT_CHG_COL.items():
-        out[sym] = _float_chg(row.get(col))
-    return out
-
-
-IWM_BLEND_HOLDINGS_WEIGHT = 0.55
-IWM_BLEND_SECTOR_WEIGHT = 0.45
-
-
-def confluence_backfill_symbols() -> frozenset[str]:
-    """All symbols needed to recompute spy/qqq/iwm weighted_push (live-path parity)."""
-    out: set[str] = set()
-    for sym, _name, _w in SPY_TOP + QQQ_TOP + IWM_TOP_HOLDINGS + IWM_SECTORS:
-        out.add(sym.upper())
-    return frozenset(out)
-
-
-def symbols_without_snapshot_chg_col() -> frozenset[str]:
-    """Panel / QQQ / IWM names with no dedicated ``snapshots.*_chg_pct`` column."""
-    return confluence_backfill_symbols() - frozenset(SYMBOL_TO_SNAPSHOT_CHG_COL.keys())
-
-
-def merged_snapshot_chg_map(
-    row: Mapping[str, Any],
-    extra_chg: Mapping[str, Optional[float]] | None = None,
-) -> dict[str, Optional[float]]:
-    """Row chg map enriched with ``confluence_quote_ticks`` (or live quote) gaps."""
-    chg = snapshot_row_chg_map(row)
-    if not extra_chg:
-        return chg
-    for sym, raw in extra_chg.items():
-        s = (sym or "").upper().strip()
-        if not s:
-            continue
-        fv = _float_chg(raw)
-        if fv is None:
-            continue
-        col = SYMBOL_TO_SNAPSHOT_CHG_COL.get(s)
-        if col is None or chg.get(s) is None:
-            chg[s] = fv
-    return chg
-
-
-def blend_iwm_weighted_push(
-    holdings_push: Optional[float],
-    sector_push: Optional[float],
-) -> Optional[float]:
-    """Same 55/45 blend as ``iwm_blended_participation_push`` on scalar pushes."""
-    try:
-        if holdings_push is not None and sector_push is not None:
-            return round(
-                IWM_BLEND_HOLDINGS_WEIGHT * float(holdings_push)
-                + IWM_BLEND_SECTOR_WEIGHT * float(sector_push),
-                4,
-            )
-        if holdings_push is not None:
-            return round(float(holdings_push), 4)
-        if sector_push is not None:
-            return round(float(sector_push), 4)
-    except (TypeError, ValueError):
-        pass
-    return None
-
-
 def weighted_pushes_from_snapshot_row(
     row: Mapping[str, Any],
     *,
     extra_chg: Mapping[str, Optional[float]] | None = None,
 ) -> dict[str, Optional[float]]:
-    """Recompute spy/qqq/iwm weighted_push columns (live-path parity).
-
-    QQQ needs symbols without snapshot columns (e.g. WMT) via ``extra_chg``.
-    IWM uses holdings + sector blend — not sector-only.
-    """
-    chg = merged_snapshot_chg_map(row, extra_chg)
-    spy = weighted_push_from_constituents(chg, SPY_TOP, SPY_TOP_WEIGHT_SUM)
-    qqq = weighted_push_from_constituents(chg, QQQ_TOP, QQQ_TOP_WEIGHT_SUM)
-    iwm_h = weighted_push_from_constituents(chg, IWM_TOP_HOLDINGS, IWM_HOLDINGS_WEIGHT_SUM)
-    iwm_s = weighted_push_from_constituents(
-        chg,
-        [(s, n, w) for s, n, w in IWM_SECTORS],
-        IWM_SECTOR_WEIGHT_SUM,
-    )
-    iwm = blend_iwm_weighted_push(iwm_h, iwm_s)
-    return {"spy_weighted_push": spy, "qqq_weighted_push": qqq, "iwm_weighted_push": iwm}
+    """Retired: never recompute a weighted push from partial or aged constituent chg (T-15)."""
+    _ = row
+    _ = extra_chg
+    return {
+        "spy_weighted_push": None,
+        "qqq_weighted_push": None,
+        "iwm_weighted_push": None,
+    }
 
 
 def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
-    """
-    Russell 2000 tape participation for the stack: blend top-holdings confluence
-    with sector-proxy confluence (IWM is diffuse — ~55% weight on named holdings,
-    ~45% on sector ETFs). Falls back to whichever side has data.
-    """
-    hcf = getattr(ctx, "iwm_holdings_confluence", None)
-    scf = getattr(ctx, "iwm_confluence", None)
-    h = getattr(hcf, "weighted_push", None) if hcf is not None else None
-    s = getattr(scf, "weighted_push", None) if scf is not None else None
-    return blend_iwm_weighted_push(h, s)
+    """Retired (T-13). One side standing in for the other is a fallback."""
+    _ = ctx
+    return None
 
 
 def _derive_session() -> str:
@@ -631,16 +298,12 @@ def _derive_session() -> str:
 def resolve_chg_pct(ticker: str, rest_chg_pct: Optional[float], *,
                      stream_chg_pct_fn: Optional[Callable[[str], Optional[float]]] = None) -> Optional[float]:
     """
-    ONE authority for percent-change source precedence, for ANY ticker: streaming wins
-    when present, REST-derived value is the fallback. Every caller that needs a ticker's
-    chg_pct (the sentinel fetch below, /api/fast-quote, /api/live/state, the L1/SSE
-    payload) goes through this single function so "which value wins" is decided once,
-    not re-implemented per call site.
+    Stream percent-change or None (T-10). REST is not a substitute.
 
-    stream_chg_pct_fn defaults to app.options.order_flow.state.get_stream_chg_pct
-    (imported lazily to avoid a hard dependency at module load); callers may inject a
-    fake for testing, same as fetch_market_context already does below.
+    ``rest_chg_pct`` stays in the signature so callers do not grow a second parser.
+    stream_chg_pct_fn defaults to app.options.order_flow.state.get_stream_chg_pct.
     """
+    _ = rest_chg_pct
     fn = stream_chg_pct_fn
     if fn is None:
         try:
@@ -654,7 +317,7 @@ def resolve_chg_pct(ticker: str, rest_chg_pct: Optional[float], *,
                 return stream_chg
         except Exception as e:
             log.debug("resolve_chg_pct: stream_chg_pct_fn failed for %s: %s", ticker, e)
-    return rest_chg_pct
+    return None
 
 
 def fetch_market_context(client, safe_get_quote_fn,
@@ -662,10 +325,8 @@ def fetch_market_context(client, safe_get_quote_fn,
                          prev_pcr: Optional[float] = None,
                          stream_chg_pct_fn: Optional[Callable[[str], Optional[float]]] = None) -> MarketContext:
     """
-    Fetch market context. safe_get_quote_fn is the already-imported safe_get_quote.
-    stream_chg_pct_fn: when provided (e.g. get_stream_chg_pct), uses stream
-        REGULAR_MARKET_CHANGE_PERCENT/CHANGE_PERCENT as primary over REST-derived chg_pct.
-    Never raises — returns partial context on any error.
+    Fetch VIX, optional vol indices, TNX yield, and env-configured futures.
+    Index-confluence roster fetches are retired. Never raises — partial on error.
     """
     ctx    = MarketContext(pcr=pcr)
     errors = []
@@ -679,10 +340,6 @@ def fetch_market_context(client, safe_get_quote_fn,
             errors.append(f"{sym}: {e}")
         return {}
 
-    # NATIVE partial application (functools), not a hand-written forwarding function: the
-    # 8 call sites below only need stream_chg_pct_fn bound once, not a new function whose
-    # sole job is "call resolve_chg_pct with one argument already filled in" (caught in
-    # review — a forwarding function needs its own necessity proof; this doesn't).
     _chg_for = functools.partial(resolve_chg_pct, stream_chg_pct_fn=stream_chg_pct_fn)
 
     # VIX — macro fear gauge; legacy ctx.vix semantics frozen (DUAL_GAUGE_HYBRID macro arm).
@@ -708,92 +365,12 @@ def fetch_market_context(client, safe_get_quote_fn,
     if rvx_last:
         ctx.rvx = rvx_last
 
-    # SPY
-    spy_json = _fetch("SPY")
-    ctx.spy_last, _spy_chg = _extract_quote("SPY", spy_json)
-    ctx.spy_chg_pct = _chg_for("SPY", _spy_chg)
-
-    # QQQ
-    qqq_json = _fetch("QQQ")
-    ctx.qqq_last, _qqq_chg = _extract_quote("QQQ", qqq_json)
-    ctx.qqq_chg_pct = _chg_for("QQQ", _qqq_chg)
-
-    # IWM
-    iwm_json = _fetch("IWM")
-    ctx.iwm_last, _iwm_chg = _extract_quote("IWM", iwm_json)
-    ctx.iwm_chg_pct = _chg_for("IWM", _iwm_chg)
-
-    # IWM sector proxies — KRE, XBI, PSCI, XRT
-    for sym, label, weight in IWM_SECTORS:
-        j = _fetch(sym)
-        last, chg = _extract_quote(sym, j)
-        chg = _chg_for(sym, chg)
-        ctx.iwm_sectors.append(SectorQuote(
-            symbol=sym, label=label, weight=weight,
-            last=last, chg_pct=chg, dot_color=_dot_color(chg),
-        ))
-    ctx.iwm_confluence = _build_iwm_confluence(ctx.iwm_sectors)
-
-    # TNX — 10-Year Treasury Yield
+    # TNX — 10-Year Treasury Yield. bond_signal is retired (T-08): never guessed.
     tnx_json = _fetch("$TNX")
     tnx_last, tnx_chg = _extract_quote("$TNX", tnx_json)
     if tnx_last:
         ctx.tnx_yield = tnx_last
         ctx.tnx_chg = tnx_chg
-        # Bond signal interpretation:
-        # Yields falling = bonds buying = flight to safety (risk-off for equities)
-        # Yields rising  = bonds selling = risk appetite OR rate stress
-        # Context from VIX matters: yields falling + VIX rising = pure risk-off
-        #                            yields rising + VIX low = healthy risk-on
-        #                            yields rising + VIX high = rate stress
-        if tnx_chg is not None:
-            if tnx_chg < -0.5:  # yields dropping fast
-                ctx.bond_signal = "flight_to_safety"
-            elif tnx_chg < -0.15:
-                ctx.bond_signal = "flight_to_safety" if (ctx.vix and ctx.vix > 20) else "neutral"
-            elif tnx_chg > 0.5:  # yields spiking
-                ctx.bond_signal = "rate_stress" if (ctx.vix and ctx.vix > 22) else "risk_on"
-            elif tnx_chg > 0.15:
-                ctx.bond_signal = "risk_on"
-            else:
-                ctx.bond_signal = "neutral"
-
-    # Constituents — fetch all 9, build ConstituentQuote list
-    for sym, label, weight in SPY_TOP:
-        j = _fetch(sym)
-        last, chg = _extract_quote(sym, j)
-        chg = _chg_for(sym, chg)
-        ctx.constituents.append(ConstituentQuote(
-            symbol=sym, label=label, weight=weight,
-            last=last, chg_pct=chg, dot_color=_dot_color(chg),
-        ))
-
-    # Weighted confluence — computed after all constituents are populated
-    ctx.confluence = _build_confluence(ctx.constituents, SPY_TOP_WEIGHT_SUM)
-
-    # QQQ — top Nasdaq-100 holdings (participation, not “3 ETFs agree”)
-    for sym, label, weight in QQQ_TOP:
-        j = _fetch(sym)
-        last, chg = _extract_quote(sym, j)
-        chg = _chg_for(sym, chg)
-        ctx.qqq_constituents.append(ConstituentQuote(
-            symbol=sym, label=label, weight=weight,
-            last=last, chg_pct=chg, dot_color=_dot_color(chg),
-        ))
-    ctx.qqq_confluence = _build_confluence(ctx.qqq_constituents, QQQ_TOP_WEIGHT_SUM)
-
-    # IWM — top individual Russell names (diffuse index; ~5–6% of fund from top 10)
-    for sym, label, weight in IWM_TOP_HOLDINGS:
-        j = _fetch(sym)
-        last, chg = _extract_quote(sym, j)
-        chg = _chg_for(sym, chg)
-        ctx.iwm_holdings.append(ConstituentQuote(
-            symbol=sym, label=label, weight=weight,
-            last=last, chg_pct=chg, dot_color=_dot_color(chg),
-        ))
-    ctx.iwm_holdings_confluence = _build_confluence(
-        ctx.iwm_holdings, IWM_HOLDINGS_WEIGHT_SUM, mod_thr=0.03, strong_thr=0.06,
-    )
 
     # Index futures (ES / NQ / RTY) — same quote path as equities; symbol must be explicit contract.
     for leg, sym in configured_index_futures_symbols().items():
@@ -1073,65 +650,32 @@ def fetch_price_levels(
 
 
 def missing_confluence_weighted_pushes(ctx: MarketContext) -> list[str]:
-    """DB column names missing from MarketContext (empty = all three pushes present)."""
-    missing: list[str] = []
-    spy = getattr(getattr(ctx, "confluence", None), "weighted_push", None)
-    qqq = getattr(getattr(ctx, "qqq_confluence", None), "weighted_push", None)
-    iwm = iwm_blended_participation_push(ctx)
-    if spy is None:
-        missing.append("spy_weighted_push")
-    if qqq is None:
-        missing.append("qqq_weighted_push")
-    if iwm is None:
-        missing.append("iwm_weighted_push")
-    return missing
-
-
-def _confluence_push_or_none(read: "ConfluenceRead | None") -> float | None:
-    """Typed absence: missing/non-finite push is None. Measured 0.0 stays 0.0. (RC-365/F39)"""
-    raw = getattr(read, "weighted_push", None) if read is not None else None
-    try:
-        val = float(raw)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(val):
-        return None
-    return val
+    """Retired: no weighted-push field is required, so nothing is "missing"."""
+    _ = ctx
+    return []
 
 
 def stamp_confluence_display_fields(mkt_ctx: "MarketContext | None") -> dict[str, object]:
-    """Map MarketContext confluence reads to /api/state. Absent push → None, not 0. (RC-365/F39)"""
-    ctx = mkt_ctx
-    _cf = getattr(ctx, "confluence", None) if ctx is not None else None
-    _qcf = getattr(ctx, "qqq_confluence", None) if ctx is not None else None
-    _icf = getattr(ctx, "iwm_confluence", None) if ctx is not None else None
-    _ihcf = getattr(ctx, "iwm_holdings_confluence", None) if ctx is not None else None
-
-    spy_push = _confluence_push_or_none(_cf)
-    out: dict[str, object] = {
-        "cf_weighted_push": spy_push,
-        "cf_label": getattr(_cf, "label", "—") if _cf is not None else "—",
-        "cf_color": getattr(_cf, "color", "#9ca3af") if _cf is not None else "#9ca3af",
-        "qqq_cf_weighted_push": _confluence_push_or_none(_qcf),
-        "qqq_cf_label": getattr(_qcf, "label", "—") if _qcf is not None else "—",
-        "qqq_cf_color": getattr(_qcf, "color", "#9ca3af") if _qcf is not None else "#9ca3af",
-        "iwm_holdings_cf_push": _confluence_push_or_none(_ihcf),
-        "iwm_holdings_cf_label": getattr(_ihcf, "label", "—") if _ihcf is not None else "—",
-        "iwm_holdings_cf_color": getattr(_ihcf, "color", "#9ca3af") if _ihcf is not None else "#9ca3af",
-        "iwm_cf_push": _confluence_push_or_none(_icf),
-        "iwm_cf_label": getattr(_icf, "label", "—") if _icf is not None else "—",
-        "iwm_cf_color": getattr(_icf, "color", "#9ca3af") if _icf is not None else "#9ca3af",
-        "iwm_participation_push": (
-            iwm_blended_participation_push(ctx) if ctx is not None else None
-        ),
+    """ONE /api/state faucet for retired index-confluence keys (F39). Always withheld."""
+    _ = mkt_ctx
+    return {
+        "cf_weighted_push": None,
+        "cf_label": "—",
+        "cf_color": "#9ca3af",
+        "cf_unavailable_reason": INDEX_CONFLUENCE_RETIRED_REASON,
+        "qqq_cf_weighted_push": None,
+        "qqq_cf_label": "—",
+        "qqq_cf_color": "#9ca3af",
+        "iwm_holdings_cf_push": None,
+        "iwm_holdings_cf_label": "—",
+        "iwm_holdings_cf_color": "#9ca3af",
+        "iwm_cf_push": None,
+        "iwm_cf_label": "—",
+        "iwm_cf_color": "#9ca3af",
+        "iwm_participation_push": None,
+        "cf_dot_green": None,
+        "cf_dot_total": None,
     }
-    if spy_push is None:
-        out["cf_dot_green"] = None
-        out["cf_dot_total"] = None
-    else:
-        out["cf_dot_green"] = getattr(_cf, "dot_count_green", None)
-        out["cf_dot_total"] = getattr(_cf, "dot_count_total", None)
-    return out
 
 
 def confluence_quote_rows_from_context(
@@ -1140,7 +684,7 @@ def confluence_quote_rows_from_context(
     ts_utc: float,
     ts_et: str,
 ) -> list[dict[str, Any]]:
-    """Thin quote rows for panel / constituent symbols (not full snapshots)."""
+    """Thin quote rows for remaining context symbols (VIX; TNX when quoted)."""
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -1159,22 +703,8 @@ def confluence_quote_rows_from_context(
             }
         )
 
-    for sym, chg, last in (
-        ("SPY", ctx.spy_chg_pct, ctx.spy_last),
-        ("QQQ", ctx.qqq_chg_pct, ctx.qqq_last),
-        ("IWM", ctx.iwm_chg_pct, ctx.iwm_last),
-        ("$VIX", None, ctx.vix),
-    ):
-        add(sym, last, chg)
+    add("$VIX", ctx.vix, None)
     if ctx.tnx_yield is not None:
         add("$TNX", ctx.tnx_yield, ctx.tnx_chg)
-    for cq in ctx.constituents or []:
-        add(cq.symbol, cq.last, cq.chg_pct)
-    for cq in ctx.qqq_constituents or []:
-        add(cq.symbol, cq.last, cq.chg_pct)
-    for cq in ctx.iwm_holdings or []:
-        add(cq.symbol, cq.last, cq.chg_pct)
-    for sq in ctx.iwm_sectors or []:
-        add(sq.symbol, sq.last, sq.chg_pct)
     return rows
 

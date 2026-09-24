@@ -20,14 +20,11 @@ def test_extract_pct_change_prefers_net_percent_change():
     assert mc.extract_pct_change({"netPercentChange": 1.23}, {}, 100.0) == 1.23
 
 
-def test_extract_pct_change_falls_back_to_regular_session_leaf():
-    assert mc.extract_pct_change({}, {"regularMarketPercentChange": 0.45}, 100.0) == 0.45
-
-
-def test_extract_pct_change_derives_from_net_change_when_no_percent_leaf():
-    # last=102, netChange=2 -> prior close 100 -> +2.0%
+def test_extract_pct_change_does_not_use_regular_or_derived():
+    """T-09: regular-session leaf and netChange derivation are not substitutes."""
+    assert mc.extract_pct_change({}, {"regularMarketPercentChange": 0.45}, 100.0) is None
     got = mc.extract_pct_change({"netChange": 2.0}, {}, 102.0)
-    assert got is not None and abs(got - 2.0) < 1e-9
+    assert got is None
 
 
 def test_extract_pct_change_preserves_a_real_zero():
@@ -61,16 +58,16 @@ def test_resolve_chg_pct_preserves_a_real_zero_from_stream():
     assert got == 0.0
 
 
-def test_resolve_chg_pct_falls_back_to_rest_when_stream_absent():
-    got = mc.resolve_chg_pct("SPY", 3.21, stream_chg_pct_fn=lambda t: None)
-    assert got == 3.21
+def test_resolve_chg_pct_does_not_use_rest_when_stream_absent():
+    """T-10: REST is not a substitute for a missing stream percent-change."""
+    got = mc.resolve_chg_pct("ZZZTEST_NOT_A_REAL_SYMBOL", 3.21, stream_chg_pct_fn=lambda t: None)
+    assert got is None
 
 
 def test_resolve_chg_pct_is_generic_not_a_preferred_symbol_map():
-    """No branch on ticker identity -- an arbitrary, never-listed symbol resolves the
-    same way SPY does."""
-    got = mc.resolve_chg_pct("ZZZTEST_NOT_A_REAL_SYMBOL", 4.56, stream_chg_pct_fn=lambda t: None)
-    assert got == 4.56
+    """No branch on ticker identity -- an arbitrary symbol resolves the same way."""
+    got = mc.resolve_chg_pct("ZZZTEST_NOT_A_REAL_SYMBOL", 4.56, stream_chg_pct_fn=lambda t: 1.5)
+    assert got == 1.5
 
 
 def test_live_state_never_backfills_chg_pct_from_rest(monkeypatch):
