@@ -45,7 +45,7 @@ def test_r004_missing_validation_blocks_directional(release_ready, tmp_path, mon
     monkeypatch.setattr(db_mod, "DB_PATH", tmp_path / "r004_noval.db")
     ms = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "long",
         "signals_engine_failed": False,
     }

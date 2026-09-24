@@ -7890,8 +7890,11 @@ def _fetch_state(
     from trade_impacting_gate import resolve_fetch_state_decision_route, validate_trade_impacting_gate
 
     _decision_route = resolve_fetch_state_decision_route(update_source)
+    # the ticker's own streamed prior close (LEVELONE CLOSE_PRICE) -- the wrong-price band's anchor
+    _prior_close = (_lmp.get_quote(ticker) or {}).get("prior_close")
     _emission_gate = validate_trade_impacting_gate(
-        {"ticker": ticker, "spot": spot_f, "spread_age_ms": _quote_spread_age_ms},
+        {"ticker": ticker, "spot": spot_f, "spread_age_ms": _quote_spread_age_ms,
+         "prior_close": _prior_close},
         route=_decision_route,
     )
     try:
@@ -9445,6 +9448,7 @@ def _fetch_state(
     ms_dict["smart_money_score"]     = _smart_money.get("score")
     ms_dict["smart_money_direction"] = _smart_money.get("direction")
     ms_dict["smart_money_label"]     = _smart_money.get("label")
+    ms_dict["prior_close"]           = _prior_close
     ms_dict["iv_model_spread"]       = _iv_model_spread.get("spread")
     ms_dict["iv_model_spread_label"] = _iv_model_spread.get("label")
 

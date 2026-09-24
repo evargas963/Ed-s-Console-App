@@ -23,7 +23,7 @@ def test_stamp_decision_bundle_increments_on_success(monkeypatch):
     md = {
         "signals_engine_failed": False,
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "validation_summary": "batch2_stamp_ok",
     }

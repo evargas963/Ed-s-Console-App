@@ -40,7 +40,7 @@ def test_decisions_carry_release_id(tmp_path, monkeypatch):
 
     initialize_release_at_startup(force=True)
     ms = stamp_decision_bundle(
-        {"ticker": "SPY", "spot": 500.0, "call_signal": "wait", "validation_summary": "ok"},
+        {"ticker": "SPY", "spot": 500.0, "prior_close": 500.0, "call_signal": "wait", "validation_summary": "ok"},
         route="server._fetch_state",
     )
     assert ms["release_id"]

@@ -104,10 +104,14 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     mark = _positive_float(item.get("MARK"))
     bid = _positive_float(item.get("BID_PRICE"))
     ask = _positive_float(item.get("ASK_PRICE"))
+    close_px = _positive_float(item.get("CLOSE_PRICE"))
 
     with _lock:
         prev = _by_ticker.get(t)
         pspot = prev.get("spot") if prev else None
+        # CLOSE_PRICE (the prior session's close) is sent when it changes, like every
+        # LEVELONE field; between sends the last one Schwab sent stands.
+        prior_close = close_px if close_px is not None else (prev.get("prior_close") if prev else None)
         pbid = prev.get("bid") if prev else None
         pask = prev.get("ask") if prev else None
         prev_spot_source = None
@@ -217,6 +221,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
         "server_received_ts": server_received_ts,
         "spot_received_ts": spot_received_ts,
+        "prior_close": prior_close,
         "quote_ingestion": "schwab_streaming_level_one",
         "quote_source_detail": {
             "spot": spot_source,

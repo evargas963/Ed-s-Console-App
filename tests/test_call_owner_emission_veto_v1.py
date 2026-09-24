@@ -90,7 +90,7 @@ def test_baseline_setup_is_directional_and_no_fact_is_not_a_veto():
 def test_owner_vetoes_on_quarantine_and_carries_the_reasons():
     inp = dataclasses.replace(
         _inp(), production_emission_allowed=False,
-        emission_block_reasons=("price_out_of_sanity_range:0.01 not in [50.0, 2000.0] for SPY",),
+        emission_block_reasons=("price_out_of_sanity_range:0.01 not in [225.0000, 900.0000] (0.5x-2x prior close 450.0) for SPY",),
     )
     call = _call(inp)
     assert call.signal == "wait"
@@ -106,10 +106,11 @@ def test_owner_vetoes_on_quarantine_and_carries_the_reasons():
 
 def test_non_production_route_and_bad_spot_fail_closed_through_the_owner():
     for facts, route in (
-        ({"ticker": "SPY", "spot": 450.0, "spread_age_ms": 0}, "server.api.debug_prediction"),
-        ({"ticker": "SPY", "spot": 0.01, "spread_age_ms": 0}, "server._fetch_state"),
-        ({"ticker": "SPY", "spot": 450.0, "spread_age_ms": 10_000_000}, "server._fetch_state"),
-        ({"ticker": "SPY", "spot": 450.0, "spread_age_ms": 0}, "server._fetch_state.no_valid_expiry"),
+        ({"ticker": "SPY", "spot": 450.0, "prior_close": 450.0, "spread_age_ms": 0}, "server.api.debug_prediction"),
+        ({"ticker": "SPY", "spot": 0.01, "spread_age_ms": 0, "prior_close": 450.0}, "server._fetch_state"),
+        ({"ticker": "NFLX", "spot": 0.01, "spread_age_ms": 0, "prior_close": 1200.0}, "server._fetch_state"),
+        ({"ticker": "SPY", "spot": 450.0, "prior_close": 450.0, "spread_age_ms": 10_000_000}, "server._fetch_state"),
+        ({"ticker": "SPY", "spot": 450.0, "prior_close": 450.0, "spread_age_ms": 0}, "server._fetch_state.no_valid_expiry"),
     ):
         g = validate_trade_impacting_gate(facts, route=route)
         assert g.production_emission_allowed is False, (facts, route)
@@ -117,7 +118,7 @@ def test_non_production_route_and_bad_spot_fail_closed_through_the_owner():
                                   emission_block_reasons=tuple(g.reasons))
         call = _call(inp)
         assert call.signal == "wait" and call.wait_blocker["reason"] == WAIT_BLOCKER_REASON_EMISSION, route
-    ok = validate_trade_impacting_gate({"ticker": "SPY", "spot": 450.0, "spread_age_ms": 0}, route="server._fetch_state")
+    ok = validate_trade_impacting_gate({"ticker": "SPY", "spot": 450.0, "prior_close": 450.0, "spread_age_ms": 0}, route="server._fetch_state")
     assert ok.production_emission_allowed is True
     assert _call(dataclasses.replace(_inp(), production_emission_allowed=True,
                                      emission_block_reasons=tuple(ok.reasons))).signal == "long"
@@ -126,7 +127,7 @@ def test_non_production_route_and_bad_spot_fail_closed_through_the_owner():
 # ── the gate stamps facts and blocks; it rewrites no verdict field ────────────────────────
 
 def test_apply_gate_rewrites_no_verdict_field_on_quarantine():
-    ms = {"ticker": "SPY", "spot": 0.01, "call_signal": "long", "call_conviction": "high",
+    ms = {"ticker": "SPY", "spot": 0.01, "prior_close": 450.0, "call_signal": "long", "call_conviction": "high",
           "validation_summary": "risk_ok", "call": {"signal": "long"}}
     before = dict(ms)
     result = apply_trade_impacting_gate(ms, route="server._fetch_state")
@@ -138,7 +139,7 @@ def test_apply_gate_rewrites_no_verdict_field_on_quarantine():
 
 
 def test_stale_cache_serve_blocks_actionability_and_manufactures_no_wait():
-    md = {"ticker": "SPY", "spot": 500.0, "call_signal": "short", "call_conviction": "medium",
+    md = {"ticker": "SPY", "spot": 500.0, "prior_close": 500.0, "call_signal": "short", "call_conviction": "medium",
           "validation_summary": "risk_ok"}
     out = revalidate_cached_decision(md, route="server._tier_c_analytics_json_response", stale=True)
     assert out["tier_c_cache_gate_ok"] is False
@@ -284,3 +285,16 @@ def test_verdict_roots_close_on_compute_call_with_the_gate_as_input():
     assert "trade_impacting_gate.py:validate_trade_impacting_gate" in row.producer_refs
     gate = idx[("trade_impacting_gate.py", "validate_trade_impacting_gate")]
     assert gate.producer_refs == ("server.py:_fetch_state",)
+
+
+def test_the_wrong_price_band_is_one_rule_for_every_ticker():
+    """Universality (operator 2026-09-23): the band is 0.5x-2x the ticker's OWN prior close,
+    for every ticker -- no name-keyed bounds table."""
+    from trade_impacting_gate import assess_spot_price
+    for tk, close in (("SPY", 450.0), ("NFLX", 1200.0), ("$SPX", 6500.0), ("SIRI", 3.1)):
+        assert assess_spot_price(tk, close * 1.01, close)[0] is True
+        assert assess_spot_price(tk, close * 2.5, close)[0] is False
+        assert assess_spot_price(tk, close * 0.4, close)[0] is False
+    import inspect
+    import trade_impacting_gate as g
+    assert "_PRICE_SANITY_BOUNDS" not in inspect.getsource(g)

@@ -27,7 +27,7 @@ def test_r031_cli_path_no_production_decision_id(release_ready, tmp_path):
     route = resolve_fetch_state_decision_route("verify_model_outputs_cli")
     ms = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "validation_summary": "cli_diagnostic",
         "signals_engine_failed": False,

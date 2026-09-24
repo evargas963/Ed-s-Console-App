@@ -201,7 +201,7 @@ def _production_like_proof() -> dict:
     db.parent.mkdir(parents=True, exist_ok=True)
     if db.is_file():
         db.unlink()
-    return production_like_decision_emission(db)
+    return production_like_decision_emission(db, ticker="SPY")
 
 
 def _blind_reconstruction_with_source(phase2) -> dict:

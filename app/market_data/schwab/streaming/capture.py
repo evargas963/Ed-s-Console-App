@@ -2193,6 +2193,14 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # pinned an expired OSI. Poll-only recovery is not generation-start.
         boot_ticker = read_active_ticker_signal()
         boot_option = read_active_option_contract_signal()
+        # Live push to the console over a local WebSocket (in memory, no database in the
+        # live path). Started BEFORE the Schwab connection so its per-field history sees the
+        # very first messages (a first trade / CLOSE_PRICE that arrived before it would never
+        # reach a console). Not part of a stream generation: it serves the bus, which
+        # survives recycles.
+        from app.market_data.schwab.streaming.live_push import serve_live_push
+        push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats))
+        await asyncio.sleep(0)   # let it subscribe before the first message is published
         stream, pump_task, option_state["contract"] = await _schwab_connect(
             state, symbols, bus, health, stats, stop,
             active_book_ticker=boot_ticker,
@@ -2201,11 +2209,6 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         book_state["stream"] = stream
         option_state["stream"] = stream
         book_state["ticker"] = boot_ticker
-        # Live push to the console over a local WebSocket (in memory, no database in the
-        # live path). Not part of a Schwab stream generation: it serves the bus, which
-        # survives recycles.
-        from app.market_data.schwab.streaming.live_push import serve_live_push
-        push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats))
         control_tasks = await _start_control_tasks()
         while not stop.is_set():
             await asyncio.sleep(STATUS_LOOP_INTERVAL_SEC)

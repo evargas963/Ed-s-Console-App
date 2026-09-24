@@ -71,6 +71,7 @@ def _trusted_ms_dict(*, ticker: str = "ZZZ_CF1", bundle_ts: float | None = None)
         "mhap_rows": _mhap_four(),
         "_server_build_ts": ts,
         "spot": 500.0,
+        "prior_close": 500.0,
     }
 
 

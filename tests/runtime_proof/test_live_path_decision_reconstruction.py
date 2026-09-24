@@ -79,7 +79,7 @@ def test_live_path_blind_reconstruction(release_ready, tmp_path, monkeypatch):
     import server as srv
 
     monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-    emitted = live_path_simulation_emission(tmp_path / "blind_live.db")
+    emitted = live_path_simulation_emission(tmp_path / "blind_live.db", ticker="TSLA")
     decision_id = emitted["decision_id"]
 
     conn = sqlite3.connect(str(tmp_path / "blind_live.db"))
@@ -103,8 +103,8 @@ def test_source_labels_are_distinct(release_ready, tmp_path, monkeypatch):
     import server as srv
 
     monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-    live = live_path_simulation_emission(tmp_path / "a.db")
-    prod_like = production_like_decision_emission(tmp_path / "b.db")
+    live = live_path_simulation_emission(tmp_path / "a.db", ticker="AAPL")
+    prod_like = production_like_decision_emission(tmp_path / "b.db", ticker="AAPL")
     assert live["source"] == "live_path_simulation"
     assert prod_like["source"] == "production_like_integration_harness"
     assert live["source"] != prod_like["source"]

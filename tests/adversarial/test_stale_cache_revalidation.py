@@ -35,7 +35,7 @@ def test_fresh_valid_cache_passes_gate():
 
     md = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "validation_summary": "ok",
     }

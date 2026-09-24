@@ -245,3 +245,52 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
             stop.set()
             await asyncio.gather(client, server, return_exceptions=True)
     asyncio.run(run())
+
+
+def test_a_late_console_gets_every_field_with_the_time_it_really_arrived(feed):
+    """Schwab LEVELONE sends only changed fields. A console connecting after a trade and a
+    later bid/ask tick must still get LAST_PRICE and CLOSE_PRICE -- each with the receive
+    time of the message that carried it -- not just the last (bid/ask-only) message."""
+    async def run():
+        bus = MessageBus()
+        stop = asyncio.Event()
+        stats: dict = {}
+        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
+        assert await _until(lambda: stats.get("listening"))
+        # the daemon publishes a trade, then a bid/ask-only tick -- before any console exists
+        t_trade = time.time() - 5.0
+        t_quote = time.time() - 1.0
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", src="schwab_l1", ts_recv=t_trade,
+                                           native={"key": "SPY", "LAST_PRICE": 505.0,
+                                                   "CLOSE_PRICE": 500.0}))
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", src="schwab_l1", ts_recv=t_quote,
+                                           native={"key": "SPY", "BID_PRICE": 504.9,
+                                                   "ASK_PRICE": 505.1}))
+        await asyncio.sleep(0.05)
+        ofs._feed_running = True
+        client = asyncio.create_task(ofs._feed_loop())
+        try:
+            assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("bid") == 504.9)
+            row = lmp.get_quote("SPY")
+            assert row["spot"] == 505.0 and row["spot_received_ts"] == t_trade
+            assert row["prior_close"] == 500.0
+            assert row["server_received_ts"] == t_quote
+        finally:
+            ofs._feed_running = False
+            client.cancel()
+            stop.set()
+            await asyncio.gather(client, server, return_exceptions=True)
+    asyncio.run(run())
+
+
+def test_field_history_keeps_only_the_latest_carrier_of_each_field():
+    h = live_push.FieldHistory()
+    m1 = quote_msg(symbol="X", src="schwab_l1", ts_recv=1.0, native={"LAST_PRICE": 1, "CLOSE_PRICE": 9})
+    m2 = quote_msg(symbol="X", src="schwab_l1", ts_recv=2.0, native={"LAST_PRICE": 2})
+    m3 = quote_msg(symbol="X", src="schwab_l1", ts_recv=3.0, native={"BID_PRICE": 1.5})
+    for m in (m1, m2, m3):
+        h.record("quote.X", m)
+    assert [m["ts_recv"] for _t, m in h.replay()] == [1.0, 2.0, 3.0]  # m1 still carries CLOSE_PRICE
+    h.record("quote.X", quote_msg(symbol="X", src="schwab_l1", ts_recv=4.0,
+                                  native={"CLOSE_PRICE": 9, "BID_PRICE": 1.6}))
+    assert [m["ts_recv"] for _t, m in h.replay()] == [2.0, 4.0]       # m1 and m3 superseded
