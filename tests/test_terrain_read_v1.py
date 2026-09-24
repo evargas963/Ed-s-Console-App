@@ -22,7 +22,7 @@ TRUSTED = GAMMA_FLIP_TRUSTED
 
 def test_above_flip_is_long_gamma_and_fades() -> None:
     r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED,
-                           put_wall=735.0, call_wall=760.0, ticker="SPY")
+                           put_wall=735.0, call_wall=760.0, gamma_at_spot=2.5e8, ticker="SPY")
     assert r.regime == REGIME_LONG_GAMMA
     assert r.posture == POSTURE_FADE
     assert "do not chase" in r.headline.lower()
@@ -30,7 +30,7 @@ def test_above_flip_is_long_gamma_and_fades() -> None:
 
 def test_below_flip_is_short_gamma_and_follows() -> None:
     r = build_terrain_read(spot=743.29, flip=745.61, flip_confidence=TRUSTED,
-                           put_wall=740.0, call_wall=745.0, ticker="SPY")
+                           put_wall=740.0, call_wall=745.0, gamma_at_spot=-1.1e8, ticker="SPY")
     assert r.regime == REGIME_SHORT_GAMMA
     assert r.posture == POSTURE_FOLLOW
     assert "do not fade" in r.headline.lower()
@@ -42,12 +42,21 @@ def test_every_ticker_gets_the_same_read() -> None:
     The dealer sign stays labelled MODELLED on every one."""
     for tk in ("AAPL", "$SPX", "SPY", None):
         above = build_terrain_read(spot=325.0, flip=320.0, flip_confidence=TRUSTED,
-                                   put_wall=318.0, call_wall=330.0, ticker=tk)
+                                   put_wall=318.0, call_wall=330.0, gamma_at_spot=4.0e6, ticker=tk)
         assert above.regime == REGIME_LONG_GAMMA and above.posture == POSTURE_FADE, tk
         below = build_terrain_read(spot=318.5, flip=320.0, flip_confidence=TRUSTED,
-                                   put_wall=318.0, call_wall=330.0, ticker=tk)
+                                   put_wall=318.0, call_wall=330.0, gamma_at_spot=-3.0e6, ticker=tk)
         assert below.regime == REGIME_SHORT_GAMMA and below.posture == POSTURE_FOLLOW, tk
         assert "modelled" in above.as_text().lower()
+
+
+def test_regime_is_the_signed_gamma_at_spot_only() -> None:
+    """T-07 (2026-09-24): no spot-vs-flip fallback. No signed gamma, or exactly zero (spot
+    AT the flip), is no regime -- not a side picked from the flip."""
+    for g in (None, 0.0):
+        r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED,
+                               put_wall=735.0, call_wall=760.0, gamma_at_spot=g, ticker="SPY")
+        assert r.regime not in (REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA), g
 
 
 def test_untrusted_flip_withholds_regime_and_posture() -> None:

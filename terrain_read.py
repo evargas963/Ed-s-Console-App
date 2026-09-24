@@ -100,14 +100,13 @@ def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
 
 
 def _regime_for(spot: float, flip: float | None, gamma_at_spot: float | None) -> str:
-    """Regime = sign of dealer gamma at spot. Falls back to spot-vs-flip only when the
-    signed value is unavailable (the two always agree when both are present)."""
+    """Regime = sign of dealer gamma at spot -- the one derivation. Absent or exactly zero
+    (spot AT the flip) -> unavailable. It used to fall back to spot-vs-flip, which at a zero
+    gamma picked a side of a boundary spot is sitting on, and with no signed value read a
+    flip that did not come from the same curve (audit T-07, 2026-09-24: no fallbacks).
+    `flip` stays in the signature for the callers that pass it."""
     signed = regime_from_signed_gamma(gamma_at_spot)
-    if signed is not None:
-        return signed
-    if flip is not None:
-        return REGIME_LONG_GAMMA if spot > flip else REGIME_SHORT_GAMMA
-    return REGIME_UNAVAILABLE
+    return signed if signed is not None else REGIME_UNAVAILABLE
 
 
 def _posture_for(regime: str) -> str:
