@@ -32,13 +32,13 @@ P1/P2 rows are to be merged here as each file is repaired.
 ### The Call and its inputs (call_engine.py, signals.py, prediction_engine.py, lifecycle_rule_core.py)
 | ID | file:line | Violation | Flows to | Status |
 |---|---|---|---|---|
-| C-01 | signals.py:146-197 | non-tradable canonical becomes a "flat / low / 1/3 each" forecast | persisted prediction_direction / pred_confidence every tick; readiness | OPEN |
+| C-01 | signals.py:146-197 | non-tradable canonical becomes a "flat / low / 1/3 each" forecast | persisted prediction_direction / pred_confidence every tick; readiness | FIXED 739fb9fc |
 | C-02 | call_engine.py:564 | unknown event risk took the default threshold | stack threshold | FIXED 51a6def0 |
-| C-03 | call_engine.py:178-181 | readiness uses "flat", 0.0 for a withheld forecast | The Call readiness | OPEN |
-| C-04 | call_engine.py:1874-1876, 1921-1923 | missing level distance -> "far" | readiness | OPEN |
-| C-05 | call_engine.py:1892-1901, 1939-1948 | readiness defaults 0 / "WAIT" / "dormant", except -> 0 | readiness | OPEN |
-| C-06 | call_engine.py:1916-1920 | put resistance falls back to support below | put readiness | OPEN |
-| C-07 | call_engine.py:1880, 1927 | readiness trend: rules.zone_label -> MVP zone | readiness | OPEN |
+| C-03 | call_engine.py:178-181 | readiness uses "flat", 0.0 for a withheld forecast | The Call readiness | FIXED 739fb9fc |
+| C-04 | call_engine.py:1874-1876, 1921-1923 | missing level distance -> "far" | readiness | FIXED 739fb9fc |
+| C-05 | call_engine.py:1892-1901, 1939-1948 | readiness defaults 0 / "WAIT" / "dormant", except -> 0 | readiness | FIXED 739fb9fc |
+| C-06 | call_engine.py:1916-1920 | put resistance falls back to support below | put readiness | FIXED 739fb9fc |
+| C-07 | call_engine.py:1880, 1927 | readiness trend: rules.zone_label -> MVP zone | readiness | FIXED 739fb9fc |
 | C-08 | call_engine.py:408-410 | unhandled WAIT reasons print "insufficient confirmation" (incl. no_measured_stop) | The Call headline | OPEN |
 | C-09 | signals.py:330 | calibration timeframe `or "1m"` defeats the writer's refusal | calibration row (env-gated) | OPEN |
 | F-09 | prediction_engine.py:436-446 | 15m/60m "structure approximation" text | readiness | OPEN |
@@ -58,8 +58,8 @@ P1/P2 rows are to be merged here as each file is repaired.
 | F-07/08 | bayesian_fusion.py:421, 427-429 | likelihood floor; "fallback to priors" | posteriors | OPEN |
 | L-01 | ml_predict.py:2853-2862 | model_version built from files on disk, not what ran | persisted pred_model_version | OPEN |
 | F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | OPEN |
-| S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | OPEN |
-| S-04 | market_state.py:359-422 | "low"/"rules_v1"/0.0 defaults persisted when signals fail | snapshots | OPEN |
+| S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | FIXED 739fb9fc |
+| S-04 | market_state.py:359-422 | "low"/"rules_v1"/0.0 defaults persisted when signals fail | snapshots | FIXED 739fb9fc |
 | L-02 | governed_stack_contract.py:229-254 | non-SPY/QQQ/IWM routed to an "SPY anchor" (+ The Call wait_reason) | The Call label | OPEN |
 
 ### Exposure math (math_exposure_core.py, math_levels.py)
@@ -107,6 +107,13 @@ P1/P2 rows are to be merged here as each file is repaired.
 | S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | OPEN |
 | S-13 | math_probabilities.py:221-234 | option-expression score: missing inputs add 0 -> rec_strike | The Call contract | OPEN |
 
+### Found while repairing (2026-09-24)
+| ID | file:line | Violation | Flows to | Status |
+|---|---|---|---|---|
+| N-01 | calibration/edge_validation.py `_effective_directional_signal` | stored 1/3-each placeholder triplets won the p_up >= p_dn >= p_fl tie-break and were scored as LONG calls -- every edge study over rows logged while fusion was off counted them | calibration edge / discovery / engineering reports | FIXED 739fb9fc (reader requires tradable provenance; any edge report produced from those rows before this is invalid) |
+| N-02 | prediction_engine.py `_empty_prediction` | no-database path seeds every horizon with a 1/3-each product triplet | PredictiveCard up/down/flat per horizon (no-DB only) | OPEN |
+| N-03 | calibration/analyze_phase3.py `_confidence_bucket`; calibration/signal_engineering.py `final_signal or "wait"` | unknown confidence label bucketed as "low"; missing final signal counted as "wait" | offline calibration reports | OPEN |
+
 ### v2 decision (advisory; persisted training rows only)
 | ID | file:line | Violation | Status |
 |---|---|---|---|
@@ -120,5 +127,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 52 rows above marked OPEN (several rows group more than one site).
+Re-audit live P0 open: 46 rows above marked OPEN (several rows group more than one site).
 P1 (re-audit): ~70 more, to be merged as files are repaired.
