@@ -87,7 +87,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | T-04 | terrain_engine.py:723-743 | book OI: missing leg = 0; except -> silently skipped | pin gate, PIN SCORE | FIXED 65b45a7f |
 | T-05 | terrain_engine.py:332 | wall range from raw gamma, still labelled "GEX mass" | chart | FIXED 65b45a7f |
 | T-06 | terrain_engine.py:415-417 | implied move from one leg's IV | EM band, banked IV | FIXED 65b45a7f |
-| T-07 | terrain_read.py:108-109 | regime from spot-vs-flip when gamma_at_spot == 0 | posture (edge case) | OPEN |
+| T-07 | terrain_read.py:108-109 | regime from spot-vs-flip when gamma_at_spot == 0 | posture (edge case) | FIXED fa56b1dd |
 | T-08 | market_context.py:753-755 | bond_signal guessed when VIX missing | snapshots | OPEN |
 | T-09 | market_context.py:311-321 | %-change ladder: netPercentChange -> regular -> derived | confluence, snapshots | OPEN |
 | T-10 | market_context.py:650-657 | resolve_chg_pct: REST when stream missing | fast-quote, context plane | OPEN |
@@ -131,5 +131,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 23 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 22 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.
