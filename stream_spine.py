@@ -616,18 +616,30 @@ class MessageBus:
 
     def __init__(self) -> None:
         self._subs: list[Subscription] = []
+        self._sub_names: dict[int, str] = {}           # id(subscription) -> consumer name
+        self._retired_drops: dict[str, int] = {}       # drops of unsubscribed consumers, by name
         self.cache: dict[str, Any] = {}
         self.published = 0
 
-    def subscribe(self, prefix: str, *, policy: str = COUNT_DROPS, maxsize: int = 2048) -> Subscription:
+    def subscribe(self, prefix: str, *, policy: str = COUNT_DROPS, maxsize: int = 2048,
+                  name: str | None = None) -> Subscription:
+        """`name` identifies the consumer in drop_counts (default: the prefix). Consumers that
+        share a prefix (the writer, every push client, the push history all take "") must
+        pass distinct names -- keyed by prefix they overwrote each other's counts."""
         sub = Subscription(prefix=prefix, policy=policy, queue=asyncio.Queue(maxsize=maxsize))
+        self._sub_names[id(sub)] = name if name is not None else prefix
         self._subs.append(sub)
         return sub
 
     def unsubscribe(self, sub: Subscription) -> None:
-        """Stop delivering to `sub` (a disconnected push client must not accumulate)."""
+        """Stop delivering to `sub` (a disconnected push client must not accumulate). Its drop
+        count is kept under its name -- a client that dropped and then disconnected still
+        shows in drop_counts."""
         if sub in self._subs:
             self._subs.remove(sub)
+            name = self._sub_names.pop(id(sub), sub.prefix)
+            if sub.dropped:
+                self._retired_drops[name] = self._retired_drops.get(name, 0) + sub.dropped
 
     def publish(self, topic: str, msg: Any) -> None:
         self.cache[topic] = msg
@@ -640,7 +652,13 @@ class MessageBus:
         return {t: v for t, v in self.cache.items() if t.startswith(prefix)}
 
     def drop_counts(self) -> dict[str, int]:
-        return {s.prefix: s.dropped for s in self._subs if s.dropped}
+        """Dropped messages per consumer name: live subscriptions plus disconnected ones."""
+        out = dict(self._retired_drops)
+        for s in self._subs:
+            if s.dropped:
+                name = self._sub_names.get(id(s), s.prefix)
+                out[name] = out.get(name, 0) + s.dropped
+        return {k: v for k, v in out.items() if v}
 
 
 #: Health thresholds (seconds since last message). DEGRADED warns; STALE is the

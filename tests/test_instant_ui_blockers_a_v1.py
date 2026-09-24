@@ -121,3 +121,72 @@ def test_forming_bar_is_keyed_on_trade_time_only(monkeypatch):
     out = srv.overlay_forming_bar_from_plane(bars, tk)
     assert len(out) == 1 and out[0]["t"] == 1_700_000_100.0
     assert (out[0]["c"], out[0]["h"], out[0]["l"]) == (50.0, 50.0, 48.5)
+
+
+# ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
+
+def test_drop_counts_are_per_consumer_and_survive_a_disconnect():
+    """The writer, push clients and push history all subscribe to "" -- keyed by prefix they
+    overwrote each other (audit of #280). Counts are per consumer name, and a push client's
+    drops remain after it disconnects."""
+    from stream_spine import COUNT_DROPS
+
+    async def go():
+        bus = MessageBus()
+        writer = bus.subscribe("", policy=COUNT_DROPS, maxsize=1, name="db_writer")
+        client = bus.subscribe("", policy=COUNT_DROPS, maxsize=2, name="push_client")
+        for i in range(6):
+            bus.publish(f"quote.S{i}", {"i": i})
+        before = bus.drop_counts()
+        bus.unsubscribe(client)
+        after = bus.drop_counts()
+        _ = writer
+        return before, after
+    before, after = asyncio.run(go())
+    assert before == {"db_writer": 5, "push_client": 4}
+    assert after == {"db_writer": 5, "push_client": 4}
+
+
+def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
+    """The client schwab-py builds refreshes through OUR writer (temp + replace), never
+    open(path, 'w') in place (audit of #280: the atomic helper had no production caller)."""
+    import json
+    import schwab_client as sc
+    from schwab import auth
+
+    tok = tmp_path / "schwab_token.json"
+    tok.write_text(json.dumps({"creation_timestamp": 1, "token": {"access_token": "a"}}))
+    seen = {}
+
+    def fake_access_functions(api_key, app_secret, read, write, **kw):
+        seen["read"] = read()
+        write({"creation_timestamp": 2, "token": {"access_token": "b"}})
+        return "client"
+    monkeypatch.setattr(auth, "client_from_access_functions", fake_access_functions)
+    replaced = []
+    import os as _os
+    real_replace = _os.replace
+    monkeypatch.setattr(_os, "replace", lambda a, b: (replaced.append((a, b)), real_replace(a, b))[1])
+    assert sc.client_from_token_file_atomic(str(tok), "k", "s") == "client"
+    assert seen["read"]["token"]["access_token"] == "a"
+    assert json.loads(tok.read_text())["token"]["access_token"] == "b"
+    assert replaced and str(replaced[0][1]) == str(tok), "the refresh must land via os.replace"
+
+
+def test_a_transient_windows_share_violation_is_retried_then_lands(monkeypatch, tmp_path):
+    import schwab_client as sc
+    import arch_competition.atomic_io as aio
+
+    real = aio.write_json_file_atomically
+    calls = {"n": 0}
+
+    def flaky(path, payload, **kw):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError("[WinError 5] Access is denied")
+        return real(path, payload, **kw)
+    monkeypatch.setattr(aio, "write_json_file_atomically", flaky)
+    monkeypatch.setattr(sc.time, "sleep", lambda s: None)
+    dest = tmp_path / "t.json"
+    sc.write_token_file_atomically(str(dest), {"x": 1})
+    assert calls["n"] == 3 and dest.exists()

@@ -45,7 +45,6 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from stream_spine import (  # noqa: E402
-    COALESCE,
     COUNT_DROPS,
     PRODUCER_CLAIM_TTL_SEC,
     CaptureWriter,
@@ -2027,8 +2026,7 @@ async def _run_locked(
         bus = MessageBus()
         health = HealthRegistry()
         stats = CaptureStats(sample_dir=ROOT / "reports")
-        wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)   # writer sees everything
-        _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
+        wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")   # writer sees everything
         stop = asyncio.Event()
 
         return await _run_streaming(

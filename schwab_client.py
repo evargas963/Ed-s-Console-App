@@ -110,18 +110,57 @@ def _resolve_token_path(token_path: str) -> str:
     return os.path.abspath(os.path.expanduser(token_path))
 
 
-def write_token_file_atomically(token_path: str, payload: dict) -> None:
-    """Write schwab_token.json via temp + fsync + replace. No partial destination.
+#: os.replace on Windows fails with a sharing violation while another process (the console or
+#: the capture daemon) has the token file open for its brief read; the SAME write is retried.
+TOKEN_REPLACE_ATTEMPTS = 5
 
-    schwab-py's own login/refresh writer is a separate path; this is the
-    repository-owned write. A torn write on the vendor path is [UNVERIFIED]
-    until Phase 7 measures one.
-    """
+
+def write_token_file_atomically(token_path: str, payload: dict) -> None:
+    """Write schwab_token.json via temp + fsync + os.replace -- never a partial file.
+
+    THE token writer: every Schwab client this repo builds refreshes through it
+    (client_from_token_file_atomic / the OAuth exchange). schwab-py's own writer is
+    open(path, 'w') + json.dump -- a reader in the other process (console / daemon both
+    refresh the same file) could load a torn token and fail the session (audit of #280)."""
     from pathlib import Path
 
     from arch_competition.atomic_io import write_json_file_atomically
 
-    write_json_file_atomically(Path(_resolve_token_path(token_path)), payload)
+    path = Path(_resolve_token_path(token_path))
+    for attempt in range(1, TOKEN_REPLACE_ATTEMPTS + 1):
+        try:
+            write_json_file_atomically(path, payload)
+            return
+        except PermissionError as e:
+            if attempt == TOKEN_REPLACE_ATTEMPTS:
+                raise
+            log.warning("token replace blocked by another reader (attempt %s/%s): %s",
+                           attempt, TOKEN_REPLACE_ATTEMPTS, e)
+            time.sleep(0.05 * attempt)
+
+
+def _token_update_func(resolved: str):
+    """schwab-py token_write_func: every refresh goes through write_token_file_atomically."""
+    def update_token(t, *args, **kwargs):
+        write_token_file_atomically(resolved, t)
+    return update_token
+
+
+def _token_read_func(resolved: str):
+    def load_token():
+        with open(resolved, "rb") as f:
+            return json.load(f)
+    return load_token
+
+
+def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str, *,
+                                  enforce_enums: bool = False):
+    """schwab-py client from the token file, with ATOMIC token refresh writes. Use this, never
+    auth.client_from_token_file (its writer rewrites the file in place)."""
+    resolved = _resolve_token_path(token_path)
+    return auth.client_from_access_functions(
+        api_key, app_secret, _token_read_func(resolved), _token_update_func(resolved),
+        enforce_enums=enforce_enums)
 
 
 def inspect_token_file(token_path: str) -> TokenInspectionResult:
@@ -258,7 +297,7 @@ def build_client_from_token(token_path: str, api_key: str, app_secret: str) -> S
             client=None,
         )
     try:
-        c = auth.client_from_token_file(
+        c = client_from_token_file_atomic(
             resolved,
             api_key,
             app_secret,
@@ -303,6 +342,7 @@ def run_login_flow(api_key: str, app_secret: str, callback_url: str, token_path:
                 app_secret=app_secret,
                 callback_url=callback_url,
                 token_path=token_path,
+                token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
                 enforce_enums=False,
                 interactive=False,
                 callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),  # caps-ok: OAuth/config timeout only
@@ -351,6 +391,7 @@ def run_manual_flow(api_key: str, app_secret: str, callback_url: str, token_path
             app_secret=app_secret,
             callback_url=callback_url,
             token_path=token_path,
+            token_write_func=_token_update_func(_resolve_token_path(token_path)),  # atomic
             enforce_enums=False,
         )
         if not os.path.exists(token_path):
@@ -389,7 +430,7 @@ def complete_oauth_from_redirect_url(
 
     resolved = _resolve_token_path(token_path)
     auth_context = _get_auth_context_with_scope(api_key, callback_url, state=state)
-    token_write_func = auth.__make_update_token_func(resolved)
+    token_write_func = _token_update_func(resolved)       # atomic, never in place
     try:
         auth.client_from_received_url(
             api_key,

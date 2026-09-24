@@ -124,7 +124,7 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
     blocked on `sub.get()` would otherwise never notice a closed socket, and server
     shutdown (which waits for every handler to return) would hang behind it."""
-    sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=16384)
+    sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=16384, name="push_client")
     stats["clients"] += 1
 
     async def _pump() -> None:
@@ -183,7 +183,7 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
     for topic, msg in list(bus.snapshot().items()):        # whatever arrived before we started
         if is_field_delta_topic(topic) and is_forwarded(topic, msg):
             history.record(topic, msg)
-    hsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=65536)
+    hsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=65536, name="push_history")
 
     async def _track() -> None:
         while True:
