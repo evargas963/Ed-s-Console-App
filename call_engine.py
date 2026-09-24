@@ -560,11 +560,15 @@ def _all_consolidated_stack_vote(
     return _fusion_authoritative_directional_vote(fusion_available, fusion_dom_vote, canonical)
 
 
-def _stack_event_threshold(event_risk_level: str) -> int:
+def _stack_event_threshold(event_risk_level: str | None) -> int:
+    """The default threshold only when event risk is KNOWN to be absent ("none"). High,
+    elevated -- and UNKNOWN (a calendar that is not sourced) -- take the stricter event-risk
+    threshold: an event that cannot be ruled out is not treated as no event (operator rule
+    2026-09-23: no fallbacks; event_risk.py reports "unknown" while macro is unsourced)."""
     _evt = (event_risk_level or "unknown").strip().lower()
-    if _evt in ("elevated", "high"):
-        return STACK_THRESHOLD_EVENT_RISK
-    return STACK_THRESHOLD_DEFAULT
+    if _evt == "none":
+        return STACK_THRESHOLD_DEFAULT
+    return STACK_THRESHOLD_EVENT_RISK
 
 
 def _stack_threshold_from_votes(
