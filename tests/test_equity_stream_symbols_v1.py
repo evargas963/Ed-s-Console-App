@@ -1,8 +1,8 @@
 """Every symbol a screen shows a live price for is streamed on request.
 
-The capture daemon's fixed roster is only its --symbols (SPY,QQQ,IWM in the scheduled task).
-With spot = streamed LAST_PRICE only (no REST fallback, operator rule 2026-09-23), any other
-symbol would read UNAVAILABLE forever. The console now ranks the symbols it shows (active
+The capture daemon has no built-in symbol list (operator 2026-09-23: universality). With spot
+= streamed LAST_PRICE only (no REST fallback), a symbol nobody asked the daemon to stream
+would read UNAVAILABLE forever. The console now ranks the symbols it shows (active
 ticker, watchlist, gamma board), writes them to stream_equity_symbols.json, and the daemon
 ADDs/UNSUBSes LEVELONE_EQUITIES to match.
 """
@@ -71,19 +71,25 @@ class _FakeStream:
     async def level_one_equity_unsubs(self, syms):
         self.calls.append(("unsubs", list(syms)))
 
+    async def chart_equity_add(self, syms):
+        self.calls.append(("chart_add", list(syms)))
 
-def _apply(monkeypatch, requested, held, stream, roster=("SPY", "QQQ", "IWM")):
+    async def chart_equity_unsubs(self, syms):
+        self.calls.append(("chart_unsubs", list(syms)))
+
+
+def _apply(monkeypatch, requested, held, stream, roster=("BOOT1", "BOOT2")):
     monkeypatch.setattr(capture, "read_equity_symbols_signal", lambda: list(requested))
     status: dict = {}
     out = asyncio.run(capture._apply_equity_symbol_subs(stream, list(roster), frozenset(held), status))
     return out, status
 
 
-def test_daemon_adds_new_symbols_and_skips_its_own_roster(monkeypatch):
+def test_daemon_adds_new_symbols_and_skips_its_boot_set(monkeypatch):
     st = _FakeStream()
-    held, status = _apply(monkeypatch, ["AAPL", "SPY", "TSLA"], set(), st)
+    held, status = _apply(monkeypatch, ["AAPL", "BOOT1", "TSLA"], set(), st)
     assert held == {"AAPL", "TSLA"}
-    assert st.calls == [("add", ["AAPL", "TSLA"])]
+    assert st.calls == [("add", ["AAPL", "TSLA"]), ("chart_add", ["AAPL", "TSLA"])]
     assert status == {"refused": None, "held": ["AAPL", "TSLA"]}
 
 
@@ -91,7 +97,7 @@ def test_daemon_unsubs_what_the_console_dropped(monkeypatch):
     st = _FakeStream()
     held, _ = _apply(monkeypatch, ["TSLA"], {"AAPL", "TSLA"}, st)
     assert held == {"TSLA"}
-    assert st.calls == [("unsubs", ["AAPL"])]
+    assert st.calls == [("unsubs", ["AAPL"]), ("chart_unsubs", ["AAPL"])]
 
 
 def test_a_vendor_error_leaves_held_as_it_truly_is(monkeypatch):
@@ -104,7 +110,7 @@ def test_an_over_budget_request_is_refused_whole(monkeypatch):
     st = _FakeStream()
     held, status = _apply(monkeypatch, ["A1", "A2", "A3"], {"A1"}, st)
     assert held == frozenset()
-    assert st.calls == [("unsubs", ["A1"])]
+    assert st.calls == [("unsubs", ["A1"]), ("chart_unsubs", ["A1"])]
     assert "exceeds the equity budget (2)" in status["refused"]
 
 
@@ -127,3 +133,19 @@ def test_watchlist_route_declares_and_names_the_unstreamed(monkeypatch):
     assert seen == {"watchlist": ["AAPL", "ZZZ"]}
     assert r.json()["not_streamed"] == {"ZZZ": "not streamed: outside the live equity budget (150)"}
     assert client.post("/api/streaming/watchlist-symbols", json={"symbols": "AAPL"}).status_code == 400
+
+
+def test_the_daemon_has_no_built_in_symbol_list(monkeypatch):
+    """Universality (operator 2026-09-23): no ticker is streamed by default; every symbol
+    arrives the same way, by console request."""
+    import sys
+
+    seen = {}
+
+    async def _run(syms, dur):
+        seen["syms"] = syms
+        return 0
+    monkeypatch.setattr(sys, "argv", ["capture"])
+    monkeypatch.setattr(capture, "run", _run)
+    assert capture.main() == 0
+    assert seen["syms"] == []

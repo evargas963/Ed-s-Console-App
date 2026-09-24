@@ -22,7 +22,12 @@ Acceptance instrumentation built in (measured, not asserted):
     original numeric maps parsed all-None and were caught by this exact mechanism).
 
 Usage:
-    python -m app.market_data.schwab.streaming.capture --symbols SPY,QQQ,IWM --duration-min 0
+    python -m app.market_data.schwab.streaming.capture --duration-min 0
+
+The daemon has no built-in symbol list: it streams LEVELONE_EQUITIES + CHART_EQUITY for
+exactly the symbols the console asks for (stream_equity_symbols.json -- the active ticker,
+watchlist and gamma board, every ticker alike). --symbols is an optional set held from
+boot, before the console has asked for anything.
 """
 
 from __future__ import annotations
@@ -327,8 +332,8 @@ async def _apply_active_ticker_book_subs(stream, current: str | None) -> str | N
 
 async def _apply_equity_symbol_subs(stream, roster: "list[str]", held: frozenset,
                                     status: dict) -> frozenset:
-    """Hold LEVELONE_EQUITIES for every symbol the console asked for (beyond the roster,
-    which is subscribed at connect): ADD the new ones, UNSUBS the dropped ones.
+    """Hold LEVELONE_EQUITIES + CHART_EQUITY for every symbol the console asked for
+    (beyond the optional boot set, subscribed at connect): ADD new ones, UNSUBS dropped ones.
 
     The console ranks and cuts its request to EQUITY_SYMBOLS_MAX_HELD; a request over it
     means the console broke that contract and is refused whole (named in `status`), never
@@ -347,6 +352,7 @@ async def _apply_equity_symbol_subs(stream, roster: "list[str]", held: frozenset
     if drop:
         try:
             await stream.level_one_equity_unsubs(drop)
+            await stream.chart_equity_unsubs(drop)
             held = held - frozenset(drop)
         except Exception as e:  # noqa: BLE001 -- retried next tick
             print(f"equity unsubs {drop[:5]}...: {type(e).__name__}: {e}")
@@ -354,6 +360,7 @@ async def _apply_equity_symbol_subs(stream, roster: "list[str]", held: frozenset
     if add:
         try:
             await stream.level_one_equity_add(add)
+            await stream.chart_equity_add(add)
             held = held | frozenset(add)
             print(f"equity L1 added {len(add)} console-requested symbols (held {len(held)})")
         except Exception as e:  # noqa: BLE001 -- retried next tick
@@ -2040,10 +2047,11 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
     stream.add_nyse_book_handler(make_book_handler("NYSE_BOOK", bus, health, stats))
     stream.add_level_one_option_handler(make_options_quote_handler(bus, health, stats))
     stream.add_options_book_handler(make_book_handler("OPTIONS_BOOK", bus, health, stats))
-    await stream.level_one_equity_subs(symbols)
-    await stream.chart_equity_subs(symbols)
-    print(f"subscribed {len(symbols)} symbols x2 services (key accounting: "
-          f"{len(symbols) * 2} keys used)")
+    if symbols:
+        await stream.level_one_equity_subs(symbols)
+        await stream.chart_equity_subs(symbols)
+    print(f"subscribed {len(symbols)} boot symbols x2 services; console-requested symbols "
+          f"follow on the equity-symbols poll")
     if active_book_ticker:
         try:
             await stream.nasdaq_book_subs([active_book_ticker])
@@ -2421,7 +2429,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--symbols", default="SPY,QQQ,IWM")
+    ap.add_argument("--symbols", default="",
+                    help="optional symbols held from boot; the console requests the rest")
     ap.add_argument("--duration-min", type=float, default=0.0, help="0 = until Ctrl+C")
     a = ap.parse_args()
     syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]
