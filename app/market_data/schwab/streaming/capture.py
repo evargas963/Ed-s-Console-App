@@ -236,6 +236,17 @@ class CaptureStats:
         return round(statistics.quantiles(self.handle_ms, n=100)[int(q) - 1], 3)
 
 
+def _stream_socket_open(stream, pump_task) -> bool:
+    """True only while this session's Schwab websocket is OPEN and its pump task is running.
+    Any doubt (no stream yet, no socket, a finished pump) is False."""
+    if stream is None or pump_task is None or pump_task.done():
+        return False
+    try:
+        return stream._socket.state.name == "OPEN"     # websockets asyncio connection State
+    except AttributeError:                              # no socket yet / not a websocket
+        return False
+
+
 def save_raw_sample(service: str, msg: dict, stats: CaptureStats) -> None:
     if service in stats.raw_sampled:
         return
@@ -2199,7 +2210,17 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # reach a console). Not part of a stream generation: it serves the bus, which
         # survives recycles.
         from app.market_data.schwab.streaming.live_push import serve_live_push
-        push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats))
+
+        def _heartbeat() -> dict:
+            """The daemon's feed as it is this instant: is the Schwab socket open with its
+            pump running, and which equities does this session hold on LEVELONE_EQUITIES."""
+            return {"ts": time.time(),
+                    "schwab_socket_open": _stream_socket_open(book_state["stream"], pump_task),
+                    "equities_held": sorted(set(symbols) | set(equity_state["held"])),
+                    "health": health.report()}
+
+        push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats,
+                                                        heartbeat_fn=_heartbeat))
         await asyncio.sleep(0)   # let it subscribe before the first message is published
         stream, pump_task, option_state["contract"] = await _schwab_connect(
             state, symbols, bus, health, stats, stop,

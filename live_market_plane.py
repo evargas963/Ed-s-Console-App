@@ -243,14 +243,59 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
     return qsd.get("spot") == "LAST_PRICE"
 
 
-def spot_is_fresh(q: dict[str, Any]) -> bool:
-    """Is this row's LAST_PRICE a live value right now -- judged by when THAT trade price
-    arrived (`spot_received_ts`), not by the latest bid/ask tick. Missing: not fresh."""
-    received = _safe_float((q or {}).get("spot_received_ts"))  # caps-ok: fail-closed -- no row or no receive time is not fresh
-    if received is None:
+#: The daemon pushes a heartbeat every second over the live push connection; the console
+#: treats the feed as live only while the latest one is younger than this (console clock).
+FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
+
+#: The daemon's own report of its feed, from its latest heartbeat: when the console received
+#: it, whether the Schwab socket was open, and which equities the daemon holds on
+#: LEVELONE_EQUITIES. Written by the push feed loop only.
+_feed: dict[str, Any] = {"rx": None, "socket_open": False, "held": frozenset()}
+
+
+def record_feed_heartbeat(msg: dict[str, Any], received_at: float) -> None:
+    """Apply one daemon heartbeat (topic ``daemon.heartbeat``)."""
+    held = msg.get("equities_held") if isinstance(msg, dict) else None
+    with _lock:
+        _feed["rx"] = float(received_at)
+        _feed["socket_open"] = bool(isinstance(msg, dict) and msg.get("schwab_socket_open") is True)
+        _feed["held"] = frozenset(ticker_storage_key(s) for s in held) if isinstance(held, list) else frozenset()
+
+
+def record_feed_down() -> None:
+    """The push connection to the daemon ended: nothing is live until a heartbeat arrives."""
+    with _lock:
+        _feed["rx"] = None
+        _feed["socket_open"] = False
+        _feed["held"] = frozenset()
+
+
+def feed_live_for(ticker: str | None) -> bool:
+    """Is the Schwab LEVELONE_EQUITIES feed delivering THIS symbol right now: a daemon
+    heartbeat arrived within FEED_HEARTBEAT_MAX_AGE_SEC, it reported the Schwab socket open,
+    and it holds the symbol's subscription.
+
+    This is the liveness question -- not "did a field arrive recently". Schwab sends a field
+    only when it CHANGES (measured: 11% of 4,039 messages carried bid+ask+last together), so
+    a quiet symbol's unchanged LAST_PRICE is its current last trade, not an old value; judging
+    by the field's arrival age blanked quiet names on a healthy feed (2026-09-24 08:44 CT,
+    DELL) and kept a dead feed's prices "live" for 30 s."""
+    t = ticker_storage_key(ticker or "")
+    with _lock:
+        rx, open_, held = _feed["rx"], _feed["socket_open"], _feed["held"]
+    if rx is None or not open_ or not t or t not in held:
         return False
-    age = time.time() - received
-    return age >= 0.0 and age < PLANE_QUOTE_STALE_SEC
+    age = time.time() - rx
+    return 0.0 <= age < FEED_HEARTBEAT_MAX_AGE_SEC
+
+
+def spot_is_fresh(q: dict[str, Any]) -> bool:
+    """Is this row's LAST_PRICE live right now: the stream delivered a LAST_PRICE for it this
+    session (`spot_received_ts`) and the feed is live for its symbol (feed_live_for). Its
+    age since the last trade is information (`trade_ts`), never a reason to blank it."""
+    if _safe_float((q or {}).get("spot_received_ts")) is None:  # caps-ok: fail-closed -- no LAST_PRICE this session is not live
+        return False
+    return feed_live_for((q or {}).get("ticker"))
 
 
 def streamed_chg_pct(row: dict[str, Any] | None) -> Optional[float]:
@@ -265,18 +310,13 @@ def streamed_chg_pct(row: dict[str, Any] | None) -> Optional[float]:
 
 
 def quote_is_fresh(q: dict[str, Any]) -> bool:
-    """Is this plane row trustworthy as a LIVE value right now.
-
-    Carried-forward / auth-degraded rows keep their LAST_PRICE number and their
-    degradation flags, but they are not LIVE: treating them as fresh made every
-    consumer paint an old print as current. Age is the only live gate. A missing
-    server_received_ts cannot be assumed fresh (fail closed).
-    """
-    received = _safe_float(q.get("server_received_ts"))
-    if received is None:
+    """Is this plane row's quote (bid/ask/sizes) live right now: the stream wrote the row
+    (`server_received_ts`) and the feed is live for its symbol (feed_live_for). Under
+    Schwab's changed-fields-only delivery an unchanged bid IS the current bid while the feed
+    is live; a missing server_received_ts cannot be assumed live (fail closed)."""
+    if _safe_float(q.get("server_received_ts")) is None:
         return False
-    age = time.time() - received
-    return age >= 0.0 and age < PLANE_QUOTE_STALE_SEC
+    return feed_live_for(q.get("ticker"))
 
 
 def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
@@ -287,7 +327,7 @@ def merge_into_state(ms_dict: dict[str, Any], ticker: str) -> None:
     Does not write to Layer A storage (_by_ticker). For L1 read-path overlay, use
     apply_l1_live_quote_overlay (same field merge, explicit L1 contract).
 
-    A row older than PLANE_QUOTE_STALE_SEC is treated exactly like no row: the caller's own
+    A row whose feed is not live (feed_live_for) is treated exactly like no row: the caller's own
     already-computed spot (resolve_spot's, per _fetch_state's own "SINGLE SPOT AUTHORITY"
     comment immediately before this is called) stands untouched, rather than being clobbered
     by a stalled stream's last tick every single build.
@@ -358,7 +398,7 @@ def apply_l1_live_quote_overlay(l1_payload: dict[str, Any], ticker: str) -> None
     Reads from _by_ticker via get_quote; never writes Layer A storage. Layer A remains pure
     quote rows — L1 semantics (structural, OF, merge metadata) never flow into _by_ticker.
 
-    A row older than PLANE_QUOTE_STALE_SEC is treated exactly like no row: the cached L1
+    A row whose feed is not live (feed_live_for) is treated exactly like no row: the cached L1
     snapshot's own spot (already corrected at build time — see _project_l1) stands untouched
     rather than being overwritten by a stalled stream's last tick on every cache-hit read.
     """
