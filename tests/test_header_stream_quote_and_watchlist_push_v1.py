@@ -78,37 +78,76 @@ def test_connect_sends_quote_tick_for_header_and_every_watch_symbol(monkeypatch)
     assert all(e[0] != "l1_quote" and e[0] != "wl_quote" for e in ev)
 
 
-def test_notify_quote_tick_reaches_a_watching_client_and_keeps_latest_per_symbol(monkeypatch) -> None:
-    feed_live_during(monkeypatch, "ZZW1")
-    q: asyncio.Queue = asyncio.Queue(maxsize=8)
-    srv._l1_light_sse_clients.append((q, ("ZZHDR", "__auto__")))
-    srv._l1_light_sse_watch[id(q)] = ("ZZW1",)
-    try:
-        lmp.record_from_level_one_equity("ZZW1", {"LAST_PRICE": 20.0}, received_ts=time.time())
-        srv._notify_quote_tick("ZZW1")
-        lmp.record_from_level_one_equity("ZZW1", {"LAST_PRICE": 20.5}, received_ts=time.time())
-        srv._notify_quote_tick("ZZW1")
-        latest = None
-        while True:
-            try:
-                _sk, env = srv._l1_sse_thread_queue.get_nowait()
-            except Exception:
-                break
-            if env.get("_sse_event_name") == "quote_tick" and env.get("ticker") == "ZZW1":
-                latest = env
-        assert latest is not None and latest["spot"] == 20.5
-        srv._l1_put_quote_tick_client_queue(q, {"_sse_event_name": "quote_tick", "ticker": "ZZW1", "spot": 20.0})
-        srv._l1_put_quote_tick_client_queue(q, {"_sse_event_name": "quote_tick", "ticker": "ZZW1", "spot": 20.5})
-        held = []
-        while not q.empty():
-            held.append(q.get_nowait())
-        qt = [e for e in held if e.get("_sse_event_name") == "quote_tick" and e.get("ticker") == "ZZW1"]
-        assert len(qt) == 1 and qt[0]["spot"] == 20.5
-    finally:
-        srv._l1_light_sse_clients[:] = [
-            pair for pair in srv._l1_light_sse_clients if pair[0] is not q
-        ]
+def _live_stream(monkeypatch, header, watch):
+    """Open the REAL stream route with a REAL client registration (reserve/release stubbed only
+    for the connection caps); the beat is pushed out so only pushed ticks arrive."""
+    monkeypatch.setattr(srv, "QUOTE_TICK_HEARTBEAT_SEC", 30.0)
+    reg = {}
+
+    def reserve(req, key):
+        q = asyncio.Queue(maxsize=8)
+        srv._l1_light_sse_clients.append((q, key))
+        reg["q"] = q
+        return q, ("r", key[0], key[1])
+
+    def release(q, key, rs_key):
+        srv._l1_light_sse_clients[:] = [p for p in srv._l1_light_sse_clients if p[0] is not q]
         srv._l1_light_sse_watch.pop(id(q), None)
+        srv._l1_qt_pending.pop(id(q), None)
+        srv._l1_qt_wake.pop(id(q), None)
+
+    monkeypatch.setattr(srv, "_l1_light_sse_try_reserve", reserve)
+    monkeypatch.setattr(srv, "_l1_light_sse_release", release)
+    return reg
+
+
+def test_every_watched_symbols_newest_price_is_pushed_past_eight_symbols(monkeypatch) -> None:
+    """12 watched symbols (more than the old 8-slot client queue), two ticks each: every
+    symbol's NEWEST price reaches the stream through the real plane write -> notify -> sink
+    path; nothing is dropped (audit of #280: quote_tick_dropped_full / global evict-oldest)."""
+    wl = [f"ZZM{i}" for i in range(12)]
+    feed_live_during(monkeypatch, "ZZHDR", *wl)
+    _live_stream(monkeypatch, "ZZHDR", wl)
+
+    async def go():
+        resp = await srv.get_analytics_light_stream(request=None, ticker="ZZHDR", expiry=None,
+                                                    watch=",".join(wl))
+        it = resp.body_iterator
+        for _ in range(1 + 1 + len(wl)):          # ": ok" + header beat + a beat per symbol
+            await asyncio.wait_for(it.__anext__(), timeout=3)
+        for i, tk in enumerate(wl):
+            lmp.record_from_level_one_equity(tk, {"LAST_PRICE": 10.0 + i}, received_ts=time.time())
+            lmp.record_from_level_one_equity(tk, {"LAST_PRICE": 20.0 + i}, received_ts=time.time())
+        got, end = {}, time.monotonic() + 2.0
+        while len(got) < len(wl) and time.monotonic() < end:
+            chunk = await asyncio.wait_for(it.__anext__(), timeout=2)
+            for name, env in _events([chunk]):
+                if name == "quote_tick":
+                    got[env["ticker"]] = env["spot"]
+        await it.aclose()
+        return got
+    got = asyncio.run(go())
+    assert got == {tk: 20.0 + i for i, tk in enumerate(wl)}
+
+
+def test_an_index_header_receives_its_ticks_and_counts_as_a_projection_subscriber(monkeypatch) -> None:
+    """The stream is opened as "SPX"; the plane keys "$SPX". Both sides are compared through
+    ticker_storage_key -- raw comparison never matched an index (audit of #280)."""
+    feed_live_during(monkeypatch, "$SPX")
+    _live_stream(monkeypatch, "SPX", [])
+
+    async def go():
+        resp = await srv.get_analytics_light_stream(request=None, ticker="SPX", expiry=None, watch=None)
+        it = resp.body_iterator
+        for _ in range(2):                        # ": ok" + header beat
+            await asyncio.wait_for(it.__anext__(), timeout=3)
+        assert srv._l1_ticker_has_projection_subscriber("$SPX")
+        lmp.record_from_level_one_equity("$SPX", {"LAST_PRICE": 6512.25}, received_ts=time.time())
+        chunk = await asyncio.wait_for(it.__anext__(), timeout=2)
+        await it.aclose()
+        return _events([chunk])
+    ev = asyncio.run(go())
+    assert ev and ev[0][0] == "quote_tick" and ev[0][1]["ticker"] == "$SPX" and ev[0][1]["spot"] == 6512.25
 
 
 def test_notify_quote_updated_does_not_project_without_a_subscriber(monkeypatch) -> None:

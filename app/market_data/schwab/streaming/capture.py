@@ -179,8 +179,14 @@ def failed_reconnect_backoff_sec(failures: int) -> float:
 
 
 def pump_frame_is_fatal(exc: BaseException) -> bool:
-    """Only a dead websocket kills the pump. Other per-frame errors are skipped."""
+    """A dead websocket kills the pump at once. Other per-frame errors are skipped -- until
+    PUMP_SKIP_STREAK_FATAL of them in a row, which is a feed that no longer parses."""
     return _is_connection_death(exc)
+
+
+#: consecutive skipped frames that end the pump (-> the watchdog recycles the session). A
+#: frame shape that fails on every message must not look like a quiet but healthy feed.
+PUMP_SKIP_STREAK_FATAL = 20
 #: A pump that has DIED (handle_message raised: the socket is closed) is not a quiet feed to
 #: be waited out -- it is a known-dead socket. MEASURED 2026-09-23: the only recycle path was
 #: the quiet-feed watchdog (90 s quiet AND 180 s since the last reconnect), and typical SPY
@@ -311,7 +317,7 @@ def make_handler(service: str, field_map: dict, topic_kind: str, bus: MessageBus
     def handler(msg: dict) -> None:
         t0 = time.perf_counter()
         save_raw_sample(service, msg, stats)
-        health.beat(service)
+        published = False
         for item in msg.get("content") or []:
             parsed = parse_stream_item(item, field_map)
             sym = parsed.get("symbol")
@@ -336,6 +342,12 @@ def make_handler(service: str, field_map: dict, topic_kind: str, bus: MessageBus
                               low=parsed.get("low"), close=parsed.get("close"),
                               volume=parsed.get("volume"), src="schwab_chart")
             bus.publish(f"{topic_kind}.{sym}", out)
+            published = True
+        # Liveness is DELIVERED data: the service beats only once a frame parsed and published.
+        # It used to beat before parsing, so a frame shape that failed on every message kept
+        # the service RUNNING while nothing reached the console (audit of #280).
+        if published:
+            health.beat(service)
         stats.record(service, (time.perf_counter() - t0) * 1000.0)
     return handler
 
@@ -345,7 +357,7 @@ def make_book_handler(service: str, bus: MessageBus, health: HealthRegistry, sta
     def handler(msg: dict) -> None:
         t0 = time.perf_counter()
         save_raw_sample(service, msg, stats)
-        health.beat(service)
+        published = False
         for item in msg.get("content") or []:
             if not isinstance(item, dict):
                 continue
@@ -354,6 +366,9 @@ def make_book_handler(service: str, bus: MessageBus, health: HealthRegistry, sta
                 continue
             bus.publish(f"book.{sym}", book_msg(symbol=sym, service=service, content=item,
                                                 src="schwab_book"))
+            published = True
+        if published:
+            health.beat(service)
         stats.record(service, (time.perf_counter() - t0) * 1000.0)
     return handler
 
@@ -2139,16 +2154,24 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
             writer=writer, epoch_state=epoch_state, epoch_key="book", service_name="OPTIONS_BOOK")
 
     async def pump() -> None:
+        streak = 0
         while not stop.is_set():
             try:
                 await stream.handle_message()
+                streak = 0
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 if pump_frame_is_fatal(exc):
                     raise
+                streak += 1
                 stats.record_frame_skip(type(exc).__name__)
-                print(f"pump: skipped frame ({type(exc).__name__}: {exc})")
+                if streak == 1:
+                    print(f"pump: skipped frame ({type(exc).__name__}: {exc})")
+                if streak >= PUMP_SKIP_STREAK_FATAL:
+                    print(f"pump: {streak} consecutive frames failed ({type(exc).__name__}: "
+                          f"{exc}) -- ending the pump so the session recycles")
+                    raise
 
     return stream, asyncio.create_task(pump()), option_contract_state
 
@@ -2247,6 +2270,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     last_reconnect = time.monotonic()
     reconnect_failures = 0
     failed_reconnect_pending = False
+    retry_at = 0.0          # monotonic time of the next failed-reconnect attempt
     try:
         # ── INITIALIZATION IS INSIDE THE LIFECYCLE BOUNDARY ─────────────────────
         # The writer must be draining before any producer can publish, so it starts
@@ -2296,7 +2320,17 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         book_state["ticker"] = boot_ticker
         control_tasks = await _start_control_tasks()
         while not stop.is_set():
-            await asyncio.sleep(STATUS_LOOP_INTERVAL_SEC)
+            # A pending failed-reconnect retry shortens the tick to its deadline; the loop
+            # keeps writing status and running the watchdog in between (it used to sleep the
+            # whole backoff inside this loop -- no status, no watchdog, no stop).
+            _tick = STATUS_LOOP_INTERVAL_SEC
+            if failed_reconnect_pending:
+                _tick = min(_tick, max(0.5, retry_at - time.monotonic()))
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=_tick)
+                break
+            except asyncio.TimeoutError:
+                pass
             max_qdepth = max(max_qdepth, wsub.queue.qsize())
             write_status(bus, health, writer, stats, max_qdepth,
                          epoch_state=option_epoch_state,
@@ -2309,11 +2343,13 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             _dead = pump_died(pump_task)
             _dead_now = (_dead is not None and is_capturable_session()
                          and time.monotonic() - last_reconnect > PUMP_DEATH_RECONNECT_MIN_SEC)
-            if (failed_reconnect_pending or _coverage_forced or _dead_now
+            _retry_due = (failed_reconnect_pending and time.monotonic() >= retry_at
+                          and is_capturable_session())
+            if (_retry_due or _coverage_forced or _dead_now
                     or stream_needs_recycle(
                     age, seen, time.monotonic() - last_reconnect,
                     is_capturable_session())):
-                if failed_reconnect_pending:
+                if _retry_due:
                     print("watchdog: retrying failed reconnect "
                           f"(attempt {reconnect_failures + 1})")
                     failed_reconnect_pending = False
@@ -2434,7 +2470,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                     book_state["stream"] = None
                     option_state["stream"] = None
                     failed_reconnect_pending = True
-                    await asyncio.sleep(delay)
+                    retry_at = time.monotonic() + delay      # the loop tick honours it
                 # Control tasks are re-created for the NEW generation either way: on a
                 # failed reconnect both stream handles are None, so they idle harmlessly
                 # until a later pass succeeds.

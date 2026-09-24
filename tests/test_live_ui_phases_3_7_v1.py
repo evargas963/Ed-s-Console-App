@@ -21,10 +21,13 @@ def test_logger_cycle_order_is_deferred_first_and_drops_nothing():
     assert srv.logger_budget_over(29.9, 30.0) is False
 
 
-def test_l1_sse_dispatch_uses_ed_l1_light_not_default_pool():
+def test_l1_sse_dispatch_uses_its_own_thread_not_a_shared_pool():
+    """The fan-in wait runs on a dedicated single thread -- never the default pool, never the
+    ed_l1_light pool that /api/analytics/light builds occupy (audit of #280)."""
     src = _server_src()
-    assert "run_in_executor(_get_l1_light_executor(), _blocking_get)" in src
+    assert "run_in_executor(_get_l1_sse_dispatch_executor(), _blocking_get)" in src
     assert "run_in_executor(None, _blocking_get)" not in src
+    assert "run_in_executor(_get_l1_light_executor(), _blocking_get)" not in src
 
 
 def test_dead_live_quote_loop_and_api_stream_are_gone():
@@ -117,6 +120,7 @@ def test_forming_bar_overlay_uses_plane_last(monkeypatch):
         "spot_received_ts": ts,
         "server_received_ts": ts,
         "exchange_quote_ts": ts,
+        "trade_ts": ts * 1000.0,        # Schwab TRADE_TIME_MILLIS -- the forming bar's only clock
     }
     monkeypatch.setattr(srv._lmp, "get_quote", lambda t: row if t == tk else None)
     bars = [{"t": 1_700_000_040.0, "o": 100.0, "h": 100.5, "l": 99.5, "c": 100.2, "v": 10}]
