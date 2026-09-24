@@ -61,14 +61,6 @@ def _safe_float(val: Any) -> Optional[float]:
     return x
 
 
-def _plane_tuple_sig(spot: Any, bid: Any, ask: Any) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    return (
-        round(spot, 6) if spot is not None else None,
-        round(bid, 6) if bid is not None else None,
-        round(ask, 6) if ask is not None else None,
-    )
-
-
 def _positive_float(val: Any) -> Optional[float]:
     f = _safe_float(val)
     if f is None or f <= 0:
@@ -83,161 +75,123 @@ def _epoch_seconds_from_millis(val: Any) -> Optional[float]:
     return f / 1000.0
 
 
+#: Schwab LEVELONE_EQUITIES sends only the fields that CHANGED since the last message for a
+#: symbol. Measured on 4,039 real captured messages (stream_quotes_raw, 2026-09-24): only 11%
+#: carried bid, ask and last together; 17% were ask-only, 15% bid-only, 23% none of the three.
+#: So a field absent from a message is UNCHANGED, not missing -- the current value of each
+#: field is the last one Schwab sent, and its age is the age of THAT message. This table holds
+#: exactly that, per ticker, per field: {field: (value, received_ts)}.
+_PRICE_FIELDS = ("LAST_PRICE", "BID_PRICE", "ASK_PRICE", "MARK", "CLOSE_PRICE",
+                 "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")
+_COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
+_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
+#: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
+#: Measured 2026-09-24: NET_CHANGE_PERCENT arrives with every LAST_PRICE (1,232 of 1,232
+#: captured); REGULAR_MARKET_CHANGE_PERCENT only on full refreshes; CHANGE_PERCENT never.
+_SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT")
+_fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
+
+
+def _read_stream_field(name: str, raw: Any) -> Optional[float]:
+    if name in _PRICE_FIELDS:
+        return _positive_float(raw)
+    if name in _COUNT_FIELDS:
+        v = _safe_float(raw)
+        return v if v is not None and v >= 0 else None
+    if name in _SIGNED_FIELDS:
+        return _safe_float(raw)
+    return _epoch_seconds_from_millis(raw)
+
+
 def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
                                  received_ts: float) -> bool:
     """
-    Ingest one Schwab streaming LEVEL_ONE_EQUITY content row into the plane.
-    Returns True if the stored row changed (new generation recorded).
+    Ingest one Schwab streaming LEVELONE_EQUITIES content item into the plane.
+    Returns True when a plane row was (re)published.
 
-    `received_ts` is REQUIRED: the capture daemon's own receive time for this message
-    (its `ts_recv`). It is what every freshness check judges -- never the time the
-    console happened to process the message (a replayed or delayed message stamped
-    "now" read as live; 2026-09-23 audit P0).
+    Per-field state (see _fields_by_ticker): each field present in the message replaces
+    that field's value and receive time; absent fields stand (Schwab sends changes only).
+    A present-but-invalid price (0 / negative -- e.g. no bid) CLEARS that field: the vendor
+    said there is no such value now. A row is published once a LAST_PRICE is known; spot is
+    LAST_PRICE only (MARK never stands in) and its age is the age of the last LAST_PRICE
+    message, never of the bid/ask tick arriving now.
+
+    `received_ts` is REQUIRED: the capture daemon's own receive time for this message --
+    what every freshness check judges (2026-09-23 audit P0).
     """
     if not item or not isinstance(item, dict):
         return False
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
+    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key
     if not t:
         return False
-
-    last = _positive_float(item.get("LAST_PRICE"))
-    mark = _positive_float(item.get("MARK"))
-    bid = _positive_float(item.get("BID_PRICE"))
-    ask = _positive_float(item.get("ASK_PRICE"))
-    close_px = _positive_float(item.get("CLOSE_PRICE"))
-
+    rts = float(received_ts)
+    seen = False
     with _lock:
-        prev = _by_ticker.get(t)
-        pspot = prev.get("spot") if prev else None
-        # CLOSE_PRICE (the prior session's close) is sent when it changes, like every
-        # LEVELONE field; between sends the last one Schwab sent stands.
-        prior_close = close_px if close_px is not None else (prev.get("prior_close") if prev else None)
-        pbid = prev.get("bid") if prev else None
-        pask = prev.get("ask") if prev else None
-        prev_spot_source = None
-        prev_spot_received_ts = prev.get("spot_received_ts") if prev else None
-        if prev:
-            _prev_qsd = prev.get("quote_source_detail")
-            if isinstance(_prev_qsd, dict):
-                prev_spot_source = _prev_qsd.get("spot")
-
-    # Current live spot is LAST_PRICE only. MARK is the vendor mid and may update
-    # quote_mid; it must never become spot. A bid/ask-only tick keeps the prior
-    # LAST_PRICE rather than inventing a substitute.
-    spot_carried_forward = False
-    if last is not None:
-        spot_f = last
-        spot_source = "LAST_PRICE"
-        spot_received_ts = float(received_ts)
-    elif (
-        prev is not None
-        and pspot is not None
-        and pspot > 0
-        and prev_spot_source == "LAST_PRICE"
-        # carry ONLY a streamed LAST_PRICE: a prior row written by anything else (a REST
-        # quote) must never be restamped schwab_streaming_level_one by a bid/ask tick
-        # (independent audit 2026-09-24)
-        and prev.get("quote_ingestion") == "schwab_streaming_level_one"
-    ):
-        # Schwab LEVELONE sends only CHANGED fields: an unchanged LAST_PRICE is not resent,
-        # so the last trade price stands -- but its age is the age of THAT trade message,
-        # never the bid/ask tick that happens to be arriving now.
-        spot_f = pspot
-        spot_source = "LAST_PRICE"
-        spot_received_ts = prev_spot_received_ts
-        spot_carried_forward = True
-    else:
-        return False
-    bid_source = "BID_PRICE" if bid is not None else None
-    ask_source = "ASK_PRICE" if ask is not None else None
-
-    # exchange_quote_ts (set below) carries the EXCHANGE quote clock — Schwab
-    # QUOTE_TIME_MILLIS in epoch seconds — NOT a server clock. The genuine server wall
-    # clock is the separate server_received_ts (time.time()). When QUOTE_TIME_MILLIS is
-    # absent we fall back to TRADE_TIME_MILLIS as a LABELED PROXY (M6) rather than
-    # conflating the two silently; the clock actually used is recorded in
-    # quote_source_detail["quote_ts"] so a trade-time value is never aged as a quote time
-    # without provenance. The name->value contract (exchange_quote_ts must never hold a
-    # server wall clock) is machine-pinned by tools/check_schwab_market_field_semantics (M5).
-    _qtm = _epoch_seconds_from_millis(item.get("QUOTE_TIME_MILLIS"))
-    _ttm = _epoch_seconds_from_millis(item.get("TRADE_TIME_MILLIS"))
-    # QUOTE_TIME_MILLIS only (operator rule 2026-09-23: no fallbacks) -- TRADE_TIME_MILLIS
-    # is a different clock and never stands in for the quote time.
-    _ = _ttm
-    if _qtm is not None:
-        quote_ts = _qtm
-        quote_ts_clock = "QUOTE_TIME_MILLIS"
-    else:
-        quote_ts = None
-        quote_ts_clock = "unavailable"
-    new_sig = _plane_tuple_sig(spot_f, bid, ask)
-    prev_sig = _plane_tuple_sig(pspot, pbid, pask) if prev else None
-    prev_quote_ts = (prev or {}).get("exchange_quote_ts")
-    if (
-        prev_sig == new_sig
-        and (prev or {}).get("quote_ingestion") == "schwab_streaming_level_one"
-        and (quote_ts is None or prev_quote_ts == quote_ts)
-    ):
+        fs = _fields_by_ticker.setdefault(t, {})
+        for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS:
+            if name not in item:
+                continue
+            seen = True
+            v = _read_stream_field(name, item.get(name))
+            if v is None:
+                fs.pop(name, None)       # vendor sent "none" (e.g. BID_PRICE 0): cleared
+            else:
+                fs[name] = (v, rts)
+        snapshot = dict(fs)
+    if not seen or "LAST_PRICE" not in snapshot:
         return False
 
-    spread_frac = None
-    quote_mid = None
-    mid_source = None
-    try:
-        if mark is not None:
-            mark_f = float(mark)
-            if mark_f > 0:
-                quote_mid = mark_f
-                mid_source = "schwab_streaming_mark"
-        if quote_mid is not None and bid is not None and ask is not None:
-            bf, af = float(bid), float(ask)
-            spread_frac = (af - bf) / quote_mid
-    except (TypeError, ValueError):
-        pass
+    def val(name: str) -> Optional[float]:
+        return snapshot[name][0] if name in snapshot else None
 
-    server_received_ts = float(received_ts)
+    spot_f = val("LAST_PRICE")
+    bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
+    quote_ts = val("QUOTE_TIME_MILLIS")   # exchange quote clock; TRADE_TIME never stands in
+    spread_pts = round(ask - bid, 4) if bid is not None and ask is not None else None
+    spread_frac = (ask - bid) / mark if spread_pts is not None and mark is not None else None
     out = {
         "ticker": t,
         "spot": float(spot_f),
-        "bid": float(bid) if bid is not None else None,
-        "ask": float(ask) if ask is not None else None,
+        "bid": bid,
+        "ask": ask,
         "spot_disp": f"{float(spot_f):.2f}",
-        "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
-        "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
-        "quote_mid": quote_mid,
-        "mid_source": mid_source,
+        "bid_disp": f"{bid:.2f}" if bid is not None else "—",
+        "ask_disp": f"{ask:.2f}" if ask is not None else "—",
+        "quote_mid": mark,
+        "mid_source": "schwab_streaming_mark" if mark is not None else None,
         "spread": spread_frac,
-        "spread_pts": round(float(ask) - float(bid), 4) if bid is not None and ask is not None else None,
-        "spread_source": (
-            "derived_bid_ask_mid_fraction"
-            if spread_frac is not None and mid_source == "derived_bid_ask_mid"
-            else (
-                "derived_bid_ask_fraction_schwab_mark_denom"
-                if spread_frac is not None and mid_source == "schwab_streaming_mark"
-                else None
-            )
-        ),
-        "spread_pts_source": (
-            "derived_bid_ask_pts" if bid is not None and ask is not None else None
-        ),
+        "spread_pts": spread_pts,
+        "spread_source": "derived_bid_ask_fraction_schwab_mark_denom" if spread_frac is not None else None,
+        "spread_pts_source": "derived_bid_ask_pts" if spread_pts is not None else None,
+        "bid_size": val("BID_SIZE"),
+        "ask_size": val("ASK_SIZE"),
+        "last_size": val("LAST_SIZE"),
+        "total_volume": val("TOTAL_VOLUME"),
+        "open_price": val("OPEN_PRICE"),
+        "high_price": val("HIGH_PRICE"),
+        "low_price": val("LOW_PRICE"),
+        "prior_close": val("CLOSE_PRICE"),
+        # Schwab's own change of LAST_PRICE vs prior close (0 hops) -- the watchlist / header %
+        "chg_pct": val("NET_CHANGE_PERCENT"),
+        "net_change": val("NET_CHANGE"),
         "fast_generation_id": next_fast_generation(t),
         "exchange_quote_ts": quote_ts,
+        #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a
+        #: LAST_PRICE tick belongs to (candles); never used as the quote time.
+        "trade_ts": val("TRADE_TIME_MILLIS"),
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
-        "server_received_ts": server_received_ts,
-        "spot_received_ts": spot_received_ts,
-        "prior_close": prior_close,
+        "server_received_ts": rts,
+        "spot_received_ts": snapshot["LAST_PRICE"][1],
+        #: each field's own receive time -- a value's age is the age of the message that set it
+        "field_received_ts": {name: ts for name, (_, ts) in snapshot.items()},
         "quote_ingestion": "schwab_streaming_level_one",
         "quote_source_detail": {
-            "spot": spot_source,
-            "bid": bid_source,
-            "ask": ask_source,
-            "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
-            "spread": "schwab_bid_ask" if bid is not None and ask is not None else "unavailable_missing_bid_or_ask",
-            "quote_ts": quote_ts_clock,  # M6: which exchange clock exchange_quote_ts carries (QUOTE_TIME_MILLIS, or TRADE_TIME_MILLIS_proxy on fallback)
-            "carried_forward": spot_carried_forward,
-            "previous_spot_available": pspot is not None,
-            "previous_bid_available": pbid is not None,
-            "previous_ask_available": pask is not None,
+            "spot": "LAST_PRICE",
+            "bid": "BID_PRICE" if bid is not None else None,
+            "ask": "ASK_PRICE" if ask is not None else None,
+            "mid": "schwab_streaming_mark" if mark is not None else "unavailable_missing_mark",
+            "spread": "schwab_bid_ask" if spread_pts is not None else "unavailable_missing_bid_or_ask",
+            "quote_ts": "QUOTE_TIME_MILLIS" if quote_ts is not None else "unavailable",
         },
     }
     with _lock:

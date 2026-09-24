@@ -8,6 +8,7 @@ every output, fail-closed on no book, and that temporal PROXY metrics are NOT pr
 """
 
 from __future__ import annotations
+import time
 
 import sys
 from pathlib import Path
@@ -456,8 +457,8 @@ def test_delta_g_contract_isolation_no_bleed_across_symbols():
     ofls.clear_symbol("RTH_TEST_CONTRACT_B")
     try:
         ofls.push_level_one("RTH_TEST_CONTRACT_A",
-                            {"BID_PRICE": 9.99, "ASK_PRICE": 10.01, "BID_SIZE": 4, "ASK_SIZE": 4})
-        ofls.push_level_one("RTH_TEST_CONTRACT_B", {"BID_SIZE": 2})  # never had a price of its own
+                            {"BID_PRICE": 9.99, "ASK_PRICE": 10.01, "BID_SIZE": 4, "ASK_SIZE": 4}, ts_recv=time.time())
+        ofls.push_level_one("RTH_TEST_CONTRACT_B", {"BID_SIZE": 2}, ts_recv=time.time())  # never had a price of its own
         bid_a, ask_a, _, _ = ofe._resolve_bid_ask_prices(
             {"content": ofls.get_content_for_symbol("RTH_TEST_CONTRACT_A")})
         assert (bid_a, ask_a) == (9.99, 10.01)
@@ -477,8 +478,8 @@ def test_storage_layer_merges_partial_ticks_not_overwrites():
     ofls.clear_symbol("RTH_TEST_MUTTEST")
     try:
         ofls.push_level_one("RTH_TEST_MUTTEST",
-                            {"BID_PRICE": 1.23, "ASK_PRICE": 1.25, "BID_SIZE": 10, "ASK_SIZE": 10})
-        ofls.push_level_one("RTH_TEST_MUTTEST", {"ASK_SIZE": 75})  # exact live shape, 2026-08-31
+                            {"BID_PRICE": 1.23, "ASK_PRICE": 1.25, "BID_SIZE": 10, "ASK_SIZE": 10}, ts_recv=time.time())
+        ofls.push_level_one("RTH_TEST_MUTTEST", {"ASK_SIZE": 75}, ts_recv=time.time())  # exact live shape, 2026-08-31
         data = {"content": ofls.get_content_for_symbol("RTH_TEST_MUTTEST")}
         bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
         assert (bid, ask) == (1.23, 1.25), "a size-only tick must not erase the stored price"
@@ -491,7 +492,7 @@ def test_storage_layer_merges_partial_ticks_not_overwrites():
 
 def test_mutation_control_single_snapshot_selection_loses_the_price():
     """MUTATION/FAULT CONTROL: the RETIRED single-snapshot-item approach
-    (`_latest_quote_snapshot`, still used by `_resolve_quote_mark` for MARK only) reads
+    (`_latest_quote_snapshot`, deleted 2026-09-24 -- MARK is resolved per field too now) reads
     BOTH price and size from ONE item. Proves it gets the wrong answer on the exact
     delta sequence test B uses — the per-field fix is load-bearing, not coincidental.
     If `_resolve_bid_ask_prices`/`_compute_top_book_pressure` ever regress back to
@@ -500,7 +501,13 @@ def test_mutation_control_single_snapshot_selection_loses_the_price():
         {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
         {"BID_SIZE": 8, "ASK_SIZE": 35},
     ]
-    old_snapshot = ofe._latest_quote_snapshot(items)
+    def _retired_single_snapshot(items):   # the deleted _latest_quote_snapshot, inlined
+        for item in reversed(items):
+            if isinstance(item, dict) and any(item.get(k) is not None for k in
+                                              ("BID_SIZE", "ASK_SIZE", "BID_PRICE", "ASK_PRICE")):
+                return item
+        return None
+    old_snapshot = _retired_single_snapshot(items)
     assert old_snapshot is items[-1], "sanity: the retired selector picks the newest item"
     assert old_snapshot.get("BID_PRICE") is None and old_snapshot.get("ASK_PRICE") is None, (
         "the retired single-snapshot approach loses the price on this exact live-observed "
@@ -793,8 +800,9 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     assert seen == [("SIZEG", 1234.5), ("SIZEG  260918C00001000", 2345.5)]
 
 
-def test_book_top_fills_bid_ask_when_l1_has_no_price():
-    """OPTIONS_BOOK / NASDAQ_BOOK already in content is the live top when L1 is size-only.
+def test_book_top_never_stands_in_for_a_missing_l1_price():
+    """2026-09-24 (no fallbacks): the book's top level is a DIFFERENT feed (one venue's
+    depth) and no longer stands in when L1 carries no price -- bid/ask stay absent.
     # universal-scope-ok: book shape fixture, not a SPY-only product claim.
     """
     items = [{
@@ -803,7 +811,4 @@ def test_book_top_fills_bid_ask_when_l1_has_no_price():
         "BOOK_TIME": 1,
     }, {"ASK_SIZE": 12}]
     bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices({"content": items})
-    assert bid == 0.02
-    assert ask == 0.03
-    assert bid_leaf == "streaming.BOOK.BID_PRICE"
-    assert ask_leaf == "streaming.BOOK.ASK_PRICE"
+    assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)

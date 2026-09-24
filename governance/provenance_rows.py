@@ -697,11 +697,6 @@ ROWS: tuple[Row, ...] = (
         justification='Coherence triggers vs stream spot and cached bundle.',
     ),
     Row(
-        file='live_market_plane.py', derivation='_plane_tuple_sig', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state',),
-        justification='Dedup signature for plane tuple.',
-    ),
-    Row(
         file='live_market_plane.py', derivation='apply_l1_live_quote_overlay', disposition='DERIVED',
         producer_refs=('live_market_plane.py:get_quote',),
         justification='Delegates to Schwab transport producers for apply_l1_live_quote_overlay.',
@@ -718,7 +713,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='live_market_plane.py', derivation='record_from_level_one_equity', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state', 'live_market_plane.py:_plane_tuple_sig'),
+        producer_refs=('server.py:_fetch_state',),
         justification='Delegates to Schwab transport producers for record_from_level_one_equity.',
     ),
     Row(
@@ -1972,11 +1967,6 @@ ROWS: tuple[Row, ...] = (
         justification='PR214 Gap 1: the ONE freshness-aware per-field resolver over Schwab LEVELONE_OPTIONS/EQUITIES partial/delta content items (_latest_content_field).',
     ),
     Row(
-        file='app/options/order_flow/engine.py', derivation='_latest_quote_snapshot', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_latest_quote_snapshot).',
-    ),
-    Row(
         file='app/options/order_flow/engine.py', derivation='_microprice', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_microprice).',
@@ -1987,19 +1977,9 @@ ROWS: tuple[Row, ...] = (
         justification='Structural book microstructure: depth totals, imbalance, microprice, slope, concentration and wall candidates from one canonical book snapshot.',
     ),
     Row(
-        file='app/options/order_flow/engine.py', derivation='_mock_data', disposition='ALLOWLISTED',
-        allowlist_id='mega2_test_fixture',
-        justification='Order-flow metric from Schwab stream/quote fields.',
-    ),
-    Row(
         file='app/options/order_flow/engine.py', derivation='_nonnegative_float', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_nonnegative_float).',
-    ),
-    Row(
-        file='app/options/order_flow/engine.py', derivation='_normalize', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_normalize).',
     ),
     Row(
         file='app/options/order_flow/engine.py', derivation='_option_contract_volume', disposition='ALLOWLISTED',
@@ -2030,11 +2010,6 @@ ROWS: tuple[Row, ...] = (
         file='app/options/order_flow/engine.py', derivation='_sorted_valid_levels', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_sorted_valid_levels).',
-    ),
-    Row(
-        file='app/options/order_flow/engine.py', derivation='_weighted_mean_present', disposition='DERIVED',
-        producer_refs=('app/options/order_flow/engine.py:OrderFlowEngine.compute',),
-        justification='Composite mean over present legs only — derives order_flow composite from Schwab-derived inputs (_weighted_mean_present).',
     ),
     Row(
         file='app/options/order_flow/engine.py', derivation='compute_book_microstructure', disposition='DERIVED',
@@ -2080,11 +2055,6 @@ ROWS: tuple[Row, ...] = (
         file='app/options/order_flow/state.py', derivation='get_stats', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (get_stats).',
-    ),
-    Row(
-        file='app/options/order_flow/state.py', derivation='get_stream_chg_pct', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (get_stream_chg_pct).',
     ),
     Row(
         file='app/options/order_flow/state.py', derivation='get_stream_volume', disposition='ALLOWLISTED',
@@ -2675,11 +2645,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_tier_c_analytics_json_response', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_tier_c_analytics_json_response).',
-    ),
-    Row(
-        file='server.py', derivation='_update_rest_cum_delta', disposition='DERIVED',
-        producer_refs=('server.py:_safe_float_quote',),
-        justification='REST tape proxy when stream unavailable.',
     ),
     Row(
         file='server.py', derivation='api_live_plane', disposition='ALLOWLISTED',

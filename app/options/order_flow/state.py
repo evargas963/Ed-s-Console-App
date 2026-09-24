@@ -18,7 +18,6 @@ from l1_trade_observation import (
     is_adjacent_restatement,
     vendor_triple,
 )
-import time as _time
 
 # Limits to prevent unbounded growth
 MAX_BOOK_SNAPSHOTS = 20
@@ -52,7 +51,6 @@ class OrderFlowState:
         self._receive_seq: dict[str, int] = {}
         self._receive_log: dict[str, deque] = {}
         self._stream_volume: dict[str, float] = {}
-        self._stream_chg_pct: dict[str, float] = {}
         self._stream_greeks: dict[str, dict] = {}
         # A newly constructed instance is already empty. If it is created during
         # RTH (as isolated history states are), mark that session current so its
@@ -113,7 +111,9 @@ class OrderFlowState:
         if not sym:
             return
         if ts_recv is None:
-            ts_recv = _time.time()
+            # the daemon's receive time is REQUIRED -- stamping "now" made a replayed or
+            # delayed message read as live (same P0 as the live plane, 2026-09-23)
+            raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
 
         # Operator finding (2026-09-11): this session-reset check used to run AFTER the
         # volume/chg_pct writes below. On the FIRST update of a new RTH session, that order
@@ -148,24 +148,15 @@ class OrderFlowState:
         # float_nonnegative_or_none (the repo's existing canonical reader for vendor
         # counts like totalVolume/size) rejects negative and non-finite values while
         # admitting a real, finite zero.
-        vol = content_item.get("TOTAL_VOLUME")
-        if vol is None:
-            vol = content_item.get("VOLUME")
-        vf = float_nonnegative_or_none(vol)
+        # TOTAL_VOLUME only: "VOLUME" (a CHART field) used to stand in (2026-09-24)
+        vf = float_nonnegative_or_none(content_item.get("TOTAL_VOLUME"))
         if vf is not None:
             with self._lock:
                 self._stream_volume[sym] = vf
 
-        # `or` would drop a legitimate 0.0 (flat) REGULAR_MARKET_CHANGE_PERCENT and fall
-        # through to CHANGE_PERCENT instead; check presence explicitly. float_finite_or_none
-        # also rejects NaN/Infinity, which raw float() would silently accept from a bad tick.
-        chg = content_item.get("REGULAR_MARKET_CHANGE_PERCENT")
-        if chg is None:
-            chg = content_item.get("CHANGE_PERCENT")
-        cf = float_finite_or_none(chg)
-        if cf is not None:
-            with self._lock:
-                self._stream_chg_pct[sym] = cf
+        # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store. This
+        # held REGULAR_MARKET_CHANGE_PERCENT with a CHANGE_PERCENT fallback -- a field Schwab
+        # never sends, measured 2026-09-24.)
 
         # GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME: native Schwab LEVELONE_OPTIONS fields
         # (confirmed in the installed SDK's field enum, schwab/streaming.py
@@ -232,7 +223,7 @@ class OrderFlowState:
             return
 
         curr_key = vendor_triple(trade_ms, last_price, last_size)
-        received_ts = _time.time()
+        received_ts = float(ts_recv)   # the daemon receive time, not the console's clock
         with self._lock:
             seq = self._receive_seq.get(sym, 0) + 1
             self._receive_seq[sym] = seq
@@ -310,7 +301,6 @@ class OrderFlowState:
         for values in self._receive_log.values():
             values.clear()
         self._stream_volume.clear()
-        self._stream_chg_pct.clear()
         self._stream_greeks.clear()
 
     def forget_unsubscribed_symbols(self, old: list[str], new: list[str]) -> None:
@@ -343,7 +333,6 @@ class OrderFlowState:
             if sym in self._receive_log:
                 self._receive_log[sym].clear()
             self._stream_volume.pop(sym, None)
-            self._stream_chg_pct.pop(sym, None)
             self._stream_greeks.pop(sym, None)
 
     def get_stream_volume(self, symbol: str) -> Optional[float]:
@@ -353,14 +342,6 @@ class OrderFlowState:
             return None
         with self._lock:
             return self._stream_volume.get(sym)
-
-    def get_stream_chg_pct(self, symbol: str) -> Optional[float]:
-        """Return the latest streamed regular/all-session change percent."""
-        sym = ticker_storage_key(symbol)
-        if not sym:
-            return None
-        with self._lock:
-            return self._stream_chg_pct.get(sym)
 
     def get_stream_greeks(self, symbol: str) -> Optional[dict]:
         """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME for one OPTION
@@ -459,11 +440,6 @@ def clear_symbol(symbol: str) -> None:
 def get_stream_volume(symbol: str) -> Optional[float]:
     """Return latest TOTAL_VOLUME from WebSocket level_one_equity for symbol, or None."""
     return _LIVE_STATE.get_stream_volume(symbol)
-
-
-def get_stream_chg_pct(symbol: str) -> Optional[float]:
-    """Return REGULAR_MARKET_CHANGE_PERCENT or CHANGE_PERCENT from WebSocket for symbol, or None."""
-    return _LIVE_STATE.get_stream_chg_pct(symbol)
 
 
 def get_stream_greeks(symbol: str) -> Optional[dict]:

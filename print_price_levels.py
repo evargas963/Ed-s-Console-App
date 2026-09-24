@@ -18,7 +18,7 @@ APP_DIR = str(Path(__file__).parent.resolve())
 sys.path.insert(0, APP_DIR)
 
 from config import build_config
-from schwab_client import build_client_from_token, safe_get_quote
+from schwab_client import build_client_from_token
 from market_context import fetch_price_levels
 
 
@@ -48,14 +48,22 @@ def main():
 
     client = state.client
 
-    # Fetch quote for Tier 1 fallback (today open/high/low)
-    q_resp = safe_get_quote(client, ticker)
-    q_json = q_resp.json() if q_resp and hasattr(q_resp, "json") else {}
+    # Today's open/high/low come from the STREAM (the running console's live plane row) --
+    # never a REST quote. Console not running / not streaming this ticker -> absent.
+    import json as _json
+    import urllib.request as _ur
+    stream_row = None
+    try:
+        with _ur.urlopen(f"http://127.0.0.1:8000/api/fast-quote?ticker={ticker}", timeout=5) as r:
+            _body = _json.loads(r.read().decode("utf-8"))
+            stream_row = _body if _body.get("ok") else None
+    except OSError:
+        stream_row = None
 
     pl = fetch_price_levels(
         client,
         symbol=ticker,
-        quote_raw=q_json,
+        stream_quote=stream_row,
         orb_minutes=15,
         include_extended_hours=True,
     )

@@ -319,12 +319,6 @@ def _quote_field_lineage(
     quote_detail: dict[str, Any],
     spread_source: str | None,
 ) -> dict[str, Any]:
-    if quote_detail.get("carried_forward"):
-        return _lineage_entry(
-            LINEAGE_CLASS_FALLBACK_FIELD,
-            detail=f"{field}_carried_forward_cached_quote",
-            producer="server.py::_fetch_state",
-        )
     src = str(quote_detail.get(field) or "")
     if value is None or src.startswith("unavailable"):
         return _lineage_entry(

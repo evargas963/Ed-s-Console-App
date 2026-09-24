@@ -19,7 +19,6 @@ contract is pinned here so a future edit cannot silently shift legacy serve inpu
 """
 from __future__ import annotations
 
-import math
 
 import pytest
 
@@ -161,20 +160,10 @@ def test_direction_consumers_skip_none_signs():
 
 # ── order flow: absent legs are excluded, never neutral 0.0 mass ─────────────────────────
 
-def test_weighted_mean_present_never_zero_fills_absent_leg():
-    from app.options.order_flow.engine import _weighted_mean_present
-
-    terms = [(1.0, None, -1.0, 1.0), (1.0, 0.5, -1.0, 1.0)]
-    # Zero-filling the absent leg would yield 0.25; exclusion yields 0.5 exactly.
-    assert _weighted_mean_present(terms, min_present=1) == 0.5
-
-
-def test_normalize_requires_a_present_value():
-    # RC-318: _normalize's dead `None -> 0.0` branch is gone; absence is the caller's
-    # concern (exclusion), so passing None is now a type error, not a neutral reading.
-    from app.options.order_flow.engine import _normalize
-
-    with pytest.raises(TypeError):
-        _normalize(None)  # type: ignore[arg-type]
-    assert _normalize(0.3) == 0.3
-    assert not math.isnan(_normalize(1e9))
+def test_no_present_leg_reweighting_helper_exists():
+    """2026-09-24: _weighted_mean_present RENORMALISED the weights of whichever legs were
+    present (re-weighting by design) and had no production caller; it and _normalize are
+    deleted so nothing can reintroduce partial-leg averaging."""
+    import app.options.order_flow.engine as ofe
+    assert not hasattr(ofe, "_weighted_mean_present")
+    assert not hasattr(ofe, "_normalize")

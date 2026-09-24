@@ -369,7 +369,7 @@ def test_market_context_carries_and_never_recomputes(monkeypatch):
 
         monkeypatch.setattr(lve, name, trap)
 
-    pl = fetch_price_levels(None, symbol="SPY", quote_raw=None, level_snapshot=snap)
+    pl = fetch_price_levels(None, symbol="SPY", stream_quote=None, level_snapshot=snap)
 
     assert recompute == [], f"fetch_price_levels recomputed {recompute} instead of carrying"
     # …and it carried, so the silence above is carriage, not a swallowed failure.
@@ -388,7 +388,7 @@ def test_state_and_levels_carry_one_generation(monkeypatch):
     snap = materialize_price_level_snapshot(
         "SPY", SESSION, _tape(), bar_source="unit_tape")
     carry_snapshot_levels(snap, "api.levels")
-    pl = fetch_price_levels(None, symbol="SPY", quote_raw=None, level_snapshot=snap)
+    pl = fetch_price_levels(None, symbol="SPY", stream_quote=None, level_snapshot=snap)
     assert pl.pdh == snap.price("PDH")
     assert pl.pdc == snap.price("PDC")
     assert pl.vwap == snap.price("VWAP")
@@ -407,12 +407,12 @@ def test_state_and_levels_carry_one_generation(monkeypatch):
     assert snap2.price("VWAP") != pl.vwap
     assert srv.carried_price_levels_match_snapshot(
         pl, today, snap.generation, today, snap2) is False
-    pl2 = fetch_price_levels(None, symbol="SPY", quote_raw=None, level_snapshot=snap2)
+    pl2 = fetch_price_levels(None, symbol="SPY", stream_quote=None, level_snapshot=snap2)
     assert pl2.vwap == snap2.price("VWAP")
     assert pl2.level_generation == snap2.generation
     assert srv.carried_price_levels_match_snapshot(
         pl2, today, snap2.generation, today, snap2) is True
-    empty = fetch_price_levels(None, symbol="ZZZZ", quote_raw=None)
+    empty = fetch_price_levels(None, symbol="ZZZZ", stream_quote=None)
     assert srv.carried_price_levels_match_snapshot(
         empty, today, snap2.generation, today, snap2) is False
 
@@ -423,10 +423,8 @@ def test_market_context_absence_is_absence_not_substitution():
     clear_materialized_snapshots()
     # Quote closePrice is a different book from snapshot PDC. Absence of the snapshot
     # must not publish closePrice as pdc (RC-415). today_open/high/low ARE quote fields.
-    quote_raw = {"ZZZZ": {"quote": {
-        "closePrice": 999.0, "openPrice": 10.0, "highPrice": 11.0, "lowPrice": 9.0,
-    }}}
-    pl = fetch_price_levels(None, symbol="ZZZZ", quote_raw=quote_raw)
+    stream_row = {"prior_close": 999.0, "open_price": 10.0, "high_price": 11.0, "low_price": 9.0}
+    pl = fetch_price_levels(None, symbol="ZZZZ", stream_quote=stream_row)
     for field in ("pdh", "pdl", "pdc", "vwap", "orb_high", "overnight_high", "today_poc"):
         assert getattr(pl, field) is None, f"{field} was substituted when absent"
     assert pl.today_open == 10.0
@@ -442,7 +440,7 @@ def test_market_context_absence_is_absence_not_substitution():
     assert snap.price("PDC") is None
     pl2 = fetch_price_levels(
         None, symbol="QQQ",
-        quote_raw={"QQQ": {"quote": {"closePrice": 888.0}}},
+        stream_quote={"prior_close": 888.0},
         level_snapshot=snap,
     )
     assert pl2.pdc is None, (

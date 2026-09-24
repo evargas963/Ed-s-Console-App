@@ -69,7 +69,7 @@ def test_live_payload_one_compute_includes_proxy_flow():
         "BID_PRICE": 1.10, "ASK_PRICE": 1.20,
         "LAST_PRICE": 1.15, "LAST_SIZE": 3,
         "TRADE_TIME_MILLIS": int(time.time() * 1000),
-    })
+    }, ts_recv=time.time())
     payload = options_live_payload(contract)
     assert payload["status"] == "ok"
     assert "flow" in payload
@@ -166,7 +166,7 @@ def build_flow_e2e_fixture_response() -> dict:
                 "BID_SIZE": 40, "ASK_SIZE": 55,
                 "LAST_PRICE": price, "LAST_SIZE": size,
                 "TRADE_TIME_MILLIS": t0 + dt_ms,
-            })
+            }, ts_recv=time.time())
         return json.loads(srv.api_order_flow_options_microstructure(contract=c).body)
     finally:
         ofls.clear_all_live_state()

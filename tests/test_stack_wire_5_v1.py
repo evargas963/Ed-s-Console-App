@@ -100,15 +100,15 @@ def test_order_flow_engine_residual_magics_named():
     assert ofe.OF_BOOK_DEPTH_TOP == 1
     assert ofe.OF_BOOK_DEPTH_SHALLOW == 3
     assert ofe.OF_BOOK_DEPTH_DEEP == 5
-    assert ofe.OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT == 2
+    assert not hasattr(ofe, "OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT")   # deleted with the helper
     # RC-474: OF_RVOL_NEUTRAL_CENTER belonged to the retired composite and is deleted.
     assert not hasattr(ofe, "OF_RVOL_NEUTRAL_CENTER")
 
     # _compute_institutional_flow_proxy and OrderFlowEngine.compute use the named depths,
     # not bare integers.
     src_inst = inspect.getsource(ofe._compute_institutional_flow_proxy)
-    assert "OF_BOOK_DEPTH_DEEP" in src_inst
-    assert "_compute_book_imbalance(data, 5)" not in src_inst
+    # it READS the canonical deep imbalance (a required argument) and never walks the book
+    assert "_compute_book_imbalance(" not in src_inst
 
     # ONE CANONICAL BOOK PATH: the depth ladder is walked once, in the canonical producer,
     # over the named ladder constant (not bare integers). OrderFlowEngine.compute no longer
@@ -133,7 +133,3 @@ def test_order_flow_engine_residual_magics_named():
     assert "def _compute_order_flow_score" not in body
     assert "def _direction" not in body
 
-    # _weighted_mean_present default uses the named constant, not bare 2.
-    wm_src = inspect.getsource(ofe._weighted_mean_present)
-    assert "min_present: int = OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT" in wm_src
-    assert "min_present: int = 2" not in wm_src

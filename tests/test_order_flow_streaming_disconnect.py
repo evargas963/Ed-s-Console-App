@@ -41,7 +41,7 @@ def test_get_plane_authority_rest_only_when_feed_not_running():
     _reset_feed_globals()
     ofs._feed_running = False
     ofs._active_ticker = "SPY"
-    assert ofs.get_plane_authority_for_ticker("SPY") == "rest_only"
+    assert ofs.get_plane_authority_for_ticker("SPY") == "stream_not_running"
 
 
 def test_get_plane_authority_rest_mismatch_for_a_different_ticker():
@@ -49,4 +49,4 @@ def test_get_plane_authority_rest_mismatch_for_a_different_ticker():
     ofs._feed_running = True
     ofs._active_ticker = "SPY"
     ofs._streaming_last_update_ts = time.time()
-    assert ofs.get_plane_authority_for_ticker("QQQ") == "rest_mismatch"
+    assert ofs.get_plane_authority_for_ticker("QQQ") == "not_active_ticker"
