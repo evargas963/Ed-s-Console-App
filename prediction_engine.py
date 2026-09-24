@@ -410,40 +410,30 @@ def _build_horizon_prob_bars(
 
 def _timeframe_reads(inp: SignalInput, *, mvp_features: dict) -> dict:
     """
-    Generate structural read for 15m and 60m based on available data.
-    Zone / VWAP semantics come only from canonical MVP (``mvp_features``), not SignalInput.
+    Context reads under the 15m / 60m slots -- stated ONLY from what is measured.
+
+    Audit F-09 / F-10 (2026-09-24, no fallbacks): these slots used to carry prose the inputs
+    never measured -- "lower highs" / "holding above VWAP" / "price above gamma walls" were
+    written from the zone + VWAP side alone, and readiness keyword-matched them into tiers (a
+    pin zone below VWAP scored "structure confirmation present" for puts via "lower high").
+    A missing charm fell to "No clear trend — day trading range". Now each slot names the
+    measured facts (canonical MVP zone, VWAP side, charm direction) or is None.
     """
-    reads = {}
+    reads: dict = {"15m": None, "60m": None}
 
     zone = mvp_zone(mvp_features)
     vwap_side = mvp_vwap_side(mvp_features)
     charm_dir = (inp.charm_direction or "").lower()
 
-    # 15-minute structure approximation
-    if is_pin_zone(zone) and vwap_side == "below":
-        reads["15m"] = "Bearish structure — lower highs, below VWAP"
-    elif is_pin_zone(zone) and vwap_side == "above":
-        reads["15m"] = "Bullish structure — holding above VWAP"
-    elif is_pin_zone(zone) and vwap_side is None:
-        reads["15m"] = "Pin zone — VWAP side unavailable"
+    if is_pin_zone(zone) and vwap_side in ("above", "below"):
+        reads["15m"] = f"Pin zone, {vwap_side} VWAP"
     elif zone == "breakout":
-        reads["15m"] = "Breakout structure — price above gamma walls"
+        reads["15m"] = "Breakout zone (negative gamma, net delta >= 0)"
     elif zone == "breakdown":
-        reads["15m"] = "Breakdown structure — price below gamma walls"
-    else:
-        reads["15m"] = "Structure unclear — wait for levels"
+        reads["15m"] = "Breakdown zone (negative gamma, net delta < 0)"
 
-    # ~60m context from charm + zone (product label 60m, not "1h")
-    if charm_dir == "selling" and (is_pin_zone(zone) or zone == "breakdown"):
-        reads["60m"] = "Downward drift likely into close (charm selling)"
-    elif charm_dir == "buying" and (is_pin_zone(zone) or zone == "breakout"):
-        reads["60m"] = "Upward drift likely into close (charm buying)"
-    elif zone == "breakout":
-        reads["60m"] = "Uptrend — don't hold shorts too long"
-    elif zone == "breakdown":
-        reads["60m"] = "Downtrend — don't hold longs"
-    else:
-        reads["60m"] = "No clear trend — day trading range"
+    if charm_dir in ("selling", "buying"):
+        reads["60m"] = f"Charm {charm_dir} -- dealer delta decay into close"
 
     return reads
 
