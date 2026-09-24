@@ -516,32 +516,17 @@ def test_backfill_weighted_pushes_includes_goog_contribution(tmp_path):
     )
 
 
-def test_fetch_latest_confluence_quote_chg(tmp_path):
-    from db import EdDB
+def test_no_stored_percent_change_patches_a_live_confluence_value():
+    """Audit P0 (2026-09-23): a missing live confluence value was patched from the latest
+    stored %-change with no age limit. That path is gone -- missing stays missing."""
+    import inspect
 
-    dbp = tmp_path / "cq2.db"
-    db = EdDB(dbp, allow_noncanonical=True)
-    db.upsert_confluence_quote_ticks(
-        [
-            {
-                "ticker": "NVDA",
-                "ts_utc": 1_777_000_100.0,
-                "ts_et": "2026-01-02 10:01:00",
-                "last_price": 900.0,
-                "chg_pct": 0.42,
-            },
-            {
-                "ticker": "NVDA",
-                "ts_utc": 1_777_000_200.0,
-                "ts_et": "2026-01-02 10:02:00",
-                "last_price": 901.0,
-                "chg_pct": 0.55,
-            },
-        ]
-    )
-    got = db.fetch_latest_confluence_quote_chg(["NVDA", "WMT"])
-    assert got["NVDA"] == 0.55
-    assert got["WMT"] is None
+    import db as db_mod
+    import market_context
+    import server
+    assert not hasattr(market_context, "patch_context_confluence_from_quote_ticks")
+    assert not hasattr(db_mod.EdDB, "fetch_latest_confluence_quote_chg")
+    assert "fetch_latest_confluence_quote_chg" not in inspect.getsource(server._ensure_mkt_ctx_confluence_complete)
 
 
 def _logging_universe_rows(rows: list[tuple[str, str]]):

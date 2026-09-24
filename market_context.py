@@ -586,42 +586,6 @@ def weighted_pushes_from_snapshot_row(
     return {"spy_weighted_push": spy, "qqq_weighted_push": qqq, "iwm_weighted_push": iwm}
 
 
-def patch_context_confluence_from_quote_ticks(
-    ctx: MarketContext,
-    chg_by_ticker: Mapping[str, Optional[float]],
-) -> None:
-    """Fill missing constituent ``chg_pct`` from ``confluence_quote_ticks`` and rebuild reads."""
-    if not chg_by_ticker:
-        return
-
-    def _patch_list(items: list) -> None:
-        for item in items:
-            sym = str(getattr(item, "symbol", "") or "").upper()
-            if getattr(item, "chg_pct", None) is not None:
-                continue
-            chg = _float_chg(chg_by_ticker.get(sym))
-            if chg is not None:
-                item.chg_pct = chg
-
-    _patch_list(getattr(ctx, "constituents", None) or [])
-    _patch_list(getattr(ctx, "qqq_constituents", None) or [])
-    _patch_list(getattr(ctx, "iwm_holdings", None) or [])
-    for sq in getattr(ctx, "iwm_sectors", None) or []:
-        sym = str(getattr(sq, "symbol", "") or "").upper()
-        if getattr(sq, "chg_pct", None) is not None:
-            continue
-        chg = _float_chg(chg_by_ticker.get(sym))
-        if chg is not None:
-            sq.chg_pct = chg
-
-    ctx.confluence = _build_confluence(ctx.constituents, SPY_TOP_WEIGHT_SUM)
-    ctx.qqq_confluence = _build_confluence(ctx.qqq_constituents, QQQ_TOP_WEIGHT_SUM)
-    ctx.iwm_holdings_confluence = _build_confluence(
-        ctx.iwm_holdings, IWM_HOLDINGS_WEIGHT_SUM
-    )
-    ctx.iwm_confluence = _build_iwm_confluence(ctx.iwm_sectors)
-
-
 def iwm_blended_participation_push(ctx: MarketContext) -> Optional[float]:
     """
     Russell 2000 tape participation for the stack: blend top-holdings confluence

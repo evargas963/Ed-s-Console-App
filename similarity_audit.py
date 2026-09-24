@@ -253,6 +253,21 @@ def structured_constraints_for_tier(tier_num: int, ctx: dict[str, Any]) -> dict[
     return base
 
 
+#: What each tier of db.get_similar_setups ACTUALLY matched -- written beside
+#: structured_constraints_for_tier (the SQL filter definitions) so the two cannot drift.
+#: Audit P0 2026-09-23: prediction_engine labelled tier 5 (every past snapshot for the ticker,
+#: no structural match at all) "zone + VWAP match", and named session/VIX filters that no tier
+#: applies. Tier 7 is the prediction engine's "no similar setups found" state.
+TIER_MATCH_LABELS: dict[int, str] = {
+    1: "zone + VWAP side + level distance above and below",
+    2: "zone + VWAP side + level distance above",
+    3: "zone + VWAP side",
+    4: "zone only",
+    5: "no structural match (every past snapshot for this ticker)",
+    7: "no similar setups",
+}
+
+
 def relaxed_constraints_vs_previous_tier(tier_num: int) -> list[str]:
     """What loosened vs tier N-1 (tier 1 has none)."""
     if tier_num <= 1:

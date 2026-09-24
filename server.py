@@ -4613,7 +4613,7 @@ def _get_mkt_ctx(client, pcr=None, prev_pcr=None, *, force_sync=False):
 
 def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=None):
     """One forced refresh when weighted_push fields are missing before snapshot persist."""
-    from market_context import missing_confluence_weighted_pushes, patch_context_confluence_from_quote_ticks
+    from market_context import missing_confluence_weighted_pushes
 
     missing = missing_confluence_weighted_pushes(mkt_ctx)
     if not missing:
@@ -4627,26 +4627,9 @@ def _ensure_mkt_ctx_confluence_complete(client, mkt_ctx, *, pcr=None, prev_pcr=N
     # hand back the same incomplete object.
     fresh = _get_mkt_ctx(client, pcr=pcr, prev_pcr=prev_pcr, force_sync=True)
     still = missing_confluence_weighted_pushes(fresh)
-    if still:
-        try:
-            from market_context import (
-                QQQ_TOP,
-                SPY_TOP,
-                IWM_SECTORS,
-                IWM_TOP_HOLDINGS,
-            )
-
-            tickers: set[str] = set()
-            for group in (SPY_TOP, QQQ_TOP, IWM_TOP_HOLDINGS):
-                tickers.update(sym for sym, _n, _w in group)
-            for sym, _n, _w in IWM_SECTORS:
-                tickers.add(sym)
-            chg_map = get_db().fetch_latest_confluence_quote_chg(sorted(tickers))
-            if chg_map:
-                patch_context_confluence_from_quote_ticks(fresh, chg_map)
-                still = missing_confluence_weighted_pushes(fresh)
-        except Exception as e:
-            log.debug("confluence_quote_ticks impute failed: %s", e, exc_info=True)
+    # A still-missing confluence value stays missing. It used to be patched from the latest
+    # stored confluence_quote_ticks %-change with NO age limit (could be a prior day's) --
+    # audit P0, removed (operator rule 2026-09-23: no fallbacks).
     if still:
         log.error(
             "Confluence fields still missing after refresh: %s (qqq/spy/iwm weighted_push)",

@@ -51,15 +51,7 @@ REVERSAL_RISK_REGIME_BOOST: float = 1.25
 
 log = logging.getLogger(__name__)
 
-_TIER_LABELS: dict[int, str] = {
-    1: "exact setup + session + VIX match",
-    2: "zone + VWAP + session + VIX + proximity",
-    3: "zone + VWAP + session + VIX match",
-    4: "zone + VWAP + VIX match",
-    5: "zone + VWAP match",
-    6: "zone match",
-    7: "general dataset",
-}
+from similarity_audit import TIER_MATCH_LABELS as _TIER_LABELS  # what each tier really matched
 
 
 @dataclass
@@ -880,7 +872,7 @@ def compute_prediction_core(
     if similar:
         match_tier = similar[0].get("match_tier", 7)
 
-    tier_label = _TIER_LABELS.get(match_tier, "general dataset")
+    tier_label = _TIER_LABELS.get(match_tier, f"unknown match tier {match_tier}")
 
     lit_1c = _literal_empirical_horizon(similar, "outcome_1c", 1)
     lit_5c = _literal_empirical_horizon(similar, "outcome_5c", 5)

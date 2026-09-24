@@ -299,7 +299,7 @@ class PredictiveCard:
     reversal_shortfall: Optional[float] = None   # avg pts move when reversal occurs (negative = loss)
     reversal_severity:  str             = ""     # 'mild', 'moderate', 'severe'
     match_tier:         int             = 7      # which relaxation tier matched (1-7)
-    tier_label:         str             = ""     # "exact setup match", "zone + VWAP match", etc.
+    tier_label:         str             = ""     # similarity_audit.TIER_MATCH_LABELS[match_tier]
     model_source:       str             = "empirical_histogram_plus_fusion_forward"  # empirical bars + forward from fusion
     model_version:      str             = "rules_v1"
     pred_action:        str             = ""
