@@ -133,7 +133,9 @@
       return (row[measure] || []).map(function (cp) {
         if (!cp) return null;
         var c = cp.call, p = cp.put;
-        return (c == null && p == null) ? null : (c || 0) + (p || 0);
+        // both sides or unknown: one missing side is not a zero (audit of #280 -- a missing put
+        // OI used to colour the cell by call OI alone, as if that were the total)
+        return (c == null || p == null) ? null : c + p;
       });
     }
     // NEVER fall back to a different measure's own array here -- a row whose `dex` field is
@@ -924,7 +926,9 @@
     if (cov.total_visible_cells === 0) {
       liveWord = 'WARMING';                       // no visible cell has confirmed identity yet
     } else if (cov.meets_live_requirement) {
-      liveWord = 'LIVE';
+      // option-cell coverage, never the bare word LIVE -- that word belongs to the equity feed
+      // in the header, and a heatmap reading "LIVE" was read as the price feed (audit of #280)
+      liveWord = 'OPT CELLS·100%';
     } else {
       liveWord = 'OPT CELLS·' + cov.live_pct.toFixed(0) + '%';
     }

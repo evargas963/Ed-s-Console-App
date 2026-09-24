@@ -491,7 +491,9 @@
     });
     buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
     declareWatchlistStream(loadWL());
-    if (state.ticker) openHeaderStream(state.ticker);
+    // reopen the push only when the watched set actually changed -- reopening on every render
+    // blanked the header to WAITING/OFFLINE on each add/remove (audit of #280)
+    if (state.ticker && _sseWatch !== loadWL().join(',')) openHeaderStream(state.ticker);
   }
   var _wlMsgTimer = null;
   function wlNotify(msg) {   // understandable feedback for invalid/duplicate add — aria-live, self-clearing
@@ -521,8 +523,7 @@
   }
   function removeSymbol(sym) {
     var list = loadWL().filter(function (s) { return s !== sym; });
-    saveWL(list); renderWatchlist();
-    if (state.ticker) openHeaderStream(state.ticker);   // the push follows the new watchlist
+    saveWL(list); renderWatchlist();   // renderWatchlist reopens the push for the new list
   }
 
   // Every view event goes through emit(): with no ticker chosen, no panel is asked to load
@@ -651,11 +652,11 @@
     if (a) a.textContent = age;
     var fresh = document.getElementById('aiCtxFresh'); if (fresh) fresh.textContent = label + (age && age !== '—' ? ' · ' + age : '');
   }
-  // ---- header quote: PUSH via the canonical L1 SSE stream (/api/analytics/light/stream,
-  //      event l1_projection), which already carries spot/bid/ask (planes/context_light.py).
-  //      Ordering is the shared EdL1SseGuards monotonic l1_generation (+ _server_build_ts tie-
-  //      break). The push is the ONLY source of the header quote (operator rule 2026-09-23: no
-  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote. ----
+  // ---- header quote: PUSH via /api/analytics/light/stream, event quote_tick -- the plane row
+  //      (server _quote_tick_event), sent on every plane write and each idle second. It is the
+  //      ONLY source of the header quote and the watchlist rows (operator rule 2026-09-23: no
+  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote.
+  //      l1_projection on the same stream carries L2/context only. ----
   // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
   // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
   // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
@@ -687,19 +688,11 @@
       } else chg.textContent = '';
     }
     setFeed(q.feedCls, q.feedLabel, q.ageLabel);
-    // The header (#hPx/#hChg above) and the watchlist rows are DECOUPLED on purpose: the
-    // header shows whatever this specific quote push/poll carried (best-effort, can be
-    // momentarily incomplete — e.g. a streamed ticker's spot arrives before its percent-
-    // change field does). Measured live: that left the active ticker's OWN watchlist row
-    // blank far more often than pollWatchlistQuotes's REST-backed batch read, which is
-    // reliably correct for it exactly as it is for every other row. Two writers racing on
-    // the same cell (paintQuote's often-incomplete push vs. pollWatchlistQuotes's reliable
-    // poll) would flicker the value depending on which happened to run last — so the
-    // watchlist rows have exactly ONE writer now (pollWatchlistQuotes, all rows uniformly,
-    // active ticker included); paintQuote owns the header display only.
+    // paintQuote owns the header display only; watchlist rows are written by setWlRow from
+    // the same quote_tick event (one producer, two surfaces).
   }
-  // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called only
-  // from pollWatchlistQuotes. A null field CLEARS to "—" rather than leaving the previous
+  // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
+  // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
   function setWlRow(sym, spot, chgPct, spotState) {
     var key = (sym || '').replace('$', '');
@@ -754,11 +747,6 @@
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
       .catch(function () { _wlDeclared = null; });   // retried on the next poll
   }
-  function pollWatchlistQuotes() {
-    // Price source is quote_tick. This only (re)declares the daemon roster.
-    declareWatchlistStream(loadWL());
-  }
-
   var _sse = null, _sseUp = false, _lastSseTs = 0, _sseOpenedTs = 0, _l1Gen = {}, _l1Ts = {};
   var _sseWatch = null;   // the watchlist the open stream pushes rows for
   // requestAnimationFrame throttle: pushes can arrive faster than the screen repaints; only the
@@ -808,19 +796,24 @@
     _sse.addEventListener('quote_tick', function (ev) {
       var q; try { q = JSON.parse(ev.data); } catch (e) { return; }
       if (!q || !q.ticker) return;
+      // identity: the server keys the storage form ("$SPX"); the operator types "SPX"
       var sym = String(q.ticker).toUpperCase();
-      if (sym === String(state.ticker || '').toUpperCase()) {
+      var bare = sym.replace(/^\$/, '');
+      if (bare === String(state.ticker || '').toUpperCase().replace(/^\$/, '')) {
         _sseUp = true; _lastSseTs = Date.now();
         var live = q.spot_state === 'live' && q.spot != null;
-        var tradeAge = (live && q.trade_ts_ms) ? Math.max(0, Math.round(q.server_ts - q.trade_ts_ms / 1000)) : null;
+        // every number and verdict below is the server's; the browser only picks the words
         paintQuoteNextFrame({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
           chgPct: q.chg_pct, quoteIngestion: q.quote_ingestion,
           spotState: q.spot_state,
           feedCls: live ? '' : 'stale',
-          feedLabel: live ? 'LIVE' : 'UNAVAILABLE',
-          ageLabel: tradeAge != null ? ('last trade ' + tradeAge + 's') : (live ? 'live' : 'no live feed') });
+          feedLabel: live ? 'LIVE' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE'),
+          ageLabel: q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
+            : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : 'no live feed')) });
       }
-      if (loadWL().indexOf(sym) !== -1) {
+      var wlSym = loadWL().indexOf(sym) !== -1 ? sym : (loadWL().indexOf(bare) !== -1 ? bare : null);
+      if (wlSym) {
+        sym = wlSym;
         setWlRow(sym, q.spot_state === 'live' ? q.spot : null,
           q.spot_state === 'live' ? q.chg_pct : null,
           q.spot_state || 'unavailable');

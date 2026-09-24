@@ -60,29 +60,27 @@ def bare_locale_date_violations(text: str, *, rel: str = "snippet") -> list[str]
 
 
 def chart_session_clock_violations(text: str) -> list[str]:
-    """Chart must bind daily grouping to SESSION_TZ and labels to DISPLAY_TZ."""
+    """Chart labels bind DISPLAY_TZ; session-date grouping is the SERVER's (aggregate_bars keys
+    "D" on time_et.ET) -- the page must not group candles by any clock itself (audit of #280
+    moved the roll-up off the browser, so the old "chart owns etDateKey" rule became a rule
+    that the chart owns nothing to key)."""
     out: list[str] = []
-    if f"SESSION_TZ = '{SESSION_TZ}'" not in text and f'SESSION_TZ = "{SESSION_TZ}"' not in text:
+    if "function aggregate(" in text or "function etDateKey" in text:
         out.append(
-            f"static/chart.html: missing SESSION_TZ={SESSION_TZ!r} "
-            "(daily bar grouping must follow time_et, not browser TZ)"
+            "static/chart.html: browser-side candle/date grouping is back -- the roll-up is "
+            "server-side (/api/bars1m?tf=, aggregate_bars on time_et.ET)"
         )
+    if "/api/bars1m?" in text and "&tf=" not in text:
+        out.append("static/chart.html: bars must be requested with tf= (server roll-up)")
     if f"DISPLAY_TZ = '{DISPLAY_TZ}'" not in text and f'DISPLAY_TZ = "{DISPLAY_TZ}"' not in text:
         out.append(
             f"static/chart.html: missing DISPLAY_TZ={DISPLAY_TZ!r} "
             "(axis/date labels follow the CT display law)"
         )
-    if "function etDateKey" not in text:
-        out.append("static/chart.html: missing etDateKey() session-date authority")
-    # Daily grouping must call etDateKey — not ambient locale dates.
-    if "etDateKey(" not in text:
-        out.append(
-            "static/chart.html: missing etDateKey(...) calls for session date grouping"
-        )
     if re.search(r"\.toLocaleDateString\s*\(\s*\)", text):
         out.append(
             "static/chart.html: bare toLocaleDateString() remains — "
-            "session keys must use etDateKey (ET)"
+            "labels must name DISPLAY_TZ; session keys are the server's (ET)"
         )
     return out
 

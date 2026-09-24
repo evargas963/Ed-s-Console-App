@@ -74,8 +74,12 @@ def chart_binding_violations(text: str) -> list[str]:
         out.append("static/chart.html: spotBindingAgeLabel() never called — as_of not visible")
     if "SPOT_STALE_SEC" not in text:
         out.append("static/chart.html: missing SPOT_STALE_SEC stale threshold")
-    if "spot_as_of_ts_utc" not in text:
-        out.append("static/chart.html: poll must read spot_as_of_ts_utc from /api/spot")
+    # The binding is the quote_tick push (audit of #280 moved it off the /api/spot poll); its
+    # as_of is the server's trade_age_sec -- still required to be read and shown.
+    if "addEventListener('quote_tick'" not in code:
+        out.append("static/chart.html: spot must bind the quote_tick push")
+    if "trade_age_sec" not in text:
+        out.append("static/chart.html: binding must read the server's trade_age_sec as_of")
     return out
 
 

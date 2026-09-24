@@ -37,5 +37,7 @@ def test_authority_and_identity_stores_keyed_by_scope_in_source():
     must not write #hPx. Watchlist rows key off the event ticker against loadWL()."""
     text = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
     assert "addEventListener('quote_tick'" in text
-    assert "sym === String(state.ticker || '').toUpperCase()" in text
+    # identity through the storage form: "$SPX" (server) and "SPX" (typed) are one symbol --
+    # the raw compare never matched an index ticker (audit of #280)
+    assert "bare === String(state.ticker || '').toUpperCase().replace(/^\\$/, '')" in text
     assert "loadWL().indexOf(sym)" in text
