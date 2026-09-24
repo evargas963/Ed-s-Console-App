@@ -20,7 +20,7 @@
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isRightNow() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
-  function ticker() { return (st().ticker || 'SPY'); }
+  function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('tdBody'); }
   function stillRightNow(tk) { return isRightNow() && ticker() === tk; }
 
@@ -441,7 +441,8 @@
       // contract for spot ("every other surface carries the values out of the same snapshot");
       // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
       // instead of silently substituting a second source.
-      var spot = levelsD ? Number(levelsD.spot) : NaN;
+      // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+      var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
         '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +

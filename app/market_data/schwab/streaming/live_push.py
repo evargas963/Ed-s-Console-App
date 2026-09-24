@@ -28,13 +28,17 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 
 from stream_spine import COUNT_DROPS, MessageBus
 
 log = logging.getLogger(__name__)
 
 LIVE_PUSH_HOST = "127.0.0.1"
-LIVE_PUSH_PORT = 8765
+#: Own port -- never shared with a web server (the e2e console used 8765). ED_LIVE_PUSH_PORT
+#: overrides it; the test harnesses point it at an unused port so no test console can ever
+#: receive the real daemon's live data.
+LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: operator port config with its declared default, not market data
 
 #: topic prefix -> the only `src` forwarded for it
 _FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1"}

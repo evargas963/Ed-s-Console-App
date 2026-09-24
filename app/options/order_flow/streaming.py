@@ -8,7 +8,7 @@ capture daemon — two authenticated sockets on one account, racing each other f
 same market truth. It now opens ZERO Schwab connections. The daemon is the one producer.
 
 LIVE PUSH (2026-09-23): the daemon forwards every Schwab stream message to this module over
-a local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8765) the
+a local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the
 moment it arrives, and this module applies it to the in-process planes
 (`app.options.order_flow.state`, `live_market_plane`). The database is NOT in the live
 path: it used to be -- this module polled `stream_capture.db` every 0.5s -- which put a
@@ -79,7 +79,9 @@ log = logging.getLogger(__name__)
 
 #: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push). Module
 #: attribute, read at connect time, so a test can point the feed at its own server.
-LIVE_PUSH_URL = "ws://127.0.0.1:8765"
+from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
+
+LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0

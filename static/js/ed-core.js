@@ -9,7 +9,9 @@
   var TICKER_KEY = 'ed_ticker';
   var WL_KEY = 'ed_watchlist_v1';
   var RAIL_KEY = 'ed_rail_open';
-  var DEFAULT_WL = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA'];
+  // No built-in watchlist or ticker (universality, operator 2026-09-23): a first run starts
+  // empty and every symbol is one the operator chose.
+  var DEFAULT_WL = [];
 
   var app = document.getElementById('app');
 
@@ -87,7 +89,7 @@
   var SCOPE_MODES = ['auto', 'wider', 'all'];
   function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
   var state = {
-    ticker: (_ls(TICKER_KEY, 'SPY')).toUpperCase(),
+    ticker: (_ls(TICKER_KEY, '') || '').toUpperCase(),
     workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),
     subview: _ls('ed_sub', app.getAttribute('data-subview') || 'gamma'),
     view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
@@ -313,7 +315,7 @@
     // dispatch only during that one initial pass; setTicker's OWN ed:ticker dispatch (below,
     // unconditional) is the single signal every module hydrates from at cold start, and
     // ed:view fires normally, exactly once per call, on every REAL subsequent view change.
-    if (!_booting) document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
+    if (!_booting) emit('ed:view', Object.assign({}, state));
   }
 
   function setWorkspace(ws) {
@@ -362,7 +364,7 @@
     reflectMeasure();
     showMainView();   // the heatmap panel title names the measure (see MEASURE_TITLE)
     if (!fromSubview) {
-      document.dispatchEvent(new CustomEvent('ed:measure', { detail: { measure: m } }));
+      emit('ed:measure', { measure: m });
     }
   }
 
@@ -377,7 +379,7 @@
   function setScope(mode) {
     if (SCOPE_MODES.indexOf(mode) === -1 || mode === state.scope) { reflectScope(); return; }
     state.scope = mode; _lsSet('ed_scope', mode); reflectScope();
-    document.dispatchEvent(new CustomEvent('ed:scope', { detail: { scope: mode } }));
+    emit('ed:scope', { scope: mode });
   }
   // The ONE scope policy is a COUNT of canonical strikes around spot — never a percentage.
   // MEASURED 2026-09-10 on the live SPY reference surface (116 strikes at $1 spacing, spot 764):
@@ -394,7 +396,7 @@
     var total = strikes.length, n = scopeRows();
     if (!total) return { idx: [], shown: 0, total: 0 };
     if (!isFinite(n) || n >= total) return { idx: strikes.map(function (_s, i) { return i; }), shown: total, total: total };
-    var sp = Number(spot), c = Math.floor(total / 2), best = Infinity;
+    var sp = (spot == null || spot === '') ? NaN : Number(spot), c = Math.floor(total / 2), best = Infinity;   // null is absent, not 0
     if (isFinite(sp)) strikes.forEach(function (k, i) { var d = Math.abs(Number(k) - sp); if (d < best) { best = d; c = i; } });
     var lo = c - Math.floor((n - 1) / 2), hi = lo + n - 1;
     if (lo < 0) { hi -= lo; lo = 0; }
@@ -521,6 +523,17 @@
     saveWL(list); renderWatchlist();
   }
 
+  // Every view event goes through emit(): with no ticker chosen, no panel is asked to load
+  // (each would otherwise fetch for an empty symbol).
+  function emit(name, detail) {
+    if (!state.ticker) return;
+    document.dispatchEvent(new CustomEvent(name, { detail: detail }));
+  }
+  function paintNoTicker() {
+    var px = document.getElementById('hPx'); if (px) px.textContent = 'CHOOSE A SYMBOL';
+    setFeed('stale', 'NO SYMBOL', '—');
+  }
+
   // ================= ticker store (ONE selected-symbol state across every surface) =================
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
@@ -542,7 +555,7 @@
     openHeaderStream(state.ticker);   // (re)subscribe the SSE push to this ticker (one subscription)
     markHeaderPushDown();             // CONNECTING until the new ticker's first push
     refreshSession();
-    document.dispatchEvent(new CustomEvent('ed:ticker', { detail: { ticker: state.ticker } }));
+    emit('ed:ticker', { ticker: state.ticker });
   }
 
   // ---- instrument control: a typed symbol IS the control (institutional selector: type -> Enter ->
@@ -608,7 +621,7 @@
     if (nv === state.expiryFilter) return;
     state.expiryFilter = nv;
     var sel = document.getElementById('expSel'); if (sel) sel.value = nv || '';
-    document.dispatchEvent(new CustomEvent('ed:expiry', { detail: { expiry: nv } }));
+    emit('ed:expiry', { expiry: nv });
   }
   // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
   // "All Expirations" while Chain is active — the server returns ONE (default) expiry. In every
@@ -624,7 +637,7 @@
   function setStrike(strike, expiry) {
     state.selStrike = (strike == null || isNaN(strike)) ? null : Number(strike);
     state.selExpiry = expiry || null;
-    document.dispatchEvent(new CustomEvent('ed:strike', { detail: { strike: state.selStrike, expiry: state.selExpiry } }));
+    emit('ed:strike', { strike: state.selStrike, expiry: state.selExpiry });
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
@@ -841,7 +854,7 @@
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
       if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
-      document.dispatchEvent(new CustomEvent('ed:gamma-push', { detail: { surfaceSeq: env.surface_seq } }));
+      emit('ed:gamma-push', { surfaceSeq: env.surface_seq });
     });
     _sse.onerror = function () { _sseUp = false; };   // the browser reconnects; the header shows the gap
   }
@@ -874,7 +887,7 @@
     if (next.ticker === _plane.ticker && next.expiry === _plane.expiry && next.session === _plane.session &&
         next.analyticsVersion === _plane.analyticsVersion) return;
     _plane = next;
-    document.dispatchEvent(new CustomEvent('ed:plane', { detail: Object.assign({}, _plane) }));
+    emit('ed:plane', Object.assign({}, _plane));
   }
 
   var _sessGen = 0;
@@ -905,11 +918,12 @@
   var _tick = 0;
   function liveTick() {
     _tick++;
+    if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) pollWatchlistQuotes(); return; }
     var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 9000);
     if (!sseHealthy) markHeaderPushDown();            // the gap is shown, never filled
     if (!sseHealthy || _tick % 4 === 0) refreshSession();
     if (_tick % 4 === 0) pollWatchlistQuotes();       // every non-active row, same slow cadence
-    document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { tick: _tick, slow: _tick % 4 === 0 } }));
+    emit('ed:refresh', { tick: _tick, slow: _tick % 4 === 0 });
   }
 
   // ================= CT clock =================
@@ -996,7 +1010,7 @@
       var d = document.getElementById('aidrawer'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
     });
     // initial ticker + header
-    setTicker(state.ticker);
+    if (state.ticker) setTicker(state.ticker); else paintNoTicker();
     _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
     tickClock(); setInterval(tickClock, 1000);
     setInterval(liveTick, 3000);   // single scheduler drives header (fast) + gamma (slow)

@@ -20,7 +20,7 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
-  function ticker() { return (st().ticker || 'SPY'); }
+  function ticker() { return (st().ticker || ''); }
   function strip() { return document.getElementById('alertsStrip'); }
   function listEl() { return document.getElementById('alertsList'); }
 

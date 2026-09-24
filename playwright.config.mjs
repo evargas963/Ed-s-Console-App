@@ -24,6 +24,8 @@ export const e2eServerEnv = (() => {
   env.ED_CONSOLE_ALLOW_NONCANONICAL_DB = '1';
   env.SCHWAB_TOKEN_PATH = path.join(e2eRuntimeRoot, 'missing_schwab_token.json');
   env.ED_CI_OFFLINE = '1';
+  // never connect to the real capture daemon's live push (see tests/conftest.py)
+  env.ED_LIVE_PUSH_PORT = '1';
   env.SCHWAB_API_KEY = 'ci-placeholder-api-key';
   env.SCHWAB_APP_SECRET = 'ci-placeholder-app-secret';
   env.SCHWAB_CALLBACK_URL = 'https://127.0.0.1:8182';
@@ -42,6 +44,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:8765',
     trace: 'on-first-retry',
+    // The console has no built-in ticker (universality, operator 2026-09-23); these specs play
+    // an operator who already chose SPY and a watchlist. A spec testing the first run clears it.
+    storageState: 'tests/e2e/fixtures/operator_chose_spy.storage.json',
   },
   webServer: {
     command: 'python -m uvicorn server:app --host 127.0.0.1 --port 8765',

@@ -65,8 +65,8 @@
   function l1PayloadMatchesActiveScope(payloadTicker, payloadSelectedExp, activeTicker, activeExpiry) {
     const pt = payloadTicker != null ? String(payloadTicker).trim().toUpperCase() : '';
     if (!pt) return false;
-    const at = (activeTicker || '').trim().toUpperCase() || 'SPY';
-    if (pt !== at) return false;
+    const at = (activeTicker || '').trim().toUpperCase();
+    if (!at || pt !== at) return false;   // no active ticker accepts nothing (was: treated as SPY)
     const ck = normL1ExpiryKey(activeExpiry);
     if (ck === '__auto__') return true;
     return normL1ExpiryKey(payloadSelectedExp) === ck;
@@ -78,8 +78,8 @@
   function l1EnvelopeScopeMatches(scope, activeTicker, activeExpiry) {
     if (!scope || typeof scope !== 'object') return false;
     const st = scope.ticker != null ? String(scope.ticker).trim().toUpperCase() : '';
-    const at = (activeTicker || '').trim().toUpperCase() || 'SPY';
-    if (st !== at) return false;
+    const at = (activeTicker || '').trim().toUpperCase();
+    if (!at || st !== at) return false;   // no active ticker accepts nothing (was: treated as SPY)
     const se = scope.expiry != null ? String(scope.expiry).trim() : '';
     const ck = normL1ExpiryKey(activeExpiry);
     const sk = normL1ExpiryKey(se === '' ? null : se);

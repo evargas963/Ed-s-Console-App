@@ -18,7 +18,7 @@
     if (s.workspace === 'liquidity' && s.subview === 'levels') return 'lvlBody';
     return null;
   }
-  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || 'SPY'; }
+  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
 
   // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
   // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
@@ -54,7 +54,8 @@
     }
     // sort by price desc (like a levels ladder); spot marked
     var rows = levels.slice().sort(function (a, b) { return (b.price || 0) - (a.price || 0); });
-    var spot = Number(d.spot);
+    // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+    var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
     var head = '<div class="lv-head"><span>Canonical levels · gen ' + esc(d.generation) + '</span>' +
       '<span class="lv-spot">spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
       (d.spot_source ? ' · ' + esc(d.spot_source) : '') + '</span></div>';

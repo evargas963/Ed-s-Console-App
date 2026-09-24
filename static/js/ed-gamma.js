@@ -275,7 +275,7 @@
   // changes and no new request is ever sent at all (not merely a wrong ownerKey string --
   // a silently swallowed clear). `_pendingTicker` is the single source of truth every
   // other call site in this module already keys off; establishing calls now match it.
-  function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || 'SPY'); }
+  function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || ''); }
 
   // ---- render the grid from a canonical surface payload (no math) ----
   function renderSurface(host, surface) {
@@ -981,7 +981,7 @@
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
     var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || 'SPY') === ticker;
+    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || '') === ticker;
   }
   // Only the actual network fetch is coalesced. The "leaving the heatmap" cleanup below is
   // synchronous and state-authority-visible (it releases streamed-contract demand) -- it must
@@ -1025,7 +1025,7 @@
       _pendingTicker = null;
       return;
     }
-    var nextTicker = st.ticker || 'SPY';
+    var nextTicker = st.ticker || '';
     if (_pendingTicker && _pendingTicker !== nextTicker
         && window.EdStream && window.EdStream.setAdditionalContracts) {
       // Switching ticker WITHIN the heatmap view: the ticker just left is no longer being

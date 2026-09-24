@@ -43,7 +43,7 @@
   // per-call generation counter live-locks once pushes outrun the round trip. Context
   // invalidation (ticker or expiry filter changed mid-flight) is `stillChain()`, checked at
   // resolution time.
-  function stillChain(tk, exp) { return isChain() && (st().ticker || 'SPY') === tk && curExpiry() === exp; }
+  function stillChain(tk, exp) { return isChain() && (st().ticker || '') === tk && curExpiry() === exp; }
   // Independent-review finding (2026-09-13), REPRODUCED: A -> B -> A can still let the FIRST
   // A request's response paint over the THIRD (fresh) A request's response. `stillChain`
   // proves the identity (ticker, expiry) still matches NOW, but two different requests issued
@@ -74,9 +74,9 @@
       });
   }
   var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || 'SPY', curExpiry(), signal); })
-    : { trigger: function () { loadImpl(st().ticker || 'SPY', curExpiry()); }, reset: function () {} };
-  function load() { _loader.trigger((st().ticker || 'SPY') + '|' + (curExpiry() || '')); }
+    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(st().ticker || '', curExpiry(), signal); })
+    : { trigger: function () { loadImpl(st().ticker || '', curExpiry()); }, reset: function () {} };
+  function load() { _loader.trigger((st().ticker || '') + '|' + (curExpiry() || '')); }
 
   function render(host, d) {
     setSrc(d);
@@ -94,7 +94,8 @@
       if (byK[k][side].length > 1) dup = true;
     });
     var strikes = Object.keys(byK).map(Number).sort(function (a, b) { return b - a; });
-    var spot = Number(d.spot);
+    // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+    var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
     var spotK = strikes.reduce(function (best, k) { return (best == null || Math.abs(k - spot) < Math.abs(best - spot)) ? k : best; }, null);
     var desired = (window.EdStream && window.EdStream.getDesired && window.EdStream.getDesired()) || null;
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
@@ -167,7 +168,7 @@
         if (window.EdShell) window.EdShell.setStrike(k, d.expiry);   // centre strike -> shared strike only
       });
     });
-    var context = (st().ticker || 'SPY') + '|' + (d.expiry || '');
+    var context = (st().ticker || '') + '|' + (d.expiry || '');
     var isNewContext = context !== _lastScrollContext;
     _lastScrollContext = context;
     if (isNewContext) {

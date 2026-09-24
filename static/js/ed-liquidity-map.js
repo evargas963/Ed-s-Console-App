@@ -14,7 +14,7 @@
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isMap() { var s = st(); return s.workspace === 'liquidity' && s.subview === 'map'; }
-  function ticker() { return (st().ticker || 'SPY'); }
+  function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('liqmBody'); }
   function stillMap(tk) { return isMap() && ticker() === tk; }
 
@@ -100,7 +100,8 @@
       return;
     }
     var zones = snap.zones || [];
-    var spot = levels ? Number(levels.spot) : NaN;
+    // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+    var spot = (levels && levels.spot != null && levels.spot !== '') ? Number(levels.spot) : NaN;
     var raw = snap.raw_levels || {};
     var pd = raw.prev_day || {}, on = raw.overnight || {};
     var refLines = [

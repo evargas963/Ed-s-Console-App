@@ -13,7 +13,7 @@
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isHeatmap() { var s = st(); return s.workspace === 'order-flow' && s.subview === 'heatmap'; }
-  function ticker() { return (st().ticker || 'SPY'); }
+  function ticker() { return (st().ticker || ''); }
   function stillHeatmap(tk) { return isHeatmap() && ticker() === tk; }
 
   var _minutes = 60;
