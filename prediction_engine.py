@@ -914,19 +914,11 @@ def compute_prediction_core(
         _mh_overlay_events,
     )
     model_outputs = _mb.get("model_outputs")
-    try:
-        from ml_predict import stack_probs_bundle_key
+    from ml_predict import executed_model_version, stack_probs_bundle_key
 
-        _spk = stack_probs_bundle_key()
-    except ImportError:
-        _spk = "stack_probs_1c"
-    ml_version = "rules_v1"
-    try:
-        from ml_predict import get_model_version
-
-        ml_version = get_model_version(inp.ticker)
-    except ImportError:
-        pass
+    _spk = stack_probs_bundle_key()
+    # what RAN this tick (None when no model produced output) -- not the files on disk (L-01)
+    ml_version = executed_model_version(model_outputs)
 
     _model_source = "multi_horizon_fusion_withheld"
     if multi_horizon_ml_bundle is not None:

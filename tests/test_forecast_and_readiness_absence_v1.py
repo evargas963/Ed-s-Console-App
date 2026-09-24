@@ -76,3 +76,22 @@ def test_calibration_reader_ignores_placeholder_triplets():
     # the placeholder used to win the p_up >= p_dn >= p_fl tie-break -> "long"
     assert _effective_directional_signal({"final_signal": "wait", "canonical_json": placeholder}) == "wait"
     assert _effective_directional_signal({"final_signal": "wait", "canonical_json": real}) == "short"
+
+
+# ── L-01 / F-11: the stamped model version is what RAN, or None ────────────────
+
+def test_executed_model_version_reads_what_ran():
+    from ml_predict import executed_model_version
+    assert executed_model_version(None) is None          # stack off: model_outputs None
+    off = {"available": False}
+    assert executed_model_version({"xgb": off, "lstm": off, "transformer": off}) is None
+    v = executed_model_version({"xgb": {"available": True}, "lstm": off,
+                                "transformer": {"available": True}})
+    assert v is not None and v.startswith("stack(xgb_tr)_")
+
+
+def test_no_serving_model_when_stack_off(monkeypatch):
+    import signals
+    import server
+    monkeypatch.setattr(signals, "LIVE_MODEL_STACK_ENABLED", False)
+    assert server._current_pred_model_version("SPY") is None

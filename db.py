@@ -4818,7 +4818,7 @@ class EdDB:
     ACCURACY_RTH_END_MIN: int = _RTH_END_MINS_AUTH
 
     def compute_accuracy(self, ticker: str, timeframe: str,
-                          model_version: str = "statistical_v1",
+                          model_version: str,
                           *, rth_only: bool = False) -> dict:
         """
         Compute prediction accuracy for a given model version.
@@ -4841,9 +4841,12 @@ class EdDB:
         scope = "rth_0930_1600_et" if rth_only else "all_hours"
         rth_clause = ""
         if rth_only:
+            # A row with no et_minute cannot be placed inside RTH -- it used to be read as :00
+            # (COALESCE(et_minute, 0)) and counted or dropped by that guess (no fallbacks).
             rth_clause = (
-                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) >= {self.ACCURACY_RTH_START_MIN}"
-                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) < {self.ACCURACY_RTH_END_MIN} "
+                " AND et_minute IS NOT NULL"
+                f" AND (et_hour * 60 + et_minute) >= {self.ACCURACY_RTH_START_MIN}"
+                f" AND (et_hour * 60 + et_minute) < {self.ACCURACY_RTH_END_MIN} "
             )
 
         for horizon in PRIMARY_DECISION_HORIZONS:

@@ -5322,7 +5322,7 @@ def _trader_accuracy_subset(results: dict) -> dict:
     return {hz: results[hz] for hz in _TRADER_ACCURACY_HORIZONS_UI if hz in results}
 
 
-def _current_pred_model_version(ticker: str) -> str:
+def _current_pred_model_version(ticker: str) -> Optional[str]:
     """Version string the serving stack stamps on snapshot rows (pred_model_version).
 
     Repo-wide audit 2026-07-05: accuracy callers defaulted to the legacy
@@ -5341,12 +5341,15 @@ def _current_pred_model_version(ticker: str) -> str:
       accuracy-history writer updated in this change set.
     SCHWAB_CSV_CHECKED
     """
-    try:
-        from ml_predict import get_model_version
-
-        return get_model_version(ticker)
-    except Exception:
-        return "rules_v1"
+    # 2026-09-24 (audit L-01/F-11): None when no model is serving -- the live stack is off by
+    # default (signals.LIVE_MODEL_STACK_ENABLED) and rows are stamped with what RAN
+    # (ml_predict.executed_model_version). The "rules_v1" fallback and the installed-files
+    # answer both named a model that was not producing the rows.
+    from signals import LIVE_MODEL_STACK_ENABLED
+    if not LIVE_MODEL_STACK_ENABLED:
+        return None
+    from ml_predict import get_model_version
+    return get_model_version(ticker)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -8545,7 +8548,7 @@ def _fetch_state(
                         pred_60c_up_prob=getattr(ms, "up_prob_60c", None),
                         pred_60c_down_prob=getattr(ms, "down_prob_60c", None),
                         pred_60c_flat_prob=getattr(ms, "flat_prob_60c", None),
-                        pred_model_version=ms.model_version or "rules_v1",
+                        pred_model_version=ms.model_version,   # None = no model ran (L-01/F-11)
                         pred_model_source=getattr(ms, 'pred_model_source', None),
                         pred_override_source=getattr(ms, 'pred_override_source', None),
                         logger_source=_resolved_logger_source,
@@ -8924,7 +8927,9 @@ def _fetch_state(
 
                 # ── Periodic accuracy tracking (~every 10 min per ticker) ─────────
                 _last_acc = _accuracy_cache.get(ticker, {}).get("ts", 0)
-                if time.time() - _last_acc > ACCURACY_INTERVAL and db_counts["filled"] >= 50:
+                # no serving model -> nothing to measure (L-01): skip, don't guess a version
+                if (time.time() - _last_acc > ACCURACY_INTERVAL and db_counts["filled"] >= 50
+                        and _current_pred_model_version(ticker) is not None):
                     try:
                         # RTH-scoped accuracy is the trading-relevance primary
                         # (operator decision 2026-07-06); all-hours kept as audit
@@ -18358,6 +18363,9 @@ def get_accuracy(ticker: str = Query(...)):
 
     # Use cache if fresh enough
     _serving_version = _current_pred_model_version(ticker)
+    if _serving_version is None:
+        return {"ticker": ticker, "model_version": None,
+                "error": "no model is serving -- model accuracy is not measured"}
     cached = _accuracy_cache.get(ticker, {})
     if cached and time.time() - cached.get("ts", 0) < ACCURACY_INTERVAL:
         results = cached["results"]

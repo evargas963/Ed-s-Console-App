@@ -142,7 +142,7 @@ def test_get_model_version_fail_closed_when_strict_bundle_blocked(monkeypatch):
     _strict_bundle_block(monkeypatch)
     mp._active_bundle_dir_cache.clear()
     mp._strict_bundle_warned.clear()
-    assert mp.get_model_version("SPY") == "rules_v1"
+    assert mp.get_model_version("SPY") is None   # no bundle -> no version, not "rules_v1" (L-01)
 
 
 @pytest.mark.parametrize("ticker", STRICT_BUNDLE_BLOCK_TICKERS)
@@ -157,7 +157,7 @@ def test_get_model_version_fail_closed_when_strict_bundle_blocked_ticker_agnosti
     assert polluted.startswith("stack(")
     mp._active_bundle_dir_cache.clear()
     mp._strict_bundle_warned.clear()
-    assert mp.get_model_version(ticker) == "rules_v1"
+    assert mp.get_model_version(ticker) is None   # no bundle -> no version, not "rules_v1" (L-01)
 
 
 def test_get_model_version_fail_closed_survives_compute_signals_cache_pollution(monkeypatch):
@@ -168,7 +168,7 @@ def test_get_model_version_fail_closed_survives_compute_signals_cache_pollution(
     assert polluted.startswith("stack(")
     mp._active_bundle_dir_cache.clear()
     mp._strict_bundle_warned.clear()
-    assert mp.get_model_version("SPY") == "rules_v1"
+    assert mp.get_model_version("SPY") is None   # no bundle -> no version, not "rules_v1" (L-01)
 
 
 def test_load_xgb_fail_closed_when_strict_bundle_blocked(monkeypatch):

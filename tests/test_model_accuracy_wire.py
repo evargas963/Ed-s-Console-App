@@ -195,6 +195,27 @@ def test_compute_accuracy_rth_scope_and_baseline_fields(tmp_path: Path) -> None:
     assert empty["5c"]["scope"] == "rth_0930_1600_et"
 
 
+def test_rth_scope_excludes_rows_with_no_minute(tmp_path: Path) -> None:
+    """A row with et_minute NULL cannot be placed inside RTH: it used to be read as :00
+    (COALESCE(et_minute, 0)), so hour 9 + NULL was dropped and hour 16 + NULL counted by
+    guess. It is now outside the RTH scope (and still counted all-hours)."""
+    edb = _new_db(tmp_path)
+    _insert_pred_row(edb, et_hour=10, et_minute=0, ts=1000.0,
+                     up=0.6, down=0.2, flat=0.2, outcome="up")
+    with edb._connect() as conn:
+        conn.execute(
+            "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot,"
+            " et_hour, et_minute, pred_model_version,"
+            " pred_5c_up_prob, pred_5c_down_prob, pred_5c_flat_prob, outcome_5c)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("SPY", "1m", 2000.0, "test", 450.0, 12, None, "vtest", 0.6, 0.2, 0.2, "down"),
+        )
+    rth = edb.compute_accuracy("SPY", "1m", model_version="vtest", rth_only=True)
+    ah = edb.compute_accuracy("SPY", "1m", model_version="vtest", rth_only=False)
+    assert rth["5c"]["total"] == 1
+    assert ah["5c"]["total"] == 2
+
+
 def test_server_accuracy_surfaces_are_rth_primary() -> None:
     """Wire lock: the trading-facing accuracy surfaces must be RTH-primary with
     all-hours as labeled audit context — all-hours numbers must not be able to
