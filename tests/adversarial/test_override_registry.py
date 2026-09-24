@@ -41,7 +41,7 @@ def test_override_registry_append_only(tmp_path):
 def test_production_decision_without_release_id_rejected(release_ready):
     from live_decision_bundle import stamp_decision_bundle
 
-    ms = {"ticker": "SPY", "spot": 500.0, "call_signal": "wait", "validation_summary": "ok"}
+    ms = {"ticker": "SPY", "spot": 500.0, "prior_close": 500.0, "call_signal": "wait", "validation_summary": "ok"}
     out = stamp_decision_bundle(ms, route="server._fetch_state")
     assert out.get("release_id")
     assert out.get("decision_id")

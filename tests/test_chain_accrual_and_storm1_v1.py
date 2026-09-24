@@ -186,8 +186,8 @@ def _server():
     return server
 
 
-def _board(n_others: int = 54) -> list[str]:
-    return ["SPY", "QQQ", "IWM"] + [f"T{i:02d}" for i in range(n_others)]
+def _board(n: int = 57) -> list[str]:
+    return [f"T{i:02d}" for i in range(n)]
 
 
 def test_non_sentinels_are_not_excluded_anywhere_in_the_accrual_window():
@@ -198,7 +198,7 @@ def test_non_sentinels_are_not_excluded_anywhere_in_the_accrual_window():
     window."""
     s = _server()
     board = _board()
-    depth = max(1, -(-int(s.ACCRUAL_MIN_INTERVAL_OTHER_SEC) // max(1, int(s.TERRAIN_REFRESH_SEC))))
+    depth = max(1, -(-int(s.CONTENTION_ROTATION_SEC) // max(1, int(s.TERRAIN_REFRESH_SEC))))
     for mins in (ACCRUAL_START_MINS, 560, 569, 570, 575, 599, 600, 601, 720, ACCRUAL_END_MINS):
         seen: set[str] = set()
         for cycle in range(1, depth + 1):
@@ -222,13 +222,18 @@ def test_premarket_window_refreshes_the_whole_enrolled_board_every_cycle():
         assert len(now) == len(board)
 
 
-def test_sentinels_still_refresh_every_cycle_inside_contention():
-    """Rotation must not cost the money path its per-minute cadence."""
+def test_viewed_tickers_refresh_every_cycle_inside_contention_whatever_their_name():
+    """Priority is by what the operator is viewing, never by symbol name (universality,
+    operator 2026-09-23): any viewed ticker refreshes every cycle; an unviewed SPY rotates
+    like every other ticker."""
     s = _server()
-    board = _board()
+    board = _board() + ["SPY"]
     for cycle in range(1, 11):
-        now, _ = s.terrain_cycle_tickers(board, 575, cycle)
-        assert {"SPY", "QQQ", "IWM"} <= set(now), f"a sentinel was deferred on cycle {cycle}"
+        now, _ = s.terrain_cycle_tickers(board, 575, cycle, viewed=["T07", "T33"])
+        assert {"T07", "T33"} <= set(now), f"a viewed ticker was deferred on cycle {cycle}"
+    deferred_spy = any("SPY" in s.terrain_cycle_tickers(board, 575, cyc, viewed=[])[1]
+                       for cyc in range(1, 11))
+    assert deferred_spy, "SPY must rotate like any unviewed ticker, not be privileged by name"
 
 
 def test_contention_window_still_spreads_the_load():

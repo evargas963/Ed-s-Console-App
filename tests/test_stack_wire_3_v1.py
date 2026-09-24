@@ -70,7 +70,7 @@ def test_rth_open_mins_single_authority_call_engine_prediction_engine():
     assert RTH_OPEN_MINS == RTH_START_MINS == 570
     stop_src = inspect.getsource(call_engine._stop_distance)
     assert "570" not in stop_src
-    assert "RTH_OPEN_MINS" in stop_src
+    assert "et_hour" not in stop_src and "vix_level" not in stop_src   # ATR only (2026-09-23)
     overlay_src = inspect.getsource(pe.build_fusion_model_overlay_for_stack)
     assert "(inp.et_hour - 9) * 60 + (inp.et_minute - 30)" not in overlay_src
     assert "RTH_OPEN_MINS" in overlay_src
@@ -106,7 +106,7 @@ def test_call_engine_threshold_constants_exist_and_used():
     assert call_engine.MINS_TO_CLOSE_REDUCE_SIZE == 120
     assert call_engine.MINS_TO_CLOSE_NO_NEW_ENTRIES == 30
     assert call_engine.CONF_MULT_VERY_LOW == 0.25
-    assert call_engine.CONFLUENCE_TOTAL_SOURCES == 8
+    assert call_engine.CONFLUENCE_TOTAL_SOURCES == 5   # no index-ETF votes (operator 2026-09-23)
     assert call_engine.MC_EAE_GATE_EXPANSION == 2.5
     assert call_engine.MC_EAE_GATE_CONTAINED == 1.5
     assert call_engine.AGREE_THRESHOLD_UNSTABLE == 0.50

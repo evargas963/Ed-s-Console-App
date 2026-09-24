@@ -22,7 +22,12 @@ Acceptance instrumentation built in (measured, not asserted):
     original numeric maps parsed all-None and were caught by this exact mechanism).
 
 Usage:
-    python -m app.market_data.schwab.streaming.capture --symbols SPY,QQQ,IWM --duration-min 0
+    python -m app.market_data.schwab.streaming.capture --duration-min 0
+
+The daemon has no built-in symbol list: it streams LEVELONE_EQUITIES + CHART_EQUITY for
+exactly the symbols the console asks for (stream_equity_symbols.json -- the active ticker,
+watchlist and gamma board, every ticker alike). --symbols is an optional set held from
+boot, before the console has asked for anything.
 """
 
 from __future__ import annotations
@@ -46,15 +51,18 @@ from stream_spine import (  # noqa: E402
     CaptureWriter,
     CoverageWriteError,
     HealthRegistry,
+    OPTION_CONTRACTS_MAX_HELD,
     MessageBus,
     bar_msg,
     book_msg,
     options_quote_msg,
-    print_msg,
     quote_msg,
     read_active_option_contract_signal,
     read_active_option_contracts_signal,
+    enforce_option_contracts_budget,
     read_active_ticker_signal,
+    read_equity_symbols_signal,
+    EQUITY_SYMBOLS_MAX_HELD,
     resolve_stream_db_path,
 )
 from time_et import is_capturable_session  # noqa: E402
@@ -139,32 +147,29 @@ def parse_stream_item(item: dict, field_map: dict[str, str]) -> dict:
     return out
 
 
-# ── CR-02: Alpaca IEX prints + NBBO quotes (capture half) ────────────────────
-# Schwab's streamer REFUSES trade prints — proven live 2026-07-22 by differential
-# probe on one authenticated session: LEVELONE_EQUITIES SUBS -> code 0 "SUBS command
-# succeeded"; TIMESALE_EQUITY SUBS (identical framing via schwab-py _make_request)
-# -> code 11 "Service not available or temporary down." Alpaca's free IEX websocket
-# supplies real executions (verified same day: REST latest trade + WS auth OK with
-# the operator's paper keys). This leg records RAW prints and RAW NBBO quotes into
-# stream_capture.db via the same bus/writer; SIGNING is computed by the CR-02
-# correlation study, never here (capture stays raw). Optional by design: no keys ->
-# one printed line, Schwab capture unaffected.
-ALPACA_WS_URL = "wss://stream.data.alpaca.markets/v2/iex"
-ALPACA_ENV_PATH = ROOT / ".env"
-#: IEX slice scale, MEASURED on-roster 2026-07-22: SPY IEX daily volume 1,223,790 vs
-#: Schwab consolidated TOTAL_VOLUME 24,067,157 (~5.1%). Coverage is a sample, not the
-#: tape — the pre-registered CR-02 study decides whether the sample is trustworthy.
-ALPACA_SRC = "alpaca_iex"
+# ── No trade-print leg (removed 2026-09-23) ─────────────────────────────────────
+# Schwab's streamer refuses trade prints (TIMESALE_EQUITY SUBS -> code 11 "Service not
+# available", proven live 2026-07-22). An Alpaca IEX websocket used to run here as a second
+# producer for a research study (CR-02). It was never a source for any live value: IEX is a
+# ~5% slice of consolidated volume (SPY 2026-07-22: 1,223,790 IEX vs 24,067,157 Schwab
+# TOTAL_VOLUME), nothing read its rows back, and it shared this daemon's event loop and
+# writer with the Schwab socket (5.0M rows on 9/15). Operator decision 2026-09-23: removed.
+# Every live value comes from Schwab's own fields; a trade-by-trade tape is not available.
 
 # ── half-open-socket guard (2026-07-23, observed live) ───────────────────────
-# A network blip left BOTH websockets half-open: connected on paper, silent in
+# A network blip left the websocket half-open: connected on paper, silent in
 # practice. No error ever fires on a half-open TCP socket, so error-driven
 # reconnect logic never triggers — the feeds sat STALE for minutes while the
 # process looked healthy (py-spy: event loop idle at _poll). Staleness itself
 # must therefore force the reconnect.
-ALPACA_STALE_RECONNECT_SEC = 120.0   #: no frames this long -> recycle the socket
 STREAM_STALE_RECONNECT_SEC = 90.0    #: LEVELONE quiet this long -> recycle stream
 RECONNECT_COOLDOWN_SEC = 180.0       #: never login-spam Schwab on quiet tape
+#: A pump that has DIED (handle_message raised: the socket is closed) is not a quiet feed to
+#: be waited out -- it is a known-dead socket. MEASURED 2026-09-23: the only recycle path was
+#: the quiet-feed watchdog (90 s quiet AND 180 s since the last reconnect), and typical SPY
+#: gaps were 145-233 s. A dead pump now recycles on the next status tick; this floor only
+#: stops a reconnect that dies instantly from turning into a login loop.
+PUMP_DEATH_RECONNECT_MIN_SEC = 20.0
 #: Status-write + watchdog evaluation cadence. Named (not an inline literal) so the
 #: recycle path can be driven deterministically at its REAL seam in tests instead of
 #: through a copied state machine — the recycle ordering is a correctness contract and
@@ -175,6 +180,15 @@ STATUS_LOOP_INTERVAL_SEC = 10.0
 #: recovery, so cleanup must never be able to prevent that recovery — see
 #: _retire_stream_client.
 STREAM_RETIRE_TIMEOUT_SEC = 5.0
+
+
+def pump_died(pump_task) -> "BaseException | None":
+    """The exception a finished Schwab pump task died with, else None. A cancelled task
+    (our own teardown) and the reconnect-failure placeholder (asyncio.sleep(0), finishes
+    cleanly) are not deaths."""
+    if pump_task is None or not pump_task.done() or pump_task.cancelled():
+        return None
+    return pump_task.exception()
 
 
 def stream_needs_recycle(age_sec: float | None, seen_data: bool,
@@ -195,177 +209,6 @@ def stream_needs_recycle(age_sec: float | None, seen_data: bool,
         return False
     return (age_sec > STREAM_STALE_RECONNECT_SEC
             and since_last_reconnect > RECONNECT_COOLDOWN_SEC)
-
-
-def alpaca_keys_from_env() -> tuple[str, str] | None:
-    """Paper keys from .env (ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY) or process env.
-
-    Values are never logged. Missing keys are a SKIP, not an error — the Schwab
-    capture must never be hostage to the optional prints leg."""
-    kv: dict[str, str] = {}
-    try:
-        for line in ALPACA_ENV_PATH.read_text(encoding="utf-8-sig").splitlines():
-            s = line.strip()
-            if not s or s.startswith("#") or "=" not in s:
-                continue
-            k, _, v = s.partition("=")
-            kv[k.strip()] = v.strip().strip('"').strip("'")
-    except OSError:
-        pass
-    import os
-    kid = kv.get("ALPACA_API_KEY_ID") or os.environ.get("ALPACA_API_KEY_ID")
-    sec = kv.get("ALPACA_API_SECRET_KEY") or os.environ.get("ALPACA_API_SECRET_KEY")
-    return (kid, sec) if kid and sec else None
-
-
-def alpaca_rfc3339_to_ms(t) -> int | None:
-    """Alpaca timestamps are RFC-3339 with NANOSECOND fractions (9 digits) —
-    datetime.fromisoformat accepts at most 6, so the fraction is trimmed. Capture
-    stores milliseconds (matches stream schema *_ms columns)."""
-    if not t or not isinstance(t, str):
-        return None
-    from datetime import datetime
-    s = t.rstrip("Z")
-    if "." in s:
-        head, frac = s.split(".", 1)
-        s = f"{head}.{frac[:6]}"
-    try:
-        return int(datetime.fromisoformat(s + "+00:00").timestamp() * 1000)
-    except ValueError:
-        return None
-
-
-#: Alpaca stream field dictionary (schema verified live 2026-07-22 with the operator's
-#: keys — see the roster snapshot + docs). NAMED here once, the same single-source
-#: discipline as LEVELONE_FIELDS/CHART_FIELDS above and the Schwab field CSV.
-ALPACA_TYPE_KEY = "T"      #: message type: "t" trade, "q" NBBO quote, control/bars other
-ALPACA_SYMBOL_KEY = "S"
-ALPACA_STAMP_KEY = "t"     #: RFC-3339 with NANOSECOND fraction
-ALPACA_TRADE_FIELDS = {"p": "price", "s": "size", "x": "exchange", "c": "conditions",
-                       "i": "trade_id", "z": "tape"}
-#: `bs`/`as` are ROUND LOTS per Alpaca's schema — recorded AS GIVEN; src
-#: distinguishes them from Schwab's share-denominated sizes (no raw-layer conversion).
-ALPACA_QUOTE_FIELDS = {"bp": "bid", "ap": "ask", "bs": "bid_size", "as": "ask_size",
-                       "bx": "bid_exchange", "ax": "ask_exchange", "z": "tape"}
-
-
-def alpaca_item_to_topic_msg(item: dict) -> tuple[str, dict] | None:
-    """One Alpaca stream item -> (topic, spine message) or None for non-capture types.
-
-    Trades -> print.SYM; NBBO -> quote.SYM. Bars/status/control frames return None:
-    canonical 1m bars remain Schwab's (sole-bar-authority law); statuses are a later,
-    separately-argued addition.
-    """
-    kind = item.get(ALPACA_TYPE_KEY)
-    sym = str(item.get(ALPACA_SYMBOL_KEY) or "").upper()
-    if not sym:
-        return None
-    if kind == "t":
-        f = parse_stream_item({**item, "key": sym}, ALPACA_TRADE_FIELDS)
-        conds = f.get("conditions")
-        return (f"print.{sym}", print_msg(
-            symbol=sym, price=f.get("price"), size=f.get("size"),
-            exchange=f.get("exchange"),
-            conditions=",".join(str(x) for x in conds) if isinstance(conds, list) else conds,
-            trade_ts_ms=alpaca_rfc3339_to_ms(item.get(ALPACA_STAMP_KEY)), src=ALPACA_SRC))
-    if kind == "q":
-        f = parse_stream_item({**item, "key": sym}, ALPACA_QUOTE_FIELDS)
-        return (f"quote.{sym}", quote_msg(
-            symbol=sym, bid=f.get("bid"), ask=f.get("ask"),
-            bid_size=f.get("bid_size"), ask_size=f.get("ask_size"),
-            quote_time_ms=alpaca_rfc3339_to_ms(item.get(ALPACA_STAMP_KEY)), src=ALPACA_SRC))
-    return None
-
-
-def alpaca_handle_frame(raw: str, bus: MessageBus, health: HealthRegistry,
-                        stats: CaptureStats) -> None:
-    """One websocket frame (JSON array of items) -> bus publishes + health beats."""
-    t0 = time.perf_counter()
-    frame = json.loads(raw)
-    items = frame if isinstance(frame, list) else [frame]
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        if item.get(ALPACA_TYPE_KEY) == "error":
-            print(f"alpaca: stream error frame: {item}")
-            continue
-        out = alpaca_item_to_topic_msg(item)
-        if out is None:
-            continue
-        save_raw_sample(f"ALPACA_{item.get(ALPACA_TYPE_KEY)}", item, stats)
-        bus.publish(out[0], out[1])
-        health.beat("ALPACA_IEX")
-    stats.record("ALPACA_IEX", (time.perf_counter() - t0) * 1000.0)
-
-
-async def _alpaca_session(ws, symbols: list[str], kid: str, sec: str, bus: MessageBus,
-                          health: HealthRegistry, stats: CaptureStats,
-                          stop: asyncio.Event) -> bool:
-    """Auth + subscribe + receive loop on an open socket. Returns False on auth
-    refusal (permanent for this run), True when the loop ends via `stop`."""
-    await asyncio.wait_for(ws.recv(), 10)              # {"T":"success","msg":"connected"}
-    await ws.send(json.dumps({"action": "auth", "key": kid, "secret": sec}))
-    auth = json.loads(await asyncio.wait_for(ws.recv(), 10))
-    a0 = auth[0] if isinstance(auth, list) and auth else auth
-    if not (isinstance(a0, dict) and a0.get(ALPACA_TYPE_KEY) == "success"):
-        print(f"alpaca: auth REFUSED: {a0} — prints leg stopped for this run")
-        return False
-    await ws.send(json.dumps({"action": "subscribe",
-                              "trades": symbols, "quotes": symbols}))
-    print(f"alpaca: subscribed trades+quotes for {len(symbols)} symbols "
-          f"(free tier cap 30; separate from Schwab key budget)")
-    last_rx = time.monotonic()
-    while not stop.is_set():
-        try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
-        except asyncio.TimeoutError:
-            # half-open guard: a dead socket raises NOTHING — quiet past the
-            # bar means recycle (outer loop reconnects with fresh auth+subs)
-            quiet = time.monotonic() - last_rx
-            if quiet > ALPACA_STALE_RECONNECT_SEC:
-                print(f"alpaca: no frames for {quiet:.0f}s — recycling socket "
-                      f"(half-open guard)")
-                return True
-            continue
-        last_rx = time.monotonic()
-        alpaca_handle_frame(raw, bus, health, stats)
-    return True
-
-
-async def alpaca_pump(symbols: list[str], bus: MessageBus, health: HealthRegistry,
-                      stats: CaptureStats, stop: asyncio.Event) -> None:
-    """Hold the Alpaca IEX socket open; publish prints/quotes onto the bus.
-
-    Reconnects with bounded backoff (5s..60s) until `stop`; every disconnect is
-    printed and the feed's health state degrades honestly in the interim (a dead
-    socket must never look like a quiet market — spine law)."""
-    keys = alpaca_keys_from_env()
-    if keys is None:
-        print("alpaca: no ALPACA_API_KEY_ID/ALPACA_API_SECRET_KEY in .env — "
-              "prints leg skipped (Schwab capture unaffected)")
-        return
-    import websockets
-    kid, sec = keys
-    backoff = 5.0
-    while not stop.is_set():
-        try:
-            async with websockets.connect(ALPACA_WS_URL, open_timeout=15) as ws:
-                backoff = 5.0
-                if not await _alpaca_session(ws, symbols, kid, sec, bus, health,
-                                             stats, stop):
-                    return
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 — reconnect loop; every drop is printed
-            if stop.is_set():
-                return
-            print(f"alpaca: connection lost ({type(exc).__name__}: {exc}) — "
-                  f"reconnect in {backoff:.0f}s")
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=backoff)
-                return
-            except asyncio.TimeoutError:
-                backoff = min(backoff * 2, 60.0)
 
 
 class CaptureStats:
@@ -487,6 +330,65 @@ async def _apply_active_ticker_book_subs(stream, current: str | None) -> str | N
     return requested
 
 
+async def _apply_equity_symbol_subs(stream, roster: "list[str]", held: frozenset,
+                                    status: dict) -> frozenset:
+    """Hold LEVELONE_EQUITIES + CHART_EQUITY for every symbol the console asked for
+    (beyond the optional boot set, subscribed at connect): ADD new ones, UNSUBS dropped ones.
+
+    The console ranks and cuts its request to EQUITY_SYMBOLS_MAX_HELD; a request over it
+    means the console broke that contract and is refused whole (named in `status`), never
+    trimmed here -- only the console knows which symbols matter most. A vendor error on
+    ADD/UNSUBS leaves `held` as it truly is, so the next tick retries."""
+    in_roster = {s.upper() for s in roster}
+    requested = [s for s in read_equity_symbols_signal() if s not in in_roster]
+    if len(requested) > EQUITY_SYMBOLS_MAX_HELD:
+        status["refused"] = (f"request of {len(requested)} symbols exceeds the equity budget "
+                             f"({EQUITY_SYMBOLS_MAX_HELD}); the console must rank before sending")
+        desired: frozenset = frozenset()
+    else:
+        status["refused"] = None
+        desired = frozenset(requested)
+    drop = sorted(held - desired)
+    if drop:
+        try:
+            await stream.level_one_equity_unsubs(drop)
+            await stream.chart_equity_unsubs(drop)
+            held = held - frozenset(drop)
+        except Exception as e:  # noqa: BLE001 -- retried next tick
+            print(f"equity unsubs {drop[:5]}...: {type(e).__name__}: {e}")
+    add = sorted(desired - held)
+    if add:
+        try:
+            await stream.level_one_equity_add(add)
+            await stream.chart_equity_add(add)
+            held = held | frozenset(add)
+            print(f"equity L1 added {len(add)} console-requested symbols (held {len(held)})")
+        except Exception as e:  # noqa: BLE001 -- retried next tick
+            print(f"equity add {add[:5]}...: {type(e).__name__}: {e}")
+    status["held"] = sorted(held)
+    return held
+
+
+async def _equity_symbols_poll_loop(get_stream, get_held, set_held, roster: "list[str]",
+                                    status: dict, stop: asyncio.Event,
+                                    interval_sec: float = 1.0) -> None:
+    """Fast poll of the console's equity-symbols signal. Re-created per stream generation
+    (a fresh StreamClient holds nothing, so `held` restarts empty with it)."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval_sec)
+            return
+        except asyncio.TimeoutError:
+            pass
+        stream = get_stream()
+        if stream is None:
+            continue
+        try:
+            set_held(await _apply_equity_symbol_subs(stream, roster, get_held(), status))
+        except Exception as e:  # noqa: BLE001 -- poll loop must survive one bad tick
+            print(f"equity-symbols poll: {type(e).__name__}: {e}")
+
+
 async def _active_ticker_book_poll_loop(get_stream, get_current, set_current,
                                         stop: asyncio.Event,
                                         interval_sec: float = 1.0) -> None:
@@ -540,6 +442,13 @@ class OptionCoverageCompensationError(RuntimeError):
     loop escalates into the EXISTING stream-recycle path (which tears the session down,
     closes epochs, and rebuilds from the operator's current desired contract) rather
     than being absorbed as an ordinary bad tick."""
+
+
+class OptionStreamConnectionLost(OptionCoverageCompensationError):
+    """The shared Schwab websocket died mid-subscribe (2026-09-23). A subclass of the
+    compensation error ON PURPOSE: the poll loop's one escalation path for it already
+    requests a stream recycle, which retires every held contract and resubscribes a fresh
+    generation -- exactly what a dead socket needs, and nothing more."""
 
 
 #: epoch_state key -> the Schwab service its coverage epoch belongs to. The ONE place the
@@ -1139,6 +1048,23 @@ def _subs_or_add(contract_state: dict, svc_key: str, exclude_key: str, subs_fn, 
 OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS = 500
 
 
+
+def _is_connection_death(exc: BaseException) -> bool:
+    """True when `exc` means the shared websocket itself is gone (1009 message-too-big, a
+    dropped TCP connection with no close frame, any websockets ConnectionClosed). Such an
+    error says nothing about the symbols in the request -- every later call on the same
+    socket fails the same way."""
+    for e in (exc, exc.__cause__, exc.__context__):
+        if e is None:
+            continue
+        if "ConnectionClosed" in type(e).__name__:
+            return True
+        text = str(e)
+        if "no close frame" in text or "1009" in text or "message too big" in text:
+            return True
+    return False
+
+
 async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitted) -> "list[tuple[str, str]]":
     """Subscribe `symbols` to the vendor in as FEW network round trips as possible
     (2026-09-16, audit finding: the prior design issued one full WS round trip PER
@@ -1180,6 +1106,14 @@ async def _batch_subscribe_with_bisection(op, symbols: "list[str]", *, on_admitt
         on_admitted(list(symbols))
         return []
     except Exception as e:
+        if _is_connection_death(e):
+            # 2026-09-23: bisecting here ran every remaining half on a DEAD socket and
+            # stamped 3,223 healthy contracts "rejected: no close frame". Stop at once --
+            # no further chunk, no rejection -- and take the existing recycle path.
+            raise OptionStreamConnectionLost(
+                f"{EXTRA_OPTION_CONTRACT_SERVICE_NAME}: the shared Schwab socket closed "
+                f"during a {len(symbols)}-contract subscribe ({type(e).__name__}: {e}); "
+                f"forcing one stream recycle, no symbol marked rejected") from e
         if len(symbols) == 1:
             return [(symbols[0], f"{type(e).__name__}: {e}")]
         mid = len(symbols) // 2
@@ -1574,7 +1508,20 @@ async def _apply_active_option_contract_subs(stream, contract_state: dict, *,
     vendor silent" for EVERY concurrently-held contract, not just the primary one.
     Optional: tests exercising only the subscribe-diff behavior can omit both."""
     requested = read_active_option_contract_signal()
-    plural_requested_raw = set(read_active_option_contracts_signal())
+    # The ONE shared Schwab socket holds at most OPTION_CONTRACTS_MAX_HELD additional
+    # contracts (see its measured table in stream_spine): demanding more is what killed the
+    # socket -- and SPY's live price with it -- 42 times on 2026-09-23. The daemon owns the
+    # socket, so it guards the budget whatever arrives -- but it holds no spot, so it never
+    # RANKS (the console does, by spot): an over-budget request is refused whole, and every
+    # refused symbol is reported as NOT ADMITTED (never as a vendor rejection).
+    _admitted, _not_admitted = enforce_option_contracts_budget(
+        read_active_option_contracts_signal(), budget=OPTION_CONTRACTS_MAX_HELD)
+    plural_requested_raw = set(_admitted)
+    if rejected_state is not None:
+        for _sym in [k for k, v in rejected_state.items() if v.startswith("not admitted:")]:
+            if _sym not in _not_admitted:
+                rejected_state.pop(_sym, None)
+        rejected_state.update(_not_admitted)
     # Role-transfer pre-pass (independent-review finding, 2026-09-12): must run before
     # any reconcile call this tick — see _apply_option_primary_role_transfer's docstring.
     #
@@ -1690,7 +1637,9 @@ async def _active_option_contract_poll_loop(get_stream, get_current, set_current
 def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
                  stats: CaptureStats, max_qdepth: int,
                  epoch_state: dict | None = None,
-                 rejected_state: "dict[str, str] | None" = None) -> None:
+                 rejected_state: "dict[str, str] | None" = None,
+                 push_stats: "dict | None" = None,
+                 equity_status: "dict | None" = None) -> None:
     # PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS (Gap 2): the producer identity/liveness
     # signal now lives INSIDE stream_capture.db itself (write_heartbeat), on the SAME
     # cadence as this file-based status write -- one call site, one clock, not a second
@@ -1713,6 +1662,12 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
         "rows_written": writer.rows_written, "commits": writer.commits,
         "insert_errors": writer.insert_errors,
         "max_writer_queue_depth": max_qdepth,
+        # messages handed to the writer thread and not yet written (None = writer not running)
+        "writer_thread_backlog": writer.writer_backlog(),
+        # the local push channel to the console (clients connected, messages sent/dropped)
+        "live_push": dict(push_stats) if push_stats is not None else None,
+        # console-requested LEVELONE_EQUITIES beyond the roster: held now / refused reason
+        "equity_symbols": dict(equity_status) if equity_status is not None else None,
         "per_service": stats.per_service,
         "handle_ms_p50": stats.p(50), "handle_ms_p99": stats.p(99),
         # PR214_RTH_DEFECT_REMEDIATION_V1: the resolved ABSOLUTE stream DB identity
@@ -1724,7 +1679,58 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
     }, indent=2), encoding="utf-8")
 
 
+class _TimestampedLog:
+    """Line-buffered append log that stamps each line with local wall time."""
+
+    def __init__(self, fh) -> None:
+        self._fh = fh
+        self._at_line_start = True
+
+    def write(self, text: str) -> int:
+        out = []
+        for part in text.splitlines(keepends=True):
+            if self._at_line_start and part.strip():
+                out.append(time.strftime("%Y-%m-%d %H:%M:%S "))
+            out.append(part)
+            self._at_line_start = part.endswith(chr(10))
+        self._fh.write("".join(out))
+        self._fh.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        self._fh.flush()
+
+
+STREAM_CAPTURE_LOG_MAX_BYTES = 50 * 1024 * 1024
+
+
+def _ensure_daemon_output_is_recorded() -> "Path | None":
+    """The scheduled task runs this daemon under pythonw.exe, where sys.stdout and
+    sys.stderr are None: every print() -- subscribe failures, socket-close reasons,
+    recycles -- was silently discarded. MEASURED 2026-09-23: the Schwab socket died 42
+    times that session and not one close reason existed anywhere on disk. When there is
+    no console, output goes to <runtime>/logs/stream_capture.log (one rotation at 50 MB).
+    With a console (a manual run), nothing changes."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return None
+    from runtime_layout import logs_dir
+    path = logs_dir() / "stream_capture.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if path.exists() and path.stat().st_size > STREAM_CAPTURE_LOG_MAX_BYTES:
+            path.replace(path.with_suffix(".log.1"))
+    except OSError:
+        pass
+    sink = _TimestampedLog(open(path, "a", encoding="utf-8", buffering=1))
+    if sys.stdout is None:
+        sys.stdout = sink
+    if sys.stderr is None:
+        sys.stderr = sink
+    return path
+
+
 async def run(symbols: list[str], duration_min: float, db_path: str | Path | None = None) -> int:
+    _ensure_daemon_output_is_recorded()
     # ONE canonical stream DB and ONE owner lock. RC-523/RC-534 root the stream DB in
     # runtime_layout, so a worktree daemon and production converge on the same path and the
     # ambient STREAM_CAPTURE_DB_PATH authority is gone. The lock still binds to the resolved
@@ -1872,8 +1878,8 @@ async def _shutdown_sequence(pump_task, writer_task, stop, wsub,
     On return the writer task is TERMINAL in every case (drained, failed, or cancelled by
     the timeout), which is what makes the caller's writer.close() safe.
     """
-    # ALL producers quiesce together — the Alpaca leg is a producer exactly like the
-    # Schwab pump, so it must be dead before the writer drain starts (same law).
+    # ALL producers quiesce together — every extra producer (the live-push server, the
+    # control loops) must be dead before the writer drain starts, same as the Schwab pump.
     await _cancel_and_await((pump_task, *extra_producers), what="shutdown: producer")
     stop.set()
     if writer_task is None:
@@ -2041,10 +2047,11 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
     stream.add_nyse_book_handler(make_book_handler("NYSE_BOOK", bus, health, stats))
     stream.add_level_one_option_handler(make_options_quote_handler(bus, health, stats))
     stream.add_options_book_handler(make_book_handler("OPTIONS_BOOK", bus, health, stats))
-    await stream.level_one_equity_subs(symbols)
-    await stream.chart_equity_subs(symbols)
-    print(f"subscribed {len(symbols)} symbols x2 services (key accounting: "
-          f"{len(symbols) * 2} keys used)")
+    if symbols:
+        await stream.level_one_equity_subs(symbols)
+        await stream.chart_equity_subs(symbols)
+    print(f"subscribed {len(symbols)} boot symbols x2 services; console-requested symbols "
+          f"follow on the equity-symbols poll")
     if active_book_ticker:
         try:
             await stream.nasdaq_book_subs([active_book_ticker])
@@ -2096,12 +2103,16 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
     writer_task = None
     stream = None
     pump_task = None
-    alpaca_task = None
+    push_task = None
+    push_stats: dict = {}
     control_tasks: tuple = ()
     #: Shared with the active-ticker book-poll task (below) — a plain dict, not a
     #: closure-captured local, because BOTH the recycle path here and the poll loop's
     #: coroutine need to read/write the SAME current values.
     book_state: dict = {"stream": None, "ticker": None}
+    #: console-requested LEVELONE_EQUITIES beyond the roster (held resets with each generation)
+    equity_state: dict = {"held": frozenset()}
+    equity_status: dict = {"held": [], "refused": None}
     #: Same shared-dict shape, for the options-contract poll loop — a SEPARATE signal
     #: (stream_active_option_contract.json) and a separate pair of Schwab services, so it
     #: is tracked independently rather than folded into book_state. "contract" holds the
@@ -2146,6 +2157,9 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             started.append(asyncio.create_task(_active_ticker_book_poll_loop(
                 lambda: book_state["stream"], lambda: book_state["ticker"],
                 lambda t: book_state.__setitem__("ticker", t), stop)))
+            started.append(asyncio.create_task(_equity_symbols_poll_loop(
+                lambda: book_state["stream"], lambda: equity_state["held"],
+                lambda h: equity_state.__setitem__("held", h), symbols, equity_status, stop)))
             started.append(asyncio.create_task(_active_option_contract_poll_loop(
                 lambda: option_state["stream"], lambda: option_state["contract"],
                 lambda c: option_state.__setitem__("contract", c), stop,
@@ -2179,6 +2193,14 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # pinned an expired OSI. Poll-only recovery is not generation-start.
         boot_ticker = read_active_ticker_signal()
         boot_option = read_active_option_contract_signal()
+        # Live push to the console over a local WebSocket (in memory, no database in the
+        # live path). Started BEFORE the Schwab connection so its per-field history sees the
+        # very first messages (a first trade / CLOSE_PRICE that arrived before it would never
+        # reach a console). Not part of a stream generation: it serves the bus, which
+        # survives recycles.
+        from app.market_data.schwab.streaming.live_push import serve_live_push
+        push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats))
+        await asyncio.sleep(0)   # let it subscribe before the first message is published
         stream, pump_task, option_state["contract"] = await _schwab_connect(
             state, symbols, bus, health, stats, stop,
             active_book_ticker=boot_ticker,
@@ -2187,25 +2209,28 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         book_state["stream"] = stream
         option_state["stream"] = stream
         book_state["ticker"] = boot_ticker
-        # CR-02 prints leg — optional co-producer on the SAME bus/writer/health. NOT part
-        # of a Schwab stream generation: it owns its own Alpaca socket and survives
-        # recycles.
-        alpaca_task = asyncio.create_task(alpaca_pump(symbols, bus, health, stats, stop))
         control_tasks = await _start_control_tasks()
         while not stop.is_set():
             await asyncio.sleep(STATUS_LOOP_INTERVAL_SEC)
             max_qdepth = max(max_qdepth, wsub.queue.qsize())
             write_status(bus, health, writer, stats, max_qdepth,
                          epoch_state=option_epoch_state,
-                         rejected_state=option_rejected_state)
+                         rejected_state=option_rejected_state,
+                         push_stats=push_stats, equity_status=equity_status)
             # half-open watchdog: quiet LEVELONE past the bar -> rebuild stream
             age = (health.report().get("LEVELONE_EQUITIES") or {}).get("age_sec")
             seen = stats.per_service.get("LEVELONE_EQUITIES", 0) > 0  # caps-ok: diagnostic unseen-count; 0 means never seen
             _coverage_forced = option_recycle_request.is_set()
-            if _coverage_forced or stream_needs_recycle(
+            _dead = pump_died(pump_task)
+            _dead_now = (_dead is not None and is_capturable_session()
+                         and time.monotonic() - last_reconnect > PUMP_DEATH_RECONNECT_MIN_SEC)
+            if _coverage_forced or _dead_now or stream_needs_recycle(
                     age, seen, time.monotonic() - last_reconnect,
                     is_capturable_session()):
-                if _coverage_forced:
+                if _dead_now and not _coverage_forced:
+                    print(f"watchdog: Schwab stream socket DIED ({type(_dead).__name__}: "
+                          f"{_dead}) — recycling now, not after the quiet-feed wait")
+                elif _coverage_forced:
                     # gap 4: option coverage compensation failed — vendor state uncertain
                     # with no durable coverage. Same teardown/rebuild as the watchdog.
                     option_recycle_request.clear()
@@ -2247,6 +2272,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                 last_reconnect = time.monotonic()
                 recycle_surrendered_ts = time.time()
                 book_state["stream"] = None   # poll loop must not use the dying stream
+                equity_state["held"] = frozenset()   # a fresh stream holds nothing
                 option_state["stream"] = None
                 # RETIRE THE WHOLE GENERATION FIRST — control tasks (cancelled AND
                 # awaited), then the pump, then the session itself. Only after this is it
@@ -2348,7 +2374,7 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
         # measured from the decision to surrender instead of the surrender itself.
         shutdown_surrendered_ts = time.time()
         await _shutdown_sequence(pump_task, writer_task, stop, wsub,
-                                 extra_producers=(alpaca_task, *control_tasks))
+                                 extra_producers=(push_task, *control_tasks))
         # The daemon's own Schwab session must not outlive the daemon. _shutdown_sequence
         # cancels the pump, but a cancelled handle_message() is not a logged-out session:
         # nothing in schwab-py logs out on garbage collection, so without this the process
@@ -2406,7 +2432,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--symbols", default="SPY,QQQ,IWM")
+    ap.add_argument("--symbols", default="",
+                    help="optional symbols held from boot; the console requests the rest")
     ap.add_argument("--duration-min", type=float, default=0.0, help="0 = until Ctrl+C")
     a = ap.parse_args()
     syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]

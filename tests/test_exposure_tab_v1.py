@@ -135,7 +135,7 @@ def test_rc355_lane_resolver_never_overlaps_and_is_wired():
     fn = m.group(0)
     # wired: the five de-conflicted draws route through the lanes
     assert src.count("laneL(") >= 4, "left-column banners must claim lanes"
-    assert src.count("laneB(") >= 1, "bubble labels must claim lanes"
+    assert "laneB(" not in src, "bubbles carry no text label any more (client $ removed 2026-09-23)"
     driver = (
         "const H=600, PADB=30;\n" + fn + "\n"
         "const reg=[]; const wants=[100,104,101,108,99,100,300,300,300,585,590,592];\n"
@@ -150,3 +150,14 @@ def test_rc355_lane_resolver_never_overlaps_and_is_wired():
                        encoding="utf-8", errors="replace", timeout=60)
     assert p.returncode == 0, f"lane resolver failed: {p.stderr[:400]}"
     assert "LANES OK" in p.stdout
+
+
+def test_the_exposure_page_computes_no_money_figure():
+    """Audit P0 (2026-09-23): the bubble $ (volume x 100 x CURRENT spot) and the dealer-hedge
+    line (a client sum over in-scope rows) were computed in the browser. The hedge line now
+    shows the served terrain.net_gex_at_spot; the bubble carries no $ figure."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "static" / "exposure.html").read_text(encoding="utf-8")
+    assert "dvol * 100 * spot" not in src
+    assert "rows.reduce((a, r) => a + r[1], 0)" not in src
+    assert "terrain.net_gex_at_spot" in src

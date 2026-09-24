@@ -270,12 +270,12 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     assert "from time_et import" in l1 and "RTH_START_MINS" in l1_code and "RTH_END_MINS" in l1_code
     assert "570" not in l1_code, "l1_thresholds re-hardcodes RTH open (F09)"
 
+    # The A2 sidecar no longer computes minutes-since-open (it carries The Call's plan,
+    # ONE FAUCET 2026-09-24), so it must not re-encode the RTH boundary anywhere.
     a2 = _read("v2_decision/a2_lifecycle_sidecar.py")
-    a2_fn = a2[a2.index("def _mins_elapsed_since_open"):]
-    a2_fn = a2_fn[: a2_fn.index("\ndef ", 1)]
-    a2_code = "\n".join(ln for ln in a2_fn.splitlines() if not ln.lstrip().startswith("#"))
-    assert "RTH_START_MINS" in a2_code, "A2 minutes-since-open must alias time_et (F09)"
-    assert "- 570" not in a2_code, "A2 minutes-since-open re-hardcodes RTH open (F09)"
+    a2_code = "\n".join(ln for ln in a2.splitlines() if not ln.lstrip().startswith("#"))
+    assert "570" not in a2_code and "_mins_elapsed_since_open" not in a2_code, (
+        "A2 sidecar re-derives the session clock (F09)")
 
     srv = _read("server.py")
     assert "RTH_CLOSE_MINS:      int   = RTH_END_MINS" in srv or "RTH_CLOSE_MINS: int = RTH_END_MINS" in srv.replace(" ", "")

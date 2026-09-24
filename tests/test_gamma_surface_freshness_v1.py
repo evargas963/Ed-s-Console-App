@@ -13,6 +13,9 @@ _SURF = {
     "cells": [{"strike": 580.0, "gex": [-90000]}, {"strike": 583.0, "gex": [958600]},
               {"strike": 586.0, "gex": [-264500]}],
     "contracts_total": 3, "contracts_used": 3, "contracts_excluded_malformed_expiry": 0,
+    # the spot THIS surface was computed from, stamped on it by its producer (served as-is;
+    # no fall-through to the terrain payload's own spot)
+    "spot": 583.41, "spot_source": "streaming_plane", "spot_as_of_ts_utc": 1.0,
 }
 
 
@@ -31,7 +34,6 @@ def _put_live(tk, *, computed_ts):
 def _clear(tk):
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_live_terrain_surface_is_preferred_and_discloses_coverage():
@@ -84,7 +86,7 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
     tk = ticker_storage_key("SPY")
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
+    monkeypatch.setattr(server, "_logger_tickers", [tk])   # enrolled like any ticker -- no built-in list
     monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
@@ -93,13 +95,11 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
         d = _call(tk)
         assert d["warming"] is True and d["requested"] is True
         monkeypatch.setattr(server, "_is_loggable_session", lambda: False)  # out of session -> not warming
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
         d2 = _call(tk)
         assert d2["warming"] is False and d2["requested"] is True           # still on the board -> requested
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
 def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch):
@@ -115,7 +115,6 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
             server._logger_tickers.remove(tk)
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # snapshot, no surface
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
     # session/quarantine are eligible — the ONLY thing withholding warming is board membership
     monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
@@ -130,7 +129,6 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-        server._GAMMA_SURFACE_CACHE.pop(tk, None)
         server._gamma_surface_demand.pop(tk, None)
         if had:
             with server._logger_lock:

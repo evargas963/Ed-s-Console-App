@@ -200,83 +200,56 @@ def test_parse_quote_node_session_fields_carries_raw_order_flow_primitives():
     assert pq_none["total_volume"] is None
 
 
-def test_tier_a_live_state_rest_bootstrap_row_uses_schwab_time_not_wall_clock(monkeypatch):
-    """S017: Tier A GET /api/live/state REST bootstrap must not set exchange_quote_ts from time.time()."""
+def _fresh_streamed_row(spot=501.25):
+    import time as _t
+    return {"spot": spot, "bid": 501.2, "ask": 501.3, "chg_pct": 0.42,
+            "server_received_ts": _t.time(), "spot_received_ts": _t.time(), "exchange_quote_ts": _t.time(),
+            "quote_source_detail": {"spot": "LAST_PRICE"},
+            "quote_ingestion": "schwab_streaming_level_one"}
+
+
+def test_tier_a_live_state_never_bootstraps_from_rest(monkeypatch):
+    """/api/live/state is STREAM ONLY (operator rule 2026-09-23: no fallbacks). With no
+    streamed row, a working REST quote changes nothing: the route answers
+    stream_unavailable and serves no spot, bid, ask or chg_pct."""
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: None)
-    monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
 
     out = server._tier_a_live_state_dict("SPY", None)
 
     assert out.get("_tier") == "A_live"
-    assert out["quote_ingestion"] == "rest_tier_a"
-    assert out["quote_mid"] == 501.25
-    assert out["mid_source"] == "schwab_quote_mark"
-    assert out["exchange_quote_ts"] == 1_778_018_399.0
-    assert out["quote_time_source"] == "schwab_rest_quote"
-    assert isinstance(out["server_received_ts"], float)
+    assert out["state_error"] == "stream_unavailable"
+    for k in ("spot", "bid", "ask", "chg_pct", "quote_ingestion"):
+        assert k not in out, f"{k} must be withheld, not substituted"
 
 
-def test_tier_a_live_state_retries_the_rest_bootstrap_after_an_early_get_client_failure(monkeypatch):
-    """LIVE operator-reproduced defect (2026-09-14, spot 360 audit round 2): a stale plane row
-    stuck at 2.9 hours old kept being served (quote_ingestion unchanged) across repeated real
-    requests, while /api/fast-quote -- which resolves get_client() independently on every
-    call -- succeeded immediately with a genuinely fresh price. Root cause: this function's
-    OWN earlier get_client() call (whose only job is deciding whether a token_invalid short-
-    circuit applies) sometimes raised even though Schwab auth was actually fine moments
-    later, and the old `and client` gate on the REST bootstrap below meant that ONE raise
-    permanently skipped ever trying again for this request -- with no retry, because
-    _memoized_quote_response was never even called. It resolves its own client when none is
-    supplied; this must let it try, not trust a client value this function decided not to
-    need for anything else."""
-    from fastapi import HTTPException
-
-    calls = {"n": 0}
-
-    def _flaky_get_client():
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise HTTPException(status_code=503, detail="transient")
-        return object()
-
-    monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: {
-        "spot": 999.0, "server_received_ts": 1.0,   # ancient -- must not be trusted
-        "quote_ingestion": "schwab_streaming_level_one",
-    })
-    monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
-    monkeypatch.setattr(server, "get_client", _flaky_get_client)
-    monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
+def test_tier_a_live_state_serves_the_fresh_streamed_row(monkeypatch):
+    """Spot, bid, ask and chg_pct all come from ONE fresh streamed row (0 hops each)."""
+    monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: _fresh_streamed_row())
 
     out = server._tier_a_live_state_dict("SPY", None)
 
-    assert calls["n"] >= 2, "get_client must be retried, not abandoned after the first raise"
-    assert out["quote_ingestion"] == "rest_tier_a", (
-        f"expected a fresh REST bootstrap, got the stale plane row back "
-        f"(quote_ingestion={out.get('quote_ingestion')!r}, spot={out.get('spot')!r})"
-    )
-    assert out["quote_mid"] == 501.25
+    assert out["spot"] == 501.25 and out["spot_source"] == server.SPOT_SOURCE_PLANE
+    assert out["spot_state"] == "live"
+    assert out["bid"] == 501.2 and out["ask"] == 501.3 and out["chg_pct"] == 0.42
 
 
-def test_tier_a_live_state_falls_through_to_rest_when_the_plane_row_is_stale(monkeypatch):
-    """Operator-reproduced defect (2026-09-14, spot 360 audit): this gate used to trust ANY
-    plane row with a spot, however old -- if the streaming websocket silently stalled, the
-    header kept painting that stopped price as live forever, with no fallback, while
-    resolve_spot()'s own plane leg (same _CARD_FRESHNESS_V1_QUOTE_STALE_SEC boundary) would
-    already have fallen through to a fresher REST quote -- reopening the header-vs-terrain
-    divergence from the other direction."""
+def test_tier_a_live_state_withholds_a_stale_streamed_row(monkeypatch):
+    """A stalled stream's last tick is not live and nothing replaces it: no REST leg."""
     import time as _t
 
-    stale_row = {"spot": 999.0, "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0)}
+    stale_row = dict(_fresh_streamed_row(999.0),
+                     server_received_ts=_t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0),
+                     spot_received_ts=_t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0))
     monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: dict(stale_row))
-    monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
 
     out = server._tier_a_live_state_dict("SPY", None)
 
-    assert out["quote_ingestion"] == "rest_tier_a", "a stale plane row must not short-circuit the REST bootstrap"
-    assert out["quote_mid"] == 501.25, "the REST leg's own value must be what's actually served"
+    assert out["state_error"] == "stream_unavailable"
+    assert "spot" not in out
 
 
 def test_tier_a_lightweight_carries_the_tier_c_bundle_generation(monkeypatch):
@@ -286,10 +259,7 @@ def test_tier_a_lightweight_carries_the_tier_c_bundle_generation(monkeypatch):
     advance on the plane it already polls and re-read once — no second clock, no per-tick read."""
     import time as _t
 
-    monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: None)
-    monkeypatch.setattr(server._lmp, "next_fast_generation", lambda _ticker: 99)
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "_safe_get_quote_with_retry", lambda *_args, **_kwargs: _Resp())
+    monkeypatch.setattr(server._lmp, "get_quote", lambda _ticker: _fresh_streamed_row())
 
     key = ("SPY", "2099-01-16")          # a scope no other test seeds; newest entry for the ticker
     now = _t.time() + 3600.0

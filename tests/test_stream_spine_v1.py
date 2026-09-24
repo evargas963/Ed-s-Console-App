@@ -19,7 +19,6 @@ from stream_spine import (
     bar_msg,
     book_msg,
     options_quote_msg,
-    print_msg,
     quote_msg,
     read_active_option_contract_signal,
     read_active_option_contracts_signal,
@@ -59,18 +58,18 @@ def test_coalesce_keeps_newest_only_and_counts_nothing_lost_as_drops():
     asyncio.run(go())
 
 
-def test_prints_never_coalesce_and_overflow_counts_loudly():
+def test_messages_never_coalesce_and_overflow_counts_loudly():
     async def go():
         bus = MessageBus()
-        sub = bus.subscribe("print.", policy=COUNT_DROPS, maxsize=2)
+        sub = bus.subscribe("quote.", policy=COUNT_DROPS, maxsize=2)
         for i in range(5):
-            bus.publish("print.SPY", {"size": i})
+            bus.publish("quote.SPY", {"size": i})
         # first two kept in order, three counted dropped — never silently merged
         t0, m0 = await sub.get()
         t1, m1 = await sub.get()
         assert (m0["size"], m1["size"]) == (0, 1)
         assert sub.dropped == 3
-        assert bus.drop_counts() == {"print.": 3}
+        assert bus.drop_counts() == {"quote.": 3}
     asyncio.run(go())
 
 
@@ -85,15 +84,12 @@ def test_writer_batches_into_stream_capture_db(tmp_path):
     w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1, ask=2, last=1.5, bid_size=10,
                                     ask_size=20, last_size=1, total_volume=100,
                                     quote_time_ms=5, trade_time_ms=6, src="t", ts_recv=1.0))
-    w.insert("print.SPY", print_msg(symbol="SPY", price=1.5, size=100, exchange="IEX",
-                                    conditions="@", trade_ts_ms=7, src="t", ts_recv=1.1))
     w.insert("bar1m.SPY", bar_msg(symbol="SPY", bar_start_ms=0, open=1, high=2, low=0.5,
                                   close=1.5, volume=999, src="t", ts_recv=2.0))
     w.commit()
     w.close()
     con = sqlite3.connect(db)
     assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
-    assert con.execute("SELECT COUNT(*) FROM stream_prints_raw").fetchone()[0] == 1
     assert con.execute("SELECT COUNT(*) FROM stream_bars_raw").fetchone()[0] == 1
     assert con.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
 
@@ -116,11 +112,11 @@ def test_quote_native_content_stored_with_field_fidelity(tmp_path):
 
 
 def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
-    """Existing quote producers (Alpaca, tests) pass no native dict — must stay NULL,
+    """Quote producers that pass no native dict (tests) — must stay NULL,
     never an empty-dict placeholder that would misrepresent 'no data' as 'measured empty'."""
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="alpaca_iex", ts_recv=1.0))
+    w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0))
     w.commit()
     w.close()
     con = sqlite3.connect(db)
@@ -387,13 +383,13 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
         sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
         for i in range(50):
-            bus.publish("print.SPY", print_msg(symbol="SPY", price=1.0, size=i, src="t"))
+            bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, last_size=i, src="t"))
         stop = asyncio.Event()
         stop.set()                      # stop BEFORE the writer ever runs
         await w.run(sub, stop=stop)
         w.close()
         con = sqlite3.connect(tmp_path / "s.db")
-        n = con.execute("SELECT COUNT(*) FROM stream_prints_raw").fetchone()[0]
+        n = con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0]
         assert n == 50, f"drain lost rows: {n}/50"
         assert w.insert_errors == 0
     asyncio.run(go())
@@ -404,14 +400,14 @@ def test_insert_failure_is_counted_never_kills_writer(tmp_path):
         bus = MessageBus()
         sub = bus.subscribe("", policy=COUNT_DROPS)
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
-        bus.publish("print.SPY", object())      # not a dict -> insert raises inside
-        bus.publish("print.SPY", print_msg(symbol="SPY", price=2.0, size=1, src="t"))
+        bus.publish("quote.SPY", object())      # not a dict -> insert raises inside
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=2.0, src="t"))
         stop = asyncio.Event(); stop.set()
         await w.run(sub, stop=stop)
         w.close()
         assert w.insert_errors == 1
         con = sqlite3.connect(tmp_path / "s.db")
-        assert con.execute("SELECT COUNT(*) FROM stream_prints_raw").fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
     asyncio.run(go())
 
 

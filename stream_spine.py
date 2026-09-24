@@ -8,7 +8,7 @@ Consensus plan v1.2 (docs/CONSOLE_REBUILD_PLAN_CR_V1.md §4). Laws encoded here:
   - raw streams write ONLY to stream_capture.db — ed_console.db grows zero bytes.
   - health is first-class: a stale feed must look different from a quiet market.
 
-Pure asyncio; no Schwab/Alpaca imports here. The capture daemon (tools/) plugs feed
+Pure asyncio; no Schwab imports here. The capture daemon (tools/) plugs feed
 clients into `MessageBus.publish` and runs `CaptureWriter.run` + `HealthRegistry`.
 """
 
@@ -17,7 +17,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import queue
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -121,15 +123,6 @@ CREATE TABLE IF NOT EXISTS stream_coverage_epochs (
     reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sce_sym_svc ON stream_coverage_epochs(symbol, service);
-CREATE TABLE IF NOT EXISTS stream_prints_raw (
-    ts_recv REAL NOT NULL,
-    symbol TEXT NOT NULL,
-    price REAL, size INTEGER,
-    exchange TEXT, conditions TEXT,
-    trade_ts_ms INTEGER,
-    src TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_spr_sym_ts ON stream_prints_raw(symbol, ts_recv);
 CREATE TABLE IF NOT EXISTS stream_bars_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -470,6 +463,104 @@ def write_active_option_contracts_signal(
     _write_json_list_signal("contract_symbols", symbols, path=dest)
 
 
+def default_equity_symbols_signal_path(db_path: Path | str | None = None) -> Path:
+    """The console's requested LEVELONE_EQUITIES symbols beyond the daemon's fixed roster."""
+    return resolve_stream_db_path(db_path).with_name("stream_equity_symbols.json")
+
+
+def write_equity_symbols_signal(symbols: "list[str]", *, path: Path | None = None) -> None:
+    """The console's write of every stock/index whose live price a screen shows (active
+    ticker, watchlist, gamma board). Already cut to EQUITY_SYMBOLS_MAX_HELD by the console."""
+    dest = path if path is not None else default_equity_symbols_signal_path()
+    _write_json_list_signal("symbols", symbols, path=dest)
+
+
+def read_equity_symbols_signal(*, path: Path | None = None) -> "list[str]":
+    """The daemon's read of that list; [] when absent or malformed (fail closed)."""
+    dest = path if path is not None else default_equity_symbols_signal_path()
+    return _read_json_list_signal("symbols", path=dest)
+
+
+#: How many LEVELONE_EQUITIES symbols (beyond the daemon's --symbols roster) the shared
+#: socket carries on the console's request. Equity L1 is light next to options: the
+#: measured socket deaths were driven by tens of thousands of option subscriptions
+#: (OPTION_CONTRACTS_MAX_HELD below), and the daemon ran its first months on a ~60-symbol
+#: equity roster. The console ranks what it asks for (active ticker, then watchlist, then
+#: gamma board) and names every symbol it leaves out.
+EQUITY_SYMBOLS_MAX_HELD = 150
+
+
+#: How many ADDITIONAL option contracts the ONE shared Schwab streaming socket may hold.
+#:
+#: MEASURED 2026-09-23 (stream_capture.db, 08:30-15:00 CT each day): LEVELONE_OPTIONS load
+#: on the socket that also carries LEVELONE_EQUITIES / books / chart kills the WHOLE socket,
+#: and every Schwab service (SPY's live price included) goes dark until a recycle:
+#:   9/15    10 option subscriptions opened  ->  0 recycles, 0 SPY gaps >60s (max 24s)
+#:   9/16  4,442                              ->  4 recycles, 5 gaps (max 131s)
+#:   9/22 48,333 (~850-2,500 held at once)    -> 39 recycles, 41 gaps (max 824s)
+#:   9/23 53,754 (~850-5,200 held at once)    -> 42 recycles, 49 gaps (max 1,341s)
+#: Deaths arrive every 3-4 min with ~2,500 held and every 4-20 min with ~850 held, and every
+#: one of them lands as `ConnectionClosedError: no close frame` (3,223 of 3,224 rejections
+#: recorded on 9/23). Alpaca write volume is NOT the driver (5.0M rows on the clean 9/15).
+#: Schwab allows ONE streamer connection per account, so options cannot move to a second
+#: socket. The budget below is the starting bound, set well under the smallest held count
+#: that still died (~850); tools/stream_socket_budget_probe.py re-measures recycles/hour
+#: against the held count at the next RTH, and this number moves only on that evidence.
+OPTION_CONTRACTS_MAX_HELD = 200
+
+
+def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
+                          budget: int = OPTION_CONTRACTS_MAX_HELD,
+                          ) -> "tuple[list[str], dict[str, str]]":
+    """(admitted, {not_admitted_symbol: reason}) -- the ONE ranking of which contracts the
+    shared socket carries, done by the console.
+
+    Inputs are canonical Schwab fields only, supplied per requested symbol in
+    `contract_inputs[symbol]`:
+      expirationDate -- the chain contract's own field, compared as sent   (0 hops)
+      strikePrice    -- the chain contract's own field                     (0 hops)
+      spot           -- the underlying's streamed LEVELONE_EQUITIES LAST_PRICE (0 hops)
+    Rank = expirationDate, then |strikePrice - spot| (1 hop: one subtraction of two
+    canonical fields), then symbol. A symbol with ANY input missing is not admitted and
+    says which -- nothing is parsed out of the symbol text and nothing is guessed."""
+    from numeric_contract import float_finite_or_none
+
+    not_admitted: "dict[str, str]" = {}
+    rankable = []
+    for sym in sorted({str(s).upper().strip() for s in requested or ()} - {""}):
+        inp = contract_inputs.get(sym)
+        if inp is None:
+            not_admitted[sym] = "not admitted: contract not in the console's current Schwab chain"
+            continue
+        strike = float_finite_or_none(inp.get("strikePrice"))
+        spot = float_finite_or_none(inp.get("spot"))
+        missing = [k for k, v in (("expirationDate", inp.get("expirationDate")),
+                                  ("strikePrice", strike), ("spot", spot)) if v is None]
+        if missing:
+            not_admitted[sym] = f"not admitted: no {', '.join(missing)}"
+            continue
+        rankable.append((str(inp["expirationDate"]), abs(strike - spot), sym))
+    rankable.sort()
+    admitted = [sym for _e, _d, sym in rankable[:max(budget, 0)]]
+    for _e, _d, sym in rankable[max(budget, 0):]:
+        not_admitted[sym] = f"not admitted: outside the live-stream budget ({budget})"
+    return admitted, not_admitted
+
+
+def enforce_option_contracts_budget(symbols, budget: int = OPTION_CONTRACTS_MAX_HELD
+                                    ) -> "tuple[list[str], dict[str, str]]":
+    """The DAEMON's guard. It holds no spot, so it never ranks: a request within the budget
+    is held as sent; a request over it is refused whole (every symbol not admitted, with the
+    reason), because only the console can choose by spot. The console always sends a set
+    already ranked to the budget, so a refusal here means the console broke its contract."""
+    uniq = sorted({str(s).upper().strip() for s in symbols or ()} - {""})
+    if len(uniq) <= budget:
+        return uniq, {}
+    reason = (f"not admitted: request of {len(uniq)} contracts exceeds the shared-socket "
+              f"budget ({budget}); the console must rank by spot before sending")
+    return [], {s: reason for s in uniq}
+
+
 def read_active_option_contracts_signal(
     *, path: Path | None = None,
 ) -> "list[str]":
@@ -477,13 +568,6 @@ def read_active_option_contracts_signal(
     the one singular/pinned contract, which keeps reading from its own unchanged signal)."""
     dest = path if path is not None else default_active_option_contracts_signal_path()
     return _read_json_list_signal("contract_symbols", path=dest)
-
-
-def print_msg(*, symbol: str, price=None, size=None, exchange=None, conditions=None,
-              trade_ts_ms=None, src: str, ts_recv: float | None = None) -> dict:
-    return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
-            "price": price, "size": size, "exchange": exchange, "conditions": conditions,
-            "trade_ts_ms": trade_ts_ms, "src": src}
 
 
 def bar_msg(*, symbol: str, bar_start_ms=None, open=None, high=None, low=None, close=None,  # noqa: A002
@@ -539,6 +623,11 @@ class MessageBus:
         sub = Subscription(prefix=prefix, policy=policy, queue=asyncio.Queue(maxsize=maxsize))
         self._subs.append(sub)
         return sub
+
+    def unsubscribe(self, sub: Subscription) -> None:
+        """Stop delivering to `sub` (a disconnected push client must not accumulate)."""
+        if sub in self._subs:
+            self._subs.remove(sub)
 
     def publish(self, topic: str, msg: Any) -> None:
         self.cache[topic] = msg
@@ -667,11 +756,14 @@ class CaptureWriter:
             self._closed = True
             raise
 
-    def insert(self, topic: str, msg: dict) -> None:
+    def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None) -> None:
+        """Write one bus message. `conn` is the writer thread's own connection in `run`;
+        direct callers (tests, recovery tools) write on the control connection."""
+        db = self._conn if conn is None else conn
         kind = topic.split(".", 1)[0]
         if kind == "quote":
             native = msg.get("native")
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
                 "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -684,7 +776,7 @@ class CaptureWriter:
             content = msg.get("content")
             if content is None:
                 return
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) "
                 "VALUES(?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("service"),
@@ -694,20 +786,13 @@ class CaptureWriter:
             content = msg.get("content")
             if content is None:
                 return
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) "
                 "VALUES(?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), json.dumps(content),
                  msg.get("src", "?")))  # caps-ok: src is a required kwarg on options_quote_msg (no default); same guard as the quote branch above
-        elif kind == "print":
-            self._conn.execute(
-                "INSERT INTO stream_prints_raw(ts_recv,symbol,price,size,exchange,conditions,"
-                "trade_ts_ms,src) VALUES(?,?,?,?,?,?,?,?)",
-                (msg.get("ts_recv"), msg.get("symbol"), msg.get("price"), msg.get("size"),
-                 msg.get("exchange"), msg.get("conditions"), msg.get("trade_ts_ms"),
-                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on print_msg (no default); same guard as the quote branch above
         elif kind == "bar1m":
-            self._conn.execute(
+            db.execute(
                 "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
                 "volume,src) VALUES(?,?,?,?,?,?,?,?,?)",
                 (msg.get("ts_recv"), msg.get("symbol"), msg.get("bar_start_ms"), msg.get("open"),
@@ -898,40 +983,87 @@ class CaptureWriter:
         except Exception as e:
             raise CoverageWriteError(f"close_coverage_epoch({epoch_id}): {e}") from e
 
-    def _insert_guarded(self, topic: str, msg: Any) -> int:
+    def _insert_guarded(self, topic: str, msg: Any, *,
+                        conn: "sqlite3.Connection | None" = None) -> int:
         """1 if a row landed; insert failures are COUNTED, never kill the writer
         (Cursor review MEDIUM: an uncaught insert() death silently stopped capture)."""
         try:
             before = self.rows_written
-            self.insert(topic, msg)
+            self.insert(topic, msg, conn=conn)
             return self.rows_written - before
         except Exception:  # noqa: BLE001 — counted + surfaced in status; capture continues
             self.insert_errors += 1
             return 0
 
+    #: Sentinel that tells the writer thread to commit what it holds and exit.
+    _WRITER_STOP = object()
+
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
+        """Persist every bus message -- WITHOUT ever blocking the event loop.
+
+        MEASURED 2026-09-23: this used to execute every SQLite insert and commit on the SAME
+        asyncio loop that reads the Schwab websocket. A slow commit (a busy
+        disk, a reader holding the WAL) stalled the socket reads; the writer queue reached
+        6,565 and 9,784 messages were dropped. Now the loop only hands each message to a
+        thread-safe queue (put, never blocks) and a dedicated thread, which owns its own
+        SQLite connection, does all tick inserts and batch commits. The rare control writes
+        (coverage epochs, heartbeat) keep the control connection on the loop thread -- two
+        connections on one WAL database is SQLite's supported pattern.
+
+        Stop semantics are unchanged: everything already delivered to the subscription is
+        handed to the thread, which writes and commits it all before `run` returns."""
+        q: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._writer_queue = q
+        thread = threading.Thread(target=self._writer_thread, args=(q,),
+                                  name="stream-capture-writer", daemon=True)
+        thread.start()
+        try:
+            while not stop.is_set():
+                try:
+                    item = await asyncio.wait_for(sub.get(), timeout=0.25)
+                except asyncio.TimeoutError:
+                    continue
+                q.put(item)
+            while not sub.queue.empty():
+                q.put(await sub.get())
+        finally:
+            q.put(self._WRITER_STOP)
+            await asyncio.to_thread(thread.join)
+            self._writer_queue = None
+
+    def writer_backlog(self) -> "int | None":
+        """Messages handed to the writer thread and not yet written (None when not running)."""
+        q = getattr(self, "_writer_queue", None)  # caps-ok: None before run() starts or after it returns -- the documented "not running" answer
+        return q.qsize() if q is not None else None
+
+    def _writer_thread(self, q: "queue.SimpleQueue") -> None:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
         pending = 0
         last_commit = time.monotonic()
-        while not stop.is_set():
-            timeout = max(self.batch_sec - (time.monotonic() - last_commit), 0.01)
-            try:
-                topic, msg = await asyncio.wait_for(sub.get(), timeout=timeout)
-                pending += self._insert_guarded(topic, msg)
-            except asyncio.TimeoutError:
-                pass
-            if pending and (pending >= self.batch_rows
-                            or time.monotonic() - last_commit >= self.batch_sec):
-                self.commit()
-                pending = 0
-                last_commit = time.monotonic()
-        # DRAIN on stop — Cursor review HIGH: stopping must not vaporize up to a full
-        # queue of buffered rows. Everything already delivered to the subscription is
-        # written and committed before the writer exits.
-        while not sub.queue.empty():
-            topic, msg = await sub.get()
-            pending += self._insert_guarded(topic, msg)
-        if pending:
-            self.commit()
+        try:
+            conn.execute("PRAGMA synchronous=NORMAL")
+            while True:
+                timeout = max(self.batch_sec - (time.monotonic() - last_commit), 0.01)
+                try:
+                    item = q.get(timeout=timeout)
+                except queue.Empty:
+                    item = None
+                if item is self._WRITER_STOP:
+                    break
+                if item is not None:
+                    topic, msg = item
+                    pending += self._insert_guarded(topic, msg, conn=conn)
+                if pending and (pending >= self.batch_rows
+                                or time.monotonic() - last_commit >= self.batch_sec):
+                    conn.commit()
+                    self.commits += 1
+                    pending = 0
+                    last_commit = time.monotonic()
+            if pending:
+                conn.commit()
+                self.commits += 1
+        finally:
+            conn.close()
 
     def close(self) -> None:
         """Idempotent — the daemon closes in a finally that may run after an inner

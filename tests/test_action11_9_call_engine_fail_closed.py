@@ -8,8 +8,6 @@ from types import SimpleNamespace
 import pytest
 
 from call_engine import (
-    _cross_instrument_signal,
-    _index_basket_vote,
     _readiness_canonical_fields,
     _validate_trade,
     compute_call,
@@ -49,8 +47,9 @@ def test_readiness_canonical_fields_nontradable_withholds_direction_and_prob():
         provenance="fusion_unavailable",
     )
     direction, dom_p = _readiness_canonical_fields(cf)
-    assert direction == "flat"
-    assert dom_p == 0.0
+    # absent, not "flat" / 0.0 (audit C-03, 2026-09-24)
+    assert direction is None
+    assert dom_p is None
 
 
 def test_readiness_canonical_fields_tradable_passes_through():
@@ -153,13 +152,13 @@ def test_call_engine_file_has_no_fail_open_high_priority_patterns():
         assert pattern not in CALL_ENGINE, f"fail-open pattern still present: {pattern}"
 
 
-def test_index_label_none_when_all_three_indexes_missing():
-    inp = _minimal_inp(spy_chg_pct=None, qqq_chg_pct=None, iwm_chg_pct=None)
-    assert _cross_instrument_signal(inp) is None
-
-
-def test_etf_chg_pct_none_does_not_fabricate_vote_from_zero():
-    assert _index_basket_vote(None, None) == 0
+def test_the_call_has_no_index_etf_votes():
+    """Operator 2026-09-23: "remove the benchmark votes" -- no SPY/QQQ/IWM tape votes and no
+    index-divergence downgrade; each ticker is read on its own data."""
+    import call_engine
+    for gone in ("_index_basket_vote", "_cross_instrument_signal", "_cross_instrument_notes"):
+        assert not hasattr(call_engine, gone), gone
+    assert "spy_basket" not in CALL_ENGINE and "cross_sig" not in CALL_ENGINE
 
 
 def test_fusion_posterior_gate_blocks_long_when_reversal_posterior_missing():
@@ -359,6 +358,7 @@ def test_net_delta_none_propagates_to_call_sizing_decision():
         ),
     )
     pred = PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="Lean UP",
         prediction_dir="up",
         prediction_target=None,

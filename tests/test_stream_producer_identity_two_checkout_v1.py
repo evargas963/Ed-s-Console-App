@@ -33,8 +33,6 @@ def _reset():
     ofs._active_ticker = None
     ofs._streaming_last_update_ts = None
     ofs._last_subscribe_completed_ts = None
-    ofs._l1_cursor = {}
-    ofs._book_cursor = {}
     ofls.clear_all_live_state()
 
 
@@ -63,13 +61,17 @@ def _daemon_write_quote_and_heartbeat(db, *, heartbeat_ts=None, write_heartbeat:
 
 
 def _server_replay_and_diagnose(db):
-    """The REAL server-side path: replay through the resolved DB, then read the real
-    diagnostics dict — the same call path server.py/order_flow_streaming use in
-    production."""
+    """The REAL server-side path: the daemon's live push delivers a fresh SPY tick (live
+    values no longer come through the DB -- 2026-09-23), then the real diagnostics dict,
+    whose producer-identity check still reads the heartbeat in the DB the server resolves.
+    The tick is pushed only when that daemon has produced (its DB exists)."""
     con = ofs._open_capture_db_readonly(db)
     if con is not None:
-        ofs._replay_new_rows(con, "SPY")
         con.close()
+        native = {"key": "SPY", "BID_PRICE": 449.98, "ASK_PRICE": 450.02, "LAST_PRICE": 450.0}
+        ofs._ingest_pushed("quote.SPY", quote_msg(
+            symbol="SPY", bid=449.98, ask=450.02, last=450.0, src="schwab_l1",
+            ts_recv=_time.time(), native=native))
     return ofs.get_streaming_diagnostics()
 
 

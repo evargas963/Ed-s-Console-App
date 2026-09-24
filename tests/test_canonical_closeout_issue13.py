@@ -83,6 +83,7 @@ def test_fusion_unavailable_provenance_forces_wait_even_when_stack_aligns():
         ),
     )
     pred = PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="—",
         prediction_dir="flat",
         prediction_target=None,
@@ -158,6 +159,7 @@ def test_conviction_tier_from_canonical_not_stack_confluence():
         ),
     )
     pred = PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="x",
         prediction_dir="up",
         prediction_target=None,

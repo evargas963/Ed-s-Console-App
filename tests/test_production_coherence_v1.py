@@ -337,7 +337,7 @@ def test_unauthorized_fusion_is_withheld_by_canonical_horizon_policy_and_mc():
 
     canonical = canonical_forecast_from_fusion(adjusted)
     assert canonical.provenance == "fusion_directional_unauthorized"
-    assert canonical.direction == "flat"
+    assert canonical.direction is None   # no forecast, not "flat" (audit C-01)
 
     snap = fusion_payload_to_horizon_snapshot("5c", adjusted)
     assert snap.stack_directional_authorized is False

@@ -1,9 +1,12 @@
-"""set_streamed_greeks_hook / _replay_option_contract_rows (app/options/order_flow/streaming.py):
-the hook that lets a consumer (server.py's gamma-surface cache) learn the instant a streamed
-option L1 tick carries new GAMMA/DELTA/OPEN_INTEREST, instead of only via the slow poll of
-OrderFlowState. Same shape/precedent as the existing `_on_tick_callback`. Proven against the
-REAL replay path (_replay_option_contract_rows reading real stream_capture.db rows written by
-CaptureWriter), not a reimplementation of its dispatch logic."""
+"""set_streamed_greeks_hook (app/options/order_flow/streaming.py): the hook that lets a
+consumer (server.py's gamma-surface cache) learn the instant a streamed option L1 tick carries
+new GAMMA/DELTA/OPEN_INTEREST/volume. Same shape/precedent as the existing `_on_tick_callback`.
+
+Since 2026-09-23 the capture daemon PUSHES each message over a local WebSocket
+(app.market_data.schwab.streaming.live_push); nothing live reads stream_capture.db. These tests
+publish on a real stream_spine.MessageBus served by the REAL push server and run the REAL
+console feed loop (_feed_loop -> _ingest_pushed -> OrderFlowState -> hook dispatch), not a
+reimplementation of its dispatch logic."""
 from __future__ import annotations
 
 import asyncio
@@ -12,7 +15,8 @@ import time
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
-from stream_spine import CaptureWriter, options_quote_msg
+from app.market_data.schwab.streaming import live_push
+from stream_spine import MessageBus, options_quote_msg
 
 _SPY_CONTRACT = "SPY   260820C00767000"
 
@@ -30,29 +34,53 @@ _BID_ASK_ONLY_CONTENT = {
 }
 
 
+#: The daemon side of the push channel for the current test: its bus and port.
+_H: dict = {}
+
+
+def _free_port() -> int:
+    import socket
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
 def _reset(tmp_path, monkeypatch):
     ofs._feed_running = False
     ofs._active_option_contract = None
-    ofs._option_l1_cursor = {}
-    ofs._option_book_cursor = {}
     ofs._streamed_greeks_hook = None
     ofls.clear_all_live_state()
-    db = tmp_path / "stream_capture.db"
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    _H.clear()
+    _H.update(bus=MessageBus(), port=_free_port())
+    monkeypatch.setattr(ofs, "LIVE_PUSH_URL", f"ws://127.0.0.1:{_H['port']}")
+    monkeypatch.setattr(ofs, "PUSH_RECONNECT_SEC", 0.05)
     monkeypatch.setattr(
         "app.options.contracts.default.default_option_contract",
         lambda *a, **k: None,
     )
-    return db
+    return None
 
 
-def _write_option_l1_row(db, symbol, content, ts_recv):
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert(f"optquote.{symbol}", options_quote_msg(
+def _write_option_l1_row(_db, symbol, content, ts_recv):
+    """The daemon receives one LEVELONE_OPTIONS message and publishes it on its bus -- what
+    the push server forwards to the console (a console connecting later first receives each
+    topic's last value)."""
+    _H["bus"].publish(f"optquote.{symbol}", options_quote_msg(
         symbol=symbol, content=content, src="schwab_options_l1", ts_recv=ts_recv))
-    w.commit()
-    w.close()
+
+
+async def _feed_with_push():
+    """The daemon's push server plus the console's REAL _feed_loop, for one test. Cancelling
+    the returned task stops both."""
+    stop = asyncio.Event()
+    server = asyncio.create_task(live_push.serve_live_push(_H["bus"], stop, port=_H["port"]))
+    try:
+        await ofs._feed_loop()
+    finally:
+        stop.set()
+        await asyncio.gather(server, return_exceptions=True)
 
 
 def test_set_streamed_greeks_hook_registers_and_clears():
@@ -63,255 +91,67 @@ def test_set_streamed_greeks_hook_registers_and_clears():
     assert ofs._streamed_greeks_hook is None
 
 
-def test_replay_returns_the_qualifying_ts_on_a_tick_carrying_greeks_or_open_interest(tmp_path, monkeypatch):
-    """_replay_option_contract_rows no longer calls the hook itself (see _feed_loop, which
-    now coalesces the hook call across every desired contract replayed in one poll tick,
-    not just across one contract's own rows) -- it only REPORTS its own freshest qualifying
-    ts_recv back to the caller. This is that contract, proven directly."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1700000000.0)
-    con = ofs._open_capture_db_readonly(db)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-    assert result == 1700000000.0
+def _ingest(symbol, content, ts_recv):
+    return ofs._ingest_pushed(f"optquote.{symbol}", options_quote_msg(
+        symbol=symbol, content=content, src="schwab_options_l1", ts_recv=ts_recv))
 
 
-def test_replay_returns_none_on_a_bid_ask_only_tick(tmp_path, monkeypatch):
-    """A tick with no GAMMA/DELTA/OPEN_INTEREST at all is not worth an eager recompute --
-    nothing changed that the exposure formula reads."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, ts_recv=1700000000.0)
-    con = ofs._open_capture_db_readonly(db)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-    assert result is None
+def test_a_tick_carrying_greeks_or_open_interest_reports_its_receive_time():
+    ofls.clear_all_live_state()
+    assert _ingest(_SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, 1700000000.0) == (
+        _SPY_CONTRACT, 1700000000.0)
 
 
-def test_replay_returns_the_qualifying_ts_on_a_volume_only_tick_with_no_greeks_present(tmp_path, monkeypatch):
-    """Independent-review finding (2026-09-12): 'the current hook is triggered by
-    GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update delivery.' A tick
-    that carries ONLY TOTAL_VOLUME (no Greeks/OI at all) must still qualify, since
-    _per_strike's volume column and compute_exposures_by_strike's own volume aggregation both
-    read a contract's totalVolume directly."""
-    db = _reset(tmp_path, monkeypatch)
+def test_a_bid_ask_only_tick_reports_nothing():
+    """No GAMMA/DELTA/OPEN_INTEREST/volume: nothing the exposure formula reads changed."""
+    ofls.clear_all_live_state()
+    assert _ingest(_SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, 1700000000.0) is None
+
+
+def test_a_volume_only_tick_with_no_greeks_still_qualifies():
+    """Independent-review finding (2026-09-12): a tick carrying ONLY TOTAL_VOLUME must still
+    qualify -- _per_strike's volume column and compute_exposures_by_strike's own volume
+    aggregation both read a contract's totalVolume directly."""
+    ofls.clear_all_live_state()
     volume_only = dict(_BID_ASK_ONLY_CONTENT, TOTAL_VOLUME=54321)
-    _write_option_l1_row(db, _SPY_CONTRACT, volume_only, ts_recv=1700000000.0)
-    con = ofs._open_capture_db_readonly(db)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-    assert result == 1700000000.0
+    assert _ingest(_SPY_CONTRACT, volume_only, 1700000000.0) == (_SPY_CONTRACT, 1700000000.0)
 
 
-def test_no_hook_registered_does_not_break_the_replay(tmp_path, monkeypatch):
-    """The default (unregistered) state -- must not raise or skip the ordinary push_level_one."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1700000000.0)
+def test_no_hook_registered_still_lands_the_tick_in_state():
+    ofls.clear_all_live_state()
     assert ofs._streamed_greeks_hook is None
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
+    _ingest(_SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, 1700000000.0)
     items = ofls.get_content_for_symbol(_SPY_CONTRACT)
     assert any(i.get("LAST_PRICE") == 1.27 for i in items)
 
 
-def test_a_burst_of_rows_in_one_poll_batch_reports_exactly_one_qualifying_ts(tmp_path, monkeypatch):
-    """Independent-review finding (2026-09-12), REPRODUCED then fixed: calling the hook once
-    PER ROW meant a burst of N rows landing in one poll batch triggered N sequential expensive
-    recomputes on the consumer side. Three rows are written here BEFORE the daemon ever
-    replays them (simulating a burst that accumulated between poll ticks, a real shape:
-    CaptureWriter and the replay poll are independent), so ONE _replay_option_contract_rows
-    call sees all three in a single query -- proving it reports exactly ONE qualifying
-    ts_recv for the whole batch (the caller fires the hook at most once from it), stamped
-    with the FRESHEST row, while EVERY row still lands in OrderFlowState (nothing is
-    dropped from the state itself, only the expensive recompute is coalesced)."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=1700000000.0)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.02), ts_recv=1700000001.0)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.03), ts_recv=1700000002.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)  # ONE call sees all three rows
-    con.close()
-
-    assert result == 1700000002.0, (
-        "exactly one qualifying ts_recv for the whole batch, the FRESHEST row's ts_recv"
-    )
-    # every row still reached OrderFlowState -- push_level_one ran for all three, the LATEST
-    # (gamma=0.03) is what a consumer reading state now sees, nothing from the batch was lost
-    assert ofls.get_stream_greeks(_SPY_CONTRACT)["gamma"] == 0.03
+def test_a_burst_keeps_one_entry_per_underlying_with_the_freshest_tick():
+    """Independent-review finding (2026-09-12), REPRODUCED then fixed: one hook call PER
+    qualifying tick meant a burst of N ticks cost N whole-surface recomputes. A burst now
+    yields ONE dispatch per underlying, stamped with the freshest tick -- while every tick
+    still lands in OrderFlowState (only the recompute is coalesced)."""
+    burst = ofs.HookBurst()
+    assert burst.note(_SPY_CONTRACT, 1700000000.0) is True        # opens the burst
+    assert burst.note(_SPY_CONTRACT, 1700000002.0) is False
+    assert burst.note(_SPY_CONTRACT, 1700000001.0) is False       # older: does not win
+    assert burst.take() == [(_SPY_CONTRACT, 1700000002.0)]
+    assert burst.take() == []
+    assert burst.note(_SPY_CONTRACT, 1700000003.0) is True        # next burst opens again
 
 
-def test_a_batch_with_no_qualifying_rows_reports_none(tmp_path, monkeypatch):
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, ts_recv=1700000000.0)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_BID_ASK_ONLY_CONTENT, LAST_PRICE=1.35), ts_recv=1700000001.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-    assert result is None
-
-
-def test_a_batch_with_one_qualifying_row_among_several_reports_that_rows_ts(tmp_path, monkeypatch):
-    """A qualifying row in the MIDDLE of a batch (not the last row overall) must still be the
-    one whose ts_recv is reported -- 'freshest QUALIFYING row', not 'last row in the batch'."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, _BID_ASK_ONLY_CONTENT, ts_recv=1700000000.0)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.05), ts_recv=1700000001.0)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_BID_ASK_ONLY_CONTENT, LAST_PRICE=1.40), ts_recv=1700000002.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-    assert result == 1700000001.0
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# _prefetch_option_l1_batch (2026-09-21, live-RTH finding): _feed_loop used to call
-# _replay_option_contract_rows once per desired contract, each issuing its OWN SQL query --
-# MEASURED against the live production capture DB: 1.55s for 910 contracts, already 3x the
-# 0.5s poll interval, and the live server's own gamma-surface age_sec climbed past 70s with
-# zero cells reaching 'live' state despite abundant fresh Schwab data (902/910 META contracts
-# ticked within the prior 30 seconds). These tests prove the batched replacement is correct
-# (same rows delivered, same semantics) AND that it is actually O(1) queries, not O(N), at a
-# realistic scale -- a call-count assertion, not merely "the new code runs".
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _counting_execute(con):
-    """List of every SQL statement text con actually runs from this point on.
-    sqlite3.Connection.execute is a read-only C-level attribute (cannot be monkeypatched
-    directly on the instance) -- set_trace_callback is the sanctioned way to observe every
-    statement a connection executes, including ones issued via cursor.execute internally."""
-    calls: list = []
-    con.set_trace_callback(lambda sql: calls.append(sql))
-    return calls
-
-
-def test_prefetch_batch_returns_new_rows_for_two_symbols_in_one_query(tmp_path, monkeypatch):
-    other = "QQQ   260820C00500000"
-    db = _reset(tmp_path, monkeypatch)
-    now = time.time()
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=now - 1.0)
-    _write_option_l1_row(db, other, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.02), ts_recv=now - 1.0)
-    con = ofs._open_capture_db_readonly(db)
-    # seed both cursors as if each had already been replayed once, at an EARLIER (but still
-    # recent, within OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC) ts_recv -- a hardcoded historical
-    # constant here would be a real-clock/test-fixture mismatch, since the batch floor is
-    # computed against actual wall-clock time.time(), not any fixture-relative concept.
-    ofs._option_l1_cursor[_SPY_CONTRACT] = (now - 5.0, 0)
-    ofs._option_l1_cursor[other] = (now - 5.0, 0)
-    calls = _counting_execute(con)
-    out = ofs._prefetch_option_l1_batch(con, [_SPY_CONTRACT, other])
-    con.close()
-    assert len(calls) == 1, "one shared query must cover both symbols, not one query each"
-    assert len(out[_SPY_CONTRACT]) == 1 and out[_SPY_CONTRACT][0][1] == now - 1.0
-    assert len(out[other]) == 1 and out[other][0][1] == now - 1.0
-
-
-def test_prefetch_batch_excludes_symbols_with_no_cursor_yet(tmp_path, monkeypatch):
-    """A symbol on its first tick (never replayed before) has no cursor -- it must be
-    entirely ABSENT from the returned dict (not an empty list), so the caller correctly
-    falls back to _replay_option_contract_rows's own snapshot-tail query for it, instead of
-    treating 'never checked' as 'checked, nothing new'."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=1700000000.0)
-    con = ofs._open_capture_db_readonly(db)
-    out = ofs._prefetch_option_l1_batch(con, [_SPY_CONTRACT])
-    con.close()
-    assert _SPY_CONTRACT not in out
-
-
-def test_prefetch_batch_excludes_far_behind_stragglers_from_the_shared_floor(tmp_path, monkeypatch):
-    """A symbol whose cursor is older than OPTION_L1_BATCH_MAX_CURSOR_AGE_SEC (e.g. cursor
-    (0.0, 0) from a first-tick snapshot that found zero rows) must not drag the shared
-    query's floor back to epoch for every OTHER symbol in the batch -- it is excluded from
-    the batch instead, left for its own per-symbol catch-up."""
-    other = "QQQ   260820C00500000"
-    db = _reset(tmp_path, monkeypatch)
-    now = time.time()
-    _write_option_l1_row(db, other, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.02), ts_recv=now - 1.0)
-    con = ofs._open_capture_db_readonly(db)
-    ofs._option_l1_cursor[_SPY_CONTRACT] = (0.0, 0)   # straggler: never ticked, epoch cursor
-    ofs._option_l1_cursor[other] = (now - 5.0, 0)      # normal, recent cursor
-    calls = _counting_execute(con)
-    out = ofs._prefetch_option_l1_batch(con, [_SPY_CONTRACT, other])
-    con.close()
-    assert _SPY_CONTRACT not in out, "the straggler must be excluded, not included with []"
-    assert other in out and len(out[other]) == 1
-    # the shared query's floor must be bounded near `other`'s cursor, not epoch -- confirmed
-    # indirectly: exactly one query ran and it found other's row (a floor of 0.0 would still
-    # find it, but would also mean scanning from epoch across the whole table for every
-    # batched symbol, which this exclusion prevents happening at all for the straggler)
-    assert len(calls) == 1
-
-
-def test_prefetch_batch_at_realistic_scale_is_one_query_not_n(tmp_path, monkeypatch):
-    """Direct regression lock against the measured live defect: at N=900 desired contracts
-    (RC-UI-3's uncapped 'additional contracts' mandate, the real scale that broke this),
-    the batched prefetch must issue exactly ONE query, not up to 900."""
-    db = _reset(tmp_path, monkeypatch)
-    now = time.time()
-    symbols = [f"META  260820C{700000 + i:08d}" for i in range(900)]
-    for i, sym in enumerate(symbols):
-        _write_option_l1_row(db, sym, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.01), ts_recv=now - 1.0)
-        ofs._option_l1_cursor[sym] = (now - 5.0, 0)
-    con = ofs._open_capture_db_readonly(db)
-    calls = _counting_execute(con)
-    out = ofs._prefetch_option_l1_batch(con, symbols)
-    con.close()
-    assert len(calls) == 1, f"expected 1 query for 900 symbols, got {len(calls)}"
-    assert len(out) == 900
-    assert all(len(rows) == 1 for rows in out.values()), "every symbol's new row must be delivered"
-
-
-def test_replay_uses_prefetched_l1_verbatim_and_issues_no_l1_query(tmp_path, monkeypatch):
-    """When prefetched_l1 is given, _replay_option_contract_rows must use it directly instead
-    of running its own per-symbol L1 query -- the whole point of the batched prefetch."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.07), ts_recv=1700000005.0)
-    con = ofs._open_capture_db_readonly(db)
-    ofs._option_l1_cursor[_SPY_CONTRACT] = (1700000000.0, 0)   # already known, not first-tick
-    row = con.execute(
-        "SELECT rowid, ts_recv, native_json FROM stream_options_quotes_raw WHERE symbol = ?",
-        (_SPY_CONTRACT,)).fetchall()
-    calls = _counting_execute(con)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT, prefetched_l1=row)
-    l1_queries = [c for c in calls if "stream_options_quotes_raw" in c]
-    con.close()
-    assert not l1_queries, "prefetched_l1 must be used verbatim, no separate L1 query issued"
-    assert result == 1700000005.0
-    assert ofls.get_stream_greeks(_SPY_CONTRACT)["gamma"] == 0.07
-
-
-def test_replay_prefetched_empty_list_means_checked_nothing_new_not_a_requery(tmp_path, monkeypatch):
-    """An explicit [] from the batch (this symbol WAS checked, nothing qualified) must be
-    honored as-is, never triggering a second, redundant per-symbol query."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.09), ts_recv=1700000005.0)
-    con = ofs._open_capture_db_readonly(db)
-    ofs._option_l1_cursor[_SPY_CONTRACT] = (1700000000.0, 0)
-    calls = _counting_execute(con)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT, prefetched_l1=[])
-    l1_queries = [c for c in calls if "stream_options_quotes_raw" in c]
-    con.close()
-    assert not l1_queries
-    assert result is None
-    # the real row (gamma=0.09) must NOT have been picked up -- an empty prefetch is honored,
-    # not silently bypassed by a fallback query that would have found it
-    assert "gamma" not in (ofls.get_stream_greeks(_SPY_CONTRACT) or {})
-
-
-def test_replay_with_no_prefetched_l1_falls_back_to_the_original_per_symbol_query(tmp_path, monkeypatch):
-    """prefetched_l1=None (the default) must preserve the exact original behavior -- every
-    existing direct caller of this function (including every test above it in this file) is
-    unaffected by the batched prefetch's existence."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, dict(_REAL_LEVELONE_OPTIONS_CONTENT, GAMMA=0.11), ts_recv=1700000005.0)
-    con = ofs._open_capture_db_readonly(db)
-    result = ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-    assert result == 1700000005.0
-    assert ofls.get_stream_greeks(_SPY_CONTRACT)["gamma"] == 0.11
+def test_a_burst_groups_by_underlying_not_by_contract():
+    """Contracts of ONE underlying share a dispatch (the hook re-gathers every desired
+    contract of it); a different underlying keeps its own; a bare SPX and a weekly SPXW
+    contract are the same $SPX underlying."""
+    burst = ofs.HookBurst()
+    burst.note("SPY   260918C00600000", 1.0)
+    burst.note("SPY   260918C00610000", 2.0)
+    burst.note("QQQ   260918C00500000", 3.0)
+    burst.note("SPX   260918C05600000", 4.0)
+    burst.note("SPXW  260918C05600000", 5.0)
+    assert sorted(burst.take()) == [("QQQ   260918C00500000", 3.0),
+                                    ("SPXW  260918C05600000", 5.0),
+                                    ("SPY   260918C00610000", 2.0)]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -530,13 +370,14 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
         ofs._active_option_contracts = [ofs.ticker_storage_key(_CONTRACT_B), ofs.ticker_storage_key(_CONTRACT_C)]
 
         replayed = []
-        real_replay = ofs._replay_option_contract_rows
+        real_ingest = ofs._ingest_pushed
 
-        def _spy_replay(con, sym, **kwargs):
-            result = real_replay(con, sym, **kwargs)
-            replayed.append(sym)
+        def _spy_ingest(topic, msg):
+            result = real_ingest(topic, msg)
+            if topic.startswith("optquote."):
+                replayed.append(msg["symbol"])
             return result
-        monkeypatch.setattr(ofs, "_replay_option_contract_rows", _spy_replay)
+        monkeypatch.setattr(ofs, "_ingest_pushed", _spy_ingest)
 
         hook_started, hook_finished = [], []
         real_hook = srv.refresh_gamma_surface_from_stream
@@ -556,7 +397,7 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
         async def _run_one_tick():
             ofs._feed_running = True
             t0 = _t.perf_counter()
-            task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+            task = asyncio.get_event_loop().create_task(_feed_with_push())
             # DETERMINISTIC completion, not a timer-sampled heuristic (see _wait_until):
             # (1) all three contracts have actually been replayed at least once -- proves
             #     this tick's per-contract work genuinely finished, regardless of how the
@@ -583,12 +424,13 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
               f"hook wired: {tick_sec * 1000:.1f} ms total, hook fired {len(hook_started)}x "
               f"(one-call baseline was {one_call_sec * 1000:.1f} ms)")
 
-        assert len(hook_started) == 1, (
-            f"3 contracts each ticking in the SAME poll iteration must fire the real "
-            f"whole-surface hook ONCE, not {len(hook_started)} times -- refresh_gamma_surface_"
-            f"from_stream's own _desired_stream_greeks_for_ticker already re-gathers every "
-            f"desired contract fresh on every call, so any call before the last is pure "
-            f"waste: {hook_started}")
+        # Three contracts of ONE underlying arriving together: one call for the burst, plus
+        # at most one trailing re-run if the frames were split across socket reads (the
+        # hook re-gathers every desired contract, so a trailing run loses nothing). Three
+        # calls -- one per contract -- is the defect this bounds.
+        assert 1 <= len(hook_started) <= 2, (
+            f"3 contracts of one underlying must cost at most one call plus one trailing "
+            f"re-run, not {len(hook_started)}: {hook_started}")
         # Every contract's REAL captured row must have actually reached OrderFlowState via
         # the real (unmocked) push_level_one -- checked against the ACTUAL gamma value
         # each L1 row carried, not merely "some value is present" (which a broken write
@@ -621,9 +463,9 @@ def test_hook_coalescing_avoids_the_real_per_call_cost_at_spxw_scale(tmp_path, m
             f"the coalesced publication must reflect ALL THREE batch contracts (A, B, C), "
             f"not the baseline's one alone; got stream_overlay_contracts="
             f"{published.get('stream_overlay_contracts')}")
-        # Generous 2x ceiling (not a tight SLA) -- this only fails if coalescing regresses
-        # toward one hook call per contract (which would cost close to 3x one_call_sec).
-        assert tick_sec < one_call_sec * 2.0 + 1.0, (
+        # Ceiling: one call plus one trailing re-run, with slack -- fails if coalescing
+        # regresses toward one hook call per contract (close to 3x one_call_sec).
+        assert tick_sec < one_call_sec * 2.5 + 1.0, (
             f"one poll tick with 3 qualifying contracts cost {tick_sec * 1000:.1f} ms -- "
             f"close to 3x one real call's {one_call_sec * 1000:.1f} ms, suggesting the hook "
             f"fired more than once for this tick")
@@ -694,17 +536,18 @@ def test_suppressed_replay_to_state_writes_are_caught_by_the_pipeline_assertions
                                  ts_recv=time.time())
 
         replayed = []
-        real_replay = ofs._replay_option_contract_rows
+        real_ingest = ofs._ingest_pushed
 
-        def _spy_replay(con, sym, **kwargs):
-            result = real_replay(con, sym, **kwargs)
-            replayed.append(sym)
+        def _spy_ingest(topic, msg):
+            result = real_ingest(topic, msg)
+            if topic.startswith("optquote."):
+                replayed.append(msg["symbol"])
             return result
-        monkeypatch.setattr(ofs, "_replay_option_contract_rows", _spy_replay)
+        monkeypatch.setattr(ofs, "_ingest_pushed", _spy_ingest)
 
         async def _run_one_tick():
             ofs._feed_running = True
-            task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+            task = asyncio.get_event_loop().create_task(_feed_with_push())
             await _wait_until(lambda: len(set(replayed)) >= 3, timeout_sec=15.0,
                               what="all three contracts to be replayed at least once (write suppressed)")
             # The hook may never fire at all with the write suppressed (no qualifying
@@ -825,17 +668,18 @@ def test_disabling_the_hook_leaves_no_fresh_multi_contract_publication(tmp_path,
                              ts_recv=time.time())
 
         replayed = []
-        real_replay = ofs._replay_option_contract_rows
+        real_ingest = ofs._ingest_pushed
 
-        def _spy_replay(con, sym, **kwargs):
-            result = real_replay(con, sym, **kwargs)
-            replayed.append(sym)
+        def _spy_ingest(topic, msg):
+            result = real_ingest(topic, msg)
+            if topic.startswith("optquote."):
+                replayed.append(msg["symbol"])
             return result
-        monkeypatch.setattr(ofs, "_replay_option_contract_rows", _spy_replay)
+        monkeypatch.setattr(ofs, "_ingest_pushed", _spy_ingest)
 
         async def _run_one_tick():
             ofs._feed_running = True
-            task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+            task = asyncio.get_event_loop().create_task(_feed_with_push())
             await _wait_until(lambda: len(replayed) >= 1, timeout_sec=10.0,
                               what="A to be replayed at least once through the real feed loop")
             await asyncio.sleep(0.2)   # let the feed loop's own dispatch branch settle
@@ -924,13 +768,14 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
         ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_B), ofs.ticker_storage_key(_QQQ_A)]
 
         replayed = []
-        real_replay = ofs._replay_option_contract_rows
+        real_ingest = ofs._ingest_pushed
 
-        def _spy_replay(con, sym, **kwargs):
-            result = real_replay(con, sym, **kwargs)
-            replayed.append(sym)
+        def _spy_ingest(topic, msg):
+            result = real_ingest(topic, msg)
+            if topic.startswith("optquote."):
+                replayed.append(msg["symbol"])
             return result
-        monkeypatch.setattr(ofs, "_replay_option_contract_rows", _spy_replay)
+        monkeypatch.setattr(ofs, "_ingest_pushed", _spy_ingest)
 
         hook_started, hook_finished = [], []
         real_hook = srv.refresh_gamma_surface_from_stream
@@ -947,10 +792,11 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
 
         async def _run_one_tick():
             ofs._feed_running = True
-            task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+            task = asyncio.get_event_loop().create_task(_feed_with_push())
             await _wait_until(lambda: len(set(replayed)) >= 3, timeout_sec=15.0,
                               what="all three contracts (2 SPY, 1 QQQ) to be replayed at least once")
-            await _wait_until(lambda: len(hook_started) >= 2 and len(hook_started) == len(hook_finished),
+            await _wait_until(lambda: {ofs._hook_grouping_key(x) for x in hook_started} == {"SPY", "QQQ"}
+                              and len(hook_started) == len(hook_finished),
                               timeout_sec=15.0, what="both underlyings' hook calls to finish")
             ofs._feed_running = False
             task.cancel()
@@ -962,10 +808,11 @@ def test_hook_fires_once_per_underlying_when_two_underlyings_qualify_in_one_tick
         asyncio.run(_run_one_tick())
         ofs.set_streamed_greeks_hook(None)
 
-        assert len(hook_started) == 2, (
-            f"two SPY contracts + one QQQ contract qualifying in the same tick must fire "
-            f"the hook exactly twice (once per underlying), not {len(hook_started)}: "
-            f"{hook_started}")
+        roots = [ofs._hook_grouping_key(x) for x in hook_started]
+        assert roots.count("QQQ") == 1, (
+            f"QQQ must get its OWN call, never merged into SPY's: {hook_started}")
+        assert 1 <= roots.count("SPY") <= 2, (
+            f"two SPY contracts must cost at most one call plus one trailing re-run: {hook_started}")
         with srv._terrain_cache_lock:
             spy_pub = srv._terrain_cache[spy_tk]["_gamma_surface"]
             qqq_pub = srv._terrain_cache[qqq_tk]["_gamma_surface"]
@@ -1063,7 +910,7 @@ def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_p
 
         async def _run_one_tick():
             ofs._feed_running = True
-            task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+            task = asyncio.get_event_loop().create_task(_feed_with_push())
             await _wait_until(lambda: len(hook_started) >= 1, timeout_sec=15.0,
                               what="the coalesced SPX/SPXW hook call")
             # Give a would-be SECOND call (the pre-fix, un-coalesced behavior) a full
@@ -1077,9 +924,12 @@ def test_hook_coalesces_a_bare_spx_and_weekly_spxw_contract_into_one_group(tmp_p
                 pass
         asyncio.run(_run_one_tick())
 
-        assert len(hook_started) == 1, (
+        # The grouping itself is pinned deterministically by
+        # test_a_burst_groups_by_underlying_not_by_contract; end to end, one $SPX underlying
+        # costs at most one call plus one trailing re-run.
+        assert 1 <= len(hook_started) <= 2, (
             f"a bare-SPX and a weekly-SPXW contract on the SAME $SPX underlying must "
-            f"coalesce into exactly ONE hook call per tick, not {len(hook_started)}: {hook_started}")
+            f"coalesce, not {len(hook_started)} calls: {hook_started}")
     finally:
         ofs.set_streamed_greeks_hook(None)
         ofs._active_option_contract = None
@@ -1127,7 +977,7 @@ def test_a_slow_hook_for_one_underlying_does_not_delay_replay_for_another(tmp_pa
 
     async def _run():
         ofs._feed_running = True
-        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        task = asyncio.get_event_loop().create_task(_feed_with_push())
         await _wait_until(lambda: spy_hook_started.is_set(), timeout_sec=5.0,
                           what="SPY's hook to start and block")
         start = time.time()
@@ -1206,7 +1056,7 @@ def test_backlog_coalesces_across_ticks_and_a_shutdown_drops_the_pending_rerun(t
 
     async def _run():
         ofs._feed_running = True
-        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        task = asyncio.get_event_loop().create_task(_feed_with_push())
         await _wait_until(lambda: first_hook_started.is_set(), timeout_sec=5.0,
                           what="the first hook call to start and block")
 
@@ -1294,7 +1144,7 @@ def test_a_second_underlyings_queued_hook_does_not_run_after_shutdown(tmp_path, 
 
     async def _run():
         ofs._feed_running = True
-        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        task = asyncio.get_event_loop().create_task(_feed_with_push())
         await _wait_until(lambda: amd_hook_started.is_set(), timeout_sec=5.0,
                           what="AMD's hook call to start and block")
 
@@ -1376,7 +1226,7 @@ def test_a_queued_hook_does_not_run_under_a_lifecycle_that_restarted_before_it_d
     async def _run():
         ofs._feed_running = True
         ofs._feed_generation += 1
-        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
+        task = asyncio.get_event_loop().create_task(_feed_with_push())
         await _wait_until(lambda: amd_hook_started.is_set(), timeout_sec=5.0,
                           what="AMD's hook call to start and block")
 

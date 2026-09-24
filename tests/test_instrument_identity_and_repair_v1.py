@@ -293,9 +293,10 @@ def test_query_endpoints_canonicalize_through_the_authority():
     (the RC-122/RC-126 root: an SSOT nobody routed through)."""
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    assert src.count("ticker_storage_key(ticker or DEFAULT_TICKER)") >= 4, (
+    assert src.count("ticker_storage_key(_required_ticker(ticker))") >= 4, (
         "the terrain/spot/bars endpoints no longer canonicalize the typed symbol"
     )
+    assert "DEFAULT_TICKER" not in src, "a default ticker is back (universality, 2026-09-23)"
     assert "tk = (ticker or DEFAULT_TICKER).upper().strip()" not in src, (
         "a raw upper/strip endpoint boundary is back — bare index symbols will go dark again"
     )

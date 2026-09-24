@@ -773,21 +773,24 @@ def test_size_f_stale_price_and_stale_sizes_yield_no_falsely_complete_top_of_boo
         ofls.clear_symbol("SIZE_FRESH_F")
 
 
-def test_size_g_production_replay_seams_thread_ts_recv_into_push_level_one():
-    """Direct source proof of the two known production replay seams (not a repo-wide
-    audit): order_flow_streaming._replay_new_rows (equity LEVELONE_EQUITIES) and
-    _replay_option_contract_rows (LEVELONE_OPTIONS) must both call push_level_one with
-    the real stream_capture.db row's own ts_recv threaded through -- so the live PR #214
-    streaming path cannot silently fall back to an unbounded/approximated timestamp and
-    bypass the freshness boundary this file proves above."""
-    import inspect
+def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one(monkeypatch):
+    """The production seam (order_flow_streaming._ingest_pushed, fed by the daemon's live
+    push) must hand push_level_one the MESSAGE's own ts_recv for both equity
+    (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
+    processed it -- so the freshness boundary this file proves above judges real ages."""
     import app.options.order_flow.streaming as ofs
-    equity_src = inspect.getsource(ofs._replay_new_rows)
-    assert "push_level_one(ticker, item, ts_recv=ts_recv)" in equity_src, (
-        "equity replay seam must thread the real row ts_recv into push_level_one")
-    options_src = inspect.getsource(ofs._replay_option_contract_rows)
-    assert "push_level_one(contract_symbol, item, ts_recv=ts_recv)" in options_src, (
-        "options replay seam must thread the real row ts_recv into push_level_one")
+    from stream_spine import options_quote_msg, quote_msg
+
+    seen = []
+    monkeypatch.setattr(ofs, "push_level_one",
+                        lambda sym, item, *, ts_recv: seen.append((sym, ts_recv)))
+    monkeypatch.setattr(ofs._lmp, "record_from_level_one_equity", lambda *a, **k: False)
+    ofs._ingest_pushed("quote.SIZEG", quote_msg(
+        symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
+    ofs._ingest_pushed("optquote.SIZEG  260918C00001000", options_quote_msg(
+        symbol="SIZEG  260918C00001000", content={"BID_PRICE": 1.0}, src="schwab_options_l1",
+        ts_recv=2345.5))
+    assert seen == [("SIZEG", 1234.5), ("SIZEG  260918C00001000", 2345.5)]
 
 
 def test_book_top_fills_bid_ask_when_l1_has_no_price():

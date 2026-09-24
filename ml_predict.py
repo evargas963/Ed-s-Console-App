@@ -2845,13 +2845,30 @@ def is_available(ticker: str) -> bool:
     )
 
 
-def get_model_version(ticker: str) -> str:
-    """Version string for dashboard display."""
+def executed_model_version(model_outputs: Optional[dict]) -> Optional[str]:
+    """The model version that RAN this tick: the legs that produced output, or None.
+
+    pred_model_version used to be get_model_version() -- the bundle FILES on disk -- with a
+    "rules_v1" fallback. With the live stack off (RC-REHAB-1) no model runs, yet every row
+    was stamped "stack(xgb_lstm_tr_meta)_1c" and accuracy pooled those rows under that model
+    (audit L-01 / F-11, 2026-09-24: no fallbacks)."""
+    if not isinstance(model_outputs, dict):
+        return None
+    legs = [short for key, short in (("xgb", "xgb"), ("lstm", "lstm"), ("transformer", "tr"))
+            if isinstance(model_outputs.get(key), dict) and model_outputs[key].get("available")]
+    if not legs:
+        return None
+    return f"stack({'_'.join(legs)})_{get_ml_infer_horizon_slug()}"
+
+
+def get_model_version(ticker: str) -> Optional[str]:
+    """INSTALLED model bundle for `ticker` (files on disk), or None. Not what ran on a tick --
+    see executed_model_version()."""
     ticker = ticker_storage_key(ticker)  # RC-345/F25: artifact-name identity canonical
     hz = get_ml_infer_horizon_slug()
     base = _active_bundle_dir_for_load(ticker)
     if base is None:
-        return "rules_v1"
+        return None
     parts = []
     if (base / f"xgb_{ticker}_{hz}.pkl").exists():        parts.append("xgb")
     if (base / f"lstm_{ticker}_{hz}.pt").exists():        parts.append("lstm")
@@ -2859,7 +2876,7 @@ def get_model_version(ticker: str) -> str:
     if (base / f"meta_{ticker}_{hz}.pkl").exists():       parts.append("meta")
     if parts:
         return f"stack({'_'.join(parts)})_{hz}"
-    return "rules_v1"
+    return None
 
 
 def get_component_status(ticker: str) -> dict:

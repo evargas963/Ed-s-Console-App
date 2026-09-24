@@ -123,17 +123,25 @@ def test_spot_from_quote_actually_returns_the_quote_price(monkeypatch) -> None:
     assert trade_time is not None
 
 
-def test_resolve_spot_prefers_the_quote_over_the_stored_snapshot(monkeypatch) -> None:
-    """Precedence must be observable: a live quote always beats a stale snapshot."""
+def test_resolve_spot_never_serves_a_rest_quote(monkeypatch) -> None:
+    """SPOT is the streamed LAST_PRICE only (operator rule 2026-09-23: no fallbacks). A REST
+    quote being available changes nothing: with no fresh streamed row, spot is UNAVAILABLE."""
+    import live_market_plane as L
+    L._by_ticker.pop("ZZRESTONLY", None)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(
         server, "safe_get_quote",
         lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 999.99}}}),
     )
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (111.11, 0.0))
-    spot, source, _ts = server.resolve_spot("SPY")
-    assert spot == 999.99
-    assert source == server.SPOT_SOURCE_QUOTE
+    assert server.resolve_spot("ZZRESTONLY") == (None, "none", None)
+
+def _streamed_row(tk: str, spot: float, age_sec: float = 0.5) -> dict:
+    """A plane row as the Schwab LEVELONE_EQUITIES stream writes it."""
+    import time as _t
+    return {"spot": spot, "server_received_ts": _t.time() - age_sec, "spot_received_ts": _t.time() - age_sec,
+            "exchange_quote_ts": _t.time() - age_sec,
+            "quote_source_detail": {"spot": "LAST_PRICE"},
+            "quote_ingestion": "schwab_streaming_level_one"}
 
 
 def test_resolve_spot_prefers_a_fresh_streaming_plane_row_over_the_rest_quote(monkeypatch) -> None:
@@ -149,9 +157,10 @@ def test_resolve_spot_prefers_a_fresh_streaming_plane_row_over_the_rest_quote(mo
     import live_market_plane as L
 
     tk = "ZZPLANESPOT"
-    L._by_ticker[tk] = {"spot": 700.42, "server_received_ts": _t.time(),
+    L._by_ticker[tk] = {"spot": 700.42, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
                          "exchange_quote_ts": 1_800_000_000.0,
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
+                         "quote_source_detail": {"spot": "LAST_PRICE"},
+                         "quote_ingestion": "schwab_streaming_level_one"}
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
@@ -165,48 +174,36 @@ def test_resolve_spot_prefers_a_fresh_streaming_plane_row_over_the_rest_quote(mo
         L._by_ticker.pop(tk, None)
 
 
-def test_resolve_spot_falls_through_when_the_plane_row_is_stale(monkeypatch) -> None:
-    """A plane row this old is no longer meaningfully "streaming" -- serving a stopped
-    stream as live would just move the divergence to the opposite direction (header frozen
-    on an old tick, terrain correctly moving on). Falling through to the REST leg is more
-    honest and keeps every consumer converged on the same, still-live number."""
-    import time as _t
-
+def test_resolve_spot_withholds_a_stale_streamed_price(monkeypatch) -> None:
+    """A streamed row past its freshness bound is not current spot, and nothing replaces it:
+    no REST quote, no stale value. The broken feed must look broken."""
     import live_market_plane as L
 
     tk = "ZZPLANESTALE"
-    L._by_ticker[tk] = {"spot": 700.42,
-                         "server_received_ts": _t.time() - (server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0),
-                         "exchange_quote_ts": 1_800_000_000.0,
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
+    L._by_ticker[tk] = _streamed_row(tk, 700.42, server._CARD_FRESHNESS_V1_QUOTE_STALE_SEC + 5.0)
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
             server, "safe_get_quote",
             lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 111.11}}}),
         )
-        spot, source, _ts = server.resolve_spot(tk)
-        assert spot == 111.11, "a stale plane row must not be preferred over a live REST quote"
-        assert source == server.SPOT_SOURCE_QUOTE
+        assert server.resolve_spot(tk) == (None, "none", None)
     finally:
         L._by_ticker.pop(tk, None)
 
 
-def test_resolve_spot_falls_through_when_the_plane_has_no_row(monkeypatch) -> None:
-    """No streaming row at all (never subscribed, or a genuinely cold ticker) must fall
-    through cleanly -- the new plane leg must never raise or fabricate on absence."""
+def test_resolve_spot_with_no_streamed_row_is_unavailable(monkeypatch) -> None:
+    """No streaming row at all (never subscribed, or a cold ticker): UNAVAILABLE, never raises."""
     import live_market_plane as L
 
     tk = "ZZPLANENONE"
-    L._by_ticker.pop(tk, None)   # ensure a clean slate regardless of prior test ordering
+    L._by_ticker.pop(tk, None)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(
         server, "safe_get_quote",
         lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 222.22}}}),
     )
-    spot, source, _ts = server.resolve_spot(tk)
-    assert spot == 222.22
-    assert source == server.SPOT_SOURCE_QUOTE
+    assert server.resolve_spot(tk) == (None, "none", None)
 
 
 def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> None:
@@ -219,10 +216,11 @@ def test_header_and_terrain_cannot_diverge_on_a_fresh_plane_row(monkeypatch) -> 
     import live_market_plane as L
 
     tk = "ZZCONVERGE"
-    L._by_ticker[tk] = {"spot": 812.5, "server_received_ts": _t.time(),
+    L._by_ticker[tk] = {"spot": 812.5, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
                          "exchange_quote_ts": 1_800_000_000.0, "bid": 812.4, "ask": 812.6,
                          "spot_disp": "812.50", "bid_disp": "812.40", "ask_disp": "812.60",
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
+                         "quote_source_detail": {"spot": "LAST_PRICE"},
+                         "quote_ingestion": "schwab_streaming_level_one"}
     try:
         # A REST call here would prove nothing (the plane must win first) -- if either
         # consumer fell through to it, this distinct value would surface the divergence.
@@ -265,9 +263,8 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
     gamma profile AT that fresh spot, so the regime can never disagree with the price
     printed beside it.
     """
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
+    import live_market_plane as L
+    monkeypatch.setitem(L._by_ticker, "SPY", _streamed_row("SPY", 744.93))
 
     cached = {
         "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
@@ -281,8 +278,8 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
 
     out = server._reprice_cached_terrain(cached, "SPY")
 
-    assert out["spot"] == 744.93, "spot must be the live quote, not the cached one"
-    assert out["spot_source"] == server.SPOT_SOURCE_QUOTE
+    assert out["spot"] == 744.93, "spot must be the streamed LAST_PRICE, not the cached one"
+    assert out["spot_source"] == server.SPOT_SOURCE_PLANE
     # levels are untouched — they are the slow-moving part
     assert out["call_wall"] == 750.0 and out["put_wall"] == 740.0
     assert out["gamma_flip"] == 745.00
@@ -310,9 +307,8 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     bug lives. This drives `get_terrain()` with a warm cache, which is the exact path the
     UI polls.
     """
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "safe_get_quote",
-                        lambda _c, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 744.93}}}))
+    import live_market_plane as L
+    monkeypatch.setitem(L._by_ticker, "SPY", _streamed_row("SPY", 744.93))
     monkeypatch.setitem(server._terrain_cache, "SPY", {
         "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
         "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
@@ -327,7 +323,7 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     assert served["spot"] == 744.93, (
         "the endpoint served a frozen cached spot; the card would lag the header"
     )
-    assert served["spot_source"] == server.SPOT_SOURCE_QUOTE
+    assert served["spot_source"] == server.SPOT_SOURCE_PLANE
     assert served["call_wall"] == 750.0, "levels must still come from the cache"
     assert served["regime"] == "SHORT_GAMMA_TREND", "regime must track the live spot"
     # Bugbot 2026-07-20 (confirmed): flip_diag.gamma_at_spot is RENDERED by the dealer
@@ -437,7 +433,7 @@ def test_merge_into_state_skips_a_stale_plane_row(monkeypatch) -> None:
     import live_market_plane as L
 
     tk = "ZZMERGESTALE"
-    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
+    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
     try:
         ms = {"spot": 700.42, "ticker": tk}
         L.merge_into_state(ms, tk)
@@ -454,8 +450,9 @@ def test_merge_into_state_applies_a_fresh_plane_row(monkeypatch) -> None:
     import live_market_plane as L
 
     tk = "ZZMERGEFRESH"
-    L._by_ticker[tk] = {"spot": 850.0, "server_received_ts": _t.time(),
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
+    L._by_ticker[tk] = {"spot": 850.0, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
+                         "quote_source_detail": {"spot": "LAST_PRICE"},
+                         "quote_ingestion": "schwab_streaming_level_one"}
     try:
         ms = {"spot": 700.42, "ticker": tk}
         L.merge_into_state(ms, tk)
@@ -471,7 +468,7 @@ def test_apply_l1_live_quote_overlay_skips_a_stale_plane_row() -> None:
     import live_market_plane as L
 
     tk = "ZZL1STALE"
-    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
+    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
     try:
         l1 = {"spot": 700.42}
         L.apply_l1_live_quote_overlay(l1, tk)
@@ -485,26 +482,25 @@ def test_quote_is_fresh_does_not_treat_carried_forward_as_live() -> None:
     """A carried-forward LAST_PRICE may still be shown as STALE. It is not LIVE."""
     import live_market_plane as L
 
-    q = {"spot": 700.0, "server_received_ts": 1.0,
+    q = {"spot": 700.0, "server_received_ts": 1.0, "spot_received_ts": 1.0,
          "quote_source_detail": {"spot": "LAST_PRICE", "carried_forward": True,
                                  "schwab_auth_degraded": True}}
     assert L.quote_is_fresh(q) is False
     assert L.plane_spot_is_last_price(q) is True
 
 
-def test_project_l1_corrects_a_stale_plane_spot_via_resolve_spot(monkeypatch) -> None:
-    """Operator-reproduced defect (2026-09-14, spot 360 audit, round 2): build_l1_context is
-    deliberately PURE (no chain/DB/ML/REST) and reads ctx.l0_row.spot verbatim with no
-    fallback -- a stalled stream's last tick would sit in every L1 build (GET
-    /api/analytics/light and its SSE stream) indefinitely. _project_l1 must correct the spot
-    BEFORE the pure build, using the same resolve_spot() authority everything else uses."""
+def test_project_l1_withholds_a_stale_plane_spot(monkeypatch) -> None:
+    """A stalled stream's last tick must not reach the L1 payload, and nothing may replace it
+    (no REST quote): the L1 spot is withheld until the stream delivers again."""
     import time as _t
 
     import live_market_plane as L
     import server
 
     tk = "ZZL1PROJECT"
-    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0)}
+    L._by_ticker[tk] = {"spot": 999.0, "server_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0), "spot_received_ts": _t.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0),
+                        "quote_ingestion": "schwab_streaming_level_one",
+                        "quote_source_detail": {"spot": "LAST_PRICE"}}
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(
@@ -512,10 +508,8 @@ def test_project_l1_corrects_a_stale_plane_spot_via_resolve_spot(monkeypatch) ->
             lambda _client, _tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 123.45}}}),
         )
         out = server._project_l1(tk, None, reason="test")
-        assert out.get("spot") == 123.45, (
-            f"expected the resolve_spot-corrected spot 123.45, got {out.get('spot')} -- "
-            "the stale plane tick must not reach the L1 payload"
-        )
+        assert out.get("spot") is None, (
+            f"the stale tick (999.0) or a REST quote (123.45) reached L1: {out.get('spot')}")
     finally:
         L._by_ticker.pop(tk, None)
         server._l1_snapshot_cache.pop((tk, "__auto__"), None)
@@ -624,25 +618,15 @@ def test_every_vendor_quote_read_goes_through_the_memo():
     )
 
 
-def test_every_batch_vendor_quote_read_goes_through_one_call_site():
-    """Operator-reproduced defect (2026-09-14, spot 360 audit): this lock's own scope was
-    "every VENDOR quote read", but it only ever counted _safe_get_quote_with_retry (the
-    single-symbol fetch) -- schwab_client.safe_get_quotes (the BATCH fetch /api/watchlist-
-    quotes uses) was a second, completely uncounted raw vendor call, outside both the memo
-    AND live_market_plane, that could return a genuinely different tick than every other
-    consumer for the exact same ticker at the exact same instant. Same discipline, same
-    reasoning, the sibling function this lock's own docstring should have covered from the
-    start: exactly one raw call site, and it must record what it fetches into the plane
-    (proven behaviourally by test_watchlist_quotes_records_a_fresh_fetch_into_the_plane)."""
+def test_no_batch_vendor_quote_read_feeds_any_live_value():
+    """Operator rule 2026-09-23 (no fallbacks): the watchlist used to fetch Schwab REST batch
+    quotes (schwab_client.safe_get_quotes) for every symbol the stream was not answering and
+    record them into the plane -- a second spot source. Live values come from the stream
+    only, so nothing in server.py may call the batch vendor quote read."""
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
     sites = [ln.strip() for ln in src.splitlines()
-             if "safe_get_quotes" in ln
-             and "def safe_get_quotes" not in ln
-             and "import safe_get_quotes" not in ln
-             and not ln.strip().startswith("#")]
-    assert len(sites) == 1, (
-        f"{len(sites)} references to the raw batch vendor fetch — exactly one disciplined "
-        f"call site (the one that checks the plane first and records its results back into "
-        f"it) may call schwab_client.safe_get_quotes: {sites}"
-    )
+             if "safe_get_quotes" in ln and not ln.strip().startswith("#")]
+    assert sites == [], f"batch vendor quote read reintroduced: {sites}"
+
+

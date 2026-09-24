@@ -54,10 +54,9 @@ def test_lrc4_abs_or_none_nan_avg_ignored_in_target_levels():
         risk=2.0,
         avg5=float("nan"),
         avg15=None,
-        avg60=None,
         structural_levels=[],
     )
-    assert levels.target_source == "2r_fallback"
+    assert levels.target is None and levels.target_source == "no_5c_avg_move"
 
 
 def test_lrc5_snap_includes_zero_structural_level():
@@ -88,7 +87,6 @@ def test_lrc6_derive_target_levels_rejects_nan_risk():
             risk=float("nan"),
             avg5=None,
             avg15=None,
-            avg60=None,
             structural_levels=[],
         )
 
@@ -101,7 +99,6 @@ def test_lrc6_derive_target_levels_rejects_nan_entry():
             risk=2.0,
             avg5=None,
             avg15=None,
-            avg60=None,
             structural_levels=[],
         )
 
@@ -136,11 +133,10 @@ def test_lrc8_cap_target_via_finite_derive_produces_finite_outputs():
         risk=2.0,
         avg5=6.0,
         avg15=None,
-        avg60=None,
         structural_levels=[],
     )
     assert math.isfinite(levels.target)
-    assert math.isfinite(levels.target2)
+    assert levels.target2 is None   # no 15c move -> no T2 (S-15)
 
 
 def test_lrc2_vix_finite_high_still_adjusts():

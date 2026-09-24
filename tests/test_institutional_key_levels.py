@@ -85,9 +85,9 @@ def test_standard_pin_is_total_gamma_with_decisiveness():
     # exactness on a known distribution: leader 300, runner-up 200 -> 33.3% lead
     # institutional-synthetic-ok: strength arithmetic needs known mass.
     synth = {
-        700.0: {"call_gex_1pct": 200.0, "put_gex_1pct": -100.0},   # total 300
-        705.0: {"call_gex_1pct": 120.0, "put_gex_1pct": -80.0},    # total 200
-        710.0: {"call_gex_1pct": 30.0,  "put_gex_1pct": -20.0},    # total 50
+        700.0: {"call_gex_1pct": 200.0, "put_gex_1pct": -100.0, "dollarized": True},  # total 300
+        705.0: {"call_gex_1pct": 120.0, "put_gex_1pct": -80.0, "dollarized": True},   # total 200
+        710.0: {"call_gex_1pct": 30.0,  "put_gex_1pct": -20.0, "dollarized": True},   # total 50
     }
     p2, s2 = pick_pin_and_strength(synth, sorted(synth))
     assert p2 == 700.0 and s2 == round((300 - 200) / 300 * 100, 1)
@@ -130,6 +130,7 @@ def _three_way_split_exposures():
             "call_gex_1pct": 1.0, "put_gex_1pct": -1.0,
             "call_delta": 1.0, "put_delta": 1.0,
             "call_oi": 1.0, "put_oi": 1.0,
+            "dollarized": True,
             "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
         },
         101.0: {
@@ -137,6 +138,7 @@ def _three_way_split_exposures():
             "call_gex_1pct": 999.0, "put_gex_1pct": -1.0,
             "call_delta": 1.0, "put_delta": 1.0,
             "call_oi": 1.0, "put_oi": 1.0,
+            "dollarized": True,
             "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
         },
         120.0: {
@@ -144,6 +146,7 @@ def _three_way_split_exposures():
             "call_gex_1pct": 50.0, "put_gex_1pct": -5000.0,
             "call_delta": 1.0, "put_delta": 1.0,
             "call_oi": 1.0, "put_oi": 1.0,
+            "dollarized": True,
             "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
         },
     }
@@ -376,7 +379,7 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
     from pathlib import Path
 
     from math_probabilities import compute_wall_score_components
-    from v2_decision.a2_lifecycle_sidecar import _structural_levels
+    import v2_decision.a2_lifecycle_sidecar as a2_sidecar
 
     sel_ex, spot, terrain = _wide_vs_selected_wall_books()
     walls = build_walls_rows(sel_ex, spot)
@@ -408,9 +411,10 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
     bind_src = inspect.getsource(consensus_walls_bind_terrain_ssot)
     assert "call_oi_wall=None" in bind_src
     assert "call_vanna_wall=None" in bind_src
-    a2_src = inspect.getsource(_structural_levels)
-    assert "call_oi_wall" not in a2_src
-    assert "put_oi_wall" not in a2_src
+    # The A2 sidecar no longer derives structural levels at all -- it carries The Call's plan
+    # (ONE FAUCET, 2026-09-24) -- so no wall of any kind may be read there.
+    a2_src = inspect.getsource(a2_sidecar)
+    assert "oi_wall" not in a2_src and "gamma_wall" not in a2_src
     oe_src = inspect.getsource(compute_wall_score_components)
     assert "dom_oi_wall" not in oe_src
     ms_src = Path("market_state.py").read_text(encoding="utf-8")
@@ -970,8 +974,8 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
 
 def test_volatility_points_one_sided_chain_returns_none_side():
     exposures = {
-        100.0: {"net_gex_1pct": 5_000_000.0, "call_gex_1pct": 5_000_000.0},
-        105.0: {"net_gex_1pct": 9_000_000.0, "call_gex_1pct": 9_000_000.0},
+        100.0: {"net_gex_1pct": 5_000_000.0, "call_gex_1pct": 5_000_000.0, "dollarized": True},
+        105.0: {"net_gex_1pct": 9_000_000.0, "call_gex_1pct": 9_000_000.0, "dollarized": True},
     }
     hvp, lvp = pick_volatility_point_strikes(exposures, [100.0, 105.0])
     assert hvp is None      # no negative pocket anywhere

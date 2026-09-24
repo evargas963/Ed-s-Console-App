@@ -192,8 +192,15 @@ def test_active_option_contracts_post_calls_the_real_setter(monkeypatch):
     import json
 
     calls = []
-    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts",
-                        lambda c, **kw: calls.append(c) or True)
+    held = {"now": []}
+
+    def _setter(c, **kw):
+        calls.append(c)
+        held["now"] = list(c)
+        return True
+    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts", _setter)
+    monkeypatch.setattr("app.options.order_flow.streaming.get_active_option_contracts",
+                        lambda: held["now"])
     import server as srv
 
     resp = asyncio.run(srv.post_streaming_active_option_contracts(
@@ -201,7 +208,10 @@ def test_active_option_contracts_post_calls_the_real_setter(monkeypatch):
     assert resp.status_code == 200
     body = json.loads(resp.body)
     assert body["ok"] is True
+    # `contracts` is what the stream actually holds after the setter ran (2026-09-23: it
+    # used to echo the request, so a client believed an over-budget request was streamed)
     assert sorted(body["contracts"]) == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
+    assert body["requested_count"] == 2
     assert calls == [[_SPY_CONTRACT, _QQQ_CONTRACT]]
 
 

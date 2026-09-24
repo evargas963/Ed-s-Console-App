@@ -9,7 +9,9 @@
   var TICKER_KEY = 'ed_ticker';
   var WL_KEY = 'ed_watchlist_v1';
   var RAIL_KEY = 'ed_rail_open';
-  var DEFAULT_WL = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA'];
+  // No built-in watchlist or ticker (universality, operator 2026-09-23): a first run starts
+  // empty and every symbol is one the operator chose.
+  var DEFAULT_WL = [];
 
   var app = document.getElementById('app');
 
@@ -87,7 +89,7 @@
   var SCOPE_MODES = ['auto', 'wider', 'all'];
   function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
   var state = {
-    ticker: (_ls(TICKER_KEY, 'SPY')).toUpperCase(),
+    ticker: (_ls(TICKER_KEY, '') || '').toUpperCase(),
     workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),
     subview: _ls('ed_sub', app.getAttribute('data-subview') || 'gamma'),
     view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
@@ -313,7 +315,7 @@
     // dispatch only during that one initial pass; setTicker's OWN ed:ticker dispatch (below,
     // unconditional) is the single signal every module hydrates from at cold start, and
     // ed:view fires normally, exactly once per call, on every REAL subsequent view change.
-    if (!_booting) document.dispatchEvent(new CustomEvent('ed:view', { detail: Object.assign({}, state) }));
+    if (!_booting) emit('ed:view', Object.assign({}, state));
   }
 
   function setWorkspace(ws) {
@@ -362,7 +364,7 @@
     reflectMeasure();
     showMainView();   // the heatmap panel title names the measure (see MEASURE_TITLE)
     if (!fromSubview) {
-      document.dispatchEvent(new CustomEvent('ed:measure', { detail: { measure: m } }));
+      emit('ed:measure', { measure: m });
     }
   }
 
@@ -377,7 +379,7 @@
   function setScope(mode) {
     if (SCOPE_MODES.indexOf(mode) === -1 || mode === state.scope) { reflectScope(); return; }
     state.scope = mode; _lsSet('ed_scope', mode); reflectScope();
-    document.dispatchEvent(new CustomEvent('ed:scope', { detail: { scope: mode } }));
+    emit('ed:scope', { scope: mode });
   }
   // The ONE scope policy is a COUNT of canonical strikes around spot — never a percentage.
   // MEASURED 2026-09-10 on the live SPY reference surface (116 strikes at $1 spacing, spot 764):
@@ -394,7 +396,7 @@
     var total = strikes.length, n = scopeRows();
     if (!total) return { idx: [], shown: 0, total: 0 };
     if (!isFinite(n) || n >= total) return { idx: strikes.map(function (_s, i) { return i; }), shown: total, total: total };
-    var sp = Number(spot), c = Math.floor(total / 2), best = Infinity;
+    var sp = (spot == null || spot === '') ? NaN : Number(spot), c = Math.floor(total / 2), best = Infinity;   // null is absent, not 0
     if (isFinite(sp)) strikes.forEach(function (k, i) { var d = Math.abs(Number(k) - sp); if (d < best) { best = d; c = i; } });
     var lo = c - Math.floor((n - 1) / 2), hi = lo + n - 1;
     if (lo < 0) { hi -= lo; lo = 0; }
@@ -521,6 +523,17 @@
     saveWL(list); renderWatchlist();
   }
 
+  // Every view event goes through emit(): with no ticker chosen, no panel is asked to load
+  // (each would otherwise fetch for an empty symbol).
+  function emit(name, detail) {
+    if (!state.ticker) return;
+    document.dispatchEvent(new CustomEvent(name, { detail: detail }));
+  }
+  function paintNoTicker() {
+    var px = document.getElementById('hPx'); if (px) px.textContent = 'CHOOSE A SYMBOL';
+    setFeed('stale', 'NO SYMBOL', '—');
+  }
+
   // ================= ticker store (ONE selected-symbol state across every surface) =================
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
@@ -540,8 +553,9 @@
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
     openHeaderStream(state.ticker);   // (re)subscribe the SSE push to this ticker (one subscription)
-    refreshHeader();                  // immediate paint while the stream connects
-    document.dispatchEvent(new CustomEvent('ed:ticker', { detail: { ticker: state.ticker } }));
+    markHeaderPushDown();             // CONNECTING until the new ticker's first push
+    refreshSession();
+    emit('ed:ticker', { ticker: state.ticker });
   }
 
   // ---- instrument control: a typed symbol IS the control (institutional selector: type -> Enter ->
@@ -607,7 +621,7 @@
     if (nv === state.expiryFilter) return;
     state.expiryFilter = nv;
     var sel = document.getElementById('expSel'); if (sel) sel.value = nv || '';
-    document.dispatchEvent(new CustomEvent('ed:expiry', { detail: { expiry: nv } }));
+    emit('ed:expiry', { expiry: nv });
   }
   // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
   // "All Expirations" while Chain is active — the server returns ONE (default) expiry. In every
@@ -623,7 +637,7 @@
   function setStrike(strike, expiry) {
     state.selStrike = (strike == null || isNaN(strike)) ? null : Number(strike);
     state.selExpiry = expiry || null;
-    document.dispatchEvent(new CustomEvent('ed:strike', { detail: { strike: state.selStrike, expiry: state.selExpiry } }));
+    emit('ed:strike', { strike: state.selStrike, expiry: state.selExpiry });
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
@@ -638,8 +652,8 @@
   // ---- header quote: PUSH via the canonical L1 SSE stream (/api/analytics/light/stream,
   //      event l1_projection), which already carries spot/bid/ask (planes/context_light.py).
   //      Ordering is the shared EdL1SseGuards monotonic l1_generation (+ _server_build_ts tie-
-  //      break). Polling /api/live/state is a FALLBACK ONLY, so there is ONE source per truth. ----
-  var _hdrGen = 0;                       // guards in-flight poll responses (latest-wins)
+  //      break). The push is the ONLY source of the header quote (operator rule 2026-09-23: no
+  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote. ----
   // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
   // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
   // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
@@ -709,18 +723,17 @@
   // tick AND immediately after every add/remove (renderWatchlist), so a fast add/remove can
   // legitimately have two requests in flight at once. Without a generation check, an OLDER
   // request that happens to resolve AFTER a newer one would overwrite fresher data with
-  // stale data for whatever symbols both requests shared. Same pattern this file already
-  // uses for the header poll (_hdrGen).
+  // stale data for whatever symbols both requests shared. Same pattern refreshSession uses
+  // (_sessGen).
   var _wlPollGen = 0;
-  // A failed/degraded poll must not look identical to a healthy one: values already on
-  // screen are real numbers from the LAST successful poll, so blanking them on a single
-  // transient failure would be its own kind of dishonesty (implying no data exists at
-  // all). Instead the whole list gets a visible "stale" mark (dimmed, #wl-h shows age)
-  // until a poll succeeds again — the mark, not the numbers, carries the truth.
+  // A failed poll withdraws every row to UNAVAILABLE (operator rule 2026-09-23: no
+  // fallbacks, not even a labelled last-known value) and marks the list degraded with the
+  // reason, until a poll succeeds again.
   var _wlLastGoodTs = null;
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
+    loadWL().forEach(function (sym) { setWlRow(sym, null, null, 'unavailable'); });
     wlNotify(reason);
   }
   function markWlHealthy() {
@@ -728,8 +741,20 @@
     if (host) host.classList.remove('wl-degraded');
     _wlLastGoodTs = Date.now();
   }
+  // The daemon streams only what is asked for: hand it the watchlist whenever it changes
+  // (and once at start), so every row can be a streamed quote.
+  var _wlDeclared = null;
+  function declareWatchlistStream(list) {
+    var key = list.join(',');
+    if (key === _wlDeclared) return;
+    _wlDeclared = key;
+    fetch('/api/streaming/watchlist-symbols', { method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
+      .catch(function () { _wlDeclared = null; });   // retried on the next poll
+  }
   function pollWatchlistQuotes() {
     var list = loadWL();
+    declareWatchlistStream(list);
     if (!list.length) return;
     var myGen = ++_wlPollGen;
     fetch('/api/watchlist-quotes?tickers=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })
@@ -755,14 +780,29 @@
       })
       .catch(function () {
         if (myGen !== _wlPollGen) return;
-        markWlDegraded('Connection lost — showing last known values');
+        markWlDegraded('Connection lost — quotes unavailable');
       });
   }
 
-  var _sse = null, _sseUp = false, _lastSseTs = 0, _l1Gen = {}, _l1Ts = {};
+  var _sse = null, _sseUp = false, _lastSseTs = 0, _sseOpenedTs = 0, _l1Gen = {}, _l1Ts = {};
+  // requestAnimationFrame throttle: pushes can arrive faster than the screen repaints; only the
+  // NEWEST quote is painted, once per frame, so a burst never queues stale paints.
+  var _pendingQuote = null, _quoteFrame = 0;
+  function paintQuoteNextFrame(q) {
+    _pendingQuote = q;
+    if (_quoteFrame) return;
+    var onFrame = function () {
+      _quoteFrame = 0;
+      var next = _pendingQuote; _pendingQuote = null;
+      if (next) paintQuote(next);
+    };
+    _quoteFrame = window.requestAnimationFrame ? window.requestAnimationFrame(onFrame)
+                                               : setTimeout(onFrame, 16);
+  }
   function closeHeaderStream() { if (_sse) { try { _sse.close(); } catch (e) {} } _sse = null; _sseUp = false; }
   function openHeaderStream(tk) {
     closeHeaderStream();
+    _sseOpenedTs = Date.now();
     if (typeof EventSource === 'undefined') return;
     try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)); }
     catch (e) { _sse = null; return; }
@@ -778,7 +818,7 @@
       var gen = (p.l1_generation != null ? p.l1_generation : env.l1_generation);
       var bts = (p._server_build_ts != null ? p._server_build_ts : env.l1_server_build_ts);
       if (G && !G.l1ApplyTierBLightMonotonic(state.ticker, gen, _l1Gen, bts, _l1Ts)) return;
-      _sseUp = true; _lastSseTs = Date.now(); _hdrGen++;   // supersede any in-flight fallback poll
+      _sseUp = true; _lastSseTs = Date.now();
       var ageMs = bts ? Math.max(0, Math.round(Date.now() - bts * 1000)) : null;
       // TRUTHFUL LIVE: receiving an SSE event only proves the SERVER pushed a projection
       // promptly — it does not prove the underlying quote is fresh (the server can build
@@ -788,7 +828,7 @@
       // STALE. Same reasoning the poll-fallback path already applies via streaming_healthy.
       var stale = !!p.l1_stale || p.spot_state === 'stale';
       var unavailable = p.spot_state === 'unavailable' || p.spot == null;
-      paintQuote({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
+      paintQuoteNextFrame({ spot_disp: p.spot_disp, spot: p.spot, bid: p.bid, ask: p.ask,
         chgPct: p.chg_pct, quoteIngestion: p.quote_ingestion || p._quote_authority,
         spotState: p.spot_state,
         feedCls: unavailable ? 'stale' : (stale ? 'stale' : ''),
@@ -814,9 +854,9 @@
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
       if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
-      document.dispatchEvent(new CustomEvent('ed:gamma-push', { detail: { surfaceSeq: env.surface_seq } }));
+      emit('ed:gamma-push', { surfaceSeq: env.surface_seq });
     });
-    _sse.onerror = function () { _sseUp = false; };   // fall back to polling; the browser reconnects
+    _sse.onerror = function () { _sseUp = false; };   // the browser reconnects; the header shows the gap
   }
 
   // #6: canonical market session (RTH / Pre-Market / After-Hours / Closed) — a DIFFERENT truth
@@ -847,7 +887,7 @@
     if (next.ticker === _plane.ticker && next.expiry === _plane.expiry && next.session === _plane.session &&
         next.analyticsVersion === _plane.analyticsVersion) return;
     _plane = next;
-    document.dispatchEvent(new CustomEvent('ed:plane', { detail: Object.assign({}, _plane) }));
+    emit('ed:plane', Object.assign({}, _plane));
   }
 
   var _sessGen = 0;
@@ -859,40 +899,31 @@
       .catch(function () { if (g === _sessGen) paintSession(null); });
   }
 
-  function refreshHeader() {   // FALLBACK poll — only runs when the SSE push is not delivering
-    var g = ++_hdrGen, ex = state.expiryFilter || '';
-    fetch(liveStateUrl(), { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) {
-        if (g !== _hdrGen) return;
-        paintSession(d.session_label);              // header poll also carries session (no extra read)
-        notePlane(d, ex);
-        if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }
-        var age = (d.streaming_plane && d.streaming_plane.streaming_staleness_ms != null)
-          ? Math.round(d.streaming_plane.streaming_staleness_ms) + 'ms' : '—';
-        var healthy = d.streaming_plane && d.streaming_plane.streaming_healthy;
-        paintQuote({ spot_disp: d.spot_disp, spot: d.spot, bid: d.bid, ask: d.ask,
-          chgPct: d.chg_pct, quoteIngestion: d.quote_ingestion,
-          spotState: d.spot_state,
-          feedCls: d.spot_state === 'unavailable' ? 'stale' : (healthy ? '' : 'warn'),
-          feedLabel: d.spot_state === 'unavailable' ? 'UNAVAILABLE' : (d.spot_state === 'stale' ? 'STALE' : (healthy ? 'LIVE' : 'DEGRADED')),
-          ageLabel: age });
-      })
-      .catch(function () { if (g === _hdrGen) setFeed('stale', 'OFFLINE', 'no console'); });
+  // The push is not delivering: withdraw the quote instead of leaving the last one on screen
+  // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
+  // label is not a live quote and keeps its own slow read.
+  function markHeaderPushDown() {
+    _pendingQuote = null;
+    var connecting = _sse && !_sseUp && (Date.now() - _sseOpenedTs <= 9000);
+    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null,
+      spotState: 'unavailable', feedCls: 'stale',
+      feedLabel: connecting ? 'WAITING' : 'OFFLINE',
+      ageLabel: connecting ? 'no push yet' : 'live push down' });
   }
 
-  // ONE coordinated scheduler. The header prefers the SSE push above; this timer only polls the
-  // header as a FALLBACK (SSE down/stalled) and drives the SLOW gamma/terrain refresh — that
+  // ONE coordinated scheduler. The header quote comes ONLY from the SSE push above; this timer
+  // checks that the push is still delivering and drives the SLOW gamma/terrain refresh -- that
   // producer changes on a 60s/5min cadence, so coordinated POLLING (not SSE) is the correct,
   // lowest-cost delivery for it. No duplicate subscriptions, no polling storm.
   var _tick = 0;
   function liveTick() {
     _tick++;
+    if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) pollWatchlistQuotes(); return; }
     var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 9000);
-    if (!sseHealthy) refreshHeader();                 // fallback: paints quote + session
-    else if (_tick % 4 === 0) refreshSession();       // SSE covers the quote; slow session read
+    if (!sseHealthy) markHeaderPushDown();            // the gap is shown, never filled
+    if (!sseHealthy || _tick % 4 === 0) refreshSession();
     if (_tick % 4 === 0) pollWatchlistQuotes();       // every non-active row, same slow cadence
-    document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { tick: _tick, slow: _tick % 4 === 0 } }));
+    emit('ed:refresh', { tick: _tick, slow: _tick % 4 === 0 });
   }
 
   // ================= CT clock =================
@@ -979,7 +1010,7 @@
       var d = document.getElementById('aidrawer'); d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
     });
     // initial ticker + header
-    setTicker(state.ticker);
+    if (state.ticker) setTicker(state.ticker); else paintNoTicker();
     _booting = false;   // every REAL subsequent view/ticker change dispatches both events normally
     tickClock(); setInterval(tickClock, 1000);
     setInterval(liveTick, 3000);   // single scheduler drives header (fast) + gamma (slow)

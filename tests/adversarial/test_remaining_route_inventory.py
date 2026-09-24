@@ -62,7 +62,7 @@ def test_r011_debug_fetch_state_no_production_decision_id(release_ready, monkeyp
 
     ms = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "validation_summary": "debug_ok",
     }

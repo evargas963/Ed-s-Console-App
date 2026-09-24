@@ -46,13 +46,6 @@ def _clear_caches():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
         server._terrain_cache.pop(TK2, None)
-    with server._LAST_VALID_GEX_CELLS_LOCK:
-        server._LAST_VALID_GEX_CELLS.pop(TK, None)
-        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK)
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK] = time.time()
-        server._LAST_VALID_GEX_CELLS.pop(TK2, None)
-        server._LAST_VALID_GEX_CELLS_HYDRATED.discard(TK2)
-        server._LAST_VALID_GEX_CELLS_DB_WRITE_TS[TK2] = time.time()
     with server._spot_gamma_refresh_lock:
         server._spot_gamma_refresh_inflight.discard(TK)
         server._spot_gamma_refresh_pending.discard(TK)
@@ -412,16 +405,7 @@ def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(mo
     with server._terrain_cache_lock:
         cached_surface = server._terrain_cache[TK]["_gamma_surface"]
     assert cached_surface["spot"] == new_spot
-    # _backfill_gex_cells_from_last_valid also stamps a `value_snapshot_ts_utc` provenance
-    # list onto each cell (server.py:15068) -- an orthogonal disclosure layered on top of the
-    # exposure-math faucet, exactly like `stream`, and absent from a bare project_gamma_surface
-    # call. Stripped here for the same reason _cells_match_ignoring_vanna_drift already strips
-    # `stream`; the helper itself is left alone since its own docstring's claim (that file's
-    # tests never hit this stamping path) still holds for its own callers.
-    actual_cells = [
-        {k: v for k, v in cell.items() if k != "value_snapshot_ts_utc"}
-        for cell in cached_surface["cells"]
-    ]
+    actual_cells = cached_surface["cells"]
     assert _cells_match_ignoring_vanna_drift(actual_cells, expected_surface["cells"]), (
         "heatmap cells did not match the independently-computed reference surface at the new spot"
     )

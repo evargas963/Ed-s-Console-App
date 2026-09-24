@@ -266,7 +266,13 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
         payload = server._build_rest_fast_quote_payload("SPY", "test")
         assert payload.get("spread_semantic") == "fraction"
 
-        tier = server._tier_a_live_state_dict("SPY", None)
+        # /api/live/state is stream-only: give it the fresh streamed row it serves from
+        import time as _t
+        with patch.object(server._lmp, "get_quote", return_value={
+                "spot": 100.0, "bid": 99.9, "ask": 100.1, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
+                "quote_source_detail": {"spot": "LAST_PRICE"},
+                "quote_ingestion": "schwab_streaming_level_one"}):
+            tier = server._tier_a_live_state_dict("SPY", None)
         assert tier.get("spread_semantic") == "dollar"
 
 
@@ -416,7 +422,7 @@ def test_tradeable_score_calls_liquidity_engine_authority():
 # FIND-SERVERPY-19
 def test_debug_prediction_returns_populated_distribution(monkeypatch):
     """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
-    debug_prediction is `(ticker: str = DEFAULT_TICKER)` -- a plain default, not even
+    debug_prediction is `(ticker: str)` -- a plain required parameter, not even
     a Query -- returning a bare dict. Its fail-closed R-011 gate is a plain
     os.environ read INSIDE the function body, and the NEGATIVE side of that gate
     (404 without the flag) is separately and deliberately proven over real HTTP by

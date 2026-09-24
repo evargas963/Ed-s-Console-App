@@ -17,7 +17,7 @@ def test_synthetic_no_valid_expiry_route_blocked_from_decision_id(release_ready)
 
     ms = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "state_error": "no_valid_expiry",
         "validation_summary": "synthetic",
@@ -34,7 +34,7 @@ def test_synthetic_route_does_not_persist_production_record(release_ready, tmp_p
 
     ms = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "validation_summary": "ok",
     }
@@ -47,7 +47,7 @@ def test_synthetic_route_does_not_persist_production_record(release_ready, tmp_p
 def test_production_route_requires_validation_summary_for_directional(release_ready):
     from trade_impacting_gate import validate_trade_impacting_gate
 
-    ms = {"ticker": "SPY", "spot": 500.0, "call_signal": "long"}
+    ms = {"ticker": "SPY", "spot": 500.0, "prior_close": 500.0, "call_signal": "long"}
     result = validate_trade_impacting_gate(ms, route="server._fetch_state")
     assert not result.ok
     assert any("validation_summary" in r for r in result.reasons)

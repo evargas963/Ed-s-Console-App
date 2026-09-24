@@ -21,11 +21,8 @@ def _ensure_dotenv_loaded() -> None:
     _load_dotenv_if_present()
 
 
-# =========================================================
-# TICKER DEFAULT — used by API/CLI when no ticker specified
-# Change here to update all endpoints (state, stream, expiries, price-levels, etc.)
-# =========================================================
-DEFAULT_TICKER = "SPY"
+# No default ticker (universality, operator 2026-09-23): every endpoint and CLI requires the
+# ticker it acts on -- a missing one used to silently become SPY.
 
 # Schwab Dev Portal requires HTTPS callback URL (non-secret default).
 SCHWAB_CALLBACK_URL = "https://127.0.0.1:8182"

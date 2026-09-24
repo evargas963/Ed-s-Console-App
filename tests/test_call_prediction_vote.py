@@ -82,6 +82,7 @@ def test_low_conf_prediction_lean_counts_for_stack_threshold():
         ),
     )
     pred = PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="Lean UP",
         prediction_dir="up",
         prediction_target=None,

@@ -47,7 +47,7 @@ def is_bias_actionable(bias_signal: str | None) -> bool:
 # ZONE DERIVATION — single definition used everywhere
 # Derived from bias_signal + net_delta.
 # ─────────────────────────────────────────────────────────────────────────────
-def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
+def derive_zone(bias_signal: str | None, net_delta: float | None) -> str | None:
     """
     Map bias_signal → zone string consumed by signals engine and prediction DB.
 
@@ -77,7 +77,9 @@ def derive_zone(bias_signal: str | None, net_delta: float | None) -> str:
         if net_delta is None:
             return "expansion_unknown"
         return "breakout" if float(net_delta) >= 0 else "breakdown"
-    return "pin_neutral"  # safe default
+    # No bias (not measured) or a label this map does not know: no zone. This used to be
+    # "pin_neutral  # safe default" -- persisted and matched on as a real zone (audit M-05).
+    return None
 
 
 # is_pin_zone() lives in math_exposure.py — centralized
@@ -153,13 +155,16 @@ class MarketState:
     ask_disp:           str             = "—"
 
     # ── Regime ────────────────────────────────────────────────────────────────
-    bias_signal:        str             = "Neutral"
-    pin_strength:       str             = "Very Low"
+    bias_signal:        Optional[str]   = None      # None = not measured (M-05)
+    pin_strength:       Optional[str]   = None      # None = not measured (M-04)
     net_delta:          Optional[float] = None      # share-equivalent
     net_gamma:          Optional[float] = None
-    gex_magnitude:      str             = "negligible"  # large/moderate/small/negligible
-    dex_magnitude:      str             = "negligible"
-    zone:               str             = "pin"     # pin | breakout | breakdown
+    gex_magnitude:      Optional[str]   = None  # large/moderate/small/negligible; None = no net GEX
+    #: No producer computes a DEX magnitude (audit P0, 2026-09-23): it used to default to
+    #: "negligible" -- so the Greeks vote's net-delta leg never counted, silently. None says
+    #: so; a validated magnitude threshold is a research decision, not a default.
+    dex_magnitude:      Optional[str]   = None
+    zone:               Optional[str]   = None      # derive_zone(); None = no measured bias
 
     # Regime colors (derived, not computed inline in UI)
     bias_color_css:     str             = "#9ca3af"
@@ -263,20 +268,20 @@ class MarketState:
     size_note:          str             = ""
     # Contract/event (desk framing — not part of OE scoring)
     contract_context:   str             = ""
-    event_risk_level:   str             = "none"   # none | elevated | high
+    event_risk_level:   str             = "unknown"   # high | unknown (event_risk.py: sourced calendars only)
     event_risk_detail:  str             = ""
     # ── Call Readiness (from TheCall / setup_readiness) ───────────────────────
-    call_readiness_score:    int         = 0
-    call_state:             str         = "WAIT"   # WAIT | WATCH | ACTIVE
-    call_forecast_state:    str         = "dormant"
+    call_readiness_score:    Optional[int] = None   # None = readiness withheld
+    call_state:             Optional[str] = None   # WAIT | WATCH | ACTIVE
+    call_forecast_state:    Optional[str] = None
     call_readiness_reasons: list        = field(default_factory=list)
     call_missing_conditions: list        = field(default_factory=list)
     call_readiness_component_scores: dict = field(default_factory=dict)
     call_wait_blocker:     Optional[dict] = None   # when call_signal=wait: {reason, long_count?, short_count?, gate_reasons?, ...}
     # ── Put Readiness ─────────────────────────────────────────────────────────
-    put_readiness_score:    int         = 0
-    put_state:             str         = "WAIT"
-    put_forecast_state:     str         = "dormant"
+    put_readiness_score:    Optional[int] = None
+    put_state:             Optional[str] = None
+    put_forecast_state:     Optional[str] = None
     put_readiness_reasons:  list        = field(default_factory=list)
     put_missing_conditions: list        = field(default_factory=list)
     put_readiness_component_scores: dict = field(default_factory=dict)
@@ -353,10 +358,10 @@ class MarketState:
     # Not mhap_rows[h].confidence (per-horizon MHAP panel) nor
     # fusion_policy_snapshot_cols["fused_confidence_<hz>"] (per-horizon fusion trunk).
     # Set in build_market_state from canonical_forecast.confidence or pred.forward_confidence.
-    confidence:         str             = "low"
+    confidence:         Optional[str]   = None   # None = no forecast (S-04)
     historical_5c_dominant_dir: Optional[str] = None
     historical_5c_dominant_prob: Optional[float] = None
-    empirical_confidence: str = "low"
+    empirical_confidence: Optional[str] = None
     forward_prob_up:    Optional[float] = None
     forward_prob_down:  Optional[float] = None
     forward_prob_flat:  Optional[float] = None
@@ -364,7 +369,7 @@ class MarketState:
     canonical_provenance: str = ""  # SignalOutput.canonical_forecast.provenance (decision driver; fusion policy)
     samples_used:       int             = 0
     model_note:         str             = ""
-    model_version:      str             = "rules_v1"
+    model_version:      Optional[str]   = None   # what ran, or None -- never a guessed name
     pred_model_source:  Optional[str]   = None   # 'ml', 'rules', 'statistical' — which engine produced probs
     mh_prob_source_by_horizon: Optional[dict] = None  # 1c/5c/15c/60c → empirical_histogram | fusion_ml_primary | ...
     horizon_directional_authorized: Optional[dict] = None
@@ -415,17 +420,17 @@ class MarketState:
     # ── Market regime (from regime_engine.py) ─────────────────────────────────
     regime_primary:     str             = "unknown"  # pinning, acceleration, breakout, etc.
     regime_secondary:   list            = field(default_factory=list)  # secondary tags
-    regime_confidence:  str             = "low"
-    regime_score:       float           = 0.0
+    regime_confidence:  Optional[str]   = None
+    regime_score:       Optional[float] = None
     regime_summary:     str             = ""
     regime_support:     list            = field(default_factory=list)
     regime_contradiction: list          = field(default_factory=list)
 
     # ── Bayesian fusion (from bayesian_fusion.py) ─────────────────────────────
     fusion_available:       bool            = False
-    fusion_dominant:        str             = "unknown"
+    fusion_dominant:        Optional[str]   = None
     fusion_dominant_prob:   Optional[float] = None
-    fusion_confidence:      str             = "low"
+    fusion_confidence:      Optional[str]   = None
     fusion_confidence_score: Optional[float] = None
     fusion_summary:         str             = ""
     fusion_breakout:        Optional[float] = None
@@ -435,12 +440,12 @@ class MarketState:
     fusion_vol_expansion:   Optional[float] = None
     fusion_mean_reversion:  Optional[float] = None
     fusion_model_agreement: Optional[float] = None
-    fusion_agreement_label: str             = "low"
-    fusion_n_models_active: int             = 0
+    fusion_agreement_label: Optional[str]   = None
+    fusion_n_models_active: Optional[int]   = None
     fusion_prob_up:         Optional[float] = None
     fusion_prob_down:       Optional[float] = None
     fusion_prob_flat:       Optional[float] = None
-    fusion_dominant_direction: str          = "flat"
+    fusion_dominant_direction: Optional[str] = None
     fusion_evidence:        list            = field(default_factory=list)
     fusion_contradictions:  list            = field(default_factory=list)
     fusion_mc_contribution: Optional[dict]  = None
@@ -1133,22 +1138,20 @@ def build_market_state(
 
     # ── 2. Regime — from consensus_summary ──────────────────────────────────
     if consensus_summary is not None:
-        ms.bias_signal  = str(getattr(consensus_summary, "bias_signal",  "") or "Neutral")
+        # None = not measured (audit M-04/M-05): no "Neutral" / "Very Low" stand-ins.
+        ms.bias_signal  = getattr(consensus_summary, "bias_signal", None) or None
         # Categorical |net GEX$| concentration at ExposureRow.net_gex_peak — not terrain pin lead %.
-        ms.pin_strength = str(getattr(consensus_summary, "pin_strength", "") or "Very Low")
+        ms.pin_strength = getattr(consensus_summary, "pin_strength", None) or None
         _nd             = _f(getattr(consensus_summary, "net_delta", None))
         _ng             = _f(getattr(consensus_summary, "net_gamma", None))
         ms.net_delta    = _nd
         ms.net_gamma    = _ng
-        try:
-            from math_exposure_core import gex_magnitude_label
-            ms.gex_magnitude = gex_magnitude_label(_ng)
-        except Exception:
-            ms.gex_magnitude = str(getattr(consensus_summary, "gex_magnitude", "negligible") or "negligible")
-        ms.dex_magnitude = str(getattr(consensus_summary, "dex_magnitude", "negligible") or "negligible")
+        from math_exposure_core import gex_magnitude_label
+        ms.gex_magnitude = gex_magnitude_label(_ng)
+        ms.dex_magnitude = None   # no DEX magnitude producer exists -- see the field note
     else:
-        ms.bias_signal  = "Neutral"
-        ms.pin_strength = "Very Low"
+        ms.bias_signal  = None
+        ms.pin_strength = None
         _nd             = None
         _ng             = None
 
@@ -1578,17 +1581,17 @@ def build_market_state(
             ms.execution_mode   = getattr(_call, 'execution_mode', 'NO_TRADE')
             ms.sizing_summary   = getattr(_call, 'sizing_summary', '')
             # Call Readiness
-            ms.call_readiness_score   = getattr(_call, 'readiness_score', 0)
-            ms.call_state             = getattr(_call, 'call_state', 'WAIT')
-            ms.call_forecast_state    = getattr(_call, 'forecast_state', 'dormant')
+            ms.call_readiness_score   = getattr(_call, 'readiness_score', None)
+            ms.call_state             = getattr(_call, 'call_state', None)
+            ms.call_forecast_state    = getattr(_call, 'forecast_state', None)
             ms.call_readiness_reasons = list(getattr(_call, 'readiness_reasons', []) or [])
             ms.call_missing_conditions = list(getattr(_call, 'missing_conditions', []) or [])
             ms.call_readiness_component_scores = dict(getattr(_call, 'readiness_component_scores', {}) or {})
             ms.call_wait_blocker = getattr(_call, 'wait_blocker', None)
             # Put Readiness
-            ms.put_readiness_score   = getattr(_call, 'put_readiness_score', 0)
-            ms.put_state             = getattr(_call, 'put_state', 'WAIT')
-            ms.put_forecast_state    = getattr(_call, 'put_forecast_state', 'dormant')
+            ms.put_readiness_score   = getattr(_call, 'put_readiness_score', None)
+            ms.put_state             = getattr(_call, 'put_state', None)
+            ms.put_forecast_state    = getattr(_call, 'put_forecast_state', None)
             ms.put_readiness_reasons = list(getattr(_call, 'put_readiness_reasons', []) or [])
             ms.put_missing_conditions = list(getattr(_call, 'put_missing_conditions', []) or [])
             ms.put_readiness_component_scores = dict(getattr(_call, 'put_readiness_component_scores', {}) or {})
@@ -1709,30 +1712,25 @@ def build_market_state(
                 # carry placeholder 1/3-each triplets; stamping `dominant_probability()`
                 # as a real number leaks fake 0.3333 into ms_dict / Tier C payload. UI
                 # consumers that later read this field would surface the placeholder as
-                # a real prob. dominant_dir is left as-is (producer convention sets it
-                # to "flat" for non-tradable, which is the fail-closed display value).
+                # a real prob. A non-tradable canonical now carries direction None too
+                # (audit C-01/S-01: its "flat" was persisted as a forecast).
                 _cf_prov = getattr(_cf, "provenance", None)
-                if canonical_provenance_is_tradable(_cf_prov):
-                    ms.dominant_prob = round(_cf.dominant_probability(), 4)
-                else:
-                    ms.dominant_prob = None
+                _cf_dp = (_cf.dominant_probability()
+                          if canonical_provenance_is_tradable(_cf_prov) else None)
+                ms.dominant_prob = round(_cf_dp, 4) if _cf_dp is not None else None
                 ms.confidence = _cf.confidence
                 ms.canonical_provenance = str(_cf_prov or "")
             else:
                 ms.dominant_dir = _pred.forward_direction
                 _fwd_dir = _pred.forward_direction
-                if _fwd_dir == "up":
-                    _dom_p = _pred.forward_prob_up
-                elif _fwd_dir == "down":
-                    _dom_p = _pred.forward_prob_down
-                else:
-                    _dom_p = _pred.forward_prob_flat
+                _dom_p = {"up": _pred.forward_prob_up, "down": _pred.forward_prob_down,
+                          "flat": _pred.forward_prob_flat}.get(_fwd_dir)
                 ms.dominant_prob = float(_dom_p) if _dom_p is not None else None
                 ms.confidence = _pred.forward_confidence
                 ms.canonical_provenance = "canonical_forecast_missing"
             ms.samples_used    = _pred.samples_used
             ms.model_note      = _pred.model_note
-            ms.model_version   = getattr(_pred, 'model_version', 'rules_v1')
+            ms.model_version   = getattr(_pred, 'model_version', None)
             ms.pred_model_source = getattr(_pred, 'model_source', None)
             _mh_src = getattr(_pred, "mh_prob_source_by_horizon", None)
             ms.mh_prob_source_by_horizon = dict(_mh_src) if isinstance(_mh_src, dict) else None
@@ -1804,8 +1802,8 @@ def build_market_state(
         if _regime:
             ms.regime_primary       = getattr(_regime, 'primary', 'unknown')
             ms.regime_secondary     = list(getattr(_regime, 'secondary_tags', []))
-            ms.regime_confidence    = getattr(_regime, 'confidence', 'low')
-            ms.regime_score         = getattr(_regime, 'confidence_score', 0.0)
+            ms.regime_confidence    = getattr(_regime, 'confidence', None)
+            ms.regime_score         = float_finite_or_none(getattr(_regime, 'confidence_score', None))
             ms.regime_summary       = getattr(_regime, 'summary', '')
             ms.regime_support       = list(getattr(_regime, 'support_factors', []))
             ms.regime_contradiction = list(getattr(_regime, 'contradiction_factors', []))
@@ -1817,9 +1815,9 @@ def build_market_state(
                 return float_finite_or_none(getattr(_fusion, name, None))
 
             ms.fusion_available       = True
-            ms.fusion_dominant        = getattr(_fusion, 'dominant_outcome', 'unknown')
+            ms.fusion_dominant        = getattr(_fusion, 'dominant_outcome', None)
             ms.fusion_dominant_prob   = _fusion_f('dominant_probability')
-            ms.fusion_confidence      = getattr(_fusion, 'fusion_confidence', 'low')
+            ms.fusion_confidence      = getattr(_fusion, 'fusion_confidence', None)
             ms.fusion_confidence_score = _fusion_f('fusion_confidence_score')
             ms.fusion_summary         = getattr(_fusion, 'fusion_summary', '')
             ms.fusion_breakout        = _fusion_f('breakout_posterior')
@@ -1829,12 +1827,12 @@ def build_market_state(
             ms.fusion_vol_expansion   = _fusion_f('vol_expansion_posterior')
             ms.fusion_mean_reversion  = _fusion_f('mean_reversion_posterior')
             ms.fusion_model_agreement = _fusion_f('model_agreement')
-            ms.fusion_agreement_label = getattr(_fusion, 'model_agreement_label', 'low')
-            ms.fusion_n_models_active = getattr(_fusion, 'n_sources_active', 0)
+            ms.fusion_agreement_label = getattr(_fusion, 'model_agreement_label', None)
+            ms.fusion_n_models_active = getattr(_fusion, 'n_sources_active', None)
             ms.fusion_prob_up         = _fusion_f('prob_up')
             ms.fusion_prob_down       = _fusion_f('prob_down')
             ms.fusion_prob_flat       = _fusion_f('prob_flat')
-            ms.fusion_dominant_direction = getattr(_fusion, 'dominant_direction', 'flat')
+            ms.fusion_dominant_direction = getattr(_fusion, 'dominant_direction', None)
             ms.fusion_evidence        = list(getattr(_fusion, 'evidence_summary', []))
             ms.fusion_contradictions  = list(getattr(_fusion, 'contradiction_summary', []))
             ms.fusion_mc_contribution = getattr(_fusion, "fusion_mc_contribution", None)

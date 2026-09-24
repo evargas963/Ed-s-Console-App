@@ -112,6 +112,7 @@ def test_compute_call_missing_upstreams_forces_wait_not_sized_trade():
         ),
     )
     pred = PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="Lean up",
         prediction_dir="up",
         prediction_target=455.0,
@@ -193,6 +194,7 @@ def _phase3_canonical():
 
 def _phase3_pred_bullish_all_horizons():
     return PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="Bullish",
         prediction_dir="up",
         prediction_target=455.0,
@@ -291,6 +293,7 @@ def test_call_all_pool_vetoes_tape_only_directional():
     inp = _strong_long_stack_input()
     canonical = _phase3_canonical()
     pred = PredictiveCard(
+        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
         headline="Flat",
         prediction_dir="flat",
         prediction_target=None,
@@ -410,7 +413,7 @@ def test_call_stack_uses_all_consolidated_not_fusion_multi_horizon_slots():
 
     import call_engine as ce
 
-    assert ce.CONFLUENCE_TOTAL_SOURCES == 8
+    assert ce.CONFLUENCE_TOTAL_SOURCES == 5   # no index-ETF votes (operator 2026-09-23)
     src = inspect.getsource(ce.compute_call)
     assert '"all_consolidated":' in src
     idx = src.index("stack_votes = {")

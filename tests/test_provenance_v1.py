@@ -150,10 +150,9 @@ def test_the_card_contract_fields_are_roots_or_declared_exclusions():
 
 
 # ── transport invariant (ported from the retired mega1 suite) ─────────────────────────────
-TRANSPORT_FILES = frozenset({"schwab_client.py", "reauth_schwab.py", "polling_adapter.py",
-                             "websocket_adapter.py", "sse_adapter.py"})
+TRANSPORT_FILES = frozenset({"schwab_client.py", "reauth_schwab.py", "polling_adapter.py"})
 _SCHWAB_API = frozenset({"safe_get_quote", "safe_get_chain", "safe_get_price_history", "schwab_candles_to_bars"})
-_TRANSPORT_PREFIXES = ("schwab_client.py:", "polling_adapter.py:", "websocket_adapter.py:", "sse_adapter.py:")
+_TRANSPORT_PREFIXES = ("schwab_client.py:", "polling_adapter.py:")
 
 
 def _function_at_line(tree: ast.AST, lineno: int) -> str:

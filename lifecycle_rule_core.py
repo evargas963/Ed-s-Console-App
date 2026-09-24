@@ -29,8 +29,6 @@ ExitReason = Literal["stop_hit", "target_hit", "time_expiry"]
 MAX_RR_T1 = 5.0
 MAX_RR_T2 = 8.0
 MIN_RR = 1.5
-T1_FALLBACK_R_MULTIPLE = 2.0
-T2_OFFSET_R_MULTIPLE = 1.0
 
 
 class SameBarResolution(str, Enum):
@@ -45,8 +43,9 @@ class StopDistance(NamedTuple):
 
 
 class TargetLevels(NamedTuple):
-    target: float
-    target2: float
+    # None = no measured target; *_source then names why (audit S-14..S-16, 2026-09-24).
+    target: float | None
+    target2: float | None
     target_source: str
     target2_source: str
     target_snapped: bool
@@ -184,10 +183,16 @@ def derive_target_levels(
     risk: float,
     avg5: float | None,
     avg15: float | None,
-    avg60: float | None,
     structural_levels: Sequence[float],
 ) -> TargetLevels:
-    """Derive T1/T2 using call_engine's current R/R and horizon rules."""
+    """Derive T1/T2 from the similar-setups average moves, with R caps.
+
+    T1 = the 5-bar average move when it pays more than MIN_RR; T2 = the 15-bar average move
+    when it lies beyond T1. Otherwise that target is None and its source names why. There
+    is no invented target: T1 used to become a flat 2R (even when the MEASURED 5-bar move was
+    below 1.5R -- overriding the measurement), T2 fell to the 60-bar move and then to T1+1R,
+    and a T2 that landed at/inside T1 was replaced by T1+1R (audit S-14..S-16, operator rule
+    2026-09-23: no fallbacks)."""
     entry_f = _float_or_none(entry)
     risk_f = _float_or_none(risk)
     if entry_f is None:
@@ -198,14 +203,13 @@ def derive_target_levels(
 
     avg5_abs = _abs_or_none(avg5)
     avg15_abs = _abs_or_none(avg15)
-    avg60_abs = _abs_or_none(avg60)
 
-    if avg5_abs is not None and avg5_abs > risk_f * MIN_RR:
-        target_raw = entry_f + sign * min(avg5_abs, risk_f * MAX_RR_T1)
-        target_source = "5c_avg_move"
-    else:
-        target_raw = entry_f + sign * risk_f * T1_FALLBACK_R_MULTIPLE
-        target_source = "2r_fallback"
+    if avg5_abs is None:
+        return TargetLevels(None, None, "no_5c_avg_move", "no_t1", False, False)
+    if avg5_abs <= risk_f * MIN_RR:
+        return TargetLevels(None, None, "5c_avg_move_below_min_rr", "no_t1", False, False)
+    target_raw = entry_f + sign * min(avg5_abs, risk_f * MAX_RR_T1)
+    target_source = "5c_avg_move"
 
     target_snapped_raw = snap_target_to_structural(
         target_price=target_raw,
@@ -217,32 +221,31 @@ def derive_target_levels(
     target_snapped = round(target_snapped_raw, 8) != round(target_raw, 8)
 
     target_distance = abs(target - entry_f)
-    if avg15_abs is not None and avg15_abs > target_distance:
-        target2_raw = entry_f + sign * min(avg15_abs, risk_f * MAX_RR_T2)
-        target2_source = "15c_avg_move"
-    elif avg60_abs is not None and avg60_abs > target_distance:
-        target2_raw = entry_f + sign * min(avg60_abs, risk_f * MAX_RR_T2)
-        target2_source = "60c_avg_move"
+    target2: float | None = None
+    target2_snapped = False
+    if avg15_abs is None:
+        target2_source = "no_15c_avg_move"
+    elif avg15_abs <= target_distance:
+        target2_source = "15c_avg_move_within_t1"
     else:
-        target2_raw = target + sign * risk_f * T2_OFFSET_R_MULTIPLE
-        target2_source = "1r_offset_from_t1"
-
-    target2_snapped_raw = snap_target_to_structural(
-        target_price=target2_raw,
-        structural_levels=structural_levels,
-        direction=direction,
-        risk=risk_f,
-    )
-    target2 = _cap_target(entry_f, target2_snapped_raw, direction, risk_f, MAX_RR_T2)
-    if direction == "long" and target2 <= target:
-        target2 = round(target + risk_f, 2)
-    elif direction == "short" and target2 >= target:
-        target2 = round(target - risk_f, 2)
-    target2_snapped = round(target2_snapped_raw, 8) != round(target2_raw, 8)
+        target2_raw = entry_f + sign * min(avg15_abs, risk_f * MAX_RR_T2)
+        target2_snapped_raw = snap_target_to_structural(
+            target_price=target2_raw,
+            structural_levels=structural_levels,
+            direction=direction,
+            risk=risk_f,
+        )
+        _t2 = _cap_target(entry_f, target2_snapped_raw, direction, risk_f, MAX_RR_T2)
+        if (direction == "long" and _t2 <= target) or (direction == "short" and _t2 >= target):
+            target2_source = "t2_not_beyond_t1"
+        else:
+            target2 = _t2
+            target2_source = "15c_avg_move"
+            target2_snapped = round(target2_snapped_raw, 8) != round(target2_raw, 8)
 
     return TargetLevels(
         target=round(target, 2),
-        target2=round(target2, 2),
+        target2=round(target2, 2) if target2 is not None else None,
         target_source=target_source,
         target2_source=target2_source,
         target_snapped=target_snapped,

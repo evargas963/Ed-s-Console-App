@@ -17,7 +17,7 @@
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
   function ctTime(sec){try{return new Date(sec*1000).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',timeZone:'America/Chicago'});}catch(e){return'';}}
   function isChart(){var s=(window.EdShell&&window.EdShell.getState())||{};return s.workspace==='options'&&s.subview==='gamma'&&s.view==='chart';}
-  function ticker(){return((window.EdShell&&window.EdShell.getState())||{}).ticker||'SPY';}
+  function ticker(){return((window.EdShell&&window.EdShell.getState())||{}).ticker||'';}
   // Mirrors server.py's SPOT_SOURCE_* constants -- short, human labels for the same strings
   // resolve_spot() already stamps on every payload it produces.
   var SPOT_SOURCE_LABEL = {

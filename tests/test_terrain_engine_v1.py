@@ -199,12 +199,16 @@ def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:
     from terrain_engine import compute_wall_value_area
     # institutional-synthetic-ok: algorithm verification requires known mass — the real-chain
     # test below covers the live shape.
+    # side GEX$ mass on a dollarized, valid-gamma book (T-05: raw gamma no longer stands in)
+    _f = {"dollarized": True, "has_valid_gamma": True}
     exposures = {
-        700.0: {"put_gamma": 100.0},
-        705.0: {"put_gamma": 900.0},   # the wall (POC)
-        710.0: {"put_gamma": 500.0},   # heavier neighbor — absorbed first
-        715.0: {"put_gamma": 100.0},
+        700.0: {"put_gex_1pct": 100.0, **_f},
+        705.0: {"put_gex_1pct": 900.0, **_f},   # the wall (POC)
+        710.0: {"put_gex_1pct": 500.0, **_f},   # heavier neighbor — absorbed first
+        715.0: {"put_gex_1pct": 100.0, **_f},
     }
+    raw_only = {k: {"put_gamma": v["put_gex_1pct"]} for k, v in exposures.items()}
+    assert compute_wall_value_area(raw_only, 705.0, "put") is None   # raw gamma: no range
     rg = compute_wall_value_area(exposures, 705.0, "put")
     assert rg is not None
     assert rg["lo"] == 705.0 and rg["hi"] == 710.0, rg

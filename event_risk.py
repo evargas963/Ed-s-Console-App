@@ -1,38 +1,31 @@
 """
-event_risk.py — Known macro / issuer event calendar for day-trading stack gating.
+event_risk.py — scheduled-event risk for the traded symbol, from SOURCED calendars only.
 
-Update MACRO_ALERT_DATES and SYMBOL_EARNINGS manually or from your data vendor.
+Earnings: the Nasdaq earnings calendar collected by tools/world_earnings_ingest.py into the
+console database (`world_earnings`) -- every symbol, the same way.
 
-Wiring a live calendar (implement in server or a daily job; keep this module sync/cheap):
-  - **Macro:** Fed FOMC pdf/calendar, BLS CPI schedule, CBOE holiday calendar — curate high-impact ET dates into MACRO_ALERT_DATES or load JSON at startup.
-  - **Earnings:** Vendor APIs (e.g. Polygon, Finnhub earnings endpoints) or issuer IR pages — cache `symbol -> [ISO dates]` and refresh daily.
-  - **Unified:** Paid terminals (FactSet, Refinitiv) or a repo CSV you edit; avoid scraping without ToS review.
+Macro (CPI / FOMC / NFP): no collector exists yet, so macro risk is UNKNOWN and says so.
+This module used to carry five hand-typed "example placeholder" macro dates and an
+"approximate" earnings list for two symbols (META, NVDA) -- guessed inputs to The Call
+(audit P0, operator rules 2026-09-23: no fallbacks, universality).
 
-This file is not a substitute for a live API; it is the policy hook `assess_event_risk(ticker)` consumes.
+Levels: "high" (the symbol reports earnings this session) | "unknown" (no sourced event;
+macro not sourced). "none" is never claimed while a calendar is missing.
 """
 from __future__ import annotations
 
+import sqlite3
+import threading
+import time
 from datetime import date, datetime
-from typing import List, Tuple
+from typing import Optional, Tuple
+
 from time_et import now_et
 
-# US session date (ET) — ISO strings. Broad risk: CPI, FOMC, NFP-heavy days, major quad witching.
-# Keep tight: only days where you want elevated or high event_risk.
-# Source: maintain alongside your desk calendar (Fed + CPI schedule).
-MACRO_ALERT_DATES: frozenset[str] = frozenset({
-    "2026-01-28",  # example placeholder — replace with real CPI/FOMC dates you trade around
-    "2026-03-18",
-    "2026-06-17",
-    "2026-09-16",
-    "2026-12-16",
-})
-
-# Issuer earnings (after-market / BMO) — settlement date in ET. Extend per symbol.
-SYMBOL_EARNINGS: dict[str, List[str]] = {
-    # META: approximate quarterly pattern — verify against investor relations each quarter.
-    "META": ["2026-01-29", "2026-04-30", "2026-07-30", "2026-10-29"],
-    "NVDA": ["2026-02-26", "2026-05-28", "2026-08-27", "2026-11-19"],
-}
+EARNINGS_SOURCE = "Nasdaq earnings calendar (world_earnings)"
+_CACHE_TTL_SEC = 600.0
+_cache: dict[str, tuple[float, Optional[dict[str, str]]]] = {}
+_cache_lock = threading.Lock()
 
 
 def session_date_et(now: datetime | None = None) -> date:
@@ -41,28 +34,44 @@ def session_date_et(now: datetime | None = None) -> date:
     return now.date()
 
 
-def assess_event_risk(ticker: str, now: datetime | None = None) -> Tuple[str, str]:
-    """
-    Returns (level, detail).
-    level: "none" | "elevated" | "high"
-    """
-    t = (ticker or "").upper().strip()
-    d = session_date_et(now)
-    ds = d.isoformat()
-    reasons: list[str] = []
+def _earnings_for_date(ds: str, db_path: str | None = None) -> Optional[dict[str, str]]:
+    """{SYMBOL: time_hint} reporting on `ds`, or None when that date was never fetched (or
+    the table does not exist) -- "not fetched" is not "no earnings"."""
+    key = f"{db_path or ''}|{ds}"
+    now = time.monotonic()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and now - hit[0] < _CACHE_TTL_SEC:
+            return hit[1]
+    if db_path is None:
+        from db_authority import canonical_console_db_path
+        db_path = str(canonical_console_db_path())
+    result: Optional[dict[str, str]]
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5.0)
+        try:
+            rows = con.execute(
+                "SELECT symbol, time_hint FROM world_earnings WHERE date = ?", (ds,)).fetchall()
+        finally:
+            con.close()
+        result = {str(s).upper(): (h or "") for s, h in rows} if rows else None
+    except sqlite3.Error:
+        result = None
+    with _cache_lock:
+        _cache[key] = (now, result)
+    return result
 
-    if ds in MACRO_ALERT_DATES:
-        reasons.append("Macro calendar alert (CPI/FOMC/OPEX tier — verify)")
 
-    earn = SYMBOL_EARNINGS.get(t, [])
-    if ds in earn:
-        reasons.append(f"{t} earnings session — vol / pin / gap risk")
-
-    if not reasons:
-        return "none", ""
-
-    # Earnings on single name = high for that symbol; macro alone = elevated
-    if any(t in r or "earnings" in r for r in reasons) and t in SYMBOL_EARNINGS:
-        return "high", "; ".join(reasons)
-    return "elevated", "; ".join(reasons)
-
+def assess_event_risk(ticker: str, now: datetime | None = None, *,
+                      db_path: str | None = None) -> Tuple[str, str]:
+    """(level, detail). level: "high" | "unknown"."""
+    t = (ticker or "").upper().strip().lstrip("$")
+    ds = session_date_et(now).isoformat()
+    earnings = _earnings_for_date(ds, db_path)
+    if earnings is not None and t in earnings:
+        hint = earnings[t]
+        return "high", (f"{t} earnings session{(' (' + hint + ')') if hint else ''} "
+                        f"-- {EARNINGS_SOURCE}")
+    earn_note = (f"no {t} earnings today ({EARNINGS_SOURCE})" if earnings is not None
+                 else f"earnings calendar not fetched for {ds}")
+    return "unknown", f"{earn_note}; macro calendar (CPI/FOMC) not sourced"

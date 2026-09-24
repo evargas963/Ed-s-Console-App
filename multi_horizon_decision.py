@@ -605,7 +605,7 @@ def finalize_multi_horizon_bundle(
         inp,
         hmap["1c"],
         getattr(call, "entry", None),
-        getattr(call, "call_state", None) or getattr(call, "signal", "WAIT"),
+        getattr(call, "call_state", None),   # readiness state only -- not the signal (C-05)
     )
     stop = getattr(call, "stop", None)
     target = getattr(call, "target", None)
@@ -1047,7 +1047,7 @@ def _entry_state_machine(
     inp,
     one_c: HorizonForecast,
     call_entry: Optional[float],
-    call_state: str,
+    call_state: Optional[str],
 ) -> tuple[str, Optional[float], str]:
     """
     Price-action entry states (operator 2026-06-11): timing comes from the 1c
@@ -1064,7 +1064,7 @@ def _entry_state_machine(
     spot = _finite_price_optional(getattr(inp, "spot", None))
     if spot is None:
         return ("no_setup", None, "missing or invalid spot")
-    cs = str(call_state or "WAIT").upper()
+    cs = str(call_state).upper() if call_state else None
     entry_px = _finite_price_optional(call_entry)
     if cs == "ACTIVE" and entry_px is not None:
         return ("filled", entry_px, f"{entry_px:.2f} (FILLED)")

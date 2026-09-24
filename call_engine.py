@@ -20,7 +20,7 @@ import logging
 import math
 from typing import Optional
 
-from lifecycle_rule_core import derive_stop_distance_pct, derive_target_levels
+from lifecycle_rule_core import derive_target_levels
 from multi_horizon_decision import MultiHorizonSynthesis
 from math_exposure import (
     greek_bias,
@@ -33,7 +33,6 @@ from fusion_contract import (
     canonical_provenance_is_tradable,
     fusion_has_tradable_direction,
 )
-from time_et import RTH_OPEN_MINS
 from position_sizing_policy import regime_size_multiplier
 from replay_hold_bars import replay_max_hold_bars_for_setup
 from signal_types import (
@@ -50,7 +49,7 @@ log = logging.getLogger(__name__)
 # Stack threshold (event-risk vs default)
 STACK_THRESHOLD_DEFAULT: int = 2
 STACK_THRESHOLD_EVENT_RISK: int = 3
-CONFLUENCE_TOTAL_SOURCES: int = 8
+CONFLUENCE_TOTAL_SOURCES: int = 5   # micro, Greeks, regime, order_flow, all_consolidated
 
 # Conviction margin thresholds
 CONVICTION_HIGH_MARGIN_HIGH: float = 0.12
@@ -154,11 +153,6 @@ VOL_CONV_MULT_DOUBLE_DOWNGRADE_THRESHOLD: float = 0.75
 ZONE_FRESH_BARS_DOWNGRADE_MAX: int = 2
 
 # Cross-instrument signal
-CROSS_INSTRUMENT_STRONG_THRESHOLD: float = 0.40
-CROSS_INSTRUMENT_WEAK_THRESHOLD: float = 0.10
-CROSS_INSTRUMENT_DIR_EPS: float = 0.10
-CROSS_INSTRUMENT_QQQ_LEAD_THRESHOLD: float = 0.20
-CROSS_INSTRUMENT_IWM_RISK_THRESHOLD: float = 0.50
 
 # MH size tier (sizing modifier)
 MH_SIZE_TIER_3_MAX_MOD: float = 0.30
@@ -174,14 +168,33 @@ WAIT_BLOCKER_REASON_GATES = "gates"
 WAIT_BLOCKER_REASON_TIME = "time"
 WAIT_BLOCKER_REASON_ADMISSION = "decision_path_admission"
 WAIT_BLOCKER_REASON_EMISSION = "market_data_emission_gate"
+#: A directional call with no measured stop (no finite ATR) is not a trade -- the stop is
+#: never substituted (operator rule 2026-09-23: no fallbacks).
+WAIT_BLOCKER_REASON_NO_STOP = "no_measured_stop"
+#: Same for the target: no measured T1 -> no plan (S-14).
+WAIT_BLOCKER_REASON_NO_TARGET = "no_measured_target"
 
 
-def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[str, float]:
-    """Withhold tradable direction/probability from readiness when canonical is non-tradable."""
+def _level_proximity_label(dist: Optional[float]) -> Optional[str]:
+    """near / mid / far from a MEASURED distance to the nearest level; None when there is
+    no measured distance (C-04: absence used to read "far")."""
+    if dist is None:
+        return None
+    if dist <= LEVEL_PROXIMITY_NEAR_PTS:
+        return "near"
+    return "mid" if dist <= LEVEL_PROXIMITY_MID_PTS else "far"
+
+
+def _readiness_canonical_fields(
+    canonical: CanonicalForecast,
+) -> tuple[Optional[str], Optional[float]]:
+    """Forecast direction / dominant probability for readiness; (None, None) when the
+    canonical is non-tradable. It used to hand readiness "flat" / 0.0 -- a scored
+    forecast that did not exist (audit C-03, 2026-09-24)."""
     prov = str(getattr(canonical, "provenance", "") or "")
     if not canonical_provenance_is_tradable(prov):
-        return "flat", 0.0
-    return (canonical.direction or "flat", canonical.dominant_probability())
+        return None, None
+    return canonical.direction, canonical.dominant_probability()
 
 
 def _mh_size_tier_from_modifier(mh_mod: float) -> int:
@@ -371,34 +384,34 @@ def _build_call_headlines(final_signal, conviction, trade_type,
     type_label = TRADE_TYPE_LABELS.get(trade_type, trade_type)
 
     if final_signal == "wait":
+        # Every WAIT names its OWN blocker from the blocker's own fields -- no defaulted counts /
+        # threshold / detail, and no catch-all "insufficient confirmation" for reasons this
+        # function had no branch for (audit C-08, 2026-09-24: no_measured_stop, emission,
+        # canonical_provenance and multi_horizon_policy all printed that).
         blocker = wait_blocker or {}
-        reason = blocker.get("reason", "unknown")
+        reason = blocker.get("reason")
         if reason == "stack":
-            lc = blocker.get("long_count", 0)
-            sc = blocker.get("short_count", 0)
-            th = blocker.get("threshold", 2)
-            ln = blocker.get("long_names", [])
-            sn = blocker.get("short_names", [])
+            lc = blocker["long_count"]
+            sc = blocker["short_count"]
+            th = blocker["threshold"]
+            ln = blocker["long_names"]
+            sn = blocker["short_names"]
             headline = f"WAIT — stack: {lc} long, {sc} short (need {th}+ in one direction)."
             reasoning = (
                 f"Stack: {lc} long ({', '.join(ln) or '—'}), {sc} short ({', '.join(sn) or '—'}). "
                 f"Need at least {th} sources agreeing. "
-                "Note: stack uses 8 layers (micro, Greeks, spy_basket, qqq_basket, iwm_basket, "
-                "regime, order_flow, all_consolidated); each index basket vote is independent — "
-                "no cross-ETF veto. all_consolidated is the skill-weighted ALL pooled ML consensus."
+                "Note: stack uses 5 layers (micro, Greeks, regime, order_flow, all_consolidated), "
+                "all read from THIS ticker's own data -- no index-ETF votes. all_consolidated is "
+                "the skill-weighted ALL pooled ML consensus."
             )
         elif reason == "vol_regime":
-            detail = blocker.get("detail", "unstable — require stronger confirmation")
+            detail = blocker["detail"]
             headline = f"WAIT — vol regime: {detail}."
-            reasoning = blocker.get("full_detail", detail)
+            reasoning = blocker.get("full_detail") or detail
         elif reason == "gates":
-            gate_reasons = blocker.get("gate_reasons", [])
-            headline = f"WAIT — gated: {', '.join(gate_reasons) if gate_reasons else 'validation failed'}."
+            gate_reasons = blocker["gate_reasons"]
+            headline = f"WAIT — gated: {', '.join(gate_reasons)}."
             reasoning = f"Validation gates: {'; '.join(gate_reasons)}."
-        elif reason == "time":
-            detail = blocker.get("detail", "≤30 min to close")
-            headline = f"WAIT — {detail}."
-            reasoning = blocker.get("full_detail", f"Only {detail} — no new entries.")
         elif reason == WAIT_BLOCKER_REASON_ADMISSION:
             gated = blocker.get("gated_signal")
             suffix = f" (stack read: {gated})" if gated in ("long", "short") else ""
@@ -408,9 +421,14 @@ def _build_call_headlines(final_signal, conviction, trade_type,
                 "No component is ADMITTED in config/decision_path_admissions.json — "
                 "the system abstains until edge is proven and admitted.",
             )
+        elif blocker.get("detail"):
+            # time / no_measured_stop / market_data_emission_gate / canonical_provenance /
+            # multi_horizon_policy: each blocker carries its own detail
+            headline = f"WAIT — {blocker['detail']}."
+            reasoning = blocker.get("full_detail") or confluence_detail or blocker["detail"]
         else:
-            headline = "WAIT — insufficient confirmation."
-            reasoning = confluence_detail or "Await stronger stack consensus or key level."
+            headline = f"WAIT — {reason or 'no blocker recorded'}."
+            reasoning = confluence_detail or headline
         return headline, reasoning
 
     dir_word = "LONG" if final_signal == "long" else "SHORT"
@@ -529,11 +547,13 @@ def _canonical_stack_vote(canonical: CanonicalForecast) -> int:
         dom_p = float(dom_p_raw)
     except (TypeError, ValueError):
         dom_p = 0.0
+    # confidence must be a MEASURED medium/high -- an absent confidence is not "not low"
+    _conf_ok = pred_conf in ("medium", "high")
     if pred_dir == "up":
-        if pred_conf != "low" or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
+        if _conf_ok or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
             return 1
     elif pred_dir == "down":
-        if pred_conf != "low" or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
+        if _conf_ok or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
             return -1
     return 0
 
@@ -563,11 +583,15 @@ def _all_consolidated_stack_vote(
     return _fusion_authoritative_directional_vote(fusion_available, fusion_dom_vote, canonical)
 
 
-def _stack_event_threshold(event_risk_level: str) -> int:
-    _evt = (event_risk_level or "none").strip().lower()
-    if _evt in ("elevated", "high"):
-        return STACK_THRESHOLD_EVENT_RISK
-    return STACK_THRESHOLD_DEFAULT
+def _stack_event_threshold(event_risk_level: str | None) -> int:
+    """The default threshold only when event risk is KNOWN to be absent ("none"). High,
+    elevated -- and UNKNOWN (a calendar that is not sourced) -- take the stricter event-risk
+    threshold: an event that cannot be ruled out is not treated as no event (operator rule
+    2026-09-23: no fallbacks; event_risk.py reports "unknown" while macro is unsourced)."""
+    _evt = (event_risk_level or "unknown").strip().lower()
+    if _evt == "none":
+        return STACK_THRESHOLD_DEFAULT
+    return STACK_THRESHOLD_EVENT_RISK
 
 
 def _stack_threshold_from_votes(
@@ -635,109 +659,6 @@ def _confluence_for_signal(stack_votes: dict[str, int], final_signal: str) -> tu
     return len(names), detail
 
 
-def _index_basket_vote(
-    weighted_push: float | None,
-    etf_chg_pct: float | None,
-    *,
-    min_lean: float = 0.08,
-) -> int:
-    """
-    One index, one vote: cap-weighted basket push if present, else that index's ETF session %.
-    No other instrument can veto this vote (cross-ETF veto removed by policy).
-    Returns: 1 (long lean), -1 (short lean), 0 (flat / insufficient lean).
-    """
-    if weighted_push is not None:
-        try:
-            p = float(weighted_push)
-            if p > min_lean:
-                return 1
-            if p < -min_lean:
-                return -1
-        except (TypeError, ValueError):
-            pass
-    if etf_chg_pct is None:
-        return 0
-    try:
-        c = float(etf_chg_pct)
-    except (TypeError, ValueError):
-        return 0
-    if c > min_lean:
-        return 1
-    if c < -min_lean:
-        return -1
-    return 0
-
-
-def _cross_instrument_signal(inp: SignalInput) -> str | None:
-    """
-    Continuous cross-instrument alignment score for **narrative / notes** only
-    (e.g. `_cross_instrument_notes`, regime copy) — **not** used for stack_vote;
-    see `_index_basket_vote` (three independent index votes) for The Call tape layer.
-
-    Treats direction agreement × magnitude across SPY, QQQ, IWM. Full agreement is
-    a strong contextual label; divergence is a warning in text — not a hard gate.
-    """
-    spy = inp.spy_chg_pct
-    qqq = inp.qqq_chg_pct
-    iwm = inp.iwm_chg_pct
-    present = [v for v in (spy, qqq, iwm) if v is not None]
-    if len(present) < 2:
-        return None
-
-    # Directions for instruments with data (chg_pct in percentage points)
-    dirs = []
-    for v in present:
-        if v > CROSS_INSTRUMENT_DIR_EPS:
-            dirs.append(1)
-        elif v < -CROSS_INSTRUMENT_DIR_EPS:
-            dirs.append(-1)
-        else:
-            dirs.append(0)
-
-    nonzero = [d for d in dirs if d != 0]
-    if len(nonzero) < 2:
-        return "neutral"
-
-    all_same = len(set(nonzero)) == 1
-    has_conflict = 1 in nonzero and -1 in nonzero
-
-    avg_mag = sum(abs(v) for v in present) / len(present)
-    if has_conflict:
-        return "strong_diverge" if avg_mag >= CROSS_INSTRUMENT_STRONG_THRESHOLD else "diverging"
-    elif all_same:
-        return "strong_confirm" if avg_mag >= CROSS_INSTRUMENT_STRONG_THRESHOLD else "confirming"
-    return "neutral"
-
-def _cross_instrument_notes(inp: SignalInput) -> list:
-    """Plain English notes from cross-instrument reads with magnitude context."""
-    notes = []
-
-    spy = inp.spy_chg_pct
-    qqq = inp.qqq_chg_pct
-    iwm = inp.iwm_chg_pct
-
-    if spy is not None and qqq is not None:
-        delta = qqq - spy
-        if abs(delta) > CROSS_INSTRUMENT_QQQ_LEAD_THRESHOLD:
-            if delta > 0:
-                notes.append(f"QQQ leading SPY by {abs(delta):.2f}% — tech pulling market up")
-            else:
-                notes.append(f"QQQ lagging SPY by {abs(delta):.2f}% — tech is a drag")
-
-    if iwm is not None and iwm < -CROSS_INSTRUMENT_IWM_RISK_THRESHOLD:
-        notes.append(f"Small caps down {abs(iwm):.2f}% — risk-off, be careful with longs")
-    elif iwm is not None and iwm > CROSS_INSTRUMENT_IWM_RISK_THRESHOLD:
-        notes.append(f"Small caps up {iwm:.2f}% — risk-on, longs favored")
-
-    cross_sig = _cross_instrument_signal(inp)
-    if cross_sig == "strong_confirm" and spy is not None and qqq is not None and iwm is not None:
-        avg_dir = "bullish" if (spy + qqq + iwm) > 0 else "bearish"
-        notes.append(f"SPY/QQQ/IWM all moving strongly {avg_dir} — broad market conviction")
-    elif cross_sig in ("diverging", "strong_diverge"):
-        notes.append("Index instruments diverging — mixed signals, reduce sizing")
-
-    return notes
-
 # ATR-scaled stop multiple (operator 2026-06-11 price-action plan). Volatility-
 # scaled stops per Wilder (1978) ATR; standard institutional practice is a fixed
 # ATR multiple widened by regime risk_multiplier. VIX/time-decay percentage stop
@@ -745,10 +666,12 @@ def _cross_instrument_notes(inp: SignalInput) -> list:
 ATR_STOP_MULT: float = 1.5
 
 
-def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
+def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float | None:
     """
-    Volatility-scaled stop distance. Primary: ATR_STOP_MULT × ATR(1m) × regime
-    multiplier. Fallback (no ATR): time-aware, VIX-aware percentage of spot.
+    Volatility-scaled stop distance: ATR_STOP_MULT x ATR(1m) x regime multiplier.
+    None when there is no finite, positive ATR -- there is no second stop rule. It used to
+    fall back to a VIX- and clock-derived percentage of spot (and assumed the open when the
+    clock was missing) -- a guessed stop (audit P0, operator rule 2026-09-23: no fallbacks).
 
     risk_multiplier: from volatility regime — scales stop in expansion/unstable
     (e.g. 1.35 in unstable = wider stops). Default 1.0.
@@ -760,24 +683,8 @@ def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
         atr_f = None
     if atr_f is not None and math.isfinite(atr_f) and atr_f > 0.0:
         return round(ATR_STOP_MULT * atr_f * float(risk_multiplier), 2)
+    return None
 
-    spot = inp.spot
-    if inp.et_hour is None or inp.et_minute is None:
-        log.debug(
-            "call_engine._stop_distance: et_hour/et_minute missing — using mins_elapsed=0 (open default)"
-        )
-        mins_elapsed = 0
-    else:
-        mins_elapsed = inp.et_hour * 60 + inp.et_minute - RTH_OPEN_MINS
-        mins_elapsed = max(0, mins_elapsed)
-
-    stop_distance = derive_stop_distance_pct(
-        spot=spot,
-        vix_level=inp.vix_level,
-        mins_elapsed_since_open=mins_elapsed,
-        risk_multiplier=risk_multiplier,
-    )
-    return round(stop_distance.final_pct * spot, 2)
 
 def _compute_levels(
     inp: SignalInput,
@@ -793,11 +700,12 @@ def _compute_levels(
 
     RULES:
     1. Entry = current price (market). No zone/gamma-wall anchor moves the entry.
-    2. Stop = entry ± volatility-scaled distance (ATR primary, VIX-pct fallback).
+    2. Stop = entry ± volatility-scaled distance (ATR only; no ATR -> no plan).
     3. T1/T2 = prediction-engine expected moves (empirical move-size stats from
        price history) with R-multiple caps — NO structural-level snapping.
        Key levels / gamma walls are context display only, never plan anchors.
-    4. T2 = predicted move at **primary** horizons (15c / 60c empirical) only.
+       T1 = 5c average move (must pay > MIN_RR); T2 = 15c average move beyond T1.
+    4. A missing / insufficient move is NO target (None) -- never a 2R / T1+1R stand-in.
     5. Maximum R:R cap = 5:1 for T1, 8:1 for T2 (unchanged).
 
     governed_zone is retained for call-site/audit compatibility; it no longer
@@ -809,7 +717,6 @@ def _compute_levels(
     # ── Prediction-based move distances (primary horizons for tradable targets only) ──
     avg5  = pred.avg_5c_pts  if pred and pred.avg_5c_pts is not None else None
     avg15 = pred.avg_15c_pts if pred and pred.avg_15c_pts is not None else None
-    avg60 = pred.avg_60c_pts if pred and pred.avg_60c_pts is not None else None
 
     def _targets(entry, direction, risk):
         return derive_target_levels(
@@ -818,16 +725,18 @@ def _compute_levels(
             risk=risk,
             avg5=avg5,
             avg15=avg15,
-            avg60=avg60,
             structural_levels=[],
         )
+
+    if stop_dist is None or signal not in ("long", "short"):
+        return None, None, None, None      # no measured stop -> no plan, never a guessed one
 
     if signal == "long":
         entry = round(spot, 2)
         stop  = round(entry - stop_dist, 2)
         risk  = round(entry - stop, 2)
         if risk <= 0:
-            risk = stop_dist
+            return None, None, None, None
         targets = _targets(entry, "long", risk)
         return entry, stop, targets.target, targets.target2
 
@@ -836,7 +745,7 @@ def _compute_levels(
         stop  = round(entry + stop_dist, 2)
         risk  = round(stop - entry, 2)
         if risk <= 0:
-            risk = stop_dist
+            return None, None, None, None
         targets = _targets(entry, "short", risk)
         return entry, stop, targets.target, targets.target2
 
@@ -1352,14 +1261,16 @@ def _validate_trade(
     if (
         canonical
         and canonical_provenance_is_tradable(getattr(canonical, "provenance", None))
-        and str(canonical.confidence or "").lower() not in ("low", "")
+        and str(canonical.confidence or "").lower() in ("medium", "high")
     ):
-        pdn = float(canonical.probability_down)
-        pup = float(canonical.probability_up)
-        cdir = str(canonical.direction or "flat").lower()
-        if final_signal == "long" and cdir == "down" and pdn >= CANONICAL_OPPOSE_THRESHOLD:
+        pdn = canonical.probability_down
+        pup = canonical.probability_up
+        cdir = str(canonical.direction or "").lower()
+        if (final_signal == "long" and cdir == "down" and pdn is not None
+                and pdn >= CANONICAL_OPPOSE_THRESHOLD):
             prob_fails.append(f"canonical forward DOWN {pdn:.0%} vs long call")
-        elif final_signal == "short" and cdir == "up" and pup >= CANONICAL_OPPOSE_THRESHOLD:
+        elif (final_signal == "short" and cdir == "up" and pup is not None
+                and pup >= CANONICAL_OPPOSE_THRESHOLD):
             prob_fails.append(f"canonical forward UP {pup:.0%} vs short call")
 
     # 2c. Bayesian posterior strongly favors opposite outcome
@@ -1417,7 +1328,7 @@ def _validate_trade(
         if vol_regime is not None:
             _risk_mult = getattr(vol_regime, "risk_multiplier", 1.0) or 1.0
         stop_dist = _stop_distance(inp, risk_multiplier=_risk_mult)
-        if mc_eae is not None and stop_dist > 0:
+        if mc_eae is not None and stop_dist is not None and stop_dist > 0:
             # Regime-aware EAE threshold: breakout/expansion tolerate larger EAE
             eae_gate_mult = MC_EAE_GATE_DEFAULT
             if regime_label in ("breakout", "acceleration", "vol_expansion"):
@@ -1499,13 +1410,12 @@ def compute_call(
     )
 
     if canonical is None:
-        u = 1.0 / 3.0
         canonical = CanonicalForecast(
-            direction="flat",
-            probability_up=u,
-            probability_down=u,
-            probability_flat=u,
-            confidence="low",
+            direction=None,
+            probability_up=None,
+            probability_down=None,
+            probability_flat=None,
+            confidence=None,
             provenance="missing_canonical_fallback",
         )
 
@@ -1544,14 +1454,11 @@ def compute_call(
         inp.charm_direction if CHARM_VOTE_VALIDATION_STATUS == "APPROVED" else None
     )
     greek_b = greek_bias(inp.net_delta, _charm_vote_direction, inp.put_call_oi_ratio,
-                         dex_magnitude=inp.dex_magnitude or "moderate",
-                         charm_magnitude=inp.charm_magnitude or "moderate")
-    cross_sig = _cross_instrument_signal(inp)
-
-    # Broad tape: three independent basket/ETF reads (SPY, QQQ, IWM) — no cross-index veto.
-    spy_basket_vote = _index_basket_vote(inp.spy_weighted_push, inp.spy_chg_pct)
-    qqq_basket_vote = _index_basket_vote(inp.qqq_weighted_push, inp.qqq_chg_pct)
-    iwm_basket_vote = _index_basket_vote(inp.iwm_weighted_push, inp.iwm_chg_pct)
+                         dex_magnitude=inp.dex_magnitude,
+                         charm_magnitude=inp.charm_magnitude)
+    # No index-ETF votes (operator 2026-09-23: "remove the benchmark votes"). Every ticker used
+    # to get three extra tape votes from SPY/QQQ/IWM plus a conviction downgrade when those
+    # three disagreed; The Call now reads each ticker on its own data only.
 
     # Order flow direction from SignalInput (stack layer).
     # WITHHELD from the decision (mission TRUTH_V1): order_flow_direction is the sign of
@@ -1581,15 +1488,12 @@ def compute_call(
             regime_vote = 1 if nd >= 0 else (-1 if nd < 0 else 0)
 
     _mh_promoted_directional = False
-    _evt = (getattr(inp, "event_risk_level", None) or "none").strip().lower()
+    _evt = (getattr(inp, "event_risk_level", None) or "unknown").strip().lower()
 
     # Tape/structure votes (non-ML) — used for promote/veto alignment when mh_policy present.
     tape_stack_votes = {
         "micro":   1 if rules_signal == "long" else (-1 if rules_signal == "short" else 0),
         "Greeks":  1 if greek_b == "bullish" else (-1 if greek_b == "bearish" else 0),
-        "spy_basket": spy_basket_vote,
-        "qqq_basket": qqq_basket_vote,
-        "iwm_basket": iwm_basket_vote,
         "regime": regime_vote,
         "order_flow": of_vote,
     }
@@ -1667,10 +1571,6 @@ def compute_call(
         conviction = _conviction_from_canonical_forecast(
             canonical, pred_agrees=pred_agrees, final_signal=final_signal,
         )
-
-    # Cross-instrument divergence → downgrade (SPY/QQQ/IWM disagree)
-    if cross_sig in ("diverging", "strong_diverge") and final_signal != "wait":
-        conviction = _downgrade(conviction)
 
     # Issuer earnings (or similar) on the traded symbol — extra caution beyond macro "elevated"
     if _evt == "high" and final_signal != "wait":
@@ -1828,6 +1728,24 @@ def compute_call(
         risk_multiplier=_vol_risk_mult,
         governed_zone=zone,
     )
+    if final_signal in ("long", "short") and stop is None:
+        # No measured stop (no finite ATR): not a trade. Never a substituted stop.
+        final_signal = "wait"
+        conviction = "low"
+        confluence_detail = "no measured stop (no ATR) -- a directional plan needs one"
+        wait_blocker = {"reason": WAIT_BLOCKER_REASON_NO_STOP,
+                        "detail": "no finite ATR(1m) -- the stop is never guessed"}
+        trade_type = _classify_trade_type(micro_regime, zone, final_signal)
+    elif final_signal in ("long", "short") and target is None:
+        # No measured T1 (no similar-setups 5-bar move, or it pays < MIN_RR): not a trade.
+        # It used to become a flat 2R target (audit S-14).
+        final_signal = "wait"
+        conviction = "low"
+        entry = stop = target2 = None
+        confluence_detail = "no measured target -- the similar-setups 5-bar move is missing or below the minimum R"
+        wait_blocker = {"reason": WAIT_BLOCKER_REASON_NO_TARGET,
+                        "detail": "no measured target (5-bar average move missing or below minimum R)"}
+        trade_type = _classify_trade_type(micro_regime, zone, final_signal)
 
     # Reward/risk for T1 and T2
     rr1 = rr2 = None
@@ -1856,7 +1774,7 @@ def compute_call(
     # STACK ORDER 10: Position Sizing / Execution ───────────────────────────────
     # MUST run last, after Risk Engine (9). Produces r_units, execution_mode.
     # ══════════════════════════════════════════════════════════════════════════
-    _stop_dist_pts = abs(entry - stop) if entry and stop else _stop_distance(inp, risk_multiplier=_vol_risk_mult)
+    _stop_dist_pts = abs(entry - stop) if entry and stop else None   # the plan's own stop, or none
 
     # Determine opposing wall distance
     _opp_wall_dist = None
@@ -1973,9 +1891,10 @@ def compute_call(
     # ══════════════════════════════════════════════════════════════════════════
     # 10. CALL READINESS (V1 deterministic model)
     # ══════════════════════════════════════════════════════════════════════════
-    _readiness_score = 0
-    _readiness_call_state = "WAIT"
-    _readiness_forecast_state = "dormant"
+    # None = readiness not measured (C-05): no 0 / "WAIT" / "dormant" stand-ins.
+    _readiness_score = None
+    _readiness_call_state = None
+    _readiness_forecast_state = None
     _readiness_reasons: list = []
     _readiness_missing: list = []
     _readiness_component_scores: dict = {}
@@ -1990,15 +1909,15 @@ def compute_call(
                 _ad = abs(float(_d))
                 if _nearest_dist is None or _ad < _nearest_dist:
                     _nearest_dist = _ad
-        _level_prox = "near" if _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_NEAR_PTS else (
-            "mid" if _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_MID_PTS else "far"
-        )
+        # No measured level distance -> None (C-04: it used to read "far").
+        _level_prox = _level_proximity_label(_nearest_dist)
         _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _call_input = {
-            "regime": _regime_label or "unknown",
-            "trend": getattr(rules, "zone_label", "") or zone or "",
-            "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
-            "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
+            "regime": _regime_label,
+            # the rules engine's trend read only -- no MVP-zone stand-in (C-07)
+            "trend": getattr(rules, "zone_label", None),
+            "structure_confirmation": _tf.get("15m"),   # ~15m structure read
+            "structure_higher_tf": _tf.get("60m"),      # ~60m trend read
             "prediction_direction": _rdy_dir,
             "prediction_dominant_prob": _rdy_dom_p,
             "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
@@ -2008,23 +1927,22 @@ def compute_call(
             "breakout_ready": zone in ("breakout", "breakdown"),
         }
         _rdy = compute_call_readiness(_call_input)
-        _rs = _rdy.get("readiness_score")
-        if _rs is not None:
-            _readiness_score = _rs
-        _readiness_call_state = _rdy.get("call_state", "WAIT")
-        _readiness_forecast_state = _rdy.get("forecast_state", "dormant")
+        _readiness_score = _rdy.get("readiness_score")
+        _readiness_call_state = _rdy.get("call_state")
+        _readiness_forecast_state = _rdy.get("forecast_state")
         _readiness_reasons = _rdy.get("reasons", []) or []
         _readiness_missing = _rdy.get("missing_conditions", []) or []
         _readiness_component_scores = _rdy.get("component_scores", {}) or {}
     except Exception as _re:
         log.warning("call_readiness: %s", _re)
+        _readiness_missing = [f"Readiness withheld -- computation failed: {_re}"]
 
     # ══════════════════════════════════════════════════════════════════════════
     # 11. PUT READINESS (V1, bearish mirror)
     # ══════════════════════════════════════════════════════════════════════════
-    _put_score = 0
-    _put_state = "WAIT"
-    _put_forecast = "dormant"
+    _put_score = None
+    _put_state = None
+    _put_forecast = None
     _put_reasons: list = []
     _put_missing: list = []
     _put_component_scores: dict = {}
@@ -2032,20 +1950,15 @@ def compute_call(
         from setup_readiness import compute_put_readiness
         _tf = getattr(pred, "timeframe_reads", None) or {}
         _nearest_above, _nearest_below = mvp_nearest_distances_for_regime(mvp_features)
-        _put_nearest = None
-        if _nearest_above is not None:
-            _put_nearest = abs(float(_nearest_above))  # resistance above for puts
-        elif _nearest_below is not None:
-            _put_nearest = abs(float(_nearest_below))
-        _put_level_prox = "near" if _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_NEAR_PTS else (
-            "mid" if _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_MID_PTS else "far"
-        )
+        # resistance ABOVE only -- support below no longer stands in for it (C-06)
+        _put_nearest = abs(float(_nearest_above)) if _nearest_above is not None else None
+        _put_level_prox = _level_proximity_label(_put_nearest)
         _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _put_input = {
-            "regime": _regime_label or "unknown",
-            "trend": getattr(rules, "zone_label", "") or zone or "",
-            "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
-            "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
+            "regime": _regime_label,
+            "trend": getattr(rules, "zone_label", None),
+            "structure_confirmation": _tf.get("15m"),   # ~15m structure read
+            "structure_higher_tf": _tf.get("60m"),      # ~60m trend read
             "prediction_direction": _rdy_dir,
             "prediction_dominant_prob": _rdy_dom_p,
             "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
@@ -2055,16 +1968,15 @@ def compute_call(
             "breakdown_ready": zone == "breakdown",
         }
         _prdy = compute_put_readiness(_put_input)
-        _ps = _prdy.get("readiness_score")
-        if _ps is not None:
-            _put_score = _ps
-        _put_state = _prdy.get("call_state", "WAIT")
-        _put_forecast = _prdy.get("forecast_state", "dormant")
+        _put_score = _prdy.get("readiness_score")
+        _put_state = _prdy.get("call_state")
+        _put_forecast = _prdy.get("forecast_state")
         _put_reasons = _prdy.get("reasons", []) or []
         _put_missing = _prdy.get("missing_conditions", []) or []
         _put_component_scores = _prdy.get("component_scores", {}) or {}
     except Exception as _re:
         log.warning("put_readiness: %s", _re)
+        _put_missing = [f"Readiness withheld -- computation failed: {_re}"]
 
     return TheCall(
         signal=final_signal, conviction=conviction,

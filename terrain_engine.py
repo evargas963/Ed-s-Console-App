@@ -113,7 +113,12 @@ class TerrainSnapshot:
     #: (same total-GEX$ metric as pick_hvl_strike / pick_pin_and_strength). Total-gamma
     #: renders once as ABS GAMMA. Analytics `kl_hvl` remains a DIFFERENT book
     #: (net_gex_peak → "Net Γ peak").
+    #: Max pain is defined PER EXPIRY (standard: the settlement price minimising intrinsic
+    #: payout on ONE expiry's open interest). It used to be computed over the whole wide
+    #: chain -- every expiry pooled (research check, 2026-09-24). Now: the FRONT expiry only,
+    #: and max_pain_dte says which.
     max_pain: float | None = None
+    max_pain_dte: float | None = None
     call_charm_wall: float | None = None
     put_charm_wall: float | None = None
     key_delta_strike: float | None = None
@@ -237,60 +242,48 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
 def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
     """`[[strike, net_gex_1pct$, session_volume], …]` — the EXACT shape the panel renders.
 
-    RC-79. This used to hand back a map of raw parts which the endpoint reassembled into synthetic
-    contract dicts and pushed back through compute_exposures_by_strike(require_oi=True). Those
-    synthetics carried no open interest, so the engine rejected every one and the panel rendered
-    ZERO rows — worse than the stale archive it replaced. The finished numbers were already here;
-    they were being taken apart and recomputed from a shape that could not survive the trip.
+    THE one producer of GEX-by-strike rows (live panel AND the prior-day ghost -- server.py
+    carried a second copy, removed 2026-09-24).
 
-    The metric is net_gex_1pct with the same raw-gamma fallback the prior-day ghost uses, because
-    the two are drawn in the same frame: a live series on one scale beside a ghost on another is a
-    picture of a positioning shift that did not happen.
+    RC-79: the finished numbers are handed over as-is, never reassembled into synthetic
+    contracts and recomputed.
+
+    Audit T-01 / T-02 (2026-09-24, operator rule: no fallbacks):
+      * the bar is net GEX$ from a DOLLARIZED book on a strike whose gamma was VALID. It used
+        to fall back to total_gamma_raw_at_strike -- UNSIGNED raw gamma drawn on the signed
+        GEX$ axis. A strike with no valid gamma, or a book built without spot, has no bar.
+      * volume is the summed totalVolume of the strike's contracts that REPORTED one (0 is a
+        real zero); a strike where no contract reported volume is None ("—"), not 0.
     """
-    from math_exposure_core import bucket_metric, total_gamma_raw_at_strike
+    from math_exposure_core import exposures_have_dollar_gex, net_gex_dollars_at_strike
     from numeric_contract import float_finite_or_none, float_nonnegative_or_none
 
+    if not exposures or not exposures_have_dollar_gex(exposures):
+        return []
     vol_by_k: dict[float, float] = {}
     for ct in contracts or []:
         if not isinstance(ct, dict):
             continue
         sk = float_finite_or_none(ct.get("strikePrice"))
         v = float_nonnegative_or_none(ct.get("totalVolume"))
-        if sk is not None and v:
+        if sk is not None and v is not None:
             vol_by_k[sk] = vol_by_k.get(sk, 0.0) + v
 
+    vol_int = {k: int(v) for k, v in vol_by_k.items()}   # absent key = no volume reported
     rows: list[list] = []
-    for k, b in (exposures or {}).items():
+    for k, b in exposures.items():
         sk = float_finite_or_none(k)
         if sk is None:                      # a NaN strike must never become a rendered bar
             continue
-        # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): net_gex_1pct/
-        # call_gamma/put_gamma are pre-initialized to a real 0.0 by _strike_bucket, so
-        # bucket_metric/total_gamma_raw_at_strike below returned a real float (never None)
-        # even for a strike where every contract failed the OI gate -- Schwab's SPX feed
-        # returning openInterest=0/stuck for every contract drew a $0 bar here,
-        # indistinguishable from a strike genuinely measured at flat gamma (the exact panel
-        # this function feeds -- GEX by Strike -- was reproduced showing this live). has_oi
-        # (math_exposure_core.py's own canonical "did any contract clear the OI gate" signal)
-        # is checked before either metric read, one exclusion rule instead of two.
-        # isinstance-guarded the same way bucket_metric already is: some callers (the legacy
-        # per-strike WALLS map) still hand this a SimpleNamespace-shaped exposure with no
-        # has_oi field at all -- treated as "no OI signal", same as bucket_metric already
-        # treats a non-dict bucket as "no metric" two lines below.
-        if not (isinstance(b, dict) and b.get("has_oi")):
+        # has_oi: the strike's contracts cleared the OI gate (a no-OI strike drew a $0 bar,
+        # reproduced live on SPX 2026-09-14); has_valid_gamma: its 0.0 net GEX is not the
+        # bucket initialiser.
+        if not (isinstance(b, dict) and b.get("has_oi") and b.get("has_valid_gamma")):
             continue
-        g = bucket_metric(b, "net_gex_1pct")
-        if g is None:
-            g = total_gamma_raw_at_strike(b)
-        if g is None:
-            # RC-274: the same law as the NaN strike four lines up. With both the metric and the
-            # raw fallback absent, `float(g or 0.0)` drew a bar at zero — visually identical to a
-            # strike measured at flat gamma, on the surface used to read where dealers are short.
-            continue
-        gf = float_finite_or_none(g)
+        gf = float_finite_or_none(net_gex_dollars_at_strike(b))
         if gf is None:
             continue
-        rows.append([round(sk, 2), round(gf, 1), int(vol_by_k.get(sk, 0))])
+        rows.append([round(sk, 2), round(gf, 1), vol_int.get(sk)])
     rows.sort(key=lambda r: r[0])
     return rows
 
@@ -327,11 +320,15 @@ def compute_wall_value_area(
     """
     from math_exposure_core import bucket_metric_abs, exposures_have_dollar_gex
 
-    if wall is None or not exposures:
+    # SIDE GEX$ mass on a dollarized book, valid-gamma strikes only. It used to switch to RAW
+    # side gamma when the book had no spot -- still labelled "GEX mass" (audit T-05).
+    if wall is None or not exposures or not exposures_have_dollar_gex(exposures):
         return None
-    key = (f"{side}_gex_1pct" if exposures_have_dollar_gex(exposures) else f"{side}_gamma")
+    key = f"{side}_gex_1pct"
     mass: dict[float, float] = {}
     for k, b in exposures.items():
+        if not (isinstance(b, dict) and b.get("has_valid_gamma")):
+            continue
         v = bucket_metric_abs(b, key)
         if v is not None and v > 0:
             mass[float(k)] = float(v)
@@ -412,9 +409,11 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
         d = abs(strike - float(spot))
         if side not in ivs or d < ivs[side][0]:
             ivs[side] = (d, _sig)
-    if not ivs:
+    # Both legs or no implied move: one side's IV used to stand in for the call/put mean
+    # (audit T-06, 2026-09-24: no fallbacks).
+    if set(ivs) != {"CALL", "PUT"}:
         return None
-    sigma = sum(v[1] for v in ivs.values()) / len(ivs)   # ATM call/put mean (straddle IV)
+    sigma = (ivs["CALL"][1] + ivs["PUT"][1]) / 2.0   # ATM call/put mean (straddle IV)
     em = float(spot) * sigma * (1.0 / 252.0) ** 0.5
     return {
         "points": round(em, 4),
@@ -700,50 +699,26 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
 
-    strikes = key_level_strikes_with_gamma(exposures) or sorted(
-        float(k) for k in exposures
-    )
+    # key levels only on strikes with usable gamma -- no all-strikes fallback (T-03): with
+    # none the pickers return None instead of ranking initialiser zeros.
+    strikes = key_level_strikes_with_gamma(exposures)
     (call_wall, _cw_str), (put_wall, _pw_str) = pick_gamma_wall_strikes(exposures, strikes)
     hvp, lvp = pick_volatility_point_strikes(exposures, strikes)
     # RC-124/RC-292: max TOTAL gamma — the absolute-gamma concentration, full book.
     _abs_gamma_strike, _abs_gamma_strength = pick_pin_and_strength(exposures, strikes)
     # RC-413: pin_score GEX/OI from THIS same exposures book — never a second analytics book.
+    # T-04 (2026-09-24): OI from the ONE reader -- unknown (a contract that never reported
+    # OI) is None, never 0; the old loop added a missing leg as 0 and silently skipped
+    # unparsable ones.
+    from math_exposure_core import book_total_oi, strike_total_oi
+    _book_oi_total = book_total_oi(exposures)
     _abs_gamma_gex_dollars = None
     _abs_gamma_oi = None
-    _book_oi_total = None
-    _oi_acc = 0.0
-    _oi_seen = False
-    _abs_gamma_bucket = None
-    for _k, _v in exposures.items():
-        if not isinstance(_v, dict):
-            continue
-        _co, _po = _v.get("call_oi"), _v.get("put_oi")
-        if _co is not None or _po is not None:
-            try:
-                _oi_acc += (float(_co) if _co is not None else 0.0) + (
-                    float(_po) if _po is not None else 0.0
-                )
-                _oi_seen = True
-            except (TypeError, ValueError):
-                pass
-        if _abs_gamma_strike is not None:
-            try:
-                if float(_k) == float(_abs_gamma_strike):
-                    _abs_gamma_bucket = _v
-            except (TypeError, ValueError):
-                pass
-    if _oi_seen:
-        _book_oi_total = _oi_acc
-    if _abs_gamma_bucket is not None:
+    _abs_gamma_bucket = (exposures.get(float(_abs_gamma_strike))
+                         if _abs_gamma_strike is not None else None)
+    if isinstance(_abs_gamma_bucket, dict):
         _abs_gamma_gex_dollars = total_gex_dollars_at_strike(_abs_gamma_bucket)
-        _co, _po = _abs_gamma_bucket.get("call_oi"), _abs_gamma_bucket.get("put_oi")
-        if _co is not None or _po is not None:
-            try:
-                _abs_gamma_oi = (float(_co) if _co is not None else 0.0) + (
-                    float(_po) if _po is not None else 0.0
-                )
-            except (TypeError, ValueError):
-                _abs_gamma_oi = None
+        _abs_gamma_oi = strike_total_oi(_abs_gamma_bucket)
     # RC-128 (One Levels Faucet): the SSOT producer owns the delta walls too — same wide
     # chain, same exposures, one book. OI/vanna walls stay unowned and therefore BLANK on
     # every operator surface until this producer computes them.
@@ -767,6 +742,13 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     _exp_0dte, _ = compute_exposures_by_strike(
         contracts, spot=spot, require_oi=True, use_only_dte_max=0)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
+    # Max pain on the FRONT expiry only (same producer, dte filter to the nearest expiry).
+    _front_dte = min((d for d in (_dte_of(c) for c in contracts) if d is not None), default=None)
+    _front_max_pain = None
+    if _front_dte is not None:
+        _exp_front, _ = compute_exposures_by_strike(
+            contracts, spot=spot, require_oi=True, use_only_dte_max=_front_dte)
+        _front_max_pain = compute_max_pain(_exp_front)
     # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
     from math_volatility import compute_25d_risk_reversal
     _rr25 = compute_25d_risk_reversal(contracts)
@@ -844,7 +826,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # painted "dealer support" while spot sat at 735.13 below it).
         call_wall_state=wall_geometry_state(spot, call_wall, "call"),
         put_wall_state=wall_geometry_state(spot, put_wall, "put"),
-        max_pain=compute_max_pain(exposures),
+        max_pain=_front_max_pain,
+        max_pain_dte=_front_dte,
         call_charm_wall=call_charm_wall,
         put_charm_wall=put_charm_wall,
         # ExposureDiagnostics is a frozen dataclass; contracts_used is ALWAYS an int.

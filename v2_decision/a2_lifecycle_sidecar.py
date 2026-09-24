@@ -9,13 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from time_et import RTH_START_MINS
-
-from lifecycle_rule_core import (
-    LIFECYCLE_RULE_CORE_VERSION,
-    derive_stop_distance_pct,
-    derive_target_levels,
-)
+from lifecycle_rule_core import LIFECYCLE_RULE_CORE_VERSION
 from v2_decision.a2_eod_force_exit import evaluate_a2_eod_force_exit
 from v2_decision.a2_lifecycle_health import (
     build_a2_pin_risk_event_source,
@@ -161,6 +155,15 @@ def _session_type(ms: dict[str, Any]) -> str:
 
 
 def _build_projected_preview(ms: dict[str, Any]) -> dict[str, Any]:
+    """Pre-entry projection of THE CALL's plan (entry / stop / T1 / T2), carried verbatim.
+
+    ONE FAUCET (audit 2026-09-24): this used to RE-DERIVE the plan -- a VIX/clock percentage
+    stop (the fallback removed from The Call), a risk recomputed from it, T1/T2 snapped to
+    VWAP / gamma walls (The Call never snaps), and the 60c / 2R / T1+1R target fallbacks. The
+    contract's own fixture showed the two producers disagreeing (Call stop 498.5 vs preview
+    498.98; Call T1 503.0 vs preview 503.5). The preview now carries The Call's values; a
+    missing one is missing, never re-derived.
+    """
     inputs = _derivation_inputs(ms)
     none_fields = _projected_fields(
         stop=None,
@@ -181,9 +184,7 @@ def _build_projected_preview(ms: dict[str, Any]) -> dict[str, Any]:
         )
 
     missing_required = [
-        key
-        for key in ("spot", "mins_elapsed_since_open", "entry", "direction", "risk")
-        if inputs[key]["value"] is None
+        key for key in ("entry", "direction", "stop", "target") if inputs[key]["value"] is None
     ]
     if missing_required:
         for key in missing_required:
@@ -196,39 +197,18 @@ def _build_projected_preview(ms: dict[str, Any]) -> dict[str, Any]:
             gaps=[],
         )
 
-    direction = str(inputs["direction"]["value"])
-    entry = float(inputs["entry"]["value"])
-    risk = float(inputs["risk"]["value"])
-    stop_distance = derive_stop_distance_pct(
-        spot=float(inputs["spot"]["value"]),
-        vix_level=_float_or_none(inputs["vix_level"]["value"]),
-        mins_elapsed_since_open=float(inputs["mins_elapsed_since_open"]["value"]),
-        risk_multiplier=_float_or_none(inputs["risk_multiplier"]["value"]),
-    )
-    stop_offset = stop_distance.final_pct * float(inputs["spot"]["value"])
-    stop = entry - stop_offset if direction == "long" else entry + stop_offset
-    targets = derive_target_levels(
-        entry=entry,
-        direction=direction,
-        risk=risk,
-        avg5=_float_or_none(inputs["avg5"]["value"]),
-        avg15=_float_or_none(inputs["avg15"]["value"]),
-        avg60=_float_or_none(inputs["avg60"]["value"]),
-        structural_levels=inputs["structural_levels"]["value"] or [],
-    )
-
     # `available` is unreachable in v1 while EOD force-exit logic remains a
-    # named gap; required stop/target geometry can be projected, but the preview
-    # is still policy_pending until the EOD/time-stop blockers close.
+    # named gap; the plan geometry is The Call's, but the preview is still
+    # policy_pending until the EOD/time-stop blockers close.
     return _preview(
         status="policy_pending",
         projected_fields=_projected_fields(
-            stop=round(stop, 2),
-            target=targets.target,
-            target2=targets.target2,
+            stop=inputs["stop"]["value"],
+            target=inputs["target"]["value"],
+            target2=inputs["target2"]["value"],   # None when The Call has no T2
             max_hold_bars=None,
             eod_force_exit_time=None,
-            source="v2_compliant",
+            source="v1_approximation",   # schema's label for values carried from the live v1 Call
         ),
         derivation_inputs=inputs,
         timestamp=_decision_timestamp(ms),
@@ -284,93 +264,21 @@ def _projected_fields(
 
 
 def _derivation_inputs(ms: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    direction = _direction(ms)
-    spot = _first_number(ms, "spot")
-    vix_level = _first_number(ms, "vix_level", "vix")
-    entry = _first_number(ms, "entry", "rec_entry")
-    mins_elapsed = _mins_elapsed_since_open(ms)
-    # MarketState producer key is `vol_regime_risk_mult`
-    # (see market_state.py: ms.vol_regime_risk_mult). The legacy
-    # `risk_multiplier` alias is kept only as a defensive fallback; it is not
-    # written by any current producer.
-    risk_multiplier = _first_number(ms, "vol_regime_risk_mult", "risk_multiplier")
-    risk = _risk(ms=ms, entry=entry, direction=direction, spot=spot, mins_elapsed=mins_elapsed)
-    structural_levels = _structural_levels(ms, direction)
-
-    inputs: dict[str, dict[str, Any]] = {}
-
-    # Schwab-direct equity quote (spot) — upstream leaf is the equity
-    # quote ladder beginning at quotes.quote.lastPrice (see
-    # server.py::_extract_quote / market_context.py::_extract_quote).
-    inputs["spot"] = _schwab_leaf(
-        spot, detail="quotes.quote.lastPrice"
-    ) if spot is not None else _missing_leaf()
-
-    # Schwab-direct $VIX quote (see market_context.py: ctx.vix sourced from
-    # _extract_quote("$VIX", ...) — the same equity-quote ladder).
-    inputs["vix_level"] = _schwab_leaf(
-        vix_level, detail="quotes.$VIX.quote.lastPrice"
-    ) if vix_level is not None else _missing_leaf()
-
-    inputs["mins_elapsed_since_open"] = _input_leaf(
-        mins_elapsed,
-        "missing_from_ms_dict" if mins_elapsed is None else "schwab_native_normalized",
-    )
-    inputs["risk_multiplier"] = _input_leaf(
-        risk_multiplier,
-        "missing_from_ms_dict" if risk_multiplier is None else "schwab_native_normalized",
-    )
-    inputs["entry"] = _input_leaf(
-        entry,
-        "missing_from_ms_dict" if entry is None else "schwab_native_normalized",
-    )
-    inputs["direction"] = _input_leaf(
-        direction,
-        "missing_from_ms_dict" if direction is None else "schwab_native_normalized",
-    )
-    inputs["risk"] = _input_leaf(
-        risk,
-        "missing_from_ms_dict" if risk is None else "schwab_native_normalized",
-    )
-    for key, source_keys in (
-        ("avg5", ("avg_5c_pts", "avg5")),
-        ("avg15", ("avg_15c_pts", "avg15")),
-        ("avg60", ("avg_60c_pts", "avg60")),
-    ):
-        value = _first_number(ms, *source_keys)
-        inputs[key] = _input_leaf(
-            value,
-            "missing_from_ms_dict" if value is None else "schwab_native_normalized",
-        )
-    inputs["structural_levels"] = _input_leaf(
-        structural_levels,
-        "missing_from_ms_dict" if structural_levels is None else "schwab_native_normalized",
-    )
+    """The Call's plan fields as carried on the state dict (MarketState.entry / stop /
+    target / target2 are set from TheCall) -- no aliases, no re-derivation."""
+    inputs: dict[str, dict[str, Any]] = {
+        "direction": _call_leaf(_direction(ms), "TheCall.signal (call_signal)"),
+    }
+    for key in ("entry", "stop", "target", "target2"):
+        inputs[key] = _call_leaf(_first_number(ms, key), f"TheCall.{key}")
     return inputs
 
 
-def _input_leaf(value: Any, source_classification: str) -> dict[str, Any]:
-    if source_classification == "missing_from_ms_dict":
-        return {
-            "value": None,
-            "source": "not_implemented",
-            "source_classification": source_classification,
-        }
-    return {
-        "value": value,
-        "source": "v1_approximation",
-        "source_classification": source_classification,
-    }
-
-
-def _schwab_leaf(value: Any, *, detail: str) -> dict[str, Any]:
-    """Provenance leaf for inputs read directly from a Schwab wire field."""
-    return {
-        "value": value,
-        "source": "v2_compliant",
-        "source_classification": "schwab_native_normalized",
-        "detail": detail,
-    }
+def _call_leaf(value: Any, detail: str) -> dict[str, Any]:
+    if value is None:
+        return _missing_leaf()
+    return {"value": value, "source": "v1_approximation", "source_classification": "the_call_plan",
+            "detail": detail}
 
 
 def _missing_leaf() -> dict[str, Any]:
@@ -405,61 +313,10 @@ def _has_entry_candidate(ms: dict[str, Any], inputs: dict[str, dict[str, Any]]) 
 
 
 def _direction(ms: dict[str, Any]) -> str | None:
-    raw = ms.get("call_signal") or ms.get("final_signal") or ms.get("direction")
-    s = str(raw or "").strip().lower()
-    if s in ("long", "up", "bull", "bullish", "call"):
-        return "long"
-    if s in ("short", "down", "bear", "bearish", "put"):
-        return "short"
-    return None
-
-
-def _mins_elapsed_since_open(ms: dict[str, Any]) -> float | None:
-    explicit = _first_number(ms, "mins_elapsed_since_open", "minutes_since_open")
-    if explicit is not None:
-        return max(0.0, explicit)
-    et_hour = _first_number(ms, "et_hour")
-    et_minute = _first_number(ms, "et_minute")
-    if et_hour is None or et_minute is None:
-        return None
-    return max(0.0, et_hour * 60 + et_minute - RTH_START_MINS)
-
-
-def _risk(
-    *,
-    ms: dict[str, Any],
-    entry: float | None,
-    direction: str | None,
-    spot: float | None,
-    mins_elapsed: float | None,
-) -> float | None:
-    existing_stop = _first_number(ms, "stop", "rec_stop")
-    if entry is not None and existing_stop is not None:
-        risk = abs(entry - existing_stop)
-        return round(risk, 4) if risk > 0 else None
-    if entry is None or direction not in ("long", "short") or spot is None or mins_elapsed is None:
-        return None
-    stop_distance = derive_stop_distance_pct(
-        spot=spot,
-        vix_level=_first_number(ms, "vix_level", "vix"),
-        mins_elapsed_since_open=mins_elapsed,
-        risk_multiplier=_first_number(ms, "vol_regime_risk_mult", "risk_multiplier"),
-    )
-    risk = stop_distance.final_pct * spot
-    return round(risk, 4) if risk > 0 else None
-
-
-def _structural_levels(ms: dict[str, Any], direction: str | None) -> list[float]:
-    spot = _first_number(ms, "spot")
-    if spot is None:
-        return []
-    if direction == "long":
-        keys = ("vwap", "call_gamma_wall", "kl_call_gamma_wall")
-        return [value for key in keys if (value := _first_number(ms, key)) is not None and value > spot]
-    if direction == "short":
-        keys = ("vwap", "put_gamma_wall", "kl_put_gamma_wall")
-        return [value for key in keys if (value := _first_number(ms, key)) is not None and value < spot]
-    return []
+    """The Call's signal only (call_signal) -- final_signal / direction aliases no longer
+    stand in for it."""
+    s = str(ms.get("call_signal") or "").strip().lower()
+    return s if s in ("long", "short") else None
 
 
 def _selected_strike(ms: dict[str, Any], winner: dict[str, Any]) -> float | None:

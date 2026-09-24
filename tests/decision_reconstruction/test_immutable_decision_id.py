@@ -23,7 +23,7 @@ _PRODUCTION_ROUTE = "server._fetch_state"
 def test_decision_id_is_uuid_hex_and_unique(release_ready):
     from live_decision_bundle import stamp_decision_bundle
 
-    base = {"ticker": "SPY", "spot": 500.0, "call_signal": "wait", "validation_summary": "ok"}
+    base = {"ticker": "SPY", "spot": 500.0, "prior_close": 500.0, "call_signal": "wait", "validation_summary": "ok"}
     a = stamp_decision_bundle(dict(base), route=_PRODUCTION_ROUTE)["decision_id"]
     b = stamp_decision_bundle(dict(base), route=_PRODUCTION_ROUTE)["decision_id"]
     assert a and b and a != b
@@ -41,7 +41,7 @@ def test_missing_release_blocks_decision_emission(monkeypatch):
     from live_decision_bundle import stamp_decision_bundle
 
     ms = stamp_decision_bundle(
-        {"ticker": "SPY", "spot": 500.0, "call_signal": "wait", "validation_summary": "ok"},
+        {"ticker": "SPY", "spot": 500.0, "prior_close": 500.0, "call_signal": "wait", "validation_summary": "ok"},
         route="server._fetch_state",
     )
     assert ms.get("decision_generation_skipped") is True
@@ -56,7 +56,7 @@ def test_persist_and_retrieve_reconstruction(tmp_path, release_ready):
     db_path = tmp_path / "decisions.db"
     ms = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "call_conviction": "low",
         "dominant_dir": "flat",
@@ -85,7 +85,7 @@ def test_blind_reconstruction_single_query(tmp_path, release_ready):
     db_path = tmp_path / "blind.db"
     ms = {
         "ticker": "QQQ",
-        "spot": 400.0,
+        "spot": 400.0, "prior_close": 400.0,
         "call_signal": "long",
         "call_conviction": "high",
         "dominant_dir": "up",
@@ -128,7 +128,7 @@ def test_api_decision_endpoint(tmp_path, release_ready, monkeypatch):
 
     ms = {
         "ticker": "SPY",
-        "spot": 510.0,
+        "spot": 510.0, "prior_close": 510.0,
         "call_signal": "wait",
         "mhap_rows": [],
         "fusion_by_horizon": {},

@@ -29,14 +29,14 @@ def test_stamp_decision_bundle_monotonic_and_spot_same_generation(monkeypatch):
     initialize_release_at_startup(force=True)
     from live_decision_bundle import stamp_decision_bundle
 
-    d = {"ticker": "SPY", "spot": 100.0, "zone": "test_zone", "vwap_side": "above",
+    d = {"ticker": "SPY", "spot": 100.0, "prior_close": 100.0, "zone": "test_zone", "vwap_side": "above",
          "call_signal": "wait", "validation_summary": "issue20_23_monotonic"}
     stamp_decision_bundle(d, route="server._fetch_state")
     g0 = d["decision_generation_id"]
     ts0 = d["decision_timestamp_utc"]
     assert isinstance(g0, int) and g0 > 0
     assert isinstance(ts0, float) and ts0 > 0
-    d2 = {"ticker": "SPY", "spot": 101.0, "zone": "other",
+    d2 = {"ticker": "SPY", "spot": 101.0, "prior_close": 101.0, "zone": "other",
           "call_signal": "wait", "validation_summary": "issue20_23_monotonic_2"}
     stamp_decision_bundle(d2, route="server._fetch_state")
     assert d2["decision_generation_id"] > g0
@@ -474,7 +474,7 @@ def test_tick_trigger_vwap_side_flip_at_stream_spot():
     from live_decision_bundle import tick_triggers_coherent_refresh
 
     md = {
-        "spot": 99.0,
+        "spot": 99.0, "prior_close": 99.0,
         "vwap": 100.0,
         "vwap_side": "below",
         "zone": "pin_neutral",
@@ -495,7 +495,7 @@ def test_tick_trigger_nearest_distance_bucket_change():
     from live_decision_bundle import tick_triggers_coherent_refresh
 
     md = {
-        "spot": 100.0,
+        "spot": 100.0, "prior_close": 100.0,
         "vwap": 95.0,
         "vwap_side": "above",
         "zone": "pin_neutral",
@@ -516,7 +516,7 @@ def test_tick_trigger_nearest_wall_identity_change():
     from live_decision_bundle import tick_triggers_coherent_refresh
 
     md = {
-        "spot": 100.0,
+        "spot": 100.0, "prior_close": 100.0,
         "vwap": 50.0,
         "vwap_side": "above",
         "zone": "pin_neutral",

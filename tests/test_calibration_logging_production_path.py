@@ -28,15 +28,11 @@ _SPY_KEY = ticker_storage_key("SPY")
 
 def _v2_for_output(out, ticker: str = "SPY") -> dict:
     canonical = out.canonical_forecast
-    prob = max(
-        float(canonical.probability_up),
-        float(canonical.probability_down),
-        float(canonical.probability_flat),
-    )
+    prob = canonical.dominant_probability()   # None when there is no forecast (audit C-01)
     return build_module_a_a1_decision(
         {
             "ticker": ticker,
-            "fusion_available": True,
+            "fusion_available": prob is not None,
             "fusion_dominant_direction": canonical.direction,
             "fusion_dominant_prob": prob,
             "execution_mode": getattr(out.call, "execution_mode", None),

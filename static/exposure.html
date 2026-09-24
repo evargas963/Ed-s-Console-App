@@ -414,9 +414,9 @@ function draw() {
       // Canvas texts historically placed themselves independently, so clustered levels
       // stacked letters on the same pixels. Each frame keeps per-column lane registries;
       // a text CLAIMS its wanted y and is shifted down (up at the bottom edge) until it
-      // no longer intersects a claimed lane. 1D per column: left banners share one
-      // registry, bubble labels another, so unrelated columns never displace each other.
-      const _laneL = [], _laneB = [];
+      // no longer intersects a claimed lane. 1D per column (left banners; bubbles carry no
+      // text since the client-computed $ label was removed, 2026-09-23).
+      const _laneL = [];
       function _claimLane(reg, want, h) {
         let yv = want;
         for (let guard = 0; guard < 40; guard++) {
@@ -436,7 +436,6 @@ function draw() {
         return yv;
       }
       const laneL = (want, h = 14) => _claimLane(_laneL, want, h);
-      const laneB = (want, h = 12) => _claimLane(_laneB, want, h);
       window.__edExpoLanes = { claim: _claimLane };  // behavioral-test handle (RC-355)
   const dpr = window.devicePixelRatio || 1;
   const W = wrap.clientWidth, H = wrap.clientHeight || 560;
@@ -635,16 +634,9 @@ function draw() {
       g.beginPath(); g.arc(px, y(strike), rad, 0, 6.283); g.fill();
       g.strokeStyle = palRgba(col, 0.9);
       g.beginPath(); g.arc(px, y(strike), rad, 0, 6.283); g.stroke();
-      /* # ui-mockup-ok: RC-208 — every bubble that makes the tape is a notable print, so
-         every one carries its PERSISTENT $ figure beside it (decode: "$30.51M red,
-         $22.83M / $38.32M green" — number next to the dot, readable at a glance) */
-      if (rad >= 4 && spot != null) {
-        g.fillStyle = PAL.tx;
-        g.font = "800 9px 'IBM Plex Mono', monospace";
-        const lbl = '$' + fmtBig(dvol * 100 * spot);
-        g.fillText(lbl, px + rad + 3, laneB(y(strike) + 3));  // # ui-mockup-ok: RC-355 lane
-        labeledBubbles++;
-      }
+      /* No $ figure beside the dot (audit P0, 2026-09-23): it was computed HERE as
+         volume x 100 x the CURRENT spot -- a money value the server never served, priced at
+         today's spot even for past prints. The browser computes nothing (ONE FAUCET). */
       drawnBubbles++;
     };
     for (const bb of flowBubbles) {
@@ -760,9 +752,14 @@ function drawLadder() {
     `<div data-k="${esc(String(r[0]))}" style="cursor:pointer;${selStrike === r[0] ? 'background:var(--panel2);border-radius:5px;' : ''}">` +
     `L${i} <b style="font-weight:600;${i === 0 ? 'color:var(--accent);' : ''}">${esc(fmt(r[0], 0))}</b> ` +
     `<span style="color:${r[1] >= 0 ? 'var(--amber)' : 'var(--vio)'}">${esc(fmtBig(r[1]))}</span></div>`).join('');
-  const net = rows.reduce((a, r) => a + r[1], 0);
+  // The SERVED full-chain dealer gamma at spot (terrain.net_gex_at_spot) -- it used to be summed
+  // HERE over whichever strike rows were in scope (audit P0, 2026-09-23: the browser computes
+  // nothing). Absent -> shown absent.
+  const net = terrain && terrain.net_gex_at_spot != null && isFinite(Number(terrain.net_gex_at_spot))
+    ? Number(terrain.net_gex_at_spot) : null;
   $('hedge').innerHTML = `spot +1% &Rightarrow; dealers trade &asymp; ` +
-    `<b style="font-weight:600; color:${net >= 0 ? 'var(--amber)' : 'var(--vio)'}">${esc(fmtBig(-net))}</b>` +
+    (net == null ? '<b style="font-weight:600;">—</b>'
+      : `<b style="font-weight:600; color:${net >= 0 ? 'var(--amber)' : 'var(--vio)'}">${esc(fmtBig(-net))}</b>`) +
     `<div class="lz">mechanical hedge flow — never a forecast</div>`;
   const flips = rows.filter((r, i) => i > 0 && rows[i - 1][1] * r[1] < 0).length;
   // # ui-mockup-ok: RC-199 real keys; absence = fields not served, never a vote gate.

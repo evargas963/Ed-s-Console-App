@@ -1559,47 +1559,6 @@ class EdDB:
     #: ticker by the caller and degrades to in-memory-only-this-session on failure).
     GAMMA_LAST_VALID_DB_TIMEOUT_SEC = 3.0
 
-    def load_gamma_surface_last_valid(self, ticker: str) -> dict[tuple[float, str], dict]:
-        """Every persisted last-known-valid gamma-surface cell for `ticker` -- the durable
-        backing for the Options/Gamma heatmap's in-memory last-valid cache, read once per
-        ticker to rehydrate it after a process restart. Raises on any real failure; the caller
-        decides how to log/record it (server.py's own _LAST_VALID_GEX_CELLS_ERRORS)."""
-        tk = ticker_storage_key(ticker)
-        with self._connect(timeout_sec=self.GAMMA_LAST_VALID_DB_TIMEOUT_SEC) as conn:
-            rows = conn.execute(
-                "SELECT strike, expiry, gex, dex, vanna, captured_ts_utc "
-                "FROM gamma_surface_last_valid WHERE ticker=?",
-                (tk,),
-            ).fetchall()
-        return {
-            (float(r["strike"]), str(r["expiry"])): {
-                "gex": r["gex"], "dex": r["dex"], "vanna": r["vanna"],
-                "captured_ts_utc": float(r["captured_ts_utc"]),
-            }
-            for r in rows
-        }
-
-    def persist_gamma_surface_last_valid(self, *, ticker: str, cells: list[dict]) -> None:
-        """Durably upsert the CURRENTLY-valid gamma-surface cells only -- one batched
-        transaction, never one write per cell. Raises on any real failure; the caller decides
-        how to log/record it. See GAMMA_LAST_VALID_DB_TIMEOUT_SEC's own note on why this uses a
-        short timeout rather than the class's normal 30s connection default."""
-        tk = ticker_storage_key(ticker)
-        if not tk or not cells:
-            return
-        rows = [
-            (tk, float(c["strike"]), str(c["expiry"]), c.get("gex"), c.get("dex"), c.get("vanna"),
-             float(c["captured_ts_utc"]))
-            for c in cells
-        ]
-        with self._connect(timeout_sec=self.GAMMA_LAST_VALID_DB_TIMEOUT_SEC) as conn:
-            conn.executemany(
-                "INSERT OR REPLACE INTO gamma_surface_last_valid "
-                "(ticker, strike, expiry, gex, dex, vanna, captured_ts_utc) VALUES (?,?,?,?,?,?,?)",
-                rows,
-            )
-            conn.commit()
-
     def _ensure_logging_universe_table(self):
         """Issue 22 — durable background-logging enrollment (additive schema)."""
         with self._connect() as conn:
@@ -1714,41 +1673,6 @@ class EdDB:
                     "SELECT COUNT(DISTINCT ticker) FROM confluence_quote_ticks"
                 ).fetchone()[0]
             return {"total_rows": int(total), "distinct_tickers": int(tickers)}
-
-        return _do()
-
-    def fetch_latest_confluence_quote_chg(
-        self, tickers: list[str]
-    ) -> dict[str, Optional[float]]:
-        """Latest ``chg_pct`` per symbol from ``confluence_quote_ticks`` (thin quote store)."""
-        if not tickers:
-            return {}
-        self._ensure_confluence_quote_table()
-        want = [str(t).upper().strip() for t in tickers if str(t).strip()]
-        if not want:
-            return {}
-        out: dict[str, Optional[float]] = {t: None for t in want}
-
-        def _do() -> dict[str, Optional[float]]:
-            with self._connect() as conn:
-                for sym in want:
-                    row = conn.execute(
-                        """
-                        SELECT chg_pct FROM confluence_quote_ticks
-                        WHERE ticker = ? COLLATE NOCASE
-                        ORDER BY ts_utc DESC LIMIT 1
-                        """,
-                        (sym,),
-                    ).fetchone()
-                    if row is None or row[0] is None:
-                        continue
-                    try:
-                        v = float(row[0])
-                        if math.isfinite(v):
-                            out[sym] = v
-                    except (TypeError, ValueError):
-                        pass
-            return out
 
         return _do()
 
@@ -4894,7 +4818,7 @@ class EdDB:
     ACCURACY_RTH_END_MIN: int = _RTH_END_MINS_AUTH
 
     def compute_accuracy(self, ticker: str, timeframe: str,
-                          model_version: str = "statistical_v1",
+                          model_version: str,
                           *, rth_only: bool = False) -> dict:
         """
         Compute prediction accuracy for a given model version.
@@ -4917,9 +4841,12 @@ class EdDB:
         scope = "rth_0930_1600_et" if rth_only else "all_hours"
         rth_clause = ""
         if rth_only:
+            # A row with no et_minute cannot be placed inside RTH -- it used to be read as :00
+            # (COALESCE(et_minute, 0)) and counted or dropped by that guess (no fallbacks).
             rth_clause = (
-                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) >= {self.ACCURACY_RTH_START_MIN}"
-                f" AND (et_hour * 60 + COALESCE(et_minute, 0)) < {self.ACCURACY_RTH_END_MIN} "
+                " AND et_minute IS NOT NULL"
+                f" AND (et_hour * 60 + et_minute) >= {self.ACCURACY_RTH_START_MIN}"
+                f" AND (et_hour * 60 + et_minute) < {self.ACCURACY_RTH_END_MIN} "
             )
 
         for horizon in PRIMARY_DECISION_HORIZONS:

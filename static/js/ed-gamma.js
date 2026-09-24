@@ -275,7 +275,7 @@
   // changes and no new request is ever sent at all (not merely a wrong ownerKey string --
   // a silently swallowed clear). `_pendingTicker` is the single source of truth every
   // other call site in this module already keys off; establishing calls now match it.
-  function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || 'SPY'); }
+  function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || ''); }
 
   // ---- render the grid from a canonical surface payload (no math) ----
   function renderSurface(host, surface) {
@@ -331,7 +331,7 @@
           '</div>'
         : '';
       host.innerHTML = b + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
-        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no banked wide chain for this symbol') +
+        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no live surface for this symbol') +
         '</div>' + srcNote + '</div>';
       return;
     }
@@ -647,6 +647,9 @@
           : liveState === 'daemon_unavailable' ? 'DAEMON UNAVAILABLE: the capture daemon is unreachable, so this request cannot even be attempted yet -- most recent valid computed value shown'
           : liveState === 'rejected' ? ('REJECTED: the vendor refused this contract\'s subscription' +
               (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
+          : liveState === 'not_admitted' ? ('NOT STREAMED: ' +
+              ((cellState.call || {}).not_admitted_reason || (cellState.put || {}).not_admitted_reason) +
+              ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
           : '';
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
@@ -836,29 +839,23 @@
       // collecting this symbol". Only the former may promise a next refresh.
       var onBoard = surface.on_board === true;
       var notCollecting = requested && !onBoard;
-      // WHAT is on screen (identity, server-stamped): a banked reference from a PRIOR session is named
-      // as such — a 2026-09-09 morning chain viewed on 2026-09-10 is never dressed as today's structure.
-      var prior = surface.prior_session === true;
-      var refLabel = !live ? ((prior ? 'PRIOR SESSION REFERENCE' : 'MORNING REFERENCE') +
-        (surface.et_date ? ' · ' + escapeHtml(surface.et_date) : '')) : '';
+      // No reference surface exists (operator rule 2026-09-23: no fallbacks) -- a surface that is
+      // not live is simply absent; the state says why.
       // WHERE the live surface stands (state)
       var stateLabel = warming ? 'LIVE SURFACE WARMING'
         : notCollecting ? 'NOT COLLECTING'
         : requested ? 'LIVE SURFACE REQUESTED'
         : (live ? 'STALE' : '');
-      // identity class first (a reference surface always reads as REFERENCE), live-state class beside it
-      var cls = (!live ? 'ref ' : '') + (warming ? 'warming'
+      var cls = warming ? 'warming'
         : (requested && !notCollecting) ? 'warming'
-        : (live ? 'stale' : ''));
+        : (live ? 'stale' : '');
       // CONCISE primary line; the full reason is disclosed in the tooltip (title) — never a paragraph
       // that consumes the analytical panel.
-      var brief = !live
-        ? (prior ? 'banked chain from a prior session — not this session, not intraday' : 'banked morning chain — not intraday')
-        : 'live surface is stale';
+      var brief = !live ? 'no live surface for this symbol' : 'live surface is stale';
       var detail = surface.degraded
         || (notCollecting ? 'live terrain collection is not currently active for this symbol'
           : requested ? 'awaiting next eligible terrain refresh' : brief);
-      var text = [refLabel, stateLabel].filter(Boolean).join(' — ') + ' · ' + brief +
+      var text = [stateLabel].filter(Boolean).join(' — ') + (stateLabel ? ' · ' : '') + brief +
         (notCollecting ? ' · collection is not currently active for this symbol' : '');
       out += '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' + text +
         '</span><span class="hb-more" aria-label="details">details</span></div>';
@@ -889,7 +886,7 @@
   // independently-derived windowing calculation that could drift from the real one.
   function _visibleCellCoverage() {
     var host = document.getElementById('heatBody');
-    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, unavailable: 0 };
+    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, not_admitted: 0, unavailable: 0 };
     var cells = host ? host.querySelectorAll('.hcell[data-cell-state]') : [];
     for (var i = 0; i < cells.length; i++) {
       var st = cells[i].getAttribute('data-cell-state');
@@ -900,7 +897,7 @@
       total_visible_cells: total,
       live: counts.live, partial: counts.partial, stale: counts.stale,
       pending: counts.pending, daemon_unavailable: counts.daemon_unavailable,
-      rejected: counts.rejected, unavailable: counts.unavailable,
+      rejected: counts.rejected, not_admitted: counts.not_admitted, unavailable: counts.unavailable,
       live_pct: total ? Math.round(1000 * counts.live / total) / 10 : 0,
       meets_live_requirement: total > 0 && counts.live === total,
     };
@@ -931,7 +928,7 @@
       liveWord = 'STREAMING·' + cov.live_pct.toFixed(0) + '%';
     }
     var srcLabel = surface.source === 'terrain_live_cache' ? (liveWord + (surface.complete === false ? '·window' : ''))
-      : surface.source === 'banked_morning_reference' ? 'REF·morning' : (surface.source || '');
+      : (surface.source || '');
     var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
     var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
     var el = document.getElementById('heatScope');
@@ -946,7 +943,8 @@
       el.title = cov.total_visible_cells
         ? ('visible coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
            ' stale, ' + cov.pending + ' pending, ' + cov.daemon_unavailable + ' daemon-unavailable, ' +
-           cov.rejected + ' rejected, ' + cov.unavailable + ' unavailable of ' +
+           cov.rejected + ' rejected, ' + cov.not_admitted + ' outside the stream budget, ' +
+           cov.unavailable + ' unavailable of ' +
            cov.total_visible_cells + ' visible cells (' + cov.live_pct + '% live)')
         : ((surface.coverage && surface.coverage.note) || '');
     }
@@ -977,7 +975,7 @@
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
     var s = (window.EdShell && window.EdShell.getState()) || {};
-    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || 'SPY') === ticker;
+    return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || '') === ticker;
   }
   // Only the actual network fetch is coalesced. The "leaving the heatmap" cleanup below is
   // synchronous and state-authority-visible (it releases streamed-contract demand) -- it must
@@ -1021,7 +1019,7 @@
       _pendingTicker = null;
       return;
     }
-    var nextTicker = st.ticker || 'SPY';
+    var nextTicker = st.ticker || '';
     if (_pendingTicker && _pendingTicker !== nextTicker
         && window.EdStream && window.EdStream.setAdditionalContracts) {
       // Switching ticker WITHIN the heatmap view: the ticker just left is no longer being

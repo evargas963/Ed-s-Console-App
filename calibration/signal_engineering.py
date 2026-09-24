@@ -230,7 +230,7 @@ def failure_identification(rows: list[dict[str, Any]]) -> dict[str, Any]:
     cj0 = _lj(rows[0].get("canonical_json")) if rows else {}
     return {
         "why_canonical_defaults_long": [
-            "_effective_directional_signal uses canonical triplet; tie-break order is p_up >= p_dn >= p_fl → 'long' when equal or up wins.",
+            "_effective_directional_signal uses the canonical triplet of TRADABLE canonicals only (non-tradable rows carry no forecast); tie-break order is p_up >= p_dn >= p_fl.",
             "Stub fusion + canonical stack produce max class 'up' with small positive spread over 'down' in logged JSON.",
         ],
         "why_short_signals_absent_in_log": [

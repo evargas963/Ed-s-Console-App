@@ -59,6 +59,7 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
     ok = L.record_from_level_one_equity(
         "MARKNEVER",
         {"key": "MARKNEVER", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
+        received_ts=time.time(),
     )
     assert ok is False
     assert L.get_quote("MARKNEVER") is None
@@ -72,10 +73,12 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     assert L.record_from_level_one_equity(
         "KEEPLAST",
         {"key": "KEEPLAST", "LAST_PRICE": 50.0, "MARK": 50.2, "BID_PRICE": 49.9, "ASK_PRICE": 50.1},
+        received_ts=time.time(),
     )
     assert L.record_from_level_one_equity(
         "KEEPLAST",
         {"key": "KEEPLAST", "MARK": 99.99, "BID_PRICE": 99.9, "ASK_PRICE": 100.1},
+        received_ts=time.time(),
     )
     row = L.get_quote("KEEPLAST")
     assert row is not None
@@ -84,21 +87,23 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     L._by_ticker.pop("KEEPLAST", None)
 
 
-def test_stale_plane_last_price_beats_mark_but_is_labelled_stale(monkeypatch) -> None:
+def test_a_stale_streamed_last_price_is_withheld_not_served(monkeypatch) -> None:
+    """Operator rule 2026-09-23: a stale streamed LAST_PRICE is not current spot and is not
+    served labelled "stale" either -- spot is UNAVAILABLE until the stream delivers."""
     tk = "STALELAST"
     L._by_ticker[tk] = {
         "spot": 700.42,
         "server_received_ts": time.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0),
         "exchange_quote_ts": 1_800_000_000.0,
         "quote_source_detail": {"spot": "LAST_PRICE"},
+        "quote_ingestion": "schwab_streaming_level_one",
     }
     try:
         monkeypatch.setattr(server, "get_client", lambda: object())
         monkeypatch.setattr(server, "safe_get_quote", lambda _c, _tk, **_k: _no_last_price_quote(_tk))
         spot, source, _ts = server.resolve_spot(tk)
-        assert spot == 700.42
-        assert source == server.SPOT_SOURCE_PLANE
-        assert server.current_spot_state(source, tk) == "stale"
+        assert spot is None and source == "none"
+        assert server.current_spot_state(source, tk) == "unavailable"
     finally:
         L._by_ticker.pop(tk, None)
 

@@ -20,7 +20,7 @@
   function num(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isRightNow() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'right-now'; }
-  function ticker() { return (st().ticker || 'SPY'); }
+  function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('tdBody'); }
   function stillRightNow(tk) { return isRightNow() && ticker() === tk; }
 
@@ -122,7 +122,9 @@
     var rows = [
       ['Posture', d.posture || '—'], ['Confidence', d.confidence || '—'],
       ['Call wall', num(d.call_wall)], ['Put wall', num(d.put_wall)],
-      ['Gamma flip', num(d.gamma_flip)], ['Max pain', num(d.max_pain)],
+      ['Gamma flip', num(d.gamma_flip)],
+      // max pain is per expiry: label it with the expiry the server computed it on (front)
+      ['Max pain' + (d.max_pain_dte != null ? ' (' + d.max_pain_dte + 'DTE)' : ''), num(d.max_pain)],
       ['Net GEX @ spot', d.net_gex_at_spot != null ? (Number(d.net_gex_at_spot) / 1e6).toFixed(1) + 'M' : '—'],
     ];
     return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows, d.confidence || null,
@@ -441,7 +443,8 @@
       // contract for spot ("every other surface carries the values out of the same snapshot");
       // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
       // instead of silently substituting a second source.
-      var spot = levelsD ? Number(levelsD.spot) : NaN;
+      // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+      var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
         '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +

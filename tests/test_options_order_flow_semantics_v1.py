@@ -11,12 +11,13 @@ computation for options.
 from __future__ import annotations
 
 import asyncio
-import threading
 import time
+
+import pytest
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
-from stream_spine import CaptureWriter, book_msg, options_quote_msg
+from stream_spine import book_msg, options_quote_msg
 
 _SPY_CONTRACT = "SPY   260820C00767000"
 _QQQ_CONTRACT = "QQQ   260820C00450000"
@@ -37,12 +38,32 @@ _REAL_OPTIONS_BOOK_CONTENT = {
 }
 
 
+@pytest.fixture
+def spot_authority(monkeypatch):
+    """The live path ranks additional contracts by their underlying's SPOT from
+    resolve_spot (no spot, not admitted). These tests serve a real-looking spot per
+    underlying through that one authority instead of bypassing the ranking."""
+    import server
+    spots = {"SPY": 767.0, "QQQ": 450.0}
+    monkeypatch.setattr(server, "resolve_spot",
+                        lambda tk, **_k: (spots.get(tk), server.SPOT_SOURCE_PLANE, 1.0)
+                        if tk in spots else (None, "none", None))
+    # the ranking reads each contract's own Schwab fields from the chain the console holds
+    chains = {"SPY": [{"symbol": _SPY_CONTRACT, "strikePrice": 767.0,
+                       "expirationDate": "2026-08-20T20:00:00.000+00:00"}],
+              "QQQ": [{"symbol": _QQQ_CONTRACT, "strikePrice": 450.0,
+                       "expirationDate": "2026-08-20T20:00:00.000+00:00"}]}
+    for tk, cts in chains.items():
+        monkeypatch.setitem(server._terrain_cache, tk, {"_contracts_rest": cts})
+    return spots
+
+
 def _reset(tmp_path, monkeypatch):
     ofs._feed_running = False
     ofs._active_option_contract = None
     ofs._active_option_contracts = []
-    ofs._option_l1_cursor = {}
-    ofs._option_book_cursor = {}
+    ofs._option_streaming_last_update_ts = None
+    ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
     db = tmp_path / "stream_capture.db"
     monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
@@ -54,76 +75,53 @@ def _reset(tmp_path, monkeypatch):
     return db
 
 
-def _write_option_l1_row(db, symbol, content, ts_recv):
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert(f"optquote.{symbol}", options_quote_msg(
+def _push_option_l1(symbol, content, ts_recv):
+    """One LEVELONE_OPTIONS message as the daemon publishes and pushes it."""
+    return ofs._ingest_pushed(f"optquote.{symbol}", options_quote_msg(
         symbol=symbol, content=content, src="schwab_options_l1", ts_recv=ts_recv))
-    w.commit()
-    w.close()
 
 
-def _write_option_book_row(db, symbol, content, ts_recv):
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert(f"book.{symbol}", book_msg(
-        symbol=symbol, service="OPTIONS_BOOK", content=content,
-        src="schwab_options_book", ts_recv=ts_recv))
-    w.commit()
-    w.close()
+def _push_option_book(symbol, content, ts_recv, service="OPTIONS_BOOK"):
+    return ofs._ingest_pushed(f"book.{symbol}", book_msg(
+        symbol=symbol, service=service, content=content,
+        src="schwab_book", ts_recv=ts_recv))
 
 
-def test_option_contract_l1_replays_into_order_flow_state(tmp_path, monkeypatch):
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
+def test_option_contract_l1_lands_in_order_flow_state(tmp_path, monkeypatch):
+    _reset(tmp_path, monkeypatch)
+    _push_option_l1(_SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=time.time())
 
     items = ofls.get_content_for_symbol(_SPY_CONTRACT)
     assert any(i.get("LAST_PRICE") == 1.27 for i in items)
 
 
-def test_option_contract_book_replays_verbatim(tmp_path, monkeypatch):
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=1.0)
-
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
+def test_option_contract_book_lands_verbatim(tmp_path, monkeypatch):
+    _reset(tmp_path, monkeypatch)
+    _push_option_book(_SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=time.time())
 
     items = ofls.get_content_for_symbol(_SPY_CONTRACT)
     assert any(i.get("BIDS") == _REAL_OPTIONS_BOOK_CONTENT["BIDS"] for i in items)
 
 
-def test_option_contract_replay_reads_only_options_book_service(tmp_path, monkeypatch):
-    """A NASDAQ_BOOK/NYSE_BOOK row for the SAME symbol string (should never happen for an
-    OSI contract symbol, but the query must not accidentally cross services) must not
-    leak into the option contract's replayed content."""
-    db = _reset(tmp_path, monkeypatch)
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert(f"book.{_SPY_CONTRACT}", book_msg(
-        symbol=_SPY_CONTRACT, service="NASDAQ_BOOK",
-        content={"key": _SPY_CONTRACT, "BIDS": [{"WRONG_SERVICE": True}], "ASKS": []},
-        src="t", ts_recv=1.0))
-    w.commit()
-    w.close()
+def test_only_an_options_book_advances_the_contracts_freshness_clock(tmp_path, monkeypatch):
+    """A NASDAQ_BOOK/NYSE_BOOK message is an equity book: it must never count as an option
+    contract's OPTIONS_BOOK activity, even under the same symbol string."""
+    _reset(tmp_path, monkeypatch)
+    _push_option_book(_SPY_CONTRACT, {"key": _SPY_CONTRACT, "BIDS": [], "ASKS": []},
+                      ts_recv=time.time(), service="NASDAQ_BOOK")
+    assert _SPY_CONTRACT not in ofs._option_contract_last_update_ts
+    assert ofs._option_streaming_last_update_ts is None
 
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-
-    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
-    assert not any(i.get("BIDS") == [{"WRONG_SERVICE": True}] for i in items)
+    ts = time.time()
+    _push_option_book(_SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=ts)
+    assert ofs._option_contract_last_update_ts[_SPY_CONTRACT] == ts
 
 
 def test_get_option_contract_book_microstructure_reuses_the_one_producer(tmp_path, monkeypatch):
     """The decisive proof: this is compute_book_microstructure itself (the SAME function
     the equity /api/order-flow/microstructure route calls), not a parallel computation."""
-    db = _reset(tmp_path, monkeypatch)
-    _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=1.0)
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
+    _reset(tmp_path, monkeypatch)
+    _push_option_book(_SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=time.time())
 
     result = ofs.get_option_contract_book_microstructure(_SPY_CONTRACT)
     assert result["depth"]["1"]["imbalance"] is not None
@@ -152,7 +150,7 @@ def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path
     assert ofs._active_option_contract == _SPY_CONTRACT
 
 
-def test_set_active_option_contracts_writes_plural_signal_and_clears_only_dropped(monkeypatch):
+def test_set_active_option_contracts_writes_plural_signal_and_clears_only_dropped(monkeypatch, spot_authority):
     """RC-UI-3 (2026-09-12): set_active_option_contracts mirrors set_active_option_contract
     for the ADDITIONAL-symbols slot, except a symbol still (or newly) requested must keep
     replaying -- only a symbol actually DROPPED from the desired set gets its cursor
@@ -243,175 +241,57 @@ def test_dropping_an_additional_contract_not_also_primary_still_clears_it(monkey
         ofs._active_option_contracts = []
 
 
-def test_feed_loop_replays_both_ticker_and_option_contract_independently(tmp_path, monkeypatch):
-    """The equity active ticker and the option contract are independent slots — both must
-    hydrate in the SAME poll tick without interfering with each other."""
-    db = _reset(tmp_path, monkeypatch)
-    ofs._active_ticker = None
-    ofs._l1_cursor = {}
-    ofs._book_cursor = {}
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_ticker_signal", lambda *_a, **_k: None)
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
+def test_feed_loop_applies_the_ticker_and_every_option_contract_from_one_push(tmp_path, monkeypatch):
+    """The equity ticker, a primary contract and an additional contract all arrive on the
+    daemon's ONE push connection and each lands in its own state -- nothing is filtered by
+    which slot asked for it (the daemon only streams what was requested)."""
+    import socket
 
-    from stream_spine import quote_msg
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert("quote.SPY", quote_msg(symbol="SPY", bid=450.0, src="schwab_l1", ts_recv=1.0,
-                                    native={"key": "SPY", "LAST_PRICE": 450.0}))
-    w.commit()
-    w.close()
-    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
+    from app.market_data.schwab.streaming import live_push
+    from stream_spine import MessageBus, quote_msg
+
+    _reset(tmp_path, monkeypatch)
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    monkeypatch.setattr(ofs, "LIVE_PUSH_URL", f"ws://127.0.0.1:{port}")
+    ofs._active_ticker = "SPY"
+    qqq = {**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"}
+
+    def _landed():
+        return (any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
+                and any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
+                and any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT)))
 
     async def go():
+        bus = MessageBus()
+        stop = asyncio.Event()
+        stats: dict = {}
+        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
         ofs._feed_running = True
-        ofs.set_streaming_active_ticker("SPY")
-        ofs.set_active_option_contract(_SPY_CONTRACT)
-        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
-        # TEST_SYSTEM_REHAB_V2: was a flat `await asyncio.sleep(0.3)`. _feed_loop's
-        # first tick needs three SEQUENTIAL executor round-trips (open db, replay
-        # ticker, replay contract) before either slot is populated; under real system
-        # load those round-trips can individually exceed 300ms, so this failed
-        # (assert False on the option-contract slot) under measured 100% CPU
-        # contention while passing 3/3 in isolation -- a load-sensitive fixed sleep,
-        # not a production defect. Poll for the actual condition instead: exits in
-        # ~one tick under normal load, tolerates real contention up to 10s, and still
-        # fails for real if the production code genuinely never populates a slot.
-        deadline = time.monotonic() + 10.0
-        while time.monotonic() < deadline:
-            if (any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
-                    and any(i.get("LAST_PRICE") == 1.27
-                            for i in ofls.get_content_for_symbol(_SPY_CONTRACT))):
-                break
-            await asyncio.sleep(0.05)
-        ofs._feed_running = False
-        task.cancel()
+        task = asyncio.create_task(ofs._feed_loop())
         try:
-            await task
-        except asyncio.CancelledError:
-            pass
+            deadline = time.monotonic() + 10.0
+            while stats.get("clients") != 1 and time.monotonic() < deadline:
+                await asyncio.sleep(0.02)
+            now = time.time()
+            bus.publish("quote.SPY", quote_msg(symbol="SPY", last=450.0, src="schwab_l1",
+                                               ts_recv=now, native={"key": "SPY", "LAST_PRICE": 450.0}))
+            bus.publish(f"optquote.{_SPY_CONTRACT}", options_quote_msg(
+                symbol=_SPY_CONTRACT, content=_REAL_LEVELONE_OPTIONS_CONTENT,
+                src="schwab_options_l1", ts_recv=now))
+            bus.publish(f"optquote.{_QQQ_CONTRACT}", options_quote_msg(
+                symbol=_QQQ_CONTRACT, content=qqq, src="schwab_options_l1", ts_recv=now))
+            while not _landed() and time.monotonic() < deadline:
+                await asyncio.sleep(0.02)
+        finally:
+            ofs._feed_running = False
+            task.cancel()
+            stop.set()
+            await asyncio.gather(task, server, return_exceptions=True)
     asyncio.run(go())
-
-    assert any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
-    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
-
-
-async def _run_feed_loop_until(predicate, *, timeout=10.0):
-    """Shared driver for the feed-loop replay tests below: same poll-for-condition
-    discipline as test_feed_loop_replays_both_ticker_and_option_contract_independently
-    (a fixed sleep is load-sensitive and produces false failures under real contention)."""
-    ofs._feed_running = True
-    task = asyncio.get_event_loop().create_task(ofs._feed_loop())
-    deadline = time.monotonic() + timeout
-    try:
-        while time.monotonic() < deadline:
-            if predicate():
-                break
-            await asyncio.sleep(0.05)
-    finally:
-        ofs._feed_running = False
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-
-def test_feed_loop_replays_an_additional_only_contract_with_no_primary(tmp_path, monkeypatch):
-    """Independent-review finding (2026-09-12), REPRODUCED: with ONLY an additional
-    contract requested (no primary), _feed_loop used to read solely
-    `_active_option_contract` (None) and replay NOTHING -- the additional contract's rows
-    never reached live state at all, no matter how long the daemon ran."""
-    db = _reset(tmp_path, monkeypatch)
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
-                        lambda *_a, **_k: None)
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
-                        lambda *_a, **_k: None)
-    _write_option_l1_row(db, _QQQ_CONTRACT,
-                         {**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"},
-                         ts_recv=1.0)
-
-    async def go():
-        ofs.set_active_option_contracts([_QQQ_CONTRACT])   # additional only -- no primary
-        assert ofs._active_option_contract is None, "sanity: no primary is set"
-        await _run_feed_loop_until(
-            lambda: any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT)))
-    asyncio.run(go())
-
-    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT)), (
-        "an additional-only contract (no primary) must still reach live state")
-
-
-def test_feed_loop_replays_primary_and_additional_contracts_together(tmp_path, monkeypatch):
-    """Both the primary AND every additional contract must replay in the same running
-    daemon -- not merely whichever one happens to be set alone."""
-    db = _reset(tmp_path, monkeypatch)
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
-                        lambda *_a, **_k: None)
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
-                        lambda *_a, **_k: None)
-    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
-    _write_option_l1_row(db, _QQQ_CONTRACT,
-                         {**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"},
-                         ts_recv=1.0)
-
-    async def go():
-        ofs.set_active_option_contract(_SPY_CONTRACT)
-        ofs.set_active_option_contracts([_QQQ_CONTRACT])
-        await _run_feed_loop_until(
-            lambda: (any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
-                    and any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT))))
-    asyncio.run(go())
-
-    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
-    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT))
-
-
-def test_feed_loop_confines_every_db_touch_to_one_thread(tmp_path, monkeypatch):
-    """ROOT-CAUSE regression: sqlite3.Connection is thread-affine (check_same_thread=True).
-    _feed_loop used to route open+replay through the DEFAULT asyncio.to_thread executor,
-    which has multiple workers and no affinity guarantee between calls — reproduced as
-    "SQLite objects created in a thread can only be used in that same thread" under real
-    cross-call thread reuse (not synthetic). Proves the fix directly: every DB-touching
-    call across several poll ticks reports the SAME thread ident, not merely that no
-    exception happened to surface this run."""
-    db = _reset(tmp_path, monkeypatch)
-    ofs._active_ticker = None
-    ofs._l1_cursor = {}
-    ofs._book_cursor = {}
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_ticker_signal", lambda *_a, **_k: None)
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal", lambda *_a, **_k: None)
-    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=1.0)
-
-    seen_idents: set[int] = set()
-    real_open = ofs._open_capture_db_readonly
-    real_replay = ofs._replay_option_contract_rows
-
-    def spy_open(*a, **k):
-        seen_idents.add(threading.get_ident())
-        return real_open(*a, **k)
-
-    def spy_replay(*a, **k):
-        seen_idents.add(threading.get_ident())
-        return real_replay(*a, **k)
-
-    monkeypatch.setattr(ofs, "_open_capture_db_readonly", spy_open)
-    monkeypatch.setattr(ofs, "_replay_option_contract_rows", spy_replay)
-
-    async def go():
-        ofs._feed_running = True
-        ofs.set_active_option_contract(_SPY_CONTRACT)
-        task = asyncio.get_event_loop().create_task(ofs._feed_loop())
-        await asyncio.sleep(1.5)   # several POLL_INTERVAL_SEC=0.5 ticks -> several to_thread calls
-        ofs._feed_running = False
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-    asyncio.run(go())
-
-    assert len(seen_idents) == 1, (
-        f"DB touches spanned {len(seen_idents)} threads — a shared sqlite3.Connection "
-        f"crossing threads is exactly the defect this test exists to catch")
+    assert _landed()
 
 
 def _reset_option_feed_globals():
@@ -420,8 +300,6 @@ def _reset_option_feed_globals():
     ofs._active_option_contracts = []
     ofs._option_streaming_last_update_ts = None
     ofs._option_last_subscribe_completed_ts = None
-    ofs._option_l1_cursor = {}
-    ofs._option_book_cursor = {}
 
 
 def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
@@ -503,51 +381,6 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     assert ofs._option_streaming_healthy() is True
     assert ofs.get_streaming_diagnostics()["streaming_healthy"] is False
     assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True
-
-
-def test_reused_readonly_feed_sees_later_option_commits(tmp_path, monkeypatch):
-    """The live plane reuses one readonly connection. A deferred SQLite snapshot
-    would hide later OPTIONS_BOOK commits (history hydrates; live stays no_book).
-    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
-    """
-    db = _reset(tmp_path, monkeypatch)
-    ofs._option_streaming_last_update_ts = None
-    CaptureWriter(db, batch_rows=1, batch_sec=10.0).close()
-    con = ofs._open_capture_db_readonly(db)
-    assert con is not None
-    assert con.isolation_level is None
-    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    assert ofs._option_streaming_last_update_ts is None
-    assert not any(i.get("BIDS") for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
-
-    _write_option_l1_row(db, _SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=2.0)
-    _write_option_book_row(db, _SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=2.0)
-
-    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-    assert ofs._option_streaming_last_update_ts is not None
-    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
-    assert any(i.get("LAST_PRICE") == 1.27 for i in items)
-    assert any(i.get("BIDS") == _REAL_OPTIONS_BOOK_CONTENT["BIDS"] for i in items)
-
-
-def test_first_tick_option_replay_is_snapshot_tail_not_lifetime(tmp_path, monkeypatch):
-    """A long-lived OPTIONS_BOOK history must not be fully replayed on bind.
-    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
-    """
-    db = _reset(tmp_path, monkeypatch)
-    old = dict(_REAL_OPTIONS_BOOK_CONTENT)
-    old = {**old, "BIDS": [{"BID_PRICE": 9.99, "TOTAL_VOLUME": 1}]}
-    latest = _REAL_OPTIONS_BOOK_CONTENT
-    _write_option_book_row(db, _SPY_CONTRACT, old, ts_recv=1.0)
-    _write_option_book_row(db, _SPY_CONTRACT, latest, ts_recv=2.0)
-    con = ofs._open_capture_db_readonly(db)
-    ofs._replay_option_contract_rows(con, _SPY_CONTRACT)
-    con.close()
-    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
-    bids = [i.get("BIDS") for i in items if i.get("BIDS")]
-    assert latest["BIDS"] in bids
-    assert old["BIDS"] not in bids
 
 
 def test_ensure_default_adopts_matching_signal_file(tmp_path, monkeypatch):

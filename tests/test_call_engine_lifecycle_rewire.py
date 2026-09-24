@@ -8,15 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import call_engine as ce
-from lifecycle_rule_core import StopDistance, TargetLevels
-from math_exposure import (
-    STOP_BASE_PCT,
-    STOP_CEILING_PCT,
-    STOP_FLOOR_PCT,
-    STOP_TIME_DECAY_PCT,
-    STOP_VIX_HIGH_PCT,
-    STOP_VIX_MED_PCT,
-)
+from lifecycle_rule_core import TargetLevels
 
 
 def _inp(
@@ -30,8 +22,10 @@ def _inp(
     put_gamma_wall: float | None = None,
     call_oi_wall: float | None = None,
     put_oi_wall: float | None = None,
+    atr: float | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
+        atr=atr,
         spot=spot,
         et_hour=et_hour,
         et_minute=et_minute,
@@ -58,46 +52,6 @@ def _pred(
     )
 
 
-def _expected_stop_distance(
-    *,
-    spot: float = 1000.0,
-    elapsed_minutes: float = 0.0,
-    vix_level: float | None = None,
-    risk_multiplier: float | None = 1.0,
-) -> float:
-    pct = STOP_BASE_PCT - (elapsed_minutes / 60.0) * STOP_TIME_DECAY_PCT
-    if vix_level is not None:
-        if vix_level > 30:
-            pct += STOP_VIX_HIGH_PCT
-        elif vix_level > 20:
-            pct += STOP_VIX_MED_PCT
-    pct *= max(0.8, min(1.5, risk_multiplier or 1.0))
-    pct = max(STOP_FLOOR_PCT, min(STOP_CEILING_PCT, pct))
-    return round(pct * spot, 2)
-
-
-def test_stop_distance_delegates_to_lifecycle_rule_core(monkeypatch):
-    calls: list[dict] = []
-
-    def fake_derive_stop_distance_pct(**kwargs):
-        calls.append(kwargs)
-        return StopDistance(final_pct=0.01, adjustments_applied=("test",))
-
-    monkeypatch.setattr(ce, "derive_stop_distance_pct", fake_derive_stop_distance_pct, raising=False)
-
-    result = ce._stop_distance(_inp(spot=100.0, et_hour=10, et_minute=0, vix_level=21.0), risk_multiplier=1.2)
-
-    assert calls == [
-        {
-            "spot": 100.0,
-            "vix_level": 21.0,
-            "mins_elapsed_since_open": 30,
-            "risk_multiplier": 1.2,
-        }
-    ]
-    assert result == pytest.approx(1.0)
-
-
 def test_compute_levels_delegates_target_geometry_to_lifecycle_rule_core(monkeypatch):
     calls: list[dict] = []
 
@@ -115,7 +69,7 @@ def test_compute_levels_delegates_target_geometry_to_lifecycle_rule_core(monkeyp
     monkeypatch.setattr(ce, "derive_target_levels", fake_derive_target_levels, raising=False)
 
     result = ce._compute_levels(
-        _inp(spot=100.0, vwap=104.0, call_gamma_wall=105.0),
+        _inp(spot=100.0, vwap=104.0, call_gamma_wall=105.0, atr=0.12),
         "long",
         rules=None,
         pred=_pred(avg_5c_pts=4.0, avg_15c_pts=5.0, avg_60c_pts=6.0),
@@ -127,91 +81,57 @@ def test_compute_levels_delegates_target_geometry_to_lifecycle_rule_core(monkeyp
     assert calls[0]["direction"] == "long"
     assert calls[0]["avg5"] == pytest.approx(4.0)
     assert calls[0]["avg15"] == pytest.approx(5.0)
-    assert calls[0]["avg60"] == pytest.approx(6.0)
+    assert "avg60" not in calls[0]   # the 60c move no longer stands in for T2 (S-15)
     # Price-action plan (operator 2026-06-11): key levels never enter target
     # geometry — vwap/gamma walls are context display only, not snap anchors.
     assert calls[0]["structural_levels"] == []
     assert result == (100.0, pytest.approx(99.82), 105.0, 106.0)
 
 
-@pytest.mark.parametrize(
-    ("vix_level", "expected_add"),
-    [
-        (20.0, 0.0),
-        (20.01, STOP_VIX_MED_PCT),
-        (30.0, STOP_VIX_MED_PCT),
-        (30.01, STOP_VIX_HIGH_PCT),
-    ],
-)
-def test_stop_distance_preserves_vix_20_and_30_boundaries(vix_level, expected_add):
-    expected = round((STOP_BASE_PCT + expected_add) * 1000.0, 2)
-
-    assert ce._stop_distance(_inp(vix_level=vix_level)) == pytest.approx(expected)
-
-
-@pytest.mark.parametrize(
-    ("hour", "minute", "elapsed"),
-    [
-        (9, 30, 0),
-        (11, 30, 120),
-        (15, 55, 385),
-    ],
-)
-def test_stop_distance_preserves_time_decay_across_session(hour, minute, elapsed):
-    assert ce._stop_distance(_inp(et_hour=hour, et_minute=minute)) == pytest.approx(
-        _expected_stop_distance(elapsed_minutes=elapsed)
-    )
-
-
-@pytest.mark.parametrize(
-    ("risk_multiplier", "effective_multiplier"),
-    [
-        (0.5, 0.8),
-        (0.0, 1.0),
-        (2.0, 1.5),
-    ],
-)
-def test_stop_distance_preserves_risk_multiplier_clamp(risk_multiplier, effective_multiplier):
-    expected = round(STOP_BASE_PCT * effective_multiplier * 1000.0, 2)
-
-    assert ce._stop_distance(_inp(), risk_multiplier=risk_multiplier) == pytest.approx(expected)
-
-
 def test_compute_levels_never_snaps_to_structural_levels():
     """Price-action plan (operator 2026-06-11): a nearby VWAP/wall must NOT pull
     targets — geometry is entry/stop/R-multiples + predicted moves only."""
     result = ce._compute_levels(
-        _inp(spot=1000.0, vwap=1003.5),
+        _inp(spot=1000.0, vwap=1003.5, atr=1.2),
         "long",
         rules=None,
-        pred=_pred(),
+        pred=_pred(avg_5c_pts=3.0, avg_15c_pts=5.0),
         risk_multiplier=1.0,
         governed_zone="",
     )
 
-    # R-multiple ladder off the 1.8-pt stop: T1 = entry + 2R, T2 = entry + 3R.
-    assert result == (1000.0, 998.2, 1003.6, 1005.4)
+    # 1.8-pt stop; T1 = the 3.0 5c move (> 1.5R = 2.7), T2 = the 5.0 15c move -- the VWAP
+    # at 1003.5 does not pull T1.
+    assert result == (1000.0, 998.2, 1003.0, 1005.0)
+    # no measured moves -> entry/stop, but NO targets (not a 2R/3R ladder)
+    assert ce._compute_levels(_inp(spot=1000.0, atr=1.2), "long", rules=None, pred=_pred(),
+                              risk_multiplier=1.0, governed_zone="") == (1000.0, 998.2, None, None)
 
 
-def test_stop_distance_uses_atr_when_available():
-    """ATR-scaled stop (Wilder 1978): ATR_STOP_MULT × ATR × regime multiplier;
-    VIX-pct path remains the fail-closed fallback when ATR is absent."""
-    inp = _inp(spot=1000.0)
+def test_stop_distance_is_atr_only_and_never_guessed():
+    """ATR-scaled stop (Wilder 1978): ATR_STOP_MULT x ATR x regime multiplier. No finite,
+    positive ATR -> None: the VIX/clock percentage stop that used to stand in is gone
+    (audit P0, operator rule 2026-09-23: no fallbacks)."""
+    inp = _inp(spot=1000.0, vix_level=35.0)
     inp.atr = 2.0
     assert ce._stop_distance(inp) == pytest.approx(ce.ATR_STOP_MULT * 2.0)
     assert ce._stop_distance(inp, risk_multiplier=1.2) == pytest.approx(
         round(ce.ATR_STOP_MULT * 2.0 * 1.2, 2)
     )
-    # Non-finite / zero ATR falls back to the VIX percentage stop.
-    inp.atr = 0.0
-    assert ce._stop_distance(inp) == pytest.approx(_expected_stop_distance())
-    inp.atr = float("nan")
-    assert ce._stop_distance(inp) == pytest.approx(_expected_stop_distance())
+    for bad in (None, 0.0, -1.0, float("nan"), float("inf")):
+        inp.atr = bad
+        assert ce._stop_distance(inp) is None, bad
+
+
+def test_no_measured_stop_means_no_plan():
+    for signal in ("long", "short"):
+        assert ce._compute_levels(_inp(spot=1000.0), signal, rules=None, pred=_pred(),
+                                  risk_multiplier=1.0, governed_zone="") == (None, None, None, None)
 
 
 def test_compute_levels_preserves_long_targets_and_rr_caps():
     result = ce._compute_levels(
-        _inp(spot=1000.0),
+        _inp(spot=1000.0, atr=1.2),
         "long",
         rules=None,
         pred=_pred(avg_5c_pts=100.0, avg_15c_pts=100.0),
@@ -224,10 +144,10 @@ def test_compute_levels_preserves_long_targets_and_rr_caps():
 
 def test_compute_levels_preserves_short_targets_and_rr_caps():
     result = ce._compute_levels(
-        _inp(spot=1000.0),
+        _inp(spot=1000.0, atr=1.2),
         "short",
         rules=None,
-        pred=_pred(avg_5c_pts=100.0, avg_60c_pts=100.0),
+        pred=_pred(avg_5c_pts=100.0, avg_15c_pts=100.0),
         risk_multiplier=1.0,
         governed_zone="",
     )

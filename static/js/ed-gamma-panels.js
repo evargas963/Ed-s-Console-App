@@ -41,12 +41,11 @@
     var s = (window.EdShell && window.EdShell.getState()) || {};
     return s.workspace === 'options' && (s.subview === 'gamma' || s.subview === 'dex' || s.subview === 'oi');
   }
-  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || 'SPY'; }
+  function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
 
   var REGIME = {
     LONG_GAMMA_CHOP: { t: 'Long γ · chop', c: 'var(--ed-pos-ink)' },
     SHORT_GAMMA_TREND: { t: 'Short γ · trend', c: 'var(--ed-warn)' },
-    SIGN_UNPROVEN: { t: 'sign unproven', c: 'var(--ed-ink-3)' },
     UNAVAILABLE: { t: 'unavailable', c: 'var(--ed-ink-3)' },
   };
 
@@ -698,7 +697,8 @@
           (d && d.reason ? esc(d.reason) : ('no console serving ' + endpoint)) + '</div></div>';
         return;
       }
-      var spot = Number(d.spot);
+      // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+      var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
       var asc = d.rows.slice().sort(function (a, b) { return a[0] - b[0]; });
       var ascStrikes = asc.map(function (r) { return r[0]; });
       var sel = (window.EdShell && window.EdShell.scopeSelect)

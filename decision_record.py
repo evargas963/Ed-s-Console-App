@@ -314,7 +314,7 @@ def reconstruction_complete(payload: dict[str, Any]) -> tuple[bool, list[str]]:
 def production_like_decision_emission(
     db_path: Path | str,
     *,
-    ticker: str = "SPY",
+    ticker: str,
 ) -> dict[str, Any]:
     """
     Closest production-like decision emission without live Schwab traffic.
@@ -330,6 +330,7 @@ def production_like_decision_emission(
     ms: dict[str, Any] = {
         "ticker": str(ticker).upper(),
         "spot": 500.0,
+        "prior_close": 500.0,
         "bid": 499.98,
         "ask": 500.02,
         "spread_pts": 0.04,
@@ -372,6 +373,7 @@ def _post_fetch_state_ms_stub(ticker: str) -> dict[str, Any]:
     return {
         "ticker": t,
         "spot": 500.0,
+        "prior_close": 500.0,
         "bid": 499.98,
         "ask": 500.02,
         "spread_pts": 0.04,
@@ -397,7 +399,7 @@ def _post_fetch_state_ms_stub(ticker: str) -> dict[str, Any]:
 def live_path_simulation_emission(
     db_path: Path | str,
     *,
-    ticker: str = "SPY",
+    ticker: str,
 ) -> dict[str, Any]:
     """
     Exercises server._finalize_production_decision — the _fetch_state decision tail.

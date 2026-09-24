@@ -23,7 +23,7 @@ def test_stamp_decision_bundle_increments_on_success(monkeypatch):
     md = {
         "signals_engine_failed": False,
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "validation_summary": "batch2_stamp_ok",
     }
@@ -50,11 +50,10 @@ def test_error_engine_surfaces_in_the_new_console():
     in practice since callers always set both or neither)."""
     from pathlib import Path
 
-    core = (Path(__file__).resolve().parents[1] / "static" / "js" / "ed-core.js").read_text(
-        encoding="utf-8", errors="replace"
-    )
+    # The header no longer polls /api/live/state for a quote (operator rule 2026-09-23: the
+    # SSE push is its only source), so the engine error surfaces where the analytics are
+    # read -- the PCR panel below -- not through a header poll fallback.
     panels = (Path(__file__).resolve().parents[1] / "static" / "js" / "ed-gamma-panels.js").read_text(
         encoding="utf-8", errors="replace"
     )
-    assert "if (d.state_error) { setFeed('stale', 'DEGRADED', d.state_error); return; }" in core
     assert "if (d.state_error) { _pcrPending = false; paintPcr(null, 'analytics error'); return; }" in panels

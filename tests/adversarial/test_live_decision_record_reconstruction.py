@@ -79,7 +79,7 @@ def test_production_like_blind_reconstruction_single_query(release_ready, tmp_pa
     )
 
     db_path = tmp_path / "blind_prod_like.db"
-    emitted = production_like_decision_emission(db_path)
+    emitted = production_like_decision_emission(db_path, ticker="NFLX")
     decision_id = emitted["decision_id"]
 
     conn = sqlite3.connect(str(db_path))
@@ -104,7 +104,7 @@ def test_audit_seed_route_is_not_production_like_proof(release_ready, tmp_path):
 
     ms = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "validation_summary": "audit_seed",
     }

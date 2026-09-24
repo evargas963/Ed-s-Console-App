@@ -51,7 +51,7 @@ def test_valid_spot_allows_decision_id(release_ready):
 
     ms = {
         "ticker": "SPY",
-        "spot": 500.0,
+        "spot": 500.0, "prior_close": 500.0,
         "call_signal": "wait",
         "validation_summary": "ok",
     }

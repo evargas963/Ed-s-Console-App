@@ -19,13 +19,12 @@ from typing import Any
 from numeric_contract import float_finite_or_none
 from instrument_identity import ticker_storage_key
 
-# Conservative index ETF bounds — wrong-but-finite prices outside these quarantine.
-_PRICE_SANITY_BOUNDS: dict[str, tuple[float, float]] = {
-    "SPY": (50.0, 2000.0),
-    "QQQ": (50.0, 2000.0),
-    "IWM": (50.0, 2000.0),
-}
-_DEFAULT_BOUNDS: tuple[float, float] = (1.0, 100_000.0)
+#: Wrong-but-finite price quarantine, the SAME rule for every ticker (universality, operator
+#: 2026-09-23): the price must lie within [0.5x, 2x] of the ticker's own prior close (Schwab
+#: LEVELONE_EQUITIES CLOSE_PRICE). It used to be a fixed 50-2000 band for SPY/QQQ/IWM and an
+#: effectively open 1-100000 band for everyone else. A move past 2x or below 0.5x in one
+#: session is outside any exchange's single-session price behaviour and reads as a bad print.
+PRICE_SANITY_BAND_VS_PRIOR_CLOSE: tuple[float, float] = (0.5, 2.0)
 
 SYNTHETIC_NON_PRODUCTION_ROUTES: frozenset[str] = frozenset(
     {
@@ -193,13 +192,11 @@ def resolve_fetch_state_decision_route(update_source: str | None) -> str:
     return "server._fetch_state"
 
 
-def _price_bounds(ticker: str) -> tuple[float, float]:
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical bounds-lookup identity
-    return _PRICE_SANITY_BOUNDS.get(t, _DEFAULT_BOUNDS)
-
-
-def assess_spot_price(ticker: str, spot: Any) -> tuple[bool, list[str]]:
-    """Return (acceptable, reasons). Rejects missing, non-finite, non-positive, out-of-range."""
+def assess_spot_price(ticker: str, spot: Any, prior_close: Any = None) -> tuple[bool, list[str]]:
+    """Return (acceptable, reasons). Rejects missing, non-finite, non-positive, outside
+    PRICE_SANITY_BAND_VS_PRIOR_CLOSE of the ticker's own prior close -- and, when that prior
+    close is unknown, rejects too: a price that cannot be checked is not a verified price
+    (operator rule 2026-09-23: no fallbacks)."""
     t = ticker_storage_key(ticker) or "UNKNOWN"  # RC-345/F25: canonical gate identity
     if spot is None:
         return False, ["missing_price"]
@@ -210,9 +207,14 @@ def assess_spot_price(ticker: str, spot: Any) -> tuple[bool, list[str]]:
         return False, ["non_finite_price"]
     if f <= 0:
         return False, ["non_positive_price"]
-    lo, hi = _price_bounds(t)
+    ref = float_finite_or_none(prior_close)
+    if ref is None or ref <= 0:
+        return False, [f"no_prior_close_reference:{t}"]
+    lo = ref * PRICE_SANITY_BAND_VS_PRIOR_CLOSE[0]
+    hi = ref * PRICE_SANITY_BAND_VS_PRIOR_CLOSE[1]
     if f < lo or f > hi:
-        return False, [f"price_out_of_sanity_range:{f} not in [{lo}, {hi}] for {t}"]
+        return False, [f"price_out_of_sanity_range:{f} not in [{lo:.4f}, {hi:.4f}] "
+                       f"(0.5x-2x prior close {ref}) for {t}"]
     return True, []
 
 
@@ -244,7 +246,7 @@ def validate_trade_impacting_gate(
     if not ticker:
         reasons.append("missing_ticker")
 
-    spot_ok, spot_reasons = assess_spot_price(ticker, ms_dict.get("spot"))
+    spot_ok, spot_reasons = assess_spot_price(ticker, ms_dict.get("spot"), ms_dict.get("prior_close"))
     if not spot_ok:
         reasons.extend(spot_reasons)
 

@@ -172,55 +172,30 @@ def _seed_morning_full(path, ticker: str, et_date: str, ts_utc: float, spot: flo
 def _clear_gamma_surface(tk):
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
-    server._GAMMA_SURFACE_CACHE.pop(tk, None)
 
 
-def test_a_prior_session_banked_chain_is_not_served_as_a_morning_reference(tmp_path, monkeypatch):
-    """The exact hardening this fallback needed: reaching back past today's session is not a
-    morning reference, it is an unlabeled multi-day-old snapshot -- must fall through to the
-    explicit unavailable payload instead."""
-    tk = ticker_storage_key("ZZTESTSTALE")
-    _clear_gamma_surface(tk)
-    db = tmp_path / "stale.db"
-    # Walk back to a GENUINE prior trading day (weekday-only would still land on a market
-    # holiday and make the test flaky against the real calendar).
-    d = now_et() - timedelta(days=1)
-    while not is_trading_day_et(d.strftime("%Y-%m-%d")):
-        d -= timedelta(days=1)
-    stale_et_date = d.strftime("%Y-%m-%d")
-    _seed_morning_full(db, "ZZTESTSTALE", stale_et_date, time.time() - 90000, 100.0)
-    monkeypatch.setattr(server, "get_db", lambda: _FakeDB(db))
-    try:
-        body = get_options_gamma_surface(ticker="ZZTESTSTALE")
-        import json
-        d = json.loads(body.body)
-        assert d["available"] is False
-        assert d["source"] != "banked_morning_reference"
-        assert d["live"] is False
-        assert "prior session" in d["reason"].lower()
-    finally:
+def test_a_banked_chain_from_any_session_is_never_served_in_place_of_the_live_surface(tmp_path, monkeypatch):
+    """Operator rule 2026-09-23 (no fallbacks): with no live surface the answer is
+    unavailable -- a banked wide chain, even TODAY's, never stands in for it."""
+    import json
+
+    for name, et_date in (("ZZTESTSTALE", None), ("ZZTESTTODAY", now_et().strftime("%Y-%m-%d"))):
+        tk = ticker_storage_key(name)
         _clear_gamma_surface(tk)
+        db = tmp_path / f"{name}.db"
+        if et_date is None:
+            d = now_et() - timedelta(days=1)
+            while not is_trading_day_et(d.strftime("%Y-%m-%d")):
+                d -= timedelta(days=1)
+            et_date = d.strftime("%Y-%m-%d")
+        _seed_morning_full(db, name, et_date, time.time() - 1800.0, 100.0)
+        monkeypatch.setattr(server, "get_db", lambda db=db: _FakeDB(db))
+        try:
+            body = json.loads(get_options_gamma_surface(ticker=name).body)
+            assert body["available"] is False and body["source"] == "unavailable", name
+            assert body["live"] is False
+            assert "no live gamma surface" in body["reason"].lower()
+        finally:
+            _clear_gamma_surface(tk)
 
 
-def test_a_same_session_banked_chain_is_served_with_a_real_disclosed_age(tmp_path, monkeypatch):
-    """The positive control: today's own banked capture IS a legitimate morning reference, and
-    must disclose a real elapsed-seconds age rather than a bare boolean stale/None."""
-    tk = ticker_storage_key("ZZTESTTODAY")
-    _clear_gamma_surface(tk)
-    db = tmp_path / "today.db"
-    today_et = now_et().strftime("%Y-%m-%d")
-    captured_ts = time.time() - 1800.0   # captured 30 minutes ago
-    _seed_morning_full(db, "ZZTESTTODAY", today_et, captured_ts, 101.5)
-    monkeypatch.setattr(server, "get_db", lambda: _FakeDB(db))
-    try:
-        import json
-        d = json.loads(get_options_gamma_surface(ticker="ZZTESTTODAY").body)
-        assert d["available"] is True
-        assert d["source"] == "banked_morning_reference"
-        assert d["live"] is False
-        assert d["et_date"] == today_et
-        assert d["chain_as_of_ts_utc"] == captured_ts
-        assert d["age_sec"] is not None
-        assert abs(d["age_sec"] - 1800.0) < 5.0, f"disclosed age must be real, got {d['age_sec']}"
-    finally:
-        _clear_gamma_surface(tk)

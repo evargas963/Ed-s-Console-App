@@ -73,52 +73,32 @@ def test_resolve_chg_pct_is_generic_not_a_preferred_symbol_map():
     assert got == 4.56
 
 
-def test_live_state_rest_backfill_survives_merge_into_state(monkeypatch):
-    """MEASURED (independent review, correcting this repair's own first attempt):
-    _tier_a_live_state_dict computed a REST-backfilled chg_pct, then called
-    live_market_plane.merge_into_state(out, tkr) -- which unconditionally overwrites
-    chg_pct from the CURRENT plane row whenever that row carries the key at all,
-    including a stale None. The route never wrote its transient backfill back into the
-    plane, so a plane row that (legitimately, per streaming's own field gaps) still
-    carries chg_pct=None would silently undo the backfill this same call just computed.
+def test_live_state_never_backfills_chg_pct_from_rest(monkeypatch):
+    """chg_pct is the streamed REGULAR_MARKET_CHANGE_PERCENT only (operator rule 2026-09-23:
+    no fallbacks). A fresh streamed row that carries no chg_pct serves chg_pct=None even when
+    a REST quote with netPercentChange is available -- the gap stays visible."""
+    import time as _t
 
-    Negative control: temporarily move the `out["chg_pct"] = chg_pct` re-assertion in
-    server.py back before the merge_into_state call (its pre-fix position) and this test
-    fails -- confirming it actually exercises the ordering bug, not a coincidence of the
-    row's default state.
-    """
     import server as srv
-    import app.options.order_flow.state as ofs
 
     ticker = "ZZZTEST"
-    # Plane row already has a fresh spot (as if actively streamed) but an explicit,
-    # present, stale chg_pct=None -- the exact shape that triggers merge_into_state's
-    # unconditional-overwrite path.
-    plane_row = {"ticker": ticker, "spot": 55.0, "chg_pct": None, "quote_ingestion": "streaming"}
+    plane_row = {"ticker": ticker, "spot": 55.0, "chg_pct": None,
+                 "server_received_ts": _t.time(), "spot_received_ts": _t.time(), "exchange_quote_ts": _t.time(),
+                 "quote_source_detail": {"spot": "LAST_PRICE"},
+                 "quote_ingestion": "schwab_streaming_level_one"}
     monkeypatch.setattr(srv._lmp, "get_quote", lambda t: dict(plane_row))
-    monkeypatch.setattr(ofs, "get_stream_chg_pct", lambda t: None)  # streaming has nothing either
 
     class _FakeResp:
         status_code = 200
 
         def json(self):
-            # ONE spot faucet (2026-09-16): a real Schwab quote node always carries lastPrice;
-            # this fixture used to omit it, which was harmless before _tier_a_live_state_dict
-            # called resolve_spot (spot came straight from the stale plane row instead) but now
-            # correctly makes resolve_spot's own quote_node leg find nothing, since that leg
-            # parses spot from this SAME node. Added so resolve_spot succeeds the same way a
-            # real REST quote would, keeping this test's actual subject (chg_pct backfill
-            # surviving the plane merge) isolated from the unrelated spot-authority path.
             return {ticker: {"quote": {"netPercentChange": 7.77, "lastPrice": 55.0}}}
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _FakeResp())
-
     out = srv._tier_a_live_state_dict(ticker, None)
-    assert out["chg_pct"] == 7.77, (
-        f"REST backfill (7.77) was overwritten by the plane overlay's stale chg_pct=None "
-        f"-- got {out['chg_pct']!r}"
-    )
+    assert out["spot"] == 55.0
+    assert out.get("chg_pct") is None, "REST netPercentChange must never stand in for the stream"
 
 
 def test_merge_into_state_chg_pct_overwrites_unconditionally_including_none(monkeypatch):
@@ -179,187 +159,127 @@ def test_safe_get_quotes_retries_once_after_token_refresh(monkeypatch):
     assert calls["n"] == 2  # one failed attempt on the bad client, one retry on the refreshed one
 
 
-def test_chg_pct_backfill_is_the_shared_authority_for_live_state_and_l1(monkeypatch):
-    """An independent review found /api/live/state getting a real chg_pct after its own
-    fix while the SSE-pushed header stayed blank -- the L1 build path had no backfill at
-    all, a second, unfixed copy of the same problem. Both must now call the ONE shared
-    _chg_pct_with_rest_backfill, not each decide independently (or one of them not decide
-    at all)."""
+def test_streamed_chg_pct_is_the_one_authority_for_live_state_and_l1(monkeypatch):
+    """/api/live/state and both L1 builds read chg_pct through the ONE stream-only
+    _streamed_chg_pct -- none of them keeps a REST backfill of its own."""
     import inspect
     import server as srv
 
-    assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._tier_a_live_state_dict)
-    assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._project_l1)
-    assert "_chg_pct_with_rest_backfill" in inspect.getsource(srv._l1_http_get_projection)
+    for fn in (srv._tier_a_live_state_dict, srv._project_l1, srv._l1_http_get_projection):
+        src = inspect.getsource(fn)
+        assert "_streamed_chg_pct" in src, fn.__name__
+        assert "_memoized_quote_response" not in src or fn is not srv._tier_a_live_state_dict
 
 
-def test_chg_pct_with_rest_backfill_resolves_via_rest_when_stream_and_row_are_both_empty(monkeypatch):
+def test_streamed_chg_pct_serves_only_a_fresh_streamed_row(monkeypatch):
+    import time as _t
+
     import server as srv
-    import app.options.order_flow.state as ofs
 
-    monkeypatch.setattr(ofs, "get_stream_chg_pct", lambda t: None)
-
-    class _FakeResp:
-        status_code = 200
-
-        def json(self):
-            return {"ZZZTEST": {"quote": {"netPercentChange": 3.33}}}
-
-    monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _FakeResp())
-    got = srv._chg_pct_with_rest_backfill("ZZZTEST", {"spot": 10.0, "chg_pct": None}, client=object())
-    assert got == 3.33
+    fresh = {"spot": 10.0, "chg_pct": 3.33, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
+             "quote_source_detail": {"spot": "LAST_PRICE"},
+             "quote_ingestion": "schwab_streaming_level_one"}
+    assert srv._streamed_chg_pct("ZZZTEST", fresh) == 3.33
+    assert srv._streamed_chg_pct("ZZZTEST", dict(fresh, quote_ingestion="rest_tier_a")) is None
+    assert srv._streamed_chg_pct("ZZZTEST", dict(fresh, server_received_ts=0.0, spot_received_ts=0.0)) is None
+    assert srv._streamed_chg_pct("ZZZTEST", None) is None
 
 
-def test_watchlist_quotes_route_reports_auth_failure_distinctly(monkeypatch):
-    """The pre-review shape collapsed auth/vendor/transport failure into the SAME bare {}
-    a genuinely-empty-coverage success would return -- indistinguishable. ok:false + a
-    reason must now be present.
+def _streamed_plane_row(spot, chg_pct):
+    import time as _t
+    now = _t.time()
+    return {"spot": spot, "spot_disp": f"{spot:.2f}", "chg_pct": chg_pct,
+            "exchange_quote_ts": now, "server_received_ts": now, "spot_received_ts": now,
+            "quote_source_detail": {"spot": "LAST_PRICE"},
+            "quote_ingestion": "schwab_streaming_level_one"}
 
-    Operator-reproduced defect (2026-09-14, spot 360 audit): this route now checks
-    live_market_plane first (a real ticker WITH a fresh plane row is answered from it, no
-    vendor call needed) -- so real symbols like "SPY"/"QQQ" are no longer safe to use here:
-    whichever OTHER test in this same worker last populated their plane row would silently
-    pre-answer this request in the full suite (fails there, passed here in isolation before
-    this fix), even though this test has nothing to do with that other test's fixture. Fake,
-    reserved-for-this-test ticker symbols with an explicit clean slate remove the dependency
-    on suite-wide plane state entirely, the same isolation convention this file's own
-    plane-reuse tests already use."""
+
+def test_watchlist_quotes_route_reports_a_dead_stream_distinctly(monkeypatch):
+    """With no fresh streamed row for ANY requested symbol the whole live feed is down:
+    ok:false + error "stream_unavailable" -- distinct from a per-symbol gap -- and no vendor
+    call is made to paper over it (operator rule 2026-09-23: no fallbacks)."""
     import live_market_plane as L
     import server as srv
-    from fastapi import HTTPException
     from starlette.testclient import TestClient
 
-    def _raise_auth_unavailable():
-        raise HTTPException(status_code=503, detail="Schwab auth failed: token_invalid")
-
-    tks = ["ZZWLAUTHFAIL1", "ZZWLAUTHFAIL2"]
+    tks = ["ZZWLDEAD1", "ZZWLDEAD2"]
     for tk in tks:
         L._by_ticker.pop(tk, None)
-    try:
-        monkeypatch.setattr(srv, "get_client", _raise_auth_unavailable)
-        with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(tks)})
-            assert r.status_code == 200  # the route itself succeeds; failure is IN the payload
-            body = r.json()
-            assert body["ok"] is False
-            assert body["error"]
-            assert body["quotes"] == {}
-    finally:
-        for tk in tks:
-            L._by_ticker.pop(tk, None)
+    monkeypatch.setattr(srv, "get_client", lambda: (_ for _ in ()).throw(
+        AssertionError("the watchlist must not reach for a Schwab client")))
+    with TestClient(srv.app) as client:
+        r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(tks)})
+    assert r.status_code == 200
+    assert r.json() == {"ok": False, "error": "stream_unavailable", "quotes": {}}
 
 
 def test_watchlist_quotes_route_success_shape(monkeypatch):
+    import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
 
-    class _FakeResp:
-        status_code = 200
-
-        def json(self):
-            return {"ZZZTEST": {"quote": {"lastPrice": 55.0, "netPercentChange": 1.11}}}
-
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
+    monkeypatch.setitem(L._by_ticker, "ZZZTEST", _streamed_plane_row(55.0, 1.11))
     with TestClient(srv.app) as client:
-        r = client.get("/api/watchlist-quotes", params={"tickers": "ZZZTEST"})
-        body = r.json()
-        assert body["ok"] is True
-        assert body["error"] is None
-        assert body["quotes"]["ZZZTEST"]["spot"] == 55.0
-        assert body["quotes"]["ZZZTEST"]["chg_pct"] == 1.11
+        body = client.get("/api/watchlist-quotes", params={"tickers": "ZZZTEST"}).json()
+    assert body["ok"] is True and body["error"] is None
+    q = body["quotes"]["ZZZTEST"]
+    assert (q["spot"], q["chg_pct"], q["spot_state"], q["spot_source"]) == (
+        55.0, 1.11, "live", srv.SPOT_SOURCE_PLANE)
 
 
-def test_watchlist_quotes_reuses_a_fresh_plane_row_with_no_vendor_call(monkeypatch):
-    """Operator-reproduced defect (2026-09-14, spot 360 audit): this route called
-    schwab_client.safe_get_quotes directly, a RAW vendor call outside both
-    _memoized_quote_response and live_market_plane -- the watchlist's own SPY row and the
-    Gamma Chart's SPY spot could come from two different Schwab round-trips seconds apart.
-    A ticker with a fresh plane row must now be answered FROM the plane, with no vendor call
-    at all, guaranteeing the SAME number every other screen shows."""
+def test_watchlist_quotes_serves_the_streamed_row_with_no_vendor_call(monkeypatch):
+    """The watchlist's SPY row and every other screen's SPY spot are the SAME streamed
+    LAST_PRICE -- no vendor round trip of its own."""
+    import live_market_plane as L
+    import server as srv
+    from starlette.testclient import TestClient
+
+    tk = "ZZWLPLANE"
+    monkeypatch.setitem(L._by_ticker, tk, _streamed_plane_row(812.5, 0.42))
+    monkeypatch.setattr("schwab_client.safe_get_quotes", lambda *_a, **_k: (_ for _ in ()).throw(
+        AssertionError("no vendor call")))
+    with TestClient(srv.app) as client:
+        body = client.get("/api/watchlist-quotes", params={"tickers": tk}).json()
+    assert body["ok"] is True
+    assert body["quotes"][tk]["spot"] == 812.5
+    assert body["quotes"][tk]["chg_pct"] == 0.42
+
+
+def test_watchlist_quotes_withholds_a_symbol_the_stream_is_not_answering(monkeypatch):
+    """One symbol streamed, one not (or its last trade too old): the streamed one is
+    served, the other is simply absent (its row reads UNAVAILABLE) -- nothing is fetched
+    or written into the plane on its behalf."""
     import time as _t
 
     import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
 
-    tk = "ZZWLPLANE"
-    L._by_ticker[tk] = {"spot": 812.5, "spot_disp": "812.50", "chg_pct": 0.42,
-                         "exchange_quote_ts": 1_800_000_000.0, "server_received_ts": _t.time(),
-                         "quote_source_detail": {"spot": "LAST_PRICE"}}
-    called = {"n": 0}
-
-    def _boom(*_a, **_k):
-        called["n"] += 1
-        raise AssertionError("safe_get_quotes must not be called for a ticker the plane already answers")
-    try:
-        monkeypatch.setattr("schwab_client.safe_get_quotes", _boom)
-        with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": tk})
-        body = r.json()
-        assert called["n"] == 0
-        assert body["ok"] is True
-        assert body["quotes"][tk]["spot"] == 812.5
-        assert body["quotes"][tk]["chg_pct"] == 0.42
-    finally:
-        L._by_ticker.pop(tk, None)
+    monkeypatch.setitem(L._by_ticker, "ZZWLLIVE", _streamed_plane_row(61.5, -0.2))
+    old = dict(_streamed_plane_row(70.0, 0.1), spot_received_ts=_t.time() - 120.0)
+    monkeypatch.setitem(L._by_ticker, "ZZWLOLD", old)
+    L._by_ticker.pop("ZZWLNONE", None)
+    with TestClient(srv.app) as client:
+        body = client.get("/api/watchlist-quotes",
+                          params={"tickers": "ZZWLLIVE,ZZWLOLD,ZZWLNONE"}).json()
+    assert body["ok"] is True
+    assert set(body["quotes"]) == {"ZZWLLIVE"}
+    assert L.get_quote("ZZWLNONE") is None
 
 
-def test_watchlist_quotes_records_a_fresh_fetch_into_the_plane(monkeypatch):
-    """The other half: a ticker the plane cannot answer still gets a real vendor fetch, and
-    that fetch is written back into the plane so the NEXT reader -- watchlist or any other
-    screen -- sees the same value this one just fetched, instead of a value only this route
-    ever knew about."""
+def test_watchlist_quotes_route_no_invented_count_cap(monkeypatch):
+    """A prior version silently truncated the ticker list at an invented 500-symbol cap. A
+    large request is answered in full, not cut down."""
     import live_market_plane as L
     import server as srv
     from starlette.testclient import TestClient
 
-    class _FakeResp:
-        status_code = 200
-
-        def json(self):
-            return {"ZZWLRECORD": {"quote": {"lastPrice": 61.5, "netPercentChange": -0.2}}}
-
-    tk = "ZZWLRECORD"
-    L._by_ticker.pop(tk, None)
-    try:
-        monkeypatch.setattr(srv, "get_client", lambda: object())
-        monkeypatch.setattr("schwab_client.safe_get_quotes", lambda client, tickers: _FakeResp())
-        with TestClient(srv.app) as client:
-            r = client.get("/api/watchlist-quotes", params={"tickers": tk})
-        body = r.json()
-        assert body["quotes"][tk]["spot"] == 61.5
-        plane_row = L.get_quote(tk)
-        assert plane_row is not None and plane_row["spot"] == 61.5, (
-            "the fresh vendor fetch must be recorded into the plane, not kept private to this route"
-        )
-    finally:
-        L._by_ticker.pop(tk, None)
-
-
-def test_watchlist_quotes_route_no_invented_count_cap(monkeypatch):
-    """A prior version of this route silently truncated the ticker list at an invented
-    500-symbol cap with no vendor/transport evidence behind the number (caught in review).
-    A large request must be passed through, not silently cut down."""
-    import server as srv
-    from starlette.testclient import TestClient
-
-    requested = {}
-
-    class _FakeResp:
-        status_code = 200
-
-        def json(self):
-            return {}
-
-    def _fake_safe_get_quotes(client, tickers):
-        requested["tickers"] = list(tickers)
-        return _FakeResp()
-
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr("schwab_client.safe_get_quotes", _fake_safe_get_quotes)
-    many = ["T{}".format(i) for i in range(600)]
+    many = ["ZZT{}".format(i) for i in range(600)]
+    for t in many:
+        monkeypatch.setitem(L._by_ticker, t, _streamed_plane_row(10.0, 0.0))
     with TestClient(srv.app) as client:
         r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(many)})
-        assert r.status_code == 200
-        assert len(requested["tickers"]) == 600  # nothing silently dropped
+    assert r.status_code == 200
+    assert len(r.json()["quotes"]) == 600  # nothing silently dropped
+
+

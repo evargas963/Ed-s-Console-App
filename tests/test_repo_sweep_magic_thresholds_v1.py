@@ -6,11 +6,8 @@ import re
 
 import pytest
 
-from lifecycle_rule_core import (
-    T1_FALLBACK_R_MULTIPLE,
-    T2_OFFSET_R_MULTIPLE,
-    derive_target_levels,
-)
+import lifecycle_rule_core
+from lifecycle_rule_core import derive_target_levels
 from math_exposure import MISSING_GREEK_SENTINEL
 from math_exposure_core import MISSING_GREEK_SENTINEL as CORE_SENTINEL
 
@@ -64,22 +61,15 @@ def test_missing_greek_sentinel_constant_value_is_negative_999_point_0():
     assert MISSING_GREEK_SENTINEL == pytest.approx(-999.0)
 
 
-def test_t1_fallback_and_t2_offset_constants_pin_expected_r_multiples():
-    assert T1_FALLBACK_R_MULTIPLE == pytest.approx(2.0)
-    assert T2_OFFSET_R_MULTIPLE == pytest.approx(1.0)
+def test_no_fallback_target_constants_and_no_invented_targets():
+    """The 2R / T1+1R fallback targets are gone (audit S-14..16, 2026-09-24): no constant
+    exists to reintroduce them, and absent moves give no target."""
+    assert not hasattr(lifecycle_rule_core, "T1_FALLBACK_R_MULTIPLE")
+    assert not hasattr(lifecycle_rule_core, "T2_OFFSET_R_MULTIPLE")
     levels = derive_target_levels(
-        direction="long",
-        entry=100.0,
-        risk=1.0,
-        avg5=None,
-        avg15=None,
-        avg60=None,
-        structural_levels=[],
-    )
-    assert levels.target_source == "2r_fallback"
-    assert levels.target == pytest.approx(102.0)
-    assert levels.target2_source == "1r_offset_from_t1"
-    assert levels.target2 == pytest.approx(103.0)
+        direction="long", entry=100.0, risk=1.0, avg5=None, avg15=None, structural_levels=[])
+    assert (levels.target, levels.target2) == (None, None)
+    assert levels.target_source == "no_5c_avg_move"
 
 
 def test_no_inline_missing_greek_sentinel_literal_in_production_outside_authority(repo_index):
