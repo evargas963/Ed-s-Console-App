@@ -56,8 +56,8 @@ P1/P2 rows are to be merged here as each file is repaired.
 | F-04/05 | bayesian_fusion.py:333-336, 378, 508 | getattr(rules, "signal"/"conviction", default) | fusion_* | FIXED 693ffaa8 |
 | F-06 | bayesian_fusion.py:620-621 | CALIBRATION_PENALTY placeholder | fusion_confidence | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
 | F-07/08 | bayesian_fusion.py:421, 427-429 | likelihood floor; "fallback to priors" | posteriors | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
-| L-01 | ml_predict.py:2853-2862 | model_version built from files on disk, not what ran | persisted pred_model_version | OPEN |
-| F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | OPEN |
+| L-01 | ml_predict.py:2853-2862 | model_version built from files on disk, not what ran | persisted pred_model_version | FIXED 425aa436 |
+| F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | FIXED 425aa436 |
 | S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | FIXED 739fb9fc |
 | S-04 | market_state.py:359-422 | "low"/"rules_v1"/0.0 defaults persisted when signals fail | snapshots | FIXED 739fb9fc |
 | L-02 | governed_stack_contract.py:229-254 | non-SPY/QQQ/IWM routed to an "SPY anchor" (+ The Call wait_reason) | The Call label | OPEN |
@@ -113,6 +113,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | N-01 | calibration/edge_validation.py `_effective_directional_signal` | stored 1/3-each placeholder triplets won the p_up >= p_dn >= p_fl tie-break and were scored as LONG calls -- every edge study over rows logged while fusion was off counted them | calibration edge / discovery / engineering reports | FIXED 739fb9fc (reader requires tradable provenance; any edge report produced from those rows before this is invalid) |
 | N-02 | prediction_engine.py `_empty_prediction` | no-database path seeds every horizon with a 1/3-each product triplet | PredictiveCard up/down/flat per horizon (no-DB only) | OPEN |
 | N-03 | calibration/analyze_phase3.py `_confidence_bucket`; calibration/signal_engineering.py `final_signal or "wait"` | unknown confidence label bucketed as "low"; missing final signal counted as "wait" | offline calibration reports | OPEN |
+| N-04 | db.py compute_accuracy | RTH scope read a NULL et_minute as :00; "statistical_v1" default version matched zero rows | accuracy surfaces | FIXED 425aa436 |
 
 ### v2 decision (advisory; persisted training rows only)
 | ID | file:line | Violation | Status |
@@ -127,5 +128,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 40 rows above marked OPEN (several rows group more than one site).
+Re-audit live P0 open: 38 rows above marked OPEN (several rows group more than one site).
 P1 (re-audit): ~70 more, to be merged as files are repaired.
