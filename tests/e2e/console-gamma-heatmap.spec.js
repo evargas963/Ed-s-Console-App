@@ -1124,6 +1124,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
+    // The chart's spot is the header's quote_tick (audit of #280 removed the /api/terrain copy,
+    // a second producer): deliver it on the push stream the console opens.
+    const qts = Date.now() / 1000;
+    await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
+      status: 200, contentType: 'text/event-stream',
+      body: 'retry: 500\n\nevent: quote_tick\ndata: ' + JSON.stringify({
+        ticker: 'SPY', spot: 583.41, spot_disp: '583.41', spot_state: 'live', feed_live: true,
+        spot_source: 'streaming_plane', server_ts: qts, trade_age_sec: 1,
+      }) + '\n\n',
+    }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
@@ -2373,33 +2383,30 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(totalDelta).toBeLessThanOrEqual(4);
   });
 
-  test('CONFIRMED REGRESSION FIX (2026-09-17): the Gamma Chart spot line moves on a spot-only gamma_surface_seq push, not just the 12s poll', async ({ page }) => {
-    // Live-UI field audit finding: ed-gamma-chart.js's own gamma-push handler reused the
-    // STALE `_lastRaw.terrain` object instead of refetching /api/terrain, on the reasoning
-    // "a streamed option tick carries no terrain/spot information" -- true before this
-    // mandate's spot-tick fix, false now that a push can ALSO mean "spot moved with no
-    // option tick at all". This proves the fix: the terrain response is genuinely refetched
-    // on the push, and the chart's own spot line/label reflects the NEW value.
-    let terrainSpot = 583.41;
-    await page.route('**/api/terrain?**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, { spot: terrainSpot })),
-    }));
-    await page.route('**/api/analytics/light/stream**', async (route) => {
-      await new Promise((r) => setTimeout(r, 1000));
+  test('the Gamma Chart spot line moves with each quote_tick (the header\'s price), not a terrain refetch', async ({ page }) => {
+    // Was (2026-09-17): the chart's spot came from /api/terrain and moved only when a gamma
+    // push refetched it. Audit of #280: that was a second producer that could show a different
+    // price than the header. Required now: the chart's spot line/label IS the header's
+    // quote_tick and follows every tick; /api/terrain carries flip/walls only.
+    let n = 0;
+    await page.route('**/api/analytics/light/stream**', (route) => {
+      n += 1;
+      const spot = n === 1 ? 583.41 : 601.23;
       route.fulfill({
         status: 200, contentType: 'text/event-stream',
-        body: ': ok\n\nevent: gamma_surface_seq\ndata: {"scope":{"ticker":"SPY"},"surface_seq":2}\n\n',
+        body: 'retry: 300\n\nevent: quote_tick\ndata: ' + JSON.stringify({
+          ticker: 'SPY', spot: spot, spot_disp: spot.toFixed(2), spot_state: 'live', feed_live: true,
+          spot_source: 'streaming_plane', server_ts: Date.now() / 1000, trade_age_sec: 1,
+        }) + '\n\n',
       });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
-    await expect(page.locator('#chartBody svg')).toContainText('spot 583.41');
-    // Canonical spot moves -- NO option tick, purely a spot-only tick's own gamma_surface_seq
-    // push (the exact shape refresh_gamma_surface_from_spot_tick produces).
-    terrainSpot = 601.23;
-    await page.waitForTimeout(1100);   // past the mocked SSE delay
-    await expect(page.locator('#chartBody svg')).toContainText('spot 601.23');
+    await expect(page.locator('#chartBody svg')).toContainText(/spot (583\.41|601\.23)/);
+    // the next tick (the stream reconnects and delivers the new price) moves the chart, and
+    // the chart and header show the same number
+    await expect(page.locator('#chartBody svg')).toContainText('spot 601.23', { timeout: 8000 });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
   });
 
   test('CONFIRMED REGRESSION FIX (2026-09-17): Key Levels rail updates on a gamma_surface_seq push, not just the 12s poll', async ({ page }) => {

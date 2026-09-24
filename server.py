@@ -12542,6 +12542,10 @@ def _dispatch_spot_gamma_refresh(ticker: str) -> None:
         return
     if not tk:
         return
+    # only a heatmap someone is viewing (the gamma-surface demand registry) is repriced per
+    # tick -- this is called for every streamed equity symbol
+    if not _gamma_surface_wanted(tk):
+        return
     with _spot_gamma_refresh_lock:
         if tk in _spot_gamma_refresh_inflight:
             _spot_gamma_refresh_pending.add(tk)
@@ -13820,8 +13824,10 @@ def get_terrain_strikes(ticker: str = Query(...)):
 # the page's polling when CR-CAP clears; this endpoint stays as the history hydrator.
 @app.get("/api/bars1m")
 def get_bars1m(ticker: str = Query(...),
-               limit: int = Query(default=780, ge=1, le=3000)):
-    """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts."""
+               limit: int = Query(default=780, ge=1, le=3000),
+               tf: str = Query(default="1", pattern=r"^(1|3|5|15|60|D)$")):
+    """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts. `tf` rolls
+    them up server-side (aggregate_bars) -- the chart page used to aggregate in the browser."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     import sqlite3 as _sq
     try:
@@ -13854,10 +13860,48 @@ def get_bars1m(ticker: str = Query(...),
                  "v": (float(b.volume) if getattr(b, "volume", None) is not None else None)}
                 for b in list(acc)[-int(limit):]]
         if bars:
-            return JSONResponse({"ticker": tk, "bars": overlay_forming_bar_from_plane(bars, tk),
-                                 "n": len(bars), "source": "live_accumulator_unbanked"})
-    return JSONResponse({"ticker": tk, "bars": overlay_forming_bar_from_plane(bars, tk),
-                         "n": len(bars)})
+            out = aggregate_bars(overlay_forming_bar_from_plane(bars, tk), tf)
+            return JSONResponse({"ticker": tk, "bars": out, "tf": tf,
+                                 "n": len(out), "source": "live_accumulator_unbanked"})
+    out = aggregate_bars(overlay_forming_bar_from_plane(bars, tk), tf)
+    return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out)})
+
+
+def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
+    """THE chart-timeframe roll-up of 1m bars ("1", "3", "5", "15", "60" minutes, or "D" =
+    the ET trading date): first open, max high, min low, last close. Volume is the sum only
+    when every minute in the bucket reported one -- otherwise None (unknown), never a partial
+    sum or a 0. A bucket holding the forming minute is itself forming."""
+    if tf == "1":
+        return list(bars)
+    from time_et import ET
+    step = None if tf == "D" else int(tf) * 60
+
+    def key(t: float):
+        return datetime.fromtimestamp(t, ET).date() if step is None else int(t // step)
+
+    out: list[dict] = []
+    cur: dict | None = None
+    cur_key = None
+    for b in bars:
+        k = key(float(b["t"]))
+        if cur is None or k != cur_key:
+            if cur is not None:
+                out.append(cur)
+            cur = {"t": b["t"], "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "v": b.get("v")}
+            if b.get("forming"):
+                cur["forming"] = True
+            cur_key = k
+            continue
+        cur["h"] = max(cur["h"], b["h"])
+        cur["l"] = min(cur["l"], b["l"])
+        cur["c"] = b["c"]
+        cur["v"] = None if (cur["v"] is None or b.get("v") is None) else cur["v"] + b["v"]
+        if b.get("forming"):
+            cur["forming"] = True
+    if cur is not None:
+        out.append(cur)
+    return out
 
 
 def overlay_forming_bar_from_plane(bars: list[dict], ticker: str) -> list[dict]:
@@ -13871,11 +13915,11 @@ def overlay_forming_bar_from_plane(bars: list[dict], ticker: str) -> list[dict]:
             and _lmp.spot_is_fresh(row) and row.get("spot") is not None):
         return list(bars)
     px = float(row["spot"])
-    trade_ms = row.get("trade_ts")          # Schwab TRADE_TIME_MILLIS of that LAST_PRICE
-    if trade_ms is None:                    # no trade time: the minute's own bar, no live tick
-        acc = _candles_1m.forming_bar(ticker)
+    trade_ts = row.get("trade_ts")          # Schwab TRADE_TIME of that LAST_PRICE, epoch SECONDS
+    if trade_ts is None:                    # (the plane converts TRADE_TIME_MILLIS on ingest)
+        acc = _candles_1m.forming_bar(ticker)   # no trade time: the minute's own bar, no live tick
         return list(bars) if acc is None else _merge_forming_bar(list(bars), acc)
-    ts = float(trade_ms) / 1000.0
+    ts = float(trade_ts)
     bar_t = ts - (ts % CANDLE_1M_SECONDS)
     forming = {"t": bar_t, "o": px, "h": px, "l": px, "c": px, "v": None, "forming": True}
     acc = _candles_1m.forming_bar(ticker)
@@ -15380,20 +15424,30 @@ def _quote_tick_event(ticker: str) -> dict:
     spot, source, _as_of = resolve_spot(tk)
     row = _lmp.get_quote(tk)
     quote_live = bool(row) and _lmp.quote_is_fresh(row)
+    now = time.time()
+    trade_ts = row["trade_ts"] if row and spot is not None and "trade_ts" in row else None   # epoch s
+    forming = overlay_forming_bar_from_plane([], tk) if spot is not None else []
     return {
         "_sse_event_name": "quote_tick",
         "ticker": tk,
         "spot": spot,
         "spot_disp": (f"{spot:.2f}" if spot is not None else None),
         "spot_state": current_spot_state(source, tk),
+        "spot_source": source,
+        # the feed itself (daemon heartbeat, socket open, symbol held) -- distinct from "this
+        # symbol has traded this session": a held, live symbol with no trade yet is not "no feed"
+        "feed_live": _lmp.feed_live_for(tk),
         "bid": row["bid"] if quote_live and "bid" in row else None,
         "ask": row["ask"] if quote_live and "ask" in row else None,
         "chg_pct": _lmp.streamed_chg_pct(row),
-        "trade_ts": row.get("trade_ts") if row and spot is not None else None,
-        "trade_ts_ms": row["trade_ts"] if row and spot is not None and "trade_ts" in row else None,
+        "trade_ts": trade_ts,
+        "trade_age_sec": (round(max(0.0, now - float(trade_ts)), 1) if trade_ts is not None else None),
+        # the forming 1m candle, built by THE forming-bar producer (TRADE_TIME minute); the
+        # browser places it, it never builds or edits a candle
+        "forming_1m": forming[-1] if forming else None,
         "ts_recv": row.get("server_received_ts") if row else None,
         "quote_ingestion": row.get("quote_ingestion") if row else None,
-        "server_ts": time.time(),
+        "server_ts": now,
     }
 
 

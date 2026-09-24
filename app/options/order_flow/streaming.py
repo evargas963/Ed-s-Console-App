@@ -434,6 +434,9 @@ def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
         return None   # daemon has not created the DB yet (cold start) — retry next tick
 
 
+_tick_callback_failures = 0
+
+
 def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
@@ -474,13 +477,17 @@ def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
         if sym == _active_ticker:
             _streaming_last_update_ts = ts
         if _on_tick_callback:
-            with _equity_lock:
-                viewed = {_active_ticker} | set(_equity_demand.get("watchlist") or [])
-            if sym in viewed:
-                try:
-                    _on_tick_callback(sym)
-                except Exception as e:  # noqa: BLE001
-                    log.debug("Tick callback: %s", e)
+            # every equity tick; the callback (server._dispatch_spot_gamma_refresh) decides by
+            # the heatmap's OWN demand registry whether this ticker's surface is being viewed --
+            # one "viewed" signal, not a second one built here from the raw watchlist
+            try:
+                _on_tick_callback(sym)
+            except Exception as e:  # noqa: BLE001 -- counted + WARNING; ingest must go on
+                global _tick_callback_failures
+                _tick_callback_failures += 1
+                if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
+                    log.warning("spot tick callback failed for %s (%s failures): %s",
+                                sym, _tick_callback_failures, e)
         return None
     if kind == "book":
         content = msg.get("content")

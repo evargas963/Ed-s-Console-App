@@ -104,9 +104,10 @@
   function frameStage(levelsD, spot) {
     var levels = (levelsD && levelsD.levels) || [];
     if (!levels.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No levels', '', 0, [], null);
-    var sorted = levels.slice().sort(function (a, b) {
-      return Math.abs((a.price || 0) - spot) - Math.abs((b.price || 0) - spot);
-    });
+    // a level with no price is not a level at price 0 (audit of #280)
+    var sorted = levels.filter(function (r) { return r.price != null && isFinite(Number(r.price)); })
+      .sort(function (a, b) { return Math.abs(a.price - spot) - Math.abs(b.price - spot); });
+    if (!sorted.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No priced levels', '', 0, [], null);
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
     var dist = isFinite(spot) && nearest ? nearest.price - spot : null;
@@ -346,11 +347,12 @@
     var withGhost = [], byVolRows = [];
     var rows = '';
     win.forEach(function (r) {
-      var k = r[0], gx = Number(r[1]) || 0, vol = r[2], gy = ghost[k];
-      var hasGy = gy != null;
+      // a strike with no GEX value is unknown, not a zero bar (audit of #280)
+      var k = r[0], gx = (r[1] == null || !isFinite(Number(r[1]))) ? null : Number(r[1]), vol = r[2], gy = ghost[k];
+      var hasGy = gy != null && gx != null;
       if (hasGy) withGhost.push({ k: k, gx: gx, gy: gy });
       if (vol) byVolRows.push({ k: k, vol: vol });
-      var pos = gx >= 0, wToday = Math.min(100, Math.abs(gx) / maxAbs * 100);
+      var pos = gx != null && gx >= 0, wToday = gx == null ? 0 : Math.min(100, Math.abs(gx) / maxAbs * 100);
       var ghostBar = hasGy
         ? '<i class="mig-ghost ' + (gy >= 0 ? 'pos' : 'neg') + '" style="width:' + Math.min(100, Math.abs(gy) / maxAbs * 100).toFixed(1) + '%"></i>' : '';
       var delta = hasGy ? gx - gy : null;
@@ -362,7 +364,7 @@
         '<span class="gbs-k">' + num(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track mig-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + wToday.toFixed(1) + '%"></i>' +
         (_migGhost ? ghostBar : '') + '</span>' +
-        '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(gx) + '</span>' +
+        '<span class="gbs-v ' + (gx == null ? '' : (pos ? 'pos' : 'neg')) + '">' + (gx == null ? '—' : usd(gx)) + '</span>' +
         (_migGhost ? deltaHtml : '') +
         '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span>' +
         (k === spotStrike ? migTag('SPOT', 'spot') : '') +

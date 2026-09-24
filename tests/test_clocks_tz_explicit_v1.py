@@ -22,10 +22,15 @@ def test_shipped_static_has_no_bare_locale_dates():
 
 def test_chart_binds_session_et_and_display_ct():
     src = CHART.read_text(encoding="utf-8")
-    assert "SESSION_TZ = 'America/New_York'" in src
+    # session (ET) keys are the server's since the audit of #280 -- the page keys nothing
+    assert "SESSION_TZ" not in src and "&tf=" in src
     assert "DISPLAY_TZ = 'America/Chicago'" in src
-    assert "function etDateKey" in src
-    assert "etDateKey(b.t)" in src or "etDateKey(t)" in src
+    # The daily roll-up (and its ET date key) is server-side since the audit of #280: the
+    # browser no longer aggregates candles. The ET keying is pinned on the producer.
+    assert "function aggregate(" not in src and "etDateKey(" not in src
+    import inspect
+    import server as srv
+    assert "from time_et import ET" in inspect.getsource(srv.aggregate_bars)
     assert "displayDateLabel(" in src and "displayTimeLabel(" in src
     assert "toLocaleDateString()" not in src
     assert "toLocaleDateString(undefined" not in src
@@ -62,22 +67,32 @@ def test_explicit_timezone_is_quiet():
     assert good == []
 
 
-def test_missing_session_tz_screams():
+def test_browser_side_grouping_screams():
+    """Negative control: putting candle/date grouping back in the page is caught (the roll-up
+    and its ET key are server-side, aggregate_bars)."""
     src = CHART.read_text(encoding="utf-8")
-    stripped = src.replace("SESSION_TZ = 'America/New_York'", "SESSION_TZ = 'UTC'", 1)
-    bad = L.chart_session_clock_violations(stripped)
-    assert any("SESSION_TZ" in m or "America/New_York" in m for m in bad), bad
+    regrouped = src.replace("function currentChartTicker() {",
+                            "function etDateKey(t) { return ''; } function currentChartTicker() {", 1)
+    bad = L.chart_session_clock_violations(regrouped)
+    assert any("server-side" in m for m in bad), bad
+    no_tf = src.replace("&tf=", "&xf=")
+    assert any("tf=" in m for m in L.chart_session_clock_violations(no_tf))
 
 
 def test_et_date_key_matches_time_et_authority():
-    """etDateKey contract: same YYYY-MM-DD as time_et.et_date_str_from_ts_utc for a known ET noon."""
+    """The daily roll-up keys the ET trading date (server aggregate_bars, same calendar as
+    time_et.et_date_str_from_ts_utc): 23:30 ET and 00:30 ET next day are two bars even though
+    they fall on one UTC date; 11:00 ET and 23:30 ET are one bar."""
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
 
+    import server as srv
     from time_et import et_date_str_from_ts_utc
 
-    et_noon = datetime(2026, 8, 3, 12, 0, tzinfo=ZoneInfo("America/New_York"))
-    ts = et_noon.astimezone(timezone.utc).timestamp()
-    assert et_date_str_from_ts_utc(ts) == "2026-08-03"
-    src = CHART.read_text(encoding="utf-8")
-    assert "timeZone: SESSION_TZ" in src
+    et = ZoneInfo("America/New_York")
+    ts = [datetime(2026, 8, 3, h, m, tzinfo=et).astimezone(timezone.utc).timestamp()
+          for h, m in ((11, 0), (23, 30))]
+    ts.append(datetime(2026, 8, 4, 0, 30, tzinfo=et).astimezone(timezone.utc).timestamp())
+    assert [et_date_str_from_ts_utc(t) for t in ts] == ["2026-08-03", "2026-08-03", "2026-08-04"]
+    bars = [{"t": t, "o": 1, "h": 1, "l": 1, "c": 1, "v": 1} for t in ts]
+    assert [b["v"] for b in srv.aggregate_bars(bars, "D")] == [2, 1]

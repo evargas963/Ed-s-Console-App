@@ -264,6 +264,9 @@ def test_dispatcher_coalesces_a_burst_into_at_most_two_underlying_calls(monkeypa
     dispatches for the SAME ticker while the first is still running must cost at most TWO
     real calls to the underlying function (the one already running, plus one coalesced
     trailing rerun) -- never ten."""
+    # reprice runs only for a heatmap someone is viewing (gamma-surface demand registry,
+    # audit of #280): register the demand the real /api/options/gamma-surface would
+    monkeypatch.setattr(server, "_gamma_surface_wanted", lambda _tk: True)
     calls = []
     release = threading.Event()
     started = threading.Event()
@@ -301,6 +304,9 @@ def test_dispatcher_keeps_two_tickers_data_isolated(monkeypatch):
     not what this test is about. What it proves is DATA isolation: both tickers'
     dispatches are honored (neither is dropped or corrupted by the other's in-flight
     call), and each call receives its OWN ticker identity, never a mixed-up one."""
+    # reprice runs only for a heatmap someone is viewing (gamma-surface demand registry,
+    # audit of #280): register the demand the real /api/options/gamma-surface would
+    monkeypatch.setattr(server, "_gamma_surface_wanted", lambda _tk: True)
     calls = []
     release = threading.Event()
     started = threading.Event()

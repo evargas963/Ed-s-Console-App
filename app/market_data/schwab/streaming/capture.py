@@ -45,7 +45,6 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from stream_spine import (  # noqa: E402
-    COALESCE,
     COUNT_DROPS,
     PRODUCER_CLAIM_TTL_SEC,
     CaptureWriter,
@@ -286,11 +285,15 @@ def _stream_socket_open(stream, pump_task) -> bool:
 #: supported rate command or a tick-by-tick vendor is admitted.
 STREAM_DELIVERY_CEILING_SEC = 1.0
 STREAM_QOS_UNSUPPORTED = {
-    "supported": False,
+    # What is MEASURED, and nothing more (audit of #280: "unsupported" was asserted on a
+    # guide citation no one could check, while another Schwab client documents ADMIN QOS).
+    "supported": "unverified",
     "ceiling_sec": STREAM_DELIVERY_CEILING_SEC,
     "evidence": (
-        "Streamer Guide commands=LOGIN,SUBS,ADD,UNSUBS,VIEW,LOGOUT; "
-        "live ADMIN QOS code=21 BAD_COMMAND_FORMAT"
+        "measured 2026-09-24 08:27 CT: all 43 LEVELONE_EQUITIES symbols on a 1.01 s grid "
+        "(Schwab default delivery); ADMIN QOS with TDA-format parameters {'qoslevel': '0'} "
+        "rejected: code 21 'Bad command formatting'. Whether Schwab accepts QOS in another "
+        "format is unverified -- no request is sent."
     ),
 }
 
@@ -1732,7 +1735,7 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATUS_PATH.write_text(json.dumps({
         "ts": time.time(), "health": health.report(),
-        # the Schwab delivery level this session asked for and what Schwab answered
+        # Schwab's delivery ceiling as measured, and what is unverified (nothing is requested)
         "qos": stats.qos,
         "published": bus.published, "drops": bus.drop_counts(),
         "frame_skips": dict(stats.frame_skips),
@@ -2027,8 +2030,7 @@ async def _run_locked(
         bus = MessageBus()
         health = HealthRegistry()
         stats = CaptureStats(sample_dir=ROOT / "reports")
-        wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)   # writer sees everything
-        _ui_future = bus.subscribe("quote.", policy=COALESCE)        # proves coalesce path live
+        wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")   # writer sees everything
         stop = asyncio.Event()
 
         return await _run_streaming(

@@ -532,8 +532,8 @@ def main() -> int:
         return 1
 
     try:
-        from schwab import auth
-        client = auth.client_from_token_file(
+        from schwab_client import client_from_token_file_atomic
+        client = client_from_token_file_atomic(
             str(ACCESS_TOKEN_PATH),
             API_KEY,
             APP_SECRET,

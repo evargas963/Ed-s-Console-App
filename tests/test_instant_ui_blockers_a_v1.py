@@ -117,7 +117,136 @@ def test_forming_bar_is_keyed_on_trade_time_only(monkeypatch):
     bars = [{"t": 1_700_000_100.0, "o": 49.0, "h": 49.5, "l": 48.5, "c": 49.2, "v": 5}]
     # no TRADE_TIME: the quote clock / receive clock never stand in for the trade's minute
     assert srv.overlay_forming_bar_from_plane(bars, tk) == bars
-    row["trade_ts"] = 1_700_000_130_000        # Schwab TRADE_TIME_MILLIS, in the ..100 minute
+    row["trade_ts"] = 1_700_000_130.0          # epoch SECONDS, as the plane stores TRADE_TIME (..100 minute)
     out = srv.overlay_forming_bar_from_plane(bars, tk)
     assert len(out) == 1 and out[0]["t"] == 1_700_000_100.0
     assert (out[0]["c"], out[0]["h"], out[0]["l"]) == (50.0, 50.0, 48.5)
+
+
+# ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
+
+def test_drop_counts_are_per_consumer_and_survive_a_disconnect():
+    """The writer, push clients and push history all subscribe to "" -- keyed by prefix they
+    overwrote each other (audit of #280). Counts are per consumer name, and a push client's
+    drops remain after it disconnects."""
+    from stream_spine import COUNT_DROPS
+
+    async def go():
+        bus = MessageBus()
+        writer = bus.subscribe("", policy=COUNT_DROPS, maxsize=1, name="db_writer")
+        client = bus.subscribe("", policy=COUNT_DROPS, maxsize=2, name="push_client")
+        for i in range(6):
+            bus.publish(f"quote.S{i}", {"i": i})
+        before = bus.drop_counts()
+        bus.unsubscribe(client)
+        after = bus.drop_counts()
+        _ = writer
+        return before, after
+    before, after = asyncio.run(go())
+    assert before == {"db_writer": 5, "push_client": 4}
+    assert after == {"db_writer": 5, "push_client": 4}
+
+
+def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
+    """The client schwab-py builds refreshes through OUR writer (temp + replace), never
+    open(path, 'w') in place (audit of #280: the atomic helper had no production caller)."""
+    import json
+    import schwab_client as sc
+    from schwab import auth
+
+    tok = tmp_path / "schwab_token.json"
+    tok.write_text(json.dumps({"creation_timestamp": 1, "token": {"access_token": "a"}}))
+    seen = {}
+
+    def fake_access_functions(api_key, app_secret, read, write, **kw):
+        seen["read"] = read()
+        write({"creation_timestamp": 2, "token": {"access_token": "b"}})
+        return "client"
+    monkeypatch.setattr(auth, "client_from_access_functions", fake_access_functions)
+    replaced = []
+    import os as _os
+    real_replace = _os.replace
+    monkeypatch.setattr(_os, "replace", lambda a, b: (replaced.append((a, b)), real_replace(a, b))[1])
+    assert sc.client_from_token_file_atomic(str(tok), "k", "s") == "client"
+    assert seen["read"]["token"]["access_token"] == "a"
+    assert json.loads(tok.read_text())["token"]["access_token"] == "b"
+    assert replaced and str(replaced[0][1]) == str(tok), "the refresh must land via os.replace"
+
+
+def test_a_transient_windows_share_violation_is_retried_then_lands(monkeypatch, tmp_path):
+    import schwab_client as sc
+    import arch_competition.atomic_io as aio
+
+    real = aio.write_json_file_atomically
+    calls = {"n": 0}
+
+    def flaky(path, payload, **kw):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError("[WinError 5] Access is denied")
+        return real(path, payload, **kw)
+    monkeypatch.setattr(aio, "write_json_file_atomically", flaky)
+    monkeypatch.setattr(sc.time, "sleep", lambda s: None)
+    dest = tmp_path / "t.json"
+    sc.write_token_file_atomically(str(dest), {"x": 1})
+    assert calls["n"] == 3 and dest.exists()
+
+
+# ── PR C: server-side bar roll-up; quote_tick carries the screen's numbers; heatmap demand ──
+
+def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
+    import server as srv
+    t0 = 1_700_000_100.0                                    # a 5-minute boundary: 1_700_000_100 % 300 == 100? use floor
+    base = t0 - (t0 % 300)
+    m = [{"t": base + 60 * i, "o": 10 + i, "h": 11 + i, "l": 9 + i, "c": 10.5 + i, "v": 100} for i in range(7)]
+    m[6]["v"] = None                                        # one minute with no reported volume
+    out = srv.aggregate_bars(m, "5")
+    assert [b["t"] for b in out] == [base, base + 300]
+    first, second = out
+    assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (10, 15, 9, 14.5, 500)
+    assert (second["o"], second["h"], second["l"], second["c"]) == (15, 17, 14, 16.5)
+    assert second["v"] is None, "a bucket with an unreported minute has unknown volume, not a partial sum"
+    assert srv.aggregate_bars(m, "1") == m
+
+
+def test_daily_roll_up_is_keyed_on_the_et_trading_date():
+    import server as srv
+    # 2026-09-24 19:59 ET and 20:01 ET are the same ET date; 00:01 ET next day is not
+    d1a, d1b, d2 = 1_790_294_340.0, 1_790_294_460.0, 1_790_308_860.0
+    out = srv.aggregate_bars([{"t": d1a, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 1},
+                              {"t": d1b, "o": 1.5, "h": 3, "l": 1, "c": 2, "v": 1},
+                              {"t": d2, "o": 2, "h": 2, "l": 2, "c": 2, "v": 1}], "D")
+    assert len(out) == 2 and out[0]["h"] == 3 and out[0]["v"] == 2
+
+
+def test_quote_tick_carries_feed_state_trade_age_and_the_forming_bar(monkeypatch):
+    import time as _t
+
+    import live_market_plane as lmp
+    import server as srv
+    from tests.feed_live_helper import mark_feed_live
+
+    mark_feed_live("ZZQF")
+    now = _t.time()
+    lmp.record_from_level_one_equity("ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": int((now - 7) * 1000)},
+                                     received_ts=now)
+    ev = srv._quote_tick_event("ZZQF")
+    assert ev["feed_live"] is True and ev["spot"] == 42.0 and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
+    assert 6.0 <= ev["trade_age_sec"] <= 9.0
+    f = ev["forming_1m"]
+    assert f is not None and f["c"] == 42.0 and f["t"] == (now - 7) - ((now - 7) % 60)
+    held_no_trade = srv._quote_tick_event("ZZNOTRADE")
+    assert held_no_trade["spot"] is None and held_no_trade["forming_1m"] is None
+
+
+def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch):
+    import server as srv
+    submitted = []
+    monkeypatch.setattr(srv, "_get_spot_gamma_refresh_executor",
+                        lambda: type("E", (), {"submit": staticmethod(lambda fn, tk: submitted.append(tk))})())
+    monkeypatch.setattr(srv, "_gamma_surface_demand", {"ZZVIEW": __import__("time").time()})
+    srv._spot_gamma_refresh_inflight.discard("ZZVIEW")
+    srv._dispatch_spot_gamma_refresh("ZZNOTVIEWED")
+    srv._dispatch_spot_gamma_refresh("ZZVIEW")
+    srv._spot_gamma_refresh_inflight.discard("ZZVIEW")
+    assert submitted == ["ZZVIEW"]

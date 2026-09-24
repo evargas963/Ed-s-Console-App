@@ -89,7 +89,7 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
 
     import server as srv
 
-    body = json.loads(srv.get_bars1m(ticker="SPY", limit=5).body)
+    body = json.loads(srv.get_bars1m(ticker="SPY", limit=5, tf="1").body)
     assert body["ticker"] == "SPY" and isinstance(body["bars"], list)
     if body["bars"]:
         row = body["bars"][-1]

@@ -20,10 +20,7 @@
   function ticker(){return((window.EdShell&&window.EdShell.getState())||{}).ticker||'';}
   // Mirrors server.py's SPOT_SOURCE_* constants -- short, human labels for the same strings
   // resolve_spot() already stamps on every payload it produces.
-  var SPOT_SOURCE_LABEL = {
-    streaming_plane: 'streaming', schwab_quote_last: 'REST quote',
-    stored_snapshot: 'stored (stale)', chain_underlying: 'chain close', regular_close: 'session close',
-  };
+  var SPOT_SOURCE_LABEL = { streaming_plane: 'streaming' };   // resolve_spot has one source
   function spotSourceLabel(s) { return s ? (SPOT_SOURCE_LABEL[s] || s) : null; }
 
   var _mode = 'profile';
@@ -42,7 +39,15 @@
   var _view = null;            // {lo, hi} once the operator has zoomed/panned; null = auto-fit
   var _pin = null;             // {vx, vy} pinned crosshair in viewBox space, or null
   var _lastCtx = null;         // {bars, win, spot, terrain} from the last successful render
-  var _lastBarsData = null;    // last successful /api/bars1m payload (historical minutes)
+  var _lastBarsData = null;    // the latest /api/bars1m payload (null after a failed fetch)
+  // THE displayed price: the same quote_tick the header paints (server _quote_tick_event).
+  // The chart used to take its spot from /api/terrain -- a second producer that could differ.
+  var _liveQuote = null;
+  function sameSym(a, b) { return String(a || '').toUpperCase().replace(/^\$/, '') === String(b || '').toUpperCase().replace(/^\$/, ''); }
+  function liveSpot() {
+    return (_liveQuote && sameSym(_liveQuote.ticker, ticker()) && _liveQuote.spot_state === 'live'
+            && _liveQuote.spot != null) ? Number(_liveQuote.spot) : NaN;
+  }
   var _viewTicker = null, _viewMode = null;   // domain resets only on a genuine context change
   // Deep-research finding (operator directive, 2026-09-14): real TradingView gives its
   // SECONDARY axis the same independent drag-to-rescale the primary axis gets (there, time is
@@ -269,6 +274,7 @@
       fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
     ]).then(function (res) {
       if (!stillChart(tk)) return;
+      _lastBarsData = res[0];            // a failed fetch clears the old bars, never re-shows them
       render(host, res[0], res[1], res[2]);
     });
   }
@@ -288,8 +294,8 @@
   // here on the reasoning "a streamed OPTION tick carries no new terrain/spot information" --
   // true when this was written, but FALSE now that ed:gamma-push also fires on a canonical
   // SPOT-ONLY tick (refresh_gamma_surface_from_spot_tick, server.py) with no option tick at
-  // all. /api/terrain's own spot field (`terrain.spot`, read by render() below as THE spot
-  // this chart's line/label draws) was left pointing at `_lastRaw.terrain` -- the STALE
+  // all. (Then /api/terrain's spot field was this chart's spot; since the audit of #280 the
+  // spot is the header's quote_tick and /api/terrain supplies only flip/walls.) It was left pointing at `_lastRaw.terrain` -- the STALE
   // object from the last full 12s-cadence load() -- so the header's spot could move on every
   // tick while this chart's own spot line sat frozen for up to 12s. The exact same class of
   // "header moves, this panel does not" defect the heatmap fix (2026-09-17) already closed,
@@ -323,32 +329,17 @@
   function render(host, barsData, strikesData, terrain) {
     var bars = (barsData && barsData.bars) || [];
     var srows = (strikesData && strikesData.today && strikesData.today.all) || [];
-    // ONE spot faucet (operator directive, 2026-09-15, repo-wide audit): this used to fall
-    // back to strikesData.spot whenever terrain.spot was missing -- but /api/terrain/strikes
-    // and /api/terrain are two SEPARATE fetches, each independently resolved server-side, so
-    // that fallback could silently display a DIFFERENT observation generation's spot than the
-    // one the rest of this chart's overlays (flip/call-wall/put-wall, all sourced from
-    // `terrain`) were computed against. terrain is this chart's one canonical price-context
-    // payload; if it did not supply a spot this cycle, the existing isFinite(spot) guards
-    // below already render '-' and skip the spot line/label -- the same "no valid current
-    // snapshot" treatment every other gamma surface in this app already uses, not a new
-    // behavior. Never silently substitutes a different endpoint's number.
-    // Independent review, 2026-09-16 (CORRECTED): Number(terrain && terrain.spot) fabricates
-    // a real, finite 0 whenever terrain is null/undefined OR terrain.spot itself is explicitly
-    // null (Number(null) === 0, Number(undefined) === NaN -- only one of the two absence
-    // shapes was ever caught). A fabricated 0 passes every isFinite(spot) guard below as if it
-    // were a genuine price, drawing a spot line/label at 0 instead of the intended '-'. Absence
-    // is checked explicitly BEFORE numeric conversion, not inferred from what Number() does to
-    // whatever falls out of it.
-    var _terrainSpotRaw = terrain ? terrain.spot : null;
-    var spot = (_terrainSpotRaw == null) ? NaN : Number(_terrainSpotRaw);
+    // ONE spot faucet: the chart's spot is the header's quote_tick (liveSpot), never
+    // /api/terrain's or /api/terrain/strikes' copy -- those were separate producers that could
+    // show a different price than the header (audit of #280). No live price -> NaN -> '-'.
+    var spot = liveSpot();
     // Operator directive (2026-09-14, spot 360 audit): every payload already carries WHICH
     // spot authority answered it (resolve_spot's own design intent, "so a divergence is
     // impossible to hide") -- this was computed server-side but never shown anywhere. Reading
     // it here and rendering it below is how the NEXT divergence, if the plane/REST/stored
     // hierarchy ever disagrees again, is visible on screen instead of requiring a screenshot
     // comparison to notice.
-    var spotSource = terrain ? terrain.spot_source : null;
+    var spotSource = (isFinite(spot) && _liveQuote) ? _liveQuote.spot_source : null;
     if (!bars.length && !srows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         (barsData || strikesData ? 'no bars / per-strike gamma for this symbol' : 'no console serving /api/bars1m + /api/terrain/strikes') + '</div></div>';
@@ -369,7 +360,13 @@
     var lo = Infinity, hi = -Infinity;
     bars.forEach(function (b) { if (b.l != null) lo = Math.min(lo, b.l); if (b.h != null) hi = Math.max(hi, b.h); });
     win.forEach(function (r) { lo = Math.min(lo, r[0]); hi = Math.max(hi, r[0]); });
-    if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = (spot || 100) * 0.98; hi = (spot || 100) * 1.02; }
+    if (!isFinite(lo) || !isFinite(hi) || lo === hi) {
+      if (!isFinite(spot)) {             // no bars, no strikes, no live price: say so, no fake axis
+        host.innerHTML = '<div class="placeholder"><div class="sm">no price data for this symbol yet</div></div>';
+        return;
+      }
+      lo = spot * 0.98; hi = spot * 1.02;
+    }
     var pad = (hi - lo) * 0.04; lo -= pad; hi += pad;
 
     var note = (window.EdShell && window.EdShell.scopeNote)
@@ -384,13 +381,8 @@
       ageSec: strikesData.today_age_sec, stale: !!strikesData.levels_stale, reason: strikesData.levels_stale_reason,
       live: (lvlSrc === 'terrain_live_cache' && !strikesData.levels_stale) }) : '';
     var asofLine = (barsBadge || lvlBadge) ? ('<div class="chart-asof">' + barsBadge + lvlBadge + '</div>') : '';
-    var legend = note + asofLine + '<div class="chart-legend">' +
-      '<span><span class="sw" style="background:var(--ed-pos)"></span>+GEX</span>' +
-      '<span><span class="sw" style="background:var(--ed-neg)"></span>−GEX</span>' +
-      '<span><span class="sw" style="background:var(--ed-ink)"></span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
-      (spotSourceLabel(spotSource) ? ' <span class="chart-spot-src">(' + esc(spotSourceLabel(spotSource)) + ')</span>' : '') + '</span>' +
-      '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
-      '<span class="chart-hint">drag plot to pan · drag price or time axis to rescale · scroll to zoom (hover the time axis to zoom time) · click pins a readout · double-click resets</span></div>';
+    var legendHead = note + asofLine;
+    var legend = buildLegend(legendHead, spot, spotSource);
       // The TIME PANNED/ZOOMED disclosure (see renderInto) is NOT built here: `legend` is
       // cached once per real fetch in _lastCtx and reused verbatim by every interactive
       // rerenderFromCache() call (pan/zoom/pin), so a condition on _timeView baked in at this
@@ -398,9 +390,17 @@
       // an interactive drag/wheel that happens after it -- REPRODUCED live: dragging the time
       // axis visibly narrowed the window but the note never appeared. renderInto re-evaluates
       // it fresh on every call instead, the same way it already does for `lo`/`hi` under _view.
-    _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend };
-    if (barsData && barsData.bars) _lastBarsData = barsData;
+    _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend, legendHead: legendHead };
     renderInto(host, bars, win, spot, terrain, legend);
+  }
+  function buildLegend(head, spot, spotSource) {
+    return head + '<div class="chart-legend">' +
+      '<span><span class="sw" style="background:var(--ed-pos)"></span>+GEX</span>' +
+      '<span><span class="sw" style="background:var(--ed-neg)"></span>−GEX</span>' +
+      '<span><span class="sw" style="background:var(--ed-ink)"></span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') +
+      (spotSourceLabel(spotSource) ? ' <span class="chart-spot-src">(' + esc(spotSourceLabel(spotSource)) + ')</span>' : '') + '</span>' +
+      '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
+      '<span class="chart-hint">drag plot to pan · drag price or time axis to rescale · scroll to zoom (hover the time axis to zoom time) · click pins a readout · double-click resets</span></div>';
   }
   // Repaints from already-fetched data at a possibly operator-overridden [lo,hi] domain -- used
   // by BOTH the real load path (auto-fit domain) and every pan/zoom/crosshair frame (cached
@@ -424,7 +424,13 @@
       lo = Infinity; hi = -Infinity;
       bars.forEach(function (b) { if (b.l != null) lo = Math.min(lo, b.l); if (b.h != null) hi = Math.max(hi, b.h); });
       win.forEach(function (r) { lo = Math.min(lo, r[0]); hi = Math.max(hi, r[0]); });
-      if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo = (spot || 100) * 0.98; hi = (spot || 100) * 1.02; }
+      if (!isFinite(lo) || !isFinite(hi) || lo === hi) {
+        if (!isFinite(spot)) {
+          host.innerHTML = legend + '<div class="placeholder"><div class="sm">no price data for this symbol yet</div></div>';
+          return;
+        }
+        lo = spot * 0.98; hi = spot * 1.02;
+      }
       var pad = (hi - lo) * 0.04; lo -= pad; hi += pad;
     }
     var svg = (_mode === 'profile')
@@ -642,24 +648,22 @@
   }
 
   function applyQuoteTick(q) {
+    if (!q || !sameSym(q.ticker, ticker())) return;
+    _liveQuote = q;
     if (!isChart() || !_lastCtx) return;
-    if (!q || String(q.ticker || '').toUpperCase() !== String(ticker()).toUpperCase()) return;
-    var px = (q.spot != null && q.spot_state === 'live') ? Number(q.spot) : NaN;
     var bars = (_lastCtx.bars || []).slice();
-    if (bars.length && isFinite(px)) {
-      var last = {};
-      var src = bars[bars.length - 1];
-      for (var k in src) last[k] = src[k];
-      last.c = px;
-      bars[bars.length - 1] = last;
+    var f = q.forming_1m;                 // THE forming candle, built server-side
+    if (f && f.t != null) {
+      var lastT = bars.length ? bars[bars.length - 1].t : null;
+      if (lastT != null && Number(f.t) === Number(lastT)) bars[bars.length - 1] = f;
+      else if (lastT == null || Number(f.t) > Number(lastT)) bars = bars.concat([f]);
     }
-    var terrain = _lastCtx.terrain ? Object.assign({}, _lastCtx.terrain) : {};
-    terrain.spot = isFinite(px) ? px : null;
+    var spot = liveSpot();
     _lastCtx.bars = bars;
-    _lastCtx.spot = isFinite(px) ? px : NaN;
-    _lastCtx.terrain = terrain;
+    _lastCtx.spot = spot;
+    _lastCtx.legend = buildLegend(_lastCtx.legendHead || '', spot, isFinite(spot) ? q.spot_source : null);
     var host = document.getElementById('chartBody');
-    if (host) renderInto(host, bars, _lastCtx.win, _lastCtx.spot, terrain, _lastCtx.legend);
+    if (host) renderInto(host, bars, _lastCtx.win, spot, _lastCtx.terrain, _lastCtx.legend);
   }
   window.addEventListener('ed:quote_tick', function (ev) { applyQuoteTick((ev && ev.detail) || {}); });
 

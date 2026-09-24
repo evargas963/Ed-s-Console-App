@@ -19,9 +19,11 @@ def test_qos_is_not_sent_on_the_socket() -> None:
 def test_delivery_ceiling_is_recorded_and_published() -> None:
     stats = cap.CaptureStats()
     out = cap.record_stream_delivery_ceiling(stats)
-    assert out["supported"] is False
+    # only what was measured: the 1.01 s grid and the rejected TDA-format request; whether
+    # Schwab accepts QOS in another format is not claimed either way (audit of #280)
+    assert out["supported"] == "unverified"
     assert out["ceiling_sec"] == 1.0
-    assert "code=21" in out["evidence"]
+    assert "code 21" in out["evidence"] and "1.01 s grid" in out["evidence"]
     assert stats.qos == out
     assert '"qos": stats.qos' in inspect.getsource(cap.write_status)
     assert cap.STREAM_DELIVERY_CEILING_SEC == 1.0

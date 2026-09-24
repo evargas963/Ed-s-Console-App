@@ -120,7 +120,7 @@ def test_forming_bar_overlay_uses_plane_last(monkeypatch):
         "spot_received_ts": ts,
         "server_received_ts": ts,
         "exchange_quote_ts": ts,
-        "trade_ts": ts * 1000.0,        # Schwab TRADE_TIME_MILLIS -- the forming bar's only clock
+        "trade_ts": ts,                 # TRADE_TIME in epoch SECONDS (the plane converts the ms)
     }
     monkeypatch.setattr(srv._lmp, "get_quote", lambda t: row if t == tk else None)
     bars = [{"t": 1_700_000_040.0, "o": 100.0, "h": 100.5, "l": 99.5, "c": 100.2, "v": 10}]
@@ -146,7 +146,10 @@ def test_viewed_watchlist_quote_fires_gamma_tick_callback(monkeypatch):
     ofs._ingest_pushed("quote.BBB", msg)
     assert hits == ["BBB"]
 
+    # every equity tick reaches the callback; WHICH surfaces reprice is decided by the heatmap
+    # demand registry inside server._dispatch_spot_gamma_refresh (one "viewed" signal, audit
+    # of #280) -- tests/test_instant_ui_blockers_a_v1.py pins that gate
     hits.clear()
     msg2 = {"symbol": "CCC", "ts_recv": 1_700_000_001.0, "native": {"LAST_PRICE": 11.0}}
     ofs._ingest_pushed("quote.CCC", msg2)
-    assert hits == []
+    assert hits == ["CCC"]
