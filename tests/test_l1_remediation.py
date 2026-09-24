@@ -297,7 +297,7 @@ def test_index_html_l1_scope_and_generation_guards():
     assert "addEventListener('l1_quote'" not in core
     assert "addEventListener('quote_tick'" not in core
     analytics = core.split("function openAnalyticsStream(")[1].split("\n  }\n")[0]
-    assert "paintQuoteNextFrame" not in analytics
+    assert "paintQuote" not in analytics
 
 
 # test_index_html_l1_quote_vs_of_freshness_ui was retired here (/console cutover, operator

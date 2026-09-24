@@ -749,21 +749,6 @@
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
       .catch(function () { _wlDeclared = null; });   // retried on the next poll
   }
-  // requestAnimationFrame throttle: pushes can arrive faster than the screen repaints; only the
-  // NEWEST quote is painted, once per frame, so a burst never queues stale paints.
-  var _pendingQuote = null, _quoteFrame = 0;
-  function paintQuoteNextFrame(q) {
-    _pendingQuote = q;
-    if (_quoteFrame) return;
-    var onFrame = function () {
-      _quoteFrame = 0;
-      var next = _pendingQuote; _pendingQuote = null;
-      if (next) paintQuote(next);
-    };
-    _quoteFrame = window.requestAnimationFrame ? window.requestAnimationFrame(onFrame)
-                                               : setTimeout(onFrame, 16);
-  }
-
   // ---- the price socket (daemon -> browser) ----
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
   var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
@@ -790,8 +775,8 @@
     if (typeof WebSocket === 'undefined' || !url) return;
     var ws;
     try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
-    _priceWs = ws;
-    _priceSubTs = Date.now();
+    _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
+                     //  outage keeps reading OFFLINE, not WAITING)
     ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
@@ -818,7 +803,11 @@
     var bare = sym.replace(/^\$/, '');
     if (bare === String(state.ticker || '').toUpperCase().replace(/^\$/, '')) {
       var live = q.spot_state === 'live' && q.spot != null;
-      paintQuoteNextFrame({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
+      // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
+      // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
+      // The daemon already conflates to the newest row per symbol, so there is no burst to
+      // throttle -- a few text writes per second.
+      paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, quoteIngestion: q.quote_ingestion,
         spotState: q.spot_state,
         feedCls: live ? '' : 'stale',
@@ -909,8 +898,9 @@
   // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
   // label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
-    _pendingQuote = null;
-    var connecting = !_priceUp && (Date.now() - _priceSubTs <= PRICE_SILENCE_MS);
+    // just asked for this ticker (page load or a ticker change): the row is on its way
+    // (WAITING); otherwise the push itself is down (OFFLINE)
+    var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
     paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null,
       spotState: 'unavailable', feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
