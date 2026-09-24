@@ -8,7 +8,7 @@ violation, labelled or not.
 
 Status: OPEN | FIXED `<sha>` | DORMANT (code path off today: fix before it is switched on).
 Scope of this register: the 2026-09-24 re-audit (six read-only audits, every line of the named
-files). The 2026-09-23 first-pass audit (653 sites, 16 P0) is tracked by its P0s below; its
+files). The 2026-09-23 first-pass audit (653 sites, 16 P0 [UNVERIFIED]: audit report not committed) is tracked by its P0s below; its
 P1/P2 rows are to be merged here as each file is repaired.
 
 ## First-pass P0s (2026-09-23)
@@ -128,5 +128,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 38 rows above marked OPEN (several rows group more than one site).
-P1 (re-audit): ~70 more, to be merged as files are repaired.
+Re-audit live P0 open: 38 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.

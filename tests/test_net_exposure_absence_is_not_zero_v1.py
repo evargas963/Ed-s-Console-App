@@ -22,6 +22,8 @@ SPOT = 500.0
 
 
 def _c(strike, typ, *, delta, gamma, oi=1000):
+    # institutional-synthetic-ok: these tests MUST feed invalid greeks (NaN / None delta and
+    # gamma) to prove absence stays None; a captured chain cannot be made invalid on demand.
     return {
         "strikePrice": strike, "putCall": typ, "daysToExpiration": 0, "delta": delta, "gamma": gamma,
         "openInterest": oi, "multiplier": 100,

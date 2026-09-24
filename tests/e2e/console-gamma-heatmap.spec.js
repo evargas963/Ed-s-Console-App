@@ -1632,13 +1632,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // expect, not a bug in the fix. Settled the same way the newer subscription-state-
     // machine tests already do: wait for the page's own background auto-select to
     // finish before starting this test's own explicit sequence.
+    //
+    // CI flake root-caused (2026-09-24): this route used to answer EVERY request with the
+    // current mode from page load on -- so the page's own background auto-select "clear"
+    // got a 503 too, and the page (correctly) RETRIED it later. On a slow runner that
+    // retry landed inside step 1 and read as a second request. Background requests (any
+    // set other than this test's SET) now always succeed and are not counted.
+    const SET = ['SPY   260911C00583000', 'SPY   260911P00583000'];
+    const isOwn = (contracts) => JSON.stringify([...(contracts || [])].sort()) === JSON.stringify([...SET].sort());
     let requestCount = 0;
     /** @type {((v: any) => void) | null} */
     let releasePending = null;
     let mode = 'fail';   // 'fail' -> 503, 'hang' -> never resolves until released, 'ok' -> echoes back, 'wrong' -> echoes a different set
     await page.route('**/api/streaming/active-option-contracts', async (route) => {
-      requestCount += 1;
       const body = JSON.parse(route.request().postData() || '{}');
+      if (!isOwn(body.contracts)) {
+        return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+      }
+      requestCount += 1;
       if (mode === 'fail') {
         return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
       }
@@ -1656,9 +1668,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
-    requestCount = 0;   // discard the auto-select's own settle-time request(s), if any
-
-    const SET = ['SPY   260911C00583000', 'SPY   260911P00583000'];
+    requestCount = 0;
 
     // 1) First request fails (503) -- must not be reported accepted.
     const r1 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);

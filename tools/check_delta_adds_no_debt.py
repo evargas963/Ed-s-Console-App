@@ -442,6 +442,10 @@ def main(argv: list[str] | None = None) -> int:
         description="Fail if the candidate adds an enforced violation the base did not carry")
     ap.add_argument("--base", default="origin/main")
     args = ap.parse_args(argv)
+    # Its own report carries em-dashes and violation text; on a cp1252 Windows console the
+    # FAIL branch crashed with UnicodeEncodeError mid-report (2026-09-24), hiding the findings.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     candidate_ref, candidate_label = "HEAD", "HEAD"
 
     base_counts, base_ids, base_sha, base_roster = enforced_counts(args.base)
