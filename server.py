@@ -427,6 +427,33 @@ _quote_memo: dict[str, tuple[float, object]] = {}
 _quote_memo_lock = threading.Lock()
 
 
+_quote_reference_by_ticker: dict[str, dict] = {}
+_quote_reference_lock = threading.Lock()
+
+
+def _daily_quote_reference(ticker: str, client) -> dict:
+    """The quote's DAILY reference blocks (fundamental / reference: avg10DaysVolume etc.),
+    read at most once per ET day per ticker -- reference data, not a live value (N-10).
+    {} when unavailable (never a stand-in)."""
+    from time_et import now_et
+    tk = ticker_storage_key(ticker)
+    today = now_et().date().isoformat()
+    with _quote_reference_lock:
+        hit = _quote_reference_by_ticker.get(tk)
+        if hit and hit.get("as_of_date") == today:
+            return hit
+    resp = _memoized_quote_response(tk, client=client)
+    if resp is None or getattr(resp, "status_code", None) != 200:
+        return {}
+    node = (resp.json() or {}).get(tk) or {}
+    out = {"as_of_date": today,
+           "fundamental": node.get("fundamental") or {},
+           "reference": node.get("reference") or {}}
+    with _quote_reference_lock:
+        _quote_reference_by_ticker[tk] = out
+    return out
+
+
 def _memoized_quote_response(ticker: str, *, client=None, attempt_hook=None):
     """ONE Schwab quote read per ticker per TTL, shared by the fast lane AND resolve_spot.
 
@@ -3193,10 +3220,6 @@ async def _broadcast_snapshot(data: dict) -> None:
     except Exception as e:
         log.warning(f"SSE broadcast failed: {e}", exc_info=True)
 
-# REST fallback: Cum Delta proxy (polling-based) when streamer unavailable.
-# Accumulates per ticker, resets at open. Streamer value takes precedence.
-_rest_cum_delta: dict = {}        # ticker -> running sum
-_rest_cum_delta_session: Optional[str] = None  # ET date "YYYY-MM-DD"
 
 # User prediction override — per ticker: {direction, source}
 # direction: "up" | "flat" | "down", source: "user" | "manual"
@@ -5365,40 +5388,6 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     }
 
 
-def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float | None:
-    """
-    Update and return REST-based cum_delta accumulator for ticker.
-    Resets at 9:30 ET on RTH open (not midnight). Pre-market trades do not carry into RTH.
-    """
-    global _rest_cum_delta, _rest_cum_delta_session
-    try:
-        hour, minute = now_et.hour, now_et.minute
-        mins = hour * 60 + minute
-        in_rth = RTH_OPEN_MINS <= mins < RTH_CLOSE_MINS and now_et.weekday() < 5
-        date_str = now_et.strftime("%Y-%m-%d")
-        session_key = date_str if in_rth else f"{date_str}-premarket"
-        if session_key != _rest_cum_delta_session:
-            _rest_cum_delta.clear()
-            _rest_cum_delta_session = session_key
-    except Exception as e:
-        log.debug(f"REST cum_delta session check failed: {e}")
-    last_price = _safe_float_quote(quote.get("lastPrice"))
-    last_size = _safe_float_quote(quote.get("lastSize"))
-    bid_price = _safe_float_quote(quote.get("bidPrice"))
-    ask_price = _safe_float_quote(quote.get("askPrice"))
-    if last_price is None or last_size is None or last_size <= 0:
-        return _rest_cum_delta.get(ticker)
-    delta = 0.0
-    if ask_price is not None and last_price >= ask_price:
-        delta = last_size
-    elif bid_price is not None and last_price <= bid_price:
-        delta = -last_size
-    cur = _rest_cum_delta.get(ticker)
-    if cur is None:
-        cur = 0.0
-    _rest_cum_delta[ticker] = cur + delta
-    return _rest_cum_delta[ticker]
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2A (operator 2026-08-08): `_compute_vwap_from_bars` was DELETED here.
@@ -6298,7 +6287,6 @@ def _fetch_state(
                 from_date=_chain_from_date_for(ticker, expiry),   # Cursor-audit F2: bound near edge for a far pick
                 priority=_chain_priority,
             )
-            q_resp = _memoized_quote_response(ticker, client=client)   # RC-112/W3-C8: one vendor faucet
         else:
             # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf futures run on
             # the dedicated recompute-leaf pool — never behind serve bodies.
@@ -6322,9 +6310,7 @@ def _fetch_state(
             # vendor fetch BY REFERENCE, so the paren-matching structural test never saw it —
             # the hot parallel path bypassed the memo while the inline branch above used it.
             # The lock now counts NAME references, not call syntax.
-            _quote_fut = _cq_pool.submit(_memoized_quote_response, ticker, client=client)
             c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _chain_fut.result()
-            q_resp = _quote_fut.result()
     except SchwabAuthError as e:
         raise HTTPException(
             status_code=401,
@@ -6353,11 +6339,11 @@ def _fetch_state(
     from app.options.order_flow.state import get_stream_volume
     _total_vol = get_stream_volume(ticker)
 
-    # Quote fetched in parallel with chain above — parse here after chain JSON work.
-    if q_resp is None or q_resp.status_code != 200:
-        raise HTTPException(status_code=502,   # Cursor-audit F4: carry vendor status (see chain raise)
-                            detail=f"Quote fetch failed [vendor_status={getattr(q_resp, 'status_code', None)}]")
-    q_json = q_resp.json()
+    # N-10 (2026-09-24): no per-cycle REST quote. Every quote field below comes from the
+    # ticker's STREAMED live_market_plane row -- the same row spot comes from, so spot, bid,
+    # ask, mark, sizes and the tick clock are one source at one generation. The REST quote
+    # used to supply bid/ask/mark/sizes/volume beside a streamed spot, and a REST failure
+    # 502'd the whole cycle even with a healthy stream.
     _t_after_quote_mono = time.monotonic()
     _t_after_quote_wall = time.time()
 
@@ -6376,19 +6362,14 @@ def _fetch_state(
     _stage_t0 = time.perf_counter()
     _stage_marks: list[tuple[str, float]] = []
 
-    _node_q = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
-    _session_q = _parse_quote_node_session_fields(_node_q)
-    parsed_last = _session_q["last"]
-    parsed_mark = _session_q["mark"]
-    parsed_bid = _session_q["bid"]
-    parsed_ask = _session_q["ask"]
-    parsed_quote_time = _session_q["quote_time"]
-    parsed_trade_time = _session_q["trade_time"]
-    # SINGLE SPOT AUTHORITY (RC-14): route the analytics-card spot through resolve_spot,
-    # reusing the quote node already fetched above (no extra round-trip). It now carries the
-    # same value + precedence as /api/spot and the terrain card, and gains the stored-trade
-    # fallback this path lacked (an empty live quote used to yield None / a bare mark here).
-    spot, _spot_source, _spot_ts = resolve_spot(ticker, quote_node=_node_q, chain_json=None)
+    spot, _spot_source, _spot_ts = resolve_spot(ticker)   # streamed LAST_PRICE or None
+    _pq_row = _lmp.get_quote(ticker) if spot is not None else None
+    _pq = _pq_row if (_pq_row and _lmp.plane_row_is_streamed(_pq_row)) else {}
+    parsed_mark = _pq.get("quote_mid")
+    parsed_bid = _pq.get("bid")
+    parsed_ask = _pq.get("ask")
+    _session_q = {"bid_size": _pq.get("bid_size"), "ask_size": _pq.get("ask_size"),
+                  "last_size": _pq.get("last_size")}
     bid    = parsed_bid
     ask    = parsed_ask
 
@@ -6534,7 +6515,9 @@ def _fetch_state(
     spot_f    = float(spot)
 
     # Feed tick into candle accumulators
-    _tick_ts = parsed_quote_time or parsed_trade_time
+    # the last price's own trade clock (TRADE_TIME_MILLIS) -- it used to be quote time `or`
+    # trade time, two different clocks standing in for each other (N-10)
+    _tick_ts = _pq.get("trade_ts")
 
     # Seed candles from Schwab price history when the canonical 1m grid is stale —
     # first visit OR a gap since the last completed bar (background-logged tickers
@@ -6812,7 +6795,7 @@ def _fetch_state(
     else:
         try:
             price_levels = fetch_price_levels(
-                client, symbol=ticker, quote_raw=q_json,
+                client, symbol=ticker, stream_quote=_pq,
                 level_snapshot=_pl_snap,
             )
             if price_levels.error:
@@ -7438,19 +7421,14 @@ def _fetch_state(
         _diag_step("pre_order_flow_data", ticker)
     _order_flow_data = {}
     try:
-        _q_node = q_json.get(ticker.upper()) or q_json.get(ticker) or q_json
-        if isinstance(_q_node, dict):
-            _order_flow_data["quote"] = _q_node.get("quote") or {}
-            _order_flow_data["extended"] = _q_node.get("extended") or {}
-            _order_flow_data["regular"] = _q_node.get("regular") or {}
-            _order_flow_data["fundamental"] = _q_node.get("fundamental") or {}
-            _order_flow_data["reference"] = _q_node.get("reference") or {}
-        else:
-            _order_flow_data["quote"] = {}
-            _order_flow_data["extended"] = {}
-            _order_flow_data["regular"] = {}
-            _order_flow_data["fundamental"] = {}
-            _order_flow_data["reference"] = {}
+        # N-10: no REST quote blocks (quote/extended/regular) -- the engine's live inputs
+        # come from the streamed `content` below. fundamental / reference are DAILY
+        # reference data (e.g. avg10DaysVolume), read once per ET day, labelled as such.
+        _ref = _daily_quote_reference(ticker, client)
+        _order_flow_data["fundamental"] = _ref.get("fundamental") or {}
+        _order_flow_data["reference"] = _ref.get("reference") or {}
+        _order_flow_data["reference_as_of"] = _ref.get("as_of_date")
+        _order_flow_data["stream_total_volume"] = _total_vol   # streamed TOTAL_VOLUME (rvol)
         # Reuse parsed chain JSON — second c_resp.json() reparsed the full payload every tick.
         _order_flow_data["callExpDateMap"] = c_json.get("callExpDateMap") or {}
         _order_flow_data["putExpDateMap"] = c_json.get("putExpDateMap") or {}
@@ -7460,7 +7438,7 @@ def _fetch_state(
         _order_flow_data["candles"] = [
             {
                 "open": b.open, "high": b.high, "low": b.low, "close": b.close,
-                "volume": getattr(b, "volume", 0.0),
+                "volume": getattr(b, "volume", None),   # absent volume is absent, not 0
                 "datetime": int(getattr(b, "ts", 0) * 1000),
             }
             for b in (_bars_1m or [])
@@ -7480,88 +7458,15 @@ def _fetch_state(
     except Exception as _ofd_e:
         log.debug(f"Order flow data build: {_ofd_e}")
 
-    # REST fallback: Cum Delta accumulator (polling-based) when streamer has no tape.
-    # Update each poll; inject into ms after build_market_state if engine returns None.
-    _quote_for_cum = dict(_order_flow_data.get("extended") or {})
-    _quote_for_cum.update(_order_flow_data.get("quote") or {})
-    _update_rest_cum_delta(ticker, _quote_for_cum, now_et)
+    # (2026-09-24) the REST "Cum Delta" fallback -- one polled quote per cycle classified as a
+    # print and summed as if it were a tape -- is deleted. Cum delta is the streamed tape's or
+    # absent.
 
-    # Candle volume priority: 1) Price history candles.*.volume (primary), 2) accumulator (secondary)
-    # Use 1m price history to match canonical (1m) bar timestamps.
-    _c_vol = None
-    if _completed_for_vol:
-        _raw_vol = getattr(_completed_for_vol[-1], "volume", None)
-        if _raw_vol is not None:
-            try:
-                v = float(_raw_vol)
-                if v > 0:
-                    _c_vol = v
-            except (TypeError, ValueError):
-                pass
-    # Price history fetch only when accumulator has no usable volume (avoid duplicate Schwab RTT).
-    if _c_vol is None and ticker:
-        try:
-            resp_ph = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=1)
-            if (not resp_ph or resp_ph.status_code != 200 or not resp_ph.json().get("candles")) and ticker.startswith("$"):
-                resp_ph = safe_get_price_history(client, ticker[1:], frequency_minutes=1, period_days=1)
-            if resp_ph and resp_ph.status_code == 200:
-                payload_ph = resp_ph.json()
-                if "candles" not in payload_ph:
-                    raise ValueError(
-                        f"Schwab pricehistory response missing 'candles' key (status={resp_ph.status_code})"
-                    )
-                ph_candles = payload_ph["candles"]
-                if ph_candles and _completed_for_vol:
-                    last_ts = getattr(_completed_for_vol[-1], "ts", None)
-
-                    def _ph_candle_ts_sec(bar: dict) -> Optional[float]:
-                        dt = bar.get("datetime")
-                        if dt is None:
-                            return None
-                        try:
-                            dt_f = float(dt)
-                        except (TypeError, ValueError):
-                            return None
-                        if dt_f <= 0:
-                            return None
-                        return dt_f / 1000.0 if dt_f > 1e10 else dt_f
-
-                    timed = [b for b in ph_candles if _ph_candle_ts_sec(b) is not None]
-                    if last_ts is not None and timed:
-                        best = min(timed, key=lambda b: abs(_ph_candle_ts_sec(b) - last_ts))
-                    elif timed:
-                        best = timed[-1]
-                    else:
-                        best = ph_candles[-1]
-                    ph_vol = best.get("volume")
-                    if ph_vol is not None:
-                        try:
-                            v = float(ph_vol)
-                            if v > 0:
-                                _c_vol = v
-                        except (TypeError, ValueError):
-                            pass
-                if _c_vol is None and ph_candles:
-                    v = ph_candles[-1].get("volume")
-                    if v is not None:
-                        try:
-                            vf = float(v)
-                            if vf > 0:
-                                _c_vol = vf
-                        except (TypeError, ValueError):
-                            pass
-        except Exception as _ph_e:
-            log.debug(f"Price history volume for {ticker}: {_ph_e}")
-    # 2. Accumulator secondary — WebSocket TOTAL_VOLUME or REST quote delta
-    if _c_vol is None and _completed_for_vol:
-        _raw_vol = getattr(_completed_for_vol[-1], "volume", None)
-        if _raw_vol is not None:
-            try:
-                v = float(_raw_vol)
-                if v > 0:
-                    _c_vol = v
-            except (TypeError, ValueError):
-                pass
+    # Candle volume: the last COMPLETED 1m bar's own volume (streamed TOTAL_VOLUME deltas; 0
+    # is a real zero) or None. It used to reject 0, then fetch REST price history (retrying
+    # with "$" stripped), take the candle NEAREST in time (possibly another minute) under a
+    # >1e10 ms-vs-s magnitude guess, then the last candle (2026-09-24: no fallbacks).
+    _c_vol = getattr(_completed_for_vol[-1], "volume", None) if _completed_for_vol else None
     # ── Build MarketState ─────────────────────────────────────────────────────
     _stage_marks.append(("db_reads_orderflow_input", time.perf_counter()))
     if _diag_on():
@@ -7682,11 +7587,6 @@ def _fetch_state(
     except Exception as _ss_e:
         log.debug("sweep_score post build_market_state: %s", _ss_e)
 
-    # REST fallback: when streamer has no tape, inject polling-based cum_delta.
-    # Streamer value takes precedence when available.
-    if ms.cum_delta_proxy is None and ticker in _rest_cum_delta:
-        ms.cum_delta_proxy = _rest_cum_delta[ticker]
-        log.debug("Cum Delta: REST proxy (polling-based)")
 
     # ── Additive context: liquidity behavior + news/sentiment (non-authoritative) ──
     try:
@@ -8749,9 +8649,10 @@ def _fetch_state(
     ms_dict["expiries"] = [e for e in expiries if e >= _today_str]
     ms_dict["selected_exp"] = selected_exp
     ms_dict["quote_source_detail"] = {
-        "spot": "lastPrice" if parsed_last and parsed_last > 0 else ("mark" if parsed_mark and parsed_mark > 0 else "unavailable_missing_last_and_mark"),
-        "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
-        "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
+        # the streamed row's own fields (N-10): the label used to name REST lastPrice/mark
+        "spot": "LAST_PRICE" if spot is not None else "unavailable_stream",
+        "bid": "BID_PRICE" if bid is not None else "unavailable_missing_bid",
+        "ask": "ASK_PRICE" if ask is not None else "unavailable_missing_ask",
         "spread": _quote_spread_source,
         "spread_age_ms": _quote_spread_age_ms,
         "carried_forward": False,   # no spread is ever carried forward
@@ -15741,13 +15642,14 @@ def api_live_plane(ticker: str = Query(...)):
 
         base.update(get_streaming_diagnostics())
         base["plane_quote_authority"] = get_plane_authority_for_ticker(t)
-    except Exception:
-        base["plane_quote_authority"] = "rest_only"
-    base["streaming_fallback_explicit"] = base.get("plane_quote_authority") == "rest_fallback_explicit"
+    except Exception as _pqa_e:
+        # unknown is unknown -- this used to report "rest_only"
+        base["plane_quote_authority"] = None
+        log.warning("plane_quote_authority unavailable for %s: %s", t, _pqa_e)
     try:
-        from app.options.order_flow.state import get_stream_chg_pct, get_top_of_book_sizes
+        from app.options.order_flow.state import get_top_of_book_sizes
 
-        _scp = get_stream_chg_pct(t)
+        _scp = _streamed_chg_pct(t, _lmp.get_quote(t))   # the plane's NET_CHANGE_PERCENT
         if _scp is not None:
             base["stream_chg_pct"] = _scp
         base.update(get_top_of_book_sizes(t))

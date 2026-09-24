@@ -143,8 +143,6 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
                    "pure helper over already-typed inputs; produces no market field of its own"),
     AllowlistEntry("mega2_schwab_stream_l1", "INTERNAL", "transport",
                    "Schwab streaming L1 frame decoder; the streamed fields close at the stream leaf rows"),
-    AllowlistEntry("mega2_test_fixture", "INTERNAL", "internal_state",
-                   "test-only fixture path; never on the runtime path"),
     AllowlistEntry("mega3_internal_helper", "INTERNAL", "internal_state",
                    "pure helper over already-typed inputs; produces no market field of its own"),
     AllowlistEntry("mega4_governed_stack_contract", "INTERNAL", "config",

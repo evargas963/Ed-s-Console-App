@@ -970,14 +970,14 @@ class PriceLevels:
 def fetch_price_levels(
     client,
     symbol: str,
-    quote_raw: dict | None = None,
+    stream_quote: dict | None = None,
     orb_minutes: int = 15,
     *,
     include_extended_hours: bool = False,
     level_snapshot=None,
 ) -> PriceLevels:
     """
-    Tier 1 (today open/high/low) from the quote; every Phase 2A level CARRIED from the
+    Tier 1 (today open/high/low) from the STREAMED quote; every Phase 2A level CARRIED from the
     one canonical PriceLevelSnapshot. Never raises.
 
     Phase 2A (operator 2026-08-08): this function used to fetch its OWN Schwab
@@ -987,7 +987,8 @@ def fetch_price_levels(
     served. The vendor fetch is DELETED, not kept as a fallback: a fallback is exactly
     the second answer this invariant forbids.
 
-    quote_raw: the raw quote JSON dict (from safe_get_quote response.json()).
+    stream_quote: the ticker's streamed live_market_plane row (OPEN/HIGH/LOW_PRICE). It was
+        a per-cycle REST quote until 2026-09-24 (N-10); a missing field stays missing.
     level_snapshot: the canonical snapshot. When absent, the materialized store is READ;
         when that is empty too, the Phase 2A fields stay absent (never substituted).
     ``client``, ``orb_minutes`` and ``include_extended_hours`` are retained for call-site
@@ -999,19 +1000,12 @@ def fetch_price_levels(
     pl = PriceLevels(orb_minutes=orb_minutes)
 
     # ── Tier 1: extract from quote{} ─────────────────────────────────────────
-    if quote_raw:
+    if stream_quote:
         try:
-            sym_node = quote_raw.get(symbol.upper()) or quote_raw.get(symbol) or {}
-            q = sym_node.get("quote", {}) or {}
-            def _sf(key):
-                # single source: canonical finite reader. Raw float() admitted NaN/inf
-                # straight into today_open/high/low, and from there into the levels; the
-                # finite reader rejects them and needs no try/except (it never raises).
-                from numeric_contract import float_finite_or_none as _fin
-                return _fin(q.get(key))
-            pl.today_open = _sf("openPrice")
-            pl.today_high = _sf("highPrice")
-            pl.today_low  = _sf("lowPrice")
+            from numeric_contract import float_finite_or_none as _fin
+            pl.today_open = _fin(stream_quote.get("open_price"))
+            pl.today_high = _fin(stream_quote.get("high_price"))
+            pl.today_low  = _fin(stream_quote.get("low_price"))
             # RC-415: do not seed pdc from quote closePrice. That field is the vendor
             # quote last close (can be extended-hours / a different session). PDC is
             # the last RTH 1m close of the prior session from the one snapshot.

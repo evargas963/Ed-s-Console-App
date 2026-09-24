@@ -85,6 +85,10 @@ _PRICE_FIELDS = ("LAST_PRICE", "BID_PRICE", "ASK_PRICE", "MARK", "CLOSE_PRICE",
                  "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
 _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
+#: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
+#: Measured 2026-09-24: NET_CHANGE_PERCENT arrives with every LAST_PRICE (1,232 of 1,232
+#: captured); REGULAR_MARKET_CHANGE_PERCENT only on full refreshes; CHANGE_PERCENT never.
+_SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT")
 _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
 
 
@@ -94,6 +98,8 @@ def _read_stream_field(name: str, raw: Any) -> Optional[float]:
     if name in _COUNT_FIELDS:
         v = _safe_float(raw)
         return v if v is not None and v >= 0 else None
+    if name in _SIGNED_FIELDS:
+        return _safe_float(raw)
     return _epoch_seconds_from_millis(raw)
 
 
@@ -122,7 +128,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     seen = False
     with _lock:
         fs = _fields_by_ticker.setdefault(t, {})
-        for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS:
+        for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS:
             if name not in item:
                 continue
             seen = True
@@ -165,8 +171,14 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "high_price": val("HIGH_PRICE"),
         "low_price": val("LOW_PRICE"),
         "prior_close": val("CLOSE_PRICE"),
+        # Schwab's own change of LAST_PRICE vs prior close (0 hops) -- the watchlist / header %
+        "chg_pct": val("NET_CHANGE_PERCENT"),
+        "net_change": val("NET_CHANGE"),
         "fast_generation_id": next_fast_generation(t),
         "exchange_quote_ts": quote_ts,
+        #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a
+        #: LAST_PRICE tick belongs to (candles); never used as the quote time.
+        "trade_ts": val("TRADE_TIME_MILLIS"),
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
         "server_received_ts": rts,
         "spot_received_ts": snapshot["LAST_PRICE"][1],

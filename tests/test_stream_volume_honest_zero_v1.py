@@ -5,6 +5,7 @@ whose cache already held a real number kept showing that STALE number if a later
 observation was honestly 0. Negative-controlled: the OLD logic is reproduced inline
 and shown to fail for the same input the fix passes on."""
 from __future__ import annotations
+import time
 
 import sys
 from pathlib import Path
@@ -18,15 +19,18 @@ from app.options.order_flow.state import OrderFlowState as LiveOrderFlowState
 
 def test_a_genuine_zero_total_volume_is_stored_not_dropped():
     st = LiveOrderFlowState()
-    st.push_level_one("SPY", {"TOTAL_VOLUME": 0})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": 0}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") == 0.0
 
 
-def test_total_volume_is_preferred_over_volume_even_when_total_volume_is_zero():
-    """The `or` bug: TOTAL_VOLUME=0 would fall through to VOLUME because 0 is falsy."""
+def test_total_volume_is_the_only_source_volume_never_stands_in():
+    """TOTAL_VOLUME=0 is a real zero, and VOLUME (a CHART field) never stands in for a
+    missing TOTAL_VOLUME (2026-09-24: no fallbacks)."""
     st = LiveOrderFlowState()
-    st.push_level_one("SPY", {"TOTAL_VOLUME": 0, "VOLUME": 999})
-    assert st.get_stream_volume("SPY") == 0.0, "TOTAL_VOLUME=0 must win over a nonzero VOLUME fallback"
+    st.push_level_one("SPY", {"TOTAL_VOLUME": 0, "VOLUME": 999}, ts_recv=time.time())
+    assert st.get_stream_volume("SPY") == 0.0
+    st.push_level_one("QQQ", {"VOLUME": 999}, ts_recv=time.time())
+    assert st.get_stream_volume("QQQ") is None
 
 
 def test_a_later_honest_zero_overwrites_a_stale_earlier_nonzero_value():
@@ -34,9 +38,9 @@ def test_a_later_honest_zero_overwrites_a_stale_earlier_nonzero_value():
     later, genuinely-zero observation (e.g. a session reset) -- the old `vf > 0`
     gate silently kept the stale 500 forever in this exact scenario."""
     st = LiveOrderFlowState()
-    st.push_level_one("SPY", {"TOTAL_VOLUME": 500})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": 500}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") == 500.0
-    st.push_level_one("SPY", {"TOTAL_VOLUME": 0})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": 0}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") == 0.0, (
         "a genuine zero observation must overwrite a stale nonzero cached value, "
         "not be silently rejected by it"
@@ -45,15 +49,15 @@ def test_a_later_honest_zero_overwrites_a_stale_earlier_nonzero_value():
 
 def test_non_finite_volume_is_rejected_not_stored():
     st = LiveOrderFlowState()
-    st.push_level_one("SPY", {"TOTAL_VOLUME": float("nan")})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": float("nan")}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") is None
-    st.push_level_one("SPY", {"TOTAL_VOLUME": float("inf")})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": float("inf")}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") is None
 
 
 def test_missing_volume_fields_leave_no_entry():
     st = LiveOrderFlowState()
-    st.push_level_one("SPY", {"BID": 1.0})  # no TOTAL_VOLUME/VOLUME at all
+    st.push_level_one("SPY", {"BID": 1.0}, ts_recv=time.time())  # no TOTAL_VOLUME/VOLUME at all
     assert st.get_stream_volume("SPY") is None
 
 
@@ -80,15 +84,15 @@ def test_negative_total_volume_is_rejected_not_stored():
     served as if it were a real observation. Calls the REAL production path
     (push_level_one), not a copied/reproduced snippet."""
     st = LiveOrderFlowState()
-    st.push_level_one("SPY", {"TOTAL_VOLUME": -1})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": -1}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") is None, "a negative volume must never be stored"
 
 
 def test_negative_volume_does_not_overwrite_a_good_prior_value():
     st = LiveOrderFlowState()
-    st.push_level_one("SPY", {"TOTAL_VOLUME": 500})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": 500}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") == 500.0
-    st.push_level_one("SPY", {"TOTAL_VOLUME": -1})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": -1}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") == 500.0, (
         "a corrupt negative observation must not clobber the last good real value"
     )
@@ -109,8 +113,8 @@ def test_a_genuine_update_survives_the_first_rth_session_reset(monkeypatch):
     monkeypatch.setattr(state_mod, "is_rth_open", lambda: True)
     monkeypatch.setattr(state_mod, "now_et", lambda: datetime(2026, 9, 12))
 
-    st.push_level_one("SPY", {"TOTAL_VOLUME": 12345, "REGULAR_MARKET_CHANGE_PERCENT": 1.5})
+    st.push_level_one("SPY", {"TOTAL_VOLUME": 12345}, ts_recv=time.time())
     assert st.get_stream_volume("SPY") == 12345.0, (
         "the first update of a new RTH session must not be erased by the reset it triggers"
     )
-    assert st.get_stream_chg_pct("SPY") == 1.5
+    # (change percent lives on the live plane only since 2026-09-24 -- NET_CHANGE_PERCENT)

@@ -28,7 +28,7 @@ def test_options_flow_uses_schwab_total_volume_not_last_size_fallback():
     assert score == -0.5
     assert vol_src == "schwab_chain_totalVolume"
     assert direction == "put"
-    assert ratio == 10 / (30 + 1e-9)
+    assert ratio == 10 / 30          # no epsilon in the denominator (2026-09-24)
     assert delta_weighted == 17.0
 
 
@@ -51,7 +51,7 @@ def test_options_flow_does_not_default_missing_delta_weight_to_zero():
 
     assert score == 1.0
     assert direction == "call"
-    assert ratio is not None
+    assert ratio is None             # no put volume: the ratio is undefined, not ~1e10
     assert delta_weighted is None
 
 
@@ -71,12 +71,13 @@ def test_options_flow_treats_minus_999_delta_sentinel_as_missing():
     assert score == -0.5
     assert vol_src == "schwab_chain_totalVolume"
     assert direction == "put"
-    assert ratio == 10 / (30 + 1e-9)
+    assert ratio == 10 / 30
     assert delta_weighted is None
 
 
-def test_options_flow_skips_sentinel_delta_but_uses_real_delta_when_mixed():
-    """If only one side has a real delta, delta_weighted reflects that side only."""
+def test_options_flow_one_missing_delta_makes_delta_weighted_unknown():
+    """2026-09-24: a traded contract with no valid delta makes delta-weighted flow UNKNOWN --
+    it used to be skipped, reporting the calls' side alone as the whole book."""
     data = {
         "callExpDateMap": {
             "2099-05-05:0": {"500.0": _contract(total_volume=10, delta=0.5)}
@@ -91,4 +92,25 @@ def test_options_flow_skips_sentinel_delta_but_uses_real_delta_when_mixed():
     assert score == -0.5
     assert vol_src == "schwab_chain_totalVolume"
     assert direction == "put"
-    assert delta_weighted == 5.0  # 0.5 * 10 from calls only; put sentinel skipped
+    assert delta_weighted is None
+
+
+def test_options_flow_counts_every_contract_at_a_strike():
+    """Schwab maps a strike to a LIST of contracts; every one counts (was: first only)."""
+    data = {
+        "callExpDateMap": {"2099-05-05:0": {"500.0": [_contract(total_volume=10, delta=0.5),
+                                                      _contract(total_volume=20, delta=0.5)]}},
+        "putExpDateMap": {"2099-05-05:0": {"500.0": [_contract(total_volume=30, delta=-0.4)]}},
+    }
+    score, _, ratio, delta_weighted, _ = _compute_options_flow(data)
+    assert ratio == 1.0 and score == 0.0
+    assert delta_weighted == 0.5 * 30 + 0.4 * 30
+
+
+def test_options_flow_one_contract_without_volume_makes_the_flow_unknown():
+    data = {
+        "callExpDateMap": {"2099-05-05:0": {"500.0": [_contract(total_volume=10, delta=0.5),
+                                                      _contract(delta=0.5)]}},
+        "putExpDateMap": {"2099-05-05:0": {"500.0": _contract(total_volume=30, delta=-0.4)}},
+    }
+    assert _compute_options_flow(data) == (None, None, None, None, None)

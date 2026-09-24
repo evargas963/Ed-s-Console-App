@@ -18,7 +18,6 @@ Output: dict of order flow metrics for scoring and regime classification.
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any, Optional
 
 import math as _of_math
@@ -61,9 +60,6 @@ OF_TOP_OF_BOOK_FIELD_STALE_SEC: float = 25.0
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
 OF_BOOK_DEPTH_DEEP: int = 5
-# Default minimum legs for _weighted_mean_present when callers omit min_present.
-# (Composite scoring explicitly passes OF_COMPOSITE_MIN_LEGS; this is a safe-default fallback.)
-OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT: int = 2
 
 try:
     import numpy as np
@@ -256,25 +252,6 @@ def _compute_book_imbalance(data: dict, depth: int) -> Optional[float]:
 # TOP OF BOOK
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _latest_quote_snapshot(items: list) -> Optional[dict]:
-    """Return the most recent content item with BID_SIZE or ASK_SIZE (or BID_PRICE/ASK_PRICE).
-
-    Still used by `_resolve_quote_mark` (MARK is a single-field read, not part of this
-    defect). NOT used for BID_PRICE/ASK_PRICE/BID_SIZE/ASK_SIZE any more -- see
-    `_latest_content_field`."""
-    for item in reversed(items):
-        if not isinstance(item, dict):
-            continue
-        if (
-            item.get("BID_SIZE") is not None
-            or item.get("ASK_SIZE") is not None
-            or item.get("BID_PRICE") is not None
-            or item.get("ASK_PRICE") is not None
-        ):
-            return item
-    return None
-
-
 def _latest_content_field(
     items: list, field: str, *, now: Optional[float] = None,
     max_age_sec: Optional[float] = None,
@@ -327,7 +304,8 @@ def _latest_content_field(
 def _compute_top_book_pressure(data: dict, *, now_ts: Optional[float] = None) -> tuple[Optional[float], Optional[str]]:
     """
     Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size).
-    Uses: content.*.BID_SIZE, ASK_SIZE or quote.bidSize, quote.askSize.
+    Uses: streamed content BID_SIZE / ASK_SIZE only (the REST quote / extended tiers that
+    stood in are deleted, 2026-09-24).
     Returns (pressure, source_tier). `now_ts` grounds the Gap-1 per-field freshness
     boundary (OF_TOP_OF_BOOK_FIELD_STALE_SEC); defaults to time.time() when omitted so
     production callers get real enforcement without threading it explicitly.
@@ -339,28 +317,12 @@ def _compute_top_book_pressure(data: dict, *, now_ts: Optional[float] = None) ->
         items, "BID_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     ask_sz = _safe_float(_latest_content_field(
         items, "ASK_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
-    source_tier = "unavailable"
-    if bid_sz is not None and ask_sz is not None:
-        source_tier = "schwab_stream"
-    if bid_sz is None or ask_sz is None:
-        quote = data.get("quote") or {}
-        extended = data.get("extended") or {}
-        if bid_sz is None:
-            bid_sz = _safe_float(quote.get("bidSize"))
-        if bid_sz is None:
-            bid_sz = _safe_float(extended.get("bidSize"))
-        if ask_sz is None:
-            ask_sz = _safe_float(quote.get("askSize"))
-        if ask_sz is None:
-            ask_sz = _safe_float(extended.get("askSize"))
-        if bid_sz is not None and ask_sz is not None and source_tier == "unavailable":
-            source_tier = "schwab_quote"
     if bid_sz is None or ask_sz is None:
         return None, "unavailable"
     total = bid_sz + ask_sz
     if total <= 0:
-        return None, source_tier
-    return (bid_sz - ask_sz) / total, source_tier
+        return None, "schwab_stream"
+    return (bid_sz - ask_sz) / total, "schwab_stream"
 
 
 def _resolve_bid_ask_prices(
@@ -369,8 +331,7 @@ def _resolve_bid_ask_prices(
     """Resolve Schwab bid/ask prices and leaf provenance labels. `now_ts` grounds the
     Gap-1 per-field freshness boundary (OF_TOP_OF_BOOK_FIELD_STALE_SEC); defaults to
     time.time() when omitted. A price older than the boundary resolves to None here and
-    the caller falls through to the REST quote/extended/underlying tiers below -- it is
-    never silently reused past its freshness horizon (Gap 1 item C)."""
+    the price is absent -- never silently reused past its freshness horizon (Gap 1 item C)."""
     import time as _t
     now = _t.time() if now_ts is None else now_ts
     items = _iter_content(data)
@@ -380,72 +341,22 @@ def _resolve_bid_ask_prices(
         items, "ASK_PRICE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     bid_leaf = "streaming.BID_PRICE" if bid_p is not None else None
     ask_leaf = "streaming.ASK_PRICE" if ask_p is not None else None
-    if bid_p is None or ask_p is None:
-        # LEVELONE_* is often size-only after the last price tick. OPTIONS_BOOK /
-        # NASDAQ_BOOK already in `content` still carries a current top. Read that
-        # before REST quote/extended/underlying so a live book cannot be ignored
-        # while L1 prices stay null.
-        snapshot = _latest_book_snapshot(items)
-        if snapshot is not None:
-            if bid_p is None:
-                bid_lv = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True)
-                if bid_lv:
-                    bid_p = bid_lv[0][0]
-                    bid_leaf = "streaming.BOOK.BID_PRICE"
-            if ask_p is None:
-                ask_lv = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False)
-                if ask_lv:
-                    ask_p = ask_lv[0][0]
-                    ask_leaf = "streaming.BOOK.ASK_PRICE"
-    if bid_p is None or ask_p is None:
-        quote = data.get("quote") or {}
-        extended = data.get("extended") or {}
-        underlying = data.get("underlying") or {}
-        if bid_p is None:
-            bid_p = _safe_float(quote.get("bidPrice"))
-            if bid_p is not None:
-                bid_leaf = "quotes.quote.bidPrice"
-        if bid_p is None:
-            bid_p = _safe_float(extended.get("bidPrice"))
-            if bid_p is not None:
-                bid_leaf = "quotes.extended.bidPrice"
-        if bid_p is None:
-            bid_p = _safe_float(underlying.get("bid"))
-            if bid_p is not None:
-                bid_leaf = "chains.underlying.bid"
-        if ask_p is None:
-            ask_p = _safe_float(quote.get("askPrice"))
-            if ask_p is not None:
-                ask_leaf = "quotes.quote.askPrice"
-        if ask_p is None:
-            ask_p = _safe_float(extended.get("askPrice"))
-            if ask_p is not None:
-                ask_leaf = "quotes.extended.askPrice"
-        if ask_p is None:
-            ask_p = _safe_float(underlying.get("ask"))
-            if ask_p is not None:
-                ask_leaf = "chains.underlying.ask"
+    # Level-one BID_PRICE / ASK_PRICE only. The book's top level (a DIFFERENT feed -- one
+    # venue's depth) and the REST quote / extended / chain-underlying tiers used to stand in
+    # for a missing L1 price (2026-09-24: no fallbacks).
     return bid_p, ask_p, bid_leaf, ask_leaf
 
 
-def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
-    """Schwab mark leaf for spread fraction denominator (no bid+ask midpoint synthesis)."""
-    items = _iter_content(data)
-    snapshot = _latest_quote_snapshot(items)
-    if snapshot:
-        mark_p = _safe_float(snapshot.get("MARK"))
-        if mark_p is not None and mark_p > 0:
-            return mark_p, "streaming.MARK"
-    quote = data.get("quote") or {}
-    extended = data.get("extended") or {}
-    regular = data.get("regular") or {}
-    for val, leaf in (
-        (_safe_float(quote.get("mark")), "quotes.quote.mark"),
-        (_safe_float(extended.get("mark")), "quotes.extended.mark"),
-        (_safe_float(regular.get("mark")), "quotes.regular.mark"),
-    ):
-        if val is not None and val > 0:
-            return val, leaf
+def _resolve_quote_mark(data: dict, *, now_ts: Optional[float] = None) -> tuple[Optional[float], Optional[str]]:
+    """Streamed MARK for the spread-fraction denominator, resolved per field like every other
+    L1 leaf (Schwab sends changes only). The REST quote / extended / regular marks that stood
+    in are deleted (2026-09-24)."""
+    import time as _t
+    now = _t.time() if now_ts is None else now_ts
+    mark_p = _safe_float(_latest_content_field(
+        _iter_content(data), "MARK", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
+    if mark_p is not None and mark_p > 0:
+        return mark_p, "streaming.MARK"
     return None, None
 
 
@@ -466,7 +377,7 @@ def _compute_spread(data: dict, *, now_ts: Optional[float] = None) -> dict[str, 
             "spread_ask_leaf": ask_leaf,
         }
     spread_pts = round(ask_p - bid_p, 4)
-    mark_p, mark_leaf = _resolve_quote_mark(data)
+    mark_p, mark_leaf = _resolve_quote_mark(data, now_ts=now_ts)
     spread_frac = None
     spread_frac_source = None
     if mark_p is not None and mark_p > 0:
@@ -557,7 +468,7 @@ def _extract_canonical_book(data: dict, *, now_ts: Optional[float] = None) -> di
 
     bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
-    mark, mark_leaf = _resolve_quote_mark(data)
+    mark, mark_leaf = _resolve_quote_mark(data, now_ts=now)
     return {
         "has_book": snapshot is not None,
         "bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size,
@@ -868,56 +779,56 @@ def _iter_option_exp_levels(exp_map: dict) -> list[dict]:
     for exp_key, strikes in exp_map.items():
         if not isinstance(strikes, dict):
             continue
-        for strike_key, opt in strikes.items():
-            # Schwab: opt is list of contracts; take first. Also support single dict.
-            if isinstance(opt, list) and len(opt) > 0:
-                opt = opt[0] if isinstance(opt[0], dict) else None
-            if not isinstance(opt, dict):
-                continue
-            d_raw = _safe_float(opt.get("delta"))
-            d_val = d_raw if (d_raw is not None and d_raw != MISSING_GREEK_SENTINEL
-                              and _of_math.isfinite(d_raw)) else None
-            g_raw = _safe_float(opt.get("gamma"))
-            g_val = g_raw if (g_raw is not None and g_raw != MISSING_GREEK_SENTINEL
-                              and _of_math.isfinite(g_raw)) else None
-            v_raw = _safe_float(opt.get("vega"))
-            v_val = v_raw if (v_raw is not None and v_raw != MISSING_GREEK_SENTINEL
-                              and _of_math.isfinite(v_raw)) else None
-            t_raw = _safe_float(opt.get("theta"))
-            t_val = t_raw if (t_raw is not None and t_raw != MISSING_GREEK_SENTINEL
-                              and _of_math.isfinite(t_raw)) else None
-            iv_raw = _safe_float(opt.get("volatility"))
-            iv_val = iv_raw if (iv_raw is not None and iv_raw > 0
-                                and iv_raw != MISSING_GREEK_SENTINEL
-                                and _of_math.isfinite(iv_raw)) else None
-            tt_raw = opt.get("tradeTimeInLong")
-            tt_val: Optional[int] = None
-            if tt_raw is not None and not isinstance(tt_raw, bool):
-                try:
-                    tt_f = float(tt_raw)
-                    if _of_math.isfinite(tt_f):
-                        tt_val = int(tt_f)
-                except (TypeError, ValueError):
-                    tt_val = None
-            out.append({
-                "exp": exp_key,
-                "strike": _safe_float(opt.get("strikePrice")),
-                "totalVolume": _safe_float(opt.get("totalVolume")),
-                "openInterest": _safe_float(opt.get("openInterest")),
-                "lastSize": _safe_float(opt.get("lastSize")),
-                "bidSize": _safe_float(opt.get("bidSize")),
-                "askSize": _safe_float(opt.get("askSize")),
-                "bid": _safe_float(opt.get("bid")),
-                "ask": _safe_float(opt.get("ask")),
-                "mark": _safe_float(opt.get("mark")),
-                "delta": d_val,
-                "gamma": g_val,
-                "vega": v_val,
-                "theta": t_val,
-                "volatility": iv_val,
-                "daysToExpiration": _safe_int(opt.get("daysToExpiration")),
-                "tradeTimeInLong": tt_val,
-            })
+        for strike_key, opts in strikes.items():
+            # Schwab maps each strike to a LIST of contracts (adjusted / non-standard deliverables
+            # share a strike). Every contract counts -- this used to keep only the first.
+            for opt in (opts if isinstance(opts, list) else [opts]):
+              if not isinstance(opt, dict):
+                  continue
+              d_raw = _safe_float(opt.get("delta"))
+              d_val = d_raw if (d_raw is not None and d_raw != MISSING_GREEK_SENTINEL
+                                and _of_math.isfinite(d_raw)) else None
+              g_raw = _safe_float(opt.get("gamma"))
+              g_val = g_raw if (g_raw is not None and g_raw != MISSING_GREEK_SENTINEL
+                                and _of_math.isfinite(g_raw)) else None
+              v_raw = _safe_float(opt.get("vega"))
+              v_val = v_raw if (v_raw is not None and v_raw != MISSING_GREEK_SENTINEL
+                                and _of_math.isfinite(v_raw)) else None
+              t_raw = _safe_float(opt.get("theta"))
+              t_val = t_raw if (t_raw is not None and t_raw != MISSING_GREEK_SENTINEL
+                                and _of_math.isfinite(t_raw)) else None
+              iv_raw = _safe_float(opt.get("volatility"))
+              iv_val = iv_raw if (iv_raw is not None and iv_raw > 0
+                                  and iv_raw != MISSING_GREEK_SENTINEL
+                                  and _of_math.isfinite(iv_raw)) else None
+              tt_raw = opt.get("tradeTimeInLong")
+              tt_val: Optional[int] = None
+              if tt_raw is not None and not isinstance(tt_raw, bool):
+                  try:
+                      tt_f = float(tt_raw)
+                      if _of_math.isfinite(tt_f):
+                          tt_val = int(tt_f)
+                  except (TypeError, ValueError):
+                      tt_val = None
+              out.append({
+                  "exp": exp_key,
+                  "strike": _safe_float(opt.get("strikePrice")),
+                  "totalVolume": _safe_float(opt.get("totalVolume")),
+                  "openInterest": _safe_float(opt.get("openInterest")),
+                  "lastSize": _safe_float(opt.get("lastSize")),
+                  "bidSize": _safe_float(opt.get("bidSize")),
+                  "askSize": _safe_float(opt.get("askSize")),
+                  "bid": _safe_float(opt.get("bid")),
+                  "ask": _safe_float(opt.get("ask")),
+                  "mark": _safe_float(opt.get("mark")),
+                  "delta": d_val,
+                  "gamma": g_val,
+                  "vega": v_val,
+                  "theta": t_val,
+                  "volatility": iv_val,
+                  "daysToExpiration": _safe_int(opt.get("daysToExpiration")),
+                  "tradeTimeInLong": tt_val,
+              })
     return out
 
 
@@ -949,16 +860,14 @@ def _compute_options_flow(
     call_vols: list[float] = []
     put_vols: list[float] = []
     volume_sources: set[str] = set()
-    for c in calls:
-        v, src = _option_contract_volume(c, tick_mode=tick_mode)
-        if v is not None:
-            call_vols.append(v)
-            if src:
-                volume_sources.add(src)
-    for p in puts:
-        v, src = _option_contract_volume(p, tick_mode=tick_mode)
-        if v is not None:
-            put_vols.append(v)
+    # Every contract must report its volume: a contract that did not is UNKNOWN volume, and a
+    # sum over the ones that did is a flow over part of the chain (2026-09-24: no fallbacks).
+    for group, sink in ((calls, call_vols), (puts, put_vols)):
+        for c in group:
+            v, src = _option_contract_volume(c, tick_mode=tick_mode)
+            if v is None:
+                return None, None, None, None, None
+            sink.append(v)
             if src:
                 volume_sources.add(src)
     call_vol = sum(call_vols)
@@ -969,30 +878,30 @@ def _compute_options_flow(
     vol_source = next(iter(volume_sources)) if len(volume_sources) == 1 else (
         "mixed_schwab_chain_volume" if volume_sources else None
     )
-    call_put_ratio = call_vol / (put_vol + 1e-9)
-    delta_weighted = 0.0
-    saw_delta_weight = False
-    for c in calls:
-        d = c.get("delta")
-        v, _ = _option_contract_volume(c, tick_mode=tick_mode)
-        if d is None or v is None:
-            continue
-        delta_weighted += d * v
-        saw_delta_weight = True
-    for p in puts:
-        d = p.get("delta")
-        v, _ = _option_contract_volume(p, tick_mode=tick_mode)
-        if d is None or v is None:
-            continue
-        delta_weighted -= d * v
-        saw_delta_weight = True
+    # no put volume -> the ratio is undefined (it used to divide by put_vol + 1e-9 and report
+    # ~1e12)
+    call_put_ratio = call_vol / put_vol if put_vol > 0 else None
+    # delta-weighted flow needs the delta of EVERY contract that traded; one missing delta on a
+    # traded contract makes it unknown (it used to be skipped)
+    delta_weighted: Optional[float] = 0.0
+    for sign, group in ((1.0, calls), (-1.0, puts)):
+        for c in group:
+            d = c.get("delta")
+            v, _ = _option_contract_volume(c, tick_mode=tick_mode)
+            if v is not None and v > 0:
+                if d is None:
+                    delta_weighted = None
+                    break
+                delta_weighted += sign * d * v
+        if delta_weighted is None:
+            break
     options_flow_score = (call_vol - put_vol) / total_opt_vol
     direction = "call" if options_flow_score > 0 else ("put" if options_flow_score < 0 else "neutral")
     return (
         options_flow_score,
         direction,
         call_put_ratio,
-        delta_weighted if saw_delta_weight else None,
+        delta_weighted,
         vol_source,
     )
 
@@ -1003,49 +912,17 @@ def _compute_options_flow(
 
 def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
     """
-    Relative volume: current volume / average volume.
-    Uses: quote.totalVolume, extended.totalVolume, underlying.totalVolume,
-          screeners.*.totalVolume, screeners.*.volume,
-          fundamental.avg10DaysVolume, fundamental.avg1YearVolume,
-          instruments.*.fundamental.avg10DaysVolume, etc.
+    Relative volume = today's streamed TOTAL_VOLUME / Schwab fundamental avg10DaysVolume.
 
-    Returns (rvol, unavailable_reason). Never substitutes 1.0 when average volume
-    is missing or invalid.
+    One source each (2026-09-24: no fallbacks). It used to fall through four current-volume
+    sources (quote, extended, chain underlying, screeners) and five average sources
+    (avg10DaysVolume, avg1YearVolume, four instrument spellings, then an average of recent
+    CANDLES -- an invented baseline). Returns (rvol, unavailable_reason).
     """
-    quote = data.get("quote") or {}
-    extended = data.get("extended") or {}
-    underlying = data.get("underlying") or {}
-    current = _safe_float(quote.get("totalVolume"))
-    if current is None:
-        current = _safe_float(extended.get("totalVolume"))
-    if current is None:
-        current = _safe_float(underlying.get("totalVolume"))
-    if current is None:
-        screeners = data.get("screeners") or []
-        if isinstance(screeners, list) and len(screeners) > 0:
-            s = screeners[0] if isinstance(screeners[0], dict) else {}
-            current = _safe_float(s.get("totalVolume")) or _safe_float(s.get("volume"))
+    current = _nonnegative_float(data.get("stream_total_volume"))
     if current is None:
         return None, "current_volume_unavailable"
-    fund = data.get("fundamental") or {}
-    avg = _safe_float(fund.get("avg10DaysVolume"))
-    if avg is None or avg <= 0:
-        avg = _safe_float(fund.get("avg1YearVolume"))
-    if avg is None or avg <= 0:
-        inst = data.get("instruments") or {}
-        if isinstance(inst, dict):
-            for v in inst.values():
-                f = (v or {}).get("fundamental") if isinstance(v, dict) else {}
-                avg = _safe_float((f or {}).get("avg10DaysVolume")) or _safe_float((f or {}).get("avg1DayVolume")) or _safe_float((f or {}).get("vol10DayAvg")) or _safe_float((f or {}).get("vol1DayAvg"))  # external-key-ok: Schwab /quotes fundamental block (all four spellings present in schwab_field_dictionary.csv)
-                if avg and avg > 0:
-                    break
-    if avg is None or avg <= 0:
-        candles = data.get("candles") or []
-        if isinstance(candles, list) and len(candles) > 0:
-            vols = [c.get("volume") for c in candles if isinstance(c, dict) and c.get("volume") is not None]
-            vols = [_safe_float(v) for v in vols if v is not None]
-            if vols:
-                avg = sum(vols) / len(vols)
+    avg = _safe_float((data.get("fundamental") or {}).get("avg10DaysVolume"))
     if avg is None or avg <= 0:
         return None, "avg_volume_unavailable"
     return current / avg, None
@@ -1055,28 +932,25 @@ def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
 # INSTITUTIONAL FLOW PROXY
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[float] = None) -> Optional[float]:
+def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[float]) -> Optional[float]:
     """
     Proxy for institutional flow: large trades + options activity + book imbalance.
     Uses: tape (large LAST_SIZE), options flow, book imbalance.
     ONE CANONICAL PATH: the deep book imbalance is READ from the single canonical
     microstructure result (passed by the engine as `book_imbalance_5`), not re-walked here.
-    When called standalone without it, it falls back to the same canonical helper.
+    ALL FOUR components or None (2026-09-24): it averaged whichever happened to exist -- one
+    component standing in for four -- and recomputed the book imbalance when not given it.
     """
     cum = _compute_cum_delta_proxy(data)
-    book_imb = book_imbalance_5 if book_imbalance_5 is not None else _compute_book_imbalance(data, OF_BOOK_DEPTH_DEEP)
     opt_score, _, _, delta_w, _ = _compute_options_flow(data)
-    components = []
-    if cum is not None:
-        components.append(max(-1, min(1, cum / OF_CUM_DELTA_NORM_DIVISOR)))
-    if book_imb is not None:
-        components.append(book_imb)
-    if opt_score is not None:
-        components.append(opt_score)
-    if delta_w is not None and abs(delta_w) > 0:
-        components.append(max(-1, min(1, delta_w / OF_OPTIONS_DELTA_NORM_DIVISOR)))
-    if not components:
+    if cum is None or book_imbalance_5 is None or opt_score is None or delta_w is None:
         return None
+    components = [
+        max(-1, min(1, cum / OF_CUM_DELTA_NORM_DIVISOR)),
+        book_imbalance_5,
+        opt_score,
+        max(-1, min(1, delta_w / OF_OPTIONS_DELTA_NORM_DIVISOR)),
+    ]
     return sum(components) / len(components)
 
 
@@ -1084,38 +958,8 @@ def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[
 # NORMALIZATION & SCORING
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _normalize(val: float, low: float = -1.0, high: float = 1.0) -> float:
-    """Clip a PRESENT value to [low, high] for scoring.
-
-    RC-318: absence is not this function's concern — the only caller
-    (_weighted_mean_present) EXCLUDES absent (None) legs before calling, so the old
-    `None -> 0.0` branch was dead code that advertised a fabricated neutral reading.
-    Absent legs must never become 0.0 mass; they are dropped by the consumer.
-    """
-    return max(low, min(high, float(val)))
-
-
-def _weighted_mean_present(
-    terms: list[tuple[float, Optional[float], float, float]],
-    *,
-    min_present: int = OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT,
-) -> Optional[float]:
-    """
-    Weighted mean over present (non-None) legs; renormalize present weights to 1.0.
-    Each term is (weight, raw_value, clip_low, clip_high). Returns None when fewer
-    than min_present legs are available (no silent neutral mass from missing inputs).
-    """
-    present: list[tuple[float, float]] = []
-    for weight, raw, low, high in terms:
-        if raw is None:
-            continue
-        present.append((weight, _normalize(raw, low, high)))
-    if len(present) < min_present:
-        return None
-    total_w = sum(w for w, _ in present)
-    if total_w <= 0:
-        return None
-    return sum((w / total_w) * v for w, v in present)
+# (_normalize / _weighted_mean_present deleted 2026-09-24: no production caller, and the
+# latter RENORMALISED the weights of whichever legs were present -- re-weighting by design.)
 
 
 # RETIRED (mission TRUTH_V1, RC-473/RC-474): the composite producers _compute_order_flow_score,
@@ -1159,7 +1003,7 @@ class OrderFlowEngine:
         book_imbalance_3 = book_micro["depth"]["3"]["imbalance"]
         book_imbalance_5 = book_micro["depth"]["5"]["imbalance"]
 
-        # Top of book (quote.bidSize/askSize — always from REST). This is L1 SIZE pressure —
+        # Top of book (streamed BID_SIZE/ASK_SIZE). This is L1 SIZE pressure —
         # a DIFFERENT semantic than an L2 depth imbalance — so it is kept ONLY under its own
         # field `top_book_pressure` and is NEVER written into book_imbalance_1/3/5. When the
         # streaming book is absent those stay None: fail-closed, so the book dimension reads
@@ -1321,127 +1165,3 @@ class OrderFlowEngine:
             "order_flow_opt_label": None,
             **l1_source_contract(),
         }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# TEST HARNESS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _mock_data() -> dict:
-    """Build mock data structure for testing."""
-    return {
-        "content": [
-            {
-                "BIDS": [
-                    {"BID_PRICE": 150.0, "TOTAL_VOLUME": 200, "NUM_BIDS": 5},
-                    {"BID_PRICE": 149.9, "TOTAL_VOLUME": 150, "NUM_BIDS": 4},
-                    {"BID_PRICE": 149.8, "TOTAL_VOLUME": 100, "NUM_BIDS": 3},
-                ],
-                "ASKS": [
-                    {"ASK_PRICE": 150.1, "TOTAL_VOLUME": 80, "NUM_ASKS": 3},
-                    {"ASK_PRICE": 150.2, "TOTAL_VOLUME": 120, "NUM_ASKS": 4},
-                    {"ASK_PRICE": 150.3, "TOTAL_VOLUME": 90, "NUM_ASKS": 3},
-                ],
-                "BID_PRICE": 150.0,
-                "ASK_PRICE": 150.1,
-                "BID_SIZE": 50,
-                "ASK_SIZE": 30,
-                "LAST_PRICE": 150.05,
-                "LAST_SIZE": 100,
-                "TRADE_TIME_MILLIS": 1000000,
-                "BOOK_TIME": 999000,
-            },
-            {
-                "LAST_PRICE": 150.1,
-                "LAST_SIZE": 75,
-                "TRADE_TIME_MILLIS": 950000,
-            },
-            {
-                "LAST_PRICE": 149.95,
-                "LAST_SIZE": 50,
-                "TRADE_TIME_MILLIS": 900000,
-            },
-        ],
-        "quote": {
-            "bidPrice": 150.0,
-            "askPrice": 150.1,
-            "bidSize": 50,
-            "askSize": 30,
-            "totalVolume": 1500000,
-            "lastSize": 100,
-            "tradeTime": 1000000,
-            "quoteTime": 1000000,
-        },
-        "callExpDateMap": {
-            "2025-03-21:1": {
-                "150.0": {
-                    "strikePrice": 150.0,
-                    "totalVolume": 500,
-                    "openInterest": 1000,
-                    "lastSize": 25,
-                    "bidSize": 10,
-                    "askSize": 12,
-                    "bid": 2.5,
-                    "ask": 2.6,
-                    "mark": 2.55,
-                    "delta": 0.52,
-                    "gamma": 0.05,
-                    "vega": 0.1,
-                    "theta": -0.02,
-                    "volatility": 0.25,
-                    "daysToExpiration": 11,
-                    "tradeTimeInLong": 1000000,
-                },
-            },
-        },
-        "putExpDateMap": {
-            "2025-03-21:1": {
-                "150.0": {
-                    "strikePrice": 150.0,
-                    "totalVolume": 300,
-                    "openInterest": 800,
-                    "lastSize": 15,
-                    "bidSize": 8,
-                    "askSize": 10,
-                    "bid": 2.4,
-                    "ask": 2.5,
-                    "mark": 2.45,
-                    "delta": -0.48,
-                    "gamma": 0.05,
-                    "vega": 0.1,
-                    "theta": -0.02,
-                    "volatility": 0.26,
-                    "daysToExpiration": 11,
-                    "tradeTimeInLong": 999000,
-                },
-            },
-        },
-        "candles": [
-            {"open": 149.5, "high": 150.2, "low": 149.4, "close": 150.0, "volume": 100000, "datetime": 990000},
-            {"open": 149.0, "high": 149.8, "low": 148.9, "close": 149.5, "volume": 95000, "datetime": 980000},
-        ],
-        "fundamental": {"avg10DaysVolume": 800000},
-        "screeners": [{"totalVolume": 1500000, "trades": 5000, "volume": 1500000}],
-    }
-
-
-def _main() -> None:
-    """Run test harness."""
-    engine = OrderFlowEngine()
-    data = _mock_data()
-    result = engine.compute(data)
-    print("Order Flow Engine — Test Run")
-    print("=" * 50)
-    for k, v in result.items():
-        if v is not None and isinstance(v, float) and not math.isnan(v):
-            print(f"  {k}: {v:.4f}" if abs(v) < 1e4 else f"  {k}: {v:.2f}")
-        else:
-            print(f"  {k}: {v}")
-    print("=" * 50)
-    print(f"  order_flow_score: {result['order_flow_score']:.4f}")
-    print(f"  order_flow_direction: {result['order_flow_direction']}")
-    print(f"  order_flow_readiness: {result['order_flow_readiness']}")
-
-
-if __name__ == "__main__":
-    _main()

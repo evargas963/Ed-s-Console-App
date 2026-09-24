@@ -2,6 +2,7 @@
 missing, not coerce it to zero -- downstream order-flow consumers need to tell
 "no size reported" apart from "size was zero"."""
 from __future__ import annotations
+import time
 
 import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as live_state
@@ -16,7 +17,7 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
             "key": sym,
             "LAST_PRICE": 500.0,
             "TRADE_TIME_MILLIS": 1_000,
-        },
+        }, ts_recv=time.time()
     )
 
     content = live_state.get_content_for_symbol(sym)
@@ -43,7 +44,7 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
             "LAST_PRICE": 500.0,
             "LAST_SIZE": 10,
             "TRADE_TIME_MILLIS": 1_000,
-        },
+        }, ts_recv=time.time()
     )
     live_state.push_level_one(
         sym,
@@ -52,7 +53,7 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
             "LAST_PRICE": 500.1,
             "LAST_SIZE": 12,
             "TRADE_TIME_MILLIS": 2_000,
-        },
+        }, ts_recv=time.time()
     )
 
     content = live_state.get_content_for_symbol(sym)

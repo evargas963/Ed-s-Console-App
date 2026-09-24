@@ -1,3 +1,4 @@
+import time
 #!/usr/bin/env python3
 """
 Test Order Flow live integration.
@@ -42,7 +43,7 @@ def main():
             "LAST_SIZE": size,
             "TRADE_TIME_MILLIS": 1700000000000 + i * 1000,
             "BID_PRICE": 600.0, "ASK_PRICE": 600.1, "BID_SIZE": 440, "ASK_SIZE": 80,
-        })
+        }, ts_recv=time.time())
 
     content = get_content_for_symbol("SPY")
     data = {

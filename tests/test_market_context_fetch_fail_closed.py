@@ -112,8 +112,8 @@ def test_prior_day_family_single_session_dual_faucet_agreement(monkeypatch) -> N
         bar_source="test_tape", config=PlaybookConfig(), degraded=[],
     )
     # Quote closePrice 999.0 proves the RC-213 PDC reconciliation: bar-basis wins.
-    quote_raw = {"SPY": {"quote": {"closePrice": 999.0}}}
-    pl = mc.fetch_price_levels(None, "SPY", quote_raw=quote_raw, level_snapshot=snap)
+    stream_row = {"prior_close": 999.0}   # the stream's CLOSE_PRICE never becomes PDC
+    pl = mc.fetch_price_levels(None, "SPY", stream_quote=stream_row, level_snapshot=snap)
 
     eng = get_previous_day_levels(engine_bars, _dt(2026, 8, 3).date(), PlaybookConfig())
 
@@ -194,7 +194,7 @@ def test_fetch_price_levels_window_delegates_to_rc153_authority(monkeypatch) -> 
                 f"again and the dual-faucet defect (RC-213) is reopening")
 
     consulted.clear()
-    pl = mc.fetch_price_levels(NoFetchClient(), "SPY", quote_raw=None, level_snapshot=snap)
+    pl = mc.fetch_price_levels(NoFetchClient(), "SPY", stream_quote=None, level_snapshot=snap)
 
     assert consulted == [], (
         "the CARRIER consulted the prior-session authority itself; the window belongs "

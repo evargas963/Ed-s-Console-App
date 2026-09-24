@@ -126,7 +126,7 @@ def test_authority_is_streaming_after_a_pushed_tick_for_the_active_ticker(tmp_pa
     _push_l1("SPY", {"key": "SPY", "LAST_PRICE": 450.0}, ts_recv=time.time())
 
     assert ofs.get_plane_authority_for_ticker("SPY") == "streaming"
-    assert ofs.get_plane_authority_for_ticker("QQQ") == "rest_mismatch"
+    assert ofs.get_plane_authority_for_ticker("QQQ") == "not_active_ticker"
 
 
 def test_set_active_ticker_writes_the_daemon_signal(tmp_path, monkeypatch):

@@ -270,17 +270,18 @@ def is_order_flow_stream_running() -> bool:
 
 
 def get_plane_authority_for_ticker(ticker: str) -> str:
-    """
-    rest_only | streaming | rest_fallback_explicit | rest_mismatch
-    """
+    """The state of this ticker's STREAMED quote: streaming | stream_not_running |
+    not_active_ticker | stream_unhealthy. (It named REST modes -- rest_only /
+    rest_fallback_explicit / rest_mismatch -- until 2026-09-24; nothing writes REST quotes
+    into the plane any more, so those labels described a path that does not exist.)"""
     t = ticker_storage_key(ticker)
     if not _feed_running:
-        return "rest_only"
+        return "stream_not_running"
     if not _active_ticker or _active_ticker.upper() != t:
-        return "rest_mismatch"
+        return "not_active_ticker"
     if _streaming_healthy():
         return "streaming"
-    return "rest_fallback_explicit"
+    return "stream_unhealthy"
 
 
 FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS = 5_000.0

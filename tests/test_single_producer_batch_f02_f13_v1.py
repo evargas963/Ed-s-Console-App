@@ -406,7 +406,7 @@ def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
 
     # order_flow rvol never substitutes 1.0; missing average is an explicit unavailable reason.
     from app.options.order_flow.engine import _compute_rvol
-    val, reason = _compute_rvol({"quote": {"totalVolume": 1_000_000}})  # no average anywhere
+    val, reason = _compute_rvol({"stream_total_volume": 1_000_000})  # no average anywhere
     assert val is None and reason == "avg_volume_unavailable"
 
     # signal_layer returns None (not 1.0) when the rolling mean is degenerate.
