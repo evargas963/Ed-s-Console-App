@@ -12501,6 +12501,14 @@ def refresh_gamma_surface_from_spot_tick(ticker: str) -> str:
 #: blocks the daemon-plane-feed's own DB-read thread that calls this callback.
 _spot_gamma_refresh_executor: "ThreadPoolExecutor | None" = None
 _spot_gamma_refresh_inflight: "set[str]" = set()
+#: at most one spot-driven heatmap reprice per ticker per this many seconds. MEASURED 2026-09-24
+#: 14:50 CT (py-spy, 15 samples): uncapped, the reprice thread held the GIL in 10 of 15 samples
+#: (a full surface recompute per spot tick, ~1.4 s for SPX, restarted on every tick), starving
+#: the event loop that serves the browser -- /api/health took 6 s, the console processed the
+#: daemon feed ~13 s behind, and every price read UNAVAILABLE. The terrain loop still rebuilds
+#: the full surface on its own cycle.
+SPOT_GAMMA_REFRESH_MIN_INTERVAL_SEC = 10.0
+_spot_gamma_refresh_last_start: "dict[str, float]" = {}
 _spot_gamma_refresh_pending: "set[str]" = set()
 _spot_gamma_refresh_lock = threading.Lock()
 
@@ -12514,6 +12522,8 @@ def _get_spot_gamma_refresh_executor() -> ThreadPoolExecutor:
 
 
 def _run_spot_gamma_refresh(tk: str) -> None:
+    with _spot_gamma_refresh_lock:
+        _spot_gamma_refresh_last_start[tk] = time.monotonic()
     try:
         refresh_gamma_surface_from_spot_tick(tk)
     except Exception as e:  # institutional-swallow-ok: best-effort background refresh, never load-bearing
@@ -12547,6 +12557,9 @@ def _dispatch_spot_gamma_refresh(ticker: str) -> None:
     if not _gamma_surface_wanted(tk):
         return
     with _spot_gamma_refresh_lock:
+        last = _spot_gamma_refresh_last_start.get(tk)
+        if last is not None and time.monotonic() - last < SPOT_GAMMA_REFRESH_MIN_INTERVAL_SEC:
+            return                      # a later tick after the interval reprices
         if tk in _spot_gamma_refresh_inflight:
             _spot_gamma_refresh_pending.add(tk)
             return

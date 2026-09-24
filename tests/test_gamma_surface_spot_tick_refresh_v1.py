@@ -267,6 +267,7 @@ def test_dispatcher_coalesces_a_burst_into_at_most_two_underlying_calls(monkeypa
     # reprice runs only for a heatmap someone is viewing (gamma-surface demand registry,
     # audit of #280): register the demand the real /api/options/gamma-surface would
     monkeypatch.setattr(server, "_gamma_surface_wanted", lambda _tk: True)
+    monkeypatch.setattr(server, "_spot_gamma_refresh_last_start", {})   # fresh 10 s reprice cap per test
     calls = []
     release = threading.Event()
     started = threading.Event()
@@ -307,6 +308,7 @@ def test_dispatcher_keeps_two_tickers_data_isolated(monkeypatch):
     # reprice runs only for a heatmap someone is viewing (gamma-surface demand registry,
     # audit of #280): register the demand the real /api/options/gamma-surface would
     monkeypatch.setattr(server, "_gamma_surface_wanted", lambda _tk: True)
+    monkeypatch.setattr(server, "_spot_gamma_refresh_last_start", {})   # fresh 10 s reprice cap per test
     calls = []
     release = threading.Event()
     started = threading.Event()
@@ -450,3 +452,21 @@ def test_RC570_REPO_WIDE_PROOF_a_spot_tick_alone_refreshes_every_live_surface(mo
     assert actual_charm_rows, "a real chain must yield at least one charm row at the new spot"
     expected_vanna_exposures, _diag = _cebs(live_contracts, spot=live_spot, require_oi=True)
     assert expected_vanna_exposures, "a real chain must yield at least one vanna bucket at the new spot"
+
+
+def test_reprice_is_capped_per_ticker_so_it_cannot_starve_the_event_loop(monkeypatch):
+    """MEASURED 2026-09-24: uncapped, the per-tick full-surface reprice held the GIL in 10 of 15
+    py-spy samples and the browser saw UNAVAILABLE everywhere. A burst of ticks over less than
+    SPOT_GAMMA_REFRESH_MIN_INTERVAL_SEC runs the reprice ONCE."""
+    calls = []
+    monkeypatch.setattr(server, "_gamma_surface_wanted", lambda _tk: True)
+    monkeypatch.setattr(server, "_spot_gamma_refresh_last_start", {})
+    monkeypatch.setattr(server, "refresh_gamma_surface_from_spot_tick", lambda tk: calls.append(tk))
+    for _ in range(30):
+        _dispatch_spot_gamma_refresh(TK)
+        time.sleep(0.01)
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and not calls:
+        time.sleep(0.02)
+    time.sleep(0.2)
+    assert calls == [server.ticker_storage_key(TK)], calls
