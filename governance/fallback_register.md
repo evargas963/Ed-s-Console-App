@@ -41,8 +41,8 @@ P1/P2 rows are to be merged here as each file is repaired.
 | C-07 | call_engine.py:1880, 1927 | readiness trend: rules.zone_label -> MVP zone | readiness | FIXED 739fb9fc |
 | C-08 | call_engine.py:408-410 | unhandled WAIT reasons print "insufficient confirmation" (incl. no_measured_stop) | The Call headline | FIXED 2066e680 |
 | C-09 | signals.py:330 | calibration timeframe `or "1m"` defeats the writer's refusal | calibration row (env-gated) | FIXED 2066e680 |
-| F-09 | prediction_engine.py:436-446 | 15m/60m "structure approximation" text | readiness | OPEN |
-| F-10 | prediction_engine.py:420, 445-446 | missing charm -> "No clear trend — range" | readiness | OPEN |
+| F-09 | prediction_engine.py:436-446 | 15m/60m "structure approximation" text | readiness | FIXED a7b8aefc |
+| F-10 | prediction_engine.py:420, 445-446 | missing charm -> "No clear trend — range" | readiness | FIXED a7b8aefc |
 | S-14 | lifecycle_rule_core.py:203-208 | T1 = 2R fallback (also overrides the similar-setups avg5 when it is <= 1.5R) | The Call target | FIXED c36102ec |
 | S-15 | lifecycle_rule_core.py:220-228 | T2 falls to avg60, then T1 + 1R | The Call target2 | FIXED c36102ec |
 | S-16 | lifecycle_rule_core.py:237-240 | T2 <= T1 replaced by T1 + 1R | The Call target2 | FIXED c36102ec |
@@ -76,7 +76,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | M-09 | math_levels.py:527-539 | ATM IV = one leg when the other is missing | IV direction, EM, IV rank | FIXED 65b45a7f |
 | M-10 | math_levels.py:812-855 | gamma profile silently drops contracts; no counts | flip, regime | OPEN |
 | M-11 | math_levels.py:1562-1575 | void zones drop the OI test with no OI | breakout score | FIXED 65b45a7f |
-| S-05 | market_state.py:1319-1323 | iv_level: chain ATM IV stands in for straddle IV | vol regime -> The Call | OPEN |
+| S-05 | market_state.py:1319-1323 | iv_level: chain ATM IV stands in for straddle IV | vol regime -> The Call | FIXED 541ac2f9 |
 
 ### Terrain and market context (terrain_engine.py, terrain_read.py, market_context.py)
 | ID | file:line | Violation | Flows to | Status |
@@ -131,5 +131,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 22 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
+Re-audit live P0 open: 19 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
 P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.
