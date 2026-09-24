@@ -1402,16 +1402,15 @@ def get_option_contract_streaming_diagnostics(
 def start_order_flow_stream(
     client: Any,
     account_id: Any,
-    initial_ticker: str,
+    initial_ticker: "str | None",
     on_tick_callback: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """`client`/`account_id` are accepted, not used: this feed opens no Schwab session
-    of its own, so it has no account dependency — kept for call-site compatibility."""
+    of its own, so it has no account dependency — kept for call-site compatibility.
+    `initial_ticker` may be None: the feed then runs with no active ticker until the browser
+    chooses one (no built-in ticker -- universality, operator 2026-09-23)."""
     global _feed_task, _feed_running, _feed_generation, _on_tick_callback
     it = (initial_ticker or "").upper().strip()
-    if not it:
-        log.warning("Live-plane feed: no initial ticker")
-        return False
     if _feed_task is not None and not _feed_task.done():
         log.info("Live-plane feed already running")
         return True
@@ -1421,9 +1420,11 @@ def start_order_flow_stream(
     # (never in stop_order_flow_stream) so a restart is what invalidates in-flight work
     # from before it, matching exactly the reproduced stop-then-restart-before-drain gap.
     _feed_generation += 1
-    set_streaming_active_ticker(it)
+    if it:
+        set_streaming_active_ticker(it)
     _feed_task = asyncio.get_event_loop().create_task(_feed_loop(), name="daemon-plane-feed")
-    log.info("Live-plane feed started (initial ticker %s, source=canonical capture daemon)", it)
+    log.info("Live-plane feed started (initial ticker %s, source=capture daemon live push)",
+             it or "none -- awaiting the browser's choice")
     return True
 
 

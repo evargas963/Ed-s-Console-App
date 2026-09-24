@@ -422,7 +422,7 @@ def test_tradeable_score_calls_liquidity_engine_authority():
 # FIND-SERVERPY-19
 def test_debug_prediction_returns_populated_distribution(monkeypatch):
     """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
-    debug_prediction is `(ticker: str = DEFAULT_TICKER)` -- a plain default, not even
+    debug_prediction is `(ticker: str)` -- a plain required parameter, not even
     a Query -- returning a bare dict. Its fail-closed R-011 gate is a plain
     os.environ read INSIDE the function body, and the NEGATIVE side of that gate
     (404 without the flag) is separately and deliberately proven over real HTTP by

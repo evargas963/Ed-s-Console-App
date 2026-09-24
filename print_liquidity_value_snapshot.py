@@ -17,7 +17,7 @@ Usage:
     (outputs full PlaybookState with all four snapshots)
 
   python print_liquidity_value_snapshot.py --snapshot premarket
-    (uses default ticker from config.DEFAULT_TICKER and today's date)
+    (--ticker is required; today's date by default)
 
 Data source: Schwab price history (1-min bars). Requires schwab_token.json and config.
 """
@@ -31,7 +31,6 @@ from pathlib import Path
 APP_DIR = str(Path(__file__).parent.resolve())
 sys.path.insert(0, APP_DIR)
 
-from config import DEFAULT_TICKER  # single authority — no shadowing local "SPY" fallback
 
 
 def _fetch_bars_from_schwab(ticker: str, session_date_str: str) -> list[dict]:
@@ -100,8 +99,8 @@ def main():
     parser.add_argument(
         "--ticker",
         type=str,
-        default=DEFAULT_TICKER,
-        help=f"Ticker symbol (default from config: {DEFAULT_TICKER})",
+        required=True,
+        help="Ticker symbol (required -- there is no default ticker)",
     )
     parser.add_argument(
         "--date",

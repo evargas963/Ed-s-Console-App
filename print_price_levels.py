@@ -17,7 +17,7 @@ from pathlib import Path
 APP_DIR = str(Path(__file__).parent.resolve())
 sys.path.insert(0, APP_DIR)
 
-from config import build_config, DEFAULT_TICKER
+from config import build_config
 from schwab_client import build_client_from_token, safe_get_quote
 from market_context import fetch_price_levels
 
@@ -32,7 +32,9 @@ def _fmt(v, decimals=2):
 
 
 def main():
-    ticker = (sys.argv[1] if len(sys.argv) > 1 else DEFAULT_TICKER).upper()
+    if len(sys.argv) < 2:
+        sys.exit("usage: python print_price_levels.py TICKER   (there is no default ticker)")
+    ticker = sys.argv[1].upper()
     cfg = build_config(APP_DIR)
 
     state = build_client_from_token(

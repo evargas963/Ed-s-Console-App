@@ -214,7 +214,7 @@ def _log_calibration_logging_state_at_boot() -> None:
 
 
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
-from config import build_config, DEFAULT_TICKER
+from config import build_config
 
 # RC-230 quiet-gate finding: this boot diagnostic ran BEFORE the config import that loads
 # .env, so it read a bare os.environ and warned "calibration logging DISABLED" on every
@@ -10074,7 +10074,7 @@ async def _app_lifespan(app):
         # contract's own tick (the hook below) or the ~60s REST cycle did. Wired to the
         # coalesced dispatcher so a fast-ticking spot cannot pile up unbounded background
         # recomputes; see refresh_gamma_surface_from_spot_tick's own docstring.
-        start_order_flow_stream(None, None, DEFAULT_TICKER,
+        start_order_flow_stream(None, None, None,
                                 on_tick_callback=_dispatch_spot_gamma_refresh)
         # RC-UI-2: freshen a cached gamma surface the instant its active option
         # contract's stream carries new GAMMA/DELTA/OPEN_INTEREST, instead of waiting
@@ -10377,7 +10377,7 @@ def api_ops_status():
 
 
 @app.get("/api/level_crosses")
-def api_level_crosses(ticker: str = "SPY", n: int = 20, level_name: str | None = None,
+def api_level_crosses(ticker: str, n: int = 20, level_name: str | None = None,
                             level_value: float | None = None, lookback_hours: float = 6.5):
     """Pass 4 — read consumer for level_crosses table.
 
@@ -10904,18 +10904,27 @@ def _tier_c_analytics_json_response(
     return JSONResponse(md)
 
 
+def _required_ticker(ticker: Optional[str]) -> str:
+    """The ticker the caller asked for -- never a default one (universality, operator
+    2026-09-23: a missing ticker used to silently become SPY). Blank -> HTTP 400."""
+    t = str(ticker or "").strip()
+    if not t:
+        raise HTTPException(status_code=400, detail="ticker is required")
+    return t
+
+
 def _resolve_ticker_param(
     ticker: str,
     symbol: Optional[str] = None,
 ) -> str:
     """Canonical query param is ``ticker``; ``symbol`` is a documented alias (audit/diag scripts)."""
-    raw = (symbol if symbol is not None and str(symbol).strip() else ticker) or DEFAULT_TICKER
-    return str(raw).upper().strip()
+    raw = symbol if symbol is not None and str(symbol).strip() else ticker
+    return _required_ticker(raw).upper().strip()
 
 
 @app.get("/api/live/state")
 async def get_live_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
 ):
@@ -14251,10 +14260,10 @@ def post_terrain_quarantine_release(ticker: str = Query(...)):
 # morning capture preferred, live narrow chain as fallback) — read-only, no Schwab
 # call, no model stack. Bar heights use the same exposure math as terrain.
 @app.get("/api/terrain/strikes")
-def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_terrain_strikes(ticker: str = Query(...)):
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
     # viewing"): _note_gamma_surface_demand was only ever called from
     # get_options_gamma_surface (the Heatmap grid's own route) -- GEX-by-Strike, the
@@ -14470,10 +14479,10 @@ def get_terrain_strikes(ticker: str = Query(default=DEFAULT_TICKER)):
 # price_bars_1m equally), no Schwab call, no model stack. The WS transport replaces
 # the page's polling when CR-CAP clears; this endpoint stays as the history hydrator.
 @app.get("/api/bars1m")
-def get_bars1m(ticker: str = Query(default=DEFAULT_TICKER),
+def get_bars1m(ticker: str = Query(...),
                limit: int = Query(default=780, ge=1, le=3000)):
     """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts."""
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     import sqlite3 as _sq
     try:
         db = get_db()
@@ -14554,7 +14563,7 @@ def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None
 
 
 @app.get("/api/options/vanna-by-strike")
-def get_vanna_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_vanna_by_strike(ticker: str = Query(...)):
     """Per-strike dealer VANNA exposure (operator field-inventory audit, 2026-09-13): the
     SAME canonical faucet (math_exposure_core.compute_exposures_by_strike) the Gamma/DEX
     heatmaps already use, aggregated across every expiry in the live wide chain (Vanna has
@@ -14566,7 +14575,7 @@ def get_vanna_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
     from math_exposure_core import compute_exposures_by_strike as _cebs
     from numeric_contract import float_finite_or_none as _fin
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     _touch_tracked_ticker_view(tk)
     contracts, spot = _live_terrain_contracts_and_spot(tk)
     if not contracts:
@@ -14599,7 +14608,7 @@ def get_vanna_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
 
 
 @app.get("/api/options/charm-by-strike")
-def get_charm_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_charm_by_strike(ticker: str = Query(...)):
     """Per-strike dealer CHARM exposure (operator field-inventory audit, 2026-09-13): the
     SAME canonical faucet (math_levels.compute_charm_by_strike, the exact function
     /api/forces's charm_below/charm_above already sum) applied to the live wide chain, row-
@@ -14607,7 +14616,7 @@ def get_charm_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
     delta-shares decaying per day (RC-179 dealer convention: +call/-put)."""
     from math_levels import compute_charm_by_strike as _ccs
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     _touch_tracked_ticker_view(tk)
     contracts, spot = _live_terrain_contracts_and_spot(tk)
     if not contracts:
@@ -14628,7 +14637,7 @@ def get_charm_by_strike(ticker: str = Query(default=DEFAULT_TICKER)):
 
 
 @app.get("/api/options/tape")
-def get_options_tape(ticker: str = Query(default=DEFAULT_TICKER),
+def get_options_tape(ticker: str = Query(...),
                      contract: Optional[str] = Query(default=None),
                      limit: int = Query(default=100)):
     """Discrete option TRADE prints (operator field-inventory audit, 2026-09-13) — the
@@ -14647,7 +14656,7 @@ def get_options_tape(ticker: str = Query(default=DEFAULT_TICKER),
         get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
     from app.options.order_flow.history import tape_rows_for_symbol
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     try:
         bounded_limit = max(1, min(500, int(limit)))
     except (TypeError, ValueError):
@@ -14687,7 +14696,7 @@ def get_options_tape(ticker: str = Query(default=DEFAULT_TICKER),
 
 
 @app.get("/api/order-flow/book-heatmap")
-def get_order_flow_book_heatmap(ticker: str = Query(default=DEFAULT_TICKER),
+def get_order_flow_book_heatmap(ticker: str = Query(...),
                                 minutes: float = Query(default=60.0)):
     """Historical book-depth heatmap for the underlying ticker's own NASDAQ/NYSE book (operator
     field-inventory audit, 2026-09-13: "we don't have an order flow heatmap"). SERIALIZER, not a
@@ -14699,7 +14708,7 @@ def get_order_flow_book_heatmap(ticker: str = Query(default=DEFAULT_TICKER),
     for why. `minutes` is clamped to [5, 240] to bound one request's cost."""
     from app.options.order_flow.history import book_heatmap_for_ticker
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     try:
         bounded_minutes = max(5.0, min(240.0, float(minutes)))
     except (TypeError, ValueError):
@@ -14716,7 +14725,7 @@ _FORCES_CACHE: dict = {}
 
 
 @app.get("/api/forces")
-def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_forces(ticker: str = Query(...)):
     """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
     bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
     boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
@@ -14729,7 +14738,7 @@ def get_forces(ticker: str = Query(default=DEFAULT_TICKER)):
     from math_exposure_core import compute_exposures_by_strike as _cebs
     from math_levels import compute_charm_by_strike as _ccs
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     now = time.time()
     hit = _FORCES_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
@@ -14825,7 +14834,7 @@ _EXPOSURE_FLOW_CACHE: dict = {}
 
 
 @app.get("/api/exposure/flow")
-def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_exposure_flow(ticker: str = Query(...)):
     """RC-208: serve option_chain_accrual frames for the latest banked session so the
     Exposure tab paints per-minute Pika/Barney structure, the intraday King path, and
     volume-delta bubbles at the minute they happened. per_strike_json served verbatim
@@ -14833,7 +14842,7 @@ def get_exposure_flow(ticker: str = Query(default=DEFAULT_TICKER)):
     minutes 556-975), spot-windowed ±5%. 5-min cache like /api/forces."""
     import sqlite3 as _sq
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     now = time.time()
     hit = _EXPOSURE_FLOW_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
@@ -14883,7 +14892,7 @@ _EXPOSURE_HISTORY_CACHE: dict = {}
 
 
 @app.get("/api/exposure/book")
-def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_exposure_book(ticker: str = Query(...)):
     """RC-209: per-strike call/put GEX split + net DEX + volumes from the NEWEST banked wide
     chain — turns the Exposure tab's Split·DEX pill live. Vendor convention researched this
     turn (FlashAlpha): green = call side, red = put side. 5-min cache."""
@@ -14891,7 +14900,7 @@ def get_exposure_book(ticker: str = Query(default=DEFAULT_TICKER)):
 
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     now = time.time()
     hit = _EXPOSURE_BOOK_CACHE.get(tk)
     if hit and now - hit[0] < 300.0:
@@ -15301,7 +15310,7 @@ def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> d
 
 
 @app.get("/api/options/gamma-surface")
-def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_options_gamma_surface(ticker: str = Query(...)):
     """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
     faucet compute_exposures_by_strike.
 
@@ -15311,7 +15320,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
     (operator rule 2026-09-23: no fallbacks; the banked MORNING wide chain used to stand in).
     Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     _note_gamma_surface_demand(tk)   # mark viewed -> the terrain loop will project this ticker's surface
 
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
@@ -15422,7 +15431,7 @@ def get_options_gamma_surface(ticker: str = Query(default=DEFAULT_TICKER)):
 
 
 @app.get("/api/exposure/history")
-def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_exposure_history(ticker: str = Query(...)):
     """RC-209 (operator: multi-day scroll-back goes live): per-day per-strike net GEX$ for
     EVERY banked session, so scrolled-back days paint THEIR OWN structure under their own
     candles. ±5% of each day's spot; 10-min cache (the bank changes nightly)."""
@@ -15430,7 +15439,7 @@ def get_exposure_history(ticker: str = Query(default=DEFAULT_TICKER)):
 
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     now = time.time()
     hit = _EXPOSURE_HISTORY_CACHE.get(tk)
     if hit and now - hit[0] < 600.0:
@@ -15480,7 +15489,7 @@ SPOT_POLL_TTL_SEC = 1.25
 
 
 @app.get("/api/spot")
-def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_spot(ticker: str = Query(...)):
     """Featherweight live spot for fast UI polling. The ONE price authority
     (resolve_spot, RC-14) behind a 1.25s per-ticker cache — no chain, no model
     stack, budget-bounded regardless of poll rate or viewer count.
@@ -15490,7 +15499,7 @@ def get_spot(ticker: str = Query(default=DEFAULT_TICKER)):
     on timeout they re-contend for leadership or serve the last cache entry
     (stale beats a quote stampede).
     """
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     deadline = time.time() + 10.0
     while True:
         now = time.time()
@@ -15697,14 +15706,14 @@ def get_desk_radar(as_of: float = Query(default=0.0), limit: int = Query(default
 
 
 @app.get("/api/desk/dossier")
-def get_desk_dossier(ticker: str = Query(default=DEFAULT_TICKER),
+def get_desk_dossier(ticker: str = Query(...),
                      as_of: float = Query(default=0.0)):
     """One name's measured structure, as it stood at `as_of`."""
     import desk_store
     from db import DB_PATH as _desk_db
 
     at = float(as_of) if as_of and as_of > 0 else time.time()
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     try:
         payload = desk_store.dossier(_desk_db, tk, at)
     except Exception as e:
@@ -15734,7 +15743,7 @@ def get_desk_evidence(as_of: float = Query(default=0.0)):
 
 @app.get("/api/desk/structure")
 def get_desk_structure(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     horizon_sessions: int = Query(default=5),
     long_strike: float = Query(default=0.0),
     short_strike: float = Query(default=0.0),
@@ -15752,7 +15761,7 @@ def get_desk_structure(
     from db import DB_PATH as _desk_db
 
     at = float(as_of) if as_of and as_of > 0 else time.time()
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     out: dict = {"subject": tk, "as_of_utc": at}
     try:
         # Live LAST_PRICE only when this is a current request. A historical as_of
@@ -15819,7 +15828,7 @@ def post_desk_materialize():
 
 
 @app.get("/api/terrain")
-def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_terrain(ticker: str = Query(...)):
     """Terrain payload — levels only, NO model stack.
 
     Deliberately separate from /api/state: that path runs the full pipeline (chain +
@@ -15827,7 +15836,7 @@ def get_terrain(ticker: str = Query(default=DEFAULT_TICKER)):
     background collection had to be throttled to keep it responsive. Terrain is ~5 ms of
     math on the same chain, so it never needs to compete for that budget.
     """
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)   # RC-126: SPX -> $SPX etc., ONE authority
+    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     cached = terrain_cache_get(tk)
     if cached is None:
         # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
@@ -15927,7 +15936,7 @@ def _latest_chain_and_spot(ticker: str) -> tuple[list | None, float | None, floa
 
 @app.get("/api/analytics/light")
 async def get_analytics_light(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     expiry: Optional[str] = Query(default=None),
     force: bool = Query(
         default=False,
@@ -15987,7 +15996,7 @@ def _sse_event_name_for_envelope(env) -> str:
 @app.get("/api/analytics/light/stream")
 async def get_analytics_light_stream(
     request: Request,
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     expiry: Optional[str] = Query(default=None),
 ):
     """
@@ -16033,7 +16042,7 @@ async def get_analytics_light_stream(
 
 @app.get("/api/analytics/state")
 async def get_analytics_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
     force: bool = Query(default=False),
@@ -16056,7 +16065,7 @@ async def get_analytics_state(
 
 @app.post("/api/analytics/warm")
 async def post_analytics_warm(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
 ):
@@ -16079,7 +16088,7 @@ async def post_analytics_warm(
 # SWITCH-LATENCY FIX: sync def → Starlette runs it in its worker threadpool, off the
 # event loop (this handler does blocking Tier C work and no await).
 def get_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     symbol: Optional[str] = Query(default=None),
     expiry: Optional[str] = Query(default=None),
     force: bool = Query(default=False),
@@ -16095,9 +16104,9 @@ def get_state(
 
 
 @app.get("/api/live/plane")
-def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
+def api_live_plane(ticker: str = Query(...)):
     """Diagnostics: Layer A row + streaming health — no Schwab REST quote call."""
-    t = (ticker or DEFAULT_TICKER).upper().strip()
+    t = _required_ticker(ticker).upper().strip()
     row = _lmp.get_quote(t)
     base = dict(row) if row else {}
     try:
@@ -16126,7 +16135,7 @@ def api_live_plane(ticker: str = Query(default=DEFAULT_TICKER)):
 
 
 @app.get("/api/order-flow/microstructure")
-def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
+def api_order_flow_microstructure(ticker: str = Query(...)):
     """Canonical L2 book microstructure (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
     liquidity concentration, wall_candidates, and ages — every field classified
@@ -16135,7 +16144,7 @@ def api_order_flow_microstructure(ticker: str = Query(default=DEFAULT_TICKER)):
     engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
     renders, never recomputes."""
-    t = (ticker or DEFAULT_TICKER).upper().strip()
+    t = _required_ticker(ticker).upper().strip()
     # VIEW endpoint: touch last-seen only, never enroll (RC-160 ticker-scope discipline).
     _touch_tracked_ticker_view(t)
     data: dict = {}
@@ -16291,8 +16300,7 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 @app.post("/api/streaming/active-ticker")
 async def post_streaming_active_ticker(payload: dict = Body(default={})):
     """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""
-    t = (payload.get("ticker") or DEFAULT_TICKER)
-    t = str(t).upper().strip()
+    t = _required_ticker(payload.get("ticker")).upper().strip()
     # SWITCH-LATENCY FIX (critical): set_streaming_active_ticker blocks on fut.result(timeout=30)
     # while it does 6 websocket re-subscribe round-trips, and this endpoint fires on EVERY ticker
     # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
@@ -16520,7 +16528,7 @@ def get_sqlite_contention_diagnostics():
 
 
 @app.get("/api/fast-quote")
-async def fast_quote(ticker: str = Query(default=DEFAULT_TICKER)):
+async def fast_quote(ticker: str = Query(...)):
     """
     Fast lane: latest equity quote fields only. Independent fast_generation_id / exchange_quote_ts.
     Does not return chain, fusion, or decision data.
@@ -16627,7 +16635,7 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
 
 @app.get("/api/stream")
 async def sse_stream(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     expiry: Optional[str] = Query(default=None),
 ):
     """
@@ -16863,7 +16871,7 @@ async def _sse_background_loop() -> None:
 
 @app.get("/api/expiries")
 # SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
-def get_expiries(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_expiries(ticker: str = Query(...)):
     ticker = ticker.upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(ticker)
@@ -16912,7 +16920,7 @@ COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 
 
 @app.get("/api/chain")
-def get_chain(ticker: str = Query(default=DEFAULT_TICKER),
+def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
     """CONTRACT-SELECTION surface: the COMPLETE real vendor contract set for one ticker and
     one expiry — every strike Schwab actually lists, not a bounded analytical window — so a
@@ -17649,7 +17657,7 @@ def api_chain_gate_diagnostics():
 
 
 @app.get("/api/price-levels")
-def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours: bool = Query(default=True)):
+def get_price_levels(ticker: str = Query(...), extended_hours: bool = Query(default=True)):
     """RETIRED (RC-213 B6, one-faucet-closeout-v1): /api/levels is the ONE levels surface.
 
     This route measured ZERO client consumers (census 2026-08-03) and was the second HTTP
@@ -17661,7 +17669,7 @@ def get_price_levels(ticker: str = Query(default=DEFAULT_TICKER), extended_hours
         "error": "retired",
         "detail": "/api/price-levels is retired (RC-213 B6). Use /api/levels — the single "
                   "levels contract (id/price/family/provenance/staleness per level).",
-        "replacement": f"/api/levels?ticker={(ticker or DEFAULT_TICKER).upper().strip()}",
+        "replacement": f"/api/levels?ticker={_required_ticker(ticker).upper().strip()}",
     }, status_code=410)
 
 
@@ -17755,7 +17763,7 @@ def canonical_price_level_snapshot(ticker: str):
     from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
     from time_et import now_et
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     session_date = now_et().date()
     bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
     return materialize_price_level_snapshot(
@@ -17769,13 +17777,13 @@ def canonical_price_level_snapshot(ticker: str):
 # one materialized PriceLevelSnapshot — it serializes, it does not compute. Every other
 # surface (liquidity-snapshot, market_context, /api/state, ML features, persistence,
 # chart) carries the values out of the same snapshot object and generation.
-def get_levels(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_levels(ticker: str = Query(...)):
     """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
     import time as _time
 
     from liquidity_value_engine import carry_snapshot_levels
 
-    tk = ticker_storage_key(ticker or DEFAULT_TICKER)
+    tk = ticker_storage_key(_required_ticker(ticker))
     served_ts = _time.time()
     spot, spot_source, spot_ts = resolve_spot(tk)
     snap = canonical_price_level_snapshot(tk)
@@ -17994,7 +18002,7 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
 # setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
 # no await, so as async it stalled the event loop on each switch.
 def get_liquidity_snapshot(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
     snapshot: str = Query(
         default="premarket",
@@ -18191,7 +18199,7 @@ def get_liquidity_snapshot(
 @app.get("/api/liquidity-playbook-state")
 # SWITCH-LATENCY FIX: sync def → threadpool (blocking Schwab bar fetch, no await).
 def get_liquidity_playbook_state(
-    ticker: str = Query(default=DEFAULT_TICKER),
+    ticker: str = Query(...),
     date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
 ):
     """Return full PlaybookState with all four snapshots (premarket, opening, midday, afternoon).
@@ -18231,10 +18239,10 @@ def get_liquidity_playbook_state(
 
 @app.get("/api/debug/charm")
 # SWITCH-LATENCY FIX: sync def → threadpool (blocking chain fetch, no await).
-def debug_charm(ticker: str = DEFAULT_TICKER):
+def debug_charm(ticker: str):
     """Diagnose why charm is not computing."""
     try:
-        ticker = ticker_storage_key(ticker or DEFAULT_TICKER)   # Cursor-audit F1: bare "SPX" -> "$SPX"
+        ticker = ticker_storage_key(_required_ticker(ticker))   # Cursor-audit F1: bare "SPX" -> "$SPX"
         # TICKER-PREVIEW-NO-ENROLL: charm diagnostic is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker)
         from math_exposure import compute_net_charm
@@ -18335,13 +18343,13 @@ def debug_charm(ticker: str = DEFAULT_TICKER):
 
 @app.get("/api/accuracy")
 # SWITCH-LATENCY FIX: sync def → threadpool (DB write via _register, no await).
-def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
+def get_accuracy(ticker: str = Query(...)):
     """Return prediction accuracy for a ticker.
 
     Returns cached results if available (updated every ~10 min),
     otherwise computes fresh. Also returns accuracy history for charting.
     """
-    ticker = (ticker or DEFAULT_TICKER).upper().strip()
+    ticker = _required_ticker(ticker).upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: accuracy is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(ticker)
 
@@ -18433,7 +18441,7 @@ def get_accuracy(ticker: str = Query(default=DEFAULT_TICKER)):
 
 @app.get("/api/debug/prediction")
 # SWITCH-LATENCY FIX: sync def → threadpool (blocking full _fetch_state, no await).
-def debug_prediction(ticker: str = DEFAULT_TICKER):
+def debug_prediction(ticker: str):
     """Show exactly what the prediction engine is querying — non-production debug surface (R-011)."""
     if os.environ.get("ED_ALLOW_DEBUG_ENDPOINTS", "").strip().lower() not in ("1", "true", "yes"):
         raise HTTPException(status_code=404, detail="debug endpoints disabled")
