@@ -260,8 +260,19 @@ def test_rc338_both_sides_deliver_the_authoritys_result(monkeypatch):
                              "validation_score": 6},
     }
     monkeypatch.setattr(_sr, "score_readiness", lambda **kw: dict(sentinel))
-    for fn in (_sr.compute_call_readiness, _sr.compute_put_readiness):
-        out = fn({})
+    for fn, inp in ((_sr.compute_call_readiness, {
+        "regime": "bull", "trend": "up", "structure_confirmation": "reclaim",
+        "structure_higher_tf": "uptrend intact",
+        "prediction_direction": "up", "prediction_dominant_prob": 0.61,
+        "confluence_read": "strong", "validation_passed": True, "breakout_ready": True,
+    }),
+                    (_sr.compute_put_readiness, {
+        "regime": "bear", "trend": "down", "structure_confirmation": "lower high",
+        "structure_higher_tf": "downtrend intact",
+        "prediction_direction": "down", "prediction_dominant_prob": 0.61,
+        "confluence_read": "strong", "validation_passed": True, "breakdown_ready": True,
+    })):
+        out = fn(inp)
         assert out["readiness_score"] == 12345, f"{fn.__name__} altered the authority's score"
         assert out["call_state"] == "SENTINEL_STATE"
         assert out["forecast_state"] == "sentinel_fc"
@@ -277,8 +288,8 @@ def test_rc338_state_and_forecast_boundaries_from_the_one_authority():
         (dict(trend_tier="weak", structure_tier="confirmed", level_tier="near",
               direction_matches=True, prob=0.40, confluence_tier="mixed",
               validation_passed=False), 49, "WAIT", "forming"),
-        (dict(trend_tier="aligned", structure_tier="forming", level_tier="unknown",
-              direction_matches=True, prob=0.40, confluence_tier="mixed",
+        (dict(trend_tier="weak", structure_tier="forming", level_tier="trigger",
+              direction_matches=True, prob=0.52, confluence_tier="mixed",
               validation_passed=False), 50, "WATCH", "forming"),
         (dict(trend_tier="aligned", structure_tier="forming", level_tier="trigger",
               direction_matches=True, prob=0.52, confluence_tier="weak",
@@ -295,9 +306,9 @@ def test_rc338_state_and_forecast_boundaries_from_the_one_authority():
         (dict(trend_tier="weak", structure_tier="forming", level_tier="near",
               direction_matches=False, prob=0.99, confluence_tier="mixed",
               validation_passed=False), 39, "WAIT", "dormant"),
-        (dict(trend_tier="weak", structure_tier="forming", level_tier="unknown",
-              direction_matches=False, prob=0.99, confluence_tier="weak",
-              validation_passed=True), 40, "WAIT", "forming"),
+        (dict(trend_tier="partial", structure_tier="none", level_tier="near",
+              direction_matches=False, prob=0.99, confluence_tier="mixed",
+              validation_passed=False), 40, "WAIT", "forming"),
     ]
     for kw, want_total, want_state, want_fc in cases:
         got = total(**kw)
@@ -307,11 +318,11 @@ def test_rc338_state_and_forecast_boundaries_from_the_one_authority():
 
     # Probability band boundaries, from the one authority.
     for prob, pts in ((0.60, 15), (0.5999, 11), (0.56, 11), (0.5599, 7), (0.52, 7), (0.5199, 3)):
-        got = total(trend_tier="weak", structure_tier="none", level_tier="unknown",
+        got = total(trend_tier="weak", structure_tier="none", level_tier="far",
                     direction_matches=True, prob=prob, confluence_tier="weak",
                     validation_passed=False)
         assert got["component_scores"]["probability_score"] == pts, (prob, got)
-    got = total(trend_tier="weak", structure_tier="none", level_tier="unknown",
+    got = total(trend_tier="weak", structure_tier="none", level_tier="far",
                 direction_matches=False, prob=0.99, confluence_tier="weak",
                 validation_passed=False)
     assert got["component_scores"]["probability_score"] == 1
@@ -320,11 +331,13 @@ def test_rc338_state_and_forecast_boundaries_from_the_one_authority():
 def test_rc338_call_and_put_sides_score_identically_for_mirrored_inputs():
     call_max = _sr.compute_call_readiness({
         "regime": "bull", "trend": "up", "structure_confirmation": "reclaim",
+        "structure_higher_tf": "uptrend intact",
         "prediction_direction": "up", "prediction_dominant_prob": 0.61,
         "confluence_read": "strong", "validation_passed": True, "breakout_ready": True,
     })
     put_max = _sr.compute_put_readiness({
         "regime": "bear", "trend": "down", "structure_confirmation": "lower high",
+        "structure_higher_tf": "downtrend intact",
         "prediction_direction": "down", "prediction_dominant_prob": 0.61,
         "confluence_read": "strong", "validation_passed": True, "breakdown_ready": True,
     })
@@ -332,12 +345,17 @@ def test_rc338_call_and_put_sides_score_identically_for_mirrored_inputs():
     assert call_max["call_state"] == put_max["call_state"] == "ACTIVE"
     assert call_max["component_scores"] == put_max["component_scores"]
 
+    # No inputs -> readiness WITHHELD on both sides, the same inputs named (audit C-03..07:
+    # it used to score 23 / WAIT / dormant from nothing).
     call_empty = _sr.compute_call_readiness({})
     put_empty = _sr.compute_put_readiness({})
-    assert call_empty["readiness_score"] == put_empty["readiness_score"] == 23
-    assert call_empty["call_state"] == put_empty["call_state"] == "WAIT"
-    assert call_empty["forecast_state"] == put_empty["forecast_state"] == "dormant"
-    assert call_empty["component_scores"] == put_empty["component_scores"]
+    for out in (call_empty, put_empty):
+        assert out["readiness_score"] is None
+        assert out["call_state"] is None and out["forecast_state"] is None
+        assert out["component_scores"] == {}
+    assert call_empty["missing_conditions"] == put_empty["missing_conditions"]
+    assert "prediction_direction" in call_empty["missing_conditions"][0]
+    assert "level_proximity" in call_empty["missing_conditions"][0]
 
     # Output schema unchanged for consumers (call_engine.py:1970 / :2014).
     for out in (call_max, put_max, call_empty, put_empty):

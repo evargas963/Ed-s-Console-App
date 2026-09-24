@@ -240,13 +240,10 @@ def run(out_db: Path) -> dict[str, Any]:
                 v2_decision=build_module_a_a1_decision(
                     {
                         "ticker": name,
-                        "fusion_available": True,
+                        # no forecast -> not available; no max() over a placeholder triplet (audit C-01)
+                        "fusion_available": canonical.dominant_probability() is not None,
                         "fusion_dominant_direction": canonical.direction,
-                        "fusion_dominant_prob": max(
-                            float(canonical.probability_up),
-                            float(canonical.probability_down),
-                            float(canonical.probability_flat),
-                        ),
+                        "fusion_dominant_prob": canonical.dominant_probability(),
                         "execution_mode": getattr(out.call, "execution_mode", None),
                     }
                 ),

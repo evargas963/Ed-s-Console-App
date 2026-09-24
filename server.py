@@ -9343,9 +9343,9 @@ def _fetch_state(
 
     # ── Call Readiness (from MarketState; computed in call_engine.py) ──────────
     ms_dict["call_readiness"] = {
-        "call_state": getattr(ms, "call_state", "WAIT"),
-        "forecast_state": getattr(ms, "call_forecast_state", "dormant"),
-        "readiness_score": getattr(ms, "call_readiness_score", 0),
+        "call_state": getattr(ms, "call_state", None),
+        "forecast_state": getattr(ms, "call_forecast_state", None),
+        "readiness_score": getattr(ms, "call_readiness_score", None),
         "reasons": list(getattr(ms, "call_readiness_reasons", []) or []),
         "missing_conditions": list(getattr(ms, "call_missing_conditions", []) or []),
         "component_scores": dict(getattr(ms, "call_readiness_component_scores", {}) or {}),
@@ -9354,9 +9354,9 @@ def _fetch_state(
 
     # ── Put Readiness (from MarketState; computed in call_engine.py) ────────────
     ms_dict["put_readiness"] = {
-        "call_state": getattr(ms, "put_state", "WAIT"),
-        "forecast_state": getattr(ms, "put_forecast_state", "dormant"),
-        "readiness_score": getattr(ms, "put_readiness_score", 0),
+        "call_state": getattr(ms, "put_state", None),
+        "forecast_state": getattr(ms, "put_forecast_state", None),
+        "readiness_score": getattr(ms, "put_readiness_score", None),
         "reasons": list(getattr(ms, "put_readiness_reasons", []) or []),
         "missing_conditions": list(getattr(ms, "put_missing_conditions", []) or []),
         "component_scores": dict(getattr(ms, "put_readiness_component_scores", {}) or {}),

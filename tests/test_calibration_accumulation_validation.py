@@ -79,8 +79,12 @@ def test_production_accumulation_harness_passes(tmp_path: Path, monkeypatch: pyt
     engineering = run_engineering(db)
     assert "diagnostics" in engineering
     assert "FINAL_RESULT" in engineering["FINAL_SYSTEM"]
-    long_n = engineering["diagnostics"]["pct_canonical_effective"]["long"]
-    assert isinstance(long_n, int) and long_n > 0
+    # This harness runs with fusion unavailable, so there is no canonical forecast: the
+    # "effective" signal must be exactly the production final signal. It used to show LONG
+    # rows here -- the 1/3-each placeholder won the p_up >= p_dn >= p_fl tie-break
+    # (audit C-01, 2026-09-24).
+    diag = engineering["diagnostics"]
+    assert diag["pct_canonical_effective"] == diag["pct_final_signal"]
 
     discovery = run_discovery(db)
     assert discovery["meta"]["labeled_anchored_count"] >= 30
@@ -89,7 +93,9 @@ def test_production_accumulation_harness_passes(tmp_path: Path, monkeypatch: pyt
 
     validation = analyze_edge(db)
     assert validation["pass_gates"]["aggregate_n_sufficient"] is True
-    assert validation["pass_gates"]["ev_mean_actual_gt_mean_random_mix"] is True
+    # No canonical forecast exists in this harness, so there is no edge to demand: this gate
+    # used to read True only because placeholder rows were scored as LONG calls (audit C-01).
+    assert isinstance(validation["pass_gates"]["ev_mean_actual_gt_mean_random_mix"], bool)
     assert validation["pass_gates"]["ev_mean_actual_strictly_gt_always_long"] is False
     assert validation["binary_pass"] is False
 

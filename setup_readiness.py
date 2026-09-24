@@ -39,7 +39,7 @@ def _safe_lower(value: Any) -> str:
 # concept, so it now has exactly one computation authority: score_readiness().
 READINESS_TREND_POINTS = {"aligned": 20, "partial": 12, "weak": 4}
 READINESS_STRUCTURE_POINTS = {"confirmed": 20, "forming": 12, "conflicting": 2, "none": 5}
-READINESS_LEVEL_POINTS = {"trigger": 20, "near": 15, "far": 5, "unknown": 8}
+READINESS_LEVEL_POINTS = {"trigger": 20, "near": 15, "far": 5}
 READINESS_PROB_BANDS = ((0.60, 15, "strong"), (0.56, 11, "acceptable"), (0.52, 7, "needs_more"))
 READINESS_PROB_WEAK_POINTS = 3
 READINESS_PROB_WRONG_DIRECTION_POINTS = 1
@@ -129,11 +129,43 @@ def score_readiness(
     }
 
 
-def _prob_float(raw: Any) -> float:
-    try:
-        return float(raw or 0.0)
-    except (TypeError, ValueError):
-        return 0.0  # absence-ok: readiness scores an unreadable probability as 0.0 BY DESIGN — it lands in the weakest band (3 points, "too weak"), i.e. no probabilistic support, the fail-closed reading; identical semantics to the pre-RC-338 inline handlers
+#: Inputs readiness cannot be scored without. A missing one WITHHOLDS readiness (score / state
+#: None, the missing inputs named) -- it used to be scored anyway: an unreadable probability as
+#: 0.0, an unknown level as 8 points, blank structure as "none" = 5 points, a withheld forecast
+#: as "flat" (audit C-03..C-07, 2026-09-24, operator rule: no fallbacks).
+READINESS_REQUIRED_INPUTS = (
+    "regime", "trend", "structure_confirmation", "structure_higher_tf",
+    "prediction_direction", "prediction_dominant_prob", "confluence_read",
+)
+READINESS_LEVEL_VALUES = frozenset({"near", "mid", "far", "support", "resistance",
+                                    "trigger_zone", "mid_range"})
+
+
+def _missing_inputs(inp: dict, trigger_key: str) -> List[str]:
+    """Names of required inputs that are absent. Level proximity is required unless the
+    zone already puts price at the trigger (then no distance is needed)."""
+    missing = [k for k in READINESS_REQUIRED_INPUTS
+               if inp.get(k) is None or (isinstance(inp.get(k), str) and not inp[k].strip())]
+    if "prediction_dominant_prob" not in missing:
+        try:
+            float(inp["prediction_dominant_prob"])
+        except (TypeError, ValueError):
+            missing.append("prediction_dominant_prob")
+    if not bool(inp.get(trigger_key)) and _safe_lower(inp.get("level_proximity")) not in READINESS_LEVEL_VALUES:
+        missing.append("level_proximity")
+    return missing
+
+
+def withheld_readiness(missing: List[str]) -> dict:
+    """The readiness result when it cannot be measured: nothing scored, the reason named."""
+    return {
+        "call_state": None,
+        "forecast_state": None,
+        "readiness_score": None,
+        "component_scores": {},
+        "reasons": [],
+        "missing_conditions": [f"Readiness withheld -- not available: {', '.join(missing)}."],
+    }
 
 
 def _confluence_tier(confluence_read: str, directional_keyword: str) -> str:
@@ -159,7 +191,8 @@ def compute_call_readiness(call_input: dict) -> dict:
     """
     V1 deterministic readiness model for the CALL card.
 
-    Expected input keys (use what you already have; missing keys are handled):
+    Expected input keys (READINESS_REQUIRED_INPUTS + level_proximity; a missing one
+    withholds readiness -- see withheld_readiness):
         regime
         trend
         structure_confirmation   # ~15m structure read (role: structure confirmation)
@@ -175,6 +208,9 @@ def compute_call_readiness(call_input: dict) -> dict:
     Classification (bullish keywords) and wording live here; every score, band and
     threshold comes from score_readiness — the one policy authority (RC-338).
     """
+    _missing = _missing_inputs(call_input, "breakout_ready")
+    if _missing:
+        return withheld_readiness(_missing)
     regime = _safe_lower(call_input.get("regime"))
     trend = _safe_lower(call_input.get("trend"))
     structure_confirmation = _safe_lower(call_input.get("structure_confirmation", ""))
@@ -182,7 +218,7 @@ def compute_call_readiness(call_input: dict) -> dict:
     prediction_direction = _safe_lower(call_input.get("prediction_direction"))
     confluence_read = _safe_lower(call_input.get("confluence_read"))
     level_proximity = _safe_lower(call_input.get("level_proximity"))
-    prob = _prob_float(call_input.get("prediction_dominant_prob", 0.0))
+    prob = float(call_input["prediction_dominant_prob"])
     validation_passed = bool(call_input.get("validation_passed", False))
     near_support = bool(call_input.get("near_support", False))
     breakout_ready = bool(call_input.get("breakout_ready", False))
@@ -227,12 +263,9 @@ def compute_call_readiness(call_input: dict) -> dict:
     elif near_support or level_proximity in {"near", "support", "trigger_zone"}:
         level_tier = "near"
         reasons.append("Price is near a relevant support/trigger area.")
-    elif level_proximity in {"mid", "mid_range", "far"}:
+    else:   # mid / mid_range / far (anything else was withheld above)
         level_tier = "far"
         missing.append("Price is not yet at a strong action level.")
-    else:
-        level_tier = "unknown"
-        missing.append("Need better proximity to a trigger level.")
 
     # 4-6) Probability / confluence / validation — classified here, SCORED by the authority.
     scored = score_readiness(
@@ -281,6 +314,9 @@ def compute_put_readiness(put_input: dict) -> dict:
     Bearish mirror of compute_call_readiness: classification and wording only —
     every score, band and threshold comes from score_readiness (RC-338).
     """
+    _missing = _missing_inputs(put_input, "breakdown_ready")
+    if _missing:
+        return withheld_readiness(_missing)
     regime = _safe_lower(put_input.get("regime"))
     trend = _safe_lower(put_input.get("trend"))
     structure_confirmation = _safe_lower(put_input.get("structure_confirmation", ""))
@@ -288,10 +324,10 @@ def compute_put_readiness(put_input: dict) -> dict:
     prediction_direction = _safe_lower(put_input.get("prediction_direction"))
     confluence_read = _safe_lower(put_input.get("confluence_read"))
     level_proximity = _safe_lower(put_input.get("level_proximity"))
-    prob = _prob_float(put_input.get("prediction_dominant_prob", 0.0))
+    prob = float(put_input["prediction_dominant_prob"])
     validation_passed = bool(put_input.get("validation_passed", False))
-    near_resistance = bool(put_input.get("near_resistance", put_input.get("near_support", False)))
-    breakdown_ready = bool(put_input.get("breakdown_ready", put_input.get("breakout_ready", False)))
+    near_resistance = bool(put_input.get("near_resistance", False))
+    breakdown_ready = bool(put_input.get("breakdown_ready", False))
 
     reasons: List[str] = []
     missing: List[str] = []
@@ -333,12 +369,9 @@ def compute_put_readiness(put_input: dict) -> dict:
     elif near_resistance or level_proximity in {"near", "resistance", "trigger_zone"}:
         level_tier = "near"
         reasons.append("Price is near a relevant resistance/trigger area.")
-    elif level_proximity in {"mid", "mid_range", "far"}:
+    else:   # mid / mid_range / far (anything else was withheld above)
         level_tier = "far"
         missing.append("Price is not yet at a strong action level.")
-    else:
-        level_tier = "unknown"
-        missing.append("Need better proximity to a trigger level.")
 
     scored = score_readiness(
         trend_tier=trend_tier,

@@ -68,6 +68,10 @@ from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stac
 log = logging.getLogger(__name__)
 
 
+def _r4(v: Optional[float]) -> Optional[float]:
+    return round(float(v), 4) if v is not None else None
+
+
 def canonical_forward_probs_for_display(
     canonical: CanonicalForecast,
 ) -> tuple[Optional[float], Optional[float], Optional[float]]:
@@ -139,27 +143,27 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
     """
     Build CanonicalForecast from Bayesian fusion posterior (directional triplet).
 
-    When fusion is unavailable or directional probs are missing/invalid, returns a
-    max-entropy **placeholder** triplet (1/3 each) with non-tradable ``provenance``.
-    Consumers must gate on ``NON_TRADABLE_CANONICAL_PROVENANCE`` — not treat placeholders as signal.
+    When fusion is unavailable or directional probs are missing/invalid, returns an ABSENT
+    forecast (direction / probabilities / confidence None) whose ``provenance`` names why.
+    It used to return a "flat, 1/3 each, low" placeholder that was persisted as data every
+    tick (audit C-01, 2026-09-24: no fallbacks).
     """
-    u = 1.0 / 3.0
     if not fusion_is_authoritative(fusion):
         return CanonicalForecast(
-            direction="flat",
-            probability_up=u,
-            probability_down=u,
-            probability_flat=u,
-            confidence="low",
+            direction=None,
+            probability_up=None,
+            probability_down=None,
+            probability_flat=None,
+            confidence=None,
             provenance="fusion_unavailable",
         )
     if not fusion_direction_is_authorized(fusion):
         return CanonicalForecast(
-            direction="flat",
-            probability_up=u,
-            probability_down=u,
-            probability_flat=u,
-            confidence="low",
+            direction=None,
+            probability_up=None,
+            probability_down=None,
+            probability_flat=None,
+            confidence=None,
             provenance="fusion_directional_unauthorized",
         )
     pu_raw = getattr(fusion, "prob_up", None)
@@ -167,11 +171,11 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
     pf_raw = getattr(fusion, "prob_flat", None)
     if pu_raw is None or pd_raw is None or pf_raw is None:
         return CanonicalForecast(
-            direction="flat",
-            probability_up=u,
-            probability_down=u,
-            probability_flat=u,
-            confidence="low",
+            direction=None,
+            probability_up=None,
+            probability_down=None,
+            probability_flat=None,
+            confidence=None,
             provenance="fusion_directional_missing",
         )
     pu, pd, pf = float(pu_raw), float(pd_raw), float(pf_raw)
@@ -180,11 +184,11 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
         pu, pd, pf = pu / s, pd / s, pf / s
     else:
         return CanonicalForecast(
-            direction="flat",
-            probability_up=u,
-            probability_down=u,
-            probability_flat=u,
-            confidence="low",
+            direction=None,
+            probability_up=None,
+            probability_down=None,
+            probability_flat=None,
+            confidence=None,
             provenance="fusion_directional_invalid",
         )
     d_raw = getattr(fusion, "dominant_direction", None)
@@ -194,7 +198,7 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
     conf_raw = getattr(fusion, "fusion_confidence", None)
     conf = str(conf_raw).strip().lower() if conf_raw is not None else None
     if conf not in ("low", "medium", "high"):
-        conf = "low"
+        conf = None   # unreadable confidence is absent, not "low"
     return CanonicalForecast(
         direction=d,
         probability_up=pu,
@@ -206,18 +210,17 @@ def canonical_forecast_from_fusion(fusion) -> CanonicalForecast:
 
 
 def _debug_canonical_override(canonical: CanonicalForecast, direction: str, source: str) -> CanonicalForecast:
-    """Debug/test only: force direction with honest maximum entropy — no synthetic conviction."""
-    u = 1.0 / 3.0
-    d = (direction or "flat").strip().lower()
+    """Debug/test only: force a direction. No probabilities or confidence are invented for it."""
+    d = (direction or "").strip().lower()
     if d not in ("up", "down", "flat"):
-        d = "flat"
+        d = None
     src = (source or "unknown").strip() or "unknown"
     return CanonicalForecast(
         direction=d,
-        probability_up=u,
-        probability_down=u,
-        probability_flat=u,
-        confidence="low",
+        probability_up=None,
+        probability_down=None,
+        probability_flat=None,
+        confidence=None,
         provenance=f"debug_override:{src}",
     )
 
@@ -275,9 +278,9 @@ def _log_decision_bundle(
         payload = {
             "ticker": ticker,
             "canonical_direction": canonical.direction,
-            "canonical_p_up": round(canonical.probability_up, 4),
-            "canonical_p_down": round(canonical.probability_down, 4),
-            "canonical_p_flat": round(canonical.probability_flat, 4),
+            "canonical_p_up": _r4(canonical.probability_up),
+            "canonical_p_down": _r4(canonical.probability_down),
+            "canonical_p_flat": _r4(canonical.probability_flat),
             "canonical_confidence": canonical.confidence,
             "canonical_provenance": canonical.provenance,
             "fusion_available": fusion_avail,

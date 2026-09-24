@@ -47,8 +47,9 @@ def test_readiness_canonical_fields_nontradable_withholds_direction_and_prob():
         provenance="fusion_unavailable",
     )
     direction, dom_p = _readiness_canonical_fields(cf)
-    assert direction == "flat"
-    assert dom_p == 0.0
+    # absent, not "flat" / 0.0 (audit C-03, 2026-09-24)
+    assert direction is None
+    assert dom_p is None
 
 
 def test_readiness_canonical_fields_tradable_passes_through():

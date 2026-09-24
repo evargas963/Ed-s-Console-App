@@ -973,14 +973,14 @@ def compute_prediction_core(
 
     prediction_dir = "none"
     prediction_target = None
-    fwd = (canonical.direction or "flat").lower()
+    fwd = (canonical.direction or "").lower()
     if fwd in ("up", "down"):
         # LIVE-UI-A: dominant_probability() returns None for non-tradable canonicals;
         # binding the comparison against None would raise — use a single read +
         # explicit None guard so the prediction_dir cannot be promoted off a
         # placeholder 1/3-each triplet.
         _dom_p = canonical.dominant_probability()
-        if canonical.confidence != "low" and avg5 is not None:
+        if canonical.confidence in ("medium", "high") and avg5 is not None:
             prediction_dir = fwd
             prediction_target = round(spot + avg5, 2)
         elif _dom_p is not None and _dom_p >= CANONICAL_DOM_PROB_PREDICTION_DIR_MIN and avg5 is not None:
@@ -1184,24 +1184,26 @@ def compute_prediction_enrichment(
     prediction_dir = pred_core.prediction_dir
     prediction_target = pred_core.prediction_target
     pct = int(emp_prob * 100) if emp_prob is not None else None
-    fwd = (canonical.direction or "flat").lower()
+    fwd = (canonical.direction or "").lower()
     dir_labels = {"up": "UP", "down": "DOWN", "flat": "FLAT", "none": "NO EDGE"}
-    fwd_lbl = dir_labels.get(fwd, "FLAT")
+    # An absent forecast says so, with its reason -- it used to print "FLAT (low)".
+    fwd_lbl = (dir_labels.get(fwd) or "WITHHELD")
+    _fwd_conf = canonical.confidence or f"no forecast: {canonical.provenance}"
 
     if probs_5c is None and n_used > 0:
         _n5 = lit_5c[3]
         headline = (
-            f"Fusion forward: {fwd_lbl} ({canonical.confidence}). "
+            f"Fusion forward: {fwd_lbl} ({_fwd_conf}). "
             f"Insufficient labeled outcome_5c ({_n5} < {MIN_SAMPLES_STATISTICAL}) — empirical bars withheld."
         )
     elif prediction_dir in ("up", "down") and prediction_target is not None:
         headline = (
-            f"Fusion forward {fwd_lbl} ({canonical.confidence}) — illustrative target {prediction_target:.2f} "
+            f"Fusion forward {fwd_lbl} ({_fwd_conf}) — illustrative target {prediction_target:.2f} "
             f"from signed avg 5m move in similar setups (historical 5c mode {emp_dom}, match {empirical_confidence})."
         )
     elif prediction_dir in ("up", "down") and emp_dom is not None and pct is not None:
         headline = (
-            f"Fusion forward {fwd_lbl} ({canonical.confidence}); historical 5c mode {emp_dom} at {pct}%."
+            f"Fusion forward {fwd_lbl} ({_fwd_conf}); historical 5c mode {emp_dom} at {pct}%."
         )
     elif (
         n_used >= MIN_SAMPLES_STATISTICAL
@@ -1210,11 +1212,11 @@ def compute_prediction_enrichment(
         and pct is not None
     ):
         headline = (
-            f"Fusion: {fwd_lbl} ({canonical.confidence}). Historical 5c balanced ({pct}% {emp_dom})."
+            f"Fusion: {fwd_lbl} ({_fwd_conf}). Historical 5c balanced ({pct}% {emp_dom})."
         )
     else:
         headline = (
-            f"Fusion: {fwd_lbl} ({canonical.confidence}). Historical match: {emp_dom} / {empirical_confidence} tier."
+            f"Fusion: {fwd_lbl} ({_fwd_conf}). Historical match: {emp_dom} / {empirical_confidence} tier."
         )
 
     parts = []

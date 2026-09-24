@@ -104,6 +104,13 @@ def _canonical_prob_triplet(canonical_json: str | None) -> tuple[float, float, f
     d = _load_json_col(canonical_json)
     if not d or not all(k in d for k in _CANONICAL_PROB_KEYS):
         return None
+    # Only a TRADABLE canonical carries a forecast. Rows logged while fusion was off stored a
+    # "1/3 each" placeholder, and _effective_directional_signal's tie-break (p_up >= p_dn >=
+    # p_fl) scored every one of them as a LONG call in the edge studies (audit C-01,
+    # 2026-09-24). Missing provenance = cannot prove it was a forecast = no triplet.
+    from fusion_contract import canonical_provenance_is_tradable
+    if not canonical_provenance_is_tradable(str(d.get("provenance") or "")):
+        return None
     try:
         vals = tuple(float(d[k]) for k in _CANONICAL_PROB_KEYS)
     except (TypeError, ValueError):

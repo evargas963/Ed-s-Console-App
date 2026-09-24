@@ -173,12 +173,26 @@ WAIT_BLOCKER_REASON_EMISSION = "market_data_emission_gate"
 WAIT_BLOCKER_REASON_NO_STOP = "no_measured_stop"
 
 
-def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[str, float]:
-    """Withhold tradable direction/probability from readiness when canonical is non-tradable."""
+def _level_proximity_label(dist: Optional[float]) -> Optional[str]:
+    """near / mid / far from a MEASURED distance to the nearest level; None when there is
+    no measured distance (C-04: absence used to read "far")."""
+    if dist is None:
+        return None
+    if dist <= LEVEL_PROXIMITY_NEAR_PTS:
+        return "near"
+    return "mid" if dist <= LEVEL_PROXIMITY_MID_PTS else "far"
+
+
+def _readiness_canonical_fields(
+    canonical: CanonicalForecast,
+) -> tuple[Optional[str], Optional[float]]:
+    """Forecast direction / dominant probability for readiness; (None, None) when the
+    canonical is non-tradable. It used to hand readiness "flat" / 0.0 -- a scored
+    forecast that did not exist (audit C-03, 2026-09-24)."""
     prov = str(getattr(canonical, "provenance", "") or "")
     if not canonical_provenance_is_tradable(prov):
-        return "flat", 0.0
-    return (canonical.direction or "flat", canonical.dominant_probability())
+        return None, None
+    return canonical.direction, canonical.dominant_probability()
 
 
 def _mh_size_tier_from_modifier(mh_mod: float) -> int:
@@ -526,11 +540,13 @@ def _canonical_stack_vote(canonical: CanonicalForecast) -> int:
         dom_p = float(dom_p_raw)
     except (TypeError, ValueError):
         dom_p = 0.0
+    # confidence must be a MEASURED medium/high -- an absent confidence is not "not low"
+    _conf_ok = pred_conf in ("medium", "high")
     if pred_dir == "up":
-        if pred_conf != "low" or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
+        if _conf_ok or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
             return 1
     elif pred_dir == "down":
-        if pred_conf != "low" or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
+        if _conf_ok or dom_p >= CANONICAL_DOM_PROB_STACK_VOTE_MIN:
             return -1
     return 0
 
@@ -1239,14 +1255,16 @@ def _validate_trade(
     if (
         canonical
         and canonical_provenance_is_tradable(getattr(canonical, "provenance", None))
-        and str(canonical.confidence or "").lower() not in ("low", "")
+        and str(canonical.confidence or "").lower() in ("medium", "high")
     ):
-        pdn = float(canonical.probability_down)
-        pup = float(canonical.probability_up)
-        cdir = str(canonical.direction or "flat").lower()
-        if final_signal == "long" and cdir == "down" and pdn >= CANONICAL_OPPOSE_THRESHOLD:
+        pdn = canonical.probability_down
+        pup = canonical.probability_up
+        cdir = str(canonical.direction or "").lower()
+        if (final_signal == "long" and cdir == "down" and pdn is not None
+                and pdn >= CANONICAL_OPPOSE_THRESHOLD):
             prob_fails.append(f"canonical forward DOWN {pdn:.0%} vs long call")
-        elif final_signal == "short" and cdir == "up" and pup >= CANONICAL_OPPOSE_THRESHOLD:
+        elif (final_signal == "short" and cdir == "up" and pup is not None
+                and pup >= CANONICAL_OPPOSE_THRESHOLD):
             prob_fails.append(f"canonical forward UP {pup:.0%} vs short call")
 
     # 2c. Bayesian posterior strongly favors opposite outcome
@@ -1386,13 +1404,12 @@ def compute_call(
     )
 
     if canonical is None:
-        u = 1.0 / 3.0
         canonical = CanonicalForecast(
-            direction="flat",
-            probability_up=u,
-            probability_down=u,
-            probability_flat=u,
-            confidence="low",
+            direction=None,
+            probability_up=None,
+            probability_down=None,
+            probability_flat=None,
+            confidence=None,
             provenance="missing_canonical_fallback",
         )
 
@@ -1858,9 +1875,10 @@ def compute_call(
     # ══════════════════════════════════════════════════════════════════════════
     # 10. CALL READINESS (V1 deterministic model)
     # ══════════════════════════════════════════════════════════════════════════
-    _readiness_score = 0
-    _readiness_call_state = "WAIT"
-    _readiness_forecast_state = "dormant"
+    # None = readiness not measured (C-05): no 0 / "WAIT" / "dormant" stand-ins.
+    _readiness_score = None
+    _readiness_call_state = None
+    _readiness_forecast_state = None
     _readiness_reasons: list = []
     _readiness_missing: list = []
     _readiness_component_scores: dict = {}
@@ -1875,15 +1893,15 @@ def compute_call(
                 _ad = abs(float(_d))
                 if _nearest_dist is None or _ad < _nearest_dist:
                     _nearest_dist = _ad
-        _level_prox = "near" if _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_NEAR_PTS else (
-            "mid" if _nearest_dist is not None and _nearest_dist <= LEVEL_PROXIMITY_MID_PTS else "far"
-        )
+        # No measured level distance -> None (C-04: it used to read "far").
+        _level_prox = _level_proximity_label(_nearest_dist)
         _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _call_input = {
-            "regime": _regime_label or "unknown",
-            "trend": getattr(rules, "zone_label", "") or zone or "",
-            "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
-            "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
+            "regime": _regime_label,
+            # the rules engine's trend read only -- no MVP-zone stand-in (C-07)
+            "trend": getattr(rules, "zone_label", None),
+            "structure_confirmation": _tf.get("15m"),   # ~15m structure read
+            "structure_higher_tf": _tf.get("60m"),      # ~60m trend read
             "prediction_direction": _rdy_dir,
             "prediction_dominant_prob": _rdy_dom_p,
             "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
@@ -1893,23 +1911,22 @@ def compute_call(
             "breakout_ready": zone in ("breakout", "breakdown"),
         }
         _rdy = compute_call_readiness(_call_input)
-        _rs = _rdy.get("readiness_score")
-        if _rs is not None:
-            _readiness_score = _rs
-        _readiness_call_state = _rdy.get("call_state", "WAIT")
-        _readiness_forecast_state = _rdy.get("forecast_state", "dormant")
+        _readiness_score = _rdy.get("readiness_score")
+        _readiness_call_state = _rdy.get("call_state")
+        _readiness_forecast_state = _rdy.get("forecast_state")
         _readiness_reasons = _rdy.get("reasons", []) or []
         _readiness_missing = _rdy.get("missing_conditions", []) or []
         _readiness_component_scores = _rdy.get("component_scores", {}) or {}
     except Exception as _re:
         log.warning("call_readiness: %s", _re)
+        _readiness_missing = [f"Readiness withheld -- computation failed: {_re}"]
 
     # ══════════════════════════════════════════════════════════════════════════
     # 11. PUT READINESS (V1, bearish mirror)
     # ══════════════════════════════════════════════════════════════════════════
-    _put_score = 0
-    _put_state = "WAIT"
-    _put_forecast = "dormant"
+    _put_score = None
+    _put_state = None
+    _put_forecast = None
     _put_reasons: list = []
     _put_missing: list = []
     _put_component_scores: dict = {}
@@ -1917,20 +1934,15 @@ def compute_call(
         from setup_readiness import compute_put_readiness
         _tf = getattr(pred, "timeframe_reads", None) or {}
         _nearest_above, _nearest_below = mvp_nearest_distances_for_regime(mvp_features)
-        _put_nearest = None
-        if _nearest_above is not None:
-            _put_nearest = abs(float(_nearest_above))  # resistance above for puts
-        elif _nearest_below is not None:
-            _put_nearest = abs(float(_nearest_below))
-        _put_level_prox = "near" if _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_NEAR_PTS else (
-            "mid" if _put_nearest is not None and _put_nearest <= LEVEL_PROXIMITY_MID_PTS else "far"
-        )
+        # resistance ABOVE only -- support below no longer stands in for it (C-06)
+        _put_nearest = abs(float(_nearest_above)) if _nearest_above is not None else None
+        _put_level_prox = _level_proximity_label(_put_nearest)
         _rdy_dir, _rdy_dom_p = _readiness_canonical_fields(canonical)
         _put_input = {
-            "regime": _regime_label or "unknown",
-            "trend": getattr(rules, "zone_label", "") or zone or "",
-            "structure_confirmation": _tf.get("15m", ""),   # ~15m structure read
-            "structure_higher_tf": _tf.get("60m", ""),      # ~60m trend read
+            "regime": _regime_label,
+            "trend": getattr(rules, "zone_label", None),
+            "structure_confirmation": _tf.get("15m"),   # ~15m structure read
+            "structure_higher_tf": _tf.get("60m"),      # ~60m trend read
             "prediction_direction": _rdy_dir,
             "prediction_dominant_prob": _rdy_dom_p,
             "confluence_read": confluence_detail if confluence_count > 0 else "no directional alignment",
@@ -1940,16 +1952,15 @@ def compute_call(
             "breakdown_ready": zone == "breakdown",
         }
         _prdy = compute_put_readiness(_put_input)
-        _ps = _prdy.get("readiness_score")
-        if _ps is not None:
-            _put_score = _ps
-        _put_state = _prdy.get("call_state", "WAIT")
-        _put_forecast = _prdy.get("forecast_state", "dormant")
+        _put_score = _prdy.get("readiness_score")
+        _put_state = _prdy.get("call_state")
+        _put_forecast = _prdy.get("forecast_state")
         _put_reasons = _prdy.get("reasons", []) or []
         _put_missing = _prdy.get("missing_conditions", []) or []
         _put_component_scores = _prdy.get("component_scores", {}) or {}
     except Exception as _re:
         log.warning("put_readiness: %s", _re)
+        _put_missing = [f"Readiness withheld -- computation failed: {_re}"]
 
     return TheCall(
         signal=final_signal, conviction=conviction,

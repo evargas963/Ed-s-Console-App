@@ -27,6 +27,7 @@ _VALID = json.dumps(
         "probability_down": 0.2,
         "probability_flat": 0.2,
         "confidence": "low",
+        "provenance": "bayesian_fusion",
     }
 )
 

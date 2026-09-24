@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
-
 from call_engine import compute_call
 from prediction_engine import _forward_probs_from_canonical
 from signal_types import NON_TRADABLE_CANONICAL_PROVENANCE, CanonicalForecast
@@ -25,7 +23,9 @@ def test_non_tradable_provenance_includes_directional_missing_and_invalid():
 def test_canonical_forecast_fusion_unavailable_placeholder():
     c = canonical_forecast_from_fusion(None)
     assert c.provenance == "fusion_unavailable"
-    assert c.probability_up == pytest.approx(1.0 / 3.0)
+    # absent, not a "1/3 each, flat, low" placeholder (audit C-01, 2026-09-24)
+    assert (c.direction, c.probability_up, c.probability_down, c.probability_flat,
+            c.confidence) == (None, None, None, None, None)
     assert c.provenance in NON_TRADABLE_CANONICAL_PROVENANCE
 
 
@@ -39,7 +39,7 @@ def test_canonical_forecast_directional_missing_placeholder():
     )
     c = canonical_forecast_from_fusion(fusion)
     assert c.provenance == "fusion_directional_missing"
-    assert c.probability_flat == pytest.approx(1.0 / 3.0)
+    assert c.probability_flat is None and c.direction is None
 
 
 def test_forward_probs_withheld_for_non_tradable_canonical():

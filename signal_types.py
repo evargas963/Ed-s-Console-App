@@ -197,12 +197,15 @@ class CanonicalForecast:
     Single forward directional belief for the decision stack (ML + MC + rules via Bayesian fusion).
     All stack votes, pred_agree checks, probability gates, and readiness direction must use this — not empirical histograms.
     """
-    direction: str            # "up" | "down" | "flat"
-    probability_up: float
-    probability_down: float
-    probability_flat: float
-    confidence: str           # "low" | "medium" | "high" — fusion forward confidence (not empirical tier)
-    provenance: str           # e.g. "bayesian_fusion", "fusion_unavailable", "debug_override:..."
+    # None = no forecast (non-tradable provenance). A non-tradable canonical used to carry
+    # "flat" / 1/3 each / "low" -- persisted every tick as prediction_direction / confidence
+    # (audit C-01, 2026-09-24: no fallbacks). provenance always says WHY it is absent.
+    direction: Optional[str]           # "up" | "down" | "flat" | None
+    probability_up: Optional[float]
+    probability_down: Optional[float]
+    probability_flat: Optional[float]
+    confidence: Optional[str]          # "low" | "medium" | "high" | None — fusion forward confidence
+    provenance: str                    # e.g. "bayesian_fusion", "fusion_unavailable", "debug_override:..."
 
     def dominant_probability(self) -> Optional[float]:
         """Return the directional dominant probability — ONLY when canonical is tradable.
@@ -218,12 +221,10 @@ class CanonicalForecast:
         """
         if self.provenance not in TRADABLE_CANONICAL_PROVENANCE:
             return None
-        d = (self.direction or "flat").lower()
-        if d == "up":
-            return float(self.probability_up)
-        if d == "down":
-            return float(self.probability_down)
-        return float(self.probability_flat)
+        d = (self.direction or "").lower()
+        p = {"up": self.probability_up, "down": self.probability_down,
+             "flat": self.probability_flat}.get(d)
+        return float(p) if p is not None else None
 
 
 # Sole tradable canonical provenance values (producer cone audit FIND-FP1-3 @ 4edeefc).
@@ -379,17 +380,17 @@ class TheCall:
     sizing_reasons:     list            = field(default_factory=list)
     sizing_summary:     str             = ""
     # ── Call Readiness (V1 deterministic model from setup_readiness) ───────────
-    readiness_score:    int             = 0      # 0–100
-    call_state:         str             = "WAIT"  # WAIT | WATCH | ACTIVE
+    readiness_score:    Optional[int]   = None   # 0–100; None = readiness withheld
+    call_state:         Optional[str]   = None   # WAIT | WATCH | ACTIVE; None = withheld
     wait_blocker:       Optional[dict]  = None   # when signal=wait: {reason, long_count?, short_count?, threshold?, gate_reasons?, detail?}
-    forecast_state:     str             = "dormant"  # dormant | forming | near_trigger | active
+    forecast_state:     Optional[str]   = None   # dormant | forming | near_trigger | active
     readiness_reasons:  list            = field(default_factory=list)
     missing_conditions: list            = field(default_factory=list)
     readiness_component_scores: dict    = field(default_factory=dict)
     # ── Put Readiness (V1, bearish mirror) ─────────────────────────────────────
-    put_readiness_score: int           = 0
-    put_state:           str           = "WAIT"
-    put_forecast_state:  str           = "dormant"
+    put_readiness_score: Optional[int] = None
+    put_state:           Optional[str] = None
+    put_forecast_state:  Optional[str] = None
     put_readiness_reasons: list        = field(default_factory=list)
     put_missing_conditions: list       = field(default_factory=list)
     put_readiness_component_scores: dict = field(default_factory=dict)
