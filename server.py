@@ -15220,6 +15220,9 @@ async def get_analytics_light(
 
 #: seconds between `l1_quote` events on an idle header stream
 L1_QUOTE_HEARTBEAT_SEC = 1.0
+#: how often the header stream checks the in-memory plane for changed watchlist rows (the
+#: plane changes at most every 500 ms per symbol -- Schwab Express delivery)
+WL_PUSH_CHECK_SEC = 0.1
 
 
 def _l1_quote_event(ticker: str) -> dict:
@@ -15260,9 +15263,12 @@ async def get_analytics_light_stream(
     request: Request,
     ticker: str = Query(...),
     expiry: Optional[str] = Query(default=None),
+    watch: Optional[str] = Query(default=None),
 ):
     """
     Server-Sent Events for L1: pushes when _project_l1 completes for this scope (generation advances).
+    `watch` (comma list): watchlist symbols -- each row is pushed as a `wl_quote` event the
+    moment it changes (checked every WL_PUSH_CHECK_SEC against the in-memory plane).
     Payload matches GET /api/analytics/light (uses _l1_http_get_projection — no duplicate compute path).
     """
     t = ticker.upper().strip()
@@ -15276,22 +15282,48 @@ async def get_analytics_light_stream(
     key = (t, exp_key)
     q, rs_key = _l1_light_sse_try_reserve(request, key)
 
+    watched: list[str] = []
+    for w in (watch or "").split(","):
+        w = ticker_storage_key(w)
+        if w and w not in watched:
+            watched.append(w)
+    sent_wl: dict = {}
+
+    def _wl_events():
+        for w in watched:
+            cur = _watchlist_row(w)
+            if w not in sent_wl or sent_wl[w] != cur:
+                sent_wl[w] = cur
+                yield f"event: wl_quote\ndata: {json.dumps({'ticker': w, 'row': cur}, default=str)}\n\n"
+
     async def event_generator():
         yield ": ok\n\n"
         # the current quote at once -- the header never waits for a first projection
         yield f"event: l1_quote\ndata: {json.dumps(_l1_quote_event(t), default=str)}\n\n"
+        for ev in _wl_events():
+            yield ev
+        loop = asyncio.get_running_loop()
+        next_beat = loop.time() + L1_QUOTE_HEARTBEAT_SEC
         try:
             while True:
+                wait = max(0.0, next_beat - loop.time())
+                if watched:
+                    wait = min(wait, WL_PUSH_CHECK_SEC)
                 try:
-                    env = await asyncio.wait_for(q.get(), timeout=L1_QUOTE_HEARTBEAT_SEC)
+                    env = await asyncio.wait_for(q.get(), timeout=wait)
                     # RC-UI-2 (independent-review finding, 2026-09-12): this connection/queue/
                     # dispatch pipe is entirely generic (see _l1_light_sse_dispatch_loop's own
                     # docstring — it scope-matches and forwards the raw env, nothing L1-specific)
                     # except the wire event name — see _sse_event_name_for_envelope.
                     yield f"event: {_sse_event_name_for_envelope(env)}\ndata: {json.dumps(env, default=str)}\n\n"
                 except asyncio.TimeoutError:
-                    # idle second: the live verdict and quote, never a bare keep-alive comment
+                    pass
+                for ev in _wl_events():                  # every watchlist row that changed
+                    yield ev
+                if loop.time() >= next_beat:
+                    # each second: the live verdict and quote, never a bare keep-alive comment
                     yield f"event: l1_quote\ndata: {json.dumps(_l1_quote_event(t), default=str)}\n\n"
+                    next_beat = loop.time() + L1_QUOTE_HEARTBEAT_SEC
         finally:
             _l1_light_sse_release(q, key, rs_key)
 
@@ -15838,20 +15870,29 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
         return JSONResponse({"ok": True, "error": None, "quotes": {}})
     out: dict = {}
     for t in seen:
-        row = _lmp.get_quote(t)
-        if (row and _lmp.plane_row_is_streamed(row) and _lmp.plane_spot_is_last_price(row)
-                and _lmp.spot_is_fresh(row)):
-            out[t] = {
-                "spot": row["spot"],
-                "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
-                "spot_state": "live",
-                "spot_source": SPOT_SOURCE_PLANE,
-                "chg_pct": _lmp.streamed_chg_pct(row),
-                "exchange_quote_ts": row.get("exchange_quote_ts"),
-            }
+        wl = _watchlist_row(t)
+        if wl is not None:
+            out[t] = wl
     if not out:
         return JSONResponse({"ok": False, "error": "stream_unavailable", "quotes": {}})
     return JSONResponse({"ok": True, "error": None, "quotes": out})
+
+
+def _watchlist_row(t: str) -> "dict | None":
+    """ONE watchlist row: the symbol's streamed LAST_PRICE while its feed is live, else None
+    (UNAVAILABLE). Shared by GET /api/watchlist-quotes and the pushed `wl_quote` events."""
+    row = _lmp.get_quote(t)
+    if not (row and _lmp.plane_row_is_streamed(row) and _lmp.plane_spot_is_last_price(row)
+            and _lmp.spot_is_fresh(row)):
+        return None
+    return {
+        "spot": row["spot"],
+        "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
+        "spot_state": "live",
+        "spot_source": SPOT_SOURCE_PLANE,
+        "chg_pct": _lmp.streamed_chg_pct(row),
+        "exchange_quote_ts": row.get("exchange_quote_ts"),
+    }
 
 
 @app.get("/api/stream")
