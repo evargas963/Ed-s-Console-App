@@ -2177,7 +2177,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setScope('all'));   // demand follows every displayed column
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
+    // A scope change first clears the heatmap's own demand, then sends the new set -- so wait
+    // for the SETTLED demand, not whichever request happened to land first (the old read of
+    // "the last request right after the first one arrived" raced that clear: CI 2026-09-24).
+    await expect.poll(() => (demandCalls[demandCalls.length - 1] || []).length).toBe(244);
 
     const lastDemand = demandCalls[demandCalls.length - 1];
     expect(lastDemand.length).toBe(244);   // the FULL set -- no cap, no split, no exclusion
