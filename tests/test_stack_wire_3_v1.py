@@ -70,7 +70,7 @@ def test_rth_open_mins_single_authority_call_engine_prediction_engine():
     assert RTH_OPEN_MINS == RTH_START_MINS == 570
     stop_src = inspect.getsource(call_engine._stop_distance)
     assert "570" not in stop_src
-    assert "RTH_OPEN_MINS" in stop_src
+    assert "et_hour" not in stop_src and "vix_level" not in stop_src   # ATR only (2026-09-23)
     overlay_src = inspect.getsource(pe.build_fusion_model_overlay_for_stack)
     assert "(inp.et_hour - 9) * 60 + (inp.et_minute - 30)" not in overlay_src
     assert "RTH_OPEN_MINS" in overlay_src

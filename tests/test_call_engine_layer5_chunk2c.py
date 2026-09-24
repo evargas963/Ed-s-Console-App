@@ -61,13 +61,6 @@ def _canonical(*, confidence: str = "high") -> CanonicalForecast:
     )
 
 
-def test_ce1_stop_distance_logs_when_session_time_missing(caplog):
-    inp = SimpleNamespace(spot=450.0, et_hour=None, et_minute=None, vix_level=20.0)
-    with caplog.at_level(logging.DEBUG, logger="call_engine"):
-        ce._stop_distance(inp)
-    assert any("et_hour/et_minute missing" in r.message for r in caplog.records)
-
-
 def test_ce2_conviction_logs_invalid_confidence_substitution(caplog):
     canonical = _canonical(confidence="not_a_tier")
     with caplog.at_level(logging.DEBUG, logger="call_engine"):

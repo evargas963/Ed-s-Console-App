@@ -20,7 +20,7 @@ import logging
 import math
 from typing import Optional
 
-from lifecycle_rule_core import derive_stop_distance_pct, derive_target_levels
+from lifecycle_rule_core import derive_target_levels
 from multi_horizon_decision import MultiHorizonSynthesis
 from math_exposure import (
     greek_bias,
@@ -33,7 +33,6 @@ from fusion_contract import (
     canonical_provenance_is_tradable,
     fusion_has_tradable_direction,
 )
-from time_et import RTH_OPEN_MINS
 from position_sizing_policy import regime_size_multiplier
 from replay_hold_bars import replay_max_hold_bars_for_setup
 from signal_types import (
@@ -169,6 +168,9 @@ WAIT_BLOCKER_REASON_GATES = "gates"
 WAIT_BLOCKER_REASON_TIME = "time"
 WAIT_BLOCKER_REASON_ADMISSION = "decision_path_admission"
 WAIT_BLOCKER_REASON_EMISSION = "market_data_emission_gate"
+#: A directional call with no measured stop (no finite ATR) is not a trade -- the stop is
+#: never substituted (operator rule 2026-09-23: no fallbacks).
+WAIT_BLOCKER_REASON_NO_STOP = "no_measured_stop"
 
 
 def _readiness_canonical_fields(canonical: CanonicalForecast) -> tuple[str, float]:
@@ -637,10 +639,12 @@ def _confluence_for_signal(stack_votes: dict[str, int], final_signal: str) -> tu
 ATR_STOP_MULT: float = 1.5
 
 
-def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
+def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float | None:
     """
-    Volatility-scaled stop distance. Primary: ATR_STOP_MULT × ATR(1m) × regime
-    multiplier. Fallback (no ATR): time-aware, VIX-aware percentage of spot.
+    Volatility-scaled stop distance: ATR_STOP_MULT x ATR(1m) x regime multiplier.
+    None when there is no finite, positive ATR -- there is no second stop rule. It used to
+    fall back to a VIX- and clock-derived percentage of spot (and assumed the open when the
+    clock was missing) -- a guessed stop (audit P0, operator rule 2026-09-23: no fallbacks).
 
     risk_multiplier: from volatility regime — scales stop in expansion/unstable
     (e.g. 1.35 in unstable = wider stops). Default 1.0.
@@ -652,24 +656,8 @@ def _stop_distance(inp: SignalInput, risk_multiplier: float = 1.0) -> float:
         atr_f = None
     if atr_f is not None and math.isfinite(atr_f) and atr_f > 0.0:
         return round(ATR_STOP_MULT * atr_f * float(risk_multiplier), 2)
+    return None
 
-    spot = inp.spot
-    if inp.et_hour is None or inp.et_minute is None:
-        log.debug(
-            "call_engine._stop_distance: et_hour/et_minute missing — using mins_elapsed=0 (open default)"
-        )
-        mins_elapsed = 0
-    else:
-        mins_elapsed = inp.et_hour * 60 + inp.et_minute - RTH_OPEN_MINS
-        mins_elapsed = max(0, mins_elapsed)
-
-    stop_distance = derive_stop_distance_pct(
-        spot=spot,
-        vix_level=inp.vix_level,
-        mins_elapsed_since_open=mins_elapsed,
-        risk_multiplier=risk_multiplier,
-    )
-    return round(stop_distance.final_pct * spot, 2)
 
 def _compute_levels(
     inp: SignalInput,
@@ -685,7 +673,7 @@ def _compute_levels(
 
     RULES:
     1. Entry = current price (market). No zone/gamma-wall anchor moves the entry.
-    2. Stop = entry ± volatility-scaled distance (ATR primary, VIX-pct fallback).
+    2. Stop = entry ± volatility-scaled distance (ATR only; no ATR -> no plan).
     3. T1/T2 = prediction-engine expected moves (empirical move-size stats from
        price history) with R-multiple caps — NO structural-level snapping.
        Key levels / gamma walls are context display only, never plan anchors.
@@ -714,12 +702,15 @@ def _compute_levels(
             structural_levels=[],
         )
 
+    if stop_dist is None or signal not in ("long", "short"):
+        return None, None, None, None      # no measured stop -> no plan, never a guessed one
+
     if signal == "long":
         entry = round(spot, 2)
         stop  = round(entry - stop_dist, 2)
         risk  = round(entry - stop, 2)
         if risk <= 0:
-            risk = stop_dist
+            return None, None, None, None
         targets = _targets(entry, "long", risk)
         return entry, stop, targets.target, targets.target2
 
@@ -728,7 +719,7 @@ def _compute_levels(
         stop  = round(entry + stop_dist, 2)
         risk  = round(stop - entry, 2)
         if risk <= 0:
-            risk = stop_dist
+            return None, None, None, None
         targets = _targets(entry, "short", risk)
         return entry, stop, targets.target, targets.target2
 
@@ -1309,7 +1300,7 @@ def _validate_trade(
         if vol_regime is not None:
             _risk_mult = getattr(vol_regime, "risk_multiplier", 1.0) or 1.0
         stop_dist = _stop_distance(inp, risk_multiplier=_risk_mult)
-        if mc_eae is not None and stop_dist > 0:
+        if mc_eae is not None and stop_dist is not None and stop_dist > 0:
             # Regime-aware EAE threshold: breakout/expansion tolerate larger EAE
             eae_gate_mult = MC_EAE_GATE_DEFAULT
             if regime_label in ("breakout", "acceleration", "vol_expansion"):
@@ -1710,6 +1701,14 @@ def compute_call(
         risk_multiplier=_vol_risk_mult,
         governed_zone=zone,
     )
+    if final_signal in ("long", "short") and stop is None:
+        # No measured stop (no finite ATR): not a trade. Never a substituted stop.
+        final_signal = "wait"
+        conviction = "low"
+        confluence_detail = "no measured stop (no ATR) -- a directional plan needs one"
+        wait_blocker = {"reason": WAIT_BLOCKER_REASON_NO_STOP,
+                        "detail": "no finite ATR(1m) -- the stop is never guessed"}
+        trade_type = _classify_trade_type(micro_regime, zone, final_signal)
 
     # Reward/risk for T1 and T2
     rr1 = rr2 = None
@@ -1738,7 +1737,7 @@ def compute_call(
     # STACK ORDER 10: Position Sizing / Execution ───────────────────────────────
     # MUST run last, after Risk Engine (9). Produces r_units, execution_mode.
     # ══════════════════════════════════════════════════════════════════════════
-    _stop_dist_pts = abs(entry - stop) if entry and stop else _stop_distance(inp, risk_multiplier=_vol_risk_mult)
+    _stop_dist_pts = abs(entry - stop) if entry and stop else None   # the plan's own stop, or none
 
     # Determine opposing wall distance
     _opp_wall_dist = None
