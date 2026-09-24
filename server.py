@@ -1958,7 +1958,7 @@ def _attach_analytics_freshness_contract(
 
 # Schwab CSV authority checked: yes
 # CSV row(s): NO_SCHWAB_EQUIVALENT — card_freshness_v1 is descriptive Tier C metadata only; reads existing plane quote via _lmp.get_quote(ticker) and existing md analytics/freshness fields; no new Schwab wire fetch or leaf derivation
-# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — quote_age_sec/bundle_age_sec/stale_reason_codes computed from existing exchange_quote_ts, _server_build_ts, quote_source_detail.carried_forward, quote_source_detail.schwab_auth_degraded
+# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE — quote_age_sec/bundle_age_sec/stale_reason_codes computed from existing exchange_quote_ts, _server_build_ts
 # All consumers checked: yes — Tier C /api/analytics/state nested block + S2B-1 operator_* mirrors only; no trade gates; UI lane S3
 # card_freshness_v1 — S2A descriptive thresholds (nested API metadata only; not trade gates).
 _CARD_FRESHNESS_V1_QUOTE_STALE_SEC = 30.0
@@ -1973,9 +1973,6 @@ _CARD_FRESHNESS_V1_S2A_STALE_REASON_CODES: frozenset[str] = frozenset(
         "bundle_age_exceeded",
         "quote_newer_than_signal",
         "mhap_older_than_quote",
-        "quote_carried_forward",
-        "auth_fallback",
-        "auth_degraded",
         "tier_c_cache_stale_serve",
         "cache_refresh_in_progress",
         "pending_shell",
@@ -2086,8 +2083,9 @@ def _attach_card_freshness_v1_block(
     qsd_plane = (plane_quote or {}).get("quote_source_detail") if plane_quote else {}
     if not isinstance(qsd_plane, dict):
         qsd_plane = {}
-    carried_forward = bool(qsd_plane.get("carried_forward"))
-    schwab_auth_degraded = bool(qsd_plane.get("schwab_auth_degraded"))
+    # (2026-09-24) carried_forward / schwab_auth_degraded no longer drive trust: the REST
+    # auth carry-forward that set them is deleted, and the stream's own carried_forward just
+    # means "LAST_PRICE unchanged since its trade message" -- its age is quote_age_sec.
 
     quote_ts_raw = None
     if plane_quote and plane_quote.get("exchange_quote_ts") is not None:
@@ -2142,11 +2140,6 @@ def _attach_card_freshness_v1_block(
         except (TypeError, ValueError):
             pass
 
-    if carried_forward:
-        _add("quote_carried_forward")
-        _add("auth_fallback")
-    if schwab_auth_degraded:
-        _add("auth_degraded")
     if tier_c_cache_stale_serve:
         _add("tier_c_cache_stale_serve")
 
@@ -2179,20 +2172,10 @@ def _attach_card_freshness_v1_block(
     )
     card_actionable = (
         trust_reason is None
-        and not carried_forward
         and not stale_reason_codes
         and md.get("tier_c_cache_gate_ok") is not False
     )
 
-    if carried_forward:
-        fallback_status = "auth_carried_forward"
-        carry_forward_status = "carried_forward"
-    elif schwab_auth_degraded:
-        fallback_status = "auth_degraded"
-        carry_forward_status = "fresh"
-    else:
-        fallback_status = "none"
-        carry_forward_status = "fresh"
 
     if card_trust_state == "TRUSTED":
         source_freshness = "trusted"
@@ -2215,8 +2198,6 @@ def _attach_card_freshness_v1_block(
         "analytics_stale_after_sec": round(_analytics_stale_after, 3),
         "quote_stale_sec": _CARD_FRESHNESS_V1_QUOTE_STALE_SEC,
         "bundle_trust_sec": _CARD_FRESHNESS_V1_BUNDLE_TRUST_SEC,
-        "fallback_status": fallback_status,
-        "carry_forward_status": carry_forward_status,
         "source_freshness": source_freshness,
         "stale_reason_codes": stale_reason_codes,
         "quote_ts": quote_ts_raw,
@@ -2227,8 +2208,6 @@ def _attach_card_freshness_v1_block(
         "analytics_stale": md.get("analytics_stale"),
         "analytics_generated_at": md.get("analytics_generated_at"),
         "analytics_refresh_in_progress": md.get("analytics_refresh_in_progress"),
-        "quote_source_detail.carried_forward": carried_forward,
-        "quote_source_detail.schwab_auth_degraded": schwab_auth_degraded,
     }
 
     # S2B-1 — top-level operator mirrors for API consumers (nested card_freshness_v1 authoritative).
@@ -3166,245 +3145,11 @@ def _evict_old_expiry_entries(ticker: str, keep_expiry: Optional[str]) -> None:
         del _state_cache[k]
 
 
-def _plane_fast_quote_has_spot(row: dict | None) -> bool:
-    """True only when the plane row carries a LAST_PRICE current spot."""
-    return _lmp.plane_spot_is_last_price(row)
-
-
-def _stale_fast_quote_carried_forward(prev: dict, tkr: str) -> dict:
-    out = dict(prev)
-    qsd = dict(out.get("quote_source_detail") or {})
-    qsd["carried_forward"] = True
-    qsd["schwab_auth_degraded"] = True
-    out["quote_source_detail"] = qsd
-    out["fast_generation_id"] = _lmp.next_fast_generation(tkr)
-    # W3-C4 / RC-121: the degraded row must be RECORDED, not just served. Five call sites
-    # returned this payload while the plane kept the pre-degradation row — so every plane
-    # reader (merge_into_state, SSE, L1 overlay) kept serving an undegraded picture under an
-    # advanced generation id. Recording here, inside the builder, covers every caller at once.
-    _lmp.record_quote(tkr, out)
-    return out
-
-
-def _schwab_auth_http_unavailable(he: HTTPException) -> bool:
-    if he.status_code not in (401, 503):
-        return False
-    detail = str(he.detail or "").lower()
-    return "schwab auth" in detail or "token" in detail
-
-
-def _fast_quote_token_invalid_payload(detail: str) -> dict:
-    return {
-        "error": "token_invalid",
-        "detail": detail or "Schwab auth unavailable.",
-        "message": "Schwab authentication failed. Token missing, expired, or invalid.",
-        "remediation": "Run: python reauth_schwab.py --manual",
-    }
-
-
-def _record_rest_fast_quote_with_auth_fallback(
-    tkr: str, prev: dict | None, quote_ingestion: str
-) -> dict:
-    """REST fast quote; on Schwab auth failure serve last plane row when spot is present."""
-    from schwab_client import SchwabAuthError, _is_token_error, _schwab_auth_latched, _raise_schwab_auth_error
-
-    if _schwab_auth_latched():
-        if _plane_fast_quote_has_spot(prev):
-            log.warning(
-                "fast_quote auth latched ticker=%s — serving carried-forward plane quote",
-                tkr,
-            )
-            return _stale_fast_quote_carried_forward(prev, tkr)
-        raise SchwabAuthError("Schwab auth latched — fast quote withheld (no plane cache)")
-
-    try:
-        out = _build_rest_fast_quote_payload(tkr, quote_ingestion)
-        _lmp.record_quote(tkr, out)
-        return out
-    except HTTPException as he:
-        if not _schwab_auth_http_unavailable(he):
-            raise
-        try:
-            _raise_schwab_auth_error(Exception(str(he.detail)))
-        except SchwabAuthError:
-            pass
-        if _plane_fast_quote_has_spot(prev):
-            log.warning(
-                "fast_quote Schwab client unavailable ticker=%s — serving carried-forward plane quote",
-                tkr,
-            )
-            return _stale_fast_quote_carried_forward(prev, tkr)
-        raise SchwabAuthError(str(he.detail)) from he
-    except Exception as e:
-        if not (_is_token_error(e) or isinstance(e, SchwabAuthError)):
-            raise
-        try:
-            _raise_schwab_auth_error(e)
-        except SchwabAuthError:
-            pass
-        if _plane_fast_quote_has_spot(prev):
-            log.warning(
-                "fast_quote REST auth failed ticker=%s — serving carried-forward plane quote",
-                tkr,
-            )
-            return _stale_fast_quote_carried_forward(prev, tkr)
-        raise
-
-
-def _build_rest_fast_quote_payload(tkr: str, quote_ingestion: str) -> dict:
-    """Schwab REST quote → plane-shaped dict (does not record)."""
-    t0 = time.perf_counter()
-    thread_name = threading.current_thread().name
-    t_client0 = time.perf_counter()
-    client = get_client()
-    t_client1 = time.perf_counter()
-    t_sess0 = time.perf_counter()
-    with _cached_mkt_ctx_lock:
-        _cmc = _cached_mkt_ctx
-    session_label = getattr(_cmc, "session_label", None) if _cmc is not None else None
-    if session_label is not None and not str(session_label).strip():
-        session_label = None
-    t_sess1 = time.perf_counter()
-    quote_attempts = 0
-
-    def _attempt_hook() -> None:
-        nonlocal quote_attempts
-        quote_attempts += 1
-
-    t_quote0 = time.perf_counter()
-    # RC-112: the fast lane reads through the same memo as resolve_spot — one vendor call
-    # serves both inside the TTL.
-    q_resp = _memoized_quote_response(tkr, client=client, attempt_hook=_attempt_hook)
-    t_quote1 = time.perf_counter()
-    if q_resp is None or q_resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Quote fetch failed")
-    q_json = q_resp.json()
-    t_parse0 = time.perf_counter()
-    _node = q_json.get(tkr.upper()) or q_json.get(tkr) or {}
-    pq = _parse_quote_node_session_fields(_node)
-    spot_f = pq["spot"]
-    spot_source = pq["spot_source"]
-    bid = pq["bid"]
-    ask = pq["ask"]
-    quote_mid = pq["quote_mid"]
-    mid_source = pq["mid_source"]
-    spread_frac = None
-    spread_pts = None
-    try:
-        if quote_mid is not None and quote_mid > 0 and bid is not None and ask is not None:
-            bf, af = float(bid), float(ask)
-            spread_frac = (af - bf) / quote_mid
-            spread_pts = round(af - bf, 4)
-            if spread_pts is not None and spread_pts < 0.0:
-                spread_pts = None
-    except (TypeError, ValueError):
-        pass
-    t_parse1 = time.perf_counter()
-    quote_ts = pq["quote_ts"]
-    server_received_ts = time.time()
-    from market_context import resolve_chg_pct
-    chg_pct = resolve_chg_pct(tkr, pq.get("chg_pct"))
-    total_ms = (time.perf_counter() - t0) * 1000.0
-    log.info(
-        "fast_quote_timing ticker=%s thread=%s total_ms=%.2f get_client_ms=%.3f "
-        "session_cache_ms=%.3f schwab_quote_ms=%.2f parse_ms=%.3f quote_attempts=%s server_received_ts=%.3f ingestion=%s",
-        tkr,
-        thread_name,
-        total_ms,
-        (t_client1 - t_client0) * 1000.0,
-        (t_sess1 - t_sess0) * 1000.0,
-        (t_quote1 - t_quote0) * 1000.0,
-        (t_parse1 - t_parse0) * 1000.0,
-        quote_attempts,
-        server_received_ts,
-        quote_ingestion,
-    )
-    return {
-        "ticker": tkr,
-        "spot": float(spot_f) if spot_f is not None else None,
-        "chg_pct": chg_pct,
-        "bid": float(bid) if bid is not None else None,
-        "ask": float(ask) if ask is not None else None,
-        "spot_disp": f"{spot_f:.2f}" if spot_f is not None else "—",
-        "bid_disp": f"{float(bid):.2f}" if bid is not None else "—",
-        "ask_disp": f"{float(ask):.2f}" if ask is not None else "—",
-        "quote_mid": quote_mid,
-        "mid_source": mid_source,
-        "spread": spread_frac,
-        "spread_semantic": "fraction",
-        "spread_pts": spread_pts,
-        "spread_source": (
-            "derived_bid_ask_mid_fraction"
-            if spread_frac is not None and mid_source == "derived_bid_ask_mid"
-            else (
-                "derived_bid_ask_fraction_schwab_mark_denom"
-                if spread_frac is not None and mid_source == "schwab_quote_mark"
-                else None
-            )
-        ),
-        "spread_pts_source": ("derived_bid_ask_pts" if spread_pts is not None else None),
-        "fast_generation_id": _lmp.next_fast_generation(tkr),
-        "exchange_quote_ts": quote_ts,
-        "quote_time_source": "schwab_rest_quote" if quote_ts is not None else "unavailable",
-        "server_received_ts": server_received_ts,
-        "quote_ingestion": quote_ingestion,
-        "quote_source_detail": {
-            "spot": "LAST_PRICE" if spot_source == "lastPrice" else "unavailable_missing_last_price",
-            "bid": "bidPrice" if bid is not None else "unavailable_missing_bid",
-            "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
-            "mid": mid_source or "unavailable_missing_mark_and_bid_ask",
-            "spread": "schwab_bid_ask" if spread_frac is not None else "unavailable_missing_bid_or_ask",
-            "quote_ts": pq["quote_ts_clock"],  # M6: exchange clock carried in exchange_quote_ts
-            "carried_forward": False,
-        },
-    }
-
-
-def _fetch_fast_quote_payload(ticker: str) -> dict:
-    """Fast lane: equity quote only. Authority follows order_flow_streaming.get_plane_authority_for_ticker."""
-    tkr = ticker.upper().strip()
-    try:
-        from app.options.order_flow.streaming import get_plane_authority_for_ticker
-
-        auth = get_plane_authority_for_ticker(tkr)
-    except Exception:
-        auth = "rest_only"
-
-    prev = _lmp.get_quote(tkr)
-
-    if auth == "streaming":
-        if (
-            prev
-            and prev.get("quote_ingestion") == "schwab_streaming_level_one"
-            and _lmp.plane_spot_is_last_price(prev)
-            and _lmp.spot_is_fresh(prev)
-        ):
-            return dict(prev)
-        if (
-            prev
-            and prev.get("quote_ingestion") == "rest_bootstrap_pending_stream"
-            and _lmp.plane_spot_is_last_price(prev)
-        ):
-            return dict(prev)
-        if prev and prev.get("quote_ingestion") == "schwab_streaming_level_one":
-            return _record_rest_fast_quote_with_auth_fallback(
-                tkr, prev, "rest_fallback_explicit"
-            )
-        return _record_rest_fast_quote_with_auth_fallback(
-            tkr, prev, "rest_bootstrap_pending_stream"
-        )
-
-    if auth == "rest_fallback_explicit":
-        return _record_rest_fast_quote_with_auth_fallback(
-            tkr, prev, "rest_fallback_explicit"
-        )
-
-    if auth == "rest_mismatch":
-        return _record_rest_fast_quote_with_auth_fallback(
-            tkr, prev, "rest_ticker_not_streamed"
-        )
-
-    return _record_rest_fast_quote_with_auth_fallback(tkr, prev, "rest_fast_quote")
+# (REST fast-quote writer DELETED 2026-09-24, independent-audit finding #3: it wrote REST
+# quotes into live_market_plane by REPLACING the ticker's row -- and streamed LEVELONE deltas
+# merge onto the prior row, so the next streamed delta could inherit REST bid/ask under the
+# schwab_streaming_level_one label. It also served a stale row "carried forward" on auth
+# failure. The plane now has ONE writer: the stream. /api/fast-quote reads it.)
 
 
 def _attach_money_path_snapshot_envelope(payload: dict) -> dict:
@@ -5669,8 +5414,6 @@ def _update_rest_cum_delta(ticker: str, quote: dict, now_et: datetime) -> float 
 # Per-ticker previous DPI normalized score (dealer pressure trend between refreshes)
 _dpi_normalized_prev_by_ticker: dict[str, Optional[float]] = {}
 # Last good bid-ask width (pts) when quote had both sides — reused if a poll drops one side
-_last_spread_by_ticker: dict[str, float] = {}
-_last_spread_ts_by_ticker: dict[str, float] = {}
 
 
 # L1 generation counter per (ticker, expiry|__auto__) — monotonic for this process.
@@ -6603,19 +6346,12 @@ def _fetch_state(
     _t_after_chain_mono = time.monotonic()
     _chain_window_marks.append(("chain_window_contracts_parse_ms", _t_after_chain_mono))
 
-    # totalVolume: WebSocket TOTAL_VOLUME preferred; else chain underlying (include_underlying_quote)
-    _total_vol = None
-    try:
-        from app.options.order_flow.state import get_stream_volume
-        _stream_vol = get_stream_volume(ticker)
-        if _stream_vol is not None:
-            _total_vol = _stream_vol
-    except (ImportError, AttributeError):
-        pass
-    if _total_vol is None:
-        _chain_underlying = c_json.get("underlying") or {}
-        if isinstance(_chain_underlying, dict):
-            _total_vol = _safe_float_quote(_chain_underlying.get("totalVolume"))
+    # totalVolume: the streamed TOTAL_VOLUME only (2026-09-24). It used to fall to the chain
+    # snapshot's underlying, then a REST quote's totalVolume, then extended-hours totalVolume,
+    # joined with `or` (a real 0 fell through). The candle builder turns this cumulative
+    # figure into bar volume -- switching sources between ticks manufactured volume deltas.
+    from app.options.order_flow.state import get_stream_volume
+    _total_vol = get_stream_volume(ticker)
 
     # Quote fetched in parallel with chain above — parse here after chain JSON work.
     if q_resp is None or q_resp.status_code != 200:
@@ -6656,7 +6392,6 @@ def _fetch_state(
     bid    = parsed_bid
     ask    = parsed_ask
 
-    global _last_spread_by_ticker, _last_spread_ts_by_ticker
     _quote_spread_pts = (
         round(float(ask) - float(bid), 4) if (bid is not None and ask is not None) else None
     )
@@ -6681,34 +6416,8 @@ def _fetch_state(
         else None
     )
     _quote_spread_age_ms = 0 if _quote_spread_pts is not None else None
-    if _quote_spread_pts is not None:
-        _last_spread_by_ticker[ticker] = _quote_spread_pts
-        _last_spread_ts_by_ticker[ticker] = _t_after_quote_wall
-    elif ticker in _last_spread_by_ticker and ticker in _last_spread_ts_by_ticker:
-        _quote_spread_source = "cached_last_valid_not_tradeable"
-        _quote_spread_age_ms = max(0, int((_t_after_quote_wall - _last_spread_ts_by_ticker[ticker]) * 1000))
-
-    # Remaining volume fields from quote REST if stream + chain underlying had none
-    if _total_vol is None:
-        _quote_node = _node_q if isinstance(_node_q, dict) else {}
-        if not (_quote_node.get("quote") or _quote_node.get("extended")):
-            _quote_node = q_json.get(ticker.upper()) or q_json.get(ticker) or {}
-            if not isinstance(_quote_node, dict):
-                if isinstance(q_json, list):
-                    for item in q_json:
-                        if isinstance(item, dict) and (item.get("symbol") or item.get("key") or "").upper() == ticker.upper():
-                            _quote_node = item
-                            break
-                else:
-                    _quote_node = {}
-            if not _quote_node and isinstance(q_json, dict) and (q_json.get("quote") or q_json.get("regular")):
-                _quote_node = q_json
-        _quote_dict = _quote_node.get("quote") or {} if isinstance(_quote_node, dict) else {}
-        _extended = _quote_node.get("extended") or {} if isinstance(_quote_node, dict) else {}
-        _total_vol = (
-            _safe_float_quote(_quote_dict.get("totalVolume"))
-            or _safe_float_quote(_extended.get("totalVolume"))
-        )
+    # (2026-09-24) no "cached_last_valid" spread: the old spread was never served, but the
+    # label and its age claimed one existed. No bid/ask -> unavailable, age None.
 
     # ── Select expiry ─────────────────────────────────────────────────────────
     expiries     = _expiries_from_contracts(contracts)
@@ -6818,7 +6527,7 @@ def _fetch_state(
                 "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
                 "spread": _quote_spread_source,
                 "spread_age_ms": _quote_spread_age_ms,
-                "carried_forward": _quote_spread_source == "cached_last_valid_not_tradeable",
+                "carried_forward": False,   # no spread is ever carried forward
             },
             "server_ts": time.time(),
         })
@@ -8444,7 +8153,7 @@ def _fetch_state(
                         bid_size=_session_q.get("bid_size"),
                         ask_size=_session_q.get("ask_size"),
                         last_size=_session_q.get("last_size"),
-                        total_volume=(_total_vol if _total_vol is not None else _session_q.get("total_volume")),
+                        total_volume=_total_vol,   # streamed TOTAL_VOLUME only (no REST stand-in)
                         candle_open=_c_open, candle_high=_c_high, candle_low=_c_low,
                         candle_close=_c_close, candle_volume=_c_vol, candle_direction=_candle_dir,
                         candle_body_pts=_candle_body, candle_range_pts=_c_range,
@@ -9045,7 +8754,7 @@ def _fetch_state(
         "ask": "askPrice" if ask is not None else "unavailable_missing_ask",
         "spread": _quote_spread_source,
         "spread_age_ms": _quote_spread_age_ms,
-        "carried_forward": _quote_spread_source == "cached_last_valid_not_tradeable",
+        "carried_forward": False,   # no spread is ever carried forward
     }
     ms_dict["spread"] = _quote_spread_pts
     ms_dict["spread_frac"] = _quote_spread_frac
@@ -16447,62 +16156,17 @@ def get_sqlite_contention_diagnostics():
 
 @app.get("/api/fast-quote")
 async def fast_quote(ticker: str = Query(...)):
-    """
-    Fast lane: latest equity quote fields only. Independent fast_generation_id / exchange_quote_ts.
-    Does not return chain, fusion, or decision data.
-    """
-    ticker = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX etc., ONE authority
-    route_t0 = time.perf_counter()
-    asyncio_thread = threading.current_thread().name
-    log.info(
-        "fast_quote_route_enter ticker=%s asyncio_thread=%s",
-        ticker,
-        asyncio_thread,
-    )
-    loop = asyncio.get_event_loop()
-    submit_ts = time.perf_counter()
-    # SWITCH-LATENCY FIX: _register_tracked_ticker persists to the SQLite logging_universe
-    # (a DB write); keep it off the event loop alongside the quote fetch.
-    def _reg_and_fetch():
-        # TICKER-PREVIEW-NO-ENROLL: fast-quote view touches last-seen only, never enrolls.
-        _touch_tracked_ticker_view(ticker)
-        return _fetch_fast_quote_payload(ticker)
-    try:
-        payload = await loop.run_in_executor(_get_quote_hot_executor(), _reg_and_fetch)
-        after_exec = time.perf_counter()
-        log.info(
-            "fast_quote_route_done ticker=%s asyncio_thread=%s route_total_ms=%.2f await_executor_ms=%.2f",
-            ticker,
-            asyncio_thread,
-            (after_exec - route_t0) * 1000.0,
-            (after_exec - submit_ts) * 1000.0,
-        )
-        return JSONResponse(payload)
-    except HTTPException as he:
-        if _schwab_auth_http_unavailable(he):
-            stale = _lmp.get_quote(ticker)
-            if _plane_fast_quote_has_spot(stale):
-                return JSONResponse(_stale_fast_quote_carried_forward(stale, ticker))
-            return JSONResponse(
-                status_code=401,
-                content=_fast_quote_token_invalid_payload(str(he.detail or "")),
-            )
-        if he.status_code >= 400:
-            log.warning("Fast quote HTTP %s for %s: %s", he.status_code, ticker, he.detail)
-        raise
-    except Exception as e:
-        from schwab_client import SchwabAuthError, _is_token_error
+    """The ticker's STREAMED quote from live_market_plane -- read-only, never a REST fetch.
 
-        if _is_token_error(e) or isinstance(e, SchwabAuthError):
-            stale = _lmp.get_quote(ticker)
-            if _plane_fast_quote_has_spot(stale):
-                return JSONResponse(_stale_fast_quote_carried_forward(stale, ticker))
-            return JSONResponse(
-                status_code=401,
-                content=_fast_quote_token_invalid_payload(str(e)),
-            )
-        log.error(f"Fast quote failed for {ticker}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    Streamed + LAST_PRICE + fresh, or `stream_unavailable` (HTTP 200, ok=false). No REST
+    bootstrap, no REST "fallback", no stale row carried forward (2026-09-24)."""
+    ticker = ticker_storage_key(_required_ticker(ticker))   # RC-126: one symbol authority
+    _touch_tracked_ticker_view(ticker)
+    row = _lmp.get_quote(ticker)
+    if (row and _lmp.plane_row_is_streamed(row) and _lmp.plane_spot_is_last_price(row)
+            and _lmp.spot_is_fresh(row)):
+        return JSONResponse({"ok": True, **row})
+    return JSONResponse({"ok": False, "ticker": ticker, "error": "stream_unavailable"})
 
 
 #: No Schwab-documented batch-quote symbol ceiling exists anywhere in this repo (checked:

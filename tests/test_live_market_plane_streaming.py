@@ -20,22 +20,7 @@ def _rec(ticker, item, received_ts=None):
 
 
 def test_record_from_level_one_equity_updates_plane():
-    lmp.record_quote(
-        "ZZZ",
-        {
-            "ticker": "ZZZ",
-            "spot": 1.0,
-            "bid": 0.9,
-            "ask": 1.1,
-            "spot_disp": "1.00",
-            "bid_disp": "0.90",
-            "ask_disp": "1.10",
-            "spread": 0.2,
-            "fast_generation_id": lmp.next_fast_generation("ZZZ"),
-            "exchange_quote_ts": 100.0,
-            "quote_ingestion": "rest_fast_quote",
-        },
-    )
+    _rec("ZZZ", {"key": "ZZZ", "LAST_PRICE": 1.0, "BID_PRICE": 0.9, "ASK_PRICE": 1.1})
     ok = _rec(
         "ZZZ",
         {"key": "ZZZ", "LAST_PRICE": 101.0, "BID_PRICE": 100.9, "ASK_PRICE": 101.1},
@@ -152,22 +137,7 @@ def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate(
 
 
 def test_record_from_level_one_does_not_carry_forward_missing_bid_ask():
-    lmp.record_quote(
-        "NOCARRY",
-        {
-            "ticker": "NOCARRY",
-            "spot": 10.0,
-            "bid": 9.9,
-            "ask": 10.1,
-            "spot_disp": "10.00",
-            "bid_disp": "9.90",
-            "ask_disp": "10.10",
-            "spread": 0.02,
-            "fast_generation_id": lmp.next_fast_generation("NOCARRY"),
-            "exchange_quote_ts": 100.0,
-            "quote_ingestion": "rest_fast_quote",
-        },
-    )
+    _rec("NOCARRY", {"key": "NOCARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
 
     ok = _rec(
         "NOCARRY",
@@ -251,3 +221,21 @@ def test_prior_close_is_the_streamed_close_price_and_stands_between_sends():
     assert lmp.get_quote("PCLOSE")["prior_close"] == 9.5
     _rec("NOCLOSE", {"key": "NOCLOSE", "LAST_PRICE": 5.0})
     assert lmp.get_quote("NOCLOSE")["prior_close"] is None          # never sent: unknown
+
+
+def test_last_price_is_carried_forward_only_from_a_streamed_row():
+    """Independent audit (2026-09-24): a bid/ask-only tick used to keep the prior row's
+    LAST_PRICE whenever that row's spot was tagged LAST_PRICE -- even a REST-written row --
+    and stamp the result schwab_streaming_level_one. Only a streamed LAST_PRICE may carry."""
+    assert not hasattr(lmp, "record_quote"), "the plane has ONE writer: the stream"
+    with lmp._lock:
+        lmp._by_ticker["RESTROW"] = {
+            "ticker": "RESTROW", "spot": 50.0, "quote_ingestion": "rest_fast_quote",
+            "quote_source_detail": {"spot": "LAST_PRICE"},
+        }
+    assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}) is False
+    assert lmp.get_quote("RESTROW")["quote_ingestion"] == "rest_fast_quote"   # untouched
+    _rec("STREAMROW", {"key": "STREAMROW", "LAST_PRICE": 50.0})
+    assert _rec("STREAMROW", {"key": "STREAMROW", "BID_PRICE": 49.9}) is True
+    row = lmp.get_quote("STREAMROW")
+    assert row["spot"] == 50.0 and row["quote_source_detail"]["carried_forward"] is True

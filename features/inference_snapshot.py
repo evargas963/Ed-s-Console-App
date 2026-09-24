@@ -341,12 +341,6 @@ def _quote_field_lineage(
             producer="server.py::_fetch_state",
             schwab_leaf=leaf,
         )
-    if field == "spread" and spread_source == "cached_last_valid_not_tradeable":
-        return _lineage_entry(
-            LINEAGE_CLASS_FALLBACK_FIELD,
-            detail=spread_source,
-            producer="server.py::_fetch_state",
-        )
     return _lineage_entry(
         LINEAGE_CLASS_UNKNOWN_LINEAGE_FIELD,
         detail=src or f"{field}_unmapped_source",
