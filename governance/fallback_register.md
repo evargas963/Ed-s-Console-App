@@ -43,7 +43,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | C-09 | signals.py:330 | calibration timeframe `or "1m"` defeats the writer's refusal | calibration row (env-gated) | OPEN |
 | F-09 | prediction_engine.py:436-446 | 15m/60m "structure approximation" text | readiness | OPEN |
 | F-10 | prediction_engine.py:420, 445-446 | missing charm -> "No clear trend — range" | readiness | OPEN |
-| S-14 | lifecycle_rule_core.py:203-208 | T1 = 2R fallback (also overrides a measured avg5 <= 1.5R) | The Call target | OPEN |
+| S-14 | lifecycle_rule_core.py:203-208 | T1 = 2R fallback (also overrides the similar-setups avg5 when it is <= 1.5R) | The Call target | OPEN |
 | S-15 | lifecycle_rule_core.py:220-228 | T2 falls to avg60, then T1 + 1R | The Call target2 | OPEN |
 | S-16 | lifecycle_rule_core.py:237-240 | T2 <= T1 replaced by T1 + 1R | The Call target2 | OPEN |
 
@@ -51,11 +51,11 @@ P1/P2 rows are to be merged here as each file is repaired.
 | ID | file:line | Violation | Flows to | Status |
 |---|---|---|---|---|
 | F-01 | bayesian_fusion.py:789-796 | fuse returns available=True with 0 active sources | persisted fusion_* columns every tick | FIXED 693ffaa8 |
-| F-02 | bayesian_fusion.py:182-189 | DEFAULT_PRIORS when regime missing | fusion_* | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
-| F-03 | bayesian_fusion.py:331-355 | "placeholder likelihoods" rules tables are the only evidence | fusion_* | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
+| F-02 | bayesian_fusion.py:182-189 | DEFAULT_PRIORS when regime missing | fusion_* | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs likelihoods estimated from labeled outcomes before re-enable |
+| F-03 | bayesian_fusion.py:331-355 | "placeholder likelihoods" rules tables are the only evidence | fusion_* | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs likelihoods estimated from labeled outcomes before re-enable |
 | F-04/05 | bayesian_fusion.py:333-336, 378, 508 | getattr(rules, "signal"/"conviction", default) | fusion_* | FIXED 693ffaa8 |
-| F-06 | bayesian_fusion.py:620-621 | CALIBRATION_PENALTY placeholder | fusion_confidence | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
-| F-07/08 | bayesian_fusion.py:421, 427-429 | likelihood floor; "fallback to priors" | posteriors | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs MEASURED likelihoods before re-enable |
+| F-06 | bayesian_fusion.py:620-621 | CALIBRATION_PENALTY placeholder | fusion_confidence | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs likelihoods estimated from labeled outcomes before re-enable |
+| F-07/08 | bayesian_fusion.py:421, 427-429 | likelihood floor; "fallback to priors" | posteriors | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs likelihoods estimated from labeled outcomes before re-enable |
 | L-01 | ml_predict.py:2853-2862 | model_version built from files on disk, not what ran | persisted pred_model_version | FIXED 425aa436 |
 | F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | FIXED 425aa436 |
 | S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | FIXED 739fb9fc |
