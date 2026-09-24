@@ -50,8 +50,6 @@ def test_http_and_sse_both_call_same_projection_assembler(monkeypatch):
     q = asyncio.Queue(maxsize=10)
     key = ("SPY", "__auto__")
     srv._l1_light_sse_clients.append((q, key))
-    monkeypatch.setattr(srv, "_L1_SSE_MIN_INTERVAL_SEC", 0.0)
-    srv._l1_sse_last_emit_mono.pop(key, None)
     try:
         srv._l1_notify_sse_after_authoritative_build("SPY", None)
         assert len(calls) == 2

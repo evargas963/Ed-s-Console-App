@@ -521,6 +521,7 @@
   function removeSymbol(sym) {
     var list = loadWL().filter(function (s) { return s !== sym; });
     saveWL(list); renderWatchlist();
+    if (state.ticker) openHeaderStream(state.ticker);   // the push follows the new watchlist
   }
 
   // Every view event goes through emit(): with no ticker chosen, no panel is asked to load
@@ -785,6 +786,7 @@
   }
 
   var _sse = null, _sseUp = false, _lastSseTs = 0, _sseOpenedTs = 0, _l1Gen = {}, _l1Ts = {};
+  var _sseWatch = null;   // the watchlist the open stream pushes rows for
   // requestAnimationFrame throttle: pushes can arrive faster than the screen repaints; only the
   // NEWEST quote is painted, once per frame, so a burst never queues stale paints.
   var _pendingQuote = null, _quoteFrame = 0;
@@ -804,7 +806,10 @@
     closeHeaderStream();
     _sseOpenedTs = Date.now();
     if (typeof EventSource === 'undefined') return;
-    try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)); }
+    var wl = loadWL();
+    _sseWatch = wl.join(',');
+    try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)
+                                 + (wl.length ? '&watch=' + encodeURIComponent(_sseWatch) : '')); }
     catch (e) { _sse = null; return; }
     _sse.addEventListener('l1_projection', function (ev) {
       // the server sends an ENVELOPE {l1_sse_schema, scope, l1_generation, l1_server_build_ts,
@@ -851,6 +856,30 @@
     // gamma-surface/per-strike data (ed-gamma.js, ed-gamma-panels.js's GEX-by-strike panel,
     // ed-gamma-chart.js) -- the 12s poll's `ed:refresh{slow}` remains the ONLY thing that
     // drives every other module's slower, session-cadence refresh.
+    // l1_quote: the server's current quote + live verdict, sent on connect and every idle
+    // second (server.py:_l1_quote_event). Painted as-is -- the browser computes nothing but
+    // the display age of the last trade from the two server timestamps it was given.
+    _sse.addEventListener('l1_quote', function (ev) {
+      var q; try { q = JSON.parse(ev.data); } catch (e) { return; }
+      if (!q || String(q.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
+      _sseUp = true; _lastSseTs = Date.now();
+      var live = q.spot_state === 'live' && q.spot != null;
+      var tradeAge = (live && q.trade_ts_ms) ? Math.max(0, Math.round(q.server_ts - q.trade_ts_ms / 1000)) : null;
+      paintQuoteNextFrame({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
+        chgPct: q.chg_pct, spotState: q.spot_state,
+        feedCls: live ? '' : 'stale',
+        feedLabel: live ? 'LIVE' : 'UNAVAILABLE',
+        ageLabel: tradeAge != null ? ('last trade ' + tradeAge + 's') : (live ? 'live' : 'no live feed') });
+    });
+    // wl_quote: one watchlist row, pushed the moment it changes (server.py:_watchlist_row,
+    // the same row GET /api/watchlist-quotes serves). row null = UNAVAILABLE.
+    _sse.addEventListener('wl_quote', function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (!m || !m.ticker) return;
+      var r = m.row;
+      setWlRow(m.ticker, r ? r.spot : null, r ? r.chg_pct : null, r ? r.spot_state : 'unavailable');
+      markWlHealthy();
+    });
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
       if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
@@ -904,7 +933,7 @@
   // label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     _pendingQuote = null;
-    var connecting = _sse && !_sseUp && (Date.now() - _sseOpenedTs <= 9000);
+    var connecting = _sse && !_sseUp && (Date.now() - _sseOpenedTs <= 3000);
     paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null,
       spotState: 'unavailable', feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
@@ -919,10 +948,16 @@
   function liveTick() {
     _tick++;
     if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) pollWatchlistQuotes(); return; }
-    var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 9000);
+    var sseHealthy = _sseUp && (Date.now() - _lastSseTs <= 3000);   // l1_quote arrives every second
     if (!sseHealthy) markHeaderPushDown();            // the gap is shown, never filled
     if (!sseHealthy || _tick % 4 === 0) refreshSession();
-    if (_tick % 4 === 0) pollWatchlistQuotes();       // every non-active row, same slow cadence
+    // watchlist rows arrive PUSHED on the header stream (wl_quote). While that push is down
+    // the rows are withdrawn to UNAVAILABLE like the header -- no second delivery path. The
+    // daemon is told the list on the slow tick.
+    var wlHost = document.getElementById('watchlist');
+    if (!sseHealthy && !(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
+    if (_tick % 4 === 0) declareWatchlistStream(loadWL());
+    if (sseHealthy && _sseWatch !== loadWL().join(',')) openHeaderStream(state.ticker);
     emit('ed:refresh', { tick: _tick, slow: _tick % 4 === 0 });
   }
 
