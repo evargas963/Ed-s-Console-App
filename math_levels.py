@@ -16,11 +16,12 @@ from math_exposure_core import (
     KEY_LEVEL_STRIKE_WINDOW,
     _f,
     bucket_metric,
-    bucket_metric_abs,
     _window_strikes,
     aggregate_net_dex,
     aggregate_net_gex,
     exposures_have_dollar_gex,
+    strike_oi_legs,
+    strike_total_oi,
     key_level_strikes_with_gamma,
     key_level_strikes_with_oi,
     net_gex_dollars_at_strike,
@@ -98,16 +99,9 @@ APPROACH_PTS  = 1.5
 
 
 def _strike_total_oi(bucket: dict) -> float | None:
-    """Total OI at strike — both call and put legs required (no silent 0 for missing openInterest)."""
-    call_oi = bucket.get("call_oi")
-    put_oi = bucket.get("put_oi")
-    if call_oi is None or put_oi is None:
-        return None
-    try:
-        tot = float(call_oi) + float(put_oi)
-    except (TypeError, ValueError):
-        return None
-    return tot if tot > 0 else None
+    """Total OI at strike -- math_exposure_core.strike_total_oi, the one reader (None =
+    unknown; 0.0 = measured zero)."""
+    return strike_total_oi(bucket)
 
 
 # ── Inflection / OI helpers ───────────────────────────────────────────────────
@@ -478,6 +472,7 @@ def build_totals_rows(
 
         cg = pg = cd = pd = coi = poi = None
         any_cg = any_pg = any_cd = any_pd = any_coi = any_poi = False
+        _oi_unknown = False
         _cg_sum = _pg_sum = _cd_sum = _pd_sum = _coi_sum = _poi_sum = 0.0
 
         for s in sset:
@@ -498,16 +493,16 @@ def build_totals_rows(
             if _pd is not None:
                 _pd_sum += float(_pd)
                 any_pd = True
-            _tot_oi = _strike_total_oi(b)
-            if _tot_oi is not None:
-                call_oi = b.get("call_oi")
-                put_oi = b.get("put_oi")
-                if call_oi is not None:
-                    _coi_sum += float(call_oi)
-                    any_coi = True
-                if put_oi is not None:
-                    _poi_sum += float(put_oi)
-                    any_poi = True
+            # OI legs: known strikes contribute their legs (a leg with no positive-OI
+            # contract is a real 0); ONE unknown strike makes the window's OI unknown (M-06:
+            # one-sided strikes used to be dropped, understating the totals and PCR).
+            _legs = strike_oi_legs(b)
+            if _legs is None:
+                _oi_unknown = True
+            else:
+                _coi_sum += _legs[0]
+                _poi_sum += _legs[1]
+                any_coi = any_poi = True
 
         if any_cg:
             cg = _cg_sum
@@ -517,9 +512,9 @@ def build_totals_rows(
             cd = _cd_sum
         if any_pd:
             pd = _pd_sum
-        if any_coi:
+        if any_coi and not _oi_unknown:
             coi = _coi_sum
-        if any_poi:
+        if any_poi and not _oi_unknown:
             poi = _poi_sum
 
         ng = (cg - pg) if cg is not None and pg is not None else None
@@ -534,13 +529,10 @@ def build_totals_rows(
         skew = None
         if atm is not None:
             c_iv, p_iv = _extract_iv_for_strike(contracts_for_iv, atm)
+            # both legs or no ATM IV -- one leg's IV used to stand in for the pair (M-09)
             if c_iv is not None and p_iv is not None:
                 atm_iv = (c_iv + p_iv) / 2.0
                 skew = c_iv - p_iv
-            elif c_iv is not None:
-                atm_iv = c_iv
-            elif p_iv is not None:
-                atm_iv = p_iv
 
         out.append(TotalsRow(
             label=label,
@@ -1443,27 +1435,29 @@ def compute_max_pain(exposures_by_strike: Dict[float, dict]) -> float | None:
     strikes = key_level_strikes_with_oi(exposures_by_strike)
     if len(strikes) < 2:
         return None
+    # Pain over the WHOLE grid or not at all (M-08): a strike whose OI is unknown, or whose
+    # positive OI carries no contract multiplier, used to be SKIPPED -- a max pain computed
+    # over part of the open interest. One-sided strikes used to be dropped too.
+    weights: dict[float, tuple[float, float]] = {}
+    for k, b in exposures_by_strike.items():
+        legs = strike_oi_legs(b)
+        if legs is None:
+            return None
+        w = []
+        for oi, key in ((legs[0], "call_oi_mult"), (legs[1], "put_oi_mult")):
+            if oi <= 0:
+                w.append(0.0)
+                continue
+            m = bucket_metric(b, key)
+            if m is None:
+                return None
+            w.append(float(m))
+        weights[float(k)] = (w[0], w[1])
 
     def _pain_at(settlement: float) -> float:
         pain = 0.0
         for k in strikes:
-            b = exposures_by_strike.get(k, {})
-            if _strike_total_oi(b) is None:
-                continue
-            call_oi_raw = bucket_metric(b, "call_oi")
-            put_oi_raw = bucket_metric(b, "put_oi")
-            call_w_raw = bucket_metric(b, "call_oi_mult")
-            put_w_raw = bucket_metric(b, "put_oi_mult")
-            if call_oi_raw is not None and float(call_oi_raw) > 0 and call_w_raw is None:
-                continue
-            if put_oi_raw is not None and float(put_oi_raw) > 0 and put_w_raw is None:
-                continue
-            call_w = 0.0
-            if call_w_raw is not None:
-                call_w = float(call_w_raw)
-            put_w = 0.0
-            if put_w_raw is not None:
-                put_w = float(put_w_raw)
+            call_w, put_w = weights[float(k)]
             if call_w <= 0 and put_w <= 0:
                 continue
             if call_w > 0 and settlement > k:
@@ -1528,21 +1522,15 @@ def compute_gamma_void_zones(
     if len(strikes) < 5:
         return []
 
+    # Total GEX$ on a dollarized book, strikes with valid gamma only. It used to fall through
+    # raw total gamma -> |call|+|put| raw -> |net GEX| (three different quantities) (M-11).
+    if not exposures_have_dollar_gex(exposures_by_strike):
+        return []
+
     def _get_gex(bucket):
-        """Same measure for void detection and avg_gex_pct (institutional dollar GEX when available)."""
-        if exposures_have_dollar_gex(exposures_by_strike):
-            return total_gex_dollars_at_strike(bucket)
-        tg = total_gamma_raw_at_strike(bucket)
-        if tg is not None and tg > 0:
-            return tg
-        c = bucket_metric_abs(bucket, "call_gamma")
-        p = bucket_metric_abs(bucket, "put_gamma")
-        parts = [v for v in (c, p) if v is not None]
-        if parts:
-            raw = sum(parts)
-            if raw > 0:
-                return raw
-        return bucket_metric_abs(bucket, "net_gex_1pct")
+        if not (isinstance(bucket, dict) and bucket.get("has_valid_gamma")):
+            return None
+        return total_gex_dollars_at_strike(bucket)
 
     def _get_oi(bucket):
         return _strike_total_oi(bucket)
@@ -1571,12 +1559,12 @@ def compute_gamma_void_zones(
         bucket = exposures_by_strike.get(k, {})
         gex = _get_gex(bucket)
         oi = _get_oi(bucket)
-        if gex is None:
+        # a void needs BOTH low GEX and low OI, measured; with no OI measured anywhere the
+        # OI half of the test used to be dropped (M-11) -- now it cannot be a void.
+        if gex is None or oi is None or max_oi <= 0:
             is_void = False
         else:
-            is_void = (gex < gex_threshold) and (
-                oi is not None and oi < oi_threshold if max_oi > 0 else True
-            )
+            is_void = (gex < gex_threshold) and (oi < oi_threshold)
         void_flags.append(is_void)
 
     # Find contiguous void regions

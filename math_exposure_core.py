@@ -192,6 +192,11 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # a computed value, not re-derive presence from call_oi/put_oi being non-None
             # (equivalent today, but a second definition of the same fact is how these drift).
             "has_oi": False,
+            # Contracts at this strike whose openInterest was NOT REPORTED (absent / invalid).
+            # With the OI gate a leg with no positive-OI contract is a real zero, but a
+            # contract that never reported OI is UNKNOWN -- strike_total_oi() reads this so
+            # no total ever treats unknown as zero (audit T-04 / M-06..08, 2026-09-24).
+            "oi_unreported": 0,
             # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
             # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
             # question "did any contract that cleared it ALSO report genuine, vendor-
@@ -325,6 +330,7 @@ def compute_exposures_by_strike(
 
         if oi is None:
             missing += 1
+            b["oi_unreported"] += 1
         if require_oi and (oi is None or oi <= 0):
             continue
 
@@ -581,6 +587,48 @@ KEY_LEVEL_STRIKE_WINDOW: int | None = None
 # Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
 
 
+def strike_total_oi(bucket: dict) -> float | None:
+    """THE total open interest at one strike, or None when it is not known.
+
+    Known = every contract at the strike reported openInterest (oi_unreported == 0). A leg
+    with no positive-OI contract then contributes a real 0 (its contracts reported 0 OI, or
+    none is listed). Replaces three readers that disagreed: one required BOTH legs (dropping
+    every one-sided strike from PCR / OI center / max pain), two counted a missing leg as 0
+    whether or not its OI was reported (audit T-04 / M-06 / M-07 / M-08, 2026-09-24)."""
+    legs = strike_oi_legs(bucket)
+    return None if legs is None else legs[0] + legs[1]
+
+
+def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
+    """(call OI, put OI) at one strike when its OI is known (see strike_total_oi), else None.
+    A leg with no positive-OI contract is a KNOWN 0.0 -- every contract there reported OI."""
+    if not isinstance(bucket, dict) or bucket.get("oi_unreported") != 0:
+        return None
+    legs = []
+    for key in ("call_oi", "put_oi"):
+        if bucket.get(key) is None:
+            legs.append(0.0)      # known: no contract on this leg carried positive OI
+            continue
+        v = bucket_metric(bucket, key)
+        if v is None:             # present but not a finite number -> not known
+            return None
+        legs.append(v)
+    return legs[0], legs[1]
+
+
+def book_total_oi(exposures: Dict[float, dict]) -> float | None:
+    """Total OI of the whole book, or None if ANY strike's OI is unknown."""
+    if not exposures:
+        return None
+    total = 0.0
+    for b in exposures.values():
+        t = strike_total_oi(b)
+        if t is None:
+            return None
+        total += t
+    return total
+
+
 def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:
     """True when the book was built WITH spot (its dollar fields are real). Read from the
     explicit `dollarized` flag -- it used to be inferred from "any strike has non-zero dollar
@@ -593,19 +641,12 @@ def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:
 
 
 def key_level_strikes_with_oi(exposures: Dict[float, dict]) -> List[float]:
-    """Strikes with Schwab OI present (post require_oi gate in compute_exposures_by_strike)."""
+    """Strikes whose OI is KNOWN and positive (strike_total_oi -- the one reader). It used to
+    require BOTH legs, silently dropping every one-sided strike from the grid (M-06/M-08)."""
     out: List[float] = []
     for s in sorted(float(k) for k in exposures.keys()):
-        b = exposures.get(s, {})
-        co = b.get("call_oi")
-        po = b.get("put_oi")
-        if co is None or po is None:
-            continue
-        try:
-            tot = float(co) + float(po)
-        except (TypeError, ValueError):
-            continue
-        if tot > 0:
+        tot = strike_total_oi(exposures.get(s, {}))
+        if tot is not None and tot > 0:
             out.append(s)
     return out
 

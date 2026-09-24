@@ -173,7 +173,8 @@ def test_a_strike_with_no_resolvable_gamma_draws_no_bar():
 
 def test_a_measured_gamma_still_draws_its_bar():
     """Negative control: absence is refused, presence is not."""
-    rows = TE._per_strike_rows({500.0: {"has_oi": True, "net_gex_1pct": 1_234_567.0}}, [])
+    rows = TE._per_strike_rows({500.0: {"has_oi": True, "has_valid_gamma": True, "dollarized": True,
+                                        "net_gex_1pct": 1_234_567.0}}, [])
     assert len(rows) == 1
     assert rows[0][0] == pytest.approx(500.0)
     assert rows[0][1] == pytest.approx(1_234_567.0, rel=1e-6)
@@ -181,7 +182,8 @@ def test_a_measured_gamma_still_draws_its_bar():
 
 def test_a_genuine_zero_gamma_still_draws_its_bar():
     """A strike measured at flat gamma is information and must remain on the chart."""
-    rows = TE._per_strike_rows({500.0: {"has_oi": True, "net_gex_1pct": 0.0}}, [])
+    rows = TE._per_strike_rows({500.0: {"has_oi": True, "has_valid_gamma": True, "dollarized": True,
+                                        "net_gex_1pct": 0.0}}, [])
     assert len(rows) == 1 and rows[0][1] == pytest.approx(0.0)
 
 
@@ -319,7 +321,10 @@ def test_the_server_strike_row_builder_draws_no_bar_for_unknown_gamma():
     src = inspect.getsource(srv.get_terrain_strikes)
     assert "round(float(g or 0.0), 1)" not in src, (
         "the per-strike row builder fabricates a 0.0 gamma bar again")
-    assert "if g is None:" in src and "continue" in src
+    # 2026-09-24: the server copy is gone -- it delegates to the ONE producer, which refuses
+    # a bar for unknown / invalid gamma (tested above) and has no raw-gamma fallback (T-01).
+    assert "_per_strike_rows(exposures, cts)" in src
+    assert "total_gamma_raw_at_strike" not in src
 
 
 def test_a_cumulative_counters_first_reading_is_not_a_missing_measurement():

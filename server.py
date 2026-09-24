@@ -251,7 +251,7 @@ from math_exposure import (
     compute_gamma_void_zones, compute_level_density, gamma_at_price,
     infer_strike_increment, required_strike_count,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
-    aggregate_net_gex, aggregate_net_dex, total_gamma_raw_at_strike,
+    aggregate_net_gex, aggregate_net_dex,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
     compute_gamma_gradient, compute_breakout_score,
     compute_pin_score, compute_vol_expansion_signal, compute_sweep_score,
@@ -7376,12 +7376,6 @@ def _fetch_state(
     _sweep_score = {}
     # Sweep score post-build_market_state needs _void_factor even if Section 8 raised early.
     _void_factor = 0.0
-    def _bucket_total_oi(_bkt: dict) -> float | None:
-        call_oi = _bkt.get("call_oi")
-        put_oi = _bkt.get("put_oi")
-        if call_oi is None and put_oi is None:
-            return None
-        return (float(call_oi) if call_oi is not None else 0.0) + (float(put_oi) if put_oi is not None else 0.0)
 
     # Gamma-audit 2026-08-26 (latent NameError, found tracing the F9 regime source): the terrain-SSOT
     # reads below live INSIDE this try, whose `except` only logs (server.py: "Section 8 signals calc")
@@ -7398,12 +7392,10 @@ def _fetch_state(
         # net DEX$ over VALID-delta strikes only (audit M-01): was a 0.0-seeded sum of every
         # bucket's net_dex_dollars, including all-invalid buckets
         _sum_dex = aggregate_net_dex(exposures, _cons_strikes)
-        _sum_oi = None
+        from math_exposure_core import book_total_oi
+        _sum_oi = book_total_oi(exposures)   # None if any strike's OI is unknown (T-04/M-06)
         _sum_vanna = None   # None until a valid vanna is seen -- no 0.0 stand-in (S-11)
         for _bkt in exposures.values():
-            _bucket_oi = _bucket_total_oi(_bkt)
-            if _bucket_oi is not None:
-                _sum_oi = (_sum_oi or 0.0) + _bucket_oi
             _cv = bucket_metric(_bkt, "call_vanna")
             _pv = bucket_metric(_bkt, "put_vanna")
             if _cv is not None:
@@ -9192,50 +9184,9 @@ def _fetch_state(
     # The gamma-family values were computed from the narrow analytics chain; the screen gets
     # ONE book (terrain SSOT) or an honest blank.
     _terrain_kl_overlay(ms_dict, ticker)
-    if not _gamma_voids:
-        # Diagnostic: why no voids?
-        _n_strikes = len(exposures)
-        _gex_vals = [
-            v
-            for b in exposures.values()
-            if (v := total_gamma_raw_at_strike(b)) is not None
-        ]
-        _max_gex = max(_gex_vals, default=0)
-        _oi_values = [_bucket_total_oi(b) for b in exposures.values()]
-        _oi_values = [v for v in _oi_values if v is not None]
-        _max_oi = max(_oi_values, default=0)
-        log.debug(f"Gamma void: {_n_strikes} strikes, max_gex={_max_gex:.0f}, max_oi={_max_oi:.0f}, spot_passed={'yes' if spot_f else 'no'}")
-        # Count how many strikes pass each threshold independently
-        _gex_low = (
-            sum(
-                1
-                for b in exposures.values()
-                if (v := total_gamma_raw_at_strike(b)) is not None
-                and v < _max_gex * 0.20
-            )
-            if _max_gex > 0
-            else 0
-        )
-        _oi_low = sum(1 for b in exposures.values() if (_bucket_total_oi(b) is not None and _bucket_total_oi(b) < _max_oi * 0.25)) if _max_oi > 0 else 0
-        _both_low = sum(
-            1
-            for b in exposures.values()
-            if (
-                (
-                    (v := total_gamma_raw_at_strike(b)) is not None
-                    and v < _max_gex * 0.20
-                    if _max_gex > 0
-                    else False
-                )
-                and (
-                    _bucket_total_oi(b) is not None
-                    and _bucket_total_oi(b) < _max_oi * 0.25
-                    if _max_oi > 0
-                    else False
-                )
-            )
-        ) if _max_gex > 0 else 0
-        log.debug(f"Gamma void: gex_low={_gex_low}, oi_low={_oi_low}, both_low={_both_low} (need 2+ consecutive)")
+    # (A debug-only second copy of the void test, on RAW gamma, lived here -- a divergent
+    # re-implementation feeding one log line. Deleted 2026-09-24; compute_gamma_void_zones is the
+    # one authority.)
 
     # ── Top GEX/DEX drivers (which strikes are driving the walls) ─────────────
     ms_dict["top_gex_drivers"] = getattr(cs, "top_gex_drivers", []) or []
@@ -14283,48 +14234,11 @@ def get_terrain_strikes(ticker: str = Query(...)):
             if not cts:
                 return []
             exposures, _diag = _cebs(cts, spot=spot, require_oi=True)
-            vol_by_k: dict[float, float] = {}
-            # SINGLE SOURCE: totalVolume read through the canonical non-negative reader so
-            # the REST aggregation drops NaN/±inf (raw float() used to admit them, poisoning
-            # the sum) and reads 0/negatives identically to the exposure and order-flow paths.
-            from numeric_contract import (
-                float_finite_or_none as _fin,
-                float_nonnegative_or_none as _vol_read,
-            )
-            for ct in cts:
-                # single source: reject NaN strike (raw float() let a NaN become a dict key)
-                k = _fin(ct.get("strikePrice"))
-                if k is None:
-                    continue
-                v = _vol_read(ct.get("totalVolume"))
-                if v:
-                    vol_by_k[k] = vol_by_k.get(k, 0.0) + v
-            out = []
-            for k, b in exposures.items():
-                # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): net_gex_1pct/
-                # call_gamma/put_gamma are pre-initialized to a real 0.0 by _strike_bucket, so
-                # bucket_metric/total_gamma_raw_at_strike returned a real float (never None)
-                # even for a strike where every contract failed the OI gate -- Schwab's SPX
-                # feed currently reports openInterest=0/stuck for every contract, so this drew
-                # a $0 bar indistinguishable from a strike genuinely measured at flat gamma.
-                # has_oi (math_exposure_core.py's own canonical signal) is checked FIRST, before
-                # either metric read, so a no-OI strike is skipped the same way RC-276's
-                # gamma-resolves-nowhere case already is below -- one exclusion rule, not two.
-                if not (isinstance(b, dict) and b.get("has_oi")):
-                    continue
-                g = bucket_metric(b, "net_gex_1pct")
-                if g is None:
-                    g = total_gamma_raw_at_strike(b)
-                if g is None:
-                    # RC-276: the second copy of the terrain_engine:202 bar RC-274 removed. A
-                    # strike whose gamma resolves nowhere drew a bar at 0.0, indistinguishable
-                    # from a strike measured at flat gamma on the surface used to read dealer
-                    # positioning. Hidden here because server.py was allowlisted wholesale.
-                    continue
-                out.append([round(float(k), 2), round(float(g), 1),
-                            int(vol_by_k.get(float(k), 0))])
-            out.sort(key=lambda r: r[0])
-            return out
+            # ONE producer (2026-09-24): this was a second copy of terrain_engine._per_strike_rows
+            # carrying the same raw-gamma fallback (audit T-01) -- the live panel and this ghost
+            # must be one computation or they draw a positioning shift that did not happen.
+            from terrain_engine import _per_strike_rows
+            return _per_strike_rows(exposures, cts)
 
         # Cursor-audit F8: unknown DTE must belong to NEITHER near nor far, not silently to far.
         # This endpoint carried its own near/far splitter with the old 999.0 sentinel — a duplicate
