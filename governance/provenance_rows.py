@@ -2307,11 +2307,6 @@ ROWS: tuple[Row, ...] = (
         justification='Quote to accumulator to price_bars_1m for ONE ticker, never raising. The price comes from the parsed session fields through numeric_contract.float_positive_or_none, so an absent, zero, negative, NaN or infinite price returns skip:no_price and the accumulator is never ticked — absence reads as absence, never a fabricated bar (RC-38/RC-308).',
     ),
     Row(
-        file='server.py', derivation='_broadcast_live_quote_sse_payloads', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_broadcast_live_quote_sse_payloads).',
-    ),
-    Row(
         file='server.py', derivation='_build_raw_levels_used', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_build_raw_levels_used).',
@@ -2580,11 +2575,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_sse_background_loop', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_sse_background_loop).',
-    ),
-    Row(
-        file='server.py', derivation='_sse_live_quote_loop', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_sse_live_quote_loop).',
     ),
     Row(
         file='server.py', derivation='_stream_spot_and_of_regime', disposition='ALLOWLISTED',
@@ -2894,16 +2884,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='schwab_capability_state', disposition='DERIVED',
         producer_refs=('schwab_client.py:build_client_from_token',),
         justification='RC-514: capability verdict for /api/health, taken from the canonical client and the same _client cache get_client() uses.',
-    ),
-    Row(
-        file='server.py', derivation='sse_stream', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (sse_stream).',
-    ),
-    Row(
-        file='server.py', derivation='sse_stream.event_generator', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (sse_stream.event_generator).',
     ),
     Row(
         file='snapshot_access.py', derivation='require_snapshot_timeframe', disposition='ALLOWLISTED',

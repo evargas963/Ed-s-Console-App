@@ -1081,9 +1081,6 @@ UI_MAXIMIZE_SLA_MS: dict[str, int] = {
     "fusion_cards_panel_warm": int(os.environ.get("ED_UI_SLA_FUSION_PANEL_MS", "2000")),
     "fusion_cards_guest_cold": int(os.environ.get("ED_UI_SLA_FUSION_GUEST_MS", "15000")),
 }
-# Layer A: push in-memory live quote plane over SSE (no Schwab/DB) — sub-second feel vs analytical loop.
-LIVE_QUOTE_SSE_INTERVAL_SEC: float = float(os.environ.get("ED_LIVE_QUOTE_SSE_INTERVAL_SEC", "0.12"))
-
 # ── DB snapshot insert throttle (TQM: bound raw row explosion from SSE + logger) ─
 # At most one INSERT per ticker per UTC-minute bucket (matches normalized 1m bucketing).
 # Bars persist + outcome backfill ride the same throttle (Step 3, live-path write
@@ -1172,6 +1169,8 @@ _sse_cadence_diag_last_log_mono: float = 0.0
 
 # ── L1 light SSE (/api/analytics/light/stream) — event-driven delivery; same payload as HTTP GET ──
 _l1_light_sse_clients: list[tuple[asyncio.Queue, tuple[str, str | None]]] = []
+#: id(asyncio.Queue) -> watchlist tickers that connection also wants as quote_tick
+_l1_light_sse_watch: dict[int, tuple[str, ...]] = {}
 _l1_light_sse_lock = threading.Lock()
 _l1_sse_thread_queue: queue.Queue = queue.Queue(maxsize=500)
 _l1_sse_diag: dict[str, int] = {
@@ -1312,6 +1311,7 @@ def _l1_light_sse_release(q: asyncio.Queue, key: tuple[str, str], rs_key: tuple[
             _l1_light_sse_remote_scope.pop(rs_key, None)
         else:
             _l1_light_sse_remote_scope[rs_key] = left
+        _l1_light_sse_watch.pop(id(q), None)
 
 
 def _l1_round_floats_for_json(obj: Any) -> Any:
@@ -1357,6 +1357,63 @@ def _l1_record_payload_identity(sk: tuple[str, str | None], gen: int, payload: d
             _l1_sse_diag["l1_payload_identity_violation"] = int(_l1_sse_diag.get("l1_payload_identity_violation", 0)) + 1
     _l1_last_emit_identity[sk] = (gen, ts, fp)
     return ts, fp
+
+
+def _l1_bind_sse_watch(q: asyncio.Queue, watched: list[str]) -> None:
+    """Attach this connection's watchlist so quote_tick for those symbols reaches it."""
+    with _l1_light_sse_lock:
+        _l1_light_sse_watch[id(q)] = tuple(watched)
+
+
+def _l1_ticker_has_projection_subscriber(ticker: str) -> bool:
+    """True when an L1 light SSE client reserved this ticker (any expiry). Watchlist-only does not count."""
+    t = ticker_storage_key(ticker)
+    if not t:
+        return False
+    with _l1_light_sse_lock:
+        return any(csk[0] == t for _, csk in _l1_light_sse_clients)
+
+
+def _quote_tick_has_audience(ticker: str) -> bool:
+    t = ticker_storage_key(ticker)
+    if not t:
+        return False
+    with _l1_light_sse_lock:
+        for q, csk in _l1_light_sse_clients:
+            if csk[0] == t:
+                return True
+            if t in _l1_light_sse_watch.get(id(q), ()):
+                return True
+    return False
+
+
+def _l1_put_quote_tick_client_queue(q: asyncio.Queue, env: dict) -> None:
+    """Latest quote_tick per symbol on this connection. Does not evict l1_projection / gamma_surface_seq."""
+    tk = env.get("ticker")
+    kept: list = []
+    try:
+        while True:
+            item = q.get_nowait()
+            if (isinstance(item, dict) and item.get("_sse_event_name") == "quote_tick"
+                    and item.get("ticker") == tk):
+                continue
+            kept.append(item)
+    except asyncio.QueueEmpty:
+        pass
+    for item in kept:
+        try:
+            q.put_nowait(item)
+        except asyncio.QueueFull:
+            _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(
+                _l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
+            return
+    try:
+        q.put_nowait(env)
+        _l1_sse_diag["l1_light_sse_events_delivered"] = int(
+            _l1_sse_diag.get("l1_light_sse_events_delivered", 0)) + 1
+        _l1_sse_diag["quote_tick_delivered"] = int(_l1_sse_diag.get("quote_tick_delivered", 0)) + 1
+    except asyncio.QueueFull:
+        _l1_sse_diag["quote_tick_dropped_full"] = int(_l1_sse_diag.get("quote_tick_dropped_full", 0)) + 1
 
 
 def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
@@ -3580,6 +3637,17 @@ class _CandleAccumulator:
         """Return completed bars (not including the in-progress bar)."""
         return list(self._bars.get(ticker, []))
 
+    def forming_bar(self, ticker: str) -> dict | None:
+        """The in-progress 1m bar, or None. Server-side LAST_PRICE accumulation."""
+        cur = self._current.get(ticker)
+        if not cur:
+            return None
+        return {
+            "t": float(cur["ts"]), "o": float(cur["o"]), "h": float(cur["h"]),
+            "l": float(cur["l"]), "c": float(cur["c"]),
+            "v": cur.get("v"), "forming": True,
+        }
+
     def get_bars_source(self, ticker: str) -> str:
         """Provenance label for bars produced by this accumulator (VWAP / analytics)."""
         return self._bars_source.get(ticker, "schwab_quote_totalVolume_delta")
@@ -3762,6 +3830,9 @@ _vix_tracker = _VIXTracker()
 CORE_TICKERS:   list[str] = []
 LOG_INTERVAL:   int       = 30    # seconds — 12 tickers × 3 calls + 17 global ≈ 106/min
 STAGGER_SECS:   float     = 2.0  # seconds between each ticker fetch in a cycle
+#: Wall-clock cap for one logger sweep. Tickers past the budget are deferred to the
+#: next cycle (recorded, never dropped from the board). Instant-UI Phase 3.
+LOGGER_CYCLE_BUDGET_SEC: float = float(os.environ.get("ED_LOGGER_CYCLE_BUDGET_SEC", str(LOG_INTERVAL)))
 LOGGER_STARTUP_DELAY_SEC: float = float(os.environ.get("ED_LOGGER_STARTUP_DELAY_SEC", "60"))
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
@@ -3971,6 +4042,8 @@ def _hydrate_logger_tickers_from_db() -> None:
 # (server.py:_app_lifespan). The cheap JSON-file fallback (no DB) is retained for the degraded
 # no-signals path so its behavior is unchanged.
 _logger_tickers:  list[str] = list(CORE_TICKERS) if _HAS_SIGNALS else _load_persisted_tickers()
+_logger_deferred: list[str] = []          # leftover from a budget-capped cycle; still on the board
+_logger_last_deferred: list[str] = []     # last recorded deferral (ops / tests)
 _logger_stats:    dict      = {}  # ticker -> {last_logged, count, last_error}
 _accuracy_cache:  dict      = {}  # ticker -> {ts, results}
 ACCURACY_INTERVAL: int      = 600  # seconds between accuracy computations (~10 min)
@@ -4474,6 +4547,23 @@ def _logger_fetch_and_log(ticker: str) -> str:
         return f"error:{err}"
 
 
+def logger_cycle_order(board: list[str], deferred: list[str] | None = None) -> list[str]:
+    """Deferred-first, then the rest of the board. Nothing is dropped."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in list(deferred or []) + list(board):
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def logger_budget_over(elapsed_sec: float, budget_sec: float | None = None) -> bool:
+    """True when a logger sweep has used its wall-clock budget."""
+    cap = LOGGER_CYCLE_BUDGET_SEC if budget_sec is None else float(budget_sec)
+    return float(elapsed_sec) >= cap
+
+
 def _logger_loop():
     """
     Background thread: cycle through all tracked tickers every LOG_INTERVAL
@@ -4490,7 +4580,7 @@ def _logger_loop():
     API budget: 17 (global) + 12×3 (per-ticker) = 53 calls / 30s ≈ 106/min
     Plus active UI ticker (if not in core): +6/min → ~112/min (limit: 120/min)
     """
-    global _logger_running, _cached_mkt_ctx_ts
+    global _logger_running, _cached_mkt_ctx_ts, _logger_deferred, _logger_last_deferred
     log.info("Background multi-ticker logger started")
 
     # Delay first cycle so startup warm + first UI request can finish Tier C without
@@ -4501,7 +4591,8 @@ def _logger_loop():
         cycle_start = time.monotonic()
 
         with _logger_lock:
-            tickers_this_cycle = list(_logger_tickers)
+            tickers_this_cycle = logger_cycle_order(list(_logger_tickers), list(_logger_deferred))
+            _logger_deferred = []
 
         # UNIVERSAL COLLECTION IS UNCONDITIONAL (operator requirement, 2026-08-25):
         # every enrolled ticker collects EVERY cycle, viewer connected or not. The prior
@@ -4520,6 +4611,18 @@ def _logger_loop():
 
         for i, ticker in enumerate(tickers_this_cycle):
             if not _logger_running:
+                break
+            if i > 0 and logger_budget_over(time.monotonic() - cycle_start):
+                leftover = tickers_this_cycle[i:]
+                with _logger_lock:
+                    _logger_deferred = leftover
+                    _logger_last_deferred = list(leftover)
+                log.warning(
+                    "Logger cycle budget %.1fs exceeded after %.1fs — deferring %d "
+                    "tickers (board unchanged): %s",
+                    LOGGER_CYCLE_BUDGET_SEC, time.monotonic() - cycle_start,
+                    len(leftover), leftover,
+                )
                 break
             # Stagger: sleep between each ticker (not before the first)
             if i > 0:
@@ -5930,14 +6033,21 @@ async def _l1_light_sse_dispatch_loop() -> None:
             return None
 
     while True:
-        item = await loop.run_in_executor(None, _blocking_get)
+        item = await loop.run_in_executor(_get_l1_light_executor(), _blocking_get)
         if item is None:
             await asyncio.sleep(0.02)
             continue
         sk, env = item
         with _l1_light_sse_lock:
             clients = list(_l1_light_sse_clients)
+            watch_by_q = dict(_l1_light_sse_watch)
+        is_qt = isinstance(env, dict) and env.get("_sse_event_name") == "quote_tick"
+        qt_tk = env.get("ticker") if is_qt else None
         for q, csk in clients:
+            if is_qt:
+                if qt_tk == csk[0] or qt_tk in watch_by_q.get(id(q), ()):
+                    _l1_put_quote_tick_client_queue(q, env)
+                continue
             if csk != sk:
                 continue
             _l1_put_l1_client_queue(q, env)
@@ -9360,9 +9470,8 @@ async def _app_lifespan(app):
     global _main_event_loop
     _main_event_loop = asyncio.get_running_loop()
     asyncio.create_task(_sse_background_loop())
-    asyncio.create_task(_sse_live_quote_loop())
     asyncio.create_task(_l1_light_sse_dispatch_loop())
-    log.info("SSE background loop + live quote SSE loop + L1 light SSE dispatch started")
+    log.info("SSE background loop + L1 light SSE dispatch started")
 
     _schedule_startup_analytics_warm()
 
@@ -11320,13 +11429,16 @@ def terrain_cycle_tickers(
     at least once per CONTENTION_ROTATION_SEC (RC-146: spread the open's vendor budget, never
     starve a ticker).
 
-    Returns (refresh_now, deferred_this_cycle). Outside the contention window every ticker
-    refreshes, exactly as before.
+    Returns (refresh_now, deferred_this_cycle). Outside the contention window, with nobody
+    viewing, every ticker refreshes. While someone is viewing, non-viewed names rotate
+    (Instant-UI Phase 3 load isolation) so the 5s terrain sweep does not hold the chain
+    gate across the whole board.
     """
     viewed_set = {str(t).upper() for t in (viewed or [])}
     sentinels = [t for t in all_tickers if str(t).upper() in viewed_set]
     others = [t for t in all_tickers if str(t).upper() not in viewed_set]
-    if not (TERRAIN_CONTENTION_START_MINS <= int(mins) <= TERRAIN_CONTENTION_END_MINS):
+    in_contention = TERRAIN_CONTENTION_START_MINS <= int(mins) <= TERRAIN_CONTENTION_END_MINS
+    if not in_contention and not viewed_set:
         return list(all_tickers), []
     # integer ceiling division — server.py has no module-level `math`, and adding an import for
     # one division would be a wider change than the fix
@@ -13748,9 +13860,61 @@ def get_bars1m(ticker: str = Query(...),
                  "v": (float(b.volume) if getattr(b, "volume", None) is not None else None)}
                 for b in list(acc)[-int(limit):]]
         if bars:
-            return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars),
-                                 "source": "live_accumulator_unbanked"})
-    return JSONResponse({"ticker": tk, "bars": bars, "n": len(bars)})
+            return JSONResponse({"ticker": tk, "bars": overlay_forming_bar_from_plane(bars, tk),
+                                 "n": len(bars), "source": "live_accumulator_unbanked"})
+    return JSONResponse({"ticker": tk, "bars": overlay_forming_bar_from_plane(bars, tk),
+                         "n": len(bars)})
+
+
+def overlay_forming_bar_from_plane(bars: list[dict], ticker: str) -> list[dict]:
+    """Append or refresh the forming 1m candle from streamed LAST_PRICE / TRADE_TIME.
+
+    Browser chart pages must not invent OHLC from a poll. This is the one forming-bar
+    producer: the plane's live last, placed on the minute that trade belongs to.
+    """
+    row = _lmp.get_quote(ticker)
+    if not (row and _lmp.plane_row_is_streamed(row) and _lmp.plane_spot_is_last_price(row)
+            and _lmp.spot_is_fresh(row) and row.get("spot") is not None):
+        return list(bars)
+    px = float(row["spot"])
+    ts = row.get("exchange_quote_ts") or row.get("server_received_ts")
+    if ts is None:
+        acc = _candles_1m.forming_bar(ticker)
+        return list(bars) if acc is None else _merge_forming_bar(list(bars), acc)
+    ts = float(ts)
+    bar_t = ts - (ts % CANDLE_1M_SECONDS)
+    forming = {"t": bar_t, "o": px, "h": px, "l": px, "c": px, "v": None, "forming": True}
+    acc = _candles_1m.forming_bar(ticker)
+    if acc is not None and float(acc["t"]) == bar_t:
+        forming = dict(acc)
+        forming["c"] = px
+        forming["h"] = max(float(forming["h"]), px)
+        forming["l"] = min(float(forming["l"]), px)
+        forming["forming"] = True
+    return _merge_forming_bar(list(bars), forming)
+
+
+def _merge_forming_bar(bars: list[dict], forming: dict) -> list[dict]:
+    bar_t = float(forming["t"])
+    out = [dict(b) for b in bars]
+    if out and float(out[-1]["t"]) == bar_t:
+        last = out[-1]
+        last["c"] = forming["c"]
+        if last.get("h") is not None:
+            last["h"] = max(float(last["h"]), float(forming["h"]))
+        else:
+            last["h"] = forming["h"]
+        if last.get("l") is not None:
+            last["l"] = min(float(last["l"]), float(forming["l"]))
+        else:
+            last["l"] = forming["l"]
+        last["forming"] = True
+        out[-1] = last
+        return out
+    if out and float(out[-1]["t"]) > bar_t:
+        return out
+    out.append(dict(forming))
+    return out
 
 
 def _live_terrain_contracts_and_spot(tk: str) -> tuple[list | None, float | None]:
@@ -14712,60 +14876,51 @@ def get_exposure_history(ticker: str = Query(...)):
     return JSONResponse(payload)
 
 
-#: /api/spot upstream guard (operator 2026-07-23: "spot needs to be the fastest
-#: polling"). Every resolve_spot is a REAL Schwab REST quote against the shared
-#: ~120 req/min budget, so the endpoint caches per ticker for a short TTL — all
-#: viewers share one upstream call per window and the client can poll at 1.5s.
-_spot_poll_cache: dict[str, tuple[float, dict]] = {}
+#: /api/spot single-flight only (Instant-UI Phase 5). No TTL cache and no
+#: expired-payload-on-timeout: a waiter that cannot join this resolve gets 504.
 _spot_poll_lock = threading.Lock()
 _spot_poll_inflight: dict[str, threading.Event] = {}
-SPOT_POLL_TTL_SEC = 1.25
+_spot_poll_inflight_result: dict[str, dict] = {}
 
 
 @app.get("/api/spot")
 def get_spot(ticker: str = Query(...)):
-    """Featherweight live spot for fast UI polling. The ONE price authority
-    (resolve_spot, RC-14) behind a 1.25s per-ticker cache — no chain, no model
-    stack, budget-bounded regardless of poll rate or viewer count.
-
-    Concurrent cache misses single-flight: one Schwab quote; waiters join and
-    reuse the TTL-fresh cached payload. Waiters never each call resolve_spot —
-    on timeout they re-contend for leadership or serve the last cache entry
-    (stale beats a quote stampede).
+    """Featherweight live spot. The ONE price authority (resolve_spot) plus the
+    plane's streamed_chg_pct. Concurrent callers single-flight one resolve;
+    a timeout is absence, never a stale payload served as current.
     """
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     deadline = time.time() + 10.0
     while True:
-        now = time.time()
         with _spot_poll_lock:
-            hit = _spot_poll_cache.get(tk)
-            if hit and (now - hit[0]) < SPOT_POLL_TTL_SEC:
-                return JSONResponse(hit[1])
             leader = tk not in _spot_poll_inflight
             if leader:
                 _spot_poll_inflight[tk] = threading.Event()
+                _spot_poll_inflight_result.pop(tk, None)
             done = _spot_poll_inflight[tk]
         if not leader:
             remaining = deadline - time.time()
             if remaining <= 0:
-                with _spot_poll_lock:
-                    hit = _spot_poll_cache.get(tk)
-                if hit:
-                    return JSONResponse(hit[1])  # stale > stampede
                 return JSONResponse(
                     {"ticker": tk, "spot": None, "spot_source": None,
-                     "spot_as_of_ts_utc": None, "error": "spot_resolve_timeout"},
+                     "spot_state": "unavailable", "spot_as_of_ts_utc": None,
+                     "chg_pct": None, "error": "spot_resolve_timeout"},
                     status_code=504,
                 )
             done.wait(timeout=remaining)
+            with _spot_poll_lock:
+                hit = _spot_poll_inflight_result.get(tk)
+            if hit is not None:
+                return JSONResponse(hit)
             continue
         try:
             spot, source, ts = resolve_spot(tk)
             payload = {"ticker": tk, "spot": spot, "spot_source": source,
                        "spot_state": current_spot_state(source, tk),
-                       "spot_as_of_ts_utc": ts}
+                       "spot_as_of_ts_utc": ts,
+                       "chg_pct": _lmp.streamed_chg_pct(_lmp.get_quote(tk))}
             with _spot_poll_lock:
-                _spot_poll_cache[tk] = (time.time(), payload)
+                _spot_poll_inflight_result[tk] = payload
             return JSONResponse(payload)
         finally:
             with _spot_poll_lock:
@@ -15218,25 +15373,21 @@ async def get_analytics_light(
     return JSONResponse(out)
 
 
-#: seconds between `l1_quote` events on an idle header stream
-L1_QUOTE_HEARTBEAT_SEC = 1.0
-#: how often the header stream checks the in-memory plane for changed watchlist rows (the
-#: plane changes at most every 500 ms per symbol -- Schwab Express delivery)
-WL_PUSH_CHECK_SEC = 0.1
+#: seconds between idle `quote_tick` beats (liveness for a quiet but live feed)
+QUOTE_TICK_HEARTBEAT_SEC = 1.0
 
 
-def _l1_quote_event(ticker: str) -> dict:
-    """The header quote for `ticker` as it is this instant, from the ONE spot authority
-    (resolve_spot / current_spot_state) and the ONE change-% reader (streamed_chg_pct);
-    bid/ask only while the row's quote is live (quote_is_fresh). Sent on connect and every
-    L1_QUOTE_HEARTBEAT_SEC on an idle stream, so the header shows the live verdict within a
-    second -- it used to wait up to 9 s for a first projection and read OFFLINE on a quiet
-    ticker while the feed was healthy (audit 2026-09-24)."""
+def _quote_tick_event(ticker: str) -> dict:
+    """ONE displayed-price payload: resolve_spot + streamed_chg_pct + bid/ask while quote_is_fresh.
+
+    Used for the header, every watchlist row, the 1 s idle beat, and GET /api/watchlist-quotes.
+    No _project_l1. `ts_recv` is the daemon receive time of the plane row (latency probe)."""
     tk = ticker_storage_key(ticker)
     spot, source, _as_of = resolve_spot(tk)
     row = _lmp.get_quote(tk)
     quote_live = bool(row) and _lmp.quote_is_fresh(row)
     return {
+        "_sse_event_name": "quote_tick",
         "ticker": tk,
         "spot": spot,
         "spot_disp": (f"{spot:.2f}" if spot is not None else None),
@@ -15244,9 +15395,25 @@ def _l1_quote_event(ticker: str) -> dict:
         "bid": row["bid"] if quote_live and "bid" in row else None,
         "ask": row["ask"] if quote_live and "ask" in row else None,
         "chg_pct": _lmp.streamed_chg_pct(row),
-        "trade_ts_ms": row["trade_ts"] if spot is not None and "trade_ts" in row else None,
+        "trade_ts": row.get("trade_ts") if row and spot is not None else None,
+        "trade_ts_ms": row["trade_ts"] if row and spot is not None and "trade_ts" in row else None,
+        "ts_recv": row.get("server_received_ts") if row else None,
+        "quote_ingestion": row.get("quote_ingestion") if row else None,
         "server_ts": time.time(),
     }
+
+
+def _notify_quote_tick(ticker: str) -> None:
+    """Push the current plane row as quote_tick to every subscribed SSE client. No _project_l1."""
+    if not _quote_tick_has_audience(ticker):
+        return
+    env = _quote_tick_event(ticker)
+    _l1_put_thread_queue_notify((env["ticker"], "__quote_tick__"), env)
+
+
+def _format_quote_tick_sse(ticker: str) -> str:
+    env = _quote_tick_event(ticker)
+    return f"event: quote_tick\ndata: {json.dumps(env, default=str)}\n\n"
 
 
 def _sse_event_name_for_envelope(env) -> str:
@@ -15266,10 +15433,9 @@ async def get_analytics_light_stream(
     watch: Optional[str] = Query(default=None),
 ):
     """
-    Server-Sent Events for L1: pushes when _project_l1 completes for this scope (generation advances).
-    `watch` (comma list): watchlist symbols -- each row is pushed as a `wl_quote` event the
-    moment it changes (checked every WL_PUSH_CHECK_SEC against the in-memory plane).
-    Payload matches GET /api/analytics/light (uses _l1_http_get_projection — no duplicate compute path).
+    Server-Sent Events: quote_tick is the displayed price (header + watchlist) from the plane.
+    l1_projection / gamma_surface_seq still arrive on this connection after _project_l1 / surface publish.
+    `watch` (comma list): extra symbols that receive quote_tick on this same connection.
     """
     t = ticker.upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
@@ -15285,45 +15451,29 @@ async def get_analytics_light_stream(
     watched: list[str] = []
     for w in (watch or "").split(","):
         w = ticker_storage_key(w)
-        if w and w not in watched:
+        if w and w not in watched and w != ticker_storage_key(t):
             watched.append(w)
-    sent_wl: dict = {}
-
-    def _wl_events():
-        for w in watched:
-            cur = _watchlist_row(w)
-            if w not in sent_wl or sent_wl[w] != cur:
-                sent_wl[w] = cur
-                yield f"event: wl_quote\ndata: {json.dumps({'ticker': w, 'row': cur}, default=str)}\n\n"
+    _l1_bind_sse_watch(q, watched)
+    beat_tickers = [ticker_storage_key(t)] + watched
 
     async def event_generator():
         yield ": ok\n\n"
-        # the current quote at once -- the header never waits for a first projection
-        yield f"event: l1_quote\ndata: {json.dumps(_l1_quote_event(t), default=str)}\n\n"
-        for ev in _wl_events():
-            yield ev
+        for tk in beat_tickers:
+            yield _format_quote_tick_sse(tk)
         loop = asyncio.get_running_loop()
-        next_beat = loop.time() + L1_QUOTE_HEARTBEAT_SEC
+        next_beat = loop.time() + QUOTE_TICK_HEARTBEAT_SEC
         try:
             while True:
                 wait = max(0.0, next_beat - loop.time())
-                if watched:
-                    wait = min(wait, WL_PUSH_CHECK_SEC)
                 try:
                     env = await asyncio.wait_for(q.get(), timeout=wait)
-                    # RC-UI-2 (independent-review finding, 2026-09-12): this connection/queue/
-                    # dispatch pipe is entirely generic (see _l1_light_sse_dispatch_loop's own
-                    # docstring — it scope-matches and forwards the raw env, nothing L1-specific)
-                    # except the wire event name — see _sse_event_name_for_envelope.
                     yield f"event: {_sse_event_name_for_envelope(env)}\ndata: {json.dumps(env, default=str)}\n\n"
                 except asyncio.TimeoutError:
                     pass
-                for ev in _wl_events():                  # every watchlist row that changed
-                    yield ev
                 if loop.time() >= next_beat:
-                    # each second: the live verdict and quote, never a bare keep-alive comment
-                    yield f"event: l1_quote\ndata: {json.dumps(_l1_quote_event(t), default=str)}\n\n"
-                    next_beat = loop.time() + L1_QUOTE_HEARTBEAT_SEC
+                    for tk in beat_tickers:
+                        yield _format_quote_tick_sse(tk)
+                    next_beat = loop.time() + QUOTE_TICK_HEARTBEAT_SEC
         finally:
             _l1_light_sse_release(q, key, rs_key)
 
@@ -15879,137 +16029,19 @@ async def api_watchlist_quotes(tickers: str = Query(default="")):
 
 
 def _watchlist_row(t: str) -> "dict | None":
-    """ONE watchlist row: the symbol's streamed LAST_PRICE while its feed is live, else None
-    (UNAVAILABLE). Shared by GET /api/watchlist-quotes and the pushed `wl_quote` events."""
-    row = _lmp.get_quote(t)
-    if not (row and _lmp.plane_row_is_streamed(row) and _lmp.plane_spot_is_last_price(row)
-            and _lmp.spot_is_fresh(row)):
+    """ONE watchlist row: the same _quote_tick_event payload, withheld when not live."""
+    ev = _quote_tick_event(t)
+    if ev.get("spot_state") != "live" or ev.get("spot") is None:
         return None
     return {
-        "spot": row["spot"],
-        "spot_disp": row.get("spot_disp") or f"{row['spot']:.2f}",
-        "spot_state": "live",
+        "spot": ev["spot"],
+        "spot_disp": ev["spot_disp"],
+        "spot_state": ev["spot_state"],
         "spot_source": SPOT_SOURCE_PLANE,
-        "chg_pct": _lmp.streamed_chg_pct(row),
-        "exchange_quote_ts": row.get("exchange_quote_ts"),
+        "chg_pct": ev["chg_pct"],
+        "ts_recv": ev.get("ts_recv"),
+        "quote_ingestion": ev.get("quote_ingestion"),
     }
-
-
-@app.get("/api/stream")
-async def sse_stream(
-    ticker: str = Query(...),
-    expiry: Optional[str] = Query(default=None),
-):
-    """
-    Server-Sent Events stream: pushes market state snapshots whenever fresh data is available.
-    Client connects with ?ticker=X&expiry=Y; server fetches that ticker periodically and pushes.
-    """
-    ticker = ticker.upper().strip()
-    expiry = expiry or None
-    key = (ticker, expiry)
-    # TICKER-PREVIEW-NO-ENROLL: an SSE stream connect is a VIEW subscription, not a track —
-    # touch last-seen only (offloaded; may do a SQLite write for an already-enrolled ticker).
-    await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _touch_tracked_ticker_view, ticker)
-
-    stream_route_t0 = time.perf_counter()
-
-    async def event_generator():
-        global _sse_conn_epoch
-        q = asyncio.Queue(maxsize=10)
-        with _sse_lock:
-            _sse_clients.append(q)
-            _sse_subscribers[key] = _sse_subscribers.get(key, 0) + 1
-            # T5.1: a new connection changes the audience — the epoch bump makes
-            # the next cadence fanout deliver the current bundle to this client
-            # even when its identity is otherwise already-broadcast.
-            _sse_conn_epoch += 1
-        # Immediate SSE comment chunk: first body bytes must not wait on q.get() (up to 30s) or
-        # some proxies/clients defer visible connection until first chunk — CONNECTING sticks.
-        yield ": ok\n\n"
-        log.info(
-            "sse_stream_first_yield ticker=%s expiry=%s ms_since_route_entry=%.2f",
-            ticker,
-            expiry,
-            (time.perf_counter() - stream_route_t0) * 1000.0,
-        )
-        try:
-            while True:
-                try:
-                    raw = await asyncio.wait_for(q.get(), timeout=30.0)
-                    if (
-                        isinstance(raw, tuple)
-                        and len(raw) == 2
-                        and raw[0] == "live_quote"
-                    ):
-                        yield f"event: live_quote\ndata: {json.dumps(raw[1])}\n\n"
-                    else:
-                        yield f"data: {json.dumps(raw)}\n\n"
-                except asyncio.TimeoutError:
-                    yield ": heartbeat\n\n"
-        except (GeneratorExit, asyncio.CancelledError):
-            pass
-        finally:
-            with _sse_lock:
-                if q in _sse_clients:
-                    _sse_clients.remove(q)
-                cnt = _sse_subscribers.get(key, 0) - 1
-                if cnt <= 0:
-                    _sse_subscribers.pop(key, None)
-                else:
-                    _sse_subscribers[key] = cnt
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-async def _broadcast_live_quote_sse_payloads() -> None:
-    """
-    Layer A: push latest in-memory quote rows to SSE clients as `event: live_quote`.
-    No Schwab, no DB, no _fetch_state — subscribers see quote updates at LIVE_QUOTE_SSE_INTERVAL_SEC
-    whenever the plane has a new fast_generation_id (streaming Level One or REST fast-quote).
-    """
-    try:
-        with _sse_lock:
-            subs = list(_sse_subscribers.keys())
-        if not subs:
-            return
-        tickers = sorted({t for (t, _) in subs})
-        dead: list[asyncio.Queue] = []
-        for t in tickers:
-            payload = _lmp.take_fresh_sse_quote_payload(t)
-            if not payload:
-                continue
-            with _sse_lock:
-                clients = list(_sse_clients)
-            for q in clients:
-                try:
-                    q.put_nowait(("live_quote", payload))
-                except asyncio.QueueFull:
-                    dead.append(q)
-        for q in dead:
-            with _sse_lock:
-                if q in _sse_clients:
-                    _sse_clients.remove(q)
-        if dead:
-            log.debug("SSE live_quote: removed %s stalled client(s)", len(dead))
-    except Exception as e:
-        log.warning("live_quote broadcast: %s", e, exc_info=True)
-
-
-async def _sse_live_quote_loop() -> None:
-    """Layer A SSE — memory-only quote events, independent of analytical refresh cadence."""
-    while True:
-        try:
-            await asyncio.sleep(max(0.05, LIVE_QUOTE_SSE_INTERVAL_SEC))
-            await _broadcast_live_quote_sse_payloads()
-        except Exception as e:
-            log.warning("SSE live quote loop error: %s", e, exc_info=True)
 
 
 # IDLE_SENTINEL_FRESHNESS_V1 — pure selection for the idle-refresh arm below.

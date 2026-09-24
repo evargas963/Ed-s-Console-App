@@ -73,7 +73,7 @@ EXCLUDED: dict[str, str] = {
     "/api/exposure/history": "historical series, not the current instant",
     "/api/bars1m": "time series",
     "/api/expiries": "list of expiries, not a subject snapshot",
-    "/api/stream": "server-sent events, never terminates",
+    "/api/stream": "retired; live quotes are quote_tick on /api/analytics/light/stream",
     "/api/analytics/light/stream": "server-sent events, never terminates",
 }
 

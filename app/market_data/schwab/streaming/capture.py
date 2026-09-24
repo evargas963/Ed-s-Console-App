@@ -164,6 +164,23 @@ def parse_stream_item(item: dict, field_map: dict[str, str]) -> dict:
 # must therefore force the reconnect.
 STREAM_STALE_RECONNECT_SEC = 90.0    #: LEVELONE quiet this long -> recycle stream
 RECONNECT_COOLDOWN_SEC = 180.0       #: never login-spam Schwab on quiet tape
+#: Failed-reconnect retry, independent of the quiet-tape cooldown. 2s → 60s cap.
+FAILED_RECONNECT_BACKOFF_START_SEC = 2.0
+FAILED_RECONNECT_BACKOFF_CAP_SEC = 60.0
+
+
+def failed_reconnect_backoff_sec(failures: int) -> float:
+    """Backoff after a failed reconnect. Not the 180s quiet-tape guard."""
+    n = max(1, int(failures))
+    return min(
+        FAILED_RECONNECT_BACKOFF_CAP_SEC,
+        FAILED_RECONNECT_BACKOFF_START_SEC * (2 ** (n - 1)),
+    )
+
+
+def pump_frame_is_fatal(exc: BaseException) -> bool:
+    """Only a dead websocket kills the pump. Other per-frame errors are skipped."""
+    return _is_connection_death(exc)
 #: A pump that has DIED (handle_message raised: the socket is closed) is not a quiet feed to
 #: be waited out -- it is a known-dead socket. MEASURED 2026-09-23: the only recycle path was
 #: the quiet-feed watchdog (90 s quiet AND 180 s since the last reconnect), and typical SPY
@@ -219,10 +236,15 @@ class CaptureStats:
         self.handle_ms: list[float] = []
         self.per_service: dict[str, int] = {}
         self.raw_sampled: set[str] = set()
-        #: The ADMIN QOS outcome for the current session: {"requested", "code", "msg"} --
-        #: None until a session has asked. Reported in the status file so the delivery
-        #: cadence Schwab actually granted is visible, never assumed.
+        #: Streamer delivery ceiling for this session. Schwab's Streamer Guide does not
+        #: list ADMIN QOS; a live ADMIN/QOS request returned code 21 BAD_COMMAND_FORMAT.
+        #: Recorded so the 1 s ceiling is visible, never assumed away.
         self.qos: dict | None = None
+        self.frame_skips: dict[str, int] = {}
+
+    def record_frame_skip(self, reason: str) -> None:
+        key = (reason or "unknown")[:80]
+        self.frame_skips[key] = self.frame_skips.get(key, 0) + 1
 
     def record(self, service: str, dur_ms: float) -> None:
         self.per_service[service] = self.per_service.get(service, 0) + 1
@@ -251,43 +273,26 @@ def _stream_socket_open(stream, pump_task) -> bool:
         return False
 
 
-#: Schwab streamer ADMIN QOS level requested at login. Levels (Schwab / TDA Streamer guide):
-#: 0 Express 500 ms, 1 Real-Time 750 ms, 2 Fast 1000 ms (the server default), 3 Moderate
-#: 1500 ms, 4 Slow 3000 ms, 5 Delayed 5000 ms. MEASURED 2026-09-24 08:27 CT on the live
-#: daemon: every LEVELONE_EQUITIES symbol (43 streamed) arrived on a 1.01 s grid -- the
-#: default level-2 conflation -- so the desk saw one price per second. Express halves it.
-STREAM_QOS_LEVEL = 0
+#: Schwab Trader API Streamer Guide command field: LOGIN, SUBS, ADD, UNSUBS, VIEW, LOGOUT.
+#: ADMIN QOS is not a command. Live 2026-09-24: ADMIN/QOS qoslevel=0 → code 21
+#: BAD_COMMAND_FORMAT ("Command fails to match specification"). LEVELONE_EQUITIES arrives
+#: on the websocket default (~1.01 s). That is the delivery ceiling until Schwab adds a
+#: supported rate command or a tick-by-tick vendor is admitted.
+STREAM_DELIVERY_CEILING_SEC = 1.0
+STREAM_QOS_UNSUPPORTED = {
+    "supported": False,
+    "ceiling_sec": STREAM_DELIVERY_CEILING_SEC,
+    "evidence": (
+        "Streamer Guide commands=LOGIN,SUBS,ADD,UNSUBS,VIEW,LOGOUT; "
+        "live ADMIN QOS code=21 BAD_COMMAND_FORMAT"
+    ),
+}
 
 
-async def request_stream_qos(stream, stats: "CaptureStats", level: int = STREAM_QOS_LEVEL) -> dict:
-    """Ask Schwab for delivery level ``level`` on this logged-in session (ADMIN / QOS).
-
-    schwab-py implements only ADMIN LOGIN/LOGOUT, so the request is built with the
-    client's own request/send/await helpers -- the same wire shape as its LOGOUT. The
-    outcome (Schwab's response code and message) is recorded on ``stats.qos`` and printed.
-    A rejection is REPORTED, not hidden and not retried: the stream keeps Schwab's default
-    cadence and the status file says so. Never raises -- QOS changes only the delivery
-    interval, never whether data flows."""
-    outcome: dict = {"requested": level, "code": None, "msg": None}
-    try:
-        request, request_id = stream._make_request(
-            service="ADMIN", command="QOS", parameters={"qoslevel": str(level)})
-        async with stream._lock:
-            await stream._send({"requests": [request]})
-            await stream._await_response(request_id, "ADMIN", "QOS")
-        outcome["code"] = 0
-    except Exception as e:  # noqa: BLE001 -- reported below; the stream itself is unaffected
-        # schwab-py's UnexpectedResponseCode carries Schwab's reply as .response; read the
-        # code/msg off it (duck-typed: no import of the exception class is needed).
-        try:
-            content = e.response["response"][0]["content"]      # Schwab's ADMIN reply
-            outcome["code"] = content["code"]
-            outcome["msg"] = content["msg"]
-        except (AttributeError, KeyError, IndexError, TypeError):  # not a Schwab reply
-            outcome["msg"] = f"{type(e).__name__}: {str(e)[:200]}"
-    stats.qos = outcome
-    print(f"ADMIN QOS request level={level}: code={outcome['code']} msg={outcome['msg']!r}")
-    return outcome
+def record_stream_delivery_ceiling(stats: "CaptureStats") -> dict:
+    """Record the documented 1 s ceiling. Sends nothing on the Schwab socket."""
+    stats.qos = dict(STREAM_QOS_UNSUPPORTED)
+    return stats.qos
 
 
 def save_raw_sample(service: str, msg: dict, stats: CaptureStats) -> None:
@@ -1715,6 +1720,7 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
         # the Schwab delivery level this session asked for and what Schwab answered
         "qos": stats.qos,
         "published": bus.published, "drops": bus.drop_counts(),
+        "frame_skips": dict(stats.frame_skips),
         "rows_written": writer.rows_written, "commits": writer.commits,
         "insert_errors": writer.insert_errors,
         "max_writer_queue_depth": max_qdepth,
@@ -2095,7 +2101,7 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
     """Everything _schwab_connect does once a live session exists. Split out ONLY so the
     ownership boundary above is a single try/except around one call rather than a large
     indented block — every path out of here is covered by that retirement."""
-    await request_stream_qos(stream, stats)
+    record_stream_delivery_ceiling(stats)
     stream.add_level_one_equity_handler(
         make_handler("LEVELONE_EQUITIES", LEVELONE_FIELDS, "quote", bus, health, stats))
     stream.add_chart_equity_handler(
@@ -2134,7 +2140,15 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
 
     async def pump() -> None:
         while not stop.is_set():
-            await stream.handle_message()
+            try:
+                await stream.handle_message()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if pump_frame_is_fatal(exc):
+                    raise
+                stats.record_frame_skip(type(exc).__name__)
+                print(f"pump: skipped frame ({type(exc).__name__}: {exc})")
 
     return stream, asyncio.create_task(pump()), option_contract_state
 
@@ -2231,6 +2245,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
 
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
     last_reconnect = time.monotonic()
+    reconnect_failures = 0
+    failed_reconnect_pending = False
     try:
         # ── INITIALIZATION IS INSIDE THE LIFECYCLE BOUNDARY ─────────────────────
         # The writer must be draining before any producer can publish, so it starts
@@ -2263,7 +2279,9 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             return {"ts": time.time(),
                     "schwab_socket_open": _stream_socket_open(book_state["stream"], pump_task),
                     "equities_held": sorted(set(symbols) | set(equity_state["held"])),
-                    "health": health.report()}
+                    "health": health.report(),
+                    "drops": bus.drop_counts(),
+                    "frame_skips": dict(stats.frame_skips)}
 
         push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats,
                                                         heartbeat_fn=_heartbeat))
@@ -2291,10 +2309,15 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             _dead = pump_died(pump_task)
             _dead_now = (_dead is not None and is_capturable_session()
                          and time.monotonic() - last_reconnect > PUMP_DEATH_RECONNECT_MIN_SEC)
-            if _coverage_forced or _dead_now or stream_needs_recycle(
+            if (failed_reconnect_pending or _coverage_forced or _dead_now
+                    or stream_needs_recycle(
                     age, seen, time.monotonic() - last_reconnect,
-                    is_capturable_session()):
-                if _dead_now and not _coverage_forced:
+                    is_capturable_session())):
+                if failed_reconnect_pending:
+                    print("watchdog: retrying failed reconnect "
+                          f"(attempt {reconnect_failures + 1})")
+                    failed_reconnect_pending = False
+                elif _dead_now and not _coverage_forced:
                     print(f"watchdog: Schwab stream socket DIED ({type(_dead).__name__}: "
                           f"{_dead}) — recycling now, not after the quiet-feed wait")
                 elif _coverage_forced:
@@ -2388,6 +2411,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                         writer=writer, epoch_state=option_epoch_state)
                     book_state["stream"] = stream
                     option_state["stream"] = stream
+                    reconnect_failures = 0
+                    failed_reconnect_pending = False
                 except OptionCoverageCompensationError as exc:
                     # A coverage escalation is NOT an ordinary connect failure and must
                     # not be silently downgraded into one. _schwab_connect has already
@@ -2398,10 +2423,18 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                           f"({exc}) — partial session retired; rebuild re-armed")
                     option_recycle_request.set()
                     pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
-                except Exception as exc:  # noqa: BLE001 — retry next tick, loudly
+                except Exception as exc:  # noqa: BLE001 — retry with 2s→60s, not 180s quiet-tape
+                    reconnect_failures += 1
+                    delay = failed_reconnect_backoff_sec(reconnect_failures)
                     print(f"watchdog: reconnect FAILED ({type(exc).__name__}: {exc}) "
-                          f"— retrying after cooldown")
+                          f"— retrying in {delay:.0f}s (failed-reconnect backoff, "
+                          f"not the {RECONNECT_COOLDOWN_SEC:.0f}s quiet-tape cooldown)")
                     pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
+                    stream = None
+                    book_state["stream"] = None
+                    option_state["stream"] = None
+                    failed_reconnect_pending = True
+                    await asyncio.sleep(delay)
                 # Control tasks are re-created for the NEW generation either way: on a
                 # failed reconnect both stream handles are None, so they idle harmlessly
                 # until a later pass succeeds.

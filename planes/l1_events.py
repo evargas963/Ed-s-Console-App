@@ -36,17 +36,31 @@ _rebuild_quote_fn: Optional[Callable[[str], None]] = None
 
 
 def notify_quote_updated(ticker: str) -> None:
-    """Call when the streamed quote row changes. Rebuilds the ticker's L1 projection AT ONCE.
+    """Call when the streamed quote row changes.
 
-    Leading edge, no timer: the first quote starts a rebuild immediately; quotes that arrive
-    while it runs mark the ticker dirty and trigger exactly ONE trailing rebuild, which reads
-    the newest row -- nothing is queued up, nothing is lost. This used to restart a 120 ms
-    threading.Timer on every message (a new OS thread per message) and rebuild only when the
-    timer finally expired (audit 2026-09-24: delay on every tick; no bound while ticks kept
-    arriving faster than 120 ms)."""
+    quote_tick goes out first (plane row, no projection). L1 rebuild runs only when this
+    ticker has an L1 SSE subscriber — a 43-symbol roster must not _project_l1 for names
+    nobody is viewing. Leading-edge coalesce (one running + one trailing), no timer."""
     t = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 key (write+read consistent; idempotent on stream symbols)
     if not t:
         return
+    try:
+        import server as srv
+
+        srv._notify_quote_tick(t)
+    except Exception as ex:
+        log.debug("quote_tick notify: %s", ex)
+    # Test hook drives the coalesce proof without an SSE client. Production rebuilds
+    # only when someone is subscribed to this ticker's L1 stream.
+    if _rebuild_quote_fn is None:
+        try:
+            import server as srv
+
+            if not srv._l1_ticker_has_projection_subscriber(t):
+                return
+        except Exception as ex:
+            log.debug("L1 subscriber gate: %s", ex)
+            return
     with _inflight_lock:
         st = _inflight.setdefault(t, {"running": False, "dirty": False})
         if st["running"]:

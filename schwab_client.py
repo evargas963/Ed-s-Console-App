@@ -110,6 +110,20 @@ def _resolve_token_path(token_path: str) -> str:
     return os.path.abspath(os.path.expanduser(token_path))
 
 
+def write_token_file_atomically(token_path: str, payload: dict) -> None:
+    """Write schwab_token.json via temp + fsync + replace. No partial destination.
+
+    schwab-py's own login/refresh writer is a separate path; this is the
+    repository-owned write. A torn write on the vendor path is [UNVERIFIED]
+    until Phase 7 measures one.
+    """
+    from pathlib import Path
+
+    from arch_competition.atomic_io import write_json_file_atomically
+
+    write_json_file_atomically(Path(_resolve_token_path(token_path)), payload)
+
+
 def inspect_token_file(token_path: str) -> TokenInspectionResult:
     """Inspect schwab-py token JSON at token_path (normalized to absolute). Does not log secrets."""
     out = TokenInspectionResult()
@@ -291,7 +305,7 @@ def run_login_flow(api_key: str, app_secret: str, callback_url: str, token_path:
                 token_path=token_path,
                 enforce_enums=False,
                 interactive=False,
-                callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),
+                callback_timeout=float(os.environ.get("SCHWAB_OAUTH_CALLBACK_TIMEOUT_SEC", "900")),  # caps-ok: OAuth/config timeout only
             )
         except BaseException as e:
             exc_holder.append(e)
@@ -369,8 +383,8 @@ def complete_oauth_from_redirect_url(
         return False, "Redirect URL is empty."
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
-    state = (qs.get("state") or [None])[0]
-    if not (qs.get("code") or [None])[0]:
+    state = (qs.get("state") or [None])[0]  # caps-ok: parse_qs indexing idiom only
+    if not (qs.get("code") or [None])[0]:  # caps-ok: parse_qs indexing idiom only
         return False, "Redirect URL missing OAuth code query parameter."
 
     resolved = _resolve_token_path(token_path)
@@ -401,7 +415,7 @@ class SchwabAuthError(Exception):
 
 
 _schwab_auth_failure_until_mono: float = 0.0
-_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))
+_SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))  # caps-ok: OAuth/config timeout only
 
 
 def _is_token_error(exc: BaseException) -> bool:

@@ -269,6 +269,18 @@ def test_outside_contention_nothing_is_deferred():
         assert deferred == [] and now == board, f"ET minute {mins} deferred unexpectedly"
 
 
+def test_outside_contention_viewed_tickers_rotate_the_rest():
+    """Phase 3 load isolation: while someone is viewing, non-viewed names rotate
+    even outside the morning window. The viewed ticker is never deferred."""
+    s = _server()
+    board = _board()
+    viewed = [board[0]]
+    now, deferred = s.terrain_cycle_tickers(board, 720, 1, viewed=viewed)
+    assert viewed[0] in now
+    assert deferred, "non-viewed tickers must rotate while someone is viewing"
+    assert viewed[0] not in deferred
+
+
 def test_storm1_absence_reads_as_absence():
     assert strongest_strike_storm1([]) is None
     assert strongest_strike_storm1(None) is None

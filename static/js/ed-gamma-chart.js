@@ -42,11 +42,7 @@
   var _view = null;            // {lo, hi} once the operator has zoomed/panned; null = auto-fit
   var _pin = null;             // {vx, vy} pinned crosshair in viewBox space, or null
   var _lastCtx = null;         // {bars, win, spot, terrain} from the last successful render
-  var _lastRaw = null;         // {barsData, strikesData, terrain} raw endpoint responses --
-                               // lets a gamma-surface-only push (see loadGammaPushOnly below)
-                               // re-render with fresh GEX-by-strike data without re-fetching
-                               // the two endpoints (bars1m/terrain) that push carries no new
-                               // information for.
+  var _lastBarsData = null;    // last successful /api/bars1m payload (historical minutes)
   var _viewTicker = null, _viewMode = null;   // domain resets only on a genuine context change
   // Deep-research finding (operator directive, 2026-09-14): real TradingView gives its
   // SECONDARY axis the same independent drag-to-rescale the primary axis gets (there, time is
@@ -315,11 +311,8 @@
     ]).then(function (res) {
       if (!stillChart(tk)) return;
       var strikesData = res[0], terrain = res[1];
-      if (strikesData == null && terrain == null) return;
-      var barsData = _lastRaw ? _lastRaw.barsData : null;
-      if (strikesData == null) strikesData = _lastRaw ? _lastRaw.strikesData : null;
-      if (terrain == null) terrain = _lastRaw ? _lastRaw.terrain : null;
-      render(host, barsData, strikesData, terrain);
+      if (strikesData == null || terrain == null) return;
+      render(host, _lastBarsData, strikesData, terrain);
     });
   }
   var _gammaPushLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
@@ -406,7 +399,7 @@
       // axis visibly narrowed the window but the note never appeared. renderInto re-evaluates
       // it fresh on every call instead, the same way it already does for `lo`/`hi` under _view.
     _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend };
-    _lastRaw = { barsData: barsData, strikesData: strikesData, terrain: terrain };
+    if (barsData && barsData.bars) _lastBarsData = barsData;
     renderInto(host, bars, win, spot, terrain, legend);
   }
   // Repaints from already-fetched data at a possibly operator-overridden [lo,hi] domain -- used
@@ -648,8 +641,30 @@
     });
   }
 
+  function applyQuoteTick(q) {
+    if (!isChart() || !_lastCtx) return;
+    if (!q || String(q.ticker || '').toUpperCase() !== String(ticker()).toUpperCase()) return;
+    var px = (q.spot != null && q.spot_state === 'live') ? Number(q.spot) : NaN;
+    var bars = (_lastCtx.bars || []).slice();
+    if (bars.length && isFinite(px)) {
+      var last = {};
+      var src = bars[bars.length - 1];
+      for (var k in src) last[k] = src[k];
+      last.c = px;
+      bars[bars.length - 1] = last;
+    }
+    var terrain = _lastCtx.terrain ? Object.assign({}, _lastCtx.terrain) : {};
+    terrain.spot = isFinite(px) ? px : null;
+    _lastCtx.bars = bars;
+    _lastCtx.spot = isFinite(px) ? px : NaN;
+    _lastCtx.terrain = terrain;
+    var host = document.getElementById('chartBody');
+    if (host) renderInto(host, bars, _lastCtx.win, _lastCtx.spot, terrain, _lastCtx.legend);
+  }
+  window.addEventListener('ed:quote_tick', function (ev) { applyQuoteTick((ev && ev.detail) || {}); });
+
   document.addEventListener('ed:view', load);
-  document.addEventListener('ed:ticker', load);
+  document.addEventListener('ed:ticker', function () { _lastBarsData = null; load(); });
   document.addEventListener('ed:scope', load);   // #3: re-window on a scope change
   document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
   // Audit finding #3 (2026-09-16, follow-up): only /api/terrain/strikes (this widget's

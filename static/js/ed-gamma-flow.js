@@ -155,7 +155,7 @@
     var fresh = [
       ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', 'ages.book_age_sec', bk('ages.book_age_sec')],
       ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', 'ages.quote_age_sec', bk('ages.quote_age_sec')],
-      ['Streaming', (plane.streaming_healthy === true ? 'healthy' : (plane.streaming_healthy === false ? 'unhealthy' : '—')) +
+      ['Book slot', (plane.streaming_healthy === true ? 'healthy' : (plane.streaming_healthy === false ? 'unhealthy' : '—')) +
         (plane.streaming_staleness_ms != null ? ' · ' + Math.round(plane.streaming_staleness_ms) + 'ms' : ''),
         'streaming_plane.streaming_healthy', undefined],
     ];

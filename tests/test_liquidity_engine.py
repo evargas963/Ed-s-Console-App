@@ -734,16 +734,17 @@ def test_chart_raw_levels_fail_closed_on_absence():
     assert "rawLevelsTicker" in src, (
         "no pending-state reset — the prior ticker's levels survive a symbol switch"
     )
-    # F31 connected consumer: Chart legend change is PDC-only (RC-213 B3). Absent PDC
-    # omits the span; it must not fill with spy/qqq/iwm_chg_pct.
-    i_leg = src.find("pdc from the engine only")
-    assert i_leg != -1, "Chart legend PDC comment (RC-213) is gone"
+    # Instant-UI Phase 5: Chart legend change is streamed_chg_pct from /api/spot.
+    # Absent chg omits the span; it must not fill with spy/qqq/iwm_chg_pct or
+    # browser (dn/pdc*100). RC-213 B3's fail-closed-on-absence still holds.
+    i_leg = src.find("legend change % is streamed_chg_pct from /api/spot")
+    assert i_leg != -1, "Chart legend streamed-change comment is gone"
     legend = src[i_leg:i_leg + 900]
-    assert "enginePD().pdc" in legend
+    assert "liveSpotChg" in legend
     assert "spy_chg_pct" not in legend
     assert "qqq_chg_pct" not in legend
     assert "iwm_chg_pct" not in legend
-    assert "dn == null ? ''" in legend or "dn == null ? \"\"" in legend
+    assert "chg == null ? ''" in legend or "chg == null ? \"\"" in legend
 
 
 def test_cluster_price_levels():

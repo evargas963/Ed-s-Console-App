@@ -915,9 +915,10 @@
     // over the WHOLE canonical surface (the first fix) was itself still wrong scope -- see
     // _visibleCellCoverage's own comment. The word "LIVE" (in ANY form, including a
     // percentage-qualified one) never renders below 100% visible coverage: a partial cover
-    // reads "STREAMING·NN%", a wholly unconfirmed one "WARMING" -- neither contains the
-    // literal word LIVE, so a viewer scanning for that one word can never mistake a partial
-    // reading for a complete one.
+    // reads "OPT CELLS·NN%" (option-cell overlay, not the equity feed), a wholly
+    // unconfirmed one "WARMING" -- neither contains the literal word LIVE, so a
+    // viewer scanning for that one word can never mistake a partial reading for a
+    // complete one.
     var cov = _visibleCellCoverage();
     var liveWord;
     if (cov.total_visible_cells === 0) {
@@ -925,7 +926,7 @@
     } else if (cov.meets_live_requirement) {
       liveWord = 'LIVE';
     } else {
-      liveWord = 'STREAMING·' + cov.live_pct.toFixed(0) + '%';
+      liveWord = 'OPT CELLS·' + cov.live_pct.toFixed(0) + '%';
     }
     var srcLabel = surface.source === 'terrain_live_cache' ? (liveWord + (surface.complete === false ? '·window' : ''))
       : (surface.source || '');

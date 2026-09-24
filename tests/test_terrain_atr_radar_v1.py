@@ -270,9 +270,9 @@ def test_radar_fallback_never_blocks_serves_stale_and_single_flights(monkeypatch
     assert kicks["n"] == 0, "fresh empty memo must not re-stampede the fallback"
 
 
-def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
-    """Budget guard: TTL hit + concurrent misses single-flight to ONE resolve_spot
-    (every upstream call is a real Schwab request against the shared budget)."""
+def test_spot_endpoint_single_flights_without_stale_cache(monkeypatch):
+    """Concurrent misses share one resolve_spot. No TTL cache; a later call resolves again.
+    A timeout is absence, never an expired payload served as current."""
     import json as _json
     import threading as th
     import time as _t
@@ -292,8 +292,8 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
         return (123.45, "test_quote", 1.0)
 
     monkeypatch.setattr(srv, "resolve_spot", _fake)
-    srv._spot_poll_cache.clear()
     srv._spot_poll_inflight.clear()
+    srv._spot_poll_inflight_result.clear()
 
     results: list = []
     slock = th.Lock()
@@ -318,9 +318,9 @@ def test_spot_endpoint_caches_upstream_within_ttl(monkeypatch):
 
     resp2 = srv.get_spot(ticker="SPY")
     assert _json.loads(resp2.body.decode("utf-8"))["spot"] == 123.45
-    assert calls["n"] == 1, "TTL hit must not resolve again"
-    srv._spot_poll_cache.clear()
+    assert calls["n"] == 2, "no TTL cache — a later call must resolve again"
     srv._spot_poll_inflight.clear()
+    srv._spot_poll_inflight_result.clear()
 
 
 def test_spot_endpoint_shape_single_authority():
@@ -329,7 +329,7 @@ def test_spot_endpoint_shape_single_authority():
     TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
     get_spot is a plain sync handler taking one Query param and returning a
     JSONResponse it builds itself -- no auth, middleware, Request, or response_model.
-    test_spot_endpoint_caches_upstream_within_ttl in this same file already calls it
+    test_spot_endpoint_single_flights_without_stale_cache in this same file already calls it
     directly, so the direct seam is the established pattern for this endpoint."""
     import json
 
@@ -337,7 +337,9 @@ def test_spot_endpoint_shape_single_authority():
 
     body = json.loads(srv.get_spot(ticker="SPY").body)
     assert body["ticker"] == "SPY"
-    assert set(body) == {"ticker", "spot", "spot_source", "spot_state", "spot_as_of_ts_utc"}
+    assert set(body) == {
+        "ticker", "spot", "spot_source", "spot_state", "spot_as_of_ts_utc", "chg_pct",
+    }
 
 
 def test_scorecard_endpoint_serves_live_coach_numbers_or_empty():

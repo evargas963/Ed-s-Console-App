@@ -473,7 +473,10 @@ def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
         _push_messages_applied += 1
         if sym == _active_ticker:
             _streaming_last_update_ts = ts
-            if _on_tick_callback:
+        if _on_tick_callback:
+            with _equity_lock:
+                viewed = {_active_ticker} | set(_equity_demand.get("watchlist") or [])
+            if sym in viewed:
                 try:
                     _on_tick_callback(sym)
                 except Exception as e:  # noqa: BLE001

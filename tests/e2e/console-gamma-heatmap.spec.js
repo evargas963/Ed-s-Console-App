@@ -1158,10 +1158,26 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveText('RTH');          // session still read
   });
 
-  test('header consumes the canonical L1 SSE push (real server envelope) when available', async ({ page }) => {
-    // The server sends an ENVELOPE {scope, payload}; the quote lives on env.payload. This event
-    // is the ACTUAL production shape — a root-field parser would read undefined and never paint,
-    // so this test fails against the broken parser and passes only when the envelope is consumed.
+  test('header consumes the canonical quote_tick SSE push when available', async ({ page }) => {
+    // Instant-UI Phase 2: displayed last/bid/ask come from quote_tick (plane row).
+    // The wire payload is the plane row itself — a parser that still looks for
+    // env.payload.spot would read undefined and never paint.
+    const ts = Date.now() / 1000;
+    await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
+      status: 200, contentType: 'text/event-stream',
+      body: 'event: quote_tick\ndata: ' + JSON.stringify({
+        ticker: 'SPY', spot: 601.23, spot_disp: '601.23',
+        spot_state: 'live', bid: 601.20, ask: 601.25, chg_pct: 0.5,
+        quote_ingestion: 'schwab_streaming_level_one',
+        server_ts: ts, ts_recv: ts, trade_ts_ms: Math.round(ts * 1000),
+      }) + '\n\n',
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hFeed')).toContainText('LIVE');
+  });
+
+  test('header ignores an l1_projection envelope (price is quote_tick only)', async ({ page }) => {
     const ts = Date.now() / 1000;
     await page.route('**/api/analytics/light/stream**', (route) => route.fulfill({
       status: 200, contentType: 'text/event-stream',
@@ -1175,9 +1191,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       }) + '\n\n',
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // 601.23 comes only from env.payload -- the header's one source
-    await expect(page.locator('#hPx')).toHaveText('601.23');
-    await expect(page.locator('#hFeed')).toContainText('LIVE');
+    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
+    await expect(page.locator('#hFeed')).not.toContainText('LIVE');
   });
 
   test('theme A/B: explicit dark and light selections persist across reload', async ({ page }) => {
@@ -2462,7 +2477,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     const scopeText = await page.locator('#heatScope').textContent();
-    expect(scopeText).toMatch(/STREAMING·50%/);
+    expect(scopeText).toMatch(/OPT CELLS·50%/);
     expect(scopeText).not.toMatch(/LIVE/);   // the literal word must never appear below 100%
     await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 outside the stream budget, 0 unavailable of 2 visible/);
   });
