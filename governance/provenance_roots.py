@@ -76,7 +76,6 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/release/current': ('OPS', None),
     '/api/spot': ('PRODUCER', 'server.py:get_spot'),
     '/api/state': ('CARRIER', None),
-    '/api/stream': ('STREAM', None),
     '/api/streaming/active-option-contract': ('OPERATOR_INPUT', None),
     '/api/streaming/active-option-contracts': ('OPERATOR_INPUT', None),
     '/api/streaming/watchlist-symbols': ('OPERATOR_INPUT', None),

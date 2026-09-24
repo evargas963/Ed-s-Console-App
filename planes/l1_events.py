@@ -50,14 +50,17 @@ def notify_quote_updated(ticker: str) -> None:
         srv._notify_quote_tick(t)
     except Exception as ex:
         log.debug("quote_tick notify: %s", ex)
-    try:
-        import server as srv
+    # Test hook drives the coalesce proof without an SSE client. Production rebuilds
+    # only when someone is subscribed to this ticker's L1 stream.
+    if _rebuild_quote_fn is None:
+        try:
+            import server as srv
 
-        if not srv._l1_ticker_has_projection_subscriber(t):
+            if not srv._l1_ticker_has_projection_subscriber(t):
+                return
+        except Exception as ex:
+            log.debug("L1 subscriber gate: %s", ex)
             return
-    except Exception as ex:
-        log.debug("L1 subscriber gate: %s", ex)
-        return
     with _inflight_lock:
         st = _inflight.setdefault(t, {"running": False, "dirty": False})
         if st["running"]:

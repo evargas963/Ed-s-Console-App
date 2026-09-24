@@ -826,6 +826,7 @@
           q.spot_state || 'unavailable');
         markWlHealthy();
       }
+      try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
     });
     _sse.addEventListener('gamma_surface_seq', function (ev) {
       var env; try { env = JSON.parse(ev.data); } catch (e) { return; }

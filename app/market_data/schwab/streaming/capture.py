@@ -164,6 +164,23 @@ def parse_stream_item(item: dict, field_map: dict[str, str]) -> dict:
 # must therefore force the reconnect.
 STREAM_STALE_RECONNECT_SEC = 90.0    #: LEVELONE quiet this long -> recycle stream
 RECONNECT_COOLDOWN_SEC = 180.0       #: never login-spam Schwab on quiet tape
+#: Failed-reconnect retry, independent of the quiet-tape cooldown. 2s → 60s cap.
+FAILED_RECONNECT_BACKOFF_START_SEC = 2.0
+FAILED_RECONNECT_BACKOFF_CAP_SEC = 60.0
+
+
+def failed_reconnect_backoff_sec(failures: int) -> float:
+    """Backoff after a failed reconnect. Not the 180s quiet-tape guard."""
+    n = max(1, int(failures))
+    return min(
+        FAILED_RECONNECT_BACKOFF_CAP_SEC,
+        FAILED_RECONNECT_BACKOFF_START_SEC * (2 ** (n - 1)),
+    )
+
+
+def pump_frame_is_fatal(exc: BaseException) -> bool:
+    """Only a dead websocket kills the pump. Other per-frame errors are skipped."""
+    return _is_connection_death(exc)
 #: A pump that has DIED (handle_message raised: the socket is closed) is not a quiet feed to
 #: be waited out -- it is a known-dead socket. MEASURED 2026-09-23: the only recycle path was
 #: the quiet-feed watchdog (90 s quiet AND 180 s since the last reconnect), and typical SPY
@@ -223,6 +240,11 @@ class CaptureStats:
         #: list ADMIN QOS; a live ADMIN/QOS request returned code 21 BAD_COMMAND_FORMAT.
         #: Recorded so the 1 s ceiling is visible, never assumed away.
         self.qos: dict | None = None
+        self.frame_skips: dict[str, int] = {}
+
+    def record_frame_skip(self, reason: str) -> None:
+        key = (reason or "unknown")[:80]
+        self.frame_skips[key] = self.frame_skips.get(key, 0) + 1
 
     def record(self, service: str, dur_ms: float) -> None:
         self.per_service[service] = self.per_service.get(service, 0) + 1
@@ -1698,6 +1720,7 @@ def write_status(bus: MessageBus, health: HealthRegistry, writer: CaptureWriter,
         # the Schwab delivery level this session asked for and what Schwab answered
         "qos": stats.qos,
         "published": bus.published, "drops": bus.drop_counts(),
+        "frame_skips": dict(stats.frame_skips),
         "rows_written": writer.rows_written, "commits": writer.commits,
         "insert_errors": writer.insert_errors,
         "max_writer_queue_depth": max_qdepth,
@@ -2117,7 +2140,15 @@ async def _schwab_connect_after_login(stream, symbols, bus, health, stats, stop,
 
     async def pump() -> None:
         while not stop.is_set():
-            await stream.handle_message()
+            try:
+                await stream.handle_message()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if pump_frame_is_fatal(exc):
+                    raise
+                stats.record_frame_skip(type(exc).__name__)
+                print(f"pump: skipped frame ({type(exc).__name__}: {exc})")
 
     return stream, asyncio.create_task(pump()), option_contract_state
 
@@ -2214,6 +2245,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
 
     deadline = time.monotonic() + duration_min * 60 if duration_min > 0 else None
     last_reconnect = time.monotonic()
+    reconnect_failures = 0
+    failed_reconnect_pending = False
     try:
         # ── INITIALIZATION IS INSIDE THE LIFECYCLE BOUNDARY ─────────────────────
         # The writer must be draining before any producer can publish, so it starts
@@ -2246,7 +2279,9 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             return {"ts": time.time(),
                     "schwab_socket_open": _stream_socket_open(book_state["stream"], pump_task),
                     "equities_held": sorted(set(symbols) | set(equity_state["held"])),
-                    "health": health.report()}
+                    "health": health.report(),
+                    "drops": bus.drop_counts(),
+                    "frame_skips": dict(stats.frame_skips)}
 
         push_task = asyncio.create_task(serve_live_push(bus, stop, stats=push_stats,
                                                         heartbeat_fn=_heartbeat))
@@ -2274,10 +2309,15 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
             _dead = pump_died(pump_task)
             _dead_now = (_dead is not None and is_capturable_session()
                          and time.monotonic() - last_reconnect > PUMP_DEATH_RECONNECT_MIN_SEC)
-            if _coverage_forced or _dead_now or stream_needs_recycle(
+            if (failed_reconnect_pending or _coverage_forced or _dead_now
+                    or stream_needs_recycle(
                     age, seen, time.monotonic() - last_reconnect,
-                    is_capturable_session()):
-                if _dead_now and not _coverage_forced:
+                    is_capturable_session())):
+                if failed_reconnect_pending:
+                    print("watchdog: retrying failed reconnect "
+                          f"(attempt {reconnect_failures + 1})")
+                    failed_reconnect_pending = False
+                elif _dead_now and not _coverage_forced:
                     print(f"watchdog: Schwab stream socket DIED ({type(_dead).__name__}: "
                           f"{_dead}) — recycling now, not after the quiet-feed wait")
                 elif _coverage_forced:
@@ -2371,6 +2411,8 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                         writer=writer, epoch_state=option_epoch_state)
                     book_state["stream"] = stream
                     option_state["stream"] = stream
+                    reconnect_failures = 0
+                    failed_reconnect_pending = False
                 except OptionCoverageCompensationError as exc:
                     # A coverage escalation is NOT an ordinary connect failure and must
                     # not be silently downgraded into one. _schwab_connect has already
@@ -2381,10 +2423,18 @@ async def _run_streaming(symbols, duration_min, bus, health, stats,
                           f"({exc}) — partial session retired; rebuild re-armed")
                     option_recycle_request.set()
                     pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
-                except Exception as exc:  # noqa: BLE001 — retry next tick, loudly
+                except Exception as exc:  # noqa: BLE001 — retry with 2s→60s, not 180s quiet-tape
+                    reconnect_failures += 1
+                    delay = failed_reconnect_backoff_sec(reconnect_failures)
                     print(f"watchdog: reconnect FAILED ({type(exc).__name__}: {exc}) "
-                          f"— retrying after cooldown")
+                          f"— retrying in {delay:.0f}s (failed-reconnect backoff, "
+                          f"not the {RECONNECT_COOLDOWN_SEC:.0f}s quiet-tape cooldown)")
                     pump_task = asyncio.create_task(asyncio.sleep(0))  # placeholder
+                    stream = None
+                    book_state["stream"] = None
+                    option_state["stream"] = None
+                    failed_reconnect_pending = True
+                    await asyncio.sleep(delay)
                 # Control tasks are re-created for the NEW generation either way: on a
                 # failed reconnect both stream handles are None, so they idle harmlessly
                 # until a later pass succeeds.

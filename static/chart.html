@@ -329,6 +329,7 @@ let scorecardStale = null;// present but PAST its freshness budget (RC-78): the 
                           // never the numbers, so staleness is stated not implied
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
 let liveSpot = null;      // RC-225: ONLY /api/spot — never borrow strikes/terrain ages
+let liveSpotChg = null;   // streamed_chg_pct from /api/spot — browser does not compute %
 let forming = null;       // TradingView-style FORMING candle for the current minute:
                           // display-only synthesis from spot ticks; the canonical 1m bar
                           // REPLACES it the moment the server writes that minute
@@ -483,23 +484,9 @@ function setBars() {
 }
 
 function noteSpotTick(s) {
-  // grow the current-minute candle exactly like TradingView's forming bar
-  if (!chartTicker) return;   // bars not yet for the selected ticker
-  const v = Number(s);
-  if (!isFinite(v)) return;
-  const mt = Math.floor(Date.now() / 60000) * 60;
-  if (!forming || forming.t !== mt) {
-    // keep the just-finished synthetic minute until canonical bars catch up
-    if (forming && (!raw.length || forming.t > raw[raw.length - 1].t))
-      sealedForming = forming;
-    forming = { t: mt, o: v, h: v, l: v, c: v, v: 0 };
-  } else { forming.h = Math.max(forming.h, v); forming.l = Math.min(forming.l, v);
-         forming.c = v; }
-  const atEnd = view && view.i1 >= bars.length - 1 && view.i1 <= bars.length + 0.5;
-  bars = aggregate(rawWithForming(), tf);
-  if (view && atEnd) { const w = view.i1 - view.i0;
-    view.i1 = bars.length; view.i0 = Math.max(0, bars.length - w); }
-  draw();
+  // Instant-UI Phase 5: forming OHLC is built server-side
+  // (server.overlay_forming_bar_from_plane on /api/bars1m). This page draws the
+  // live last as the spot line from /api/spot; it does not invent a candle.
 }
 
 function currentChartTicker() {
@@ -864,7 +851,7 @@ async function load() {
     raw = b.bars || []; terrain = t; crosses = c.crosses || [];
     if (chartTicker !== tk) {
       forming = null; sealedForming = null;
-      liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+      liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null; liveSpotChg = null;
     }
     chartTicker = tk;
     // RC-164: this line referenced `_chartCommitInflight`, declared by an Enter-key commit guard
@@ -1510,16 +1497,14 @@ function draw() {
       && Math.abs(Number(spot) - _gammaSpotDrawn) > 1e-9) drawGamma();
   const bl = document.getElementById('biglegend');
   if (spot != null && isFinite(Number(spot))) {
-    // TradingView-style big legend: ticker · price · change vs yesterday's close
-    // # ui-mockup-ok: RC-213 B3 — pdc from the engine only; no client-computed close
-    const pdc = enginePD().pdc;
-    const dn = pdc ? Number(spot) - pdc : null;
-    const col = dn == null ? PAL.tx : dn >= 0 ? PAL.green : PAL.red;   // # ui-mockup-ok: v6.2
-    const sym = esc((document.getElementById('tk').value || 'SPY').trim().toUpperCase());
+    // TradingView-style big legend: ticker · price · streamed change % (server, not browser math)
+    const chg = (liveSpotChg != null && isFinite(Number(liveSpotChg))) ? Number(liveSpotChg) : null;
+    const col = chg == null ? PAL.tx : chg >= 0 ? PAL.green : PAL.red;
+    const tkEl = document.getElementById('tk');
+    const sym = esc(((tkEl && tkEl.value) || '').trim().toUpperCase());
     bl.innerHTML = `<span class="sym">${sym}</span> ` +
       `<span class="px" style="color:${col}">${fmt(spot)}</span>` +
-      (dn == null ? '' : ` <span class="chg" style="color:${col}">${dn >= 0 ? '+' : ''}${dn.toFixed(2)} ` +
-        `(${(dn / pdc * 100).toFixed(2)}%) vs yday close</span>`);
+      (chg == null ? '' : ` <span class="chg" style="color:${col}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`);
   } else bl.innerHTML = '';
   if (spot != null && isFinite(Number(spot))) {
     // # ui-mockup-ok: v6.2 theme tokens on the spot furniture
@@ -2049,7 +2034,7 @@ document.getElementById('tk').addEventListener('change', () => {
     const _v = (document.getElementById('tk').value || '').trim().toUpperCase();
     if (_v) localStorage.setItem('ed_ticker', _v);
   } catch (e) {}
-  view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+  view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null; liveSpotChg = null;
   forming = null; sealedForming = null; chartTicker = null; load(); });
 // RC-123: adopt the cross-page ticker BEFORE the first load, and follow parallel-tab changes.
 (function () {
@@ -2060,7 +2045,7 @@ document.getElementById('tk').addEventListener('change', () => {
   window.addEventListener('storage', (e) => {
     if (e.key === 'ed_ticker' && e.newValue && tkEl && tkEl.value !== e.newValue) {
       tkEl.value = e.newValue;
-      view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+      view = null; yLock = null; liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null; liveSpotChg = null;
       forming = null; sealedForming = null; chartTicker = null; load();
     }
   });
@@ -2098,7 +2083,7 @@ function spotBindingAgeLabel() {
 }
 function _dropLiveSpot() {
   // RC-225: absent binding stays absent — never borrow a slower payload's spot as "current".
-  liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null;
+  liveSpot = null; liveSpotAsOf = 0; liveSpotSource = null; liveSpotChg = null;
   draw(); renderForces();
 }
 let spotPollBackoffUntil = 0;   // 404 = server predates the endpoint: back off,
@@ -2124,6 +2109,7 @@ async function pollSpot() {
       if (asOf) liveSpotAsOf = asOf;
       liveSpotSource = j.spot_source != null ? String(j.spot_source) : null;
       liveSpot = Number(j.spot);
+      liveSpotChg = (j.chg_pct == null || !isFinite(Number(j.chg_pct))) ? null : Number(j.chg_pct);
       noteSpotTick(liveSpot);
       // Age label + FORCES pill must tick with the binding, not wait for the 15s cycle.
       const _mage = document.getElementById('spotage');
@@ -2135,7 +2121,7 @@ async function pollSpot() {
   } catch (e) { _dropLiveSpot(); }
   finally { spotPollInflight = false; }
 }
-setInterval(pollSpot, 1500);   // server caches upstream at 1.25s — budget-safe
+setInterval(pollSpot, 1500);
 
 // short-window guard: if anything overflows the viewport, a bright pill says so
 // and one click scrolls the gamma panel into view (the charts eat wheel-scroll)

@@ -110,6 +110,20 @@ def _resolve_token_path(token_path: str) -> str:
     return os.path.abspath(os.path.expanduser(token_path))
 
 
+def write_token_file_atomically(token_path: str, payload: dict) -> None:
+    """Write schwab_token.json via temp + fsync + replace. No partial destination.
+
+    schwab-py's own login/refresh writer is a separate path; this is the
+    repository-owned write. A torn write on the vendor path is [UNVERIFIED]
+    until Phase 7 measures one.
+    """
+    from pathlib import Path
+
+    from arch_competition.atomic_io import write_json_file_atomically
+
+    write_json_file_atomically(Path(_resolve_token_path(token_path)), payload)
+
+
 def inspect_token_file(token_path: str) -> TokenInspectionResult:
     """Inspect schwab-py token JSON at token_path (normalized to absolute). Does not log secrets."""
     out = TokenInspectionResult()

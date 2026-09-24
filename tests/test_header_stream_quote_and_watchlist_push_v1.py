@@ -128,6 +128,9 @@ def test_notify_quote_updated_projects_when_an_l1_client_is_subscribed(monkeypat
     monkeypatch.setattr(srv, "_l1_on_quote_updated", lambda t: rebuilt.append(t))
     try:
         l1_events.notify_quote_updated("ZZYES")
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and rebuilt != ["ZZYES"]:
+            time.sleep(0.01)
         assert rebuilt == ["ZZYES"]
     finally:
         srv._l1_light_sse_clients[:] = [
