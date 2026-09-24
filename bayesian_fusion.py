@@ -102,8 +102,9 @@ class FusionPayload:
     #: The verdict from governed_stack_contract.unified_stack_team_can_authorize for THIS horizon.
     #: This is the per-horizon carrier: server, market_state and the UI consume this value rather
     #: than reconstructing one from weaker inputs (fusion availability, layer counts, triplet shape).
-    #: Deliberately DISTINCT from `available` (setup fusion) and from directional-fusion presence:
-    #: setup fusion may legitimately exist with no directional ML authority.
+    #: Deliberately DISTINCT from `available` (setup fusion) and from directional-fusion presence.
+    #: Setup fusion needs at least one model source (F-01): rules + regime priors alone are not
+    #: evidence and no longer make `available` True.
     stack_directional_authorized: Optional[bool] = None
     stack_directional_authorization_reason: Optional[str] = None
 
@@ -329,11 +330,16 @@ def _translate_transformer_evidence(transformer_out, direction_hint: str) -> dic
 
 
 def _translate_rules_evidence(rules, regime) -> dict:
-    """Convert rules engine output into likelihood contributions."""
-    sig = getattr(rules, "signal", "wait")
-    conv = getattr(rules, "conviction", "low")
+    """Convert rules engine output into likelihood contributions.
 
-    conv_mult = {"high": 1.0, "medium": 0.7, "low": 0.4}.get(conv, 0.3)
+    No rules evidence ({}) when the rules object does not carry a recognised signal and
+    conviction -- they used to default to "wait" / "low" and an unknown conviction to a 0.3
+    multiplier (audit F-04/F-05, 2026-09-24: no fallbacks)."""
+    sig = getattr(rules, "signal", None)
+    conv = getattr(rules, "conviction", None)
+    conv_mult = {"high": 1.0, "medium": 0.7, "low": 0.4}.get(conv)
+    if sig not in ("long", "short", "wait") or conv_mult is None:
+        return {}
 
     if sig in ("long", "short"):
         return {
@@ -485,6 +491,34 @@ def fuse(
         )
 
 
+def _mc_passthrough(mc_out) -> dict[str, Any]:
+    """Monte Carlo context carried on the fusion payload (never blended as evidence)."""
+    mc_avail = bool(getattr(mc_out, "available", False))
+    if not mc_avail:
+        return {"mc_available": False}
+    _assum = getattr(mc_out, "assumptions", None) or {}
+    return {
+        "mc_available": True,
+        "mc_containment": getattr(mc_out, "containment_prob", None),
+        "mc_expansion": getattr(mc_out, "expansion_prob", None),
+        "mc_efe": getattr(mc_out, "expected_favorable_excursion", None),
+        "mc_eae": getattr(mc_out, "expected_adverse_excursion", None),
+        "mc_upper_50": getattr(mc_out, "upper_50", None),
+        "mc_lower_50": getattr(mc_out, "lower_50", None),
+        "mc_paths": getattr(mc_out, "n_paths", None),
+        "mc_horizon": getattr(mc_out, "horizon_bars", None),
+        "mc_vol_source": "garch" if _assum.get("garch_active") else "blend",
+        # ANNUALIZED decimal vol, post regime mult (monte_carlo SIGMA UNIT CONTRACT). The
+        # canonical key only: "scaled_sigma" / "blended_sigma" used to stand in, and
+        # blended_sigma is PRE regime mult -- a different quantity (no fallbacks).
+        "mc_sigma_value": _assum.get("sigma_annualized"),
+        # Drift provenance rides the producer's own assumption manifest.
+        "mc_conditioning": _assum.get("mc_conditioning"),
+        # Wall-clock horizon carried verbatim from the producer — never recomputed from bars.
+        "mc_horizon_minutes": getattr(mc_out, "horizon_minutes", None),
+    }
+
+
 def _fuse_impl(
     regime,
     xgb_out,
@@ -568,6 +602,23 @@ def _fuse_impl(
     if transformer_ev:
         evidence_list.append(transformer_ev)
         weight_list.append(weights["transformer"])
+
+    # No model produced output -> no fusion. Rules + regime alone are a hand-typed prior and a
+    # "placeholder likelihood" table, not evidence: with the model stack off this returned
+    # available=True every tick, and its six setup posteriors / confidence / dominant outcome
+    # were persisted as if measured (audit F-01, 2026-09-24, operator rule: no fallbacks).
+    # Counted on EVIDENCE, not the available flag: a model claiming available=True with an
+    # unusable triplet contributes nothing and must not make rules-only fusion "available".
+    if not evidence_list:   # model evidence only -- rules are appended below
+        return FusionPayload(
+            available=False,
+            n_sources_available=n_sources,
+            n_sources_active=0,
+            fusion_summary="Fusion unavailable -- no model produced output.",
+            contributing_models=contributing_models,
+            missing_models=missing_models,
+            **_mc_passthrough(mc_out),   # MC is context, not a model: it rides either way
+        )
 
     rules_ev = (
         fusion_tick_cache.rules_evidence
@@ -771,21 +822,6 @@ def _fuse_impl(
     if agree_label is not None:
         summary += f"Agreement: {agree_label}."
 
-    # ── MC pass-through ──────────────────────────────────────────────────────
-    mc_avail = getattr(mc_out, "available", False)
-    _assum = getattr(mc_out, "assumptions", None) or {}
-    mc_paths = getattr(mc_out, "n_paths", None) if mc_avail else None
-    mc_horizon = getattr(mc_out, "horizon_bars", None) if mc_avail else None
-    mc_vol_source = ("garch" if _assum.get("garch_active") else "blend") if mc_avail else None
-    # ANNUALIZED decimal vol, post regime mult — unit is path-independent at the
-    # producer (monte_carlo SIGMA UNIT CONTRACT); legacy keys kept as fallback.
-    mc_sigma_value = (_assum.get("sigma_annualized") or _assum.get("scaled_sigma")
-                      or _assum.get("blended_sigma")) if mc_avail else None
-    # Drift provenance rides the producer's own assumption manifest, same as the vol source above.
-    mc_conditioning = _assum.get("mc_conditioning") if mc_avail else None
-    # Wall-clock horizon carried verbatim from the producer — never recomputed from bars here.
-    mc_horizon_minutes = getattr(mc_out, "horizon_minutes", None) if mc_avail else None
-
     return FusionPayload(
         available=True,
         breakout_posterior=round(posteriors["breakout"], 3),
@@ -809,19 +845,7 @@ def _fuse_impl(
         evidence_summary=evidence,
         contradiction_summary=contradictions,
         fusion_summary=summary,
-        mc_available=mc_avail,
-        mc_containment=getattr(mc_out, "containment_prob", None) if mc_avail else None,
-        mc_expansion=getattr(mc_out, "expansion_prob", None) if mc_avail else None,
-        mc_efe=getattr(mc_out, "expected_favorable_excursion", None) if mc_avail else None,
-        mc_eae=getattr(mc_out, "expected_adverse_excursion", None) if mc_avail else None,
-        mc_upper_50=getattr(mc_out, "upper_50", None) if mc_avail else None,
-        mc_lower_50=getattr(mc_out, "lower_50", None) if mc_avail else None,
-        mc_paths=mc_paths,
-        mc_horizon=mc_horizon,
-        mc_vol_source=mc_vol_source,
-        mc_sigma_value=mc_sigma_value,
-        mc_conditioning=mc_conditioning,
-        mc_horizon_minutes=mc_horizon_minutes,
+        **_mc_passthrough(mc_out),
         model_agreement=round(agreement, 3) if agreement is not None else None,
         model_agreement_label=agree_label,
         prob_up=round(prob_up, 3) if prob_up is not None else None,

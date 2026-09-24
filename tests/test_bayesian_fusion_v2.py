@@ -99,26 +99,22 @@ def test_update_evidence_missing_an_outcome_leaves_that_outcome_prior_scaled():
 
 # ── fuse(): rules-only tick, hand-computed end-to-end posterior ──────────────
 
-def test_fuse_rules_only_posterior_matches_hand_computation():
-    # regime=None -> DEFAULT_PRIORS; only source is rules (weight normalizes to 1).
-    # Rules "wait" likelihoods: breakout .1, continuation .1, reversal .2,
-    # pinning .5, vol_expansion .1, mean_reversion .4.
-    # posterior ∝ prior*lh: .015, .02, .03, .125, .01, .06; total .26.
+def test_fuse_rules_only_is_unavailable_not_a_prior_posterior():
+    # Rules + regime alone are a hand-typed prior and likelihood table, not evidence
+    # (audit F-01, 2026-09-24). This used to return available=True with pinning .481 etc.
     payload = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
-    assert payload.available is True
-    assert payload.weight_rules == pytest.approx(1.0)
-    assert payload.breakout_posterior == pytest.approx(0.058)        # .015/.26
-    assert payload.continuation_posterior == pytest.approx(0.077)    # .02/.26
-    assert payload.reversal_posterior == pytest.approx(0.115)        # .03/.26
-    assert payload.pinning_posterior == pytest.approx(0.481)         # .125/.26
-    assert payload.vol_expansion_posterior == pytest.approx(0.038)   # .01/.26
-    assert payload.mean_reversion_posterior == pytest.approx(0.231)  # .06/.26
-    assert payload.dominant_outcome == "pinning"
-    assert payload.dominant_probability == pytest.approx(0.481)
+    assert payload.available is False
+    for attr in ("breakout_posterior", "pinning_posterior", "continuation_posterior",
+                 "reversal_posterior", "vol_expansion_posterior", "mean_reversion_posterior",
+                 "dominant_outcome", "dominant_probability", "fusion_confidence",
+                 "fusion_confidence_score"):
+        assert getattr(payload, attr) is None, attr
+    assert payload.n_sources_active == 0
 
 
 def test_fuse_posteriors_always_sum_to_one():
-    payload = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
+    payload = fuse(None, _xgb(0.5, 0.3, 0.2), UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
+    assert payload.available is True
     total = (
         payload.breakout_posterior
         + payload.pinning_posterior
@@ -132,26 +128,25 @@ def test_fuse_posteriors_always_sum_to_one():
 
 # ── No fabricated certainty from absent inputs ───────────────────────────────
 
-def test_fuse_with_no_models_fabricates_no_direction_and_caps_confidence():
+def test_fuse_with_no_models_fabricates_nothing():
     payload = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
-    # No model triplets -> no directional probabilities, no agreement.
+    # No model triplets -> no directional probabilities, no agreement, no confidence.
+    assert payload.available is False
     assert payload.prob_up is None
     assert payload.prob_down is None
     assert payload.prob_flat is None
     assert payload.dominant_direction is None
     assert payload.model_agreement is None
     assert payload.model_agreement_label is None
-    # Zero approved predictive models: score capped at .55 then damped by .85
-    # (payload rounds to 3dp: 0.4675 -> 0.468).
-    assert payload.fusion_confidence != "high"
-    assert payload.fusion_confidence_score <= round(0.55 * 0.85, 3)
+    assert payload.fusion_confidence is None
     assert payload.n_sources_active == 0
     assert payload.missing_models == ["lstm", "transformer", "xgboost"]
     assert payload.contributing_models == ["rules"]
 
 
 def test_fuse_available_model_with_unusable_triplet_contributes_nothing():
-    # available=True but prob_up missing: excluded from evidence and direction.
+    # available=True but prob_up missing: no evidence -- so fusion is still rules-only,
+    # i.e. unavailable (counted on evidence, not the available flag -- audit F-01).
     broken = SimpleNamespace(
         available=True,
         prob_up=None,
@@ -162,19 +157,11 @@ def test_fuse_available_model_with_unusable_triplet_contributes_nothing():
         confidence_label="medium",
     )
     payload = fuse(None, broken, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
-    assert payload.available is True
+    assert payload.available is False
     assert payload.prob_up is None
     assert payload.dominant_direction is None
+    assert payload.dominant_outcome is None
     assert payload.model_agreement is None
-    # The unusable model still absorbs its normalized trust weight (it claims
-    # available=True), so the rules exponent shrinks and the posterior moves
-    # TOWARD the prior — weaker certainty, never stronger. Dominant call and
-    # its ordering against the rules-only baseline lock that direction.
-    baseline = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
-    assert payload.dominant_outcome == baseline.dominant_outcome == "pinning"
-    assert payload.dominant_probability < baseline.dominant_probability
-    assert payload.dominant_probability > DEFAULT_PRIORS["pinning"]
-    assert "xgboost" in payload.contributing_models  # participation is audited
 
 
 def test_fuse_single_model_confidence_never_reaches_high():
@@ -199,10 +186,11 @@ def test_fuse_mc_availability_never_moves_the_posterior():
         lower_50=99.0,
         n_paths=500,
         horizon_bars=10,
-        assumptions={"garch_active": True, "scaled_sigma": 0.2},
+        assumptions={"garch_active": True, "sigma_annualized": 0.2},
     )
-    with_mc = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, mc, _rules_wait())
-    without_mc = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
+    model = _xgb(0.5, 0.3, 0.2)
+    with_mc = fuse(None, model, UNAVAILABLE, UNAVAILABLE, mc, _rules_wait())
+    without_mc = fuse(None, model, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
     assert with_mc.weight_monte_carlo == 0.0
     for attr in (
         "breakout_posterior", "pinning_posterior", "continuation_posterior",
@@ -222,6 +210,13 @@ def test_fuse_mc_availability_never_moves_the_posterior():
     assert without_mc.mc_available is False
     assert without_mc.mc_containment is None
     assert without_mc.mc_paths is None
+    # MC is context, not a model: it rides even when fusion itself is unavailable.
+    rules_only = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, mc, _rules_wait())
+    assert rules_only.available is False and rules_only.mc_available is True
+    assert rules_only.mc_containment == 0.7
+    # legacy sigma keys no longer stand in for the canonical one
+    legacy = SimpleNamespace(**{**vars(mc), "assumptions": {"scaled_sigma": 0.2, "blended_sigma": 0.1}})
+    assert fuse(None, model, UNAVAILABLE, UNAVAILABLE, legacy, _rules_wait()).mc_sigma_value is None
 
 
 # ── Degenerate regimes ───────────────────────────────────────────────────────
@@ -236,12 +231,17 @@ def test_fuse_unknown_regime_label_treated_exactly_as_absent_regime():
     assert a.n_sources_available == b.n_sources_available == 1
 
 
-def test_fuse_attributeless_rules_object_defaults_to_wait_evidence():
-    payload = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, object())
-    baseline = fuse(None, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
+def test_fuse_attributeless_rules_object_contributes_no_rules_evidence():
+    # A rules object with no signal/conviction is NOT "wait" evidence (audit F-04/05): the
+    # posterior is the model-only posterior, identical to passing no rules reading at all.
+    model = _xgb(0.5, 0.3, 0.2)
+    payload = fuse(None, model, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, object())
+    unknown_conv = fuse(None, model, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE,
+                        SimpleNamespace(signal="long", conviction="weird"))
+    with_wait = fuse(None, model, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, _rules_wait())
     assert payload.available is True
-    assert payload.pinning_posterior == baseline.pinning_posterior
-    assert payload.dominant_outcome == baseline.dominant_outcome
+    assert payload.pinning_posterior == unknown_conv.pinning_posterior
+    assert payload.pinning_posterior != with_wait.pinning_posterior
 
 
 # ── Directional fusion: hand-computed weighted blend ─────────────────────────

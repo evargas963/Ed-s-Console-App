@@ -70,9 +70,10 @@ def test_fuse_directional_none_when_models_unavailable():
     off = SimpleNamespace(available=False)
     mc = SimpleNamespace(available=False)
     r = fuse(regime, off, off, off, mc, rules)
-    assert r.available is True
+    # no model -> no fusion at all: regime priors + rules table are not evidence (F-01)
+    assert r.available is False
     assert r.prob_up is None
-    assert r.reversal_posterior is not None
+    assert r.reversal_posterior is None
 
 
 def test_mc_post_fusion_skips_when_mc_features_incomplete():
