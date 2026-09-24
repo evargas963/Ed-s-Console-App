@@ -182,15 +182,16 @@ def test_issue22_panel_auto_sync_and_prune_category(tmp_path):
     minimal_core = ["SPY"]
     edb.logging_universe_sync_core(minimal_core, t0)
     panel = market_context_panel_symbols_excluding_core(frozenset(x.upper() for x in minimal_core))
-    assert "WMT" in panel
-    assert "NVDA" in panel  # SPY_TOP member; excluded only when present in core_upper
+    assert "$VIX" in panel
+    assert "WMT" not in panel
+    assert "NVDA" not in panel
     r1 = edb.logging_universe_sync_panel_auto(panel, t0 + 1.0)
     assert r1["desired"] == len(panel)
     by_t = {row["ticker"].upper(): row["category"] for row in edb.logging_universe_list_rows()}
     assert by_t["SPY"] == "core"
-    assert by_t.get("WMT") == "panel_auto"
+    assert by_t.get("$VIX") == "panel_auto"
     auth = edb.logging_universe_authoritative_tickers()
-    assert "WMT" in auth and "SPY" in auth
+    assert "$VIX" in auth and "SPY" in auth
 
     r2 = edb.logging_universe_sync_panel_auto(["WMT", "FN"], t0 + 2.0)
     assert r2["desired"] == 2

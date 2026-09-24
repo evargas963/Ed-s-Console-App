@@ -767,16 +767,6 @@ ROWS: tuple[Row, ...] = (
         justification='Inference on canonical features; no Schwab wire ingest.',
     ),
     Row(
-        file='market_context.py', derivation='_build_confluence', disposition='DERIVED',
-        producer_refs=('market_context.py:fetch_market_context',),
-        justification='Cap-weighted confluence from quote-derived chg_pct inputs.',
-    ),
-    Row(
-        file='market_context.py', derivation='_build_iwm_confluence', disposition='DERIVED',
-        producer_refs=('market_context.py:fetch_market_context',),
-        justification='IWM sector confluence composite.',
-    ),
-    Row(
         file='market_context.py', derivation='_derive_session', disposition='ALLOWLISTED',
         allowlist_id='mega1_session_calendar',
         justification='ET session label; no Schwab session_label leaf.',
@@ -784,12 +774,12 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='market_context.py', derivation='_extract_quote', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
-        justification='Schwab quote hierarchy via _last_traded_price; pct from netChange when percent leaf absent.',
+        justification='Schwab quote.lastPrice via _last_traded_price; pct from quote.netPercentChange only.',
     ),
     Row(
         file='market_context.py', derivation='_last_traded_price', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
-        justification='Trade-only last ladder (quote/extended lastPrice); regularMarketLastPrice close only as last resort (RC-16/RC-18).',
+        justification='quotes.quote.lastPrice only (T-11: no extended.lastPrice stand-in).',
     ),
     Row(
         file='market_context.py', derivation='_vix_regime', disposition='DERIVED',
@@ -819,7 +809,7 @@ ROWS: tuple[Row, ...] = (
         # shared by every chg_pct caller (not just fetch_market_context's sentinels).
         file='market_context.py', derivation='extract_pct_change', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.netPercentChange',
-        justification='Percent-change parser from quote JSON, shared by every chg_pct caller.',
+        justification='quotes.quote.netPercentChange only (T-09); missing stays missing.',
     ),
     Row(
         file='market_context.py', derivation='fetch_market_context._fetch', disposition='SCHWAB_LEAF',
@@ -834,7 +824,7 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='market_context.py', derivation='iwm_blended_participation_push', disposition='DERIVED',
         producer_refs=('market_context.py:fetch_market_context',),
-        justification='Composes Mega1 producers for iwm_blended_participation_push output fields.',
+        justification='Retired T-13: always None; one side standing in is a fallback.',
     ),
     Row(
         file='market_context.py', derivation='market_context_panel_symbols_excluding_core', disposition='SCHWAB_LEAF',

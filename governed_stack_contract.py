@@ -220,10 +220,10 @@ def is_ml_authoritative_ticker(ticker: str) -> bool:
 
 def resolve_guest_anchor_route(guest_ticker: str) -> tuple[str, str, str]:
     """
-    v2 routing: IWM only for Russell-2000 sample holdings; else SPY (broad default).
+    Guest-anchor route without a built-in holdings roster.
 
-    Does NOT use QQQ_TOP or IWM sector ETF symbols — those are confluence samples,
-    not ETF membership. Returns (anchor_ticker, affiliation_slug, operator_rationale).
+    The retired IWM_TOP_HOLDINGS table is gone. Every non-empty guest uses the
+    existing broad default. Returns (anchor_ticker, affiliation_slug, operator_rationale).
     """
     g = ticker_storage_key(guest_ticker)  # RC-345/F25: canonical guest identity for routing
     if not g:
@@ -232,25 +232,10 @@ def resolve_guest_anchor_route(guest_ticker: str) -> tuple[str, str, str]:
             GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
             "Broad market default — SPY anchor",
         )
-    try:
-        from market_context import IWM_TOP_HOLDINGS
-    except ImportError:
-        return (
-            "SPY",
-            GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
-            "Broad market default — SPY anchor",
-        )
-    iwm_holdings = {ticker_storage_key(sym) for sym, _, _ in IWM_TOP_HOLDINGS}  # RC-345/F25: canonical membership
-    if g in iwm_holdings:
-        return (
-            "IWM",
-            GUEST_ANCHOR_AFFILIATION_IWM_SMALL_CAP,
-            "Russell 2000 sample holdings — IWM anchor",
-        )
     return (
         "SPY",
         GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
-        "No small-cap match — broad SPY anchor (default for mega-cap and unknown)",
+        "No holdings roster — broad SPY anchor (index confluence retired)",
     )
 
 

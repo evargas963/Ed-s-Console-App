@@ -459,7 +459,6 @@ def test_guest_anchor_bundle_scope_loads_anchor_artifacts(tmp_path, monkeypatch)
 
 def test_guest_anchor_resolve_and_prob_source_remap(monkeypatch):
     from governed_stack_contract import (
-        GUEST_ANCHOR_AFFILIATION_IWM_SMALL_CAP,
         GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
         MH_PROB_SOURCE_GUEST_ANCHOR,
         guest_anchor_inference_enabled,
@@ -482,14 +481,13 @@ def test_guest_anchor_resolve_and_prob_source_remap(monkeypatch):
     assert nvda_ctx.affiliation == GUEST_ANCHOR_AFFILIATION_SPY_BROAD
     assert route_guest_anchor_weights_ticker("NVDA") == "SPY"
     assert route_guest_anchor_weights_ticker("AAPL") == "SPY"
-    # IWM sample holdings → IWM anchor.
+    # Retired IWM holdings roster: no built-in small-cap shortcut.
     iwm_anchor, iwm_aff, _ = resolve_guest_anchor_route("BE")
-    assert iwm_anchor == "IWM"
-    assert iwm_aff == GUEST_ANCHOR_AFFILIATION_IWM_SMALL_CAP
+    assert iwm_anchor == "SPY"
+    assert iwm_aff == GUEST_ANCHOR_AFFILIATION_SPY_BROAD
     be_ctx = resolve_guest_anchor_for_ticker("BE")
     assert be_ctx is not None
-    assert be_ctx.anchor_ticker == "IWM"
-    # Sector ETFs are not IWM stock routing targets.
+    assert be_ctx.anchor_ticker == "SPY"
     assert route_guest_anchor_weights_ticker("KRE") == "SPY"
     remapped = remap_prob_sources_for_guest_anchor(
         {"1c": "fusion_ml_primary", "5c": "fusion_unavailable"}

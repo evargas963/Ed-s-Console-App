@@ -6,7 +6,7 @@ Retroactively fill snapshots (and refresh snapshots_1m_normalized):
   vwap, vwap_dist_pts, vwap_side together.
 - iv_rank / iv_percentile: rolling prior iv_level history (min 20 points).
 - pressure_label / pressure_trend: from DPI + hedging flow (+ trend on dpi_normalized).
-- spy/qqq/iwm weighted_push: recompute from persisted constituent chg_pct when NULL.
+- spy/qqq/iwm weighted_push: retired — left NULL (T-15).
 
 Run from project root:
   python backfill_snapshot_derived.py
@@ -148,117 +148,9 @@ def backfill(db_path: Path) -> dict:
 
 
 def backfill_weighted_pushes(db_path: Path) -> dict[str, int]:
-    """Fill NULL spy/qqq/iwm weighted_push from persisted constituent chg_pct columns."""
-    import bisect
-
-    from market_context import (
-        merged_snapshot_chg_map,
-        symbols_without_snapshot_chg_col,
-        weighted_pushes_from_snapshot_row,
-    )
-
-    conn = sqlite3.connect(str(db_path), timeout=120)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    stats = {"spy_filled": 0, "qqq_filled": 0, "iwm_filled": 0, "rows_scanned": 0}
-
-    tick_series: dict[str, list[tuple[float, float]]] = {}
-    try:
-        tick_rows = cur.execute(
-            """
-            SELECT ticker, ts_utc, chg_pct
-            FROM confluence_quote_ticks
-            WHERE chg_pct IS NOT NULL
-            ORDER BY ticker COLLATE NOCASE, ts_utc ASC
-            """
-        ).fetchall()
-        for tr in tick_rows:
-            sym = str(tr["ticker"]).upper()
-            try:
-                ts = float(tr["ts_utc"])
-                chg = float(tr["chg_pct"])
-            except (TypeError, ValueError):
-                continue
-            tick_series.setdefault(sym, []).append((ts, chg))
-    except sqlite3.OperationalError:
-        tick_series = {}
-
-    def _chg_as_of(sym: str, ts_utc: float) -> float | None:
-        series = tick_series.get(sym.upper())
-        if not series:
-            return None
-        stamps = [s for s, _ in series]
-        idx = bisect.bisect_right(stamps, ts_utc) - 1
-        if idx < 0:
-            return None
-        return series[idx][1]
-
-    # Independent-review finding (2026-09-13), REPRODUCED: this SELECT omitted goog_chg_pct
-    # even though SYMBOL_TO_SNAPSHOT_CHG_COL maps GOOG to that column and GOOG carries a
-    # real, non-trivial SPY/QQQ weight (market_context.SPY_TOP/QQQ_TOP). `row = dict(r)`
-    # below is a plain dict with no "goog_chg_pct" key at all when it isn't selected, so
-    # merged_snapshot_chg_map -> snapshot_row_chg_map's `row.get("goog_chg_pct")` silently
-    # returned None on every row -- weighted_push_from_constituents then treated GOOG as
-    # always-missing and dropped its contribution from every weighted-push value this
-    # backfill recomputes, a regression of the exact live-path bug goog_chg_pct itself was
-    # added to fix (db.py:2984's own comment). Fixed by selecting the column that already
-    # exists in the schema (db.py:1226, migrated idempotently at db.py:2990).
-    need_tick_syms = symbols_without_snapshot_chg_col()
-    rows = cur.execute(
-        """
-        SELECT snapshot_id, ts_utc,
-               spy_weighted_push, qqq_weighted_push, iwm_weighted_push,
-               nvda_chg_pct, aapl_chg_pct, msft_chg_pct, amzn_chg_pct,
-               googl_chg_pct, goog_chg_pct, avgo_chg_pct, meta_chg_pct, tsla_chg_pct,
-               kre_chg_pct, xbi_chg_pct, psci_chg_pct, xrt_chg_pct
-        FROM snapshots
-        WHERE spy_weighted_push IS NULL
-           OR qqq_weighted_push IS NULL
-           OR iwm_weighted_push IS NULL
-        ORDER BY ts_utc ASC, snapshot_id ASC
-        """
-    ).fetchall()
-    for r in rows:
-        stats["rows_scanned"] += 1
-        row = dict(r)
-        ts_utc = row.get("ts_utc")
-        extra: dict[str, float | None] = {}
-        if ts_utc is not None and need_tick_syms:
-            try:
-                ts_f = float(ts_utc)
-            except (TypeError, ValueError):
-                ts_f = None
-            if ts_f is not None:
-                base = merged_snapshot_chg_map(row)
-                for sym in need_tick_syms:
-                    if base.get(sym) is not None:
-                        continue
-                    v = _chg_as_of(sym, ts_f)
-                    if v is not None:
-                        extra[sym] = v
-        pushes = weighted_pushes_from_snapshot_row(row, extra_chg=extra or None)
-        updates: dict[str, float] = {}
-        for col, stat_key in (
-            ("spy_weighted_push", "spy_filled"),
-            ("qqq_weighted_push", "qqq_filled"),
-            ("iwm_weighted_push", "iwm_filled"),
-        ):
-            if row.get(col) is not None:
-                continue
-            val = pushes.get(col)
-            if val is not None:
-                updates[col] = val
-                stats[stat_key] += 1
-        if not updates:
-            continue
-        sets = ", ".join(f"{k} = ?" for k in updates)
-        cur.execute(
-            f"UPDATE snapshots SET {sets} WHERE snapshot_id = ?",
-            (*updates.values(), int(r["snapshot_id"])),
-        )
-    conn.commit()
-    conn.close()
-    return stats
+    """Retired (T-15): do not impute weighted_push from constituent chg of any age."""
+    _ = db_path
+    return {"spy_filled": 0, "qqq_filled": 0, "iwm_filled": 0, "rows_scanned": 0, "retired": 1}
 
 
 def main() -> None:

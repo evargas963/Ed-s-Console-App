@@ -40,14 +40,15 @@ def test_mark_is_never_used_as_a_last_price() -> None:
     assert last is None, "mark is a valuation mark, not a trade — it must not become 'last'"
 
 
-def test_extended_trade_is_accepted_when_regular_quote_is_empty() -> None:
-    last, _pct = _extract_quote("SPY", _payload(
-        "SPY",
+def test_extended_trade_is_not_a_stand_in_for_quote_last() -> None:
+    """T-11: extended.lastPrice is a different book — missing quote.lastPrice stays missing."""
+    last, _pct = _extract_quote("ZZVIX", _payload(
+        "ZZVIX",
         quote={},
         extended={"lastPrice": 744.54},
         regular={"regularMarketLastPrice": 743.29},
     ))
-    assert last == 744.54, "an extended-session trade is still a trade"
+    assert last is None
 
 
 def test_close_is_never_current_last() -> None:
@@ -61,15 +62,15 @@ def test_close_is_never_current_last() -> None:
     assert last is None
 
 
-def test_zero_does_not_fall_through_the_ladder() -> None:
-    """`or` chaining treated a legitimate 0.0 as absent; explicit checks must not."""
-    last, _pct = _extract_quote("SPY", _payload(
-        "SPY",
+def test_zero_quote_last_does_not_use_extended() -> None:
+    """0.0 is not a trade; T-11 forbids substituting extended.lastPrice."""
+    last, _pct = _extract_quote("ZZVIX", _payload(
+        "ZZVIX",
         quote={"lastPrice": 0.0},
         extended={"lastPrice": 744.54},
         regular={},
     ))
-    assert last == 744.54, "a zero price is not a trade; the next real trade must be used"
+    assert last is None
 
 
 def test_missing_symbol_fails_closed() -> None:
