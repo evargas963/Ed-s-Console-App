@@ -697,11 +697,6 @@ ROWS: tuple[Row, ...] = (
         justification='Coherence triggers vs stream spot and cached bundle.',
     ),
     Row(
-        file='live_market_plane.py', derivation='_plane_tuple_sig', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state',),
-        justification='Dedup signature for plane tuple.',
-    ),
-    Row(
         file='live_market_plane.py', derivation='apply_l1_live_quote_overlay', disposition='DERIVED',
         producer_refs=('live_market_plane.py:get_quote',),
         justification='Delegates to Schwab transport producers for apply_l1_live_quote_overlay.',
@@ -718,7 +713,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='live_market_plane.py', derivation='record_from_level_one_equity', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state', 'live_market_plane.py:_plane_tuple_sig'),
+        producer_refs=('server.py:_fetch_state',),
         justification='Delegates to Schwab transport producers for record_from_level_one_equity.',
     ),
     Row(
