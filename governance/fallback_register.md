@@ -65,12 +65,12 @@ P1/P2 rows are to be merged here as each file is repaired.
 ### Exposure math (math_exposure_core.py, math_levels.py)
 | ID | file:line | Violation | Flows to | Status |
 |---|---|---|---|---|
-| M-01 | math_exposure_core.py:1037-1044 | net_delta: raw-unit switch on a gamma test; no valid delta -> 0.0 | The Call regime vote (0.0 votes LONG), zone, snapshots | OPEN |
-| M-02 | math_exposure_core.py:1014-1022 | net GEX: raw fallback; no valid gamma -> 0.0 | kl_net_gex "$0", regime, snapshots | OPEN |
-| M-03 | math_levels.py:139-145, 232 | inflection picks empty 0.0 buckets; all-strikes fallback | snapshots, SignalInput | OPEN |
-| M-04 | math_levels.py:153-178 | pin_strength "Very Low" for absence | bias, zone | OPEN |
-| M-05 | math_levels.py:190-224 | bias "Neutral"/"Chaos Zone" from absence | persisted zone, matching | OPEN |
-| M-06 | math_levels.py:100-110, 497-506 | one-sided-OI strikes dropped from PCR / OI totals | klPcr screen, Greeks vote | OPEN |
+| M-01 | math_exposure_core.py:1037-1044 | net_delta: raw-unit switch on a gamma test; no valid delta -> 0.0 | The Call regime vote (0.0 votes LONG), zone, snapshots | FIXED b6c16570 |
+| M-02 | math_exposure_core.py:1014-1022 | net GEX: raw fallback; no valid gamma -> 0.0 | kl_net_gex "$0", regime, snapshots | FIXED b6c16570 |
+| M-03 | math_levels.py:139-145, 232 | inflection picks empty 0.0 buckets; all-strikes fallback | snapshots, SignalInput | FIXED b6c16570 |
+| M-04 | math_levels.py:153-178 | pin_strength "Very Low" for absence | bias, zone | FIXED b6c16570 |
+| M-05 | math_levels.py:190-224 | bias "Neutral"/"Chaos Zone" from absence | persisted zone, matching | FIXED b6c16570 |
+| M-06 | math_levels.py:100-110, 497-506; server.py `_bucket_total_oi` | one-sided-OI strikes dropped from PCR / OI totals; DPI total OI counts a missing leg as 0 (bucket cannot yet tell "no contract listed" from "field missing" -- fix at the producer) | klPcr screen, Greeks vote | OPEN |
 | M-07 | math_levels.py:115-127 | oi_center skips one-sided strikes | snapshots | OPEN |
 | M-08 | math_levels.py:1439-1447 | max pain excludes one-sided strikes | Trade Desk screen | OPEN |
 | M-09 | math_levels.py:527-539 | ATM IV = one leg when the other is missing | IV direction, EM, IV rank | OPEN |
@@ -102,8 +102,8 @@ P1/P2 rows are to be merged here as each file is repaired.
 |---|---|---|---|---|
 | S-06 | math_probabilities.py:1422-1433 | flow imbalance falls back to call/put volume ratio | snapshots, SignalInput | OPEN |
 | S-07 | math_probabilities.py:1525-1550 | smart-money: missing legs = 0 | snapshots | OPEN |
-| S-08..10 | math_probabilities.py:658-668, 769-779, 830-840 | breakout / vol-expansion / sweep: missing component = 0 | snapshots | OPEN |
-| S-11 | math_probabilities.py:545-557 | hedging flow re-weights present legs | snapshots | OPEN |
+| S-08..10 | math_probabilities.py:658-668, 769-779, 830-840 | breakout / vol-expansion / sweep: missing component = 0 | snapshots | FIXED b6c16570 |
+| S-11 | math_probabilities.py:545-557 | hedging flow re-weights present legs | snapshots | FIXED b6c16570 |
 | S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | OPEN |
 | S-13 | math_probabilities.py:221-234 | option-expression score: missing inputs add 0 -> rec_strike | The Call contract | OPEN |
 
@@ -120,5 +120,5 @@ fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isoto
 2026-09-24 audit reports.
 
 ## Counts
-Re-audit live P0 open: 59 rows above marked OPEN (several rows group more than one site).
+Re-audit live P0 open: 52 rows above marked OPEN (several rows group more than one site).
 P1 (re-audit): ~70 more, to be merged as files are repaired.
