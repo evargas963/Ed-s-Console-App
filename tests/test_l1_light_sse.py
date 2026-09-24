@@ -77,26 +77,31 @@ def test_notify_enqueues_when_subscribed(monkeypatch):
                 break
 
 
-def test_notify_throttled_within_window(monkeypatch):
+def test_back_to_back_builds_are_both_emitted_nothing_dropped(monkeypatch):
+    """Every authoritative build reaches the stream: a 50 ms throttle used to DROP the second
+    (newest) build with no trailing emit (audit 2026-09-24). Rate is bounded upstream by the
+    per-ticker coalescing in planes/l1_events."""
     import server as srv
 
     q = asyncio.Queue(maxsize=10)
     key = ("ZZZ", "__auto__")
     srv._l1_light_sse_clients.append((q, key))
-    th0 = int(srv._l1_sse_diag.get("l1_light_sse_events_throttled", 0))
+    _drain_l1_thread_queue(srv)
+    gens = iter([1, 2])
     try:
         monkeypatch.setattr(
             srv,
             "_l1_http_get_projection",
-            lambda t, e, force=False: {"l1_generation": 1},
+            lambda t, e, force=False: {"l1_generation": next(gens)},
         )
-        monkeypatch.setattr(srv, "_L1_SSE_MIN_INTERVAL_SEC", 60.0)
         srv._l1_notify_sse_after_authoritative_build("ZZZ", None)
         srv._l1_notify_sse_after_authoritative_build("ZZZ", None)
-        assert int(srv._l1_sse_diag.get("l1_light_sse_events_throttled", 0)) >= th0 + 1
+        envs = []
+        while not srv._l1_sse_thread_queue.empty():
+            envs.append(srv._l1_sse_thread_queue.get_nowait())
+        assert [e["payload"]["l1_generation"] for sk, e in envs if sk == key] == [1, 2]
     finally:
         srv._l1_light_sse_clients.clear()
-        srv._l1_sse_last_emit_mono.pop(key, None)
         while not srv._l1_sse_thread_queue.empty():
             try:
                 srv._l1_sse_thread_queue.get_nowait()
@@ -156,9 +161,6 @@ def test_l2_ready_hook_reaches_auto_scope_subscriber_end_to_end():
     key = ("SPY", "__auto__")
     srv._l1_light_sse_clients.append((q, key))
     _drain_l1_thread_queue(srv)
-    # earlier tests emit on this scope; clear the 50ms throttle window so this
-    # test exercises scope routing, not emit cadence
-    srv._l1_sse_last_emit_mono.pop(key, None)
     try:
         srv._l1_on_l2_snapshot_ready("SPY", "2099-01-01")
         envs = []
@@ -175,7 +177,6 @@ def test_l2_ready_hook_reaches_auto_scope_subscriber_end_to_end():
         assert isinstance(env.get("payload"), dict)
     finally:
         srv._l1_light_sse_clients.clear()
-        srv._l1_sse_last_emit_mono.pop(key, None)
         _drain_l1_thread_queue(srv)
 
 

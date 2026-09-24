@@ -1174,9 +1174,6 @@ _sse_cadence_diag_last_log_mono: float = 0.0
 _l1_light_sse_clients: list[tuple[asyncio.Queue, tuple[str, str | None]]] = []
 _l1_light_sse_lock = threading.Lock()
 _l1_sse_thread_queue: queue.Queue = queue.Queue(maxsize=500)
-_l1_sse_throttle_lock = threading.Lock()
-_l1_sse_last_emit_mono: dict[tuple[str, str | None], float] = {}
-_L1_SSE_MIN_INTERVAL_SEC = 0.05
 _l1_sse_diag: dict[str, int] = {
     "l1_light_sse_connections": 0,
     "l1_light_sse_events_queued": 0,
@@ -5895,13 +5892,9 @@ def _l1_notify_sse_after_authoritative_build(ticker: str, expiry: Optional[str])
             return
         if not any(csk == sk for _, csk in _l1_light_sse_clients):
             return
-    now_m = time.monotonic()
-    with _l1_sse_throttle_lock:
-        last = _l1_sse_last_emit_mono.get(sk, 0.0)
-        if now_m - last < _L1_SSE_MIN_INTERVAL_SEC:
-            _l1_sse_diag["l1_light_sse_events_throttled"] += 1
-            return
-        _l1_sse_last_emit_mono[sk] = now_m
+    # No emit throttle: planes/l1_events coalesces rebuilds per ticker (one running + one
+    # trailing), so every build reaching here is the newest -- a 50 ms throttle used to DROP
+    # it with no trailing emit, leaving the header on a superseded price (audit 2026-09-24).
     payload = _l1_http_get_projection(ticker, expiry, force=False)
     gen = int(payload.get("l1_generation") or 0)  # silent-zero-ok: generation 0 is the pre-first-publish state; every real generation is >= 1 so 0 can never impersonate one
     ts, fp = _l1_record_payload_identity(sk, gen, payload)

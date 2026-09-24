@@ -18,39 +18,61 @@ from instrument_identity import ticker_storage_key
 
 log = logging.getLogger("ed.planes.l1_events")
 
-_DEBOUNCE_SEC = 0.12
-_timers: dict[str, threading.Timer] = {}
-_timer_lock = threading.Lock()
+#: per ticker: a rebuild is running ("running") and another quote arrived meanwhile ("dirty")
+_inflight: dict[str, dict[str, bool]] = {}
+_inflight_lock = threading.Lock()
+_executor = None
+
+
+def _quote_executor():
+    global _executor
+    if _executor is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="l1-quote")
+    return _executor
 
 # Optional test hook
 _rebuild_quote_fn: Optional[Callable[[str], None]] = None
 
 
 def notify_quote_updated(ticker: str) -> None:
-    """Call when L0 quote row changes (stream or REST plane). Debounced per ticker."""
+    """Call when the streamed quote row changes. Rebuilds the ticker's L1 projection AT ONCE.
+
+    Leading edge, no timer: the first quote starts a rebuild immediately; quotes that arrive
+    while it runs mark the ticker dirty and trigger exactly ONE trailing rebuild, which reads
+    the newest row -- nothing is queued up, nothing is lost. This used to restart a 120 ms
+    threading.Timer on every message (a new OS thread per message) and rebuild only when the
+    timer finally expired (audit 2026-09-24: delay on every tick; no bound while ticks kept
+    arriving faster than 120 ms)."""
     t = ticker_storage_key(ticker)  # RC-345/F25: canonical L1 key (write+read consistent; idempotent on stream symbols)
     if not t:
         return
+    with _inflight_lock:
+        st = _inflight.setdefault(t, {"running": False, "dirty": False})
+        if st["running"]:
+            st["dirty"] = True
+            return
+        st["running"] = True
+    _quote_executor().submit(_rebuild_until_clean, t)
 
-    def _run() -> None:
+
+def _rebuild_until_clean(t: str) -> None:
+    while True:
         try:
             if _rebuild_quote_fn is not None:
                 _rebuild_quote_fn(t)
-                return
-            import server as srv
+            else:
+                import server as srv
 
-            srv._l1_on_quote_updated(t)
+                srv._l1_on_quote_updated(t)
         except Exception as ex:
-            log.debug("L1 quote hook: %s", ex)
-
-    with _timer_lock:
-        old = _timers.pop(t, None)
-        if old is not None:
-            old.cancel()
-        timer = threading.Timer(_DEBOUNCE_SEC, _run)
-        timer.daemon = True
-        _timers[t] = timer
-        timer.start()
+            log.warning("L1 quote rebuild failed for %s: %s", t, ex)
+        with _inflight_lock:
+            st = _inflight[t]
+            if not st["dirty"]:
+                st["running"] = False
+                return
+            st["dirty"] = False
 
 
 def notify_l2_snapshot_ready(ticker: str, expiry: Optional[str]) -> None:
