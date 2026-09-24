@@ -237,6 +237,8 @@ def test_rth_open_mins_constant_exists_and_used():
 
 # FIND-SERVERPY-5
 def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live('SPY')   # the daemon holds it on a live feed
     import server
 
     # Both quote paths now fetch via get_client() + _safe_get_quote_with_retry()
@@ -263,7 +265,7 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
         # /api/live/state is stream-only: give it the fresh streamed row it serves from
         import time as _t
         with patch.object(server._lmp, "get_quote", return_value={
-                "spot": 100.0, "bid": 99.9, "ask": 100.1, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
+                "ticker": "SPY", "spot": 100.0, "bid": 99.9, "ask": 100.1, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
                 "quote_source_detail": {"spot": "LAST_PRICE"},
                 "quote_ingestion": "schwab_streaming_level_one"}):
             tier = server._tier_a_live_state_dict("SPY", None)

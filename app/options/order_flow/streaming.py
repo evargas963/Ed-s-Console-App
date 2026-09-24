@@ -692,6 +692,9 @@ async def _feed_loop() -> None:
                             continue
                         if not isinstance(env, dict):
                             continue
+                        if env.get("topic") == "daemon.heartbeat":
+                            _lmp.record_feed_heartbeat(env.get("msg") or {}, time.time())
+                            continue
                         hit = _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
                         if hit is not None and _streamed_greeks_hook is not None:
                             _note_qualifying(hit[0], hit[1])
@@ -701,10 +704,12 @@ async def _feed_loop() -> None:
                 log.info("live push unavailable (%s: %s); retrying in %.1fs",
                          type(e).__name__, e, PUSH_RECONNECT_SEC)
             _push_connected_ts = None
+            _lmp.record_feed_down()        # no daemon, no live price -- visible at once
             if _feed_running:
                 await asyncio.sleep(PUSH_RECONNECT_SEC)
     finally:
         _push_connected_ts = None
+        _lmp.record_feed_down()
         # A background hook dispatch already submitted to hook_executor keeps running on
         # its worker thread to completion even after this loop stops -- its CAS in
         # refresh_gamma_surface_from_stream makes a late publish after a restart harmless
