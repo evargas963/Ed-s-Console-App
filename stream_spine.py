@@ -508,6 +508,13 @@ EQUITY_SYMBOLS_MAX_HELD = 150
 #: against the held count at the next RTH, and this number moves only on that evidence.
 OPTION_CONTRACTS_MAX_HELD = 200
 
+#: The WAL file is truncated back to this size whenever a checkpoint lets it restart.
+#: MEASURED 2026-09-24: with no limit SQLite never shrinks the file, and
+#: stream_capture.db-wal sat at 44.9 GB (twice the 21.5 GB database) while holding only 240
+#: live frames -- the high-water mark of a past checkpoint backlog, kept on disk forever.
+#: The limit is per connection, so both writer connections set it.
+WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
+
 
 def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
                           budget: int = OPTION_CONTRACTS_MAX_HELD,
@@ -752,6 +759,7 @@ class CaptureWriter:
         self._conn = sqlite3.connect(str(p))
         try:
             self._conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+            self._conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
             self._conn.executescript(STREAM_SCHEMA_SQL)
             # CREATE TABLE IF NOT EXISTS does not add columns to a table that already
             # exists from a prior daemon run. Migrate forward, idempotently.
@@ -890,50 +898,77 @@ class CaptureWriter:
 
     def open_coverage_epoch(self, symbol: str, service: str, *, reason: str,
                             ts: float | None = None) -> int:
-        """Immediately committed, not batched: this is a low-frequency state transition
-        where correctness (durably recording WHEN a subscription started) matters more
-        than throughput. Returns the new epoch's row id.
+        """Open ONE epoch and return its row id; a refusal (see open_coverage_epochs) is
+        raised as CoverageWriteError. The one-symbol form of open_coverage_epochs."""
+        opened, refused = self.open_coverage_epochs([symbol], service, reason=reason, ts=ts)
+        if symbol in refused:
+            raise CoverageWriteError(refused[symbol])
+        return opened[symbol]
 
-        PR214 merge blocker 2B: refuses to create a SECOND open epoch for the same
-        (symbol, service). Two concurrently-open rows for one pair is contradictory
-        history -- it makes the coverage ledger unreadable, since a gap can no longer be
-        attributed to a single subscription window. The invariant is mechanical:
-        OPEN_EPOCH_COUNT <= 1 per (symbol, service). Normal re-subscription is
-        unaffected because it closes the prior epoch first; reaching here with a row
-        still open means reconciliation was skipped or a close was lost, so this fails
-        LOUDLY rather than silently writing a record that cannot be true."""
+    def open_coverage_epochs(self, symbols: "list[str]", service: str, *, reason: str,
+                             ts: float | None = None) -> "tuple[dict[str, int], dict[str, str]]":
+        """Open one epoch per symbol for `service` in ONE committed transaction:
+        ({symbol: new row id}, {symbol: why it was refused}).
+
+        One commit per subscription change, not one per contract. MEASURED 2026-09-24:
+        these writes run on the capture daemon's event loop, and a 200-contract swap made
+        ~200 separate commits here (plus a heartbeat commit each) -- spans of 5-13 s with
+        the loop unable to read the Schwab socket, which then missed its keepalive pong.
+
+        PR214 merge blocker 2B: refuses a SECOND open epoch for the same (symbol, service)
+        -- or, for a single-contract service, a second open epoch on the service at all.
+        Two concurrently-open rows for one pair is contradictory history (a gap can no
+        longer be attributed to a single subscription window): OPEN_EPOCH_COUNT <= 1. A
+        refused symbol is reported, never written, and does not stop the others. If the
+        transaction itself fails, NOTHING landed: CoverageWriteError, and the caller must
+        treat every symbol as not durably covered."""
         t = ts if ts is not None else time.time()
+        opened: "dict[str, int]" = {}
+        refused: "dict[str, str]" = {}
         try:
-            # For a single-contract service the scope is the SERVICE, regardless of
-            # symbol (see SINGLE_CONTRACT_SERVICES); otherwise it is (symbol, service).
-            if service in self.SINGLE_CONTRACT_SERVICES:
-                existing = self._conn.execute(
-                    "SELECT id, symbol FROM stream_coverage_epochs "
-                    "WHERE service=? AND ended_ts IS NULL", (service,)).fetchall()
-                scope = f"service {service}"
-            else:
-                existing = self._conn.execute(
-                    "SELECT id, symbol FROM stream_coverage_epochs "
-                    "WHERE symbol=? AND service=? AND ended_ts IS NULL",
-                    (symbol, service)).fetchall()
-                scope = f"({symbol}, {service})"
-            if existing:
-                raise CoverageWriteError(
-                    f"open_coverage_epoch({symbol},{service}): refusing to open a second "
-                    f"epoch while {len(existing)} is/are still open for {scope} (row id(s) "
-                    f"{[r[0] for r in existing]}, symbol(s) {[r[1] for r in existing]}). "
-                    f"Close the prior epoch, or run reconcile_orphan_coverage_epochs() at "
-                    f"startup — two open epochs on one option service is contradictory "
-                    f"coverage history and makes producer identity unanswerable.")
-            cur = self._conn.execute(
-                "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
-                "VALUES(?,?,?,?)", (symbol, service, t, reason))
+            single = service in self.SINGLE_CONTRACT_SERVICES
+            for symbol in dict.fromkeys(symbols):
+                # For a single-contract service the scope is the SERVICE, regardless of
+                # symbol (see SINGLE_CONTRACT_SERVICES); otherwise it is (symbol, service).
+                if single:
+                    existing = self._conn.execute(
+                        "SELECT id, symbol FROM stream_coverage_epochs "
+                        "WHERE service=? AND ended_ts IS NULL", (service,)).fetchall()
+                    scope = f"service {service}"
+                else:
+                    existing = self._conn.execute(
+                        "SELECT id, symbol FROM stream_coverage_epochs "
+                        "WHERE symbol=? AND service=? AND ended_ts IS NULL",
+                        (symbol, service)).fetchall()
+                    scope = f"({symbol}, {service})"
+                if existing:
+                    refused[symbol] = (
+                        f"open_coverage_epoch({symbol},{service}): refusing to open a second "
+                        f"epoch while {len(existing)} is/are still open for {scope} (row id(s) "
+                        f"{[r[0] for r in existing]}, symbol(s) {[r[1] for r in existing]}). "
+                        f"Close the prior epoch, or run reconcile_orphan_coverage_epochs() at "
+                        f"startup -- two open epochs on one option service is contradictory "
+                        f"coverage history and makes producer identity unanswerable.")
+                    continue
+                cur = self._conn.execute(
+                    "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
+                    "VALUES(?,?,?,?)", (symbol, service, t, reason))
+                opened[symbol] = cur.lastrowid
             self._conn.commit()
-            return cur.lastrowid
-        except CoverageWriteError:
-            raise
         except Exception as e:
-            raise CoverageWriteError(f"open_coverage_epoch({symbol},{service}): {e}") from e
+            self._rollback_quietly()
+            raise CoverageWriteError(f"open_coverage_epochs({len(symbols)} x {service}): {e}") from e
+        return opened, refused
+
+    def _rollback_quietly(self) -> None:
+        """Undo an uncommitted control-connection transaction after a failed write, so a
+        half-written batch can never be committed by the NEXT control write. A rollback
+        that itself fails leaves nothing more to undo (the connection is unusable), and the
+        write that failed has already been reported by the caller's CoverageWriteError."""
+        try:
+            self._conn.rollback()
+        except sqlite3.Error:  # caps-ok: the original failure is already being raised
+            pass
 
     def write_heartbeat(self, *, pid: int | None = None, ts: float | None = None,
                         claimed_coverage: "dict[str, list[int]] | None" = None,
@@ -990,16 +1025,27 @@ class CaptureWriter:
 
     def close_coverage_epoch(self, epoch_id: int, *, reason: str,
                              ts: float | None = None) -> None:
-        """Idempotent: only an OPEN epoch (ended_ts IS NULL) is closed, so a duplicate
-        close call cannot overwrite an already-recorded end time."""
+        """Close ONE epoch -- the one-id form of close_coverage_epochs."""
+        self.close_coverage_epochs([epoch_id], reason=reason, ts=ts)
+
+    def close_coverage_epochs(self, epoch_ids: "list[int]", *, reason: str,
+                              ts: float | None = None) -> None:
+        """Close these epochs in ONE committed transaction (see open_coverage_epochs for
+        why one commit per change, not per contract). Idempotent: only an OPEN epoch
+        (ended_ts IS NULL) is closed, so a duplicate close cannot overwrite an
+        already-recorded end time. On failure nothing landed: CoverageWriteError."""
+        ids = [int(i) for i in dict.fromkeys(epoch_ids)]
+        if not ids:
+            return
         t = ts if ts is not None else time.time()
         try:
-            self._conn.execute(
+            self._conn.executemany(
                 "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
-                "WHERE id=? AND ended_ts IS NULL", (t, reason, epoch_id))
+                "WHERE id=? AND ended_ts IS NULL", [(t, reason, i) for i in ids])
             self._conn.commit()
         except Exception as e:
-            raise CoverageWriteError(f"close_coverage_epoch({epoch_id}): {e}") from e
+            self._rollback_quietly()
+            raise CoverageWriteError(f"close_coverage_epochs({ids}): {e}") from e
 
     def _insert_guarded(self, topic: str, msg: Any, *,
                         conn: "sqlite3.Connection | None" = None) -> int:
@@ -1056,6 +1102,7 @@ class CaptureWriter:
 
     def _writer_thread(self, q: "queue.SimpleQueue") -> None:
         conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
         pending = 0
         last_commit = time.monotonic()
         try:

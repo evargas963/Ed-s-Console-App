@@ -832,8 +832,51 @@ def _retire_all_extra_option_coverage(writer, epoch_state: "dict | None", *, rea
     keys = sorted(k for k in epoch_state if k.startswith(prefix) and not k.endswith("_pending_close"))
     for key in keys:
         _retry_pending_epoch_closes(writer, epoch_state, key, reason=reason)
-        _close_coverage_epoch_tracked(writer, epoch_state, key, reason=reason,
-                                      surrendered_ts=surrendered_ts)
+    _surrender_epochs_batched(writer, epoch_state, keys, reason=reason,
+                              surrendered_ts=surrendered_ts, require_publish=False)
+
+
+def _surrender_epochs_batched(writer, epoch_state: dict, keys: "list[str]", *, reason: str,
+                              surrendered_ts: float, require_publish: bool) -> "list[str]":
+    """_close_coverage_epoch_tracked for MANY keys at once: ONE write-ahead retraction and
+    ONE close transaction, not one of each per contract. MEASURED 2026-09-24: these writes
+    run on the daemon's event loop, and a 200-contract swap committed ~400 times here --
+    spans of 5-13 s in which the loop could not read the Schwab socket, which then missed
+    its keepalive pong and died.
+
+    Same laws as the per-key form, applied to the set:
+      - the retraction is published BEFORE any row is closed; if it cannot be published
+        and `require_publish`, nothing is surrendered (every epoch stays current) -> [];
+      - ended_ts is `surrendered_ts` (the decision), never the moment the write landed;
+      - a failed close under `require_publish` gives nothing up (epochs restored, claim
+        republished) -> []; a forced surrender (recycle, shutdown) instead queues every
+        id for retry with its surrender time, exactly like _try_close_one.
+    Returns the keys whose surrender landed (all of `keys`, or none)."""
+    closing = {k: epoch_state.get(k) for k in keys}
+    for k in keys:
+        epoch_state[k] = None
+    ids = {k: eid for k, eid in closing.items() if eid is not None}
+    if not ids:
+        return list(keys)
+
+    def _restore() -> "list[str]":
+        for k, eid in closing.items():
+            epoch_state[k] = eid
+        _publish_coverage_claim(writer, epoch_state)
+        return []
+
+    if not _publish_coverage_claim(writer, epoch_state) and require_publish:
+        return _restore()
+    try:
+        writer.close_coverage_epochs(list(ids.values()), reason=reason, ts=surrendered_ts)
+    except CoverageWriteError as e:
+        print(f"coverage epoch close failed for {len(ids)} epoch(s) "
+              f"({'nothing surrendered' if require_publish else 'retry pending'}): {e}")
+        if require_publish:
+            return _restore()
+        for k, eid in ids.items():
+            _add_pending_close(epoch_state, k, eid, surrendered_ts)
+    return list(keys)
 
 
 async def _reconcile_option_service(stream, held: str | None, requested: str | None, *,
@@ -1298,26 +1341,17 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
             to_add.append(symbol)
         # held == wanted (both set or both clear): already correct, nothing to do.
 
-    # ---- REMOVAL: durable CLOSE first per symbol (unchanged causal rule), THEN ONE
-    # batched vendor UNSUBS call for every symbol whose close actually landed. ----
-    closed_ok: "list[str]" = []
-    for symbol in to_remove:
-        epoch_key = f"{prefix}{symbol}"
-        if writer is not None and epoch_state is not None:
-            closing_epoch_id = epoch_state.get(epoch_key)
-            surrender_published = _close_coverage_epoch_tracked(
-                writer, epoch_state, epoch_key, reason="active_contract_changed",
-                require_publish=True)
-            if (not surrender_published
-                    or _epoch_close_is_pending(epoch_state, epoch_key, closing_epoch_id)):
-                # Could not durably surrender this symbol's coverage this tick — leave its
-                # vendor subscription untouched (same fail-closed rule as the single-symbol
-                # CASE A) and retry next tick.
-                epoch_state[epoch_key] = closing_epoch_id
-                _discard_pending_close(epoch_state, epoch_key, closing_epoch_id)
-                _publish_coverage_claim(writer, epoch_state)
-                continue
-        closed_ok.append(symbol)
+    # ---- REMOVAL: durable CLOSE first (unchanged causal rule), THEN ONE batched vendor
+    # UNSUBS call. The close is one retraction + one transaction for the whole set
+    # (_surrender_epochs_batched); if it cannot land, NO symbol's vendor subscription is
+    # touched this tick (same fail-closed rule as the single-symbol CASE A) -- retried
+    # next tick. ----
+    closed_ok: "list[str]" = list(to_remove)
+    if to_remove and writer is not None and epoch_state is not None:
+        surrendered = _surrender_epochs_batched(
+            writer, epoch_state, [f"{prefix}{s}" for s in to_remove],
+            reason="active_contract_changed", surrendered_ts=time.time(), require_publish=True)
+        closed_ok = [s for s in to_remove if f"{prefix}{s}" in surrendered]
     if closed_ok:
         try:
             # RC-REHAB-1 (2026-09-22): same oversized-payload connection-kill risk as the
@@ -1361,29 +1395,45 @@ async def _apply_extra_option_contract_subs(stream, contract_state: dict, extra_
         rejected = await _batch_subscribe_with_size_chunking(op, to_add, on_admitted=_mark_admitted)
 
         for symbol in admitted_this_call:
-            epoch_key = f"{prefix}{symbol}"
             if rejected_state is not None:
                 rejected_state.pop(symbol, None)
             if rejection_backoff is not None:
                 rejection_backoff.pop(symbol, None)
-            if writer is not None and epoch_state is not None:
-                _open_coverage_epoch_tracked(writer, epoch_state, epoch_key, symbol,
-                                             EXTRA_OPTION_CONTRACT_SERVICE_NAME,
-                                             reason="active_contract_set")
-                if epoch_state.get(epoch_key) is None:
-                    # Durable open failed — the vendor must not go on holding a
-                    # subscription with no coverage record behind it (same compensation
-                    # rule as the single-symbol path).
-                    try:
-                        await stream.level_one_option_unsubs([symbol])
-                    except Exception as e:
-                        raise OptionCoverageCompensationError(
-                            f"{EXTRA_OPTION_CONTRACT_SERVICE_NAME}: coverage-epoch open "
-                            f"failed for {symbol} AND the compensating unsubscribe also "
-                            f"failed ({type(e).__name__}: {e}) — vendor state uncertain "
-                            f"with no durable coverage; forcing stream recycle rather "
-                            f"than continuing") from e
-                    contract_state[epoch_key] = None
+        if admitted_this_call and writer is not None and epoch_state is not None:
+            # Durable OPEN for everything the vendor admitted: one transaction, one claim
+            # publication (see _surrender_epochs_batched for the measured cost of one each
+            # per contract on this event loop).
+            try:
+                opened, refused = writer.open_coverage_epochs(
+                    admitted_this_call, EXTRA_OPTION_CONTRACT_SERVICE_NAME,
+                    reason="active_contract_set")
+            except CoverageWriteError as e:
+                print(f"coverage epoch open failed for {len(admitted_this_call)} "
+                      f"contract(s), compensating: {e}")
+                opened, refused = {}, {}
+            for symbol, why in refused.items():
+                print(f"coverage epoch open refused ({symbol}), compensating: {why}")
+            for symbol in admitted_this_call:
+                epoch_state[f"{prefix}{symbol}"] = opened.get(symbol)
+            _publish_coverage_claim(writer, epoch_state)
+            uncovered = [s for s in admitted_this_call if s not in opened]
+            if uncovered:
+                # Durable open failed — the vendor must not go on holding a subscription
+                # with no coverage record behind it (same compensation rule as the
+                # single-symbol path), given back in one chunked unsubscribe.
+                try:
+                    for _start in range(0, len(uncovered), OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS):
+                        await stream.level_one_option_unsubs(
+                            uncovered[_start:_start + OPTION_SUBSCRIBE_MAX_BATCH_SYMBOLS])
+                except Exception as e:
+                    raise OptionCoverageCompensationError(
+                        f"{EXTRA_OPTION_CONTRACT_SERVICE_NAME}: coverage-epoch open "
+                        f"failed for {uncovered} AND the compensating unsubscribe also "
+                        f"failed ({type(e).__name__}: {e}) — vendor state uncertain "
+                        f"with no durable coverage; forcing stream recycle rather "
+                        f"than continuing") from e
+                for symbol in uncovered:
+                    contract_state[f"{prefix}{symbol}"] = None
 
         if rejected_state is not None:
             for symbol, reason in rejected:
