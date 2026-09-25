@@ -166,7 +166,6 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "_log_flip_drift", _spy)
     monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_universal_capture_wanted", lambda _tk: (False, None))
-    monkeypatch.setattr(srv, "_terrain_strike_count", lambda _tk: 20)
 
     class _Resp:
         status_code = 200
@@ -177,7 +176,6 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *_a, **_k: (_Resp(), 0, 0))
     monkeypatch.setattr(srv, "flatten_chain_contracts", lambda _j: [])
     monkeypatch.setattr(srv, "resolve_spot", lambda _tk, **_kw: (100.0, "test", 1.0))
-    monkeypatch.setattr(srv, "_learn_strike_geometry", lambda *_a, **_k: None)
 
     class _Snap:
         confidence = "TRUSTED"

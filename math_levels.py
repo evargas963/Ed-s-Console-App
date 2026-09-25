@@ -853,16 +853,41 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
         return []
     lo, hi = spot * (1.0 - span_pct), spot * (1.0 + span_pct)
     steps = max(int(steps), 2)
-    out: List[tuple[float, float]] = []
-    for i in range(steps + 1):
-        s = lo + (hi - lo) * i / steps
-        total = 0.0
-        for strike, oi, mult, t_years, sigma, sign in parsed:
-            g = bs_gamma(s, strike, t_years, sigma)
-            if g is None:
-                continue
-            total += _dealer_sign(sign, sign_model) * g * oi * mult * s * s * 0.01
-        out.append((round(s, 4), total))
+    grid = [lo + (hi - lo) * i / steps for i in range(steps + 1)]
+    totals = _gamma_profile_totals(parsed, grid, sign_model)
+    return [(round(s, 4), total) for s, total in zip(grid, totals)]
+
+
+#: Candidate prices evaluated per numpy block in _gamma_profile_totals (bounds memory: a
+#: 30,000-contract chain x 32 prices is ~1M floats per temporary).
+_GAMMA_PROFILE_BLOCK = 32
+
+
+def _gamma_profile_totals(parsed: list, grid: List[float], sign_model: str) -> List[float]:
+    """sum over contracts of dealer_sign * bs_gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
+
+    The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
+    passes), evaluated as arrays instead of one Python call per (price, contract) pair.
+    MEASURED 2026-09-25 on SPY's full chain (13,290 contracts x 241 prices): the per-call
+    loop made 2.27M bs_gamma calls and was 82% of compute_terrain's 17.8 s. A gamma that is
+    not finite contributes nothing, exactly as bs_gamma's None did."""
+    import numpy as np
+
+    arr = np.asarray(parsed, dtype=float)
+    strike, oi, mult, t_years, sigma, side = (arr[:, i] for i in range(6))
+    sign = np.array([_dealer_sign(int(x), sign_model) for x in side], dtype=float)
+    vt = sigma * np.sqrt(t_years)
+    drift = 0.5 * sigma * sigma * t_years
+    weight = sign * oi * mult
+    s_all = np.asarray(grid, dtype=float)
+    out: List[float] = []
+    with np.errstate(all="ignore"):
+        for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
+            s = s_all[start:start + _GAMMA_PROFILE_BLOCK, None]
+            d1 = (np.log(s / strike) + drift) / vt
+            g = np.exp(-0.5 * d1 * d1) / _SQRT_2PI / (s * vt)
+            g = np.where(np.isfinite(g), g, 0.0)
+            out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
     return out
 
 

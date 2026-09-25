@@ -2511,47 +2511,50 @@ def check_single_faucet_provenance() -> list[Violation]:
 
 
 def check_chain_width_single_faucet() -> list[Violation]:
-    """Every level-computing chain fetch must size itself from ONE authority.
+    """Level math is computed from the FULL chain -- no chain fetch in server.py may narrow it
+    to a strike window.
 
-    WHAT WAS OBSERVED (2026-07-26, RC-59): the console/analytics path fetched option chains at a
-    hardcoded CHAIN_STRIKE_COUNT=20 ("keep fast") while the terrain path sized from measured
-    geometry, so the SAME ticker was analysed at two different widths and the levels persisted to
-    `snapshots` were narrower than the ones shown on screen. Two widths is two answers. The width
-    is a function of the +/-5% span bar and the instrument's own strike spacing, and MEASURED
-    across 52 chains the fixed count was wrong in BOTH directions (~48 equities need under 20 and
-    got 40; $SPX needs ~150 and got 40) — so a hardcoded literal cannot be right for any universe.
+    WHAT WAS OBSERVED (2026-09-25): the 42 board tickers' levels were computed twice with the
+    same code -- once from the strike window the console fetched (strike_count sized to +/-5%
+    around spot, 20 strikes for most names) and once from the full chain. The window missed the
+    gamma flip for 10 tickers, moved max pain for 16 and the put wall for 4, put $SPX walls 3-4%
+    away, and held only 15-60% of each ticker's open interest. Operator decision the same day:
+    the full chain for all calculations (server.fetch_full_chain / _fetch_state_chain). The
+    earlier rule (RC-59: every width from one strike-count faucet) is superseded -- there is no
+    width left to source.
 
-    Rule: in server.py, a `strike_count=` argument on a chain fetch must be
-    `resolve_chain_strike_count(...)` (or a variable derived from it), never a bare constant —
-    unless the line declares `chain-width-faucet-ok: <reason>` for a fetch that provably computes
-    no levels (e.g. the expiry-list dropdown).
-
-    HOW THE RULE WAS VALIDATED: prototyped against server.py before enforcing — it flags exactly
-    the bare-constant fetches and passes the faucet-routed ones and the single declared exemption;
-    scoped to server.py because that is where the live fetches live, so it cannot cry wolf across
-    offline tools that legitimately choose their own width.
+    Rule: in server.py a `strike_count=` argument is allowed only as the gate's own
+    pass-through (`strike_count=strike_count`) or on a line that declares
+    `chain-width-faucet-ok: <reason>` for a fetch that provably computes no levels.
     """
     out: list[Violation] = []
     path = REPO / "server.py"
     try:
         src = path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return out
-    for n, line in enumerate(src.splitlines(), start=1):
-        if "strike_count=" not in line or "def " in line:
+        tree = ast.parse(src)
+    except (OSError, SyntaxError) as e:
+        return [Violation(path, 1, f"server.py could not be parsed for the chain-width rule: {e}")]
+    lines = src.splitlines()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
             continue
-        if "chain-width-faucet-ok" in line:
-            continue
-        arg = line.split("strike_count=", 1)[1].strip().rstrip(",)").strip()
-        if not arg or arg.startswith(("resolve_chain_strike_count", "_width", "_terrain_strike_count")):
-            continue
-        if arg.isidentifier() and arg.isupper():          # a bare CONSTANT is the defect
+        for kw in node.keywords:
+            if kw.arg != "strike_count":
+                continue
+            v = kw.value
+            if (isinstance(v, ast.Name) and v.id == "strike_count") or (
+                    isinstance(v, ast.Constant) and v.value is None):
+                continue                                   # the gate's own pass-through
+            n = kw.value.lineno
+            if "chain-width-faucet-ok" in lines[n - 1]:
+                continue
+            arg = ast.unparse(v)
             out.append(Violation(
                 path, n,
-                f"chain fetch sizes itself from the bare constant {arg!r} instead of the ONE "
-                f"width authority resolve_chain_strike_count(ticker) (RC-59). A fixed count is "
-                f"wrong in both directions across a real universe. Use the faucet, or declare "
-                f"'chain-width-faucet-ok: <reason>' if this fetch computes no levels."))
+                f"chain fetch narrows the chain to a strike window (strike_count={arg!r}). Level math "
+                f"uses the FULL chain (fetch_full_chain / _fetch_state_chain; measured 2026-09-25: the "
+                f"window moved or lost levels on a third of the board). Declare "
+                f"'chain-width-faucet-ok: <reason>' only for a fetch that computes no levels."))
     return out
 
 
@@ -3332,7 +3335,7 @@ CHECKS = [
     ("prereg_before_confirmatory", check_prereg_before_confirmatory, True),  # RC-210: Arnott/COS prereg
     ("decision_path_wired", check_decision_path_wired, True),  # RC-210: SR 11-7 AST TRADE gate
     ("collect_datasheet_staged", check_collect_datasheet_staged, True),  # RC-210: Gebru datasheets
-    ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # RC-59: one strike-count authority
+    ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # 2026-09-25: full chain for level math
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted
     ("collect_window_single_law", check_collect_window_single_law, True),  # RC-183: 08:15-15:15 CT at the ONE write seam
     ("price_bars_readers_name_their_session", check_price_bars_readers_name_their_session, True),  # RC-61: the log is a control, not an archive

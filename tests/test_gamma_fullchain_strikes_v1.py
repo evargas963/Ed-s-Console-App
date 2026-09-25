@@ -20,8 +20,8 @@ def test_gex_full_chain_strike_count_is_wide_not_ui_20() -> None:
     assert GEX_FULL_CHAIN_STRIKE_COUNT == 100
     import server as srv
 
-    assert srv.CHAIN_STRIKE_COUNT == 20
-    assert srv.GEX_FULL_CHAIN_STRIKE_COUNT == 100
+    # the live console no longer has a strike-window width at all (full chain, 2026-09-25)
+    assert not hasattr(srv, "CHAIN_STRIKE_COUNT")
 
 
 def test_has_morning_full_capture_false_then_true(tmp_path: Path) -> None:
@@ -187,7 +187,7 @@ def test_server_helper_honours_the_persist_verdict(monkeypatch, tmp_path):
     # a persist that reports NOTHING WRITTEN must not memoise
     monkeypatch.setattr(server, "maybe_persist_morning_full_chain",
                         lambda *_a, **_k: {"status": "skipped", "reason": "outside_capture_span"})
-    server._persist_universal_capture("SPY", ("SPY", "2026-07-20"), 100, [{}], 745.0)
+    server._persist_universal_capture("SPY", ("SPY", "2026-07-20"), [{}], 745.0)
     assert ("SPY", "2026-07-20") not in server._morning_capture_done, (
         "a skipped persist was memoised as done — the silent-suppression defect"
     )
@@ -195,7 +195,7 @@ def test_server_helper_honours_the_persist_verdict(monkeypatch, tmp_path):
     # a persist that reports ok MUST memoise
     monkeypatch.setattr(server, "maybe_persist_morning_full_chain",
                         lambda *_a, **_k: {"status": "ok", "n_contracts": 40})
-    server._persist_universal_capture("SPY", ("SPY", "2026-07-20"), 100, [{}], 745.0)
+    server._persist_universal_capture("SPY", ("SPY", "2026-07-20"), [{}], 745.0)
     assert ("SPY", "2026-07-20") in server._morning_capture_done
 
 

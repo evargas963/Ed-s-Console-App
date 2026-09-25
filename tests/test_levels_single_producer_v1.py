@@ -92,12 +92,12 @@ def test_absence_reads_as_absence_not_as_a_narrower_chains_answer():
     )
 
 
-def test_the_single_producer_still_uses_the_width_faucet():
-    """One producer is only worth having if it reads the one width authority (RC-59)."""
+def test_the_single_producer_computes_from_the_full_chain():
+    """The one producer reads the FULL chain (2026-09-25: the strike window moved or lost levels
+    on a third of the board)."""
     seg = _fn("_terrain_refresh_one")
-    assert "_terrain_strike_count(" in seg or "resolve_chain_strike_count(" in seg, (
-        "the producer no longer sizes its chain from the width faucet"
-    )
+    assert "fetch_full_chain(" in seg, "the producer no longer computes from the full chain"
+    assert "strike_count" not in seg, "the producer narrowed its chain to a strike window again"
     assert "priority" in seg, "the producer cannot serve an operator-facing miss with priority"
 
 
