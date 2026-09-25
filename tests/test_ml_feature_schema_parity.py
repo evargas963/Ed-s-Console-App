@@ -711,6 +711,11 @@ def test_cf_drop_routes_to_conf_and_zeroes_x_conf_prediction():
     val_conf[:, 0] = 0.85
 
     device = torch.device("cpu")
+    # Deterministic: the weight init and the shuffle order are seeded HERE. Unseeded, they came
+    # from whatever torch random state earlier tests in the same xdist worker left behind, so
+    # CI trained a different model on every run (2026-09-25 CI failure: logits unchanged by the
+    # drop -- a start whose 16-unit ReLU conf branch trained dead; 0 of 200 seeded starts locally).
+    torch.manual_seed(0)
     model = build_model(t5, t1, n_conf).to(device)
     y_val = np.clip((val_conf[:, 0] * 2 + val_conf[:, 2] * 3).astype(int), 0, 2)
     train_end = 16
@@ -725,6 +730,7 @@ def test_cf_drop_routes_to_conf_and_zeroes_x_conf_prediction():
         ),
         batch_size=8,
         shuffle=True,
+        generator=torch.Generator().manual_seed(0),
     )
     for _ in range(20):
         model.train()
@@ -749,6 +755,11 @@ def test_cf_drop_routes_to_conf_and_zeroes_x_conf_prediction():
         bc_drop = torch.tensor(dropped_conf, dtype=torch.float32)
         logits_base = model(b1, b5, bc_base).numpy()
         logits_drop = model(b1, b5, bc_drop).numpy()
+        # the drop reaches the conf branch's input layer (routing), independent of whether any
+        # ReLU unit after it is alive
+        pre_base = model.conf_branch[0](bc_base).numpy()
+        pre_drop = model.conf_branch[0](bc_drop).numpy()
+    assert not np.allclose(pre_base, pre_drop, atol=1e-6)
     assert not np.allclose(logits_base, logits_drop, atol=1e-6)
     drop_pred = _lstm_predict_numpy(model, val_5m[train_end:], val_1m[train_end:], dropped_conf, device)
     assert drop_pred.shape == base_pred.shape
