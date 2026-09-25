@@ -170,7 +170,12 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     # in any DB — it was test log pollution through the shared sink. Tests keep the stream
     # handler; only the FILE sink is skipped under pytest (the sink's own unit test calls
     # install_ed_server_file_sink directly with a tmp path and is unaffected).
-    if "pytest" not in sys.modules and not os.environ.get("PYTEST_CURRENT_TEST"):
+    # A checkout bound to ANOTHER checkout's runtime (runtime_layout.live_binding_error) must
+    # not write that checkout's live log -- measured 2026-09-23: a worktree console appended
+    # 15,451 errors to the production logs/ed_server.log. The stream handler still prints.
+    from runtime_layout import live_binding_error as _live_binding_error
+    if ("pytest" not in sys.modules and not os.environ.get("PYTEST_CURRENT_TEST")
+            and _live_binding_error() is None):
         install_ed_server_file_sink(ED_SERVER_LOG_PATH, level=level)
 
 
@@ -9371,6 +9376,15 @@ from contextlib import asynccontextmanager
 async def _app_lifespan(app):
     """Startup and shutdown: logger, order flow, SSE, ML scheduler."""
     # ── Startup ─────────────────────────────────────────────────────────────
+    # FIRST, before any worker, client or database is touched: a checkout whose runtime is
+    # ANOTHER checkout (a worktree converging on production) does not start a live console
+    # (runtime_layout.live_binding_error -- a worktree console ran against production on
+    # 2026-09-23). Refusing here stops uvicorn before it serves anything.
+    from runtime_layout import live_binding_error
+    _binding = live_binding_error()
+    if _binding is not None:
+        log.critical("LIVE CONSOLE REFUSED: %s", _binding)
+        raise RuntimeError(f"live console refused: {_binding}")
     # Installed FIRST: until these exist, Ctrl+C depends on uvicorn's graceful path
     # completing, and that path joins background workers which may be blocked.
     _install_signal_handlers()

@@ -2639,6 +2639,14 @@ def main() -> int:
                     help="optional symbols held from boot; the console requests the rest")
     ap.add_argument("--duration-min", type=float, default=0.0, help="0 = until Ctrl+C")
     a = ap.parse_args()
+    # A worktree converging on production's runtime must not open production's Schwab
+    # socket and stream database (runtime_layout.live_binding_error, 2026-09-25).
+    from runtime_layout import live_binding_error
+    binding = live_binding_error()
+    if binding is not None:
+        # printed to the terminal only -- never into the other checkout's daemon log
+        print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
+        return 2
     syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]
     return asyncio.run(run(syms, a.duration_min))
 

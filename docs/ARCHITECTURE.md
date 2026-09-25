@@ -527,7 +527,9 @@ recovery backups. Runtime state must not pollute the source checkout.
 Unset, a standalone checkout uses itself; a linked Git worktree reads Git's native
 ``commondir`` metadata and converges on the primary worktree, so a feature worktree cannot
 silently become another production data root. An explicit runtime root may be a dedicated
-directory, never another linked source worktree. `db_authority`, `db`, `config`, `server` and
+directory, never another linked source worktree. Converging is for reading: a live console or capture daemon starts only
+from the checkout that owns its runtime (`runtime_layout.live_binding_error`); a worktree that
+needs to run one sets `ED_RUNTIME_ROOT` to a separate sandbox directory. `db_authority`, `db`, `config`, `server` and
 the report-writing tools read their paths from it; the module imports nothing from `tools/` or
 `governance/`. Model artifacts under `models/` are still read from the source tree (a later
 move, with its own row).
