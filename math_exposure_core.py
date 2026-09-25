@@ -259,6 +259,7 @@ def compute_exposures_by_strike(
     spot: float | None = None,
     use_only_dte_max: int | None = None,
     require_oi: bool = True,
+    now=None,
 ) -> tuple[Dict[float, dict], ExposureDiagnostics]:
     """
     Produces per-strike aggregated:
@@ -281,9 +282,12 @@ def compute_exposures_by_strike(
     # RC-345 / F13: T for the BS-vanna faucet comes from the ONE valuation-T authority,
     # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
     # whole-day `dte / 365.0`. `now` is pinned once so every contract in the aggregate is
-    # priced at one instant, and T is memoised per distinct expiry string.
+    # priced at one instant, and T is memoised per distinct expiry string. It is the CALLER's
+    # valuation instant when given (a replay of a stored chain must price at the snapshot's
+    # time -- 2026-09-25: compute_terrain(now=...) priced gamma at the snapshot but vanna at
+    # the wall clock, so the same stored chain gave a different vanna on every run), else now.
     from time_et import time_to_expiry_years as _tte, now_et as _now_et
-    _tte_now = _now_et()
+    _tte_now = now if now is not None else _now_et()
     _tte_cache: dict[str, float | None] = {}
 
     def _tte_memo(exp_raw) -> float | None:
