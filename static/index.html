@@ -43,6 +43,7 @@
      never blocks or breaks rendering; a workstation with no network path to
      Google now paints exactly as fast as one with it. -->
 <link rel="stylesheet" href="/static/css/ed-tokens.css">
+<link rel="stylesheet" href="/static/css/ed-trade-desk.css">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -970,6 +971,37 @@
       <!-- TRADE DESK / RIGHT NOW — the one Detect->Frame->Confirm synthesis page (operator,
            2026-09-13). Execute is deliberately absent; see ed-trade-desk.js's own docstring. -->
       <section class="workspace" data-ws-pane="trade-desk">
+        <!-- DESK (operator mockup 2026-09-25): Market Map + Attention Queue + four domain cards for
+             the SELECTED ticker, one global timeframe. ed-trade-desk-map.js fills it; the chart is
+             the shared TradingView-style chart (ed-tv-chart.js on Lightweight Charts). -->
+        <div class="sub-pane" data-sub-pane="desk">
+          <div class="tdm" id="tdmRoot">
+            <div class="tdm-head">
+              <span class="tdm-idx" id="tdmIdxSPX"></span><span class="tdm-idx" id="tdmIdxNDX"></span><span class="tdm-idx" id="tdmIdxVIX"></span>
+              <span class="tdm-grow"></span>
+              <span class="tdm-trust-l">DATA TRUST</span><span class="tdm-trust" id="tdmTrust"></span>
+            </div>
+            <div class="tdm-main">
+              <section class="tdm-map panel" id="tdmMap">
+                <div class="tdm-map-h"><span class="t">Market Map</span><div class="tdm-toolbar" id="tdmToolbar"></div></div>
+                <div class="tdm-families" id="tdmFamilies"></div>
+                <div class="tdm-chart-wrap"><div class="tdm-chart" id="tdmChart"></div><div class="tdm-chart-empty" id="tdmChartEmpty" hidden></div></div>
+              </section>
+              <aside class="tdm-queue panel">
+                <div class="panel-h"><span class="t">Attention Queue</span><span class="tdm-count" id="tdmQueueCount"></span><div class="r"><span class="sub" id="tdmLookback"></span></div></div>
+                <div class="tdm-queue-b" id="tdmQueue"></div>
+              </aside>
+            </div>
+            <div class="tdm-cards" id="tdmCards">
+              <div class="tdm-card panel" id="tdmCardLiq"><div class="tdm-card-h"><span class="t">Liquidity</span><button type="button" class="tdm-eye" data-drill="liquidity" title="Drill down: book heatmap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">NASDAQ/NYSE displayed book · /api/order-flow/microstructure</div></div>
+              <div class="tdm-card panel" id="tdmCardFlow"><div class="tdm-card-h"><span class="t">Order Flow</span><button type="button" class="tdm-eye" data-drill="flow" title="Drill down: Book / DOM"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Top of book + level crosses · microstructure, /api/level_crosses</div></div>
+              <div class="tdm-card panel" id="tdmCardOpt"><div class="tdm-card-h"><span class="t">Options Positioning</span><button type="button" class="tdm-eye" data-drill="options" title="Drill down: Gamma"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Full option chain · /api/terrain, /api/analytics/state</div></div>
+              <div class="tdm-card panel" id="tdmCardVol"><div class="tdm-card-h"><span class="t">Volatility</span><button type="button" class="tdm-eye" data-drill="vol" title="Drill down: option chain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Nearest-expiry ATM IV · /api/terrain, price socket</div></div>
+            </div>
+            <div class="tdm-agree panel"><span class="tdm-agree-t">Cross-Domain Read</span><div class="tdm-agree-row" id="tdmAgree"></div></div>
+            <div class="tdm-foot" id="tdmFoot"></div>
+          </div>
+        </div>
         <div class="sub-pane" data-sub-pane="right-now">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="tdTicker">SPX</span><span class="t">Right Now</span><span class="sub">detect · frame · confirm — one page, zero new math</span>
@@ -1075,6 +1107,9 @@
 <script src="/static/js/ed-order-flow-heatmap.js" defer></script>
 <script src="/static/js/ed-liquidity-map.js" defer></script>
 <script src="/static/js/ed-trade-desk.js" defer></script>
+<script src="/static/vendor/lightweight-charts/lightweight-charts.standalone.production.js" defer></script>
+<script src="/static/js/ed-tv-chart.js" defer></script>
+<script src="/static/js/ed-trade-desk-map.js" defer></script>
 <script src="/static/js/ed-alerts.js" defer></script>
 </body>
 </html>

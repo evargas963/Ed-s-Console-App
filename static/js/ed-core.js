@@ -27,7 +27,7 @@
   // sub id (map/filter/find/sort/... are all real Array.prototype methods). ----
   var NAV = {
     'trade-desk': { title: 'TRADE DESK', subs: [
-      { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
+      { id: 'desk', label: 'Desk' }, { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
       { id: 'expression', label: 'Expression', state: 'na' } ], views: Object.create(null) },
     // Book/DOM first (real, wired 2026-09-13 to /api/order-flow/microstructure); the rest stay
     // `na` until they have their own real wiring -- Overview/Heatmap/Tape/Options Book/History
@@ -1048,5 +1048,5 @@
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     setMeasure: setMeasure, getMeasure: function () { return state.measure; },
     getPlane: function () { return Object.assign({}, _plane); },
-    setMaximize: applyMaximize, toggleMaximize: toggleMaximize };
+    setMaximize: applyMaximize, toggleMaximize: toggleMaximize, setSubview: setSubview };
 })();

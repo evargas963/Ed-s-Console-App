@@ -13635,8 +13635,8 @@ def get_terrain_strikes(ticker: str = Query(...)):
 # the page's polling when CR-CAP clears; this endpoint stays as the history hydrator.
 @app.get("/api/bars1m")
 def get_bars1m(ticker: str = Query(...),
-               limit: int = Query(default=780, ge=1, le=3000),
-               tf: str = Query(default="1", pattern=r"^(1|3|5|15|60|D)$")):
+               limit: int = Query(default=780, ge=1, le=12000),
+               tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$")):
     """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts. `tf` rolls
     them up server-side (aggregate_bars) -- the chart page used to aggregate in the browser."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
@@ -13679,7 +13679,7 @@ def get_bars1m(ticker: str = Query(...),
 
 
 def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
-    """THE chart-timeframe roll-up of 1m bars ("1", "3", "5", "15", "60" minutes, or "D" =
+    """THE chart-timeframe roll-up of 1m bars ("1", "3", "5", "15", "30", "60" minutes, or "D" =
     the ET trading date): first open, max high, min low, last close. Volume is the sum only
     when every minute in the bucket reported one -- otherwise None (unknown), never a partial
     sum or a 0. A bucket holding the forming minute is itself forming."""
