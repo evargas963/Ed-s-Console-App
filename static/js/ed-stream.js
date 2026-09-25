@@ -152,6 +152,40 @@
   // the union of every owner's current demand, deduplicated, computed fresh on every call
   // so an owner's OWN change (including going back to empty) is reflected immediately.
   var _additionalDemandByOwner = {};
+  // Per-view demand (2026-09-24): the server keeps each page load's declaration under its
+  // own id and streams the union of every live view (server.py
+  // post_streaming_active_option_contracts). It used to be ONE last-writer-wins slot, so
+  // two tabs replaced each other's contracts on every render and the capture daemon
+  // swapped ~200 subscriptions on the shared Schwab socket every few seconds until the
+  // socket died. `_demandSeq` orders this view's own declarations; a declaration is a
+  // lease the server drops after 90 s unrefreshed, so a live view re-declares every
+  // DEMAND_REFRESH_MS and a closing page releases its demand at once.
+  var _clientId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+    ? window.crypto.randomUUID()
+    : 'view-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  var _demandSeq = 0;
+  var DEMAND_REFRESH_MS = 30000;
+  function _postDemand(contracts, seq, keepalive) {
+    return fetch('/api/streaming/active-option-contracts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: !!keepalive,
+      body: JSON.stringify({ client_id: _clientId, seq: seq, contracts: contracts }),
+    });
+  }
+  setInterval(function () {
+    // Refresh only a confirmed, idle, non-empty declaration: an in-flight dispatch will
+    // itself refresh the lease, and an empty one holds nothing to keep.
+    if (_pendingAdditional !== null || !_desiredAdditionalConfirmed || !_desiredAdditional.length) return;
+    _postDemand(_desiredAdditional, ++_demandSeq).catch(function () {});
+  }, DEMAND_REFRESH_MS);
+  window.addEventListener('pagehide', function () {
+    if (!_desiredAdditional.length && _pendingAdditional === null) return;
+    _postDemand([], ++_demandSeq, true).catch(function () {});
+  });
+  window.addEventListener('pageshow', function (ev) {
+    // Restored from the back/forward cache: pagehide released this view's demand, so the
+    // cached confirmation no longer matches the server -- the next render re-declares.
+    if (ev.persisted) _desiredAdditionalConfirmed = false;
+  });
   function _unionedAdditionalDemand() {
     var seen = {}, out = [];
     Object.keys(_additionalDemandByOwner).forEach(function (owner) {
@@ -244,9 +278,8 @@
     // request can never retroactively be treated as still authoritative.
     var token = ++_additionalGen;   // supersedes any earlier in-flight request's ability to commit
     _pendingAdditional = dedup;
-    return fetch('/api/streaming/active-option-contracts', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contracts: dedup }),
-    }).then(function (r) {
+    var seq = ++_demandSeq;
+    return _postDemand(dedup, seq).then(function (r) {
       return r.json().then(function (b) { return { status: r.status, body: b }; },
                            function () { return { status: r.status, body: null }; });
     }, function () { return { status: null, body: null }; })
@@ -255,12 +288,16 @@
         var ok2xx = typeof res.status === 'number' && res.status >= 200 && res.status < 300;
         var b = (res.body && typeof res.body === 'object') ? res.body : null;
         // Identity check (independent-review finding: "a successful response acknowledging
-        // the wrong contract set" must not be treated as acceptance of THIS request's set)
-        // -- the server echoes `contracts` in its response; it must match what was sent,
-        // exactly like setActiveContract's own ack-identity check above.
-        var acked = (b && Array.isArray(b.contracts))
-          ? b.contracts.map(function (s) { return String(s || '').toUpperCase(); }) : null;
-        var identityOk = acked !== null && _sortedEqual(acked, dedup);
+        // the wrong contract set" must not be treated as acceptance of THIS request's set):
+        // the server echoes this view's id, this declaration's seq and the demand it
+        // recorded (`requested`); all three must match what was sent. `contracts` is the
+        // union the stream carries (every view, ranked to the socket budget) and is NOT
+        // this view's demand -- confirming against it never matched a demand over the
+        // budget, so every render re-posted and the stream re-ranked (measured 2026-09-24).
+        var acked = (b && Array.isArray(b.requested))
+          ? b.requested.map(function (s) { return String(s || '').toUpperCase(); }) : null;
+        var identityOk = acked !== null && _sortedEqual(acked, dedup)
+          && b.client_id === _clientId && b.seq === seq;
         var accepted = ok2xx && !!b && b.ok === true && identityOk;
         if (isCurrent) {
           if (accepted) {
