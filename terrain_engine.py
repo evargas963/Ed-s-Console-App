@@ -424,7 +424,8 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     }
 
 
-def _per_strike_scopes(exposures: dict, contracts: list[dict], spot: float | None) -> dict:
+def _per_strike_scopes(exposures: dict, contracts: list[dict], spot: float | None,
+                       now=None) -> dict:
     """`{all, near, far}` rows — the three the ALL / <=7DTE / MONTHLY+ chips switch between.
 
     RC-79: the live map had no DTE split at all, so two of the three chips would have shown an
@@ -444,7 +445,7 @@ def _per_strike_scopes(exposures: dict, contracts: list[dict], spot: float | Non
         if not subset:
             continue
         try:
-            ex, _diag = compute_exposures_by_strike(subset, spot=spot, require_oi=True)
+            ex, _diag = compute_exposures_by_strike(subset, spot=spot, require_oi=True, now=now)
             out[name] = _per_strike_rows(ex, subset)
         except Exception:
             out[name] = []                  # a failed scope renders empty, never as `all`
@@ -695,7 +696,14 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     if spot is None or spot <= 0:
         return _unavailable(ticker, spot, "no spot price")
 
-    exposures, diag = compute_exposures_by_strike(contracts, spot=spot, require_oi=True)
+    # ONE valuation instant for every book below (gamma audit: replay pins the snapshot
+    # instant). Resolved BEFORE the first exposure book -- it used to be read later, so the
+    # exposures (and the vanna aggregate built from them) priced T at the wall clock while
+    # the profile priced it at `now` (2026-09-25).
+    from time_et import now_et as _now_et
+    _terrain_now = now if now is not None else _now_et()
+    exposures, diag = compute_exposures_by_strike(contracts, spot=spot, require_oi=True,
+                                                  now=_terrain_now)
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
 
@@ -728,8 +736,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # by both the flip verdict and the regime/gamma-at-spot read. Previously the flip built a
     # profile inside compute_gamma_flip_v2 and this function built a SECOND one, each defaulting
     # `now` to its own wall-clock read — two materializations of the same curve at two instants.
-    from time_et import now_et as _now_et
-    _terrain_now = now if now is not None else _now_et()   # gamma audit: replay pins the snapshot instant
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now)
     flip, confidence, flip_diag = compute_gamma_flip_v2(
         contracts, spot, now=_terrain_now, profile=profile)
@@ -740,14 +746,14 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # RC-357: the 0DTE book from the SAME producer with the dte filter — same parser,
     # same sign model; the share is pure attribution, zero new math.
     _exp_0dte, _ = compute_exposures_by_strike(
-        contracts, spot=spot, require_oi=True, use_only_dte_max=0)
+        contracts, spot=spot, require_oi=True, use_only_dte_max=0, now=_terrain_now)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
     # Max pain on the FRONT expiry only (same producer, dte filter to the nearest expiry).
     _front_dte = min((d for d in (_dte_of(c) for c in contracts) if d is not None), default=None)
     _front_max_pain = None
     if _front_dte is not None:
         _exp_front, _ = compute_exposures_by_strike(
-            contracts, spot=spot, require_oi=True, use_only_dte_max=_front_dte)
+            contracts, spot=spot, require_oi=True, use_only_dte_max=_front_dte, now=_terrain_now)
         _front_max_pain = compute_max_pain(_exp_front)
     # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
     from math_volatility import compute_25d_risk_reversal
@@ -842,6 +848,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # computed from THIS chain; the per-strike histogram was previously rendered from the
         # frozen morning archive purely because nothing persisted this. Session volume is carried
         # alongside so the volume panel stops serving a 09:47 corpse at 11:31.
-        per_strike=_per_strike_scopes(exposures, contracts, spot),
+        per_strike=_per_strike_scopes(exposures, contracts, spot, now=_terrain_now),
         computed_ts_utc=_time.time(),
     )
