@@ -8295,9 +8295,11 @@ def _fetch_state(
                         breaking_news_headline=(getattr(ms, "news_context", None) or {}).get("breaking_news_headline"),
                         pre_market_sentiment=(getattr(ms, "news_context", None) or {}).get("pre_market_sentiment"),
                     )
-                    # FIND-GAMMA-FULLCHAIN-STRIKES-V1: once/day morning *wide*
-                    # near-term chain (strike_count=GEX_FULL_CHAIN_STRIKE_COUNT).
-                    # Does NOT reuse the live UI 20-strike ``contracts`` list.
+                    # FIND-GAMMA-FULLCHAIN-STRIKES-V1: once/day morning archive of the FULL
+                    # chain (fetch_full_chain: every strike; maybe_persist_morning_full_chain
+                    # keeps the near-term expiries). It used to fetch its own 100-strike
+                    # window -- measured 2026-09-25 this path writes every board ticker's
+                    # archive row (09:15-10:17 ET), so the archive held a window, not the chain.
                     # Idempotent before fetch; never widens option_chain_json;
                     # try/except so live path is untouched on any failure.
                     try:
@@ -8306,7 +8308,6 @@ def _fetch_state(
                         # SPY/QQQ/IWM only -- universality, operator 2026-09-23)
                         if _gex_tk:
                             from calibration.option_chain_morning_full import (
-                                GEX_FULL_CHAIN_STRIKE_COUNT as _GEX_STRIKES,
                                 MORNING_END_MINS as _GEX_END,
                                 MORNING_START_MINS as _GEX_START,
                                 SOURCE_WIDE as _GEX_SRC,
@@ -8320,16 +8321,7 @@ def _fetch_state(
                             if _GEX_START <= _gex_mins <= _GEX_END and not has_morning_full_capture(
                                 _gex_db_path, _gex_tk, _gex_date
                             ):
-                                _wide_resp, _, _ = _gated_safe_get_chain(
-                                    client,
-                                    ticker,
-                                    # The once-daily WIDE research capture deliberately takes the
-                                    # maximum vendor-safe width, not this ticker's minimum
-                                    # sufficient width: its whole purpose is to preserve strikes
-                                    # the live faucet would trim.
-                                    strike_count=_GEX_STRIKES,  # chain-width-faucet-ok: wide research capture takes max width by design
-                                    priority=False,
-                                )
+                                _wide_resp = fetch_full_chain(client, ticker, priority=False)
                                 _wide_contracts: list = []
                                 if (
                                     _wide_resp is not None
