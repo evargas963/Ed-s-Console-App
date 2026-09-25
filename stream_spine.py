@@ -510,6 +510,40 @@ EQUITY_SYMBOLS_MAX_HELD = 150
 #: against the held count at the next RTH, and this number moves only on that evidence.
 OPTION_CONTRACTS_MAX_HELD = 200
 
+#: How long a control write (heartbeat, coverage epoch) waits for the tick-writer thread to
+#: START it before it is cancelled and reported failed. The thread takes control writes ahead
+#: of queued ticks, so the normal wait is one tick insert; this bound only matters if the
+#: thread is stuck.
+CONTROL_WRITE_WAIT_SEC = 10.0
+
+
+class _ControlOp:
+    """One control write handed to the tick-writer thread (CaptureWriter._control_write).
+    PENDING -> RUNNING (the thread took it) or CANCELLED (the caller gave up first); exactly
+    one side wins, so a cancelled write is never run and a running one is always waited for."""
+
+    def __init__(self, fn):
+        self.fn = fn
+        self.result = None
+        self.exc: "BaseException | None" = None
+        self.done = threading.Event()
+        self._state = "pending"
+        self._lock = threading.Lock()
+
+    def start(self) -> bool:
+        with self._lock:
+            if self._state != "pending":
+                return False
+            self._state = "running"
+            return True
+
+    def cancel(self) -> bool:
+        with self._lock:
+            if self._state != "pending":
+                return False
+            self._state = "cancelled"
+            return True
+
 #: The WAL file is truncated back to this size whenever a checkpoint lets it restart.
 #: MEASURED 2026-09-24: with no limit SQLite never shrinks the file, and
 #: stream_capture.db-wal sat at 44.9 GB (twice the 21.5 GB database) while holding only 240
@@ -758,6 +792,11 @@ class CaptureWriter:
         #: None therefore means "unchanged", not "clear"; pass {} explicitly to clear it.
         self._last_rejected_contracts: "dict[str, str] | None" = None
         self._closed = False
+        #: control writes go to the tick-writer thread while it runs (_control_write)
+        self._control_ops: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._control_route_lock = threading.Lock()
+        self._writer_accepting = False
+        self._writer_queue: "queue.SimpleQueue | None" = None
         self._conn = sqlite3.connect(str(p))
         try:
             self._conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
@@ -887,14 +926,15 @@ class CaptureWriter:
             # that may have closed many -- the exact silent-zero shape this repo bans.
             # The count is read in the same write transaction as the UPDATE that
             # consumes it, so it is the number of rows actually reconciled.
-            with self._control_txn() as con:
+            def _reconcile(con) -> int:
                 n = int(con.execute(
                     "SELECT COUNT(*) FROM stream_coverage_epochs "
                     "WHERE ended_ts IS NULL").fetchone()[0])
                 con.execute(
                     "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
                     "WHERE ended_ts IS NULL", (t, r))
-            return n
+                return n
+            return self._control_write(_reconcile)
         except Exception as e:
             raise CoverageWriteError(f"reconcile_orphan_coverage_epochs: {e}") from e
 
@@ -927,39 +967,94 @@ class CaptureWriter:
         t = ts if ts is not None else time.time()
         opened: "dict[str, int]" = {}
         refused: "dict[str, str]" = {}
+
+        def _open(con) -> None:
+            single = service in self.SINGLE_CONTRACT_SERVICES
+            for symbol in dict.fromkeys(symbols):
+                # For a single-contract service the scope is the SERVICE, regardless of
+                # symbol (see SINGLE_CONTRACT_SERVICES); otherwise it is (symbol, service).
+                if single:
+                    existing = con.execute(
+                        "SELECT id, symbol FROM stream_coverage_epochs "
+                        "WHERE service=? AND ended_ts IS NULL", (service,)).fetchall()
+                    scope = f"service {service}"
+                else:
+                    existing = con.execute(
+                        "SELECT id, symbol FROM stream_coverage_epochs "
+                        "WHERE symbol=? AND service=? AND ended_ts IS NULL",
+                        (symbol, service)).fetchall()
+                    scope = f"({symbol}, {service})"
+                if existing:
+                    refused[symbol] = (
+                        f"open_coverage_epoch({symbol},{service}): refusing to open a second "
+                        f"epoch while {len(existing)} is/are still open for {scope} (row id(s) "
+                        f"{[r[0] for r in existing]}, symbol(s) {[r[1] for r in existing]}). "
+                        f"Close the prior epoch, or run reconcile_orphan_coverage_epochs() at "
+                        f"startup -- two open epochs on one option service is contradictory "
+                        f"coverage history and makes producer identity unanswerable.")
+                    continue
+                cur = con.execute(
+                    "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
+                    "VALUES(?,?,?,?)", (symbol, service, t, reason))
+                opened[symbol] = cur.lastrowid
         try:
-            with self._control_txn():
-                single = service in self.SINGLE_CONTRACT_SERVICES
-                for symbol in dict.fromkeys(symbols):
-                    # For a single-contract service the scope is the SERVICE, regardless of
-                    # symbol (see SINGLE_CONTRACT_SERVICES); otherwise it is (symbol, service).
-                    if single:
-                        existing = self._conn.execute(
-                            "SELECT id, symbol FROM stream_coverage_epochs "
-                            "WHERE service=? AND ended_ts IS NULL", (service,)).fetchall()
-                        scope = f"service {service}"
-                    else:
-                        existing = self._conn.execute(
-                            "SELECT id, symbol FROM stream_coverage_epochs "
-                            "WHERE symbol=? AND service=? AND ended_ts IS NULL",
-                            (symbol, service)).fetchall()
-                        scope = f"({symbol}, {service})"
-                    if existing:
-                        refused[symbol] = (
-                            f"open_coverage_epoch({symbol},{service}): refusing to open a second "
-                            f"epoch while {len(existing)} is/are still open for {scope} (row id(s) "
-                            f"{[r[0] for r in existing]}, symbol(s) {[r[1] for r in existing]}). "
-                            f"Close the prior epoch, or run reconcile_orphan_coverage_epochs() at "
-                            f"startup -- two open epochs on one option service is contradictory "
-                            f"coverage history and makes producer identity unanswerable.")
-                        continue
-                    cur = self._conn.execute(
-                        "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
-                        "VALUES(?,?,?,?)", (symbol, service, t, reason))
-                    opened[symbol] = cur.lastrowid
+            self._control_write(_open)
         except Exception as e:
             raise CoverageWriteError(f"open_coverage_epochs({len(symbols)} x {service}): {e}") from e
         return opened, refused
+
+    def _control_write(self, fn):
+        """Run one control write `fn(connection)` as ONE write transaction; return its result.
+
+        While the tick-writer thread runs, the write runs ON that thread's connection, so the
+        daemon has a single SQLite writer and the lock race between two connections of one
+        process -- the 2026-09-25 wedge (see _control_txn) -- cannot happen. The thread takes
+        control writes ahead of queued ticks, so they never wait behind a tick backlog.
+        Before the thread starts (startup reconciliation) and after it stops, the write runs
+        on the control connection through _control_txn. A write the thread has not STARTED
+        within CONTROL_WRITE_WAIT_SEC is cancelled and raised, so it can never land later
+        behind a caller that already treated it as failed."""
+        op = None
+        with self._control_route_lock:
+            if self._writer_accepting:
+                op = _ControlOp(fn)
+                self._control_ops.put(op)
+                self._writer_queue.put(self._WRITER_WAKE)
+        if op is None:
+            with self._control_txn() as con:
+                return fn(con)
+        if not op.done.wait(CONTROL_WRITE_WAIT_SEC) and op.cancel():
+            raise sqlite3.OperationalError(
+                f"the writer thread did not start this control write within "
+                f"{CONTROL_WRITE_WAIT_SEC:.0f} s; cancelled, nothing written")
+        op.done.wait()
+        if op.exc is not None:
+            raise op.exc
+        return op.result
+
+    def _run_control_ops(self, conn) -> None:
+        """Writer-thread side of _control_write: each pending control write as its own
+        BEGIN IMMEDIATE transaction on this thread's connection (the caller has already
+        committed the thread's pending ticks)."""
+        while True:
+            try:
+                op = self._control_ops.get_nowait()
+            except queue.Empty:
+                return
+            if not op.start():
+                continue                       # cancelled by a caller that stopped waiting
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    op.result = op.fn(conn)
+                    conn.commit()
+                except BaseException:
+                    conn.rollback()
+                    raise
+            except BaseException as e:  # noqa: BLE001 -- handed back to the waiting caller
+                op.exc = e
+            finally:
+                op.done.set()
 
     @contextmanager
     def _control_txn(self):
@@ -1019,8 +1114,7 @@ class CaptureWriter:
         rejected = None if self._last_rejected_contracts is None else json.dumps(
             self._last_rejected_contracts, sort_keys=True)
         try:
-            with self._control_txn() as con:
-                con.execute(
+            self._control_write(lambda con: con.execute(
                     "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, "
                     "resolved_db_path, claimed_coverage_json, rejected_contracts_json) "
                     "VALUES (1, ?, ?, ?, ?, ?) "
@@ -1028,7 +1122,7 @@ class CaptureWriter:
                     "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path, "
                     "claimed_coverage_json=excluded.claimed_coverage_json, "
                     "rejected_contracts_json=excluded.rejected_contracts_json",
-                    (p, t, str(self.db_path), claim, rejected))
+                    (p, t, str(self.db_path), claim, rejected)))
         except Exception as e:
             raise CoverageWriteError(f"write_heartbeat: {e}") from e
         # Only a LANDED write changes the outstanding lease. A publication that claims
@@ -1067,10 +1161,9 @@ class CaptureWriter:
             return
         t = ts if ts is not None else time.time()
         try:
-            with self._control_txn() as con:
-                con.executemany(
-                    "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
-                    "WHERE id=? AND ended_ts IS NULL", [(t, reason, i) for i in ids])
+            self._control_write(lambda con: con.executemany(
+                "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
+                "WHERE id=? AND ended_ts IS NULL", [(t, reason, i) for i in ids]))
         except Exception as e:
             raise CoverageWriteError(f"close_coverage_epochs({ids}): {e}") from e
 
@@ -1088,6 +1181,8 @@ class CaptureWriter:
 
     #: Sentinel that tells the writer thread to commit what it holds and exit.
     _WRITER_STOP = object()
+    #: Sentinel that wakes the writer thread to take a queued control write.
+    _WRITER_WAKE = object()
 
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
         """Persist every bus message -- WITHOUT ever blocking the event loop.
@@ -1097,9 +1192,9 @@ class CaptureWriter:
         disk, a reader holding the WAL) stalled the socket reads; the writer queue reached
         6,565 and 9,784 messages were dropped. Now the loop only hands each message to a
         thread-safe queue (put, never blocks) and a dedicated thread, which owns its own
-        SQLite connection, does all tick inserts and batch commits. The rare control writes
-        (coverage epochs, heartbeat) keep the control connection on the loop thread -- two
-        connections on one WAL database is SQLite's supported pattern.
+        SQLite connection, does all tick inserts and batch commits -- and, while it runs, the
+        control writes too (coverage epochs, heartbeat; _control_write): ONE writer
+        connection, so no lock race inside the daemon (2026-09-25 wedge, see _control_txn).
 
         Stop semantics are unchanged: everything already delivered to the subscription is
         handed to the thread, which writes and commits it all before `run` returns."""
@@ -1108,6 +1203,8 @@ class CaptureWriter:
         thread = threading.Thread(target=self._writer_thread, args=(q,),
                                   name="stream-capture-writer", daemon=True)
         thread.start()
+        with self._control_route_lock:
+            self._writer_accepting = True       # control writes now go to the thread
         try:
             while not stop.is_set():
                 try:
@@ -1118,6 +1215,8 @@ class CaptureWriter:
             while not sub.queue.empty():
                 q.put(await sub.get())
         finally:
+            with self._control_route_lock:
+                self._writer_accepting = False  # later control writes use _control_txn
             q.put(self._WRITER_STOP)
             await asyncio.to_thread(thread.join)
             self._writer_queue = None
@@ -1140,9 +1239,16 @@ class CaptureWriter:
                     item = q.get(timeout=timeout)
                 except queue.Empty:
                     item = None
+                if not self._control_ops.empty():
+                    if pending:                 # this thread's ticks land before the write
+                        conn.commit()
+                        self.commits += 1
+                        pending = 0
+                        last_commit = time.monotonic()
+                    self._run_control_ops(conn)
                 if item is self._WRITER_STOP:
                     break
-                if item is not None:
+                if item is not None and item is not self._WRITER_WAKE:
                     topic, msg = item
                     pending += self._insert_guarded(topic, msg, conn=conn)
                 if pending and (pending >= self.batch_rows
@@ -1154,6 +1260,7 @@ class CaptureWriter:
             if pending:
                 conn.commit()
                 self.commits += 1
+            self._run_control_ops(conn)         # nothing queued before the stop is left waiting
         finally:
             conn.close()
 
