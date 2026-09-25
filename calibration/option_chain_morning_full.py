@@ -45,9 +45,8 @@ MAX_DTE_DAYS = 37.0
 #: still ONE per (ticker, et_date); continuous accrual is `option_chain_accrual` below.
 MORNING_START_MINS = 555  # 09:15 ET == 08:15 CT (was 570 / 09:30 ET)
 MORNING_END_MINS = 600    # 10:00 ET — capture window for first write
-# Dedicated morning wide fetch (UI live path stays at CHAIN_STRIKE_COUNT=20).
-# Cap 100: Schwab 502'd strikeCount=200 on SPY/QQQ at the 2026-07-20 open.
-GEX_FULL_CHAIN_STRIKE_COUNT = 100
+# The morning archive is fetched as the FULL chain (server.fetch_full_chain, 2026-09-25); the
+# former 100-strike cap (GEX_FULL_CHAIN_STRIKE_COUNT) is gone with every other strike window.
 SOURCE_WIDE = "schwab_chain_wide_gex"
 #: FULL-UNIVERSE capture rides the terrain loop AFTER the money-path window closes
 #: (operator 2026-07-20: "q4.2 lets do it"). Sentinels keep their in-window capture via
