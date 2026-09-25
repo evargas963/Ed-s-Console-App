@@ -40,6 +40,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM The capture daemon (Schwab stream -> every live price, :8800) is its own process in its own
+REM window (start_capture_daemon.bat: restarts it if it dies). Started here unless one is
+REM already serving :8800. Closing THIS window does not stop it -- capture keeps running.
+netstat -ano | findstr /R /C:":8800 .*LISTENING" >nul
+if errorlevel 1 (
+    start "Ed Capture Daemon" /min "%~dp0start_capture_daemon.bat"
+    echo  Capture daemon: started in its own window ^("Ed Capture Daemon"^).
+) else (
+    echo  Capture daemon: already running ^(:8800 is serving^).
+)
+echo.
 echo  Starting server at http://localhost:8000/
 echo  Press Ctrl+C to stop.
 echo  (CWD set to script dir - token path resolves from app dir)
