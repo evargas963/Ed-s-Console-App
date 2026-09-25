@@ -1683,7 +1683,8 @@ def test_multi_F_extra_symbol_coverage_open_write_fails_compensates_by_unsubscri
 
     def _boom(*a, **k):
         raise CoverageWriteError("simulated durable-write outage")
-    monkeypatch.setattr(writer, "open_coverage_epoch", _boom)
+    # the additional-contract path opens its epochs in one transaction (open_coverage_epochs)
+    monkeypatch.setattr(writer, "open_coverage_epochs", _boom)
     epoch_state: dict = {}
     contract_state: dict = {}
 
@@ -1719,7 +1720,8 @@ def test_multi_G_extra_symbol_close_failure_never_touches_the_vendor_and_is_not_
                                     reason="active_contract_set", ts=1.0)
         epoch_state = {qqq_key: eid}
         contract_state = {qqq_key: _QQQ_CONTRACT}
-        monkeypatch.setattr(w, "close_coverage_epoch", _failing_close)
+        # the additional-contract path closes in one transaction (close_coverage_epochs)
+        monkeypatch.setattr(w, "close_coverage_epochs", _failing_close)
         stream = _FlakyOptionStream()
         # Establish the realistic precondition directly: QQQ is ALREADY genuinely held at
         # the vendor from a prior tick (this test isolates the drop/close-failure path,
@@ -1741,6 +1743,90 @@ def test_multi_G_extra_symbol_close_failure_never_touches_the_vendor_and_is_not_
         assert qqq_key in epoch_state and epoch_state[qqq_key] == eid
         rows = _one_service_open(db, "LEVELONE_OPTIONS")
         assert len(rows) == 1 and rows[0][1] == _QQQ_CONTRACT
+    finally:
+        w.close()
+
+
+def _extra_chain(n):
+    return [f"SPY   260924C00{700 + i:03d}000" for i in range(n)]
+
+
+def test_multi_H_a_200_contract_swap_is_one_transaction_and_one_claim_per_phase(
+        tmp_path, monkeypatch):
+    """MEASURED 2026-09-24: these writes run on the daemon's event loop, and a 200-contract
+    swap committed ~400 times (one close/open plus one heartbeat claim per contract) --
+    spans of 5-13 s in which the loop could not read the Schwab socket, which then missed
+    its keepalive pong. A swap is one retraction + one close transaction, then one open
+    transaction + one claim, whatever its size."""
+    w = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    try:
+        calls = {"open": 0, "close": 0, "open1": 0, "close1": 0, "claim": 0}
+        for name, key in (("open_coverage_epochs", "open"), ("close_coverage_epochs", "close"),
+                          ("open_coverage_epoch", "open1"), ("close_coverage_epoch", "close1"),
+                          ("write_heartbeat", "claim")):
+            real = getattr(w, name)
+
+            def _counted(*a, _real=real, _key=key, **k):
+                calls[_key] += 1
+                return _real(*a, **k)
+            monkeypatch.setattr(w, name, _counted)
+        old, new = _extra_chain(200), _extra_chain(400)[200:]
+        stream = _FlakyOptionStream()
+        epoch_state: dict = {}
+        contract_state: dict = {}
+
+        async def go(wanted):
+            await _apply_extra_option_contract_subs(stream, contract_state, set(wanted),
+                                                    writer=w, epoch_state=epoch_state)
+        asyncio.run(go(old))
+        assert (calls["open"], calls["claim"]) == (1, 1), calls
+        for k in calls:
+            calls[k] = 0
+        asyncio.run(go(new))
+        assert calls == {"open": 1, "close": 1, "open1": 0, "close1": 0, "claim": 2}, calls
+        assert stream.held["LEVELONE_OPTIONS"] == set(new)
+        rows = _one_service_open(tmp_path / "cap.db")
+        assert sorted(r[1] for r in rows) == sorted(new), "exactly the new set is durably open"
+        assert len(_epochs(tmp_path / "cap.db")) == 400
+    finally:
+        w.close()
+
+
+def test_multi_I_a_refused_open_compensates_only_that_contract(tmp_path, monkeypatch):
+    """One contract whose epoch cannot open (a stuck open row for it) is given back to the
+    vendor; the rest of the batch is durably covered and stays held."""
+    db = tmp_path / "cap.db"
+    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
+    try:
+        syms = _extra_chain(5)
+        w.open_coverage_epoch(syms[2], "LEVELONE_OPTIONS", reason="stuck", ts=1.0)
+        stream = _FlakyOptionStream()
+        epoch_state: dict = {}
+        contract_state: dict = {}
+
+        async def go():
+            await _apply_extra_option_contract_subs(stream, contract_state, set(syms),
+                                                    writer=w, epoch_state=epoch_state)
+        asyncio.run(go())
+        assert stream.held["LEVELONE_OPTIONS"] == set(syms) - {syms[2]}
+        assert contract_state["l1:extra:" + syms[2]] is None
+        assert epoch_state["l1:extra:" + syms[2]] is None
+        assert all(epoch_state["l1:extra:" + s] is not None for s in syms if s != syms[2])
+    finally:
+        w.close()
+
+
+def test_writer_batch_open_that_fails_lands_nothing(tmp_path):
+    """A failed batch transaction leaves no half-written rows for the next write to commit."""
+    w = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    try:
+        w._conn.execute("CREATE TRIGGER boom BEFORE INSERT ON stream_coverage_epochs "
+                        "WHEN NEW.symbol = 'ZZBAD' BEGIN SELECT RAISE(ABORT, 'boom'); END")
+        w._conn.commit()
+        with pytest.raises(CoverageWriteError):
+            w.open_coverage_epochs(["AAA", "ZZBAD"], "LEVELONE_OPTIONS", reason="t")
+        w.open_coverage_epoch("BBB", "LEVELONE_OPTIONS", reason="t")
+        assert [r[0] for r in _epochs(tmp_path / "cap.db")] == ["BBB"]
     finally:
         w.close()
 
@@ -2506,5 +2592,17 @@ def test_case_C_escalation_cannot_fabricate_a_new_epoch_if_the_signal_flips_back
         assert live.calls == [("l1_option_unsub", (_SPY_CONTRACT,))], (
             "exactly the one failed unsub: no vendor op may be issued on a stream already "
             f"declared unusable; got {live.calls}")
+    finally:
+        w.close()
+
+
+def test_writer_connections_bound_the_wal_file(tmp_path):
+    """MEASURED 2026-09-24: stream_capture.db-wal sat at 44.9 GB with 240 live frames --
+    without journal_size_limit SQLite never shrinks the file after a checkpoint backlog."""
+    import stream_spine
+    w = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=10.0)
+    try:
+        limit = w._conn.execute("PRAGMA journal_size_limit").fetchone()[0]
+        assert limit == stream_spine.WAL_SIZE_LIMIT_BYTES > 0
     finally:
         w.close()
