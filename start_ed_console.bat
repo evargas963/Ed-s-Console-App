@@ -40,6 +40,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM The capture daemon (Schwab stream -> prices on :8800) is its own process. Start it through
+REM its scheduled task, never directly: the task restarts it within a minute if it dies, and
+REM an already-running daemon is left alone (task IgnoreNew + the daemon's stream_capture.lock).
+REM Closing this window does not stop it -- capture keeps running.
+schtasks /Run /TN "EdConsole Stream Capture" >nul 2>&1
+if errorlevel 1 (
+    echo  WARNING: could not start the capture daemon task "EdConsole Stream Capture".
+    echo  Live prices need it: register the task, or run
+    echo    .venv\Scripts\pythonw.exe -m app.market_data.schwab.streaming.capture --duration-min 0
+) else (
+    echo  Capture daemon: started or already running ^(task "EdConsole Stream Capture"^).
+)
+echo.
 echo  Starting server at http://localhost:8000/
 echo  Press Ctrl+C to stop.
 echo  (CWD set to script dir - token path resolves from app dir)
