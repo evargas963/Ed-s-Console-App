@@ -108,6 +108,35 @@ def reports_dir() -> Path:
     return ARTIFACTS_ROOT / "reports"
 
 
+def live_binding_error(source_root: "Path | None" = None,
+                       runtime_root: "Path | None" = None) -> "str | None":
+    """Why THIS checkout may not run a LIVE process (the console server, the capture daemon)
+    against the runtime root -- or None when it may.
+
+    MEASURED 2026-09-23 (found 2026-09-25): a console started from the EdWebConsole-phase1
+    worktree (unmerged commit ce375cae) resolved its runtime to the primary checkout -- the
+    linked-worktree convergence above, RC-534 -- and ran for hours against PRODUCTION: the
+    production ed_console.db, token and logs/ed_server.log, into which it wrote 15,451
+    "Schwab capability UNAVAILABLE" errors (the worktree had no .env). Convergence exists so
+    a worktree can never become a SECOND production data root; it must not let unmerged code
+    RUN as the first one.
+
+    Allowed: the runtime root IS this checkout (production running itself), or the runtime
+    root is a dedicated directory that is not a git checkout (an explicit ED_RUNTIME_ROOT
+    sandbox, the test and e2e runtime roots). Refused: the runtime root is ANOTHER checkout.
+    Reading tools and tests are unaffected -- only live processes call this."""
+    src = (source_root or SOURCE_ROOT).resolve()
+    rt = (runtime_root or RUNTIME_ROOT).resolve()
+    if rt == src:
+        return None
+    if (rt / ".git").exists():
+        return (f"this checkout ({src}) resolves its runtime to another checkout ({rt}) -- the "
+                f"live database, token and logs of that checkout. A live console or capture "
+                f"daemon runs only from the checkout that owns its runtime; to run this one, "
+                f"set ED_RUNTIME_ROOT to a separate sandbox directory (not a git checkout).")
+    return None
+
+
 def describe() -> dict[str, str]:
     """The resolved layout, for a launch banner or a probe — never for a decision."""
     return {
