@@ -249,7 +249,6 @@ from math_exposure import (
     compute_garch_forecast, blend_garch_sigma,
     compute_iv_model_spread,
     compute_gamma_void_zones, compute_level_density, gamma_at_price,
-    infer_strike_increment, required_strike_count,
     pick_net_gex_peak_strike, exposures_have_dollar_gex, gex_magnitude_label, gex_regime_label,
     aggregate_net_gex, aggregate_net_dex,
     bucket_metric, compute_dealer_pressure_index, compute_hedging_flow_score,
@@ -1030,6 +1029,167 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_rang
             else:
                 holder["result"] = (resp, 0.0, round(time.monotonic() - fetch_started, 3))
             holder["event"].set()
+
+
+class FullChainResponse:
+    """The whole chain as one response: `status_code` 200 and `.json()` the merged Schwab
+    payload, or the failing part's status with no payload. Callers read it exactly like the
+    vendor response they used to receive."""
+
+    def __init__(self, status_code: "int | None", payload: "dict | None" = None,
+                 parts: int = 0, reason: str = "", gate_wait_sec: float = 0.0,
+                 fetch_sec: "float | None" = None):
+        self.status_code = status_code
+        self._payload = payload
+        self.parts = parts
+        self.reason = reason
+        #: summed over every vendor request this chain took (the gate's own measurements)
+        self.gate_wait_sec = gate_wait_sec
+        self.fetch_sec = fetch_sec
+
+    def json(self) -> dict:
+        return self._payload if self._payload is not None else {}
+
+
+#: Vendor answers that mean "this request covers too much", not "this symbol is refused".
+#: MEASURED 2026-09-25: SPY (13,290 contracts), QQQ (11,710), MU (11,204) and $SPX (29,858)
+#: answered a one-shot strike_range=ALL request with HTTP 502; META (7,988) and AMD (6,628)
+#: did not. No Schwab document states the limit, so none is assumed here: a refused range is
+#: split and retried.
+_CHAIN_TOO_BIG_CODES = (502, 413, 500, 504)
+#: ticker -> how many date-range parts its whole chain last needed (learned, never guessed).
+_full_chain_parts: dict[str, int] = {}
+_full_chain_parts_lock = threading.Lock()
+
+
+def _option_expiries(client, ticker: str) -> "list[date] | None":
+    """Every listed expiry for `ticker` from Schwab's expiration chain, ascending; None when
+    the vendor does not answer 200."""
+    resp = client.get_option_expiration_chain(ticker)
+    if resp is None or resp.status_code != 200:
+        return None
+    out = sorted({date.fromisoformat(str(e["expirationDate"])[:10])
+                  for e in (resp.json().get("expirationList") or []) if e.get("expirationDate")})  # external-key-ok: Schwab expiration chain response
+    return out
+
+
+def fetch_full_chain(client, ticker: str, *, priority: bool = False,
+                     expiry: "date | None" = None) -> FullChainResponse:
+    """EVERY strike of every listed expiry (or of the one `expiry`) -- the chain all level
+    math is computed from.
+
+    MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
+    window (strike_count sized to +/-5% around spot, 20 strikes for most names) disagreed
+    with the same code run on the full chain -- gamma flip missing for 10 tickers, max pain
+    different for 16, put wall for 4, $SPX walls 3-4% apart -- while the window held only
+    15-60% of each ticker's open interest. Operator decision 2026-09-25: the full chain for
+    all calculations.
+
+    One strike_range=ALL request when Schwab answers it. When the vendor answers that the
+    request covers too much, the listed expiries are split into contiguous date ranges and
+    each range is fetched the same way, halving any range that is itself refused; the part
+    count that worked is remembered per ticker so the next call starts there. Every part must
+    land: a missing part is a failed response (the reason names it), never a partial chain."""
+    tk = ticker_storage_key(ticker)
+    timing = {"gate": 0.0, "fetch": 0.0}
+
+    def _get(**dates):
+        resp, gate_wait, fetch_sec = _gated_safe_get_chain(client, tk, strike_range="ALL",
+                                                           priority=priority, **dates)
+        timing["gate"] += gate_wait or 0.0
+        timing["fetch"] += fetch_sec or 0.0
+        return resp, getattr(resp, "status_code", None)
+
+    def _answer(code, payload=None, parts=0, reason=""):
+        return FullChainResponse(code, payload, parts=parts, reason=reason,
+                                 gate_wait_sec=round(timing["gate"], 3),
+                                 fetch_sec=round(timing["fetch"], 3))
+
+    if expiry is not None:
+        resp, code = _get(from_date=expiry, to_date=expiry)
+        if code != 200:
+            return _answer(code, reason=f"chain for {expiry} returned HTTP {code}")
+        return _answer(200, resp.json(), parts=1)
+
+    with _full_chain_parts_lock:
+        known_parts = _full_chain_parts.get(tk, 1)
+    if known_parts <= 1:
+        resp, code = _get()
+        if code == 200:
+            return _answer(200, resp.json(), parts=1)
+        if code not in _CHAIN_TOO_BIG_CODES:
+            return _answer(code, reason=f"full chain returned HTTP {code}")
+        known_parts = 2
+
+    expiries = _option_expiries(client, tk)
+    if not expiries:
+        return _answer(None, reason="expiration list unavailable")
+    size = -(-len(expiries) // min(known_parts, len(expiries)))
+    pending = [expiries[i:i + size] for i in range(0, len(expiries), size)]
+    merged: "dict | None" = None
+    done = 0
+    while pending:
+        part = pending.pop(0)
+        resp, code = _get(from_date=part[0], to_date=part[-1])
+        if code == 200:
+            payload = resp.json()
+            if merged is None:
+                merged = payload
+                merged["callExpDateMap"] = dict(payload.get("callExpDateMap") or {})
+                merged["putExpDateMap"] = dict(payload.get("putExpDateMap") or {})
+            else:
+                merged["callExpDateMap"].update(payload.get("callExpDateMap") or {})
+                merged["putExpDateMap"].update(payload.get("putExpDateMap") or {})
+            done += 1
+            continue
+        if code in _CHAIN_TOO_BIG_CODES and len(part) > 1:
+            half = len(part) // 2
+            pending[:0] = [part[:half], part[half:]]
+            continue
+        return _answer(code, reason=(f"chain for {part[0]}..{part[-1]} returned HTTP "
+                                     f"{code}; the full chain is incomplete"))
+    with _full_chain_parts_lock:
+        _full_chain_parts[tk] = done
+    return _answer(200, merged, parts=done)
+
+
+#: (ticker, ET date) -> (fetched monotonic, listed expiries). The listed expiries change once a
+#: day (a new weekly appears, today's expires), so one read serves many state cycles.
+_expiry_list_cache: "dict[tuple[str, str], tuple[float, list[date]]]" = {}
+_EXPIRY_LIST_TTL_SEC = 600.0
+
+
+def _listed_expiries(client, ticker: str) -> "list[date] | None":
+    """Listed expiries from today on (ET), cached per ticker per ET day for 10 minutes."""
+    tk = ticker_storage_key(ticker)
+    today = now_et().date()
+    key = (tk, today.isoformat())
+    hit = _expiry_list_cache.get(key)
+    if hit is not None and time.monotonic() - hit[0] < _EXPIRY_LIST_TTL_SEC:
+        return hit[1]
+    exps = _option_expiries(client, tk)
+    if exps is None:
+        return None
+    listed = [e for e in exps if e >= today]
+    _expiry_list_cache[key] = (time.monotonic(), listed)
+    return listed
+
+
+def _fetch_state_chain(client, ticker: str, expiry: "str | None", priority: bool
+                       ) -> "tuple[FullChainResponse, list[str]]":
+    """The chain a state cycle computes from: EVERY strike of the one expiry it is for (the
+    requested one, else the front listed expiry), plus the listed expiries (ISO strings).
+    A requested expiry that is not listed is not fetched -- the caller refuses it with its
+    reason (N-11)."""
+    listed = _listed_expiries(client, ticker)
+    if listed is None:
+        return FullChainResponse(None, reason="expiration list unavailable"), []
+    listed_iso = [e.isoformat() for e in listed]
+    target = (expiry or "").strip()[:10] or (listed_iso[0] if listed_iso else None)
+    if target is None or target not in listed_iso:
+        return FullChainResponse(200, {}, parts=0), listed_iso
+    return fetch_full_chain(client, ticker, priority=priority,
+                            expiry=date.fromisoformat(target)), listed_iso
 
 # ── Server-side state cache (avoids re-fetching everything on each poll) ─────
 _state_cache: dict = {}           # (ticker, expiry) -> {ts, ms_dict}
@@ -3402,13 +3562,6 @@ VIX_DIRECTION_THRESHOLD: float = 0.3   # ±0.3 pts tick-to-tick to call rising/f
 
 # ETF zone classification (spy_zone / qqq_zone / iwm_zone)
 
-# Chain fetch
-CHAIN_STRIKE_COUNT:  int   = 20     # strikes per expiry fetched from Schwab (live UI — keep fast)
-# FIND-GAMMA-FULLCHAIN-STRIKES-V1: the wide-capture strike count is imported from
-# calibration.option_chain_morning_full below — it was ALSO defined here as a literal
-# ("aligned with calibration" by hand), i.e. two faucets for one constant. The import is
-# the single source; ruff F811 caught the duplicate the moment both were in scope.
-
 # Exposure windows
 EXPOSURE_WINDOWS:    list  = [5, 10, 15, 20]   # window sizes passed to build_*_rows
 
@@ -3463,7 +3616,6 @@ from timeframe_config import CANONICAL_TIMEFRAME
 # also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
 # path now has no failure mode to pick a policy for.
 from calibration.option_chain_morning_full import (
-    GEX_FULL_CHAIN_STRIKE_COUNT,
     MAX_DTE_DAYS as COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS,
     # RC-161: the MORNING_* aliases are gone from this import because the scheduler no longer
     # reads them. That coupling WAS the defect — the archive's write window was steering the
@@ -4076,10 +4228,7 @@ def _enrollment_collectability_probe(ticker: str) -> tuple[bool, str]:
         q = _memoized_quote_response(tk, client=client)
         if q is None or getattr(q, "status_code", None) != 200:
             return False, f"quote unavailable (vendor status {getattr(q, 'status_code', None)})"
-        c, _gw, _fs = _gated_safe_get_chain(
-            client, tk, strike_count=resolve_chain_strike_count(tk),
-            to_date=_chain_to_date_for(tk, None), from_date=_chain_from_date_for(tk, None),
-        )
+        c, _listed = _fetch_state_chain(client, tk, None, False)   # every strike, front expiry
         if c is None or getattr(c, "status_code", None) != 200:
             return False, f"no option chain (vendor status {getattr(c, 'status_code', None)})"
         if not flatten_chain_contracts(c.json()):
@@ -5269,23 +5418,10 @@ def _fetch_expiries_light(ticker: str) -> list[str]:
     Used by /api/expiries when cache is cold (avoids logging a DB row per dropdown poll).
     """
     ticker = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
-    client = get_client()
-    # RC-59 chain-width faucet EXEMPTION, declared not accidental: this path reads the EXPIRY
-    # DATE LIST only and computes no levels, so strike width is irrelevant to its output — a
-    # minimal fetch is correct here. Every LEVEL-computing fetch must use
-    # resolve_chain_strike_count(); this one may not, because widening it would only cost
-    # latency on a dropdown poll with zero effect on the result.
-    c_resp = safe_get_chain(
-        client, ticker,
-        strike_count=CHAIN_STRIKE_COUNT,   # chain-width-faucet-ok: expiry list only, no level math
-    )
-    if c_resp is None or c_resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Option chain fetch failed")
-    c_json = c_resp.json()
-    contracts = flatten_chain_contracts(c_json)
-    expiries = _expiries_from_contracts(contracts)
-    today = now_et().strftime("%Y-%m-%d")
-    return [e for e in expiries if e >= today]
+    listed = _listed_expiries(get_client(), ticker)   # Schwab's expiration list, not a chain
+    if listed is None:
+        raise HTTPException(status_code=502, detail="Option expiration list fetch failed")
+    return [e.isoformat() for e in listed]
 
 
 def _default_expiry(expiries: list[str], ticker: str = "?") -> Optional[str]:
@@ -6280,12 +6416,7 @@ def _fetch_state(
         # shutdown inline path — background pipelines stay out of the shared
         # route pool; operator-facing recomputes keep bounded parallelism.
         if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):
-            c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _gated_safe_get_chain(
-                client, ticker, strike_count=resolve_chain_strike_count(ticker),  # RC-59: one faucet
-                to_date=_chain_to_date_for(ticker, expiry),   # RC-494: bound index expiry count (keep an explicit far pick)
-                from_date=_chain_from_date_for(ticker, expiry),   # Cursor-audit F2: bound near edge for a far pick
-                priority=_chain_priority,
-            )
+            c_resp, _listed_expiries_iso = _fetch_state_chain(client, ticker, expiry, _chain_priority)
         else:
             # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf futures run on
             # the dedicated recompute-leaf pool — never behind serve bodies.
@@ -6298,18 +6429,12 @@ def _fetch_state(
                 if _chain_priority
                 else _get_recompute_leaf_executor()
             )
-            _chain_fut = _cq_pool.submit(
-                _gated_safe_get_chain, client, ticker,
-                strike_count=resolve_chain_strike_count(ticker),   # RC-59: one faucet
-                to_date=_chain_to_date_for(ticker, expiry),   # RC-494: bound index expiry count (keep an explicit far pick)
-                from_date=_chain_from_date_for(ticker, expiry),   # Cursor-audit F2: bound near edge for a far pick
-                priority=_chain_priority,
-            )
+            _chain_fut = _cq_pool.submit(_fetch_state_chain, client, ticker, expiry, _chain_priority)
             # RC-112 recurrence 2 (v10 audit, server.py:6228): this pool leaf passed the raw
             # vendor fetch BY REFERENCE, so the paren-matching structural test never saw it —
             # the hot parallel path bypassed the memo while the inline branch above used it.
             # The lock now counts NAME references, not call syntax.
-            c_resp, _chain_gate_wait_sec, _chain_fetch_pure_sec = _chain_fut.result()
+            c_resp, _listed_expiries_iso = _chain_fut.result()
     except SchwabAuthError as e:
         raise HTTPException(
             status_code=401,
@@ -6319,13 +6444,16 @@ def _fetch_state(
                 "message": str(e),
             },
         ) from e
+    _chain_gate_wait_sec = c_resp.gate_wait_sec
+    _chain_fetch_pure_sec = c_resp.fetch_sec
     _chain_window_marks.append(("chain_window_leaf_wall_ms", time.monotonic()))
     if c_resp is None or c_resp.status_code != 200:
         # Cursor-audit F4: carry the real vendor status so the background logger's quarantine can
         # tell a PERMANENT symbol refusal (4xx — e.g. SATS 404) from a transient venue error
         # (timeout/5xx/429). Detail still starts with "Chain fetch failed" for existing consumers.
         raise HTTPException(status_code=502,
-                            detail=f"Chain fetch failed [vendor_status={getattr(c_resp, 'status_code', None)}]")
+                            detail=f"Chain fetch failed [vendor_status={getattr(c_resp, 'status_code', None)}]"
+                                   + (f" {c_resp.reason}" if getattr(c_resp, "reason", "") else ""))
     c_json = c_resp.json()
     contracts     = flatten_chain_contracts(c_json)
     _t_after_chain_mono = time.monotonic()
@@ -6400,7 +6528,7 @@ def _fetch_state(
     # label and its age claimed one existed. No bid/ask -> unavailable, age None.
 
     # ── Select expiry ─────────────────────────────────────────────────────────
-    expiries     = _expiries_from_contracts(contracts)
+    expiries     = list(_listed_expiries_iso)   # Schwab's listed expiries (the chain is ONE expiry)
     _today_str   = now_et.strftime("%Y-%m-%d")
     # N-11 (2026-09-24): a REQUESTED expiry that is past or not in the chain is refused with
     # its reason -- it used to be replaced by the default expiry ("using default"), so the
@@ -9358,10 +9486,8 @@ async def _app_lifespan(app):
     # RC-69: bar collection is its own always-on service — never a side-effect of rendering.
     start_bars_loop()
     start_terrain_prewarm()
-    log.info("Terrain loop started — %.0fs cadence, %d workers, per-ticker strike width "
-             "derived from measured geometry (%d..%d, cold start %d)",
-             TERRAIN_REFRESH_SEC, TERRAIN_WORKERS, TERRAIN_STRIKE_COUNT_MIN,
-             TERRAIN_STRIKE_COUNT_MAX, TERRAIN_STRIKE_COUNT_COLD_START)
+    log.info("Terrain loop started — %.0fs cadence, %d workers, full chain per ticker",
+             TERRAIN_REFRESH_SEC, TERRAIN_WORKERS)
 
     # ML scheduler is OPT-IN for the operator console (2026-07-03): the unconditional
     # nightly 16:15 ET run trained/promoted models from whatever console instance was
@@ -10324,234 +10450,6 @@ TERRAIN_REFRESH_SEC: float = 5.0
 TERRAIN_WORKERS: int = 2
 RADAR_NEAR_PCT: float = 0.0020   # at the wall
 RADAR_WATCH_PCT: float = 0.0075  # in the sector, worth watching
-# Strike count is DERIVED per instrument, never tabulated — see math_levels.
-# required_strike_count(). The bar is the flip's +/-5% span requirement
-# (GAMMA_FLIP_MIN_SPAN_PCT); how many strikes that takes depends on the instrument's own
-# strike spacing, so it is computed from measured geometry rather than assumed.
-#
-# MEASURED 2026-07-20 across 52 stored chains: the previous hardcoded table was wrong in
-# BOTH directions — $SPX needed 150 and got 40; IWM needed 30 and got 80; ~48 equities
-# needed under 20 and got 40. Over-fetching is not free: it saturates the 2-slot chain
-# gate (observed starving the operator card at the open) and every payload is persisted
-# twice (RC-6).
-#: Floor. Below this, wall/pin selection has too few strikes to be meaningful regardless
-#: of what the span arithmetic asks for; it is also the live UI's own chain width.
-TERRAIN_STRIKE_COUNT_MIN: int = 20
-#: Ceiling, set by the VENDOR not by us. Schwab returned HTTP 502 for SPY/QQQ at
-#: strikeCount=200 at the 2026-07-20 open; 100 was observed working the same session.
-#: A ticker whose requirement exceeds this is fetched at the ceiling and honestly reports
-#: LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
-#: RAISED 100 -> 120, MEASURED 2026-07-26 by `python tools/probe_chain_depth_v1.py` against the
-#: live vendor (the previous 100 was an ASSUMPTION: 200 had 502'd and nothing between was tried).
-#: Ladder result: SPY 120 OK / 150 -> HTTP 502; QQQ 120 OK / 150 -> 502; IWM OK to 250 (saturates
-#: at 246 distinct strikes = its whole chain). 120 is therefore the highest UNIVERSALLY safe
-#: request. What it delivers is far wider than the span bar suggests, because strikeCount applies
-#: PER EXPIRY across ~35 expiries: SPY at 120 returned 259 distinct strikes spanning -40.5%/+44.8%
-#: of spot (8,118 contracts), vs 219 strikes / -33.7%/+33.3% at 100.
-#: KNOWN GAP: $SPX 502s even at 100, so it is not truncated — it fails outright and needs its own
-#: LOWER ladder probe (RC-63); raising this ceiling does not help it.
-TERRAIN_STRIKE_COUNT_MAX: int = 120
-#: Used only until this ticker's geometry is known. The prewarm seeds geometry from
-#: stored chains, so this normally applies to a ticker we have never seen.
-TERRAIN_STRIKE_COUNT_COLD_START: int = 40
-
-#: ticker -> (spot, strike_increment), learned from chains we have already fetched.
-_strike_geometry: dict[str, tuple[float, float]] = {}
-_strike_geometry_lock = threading.Lock()
-#: ticker -> distinct expiry count, learned the same way (guarded by the same lock).
-_strike_expiry_count: dict[str, int] = {}
-
-#: RC-63 — the vendor's REAL limit, MEASURED 2026-07-26 (`python tools/probe_chain_depth_v1.py`).
-#: Schwab caps the number of CONTRACTS in a chain response, not strikeCount: SPY returned 8,118
-#: contracts at strikeCount=120 and HTTP 502 at 150; QQQ 7,894 at 120 then 502; $SPX 502'd at 80
-#: with only 60 working (6,950 contracts) purely because it lists 55 expiries vs SPY's 35; IWM
-#: never failed even at 250 because its whole chain is 5,492. So a single global strikeCount
-#: ceiling is structurally wrong — it starves wide-expiry instruments and under-fetches narrow
-#: ones.
-#: VALUE CHOSEN BY BACK-TEST against those four measured ceilings, not by picking a round number:
-#: `strikeCount * 2 * expiries` UNDER-predicts the real payload for some instruments ($SPX
-#: returned 6,950 contracts where the estimate said 6,600), so a budget tuned to the largest
-#: success (SPY's 8,118) would have allowed $SPX 72 — above its measured 502 threshold of 60.
-#: 6,600 is the largest budget that reproduces EVERY measured ceiling without exceeding one:
-#: SPY 94 (safe vs 120), QQQ 97 (vs 120), $SPX 60 (exactly its max), IWM 100 (vs 250).
-#: Deliberately conservative: a 502 returns NO chain at all, while a slightly narrower request
-#: still delivers far more than the span bar needs (SPY at 94 still spans ~±31% of spot).
-SCHWAB_CHAIN_CONTRACT_BUDGET: int = 6600
-#: Index option books ($SPX, $VIX, $RUT, $NDX, ...) list expirations out for YEARS (daily +
-#: weekly + monthly + LEAPS), far more than the contract budget allows at any usable strike
-#: width — RC-491 measured $SPX still 502 even at width 33 (33 * 2 * ~150 expiries = 9,900 >
-#: 6,600). RC-494: the _fetch_state chain is therefore fetched only out to a bounded DTE
-#: horizon (_chain_to_date_for → to_date), which caps the expiry count so a FIXED, generous
-#: strike width fits the budget deterministically (no geometry feedback loop, RC-149).
-#: SCOPE (verified 2026-08-25 — SAFE on all six semantics): this bound is correct ONLY for the
-#: _fetch_state path, which slices the chain to a SINGLE (front) expiry before any gamma/flip/
-#: pin/vanna/charm math runs, so the far expiries it drops were already discarded. It must NOT
-#: be wired into the TERRAIN producer (_terrain_refresh_one): terrain is a deliberate
-#: MULTI-EXPIRY aggregate over the FULL book (dealers hedge the whole delta book across weekly/
-#: monthly expiries), so bounding it to 45d WOULD silently drop real gamma/flip/pin/wall/charm
-#: contributions. Terrain keeps its own full→120d→45d ladder (to_date=None first rung).
-#: 60 strikes * 2 * ~34 expiries in 45 days = ~4,080 < 6,600 (safe even at 55 expiries).
-INDEX_CHAIN_DTE_HORIZON_DAYS: int = 45
-INDEX_CHAIN_STRIKE_COUNT: int = 60
-
-
-def _learn_strike_geometry(ticker: str, contracts: list | None, spot: float | None,
-                           *, date_window_narrowed: bool = False) -> bool:
-    """Remember this instrument's spot and strike spacing from a chain we just read.
-
-    Returns True when a geometry was stored, so callers can count outcomes without
-    reading the shared dict outside the lock (Cursor audit 2026-07-20: the seed loop
-    compared len() across calls unlocked while workers mutate under the lock).
-
-    RC-149 — `date_window_narrowed` exists because the expiry count is the DENOMINATOR of the
-    width budget, and learning it from a date-narrowed chain inverts the safety it provides.
-    A `to_date`-limited fetch returns only the expiries inside that window, so n_exp comes back
-    SMALL; a small n_exp makes `resolve_chain_strike_count` compute a LARGER ceiling; the next
-    cycle then asks for that wider chain over the FULL date range and blows the contract budget.
-    The narrower the rung that rescued us, the more certain the next request is to fail — a
-    feedback loop that cannot recover on its own. MEASURED 2026-07-30: $SPX's last success was
-    on `chain_basis: dte<=120` with contracts_used 6785, and every fetch after it returned
-    HTTP 502 for 2h10m. A narrowed chain's count is a FLOOR, never the truth, so it may seed an
-    unknown instrument but must never overwrite a full-basis measurement.
-    """
-    tk = (ticker or "").upper().strip()
-    if not tk or not contracts or spot is None or spot <= 0:
-        return False
-    incr = infer_strike_increment(contracts)
-    if incr is None:
-        return False
-    # RC-63: also learn how many EXPIRIES this instrument lists. The vendor's real limit is on
-    # the number of CONTRACTS returned, and contracts ~= strikeCount * 2 * expiries — so the
-    # safe strikeCount depends on the expiry count, not on the ticker.
-    n_exp = len({str(c.get("expirationDate"))[:10] for c in contracts
-                 if isinstance(c, dict) and c.get("expirationDate")})
-    with _strike_geometry_lock:
-        _strike_geometry[tk] = (float(spot), float(incr))
-        if n_exp > 0:
-            if not date_window_narrowed:
-                _strike_expiry_count[tk] = n_exp
-            else:
-                # a floor: raise a missing/too-low count, never lower a full-basis one
-                _strike_expiry_count[tk] = max(_strike_expiry_count.get(tk, 0), n_exp)
-    return True
-
-
-def resolve_chain_strike_count(ticker: str) -> int:
-    """THE strike-count faucet — one authority for EVERY chain fetch that feeds level math.
-
-    RC-59: the console/analytics path (`_fetch_state`) and the terrain path used to size their
-    chains differently — `_fetch_state` on a hardcoded CHAIN_STRIKE_COUNT=20 ("keep fast") and
-    terrain on measured geometry — so the SAME ticker was analysed at two widths and the levels
-    persisted to `snapshots` were narrower than the ones served on screen. Two widths is two
-    answers; the width is now derived HERE and nowhere else.
-
-    Right-sizing is not "always wider": MEASURED across 52 stored chains 2026-07-20, the old fixed
-    count was wrong in BOTH directions — ~48 equities need UNDER 20 and were fetched at 40, while
-    $SPX needs ~150 and got 40. Routing the console through this faucet therefore makes most
-    tickers CHEAPER, not more expensive, and widens only where the +/-5% span requires it.
-
-    Fail-closed: unknown geometry returns the cold-start default rather than a guessed width.
-    The MAX is a VENDOR limit, not ours (Schwab 502s above it) — a ticker needing more is fetched
-    at the ceiling and its levels self-report LOW_CONFIDENCE_NARROW_CHAIN rather than pretending.
-    """
-    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX" so the
-    #                                   faucet can't be bypassed by an un-normalized caller.
-    if tk.startswith("$"):   # canonical index roots: $SPX/$VIX/$RUT/$NDX/$DJI
-        # RC-494: index books are fetched over a bounded DTE horizon (_chain_to_date_for), so a
-        # FIXED budget-safe width covers the whole near-term surface. Deterministic on purpose —
-        # letting learned geometry drive the width recreated the RC-149 full-book feedback loop
-        # that kept $SPX 502-ing. Paired with the to_date bound this is always well under budget.
-        return INDEX_CHAIN_STRIKE_COUNT
-    with _strike_geometry_lock:
-        geom = _strike_geometry.get(tk)
-        n_exp = _strike_expiry_count.get(tk)
-    if geom is None:
-        return TERRAIN_STRIKE_COUNT_COLD_START
-    need = required_strike_count(geom[0], geom[1])
-    if need is None:
-        return TERRAIN_STRIKE_COUNT_COLD_START
-    ceiling = TERRAIN_STRIKE_COUNT_MAX
-    if n_exp and n_exp > 0:
-        # RC-63: respect the VENDOR's contract budget, which is what actually 502s. A chain
-        # returns ~ strikeCount * 2 (call+put) * expiries contracts, so an instrument listing 55
-        # expiries ($SPX) must request a far smaller strikeCount than one listing 35 (SPY) to
-        # return the same payload. Deriving the ceiling per ticker replaces a global constant
-        # that was simultaneously too high for $SPX (502) and too low for everything else.
-        ceiling = min(ceiling, max(TERRAIN_STRIKE_COUNT_MIN,
-                                   SCHWAB_CHAIN_CONTRACT_BUDGET // (2 * n_exp)))
-    return max(TERRAIN_STRIKE_COUNT_MIN, min(ceiling, need))
-
-
-#: Back-compat alias — terrain's original name for the same authority.
-_terrain_strike_count = resolve_chain_strike_count
-
-
-def _chain_to_date_for(ticker: str, selected_expiry: str | None = None) -> date | None:
-    """Bounded chain to_date as a `datetime.date` for index books, None for equities.
-
-    RC-494: index option books ($SPX/$VIX/$RUT/...) list expirations out for years; fetching
-    the FULL book blows Schwab's contract budget at any usable strike width (the $SPX 502).
-    Capping the fetch to the near-term DTE horizon bounds the expiry count so
-    resolve_chain_strike_count's fixed index width fits the budget. Equities return None (full
-    book, unchanged). One authority for the index date bound, mirroring the strike-count faucet.
-
-    If a caller EXPLICITLY selects a far-dated index expiry (beyond the horizon), to_date is
-    extended to it — otherwise the downstream slice to that expiry would be empty and error
-    (RC-494 robustness). Cursor-audit F2: extending to_date ALONE turned a one-expiry request
-    into a today->far multi-expiry sweep (Schwab returns every expiry up to to_date), re-blowing
-    the budget. The companion _chain_from_date_for bounds the NEAR edge to the same far date for
-    that case, so the window is [sel, sel] — a single expiry (60*2=120 contracts). The auto/default
-    path passes no expiry and gets the open-near-end horizon."""
-    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
-    if not tk.startswith("$"):
-        return None
-    from datetime import date, timedelta
-
-    from time_et import now_et
-
-    horizon = (now_et() + timedelta(days=INDEX_CHAIN_DTE_HORIZON_DAYS)).date()
-    if selected_expiry:
-        try:
-            sel = date.fromisoformat(str(selected_expiry)[:10])
-            if sel > horizon:
-                # RC-496: return the date OBJECT, not `.isoformat()`. schwab-py's
-                # get_option_chain formats the date itself and _assert_type-rejects a
-                # str (ValueError: expected datetime.date, got builtins.str), so the old
-                # ISO-string return crashed every $-index chain fetch at the vendor
-                # boundary. The sibling terrain ladder already passed a `.date()`, which
-                # is why only the _fetch_state/enroll/charm paths went dark, not terrain.
-                return sel
-        except ValueError:
-            pass
-    return horizon
-
-
-def _chain_from_date_for(ticker: str, selected_expiry: str | None = None) -> date | None:
-    """Chain fetch from_date as a `datetime.date` — the NEAR edge of the window, normally None so
-    Schwab defaults it to today.
-
-    Cursor-audit F2: paired with _chain_to_date_for. When an operator explicitly selects an index
-    expiry BEYOND the 45-day horizon, _chain_to_date_for pushes to_date out to it; without also
-    bounding the near edge Schwab returns EVERY expiry from today through that far date
-    (60 strikes * 2 * ~150 expiries = ~18,000 contracts >> SCHWAB_CHAIN_CONTRACT_BUDGET), the
-    RC-491 502 — even though _fetch_state then slices to that ONE expiry and discards the rest.
-    Bounding from_date to the same far date pulls only that expiry's strikes (60*2=120). Fires ONLY
-    for a far index pick; equities, the auto path, and near picks (already inside the bounded
-    horizon window) keep the open near end unchanged."""
-    tk = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
-    if not tk.startswith("$") or not selected_expiry:
-        return None
-    from datetime import date, timedelta
-
-    from time_et import now_et
-
-    horizon = (now_et() + timedelta(days=INDEX_CHAIN_DTE_HORIZON_DAYS)).date()
-    try:
-        sel = date.fromisoformat(str(selected_expiry)[:10])
-    except ValueError:
-        return None
-    return sel if sel > horizon else None   # RC-496: date object, not `.isoformat()` (vendor formats it)
-
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()
 #: RC-126: the producer's last failure per ticker, so terrain_not_ready can say WHY instead
@@ -10969,7 +10867,7 @@ _morning_capture_attempts: dict[tuple[str, str], int] = {}
 _MORNING_CAPTURE_MAX_ATTEMPTS = 3
 
 
-def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
+def _persist_universal_capture(tk: str, key: tuple[str, str],
                                contracts: list, spot: float | None) -> None:
     """Persist the wide chain just fetched. Archive concern — terrain must still serve.
 
@@ -10995,8 +10893,8 @@ def _persist_universal_capture(tk: str, key: tuple[str, str], width: int,
     if status == "ok":
         with _morning_capture_lock:
             _morning_capture_done.add(key)
-        log.info("morning wide capture persisted ticker=%s width=%d n=%s",
-                 tk, width, result.get("n_contracts"))
+        log.info("morning full-chain capture persisted ticker=%s n=%s",
+                 tk, result.get("n_contracts"))
     elif status == "idempotent_skip":
         with _morning_capture_lock:
             _morning_capture_done.add(key)
@@ -12574,57 +12472,19 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     try:
         client = get_client()
         want_capture, cap_key = _universal_capture_wanted(tk)
-        _width = _terrain_strike_count(tk)
-        if want_capture:
-            _width = max(_width, GEX_FULL_CHAIN_STRIKE_COUNT)
-        # RC-127: the FULL multi-year index book ($SPX: weeklies + quarterlies + LEAPS) can
-        # exceed the vendor read timeout under live load — measured 2026-07-29: every $SPX
-        # refresh died in ReadTimeout while the same fetch succeeded on a quiet box. The
-        # ladder narrows the DATE WINDOW on timeout, one rung at a time, and STAMPS the
-        # basis on the payload — degraded is visible, never silent. The operator-locked
-        # full-chain basis stays the first attempt always; the rungs keep the weekly+monthly
-        # book dealers actually hedge (120d, then 45d) rather than serving nothing.
-        _chain_basis = "full"
-        resp = None
-        # RC-149: the ladder narrowed on a TIMEOUT EXCEPTION only. An over-budget index chain does
-        # not time out — the vendor answers, with HTTP 502 — so `break` fired on the first rung and
-        # the narrower rungs it exists to reach were never tried. MEASURED 2026-07-30: $SPX
-        # returned HTTP 502 on every cycle for 2h10m while a ladder built for exactly this case
-        # sat unused, because RC-127 was written from a day when the same over-width request
-        # happened to die in ReadTimeout instead. One failure, two vendor expressions; the rung
-        # must advance on the CONDITION (this window is too big), never on the expression of it.
-        _OVER_BUDGET_CODES = (502, 413, 500, 504)
-        for _basis, _to_days in (("full", None), ("dte<=120", 120), ("dte<=45", 45)):
-            try:
-                _to = ((datetime.now(timezone.utc) + timedelta(days=_to_days)).date()
-                       if _to_days else None)
-                resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-                    client, tk, strike_count=_width, priority=priority, to_date=_to,
-                )
-                _code = getattr(resp, "status_code", None)
-                if _code in _OVER_BUDGET_CODES and _to_days != 45:
-                    _terrain_refresh_last_error[tk] = (
-                        f"chain fetch HTTP {_code} at basis {_basis!r} — trying a narrower window")
-                    resp = None          # do NOT keep a failed response as the answer
-                    continue
-                _chain_basis = _basis
-                break
-            except Exception as _fe:
-                if type(_fe).__name__ not in ("ReadTimeout", "ConnectTimeout", "TimeoutException"):
-                    raise
-                _terrain_refresh_last_error[tk] = (
-                    f"chain fetch timeout at basis {_basis!r} — trying a narrower window")
-                continue
-        if resp is None or getattr(resp, "status_code", None) != 200:
-            _code = getattr(resp, "status_code", None)
-            _msg = f"chain fetch failed (HTTP {_code if _code is not None else 'timeout-at-all-rungs'})"
+        # The FULL chain -- every strike of every listed expiry (fetch_full_chain; operator
+        # decision 2026-09-25 after the strike window was measured disagreeing with it).
+        resp = fetch_full_chain(client, tk, priority=priority)
+        if resp.status_code != 200:
+            _code = resp.status_code
+            _msg = f"chain fetch failed ({resp.reason or f'HTTP {_code}'})"
             _terrain_refresh_last_error[tk] = _msg
             # RC-148: classify so the response fits the cause. A 4xx is the vendor refusing THIS
-            # SYMBOL and will refuse it identically forever; a timeout or 5xx is the venue being
-            # busy and deserves a backoff, not a death sentence.
-            _note_terrain_failure(tk, _msg, _classify_chain_failure(
-                _code, "timeout-at-all-rungs" if resp is None else None))
+            # SYMBOL and will refuse it identically forever; a 5xx is the venue being busy and
+            # deserves a backoff, not a death sentence.
+            _note_terrain_failure(tk, _msg, _classify_chain_failure(_code, None))
             return "error:chain_http"
+        _chain_basis = "full"
         # Independent-review finding (2026-09-12), REPRODUCED: the generation marker used below
         # for stream-precedence ("is a streamed value newer than this REST data") was stamped
         # AFTER compute_terrain -- a real, non-trivial computation, not the REST observation
@@ -12642,7 +12502,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # ONE spot authority (RC-14) — never the chain underlying on its own.
         spot, spot_source, spot_ts = resolve_spot(tk, chain_json=c_json)
         if want_capture and contracts:
-            _persist_universal_capture(tk, cap_key, _width, contracts, spot)
+            _persist_universal_capture(tk, cap_key, contracts, spot)
         if contracts:
             # Deliberately NOT gated on want_capture: that flag reflects the SIBLING
             # wide-fetch's own once-per-day "done" state, and this function needs its
@@ -12653,12 +12513,6 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             # remaining-work internally, so a no-op call here costs one cheap DB check,
             # never a vendor call.
             _persist_universal_complete_chain(tk, client, contracts)
-        # Learn this instrument's geometry from the chain we just read, so the NEXT cycle
-        # requests the width its +/-5% span actually needs instead of a tabulated guess.
-        # RC-149: tell the learner WHICH basis produced this chain. A narrowed window under-counts
-        # expiries, and that count is the denominator of the next request's width budget.
-        _learn_strike_geometry(tk, contracts, spot,
-                               date_window_narrowed=(_chain_basis != "full"))
         snap = compute_terrain(tk, contracts, spot)
         payload = snap.to_dict()
         payload["computed_ts_utc"] = time.time()
@@ -12841,16 +12695,6 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
 def _terrain_loop() -> None:
     log.info("Terrain loop started (levels only, no model stack)")
     _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
-    # Seed strike geometry BEFORE the first fetch cycle, in THIS thread. The seed
-    # previously lived only in the prewarm worker, and _app_lifespan starts the loop
-    # first -- so the first cycle raced the seed and could fetch every ticker at the
-    # cold-start width (Cursor audit 2026-07-20: "race remains"). With the timeframe-
-    # indexed read this is ~2 ms per ticker, so doing it inline is cheap and makes the
-    # ordering deterministic instead of a race that usually goes our way.
-    try:
-        _seed_strike_geometry_from_storage()
-    except Exception as e:
-        log.warning("strike-geometry seed failed - first cycle uses cold-start width: %s", e)
     while _terrain_loop_running:
         cycle_start = time.monotonic()
         tickers: list[str] = []
@@ -12981,38 +12825,10 @@ def _terrain_prewarm_worker() -> None:
     for terrain. Failures are logged and ignored: a cold cache is slow, never wrong.
     """
     try:
-        _seed_strike_geometry_from_storage()
-    except Exception as e:
-        log.warning("strike-geometry seed failed (first cycle uses the cold-start width): %s", e)
-    try:
         get_terrain_radar(limit=60)
         log.info("terrain radar prewarm complete: %d cached", terrain_cache_size())
     except Exception as e:
         log.warning("terrain radar prewarm failed (cache stays cold): %s", e)
-
-
-def _seed_strike_geometry_from_storage() -> None:
-    """Learn every ticker's strike spacing from its last stored chain, at boot.
-
-    Without this the first cycle after a restart fetches TERRAIN_STRIKE_COUNT_COLD_START
-    for every ticker -- too narrow for SPY/QQQ, so they would report
-    LOW_CONFIDENCE_NARROW_CHAIN for one cycle on every restart. The geometry is already
-    on disk; reading it once off the request path removes that window entirely.
-    """
-    try:
-        with _logger_lock:
-            tickers = list(_logger_tickers)
-    except Exception:
-        tickers = list(CORE_TICKERS)
-    seeded = 0
-    for tk in tickers:
-        try:
-            contracts, stored_spot, _stored_ts = _latest_chain_and_spot(tk)
-        except Exception:
-            continue
-        if _learn_strike_geometry(tk, contracts, stored_spot):
-            seeded += 1
-    log.info("strike geometry seeded for %d/%d tickers", seeded, len(tickers))
 
 
 def start_terrain_prewarm() -> None:
@@ -17442,8 +17258,7 @@ def debug_charm(ticker: str):
         # computes on, or it debugs a different chain than the one that produced the number.
         # Cursor-audit A1: and the same index DATE bound — without to_date this fetched the full
         # multi-year $SPX book (no cap) and 502'd on the budget, unlike the product's bounded path.
-        c_resp   = safe_get_chain(cl, ticker, strike_count=resolve_chain_strike_count(ticker),
-                                  to_date=_chain_to_date_for(ticker, None))
+        c_resp   = fetch_full_chain(cl, ticker)   # the same full chain the levels use
         if c_resp is None or c_resp.status_code != 200:
             return {"error": f"Chain fetch failed: status={getattr(c_resp, 'status_code', 'None')}"}
         chain_json = c_resp.json()

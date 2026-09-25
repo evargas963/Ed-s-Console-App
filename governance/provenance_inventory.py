@@ -72,11 +72,12 @@ CLOSING = frozenset({"SCHWAB_LEAF", "REPLACED", "ALLOWLISTED"})
 DISPOSITIONS = CLOSING | {"DERIVED"}
 
 #: Schwab dictionary path prefixes (the wire JSON families).
-SCHWAB_LEAF_PREFIXES = ("chains.", "quotes.", "pricehistory.")
+#: expirationchain: Schwab Market Data GET /marketdata/v1/expirationchain (the listed expiries).
+SCHWAB_LEAF_PREFIXES = ("chains.", "quotes.", "pricehistory.", "expirationchain.")
 #: Categorical hand-waves that are not leaves.
 FORBIDDEN_LEAF_SUBSTRINGS = ("upstream", "ms_dict", "signalinput", "signal_input", "inference",
                              "snapshots.*", "—")
-_LEAF_RE = re.compile(r"^(chains\.|quotes\.|pricehistory\.)[a-zA-Z0-9_.*\[\]]+$")
+_LEAF_RE = re.compile(r"^(chains\.|quotes\.|pricehistory\.|expirationchain\.)[a-zA-Z0-9_.*\[\]]+$")
 
 
 @dataclass(frozen=True)

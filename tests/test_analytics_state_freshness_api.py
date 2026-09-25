@@ -801,7 +801,8 @@ def test_chain_fetch_call_shape_and_gated_site_source_lock():
     UI_05_OPERATOR_PRIORITY_ADMISSION_V1 threads a priority flag into the gated call — the Schwab
     call shape inside the helper is unchanged.
 
-    RC-59 UPDATE: the WIDTH source changed deliberately. _fetch_state used to pass the hardcoded
+    2026-09-25: the width is gone -- the state chain is the selected expiry's FULL chain.
+    Historical note, RC-59: the WIDTH source changed deliberately. _fetch_state used to pass the hardcoded
     CHAIN_STRIKE_COUNT (20), which analysed the console on a ~±6.6%-of-spot chain while terrain
     used geometry-sized widths — the same ticker measured two ways. Width now comes from the ONE
     faucet, resolve_chain_strike_count(). This lock therefore asserts the INTENT (gated helper +
@@ -816,14 +817,10 @@ def test_chain_fetch_call_shape_and_gated_site_source_lock():
     # width, and every kwarg named — rather than a frozen literal that goes stale the moment a
     # legitimate argument is added.
     assert "resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,\n                              to_date=to_date, from_date=from_date)" in src
-    assert "_gated_safe_get_chain, client, ticker," in src
-    # Width comes from the faucet, never a bare constant (enforced repo-wide by
-    # tools/check_institutional_correctness.py::check_chain_width_single_faucet).
-    assert "strike_count=resolve_chain_strike_count(ticker)" in src
-    assert "CHAIN_STRIKE_COUNT, priority=_chain_priority" not in src, (
-        "the console chain fetch regressed to the hardcoded 20-strike width (RC-59)"
-    )
-    assert "priority=_chain_priority," in src
+    # both _fetch_state branches take the selected expiry's FULL chain (2026-09-25; no strike
+    # window anywhere -- enforced repo-wide by check_chain_width_single_faucet)
+    assert src.count("_fetch_state_chain, client, ticker, expiry, _chain_priority") == 1
+    assert src.count("_fetch_state_chain(client, ticker, expiry, _chain_priority)") == 1
     assert 'ms_dict["chain_gate_wait_sec"]' in src
     assert '_stage_ms["chain_gate_wait_ms"]' in src
 

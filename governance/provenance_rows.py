@@ -2332,9 +2332,19 @@ ROWS: tuple[Row, ...] = (
         justification='Market-context sweep + cache store + confluence-tick persist, extracted verbatim from _get_mkt_ctx; Schwab quote reads unchanged inside fetch_market_context.',
     ),
     Row(
+        file='server.py', derivation='_listed_expiries', disposition='DERIVED',
+        producer_refs=('server.py:_option_expiries',),
+        justification='Listed expiries from today on (ET), cached per ticker per ET day; no field derivation.',
+    ),
+    Row(
+        file='server.py', derivation='_option_expiries', disposition='SCHWAB_LEAF',
+        schwab_leaf='expirationchain.expirationList.expirationDate',
+        justification='Schwab expiration chain expirationList[].expirationDate, read as dates verbatim.',
+    ),
+    Row(
         file='server.py', derivation='_fetch_expiries_light', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_chain',),
-        justification='Schwab API wrapper or wire JSON ingest path.',
+        producer_refs=('server.py:_listed_expiries',),
+        justification='The listed expiries from the Schwab expiration chain (via _listed_expiries), as ISO dates; no chain fetch.',
     ),
     Row(
         file='server.py', derivation='_fetch_state', disposition='DERIVED',
@@ -2430,11 +2440,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_latest_chain_and_spot', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.callExpDateMap.*.openInterest',
         justification='Reads the most recent stored Schwab chain and spot for a ticker, read-only; no Schwab call, no derivation.',
-    ),
-    Row(
-        file='server.py', derivation='_learn_strike_geometry', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Caches (spot, strike increment) per ticker from a chain already fetched by the traced terrain path; no new Schwab field read.',
     ),
     Row(
         file='server.py', derivation='_liquidity_fusion_from_cache', disposition='ALLOWLISTED',
@@ -2545,11 +2550,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_safe_get_quote_with_retry', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_quote',),
         justification='Schwab get_quote wrapper with token retry.',
-    ),
-    Row(
-        file='server.py', derivation='_seed_strike_geometry_from_storage', disposition='DERIVED',
-        producer_refs=('server.py:_latest_chain_and_spot',),
-        justification='Replays stored chains through _learn_strike_geometry at boot; stored rows were produced by traced writers.',
     ),
     Row(
         file='server.py', derivation='_selected_schwab_days_to_expiration', disposition='ALLOWLISTED',
@@ -2869,11 +2869,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='reset_schwab_client', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (reset_schwab_client).',
-    ),
-    Row(
-        file='server.py', derivation='resolve_chain_strike_count', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='RC-59 single chain-width faucet (renamed from _terrain_strike_count, which survives as a back-compat alias): strike-count REQUEST parameter derived from learned geometry and the span bar; consumes no Schwab response field.',
     ),
     Row(
         file='server.py', derivation='resolve_spot', disposition='DERIVED',

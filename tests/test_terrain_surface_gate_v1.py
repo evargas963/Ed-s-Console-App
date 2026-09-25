@@ -33,12 +33,10 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_universal_capture_wanted", lambda t: (False, None))
-    monkeypatch.setattr(server, "_terrain_strike_count", lambda t: 60)
     monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (100.0, "stub", 0.0))
     monkeypatch.setattr(server, "_persist_universal_complete_chain", lambda *a, **k: None)
-    monkeypatch.setattr(server, "_learn_strike_geometry", lambda *a, **k: None)
     monkeypatch.setattr(server, "compute_terrain", lambda *a, **k: Snap())
     monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
@@ -267,7 +265,6 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
     def proj(contracts, spot):
         return {"expirations": [], "strikes": [], "cells": []}
     _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "_seed_strike_geometry_from_storage", lambda: None)
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     real_refresh = server._terrain_refresh_one
@@ -326,7 +323,6 @@ def test_a_viewed_ticker_still_refreshes_outside_the_archival_loggers_window(mon
     def proj(contracts, spot):
         return {"expirations": [], "strikes": [], "cells": []}
     _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "_seed_strike_geometry_from_storage", lambda: None)
     monkeypatch.setattr(server, "_is_loggable_session", lambda: False)   # outside the logger's window
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     real_refresh = server._terrain_refresh_one

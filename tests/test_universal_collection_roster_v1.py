@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import sys
 import time
-from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -50,110 +49,16 @@ def test_panel_auto_enters_the_background_roster(monkeypatch, tmp_path):
     assert {"SPY", "AUD1", "AUDP"} <= roster    # the pre-existing categories still present
 
 
-def test_index_book_width_is_fixed_and_date_bounded_under_budget():
-    """RC-494: index books get a FIXED width (deterministic — no geometry feedback loop) and
-    a bounded DTE horizon (to_date), so width x 2 x (expiries in the window) stays under the
-    vendor contract budget. This replaces the RC-491 cold-start width, which was still too
-    wide for $SPX's full book (>100 expiries)."""
-    import server as srv
-
-    w = srv.resolve_chain_strike_count("$SPX")
-    assert w == srv.INDEX_CHAIN_STRIKE_COUNT
-    # The 45-day horizon bounds SPX to ~34 expiries; even a conservative 55 stays under budget.
-    assert w * 2 * 55 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET, (
-        f"index width {w} x 55 expiries blows the {srv.SCHWAB_CHAIN_CONTRACT_BUDGET} budget")
-    # The index date bound is set; equities fetch the full book (None).
-    assert srv._chain_to_date_for("$SPX") is not None
-    assert srv._chain_to_date_for("$VIX") is not None
-    # RC-494 robustness: an EXPLICIT far-dated index expiry extends the fetch to include it
-    # (else the downstream single-expiry slice would be empty and error); the auto path stays
-    # near-term.
-    far = "2027-12-17"
-    # RC-496: the faucet returns a datetime.date (the type schwab-py requires), not an ISO string.
-    assert srv._chain_to_date_for("$SPX", far) == date.fromisoformat(far)
-    assert type(srv._chain_to_date_for("$SPX", far)) is date
-    assert srv._chain_to_date_for("$SPX", None) != date.fromisoformat(far)
-    # A near expiry inside the horizon does NOT shorten the bound (still the 45-day horizon).
-    assert srv._chain_to_date_for("$SPX", "2020-01-01") == srv._chain_to_date_for("$SPX")
-
-
 def test_bare_index_root_gets_index_protections_f1():
     """Cursor-audit F1: an index root typed/POSTed BARE ('SPX', no $) must get the same $-gated
     protections as '$SPX'. The analytics/state/warm entry points never canonicalized via
-    ticker_storage_key, so a bare root took the equity path — no width cap, no date bound — and
-    requested the full multi-year book (the RC-491 502). The width/date faucets now normalize
-    their own input, and _fetch_state normalizes at its single chokepoint."""
-    import server as srv
+    ticker_storage_key, so a bare root took the equity path. The strike-width/date faucets were
+    retired 2026-09-25 (every level fetch takes the full chain), so what remains to lock is the
+    normalization itself."""
     from instrument_identity import ticker_storage_key
 
     for bare, dollar in (("SPX", "$SPX"), ("RUT", "$RUT"), ("VIX", "$VIX"), ("NDX", "$NDX")):
         assert ticker_storage_key(bare) == dollar
-        assert srv.resolve_chain_strike_count(bare) == srv.INDEX_CHAIN_STRIKE_COUNT, (
-            f"bare {bare} bypassed the fixed index width")
-        assert srv._chain_to_date_for(bare) is not None, f"bare {bare} bypassed the index date bound"
-        assert srv._chain_to_date_for(bare) == srv._chain_to_date_for(dollar)
-    # equities are untouched — full book (no date bound)
-    assert srv._chain_to_date_for("AAPL") is None
-
-
-def test_far_selected_index_expiry_is_single_expiry_window_f2():
-    """Cursor-audit F2: extending to_date to a far selected expiry WITHOUT bounding from_date made
-    Schwab return every expiry from today through that far date (60*2*~150 ≈ 18k contracts, over
-    the 6,600 budget) even though _fetch_state then slices to that one expiry and discards the
-    rest. from_date is now bounded to the same far date, so the window is [sel, sel] — a single
-    expiry (60*2 = 120)."""
-    import server as srv
-
-    far = "2027-12-17"
-    # far pick: BOTH ends bound to the selected expiry -> one expiry, trivially under budget
-    # RC-496: faucets return datetime.date objects (not ISO strings) — what schwab-py wants.
-    assert srv._chain_to_date_for("$SPX", far) == date.fromisoformat(far)
-    assert srv._chain_from_date_for("$SPX", far) == date.fromisoformat(far)
-    assert srv.INDEX_CHAIN_STRIKE_COUNT * 2 * 1 <= srv.SCHWAB_CHAIN_CONTRACT_BUDGET
-    # auto path / no expiry: open near end (Schwab defaults to today), bounded far end (horizon)
-    assert srv._chain_from_date_for("$SPX", None) is None
-    assert srv._chain_from_date_for("$SPX") is None
-    # near pick (inside the 45-day window, already budget-safe): near edge stays open
-    assert srv._chain_from_date_for("$SPX", "2020-01-01") is None
-    # equities never get a near bound; bare index root is protected too (F1 composition)
-    assert srv._chain_from_date_for("NVDA", far) is None
-    assert srv._chain_from_date_for("SPX", far) == date.fromisoformat(far)
-
-
-def test_chain_date_faucets_are_datetime_date_the_vendor_accepts_rc496():
-    """RC-496: the chain date faucets must hand schwab-py a datetime.date, not an ISO string —
-    proven against the REAL installed vendor validator (no network). schwab-py's
-    _format_date_as_day requires datetime.date and raises ValueError on a str, so the old
-    `.isoformat()` return crashed every $-index chain fetch at the vendor boundary. Covers BOTH
-    faucets and BOTH the auto (near-horizon) and explicit far-expiry paths."""
-    import server as srv
-    import pytest
-    from schwab.client.base import BaseClient
-
-    far = "2027-12-17"
-    auto_to = srv._chain_to_date_for("$SPX")            # auto path (near-horizon bound)
-    far_to = srv._chain_to_date_for("$SPX", far)        # explicit far expiry
-    far_from = srv._chain_from_date_for("$SPX", far)    # explicit far expiry, near edge
-    for val in (auto_to, far_to, far_from):
-        assert type(val) is date, f"faucet returned {type(val).__name__}, must be datetime.date"
-
-    vendor = object.__new__(BaseClient)   # skip __init__ -> no session/network, just the validator
-    # what get_option_chain calls on to_date/from_date accepts the faucet outputs:
-    assert BaseClient._format_date_as_day(vendor, "to_date", auto_to) == auto_to.isoformat()
-    assert BaseClient._format_date_as_day(vendor, "to_date", far_to) == far
-    assert BaseClient._format_date_as_day(vendor, "from_date", far_from) == far
-    # ...and REJECTS the old ISO-string form the defect returned (regression guard):
-    with pytest.raises(ValueError):
-        BaseClient._format_date_as_day(vendor, "to_date", far_to.isoformat())
-
-
-def test_equity_width_and_full_book_unchanged():
-    import server as srv
-
-    # A non-index symbol keeps the equity cold-start width and full-book fetch (no date bound).
-    assert srv.resolve_chain_strike_count("NEVERSEEN_EQ") == srv.TERRAIN_STRIKE_COUNT_COLD_START
-    assert srv._chain_to_date_for("NEVERSEEN_EQ") is None
-    assert srv._chain_to_date_for("NVDA") is None
 
 
 def test_tnx_is_yield_only_not_snapshot_enrolled():
@@ -228,6 +133,9 @@ def test_enrollment_probe_rejects_non_collectors_f5(monkeypatch):
             return self._p
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
+    # the probe reads the front listed expiry's full chain (_fetch_state_chain)
+    from datetime import date as _date
+    monkeypatch.setattr(srv, "_listed_expiries", lambda client, t: [_date(2030, 1, 18)])
 
     # SATS-like: the vendor refuses the symbol outright (quote 404)
     monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _Resp(404))
