@@ -185,8 +185,8 @@
     n.style.display = 'block'; n.textContent = msg;
   }
 
-  // Honest scope labeling (round-2 completeness repair): the UI must never present a
-  // fallback tier as if it were the same thing as a proven-complete live chain.
+  // /api/chain answers the complete live chain or 'unavailable' with a named reason -- no
+  // stored or captured substitute (fallback register R-01), so the reason is shown as-is.
   function renderScope(scope){
     var el = document.getElementById('m-scope');
     el.classList.remove('ok', 'warn');
@@ -194,17 +194,8 @@
     if (kind === 'complete_single_expiry') {
       el.textContent = '✓ complete chain (strike_range=ALL)';
       el.classList.add('ok');
-    } else if (kind === 'expiry_scope_mismatch') {
-      el.textContent = '⚠ vendor returned a different expiry — not proven complete';
-      el.classList.add('warn');
-    } else if (kind === 'persisted_complete_capture_fallback') {
-      var age = scope.captured_age_sec;
-      el.textContent = '⚠ prior complete capture' +
-        (age !== null && age !== undefined ? ' (' + Math.round(age) + 's old)' : '') +
-        ' — not live';
-      el.classList.add('warn');
-    } else if (kind === 'stored_analytical_snapshot_fallback') {
-      el.textContent = '⚠ bounded analytical snapshot — NOT proven complete';
+    } else if (kind === 'unavailable') {
+      el.textContent = '⚠ chain unavailable — ' + (scope.reason || 'no reason given');
       el.classList.add('warn');
     } else {
       el.textContent = 'scope: unknown';
@@ -220,8 +211,9 @@
     document.getElementById('m-count').textContent = String((payload.contracts || []).length);
     renderScope(payload.scope);
 
-    if (payload.status === 'no_chain' || !payload.contracts || !payload.contracts.length) {
-      notice('No chain available for ' + payload.ticker + (payload.expiry ? (' / ' + payload.expiry) : '') + ' — nothing to select.');
+    if (payload.status === 'no_chain' || payload.status === 'unavailable' || !payload.contracts || !payload.contracts.length) {
+      notice('No chain available for ' + payload.ticker + (payload.expiry ? (' / ' + payload.expiry) : '') +
+        (payload.scope && payload.scope.reason ? ' (' + payload.scope.reason + ')' : '') + ' — nothing to select.');
       return;
     }
     notice('');

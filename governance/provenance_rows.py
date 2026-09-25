@@ -2692,8 +2692,8 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='server.py', derivation='get_chain', disposition='DERIVED',
-        producer_refs=('server.py:_latest_chain_and_spot',),
-        justification='OPTIONS_ORDER_FLOW_V1 contract-selection surface: serializes the stored per-contract chain (symbol/putCall/strikePrice/bid/ask/greeks/OI/volume) verbatim from _latest_chain_and_spot, the SAME stored-chain reader terrain/radar/order-flow-microstructure already use — no new Schwab fetch, no reshaping.',
+        producer_refs=('server.py:_gated_safe_get_chain',),
+        justification='OPTIONS_ORDER_FLOW_V1 contract-selection surface: serves the live strike_range=ALL Schwab chain for exactly the requested expiry (flatten_chain_contracts verbatim, streamed-field overlay newer than the fetch), or status unavailable with the named reason -- never a stored or captured substitute (fallback register R-01).',
     ),
     Row(
         file='server.py', derivation='get_client', disposition='ALLOWLISTED',

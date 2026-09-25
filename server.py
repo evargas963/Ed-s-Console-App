@@ -3481,7 +3481,6 @@ from calibration.option_chain_morning_full import (
 from calibration.complete_chain_capture import (
     eligible_near_term_expiries,
     has_complete_chain_capture_today,
-    latest_complete_chain_capture,
     next_capture_batch,
     persist_complete_chain_capture,
 )
@@ -16213,25 +16212,21 @@ def get_chain(ticker: str = Query(...),
     spacing; fractional strikes (.50/.25/...) survive exactly as the vendor sent them.
 
     `expiry` optional: defaults to the ticker's nearest listed expiry (the SAME
-    _fetch_expiries_light faucet /api/expiries uses). `scope.kind` states EXACTLY what was
-    served, THREE tiers, honestly distinguished — a caller must never mistake a narrower
-    tier for the complete live one:
-      1. 'complete_single_expiry' — a live strike_range=ALL fetch succeeded AND the
-         vendor's own returned_expiries matched the requested expiry EXACTLY (never
-         claimed on a mismatch — see the expiry_scope_mismatch tier below). Also PERSISTS
-         this proven-complete capture (calibration/complete_chain_capture.py) — a fully
-         independent table from the bounded analytical snapshots, so completeness has a
-         durable record, not just a live-request-shaped promise.
-      2. 'expiry_scope_mismatch' — the vendor's response did not exactly match the
-         requested expiry (e.g. returned a different or additional expiry). The contracts
-         actually returned are still served (never silently dropped — real data), but
-         completeness for the REQUESTED expiry is explicitly NOT claimed.
-      3. 'persisted_complete_capture_fallback' — no live fetch this request (error/
-         timeout/mismatch), but a PRIOR complete_single_expiry capture exists for this
-         exact ticker+expiry; served with its captured_age_sec so staleness is visible.
-      4. 'stored_analytical_snapshot_fallback' — last resort: the bounded, gamma/terrain-
-         tuned snapshot this endpoint originally served, explicitly labeled as NOT proven
-         complete. status='no_chain' if even this has nothing."""
+    _fetch_expiries_light faucet /api/expiries uses).
+
+    ONE answer, no fallbacks (operator rule 2026-09-23, governance/fallback_register.md
+    R-01): `scope.kind` is
+      'complete_single_expiry' -- a live strike_range=ALL fetch succeeded AND the vendor's
+         own returned expiries matched the requested expiry EXACTLY. The capture is also
+         persisted (calibration/complete_chain_capture.py) as its own durable record; or
+      'unavailable' -- status='unavailable', no contracts, and `scope.reason` names why
+         (no listed expiry, the vendor's HTTP status, the fetch error, or the expiry the
+         vendor returned instead of the one asked for).
+    It used to serve, in turn, the vendor's mismatched expiry, an older persisted capture,
+    or a bounded analytical snapshot that could belong to a DIFFERENT expiry than the one
+    requested -- each labeled, each still a substitute shown in place of the chain asked
+    for (measured 2026-09-24: SPY's expired 0DTE drew a vendor 400 and was answered from
+    storage on every refresh)."""
     t = ticker.upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: listing a chain is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(t)
@@ -16244,149 +16239,72 @@ def get_chain(ticker: str = Query(...),
         except Exception as e:
             log.debug("chain: expiry resolution failed for %s: %s", t, e)
 
-    if resolved_expiry is not None:
-        try:
-            d = date.fromisoformat(resolved_expiry)
-            client = get_client()
-            c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-                client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
-            if c_resp is not None and c_resp.status_code == 200:
-                # This fetch's OWN as-of instant -- captured the moment the vendor's response
-                # is in hand, before any overlay -- is the correct `newer_than_ts` baseline.
-                _rest_fetch_ts = time.time()
-                c_json = c_resp.json()
-                spot, _spot_source, _spot_as_of = resolve_spot(t, chain_json=c_json)
-                contracts = flatten_chain_contracts(c_json)
-                # SCOPE CHECK, not defensive-only: never trust the request alone to
-                # guarantee the response's own expirationDate matches what was actually
-                # asked for — a mismatch here is the difference between claiming and
-                # proving completeness for the REQUESTED expiry.
-                returned_exps = sorted({
-                    str(c.get("expirationDate") or "")[:10]
-                    for c in contracts if isinstance(c, dict) and c.get("expirationDate")
-                })
-                # Independent-review finding (2026-09-13), REPRODUCED: this route always
-                # returned the vendor REST chain's own `totalVolume`/greeks verbatim, even
-                # though a real streamed tick for the SAME contract can already be sitting in
-                # app.options.order_flow.state, correctly advanced (proven by a controlled
-                # SQLite-replay+OrderFlowState reproduction) -- it simply never reached here.
-                # `_gamma_surface_contracts_with_stream_overlay` is the SAME faucet
-                # refresh_gamma_surface_from_stream already uses to freshen the terrain/
-                # gamma-surface path (ONE overlay mechanism, not a second one for Chain).
-                #
-                # A FOURTH independent review (2026-09-13), REPRODUCED: the first fix passed
-                # `newer_than_ts=None` here, reasoning "this fetch has no PRIOR REST-baseline
-                # timestamp to compare against" -- false. This fetch IS itself a REST baseline
-                # with its own as-of instant (`_rest_fetch_ts` above); passing None disabled
-                # the entire ordering guard `overlay_streamed_contract_fields` exists to
-                # enforce, leaving only the absolute `max_staleness_sec` bound -- which cannot
-                # tell "newer than this REST read" from "merely recent". Controlled
-                # reproduction: a streamed TOTAL_VOLUME=111 observed BEFORE this REST fetch
-                # (which itself returned totalVolume=333) still overlaid onto the response,
-                # replacing the newer REST value with the older streamed one, because nothing
-                # compared the streamed observation's timestamp against this fetch's own.
-                # Fixed by passing this fetch's own instant as `newer_than_ts`, the same
-                # precedence rule every other overlay call site in this file already applies.
-                #
-                # The OVERLAID result is for the RESPONSE only -- `persist_complete_chain_capture`
-                # below stores the PRE-overlay `contracts`, so the durable "complete REST
-                # capture" record (tier 1's own contract: a proven, complete, live REST read)
-                # is never silently blended with streamed fields it cannot itself timestamp.
-                response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-                    t, contracts, newer_than_ts=_rest_fetch_ts)
-                if returned_exps == [resolved_expiry]:
-                    try:
-                        persist_complete_chain_capture(
-                            get_db().db_path, ticker=t, expiry=resolved_expiry,
-                            contracts=contracts, spot=spot,
-                            completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL)
-                    except Exception as e:
-                        log.warning("chain: complete-capture persist failed for %s %s: %s",
-                                   t, resolved_expiry, e)
-                    return JSONResponse({
-                        "ticker": t, "spot": spot, "expiry": resolved_expiry,
-                        "contracts": response_contracts, "status": "ok" if response_contracts else "no_chain",
-                        "stream_overlay_contracts": overlay_n,
-                        "scope": {"kind": "complete_single_expiry",
-                                 "requested_expiry": resolved_expiry,
-                                 "returned_expiries": returned_exps,
-                                 "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
-                    })
-                log.warning("chain: expiry scope mismatch for %s — requested %s, vendor "
-                           "returned %s; NOT claiming completeness", t, resolved_expiry,
-                           returned_exps)
-                if response_contracts:
-                    return JSONResponse({
-                        "ticker": t, "spot": spot, "expiry": resolved_expiry,
-                        "contracts": response_contracts, "status": "ok",
-                        "stream_overlay_contracts": overlay_n,
-                        "scope": {"kind": "expiry_scope_mismatch",
-                                 "requested_expiry": resolved_expiry,
-                                 "returned_expiries": returned_exps,
-                                 "note": "vendor response did not match the requested "
-                                         "expiry exactly — served as-is for "
-                                         "transparency, NOT proven complete for the "
-                                         "requested expiry"},
-                    })
-                # No contracts at all for the mismatch case — fall through to the
-                # persisted/stored tiers below rather than returning an empty response.
-            else:
-                log.warning("chain: live fetch non-200 for %s expiry %s, falling back",
-                           t, resolved_expiry)
-        except Exception as e:
-            log.warning("chain: live fetch failed for %s expiry %s (%s), falling back",
-                       t, resolved_expiry, e)
+    def _unavailable(reason: str) -> JSONResponse:
+        return JSONResponse({"ticker": t, "spot": None, "expiry": resolved_expiry,
+                             "contracts": [], "status": "unavailable",
+                             "scope": {"kind": "unavailable", "requested_expiry": resolved_expiry,
+                                       "reason": reason}})
 
-        try:
-            cap = latest_complete_chain_capture(get_db().db_path, t, resolved_expiry)
-        except Exception as e:
-            cap = None
-            log.debug("chain: persisted-capture read failed for %s %s: %s",
-                     t, resolved_expiry, e)
-        if cap:
-            # Same overlay faucet as the live tiers above, bounded here by the capture's
-            # OWN as-of (a streamed field only overlays a banked capture when it is
-            # genuinely newer than that specific capture, not merely "recent").
-            cap_contracts, cap_overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-                t, cap["contracts"], newer_than_ts=cap["ts_utc"])
-            return JSONResponse({
-                "ticker": t, "spot": cap["spot"], "expiry": resolved_expiry,
-                "contracts": cap_contracts, "status": "ok",
-                "stream_overlay_contracts": cap_overlay_n,
-                "scope": {"kind": "persisted_complete_capture_fallback",
-                         "requested_expiry": resolved_expiry,
-                         "completeness_basis": cap["completeness_basis"],
-                         "captured_ts": cap["ts_utc"],
-                         "captured_age_sec": round(time.time() - cap["ts_utc"], 1),
-                         "note": "a prior COMPLETE capture — not fetched live this "
-                                 "request, staleness stated above"},
-            })
-
-    contracts, spot, stored_ts = _latest_chain_and_spot(t)
-    if not contracts:
-        return JSONResponse({"ticker": t, "spot": spot, "expiry": None, "contracts": [],
-                            "status": "no_chain",
-                            "scope": {"kind": "stored_analytical_snapshot_fallback"}})
-    stored_expiry = None
-    for ct in contracts:
-        if isinstance(ct, dict) and ct.get("expirationDate"):
-            stored_expiry = str(ct["expirationDate"])[:10]
-            break
-    # A FOURTH independent review (2026-09-13), REPRODUCED: same newer_than_ts=None ordering
-    # bug as the live-fetch tier above, here against a STORED snapshot's own row ts_utc
-    # (now returned by _latest_chain_and_spot) instead of a live fetch's instant.
-    contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-        t, contracts, newer_than_ts=stored_ts)
-    return JSONResponse({
-        "ticker": t, "spot": spot, "expiry": stored_expiry, "contracts": contracts,
-        "stream_overlay_contracts": overlay_n,
-        "status": "ok",
-        "scope": {"kind": "stored_analytical_snapshot_fallback",
-                 "note": "bounded analytical snapshot, NOT proven complete — live "
-                         "complete-chain fetch and any persisted capture were both "
-                         "unavailable this request"},
+    if resolved_expiry is None:
+        return _unavailable("no listed expiry for this ticker")
+    try:
+        d = date.fromisoformat(resolved_expiry)
+        client = get_client()
+        c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
+            client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
+    except Exception as e:
+        log.warning("chain: live fetch failed for %s expiry %s (%s) -- served unavailable",
+                    t, resolved_expiry, e)
+        return _unavailable(f"live chain fetch failed: {type(e).__name__}: {e}")
+    if c_resp is None or c_resp.status_code != 200:
+        code = None if c_resp is None else c_resp.status_code
+        log.warning("chain: live fetch non-200 for %s expiry %s (HTTP %s) -- served unavailable",
+                    t, resolved_expiry, code)
+        return _unavailable(f"vendor chain request returned HTTP {code}" if code is not None
+                            else "vendor chain request returned no response")
+    # This fetch's OWN as-of instant -- captured the moment the vendor's response is in
+    # hand, before any overlay -- is the correct `newer_than_ts` baseline.
+    _rest_fetch_ts = time.time()
+    c_json = c_resp.json()
+    spot, _spot_source, _spot_as_of = resolve_spot(t, chain_json=c_json)
+    contracts = flatten_chain_contracts(c_json)
+    # SCOPE CHECK, not defensive-only: never trust the request alone to guarantee the
+    # response's own expirationDate matches what was actually asked for -- a mismatch is
+    # the difference between serving and NOT serving the REQUESTED expiry.
+    returned_exps = sorted({
+        str(c.get("expirationDate") or "")[:10]
+        for c in contracts if isinstance(c, dict) and c.get("expirationDate")
     })
-
+    if returned_exps != [resolved_expiry]:
+        log.warning("chain: expiry scope mismatch for %s -- requested %s, vendor returned %s; "
+                    "served unavailable", t, resolved_expiry, returned_exps)
+        return _unavailable(f"vendor returned expiries {returned_exps}, not {resolved_expiry}")
+    # Independent-review finding (2026-09-13): a real streamed tick for the SAME contract
+    # can already be sitting in app.options.order_flow.state, newer than this REST read;
+    # `_gamma_surface_contracts_with_stream_overlay` is the ONE overlay faucet (shared with
+    # refresh_gamma_surface_from_stream), ordered by this fetch's own instant so an older
+    # streamed value never replaces a newer REST one. The OVERLAID result is for the
+    # RESPONSE only -- the persisted capture stores the PRE-overlay `contracts`, so the
+    # durable complete-REST record is never blended with fields it cannot timestamp.
+    response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
+        t, contracts, newer_than_ts=_rest_fetch_ts)
+    try:
+        persist_complete_chain_capture(
+            get_db().db_path, ticker=t, expiry=resolved_expiry,
+            contracts=contracts, spot=spot,
+            completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL)
+    except Exception as e:
+        log.warning("chain: complete-capture persist failed for %s %s: %s",
+                    t, resolved_expiry, e)
+    return JSONResponse({
+        "ticker": t, "spot": spot, "expiry": resolved_expiry,
+        "contracts": response_contracts, "status": "ok" if response_contracts else "no_chain",
+        "stream_overlay_contracts": overlay_n,
+        "scope": {"kind": "complete_single_expiry",
+                  "requested_expiry": resolved_expiry,
+                  "returned_expiries": returned_exps,
+                  "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
+    })
 
 @app.get("/api/logger/status")
 def logger_status():
