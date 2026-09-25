@@ -78,6 +78,11 @@ def owner_lock_path(db_path: str | Path | None = None) -> Path:
     return resolve_stream_db_path(db_path).with_name("stream_capture.lock")
 
 
+#: Process exit code when another daemon already owns the stream (start_capture_daemon.bat
+#: stops its restart loop on it). 2 is the live-binding refusal (runtime_layout).
+EXIT_OWNER_LOCK_HELD = 3
+
+
 def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
     """ENFORCE the single-streamer-owner rule (Cursor review HIGH: it was prose only).
 
@@ -110,10 +115,12 @@ def acquire_owner_lock(db_path: str | Path | None = None) -> tuple[int, Path]:
                 except ImportError:
                     alive = True   # can't verify -> fail closed, require manual removal
             if alive:
-                raise SystemExit(
-                    f"FATAL: another stream-capture owner holds {lock} (pid {pid}). "
-                    "Single-streamer-owner rule: stop it first, or remove a stale lock."
-                ) from None
+                print(f"FATAL: another stream-capture owner holds {lock} (pid {pid}). "
+                      "Single-streamer-owner rule: stop it first, or remove a stale lock.",
+                      file=sys.stderr, flush=True)
+                # A distinct exit code: start_capture_daemon.bat's restart loop stops on it
+                # instead of retrying against a daemon that is already running.
+                raise SystemExit(EXIT_OWNER_LOCK_HELD) from None
             if attempt == 1:
                 lock.unlink(missing_ok=True)   # stale (dead pid): reclaim once
     raise SystemExit(f"FATAL: could not acquire {lock}")

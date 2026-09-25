@@ -40,17 +40,15 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM The capture daemon (Schwab stream -> prices on :8800) is its own process. Start it through
-REM its scheduled task, never directly: the task restarts it within a minute if it dies, and
-REM an already-running daemon is left alone (task IgnoreNew + the daemon's stream_capture.lock).
-REM Closing this window does not stop it -- capture keeps running.
-schtasks /Run /TN "EdConsole Stream Capture" >nul 2>&1
+REM The capture daemon (Schwab stream -> every live price, :8800) is its own process in its own
+REM window (start_capture_daemon.bat: restarts it if it dies). Started here unless one is
+REM already serving :8800. Closing THIS window does not stop it -- capture keeps running.
+netstat -ano | findstr /R /C:":8800 .*LISTENING" >nul
 if errorlevel 1 (
-    echo  WARNING: could not start the capture daemon task "EdConsole Stream Capture".
-    echo  Live prices need it: register the task, or run
-    echo    .venv\Scripts\pythonw.exe -m app.market_data.schwab.streaming.capture --duration-min 0
+    start "Ed Capture Daemon" /min "%~dp0start_capture_daemon.bat"
+    echo  Capture daemon: started in its own window ^("Ed Capture Daemon"^).
 ) else (
-    echo  Capture daemon: started or already running ^(task "EdConsole Stream Capture"^).
+    echo  Capture daemon: already running ^(:8800 is serving^).
 )
 echo.
 echo  Starting server at http://localhost:8000/
