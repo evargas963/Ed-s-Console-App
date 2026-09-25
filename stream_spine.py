@@ -14,6 +14,8 @@ clients into `MessageBus.publish` and runs `CaptureWriter.run` + `HealthRegistry
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import asyncio
 import json
 import os
@@ -883,15 +885,15 @@ class CaptureWriter:
             # reports -1 when it cannot determine the affected-row count, and coercing
             # that to 0 would silently report "no orphans found" for a reconciliation
             # that may have closed many -- the exact silent-zero shape this repo bans.
-            # The count is read on the same connection immediately before the UPDATE
-            # that consumes it, so it is the number of rows actually reconciled.
-            n = int(self._conn.execute(
-                "SELECT COUNT(*) FROM stream_coverage_epochs "
-                "WHERE ended_ts IS NULL").fetchone()[0])
-            self._conn.execute(
-                "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
-                "WHERE ended_ts IS NULL", (t, r))
-            self._conn.commit()
+            # The count is read in the same write transaction as the UPDATE that
+            # consumes it, so it is the number of rows actually reconciled.
+            with self._control_txn() as con:
+                n = int(con.execute(
+                    "SELECT COUNT(*) FROM stream_coverage_epochs "
+                    "WHERE ended_ts IS NULL").fetchone()[0])
+                con.execute(
+                    "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
+                    "WHERE ended_ts IS NULL", (t, r))
             return n
         except Exception as e:
             raise CoverageWriteError(f"reconcile_orphan_coverage_epochs: {e}") from e
@@ -926,39 +928,65 @@ class CaptureWriter:
         opened: "dict[str, int]" = {}
         refused: "dict[str, str]" = {}
         try:
-            single = service in self.SINGLE_CONTRACT_SERVICES
-            for symbol in dict.fromkeys(symbols):
-                # For a single-contract service the scope is the SERVICE, regardless of
-                # symbol (see SINGLE_CONTRACT_SERVICES); otherwise it is (symbol, service).
-                if single:
-                    existing = self._conn.execute(
-                        "SELECT id, symbol FROM stream_coverage_epochs "
-                        "WHERE service=? AND ended_ts IS NULL", (service,)).fetchall()
-                    scope = f"service {service}"
-                else:
-                    existing = self._conn.execute(
-                        "SELECT id, symbol FROM stream_coverage_epochs "
-                        "WHERE symbol=? AND service=? AND ended_ts IS NULL",
-                        (symbol, service)).fetchall()
-                    scope = f"({symbol}, {service})"
-                if existing:
-                    refused[symbol] = (
-                        f"open_coverage_epoch({symbol},{service}): refusing to open a second "
-                        f"epoch while {len(existing)} is/are still open for {scope} (row id(s) "
-                        f"{[r[0] for r in existing]}, symbol(s) {[r[1] for r in existing]}). "
-                        f"Close the prior epoch, or run reconcile_orphan_coverage_epochs() at "
-                        f"startup -- two open epochs on one option service is contradictory "
-                        f"coverage history and makes producer identity unanswerable.")
-                    continue
-                cur = self._conn.execute(
-                    "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
-                    "VALUES(?,?,?,?)", (symbol, service, t, reason))
-                opened[symbol] = cur.lastrowid
-            self._conn.commit()
+            with self._control_txn():
+                single = service in self.SINGLE_CONTRACT_SERVICES
+                for symbol in dict.fromkeys(symbols):
+                    # For a single-contract service the scope is the SERVICE, regardless of
+                    # symbol (see SINGLE_CONTRACT_SERVICES); otherwise it is (symbol, service).
+                    if single:
+                        existing = self._conn.execute(
+                            "SELECT id, symbol FROM stream_coverage_epochs "
+                            "WHERE service=? AND ended_ts IS NULL", (service,)).fetchall()
+                        scope = f"service {service}"
+                    else:
+                        existing = self._conn.execute(
+                            "SELECT id, symbol FROM stream_coverage_epochs "
+                            "WHERE symbol=? AND service=? AND ended_ts IS NULL",
+                            (symbol, service)).fetchall()
+                        scope = f"({symbol}, {service})"
+                    if existing:
+                        refused[symbol] = (
+                            f"open_coverage_epoch({symbol},{service}): refusing to open a second "
+                            f"epoch while {len(existing)} is/are still open for {scope} (row id(s) "
+                            f"{[r[0] for r in existing]}, symbol(s) {[r[1] for r in existing]}). "
+                            f"Close the prior epoch, or run reconcile_orphan_coverage_epochs() at "
+                            f"startup -- two open epochs on one option service is contradictory "
+                            f"coverage history and makes producer identity unanswerable.")
+                        continue
+                    cur = self._conn.execute(
+                        "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
+                        "VALUES(?,?,?,?)", (symbol, service, t, reason))
+                    opened[symbol] = cur.lastrowid
         except Exception as e:
-            self._rollback_quietly()
             raise CoverageWriteError(f"open_coverage_epochs({len(symbols)} x {service}): {e}") from e
         return opened, refused
+
+    @contextmanager
+    def _control_txn(self):
+        """ONE write transaction on the control connection: BEGIN IMMEDIATE (the write lock is
+        taken BEFORE anything is read), commit on success, roll back on any failure.
+
+        MEASURED 2026-09-25 12:50-13:40 CT on the production stream_capture.db: a control
+        write lost the lock race to the tick-writer thread and raised with its implicit
+        transaction still open -- nothing rolled it back. The next control call's SELECT then
+        read INSIDE that leftover transaction and pinned a snapshot; the tick writer
+        committed; and from then on every control write failed INSTANTLY with "database is
+        locked" (a stale snapshot cannot be upgraded to a write, so SQLite does not even wait
+        the busy timeout): 3,302 failures in 43 minutes, every option coverage epoch refused
+        (so every option subscription was compensated away), and the WAL checkpoint pinned at
+        frame 624 while the log grew past 176,000 frames. Reproduced on a scratch database
+        (tests/test_stream_control_txn_v1.py); a rollback clears it. With the write lock taken
+        first the read can never be stale, and a busy database is waited for (busy timeout)
+        instead of refused."""
+        if self._conn.in_transaction:        # never inherit a transaction a failure left open
+            self._rollback_quietly()
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield self._conn
+            self._conn.commit()
+        except BaseException:
+            self._rollback_quietly()
+            raise
 
     def _rollback_quietly(self) -> None:
         """Undo an uncommitted control-connection transaction after a failed write, so a
@@ -991,16 +1019,16 @@ class CaptureWriter:
         rejected = None if self._last_rejected_contracts is None else json.dumps(
             self._last_rejected_contracts, sort_keys=True)
         try:
-            self._conn.execute(
-                "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, "
-                "resolved_db_path, claimed_coverage_json, rejected_contracts_json) "
-                "VALUES (1, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(id) DO UPDATE SET daemon_pid=excluded.daemon_pid, "
-                "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path, "
-                "claimed_coverage_json=excluded.claimed_coverage_json, "
-                "rejected_contracts_json=excluded.rejected_contracts_json",
-                (p, t, str(self.db_path), claim, rejected))
-            self._conn.commit()
+            with self._control_txn() as con:
+                con.execute(
+                    "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, "
+                    "resolved_db_path, claimed_coverage_json, rejected_contracts_json) "
+                    "VALUES (1, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(id) DO UPDATE SET daemon_pid=excluded.daemon_pid, "
+                    "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path, "
+                    "claimed_coverage_json=excluded.claimed_coverage_json, "
+                    "rejected_contracts_json=excluded.rejected_contracts_json",
+                    (p, t, str(self.db_path), claim, rejected))
         except Exception as e:
             raise CoverageWriteError(f"write_heartbeat: {e}") from e
         # Only a LANDED write changes the outstanding lease. A publication that claims
@@ -1039,12 +1067,11 @@ class CaptureWriter:
             return
         t = ts if ts is not None else time.time()
         try:
-            self._conn.executemany(
-                "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
-                "WHERE id=? AND ended_ts IS NULL", [(t, reason, i) for i in ids])
-            self._conn.commit()
+            with self._control_txn() as con:
+                con.executemany(
+                    "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
+                    "WHERE id=? AND ended_ts IS NULL", [(t, reason, i) for i in ids])
         except Exception as e:
-            self._rollback_quietly()
             raise CoverageWriteError(f"close_coverage_epochs({ids}): {e}") from e
 
     def _insert_guarded(self, topic: str, msg: Any, *,
