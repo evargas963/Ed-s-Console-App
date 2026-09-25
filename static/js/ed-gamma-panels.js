@@ -505,19 +505,16 @@
   }
   var SCOPE_LABEL = {
     complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
-    expiry_scope_mismatch: { t: 'vendor · expiry mismatch', ref: true },
-    persisted_complete_capture_fallback: { t: 'vendor · captured', ref: true },
-    stored_analytical_snapshot_fallback: { t: 'vendor · analytical (not complete)', ref: true },
+    unavailable: { t: 'vendor · unavailable', stale: true },
   };
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
     var sc = d && d.scope, kind = sc && sc.kind;
     if (!kind) { el.innerHTML = ''; return; }
     var m = SCOPE_LABEL[kind] || { t: kind };
-    // captured_age_sec is the server's own age for the fallback tiers; a live fetch has no age.
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: m.t, ageSec: (sc.captured_age_sec != null ? sc.captured_age_sec : null),
-          live: !!m.live, ref: !!m.ref, title: 'chain scope: ' + kind })
+      ? window.EdShell.asOfBadge({ label: m.t, live: !!m.live, stale: !!m.stale,
+          title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') })
       : '';
   }
   // Independent-review finding (2026-09-12): an empty/failed chain result left Strike
@@ -545,7 +542,7 @@
     setSdAsOf(d);
     var cs = (d && d.contracts) || [];
     if (!cs.length) {
-      host.innerHTML = '<div class="placeholder"><div class="sm">no chain for this expiry</div></div>';
+      host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>';
       _setAdditionalContractsDemand([]);
       return;
     }
@@ -793,7 +790,7 @@
     var cs = (d && d.contracts) || [];
     if (!cs.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
-        (d ? 'no chain for this expiry' : 'no console serving /api/chain') + '</div></div>';
+        (d ? esc(window.EdShell.chainEmptyText(d)) : 'no console serving /api/chain') + '</div></div>';
       return;
     }
     var byStrike = {};

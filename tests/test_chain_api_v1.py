@@ -93,7 +93,7 @@ def _chain_json_for(contracts):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Fallback tier (unchanged shape from round 1, still real-fixture-backed)
+# Unavailable answers (no fallback tier: fallback register R-01)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # TEST_SYSTEM_REHAB_V2 final remediation: every TestClient call in this file below
@@ -103,34 +103,37 @@ def _chain_json_for(contracts):
 # apply identically whether reached via HTTP or a direct call. get_chain returns a
 # JSONResponse in every branch, so each call site unwraps via json.loads(resp.body).
 
-def test_chain_fails_closed_with_no_stored_chain(monkeypatch, tmp_path):
+def test_chain_with_no_listed_expiry_is_unavailable_with_its_reason(monkeypatch, tmp_path):
     import json
 
     import server as srv
 
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (None, None, None))
+    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [])
     body = json.loads(srv.get_chain(ticker="ZZZZ", expiry=None).body)
     assert body["ticker"] == "ZZZZ"
-    assert body["contracts"] == []
-    assert body["status"] == "no_chain"
+    assert body["contracts"] == [] and body["status"] == "unavailable"
     assert body["expiry"] is None
-    assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
+    assert body["scope"] == {"kind": "unavailable", "requested_expiry": None,
+                             "reason": "no listed expiry for this ticker"}
 
 
-def test_chain_falls_back_to_stored_contracts_verbatim_on_live_failure(monkeypatch, tmp_path):
+def test_chain_never_serves_the_stored_snapshot_when_live_fails(monkeypatch, tmp_path):
+    """NO FALLBACKS (fallback register R-01): a stored analytical snapshot -- possibly for a
+    different expiry -- is never served in place of the live chain that was asked for."""
     import json
 
     import server as srv
 
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_latest_chain_and_spot",
-                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
+    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_REAL_EXPIRY])
+    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["contracts"] == _REAL_CONTRACTS   # byte-for-byte pass-through
-    assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
+    assert body["contracts"] == [] and body["status"] == "unavailable"
+    assert body["scope"]["kind"] == "unavailable"
+    assert "no live Schwab client in this test" in body["scope"]["reason"]
 
 
 def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
@@ -141,11 +144,7 @@ def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
     seen = []
-
-    def _spy(t):
-        seen.append(t)
-        return None, None, None
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", _spy)
+    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: seen.append(t) or [])
     body = json.loads(srv.get_chain(ticker=" spy ", expiry=None).body)
     assert body["ticker"] == "SPY"
     assert seen == ["SPY"]
@@ -612,9 +611,9 @@ def test_chain_live_fetch_persists_the_complete_capture(monkeypatch, tmp_path):
     assert persisted_symbols == vendor_symbols, "exact contract-symbol set equality, vendor -> PERSISTED"
 
 
-def test_chain_persisted_capture_serves_as_fallback_when_live_fails(monkeypatch, tmp_path):
-    """PERSISTED -> API set equivalence on the fallback path: a prior complete capture
-    survives a live-fetch failure and is served with its staleness stated."""
+def test_chain_never_serves_an_older_persisted_capture_when_live_fails(monkeypatch, tmp_path):
+    """NO FALLBACKS (fallback register R-01): a prior complete capture is its own durable
+    record, not a stand-in for the live chain -- a live failure is served unavailable."""
     import json
 
     import server as srv
@@ -633,19 +632,17 @@ def test_chain_persisted_capture_serves_as_fallback_when_live_fails(monkeypatch,
         raise RuntimeError("simulated live-fetch outage")
     monkeypatch.setattr(srv, "_gated_safe_get_chain", _boom)
     body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
-    assert body["scope"]["kind"] == "persisted_complete_capture_fallback"
-    assert body["scope"]["completeness_basis"] == "strike_range=ALL"
-    assert body["scope"]["captured_age_sec"] is not None
-    api_symbols = {c["symbol"] for c in body["contracts"]}
-    vendor_symbols = {c["symbol"] for c in _TSLA_CONTRACTS}
-    assert api_symbols == vendor_symbols, "exact contract-symbol set equality, PERSISTED -> API fallback"
+    assert body["contracts"] == [] and body["status"] == "unavailable"
+    assert body["scope"] == {"kind": "unavailable", "requested_expiry": _TSLA_EXPIRY,
+                             "reason": "live chain fetch failed: RuntimeError: "
+                                       "simulated live-fetch outage"}
 
 
-def test_chain_expiry_mismatch_never_claims_complete_single_expiry(monkeypatch, tmp_path):
-    """NEGATIVE CONTROL (item #4): requested expiry A, vendor response carries expiry B
-    -> scope.kind must NOT be 'complete_single_expiry'. Real contracts, real drift
-    (constructed from a real fixture contract with only its expirationDate altered — the
-    field a scope check must react to, not a hand-built synthetic chain)."""
+def test_chain_expiry_mismatch_is_unavailable_not_another_expiry(monkeypatch, tmp_path):
+    """NEGATIVE CONTROL: requested expiry A, vendor response carries expiry B -> B's
+    contracts are NOT served as A's chain (fallback register R-01); the reason names both.
+    Real contracts, real drift (a real fixture contract with only its expirationDate
+    altered)."""
     import json
 
     import server as srv
@@ -660,13 +657,10 @@ def test_chain_expiry_mismatch_never_claims_complete_single_expiry(monkeypatch, 
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
                         lambda *a, **k: (_FakeResp(200, c_json), 0.0, 0.1))
     body = json.loads(srv.get_chain(ticker="TSLA", expiry=None).body)
-    assert body["scope"]["kind"] != "complete_single_expiry"
-    assert body["scope"]["kind"] == "expiry_scope_mismatch"
+    assert body["contracts"] == [] and body["status"] == "unavailable"
+    assert body["scope"]["kind"] == "unavailable"
     assert body["scope"]["requested_expiry"] == _TSLA_EXPIRY
-    assert body["scope"]["returned_expiries"] == ["2099-01-01"]
-    # Real data, still served — never silently dropped — just not claimed complete.
-    assert len(body["contracts"]) == 1
-    assert body["status"] == "ok"
+    assert body["scope"]["reason"] == f"vendor returned expiries ['2099-01-01'], not {_TSLA_EXPIRY}"
 
 
 def test_chain_expiry_mismatch_does_not_persist_a_complete_capture(monkeypatch, tmp_path):
@@ -708,7 +702,9 @@ def test_chain_live_fetch_accepts_explicit_expiry_param(monkeypatch, tmp_path):
     assert fetch_expiries_called == []
 
 
-def test_chain_live_fetch_non_200_falls_back_to_stored_snapshot(monkeypatch, tmp_path):
+def test_chain_live_fetch_non_200_is_unavailable_with_the_vendor_status(monkeypatch, tmp_path):
+    """MEASURED 2026-09-24: SPY's expired 0DTE drew HTTP 400 from Schwab and was answered from
+    storage on every refresh. The vendor's status is the answer."""
     import json
 
     import server as srv
@@ -717,16 +713,14 @@ def test_chain_live_fetch_non_200_falls_back_to_stored_snapshot(monkeypatch, tmp
     _fake_db(monkeypatch, srv, tmp_path)
     monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_REAL_EXPIRY])
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
-                        lambda *a, **k: (_FakeResp(502, {}), 0.0, 0.1))
-    monkeypatch.setattr(srv, "_latest_chain_and_spot",
-                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
+                        lambda *a, **k: (_FakeResp(400, {}), 0.0, 0.1))
+    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
-    assert body["status"] == "ok"
-    assert len(body["contracts"]) == 40
+    assert body["contracts"] == [] and body["status"] == "unavailable"
+    assert body["scope"]["reason"] == "vendor chain request returned HTTP 400"
 
 
-def test_chain_live_fetch_exception_falls_back_to_stored_snapshot(monkeypatch, tmp_path):
+def test_chain_gate_returning_no_response_is_unavailable(monkeypatch, tmp_path):
     import json
 
     import server as srv
@@ -734,14 +728,11 @@ def test_chain_live_fetch_exception_falls_back_to_stored_snapshot(monkeypatch, t
     monkeypatch.setattr(srv, "get_client", lambda: object())
     _fake_db(monkeypatch, srv, tmp_path)
     monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_REAL_EXPIRY])
-
-    def _boom(*a, **k):
-        raise RuntimeError("simulated vendor error")
-    monkeypatch.setattr(srv, "_gated_safe_get_chain", _boom)
-    monkeypatch.setattr(srv, "_latest_chain_and_spot",
-                        lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
+    monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *a, **k: (None, 0.0, 0.1))
+    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
     body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["scope"]["kind"] == "stored_analytical_snapshot_fallback"
+    assert body["contracts"] == [] and body["status"] == "unavailable"
+    assert body["scope"]["reason"] == "vendor chain request returned no response"
 
 
 def test_real_vendor_evidence_strike_count_alone_undercounts_spy():

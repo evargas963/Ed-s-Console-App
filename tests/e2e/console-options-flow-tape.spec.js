@@ -39,7 +39,7 @@ function intercept(page, tapeBody) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/live/state')) body = LIVE;
-    else if (url.includes('/api/chain')) body = { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'ok', scope: { kind: 'stored_analytical_snapshot_fallback' } };
+    else if (url.includes('/api/chain')) body = { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable', scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-18'] };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });

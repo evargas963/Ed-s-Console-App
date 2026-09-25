@@ -86,18 +86,15 @@ def test_stale_last_captured_expiry_claim_is_gone():
     assert "last-captured expiry only" not in src
 
 
-def test_scope_honesty_all_four_tiers_are_distinctly_labeled():
-    """Round-2 requirement: a response may be labeled complete only when completeness is
-    actually established; every other tier must read as visibly different, never as if it
-    were the same thing as a complete live chain."""
+def test_scope_is_the_live_chain_or_unavailable_with_its_reason():
+    """/api/chain has two answers (fallback register R-01): the complete live chain, or
+    'unavailable' with a named reason. The page labels both and knows no substitute tier."""
     src = _src()
     assert "complete_single_expiry" in src
-    assert "expiry_scope_mismatch" in src
-    assert "persisted_complete_capture_fallback" in src
-    assert "stored_analytical_snapshot_fallback" in src
-    # Each non-complete tier's rendered text must say so honestly (not proven complete /
-    # a visible warning), not merely be distinguishable by an internal string match.
-    assert "not proven complete" in src.lower() or "NOT proven complete" in src
+    assert "'unavailable'" in src and "scope.reason" in src
+    for retired in ("expiry_scope_mismatch", "persisted_complete_capture_fallback",
+                    "stored_analytical_snapshot_fallback"):
+        assert retired not in src, retired
     assert "complete chain" in src   # the ONE tier's positive label
 
 

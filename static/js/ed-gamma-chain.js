@@ -14,9 +14,7 @@
 
   var SCOPE = {
     complete_single_expiry: { t: 'complete (ALL)', live: true },
-    expiry_scope_mismatch: { t: 'expiry mismatch', ref: true },
-    persisted_complete_capture_fallback: { t: 'captured', ref: true },
-    stored_analytical_snapshot_fallback: { t: 'analytical (not complete)', ref: true },
+    unavailable: { t: 'unavailable', stale: true },
   };
   function setSrc(d) {
     var el = document.getElementById('chSrc'); if (!el) return;
@@ -24,8 +22,8 @@
     if (!kind) { el.innerHTML = ''; return; }
     var m = SCOPE[kind] || { t: kind };
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: 'vendor · ' + m.t, ageSec: (sc.captured_age_sec != null ? sc.captured_age_sec : null),
-          live: !!m.live, ref: !!m.ref, title: 'chain scope: ' + kind }) : '';
+      ? window.EdShell.asOfBadge({ label: 'vendor · ' + m.t,
+          live: !!m.live, ref: !!m.ref, stale: !!m.stale, title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') }) : '';
   }
 
   // Independent-review finding (2026-09-13), REPRODUCED: render()'s scrollIntoView ran
@@ -81,7 +79,7 @@
   function render(host, d) {
     setSrc(d);
     var cs = (d && d.contracts) || [];
-    if (!cs.length) { host.innerHTML = '<div class="placeholder"><div class="sm">no chain for this expiry</div></div>'; return; }
+    if (!cs.length) { host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>'; return; }
     // D: preserve EVERY exact vendor contract identity — group by strike into ARRAYS per side, so a
     // second contract that shares (strike, side) is never silently overwritten. One display row per
     // duplicate index; a "dup" marker discloses when the single-expiry surface is not strike-unique.

@@ -426,6 +426,13 @@
   // the same server age here, so their badges agree without a second computation.
   function _escBadge(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  // The one empty-chain message for every /api/chain panel (Chain, Strike Detail, contract
+  // specs). /api/chain answers the live chain or status 'unavailable' with a named reason --
+  // no stored or captured substitute (fallback register R-01) -- so the reason IS the message.
+  function chainEmptyText(d) {
+    var why = d && d.status === 'unavailable' && d.scope && d.scope.reason;
+    return why ? ('chain unavailable — ' + why) : 'no chain for this expiry';
+  }
   function fmtAge(s) {
     if (s == null || isNaN(s)) return '';
     s = Math.round(Number(s));
@@ -1037,7 +1044,7 @@
     addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeRows: scopeRows, scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge,
+    scopeRows: scopeRows, scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     setMeasure: setMeasure, getMeasure: function () { return state.measure; },
     getPlane: function () { return Object.assign({}, _plane); },
