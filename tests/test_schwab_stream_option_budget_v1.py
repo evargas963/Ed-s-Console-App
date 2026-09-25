@@ -415,12 +415,61 @@ def test_post_returns_the_admitted_set_not_an_echo_of_the_request(monkeypatch):
     monkeypatch.setattr(st, "_active_option_contracts", [])
     chain = [_contract("SPY", "260924", "C", k) for k in range(700, 700 + OPTION_CONTRACTS_MAX_HELD + 9)]
     monkeypatch.setitem(server._terrain_cache, "SPY", {"_contracts_rest": chain})
+    monkeypatch.setattr(st, "_option_demand_by_client", {})
     syms = [c["symbol"] for c in chain]
     body = TestClient(server.app).post("/api/streaming/active-option-contracts",
-                                       json={"contracts": syms}).json()
+                                       json={"client_id": "v1", "seq": 1, "contracts": syms}).json()
     assert body["ok"] is True
     assert len(body["contracts"]) == OPTION_CONTRACTS_MAX_HELD
     assert body["requested_count"] == len(syms) and len(body["not_admitted"]) == 9
+    # the view confirms against its OWN demand, which the admitted set never equals over
+    # the budget -- confirming against `contracts` made every render re-post (2026-09-24)
+    assert body["requested"] == sorted(syms)
+
+
+def test_unchanged_demand_keeps_the_held_set_when_spot_moves(monkeypatch):
+    """MEASURED 2026-09-24: re-ranking an unchanged over-budget demand on every re-post slid
+    the 200-contract cutoff with each spot tick, and the daemon swapped subscriptions on the
+    shared socket for nothing (3,676 SPY option subscriptions in 5 minutes)."""
+    import app.options.order_flow.streaming as st
+    import server
+    written: list = []
+    monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: written.append(list(syms)))
+    monkeypatch.setattr(st, "_active_option_contracts", [])
+    monkeypatch.setattr(st, "_option_contracts_last_request", None)
+    monkeypatch.setattr(st, "_option_contracts_last_admitted", [])
+    spot = {"v": 820.0}
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (spot["v"], server.SPOT_SOURCE_PLANE, 1.0))
+    chain = [_contract("SPY", "260924", "C", k) for k in range(600, 1001)]
+    monkeypatch.setitem(server._terrain_cache, "SPY", {"_contracts_rest": chain})
+    syms = [c["symbol"] for c in chain]
+    st.set_active_option_contracts(syms)
+    held = st.get_active_option_contracts()
+    spot["v"] = 835.0
+    st.set_active_option_contracts(list(reversed(syms)))
+    assert st.get_active_option_contracts() == held and len(written) == 1, (
+        "the same demand must not re-rank against a moved spot")
+    st.set_active_option_contracts(syms[:-1])
+    assert len(written) == 2, "a changed demand ranks again, against the current spot"
+
+
+def test_a_rank_missing_an_input_is_retried_on_the_same_demand(monkeypatch):
+    import app.options.order_flow.streaming as st
+    import server
+    monkeypatch.setattr(st, "write_active_option_contracts_signal", lambda syms: None)
+    monkeypatch.setattr(st, "_active_option_contracts", [])
+    monkeypatch.setattr(st, "_option_contracts_last_request", None)
+    monkeypatch.setattr(st, "_option_contracts_last_admitted", [])
+    spot = {"v": None}
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (spot["v"], server.SPOT_SOURCE_PLANE, 1.0))
+    chain = [_contract("SPY", "260924", "C", k) for k in range(700, 720)]
+    monkeypatch.setitem(server._terrain_cache, "SPY", {"_contracts_rest": chain})
+    syms = [c["symbol"] for c in chain]
+    st.set_active_option_contracts(syms)
+    assert st.get_active_option_contracts() == []
+    spot["v"] = 710.0
+    st.set_active_option_contracts(syms)
+    assert len(st.get_active_option_contracts()) == 20, "spot arrived: the same demand is admitted"
 
 
 def test_watchlist_never_serves_a_rest_written_row(monkeypatch):

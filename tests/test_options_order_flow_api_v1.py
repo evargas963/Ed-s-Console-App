@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 _SPY_CONTRACT = "SPY   260820C00767000"
+_QQQ_CONTRACT = "QQQ   260820C00450000"
 
 
 def test_options_microstructure_requires_contract_param():
@@ -166,97 +167,103 @@ def test_active_option_contract_post_surfaces_setter_failure(monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RC-UI-3 (2026-09-12) — /api/streaming/active-option-contracts, the plural control
-# surface for the additional-contracts multi-contract mechanism. Mirrors the singular
-# endpoint's tests above exactly.
+# RC-UI-3 — /api/streaming/active-option-contracts, the plural control surface. Since
+# 2026-09-24 each view declares its OWN demand ({client_id, seq, contracts}) and the stream
+# carries the union of every live view: one last-writer-wins slot let two views replace
+# each other's set on every render, and the daemon swapped ~200 contracts on the shared
+# Schwab socket every few seconds until the socket died (measured that day).
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_active_option_contracts_post_defaults_to_empty(monkeypatch):
-    import asyncio
-    import json
-
-    calls = []
-    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts",
-                        lambda c, **kw: calls.append(c) or True)
-    import server as srv
-
-    resp = asyncio.run(srv.post_streaming_active_option_contracts(payload={}))
-    assert resp.status_code == 200
-    body = json.loads(resp.body)
-    assert body["ok"] is True and body["contracts"] == []
-    assert calls == [[]]
-
-
-def test_active_option_contracts_post_calls_the_real_setter(monkeypatch):
-    import asyncio
-    import json
-
-    calls = []
+@pytest.fixture
+def fresh_demand(monkeypatch):
+    """No view demand, nothing held, no remembered rank; the setter records the union."""
+    import app.options.order_flow.streaming as ofs
+    monkeypatch.setattr(ofs, "_option_demand_by_client", {})
     held = {"now": []}
+    calls: list = []
 
-    def _setter(c, **kw):
-        calls.append(c)
+    def _setter(c):
+        calls.append(list(c))
         held["now"] = list(c)
         return True
-    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts", _setter)
-    monkeypatch.setattr("app.options.order_flow.streaming.get_active_option_contracts",
-                        lambda: held["now"])
-    import server as srv
-
-    resp = asyncio.run(srv.post_streaming_active_option_contracts(
-        payload={"contracts": [_SPY_CONTRACT, _QQQ_CONTRACT]}))
-    assert resp.status_code == 200
-    body = json.loads(resp.body)
-    assert body["ok"] is True
-    # `contracts` is what the stream actually holds after the setter ran (2026-09-23: it
-    # used to echo the request, so a client believed an over-budget request was streamed)
-    assert sorted(body["contracts"]) == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
-    assert body["requested_count"] == 2
-    assert calls == [[_SPY_CONTRACT, _QQQ_CONTRACT]]
+    monkeypatch.setattr(ofs, "set_active_option_contracts", _setter)
+    monkeypatch.setattr(ofs, "get_active_option_contracts", lambda: held["now"])
+    return calls
 
 
-def test_active_option_contracts_post_surfaces_setter_failure(monkeypatch):
+def _post(payload):
     import asyncio
     import json
 
-    invoked = {}
-
-    def _boom(c, command_generation=None):
-        invoked["contracts"] = c
-        invoked["generation"] = command_generation
-        raise RuntimeError("signal write failed")
-    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contracts", _boom)
     import server as srv
-
-    resp = asyncio.run(srv.post_streaming_active_option_contracts(
-        payload={"contracts": [_SPY_CONTRACT]}))
-    assert resp.status_code == 500
-    body = json.loads(resp.body)
-    assert body["ok"] is False
-    assert invoked.get("contracts") == [_SPY_CONTRACT]
-    assert isinstance(invoked.get("generation"), int)
-    assert "signal write failed" in body.get("error", "")
+    resp = asyncio.run(srv.post_streaming_active_option_contracts(payload=payload))
+    return resp.status_code, json.loads(resp.body)
 
 
-def test_active_option_contracts_post_surfaces_stale_command(monkeypatch):
-    """A delayed plural command superseded by a newer one raises StaleOptionCommandError
-    (which the endpoint maps to a 409, proven at the setter-failure-mapping level above)
-    rather than being silently accepted -- same generation-ordering guard as the primary
-    endpoint's setter, exercised the same unit-level way as
-    test_gap2_delayed_older_command_cannot_overwrite_newer_desired_state below."""
+def test_active_option_contracts_post_requires_a_view_id_and_seq(fresh_demand):
+    from fastapi import HTTPException
+    for bad in ({}, {"client_id": "", "seq": 1}, {"client_id": "v1"},
+                {"client_id": "v1", "seq": "1"}, {"client_id": "v1", "seq": True}):
+        with pytest.raises(HTTPException) as e:
+            _post(bad)
+        assert e.value.status_code == 400
+    assert fresh_demand == [], "a malformed declaration never reaches the stream"
+
+
+def test_active_option_contracts_post_confirms_this_views_demand(fresh_demand):
+    status, body = _post({"client_id": "v1", "seq": 1,
+                          "contracts": [_SPY_CONTRACT, _QQQ_CONTRACT]})
+    assert status == 200 and body["ok"] is True
+    assert body["client_id"] == "v1" and body["seq"] == 1
+    # `requested` is what the view confirms against; `contracts` is what the stream holds
+    assert body["requested"] == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
+    assert sorted(body["contracts"]) == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
+    assert body["requested_count"] == 2 and body["demand_views"] == 1
+    assert fresh_demand == [sorted([_SPY_CONTRACT, _QQQ_CONTRACT])]
+
+
+def test_two_views_never_replace_each_others_contracts(fresh_demand):
+    """The defect: view B's declaration used to REPLACE view A's whole set."""
+    _post({"client_id": "heatmap-tab", "seq": 1, "contracts": [_SPY_CONTRACT]})
+    _post({"client_id": "ladder-tab", "seq": 1, "contracts": [_QQQ_CONTRACT]})
+    assert fresh_demand[-1] == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
+    # each view re-declaring its own unchanged set leaves the union unchanged
+    _post({"client_id": "heatmap-tab", "seq": 2, "contracts": [_SPY_CONTRACT]})
+    _post({"client_id": "ladder-tab", "seq": 2, "contracts": [_QQQ_CONTRACT]})
+    assert all(c == sorted([_SPY_CONTRACT, _QQQ_CONTRACT]) for c in fresh_demand[1:])
+    # a view releasing its demand removes only its own contracts
+    _, body = _post({"client_id": "ladder-tab", "seq": 3, "contracts": []})
+    assert fresh_demand[-1] == [_SPY_CONTRACT] and body["demand_views"] == 1
+
+
+def test_a_views_older_declaration_cannot_overwrite_its_newer_one(fresh_demand):
+    _post({"client_id": "v1", "seq": 5, "contracts": [_QQQ_CONTRACT]})
+    status, body = _post({"client_id": "v1", "seq": 4, "contracts": [_SPY_CONTRACT]})
+    assert status == 409 and body["ok"] is False and body["superseded"] is True
+    assert fresh_demand == [[_QQQ_CONTRACT]], "the stale declaration never reached the stream"
+
+
+def test_an_unrefreshed_views_lease_expires(fresh_demand):
+    import app.options.order_flow.streaming as ofs
+    ofs.declare_option_contract_demand("closed-tab", [_SPY_CONTRACT], seq=1, now=1000.0)
+    ofs.declare_option_contract_demand("live-tab", [_QQQ_CONTRACT], seq=1,
+                                       now=1000.0 + ofs.OPTION_DEMAND_LEASE_SEC - 1)
+    assert fresh_demand[-1] == sorted([_SPY_CONTRACT, _QQQ_CONTRACT]), "still within the lease"
+    out = ofs.declare_option_contract_demand("live-tab", [_QQQ_CONTRACT], seq=2,
+                                             now=1000.0 + ofs.OPTION_DEMAND_LEASE_SEC + 1)
+    assert fresh_demand[-1] == [_QQQ_CONTRACT] and out["demand_views"] == 1
+    assert "closed-tab" not in ofs._option_demand_by_client
+
+
+def test_active_option_contracts_post_surfaces_setter_failure(monkeypatch, fresh_demand):
     import app.options.order_flow.streaming as ofs
 
-    try:
-        gen_a = ofs.begin_option_contracts_command()
-        gen_b = ofs.begin_option_contracts_command()
-        assert ofs.set_active_option_contracts([_QQQ_CONTRACT], command_generation=gen_b) is True
-
-        def _stale_apply():
-            return ofs.set_active_option_contracts([_SPY_CONTRACT], command_generation=gen_a)
-        with pytest.raises(ofs.StaleOptionCommandError):
-            _stale_apply()
-    finally:
-        ofs.set_active_option_contracts([])
+    def _boom(c):
+        raise RuntimeError("signal write failed")
+    monkeypatch.setattr(ofs, "set_active_option_contracts", _boom)
+    status, body = _post({"client_id": "v1", "seq": 1, "contracts": [_SPY_CONTRACT]})
+    assert status == 500 and body["ok"] is False
+    assert "signal write failed" in body.get("error", "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -269,7 +276,6 @@ def test_active_option_contracts_post_surfaces_stale_command(monkeypatch):
 # contract) -- only the LIVE HEALTH claim is refused.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_QQQ_CONTRACT = "QQQ   260820C00450000"
 
 
 def _force_live_option_plane(ofs, active_contract):

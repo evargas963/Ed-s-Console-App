@@ -15677,40 +15677,47 @@ async def post_streaming_watchlist_symbols(payload: dict = Body(default={})):
 
 @app.post("/api/streaming/active-option-contracts")
 async def post_streaming_active_option_contracts(payload: dict = Body(default={})):
-    """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to a SET of ADDITIONAL option contracts,
-    beside the one primary contract /api/streaming/active-option-contract manages (RC-UI-3,
-    2026-09-12 multi-contract coverage). Mirrors that endpoint's generation-guarded write
-    exactly, on its own independent generation counter -- see
-    app.options.order_flow.streaming.set_active_option_contracts."""
+    """One view's ADDITIONAL option contracts for LEVELONE_OPTIONS+OPTIONS_BOOK, beside the
+    one primary contract /api/streaming/active-option-contract manages (RC-UI-3).
+
+    Body: {client_id, seq, contracts}. Each view (page load) declares its own demand under
+    its own client_id; `seq` orders that view's declarations. The stream carries the union
+    of every live view's demand ranked to the shared-socket budget -- see
+    app.options.order_flow.streaming.declare_option_contract_demand for why this is no
+    longer one last-writer-wins slot."""
     raw = payload.get("contracts")
     contracts = [str(s).strip() for s in raw] if isinstance(raw, list) else []
     contracts = [c for c in contracts if c]
+    client_id = payload.get("client_id")
+    seq = payload.get("seq")
+    if not isinstance(client_id, str) or not client_id.strip():
+        raise HTTPException(status_code=400, detail="client_id (this view's id) is required")
+    if not isinstance(seq, int) or isinstance(seq, bool):
+        raise HTTPException(status_code=400,
+                            detail="seq (this view's declaration counter) must be an integer")
 
-    from app.options.order_flow.streaming import (
-        StaleOptionCommandError,
-        begin_option_contracts_command,
-    )
-    generation = begin_option_contracts_command()
+    from app.options.order_flow.streaming import StaleOptionCommandError
 
     def _apply():
-        from app.options.order_flow.streaming import set_active_option_contracts
         from app.options.order_flow.streaming import (
-            get_active_option_contracts, get_option_contracts_budget_state,
-            get_option_contracts_not_admitted)
-        ok = set_active_option_contracts(contracts, command_generation=generation)
-        # `contracts` is what the stream will actually carry (the admitted, budgeted set),
-        # never an echo of the request -- a client trusting it must not believe the whole
-        # request is being streamed. The request size and the left-out set ride beside it.
-        return {"ok": ok, "contracts": list(get_active_option_contracts()),
+            declare_option_contract_demand, get_active_option_contracts,
+            get_option_contracts_budget_state, get_option_contracts_not_admitted)
+        declared = declare_option_contract_demand(client_id, contracts, seq=seq)
+        # `requested` is THIS view's accepted demand (what the view confirms against);
+        # `contracts` is what the stream actually carries (the union of every view, ranked
+        # to the budget) -- never an echo of the request, so no view believes more is
+        # streamed than is. The left-out set rides beside it.
+        return {"ok": True, "client_id": client_id, "seq": seq,
+                "requested": declared["requested"], "demand_views": declared["demand_views"],
+                "contracts": list(get_active_option_contracts()),
                 "requested_count": len(contracts),
                 "not_admitted": get_option_contracts_not_admitted(),
-                "command_generation": generation, **get_option_contracts_budget_state()}
+                **get_option_contracts_budget_state()}
     try:
         out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
     except StaleOptionCommandError as e:
-        return JSONResponse({"ok": False, "error": str(e), "contracts": contracts,
-                             "superseded": True, "command_generation": generation},
-                            status_code=409)
+        return JSONResponse({"ok": False, "error": str(e), "client_id": client_id, "seq": seq,
+                             "superseded": True}, status_code=409)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "contracts": contracts}, status_code=500)
     return JSONResponse(out)

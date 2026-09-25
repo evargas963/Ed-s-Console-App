@@ -25,6 +25,14 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 
+// The per-view demand acknowledgement (server.py post_streaming_active_option_contracts,
+// 2026-09-24): the server echoes this view's id, seq and recorded demand (`requested`),
+// which ed-stream.js confirms against; `contracts` is the union the stream carries.
+function demandAck(body, requested) {
+  return JSON.stringify({ ok: true, client_id: body.client_id, seq: body.seq,
+    requested: requested || body.contracts || [], contracts: body.contracts || [] });
+}
+
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41,
   source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
@@ -541,7 +549,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/streaming/active-option-contracts', (route) => {
       const body = JSON.parse(route.request().postData() || '{}');
       demandCalls.push(body.contracts || []);
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+      route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
@@ -602,7 +610,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/streaming/active-option-contracts', (route) => {
       const body = JSON.parse(route.request().postData() || '{}');
       demandCalls.push(body.contracts || []);
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+      route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
     });
     await page.route('**/api/analytics/light/stream**', async (route) => {
       await new Promise((r) => setTimeout(r, 500));   // see the delivery-timing test above for why
@@ -1528,7 +1536,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       // Echo the real server's contract: `contracts` in the response is the ACKNOWLEDGED
       // set, which ed-stream.js's identity check now requires to match what was sent.
       route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
@@ -1584,7 +1592,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       const body = JSON.parse(route.request().postData() || '{}');
       requests.push(body);
       route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1637,7 +1645,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       const body = JSON.parse(route.request().postData() || '{}');
       if (firstBody === null) firstBody = body;
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
@@ -1692,7 +1700,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       const body = JSON.parse(route.request().postData() || '{}');
       if (!isOwn(body.contracts)) {
         return route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+          body: demandAck(body) });
       }
       requestCount += 1;
       if (mode === 'fail') {
@@ -1701,14 +1709,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       if (mode === 'hang') {
         await new Promise((resolve) => { releasePending = resolve; });
         return route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+          body: demandAck(body) });
       }
       if (mode === 'wrong') {
         return route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ ok: true, contracts: ['SPY   260911C00999000'] }) });
+          body: demandAck(body, ['SPY   260911C00999000']) });
       }
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
@@ -1793,7 +1801,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       const body = JSON.parse(route.request().postData() || '{}');
       requests.push(body.contracts || []);
       route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
@@ -1862,7 +1870,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         await new Promise((resolve) => { releaseA = resolve; });   // A hangs, once
       }
       route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
@@ -1911,7 +1919,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         await new Promise((resolve) => { releaseB = resolve; });   // B hangs, once
       }
       route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
@@ -1966,14 +1974,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         hungOnceForA = true;
         await new Promise((resolve) => { releaseA = resolve; });   // A hangs, once
         return route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+          body: demandAck(body) });
       }
       if (key === keyOf([]) && clearShouldFail) {
         clearShouldFail = false;   // fail exactly once
         return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
       }
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
@@ -2029,14 +2037,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         hungOnceForB = true;
         await new Promise((resolve) => { releaseB = resolve; });   // B hangs, once
         return route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+          body: demandAck(body) });
       }
       if (key === keyOf(A) && returnToAShouldFail) {
         returnToAShouldFail = false;   // fail exactly once
         return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
       }
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(200);
@@ -2148,7 +2156,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/streaming/active-option-contracts', (route) => {
       const body = JSON.parse(route.request().postData() || '{}');
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const col = page.locator('.heat thead th.hexp.stream-demand');
@@ -2184,7 +2192,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/streaming/active-option-contracts', (route) => {
       const body = JSON.parse(route.request().postData() || '{}');
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+        body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
@@ -2227,7 +2235,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/streaming/active-option-contracts', (route) => {
       const body = JSON.parse(route.request().postData() || '{}');
       demandCalls.push(body.contracts || []);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.setScope('all'));   // demand follows every displayed column

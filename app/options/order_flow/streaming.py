@@ -1089,12 +1089,56 @@ def get_option_contracts_budget_state() -> dict:
             "over_budget_count": len(_option_contracts_not_admitted),
             "budget": OPTION_CONTRACTS_MAX_HELD}
 
-#: Independent generation counter for plural commands (see _option_command_seq for the
-#: primary slot's identical mechanism). Kept SEPARATE rather than shared: the primary and
-#: additional-contracts slots are independent desired-state signals, so a delayed primary
-#: command must not be blocked by, and must not block, a plural-contracts command.
-_option_contracts_command_seq: int = 0
+#: Serializes the swap of the additional-contracts set (the plural signal write).
 _option_contracts_command_lock = threading.Lock()
+#: The last request that was ranked in full, and the set that rank admitted (see
+#: set_active_option_contracts: identical demand keeps the held set, no re-rank).
+_option_contracts_last_request: "list[str] | None" = None
+_option_contracts_last_admitted: "list[str]" = []
+_OVER_BUDGET_REASON_PREFIX = "not admitted: outside the live-stream budget"
+
+#: Per-view demand (2026-09-24). Every page that shows option contracts (the heatmap, Strike
+#: Detail, in any number of tabs) declares ITS OWN set under its own client id; the stream
+#: carries the union of every live declaration, ranked to the budget. MEASURED 2026-09-24:
+#: this used to be one last-writer-wins slot, so two views (a 0DTE ladder and the
+#: all-expiry grid) replaced each other's set on every render and the daemon swapped ~200
+#: contracts on the shared Schwab socket every few seconds until the socket died.
+#: A declaration is a lease: a live view re-declares every 30 s (DEMAND_REFRESH_MS in
+#: static/js/ed-stream.js), and one not refreshed within OPTION_DEMAND_LEASE_SEC -- a closed
+#: or crashed tab -- stops counting at the next declaration from any view.
+OPTION_DEMAND_LEASE_SEC = 90.0
+_option_demand_by_client: "dict[str, dict]" = {}
+_option_demand_lock = threading.Lock()
+
+
+def declare_option_contract_demand(client_id: str, contract_symbols: "list[str]", *,
+                                   seq: int, now: "float | None" = None) -> dict:
+    """Record one view's demand and stream the union of every live view's demand.
+
+    `seq` orders ONE client's declarations (a late, older request from the same view never
+    overwrites a newer one: StaleOptionCommandError). Different clients never supersede each
+    other -- that was the defect. Returns this client's accepted demand (`requested`, the
+    set the view can confirm against) and how many views are counted."""
+    cid = str(client_id or "").strip()
+    if not cid:
+        raise ValueError("client_id is required: demand is declared per view")
+    t = time.time() if now is None else float(now)
+    requested = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: a view declaring no contracts is an empty declaration, which releases its demand
+                        if ticker_storage_key(s)})
+    with _option_demand_lock:
+        prior = _option_demand_by_client.get(cid)
+        if prior is not None and seq <= prior["seq"]:
+            raise StaleOptionCommandError(
+                f"demand {requested} from view {cid} (seq {seq}) was superseded by that "
+                f"view's newer declaration (seq {prior['seq']})")
+        _option_demand_by_client[cid] = {"symbols": requested, "seq": seq, "ts": t}
+        for other in [k for k, v in _option_demand_by_client.items()
+                      if t - v["ts"] > OPTION_DEMAND_LEASE_SEC]:
+            del _option_demand_by_client[other]
+        live = [v["symbols"] for v in _option_demand_by_client.values() if v["symbols"]]
+        union = sorted(set().union(*live)) if live else []
+        set_active_option_contracts(union)
+    return {"requested": requested, "demand_views": len(live)}
 
 
 def get_active_option_contracts() -> "list[str]":
@@ -1104,28 +1148,28 @@ def get_active_option_contracts() -> "list[str]":
     return list(_active_option_contracts)
 
 
-def begin_option_contracts_command() -> int:
-    """Admit a plural subscription command and return its generation -- same ordering
-    mechanism as begin_option_contract_command, on the independent counter above."""
-    global _option_contracts_command_seq
-    with _option_contracts_command_lock:
-        _option_contracts_command_seq += 1
-        return _option_contracts_command_seq
-
-
-def set_active_option_contracts(contract_symbols: "list[str]",
-                                command_generation: Optional[int] = None) -> bool:
+def set_active_option_contracts(contract_symbols: "list[str]") -> bool:
     """Request LEVELONE_OPTIONS+OPTIONS_BOOK for these ADDITIONAL option contracts,
     beside the one primary contract set_active_option_contract manages. Symbols MUST
     already be chain-response "symbol" fields, same requirement as
     set_active_option_contract -- never constructed here.
 
-    Same command-generation staleness guard as the primary slot (see
-    set_active_option_contract's docstring for why), on the independent counter above so
-    ordering a plural command never depends on how many primary commands ran meanwhile."""
+    The ONE caller in production is declare_option_contract_demand, which passes the union
+    of every live view's demand under its own lock; ordering is per view there (`seq`)."""
     global _active_option_contracts, _option_contracts_not_admitted
+    global _option_contracts_last_request, _option_contracts_last_admitted
     requested = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: no symbols requested is an empty request, which clears the set
                         if ticker_storage_key(s)})
+    # The same demand as last time keeps the set already held. MEASURED 2026-09-24: every
+    # re-post of an unchanged heatmap re-ranked against the newest streamed spot, the
+    # 200-contract cutoff slid by a strike, and the daemon unsubscribed/resubscribed on the
+    # shared Schwab socket for nothing (3,676 SPY option subscriptions in 5 minutes, median
+    # life 5 s; the socket died 8 times that session). A new rank happens only when the
+    # demand changes, or when the last rank could not place every contract (an input such as
+    # spot was missing then and may be present now).
+    if (requested == _option_contracts_last_request
+            and list(_active_option_contracts) == _option_contracts_last_admitted):
+        return True
     # The shared Schwab socket's budget (stream_spine.OPTION_CONTRACTS_MAX_HELD, measured):
     # publish only what the daemon may hold, ranked on canonical Schwab fields (the chain
     # contract's expirationDate, then |strikePrice - streamed LAST_PRICE|), and remember
@@ -1134,15 +1178,11 @@ def set_active_option_contracts(contract_symbols: "list[str]",
     symbols = sorted(admitted)
     _option_contracts_not_admitted = not_admitted
     with _option_contracts_command_lock:
-        if command_generation is not None and command_generation < _option_contracts_command_seq:
-            _log_stream("OPTION_CONTRACTS_COMMAND_SUPERSEDED",
-                        contracts=symbols, generation=command_generation,
-                        newest=_option_contracts_command_seq)
-            raise StaleOptionCommandError(
-                f"subscription command for {symbols} (generation {command_generation}) "
-                f"was superseded by a newer command (generation "
-                f"{_option_contracts_command_seq}); refusing to overwrite newer desired "
-                f"state")
+        # Remember this rank as final only when every contract was placed (admitted, or
+        # left out by the budget alone); a contract missing an input is re-ranked next time.
+        placed = all(r.startswith(_OVER_BUDGET_REASON_PREFIX) for r in not_admitted.values())
+        _option_contracts_last_request = requested if placed else None
+        _option_contracts_last_admitted = symbols
         old = _active_option_contracts
         if set(old) == set(symbols):
             return True
