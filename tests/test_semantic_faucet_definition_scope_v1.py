@@ -29,7 +29,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-FIXTURE = REPO / "tests" / "fixtures" / "real_spy_0dte_chain_with_poison.json"
+FIXTURE = REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json"
 
 # ── The declaration table ────────────────────────────────────────────────────────────────
 # (surface, name) -> (definition, chain_scope). Definitions are metric identities, not
@@ -102,14 +102,14 @@ def _widened_book():
     src = next(
         c for c in chain
         if str(c.get("putCall", "")).upper() == "CALL"
-        and float(c.get("strikePrice") or 0) == 745.0
+        and float(c.get("strikePrice") or 0) == 773.0
     )
     extra = dict(src)
-    extra["strikePrice"] = 743.0
+    extra["strikePrice"] = 775.0
     extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
-    extra["expirationDate"] = "2026-08-16"
+    extra["expirationDate"] = "2026-10-22"
     extra["openInterest"] = 250_000
-    extra["symbol"] = "SPY   260816C00743000"
+    extra["symbol"] = "SPY   261022C00775000"
     return chain, chain + [extra], spot
 
 
@@ -127,7 +127,7 @@ def test_one_name_one_definition_across_all_declared_surfaces():
 
 
 def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
-    """Premise: the two pin-shaped definitions disagree on this chain (745 vs 743).
+    """Premise: the two pin-shaped definitions disagree on this chain (773 vs 775; SPY 2026-09-22 12:46 ET).
 
     RC-292 measured live SPY where they AGREED (775 == 775) and named the coincidence the
     finding: nothing could tell two definitions apart. This fixture is the book where they
@@ -150,8 +150,8 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     assert total_leader != net_leader, (
         "the fixture no longer separates max-total-gamma from max-|net-GEX| — replace it "
         "with a book where the definitions diverge or every wiring check below is blind")
-    assert (total_leader, net_leader) == (745.0, 743.0), (
-        "the RC-292 ledger measurement (745 vs 743) no longer reproduces on this fixture")
+    assert (total_leader, net_leader) == (773.0, 775.0), (
+        "the measured split (773 vs 775) no longer reproduces on this fixture")
 
 
 def test_terrain_names_carry_their_declared_definitions():

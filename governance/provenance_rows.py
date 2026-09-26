@@ -762,14 +762,9 @@ ROWS: tuple[Row, ...] = (
         justification='Detects dollarized GEX availability.',
     ),
     Row(
-        file='math_exposure_core.py', derivation='gamma_is_plausible', disposition='DERIVED',
+        file='math_exposure_core.py', derivation='greek_reported', disposition='DERIVED',
         producer_refs=('math_exposure_core.py:compute_exposures_by_strike',),
-        justification="Schwab's per-contract gamma is used as reported unless missing, the -999 marker, negative, or above the contract's peak possible gamma (with room for Schwab's basis and 3-decimal rounding).",
-    ),
-    Row(
-        file='math_exposure_core.py', derivation='delta_is_plausible', disposition='DERIVED',
-        producer_refs=('math_exposure_core.py:compute_exposures_by_strike',),
-        justification="Schwab's per-contract delta is used as reported unless missing, the -999 marker, non-finite, or past +-1 beyond rounding.",
+        justification="Schwab's per-contract Greek is used exactly as sent unless Schwab marks it as having no value (-999 on the Greek or on the contract's volatility).",
     ),
     Row(
         file='math_exposure_core.py', derivation='gex_magnitude_label', disposition='DERIVED',

@@ -13,7 +13,7 @@ from time_et import ET
 
 
 def _contracts() -> list[dict]:
-    fx = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
+    fx = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
     return json.loads(fx.read_text(encoding="utf-8"))["chain"]
 
 

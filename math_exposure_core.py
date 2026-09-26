@@ -19,14 +19,6 @@ log = logging.getLogger(__name__)
 # Schwab options API missing-greek sentinel (documented wire value).
 MISSING_GREEK_SENTINEL: float = -999.0
 
-#: Schwab's chain reports every Greek to 3 decimal places (measured 2026-09-26 on the SPY chain:
-#: every gamma/delta/vega/theta has at most 3 decimals). A value may be off by this much.
-GREEK_ROUNDING: float = 0.0005
-#: Room over a contract's peak possible gamma for Schwab's own clock/rate basis. MEASURED
-#: 2026-09-26 on 9,428 SPY contracts with OI: reported gamma / peak gamma p99 1.078; the one
-#: contract above 1.5 reported 5.274 (222x its peak) -- impossible, and normal in the downloads
-#: before and after.
-GAMMA_PEAK_ROOM: float = 1.5
 
 # compute_net_charm zero-used error when contracts matched expiry but failed OI/gamma/IV gates.
 CHARM_QUALITY_GATE_ERROR_MARKER = "quality gates"
@@ -53,37 +45,15 @@ def schwab_iv_to_sigma(iv: float | None) -> float | None:
 
 
 def vendor_greeks_unavailable(iv: float | None) -> bool:
-    """True when Schwab marks the contract's Greeks missing: volatility == -999 (its documented
-    missing-greek marker) invalidates every Greek on the contract."""
+    """True when Schwab marks the contract's Greeks as having no value: volatility == -999."""
     return iv is not None and iv == MISSING_GREEK_SENTINEL
 
 
-def gamma_is_plausible(gamma: float | None, *, iv: float | None = None, spot: float | None = None,
-                       t_years: float | None = None) -> bool:
-    """True when Schwab's reported gamma can be real: present, finite, not the -999 marker,
-    not negative, and -- when spot, IV and time are known -- no larger than the contract's
-    peak possible gamma, 1 / (sqrt(2 pi) * spot * sigma * sqrt(T)), with GAMMA_PEAK_ROOM for
-    Schwab's basis and GREEK_ROUNDING for its rounding. Small values (Schwab's 0.000 / 0.001
-    on deep in- or out-of-the-money contracts) are real: that is rounding, not bad data."""
-    if vendor_greeks_unavailable(iv):
-        return False
-    if gamma is None or gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma) or gamma < 0.0:
-        return False
-    sigma = schwab_iv_to_sigma(iv)
-    if spot and sigma and t_years and t_years > 0:
-        peak = 1.0 / (math.sqrt(2.0 * math.pi) * float(spot) * sigma * math.sqrt(t_years))
-        if gamma > peak * GAMMA_PEAK_ROOM + GREEK_ROUNDING:
-            return False
-    return True
-
-
-def delta_is_plausible(delta: float | None, *, iv: float | None = None) -> bool:
-    """True when Schwab's reported delta can be real: present, finite, not the -999 marker,
-    within [-1, 1] up to rounding."""
-    if vendor_greeks_unavailable(iv):
-        return False
-    return (delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
-            and abs(delta) <= 1.0 + GREEK_ROUNDING)
+def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
+    """True when Schwab sent a value for this Greek: present and not Schwab's -999 no-value
+    code (on the Greek itself or on the contract's volatility). Schwab's value is used exactly
+    as sent -- no bound of ours overrides it."""
+    return value is not None and value != MISSING_GREEK_SENTINEL and not vendor_greeks_unavailable(iv)
 
 
 def charm_compute_unavailable_log_level(error: str | None) -> int:
@@ -114,27 +84,24 @@ def _f(x) -> float | None:
     return float_finite_or_none(x)
 
 
-#: Bucket fields priced from Schwab's gamma / delta, and the flag that says the strike's value is
-#: real. A strike with no contract carrying valid Greeks, or with any contract excluded for
-#: invalid Greeks, has no value for them -- its 0.0 initialiser or partial sum is never read.
+#: Bucket fields priced from Schwab's gamma / delta, and the flag that says a contract at the
+#: strike carried one. A strike where no contract with OI carried a reported Greek has no value
+#: for it -- its 0.0 initialiser is never read as data.
 _GREEK_FIELD_FLAG = {
     **dict.fromkeys(("call_gamma", "put_gamma", "net_gamma",
                      "call_gex_1pct", "put_gex_1pct", "net_gex_1pct"), "has_valid_gamma"),
     **dict.fromkeys(("call_delta", "put_delta", "net_delta",
                      "call_dex_dollars", "put_dex_dollars", "net_dex_dollars"), "has_valid_delta"),
 }
-_EXCLUDABLE_FIELDS = frozenset({"call_vanna", "put_vanna"})
 
 
 def bucket_metric(bucket: dict, key: str) -> float | None:
     """One exposure-bucket field, or None when it is not known: absent, not finite, or a Greek
-    field on a strike whose Greeks are not valid (see _GREEK_FIELD_FLAG)."""
+    field on a strike no reported Greek reached (see _GREEK_FIELD_FLAG)."""
     if not isinstance(bucket, dict) or key not in bucket:
         return None
     flag = _GREEK_FIELD_FLAG.get(key)
     if flag is not None and flag in bucket and not bucket[flag]:     # every priced strike carries it
-        return None
-    if key in _EXCLUDABLE_FIELDS and bucket.get("greeks_invalid"):
         return None
     return _f(bucket[key])
 
@@ -165,9 +132,6 @@ class ExposureDiagnostics:
     contracts_used: int
     greeks_missing: int
     note: str
-    #: (symbol, strike, open interest) of every contract with OI whose Greeks were invalid --
-    #: its whole strike is excluded from the Greek totals
-    excluded: tuple = ()
 
 
 # ── Exposure primitives ──────────────────────────────────────────────────────
@@ -212,8 +176,6 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # contributed. A bucket whose deltas were all invalid keeps net_delta 0.0 from its
             # initialiser -- that 0.0 is NOT data (audit M-01, 2026-09-23).
             "has_valid_delta": False,
-            # contracts with OI whose Greeks were invalid: a strike with any is excluded whole
-            "greeks_invalid": 0,
             # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
             # real dollar values. Set explicitly at build; never inferred from values.
             "dollarized": False,
@@ -275,7 +237,6 @@ def compute_exposures_by_strike(
     total = 0
     used = 0
     missing = 0
-    excluded: list = []
 
     # RC-345 / F13: T for the BS-vanna faucet comes from the ONE valuation-T authority,
     # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
@@ -348,13 +309,10 @@ def compute_exposures_by_strike(
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
         iv = _f(ct.get("volatility"))
-        delta_ok = delta_is_plausible(delta, iv=iv)
-        gamma_ok = gamma_is_plausible(gamma, iv=iv, spot=spot, t_years=_tte_memo(ct.get("expirationDate")))
+        delta_ok = greek_reported(delta, iv=iv)
+        gamma_ok = greek_reported(gamma, iv=iv)
         if not delta_ok or not gamma_ok:
             missing += 1
-            if oi is not None and oi > 0:
-                b["greeks_invalid"] += 1
-                excluded.append((ct.get("symbol"), float(strike), oi))
 
         used += 1
         # The ONE canonical "did OI actually contribute here" signal (see _strike_bucket's own
@@ -428,7 +386,6 @@ def compute_exposures_by_strike(
             continue
 
     for strike, b in exposures.items():
-        _exclude_if_invalid(b)
         b["dollarized"] = spot is not None
         b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
         b["net_delta"] = b["call_delta"] + b["put_delta"]
@@ -437,17 +394,17 @@ def compute_exposures_by_strike(
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
         b["total_oi_dollars"] = b.get("call_oi_dollars", 0.0) + b.get("put_oi_dollars", 0.0)
 
-    return exposures, _diagnostics(total, used, missing, excluded)
+    return exposures, _diagnostics(total, used, missing)
 
 
-def _diagnostics(total: int, used: int, missing: int, excluded: tuple = ()) -> ExposureDiagnostics:
+def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
     note = "OK"
     if used == 0:
         note = "No usable contracts (OI filtered or chain empty)."
     elif missing == used:
         note = "All greeks missing (-999). You will still get OI center; gamma/delta pin/inf may be N/A until RTH."
     return ExposureDiagnostics(contracts_total=total, contracts_used=used,
-                               greeks_missing=missing, note=note, excluded=tuple(excluded))
+                               greeks_missing=missing, note=note)
 
 
 def exposure_books(contracts: List[dict], *, spot: float | None, now=None
@@ -471,12 +428,10 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
     leg no contract reported stays None (None + x = x)."""
     merged: Dict[float, dict] = {}
     total = used = missing = 0
-    excluded: list = []
     for exposures, diag in books:
         total += diag.contracts_total
         used += diag.contracts_used
         missing += diag.greeks_missing
-        excluded.extend(diag.excluded)
         for strike, bucket in exposures.items():
             cur = merged.get(strike)
             if cur is None:
@@ -488,17 +443,7 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
                 elif v is not None:
                     c = cur.get(k)
                     cur[k] = v if c is None else c + v
-    for b in merged.values():
-        _exclude_if_invalid(b)
-    return merged, _diagnostics(total, used, missing, excluded)
-
-
-def _exclude_if_invalid(b: dict) -> None:
-    """A strike holding a contract with invalid Greeks has no valid gamma or delta: its Greek
-    fields are a partial sum, never shown as the strike's value."""
-    if b.get("greeks_invalid"):
-        b["has_valid_gamma"] = False
-        b["has_valid_delta"] = False
+    return merged, _diagnostics(total, used, missing)
 
 
 #: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is
@@ -783,8 +728,8 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
     put_v = 0.0
     seen = False
     for b in exposures.values():
-        if not isinstance(b, dict) or b.get("greeks_invalid"):
-            continue                        # an excluded strike is excluded from every total
+        if not isinstance(b, dict):
+            continue
         c = b.get("call_vanna")
         p = b.get("put_vanna")
         if c is not None:
@@ -1418,7 +1363,7 @@ def compute_net_charm(
         if mult is None or mult <= 0:
             _skip_mult += 1
             continue
-        if not gamma_is_plausible(gamma, iv=iv):
+        if not greek_reported(gamma, iv=iv):
             _skip_gamma += 1
             continue
         if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):

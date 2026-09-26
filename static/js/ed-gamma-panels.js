@@ -268,9 +268,7 @@
   function gbsNetAt(tk, strike) {   // canonical per-strike net GEX$ (from /api/terrain/strikes), for reuse
     if (_lastGbs.ticker !== tk) return null;
     for (var i = 0; i < _lastGbs.rows.length; i++) {
-      if (Math.abs(Number(_lastGbs.rows[i][0]) - Number(strike)) < 0.01) {
-        return _lastGbs.rows[i][1] == null ? null : Number(_lastGbs.rows[i][1]);
-      }
+      if (Math.abs(Number(_lastGbs.rows[i][0]) - Number(strike)) < 0.01) return Number(_lastGbs.rows[i][1]);
     }
     return null;
   }
@@ -421,13 +419,12 @@
       // shape (server.py's _publish_levels keeps it, streamed or not).
       // Independent-review finding (2026-09-12): r[2] (volume) reached this row and was never
       // rendered. It is a MAGNITUDE (native totalVolume), never signed/colored like GEX$.
-      // r[1] null: the strike was excluded for invalid Greeks -- no bar, never a $0 bar
-      var k = r[0], v = r[1] == null ? null : Number(r[1]), vol = r[2];
-      var w = v == null ? 0 : Math.min(100, Math.abs(v) / maxAbs * 100), pos = v == null || v >= 0;
+      var k = r[0], v = Number(r[1]) || 0, vol = r[2], w = Math.min(100, Math.abs(v) / maxAbs * 100);
+      var pos = v >= 0;
       bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '" data-volume="' + (vol == null ? '' : vol) + '">' +
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-        '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + (v == null ? 'excluded' : usd(v)) + '</span>' +
+        '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span>' +
         '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span></div>';
     });
     // the bars scroll in their own area; the -/0/+ magnitude axis is PINNED at the foot so it is
@@ -718,12 +715,11 @@
         return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
       var bars = '';
       win.forEach(function (r) {
-        var k = r[0], v = r[1] == null ? null : Number(r[1]);
-        var w = v == null ? 0 : Math.min(100, Math.abs(v) / maxAbs * 100), pos = v == null || v >= 0;
+        var k = r[0], v = Number(r[1]) || 0, w = Math.min(100, Math.abs(v) / maxAbs * 100), pos = v >= 0;
         bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '">' +
           '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
           '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-          '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + (v == null ? 'excluded' : usd(v)) + '</span></div>';
+          '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span></div>';
       });
       host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
         '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +

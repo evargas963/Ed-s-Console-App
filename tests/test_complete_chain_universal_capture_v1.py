@@ -4,7 +4,7 @@ window, with no vendor call of its own.
 
 Uses REAL vendor-captured contracts from two distinct real expiries — TSLA's
 2026-08-31 capture (tests/fixtures/real_tsla_complete_chain_strike_range_all.json) and
-SPY's 2026-07-17 0DTE capture (tests/fixtures/real_spy_0dte_chain_with_poison.json) —
+SPY's 2026-09-22 0DTE capture (tests/fixtures/real_spy_0dte_chain.json) —
 combined only as TEST HARNESS INPUT (both are unmodified real vendor rows; nothing here
 invents a strike, greek, or OI value), plus real-contract-shaped rows with only
 `expirationDate` mutated at runtime (never an inline hand-built contract dict) where a
@@ -37,10 +37,10 @@ _TSLA_CONTRACTS = _TSLA["chain"]
 _TSLA_EXPIRY = _TSLA["expiry"]  # 2026-08-31, real
 
 _SPY_POISON = json.loads(
-    (_FIXTURES / "real_spy_0dte_chain_with_poison.json").read_text(encoding="utf-8")
+    (_FIXTURES / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
 )
 _SPY_CONTRACTS = _SPY_POISON["chain"]
-_SPY_EXPIRY = _SPY_CONTRACTS[0]["expirationDate"][:10]  # 2026-07-17, real
+_SPY_EXPIRY = _SPY_CONTRACTS[0]["expirationDate"][:10]  # 2026-09-22, real
 
 # A real trading day (drawn from the actual calendar authority, never a hardcoded
 # literal that could rot) at a fixed, deterministic minute INSIDE the systematic
@@ -114,7 +114,7 @@ def _no_vendor_calls(monkeypatch, srv):
 
 def _chain_in_hand():
     """The full chain _terrain_refresh_one already fetched: real TSLA rows at their real
-    2026-08-31 expiry plus real SPY rows at their real 2026-07-17 expiry."""
+    2026-08-31 expiry plus real SPY rows at their real 2026-09-22 expiry."""
     return list(_TSLA_CONTRACTS) + list(_SPY_CONTRACTS)
 
 

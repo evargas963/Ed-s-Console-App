@@ -30,17 +30,17 @@ if str(REPO) not in sys.path:
 
 from math_exposure_core import compute_net_charm  # noqa: E402
 
-#: A REAL SPY chain captured from data/ed_console.db — 40 contracts, spot 743.88, all
-#: expiring 2026-07-17. Charm needs T > 0 to compute anything, and that expiry is now past,
+#: A REAL SPY chain captured from data/ed_console.db — 40 contracts, spot 773.05, all
+#: expiring 2026-09-22. Charm needs T > 0 to compute anything, and that expiry is now past,
 #: so `now` is pinned to a real moment inside that session rather than the chain being
 #: rewritten with invented dates. Real strikes, real open interest, real IVs, real clock.
 _FIXTURE = json.loads(
-    (REPO / "tests" / "fixtures" / "real_spy_0dte_chain_with_poison.json").read_text(
+    (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(
         encoding="utf-8"))
 REAL_CHAIN = _FIXTURE["chain"]
 REAL_SPOT = _FIXTURE["spot"]
-REAL_EXPIRY = "2026-07-17"
-DURING_THAT_SESSION = datetime(2026, 7, 17, 10, 0, tzinfo=ZoneInfo("America/New_York"))
+REAL_EXPIRY = "2026-09-22"
+DURING_THAT_SESSION = datetime(2026, 9, 22, 12, 46, tzinfo=ZoneInfo("America/New_York"))
 
 
 def test_the_error_path_publishes_drift_toward_and_not_gamma_pin():
