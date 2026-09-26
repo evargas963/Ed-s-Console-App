@@ -2,7 +2,6 @@
 freshness from the ONE authority (terrain_staleness via terrain_cache_get, RC-424) rather than a
 second age policy, discloses coverage honestly (live near-money window, not a complete chain), and
 never presents the banked morning snapshot as intraday."""
-import sys
 import json
 import time
 
@@ -38,7 +37,7 @@ def _clear(tk):
 
 
 def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
-    monkeypatch.setattr(sys.modules["server"], "_is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
     tk = ticker_storage_key("SPY")
     _clear(tk); _put_live(tk, computed_ts=time.time())
     try:

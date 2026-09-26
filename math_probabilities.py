@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass as _oe_dc
 import math
 
-from math_exposure_core import MISSING_GREEK_SENTINEL, _f, bucket_metric, gamma_is_plausible
+from math_exposure_core import MISSING_GREEK_SENTINEL, _f, bucket_metric, greek_reported
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
     gamma_raw = _f(ct.get("gamma"))
     delta_raw = _f(ct.get("delta"))
     delta = delta_raw if (delta_raw is not None and delta_raw != MISSING_GREEK_SENTINEL and math.isfinite(delta_raw)) else None
-    gamma = gamma_raw if gamma_is_plausible(gamma_raw, delta_raw) else None
+    gamma = gamma_raw if greek_reported(gamma_raw, iv=_f(ct.get("volatility"))) else None
     volume = _f(ct.get("totalVolume"))
     oi = _f(ct.get("openInterest"))
     a_px, b_px = ask, bid
@@ -209,8 +209,7 @@ def score_option_expression(contracts, spot, strike, side, *, walls=None):
         if str(c.get("putCall", "")).upper().strip() != side_up:
             continue
         g_raw = _f(c.get("gamma"))
-        d_raw = _f(c.get("delta"))
-        if not gamma_is_plausible(g_raw, d_raw):
+        if not greek_reported(g_raw, iv=_f(c.get("volatility"))):
             continue
         if abs(g_raw) > abs(max_g):
             max_g = g_raw

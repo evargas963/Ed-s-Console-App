@@ -21,7 +21,7 @@ _latest_chain_and_spot and, once real Schwab credentials existed on disk in this
 REAL network call during collection and hung the test run — caught and fixed here, and the
 same discipline is kept for every test added since.
 
-Uses the REAL captured chain in tests/fixtures/real_spy_0dte_chain_with_poison.json for the
+Uses the REAL captured chain in tests/fixtures/real_spy_0dte_chain.json for the
 fallback-tier tests (unchanged from the prior round) — institutional_correctness's
 no_synthetic_domain_fixtures_in_tests gate requires real chain data for this domain.
 """
@@ -35,7 +35,7 @@ from types import SimpleNamespace
 _FIXTURES = Path(__file__).parent / "fixtures"
 
 _SPY_POISON = json.loads(
-    (_FIXTURES / "real_spy_0dte_chain_with_poison.json").read_text(encoding="utf-8")
+    (_FIXTURES / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
 )
 _REAL_CONTRACTS = _SPY_POISON["chain"]
 _REAL_SPOT = _SPY_POISON["spot"]

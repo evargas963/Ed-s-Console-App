@@ -19,13 +19,6 @@ log = logging.getLogger(__name__)
 # Schwab options API missing-greek sentinel (documented wire value).
 MISSING_GREEK_SENTINEL: float = -999.0
 
-# Per-share vanilla equity-option gamma is always ≥ 0 and rarely above ~1.0.
-# Schwab occasionally returns finite garbage on 0DTE deep-ITM (e.g. gamma=-91965)
-# that would otherwise dominate OI-weighted net_gamma / GEX / walls.
-GAMMA_PLAUSIBLE_MAX: float = 1.0
-# Deep ITM/OTM: true gamma ≈ 0; reject non-near-zero gamma when |delta| is extreme.
-DELTA_DEEP_ABS_FOR_GAMMA: float = 0.98
-GAMMA_DEEP_DELTA_MAX: float = 1e-4
 
 # compute_net_charm zero-used error when contracts matched expiry but failed OI/gamma/IV gates.
 CHARM_QUALITY_GATE_ERROR_MARKER = "quality gates"
@@ -51,65 +44,16 @@ def schwab_iv_to_sigma(iv: float | None) -> float | None:
     return iv / 100.0 if iv > 3.0 else iv
 
 
-def vendor_greeks_unavailable(*, iv: float | None = None, gamma: float | None = None,
-                               delta: float | None = None, vega: float | None = None) -> bool:
-    """Operator directive (2026-09-15, canonical input-validity rules): True when Schwab's
-    OWN reported fields indicate this contract's greeks are NOT a genuine live computation --
-    never a fabricated $0, never accepted as a real zero.
-
-    Two independent tells, both read directly off the vendor's own wire fields (never a
-    strike-vs-spot moneyness judgment -- operator directive: no "was this genuinely deep
-    ITM" heuristic):
-
-    1. ``iv == MISSING_GREEK_SENTINEL`` (Schwab's documented -999 missing-greek marker on
-       `volatility`) means EVERY greek on this contract is invalid, not just IV itself --
-       "IV = -999 means invalid vendor Greeks. That contract must not contribute $0."
-
-    2. Internally self-contradictory output: `gamma` AND `vega` both EXACTLY 0.0 while
-       `delta` sits at an EXACT numeric boundary (|delta| == 1.0). In a genuine Black-
-       Scholes-consistent quote, gamma and vega share the identical zero-condition
-       (N'(d1) == 0) — they cannot be independently real, so a contract reporting both
-       exactly zero while ALSO reporting a real-looking bid/ask/last and a plausible IV
-       (live-reproduced 2026-09-15: SPY/QQQ 0DTE puts at/above spot showing delta=-1.0,
-       gamma=0.0, vega=0.0 alongside a smoothly-varying real-looking IV curve) is Schwab's
-       engine collapsing to a degenerate fallback, not a real deep-ITM/OTM measurement — a
-       genuinely near-zero-gamma contract's delta APPROACHES its boundary asymptotically,
-       it does not float-EQUAL it. Applied uniformly to every delta magnitude, never
-       conditioned on how far the strike sits from spot.
-    """
-    if iv is not None and iv == MISSING_GREEK_SENTINEL:
-        return True
-    if (gamma == 0.0 and vega == 0.0 and delta is not None and math.isfinite(delta)
-            and abs(abs(delta) - 1.0) < 1e-9):
-        return True
-    return False
+def vendor_greeks_unavailable(iv: float | None) -> bool:
+    """True when Schwab marks the contract's Greeks as having no value: volatility == -999."""
+    return iv is not None and iv == MISSING_GREEK_SENTINEL
 
 
-def gamma_is_plausible(gamma: float | None, delta: float | None = None, *,
-                        iv: float | None = None, vega: float | None = None) -> bool:
-    """True when ``gamma`` is usable in OI-weighted gamma aggregation.
-
-    Rejects: None, MISSING_GREEK_SENTINEL, non-finite, negative, above
-    ``GAMMA_PLAUSIBLE_MAX``, non-near-zero gamma when ``|delta|`` is deep
-    ITM/OTM (``>= DELTA_DEEP_ABS_FOR_GAMMA``), and (2026-09-15) anything
-    `vendor_greeks_unavailable` flags -- see that function's own docstring.
-    OI-only metrics should still include the contract when gamma is rejected.
-    """
-    if vendor_greeks_unavailable(iv=iv, gamma=gamma, delta=delta, vega=vega):
-        return False
-    if gamma is None or gamma == MISSING_GREEK_SENTINEL or not math.isfinite(gamma):
-        return False
-    if gamma < 0.0 or gamma > GAMMA_PLAUSIBLE_MAX:
-        return False
-    if (
-        delta is not None
-        and delta != MISSING_GREEK_SENTINEL
-        and math.isfinite(delta)
-        and abs(delta) >= DELTA_DEEP_ABS_FOR_GAMMA
-        and gamma > GAMMA_DEEP_DELTA_MAX
-    ):
-        return False
-    return True
+def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
+    """True when Schwab sent a value for this Greek: present and not Schwab's -999 no-value
+    code (on the Greek itself or on the contract's volatility). Schwab's value is used exactly
+    as sent -- no bound of ours overrides it."""
+    return value is not None and value != MISSING_GREEK_SENTINEL and not vendor_greeks_unavailable(iv)
 
 
 def charm_compute_unavailable_log_level(error: str | None) -> int:
@@ -140,9 +84,24 @@ def _f(x) -> float | None:
     return float_finite_or_none(x)
 
 
+#: Bucket fields priced from Schwab's gamma / delta, and the flag that says a contract at the
+#: strike carried one. A strike where no contract with OI carried a reported Greek has no value
+#: for it -- its 0.0 initialiser is never read as data.
+_GREEK_FIELD_FLAG = {
+    **dict.fromkeys(("call_gamma", "put_gamma", "net_gamma",
+                     "call_gex_1pct", "put_gex_1pct", "net_gex_1pct"), "has_valid_gamma"),
+    **dict.fromkeys(("call_delta", "put_delta", "net_delta",
+                     "call_dex_dollars", "put_dex_dollars", "net_dex_dollars"), "has_valid_delta"),
+}
+
+
 def bucket_metric(bucket: dict, key: str) -> float | None:
-    """Exposure-bucket field read without ``.get(key, 0) or 0`` silent default."""
+    """One exposure-bucket field, or None when it is not known: absent, not finite, or a Greek
+    field on a strike no reported Greek reached (see _GREEK_FIELD_FLAG)."""
     if not isinstance(bucket, dict) or key not in bucket:
+        return None
+    flag = _GREEK_FIELD_FLAG.get(key)
+    if flag is not None and flag in bucket and not bucket[flag]:     # every priced strike carries it
         return None
     return _f(bucket[key])
 
@@ -349,17 +308,9 @@ def compute_exposures_by_strike(
 
         delta = _f(ct.get("delta"))
         gamma = _f(ct.get("gamma"))
-        # Hoisted (2026-09-15, canonical input-validity rules): iv/vega are now read ONCE,
-        # here, and shared by delta_ok/gamma_ok below AND the per-side vanna block further
-        # down (which used to re-read `volatility` a second time, independently, in each of
-        # the CALL/PUT branches -- two reads of the same field is how they could drift).
         iv = _f(ct.get("volatility"))
-        vega = _f(ct.get("vega"))
-        _vendor_invalid = vendor_greeks_unavailable(iv=iv, gamma=gamma, delta=delta, vega=vega)
-        delta_ok = (delta is not None and delta != MISSING_GREEK_SENTINEL and math.isfinite(delta)
-                    and not _vendor_invalid)
-        gamma_ok = gamma_is_plausible(gamma, delta, iv=iv, vega=vega)
-
+        delta_ok = greek_reported(delta, iv=iv)
+        gamma_ok = greek_reported(gamma, iv=iv)
         if not delta_ok or not gamma_ok:
             missing += 1
 
@@ -754,14 +705,7 @@ def total_gex_dollars_at_strike(bucket: dict) -> float | None:
     """Peak gamma concentration: |call GEX$| + |put GEX$| per 1% move."""
     c = bucket_metric_abs(bucket, "call_gex_1pct")
     p = bucket_metric_abs(bucket, "put_gex_1pct")
-    if c is None and p is None:
-        return None
-    total = 0.0
-    if c is not None:
-        total += c
-    if p is not None:
-        total += p
-    return total
+    return None if c is None or p is None else c + p
 
 
 def net_gex_dollars_at_strike(bucket: dict) -> float | None:
@@ -834,10 +778,10 @@ def compute_delta_oi_walls(
 ) -> dict | None:
     """RC-359: overnight ΔOI walls — where positioning BUILT (defend) vs UNWOUND (fade).
 
-    today/prev = {strike: (call_oi, put_oi)} from the SAME exposures book, banked daily.
-    A strike absent yesterday genuinely had no positioning — its prev is 0, not a
-    fabrication. FAIL-CLOSED: None when no prior session is banked (the diff cannot
-    exist yet) or today is empty.
+    today/prev = {strike: (call_oi, put_oi)} from the SAME exposures book, banked daily. Only a
+    strike present in BOTH days has a change: a strike missing from yesterday's bank is not
+    known to have had zero (the bank before 2026-09-25 held only a strike window).
+    FAIL-CLOSED: None when no prior session is banked or today is empty.
     Returns {call_build_strike, call_build_doi, put_build_strike, put_build_doi,
              unwind_strike, unwind_doi} — build fields None when nothing grew.
     """
@@ -846,11 +790,13 @@ def compute_delta_oi_walls(
     d_call: dict[float, float] = {}
     d_put: dict[float, float] = {}
     for k, (c, p) in today.items():
-        pc, pp = prev.get(k, (0.0, 0.0))
-        if c is not None:
-            d_call[k] = float(c) - float(pc or 0.0)  # silent-zero-ok: RC-369 — a strike absent from yesterday's banked book had NO positioning; the diff from a true 0 baseline IS the build, not injected absence
-        if p is not None:
-            d_put[k] = float(p) - float(pp or 0.0)  # silent-zero-ok: RC-369 — same true-zero baseline for the put side
+        if k not in prev:
+            continue
+        pc, pp = prev[k]
+        if c is not None and pc is not None:
+            d_call[k] = float(c) - float(pc)
+        if p is not None and pp is not None:
+            d_put[k] = float(p) - float(pp)
     out: dict[str, float | None] = {
         "call_build_strike": None, "call_build_doi": None,
         "put_build_strike": None, "put_build_doi": None,
@@ -890,36 +836,23 @@ def compute_zero_dte_gamma_share(
     # weight to a share-of-book ratio — absence WITHHOLDS the whole metric.
     total = 0.0
     for v in exposures_all.values():
-        if not isinstance(v, dict):
-            continue
-        x = float_finite_or_none(v.get("net_gex_1pct"))
-        if x is None:
-            return None
-        total += abs(x)
+        x = bucket_metric(v, "net_gex_1pct")
+        if x is not None:
+            total += abs(x)
     if total <= 0:
         return None
     zero = 0.0
     for v in (exposures_0dte or {}).values():
-        if not isinstance(v, dict):
-            continue
-        x = float_finite_or_none(v.get("net_gex_1pct"))
-        if x is None:
-            return None
-        zero += abs(x)
+        x = bucket_metric(v, "net_gex_1pct")
+        if x is not None:
+            zero += abs(x)
     return round(100.0 * zero / total, 1)
 
 
 def total_gamma_raw_at_strike(bucket: dict) -> float | None:
     c = bucket_metric_abs(bucket, "call_gamma")
     p = bucket_metric_abs(bucket, "put_gamma")
-    if c is None and p is None:
-        return None
-    total = 0.0
-    if c is not None:
-        total += c
-    if p is not None:
-        total += p
-    return total
+    return None if c is None or p is None else c + p
 
 
 def net_gamma_raw_at_strike(bucket: dict) -> float | None:
@@ -1417,7 +1350,6 @@ def compute_net_charm(
 
         strike  = _f(ct.get("strikePrice"))
         gamma   = _f(ct.get("gamma"))
-        delta   = _f(ct.get("delta"))
         iv      = _f(ct.get("volatility"))
         oi      = _f(ct.get("openInterest"))
         mult    = _f(ct.get("multiplier"))
@@ -1431,7 +1363,7 @@ def compute_net_charm(
         if mult is None or mult <= 0:
             _skip_mult += 1
             continue
-        if not gamma_is_plausible(gamma, delta):
+        if not greek_reported(gamma, iv=iv):
             _skip_gamma += 1
             continue
         if iv is None or iv <= 0 or iv == MISSING_GREEK_SENTINEL or not math.isfinite(iv):

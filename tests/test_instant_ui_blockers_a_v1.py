@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import sys
 import asyncio
 
 import app.market_data.schwab.streaming.capture as cap
@@ -221,7 +220,7 @@ def test_the_price_row_carries_feed_state_trade_age_and_the_forming_bar(monkeypa
 
 
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch):
-    monkeypatch.setattr(sys.modules["server"], "_is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
     import threading
     import time
     import server as srv

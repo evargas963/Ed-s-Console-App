@@ -1,7 +1,7 @@
 """Unit tests for GEX-R1-SCREEN 0DTE signal + morning full filter.
 
 GEX correctness is proven on a REAL captured chain
-(tests/fixtures/real_spy_0dte_chain_with_poison.json), never a hand-built one.
+(tests/fixtures/real_spy_0dte_chain.json), never a hand-built one.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from calibration.option_chain_morning_full import filter_near_term_contracts
 
-_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
+_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
 
 
 def _load_real_chain() -> tuple[list, float]:

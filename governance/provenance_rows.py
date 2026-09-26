@@ -754,7 +754,7 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='math_exposure_core.py', derivation='compute_zero_dte_gamma_share', disposition='DERIVED',
         producer_refs=('math_exposure_core.py:compute_exposures_by_strike',),
-        justification='RC-357: share of sum(|net_gex_1pct|) contributed by the same-day-expiry book over the full book, where BOTH books come from compute_exposures_by_strike (the 0DTE one is the same call with use_only_dte_max=0) — same parser, same sign model, no second math path. A bucket missing net_gex_1pct withholds the whole ratio rather than contributing a fabricated zero weight (RC-369).',
+        justification='RC-357: share of sum(|net_gex_1pct|) contributed by the same-day-expiry book over the full book, where BOTH books come from compute_exposures_by_strike (the 0DTE one is the same call with use_only_dte_max=0) — same parser, same sign model, no second math path. A strike with no valid gamma (unpriced, or excluded for an invalid contract and listed in the diagnostics) is left out of both the 0DTE and the full sum, never counted as zero.',
     ),
     Row(
         file='math_exposure_core.py', derivation='exposures_have_dollar_gex', disposition='DERIVED',
@@ -762,9 +762,9 @@ ROWS: tuple[Row, ...] = (
         justification='Detects dollarized GEX availability.',
     ),
     Row(
-        file='math_exposure_core.py', derivation='gamma_is_plausible', disposition='DERIVED',
+        file='math_exposure_core.py', derivation='greek_reported', disposition='DERIVED',
         producer_refs=('math_exposure_core.py:compute_exposures_by_strike',),
-        justification='Rejects poisoned Schwab per-contract gamma (negative or implausibly large) before aggregation.',
+        justification="Schwab's per-contract Greek is used exactly as sent unless Schwab marks it as having no value (-999 on the Greek or on the contract's volatility).",
     ),
     Row(
         file='math_exposure_core.py', derivation='gex_magnitude_label', disposition='DERIVED',

@@ -20,7 +20,7 @@ from math_levels import (
 )
 from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
 
-_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
+_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
 
 
 def _real_chain() -> tuple[list, float]:

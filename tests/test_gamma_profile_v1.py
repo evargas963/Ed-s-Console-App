@@ -34,14 +34,14 @@ import time_et
 
 @pytest.fixture(autouse=True)
 def _pin_now_to_fixture_session(monkeypatch):
-    # The fixture is a REAL 0DTE SPY chain captured 2026-07-17. The canonical intraday
+    # The fixture is a REAL 0DTE SPY chain captured 2026-09-22 12:46 ET. The canonical intraday
     # time-to-expiry (time_et.time_to_expiry_years) measures from now_et() to the session
     # close, so replaying it today reads it as long-expired and drops every contract. Pin the
     # clock to mid-session on the fixture's expiry day so it is a live 0DTE (~6h to close).
-    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 7, 17, 10, 0, tzinfo=time_et.ET))
+    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 9, 22, 12, 46, tzinfo=time_et.ET))
 
 
-_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
+_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
 
 
 def _load_real_chain() -> tuple[list, float]:
@@ -112,13 +112,10 @@ def test_narrow_chain_flip_is_reported_low_confidence() -> None:
     # against the same hardcoded GAMMA_FLIP_MIN_SPAN_PCT=0.05. It restated the verdict in
     # raw numbers and could not fail independently. Likewise `n_strikes > 0` was
     # guaranteed (an empty chain returns GAMMA_FLIP_UNAVAILABLE, already excluded above).
-    # What this fixture actually proves, and nothing else asserted: the served flip lies
-    # OUTSIDE the delivered strike range -- an extrapolated level -- which is precisely
-    # why the NARROW verdict must ride along with it.
-    assert flip is not None and flip > diag["strike_hi"], (
-        f"this narrow chain's flip is extrapolated past its own top strike "
-        f"(flip={flip}, strike_hi={diag['strike_hi']}); that is the condition the "
-        f"NARROW tier exists to disclose")
+    # MEASURED on this capture (SPY 2026-09-22 12:46 ET, strikes 764-783): the flip is 771.9,
+    # inside the delivered strikes -- the verdict is NARROW because 20 strikes span only
+    # ~+/-1.3% of spot, not because the flip falls outside them.
+    assert flip == 771.9 and diag["strike_lo"] == 764.0 and diag["strike_hi"] == 783.0
     assert diag["covers_regime_span"] is False and diag["covers_level_span"] is False, (
         "both span-coverage flags must be False for a NARROW verdict; a tier-selection "
         "inversion would flip these while leaving the raw spans untouched")
@@ -492,16 +489,17 @@ def test_rc361_dex_wired_end_to_end():
 
 def test_rc359_delta_oi_walls_build_unwind_and_fail_closed():
     """RC-359: ΔOI walls — biggest call/put OI builds + biggest unwind; None until a
-    prior session exists; a strike absent yesterday diffs against 0 (genuinely new)."""
+    prior session exists; only a strike present both days has a change (a strike missing from
+    yesterday's bank is not known to have had zero)."""
     from math_exposure_core import compute_delta_oi_walls
 
     prev = {700.0: (1000.0, 500.0), 705.0: (2000.0, 800.0)}
     today = {700.0: (1500.0, 450.0),          # call +500, put −50
              705.0: (1800.0, 3000.0),         # call −200, put +2200
-             710.0: (900.0, 100.0)}           # new strike: +900 / +100 vs 0
+             710.0: (900.0, 100.0)}           # not in yesterday's bank: no change computed
     out = compute_delta_oi_walls(today, prev)
     assert out is not None
-    assert out["call_build_strike"] == 710.0 and out["call_build_doi"] == 900
+    assert out["call_build_strike"] == 700.0 and out["call_build_doi"] == 500
     assert out["put_build_strike"] == 705.0 and out["put_build_doi"] == 2200
     assert out["unwind_strike"] is None       # no strike shrank NET (705: -200+2200>0)
 

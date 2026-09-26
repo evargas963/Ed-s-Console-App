@@ -1,6 +1,5 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
-import sys
 import inspect
 
 from math_exposure_core import (
@@ -30,7 +29,7 @@ def _dollarized_exposures():
   from pathlib import Path
 
   fx = json.loads(
-      (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json").read_text(encoding="utf-8")
+      (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
   )
   contracts, spot = fx["chain"], float(fx["spot"])
   exposures, _ = compute_exposures_by_strike(contracts, spot=spot, require_oi=True)
@@ -80,14 +79,15 @@ def test_hvl_and_walls_still_pick():
     That is not hypothetical: put_gex_1pct is stored NEGATIVE, and _pick_strike_max_metric
     skips any value <= 0, so dropping the abs() in bucket_metric_abs makes pg None for
     EVERY chain -- and the old assertion passed. Both picks are now pinned to the values
-    this fixture actually produces (measured 745.0/745.0/745.0, the same numbers
+    this fixture actually produces (SPY 2026-09-22 12:46 ET: HVL 773, call wall 775, put wall
+    773) -- the same numbers
     test_consensus_walls_bind_terrain_ssot... pins downstream through build_walls_rows)."""
     exposures, spot = _dollarized_exposures()
     hvl = pick_hvl_strike(exposures, sorted(exposures.keys()))
-    assert hvl == 745.0, f"HVL moved off the fixture's known strike: {hvl}"
+    assert hvl == 773.0, f"HVL moved off the fixture's known strike: {hvl}"
     (cg, _), (pg, _) = pick_gamma_wall_strikes(exposures, sorted(exposures.keys()))
-    assert cg == 745.0, f"call gamma wall moved: {cg}"
-    assert pg == 745.0, (
+    assert cg == 775.0, f"call gamma wall moved: {cg}"
+    assert pg == 773.0, (
         f"put gamma wall moved: {pg} — a None here means the put side stopped resolving "
         f"entirely (the negative-metric/abs() regression), which the old `or` hid")
 
@@ -187,7 +187,7 @@ def _wide_vs_selected_wall_books():
     from terrain_engine import compute_terrain
 
     fx = json.loads(
-        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json").read_text(
+        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(
             encoding="utf-8"
         )
     )
@@ -195,14 +195,14 @@ def _wide_vs_selected_wall_books():
     src = next(
         c for c in chain
         if str(c.get("putCall", "")).upper() == "CALL"
-        and float(c.get("strikePrice") or 0) == 745.0
+        and float(c.get("strikePrice") or 0) == 773.0
     )
     extra = dict(src)
-    extra["strikePrice"] = 760.0
+    extra["strikePrice"] = 790.0
     extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
-    extra["expirationDate"] = "2026-08-16"
+    extra["expirationDate"] = "2026-10-22"
     extra["openInterest"] = 500_000
-    extra["symbol"] = "SPY   260816C00760000"
+    extra["symbol"] = "SPY   261022C00790000"
     wide = chain + [extra]
     sel_ex, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
     terr = compute_terrain("SPY", wide, spot)
@@ -214,20 +214,20 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
 
     Live path: _fetch_state builds walls on contracts_use (selected expiry) while
     _terrain_kl_overlay paints kl_call_gamma_wall from the wide-chain cache.
-    On this book the two disagree 745 vs 760 / pin_width 0.0 vs 15.0.
+    On this book the two disagree 775 vs 790 / pin_width 2.0 vs 17.0.
     """
     sel_ex, spot, terrain = _wide_vs_selected_wall_books()
     walls = build_walls_rows(sel_ex, spot)
     assert walls[0].label == "CONSENSUS"
-    assert walls[0].call_gamma_wall == 745.0
-    assert walls[0].put_gamma_wall == 745.0
-    assert compute_pin_width_pts(walls[0].call_gamma_wall, walls[0].put_gamma_wall) == 0.0
-    assert terrain["call_wall"] == 760.0
-    assert terrain["put_wall"] == 745.0
+    assert walls[0].call_gamma_wall == 775.0
+    assert walls[0].put_gamma_wall == 773.0
+    assert compute_pin_width_pts(walls[0].call_gamma_wall, walls[0].put_gamma_wall) == 2.0
+    assert terrain["call_wall"] == 790.0
+    assert terrain["put_wall"] == 773.0
     bound = consensus_walls_bind_terrain_ssot(walls, terrain)
-    assert bound[0].call_gamma_wall == 760.0
-    assert bound[0].put_gamma_wall == 745.0
-    assert compute_pin_width_pts(bound[0].call_gamma_wall, bound[0].put_gamma_wall) == 15.0
+    assert bound[0].call_gamma_wall == 790.0
+    assert bound[0].put_gamma_wall == 773.0
+    assert compute_pin_width_pts(bound[0].call_gamma_wall, bound[0].put_gamma_wall) == 17.0
     assert bound[0].call_delta_wall == terrain["call_delta_wall"]
     assert bound[0].put_delta_wall == terrain["put_delta_wall"]
     assert bound[0].call_gamma_strength is None
@@ -241,7 +241,7 @@ def test_consensus_walls_bind_terrain_ssot_rewrites_mixed_book_gamma_delta():
     assert bound[0].put_vanna_wall is None
     assert walls[0].call_oi_wall is None
     assert len(bound) == 1 and bound[0].label == "CONSENSUS"
-    assert walls[0].call_gamma_wall == 745.0
+    assert walls[0].call_gamma_wall == 775.0
     from math_probabilities import compute_wall_score_components
 
     prox, _, audit = compute_wall_score_components(760.0, spot, "CALL", bound)
@@ -285,7 +285,7 @@ def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
     assert bound[0].dom_gamma_side == ""
     assert bound[0].dom_gamma_wall is None
     # Live bound path: approach zone still works; confluence never appears.
-    prox, bias, audit = compute_wall_score_components(760.0, spot, "CALL", bound)
+    prox, bias, audit = compute_wall_score_components(790.0, spot, "CALL", bound)
     assert "strike_in_call_gamma_wall_approach_zone" in (audit.get("bias_notes") or [])
     assert bias == 0.85
     assert all("dom_gamma" not in n for n in (audit.get("bias_notes") or []))
@@ -300,7 +300,7 @@ def test_oe_wall_score_drops_obsolete_dom_gamma_confluence():
         dom_gamma_wall=bound[0].call_gamma_wall,
         dom_gamma_strength=1_000.0,
     )
-    prox2, bias2, audit2 = compute_wall_score_components(760.0, spot, "CALL", [fake])
+    prox2, bias2, audit2 = compute_wall_score_components(790.0, spot, "CALL", [fake])
     notes2 = audit2.get("bias_notes") or []
     levels2 = [d["level"] for d in audit2.get("proximity_detail", [])]
     assert "dom_gamma_call_confluence" not in notes2
@@ -334,7 +334,7 @@ def test_consensus_walls_bind_terrain_ssot_withholds_when_stale():
     empty = consensus_walls_bind_terrain_ssot(walls, {})
     assert empty[0].call_gamma_wall is None
     assert empty[0].call_delta_wall is None
-    assert walls[0].call_gamma_wall == 745.0
+    assert walls[0].call_gamma_wall == 775.0
 
 
 def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
@@ -366,15 +366,15 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
     assert walls[0].put_vanna_strength is None
     assert walls[0].dom_oi_side == ""
     # Pre-fix selected-expiry pickers on this book: call/put OI 750, vanna 734
-    # with strength 0.0. Wide-chain max call OI would be 760 (500000).
+    # with strength 0.0. Wide-chain max call OI would be 790 (500000).
     bound = consensus_walls_bind_terrain_ssot(walls, terrain)
     assert bound[0].call_oi_wall is None
     assert bound[0].put_oi_wall is None
     assert bound[0].call_vanna_wall is None
     assert bound[0].put_vanna_wall is None
     assert bound[0].dom_oi_wall is None
-    assert bound[0].call_gamma_wall == 760.0
-    assert bound[0].put_gamma_wall == 745.0
+    assert bound[0].call_gamma_wall == 790.0
+    assert bound[0].put_gamma_wall == 773.0
     src = inspect.getsource(build_walls_rows)
     assert "_pick_wall_pos" not in src
     assert "_pick_wall_abs" not in src
@@ -396,7 +396,7 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
 def test_terrain_cache_get_derives_staleness_from_computed_ts(monkeypatch):
     """RC-424: production cache stores computed_ts_utc, not levels_stale. terrain_cache_get
     must merge terrain_staleness so missing levels_stale cannot fail-open as fresh."""
-    monkeypatch.setattr(sys.modules["server"], "_is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
     import time
 
     import server as srv
@@ -424,7 +424,7 @@ def test_terrain_cache_get_derives_staleness_from_computed_ts(monkeypatch):
 def test_consensus_walls_withhold_when_cache_stale_via_computed_ts(monkeypatch):
     """RC-424: consensus_walls_bind_terrain_ssot must withhold when terrain_cache_get
     marks the snapshot stale — not treat absent levels_stale as fresh."""
-    monkeypatch.setattr(sys.modules["server"], "_is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
     import time
 
     import server as srv
@@ -450,8 +450,8 @@ def test_consensus_walls_withhold_when_cache_stale_via_computed_ts(monkeypatch):
     merged_fresh = srv.terrain_cache_get("SPY")
     assert merged_fresh["levels_stale"] is False
     bound_fresh = consensus_walls_bind_terrain_ssot(walls, merged_fresh)
-    assert bound_fresh[0].call_gamma_wall == 760.0
-    assert bound_fresh[0].put_gamma_wall == 745.0
+    assert bound_fresh[0].call_gamma_wall == 790.0
+    assert bound_fresh[0].put_gamma_wall == 773.0
 
 
 def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
@@ -468,17 +468,10 @@ def test_inflections_and_oi_center_stay_analytics_not_structural_levels():
     sel_ex, spot, _terrain = _wide_vs_selected_wall_books()
     rows = build_summary_rows(sel_ex, spot, windows=[5])
     assert rows[0].label == "CONSENSUS"
-    assert rows[0].gamma_inflection == 734.0
-    # Operator directive (2026-09-15, canonical input-validity rules): this fixture is named
-    # "with_poison" for exactly this reason -- it carries real captured SPY 0DTE contracts
-    # whose delta is internally self-contradictory (delta pinned to an exact boundary while
-    # gamma/vega are both exactly zero, despite a real-looking IV -- vendor_greeks_unavailable,
-    # math_exposure_core.py). Before that gate existed, those poisoned deltas were still
-    # accumulated into net_delta, shifting delta_inflection to 743.0; excluding them (the
-    # SAME canonical faucet delta_ok gate net_gex/net_dex already used) moves it to 734.0,
-    # converging with gamma_inflection now that both walk the same de-poisoned curve.
-    assert rows[0].delta_inflection == 734.0
-    assert rows[0].oi_center == 750.0
+    # measured on SPY 2026-09-22 12:46 ET, Schwab's Greeks as sent
+    assert rows[0].gamma_inflection == 783.0
+    assert rows[0].delta_inflection == 775.0
+    assert rows[0].oi_center == 775.0
     ms_src = Path("market_state.py").read_text(encoding="utf-8")
     nearest = ms_src.split("# Nearest above/below", 1)[1].split("for _lv, _ln in _all_lvls", 1)[0]
     assert "g-Inflection" not in nearest
@@ -519,7 +512,7 @@ def test_level_density_uses_terrain_bound_walls_not_dead_locals():
 
     sel_ex, spot, terrain = _wide_vs_selected_wall_books()
     walls = consensus_walls_bind_terrain_ssot(build_walls_rows(sel_ex, spot), terrain)
-    assert walls[0].put_gamma_wall == 745.0
+    assert walls[0].put_gamma_wall == 773.0
     # Negative: abs-gamma-only (pre-fix effective book) → clear. RC-292: the payload and
     # density key is absolute_gamma_strike.
     broken = compute_level_density(
@@ -537,9 +530,8 @@ def test_level_density_uses_terrain_bound_walls_not_dead_locals():
     if walls[0].put_delta_wall is not None:
         ok["put_delta_wall"] = float(walls[0].put_delta_wall)
     fixed = compute_level_density(ok, spot)
-    assert "put_gamma_wall" in (fixed["level_names"] or [])
+    assert fixed["level_names"] == ["put_gamma_wall", "put_delta_wall"]
     assert fixed["density_label"] == "light"
-    assert fixed["count"] == 1
     src = Path("server.py").read_text(encoding="utf-8")
     dens = src.split("# Build levels dict for density check", 1)[1].split(
         "_level_density = compute_level_density", 1
@@ -580,7 +572,7 @@ def test_level_density_uses_terrain_iv_sigma_em_not_remaining_risk_em():
     assert broken["count"] == 3
     assert broken["density_label"] == "moderate"
     assert "em_upper" in (broken["level_names"] or [])
-    # Legitimate: terrain IV_SIGMA_1D band (±11.6 on this fixture) matches KL and
+    # Legitimate: terrain IV_SIGMA_1D band (±5.1 on this fixture) matches KL and
     # stays outside the density radius — same count as walls-only.
     pts = float((terrain.get("implied_1d_move") or {})["points"])
     tsp = float(terrain["spot"])
@@ -888,7 +880,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
 
     fx = json.loads(
-        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json").read_text(encoding="utf-8")
+        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
     )
     snap = compute_terrain("SPY", fx["chain"], float(fx["spot"]))
     d = snap.to_dict()

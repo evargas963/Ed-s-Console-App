@@ -159,7 +159,7 @@ def _ts_at_et_minutes(mins: int) -> float:
 def _real_contracts():
     import json as _json
     from pathlib import Path as _Path
-    fx = _Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json"
+    fx = _Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
     return _json.loads(fx.read_text(encoding="utf-8"))["chain"]
 
 

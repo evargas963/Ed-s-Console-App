@@ -22,7 +22,7 @@ from terrain_engine import compute_terrain
 ROOT = Path(__file__).resolve().parent.parent
 SERVER_SRC = (ROOT / "server.py").read_text(encoding="utf-8")
 FIXTURE = json.loads(
-    (ROOT / "tests" / "fixtures" / "real_spy_0dte_chain_with_poison.json").read_text(encoding="utf-8")
+    (ROOT / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
 )
 CHAIN: list[dict] = FIXTURE["chain"]
 SPOT: float = float(FIXTURE["spot"])
