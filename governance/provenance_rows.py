@@ -2237,11 +2237,6 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_ms_to_dict).',
     ),
     Row(
-        file='server.py', derivation='_on_tick_broadcast_sync', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_on_tick_broadcast_sync).',
-    ),
-    Row(
         file='server.py', derivation='_parse_quote_node_session_fields', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_quote',),
         justification='Canonical Schwab quote-node reader (quote → extended → regular fallbacks). Reads Schwab quote leaves (lastPrice / mark / bid / ask / quoteTime / tradeTime + extended + regular variants) and derives ``spot`` + ``spot_source`` via lastPrice/mark precedence.',
@@ -2262,24 +2257,9 @@ ROWS: tuple[Row, ...] = (
         justification='ATR from persisted price_bars_1m (traced collector output); single-flight cache fill.',
     ),
     Row(
-        file='server.py', derivation='_radar_contact', disposition='DERIVED',
-        producer_refs=('server.py:_radar_row',),
-        justification='Ring classification from existing levels/ATR; thresholds are terrain_atr constants.',
-    ),
-    Row(
         file='server.py', derivation='_radar_daily_atr_vendor_fallback', disposition='DERIVED',
         producer_refs=('schwab_client.py:safe_get_daily_price_history',),
         justification='RC-484 radar fallback: daily ATR from Schwab DAILY candles when local 1m history spans <15 sessions; delegates to the daily transport wrapper.',
-    ),
-    Row(
-        file='server.py', derivation='_radar_fallback_recompute', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state',),
-        justification='Heavy off-request radar sweep recomputed from cached terrain/analytics; no direct leaf read.',
-    ),
-    Row(
-        file='server.py', derivation='_radar_row', disposition='DERIVED',
-        producer_refs=('server.py:get_terrain_radar',),
-        justification='Projects already-computed terrain fields + ATR distances into a radar row; no new field read.',
     ),
     Row(
         file='server.py', derivation='_reprice_cached_terrain', disposition='DERIVED',
@@ -2307,11 +2287,6 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_snapshot_expiry_hours_from_schwab_dte).',
     ),
     Row(
-        file='server.py', derivation='_spot_from_quote', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_quote',),
-        justification='Live-quote leg of the spot authority: delegates to Schwab transport, parses via the canonical quote-node parser.',
-    ),
-    Row(
         file='server.py', derivation='_spot_from_stored', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON; lowest-precedence leg of the spot authority.',
@@ -2320,11 +2295,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_sse_background_loop', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_sse_background_loop).',
-    ),
-    Row(
-        file='server.py', derivation='_stream_spot_and_of_regime', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_stream_spot_and_of_regime).',
     ),
     Row(
         file='server.py', derivation='_sync_market_context_panel_into_logging_universe', disposition='ALLOWLISTED',
@@ -2342,11 +2312,6 @@ ROWS: tuple[Row, ...] = (
         justification='Fetches one chain and computes terrain into the cache; no model stack, never raises.',
     ),
     Row(
-        file='server.py', derivation='_terrain_snapshots_for_radar', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON; merges the live terrain cache over a memoised stored-chain fallback.',
-    ),
-    Row(
         file='server.py', derivation='_tier_a_live_state_dict', disposition='DERIVED',
         producer_refs=('server.py:_fetch_state',),
         justification='Schwab API wrapper or wire JSON ingest path.',
@@ -2355,11 +2320,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_tier_c_analytics_json_response', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_tier_c_analytics_json_response).',
-    ),
-    Row(
-        file='server.py', derivation='api_live_plane', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (api_live_plane).',
     ),
     Row(
         file='server.py', derivation='api_order_flow_microstructure', disposition='DERIVED',
@@ -2385,21 +2345,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='chain_underlying_spot', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.underlying.last',
         justification='Underlying last/mark/close from the chain payload; returns None rather than inventing a spot.',
-    ),
-    Row(
-        file='server.py', derivation='debug_charm', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_chain',),
-        justification='Schwab API wrapper or wire JSON ingest path.',
-    ),
-    Row(
-        file='server.py', derivation='debug_prediction', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (debug_prediction).',
-    ),
-    Row(
-        file='server.py', derivation='fast_quote', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (fast_quote).',
     ),
     Row(
         # api_watchlist_quotes (/api/watchlist-quotes): the ONE batched Schwab quote read
@@ -2466,11 +2411,6 @@ ROWS: tuple[Row, ...] = (
         justification='Deterministic payoff plus the PHYSICAL terminal distribution for one candidate, as of the requested instant.',
     ),
     Row(
-        file='server.py', derivation='get_exposure_book', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='RC-209: per-strike call/put GEX split, net DEX and volumes from the NEWEST banked wide chain, all through the shared exposure faucet.',
-    ),
-    Row(
         file='server.py', derivation='get_options_gamma_surface', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-UI-1: strike x expiry GEX$ surface (Options/Gamma heatmap). PREFERRED source is the LIVE terrain cache (current terrain-refresh contracts + live spot, bounded near-money window) — an in-memory read, no SQLite. This SQLite read is the FALLBACK ONLY: the banked morning wide reference (option_chain_morning_full), stale, not intraday, not proven complete. Both paths partition by native expirationDate and route each expiry slice through the shared compute_exposures_by_strike faucet; the endpoint owns no gamma/GEX math and is a projection of the one exposure producer.',
@@ -2481,29 +2421,14 @@ ROWS: tuple[Row, ...] = (
         justification='RC-208: serves banked option_chain_accrual frames for the latest banked session; reads rows this repo already persisted rather than re-deriving them.',
     ),
     Row(
-        file='server.py', derivation='get_exposure_history', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='RC-209: per-day per-strike net GEX$ for the multi-day scroll-back, assembled from banked captures.',
-    ),
-    Row(
         file='server.py', derivation='get_forces', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-192/RC-199: per-side OI delta from the two newest banked trading-day chains, plus DEX and dealer-signed CHARM summed on the NEWER capture alone. Serves charm_book_scope and charm_error beside the numbers so a surface can state which book was summed and whether the charm failed (RC-288/RC-304).',
     ),
     Row(
-        file='server.py', derivation='get_l1_diagnostics', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_l1_diagnostics).',
-    ),
-    Row(
         file='server.py', derivation='get_levels', disposition='DERIVED',
         producer_refs=('server.py:resolve_spot', 'server.py:_liquidity_live_1m_overlay_bars'),
         justification='The single levels contract, schema v1: id, price, family, evidence_tier, provenance and staleness for every served level. Assembles already-derived level producers; the gamma family is explicitly excluded from the Tier-B slice and served by /api/terrain until that migration completes, and the payload says so rather than omitting it silently.',
-    ),
-    Row(
-        file='server.py', derivation='get_liquidity_playbook_state', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_liquidity_playbook_state).',
     ),
     Row(
         file='server.py', derivation='get_liquidity_snapshot', disposition='ALLOWLISTED',
@@ -2516,11 +2441,6 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_live_state).',
     ),
     Row(
-        file='server.py', derivation='get_price_levels', disposition='SCHWAB_LEAF',
-        schwab_leaf='quotes.quote.lastPrice',
-        justification='Schwab API wrapper or wire JSON ingest path.',
-    ),
-    Row(
         file='server.py', derivation='get_spot', disposition='DERIVED',
         producer_refs=('server.py:resolve_spot',),
         justification='Featherweight live spot via the single spot authority resolve_spot (RC-14); no direct leaf here.',
@@ -2529,11 +2449,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='get_terrain', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_terrain); delegates all level math to terrain_engine.compute_terrain.',
-    ),
-    Row(
-        file='server.py', derivation='get_terrain_radar', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Radar API handler: ranks cached terrain by proximity to the nearest wall; all level math is delegated to terrain_engine.',
     ),
     Row(
         file='server.py', derivation='get_terrain_strikes', disposition='SCHWAB_LEAF',
@@ -2586,21 +2501,6 @@ ROWS: tuple[Row, ...] = (
         justification="Nested: sums the already-computed per-strike GEX$ and volume per side of the payload's OWN spot. One aggregator, one spot basis — the in-browser re-sum was killed because a client loop could straddle a different spot and broke silently on payload changes.",
     ),
     Row(
-        file='server.py', derivation='logger_remove', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_remove).',
-    ),
-    Row(
-        file='server.py', derivation='logger_status', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_status).',
-    ),
-    Row(
-        file='server.py', derivation='logger_universe', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (logger_universe).',
-    ),
-    Row(
         file='server.py', derivation='post_streaming_active_option_contract', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Subscribes LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract via the daemon signal file — mirrors post_streaming_active_ticker for the separate option-contract slot (post_streaming_active_option_contract).',
@@ -2611,14 +2511,9 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (post_streaming_active_ticker).',
     ),
     Row(
-        file='server.py', derivation='reset_schwab_client', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (reset_schwab_client).',
-    ),
-    Row(
         file='server.py', derivation='resolve_spot', disposition='DERIVED',
-        producer_refs=('server.py:_spot_from_quote',),
-        justification='THE single spot authority (RC-14): live quote, then chain underlying, then stored snapshot; returns the value with its source.',
+        producer_refs=('live_market_plane.py:get_quote',),
+        justification='THE single spot authority (RC-14): the streamed LEVELONE_EQUITIES LAST_PRICE while fresh (live_price_rows.live_spot over live_market_plane.get_quote), else unavailable; no REST quote, chain, or snapshot leg.',
     ),
     Row(
         file='server.py', derivation='schwab_capability_state', disposition='DERIVED',

@@ -280,46 +280,6 @@ def test_operational_scope_pressure_warning():
     assert "near cap" in rep["areas"]["cache_lifecycle"]["interpretation"].lower()
 
 
-def test_l1_diagnostics_endpoint_includes_operational_and_legacy_fields():
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
-    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
-    round trip added nothing a direct call doesn't already prove."""
-    import json
-
-    import server as srv
-
-    j = json.loads(srv.get_l1_diagnostics().body)
-    ed = j["ed_l1"]
-    assert ed.get("schema_version") == 2
-    assert "l1_diag_uptime_sec" in ed
-    assert "operational" in ed
-    op = ed["operational"]
-    assert "verdict" in op and "summary" in op and "areas" in op
-    assert "thresholds" in op
-    # Legacy counters preserved
-    for k in (
-        "l1_build_total",
-        "l1_build_ms_avg",
-        "l1_build_by_reason",
-        "l1_http_cache_hit_total",
-        "l1_quote_material_skip_total",
-        "l1_cache_eviction_total",
-        "l1_cache_eviction_ttl_total",
-        "l1_cache_eviction_cap_total",
-        "l1_cache_reconcile_lru_pruned_total",
-        "l1_cache_reconcile_lru_backfilled_total",
-        "l1_cache_lifecycle",
-        "l1_adaptive_materiality",
-        "l1_sse_light",
-        "l1_of_quote_hook_engine_total",
-        "l1_of_quote_hook_reuse_total",
-        "l1_cache_scope_count",
-        "policy",
-        "cached_scopes_sample",
-    ):
-        assert k in ed, f"missing {k}"
-
-
 def test_operational_high_of_reuse_ratio_healthy():
     from planes.l1_operational import build_l1_operational_assessment
 

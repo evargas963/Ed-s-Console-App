@@ -84,7 +84,6 @@ _ENDPOINTS = {
     "/api/terrain/strikes?ticker=SPY": lambda d: bool((d.get("today") or {}).get("all")),
     "/api/analytics/state?ticker=SPY": lambda d: isinstance(d, dict) and len(d) > 5,
     "/api/bars1m?ticker=SPY": lambda d: bool(d.get("bars")),
-    "/api/terrain/radar?ticker=SPY": lambda d: isinstance(d.get("rows"), list),
 }
 
 

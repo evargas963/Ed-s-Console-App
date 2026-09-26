@@ -826,42 +826,6 @@ def test_rc435_abstain_disables_active_ml_fleet():
         assert col in WALL_DISTANCE_COLS
 
 
-def test_radar_terrain_snapshots_derive_staleness_from_computed_ts():
-    """RC-427: /api/terrain/radar reads _terrain_snapshots_for_radar, which must merge
-    terrain_staleness like terrain_cache_get — not fail-open when levels_stale absent."""
-    import time
-
-    import server as srv
-
-    tk = srv.ticker_storage_key("SPY")
-    old_ts = time.time() - 99999.0
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
-            "ticker": "SPY",
-            "computed_ts_utc": old_ts,
-            "call_wall": 760.0,
-            "confidence": "TRUSTED",
-            "spot": 755.0,
-        }
-    snaps = srv._terrain_snapshots_for_radar()
-    spy = next((s for s in snaps if s.get("ticker") == "SPY"), None)
-    assert spy is not None
-    assert spy["levels_stale"] is True
-    assert "levels_stale_reason" in spy
-    fresh_ts = time.time()
-    with srv._terrain_cache_lock:
-        srv._terrain_cache[tk] = {
-            "ticker": "SPY",
-            "computed_ts_utc": fresh_ts,
-            "call_wall": 760.0,
-            "confidence": "TRUSTED",
-            "spot": 755.0,
-        }
-    fresh_snaps = srv._terrain_snapshots_for_radar()
-    fresh_spy = next((s for s in fresh_snaps if s.get("ticker") == "SPY"), None)
-    assert fresh_spy["levels_stale"] is False
-
-
 def test_consensus_net_gamma_equals_aggregate_net_gex():
     exposures, spot = _dollarized_exposures()
     strikes = sorted(exposures.keys())

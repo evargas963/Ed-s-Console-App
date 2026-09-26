@@ -95,12 +95,6 @@ def test_the_two_quantities_no_longer_share_one_input():
         "the RATE stopped counting every build")
 
 
-def test_the_caller_passes_both_counts():
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert "l1_build_total=bt," in src, "the true build count is no longer sent"
-    assert "timing_sample_count=bt_measured," in src, "the timed count is no longer sent"
-
-
 # ──────────────────────────── a model nobody scored is not approved ────
 
 def test_a_compliant_model_with_no_edge_is_not_reported_live():

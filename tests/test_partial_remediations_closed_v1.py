@@ -67,14 +67,6 @@ def test_an_unmeasured_build_does_not_dilute_the_latency_average():
         "the whole point: 26.0 must cross the 25 ms warn line that 24.7 sits under")
 
 
-def test_the_average_divides_by_the_measured_count_not_the_build_count():
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert 'l1_build_ms_measured' in src, "the measured-timing counter is gone"
-    assert 'avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt_measured)' in src
-    assert 'avg_ms = float(_l1_instrumentation["l1_build_ms_sum"]) / max(1, bt)' not in src, (
-        "the average divides by all builds again — an unmeasured build dilutes it")
-
-
 def test_the_counter_only_advances_when_a_timing_is_credited():
     """Numerator and denominator must move together or the mean is wrong either way."""
     src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")

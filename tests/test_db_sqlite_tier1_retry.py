@@ -534,17 +534,17 @@ def test_attach_db_contention_operator_surface_preserves_mhap_rows():
         assert ms["db_contention_operator"].get("diagnostics_source")
 
 
-def test_sqlite_contention_diagnostics_route_includes_operator():
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_sqlite_contention_diagnostics is a
-    plain sync handler with no auth/middleware/serialization-shaping dependency --
-    the HTTP round trip added nothing a direct call doesn't already prove; the
-    diagnostics_source field asserted below is a literal string the handler embeds
-    itself, not something the routing layer supplies."""
-    import json
+def test_analytics_payload_attaches_the_db_contention_operator_surface():
+    """The operator DB-contention surface reaches the analytics payload. It used to be proven
+    through GET /api/diagnostics/sqlite-contention (get_sqlite_contention_diagnostics), which
+    was deleted as uncalled; the live carrier is _attach_db_contention_operator_surface on
+    every Tier C payload. (Its diagnostics_source string still names the deleted route and is
+    deliberately not asserted here.)"""
+    import server
 
-    from server import get_sqlite_contention_diagnostics
-
-    body = json.loads(get_sqlite_contention_diagnostics().body)
-    assert "operator" in body
-    assert body["operator"]["state"] in {"OK", "DB_WAITING", "DB_DEGRADED", "DB_LOCKED"}
-    assert body["operator"]["diagnostics_source"] == "/api/diagnostics/sqlite-contention"
+    ms: dict = {}
+    server._attach_db_contention_operator_surface(ms)
+    op = ms.get("db_contention_operator")
+    assert isinstance(op, dict)
+    assert op["state"] in {"OK", "DB_WAITING", "DB_DEGRADED", "DB_LOCKED"}
+    assert "operations_affected" in op, "fell to the except arm, not the real surface builder"

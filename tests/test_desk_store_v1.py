@@ -600,24 +600,6 @@ def test_latest_by_subject_reduces_in_sql_not_in_python(tmp_path):
     assert ds.latest_by_subject(db, now - 400, "k") == {}
 
 
-def test_materialize_is_not_reachable_by_a_speculative_get():
-    """RC-172: a GET that rewrites tens of thousands of rows is fired by any link prefetch,
-    crawler or preconnect — against a database that already has an open write-contention root
-    cause."""
-    import inspect
-
-    import server as s
-
-    src = inspect.getsource(s)
-    i = src.find("def post_desk_materialize")
-    assert i > 0
-    decorator = src[max(0, i - 260):i]
-    assert '@app.post("/api/desk/materialize")' in decorator, (
-        "the materialize route is not POST-only — a speculative GET can trigger a full rewrite"
-    )
-    assert '@app.get("/api/desk/materialize")' not in src
-
-
 def test_payoff_refuses_a_non_positive_price():
     """RC-173: a negative price was accepted and rendered `max_loss = -0.0` — a screen saying
     this trade cannot lose money. A mis-keyed minus sign must not produce a risk-free position.

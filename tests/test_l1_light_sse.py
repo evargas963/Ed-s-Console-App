@@ -13,19 +13,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_l1_sse_diagnostics_exposed():
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
-    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
-    round trip added nothing a direct call doesn't already prove."""
-    import json
-
-    import server as srv
-
-    ed = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
-    assert "l1_sse_light" in ed
-    assert "l1_light_sse_connections" in ed["l1_sse_light"]
-
-
 def test_notify_noop_without_subscribers():
     import server as srv
 

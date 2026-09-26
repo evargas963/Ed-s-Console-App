@@ -167,8 +167,9 @@ def test_step2_tick_coherent_callback_not_registered_in_lifespan():
     src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
     assert "on_tick_callback=on_tick" not in src
     assert "on_tick = lambda" not in src
-    # Function retained (unit-tested tick logic lives in live_decision_bundle).
-    assert "def _on_tick_broadcast_sync" in src
+    # The unwired callback was deleted as dead code (tick logic stays unit-tested in
+    # live_decision_bundle); it must not come back as a second Tier C owner.
+    assert "def _on_tick_broadcast_sync" not in src
 
 
 def test_step3_inflight_fanout_runs_outside_analytics_bg_lock(srv_module, monkeypatch):

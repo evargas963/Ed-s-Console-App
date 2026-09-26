@@ -135,7 +135,7 @@ def test_reprice_and_api_spot_do_not_use_bar_close_or_snapshot(monkeypatch) -> N
     cached = {
         "ticker": "SPY",
         "spot": 745.10,
-        "spot_source": server.SPOT_SOURCE_SNAPSHOT,
+        "spot_source": server.SPOT_SOURCE_PLANE,  # the terrain loop's own stamp on a cached spot
         "regime": "LONG_GAMMA_CHOP",
         "call_wall": 750.0,
         "put_wall": 740.0,

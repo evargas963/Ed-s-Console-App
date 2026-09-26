@@ -173,7 +173,16 @@ def _row(ingestion, age_sec):
 
 
 def _no_rest(monkeypatch, server):
-    monkeypatch.setattr(server, "_spot_from_quote", lambda _tk: (None, None))
+    """Every REST quote read in server.py raises: a spot answer cannot have come from REST.
+    (The REST spot leg `_spot_from_quote` was deleted; the memo and its raw fetch are the
+    only remaining vendor quote reads, test_spot_authority_v1::
+    test_every_vendor_quote_read_goes_through_the_memo.)"""
+    def _boom(*_a, **_k):
+        raise AssertionError("resolve_spot must not call the REST quote")
+    assert not hasattr(server, "_spot_from_quote"), "the REST spot leg is back"
+    monkeypatch.setattr(server, "_memoized_quote_response", _boom)
+    monkeypatch.setattr(server, "_safe_get_quote_with_retry", _boom)
+    monkeypatch.setattr(server, "safe_get_quote", _boom)
 
 
 def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
@@ -217,11 +226,20 @@ def test_a_stale_streamed_price_is_not_spot(monkeypatch):
 def test_no_rest_quote_is_ever_consulted_for_spot(monkeypatch):
     import server
 
-    def _boom(*_a, **_k):
-        raise AssertionError("resolve_spot must not call the REST quote")
-    monkeypatch.setattr(server, "_spot_from_quote", _boom)
-    monkeypatch.setattr(server, "_memoized_quote_response", _boom)
+    _no_rest(monkeypatch, server)
+    L._by_ticker.pop("ZZNOSTREAM", None)
+    # no streamed row: UNAVAILABLE, and no REST read was attempted to fill the gap
     assert server.resolve_spot("ZZNOSTREAM") == (None, "none", None)
+    # a fresh streamed row: served, still without touching REST
+    from tests.feed_live_helper import mark_feed_live
+    tk = "ZZNORESTLIVE"
+    mark_feed_live(tk)
+    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", 1.0), ticker=tk)
+    try:
+        spot, source, _ = server.resolve_spot(tk)
+        assert spot == float(L._by_ticker[tk]["spot"]) and source == server.SPOT_SOURCE_PLANE
+    finally:
+        L._by_ticker.pop(tk, None)
 
 
 def test_admission_summary_reports_over_budget_contracts_as_not_admitted(monkeypatch):

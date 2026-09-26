@@ -282,8 +282,11 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     # tolerate formatting: the assignment must be the alias, not 960
     close_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("RTH_CLOSE_MINS")]
     assert close_assign and "RTH_END_MINS" in close_assign[0] and "960" not in close_assign[0]
+    # MARKET_CLOSE_HOUR (a second, hour-denominated close constant) was deleted: nothing in
+    # server.py read it. RTH_CLOSE_MINS above is the one
+    # close authority left in server.py; a re-added hour constant would be a second one.
     mkt_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("MARKET_CLOSE_HOUR")]
-    assert mkt_assign and "RTH_END_MINS" in mkt_assign[0] and "16.0" not in mkt_assign[0]
+    assert mkt_assign == [], "server.py re-grew a second RTH close constant (F09)"
     cont_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("TERRAIN_CONTENTION_START_MINS")]
     assert cont_assign and "RTH_OPEN_MINS" in cont_assign[0] and "570" not in cont_assign[0]
 

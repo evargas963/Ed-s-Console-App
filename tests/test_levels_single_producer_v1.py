@@ -104,17 +104,15 @@ def test_the_single_producer_computes_from_the_full_chain():
 def test_levels_producers_are_enumerated_and_declared():
     """Any NEW producer must be declared here deliberately, with the reason it may exist.
 
-    _radar_fallback_recompute is declared: it computes levels ONLY for tickers the terrain loop
-    has not cached, for the ~51-symbol radar sweep, from stored chains — because calling the
-    vendor per symbol measured a 40.5s cold sweep that always timed out. It never feeds
-    /api/terrain. It is a KNOWN width inconsistency across radar rows, tracked in RC-80, not an
-    accident this test should silently permit.
-
     _publish_levels is THE producer of the terrain cache: the terrain loop's chain fetch
     (_terrain_refresh_one) and every tick-driven reprice of a viewed ticker publish through it,
     one at a time per ticker, from the one kept chain.
+
+    _radar_fallback_recompute (the stored-chain radar sweep, RC-80) is no longer declared: it
+    was deleted with the uncalled /api/terrain/radar route it served, so _publish_levels is now
+    the only level producer in server.py.
     """
-    declared = {"_publish_levels", "_radar_fallback_recompute"}
+    declared = {"_publish_levels"}
     found = {fn for _, fn in _producers()}
     assert found == declared, (
         f"the set of level producers changed: {sorted(found)} != {sorted(declared)}. "
@@ -644,18 +642,6 @@ def test_strip_states_the_server_spot_basis():
     assert "SPOT BASIS OK" in p.stdout
 
 
-def test_price_levels_route_retired_410():
-    """B6: the second HTTP surface hard-fails with a pointer — never a silent alias."""
-    import json
-
-    import server as srv
-
-    resp = srv.get_price_levels(ticker="SPY")
-    assert resp.status_code == 410
-    payload = json.loads(bytes(resp.body))
-    assert payload["error"] == "retired" and "/api/levels" in payload["replacement"]
-
-
 def test_state_level_family_serves_raw_not_rounded():
     """PDH_PRECISION: the state payload's level family uses the raw finite reader, never
     the 2dp _fv — /api/levels and state must serve the same digits."""
@@ -690,7 +676,7 @@ def test_domain_faucet_registry_negative_control():
         "check_domain_faucet_registry callee stayed silent on an unregistered producer"
     )
     ok = domain_faucet_violations(
-        "server.py", '@app.get("/api/exposure/book")\ndef f(): pass', registry_text)
+        "server.py", '@app.get("/api/exposure/flow")\ndef f(): pass', registry_text)
     assert not ok, "a REGISTERED producer must not scream"
 
 

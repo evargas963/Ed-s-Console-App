@@ -58,19 +58,3 @@ def test_quote_hook_returns_the_published_of_signature(srv_clean_of):
     assert srv._l1_quote_hook_order_flow_signature("SPY") == snap["_l1_of_signature"]
 
 
-def test_diagnostics_includes_of_hook_counters(monkeypatch):
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
-    handler with no auth/middleware/lifespan dependency -- the HTTP round trip added
-    nothing a direct call doesn't already prove."""
-    import json
-
-    import server as srv
-
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {"spot": 400.0, "bid": 399.0, "ask": 401.0},
-    )
-    j = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
-    assert "l1_of_quote_hook_engine_total" in j
-    assert "l1_of_quote_hook_reuse_total" in j

@@ -85,7 +85,7 @@ def test_domain_faucet_lock_blocks_second_faucets():
     # (a) unregistered level-domain producer -> scream
     assert domain_faucet_violations("server.py", new_route, reg)
     # (b) registered producer -> silent
-    ok_route = '@app.get("/api/exposure/book")\ndef f(): pass'
+    ok_route = '@app.get("/api/exposure/flow")\ndef f(): pass'
     assert domain_faucet_violations("server.py", ok_route, reg) == []
     # (c) co-staged registry WITH operator_quote -> silent
     assert domain_faucet_violations(

@@ -36,9 +36,10 @@ def test_every_row_is_schema_valid_and_none_is_bookkeeping():
     errs = [e for r in ROWS for e in P.row_schema_errors(r)]
     assert errs == [], "\n".join(errs[:20])
     assert all(r.disposition != "NONE" for r in ROWS)
-    # a row leaves only with its file: 2026-09-25's unused-code prune removed 51 rows of 30
-    # deleted files (600 -> 577)
-    assert len(ROWS) >= 577, "the consolidated rows lost provenance claims"
+    # a row leaves only with its code: the 2026-09-25 unused-code prune removed 51 rows of 30
+    # deleted files (600 -> 577); the uncalled-routes prune 21 rows of deleted server.py
+    # functions (577 -> 556)
+    assert len(ROWS) >= 556, "the consolidated rows lost provenance claims"
 
 
 def _qualified_defs(tree: ast.AST) -> set[str]:

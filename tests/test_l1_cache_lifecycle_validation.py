@@ -4,7 +4,6 @@ L1 cache lifecycle: LRU, TTL, cap, invariants, generation pruning, diagnostics.
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -197,23 +196,6 @@ def test_ensure_backfills_lru_when_cache_has_row(l1_cache_clean):
     n = ensure_lru_covers_snapshot(srv._l1_snapshot_cache, srv._l1_scope_lru)
     assert n == 1
     assert l1_cache_invariants(srv._l1_snapshot_cache, srv._l1_scope_lru)["keys_match"]
-
-
-def test_diagnostics_exposes_lifecycle_and_invariants(l1_cache_clean):
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
-    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
-    round trip added nothing a direct call doesn't already prove."""
-    import json
-
-    import server as srv
-
-    srv._l1_snapshot_cache[("DX", "e")] = _minimal_snap(time.time())
-    srv._l1_touch_scope(("DX", "e"))
-    ed = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
-    assert ed["l1_cache_lifecycle"]["keys_match"] is True
-    assert "l1_cache_eviction_ttl_total" in ed
-    assert "l1_cache_eviction_cap_total" in ed
-    assert ed["l1_cache_scope_count"] == len(srv._l1_snapshot_cache)
 
 
 def test_repeated_maintain_idempotent_invariants(l1_cache_clean, monkeypatch):

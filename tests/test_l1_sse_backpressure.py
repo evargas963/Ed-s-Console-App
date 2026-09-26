@@ -97,23 +97,6 @@ def test_same_gen_ts_material_diff_increments_identity_violation():
     assert int(srv._l1_sse_diag.get("l1_payload_identity_violation", 0)) >= v0 + 1
 
 
-def test_diagnostics_l1_sse_light_has_policy_and_semantics():
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
-    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
-    round trip added nothing a direct call doesn't already prove."""
-    import json
-
-    import server as srv
-
-    light = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]["l1_sse_light"]
-    assert "l1_sse_backpressure_policy" in light
-    assert "evict_oldest" in light["l1_sse_backpressure_policy"]
-    assert "l1_sse_thread_queue_fairness_policy" in light
-    assert "global_fifo" in light["l1_sse_thread_queue_fairness_policy"]
-    assert "l1_sse_field_semantics" in light
-    assert light["l1_sse_field_semantics"]["l1_light_sse_client_queue_evicted_oldest"] == "authoritative_counter"
-
-
 def test_fingerprint_deterministic_ignores_volatile_fields():
     import server as srv
 

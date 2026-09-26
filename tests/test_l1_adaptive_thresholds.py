@@ -195,22 +195,6 @@ def test_diagnostics_explainability_fields():
     )
 
 
-def test_diagnostics_endpoint_includes_adaptive_block():
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
-    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
-    round trip added nothing a direct call doesn't already prove."""
-    import json
-
-    import server as srv
-
-    j = json.loads(srv.get_l1_diagnostics().body)["ed_l1"]
-    assert "l1_adaptive_materiality" in j
-    assert "sample_spy_adaptive" in j["l1_adaptive_materiality"]
-    assert "static_defaults_reference" in j["l1_adaptive_materiality"]
-    assert j["l1_adaptive_materiality"]["static_defaults_reference"]["mode"] == "static_defaults"
-    assert j["l1_adaptive_materiality"]["l1_materiality_engine_schema_version"] == 1
-
-
 def test_vix_smooth_monotonic_increases_thresholds():
     from planes.l1_thresholds import AdaptiveMaterialityContext, resolve_l1_materiality_engine
 

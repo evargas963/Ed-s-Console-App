@@ -282,59 +282,6 @@ def test_issue22_scheduler_json_migration_idempotent(tmp_path):
     assert b["status"] == "already_completed"
 
 
-def test_api_logger_universe_audit_v2_shape(monkeypatch, tmp_path):
-    """TEST_SYSTEM_REHAB_V2 final remediation: logger_universe/
-    logger_universe_by_category are plain sync handlers with no auth/middleware/
-    serialization-shaping dependency -- the HTTP round trip added nothing a direct
-    call doesn't already prove."""
-    import json
-
-    import db as dbmod
-    import server as srv
-
-    dbp = tmp_path / "apiu.db"
-    now = time.time()
-    edb = EdDB(dbp)
-    edb.logging_universe_sync_core(["SPY"], now)
-    edb.logging_universe_upsert_user_persisted("AUD1", "api_test", now + 1)
-    edb.logging_universe_upsert_pinned("AUDP", "api_test", now + 2)
-    monkeypatch.setattr("db._db_instance", edb)
-    assert dbmod.get_db() is edb
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-    monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
-    prev_core = list(srv.CORE_TICKERS)
-    try:
-        srv.CORE_TICKERS[:] = ["SPY"]
-        with srv._logger_lock:
-            merged = list(srv.CORE_TICKERS)
-            for r in edb.logging_universe_list_rows():
-                if r.get("category") in ("user_persisted", "pinned", "panel_auto"):
-                    t = (r.get("ticker") or "").upper().strip()
-                    if t and t not in merged:
-                        merged.append(t)
-            srv._logger_tickers[:] = merged
-
-        body = json.loads(srv.logger_universe().body)
-        assert body.get("schema") == "logging_universe_audit_v2"
-        assert "protected_symbols" in body
-        assert "eviction_candidates_fifo_user_persisted" in body
-        assert "recent_evictions" in body
-        assert "logging_universe_rows" in body
-        rows = body["logging_universe_rows"]
-        assert isinstance(rows, list) and len(rows) >= 3
-        by_t = {(x["ticker"] or "").upper(): x for x in rows}
-        assert by_t["SPY"]["eviction_status"] == "protected"
-        assert by_t["AUDP"]["eviction_status"] == "protected"
-        assert by_t["AUD1"]["eviction_status"] == "eligible"
-        for key in ("category", "enrollment_source", "enrolled_ts_utc", "last_seen_ts_utc"):
-            assert key in by_t["AUD1"]
-        rcat = json.loads(srv.logger_universe_by_category(category="pinned").body)
-        assert rcat["count"] == 1
-        assert rcat["rows"][0]["ticker"].upper() == "AUDP"
-    finally:
-        srv.CORE_TICKERS[:] = prev_core
-
-
 def test_issue22_add_logger_evicts_only_oldest_user_persisted(monkeypatch, tmp_path):
     """FIFO eviction runs only when ED_LOGGING_UNIVERSE_FIFO_EVICTION=1 (legacy opt-in)."""
     import db as dbmod
@@ -497,7 +444,7 @@ def test_ticker_preview_view_touch_never_enrolls(monkeypatch, tmp_path):
 
 def test_ticker_preview_view_endpoint_no_enroll_track_enrolls(monkeypatch, tmp_path):
     """TICKER-PREVIEW-NO-ENROLL: a VIEW endpoint (/api/accuracy) does NOT enroll an arbitrary
-    symbol; the explicit TRACK endpoint (/api/logger/add) DOES. Route functions are called
+    symbol; the explicit TRACK path (_register_tracked_ticker) DOES. Functions are called
     directly (sync handlers) to avoid full-lifespan flakiness while still exercising the real
     enroll/no-enroll branch."""
     import db as dbmod
@@ -526,11 +473,13 @@ def test_ticker_preview_view_endpoint_no_enroll_track_enrolls(monkeypatch, tmp_p
                  if r["category"] == "user_persisted"}
         assert "ZVQ" not in users, "VIEW endpoint /api/accuracy must not enroll"
 
-        # TRACK: explicit add → enrolls.
-        srv.logger_add(ticker="ZTK")
+        # TRACK (positive control): the explicit enrollment function DOES enroll, so the
+        # VIEW assertion above is observing a store that can see an enrollment. The HTTP
+        # wrapper (/api/logger/add) was deleted as uncalled; this is the function it called.
+        srv._register_tracked_ticker("ZTK", enrollment_source="api_logger_add")
         users2 = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
                   if r["category"] == "user_persisted"}
-        assert "ZTK" in users2, "explicit track /api/logger/add must enroll"
+        assert "ZTK" in users2, "explicit track (_register_tracked_ticker) must enroll"
     finally:
         srv.CORE_TICKERS[:] = prev_core
         with srv._logger_lock:
@@ -540,17 +489,17 @@ def test_ticker_preview_view_endpoint_no_enroll_track_enrolls(monkeypatch, tmp_p
 def test_step3_fetch_state_does_not_enroll_viewed_ticker():
     """LIVE_OPERATOR_MODE_RESET_V1 Step 3: a Tier C recompute (_fetch_state) is a VIEW —
     it touches last-seen only (no-op for un-enrolled symbols, proven by
-    test_ticker_preview_view_touch_never_enrolls). Enrollment stays explicit via
-    /api/logger/add | /api/logger/pin."""
+    test_ticker_preview_view_touch_never_enrolls). Enrollment stays explicit
+    (_register_tracked_ticker); its /api/logger/add and /api/logger/pin HTTP wrappers were
+    deleted as uncalled, so the old assertion on logger_add's source is gone with it."""
     import inspect
 
     import server as srv
 
     src = inspect.getsource(srv._fetch_state)
     assert "_register_tracked_ticker(" not in src, "_fetch_state must not auto-enroll viewed tickers"
+    assert "_add_logger_ticker(" not in src, "_fetch_state must not auto-enroll viewed tickers"
     assert "_touch_tracked_ticker_view(ticker)" in src
-    add_src = inspect.getsource(srv.logger_add)
-    assert "_register_tracked_ticker(" in add_src, "explicit track route remains the enrollment path"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
