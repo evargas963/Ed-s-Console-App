@@ -52,105 +52,6 @@ NON_PRODUCTION_ROUTE_PREFIXES: tuple[str, ...] = (
     "synthetic.",
 )
 
-# Phase 3C — canonical route inventory evidence (artifact builder + adversarial tests).
-ROUTE_INVENTORY_EVIDENCE: dict[str, dict[str, object]] = {
-    "R-005": {
-        "enforcement_state": "blocked",
-        "source_file": "server.py",
-        "source_function": "_fetch_state (no_valid_expiry branch)",
-        "trade_impacting": True,
-        "runtime_gate": "trade_impacting_gate.apply_trade_impacting_gate",
-        "evidence_tests": [
-            "tests/adversarial/test_route_universality.py::test_synthetic_no_valid_expiry_route_blocked_from_decision_id",
-            "tests/adversarial/test_route_universality.py::test_synthetic_route_does_not_persist_production_record",
-        ],
-    },
-    "R-004": {
-        "enforcement_state": "proven_gated",
-        "source_file": "server.py",
-        "source_function": "_fetch_state (normal path) → _finalize_production_decision",
-        "trade_impacting": True,
-        "runtime_gate": "trade_impacting_gate.apply_trade_impacting_gate via _finalize_production_decision",
-        "evidence_tests": [
-            "tests/adversarial/test_r004_live_path_gate.py",
-            "tests/runtime_proof/test_live_path_decision_reconstruction.py",
-        ],
-    },
-    "R-010": {
-        "enforcement_state": "proven_gated",
-        "source_file": "server.py",
-        "source_function": "_tier_c_analytics_json_response",
-        "trade_impacting": True,
-        "runtime_gate": "trade_impacting_gate.revalidate_cached_decision",
-        "evidence_tests": [
-            "tests/adversarial/test_stale_cache_revalidation.py::test_stale_cache_revalidation_quarantines_bad_spot",
-            "tests/adversarial/test_stale_cache_revalidation.py::test_fresh_valid_cache_passes_gate",
-        ],
-    },
-    "R-011": {
-        "enforcement_state": "classified_non_production",
-        "source_file": "server.py",
-        "source_function": "debug_prediction",
-        "trade_impacting": False,
-        "runtime_gate": "ED_ALLOW_DEBUG_ENDPOINTS + classified_non_production route",
-        "evidence_tests": [
-            "tests/adversarial/test_remaining_route_inventory.py::test_r011_debug_endpoint_blocked_without_flag",
-            "tests/adversarial/test_remaining_route_inventory.py::test_r011_debug_fetch_state_no_production_decision_id",
-        ],
-    },
-    "R-017": {
-        "enforcement_state": "proven_gated",
-        "source_file": "signals.py",
-        "source_function": "_compute_signals_impl (pred_override)",
-        "trade_impacting": True,
-        "runtime_gate": "override_registry.append_override_record",
-        "evidence_tests": ["tests/adversarial/test_override_registry.py"],
-    },
-    "R-031": {
-        "enforcement_state": "classified_non_production",
-        "source_file": "verify_model_outputs.py",
-        "source_function": "main → _fetch_state(update_source=verify_model_outputs_cli)",
-        "trade_impacting": False,
-        "route_class": "diagnostic_only",
-        "runtime_gate": "resolve_fetch_state_decision_route → cli.verify_model_outputs",
-        "evidence_tests": [
-            "tests/adversarial/test_r031_cli_classification.py",
-        ],
-    },
-    "R-027": {
-        "enforcement_state": "classified_non_production",
-        # RC-512: this said governance/manual_control.py, a path that exists nowhere in the
-        # tree. The module is arch_competition/manual_control.py. A trade-impacting route
-        # inventory that names a missing file sends its own auditor to the wrong place.
-        "source_file": "arch_competition/manual_control.py",
-        "source_function": "ops promote / jobs",
-        "trade_impacting": False,
-        "runtime_gate": "non-production classification — not live HTTP decision emission",
-        "evidence_tests": [
-            "tests/adversarial/test_remaining_route_inventory.py::test_r027_classified_non_production",
-        ],
-    },
-    "R-033": {
-        "enforcement_state": "classified_non_production",
-        "source_file": "calibration/",
-        "source_function": "compute_signals direct (offline)",
-        "trade_impacting": False,
-        "runtime_gate": "non-production classification — calibration trust boundary",
-        "evidence_tests": [
-            "tests/adversarial/test_remaining_route_inventory.py::test_r033_classified_non_production",
-        ],
-    },
-    "R-034": {
-        "enforcement_state": "classified_non_production",
-        "source_file": "ml_scheduler.py",
-        "source_function": "execute_promotion_if_eligible",
-        "trade_impacting": False,
-        "runtime_gate": "governed executor when used; manual copy documented bypass",
-        "evidence_tests": [
-            "tests/adversarial/test_remaining_route_inventory.py::test_r034_classified_non_production",
-        ],
-    },
-}
 
 
 @dataclass
@@ -180,16 +81,6 @@ def classify_route(route: str) -> str:
     return "production"
 
 
-def resolve_fetch_state_decision_route(update_source: str | None) -> str:
-    """Map _fetch_state caller to production decision route (R-011/R-031 use classified routes)."""
-    src = str(update_source or "").strip()
-    if src == "debug_endpoint":
-        return "server.api.debug_prediction"
-    if src in ("verify_model_outputs_cli", "verify_model_outputs"):
-        return "cli.verify_model_outputs"
-    if src in ("verify_mc_directional_cli", "verify_mc_directional"):
-        return "cli.verify_mc_directional"
-    return "server._fetch_state"
 
 
 def assess_spot_price(ticker: str, spot: Any, prior_close: Any = None) -> tuple[bool, list[str]]:
@@ -313,20 +204,6 @@ def apply_trade_impacting_gate(
     return result
 
 
-def revalidate_cached_decision(
-    md: dict[str, Any],
-    *,
-    route: str,
-    stale: bool,
-) -> dict[str, Any]:
-    """R-010 — re-run gate before serving stale Tier C cache."""
-    out = dict(md)
-    if stale:
-        out["analytics_stale"] = True
-    result = apply_trade_impacting_gate(out, route=route or "server._tier_c_cache_serve")
-    out["tier_c_cache_revalidated"] = True
-    out["tier_c_cache_gate_ok"] = result.production_emission_allowed
-    return out
 
 
 def production_emission_allowed(ms_dict: dict[str, Any], *, route: str) -> bool:

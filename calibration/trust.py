@@ -36,38 +36,13 @@ alignment; use snapshots when you just want the feature matrix.
 
 from __future__ import annotations
 
-# Values stored in calibration_decision_log.calibration_trust
-CALIBRATION_TRUST_LEGACY = "legacy"
 CALIBRATION_TRUST_TRUSTED = "trusted"
 
-# Values stored in calibration_decision_log.decision_source (Track B-aware)
-DECISION_SOURCE_LIVE_WRITER = None  # column is NULL on live writer rows
-DECISION_SOURCE_RECONSTRUCTED = "reconstructed_from_snapshot"
 
 # SQL fragment for trusted-only study datasets (no table alias; use `AND ` + predicate)
 TRUSTED_PREDICATE_SQL = "calibration_trust = 'trusted'"
 
-# SQL fragment for feature/cohort studies that can consume Track B reconstructed
-# rows. Matches live-writer rows (trusted) + Track B rows (legacy + reconstructed).
-# Excludes the 42 pre-milestone legacy rows (legacy + NULL decision_source) which
-# predate the current schema lock and are operator-flagged as unreviewed.
-FEATURE_STUDY_PREDICATE_SQL = (
-    "(calibration_trust = 'trusted' "
-    "OR decision_source = 'reconstructed_from_snapshot')"
-)
 
 
-def trusted_and(sql_fragment: str) -> str:
-    """Append trusted filter to a WHERE clause that already references calibration_decision_log."""
-    return f"({sql_fragment}) AND {TRUSTED_PREDICATE_SQL}"
 
 
-def feature_study_and(sql_fragment: str) -> str:
-    """Append feature-study filter (live + Track B reconstructed) to a WHERE clause.
-
-    Use only in NEW or explicitly feature-study scripts. Existing pipelines
-    (analyze_phase3, edge_discovery, signal_engineering, A1 calibration fit)
-    must keep ``trusted_and`` / TRUSTED_PREDICATE_SQL — they read JSON blobs
-    that reconstructed rows don't have.
-    """
-    return f"({sql_fragment}) AND {FEATURE_STUDY_PREDICATE_SQL}"

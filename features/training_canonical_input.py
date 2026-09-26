@@ -44,20 +44,6 @@ def training_canonical_lineage_header() -> dict[str, str]:
     }
 
 
-def assert_training_lineage_matches_canonical(lineage: dict[str, Any] | None) -> None:
-    """Fail-closed: persisted lineage must match current canonical contract."""
-    if not lineage:
-        raise TrainingCanonicalInputError("missing lineage for canonical contract check")
-    if lineage.get("canonical_feature_contract_version") != CANONICAL_FEATURE_CONTRACT_VERSION:
-        raise TrainingCanonicalInputError(
-            f"canonical_feature_contract_version mismatch: expected {CANONICAL_FEATURE_CONTRACT_VERSION!r}, "
-            f"got {lineage.get('canonical_feature_contract_version')!r}"
-        )
-    ct = lineage.get("canonical_timeframe")
-    if ct is not None and ct != CANONICAL_FEATURE_TIMEFRAME:
-        raise TrainingCanonicalInputError(
-            f"canonical_timeframe mismatch: expected {CANONICAL_FEATURE_TIMEFRAME!r}, got {ct!r}"
-        )
 
 
 def training_snapshot_for_sequence_encode(snapshot_row: dict[str, Any]) -> dict[str, Any]:
@@ -261,13 +247,5 @@ def preflight_tickers_for_training(
     }
 
 
-def assert_shared_feature_cache_keys_equal(a: str, b: str) -> None:
-    """Fail-closed: parallel and cascade training must use the same shared feature cache key."""
-    if a != b:
-        raise TrainingCanonicalInputError(
-            f"shared feature_cache_key mismatch: a={a[:16]}… b={b[:16]}…"
-        )
 
 
-# Back-compat name (same semantics: compare two `compute_feature_cache_key` outputs).
-assert_parallel_cascade_feature_cache_key_match = assert_shared_feature_cache_keys_equal

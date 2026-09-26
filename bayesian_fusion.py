@@ -378,24 +378,6 @@ class FusionTickCache:
     rules_evidence: dict[str, float]
 
 
-def build_fusion_tick_cache(regime, rules) -> FusionTickCache:
-    """Build shared fusion prep once per tick; pass into fuse(..., fusion_tick_cache=...)."""
-    regime_label = _resolved_regime_label(regime)
-    direction_hint = getattr(rules, "signal", "wait")
-    priors = (
-        dict(REGIME_PRIORS[regime_label])
-        if regime_label in REGIME_PRIORS
-        else dict(DEFAULT_PRIORS)
-    )
-    weight_adjustments = dict(REGIME_WEIGHT_ADJUSTMENTS.get(regime_label or "", {}))
-    rules_evidence = dict(_translate_rules_evidence(rules, regime))
-    return FusionTickCache(
-        regime_label=regime_label,
-        direction_hint=direction_hint,
-        priors=priors,
-        weight_adjustments=weight_adjustments,
-        rules_evidence=rules_evidence,
-    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -28,14 +28,6 @@ CURRENT_MISSINGNESS_CONTRACT_VERSION = "issue7_v1_empirical_nan_impute"
 # just invalidate the training cache. All three families already stamp it via TrainingProvenance.
 CURRENT_PREPROCESSING_VERSION = PREPROCESSING_VERSION
 
-CONTRACT_FIELDS = (
-    "label_config_version",
-    "horizon_outcome_schema_version",
-    "anchor_contract_version",
-    "feature_schema_version",
-    "missingness_contract_version",
-    "preprocessing_version",
-)
 
 
 def contract_metadata_dict() -> Dict[str, str]:

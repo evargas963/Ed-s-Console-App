@@ -6,7 +6,7 @@
                      /api/terrain (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- /api/level_crosses (numbered on the chart, linked both ways),
                      /api/terrain wall states, /api/order-flow/microstructure wall candidates
-     CARDS        <- /api/order-flow/microstructure, /api/terrain, /api/analytics/state (pcr_val),
+     CARDS        <- /api/order-flow/microstructure, /api/terrain (pcr_by_expiry), /api/alerts,
                      /api/liquidity-snapshot (value/VWAP relation)
      HEADER TRUST <- the same responses' own state/age fields
    The browser computes nothing: it picks which served values to show, formats them, and
@@ -186,7 +186,7 @@
       fetchJson('/api/levels?ticker=' + q),
       fetchJson('/api/terrain?ticker=' + q),
       fetchJson('/api/level_crosses?ticker=' + q + '&n=200'),
-      fetchJson('/api/analytics/state?ticker=' + q + '&_via=desk'),
+      fetchJson('/api/alerts?ticker=' + q),
       fetchJson('/api/liquidity-snapshot?ticker=' + q + '&snapshot=live')
     ]).then(function (r) {
       if (gen !== S.gen) return;
@@ -281,8 +281,8 @@
           src: '/api/order-flow/microstructure' });
       });
     }
-    ((S.analytics && S.analytics.rules_alerts) || []).forEach(function (a, i) {
-      items.push({ key: 'ra' + i, ts: Date.now() / 1000, dom: 'RULES', dir: null, title: String(a), detail: '', src: '/api/analytics/state' });
+    ((S.analytics && S.analytics.alerts) || []).forEach(function (a, i) {
+      items.push({ key: 'ra' + i, ts: Date.now() / 1000, dom: 'ALERT', dir: null, title: String(a), detail: '', src: '/api/alerts' });
     });
     return items.sort(function (a, b) { return b.ts - a.ts; });
   }
@@ -367,7 +367,7 @@
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall) + (t.call_wall_state ? ' · ' + esc(t.call_wall_state) : ''), 'up') +
           row('Put wall', num(t.put_wall) + (t.put_wall_state ? ' · ' + esc(t.put_wall_state) : ''), 'dn') +
           row('Gamma flip', num(t.gamma_flip)) + row('Max pain', num(t.max_pain)) +
-          row('Put/Call ratio', num(a && a.pcr_val, 2)) +
+          row('Put/Call ratio', num(t.pcr_by_expiry && t.pcr_by_expiry[Object.keys(t.pcr_by_expiry).sort()[0]], 2)) +
           row('Chain', esc(t.chain_basis || '—') + ' · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + ' contracts');
       }
     }

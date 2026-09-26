@@ -226,8 +226,6 @@ def _streaming_healthy() -> bool:
     return False
 
 
-def is_order_flow_stream_running() -> bool:
-    return bool(_feed_running)
 
 
 def get_plane_authority_for_ticker(ticker: str) -> str:
@@ -245,17 +243,8 @@ def get_plane_authority_for_ticker(ticker: str) -> str:
     return "stream_unhealthy"
 
 
-FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS = 5_000.0
 
 
-def streaming_l1_cache_usable(ticker: str) -> bool:
-    t = ticker_storage_key(ticker)
-    if get_plane_authority_for_ticker(t) != "streaming":
-        return False
-    last = _streaming_last_update_ts
-    if last is None:
-        return False
-    return (time.time() - last) * 1000.0 <= FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS
 
 
 def get_streaming_diagnostics() -> dict[str, Any]:
@@ -1133,7 +1122,3 @@ def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_S
     _log_stream("STREAM_THREAD_JOIN_DONE")
 
 
-def get_stream_thread() -> None:
-    """No dedicated OS thread exists — the feed is one asyncio task on the server's own
-    event loop. Kept for import compatibility; nothing external reads a live value."""
-    return None

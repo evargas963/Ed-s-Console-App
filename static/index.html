@@ -80,7 +80,7 @@
   .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
   .sess{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.06em}
   .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)}
-  /* Proximity Alerts -- backend-driven (MarketState.rules_alerts via /api/analytics/state),
+  /* Proximity Alerts -- backend-driven (/api/alerts),
      never fabricated client-side. Persistent across every workspace, matching the legacy
      card's own always-visible placement; hidden entirely when there is nothing to show. */
   #alertsStrip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 20px;
@@ -769,7 +769,7 @@
 
   <!-- ===== MAIN ===== -->
   <main>
-    <!-- Proximity Alerts -- wired to /api/analytics/state's rules_alerts (ed-alerts.js); hidden
+    <!-- Proximity Alerts -- /api/alerts (ed-alerts.js); hidden
          when there is nothing to disclose. First child of <main> (not a sibling of it) so it
          stays in the "main" grid area and persists across every workspace tab's own DOM
          swaps -- #app's own grid-template-areas has exactly "rail header"/"rail main" with no
@@ -995,7 +995,7 @@
             <div class="tdm-cards" id="tdmCards">
               <div class="tdm-card panel" id="tdmCardLiq"><div class="tdm-card-h"><span class="t">Liquidity</span><button type="button" class="tdm-eye" data-drill="liquidity" title="Drill down: book heatmap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">NASDAQ/NYSE displayed book · /api/order-flow/microstructure</div></div>
               <div class="tdm-card panel" id="tdmCardFlow"><div class="tdm-card-h"><span class="t">Order Flow</span><button type="button" class="tdm-eye" data-drill="flow" title="Drill down: Book / DOM"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Tick-rule tape (PROXY) + level crosses · microstructure, /api/level_crosses</div></div>
-              <div class="tdm-card panel" id="tdmCardOpt"><div class="tdm-card-h"><span class="t">Options Positioning</span><button type="button" class="tdm-eye" data-drill="options" title="Drill down: Gamma"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Full option chain · /api/terrain, /api/analytics/state</div></div>
+              <div class="tdm-card panel" id="tdmCardOpt"><div class="tdm-card-h"><span class="t">Options Positioning</span><button type="button" class="tdm-eye" data-drill="options" title="Drill down: Gamma"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Full option chain · /api/terrain</div></div>
               <div class="tdm-card panel" id="tdmCardVol"><div class="tdm-card-h"><span class="t">Volatility</span><button type="button" class="tdm-eye" data-drill="vol" title="Drill down: option chain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Nearest-expiry ATM IV · /api/terrain, price socket</div></div>
             </div>
             <div class="tdm-agree panel"><span class="tdm-agree-t">Cross-Domain Read</span><div class="tdm-agree-row" id="tdmAgree"></div></div>

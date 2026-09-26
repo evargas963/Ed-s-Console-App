@@ -19,7 +19,6 @@ from math_exposure import (
 from fusion_contract import fusion_is_authoritative, is_canonical_tradable
 from instrument_identity import ticker_storage_key
 from signal_types import SignalInput, PredictiveCard, CanonicalForecast
-from timeframe_config import CANONICAL_TIMEFRAME
 from features.regime_mvp_context import mvp_spot, mvp_zone, mvp_vwap_side
 from db import (
     similarity_empirically_viable,
@@ -28,7 +27,6 @@ from db import (
 )
 
 from ml_horizon import PRIMARY_DECISION_HORIZONS
-from time_et import RTH_OPEN_MINS
 from features.stack_integrity_v1 import (
     finalize_stack_integrity_v1,
     merge_stack_integrity_events,
@@ -40,7 +38,6 @@ MC_EAE_EFE_AMPLIFY_THRESHOLD: float = 1.2
 MC_EAE_EFE_SEVERE_THRESHOLD: float = 1.3
 CONTAINMENT_LOW_THRESHOLD: float = 0.40
 CONTAINMENT_HIGH_THRESHOLD: float = 0.60
-CONTAINMENT_BREAKOUT_FAIL_THRESHOLD: float = 0.60
 CANONICAL_DOM_PROB_ACTION_MIN: float = 0.50
 CANONICAL_DOM_PROB_PREDICTION_DIR_MIN: float = 0.45
 ZONE_FRESH_BARS_DISPLAY_MAX: int = 3
@@ -437,77 +434,7 @@ def _timeframe_reads(inp: SignalInput, *, mvp_features: dict) -> dict:
 
     return reads
 
-def _prediction_headline(
-    inp: SignalInput,
-    mvp_features: dict,
-    dom_dir: str,
-    dom_prob: float,
-    n_used: int,
-    confidence: str,
-    avg_5c: Optional[float] = None,
-    using_fallback: bool = False,
-) -> str:
-    """
-    Plain English prediction headline (canonical zone via ``mvp_features``; unused legacy path).
-    """
-    zone = mvp_zone(mvp_features)
-    pct   = int(dom_prob * 100)
 
-    # No similar matches — fallback to broad dataset
-    if using_fallback and n_used > 0:
-        return (
-            f"No close matches for this exact setup yet ({n_used} general setups analyzed). "
-            f"Probabilities below are from the broader dataset — not specific to this situation."
-        )
-
-    # Data exists but market is balanced — probabilities near 33%
-    if confidence == "low" and n_used >= MIN_SAMPLES_STATISTICAL:
-        if avg_5c is not None:
-            dir_word = "lower" if avg_5c < 0 else "higher"
-            return (
-                f"Market is balanced here. In {n_used} similar setups, "
-                f"price drifted {dir_word} by {abs(avg_5c):.1f} pts on average over the 5m window — "
-                f"no strong directional edge."
-            )
-        return (
-            f"No strong edge in this setup. In {n_used} similar situations, "
-            f"price split roughly evenly between up ({int(dom_prob*100)}%), down, and flat."
-        )
-
-    dir_words = {"up": "moved higher", "down": "moved lower", "flat": "stayed flat"}
-    dir_word  = dir_words.get(dom_dir, "moved")
-
-    # Strong or medium edge
-    if is_pin_zone(zone):
-        wall = inp.put_gamma_wall if dom_dir == "down" else inp.call_gamma_wall
-        wall_str = f" toward {wall:.2f}" if wall else ""
-        move_str = f", averaging {avg_5c:+.1f} pts over the 5m window" if avg_5c is not None else ""
-        return (
-            f"In {n_used} similar ceiling setups, price {dir_word} {pct}% of the time"
-            f"{wall_str}{move_str}."
-        )
-
-    if zone in ("breakout", "breakdown"):
-        move_str = f", avg {avg_5c:+.1f} pts (5m)" if avg_5c is not None else ""
-        return f"In {n_used} similar {zone} setups, price {dir_word} {pct}% of the time{move_str}."
-
-    move_str = f" Avg move: {avg_5c:+.1f} pts over the 5m window." if avg_5c is not None else ""
-    return f"In {n_used} similar setups, price {dir_word} {pct}% of the time next candle.{move_str}"
-
-def _get_all_recent(
-    inp: SignalInput, db, n: int = 100, *, as_of_ts_utc: Optional[float] = None
-) -> list:
-    """Fallback: get all recent snapshots when similar-setup lookup is thin."""
-    try:
-        return db.get_recent_snapshots(
-            inp.ticker,
-            inp.timeframe,
-            n=n,
-            filled_only=True,
-            as_of_ts_utc=as_of_ts_utc,
-        )
-    except Exception:
-        return []
 
 
 def _similar_setups_shared(db, similar_ctx: Optional[dict], **query_kwargs) -> list:
@@ -541,156 +468,6 @@ def _similar_setups_shared(db, similar_ctx: Optional[dict], **query_kwargs) -> l
     return rows
 
 
-def build_fusion_model_overlay_for_stack(
-    inp: SignalInput,
-    db,
-    rules=None,
-    *,
-    inference_snapshot_v1: dict,
-    similar_ctx: Optional[dict] = None,
-) -> dict:
-    """
-    Non-MVP overlay for the ML stack: pred_*, walls, session, cross-asset, candle context, etc.
-
-    MVP tabular fields (spot, zone, nearest_*, vwap_*, spread, net_gamma, liquidity scores) come
-    only from InferenceSnapshotV1 on the XGB path — this dict must not contain those keys.
-    Similar-setup DB filters use canonical features from `inference_snapshot_v1`, not raw SignalInput.
-    """
-    from features.fusion_model_input import (
-        assert_fusion_overlay_has_no_mvp_keys,
-        similar_setup_filters_from_canonical_features,
-        strip_mvp_keys_from_fusion_overlay,
-        validate_inference_snapshot_for_fusion_stack,
-    )
-
-    validate_inference_snapshot_for_fusion_stack(inference_snapshot_v1)
-    _filters = similar_setup_filters_from_canonical_features(inference_snapshot_v1["features"])
-
-    probs_1c = probs_5c = None
-    probs_15c = probs_60c = None
-    _asof_sim = _as_of_ts_utc_for_similarity(inp, inference_snapshot_v1)
-    if db is not None:
-        try:
-            similar = _similar_setups_shared(
-                db,
-                similar_ctx,
-                ticker=inp.ticker,
-                timeframe=inp.timeframe or CANONICAL_TIMEFRAME,
-                zone=_filters["zone"],
-                vwap_side=_filters["vwap_side"],
-                nearest_above_dist=_filters["nearest_above_dist"],
-                nearest_below_dist=_filters["nearest_below_dist"],
-                as_of_ts_utc=_asof_sim,
-                # Hot-path projection: live consumers read outcome_*/ts_utc/match_tier
-                # only (enumerated 2026-07-05); the two JSON blobs are dropped.
-                # Schwab CSV authority checked: yes
-                # CSV row(s): NO_SCHWAB_EQUIVALENT — persisted-snapshot similarity
-                #   retrieval (SQLite projection); no market field derivation changed.
-                # Derived-field disposition: none required.
-                # All consumers checked: yes — overlay/core/enrichment/labeled-counts
-                #   consume outcome_*, outcome_*_pts, ts_utc, match_tier only.
-                # SCHWAB_CSV_CHECKED
-                exclude_heavy_json_columns=True,
-            )
-            probs_1c, _, _, _ = _literal_empirical_horizon(similar, "outcome_1c", 1)
-            probs_5c, _, _, _ = _literal_empirical_horizon(similar, "outcome_5c", 5)
-            probs_15c, _, _, _ = _literal_empirical_horizon(similar, "outcome_15c", 15)
-            probs_60c, _, _, _ = _literal_empirical_horizon(similar, "outcome_60c", 60)
-        except Exception as e:
-            log.debug("build_fusion_model_overlay_for_stack: DB lookup failed: %s", e)
-            probs_1c = probs_5c = None
-            probs_15c = probs_60c = None
-    u1, d1, f1 = _tri_probs(probs_1c)
-    u5, d5, f5 = _tri_probs(probs_5c)
-    u15, d15, f15 = _tri_probs(probs_15c)
-    u60, d60, f60 = _tri_probs(probs_60c)
-
-    _cvol = getattr(inp, "candle_volume", None)
-    if _cvol is None and getattr(inp, "candles_1m", None):
-        bars = inp.candles_1m
-        if bars:
-            _last_bar = bars[-1]
-            _cvol = getattr(_last_bar, "volume", None)
-            try:
-                _cvol = float(_cvol) if _cvol is not None else None
-            except (TypeError, ValueError):
-                _cvol = None
-    if _cvol is None and getattr(inp, "candles_5m", None):
-        bars = inp.candles_5m   # 5m fallback when 1m unavailable
-        if bars:
-            _last_bar = bars[-1]
-            _cvol = getattr(_last_bar, "volume", None)
-            try:
-                _cvol = float(_cvol) if _cvol is not None else None
-            except (TypeError, ValueError):
-                _cvol = None
-    _imb = getattr(inp, "flow_imbalance", None) or getattr(inp, "bid_ask_imbalance", None)
-    _imb = float(_imb) if _imb is not None and isinstance(_imb, (int, float)) else None
-    _csig = getattr(rules, "signal", None) if rules else None
-    _cconv = getattr(rules, "conviction", None) if rules else None
-    _mins_open = (
-        inp.et_hour * 60 + inp.et_minute - RTH_OPEN_MINS
-        if inp.et_hour is not None and inp.et_minute is not None
-        else None
-    )
-    if _mins_open is not None and _mins_open < 0:
-        _mins_open = 0.0
-
-    raw = {
-        "ticker": inp.ticker,
-        "et_hour": inp.et_hour, "et_minute": inp.et_minute,
-        "candle_body_pts": inp.candle_body_pts,
-        "candle_range_pts": inp.candle_range_pts,
-        "zone_since_bars": inp.zone_since_bars_1m or inp.zone_since_bars,  # 1m execution-layer (key kept for model compat)
-        "dist_call_gamma_wall": inp.dist_call_gamma_wall,
-        "dist_put_gamma_wall": inp.dist_put_gamma_wall,
-        "dist_call_delta_wall": inp.dist_call_delta_wall,
-        "dist_put_delta_wall": inp.dist_put_delta_wall,
-        "dist_gamma_inflection": inp.dist_gamma_inflection,
-        "dist_delta_inflection": inp.dist_delta_inflection,
-        "dist_call_oi_wall": inp.dist_call_oi_wall,
-        "dist_put_oi_wall": inp.dist_put_oi_wall,
-        "dist_call_vanna_wall": getattr(inp, "dist_call_vanna_wall", None),
-        "dist_put_vanna_wall": getattr(inp, "dist_put_vanna_wall", None),
-        "pin_width_pts": inp.pin_width_pts,
-        "net_delta": inp.net_delta,
-        "net_vanna": inp.net_vanna, "charm_net": inp.charm_net,
-        "iv_level": inp.iv_level,
-        "put_call_oi_ratio": inp.put_call_oi_ratio,
-        "vix_level": inp.vix_level, "vix_vs_prev": inp.vix_vs_prev,
-        "prev_zone": inp.prev_zone,
-        "candle_direction": inp.candle_direction,
-        "session_bucket": inp.session_bucket,
-        "vix_bucket": inp.vix_bucket,
-        "charm_direction": inp.charm_direction,
-        "charm_magnitude": inp.charm_magnitude,
-        "iv_direction": inp.iv_direction,
-        "candle_volume": _cvol,
-        "bid_ask_imbalance": _imb,
-        "combined_signal": _csig,
-        "combined_conviction": _cconv,
-        "atr": getattr(inp, "atr", None),
-        "iv_rank": getattr(inp, "iv_rank", None),
-        "smart_money_score": getattr(inp, "smart_money_score", None),
-        "breakout_score": getattr(inp, "breakout_score", None),
-        "pin_score": getattr(inp, "pin_score", None),
-        "minutes_since_open": _mins_open,
-        "pred_1c_up_prob": u1,
-        "pred_1c_down_prob": d1,
-        "pred_1c_flat_prob": f1,
-        "pred_5c_up_prob": u5,
-        "pred_5c_down_prob": d5,
-        "pred_5c_flat_prob": f5,
-        "pred_15c_up_prob": u15,
-        "pred_15c_down_prob": d15,
-        "pred_15c_flat_prob": f15,
-        "pred_60c_up_prob": u60,
-        "pred_60c_down_prob": d60,
-        "pred_60c_flat_prob": f60,
-    }
-    out = strip_mvp_keys_from_fusion_overlay(raw)
-    assert_fusion_overlay_has_no_mvp_keys(out)
-    return out
 
 
 def _forward_probs_from_canonical(
@@ -1347,61 +1124,3 @@ def compute_prediction_enrichment(
     )
 
 
-def compute_prediction(
-    inp: SignalInput,
-    db,
-    regime=None,
-    fusion=None,
-    rules=None,
-    mc_out=None,
-    canonical: Optional[CanonicalForecast] = None,
-    ml_bundle: Optional[Dict[str, Any]] = None,
-    *,
-    multi_horizon_ml_bundle: Optional[Any] = None,
-    inference_snapshot_v1: Optional[dict[str, Any]] = None,
-) -> PredictiveCard:
-    """
-    Statistical prediction from historical snapshots.
-
-    Uses progressive relaxation in db.get_similar_setups (Issue 19):
-      Tiers 1–4: zone/vwap/distance SQL filters; stops at the **narrowest** tier where
-      outcome_1c / outcome_5c / outcome_15c each have >= MIN_SAMPLES_STATISTICAL labeled
-      rows (aligned with multi_horizon primary horizons; same bar as _literal_empirical_horizon
-      for those columns). Sparse 60c may still be withheld without broadening the tier.
-      Tier 5: broadest pool (ticker+timeframe+outcome_1c) — always used if tiers 1–4 fail
-      tier-stop viability; per-horizon withholding may still apply where counts are low.
-
-    Confidence is driven by:
-      - Match tier (tighter = more relevant = higher confidence)
-      - Sample size
-      - How dominant the winning direction is
-
-    Implementation: compute_prediction_core (hot) + compute_prediction_enrichment (cold).
-    Set ED_PREDICT_ENRICHMENT=0 to skip cold path (UI/analytics fields may be empty).
-    """
-    core, st = compute_prediction_core(
-        inp,
-        db,
-        regime=regime,
-        fusion=fusion,
-        rules=rules,
-        mc_out=mc_out,
-        canonical=canonical,
-        ml_bundle=ml_bundle,
-        multi_horizon_ml_bundle=multi_horizon_ml_bundle,
-        inference_snapshot_v1=inference_snapshot_v1,
-    )
-    if not _predict_enrichment_enabled():
-        return core
-    return compute_prediction_enrichment(
-        core,
-        st,
-        inp,
-        canonical,
-        regime=regime,
-        fusion=fusion,
-        rules=rules,
-        ml_bundle=ml_bundle,
-        multi_horizon_ml_bundle=multi_horizon_ml_bundle,
-        inference_snapshot_v1=inference_snapshot_v1,
-    )

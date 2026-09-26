@@ -47,20 +47,8 @@ def normalize_ml_horizon_slug(s: str | None) -> str:
     return x
 
 
-def is_primary_decision_horizon(slug: str | None) -> bool:
-    """True if slug is authoritative for MH bundle / policy (not diagnostics-only)."""
-    try:
-        return normalize_ml_horizon_slug(slug) in PRIMARY_DECISION_HORIZONS
-    except ValueError:
-        return False
 
 
-def is_secondary_support_horizon(slug: str | None) -> bool:
-    """True if slug is diagnostics/support-only (must not drive MH bundle or compute_call)."""
-    try:
-        return normalize_ml_horizon_slug(slug) in SECONDARY_SUPPORT_HORIZONS
-    except ValueError:
-        return False
 
 
 def outcome_column(slug: str) -> str:
@@ -91,9 +79,6 @@ def live_inference_horizon_slug() -> str:
     return DEFAULT_ML_HORIZON_SLUG
 
 
-def live_stack_probs_bundle_key() -> str:
-    """signals / prediction_engine dict key for stacked ML probabilities (live horizon only)."""
-    return f"stack_probs_{live_inference_horizon_slug()}"
 
 
 # Eager constant for function default arguments (same value as default_training_label_column()).

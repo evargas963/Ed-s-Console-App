@@ -34,8 +34,6 @@ ALLOWED_TABLES = frozenset({"snapshots", "snapshots_1m_normalized"})
 # realized_contract_eval, live_vs_replay_validation, tools/measure_post_fix_theta_v1.
 REPLAY_BUNDLE_MIN_JSON_LENGTH: int = 10
 
-_RC_OK = f"replay_context_json IS NOT NULL AND length(replay_context_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}"
-_OC_OK = f"option_chain_json IS NOT NULL AND length(option_chain_json) > {REPLAY_BUNDLE_MIN_JSON_LENGTH}"
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:

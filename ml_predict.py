@@ -33,15 +33,12 @@ import logging
 import numpy as np
 import os
 import time
-from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from pathlib import Path
 from typing import Optional, Any
 
 from ml_horizon import (
     DEFAULT_ML_HORIZON_SLUG,
-    PRIMARY_DECISION_HORIZONS,
-    live_inference_horizon_slug,
     normalize_ml_horizon_slug,
 )
 # RC-345/F25: serving-side artifact/registry ticker identity delegates to the ONE
@@ -55,20 +52,8 @@ from features.lstm_sequence_input import (
     build_transformer_merged_window,
 )
 from features.xgb_model_input import XgbInferenceInputError
-from features.parallel_stack_schema import (
-    PARALLEL_STACK_SCHEMA_VERSION,
-    build_unified_stack_layer_output,
-)
 from features.cascade_stack_contract import (
-    CASCADE_UPSTREAM_BUNDLE_VERSION,
     CascadeChallengerError,
-    CascadeStageError,
-    assert_no_legacy_mvp_in_fusion_overlay,
-    validate_cascade_inference_lineage,
-)
-from features.cascade_stack_schema import (
-    CASCADE_STACK_SCHEMA_VERSION,
-    build_cascade_challenger_run_metadata,
 )
 
 logger = logging.getLogger("ed_console.ml")
@@ -97,13 +82,6 @@ def _model_registry_key(ticker: str, hz: str | None = None) -> str:
     return f"{_reg_key(bt)}:{su}"
 
 
-@contextmanager
-def _cascade_challenger_inference_scope():
-    tok = _INFER_ARCHITECTURE.set("cascade")
-    try:
-        yield
-    finally:
-        _INFER_ARCHITECTURE.reset(tok)
 
 
 # Scheduler / eval sets this when loading non-1c artifacts from a candidate directory.
@@ -115,17 +93,6 @@ _ml_infer_horizon_cv: ContextVar[str] = ContextVar(
 _ml_bundle_ticker_cv: ContextVar[str | None] = ContextVar("ml_bundle_ticker_override", default=None)
 
 
-@contextmanager
-def ml_bundle_ticker_scope(bundle_ticker: str | None):
-    """When set, artifact paths/registry keys resolve to ``bundle_ticker`` (anchor weights)."""
-    if not bundle_ticker:
-        yield
-        return
-    tok = _ml_bundle_ticker_cv.set(ticker_storage_key(str(bundle_ticker)))
-    try:
-        yield
-    finally:
-        _ml_bundle_ticker_cv.reset(tok)
 
 
 def _bundle_ticker_for_artifacts(feature_ticker: str) -> str:
@@ -139,157 +106,6 @@ def get_ml_infer_horizon_slug() -> str:
     return normalize_ml_horizon_slug(_ml_infer_horizon_cv.get())
 
 
-# MODEL_SERVING_PROVENANCE_SURFACE_V1 — universal, read-only serving provenance.
-# Reports which bundle a serve resolves to and why (guest routing, strict gate,
-# relaxation, contract match, vintage) without touching loaders, registries,
-# routing, or gates. Ticker is runtime data; the build path is identical for
-# every ticker (no ticker-conditional behavior).
-# Schwab CSV authority checked: yes
-# CSV row(s): NO_SCHWAB_EQUIVALENT — model-artifact metadata (bundle paths,
-#   trained_at, schema/preprocessing versions, gate states); no market field
-#   read, derivation, or emission changed.
-# Derived-field disposition: KEEP_DERIVED_WITH_PROVENANCE (observability only).
-# All consumers checked: yes — model_serving_provenance_v1 is an additive
-#   diagnostics surface (SignalOutput -> MarketState -> _ms_to_dict); trust,
-#   freshness, actionability, sizing, and synthesis unchanged (locks in
-#   tests/test_model_contract_enforcement.py provenance section).
-# SCHWAB_CSV_CHECKED
-def build_model_serving_provenance(requested_ticker: str) -> dict:
-    """Read-only provenance for the bundle this serve resolves to. Never raises."""
-    try:
-        from arch_competition.stack_bundle_eval_v1 import (
-            unified_stack_bundle_relaxation_active,
-        )
-        from active_bundle_contract import (
-            active_bundle_dir,
-            bundle_artifact_paths,
-            check_active_bundle_complete,
-        )
-        from governed_stack_contract import active_guest_anchor_context
-        from model_contract import meta_matches_system_contract
-
-        rt = (requested_ticker or "").upper().strip()  # display echo of the request
-        canon = ticker_storage_key(requested_ticker)    # RC-345/F25: canonical routing identity
-        bt = _bundle_ticker_for_artifacts(canon)
-        hz = get_ml_infer_horizon_slug()
-        ctx = active_guest_anchor_context()
-        strict_active_only = os.environ.get(
-            "ED_XGB_STRICT_ACTIVE_ONLY", "1"
-        ).strip().lower() not in ("0", "false", "no")
-        relaxation_active = unified_stack_bundle_relaxation_active()
-
-        bd = active_bundle_dir(bt, hz, models_dir=MODEL_DIR)
-        comp = check_active_bundle_complete(bt, hz, bundle_dir=bd, models_dir=MODEL_DIR)
-        missing = list(comp.get("issues", []))
-        for art in (comp.get("artifacts") or {}).values():
-            missing.extend(art.get("issues", []))
-
-        trained_at = feature_schema_version = preprocessing_version = None
-        contract_match = None
-        contract_mismatch_reason = None
-        for kind, _model_path, meta_path in bundle_artifact_paths(bt, hz, bd):
-            if kind != "xgb" or not meta_path.is_file():
-                continue
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            except Exception as ex:
-                contract_mismatch_reason = f"meta unreadable: {type(ex).__name__}"
-                break
-            trained_at = meta.get("trained_at") or None
-            feature_schema_version = meta.get("feature_schema_version") or None
-            preprocessing_version = meta.get("preprocessing_version") or None
-            ok, reason = meta_matches_system_contract(meta)
-            contract_match = bool(ok)
-            contract_mismatch_reason = reason or None
-            break
-
-        # Probe the REAL resolver for its fail-closed verdict (read-only call).
-        model_load_status = "dir_resolved"
-        fail_closed_reason = None
-        try:
-            _model_dir_for_ticker(canon)
-        except Exception as ex:
-            model_load_status = "fail_closed"
-            fail_closed_reason = f"{type(ex).__name__}: {str(ex)[:300]}"
-
-        if relaxation_active:
-            runtime_class = "RELAXATION_ACTIVE"
-        elif not strict_active_only:
-            runtime_class = "RELAXED_RESOLUTION"
-        elif comp.get("compliant") and contract_match:
-            runtime_class = "STRICT_ACTIVE_SERVABLE"
-        else:
-            runtime_class = "STRICT_ACTIVE_FAIL_CLOSED"
-
-        # ML-PIPE Item 4 — artifact integrity identity of every governed load
-        # already performed for this bundle (empty until first load).
-        integrity_prov = get_artifact_verification_provenance(bt, hz)
-        if not integrity_prov:
-            artifact_integrity = "NOT_LOADED"
-        elif any(
-            p.get("integrity_class") == "VERIFICATION_FAILED_CLOSED"
-            for p in integrity_prov.values()
-        ):
-            artifact_integrity = "VERIFICATION_FAILED_CLOSED"
-        elif any(p.get("legacy") for p in integrity_prov.values()):
-            artifact_integrity = "LEGACY_UNVERIFIED_NO_BUNDLE_MANIFEST"
-        else:
-            artifact_integrity = "VERIFIED_AGAINST_BUNDLE_MANIFEST"
-
-        return {
-            "requested_ticker": rt,
-            "bundle_ticker": bt,
-            # RC-345/F25: guest-anchor is a CANONICAL-vs-CANONICAL comparison — a bare index alias
-            # (SPX vs $SPX) is the SAME instrument and must not falsely trip guest_anchor.
-            "guest_anchor": ctx is not None or bt != canon,
-            "guest_anchor_ticker": (
-                ctx.anchor_ticker if ctx is not None else (bt if bt != canon else None)
-            ),
-            "horizon": hz,
-            "bundle_dir": str(bd),
-            "bundle_complete": bool(comp.get("compliant")),
-            "missing_artifacts": missing[:12],
-            "trained_at": trained_at,
-            "feature_schema_version": feature_schema_version,
-            "preprocessing_version": preprocessing_version,
-            "contract_match": contract_match,
-            "contract_mismatch_reason": contract_mismatch_reason,
-            "strict_active_only": strict_active_only,
-            "relaxation_active": relaxation_active,
-            "runtime_class": runtime_class,
-            "model_load_status": model_load_status,
-            "fail_closed_reason": fail_closed_reason,
-            "artifact_integrity": artifact_integrity,
-            "artifact_verification": {
-                # `artifact_sha256` is projected from `actual_sha256` -- the digest actually
-                # computed off disk during verification. The verifier
-                # (active_bundle_contract) emits expected_sha256/actual_sha256 and has never
-                # emitted a key named artifact_sha256, so this surface reported None for
-                # every VERIFIED artifact: a provenance record claiming
-                # VERIFIED_AGAINST_BUNDLE_MANIFEST while exposing nothing that was verified.
-                # Found 2026-07-19 by replacing a vacuous `is None or isinstance(...)`
-                # assertion with one that could fail.
-                role: {
-                    **{
-                        k: p.get(k)
-                        for k in (
-                            "verified", "legacy", "integrity_class", "reason_code",
-                            "manifest_sha256", "artifact_filename", "verified_at_utc",
-                            "expected_sha256", "actual_sha256",
-                        )
-                    },
-                    "artifact_sha256": p.get("actual_sha256"),
-                }
-                for role, p in sorted(integrity_prov.items())
-            },
-        }
-    except Exception as ex:
-        # Provenance must never disturb the serve path.
-        return {
-            "requested_ticker": (requested_ticker or "").upper().strip(),
-            "provenance_error": f"{type(ex).__name__}: {str(ex)[:200]}",
-            "runtime_class": "PROVENANCE_ERROR",
-        }
 
 
 def set_ml_infer_horizon_slug(slug: str) -> Token:
@@ -300,9 +116,6 @@ def reset_ml_infer_horizon_slug(token: Token) -> None:
     _ml_infer_horizon_cv.reset(token)
 
 
-def stack_probs_bundle_key() -> str:
-    """Dict key for stacked ML probabilities in run_unified_stack_ml_once / signals.ml_bundle (Issue 15)."""
-    return f"stack_probs_{get_ml_infer_horizon_slug()}"
 
 
 # Cascade training appends these extras (must match lstm_model / transformer_train).
@@ -645,15 +458,6 @@ def invalidate_model_registry_key(rk: str) -> None:
     _strict_bundle_warned.discard(rk)
 
 
-def get_artifact_verification_provenance(ticker: str, hz: str | None = None) -> dict[str, dict]:
-    """{artifact_role: verification provenance} recorded for (ticker, horizon) loads."""
-    rk = _model_registry_key(ticker, hz)
-    prefix = f"{rk}|"
-    return {
-        k[len(prefix):]: dict(p)
-        for k, p in _artifact_verification_registry.items()
-        if k.startswith(prefix)
-    }
 
 CLASS_NAMES = ["up", "down", "flat"]
 # Visible uniform when no base is trustworthy (all single-class-collapsed). Distinct from a
@@ -676,58 +480,8 @@ def _require_direction_probability_triplet(
         return None
 
 
-def _model_probs_to_fusion_out(p: Optional[dict], hint: str) -> Optional[dict]:
-    tri = _require_direction_probability_triplet(p)
-    if tri is None:
-        return None
-    up, down, flat = tri
-    by_class = {"up": up, "down": down, "flat": flat}
-    dominant = max(CLASS_NAMES, key=lambda c: by_class[c])
-    edge = by_class[dominant] - (1.0 / 3.0)
-    conf_label = "high" if edge >= 0.15 else "medium" if edge >= 0.08 else "low"
-    if hint == "long":
-        cont_support, rev_support = up, down
-    elif hint == "short":
-        cont_support, rev_support = down, up
-    else:
-        cont_support, rev_support = flat, max(up, down)
-    return {
-        "available": True,
-        "prob_up": up,
-        "prob_down": down,
-        "prob_flat": flat,
-        "dominant_class": dominant,
-        "confidence_label": conf_label,
-        "continuation_support": cont_support,
-        "reversal_support": rev_support,
-    }
 
 
-def _model_probs_to_ui_output(p: Optional[dict], approved: bool) -> dict:
-    unavailable = {
-        "available": False,
-        "dominant": None,
-        "confidence": None,
-        "approved": False,
-    }
-    if p is None:
-        return unavailable
-    tri = _require_direction_probability_triplet(p)
-    if tri is None:
-        return unavailable
-    up, down, flat = tri
-    by_class = {"up": up, "down": down, "flat": flat}
-    dominant = max(CLASS_NAMES, key=lambda c: by_class[c])
-    confidence = round(by_class[dominant] - (1.0 / 3.0), 4)
-    return {
-        "available": True,
-        "dominant": dominant,
-        "confidence": confidence,
-        "approved": approved,
-        "up": round(up, 4),
-        "down": round(down, 4),
-        "flat": round(flat, 4),
-    }
 
 
 def _enforce_active_serve_policy(bt: str, hz: str, bundle_dir: Path) -> None:
@@ -1130,168 +884,8 @@ def _predict_xgb(
         return None
 
 
-def _normalize_binary_head_probs(raw: np.ndarray, class_names: list[str]) -> dict[str, float]:
-    p = np.asarray(raw, dtype=np.float64).reshape(-1)
-    p = np.nan_to_num(np.clip(p, 0.0, 1.0), nan=0.5, posinf=1.0, neginf=0.0)
-    names = list(class_names)
-    if len(names) >= 2 and p.size >= 2:
-        s = float(p[0] + p[1])
-        if s <= 0:
-            u = 0.5
-            return {names[0]: u, names[1]: u}
-        return {names[0]: float(p[0]) / s, names[1]: float(p[1]) / s}
-    if len(names) >= 2 and p.size == 1:
-        p1 = float(p[0])
-        return {names[1]: p1, names[0]: max(0.0, 1.0 - p1)}
-    u = 1.0 / max(len(names), 1)
-    return {n: u for n in names}
 
 
-def _predict_xgb_movement_heads(
-    inference_snapshot_v1: dict,
-    ticker: str,
-    fusion_feature_overlay: dict | None = None,
-    *,
-    xgb_pre_engineering_snapshot: dict | None = None,
-) -> dict[str, float]:
-    """
-    Optional XGB binary classifiers: conditional direction (up/down) and move vs no_move.
-    Canonical keys: pred_dir_up_prob_{hz}, pred_dir_down_prob_{hz}, pred_move_prob_{hz}, pred_no_move_prob_{hz}.
-    Also mirrors legacy pred_{hz}_dir_* / pred_{hz}_move_* for backward compatibility.
-
-    Inference contract — Option 1: when both heads load successfully, direction probabilities are
-    emitted for every scored row (same engineered features as training). Downstream evaluation may
-    restrict to valid_dir rows for outcome_dir calibration; move head uses the full labeled row set.
-    """
-    hz = get_ml_infer_horizon_slug()
-    bt = _bundle_ticker_for_artifacts(ticker)  # RC-345/F25: canonical bundle identity (dead .upper() no-op removed)
-    out: dict[str, float] = {}
-    _m5_snap_cached: dict | None = xgb_pre_engineering_snapshot
-    _artifact_registry_entry_stale(_model_registry_key(bt, hz))
-    for suffix, names_default in (("dir", ["up", "down"]), ("move", ["move", "no_move"])):
-        reg_key = f"{_model_registry_key(bt, hz)}:{suffix}"
-        if reg_key not in _xgb_movehead_registry:
-            base = _active_bundle_dir_for_load(bt)
-            if base is None:
-                _xgb_movehead_registry[reg_key] = None
-                continue
-            mp = base / f"xgb_{bt}_{hz}_{suffix}.pkl"
-            mtp = base / f"xgb_{bt}_{hz}_{suffix}_meta.json"
-            if not mp.is_file() or not mtp.is_file():
-                _xgb_movehead_registry[reg_key] = None
-            elif (
-                # Item 4: verify bytes vs bundle integrity manifest before pickle.load.
-                _verify_governed_artifact(base, bt, hz, f"xgb_{suffix}", mp.name) is None
-                or _verify_governed_artifact(base, bt, hz, f"xgb_{suffix}_meta", mtp.name) is None
-            ):
-                _xgb_movehead_registry[reg_key] = None
-            else:
-                try:
-                    with open(mtp, encoding="utf-8") as fm:
-                        meta = json.load(fm)
-                    from model_contract import validate_artifact_contract
-
-                    ok, reason = validate_artifact_contract(meta, "xgb")
-                    if not ok:
-                        logger.debug("movement head %s contract fail %s: %s", suffix, ticker, reason)
-                        _xgb_movehead_registry[reg_key] = None
-                    else:
-                        with open(mp, "rb") as f:
-                            model = pickle.load(f)
-                        cnames = list(meta.get("class_names") or names_default)
-                        _xgb_movehead_registry[reg_key] = dict(
-                            model=model,
-                            meta=meta,
-                            feature_names=meta["features"],
-                            category_maps=meta.get("category_maps", {}),
-                            vol_medians=meta.get("vol_medians", {}),
-                            class_names=cnames,
-                        )
-                except Exception as e:
-                    logger.debug("movement head %s load failed for %s: %s", suffix, ticker, e)
-                    _xgb_movehead_registry[reg_key] = None
-        reg = _xgb_movehead_registry[reg_key]
-        if reg is None:
-            continue
-        try:
-            from ml_train import (
-                apply_xgb_imputation_matrix,
-                engineer_single_snapshot,
-                engineered_features_missing_withheld_wall_distances,
-                should_abstain_missing_session_vwap_for_cf,
-            )
-
-            if _m5_snap_cached is None:
-                # RC-336: same delegation as `_predict_xgb`. This branch also rebuilt the
-                # sequence by hand and also dropped confluence, so the movement heads were
-                # served cf_* = 0.0 on every tick. It additionally skipped serve ablation,
-                # which the one preparer applies — so the heads were scoring a feature set
-                # the ablation contract says should not be scored. Both are corrected by
-                # having a single definition of "a prepared XGB snapshot".
-                _m5_snap_cached = build_xgb_pre_engineering_snapshot_for_tick(
-                    inference_snapshot_v1, fusion_feature_overlay)
-            snap = _m5_snap_cached
-            X = engineer_single_snapshot(
-                snapshot=snap,
-                category_maps=reg["category_maps"],
-                feature_names=reg["feature_names"],
-                vol_medians=reg["vol_medians"],
-                ticker=_bundle_ticker_for_artifacts(ticker),
-            )
-            if X is None:
-                continue
-            x_raw = X.values.astype(np.float64)
-            if engineered_features_missing_withheld_wall_distances(
-                x_raw[0], reg["feature_names"]
-            ):
-                continue
-            if should_abstain_missing_session_vwap_for_cf(
-                session_vwap=snap.get("vwap"),
-                feature_names=reg["feature_names"],
-            ):
-                continue
-            impute = reg["meta"].get("impute_medians") or {}
-            x_mat = apply_xgb_imputation_matrix(
-                x_raw,
-                reg["feature_names"],
-                impute,
-            )
-            nfi = getattr(reg["model"], "n_features_in_", None)
-            if nfi is not None and x_mat.shape[1] != int(nfi):
-                continue
-            probs = reg["model"].predict_proba(x_mat)[0]
-            norm = _normalize_binary_head_probs(probs, reg["class_names"])
-            sm = sum(norm.values())
-            if sm > 0:
-                norm = {k: round(v / sm, 6) for k, v in norm.items()}
-            else:
-                norm = {k: round(1.0 / len(reg["class_names"]), 6) for k in reg["class_names"]}
-            if suffix == "dir":
-                # absence reads as absence: norm is keyed by the model's own class_names, so a
-                # dir head that is a valid dir head HAS up/down. A missing key means a mis-wired
-                # head — let the KeyError fall to the except below (logged, emits nothing) rather
-                # than fabricate a neutral 0.5 prob into the decision inputs.
-                pu = float(norm["up"])
-                pd_ = float(norm["down"])
-                out[f"pred_dir_up_prob_{hz}"] = pu
-                out[f"pred_dir_down_prob_{hz}"] = pd_
-                out[f"pred_{hz}_dir_up_prob"] = pu
-                out[f"pred_{hz}_dir_down_prob"] = pd_
-            else:
-                pm = float(norm["move"])  # absence reads as absence (see dir branch): no fabricated 0.5
-                pn = float(norm["no_move"])
-                out[f"pred_move_prob_{hz}"] = pm
-                out[f"pred_no_move_prob_{hz}"] = pn
-                out[f"pred_{hz}_move_prob"] = pm
-                out[f"pred_{hz}_no_move_prob"] = pn
-        except Exception as e:
-            logger.debug("movement head %s predict failed for %s: %s", suffix, ticker, e)
-    for k, v in list(out.items()):
-        if v is None or not np.isfinite(v):
-            out.pop(k, None)
-        else:
-            out[k] = float(min(1.0, max(0.0, v)))
-    return out
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2146,120 +1740,8 @@ def _weighted_average(
     return {c: round(result[c], 4) for c in CLASS_NAMES}
 
 
-def stack_probs_composition_record(
-    ticker: str,
-    hz: str,
-    leg_probs: dict[str, Optional[dict]],
-    *,
-    executed_computation: str | None,
-    collapsed: Optional[set] = None,
-) -> dict:
-    """Provenance for one horizon's directional triplet: what the contract REQUIRES vs what RAN.
-
-    The serving/promotion contract in active_bundle_contract is the authority on the approved
-    composition (xgb + lstm + transformer + meta_stack, horizon-invariant). It is NOT weakened or
-    re-derived here — this only records, per tick, whether that contract is satisfied and which
-    legs actually produced a complete triplet AND which combiner produced ``stack_probs``, so the
-    authorization gate can ask one honest question instead of inferring from dictionary shape or
-    disk presence.
-
-    A partial or contract-noncompliant composition may still be computed for DIAGNOSTIC use (the
-    5c xgb_plus_transformer runtime blend continues to run); `complete` simply stays False so it
-    inherits no directional authorization.
-    """
-    from active_bundle_contract import (
-        BUNDLE_ARTIFACT_TRIPLE,
-        META_STACK_KIND,
-        active_bundle_dir,
-        check_active_bundle_complete,
-    )
-
-    collapsed = collapsed or set()
-    required = [kind for kind, _m, _meta in BUNDLE_ARTIFACT_TRIPLE]
-    produced = [
-        name for name in required
-        if name not in collapsed
-        and _require_direction_probability_triplet(leg_probs.get(name)) is not None
-    ]
-    missing = [name for name in required if name not in produced]
-
-    contract_compliant = False
-    contract_issues: list[str] = []
-    _ck = _model_registry_key(ticker, hz)
-    _cached = _bundle_contract_cache.get(_ck)
-    if _cached is not None:
-        contract_compliant = bool(_cached.get("contract_compliant"))
-        contract_issues = list(_cached.get("contract_issues") or [])
-    else:
-        try:
-            bt = _bundle_ticker_for_artifacts(ticker)
-            chk = check_active_bundle_complete(
-                bt, hz, bundle_dir=active_bundle_dir(bt, hz, models_dir=MODEL_DIR),
-                models_dir=MODEL_DIR)
-            contract_compliant = bool(chk.get("compliant"))
-            contract_issues = [str(i) for i in (chk.get("issues") or [])][:6]
-        except Exception as e:  # noqa: BLE001 — an unreadable bundle is NOT an authorized one
-            contract_issues = [f"{type(e).__name__}: {e}"]
-        _bundle_contract_cache[_ck] = {
-            "contract_compliant": contract_compliant,
-            "contract_issues": list(contract_issues),
-        }
-
-    return {
-        "authorization_schema_version": 1,
-        "horizon": hz,
-        "required": required,
-        "produced": produced,
-        "missing": missing,
-        "collapsed": sorted(str(c) for c in collapsed),
-        "approved_computation": META_STACK_KIND,
-        "executed_computation": executed_computation,
-        "computation_compliant": executed_computation == META_STACK_KIND,
-        "contract_compliant": contract_compliant,
-        "contract_issues": contract_issues,
-        # The ONE fact the authorization gate consumes: the approved composition, per the serving
-        # contract, actually produced this triplet.
-        "complete": bool(
-            contract_compliant
-            and not missing
-            and executed_computation == META_STACK_KIND
-        ),
-    }
 
 
-def _weighted_average_partial(
-    ticker: str,
-    weighted_parts: list[tuple[str, Optional[dict], float]],
-    *,
-    collapsed: Optional[set] = None,
-) -> Optional[dict]:
-    """Renormalized blend over available base legs (e.g. 5c xgb_plus_transformer without LSTM).
-
-    DIAGNOSTIC ONLY for authorization purposes: this renormalises surviving legs to weight 1.0, so
-    its output cannot be distinguished from a full-composition triplet by shape. Callers must read
-    stack_probs_composition_record() to learn what actually produced it.
-    """
-    collapsed = collapsed or set()
-    healthy: list[tuple[str, dict, float]] = []
-    for name, probs, weight in weighted_parts:
-        if name in collapsed:
-            continue
-        tri = _require_direction_probability_triplet(probs)
-        if tri is None:
-            continue
-        healthy.append((name, probs, float(weight)))
-    if not healthy:
-        return None
-    total_w = sum(w for _, _, w in healthy)
-    result = {c: 0.0 for c in CLASS_NAMES}
-    for _name, probs, w in healthy:
-        tri = _require_direction_probability_triplet(probs)
-        assert tri is not None
-        nw = w / total_w
-        result["up"] += tri[0] * nw
-        result["down"] += tri[1] * nw
-        result["flat"] += tri[2] * nw
-    return {c: round(result[c], 4) for c in CLASS_NAMES}
 
 
 def read_stack_layer_collapse_flags(model_dir, ticker: str, hz: str) -> set:
@@ -2356,56 +1838,6 @@ def _ensemble_parallel_probs(
     return probs
 
 
-def _apply_5c_xgb_plus_transformer_isotonic_calibration(
-    ticker: str,
-    probs: Optional[dict],
-) -> Optional[dict]:
-    """
-    Runtime calibration for 5c winning stack (xgb_plus_transformer) using
-    one-vs-rest isotonic regression maps fit from validation outputs.
-
-    Applies only to SPY/5c blended probabilities and preserves simplex normalization.
-    """
-    if not probs:
-        return probs
-    feature_ticker = (ticker or "").upper().strip()
-    bt = _bundle_ticker_for_artifacts(ticker)
-    if feature_ticker != "SPY" or bt != "SPY":
-        return probs
-    if get_ml_infer_horizon_slug() != "5c":
-        return probs
-
-    # OVR isotonic maps from validation cohort (X_thresholds_, y_thresholds_).
-    maps = {
-        "up": {
-            "x": [0.0639, 0.1053, 0.10531053105310531, 0.1442, 0.1443, 0.1593, 0.15978402159784022, 0.1937, 0.194, 0.20492049204920493, 0.205, 0.3056, 0.3071, 0.3242, 0.3243, 0.3498, 0.3512, 0.3971, 0.3986, 0.44144414441444146, 0.4436, 0.4645, 0.4667533246675332, 0.4765, 0.4774, 0.4908509149085092, 0.4914, 0.5041495850414959, 0.5050505050505051, 0.5116, 0.512, 0.5696, 0.579, 0.6160383961603839],
-            "y": [0.0, 0.0, 0.028846153846153848, 0.028846153846153848, 0.09090909090909091, 0.09090909090909091, 0.14754098360655737, 0.14754098360655737, 0.15384615384615385, 0.15384615384615385, 0.2222222222222222, 0.2222222222222222, 0.2631578947368421, 0.2631578947368421, 0.4074074074074074, 0.4074074074074074, 0.4090909090909091, 0.4090909090909091, 0.5, 0.5, 0.5625, 0.5625, 0.6363636363636364, 0.6363636363636364, 0.6470588235294118, 0.6470588235294118, 0.6666666666666666, 0.6666666666666666, 0.75, 0.75, 0.8888888888888888, 0.8888888888888888, 1.0, 1.0],
-        },
-        "down": {
-            "x": [0.0471, 0.08680868086808681, 0.0869, 0.1111, 0.1114111411141114, 0.1386, 0.1389, 0.15548445155484447, 0.1559, 0.2506, 0.251, 0.26030000000000003, 0.2604, 0.3232, 0.32356764323567644, 0.436, 0.43755624437556245, 0.4625, 0.4642, 0.471, 0.4714, 0.4753, 0.4755, 0.4819, 0.4822, 0.5019, 0.5023, 0.607039296070393],
-            "y": [0.0, 0.0, 0.014598540145985401, 0.014598540145985401, 0.0375, 0.0375, 0.043478260869565216, 0.043478260869565216, 0.08695652173913043, 0.08695652173913043, 0.1111111111111111, 0.1111111111111111, 0.18867924528301888, 0.18867924528301888, 0.32, 0.32, 0.5, 0.5, 0.6363636363636364, 0.6363636363636364, 0.75, 0.75, 0.7692307692307693, 0.7692307692307693, 0.8, 0.8, 0.9333333333333333, 0.9333333333333333],
-        },
-        "flat": {
-            "x": [0.2429, 0.2636736326367363, 0.29892989298929895, 0.3063306330633063, 0.36423642364236425, 0.3662, 0.3828382838283828, 0.38303830383038306, 0.3986, 0.399, 0.4172, 0.4177, 0.41885811418858115, 0.419, 0.4281571842815718, 0.4293, 0.4423, 0.4436, 0.45825417458254175, 0.4588458845884588, 0.4995, 0.4996, 0.5050494950504949, 0.5053, 0.5333, 0.5335, 0.5428, 0.5437456254374562, 0.5672, 0.568, 0.5937406259374063, 0.5939, 0.6129, 0.6129612961296129, 0.6453, 0.6454, 0.6845, 0.685, 0.6932, 0.6951, 0.734073407340734, 0.7348, 0.7418, 0.7443, 0.7861786178617862, 0.7867786778677868, 0.8318, 0.8325, 0.8816],
-            "y": [0.0, 0.125, 0.125, 0.19230769230769232, 0.19230769230769232, 0.2222222222222222, 0.2222222222222222, 0.25, 0.25, 0.3125, 0.3125, 0.375, 0.375, 0.4444444444444444, 0.4444444444444444, 0.4642857142857143, 0.4642857142857143, 0.4666666666666667, 0.4666666666666667, 0.4923076923076923, 0.4923076923076923, 0.5, 0.5, 0.5106382978723404, 0.5106382978723404, 0.5555555555555556, 0.5555555555555556, 0.5609756097560976, 0.5609756097560976, 0.5636363636363636, 0.5636363636363636, 0.7441860465116279, 0.7441860465116279, 0.8163265306122449, 0.8163265306122449, 0.8428571428571429, 0.8428571428571429, 0.8666666666666667, 0.8666666666666667, 0.8771929824561403, 0.8771929824561403, 0.9333333333333333, 0.9333333333333333, 0.9565217391304348, 0.9565217391304348, 0.9702970297029703, 0.9702970297029703, 1.0, 1.0],
-        },
-    }
-
-    calibrated = {}
-    for c in CLASS_NAMES:
-        p = float(probs.get(c, 1.0 / 3.0))
-        p = max(0.0, min(1.0, p))
-        x = np.asarray(maps[c]["x"], dtype=np.float64)
-        y = np.asarray(maps[c]["y"], dtype=np.float64)
-        calibrated[c] = float(np.interp(p, x, y, left=y[0], right=y[-1]))
-
-    s = float(sum(calibrated.values()))
-    if s <= 0.0:
-        return {"up": 1.0 / 3.0, "down": 1.0 / 3.0, "flat": 1.0 / 3.0}
-    norm = {c: float(calibrated[c] / s) for c in CLASS_NAMES}
-    # Keep exact simplex sum after float math.
-    norm["flat"] = max(0.0, 1.0 - norm["up"] - norm["down"])
-    return norm
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2413,481 +1845,30 @@ def _apply_5c_xgb_plus_transformer_isotonic_calibration(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def _resolve_ml_inference_ticker(
-    ticker: str | None,
-    snapshot: dict,
-    *,
-    inference_snapshot_v1: dict | None = None,
-) -> str:
-    """Resolve ticker for ML paths; fail closed when none of ticker / snapshot / envelope provide it."""
-    for raw in (
-        ticker,
-        snapshot.get("ticker") if isinstance(snapshot, dict) else None,
-        inference_snapshot_v1.get("ticker") if isinstance(inference_snapshot_v1, dict) else None,
-    ):
-        if raw is not None and str(raw).strip():
-            return ticker_storage_key(str(raw))  # RC-345/F25: inference identity canonical ($SPX, not SPX)
-    raise ValueError(
-        "ML inference requires a resolvable ticker (ticker=, snapshot['ticker'], or "
-        "inference_snapshot_v1['ticker'])"
-    )
 
 
-def run_unified_stack_ml_once(
-    snapshot: dict,
-    ticker: str,
-    db,
-    direction_hint: str = "wait",
-    *,
-    inference_snapshot_v1: dict | None = None,
-    xgb_pre_engineering_snapshot: dict | None = None,
-    shared_sequence_context: Any = None,
-    meta_tabular_overlay: dict | None = None,
-) -> dict:
-    """
-    Unified stack ML layers (xgb, lstm, transformer) — one team pass per tick/horizon.
-
-    Each layer runs independently (no cross-model tensors). Sequence models use
-    ``parallel_runtime=True`` and refuse cascade-only checkpoints.
-
-    Feeds fusion helpers, UI model_outputs, and meta / weighted stack_probs — single pass.
-
-    XGBoost requires InferenceSnapshotV1. Pass `snapshot` as fusion overlay only (pred_*, et_hour, …);
-    MVP comes only from `inference_snapshot_v1`.
-
-    Optional ``xgb_pre_engineering_snapshot`` (from ``build_xgb_pre_engineering_snapshot_for_tick``)
-    avoids repeating MVP→overlay→m5 ingest for each governed horizon on the same tick.
-
-    Optional ``shared_sequence_context`` (from ``features.shared_sequence_context.build_shared_sequence_context``)
-    supplies one DB fetch + one LSTM merge for the tick; LSTM/Transformer skip redundant history reads.
-    """
-    if inference_snapshot_v1 is None:
-        raise ValueError(
-            "run_unified_stack_ml_once requires inference_snapshot_v1= (InferenceSnapshotV1 dict). "
-            "Raw fusion snapshots are not accepted for XGB."
-        )
-
-    tkr = _resolve_ml_inference_ticker(
-        ticker, snapshot, inference_snapshot_v1=inference_snapshot_v1
-    )
-
-    xgb_p = _predict_xgb(
-        inference_snapshot_v1,
-        tkr,
-        fusion_feature_overlay=snapshot,
-        xgb_pre_engineering_snapshot=xgb_pre_engineering_snapshot,
-    )
-    lstm_p = _predict_lstm(
-        tkr,
-        db,
-        snapshot=snapshot,
-        xgb_probs_arr=None,
-        inference_snapshot_v1=inference_snapshot_v1,
-        parallel_runtime=True,
-        shared_sequence_context=shared_sequence_context,
-    )
-    tr_p = _predict_transformer(
-        tkr,
-        db,
-        snapshot=snapshot,
-        xgb_probs_arr=None,
-        lstm_probs_arr=None,
-        inference_snapshot_v1=inference_snapshot_v1,
-        parallel_runtime=True,
-        shared_sequence_context=shared_sequence_context,
-    )
-
-    fusion_pack = {
-        "xgb": _model_probs_to_fusion_out(xgb_p, direction_hint),
-        "lstm": _model_probs_to_fusion_out(lstm_p, direction_hint),
-        "transformer": _model_probs_to_fusion_out(tr_p, direction_hint),
-    }
-    def _parallel_model_output_record(p: Optional[dict], approved: bool) -> dict:
-        r = build_unified_stack_layer_output(probs=p, approved=approved and p is not None)
-        if r.get("available"):
-            r["up"] = r["prob_up"]
-            r["down"] = r["prob_down"]
-            r["flat"] = r["prob_flat"]
-            r["confidence"] = r["confidence_score"]
-        else:
-            r["up"] = None
-            r["down"] = None
-            r["flat"] = None
-            r["confidence"] = None
-            r["dominant"] = None
-        return r
-
-    model_outputs = {
-        "xgb": _parallel_model_output_record(xgb_p, xgb_p is not None),
-        "lstm": _parallel_model_output_record(lstm_p, lstm_p is not None),
-        "transformer": _parallel_model_output_record(tr_p, tr_p is not None),
-    }
-
-    stack_probs = None
-    _executed_computation: str | None = None
-    # The legs that actually FED the triplet — not merely the legs that predicted. These differ:
-    # at 5c the runtime blend is xgb_plus_transformer, yet lstm_p is still computed above. Handing
-    # the composition record all three would credit LSTM as a contributor to a triplet it never
-    # touched, which is exactly the shape-over-provenance error this record exists to end.
-    _contributing_legs: dict[str, Optional[dict]] = {}
-    if xgb_p is not None or lstm_p is not None or tr_p is not None:
-        # 5c default runtime path: winning stack is xgb_plus_transformer with
-        # calibrated probabilities before downstream decision consumption.
-        if get_ml_infer_horizon_slug() == "5c":
-            _contributing_legs = {"xgb": xgb_p, "transformer": tr_p}
-            stack_probs = _weighted_average_partial(
-                tkr,
-                [("xgb", xgb_p, 0.40), ("transformer", tr_p, 0.25)],
-                collapsed=_active_base_collapse_flags(tkr),
-            )
-            stack_probs = _apply_5c_xgb_plus_transformer_isotonic_calibration(
-                tkr, stack_probs
-            )
-            if stack_probs is not None:
-                _executed_computation = "xgb_plus_transformer_diagnostic"
-        else:
-            _contributing_legs = {"xgb": xgb_p, "lstm": lstm_p, "transformer": tr_p}
-            _meta_overlay = meta_tabular_overlay if meta_tabular_overlay is not None else snapshot
-            stack_probs, _executed_computation = _ensemble_parallel_probs_with_execution(
-                tkr,
-                xgb_p,
-                lstm_p,
-                tr_p,
-                meta_tabular_overlay=_meta_overlay,
-            )
-
-    logger.debug(
-        "run_unified_stack_ml_once %s: xgb=%s lstm=%s tr=%s",
-        tkr,
-        _fmt(xgb_p),
-        _fmt(lstm_p),
-        _fmt(tr_p),
-    )
-    _mh = _predict_xgb_movement_heads(
-        inference_snapshot_v1,
-        tkr,
-        fusion_feature_overlay=snapshot,
-        xgb_pre_engineering_snapshot=xgb_pre_engineering_snapshot,
-    )
-    return {
-        "fusion": fusion_pack,
-        "model_outputs": model_outputs,
-        stack_probs_bundle_key(): stack_probs,
-        # WHICH composition produced that triplet. Recorded HERE because this is the only place
-        # the leg list still exists: _weighted_average_partial renormalises the surviving legs to
-        # weight 1.0, so a single-leg blend is numerically and structurally indistinguishable from
-        # a full-composition output downstream. Measured: a lone xgb leg yields
-        # {'up':0.55,'down':0.25,'flat':0.2}, which stack_probs_triplet_complete calls complete.
-        "stack_probs_composition": stack_probs_composition_record(
-            tkr,
-            get_ml_infer_horizon_slug(),
-            _contributing_legs,
-            executed_computation=_executed_computation,
-            collapsed=_active_base_collapse_flags(tkr),
-        ),
-        "movement_head_probs": _mh,
-        "parallel_runtime": True,
-        "stack_schema_version": PARALLEL_STACK_SCHEMA_VERSION,
-    }
 
 
-def run_cascade_models_once(
-    snapshot: dict,
-    ticker: str,
-    db,
-    direction_hint: str = "wait",
-    *,
-    inference_snapshot_v1: dict | None = None,
-    expected_data_fingerprint: str | None = None,
-    actual_data_fingerprint: str | None = None,
-    expected_feature_contract_version: str | None = None,
-    expected_canonical_timeframe: str | None = None,
-    lineage_extra: dict | None = None,
-) -> dict:
-    """
-    Challenger-only **cascade** inference: XGB → LSTM (with XGB prob tensor) → Transformer
-    (with XGB + LSTM prob tensors). Loads artifacts from ``models/cascade/{ticker}/`` only.
-
-    Does **not** change production routing; use ``run_unified_stack_ml_once`` for live parallel stack.
-
-    Lineage kwargs enforce parity with shared training cache when set (evaluation harness).
-    """
-    tkr = ticker or snapshot.get("ticker", "") or ""
-    if not tkr:
-        raise CascadeChallengerError("cascade challenger: empty ticker")
-
-    validate_cascade_inference_lineage(
-        inference_snapshot_v1,
-        expected_data_fingerprint=expected_data_fingerprint,
-        actual_data_fingerprint=actual_data_fingerprint,
-        expected_feature_contract_version=expected_feature_contract_version,
-        expected_canonical_timeframe=expected_canonical_timeframe,
-    )
-    assert_no_legacy_mvp_in_fusion_overlay(snapshot)
-
-    def _parallel_model_output_record(p: Optional[dict], approved: bool) -> dict:
-        r = build_unified_stack_layer_output(probs=p, approved=approved and p is not None)
-        if r.get("available"):
-            r["up"] = r["prob_up"]
-            r["down"] = r["prob_down"]
-            r["flat"] = r["prob_flat"]
-            r["confidence"] = r["confidence_score"]
-        else:
-            r["up"] = None
-            r["down"] = None
-            r["flat"] = None
-            r["confidence"] = None
-            r["dominant"] = None
-        return r
-
-    with _cascade_challenger_inference_scope():
-        xgb_p = _predict_xgb(inference_snapshot_v1, tkr, fusion_feature_overlay=snapshot)
-        if xgb_p is None:
-            raise CascadeStageError(f"{tkr}: cascade stage 1 (XGB) produced no probabilities")
-        xgb_arr = _probs_dict_to_arr(xgb_p)
-
-        lstm_p = _predict_lstm(
-            tkr,
-            db,
-            snapshot=snapshot,
-            xgb_probs_arr=xgb_arr,
-            inference_snapshot_v1=inference_snapshot_v1,
-            parallel_runtime=False,
-        )
-        if lstm_p is None:
-            raise CascadeStageError(f"{tkr}: cascade stage 2 (LSTM) produced no probabilities")
-        lstm_arr = _probs_dict_to_arr(lstm_p)
-
-        tr_p = _predict_transformer(
-            tkr,
-            db,
-            snapshot=snapshot,
-            xgb_probs_arr=xgb_arr,
-            lstm_probs_arr=lstm_arr,
-            inference_snapshot_v1=inference_snapshot_v1,
-            parallel_runtime=False,
-        )
-        if tr_p is None:
-            raise CascadeStageError(f"{tkr}: cascade stage 3 (Transformer) produced no probabilities")
-
-        fusion_pack = {
-            "xgb": _model_probs_to_fusion_out(xgb_p, direction_hint),
-            "lstm": _model_probs_to_fusion_out(lstm_p, direction_hint),
-            "transformer": _model_probs_to_fusion_out(tr_p, direction_hint),
-        }
-        model_outputs = {
-            "xgb": _parallel_model_output_record(xgb_p, True),
-            "lstm": _parallel_model_output_record(lstm_p, True),
-            "transformer": _parallel_model_output_record(tr_p, True),
-        }
-
-        stack_probs = None
-        if _load_meta(tkr):
-            stack_probs = _predict_meta(
-                tkr,
-                xgb_p,
-                lstm_p,
-                tr_p,
-                meta_tabular_overlay=snapshot,
-            )
-        if stack_probs is None:
-            stack_probs = _weighted_average(tkr, xgb_p, lstm_p, tr_p)
-
-    lineage = build_cascade_challenger_run_metadata(
-        data_fingerprint=actual_data_fingerprint,
-        ml_horizon_slug=get_ml_infer_horizon_slug(),
-    )
-    if lineage_extra:
-        lineage = {**lineage, **lineage_extra}
-
-    stages = {
-        "1_xgb": {
-            "probabilities": xgb_p,
-            "upstream_bundle_version": CASCADE_UPSTREAM_BUNDLE_VERSION,
-        },
-        "2_lstm": {
-            "probabilities": lstm_p,
-            "cascade_inputs_from_xgb_probs": [float(x) for x in xgb_arr.reshape(-1)],
-        },
-        "3_transformer": {
-            "probabilities": tr_p,
-            "cascade_inputs_from_xgb_probs": [float(x) for x in xgb_arr.reshape(-1)],
-            "cascade_inputs_from_lstm_probs": [float(x) for x in lstm_arr.reshape(-1)],
-        },
-    }
-
-    return {
-        "architecture": "cascade",
-        "schema_version": CASCADE_STACK_SCHEMA_VERSION,
-        "parallel_runtime": False,
-        "upstream_bundle_version": CASCADE_UPSTREAM_BUNDLE_VERSION,
-        "fusion": fusion_pack,
-        "model_outputs": model_outputs,
-        stack_probs_bundle_key(): stack_probs,
-        "stages": stages,
-        "lineage": lineage,
-    }
 
 
-def get_model_outputs_for_fusion(
-    snapshot: dict,
-    ticker: str,
-    db,
-    direction_hint: str = "wait",
-    *,
-    inference_snapshot_v1: dict | None = None,
-) -> dict:
-    """
-    Return structured outputs for fusion. Delegates to run_unified_stack_ml_once — single inference truth per tick.
-    """
-    tkr = ticker or snapshot.get("ticker", "") or ""
-    if not tkr:
-        return {"xgb": None, "lstm": None, "transformer": None}
-    return run_unified_stack_ml_once(
-        snapshot, tkr, db, direction_hint, inference_snapshot_v1=inference_snapshot_v1
-    )["fusion"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PUBLIC API
 # ══════════════════════════════════════════════════════════════════════════════
 
-def get_model_outputs(
-    snapshot: dict,
-    ticker: str = None,
-    db=None,
-    *,
-    inference_snapshot_v1: dict | None = None,
-) -> dict:
-    """
-    Run XGBoost, LSTM, Transformer individually and return availability,
-    dominant direction, and confidence for each. Used for stack visibility
-    in snapshots — does not affect prediction logic.
-
-    Returns:
-        {
-            "xgb": {"available": bool, "dominant": str|None, "confidence": float|None, "approved": bool},
-            "lstm": {"available": bool, "dominant": str|None, "confidence": float|None, "approved": bool},
-            "transformer": {"available": bool, "dominant": str|None, "confidence": float|None, "approved": bool},
-        }
-    """
-    tkr = ticker or snapshot.get("ticker", "")
-    if not tkr:
-        return {
-            "xgb": {"available": False, "dominant": None, "confidence": None, "approved": False},
-            "lstm": {"available": False, "dominant": None, "confidence": None, "approved": False},
-            "transformer": {"available": False, "dominant": None, "confidence": None, "approved": False},
-        }
-    return run_unified_stack_ml_once(
-        snapshot, tkr, db, "wait", inference_snapshot_v1=inference_snapshot_v1
-    )["model_outputs"]
 
 
-def predict_direction(
-    snapshot: dict,
-    ticker: str = None,
-    db=None,
-    *,
-    inference_snapshot_v1: dict | None = None,
-) -> Optional[dict]:
-    """
-    Full stacked prediction.
-
-    Runs XGBoost + LSTM + Transformer, combines via meta-learner (or
-    weighted average if meta-learner not yet trained).
-
-    Returns {up, down, flat} or None (caller uses rules engine).
-
-    Args:
-        snapshot: fusion overlay (pred_*, et_hour, …) — not used for MVP tabular fields
-        ticker:   ticker symbol; uses snapshot['ticker'] if None
-        db:       EdDB instance (needed for LSTM/Transformer sequence access)
-        inference_snapshot_v1: required InferenceSnapshotV1 dict for XGB MVP path
-    """
-    tkr = ticker or snapshot.get("ticker", "")
-    if not tkr:
-        return None
-    return run_unified_stack_ml_once(
-        snapshot, tkr, db, "wait", inference_snapshot_v1=inference_snapshot_v1
-    )[stack_probs_bundle_key()]
 
 
-def predict_all_horizons(
-    snapshot: dict,
-    ticker: str = None,
-    db=None,
-    *,
-    inference_snapshot_v1: dict | None = None,
-) -> dict:
-    """Predict for UI horizon keys; only the live ML product horizon runs the trained stack."""
-    result = {}
-    live_ml_hz = live_inference_horizon_slug()
-    for hz in PRIMARY_DECISION_HORIZONS:
-        result[hz] = (
-            predict_direction(snapshot, ticker, db, inference_snapshot_v1=inference_snapshot_v1)
-            if hz == live_ml_hz
-            else None
-        )
-    return result
 
 
-def is_available(ticker: str) -> bool:
-    """True if ANY of xgb, LSTM, or Transformer model exists for this ticker."""
-    ticker = ticker_storage_key(ticker)  # RC-345/F25: artifact-name identity canonical
-    hz = get_ml_infer_horizon_slug()
-    base = _active_bundle_dir_for_load(ticker)
-    if base is None:
-        return False
-    return (
-        (base / f"xgb_{ticker}_{hz}.pkl").exists()
-        or (base / f"lstm_{ticker}_{hz}.pt").exists()
-        or (base / f"transformer_{ticker}_{hz}.pt").exists()
-    )
 
 
-def executed_model_version(model_outputs: Optional[dict]) -> Optional[str]:
-    """The model version that RAN this tick: the legs that produced output, or None.
-
-    pred_model_version used to be get_model_version() -- the bundle FILES on disk -- with a
-    "rules_v1" fallback. With the live stack off (RC-REHAB-1) no model runs, yet every row
-    was stamped "stack(xgb_lstm_tr_meta)_1c" and accuracy pooled those rows under that model
-    (audit L-01 / F-11, 2026-09-24: no fallbacks)."""
-    if not isinstance(model_outputs, dict):
-        return None
-    legs = [short for key, short in (("xgb", "xgb"), ("lstm", "lstm"), ("transformer", "tr"))
-            if isinstance(model_outputs.get(key), dict) and model_outputs[key].get("available")]
-    if not legs:
-        return None
-    return f"stack({'_'.join(legs)})_{get_ml_infer_horizon_slug()}"
 
 
-def get_model_version(ticker: str) -> Optional[str]:
-    """INSTALLED model bundle for `ticker` (files on disk), or None. Not what ran on a tick --
-    see executed_model_version()."""
-    ticker = ticker_storage_key(ticker)  # RC-345/F25: artifact-name identity canonical
-    hz = get_ml_infer_horizon_slug()
-    base = _active_bundle_dir_for_load(ticker)
-    if base is None:
-        return None
-    parts = []
-    if (base / f"xgb_{ticker}_{hz}.pkl").exists():        parts.append("xgb")
-    if (base / f"lstm_{ticker}_{hz}.pt").exists():        parts.append("lstm")
-    if (base / f"transformer_{ticker}_{hz}.pt").exists(): parts.append("tr")
-    if (base / f"meta_{ticker}_{hz}.pkl").exists():       parts.append("meta")
-    if parts:
-        return f"stack({'_'.join(parts)})_{hz}"
-    return None
 
 
-def get_component_status(ticker: str) -> dict:
-    """Which components are active. Used for dashboard health display."""
-    return {
-        "xgb":         "approved" if _load_xgb(ticker)       else "unavailable",
-        "lstm":        "approved" if _load_lstm(ticker)      else "unavailable",
-        "transformer": "approved" if _load_transformer(ticker) else "unavailable",
-        "meta":        "loaded"   if _load_meta(ticker)     else "not trained yet",
-        "stack_ready": _load_xgb(ticker) or _load_lstm(ticker) or _load_transformer(ticker),
-    }
 
 
 def reset_caches():
@@ -2907,64 +1888,9 @@ def reset_caches():
     logger.info("ml_predict: all model caches cleared")
 
 
-def invalidate_model_registry(ticker: str, hz: str | None = None) -> bool:
-    """Evict in-memory caches for one (ticker, horizon) tuple (PR4 P3-10)."""
-    rk = _model_registry_key(ticker, hz)
-    removed = False
-    for reg in (_xgb_registry, _meta_registry, _lstm_registry, _trans_registry, _collapse_flag_registry):
-        if rk in reg:
-            del reg[rk]
-            removed = True
-    movehead_prefix = f"{rk}:"
-    for key in list(_xgb_movehead_registry.keys()):
-        if key == rk or key.startswith(movehead_prefix):
-            del _xgb_movehead_registry[key]
-            removed = True
-    if removed:
-        logger.info("ml_predict: invalidated registry for %s", rk)
-    if rk in _active_bundle_dir_cache:
-        del _active_bundle_dir_cache[rk]
-        _strict_bundle_warned.discard(rk)
-    _bundle_contract_cache.pop(rk, None)
-    return removed
 
 
-def prewarm_inference_models_for_ticker(ticker: str) -> dict[str, bool]:
-    """
-    UI-MAXIMIZE — load XGB/LSTM/TR artifacts for all primary horizons into registries.
-    Disk I/O only; no forward pass. Honors guest-anchor bundle routing when enabled.
-    """
-    from ml_horizon import PRIMARY_DECISION_HORIZONS
-    from governed_stack_contract import (
-        guest_anchor_context_scope,
-        resolve_guest_anchor_for_ticker,
-    )
-
-    t = ticker_storage_key(ticker)  # RC-345/F25: guest-anchor routing identity is canonical
-    if not t:
-        return {}
-    guest_ctx = resolve_guest_anchor_for_ticker(t)
-    out: dict[str, bool] = {}
-    with guest_anchor_context_scope(guest_ctx), ml_bundle_ticker_scope(
-        guest_ctx.anchor_ticker if guest_ctx else None
-    ):
-        for hz in PRIMARY_DECISION_HORIZONS:
-            tok = set_ml_infer_horizon_slug(hz)
-            try:
-                out[f"xgb_{hz}"] = _load_xgb(t)
-                out[f"lstm_{hz}"] = _load_lstm(t)
-                out[f"transformer_{hz}"] = _load_transformer(t)
-            finally:
-                reset_ml_infer_horizon_slug(tok)
-    logger.info("prewarm_inference_models_for_ticker %s: %s", t, out)
-    return out
 
 
-def _fmt(p):
-    if p is None: return "None"
-    return f"up={p['up']:.2f} dn={p['down']:.2f} fl={p['flat']:.2f}"
 
 
-# Deprecated aliases — mechanical lock: new code must use canonical names above.
-run_base_models_once = run_unified_stack_ml_once
-read_base_collapse_flags = read_stack_layer_collapse_flags

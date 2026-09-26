@@ -86,23 +86,6 @@ def _f(v: Any) -> Optional[float]:
     return float_finite_or_none(v)
 
 
-def normalize_vol_decimal(
-    value: Optional[float],
-    *,
-    field: str,
-    context: str = "classify_volatility_regime",
-) -> Optional[float]:
-    """Schwab contract is decimal; values > 5.0 may be percentage — log and scale."""
-    if value is None or value <= VOL_DECIMAL_PERCENT_HEURISTIC:
-        return value
-    log.warning(
-        "%s: %s=%s exceeds decimal range (>%s); treating as percentage — verify upstream format",
-        context,
-        field,
-        value,
-        VOL_DECIMAL_PERCENT_HEURISTIC,
-    )
-    return value / 100.0
 
 
 def vol_percent_to_decimal(value: Optional[float]) -> Optional[float]:
@@ -120,8 +103,6 @@ def vol_percent_to_decimal(value: Optional[float]) -> Optional[float]:
     return v / 100.0
 
 
-# Back-compat alias (Schwab IV-specific name used in earlier slices).
-schwab_iv_percent_to_decimal = vol_percent_to_decimal
 
 
 def _safe_floats(lst: list[Any], *, context: str) -> list[float]:

@@ -55,7 +55,6 @@ CONFLUENCE_TOTAL_SOURCES: int = 5   # micro, Greeks, regime, order_flow, all_con
 CONVICTION_HIGH_MARGIN_HIGH: float = 0.12
 CONVICTION_HIGH_MARGIN_MEDIUM: float = 0.06
 CONVICTION_MEDIUM_MARGIN: float = 0.10
-CONVICTION_NEUTRAL_DOM_PROB: float = 1.0 / 3.0
 
 # Time warnings (mins-to-close)
 MINS_TO_CLOSE_NO_NEW_ENTRIES: int = 30
@@ -77,10 +76,8 @@ AGREE_THRESHOLD_DEFAULT: float = 0.18
 CANONICAL_DOM_PROB_STACK_VOTE_MIN: float = 0.45
 CANONICAL_OPPOSE_THRESHOLD: float = 0.50
 REVERSAL_GATE_THRESHOLD: float = 0.50
-BREAKOUT_SUM_GATE: float = 0.60
 MC_EAE_GATE_DEFAULT: float = 2.0
 MC_EAE_GATE_EXPANSION: float = 2.5
-MC_EAE_GATE_EXPANSION_MID: float = 1.8
 MC_EAE_GATE_CONTAINED: float = 1.5
 MC_EAE_GATE_CONTAINED_MID: float = 1.0
 VIX_EXTREME_THRESHOLD: float = 35.0
@@ -476,57 +473,7 @@ def _build_call_headlines(final_signal, conviction, trade_type,
 
     return headline, reasoning
 
-def _greek_notes(inp: SignalInput) -> list:
-    """Translate key Greeks into plain English bullet notes."""
-    notes = []
 
-    # Cursor-audit F9: the dealer dampen/amplify REGIME is the SIGN of dealer gamma AT SPOT
-    # (net_gamma_at_spot), per math_levels.gamma_at_price (RC-320) and the terrain card — NOT the
-    # whole-chain aggregate_net_gex this used to read, which can differ in sign.
-    # NARRATIVE CORRECTION (gamma audit, AST-verified): _greek_notes has NO non-test caller, so this
-    # function does not currently reach the operator. The live instance of this defect class was
-    # regime_engine's pinning/acceleration scoring (reached via classify_regime from signals.py);
-    # the fix here is correctness-in-place for a surface that is dormant, not a fixed on-screen bug.
-    # Gamma-audit: use the ONE sign-threshold authority (withholds at exactly 0 instead of letting a
-    # zero fall into "amplifying"), and state the MODELED basis — dealer ownership is inferred from
-    # the +call/-put convention over public OI, which cannot establish who actually owns the contracts.
-    from terrain_read import REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA, regime_from_signed_gamma
-    _reg = regime_from_signed_gamma(getattr(inp, "net_gamma_at_spot", None))  # getattr: mock-safe
-    if _reg == REGIME_LONG_GAMMA:
-        notes.append("Modeled dealer gamma positive at spot — absorbing moves, chop/fade mode")
-    elif _reg == REGIME_SHORT_GAMMA:
-        notes.append("Modeled dealer gamma negative at spot — amplifying moves, trend/momentum mode")
-
-    if inp.charm_direction and inp.charm_drift_toward:
-        # RC-313: this read "Time decay pushing dealers to {dir} toward {strike}", which
-        # credits time decay with a PRICE TARGET charm never computed. RC-295 deleted the
-        # identical claim from the pinning score — charm_drift_toward is
-        # pick_net_gex_peak_strike over the SELECTED expiry, republished unchanged
-        # (RC-292/RC-302) — and left this sentence, which makes the same assertion to a
-        # reader who has no score to check it against. Charm measured the direction. The
-        # strike is a gamma quantity, and the note now says which one it is. Pinning is a
-        # MAGNITUDE mechanism, so a magnet claim would need the absolute-gamma strike, not
-        # the signed-net peak; unifying the value needs a gamma-pin field on SignalInput,
-        # which does not exist yet (RC-292 NEXT-DEPTH).
-        notes.append(
-            f"Time decay has dealers {inp.charm_direction}; "
-            f"net-GEX peak (selected expiry) at {inp.charm_drift_toward:.2f}")
-
-    if inp.iv_direction == "expanding":
-        notes.append("Volatility rising — moves may be larger than expected")
-    elif inp.iv_direction == "contracting":
-        notes.append("Volatility falling — moves may be smaller than expected")
-
-    if inp.vix_level and inp.vix_level > VIX_ELEVATED_THRESHOLD:
-        notes.append(f"VIX at {inp.vix_level:.1f} — high vol, widen stops")
-
-    return notes
-
-def _add_greek_color(detail: str, greek_notes: list) -> str:
-    """Append the most relevant Greek note to a detail string."""
-    if greek_notes:
-        return detail + " " + greek_notes[0] + "."
-    return detail
 
 def _canonical_stack_vote(canonical: CanonicalForecast) -> int:
     """Stack vote from CanonicalForecast only (fusion forward triplet — Issue 13).

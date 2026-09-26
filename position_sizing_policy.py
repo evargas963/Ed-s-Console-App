@@ -7,21 +7,10 @@ Sibling thresholds (confidence buckets, VIX tiers, MC EAE branches) remain inlin
 from __future__ import annotations
 
 import logging
-from typing import Final, Literal
+from typing import Final
 
 log = logging.getLogger(__name__)
 
-RegimeSizeLabel = Literal[
-    "pinning",
-    "mean_reversion",
-    "reversal_prone",
-    "vol_compression",
-    "vol_expansion",
-    "breakout",
-    "acceleration",
-    "trend_continuation",
-    "unknown",
-]
 
 REGIME_SIZE_MULTIPLIER_DEFAULT: Final[float] = 0.70
 

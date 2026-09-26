@@ -264,10 +264,3 @@ def encode_snapshot_1m_v2(snap: dict, ref_spot: float) -> list[float]:
     return features
 
 
-def apply_checkpoint_variance_mask(vec: list[float], mask: list[bool] | None) -> list[float]:
-    if not mask:
-        return list(vec)
-    m = [bool(x) for x in mask]
-    if len(m) != len(vec):
-        raise ValueError(f"mask length {len(m)} != vector length {len(vec)}")
-    return [float(vec[i]) for i, keep in enumerate(m) if keep]

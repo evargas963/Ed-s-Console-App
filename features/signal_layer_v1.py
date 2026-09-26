@@ -20,16 +20,13 @@ multi-timeframe (derived from stacked 1m), participation.
 
 from __future__ import annotations
 
-import logging
 import math
 from typing import Any, Mapping, Optional, Sequence
 
 from numeric_contract import float_finite_or_none
 
-log = logging.getLogger(__name__)
 
 EPS = 1e-12
-DEFAULT_MAX_BARS = 256
 
 # Rolling windows (1m bars)
 W_SLOPE_SHORT = 20
@@ -86,17 +83,6 @@ def _f(x: Any) -> Optional[float]:
     return float_finite_or_none(x)
 
 
-def meta_n_bars_int(layer: Mapping[str, Any]) -> int:
-    """Parse ``meta.n_bars`` without raising on corrupt bundle strings."""
-    raw = layer.get("meta.n_bars")
-    if raw is None or raw == "":
-        return 0
-    try:
-        n = int(raw)
-    except (TypeError, ValueError):
-        log.debug("meta_n_bars_int: unparseable meta.n_bars=%r", raw)
-        return 0
-    return n if n > 0 else 0
 
 
 def _clip(x: float, lo: float, hi: float) -> float:
@@ -292,33 +278,6 @@ def _volume_profile_proxy(
     return poc, val, vah
 
 
-def load_bars_before_decision(
-    conn: Any,
-    ticker: str,
-    decision_ts_utc: float,
-    *,
-    max_bars: int = DEFAULT_MAX_BARS,
-) -> list[dict[str, Any]]:
-    """
-    Load completed 1m bars with bar_end_ts_utc <= decision_ts_utc, oldest first.
-    """
-    from instrument_identity import ticker_storage_key
-
-    tkey = ticker_storage_key(ticker)
-    cur = conn.execute(
-        """
-        SELECT bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume
-        FROM price_bars_1m
-        WHERE ticker = ? AND bar_end_ts_utc <= ?
-        ORDER BY bar_end_ts_utc DESC
-        LIMIT ?
-        """,
-        (tkey, float(decision_ts_utc), int(max_bars)),
-    )
-    desc = [c[0] for c in (cur.description or ())]
-    rows = [dict(zip(desc, tup)) for tup in cur.fetchall()]
-    rows.reverse()
-    return rows
 
 
 def compute_signal_layer_v1(
@@ -690,125 +649,13 @@ def compute_price_action_snapshot_columns(
     return {col: _f(layer.get(key)) for col, key in SNAPSHOT_PRICE_ACTION_COLUMNS}
 
 
-def compute_signal_layer_v1_from_db(
-    conn: Any,
-    ticker: str,
-    decision_ts_utc: float,
-    inp: Any | None = None,
-    *,
-    max_bars: int = DEFAULT_MAX_BARS,
-) -> dict[str, Any]:
-    """Convenience: load bars then compute layer."""
-    bars = load_bars_before_decision(conn, ticker, decision_ts_utc, max_bars=max_bars)
-    return compute_signal_layer_v1(bars, decision_ts_utc=decision_ts_utc, inp=inp)
 
 
-def _sqlite_conn_from_db(db: Any) -> Any:
-    """Resolve a sqlite connection from EdDB or a raw connection."""
-    if db is None:
-        return None
-    fn = getattr(db, "_connect", None)
-    if callable(fn):
-        return fn()
-    return db if hasattr(db, "execute") else None
 
 
-def compute_signal_layer_v1_for_calibration(
-    db: Any,
-    ticker: str,
-    decision_ts_utc: float,
-    inp: Any | None = None,
-) -> dict[str, Any]:
-    """Load 1m bars from EdDB (or sqlite-like) and compute the v1 layer; read-only."""
-    conn = _sqlite_conn_from_db(db)
-    if conn is None:
-        return {"meta.error": "no_db_connection", "meta.decision_ts_utc": float(decision_ts_utc)}
-    try:
-        return compute_signal_layer_v1_from_db(conn, ticker, decision_ts_utc, inp)
-    finally:
-        try:
-            close = getattr(conn, "close", None)
-            if callable(close):
-                close()
-        except Exception:
-            log.debug("signal_layer_v1: connection close failed", exc_info=True)
 
 
-def layer_direction_policy(layer: Mapping[str, Any], *, thresh: float = 0.85) -> str:
-    """
-    Simple interpretable policy from the v1 layer (not the fusion model).
-    Returns long | short | wait from composite score (roughly in [-4,4]).
-    """
-    s = 0.0
-    v1 = layer.get("ps.rolling_trend_slope_log20")
-    if isinstance(v1, (int, float)):
-        s += _clip(float(v1) * 120.0, -1.25, 1.25)
-    vz = layer.get("vl.vwap_zscore")
-    if isinstance(vz, (int, float)):
-        s += _clip(float(vz) / 2.5, -1.25, 1.25)
-    for k in ("mtf.trend_1m_sign", "mtf.trend_5m_from_1m_sign", "mtf.bias_15m_from_1m_sign"):
-        v = layer.get(k)
-        if v is None:
-            continue
-        if isinstance(v, (int, float)):
-            s += float(v)
-    if s > thresh:
-        return "long"
-    if s < -thresh:
-        return "short"
-    return "wait"
 
 
-def signal_layer_v1_to_direction_probs(
-    layer: Mapping[str, Any],
-) -> Optional[tuple[float, float, float]]:
-    """
-    Map numeric v1 layer to a calibrated (up, down, flat) triple for fusion blending.
-    Uses directional score → softmax; flat mass rises when |score| is small.
-    Returns None when bar history is insufficient (no uniform 1/3 placeholder).
-    """
-    fn = flatten_numeric_features(layer)
-    if meta_n_bars_int(layer) < 25:
-        return None
-
-    score = 0.0
-    s = fn.get("ps.rolling_trend_slope_log20")
-    if s is not None:
-        score += float(s) * 45.0
-    vz = fn.get("vl.vwap_zscore")
-    if vz is not None:
-        score += float(vz) * 0.18
-    for k, w in (
-        ("mtf.trend_1m_sign", 0.42),
-        ("mtf.trend_5m_from_1m_sign", 0.38),
-        ("mtf.bias_15m_from_1m_sign", 0.28),
-    ):
-        v = layer.get(k)
-        if v is None:
-            continue
-        if isinstance(v, (int, float)):
-            score += float(v) * w
-
-    score = max(-3.0, min(3.0, score))
-
-    eu = math.exp(score)
-    ed = math.exp(-score)
-    flat_boost = max(0.15, 0.95 - 0.22 * abs(score))
-    ef = math.exp(flat_boost)
-    t = eu + ed + ef
-    return float(eu / t), float(ed / t), float(ef / t)
 
 
-def flatten_numeric_features(layer: Mapping[str, Any]) -> dict[str, float]:
-    """Strip meta.* keys; keep only numeric features for correlation matrices."""
-    out: dict[str, float] = {}
-    for k, v in layer.items():
-        if k.startswith("meta."):
-            continue
-        if isinstance(v, bool):
-            out[k] = 1.0 if v else 0.0
-        elif isinstance(v, (int, float)) and not isinstance(v, bool):
-            fv = float(v)
-            if not (math.isnan(fv) or math.isinf(fv)):
-                out[k] = fv
-    return out

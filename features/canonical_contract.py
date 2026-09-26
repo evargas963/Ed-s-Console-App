@@ -182,15 +182,6 @@ _MVP_SPECS: dict[str, dict[str, Any]] = {
     },
 }
 
-_EXCLUDED_FROM_MVP: frozenset[str] = frozenset(
-    {
-        "order_flow.*",
-        "readiness.*",
-        "live freshness diagnostics (order_flow_stale, quote_overlay_age_sec, …)",
-        "l1_generation",
-        "l1_projection / l1_instrumentation",
-    }
-)
 
 # Per-field semantics at the contract boundary (canonical row + adapter coercion).
 # "Missing" and "invalid" are distinct: invalid values must never be laundered into None.
@@ -341,6 +332,3 @@ def validate_feature_contract_row(row: dict[str, Any]) -> tuple[bool, list[str]]
     return (len(errors) == 0, errors)
 
 
-def excluded_from_mvp() -> frozenset[str]:
-    """Human-readable exclusion list for documentation."""
-    return _EXCLUDED_FROM_MVP

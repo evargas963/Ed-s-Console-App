@@ -76,16 +76,6 @@ _FINAL_BIAS_TO_LABEL = {"LONG": "up", "SHORT": "down", "WAIT": "flat"}
 # preserved byte-identically; the legacy ALL triclass metric is retained ONLY for
 # reproducibility and labeled LEGACY_INVALID_FOR_TRADE_EDGE.
 SCHEMA_VERSION = "4"
-NOT_SCORED_REASONS = (
-    "NO_ROWS_PRODUCED",
-    "NOT_IN_ACTIVE_LOGGER",
-    "FUSION_UNAVAILABLE",
-    "OUTCOME_PENDING",
-    "NON_RTH",
-    "UNTRUSTED_CALIBRATION",
-    "UNPARSEABLE_BUNDLE",
-    "UNSUPPORTED_TICKER_OR_HORIZON",
-)
 # Quality-circle per-cell sample-size trust floor: below ~30 scored rows the
 # binomial normal approximation for an accuracy estimate is unreliable (classic
 # np>=5 / n(1-p)>=5 rule at p~0.5), so cells under this floor are reported as

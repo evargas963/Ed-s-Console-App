@@ -21,7 +21,6 @@ from typing import Any
 
 from db_authority import canonical_stream_db_path
 
-STREAM_DB_DEFAULT = canonical_stream_db_path()
 
 
 def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
@@ -252,14 +251,6 @@ class MessageBus:
     def snapshot(self, prefix: str = "") -> dict[str, Any]:
         return {t: v for t, v in self.cache.items() if t.startswith(prefix)}
 
-    def drop_counts(self) -> dict[str, int]:
-        """Dropped messages per consumer name: live subscriptions plus disconnected ones."""
-        out = dict(self._retired_drops)
-        for s in self._subs:
-            if s.dropped:
-                name = self._sub_names.get(id(s), s.prefix)
-                out[name] = out.get(name, 0) + s.dropped
-        return {k: v for k, v in out.items() if v}
 
 
 #: Seconds since a service's last message: DEGRADED past the first, STALE past the second.

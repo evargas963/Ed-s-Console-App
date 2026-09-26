@@ -92,6 +92,3 @@ def build_unified_stack_layer_output(
     }
 
 
-# Deprecated aliases — mechanical lock: new code must use canonical names above.
-ParallelBaseModelOutput = UnifiedStackLayerOutput
-build_parallel_base_output = build_unified_stack_layer_output

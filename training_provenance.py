@@ -90,11 +90,9 @@ SCHEDULER_PIPELINE_VERSION: str = "scheduler_stack_v1"
 
 # ── Expected values for patch / legacy defaults (live default product horizon) ─────────
 EXPECTED_TARGET_COLUMN: str = outcome_column(DEFAULT_ML_HORIZON_SLUG)
-EXPECTED_TARGET_DEFINITION: str = horizon_target_definition(DEFAULT_ML_HORIZON_SLUG)
 MIN_PROMOTION_ACCURACY: float = 0.34       # above random (1/3)
 MIN_PROMOTION_BALANCED_ACC: float = 0.33   # per-class recall avg; slightly below accuracy when balanced
 MIN_ROWS_FOR_PROMOTION: int = 500         # minimum training rows for promotion
-MIN_PROMOTION_EDGE_PP: float = -5.0       # allow small negative edge for now
 # Per-ticker fail-closed DATA floor on the train→promote path (Workstream A1, operator brief
 # 2026-05-29). Distinct from rows_used (model samples): this is raw labeled-row + usable-day
 # availability in the DB. A "usable RTH day" has >= USABLE_RTH_DAY_MIN_ROWS labeled 1m rows —

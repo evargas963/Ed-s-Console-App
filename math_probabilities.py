@@ -7,257 +7,32 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass as _oe_dc
-import math
 
-from math_exposure_core import MISSING_GREEK_SENTINEL, _f, bucket_metric, greek_reported
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 DIRECTION_THRESHOLD_PCT = 0.05  # % of spot to classify up/down/flat
 
-DIST_BUCKET_EDGES    = [1.0, 2.0, 5.0]
-DIST_BUCKET_LABELS   = ["0-1", "1-2", "2-5"]
-DIST_BUCKET_OVERFLOW = "5+"
 
-MIN_SAMPLES_STATISTICAL = 30
-MIN_SAMPLES_CONFIDENT   = 150
 
-CONFIDENCE_RULES = {
-    "tier_1": {"base": "high"},
-    "tier_2": {"base": "high"},
-    "tier_3": {"base": "medium"},
-    "tier_4": {"base": "medium"},
-    "tier_5": {"base": "low"},
-    "tier_6": {"base": "low"},
-    "tier_7": {"base": "low"},
-}
 
-REVERSAL_RISK_LOW_MAX  = 0.20
-REVERSAL_RISK_MOD_MAX  = 0.35
 
-RECENCY_HALF_LIFE_DAYS = 21.0
 
-# Stop-distance constants (used by call_engine)
-STOP_BASE_PCT       = 0.0018
-STOP_TIME_DECAY_PCT = 0.00015
-STOP_VIX_MED_PCT    = 0.0004
-STOP_VIX_HIGH_PCT   = 0.0008
-STOP_FLOOR_PCT      = 0.0010
-STOP_CEILING_PCT    = 0.0030
 
-# OE scoring constants
-OE_DELTA_GAMMA_RATIO_MIN = 2.0
-OE_DELTA_GAMMA_RATIO_MAX = 8.0
-OE_VOL_OI_MIN            = 0.10
 OE_SPREAD_TIGHT_MAX      = 0.15
 
 # ── OE scoring ───────────────────────────────────────────────────────────────
 
 
-@_oe_dc
-class OeResult:
-    spread: float | None
-    liq_gate: bool
-    gamma: float | None
-    delta: float | None
-    delta_gamma_ratio: float | None
-    volume: float | None
-    open_interest: float | None
-    vol_oi_ratio: float | None
-    gamma_x_oi: float | None
-    gamma_is_max: bool
-    max_gamma_strike: float | None
-    entry_lo: float
-    entry_hi: float
-    # Wall-aware composite (same path live + replay)
-    wall_proximity_component: float = 0.0
-    wall_bias_component: float = 0.0
-    wall_score_component: float = 0.0
-    total_score_before_walls: float = 0.0
-    total_score_after_walls: float = 0.0
-    wall_contribution_detail: dict | None = None
-    spread_source: str | None = None
 
 
-def _oe_wall_consensus_row(walls):
-    if not walls:
-        return None
-    for w in walls:
-        lab = w.get("label") if isinstance(w, dict) else getattr(w, "label", None)
-        if lab == "CONSENSUS":
-            return w
-    return walls[0]
 
 
-def _wlevel(row, name: str):
-    if row is None:
-        return None
-    v = row.get(name) if isinstance(row, dict) else getattr(row, name, None)
-    return _f(v)
 
 
-def compute_wall_score_components(
-    strike_f: float, spot_f: float, side_up: str, walls,
-) -> tuple[float, float, dict]:
-    """
-    Wall materiality for OE ranking. Returns (proximity_pts, bias_pts, audit dict).
-
-    RC-434: dom_gamma_wall / dom_delta_wall are not independent levels — `_dominant`
-    aliases the stronger of call/put when strengths exist. Scoring them again as a
-    third proximity target (and +0.45 "confluence" bias) double-counts the same strike.
-    After RC-420 terrain bind withholds strengths, dominance is permanently empty on the
-    live path, so those terms were silent inert decision logic. Call/put gamma and delta
-    walls remain the sole structural proximity/bias authorities.
-    """
-    if not walls:
-        return 0.0, 0.0, {"walls_empty": True}
-    row = _oe_wall_consensus_row(walls)
-    if row is None:
-        return 0.0, 0.0, {"no_consensus_row": True}
-
-    level_names = (
-        "call_gamma_wall", "put_gamma_wall",
-        "call_delta_wall", "put_delta_wall",
-    )
-    levels: list[tuple[str, float]] = []
-    for attr in level_names:
-        v = _wlevel(row, attr)
-        if v is not None and v > 0:
-            levels.append((attr, float(v)))
-
-    prox = 0.0
-    cap = 3.0
-    prox_detail: list[dict] = []
-    for name, lv in levels:
-        d = abs(strike_f - lv)
-        contrib = min(1.2, 2.0 / (1.0 + d))
-        if contrib > 0.05 and cap > 0:
-            take = min(contrib, cap)
-            prox += take
-            cap -= take
-            prox_detail.append({"level": name, "strike": lv, "contrib": round(take, 4)})
-
-    bias = 0.0
-    bias_notes: list[str] = []
-    cgw = _wlevel(row, "call_gamma_wall")
-    pgw = _wlevel(row, "put_gamma_wall")
-
-    if side_up == "CALL":
-        if cgw and spot_f < cgw and spot_f <= strike_f <= cgw + 2.0:
-            bias += 0.85
-            bias_notes.append("strike_in_call_gamma_wall_approach_zone")
-        if pgw and abs(strike_f - pgw) <= 2.0 and strike_f >= pgw - 0.5:
-            bias += 0.55
-            bias_notes.append("near_put_gamma_support")
-    else:
-        if pgw and spot_f > pgw and pgw - 2.0 <= strike_f <= spot_f:
-            bias += 0.85
-            bias_notes.append("strike_in_put_gamma_wall_approach_zone")
-        if cgw and abs(strike_f - cgw) <= 2.0 and strike_f <= cgw + 0.5:
-            bias += 0.55
-            bias_notes.append("near_call_gamma_resistance")
-
-    bias = min(bias, 2.0)
-    return prox, bias, {
-        "consensus_label": (row.get("label") if isinstance(row, dict) else getattr(row, "label", None)),
-        "proximity_detail": prox_detail,
-        "bias_notes": bias_notes,
-    }
 
 
-def score_option_expression(contracts, spot, strike, side, *, walls=None):
-    if not contracts or strike is None or side is None:
-        return None
-    side_up = str(side).upper().strip()
-    try:
-        strike_f = float(strike)
-        spot_f = float(spot)
-    except (TypeError, ValueError):
-        return None
-    candidates = [
-        ct
-        for ct in contracts
-        # single source: parse the strike once via the canonical finite reader (was
-        # _f for the filter + raw float() for the value — the last such double-parse).
-        if str(ct.get("putCall", "")).upper().strip() == side_up
-        and (sp := _f(ct.get("strikePrice"))) is not None
-        and abs(sp - strike_f) < 0.01
-    ]
-    if not candidates:
-        return None
-    ct = candidates[0]
-    bid = _f(ct.get("bid"))
-    ask = _f(ct.get("ask"))
-    gamma_raw = _f(ct.get("gamma"))
-    delta_raw = _f(ct.get("delta"))
-    delta = delta_raw if (delta_raw is not None and delta_raw != MISSING_GREEK_SENTINEL and math.isfinite(delta_raw)) else None
-    gamma = gamma_raw if greek_reported(gamma_raw, iv=_f(ct.get("volatility"))) else None
-    volume = _f(ct.get("totalVolume"))
-    oi = _f(ct.get("openInterest"))
-    a_px, b_px = ask, bid
-    spread = round(a_px - b_px, 4) if b_px is not None and a_px is not None else None
-    liq_gate = spread is not None and spread <= OE_SPREAD_TIGHT_MAX
-    dgr = round(abs(delta) / abs(gamma), 2) if gamma and gamma != 0 and delta is not None else None
-    voi = round(volume / oi, 3) if oi and oi > 0 and volume is not None else None
-    gxoi = gamma * oi if gamma is not None and oi is not None else None
-    max_g = 0.0
-    max_gs = None
-    gis_max = False
-    for c in contracts:
-        if str(c.get("putCall", "")).upper().strip() != side_up:
-            continue
-        g_raw = _f(c.get("gamma"))
-        if not greek_reported(g_raw, iv=_f(c.get("volatility"))):
-            continue
-        if abs(g_raw) > abs(max_g):
-            max_g = g_raw
-            max_gs = _f(c.get("strikePrice"))
-    if max_gs is not None and abs(max_gs - strike_f) < 0.01:
-        gis_max = True
-
-    base = 0.0
-    if liq_gate:
-        base += 5.0
-    elif spread is not None:
-        base += max(0, 3.0 - spread * 10.0)
-    if gamma is not None:
-        base += min(abs(gamma) * 10.0, 3.0)
-    base += (1.0 / (1.0 + abs(strike_f - spot_f))) * 3.0
-    if voi is not None and voi > 0:
-        base += min(voi, 1.0) * 2.0
-    if gxoi is not None:
-        base += min(abs(gxoi) / 1000.0, 1.0)
-    if gis_max:
-        base += 1.0
-
-    wp, wb, wdbg = compute_wall_score_components(strike_f, spot_f, side_up, walls)
-    wsum = wp + wb
-    total_after = base + wsum
-
-    return OeResult(
-        spread=spread,
-        liq_gate=liq_gate,
-        gamma=gamma,
-        delta=delta,
-        delta_gamma_ratio=dgr,
-        volume=volume,
-        open_interest=oi,
-        vol_oi_ratio=voi,
-        gamma_x_oi=gxoi,
-        gamma_is_max=gis_max,
-        max_gamma_strike=max_gs,
-        entry_lo=round(strike_f - 0.50, 2),
-        entry_hi=round(strike_f + 0.50, 2),
-        wall_proximity_component=round(wp, 4),
-        wall_bias_component=round(wb, 4),
-        wall_score_component=round(wsum, 4),
-        total_score_before_walls=round(base, 4),
-        total_score_after_walls=round(total_after, 4),
-        wall_contribution_detail=wdbg,
-        spread_source=("derived_chain_bid_ask_pts" if spread is not None else None),
-    )
 
 
 # ── Direction classification ─────────────────────────────────────────────────
@@ -274,143 +49,24 @@ def classify_direction(pts_move: float, spot: float,
     return "flat"
 
 
-def classify_direction_pts(pts_move: float, threshold_pts: float | None) -> str:
-    """3-class direction from a precomputed per-horizon move threshold (in points).
-
-    Sibling of ``classify_direction`` with identical comparison shape, but the
-    move threshold is supplied directly in price points (e.g. the per-horizon,
-    ATR-scaled ``threshold_move_pts_for_slug`` value) instead of being derived
-    from ``spot * threshold_pct``. Used for horizon outcome labels so each
-    horizon is balanced on its own volatility scale rather than a single fixed
-    0.05%-of-spot cut applied uniformly to 1c…60c.
-
-    Fail-closed: a non-positive or missing ``threshold_pts`` yields ``"flat"`` —
-    no directional claim is made without a valid volatility scale.
-    """
-    if threshold_pts is None or threshold_pts <= 0:
-        return "flat"
-    if pts_move > threshold_pts:
-        return "up"
-    if pts_move < -threshold_pts:
-        return "down"
-    return "flat"
 
 
 # ── Distance bucketing ──────────────────────────────────────────────────────
 
-def dist_bucket(dist: float | None) -> str | None:
-    if dist is None:
-        return None
-    d = abs(dist)
-    for edge, label in zip(DIST_BUCKET_EDGES, DIST_BUCKET_LABELS):
-        if d <= edge:
-            return label
-    return DIST_BUCKET_OVERFLOW
 
 
-def bucket_lo(bucket: str | None) -> float:
-    if bucket is None:
-        # absence-literal-ok: RC-318 — a range BOUND, not a measurement. bucket=None means
-        # "no bucket constraint"; [0.0, 9999.0] is the full nonnegative distance domain, so
-        # the BETWEEN arm matches every valued row. The consumer tests ABSENCE separately:
-        # sql_issue19_tier1_candidate_rows pairs these bounds with an explicit
-        # `(nearest_*_dist IS NULL AND ? IS NULL)` arm carrying the raw anchor value.
-        return 0.0
-    raw = bucket.split("-")[0]
-    return float(raw.rstrip("+"))
 
 
-def bucket_hi(bucket: str | None) -> float:
-    if bucket is None:
-        # absence-literal-ok: RC-318 — the unbounded upper range BOUND (see bucket_lo);
-        # 9999.0 is also the genuine upper edge of the overflow ("250+") bucket below,
-        # so the value is a real answer in the bound domain either way.
-        return 9999.0
-    if bucket.endswith("+"):
-        return 9999.0
-    hi = bucket.split("-")[-1]
-    return 9999.0 if hi == "" else float(hi)
 
 
 # ── Probability computation ─────────────────────────────────────────────────
 
-def compute_probs(similar: list, outcome_col: str,
-                  half_life_days: float = RECENCY_HALF_LIFE_DAYS) -> dict:
-    import time as _time
-    now = _time.time()
-    decay_rate = 0.693147 / (half_life_days * 86400.0)
-    weights = {"up": 0.0, "down": 0.0, "flat": 0.0}
-    total_weight = 0.0
-    for row in similar:
-        val = row.get(outcome_col)
-        if val not in weights:
-            continue
-        ts = row.get("ts_utc")
-        if ts is not None:
-            age_seconds = max(now - ts, 0.0)
-            w = 2.718281828 ** (-decay_rate * age_seconds)
-        else:
-            w = 0.5
-        weights[val] += w
-        total_weight += w
-    if total_weight < 1e-9:
-        return None
-    return {k: round(v / total_weight, 3) for k, v in weights.items()}
 
 
-def dominant_direction(up: float, down: float, flat: float) -> tuple:
-    # RC-345 / F22: the dominant-direction ARGMAX over a probability triplet is owned by ONE
-    # authority — numeric_contract.direction_from_normalized_triplet (same up>down>flat
-    # tie-break). This carries that label plus its probability; it does not re-implement the
-    # argmax (the old `max(probs, key=probs.get)` was a second projection of the same vector).
-    from numeric_contract import direction_from_normalized_triplet
-    probs = {"up": up, "down": down, "flat": flat}
-    dom = direction_from_normalized_triplet(up, down, flat)
-    if dom is None:
-        # RC-363 WITHHELD: non-finite leg — no dominant direction to report.
-        return None, None
-    return dom, probs[dom]
 
 
 # ── Confidence determination ─────────────────────────────────────────────────
 
-def determine_confidence(match_tier: int, n_used: int,
-                         dominant_prob: float,
-                         similar: list = None,
-                         outcome_col: str = "outcome_5c") -> str:
-    """outcome_col = horizon for confidence; default 5c (~5 min with 1m canonical)."""
-    if similar is not None and n_used >= MIN_SAMPLES_STATISTICAL:
-        counts = {"up": 0, "down": 0, "flat": 0}
-        for row in similar:
-            val = row.get(outcome_col)
-            if val in counts:
-                counts[val] += 1
-        total = sum(counts.values())
-        if total >= MIN_SAMPLES_STATISTICAL:
-            dom_dir = max(counts, key=counts.get)
-            k = counts[dom_dir]
-            n = total
-            p0 = 1.0 / 3.0
-            p_value = _binomial_p_value(k, n, p0)
-            if p_value < 0.01 and match_tier <= 4:
-                return "high"
-            if p_value < 0.05 and match_tier <= 5:
-                return "medium" if match_tier >= 4 else "high"
-            if p_value < 0.05:
-                return "medium"
-            if p_value < 0.10 and match_tier <= 4:
-                return "medium"
-            return "low"
-    tier_key = f"tier_{match_tier}" if isinstance(match_tier, int) else str(match_tier)
-    rules = CONFIDENCE_RULES.get(tier_key, CONFIDENCE_RULES.get("tier_7", {"base": "low"}))
-    # rules is a dict like {"base": "high"} — return the base confidence
-    if isinstance(rules, dict):
-        return rules.get("base", "low")
-    # Legacy format: list of (min_samples, min_prob, level) tuples
-    for min_samples, min_prob, level in rules:
-        if n_used >= min_samples and dominant_prob >= min_prob:
-            return level
-    return "low"
 
 
 def _binomial_p_value(k: int, n: int, p0: float) -> float:
@@ -426,27 +82,8 @@ def _binomial_p_value(k: int, n: int, p0: float) -> float:
 
 # ── Percentile / range helpers ───────────────────────────────────────────────
 
-def compute_percentile_range(similar: list, col: str = "outcome_5c_pts",
-                             lo_pct: float = 0.25, hi_pct: float = 0.75,
-                             min_samples: int = 10) -> tuple:
-    pts = [r.get(col) for r in similar if r.get(col) is not None]
-    if len(pts) < min_samples:
-        return None, None
-    pts_sorted = sorted(pts)
-    n = len(pts_sorted)
-    lo = round(pts_sorted[int(n * lo_pct)], 2)
-    hi = round(pts_sorted[int(n * hi_pct)], 2)
-    return lo, hi
 
 
-def classify_reversal_risk(reversal_prob: float | None) -> str:
-    if reversal_prob is None:
-        return ""
-    if reversal_prob <= REVERSAL_RISK_LOW_MAX:
-        return "low"
-    elif reversal_prob <= REVERSAL_RISK_MOD_MAX:
-        return "moderate"
-    return "high"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -460,234 +97,12 @@ def classify_reversal_risk(reversal_prob: float | None) -> str:
 # All signals normalized to 0–100 per spec implementation guidance.
 # ══════════════════════════════════════════════════════════════════════════════
 
-def compute_dealer_pressure_index(
-    net_dex: float,
-    net_gex: float,
-    total_oi: float,
-) -> dict:
-    """
-    Dealer Pressure Index (DPI).
-
-    Formula: DPI = sign(NetDEX) × |NetGEX| / TotalOI
-
-    Positive DPI → dealers forced to buy underlying.
-    Negative DPI → dealers forced to sell underlying.
-    Magnitude reflects pressure strength.
-
-    Args:
-        net_dex:   net delta exposure (dollars or share-equiv)
-        net_gex:   net gamma exposure (dollars or raw)
-        total_oi:  total open interest (dollars or contracts)
-
-    Returns dict with raw_dpi, normalized (0-100), direction, magnitude.
-    """
-    if total_oi is None or total_oi <= 0 or net_gex is None or net_dex is None:
-        return {"raw": None, "normalized": None, "direction": None, "magnitude": None}
-
-    sign = 1.0 if net_dex >= 0 else -1.0
-    raw = sign * abs(net_gex) / total_oi
-
-    direction = "buying" if raw > 0 else "selling" if raw < 0 else "neutral"
-    abs_raw = abs(raw)
-
-    # Normalize: empirical range roughly 0–0.5 for typical options chains
-    normalized = min(100.0, abs_raw / 0.5 * 100.0)
-
-    if normalized >= 70:
-        magnitude = "strong"
-    elif normalized >= 40:
-        magnitude = "moderate"
-    elif normalized >= 15:
-        magnitude = "mild"
-    else:
-        magnitude = "negligible"
-
-    return {
-        "raw": round(raw, 6),
-        "normalized": round(normalized, 1),
-        "direction": direction,
-        "magnitude": magnitude,
-    }
 
 
-def compute_hedging_flow_score(
-    net_gex_normalized: float | None,
-    net_dex_normalized: float | None,
-    charm_normalized: float | None,
-    vanna_normalized: float | None,
-    *,
-    w_gex: float = 0.25,
-    w_dex: float = 0.25,
-    w_charm: float = 0.25,
-    w_vanna: float = 0.25,
-) -> dict:
-    """
-    Hedging Flow Score — composite dealer hedging pressure.
-
-    Formula: Score = w1(GEX_norm) + w2(DEX_norm) + w3(Charm_norm) + w4(Vanna_norm)
-
-    Positive score → dealers likely buy dips.
-    Negative score → dealers likely sell rallies.
-
-    All inputs should be pre-normalized to roughly -1 to +1 range.
-    Output normalized to 0-100 (50 = neutral).
-
-    Args:
-        net_gex_normalized:  net GEX, normalized (-1 to +1)
-        net_dex_normalized:  net DEX, normalized (-1 to +1)
-        charm_normalized:    net charm, normalized (-1 to +1, positive = buying)
-        vanna_normalized:    net vanna, normalized (-1 to +1)
-        w_*:                 weights (default equal 0.25 each per spec)
-
-    Returns dict with raw_score, normalized (0-100), direction, magnitude.
-    """
-    # ALL four legs or no score: it used to drop missing legs and re-weight the rest, so a
-    # 1-leg "composite" was published as the 4-leg score (audit S-11, 2026-09-24).
-    legs = (net_gex_normalized, net_dex_normalized, charm_normalized, vanna_normalized)
-    if any(v is None for v in legs):
-        return {"raw": None, "normalized": None, "direction": None, "magnitude": None}
-    terms: list[tuple[float, float]] = [
-        (w_gex, float(net_gex_normalized)), (w_dex, float(net_dex_normalized)),
-        (w_charm, float(charm_normalized)), (w_vanna, float(vanna_normalized))]
-    w_sum = sum(w for w, _ in terms)
-    raw = sum(w * v for w, v in terms) / w_sum
-
-    # Map from -1..+1 range to 0..100
-    normalized = max(0.0, min(100.0, (raw + 1.0) * 50.0))
-
-    direction = "buying" if raw > 0.1 else "selling" if raw < -0.1 else "neutral"
-
-    if abs(raw) >= 0.6:
-        magnitude = "strong"
-    elif abs(raw) >= 0.3:
-        magnitude = "moderate"
-    elif abs(raw) >= 0.1:
-        magnitude = "mild"
-    else:
-        magnitude = "negligible"
-
-    return {
-        "raw": round(raw, 4),
-        "normalized": round(normalized, 1),
-        "direction": direction,
-        "magnitude": magnitude,
-    }
 
 
-def compute_gamma_gradient(
-    exposures_by_strike: dict,
-    spot: float,
-    *,
-    window_pts: float = 5.0,
-) -> float | None:
-    """
-    Gamma Gradient = d(GEX) / d(Price)
-
-    Per Derived Formula Dictionary Section 5:
-    High gradient zones indicate unstable positioning and
-    often precede sharp directional moves.
-
-    Computed as the slope of net_gex_1pct across strikes near spot.
-
-    Args:
-        exposures_by_strike: strike → bucket dict
-        spot:                current price
-        window_pts:          how far above/below spot to sample
-
-    Returns gradient (positive = increasing GEX upward), or None.
-    """
-    if not exposures_by_strike or not spot:
-        return None
-
-    below_gex = []
-    above_gex = []
-
-    for strike, bucket in exposures_by_strike.items():
-        k = float(strike)
-        gex = bucket_metric(bucket, "net_gex_1pct")
-        if gex is None:
-            continue
-        if abs(k - spot) > window_pts:
-            continue
-        if k < spot:
-            below_gex.append(gex)
-        elif k > spot:
-            above_gex.append(gex)
-
-    if not below_gex or not above_gex:
-        return None
-
-    avg_below = sum(below_gex) / len(below_gex)
-    avg_above = sum(above_gex) / len(above_gex)
-
-    gradient = (avg_above - avg_below) / (2 * window_pts)
-    return round(gradient, 4)
 
 
-def compute_breakout_score(
-    net_gex_at_spot: float | None,
-    gamma_gradient: float | None,
-    void_factor: float | None,
-) -> dict:
-    """
-    Breakout Probability Score.
-
-    Formula: BreakoutScore = (1 / |GEX|) + GammaGradient + LiquidityVoidFactor
-
-    Higher values indicate stronger breakout potential.
-
-    Args:
-        net_gex_at_spot:  absolute GEX near current spot
-        gamma_gradient:   d(GEX)/d(Price) near spot
-        void_factor:      0-1, how close/deep in a void zone (0 = no void, 1 = deep void)
-
-    Returns dict with raw_score, normalized (0-100), label.
-    """
-    inv_gex = grad_comp = void_comp = None
-    if net_gex_at_spot is not None and abs(net_gex_at_spot) > 0:
-        inv_gex = min(1.0, 1000.0 / abs(net_gex_at_spot))
-    if gamma_gradient is not None:
-        grad_comp = abs(min(1.0, max(-1.0, gamma_gradient)))
-    if void_factor is not None:
-        void_comp = max(0.0, min(1.0, void_factor))
-
-    parts = [x for x in (inv_gex, grad_comp, void_comp) if x is not None]
-    # All three legs or no score: the /3 normalisation below assumes three. A missing leg
-    # used to count as 0 -- absence read as "low" (audit S-08..10, 2026-09-24: no fallbacks).
-    if len(parts) < 3:
-        return {
-            "raw": None,
-            "normalized": None,
-            "label": None,
-            "components": {
-                "inv_gex": round(inv_gex, 4) if inv_gex is not None else None,
-                "gradient": round(grad_comp, 4) if grad_comp is not None else None,
-                "void_factor": round(void_comp, 4) if void_comp is not None else None,
-            },
-        }
-
-    raw = sum(parts)  # 0 to ~3 range
-    normalized = min(100.0, raw / 3.0 * 100.0)
-
-    if normalized >= 70:
-        label = "high"
-    elif normalized >= 40:
-        label = "moderate"
-    elif normalized >= 15:
-        label = "low"
-    else:
-        label = "negligible"
-
-    return {
-        "raw": round(raw, 4),
-        "normalized": round(normalized, 1),
-        "label": label,
-        "components": {
-            "inv_gex": round(inv_gex, 4) if inv_gex is not None else None,
-            "gradient": round(grad_comp, 4) if grad_comp is not None else None,
-            "void_factor": round(void_comp, 4) if void_comp is not None else None,
-        },
-    }
 
 
 def compute_pin_score(
@@ -738,220 +153,13 @@ def compute_pin_score(
     }
 
 
-def compute_vol_expansion_signal(
-    net_gex: float | None,
-    iv_change: float | None,
-    gamma_gradient: float | None,
-) -> dict:
-    """
-    Volatility Expansion Signal.
-
-    Formula: VolSignal = (−NetGEX) + IVChange + GammaGradient
-
-    Signal strengthens when NetGEX turns negative, IV rises,
-    and gamma gradient rises.
-
-    Args:
-        net_gex:          net gamma exposure (negative = expansion risk)
-        iv_change:        IV direction as numeric (-1 contracting, 0 flat, +1 expanding)
-        gamma_gradient:   d(GEX)/d(Price)
-
-    Returns dict with raw_score, normalized (0-100), label.
-    """
-    neg_gex_component = iv_comp = grad_comp = None
-    if net_gex is not None:
-        neg_gex_component = (
-            max(0.0, min(1.0, -net_gex / 100000.0)) if net_gex < 0 else 0.0
-        )
-    if iv_change is not None:
-        iv_comp = max(0.0, min(1.0, iv_change))
-    if gamma_gradient is not None:
-        grad_comp = min(1.0, abs(gamma_gradient))
-
-    parts = [x for x in (neg_gex_component, iv_comp, grad_comp) if x is not None]
-    # All three legs or no score: the /3 normalisation below assumes three. A missing leg
-    # used to count as 0 -- absence read as "low" (audit S-08..10, 2026-09-24: no fallbacks).
-    if len(parts) < 3:
-        return {
-            "raw": None,
-            "normalized": None,
-            "label": None,
-            "components": {
-                "neg_gex": round(neg_gex_component, 4) if neg_gex_component is not None else None,
-                "iv_change": round(iv_comp, 4) if iv_comp is not None else None,
-                "gradient": round(grad_comp, 4) if grad_comp is not None else None,
-            },
-        }
-
-    raw = sum(parts)  # 0-3 range
-    normalized = min(100.0, raw / 3.0 * 100.0)
-
-    if normalized >= 65:
-        label = "high"
-    elif normalized >= 35:
-        label = "moderate"
-    elif normalized >= 15:
-        label = "low"
-    else:
-        label = "negligible"
-
-    return {
-        "raw": round(raw, 4),
-        "normalized": round(normalized, 1),
-        "label": label,
-        "components": {
-            "neg_gex": round(neg_gex_component, 4) if neg_gex_component is not None else None,
-            "iv_change": round(iv_comp, 4) if iv_comp is not None else None,
-            "gradient": round(grad_comp, 4) if grad_comp is not None else None,
-        },
-    }
 
 
-def compute_sweep_score(
-    dist_to_nearest_wall: float | None,
-    void_factor: float | None,
-    momentum_factor: float | None,
-) -> dict:
-    """
-    Liquidity Sweep Probability Score.
-
-    Formula: SweepScore = (1 / distance_to_wall) + LiquidityVoidFactor + MomentumFactor
-
-    Higher values suggest increased odds of a sweep into a major wall
-    or liquidity pocket.
-
-    Args:
-        dist_to_nearest_wall: absolute distance in points to nearest wall
-        void_factor:          0-1, how close/deep in a void zone
-        momentum_factor:      0-1, current momentum strength (e.g. from candle body / ATR)
-
-    Returns dict with raw_score, normalized (0-100), label.
-    """
-    inv_dist = void_comp = momentum_comp = None
-    if dist_to_nearest_wall is not None and dist_to_nearest_wall > 0:
-        inv_dist = min(1.0, 2.0 / dist_to_nearest_wall)
-    if void_factor is not None:
-        void_comp = max(0.0, min(1.0, void_factor))
-    if momentum_factor is not None:
-        momentum_comp = max(0.0, min(1.0, momentum_factor))
-
-    parts = [x for x in (inv_dist, void_comp, momentum_comp) if x is not None]
-    # All three legs or no score: the /3 normalisation below assumes three. A missing leg
-    # used to count as 0 -- absence read as "low" (audit S-08..10, 2026-09-24: no fallbacks).
-    if len(parts) < 3:
-        return {
-            "raw": None,
-            "normalized": None,
-            "label": None,
-            "components": {
-                "inv_dist": round(inv_dist, 4) if inv_dist is not None else None,
-                "void_factor": round(void_comp, 4) if void_comp is not None else None,
-                "momentum": round(momentum_comp, 4) if momentum_comp is not None else None,
-            },
-        }
-
-    raw = sum(parts)  # 0-3 range
-    normalized = min(100.0, raw / 3.0 * 100.0)
-
-    if normalized >= 65:
-        label = "high"
-    elif normalized >= 35:
-        label = "moderate"
-    elif normalized >= 15:
-        label = "low"
-    else:
-        label = "negligible"
-
-    return {
-        "raw": round(raw, 4),
-        "normalized": round(normalized, 1),
-        "label": label,
-        "components": {
-            "inv_dist": round(inv_dist, 4) if inv_dist is not None else None,
-            "void_factor": round(void_comp, 4) if void_comp is not None else None,
-            "momentum": round(momentum_comp, 4) if momentum_comp is not None else None,
-        },
-    }
 
 
 
 # ── Option Flow Signals (from Schwab bid/ask size + volume) ──────────────────
 
-def compute_volume_oi_ratio(
-    exposures_by_strike: dict,
-    spot: float,
-    *,
-    window_pts: float = 5.0,
-) -> dict:
-    """
-    Volume/OI ratio across strikes near ATM.
-
-    Ratio > 1.0 → new positions being opened (fresh institutional activity).
-    Ratio 0.5–1.0 → moderate activity, some new / some closing.
-    Ratio < 0.5 → stale OI, little new activity.
-
-    Args:
-        exposures_by_strike: strike → bucket dict with call_volume, put_volume, call_oi, put_oi
-        spot: current price
-        window_pts: how far from spot to aggregate
-
-    Returns dict with ratio, interpretation, total_volume, total_oi.
-    """
-    if not exposures_by_strike or not spot:
-        return {"ratio": None, "label": None, "total_volume": None, "total_oi": None}
-
-    total_vol = 0.0
-    total_oi = 0.0
-    saw_volume = False
-    saw_oi = False
-
-    for strike, bucket in exposures_by_strike.items():
-        k = float(strike)
-        if abs(k - spot) > window_pts:
-            continue
-        cv = bucket.get("call_volume")
-        pv = bucket.get("put_volume")
-        if cv is not None:
-            saw_volume = True
-            total_vol += float(cv)
-        if pv is not None:
-            saw_volume = True
-            total_vol += float(pv)
-        co = bucket.get("call_oi")
-        po = bucket.get("put_oi")
-        if co is not None:
-            saw_oi = True
-            total_oi += float(co)
-        if po is not None:
-            saw_oi = True
-            total_oi += float(po)
-
-    if not saw_oi:
-        return {"ratio": None, "label": "missing_oi", "total_volume": round(total_vol), "total_oi": None}
-    if total_oi <= 0:
-        return {"ratio": None, "label": "no_oi", "total_volume": total_vol, "total_oi": 0}
-    if not saw_volume:
-        return {"ratio": None, "label": "missing_volume", "total_volume": None, "total_oi": round(total_oi)}
-
-    ratio = total_vol / total_oi
-
-    if ratio > 1.5:
-        label = "heavy_new_positions"
-    elif ratio > 1.0:
-        label = "new_positions"
-    elif ratio > 0.5:
-        label = "moderate"
-    elif ratio > 0.1:
-        label = "stale"
-    else:
-        label = "dormant"
-
-    return {
-        "ratio": round(ratio, 3),
-        "label": label,
-        "total_volume": round(total_vol),
-        "total_oi": round(total_oi),
-    }
 
 
 def flow_imbalance_label_from_normalized(normalized: float | None) -> str | None:
@@ -1045,22 +253,6 @@ def compute_option_flow_imbalance(
     }
 
 
-def atm_flow_window_totals(
-    exposures_by_strike: dict,
-    spot: float,
-    *,
-    window_pts: float = 5.0,
-) -> dict[str, float | int | None]:
-    """Near-ATM aggregates (inspection / debugging). Values None when the window is unknown
-    (no strike, or a strike with unreported sizes/volume) -- they used to read 0."""
-    got = _atm_window_legs(exposures_by_strike, spot, window_pts)
-    if got is None:
-        return {"strikes_in_window": None, "call_vol": None, "put_vol": None,
-                "call_bid": None, "call_ask": None, "put_bid": None, "put_ask": None}
-    s, n, _ = got
-    return {"strikes_in_window": n, "call_vol": s["call_volume"], "put_vol": s["put_volume"],
-            "call_bid": s["call_bid"], "call_ask": s["call_ask"],
-            "put_bid": s["put_bid"], "put_ask": s["put_ask"]}
 
 
 def option_flow_book_imbalance(

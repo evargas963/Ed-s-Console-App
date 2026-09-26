@@ -5,14 +5,12 @@ Phase 1 extracted Card 1 logic from signals.py.
 
 from __future__ import annotations
 
-import logging
 
 from math_exposure import is_pin_zone, APPROACH_PTS
 from signal_types import SignalInput, RulesCard
 from features.regime_mvp_context import mvp_vwap_side, mvp_zone
 from signal_helpers import _ordinal
 
-log = logging.getLogger(__name__)
 
 
 def _derive_bias_from_micro(micro, approaching_ceiling, approaching_floor,

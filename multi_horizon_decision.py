@@ -23,7 +23,6 @@ _TRIPLET_LABEL_TO_FORECAST = {"up": "long", "down": "short", "flat": "wait"}
 
 # Authoritative multi-horizon decision inputs only (must match PRIMARY_DECISION_HORIZONS).
 PRODUCT_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS
-HORIZON_MINUTES: dict[str, int] = {s: int(s[:-1]) for s in PRIMARY_DECISION_HORIZONS}
 
 # Per-mode primary-horizon search order (permutations of PRIMARY_DECISION_HORIZONS).
 PRIMARY_ORDER_BY_MODE: dict[str, tuple[str, ...]] = {
@@ -67,43 +66,11 @@ ALIGNMENT_CONTRADICTORY_MIN_COUNT: int = 2
 ALIGNMENT_WEAK_MIN_COUNT: int = 2
 STRUCTURAL_HORIZONS_FOR_CONTRADICTION: tuple[str, ...] = ("15c", "60c")
 
-# ── Multi-horizon vocabulary (wire/API snake_case; do not reuse across layers) ──
-# Trade decision: final_bias / call_signal → LONG | SHORT | WAIT
-# Per-horizon call (mhap_rows.call): LONG | SHORT | WAIT | UNAVAILABLE (missing data)
-# Per-horizon support (mhap_rows.row_state): primary | aligned | weak | contradictory | missing
-# Cross-horizon alignment (alignment_state_display): values below — NOT a trade direction
-ALIGNMENT_STATE_FULLY_ALIGNED: str = "fully_aligned"
-ALIGNMENT_STATE_MOSTLY_ALIGNED: str = "mostly_aligned"
-ALIGNMENT_STATE_MIXED: str = "mixed"
-ALIGNMENT_STATE_CONTRADICTORY: str = "contradictory"
-ALIGNMENT_STATE_WEAK: str = "weak"
 ALIGNMENT_STATE_NO_PRIMARY: str = "no_primary"  # primary horizon not tradeable; not UNAVAILABLE
-ALIGNMENT_STATES: tuple[str, ...] = (
-    ALIGNMENT_STATE_FULLY_ALIGNED,
-    ALIGNMENT_STATE_MOSTLY_ALIGNED,
-    ALIGNMENT_STATE_MIXED,
-    ALIGNMENT_STATE_CONTRADICTORY,
-    ALIGNMENT_STATE_WEAK,
-    ALIGNMENT_STATE_NO_PRIMARY,
-)
 # Legacy wire value (pre-2026-06): kept for calibration rows + filters only
 ALIGNMENT_STATE_UNUSABLE_LEGACY: str = "unusable"
 
 
-def alignment_state_operator_label(state: str | None) -> str:
-    """Operator-readable alignment label; internal wire stays snake_case."""
-    key = str(state or "").strip().lower()
-    if key in (ALIGNMENT_STATE_NO_PRIMARY, ALIGNMENT_STATE_UNUSABLE_LEGACY):
-        return "no primary edge"
-    if key in (ALIGNMENT_STATE_FULLY_ALIGNED, ALIGNMENT_STATE_MOSTLY_ALIGNED):
-        return "aligned"
-    if key == ALIGNMENT_STATE_CONTRADICTORY:
-        return "split"
-    if key == ALIGNMENT_STATE_WEAK:
-        return "weak support"
-    if key == ALIGNMENT_STATE_MIXED:
-        return "mixed"
-    return key or "unknown"
 
 
 def normalize_alignment_state(state: str | None) -> str:
@@ -330,12 +297,6 @@ class MultiHorizonSynthesis:
             return 1 if self.final_bias == "long" else -1
         return 0
 
-    def mh_veto_stack_directional(self, stack_sig: str) -> bool:
-        if stack_sig == "wait":
-            return False
-        if not self.final_tradeable_decision or self.final_bias == "wait":
-            return True
-        return stack_sig != self.final_bias
 
 
 def compute_multi_horizon_synthesis(
@@ -1229,16 +1190,3 @@ def _ml_consensus_vote(hmap: dict[str, HorizonForecast]) -> tuple[Optional[str],
     return None, long_v, short_v
 
 
-def build_multi_horizon_bundle(
-    inp,
-    pred,
-    canonical,
-    call,
-    mh_ml_bundle: Optional[MultiHorizonMLFusionBundle] = None,
-) -> MultiHorizonForecastBundle:
-    return finalize_multi_horizon_bundle(
-        compute_multi_horizon_synthesis(inp, pred, canonical, mh_ml_bundle),
-        call,
-        inp,
-        mh_ml_bundle,
-    )

@@ -49,8 +49,6 @@ PARALLEL_CASCADE_BRIDGE_IDENTITY_NAME = "parallel_cascade_bridge_identity.json"
 FEATURE_IDENTITY_NAME = "feature_cache_identity.json"
 
 
-def _app_models_dir() -> Path:
-    return Path(__file__).parent / "models"
 
 
 def file_sha256_hex(path: Path) -> str:
@@ -455,42 +453,6 @@ def min_ts_utc_for_last_n_rth_sessions(
     return float(min(ts_list))
 
 
-def compare_tabular_data_fingerprint_from_df(df, ticker: str) -> dict:
-    """Same shape as db_training_fingerprint for train_compare slices (tabular rows only)."""
-    import pandas as pd
-    from timeframe_config import CANONICAL_TIMEFRAME
-
-    t = ticker_storage_key(ticker)
-    if df is None or len(df) == 0:
-        return {
-            "table": "compare_train_slice",
-            "timeframe": CANONICAL_TIMEFRAME,
-            "ticker": t,
-            "min_ts_utc": None,
-            "max_ts_utc": None,
-            "row_count": 0,
-        }
-    ts = df["ts_utc"]
-    s = pd.to_numeric(ts, errors="coerce")
-    mn = float(s.min())
-    mx = float(s.max())
-    # RC-345 / F38: content identity over (ts_utc, label) so an in-place label mutation on the
-    # same slice misses the cache — parity with the DB fingerprint's content_hash.
-    _lbl = DEFAULT_TRAINING_LABEL_COLUMN
-    if _lbl in df.columns:
-        pairs = sorted(zip((float(x) for x in s.fillna(-1.0)), (str(v) for v in df[_lbl])))
-    else:
-        pairs = sorted(float(x) for x in s.fillna(-1.0))
-    content_hash = hashlib.sha256(repr(pairs).encode()).hexdigest()[:16]
-    return {
-        "table": "compare_train_slice",
-        "timeframe": CANONICAL_TIMEFRAME,
-        "ticker": t,
-        "min_ts_utc": mn,
-        "max_ts_utc": mx,
-        "row_count": int(len(df)),
-        "content_hash": content_hash,
-    }
 
 
 def _fingerprint_key_part(data_fp: dict, field: str) -> str:
@@ -1332,17 +1294,8 @@ def sync_candidate_manifest_lineage_before_governed_eval(
     save_run_manifest(out_dir, patched)
 
 
-def compare_aggregate_manifest_path() -> Path:
-    from training_cache_policy import COMPARE_MANIFEST_FILENAME
-
-    return Path(__file__).resolve().parent / "models" / COMPARE_MANIFEST_FILENAME
 
 
-def save_compare_aggregate_manifest(payload: dict) -> Path:
-    p = compare_aggregate_manifest_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-    return p
 
 
 def parallel_artifact_basenames(ticker: str, horizon_suffix: str = DEFAULT_ML_HORIZON_SLUG) -> list[str]:
@@ -1489,26 +1442,5 @@ def build_manifest(
     }
 
 
-# Legacy helpers (unused by scheduler; kept for compatibility)
-def cache_exists(
-    ticker: str,
-    timeframe: str,
-    target: str,
-    train_start: str,
-    train_end: str,
-) -> bool:
-    from training_provenance import cache_key, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION
-
-    key = cache_key(ticker, timeframe, target, FEATURE_SCHEMA_VERSION, PREPROCESSING_VERSION, train_start[:10], train_end[:10])
-    p = FEATURE_CACHE_ROOT.parent / key
-    return (p / "meta.json").exists()
 
 
-def read_cache_meta(cache_key_str: str) -> Optional[dict]:
-    p = FEATURE_CACHE_ROOT.parent / cache_key_str / "meta.json"
-    if not p.exists():
-        return None
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return None

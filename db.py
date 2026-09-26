@@ -28,7 +28,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import json
-import math
 import time as _wall_time
 import bisect
 import hashlib
@@ -36,7 +35,7 @@ import logging
 import threading
 from collections import deque
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 
 from db_authority import (
     classify_db_path,
@@ -47,7 +46,7 @@ from dataclasses import dataclass, asdict
 from typing import Any, Callable, Optional, TypeVar
 
 # ── Canonical timeframe (central config) ───────────────────────────────────
-from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
+from timeframe_config import CANONICAL_TIMEFRAME
 from snapshot_access import require_snapshot_timeframe
 from horizon_outcomes import (
     HORIZON_OUTCOME_SCHEMA_BAR_V1,
@@ -70,24 +69,9 @@ from movement_target_threshold import (
 # math_exposure.py. db.py MUST NOT define its own versions.
 from math_exposure import (
     classify_direction_pts as _classify_direction_per_horizon,
-    dist_bucket as _dist_bucket,
-    bucket_lo as _bucket_lo,
-    bucket_hi as _bucket_hi,
-    MIN_SAMPLES_STATISTICAL,
 )
 
 # Issue 19 / 21 — tier column tuples + audit helpers (single source: similarity_audit)
-from similarity_audit import (
-    SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS,
-    SIMILARITY_TIER_STOP_OUTCOME_COLUMNS,
-    query_context_for_similarity,
-    structured_constraints_for_tier,
-    relaxed_constraints_vs_previous_tier,
-    withheld_horizons_report,
-    tier_stop_weak_horizons,
-    weakest_tracked_horizons,
-    widening_summary_from_tiers,
-)
 
 from instrument_identity import ticker_storage_key
 
@@ -204,33 +188,6 @@ def record_sqlite_contention_event(
             sub[key] = int(sub.get(key, 0)) + 1
 
 
-def sqlite_contention_metrics_snapshot() -> dict[str, Any]:
-    """Process-local tier-1 contention totals + recent events (for /api/diagnostics)."""
-    with _SQLITE_CONTENTION_METRICS_LOCK:
-        recent = list(_sqlite_contention_recent)[-50:]
-        totals = {
-            k: v
-            for k, v in _sqlite_contention_totals.items()
-            if k not in ("operations", "tickers", "threads")
-        }
-        return {
-            "sqlite_lock_wait_count": int(totals.get("sqlite_lock_wait_count", 0)),
-            "sqlite_lock_wait_total_ms": round(float(totals.get("sqlite_lock_wait_total_ms", 0.0)), 3),
-            "sqlite_lock_wait_max_ms": round(float(totals.get("sqlite_lock_wait_max_ms", 0.0)), 3),
-            "sqlite_busy_retry_count": int(totals.get("sqlite_busy_retry_count", 0)),
-            "sqlite_database_locked_count": int(totals.get("sqlite_database_locked_count", 0)),
-            "sqlite_tier1_fail_count": int(totals.get("sqlite_tier1_fail_count", 0)),
-            "operations_affected": dict(_sqlite_contention_totals.get("operations") or {}),
-            "tickers_affected": dict(_sqlite_contention_totals.get("tickers") or {}),
-            "threads_affected": dict(_sqlite_contention_totals.get("threads") or {}),
-            "recent_events": recent,
-            "config": {
-                "busy_timeout_ms": 30000,
-                "journal_mode": "WAL",
-                "busy_max_retries": SQLITE_BUSY_MAX_RETRIES,
-                "lock_wait_warn_ms": SQLITE_LOCK_WAIT_WARN_MS,
-            },
-        }
 
 
 def _sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
@@ -281,29 +238,10 @@ def configure_sqlite_connection(
             log.debug("configure_sqlite_connection: %s failed: %s", pragma, e)
 
 
-def similarity_labeled_counts(rows: list) -> dict[str, int]:
-    """Labeled direction counts per horizon (same rule as prediction_engine._count_labeled)."""
-    out: dict[str, int] = {}
-    for col in SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS:
-        out[col] = sum(1 for r in rows if r.get(col) in ("up", "down", "flat"))
-    return out
 
 
-def similarity_tier_stop_viable(labeled_by_col: dict[str, int]) -> bool:
-    """True iff tiers 1–4 may stop: 1c / 5c / 15c each have enough labeled rows."""
-    if not labeled_by_col:
-        return False
-    return all(
-        labeled_by_col.get(col, 0) >= MIN_SAMPLES_STATISTICAL
-        for col in SIMILARITY_TIER_STOP_OUTCOME_COLUMNS
-    )
 
 
-def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
-    """True iff every tracked empirical column has enough labeled rows (full histogram set)."""
-    if not labeled_by_col:
-        return False
-    return all(n >= MIN_SAMPLES_STATISTICAL for n in labeled_by_col.values())
 
 # ── Database location (ONE APP, ONE MAIN, ONE DB) ───────────────────────────
 # Default: data/ed_console.db, for every process and every worktree.
@@ -314,9 +252,7 @@ def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
 # acknowledged override created an actively written worktree-local console authority.
 # Recovery and tests pass explicit paths to EdDB; runtime placement belongs only to
 # runtime_layout.
-from runtime_layout import data_dir as _runtime_data_dir  # noqa: E402
 
-DB_DIR = _runtime_data_dir()
 
 
 def _resolve_console_db_path() -> Path:
@@ -335,23 +271,6 @@ def _resolve_console_db_path() -> Path:
 DB_PATH = _resolve_console_db_path()
 
 
-def ensure_console_db_training_schema(db_path: Path | None = None) -> Path:
-    """Idempotent: console DB must expose ``snapshots_1m_normalized`` for training fingerprints.
-
-    Used by pytest, CI objective-audit, and governance live-drift reads. An empty or
-    schema-less console DB file is in-scope — bootstrap via ``EdDB`` rather than
-    surfacing raw ``OperationalError`` from ad-hoc SQL.
-    """
-    path = Path(db_path if db_path is not None else DB_PATH).resolve()
-    if path.is_file():
-        with sqlite3.connect(str(path), timeout=30.0) as conn:
-            configure_sqlite_connection(conn)
-            if conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshots_1m_normalized'"
-            ).fetchone():
-                return path
-    EdDB(path)
-    return path
 
 # ── ET timezone (DST-aware; see time_et.py) ───────────────────────────────────
 from time_et import now_et  # noqa: E402  — re-export for legacy `from db import now_et`
@@ -361,8 +280,6 @@ from time_et import (  # noqa: E402  — RC-345/F09: single RTH-boundary authori
     RTH_END_MINS as _RTH_END_MINS_AUTH,
 )
 
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
 
 def utc_ts() -> float:
     return _wall_time.time()
@@ -1061,35 +978,7 @@ class EdDB:
         assert last_exc is not None
         raise last_exc
 
-    def get_schema_flag(self, flag_key: str) -> Optional[str]:
-        """Return flag_value for an ed_schema_flags row, or None if absent."""
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT flag_value FROM ed_schema_flags WHERE flag_key = ?",
-                (flag_key,),
-            ).fetchone()
-            return str(row[0]) if row and row[0] is not None else None
 
-    def set_schema_flag(
-        self,
-        flag_key: str,
-        flag_value: str,
-        set_ts_utc: Optional[float] = None,
-    ) -> None:
-        """Upsert an auditable schema flag (ed_schema_flags)."""
-        ts = float(_wall_time.time() if set_ts_utc is None else set_ts_utc)
-
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO ed_schema_flags (flag_key, flag_value, set_ts_utc)
-                VALUES (?, ?, ?)
-                ON CONFLICT(flag_key) DO UPDATE SET
-                    flag_value = excluded.flag_value,
-                    set_ts_utc = excluded.set_ts_utc
-                """,
-                (flag_key, flag_value, ts),
-            )
 
     def _init_schema(self):
         """Create all tables if they don't exist. Safe to call on every startup."""
@@ -1626,39 +1515,6 @@ class EdDB:
                 "ON confluence_quote_ticks (ticker, ts_utc DESC)"
             )
 
-    def upsert_confluence_quote_ticks(self, rows: list[dict[str, Any]]) -> int:
-        """Insert thin quote rows (panel / constituent symbols). Returns rows written."""
-        if not rows:
-            return 0
-        self._ensure_confluence_quote_table()
-
-        def _do() -> int:
-            n = 0
-            with self._connect() as conn:
-                for row in rows:
-                    ticker = str(row.get("ticker") or "").upper().strip()
-                    ts_utc = row.get("ts_utc")
-                    ts_et = row.get("ts_et")
-                    if not ticker or ts_utc is None or not ts_et:
-                        continue
-                    conn.execute(
-                        """
-                        INSERT OR REPLACE INTO confluence_quote_ticks
-                            (ticker, ts_utc, ts_et, last_price, chg_pct)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (
-                            ticker,
-                            float(ts_utc),
-                            str(ts_et),
-                            row.get("last_price"),
-                            row.get("chg_pct"),
-                        ),
-                    )
-                    n += 1
-            return n
-
-        return _do()
 
     def confluence_quote_tick_inventory(self) -> dict[str, int]:
         """Read-side inventory for panel_auto thin quotes (persistence consumer)."""
@@ -1676,44 +1532,6 @@ class EdDB:
 
         return _do()
 
-    def fetch_confluence_quote_chg_as_of(
-        self,
-        ts_utc: float,
-        tickers: list[str],
-    ) -> dict[str, Optional[float]]:
-        """``chg_pct`` per symbol at or before ``ts_utc`` from ``confluence_quote_ticks``."""
-        if not tickers:
-            return {}
-        self._ensure_confluence_quote_table()
-        want = [str(t).upper().strip() for t in tickers if str(t).strip()]
-        if not want:
-            return {}
-        out: dict[str, Optional[float]] = {t: None for t in want}
-
-        def _do() -> dict[str, Optional[float]]:
-            with self._connect() as conn:
-                for sym in want:
-                    row = conn.execute(
-                        """
-                        SELECT chg_pct FROM confluence_quote_ticks
-                        WHERE ticker = ? COLLATE NOCASE
-                          AND ts_utc <= ?
-                          AND chg_pct IS NOT NULL
-                        ORDER BY ts_utc DESC LIMIT 1
-                        """,
-                        (sym, float(ts_utc)),
-                    ).fetchone()
-                    if row is None or row[0] is None:
-                        continue
-                    try:
-                        v = float(row[0])
-                        if math.isfinite(v):
-                            out[sym] = v
-                    except (TypeError, ValueError):
-                        pass
-            return out
-
-        return _do()
 
     def logging_universe_sync_panel_auto(self, panel_candidates: list[str], now_ts: float) -> dict[str, Any]:
         """
@@ -1809,170 +1627,10 @@ class EdDB:
 
         _do()
 
-    def logging_universe_upsert_user_persisted(
-        self, ticker: str, enrollment_source: str, now_ts: float
-    ) -> None:
-        """Enroll a non-core symbol for persistent background logging."""
-        from production_universe import is_valid_production_ticker, normalize_production_ticker
 
-        t = normalize_production_ticker(ticker)
-        if not t:
-            return
-        if not is_valid_production_ticker(t):
-            raise ValueError(
-                f"logging_universe_upsert_user_persisted: refusing invalid ticker {ticker!r} "
-                f"(normalized {t!r})"
-            )
 
-        def _do() -> None:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    "SELECT category FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
-                    (t,),
-                ).fetchone()
-                if cur is None:
-                    conn.execute(
-                        """
-                        INSERT INTO logging_universe
-                            (ticker, category, enrollment_source, enrolled_ts_utc, last_seen_ts_utc)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (t, "user_persisted", enrollment_source, now_ts, now_ts),
-                    )
-                elif cur[0] == "core":
-                    conn.execute(
-                        "UPDATE logging_universe SET last_seen_ts_utc = ? WHERE ticker = ? COLLATE NOCASE",
-                        (now_ts, t),
-                    )
-                elif cur[0] == "pinned":
-                    conn.execute(
-                        "UPDATE logging_universe SET last_seen_ts_utc = ? WHERE ticker = ? COLLATE NOCASE",
-                        (now_ts, t),
-                    )
-                else:
-                    # Provenance is WRITE-ONCE (audit round 2, 2026-08-25): re-upserting an
-                    # existing row used to overwrite enrollment_source, so a later touch —
-                    # measured: a pytest healer stamped its own name onto the 13 newest user
-                    # enrollments — destroyed the when/how of every real enrollment. Only
-                    # last_seen moves on re-upsert; the original source stands.
-                    conn.execute(
-                        """
-                        UPDATE logging_universe SET
-                            last_seen_ts_utc = ?
-                        WHERE ticker = ? COLLATE NOCASE AND category = 'user_persisted'
-                        """,
-                        (now_ts, t),
-                    )
 
-        _do()
 
-    def logging_universe_upsert_pinned(
-        self, ticker: str, enrollment_source: str, now_ts: float
-    ) -> None:
-        """Protect symbol from FIFO eviction (not a core ticker)."""
-        from production_universe import is_valid_production_ticker, normalize_production_ticker
-
-        t = normalize_production_ticker(ticker)
-        if not t:
-            return
-        if not is_valid_production_ticker(t):
-            raise ValueError(
-                f"logging_universe_upsert_pinned: refusing invalid ticker {ticker!r} "
-                f"(normalized {t!r})"
-            )
-
-        def _do() -> None:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    "SELECT category FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
-                    (t,),
-                ).fetchone()
-                if cur is None:
-                    conn.execute(
-                        """
-                        INSERT INTO logging_universe
-                            (ticker, category, enrollment_source, enrolled_ts_utc, last_seen_ts_utc)
-                        VALUES (?, 'pinned', ?, ?, ?)
-                        """,
-                        (t, enrollment_source, now_ts, now_ts),
-                    )
-                elif cur[0] == "core":
-                    conn.execute(
-                        "UPDATE logging_universe SET last_seen_ts_utc = ? WHERE ticker = ? COLLATE NOCASE",
-                        (now_ts, t),
-                    )
-                else:
-                    conn.execute(
-                        """
-                        UPDATE logging_universe SET
-                            category = 'pinned',
-                            enrollment_source = ?,
-                            last_seen_ts_utc = ?
-                        WHERE ticker = ? COLLATE NOCASE
-                        """,
-                        (enrollment_source, now_ts, t),
-                    )
-
-        _do()
-
-    def logging_universe_unpin_to_user_persisted(self, ticker: str, now_ts: float) -> bool:
-        """Downgrade pinned → user_persisted (evictable). Core unchanged."""
-        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — update hits the $-canonical row via any alias
-
-        def _do() -> bool:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    "SELECT category FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
-                    (t,),
-                ).fetchone()
-                if not cur or cur[0] != "pinned":
-                    return False
-                conn.execute(
-                    """
-                    UPDATE logging_universe SET
-                        category = 'user_persisted',
-                        enrollment_source = 'unpinned_from_pin',
-                        last_seen_ts_utc = ?
-                    WHERE ticker = ? COLLATE NOCASE
-                    """,
-                    (now_ts, t),
-                )
-                return True
-
-        return _do()
-
-    def logging_universe_remove_user_persisted(self, ticker: str) -> bool:
-        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — delete hits the $-canonical row via any alias
-
-        def _do() -> bool:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    """
-                    DELETE FROM logging_universe
-                    WHERE ticker = ? COLLATE NOCASE AND category = 'user_persisted'
-                    """,
-                    (t,),
-                )
-                return cur.rowcount > 0
-
-        return _do()
-
-    def logging_universe_remove_non_core(self, ticker: str) -> bool:
-        """Remove pinned or user_persisted row; never core."""
-        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — delete hits the $-canonical row via any alias
-
-        def _do() -> bool:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    """
-                    DELETE FROM logging_universe
-                    WHERE ticker = ? COLLATE NOCASE AND category IN ('user_persisted', 'pinned')
-                    """,
-                    (t,),
-                )
-                return cur.rowcount > 0
-
-        return _do()
 
     def logging_universe_prune_invalid_enrollments(self) -> list[str]:
         """
@@ -2009,103 +1667,11 @@ class EdDB:
         _do()
         return removed
 
-    def logging_universe_record_eviction(
-        self,
-        *,
-        evicted_ticker: str,
-        evicted_ts_utc: float,
-        reason: str,
-        cap_limit: Optional[int] = None,
-        incoming_ticker: Optional[str] = None,
-        incoming_enrollment_source: Optional[str] = None,
-    ) -> None:
-        ev = ticker_storage_key(evicted_ticker)  # RC-345/F25: canonical eviction-audit identity
-        inc = ticker_storage_key(incoming_ticker) if incoming_ticker else incoming_ticker
 
-        def _do() -> None:
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO logging_universe_eviction_log
-                        (evicted_ticker, evicted_ts_utc, reason, cap_limit,
-                         incoming_ticker, incoming_enrollment_source)
-                    VALUES (?,?,?,?,?,?)
-                    """,
-                    (
-                        ev,
-                        evicted_ts_utc,
-                        reason,
-                        cap_limit,
-                        inc,
-                        incoming_enrollment_source,
-                    ),
-                )
 
-        _do()
 
-    def logging_universe_recent_evictions(self, limit: int = 50) -> list[dict]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM logging_universe_eviction_log
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-            return [dict(r) for r in rows]
 
-    def logging_universe_eviction_candidates_fifo(self) -> list[str]:
-        """user_persisted only, oldest enrolled first — next eviction order."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker FROM logging_universe
-                WHERE category = 'user_persisted'
-                ORDER BY enrolled_ts_utc ASC, ticker COLLATE NOCASE
-                """
-            ).fetchall()
-            return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity
 
-    def logging_universe_protected_tickers(self) -> list[str]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker FROM logging_universe
-                WHERE category IN ('core', 'pinned', 'panel_auto')
-                ORDER BY ticker COLLATE NOCASE
-                """
-            ).fetchall()
-            return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity
-
-    def logging_universe_pinned_count(self) -> int:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM logging_universe WHERE category = 'pinned'"
-            ).fetchone()
-            return int(row[0] or 0)
-
-    def logging_universe_snapshot_ticker_orphans(self) -> list[str]:
-        """Distinct snapshot tickers (canonical timeframe) with no logging_universe row.
-
-        Non-empty indicates Issue-22 drift (e.g. raw SQL import) — normal server paths enroll
-        before insert_snapshot via server._register_tracked_ticker. Used by /api/logger/status
-        and tools/_ticker_coverage_audit_v1.py.
-        """
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT DISTINCT s.ticker FROM snapshots s
-                WHERE s.timeframe = ?
-                  AND NOT EXISTS (
-                    SELECT 1 FROM logging_universe lu
-                    WHERE lu.ticker = s.ticker COLLATE NOCASE
-                  )
-                ORDER BY s.ticker COLLATE NOCASE
-                """,
-                (CANONICAL_TIMEFRAME,),
-            ).fetchall()
-            return [str(r[0]) for r in rows]
 
     def logging_universe_authoritative_tickers(self) -> list[str]:
         """Sole enrollment authority (Issue 22): core + pinned + panel_auto + user_persisted.
@@ -2130,9 +1696,6 @@ class EdDB:
             ).fetchall()
             return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity (legacy bare rows resolve on-read)
 
-    def logging_universe_scheduler_tickers(self) -> list[str]:
-        """Alias for scheduler paths — identical to logging_universe_authoritative_tickers."""
-        return self.logging_universe_authoritative_tickers()
 
     def logging_universe_migration_completed(self, name: str) -> bool:
         with self._connect() as conn:
@@ -2158,56 +1721,6 @@ class EdDB:
 
         _do()
 
-    def logging_universe_import_legacy_json_tickers(
-        self,
-        tickers: list[str],
-        enrollment_source: str,
-        now_ts: float,
-        core_tickers: list[str],
-    ) -> int:
-        """Upsert deduped non-core symbols; returns rows touched. Caller runs inside transaction."""
-        core_u = {(c or "").upper().strip() for c in core_tickers}
-        tickers_copy = list(tickers)
-        enr = enrollment_source
-        nt = now_ts
-
-        def _do() -> int:
-            n = 0
-            seen: set[str] = set()
-            with self._connect() as conn:
-                for raw in tickers_copy:
-                    t = str(raw).upper().strip()
-                    if not t or t.startswith("$") or t in core_u or t in seen:
-                        continue
-                    seen.add(t)
-                    cur = conn.execute(
-                        "SELECT category FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
-                        (t,),
-                    ).fetchone()
-                    if cur is None:
-                        conn.execute(
-                            """
-                            INSERT INTO logging_universe
-                              (ticker, category, enrollment_source, enrolled_ts_utc, last_seen_ts_utc)
-                            VALUES (?, 'user_persisted', ?, ?, ?)
-                            """,
-                            (t, enr, nt, nt),
-                        )
-                        n += 1
-                    elif cur[0] == "user_persisted":
-                        conn.execute(
-                            """
-                            UPDATE logging_universe SET
-                              last_seen_ts_utc = ?,
-                              enrollment_source = COALESCE(enrollment_source, ?)
-                            WHERE ticker = ? COLLATE NOCASE
-                            """,
-                            (nt, enr, t),
-                        )
-                        n += 1
-            return n
-
-        return _do()
 
     def logging_universe_migrate_legacy_json_file(
         self,
@@ -2455,33 +1968,8 @@ class EdDB:
 
         _do()
 
-    def logging_universe_touch_background_log(self, ticker: str, ts_utc: float) -> None:
-        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — touch hits the $-canonical row via any alias
-        tu = ts_utc
 
-        def _do() -> None:
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    UPDATE logging_universe SET last_background_log_ts_utc = ?
-                    WHERE ticker = ? COLLATE NOCASE
-                    """,
-                    (tu, t),
-                )
 
-        _do()
-
-    def logging_universe_user_persisted_count(self) -> int:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM logging_universe WHERE category = 'user_persisted'"
-            ).fetchone()
-            return int(row[0] or 0)
-
-    def logging_universe_oldest_user_persisted_ticker(self) -> Optional[str]:
-        """Must match eviction FIFO head — single deterministic eviction victim."""
-        fifo = self.logging_universe_eviction_candidates_fifo()
-        return fifo[0] if fifo else None
 
     def logging_universe_list_rows(self) -> list[dict]:
         with self._connect() as conn:
@@ -2501,166 +1989,13 @@ class EdDB:
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def logging_universe_list_rows_audit(self) -> list[dict]:
-        """Rows + deterministic eviction_status + fifo position for user_persisted."""
-        fifo = self.logging_universe_eviction_candidates_fifo()
-        fifo_pos = {t: i + 1 for i, t in enumerate(fifo)}
-        prot = set(self.logging_universe_protected_tickers())
-        out: list[dict] = []
-        for row in self.logging_universe_list_rows():
-            d = dict(row)
-            cat = d.get("category") or ""
-            if cat in ("core", "pinned", "panel_auto"):
-                d["eviction_status"] = "protected"
-                d["eviction_fifo_position"] = None
-            elif cat == "user_persisted":
-                d["eviction_status"] = "eligible"
-                d["eviction_fifo_position"] = fifo_pos.get(ticker_storage_key(d["ticker"]))  # RC-345/F25: canonical audit key
-            else:
-                d["eviction_status"] = "unknown"
-                d["eviction_fifo_position"] = None
-            d["is_protected"] = ticker_storage_key(d["ticker"]) in prot  # RC-345/F25: canonical audit key
-            out.append(d)
-        return out
 
     # Category protection priority — the SAME hierarchy the eviction/protection logic already uses.
     # Used as the deterministic collision-merge rule when a legacy alias row (e.g. "SPX") must fold
     # into its canonical form ("$SPX") that already exists.
     _LU_CATEGORY_PRIORITY = {"core": 0, "pinned": 1, "panel_auto": 2, "user_persisted": 3}
 
-    def logging_universe_migrate_canonical_ticker_identity(
-        self, *, dry_run: bool = True
-    ) -> dict[str, Any]:
-        """RC-345/F25 — bring persisted ``logging_universe`` rows onto the ONE canonical ticker
-        identity (``ticker_storage_key``). Legacy bare-root index rows (e.g. ``SPX``) become
-        ``$SPX``; a legacy row that collides with an existing canonical row is MERGED by a
-        deterministic, evidence-based rule.
 
-        Properties (institutional-grade):
-          * deterministic + transactional (single transaction; ``dry_run`` rolls back)
-          * idempotent (a re-run after a real run reports zero changes)
-          * explicit before/after counts + per-ticker rewrite report
-          * collision detection with a proven merge rule (never invents state)
-          * fail-closed: an unresolvable collision aborts the whole transaction, mutating nothing
-
-        Merge rule for ``legacy_alias -> canonical`` when BOTH exist (all deterministic):
-          category         = stronger of the two (core > pinned > panel_auto > user_persisted)
-          enrollment_source= the stronger-category row's source (ties: canonical row's)
-          enrolled_ts_utc  = MIN (earliest original enrollment preserved)
-          last_seen_ts_utc = MAX (most recent activity preserved)
-          last_background_log_ts_utc = MAX (most recent activity preserved)
-        No row field is silently discarded — the surviving row is the field-wise best of both.
-        """
-        self._ensure_logging_universe_table()
-        self._ensure_logging_universe_aux_tables()
-
-        def _do() -> dict[str, Any]:
-            report: dict[str, Any] = {
-                "dry_run": bool(dry_run),
-                "rows_before": 0,
-                "rows_after": 0,
-                "renames": [],       # legacy -> canonical (no collision)
-                "merges": [],        # legacy -> canonical (collision merged)
-                "unchanged": 0,
-                "aborted_collision": None,
-            }
-            with self._connect() as conn:
-                conn.execute("BEGIN")
-                try:
-                    rows = conn.execute(
-                        "SELECT ticker, category, enrollment_source, enrolled_ts_utc, "
-                        "last_seen_ts_utc, last_background_log_ts_utc FROM logging_universe"
-                    ).fetchall()
-                    report["rows_before"] = len(rows)
-                    by_ticker = {str(r[0]): dict(zip(
-                        ("ticker", "category", "enrollment_source", "enrolled_ts_utc",
-                         "last_seen_ts_utc", "last_background_log_ts_utc"), r)) for r in rows}
-
-                    for stored, row in list(by_ticker.items()):
-                        canon = ticker_storage_key(stored)
-                        if canon == stored:
-                            report["unchanged"] += 1
-                            continue
-                        # A COLLATE NOCASE PK already folds pure-case variants; the only rewrites
-                        # are true alias changes (bare index root -> $-prefixed canonical).
-                        if canon in by_ticker and canon != stored:
-                            other = by_ticker[canon]
-                            merged = self._lu_merge_rows(row, other)
-                            if merged is None:
-                                report["aborted_collision"] = {
-                                    "legacy": stored, "canonical": canon,
-                                    "reason": "no proven safe merge",
-                                }
-                                conn.execute("ROLLBACK")
-                                return report
-                            conn.execute(
-                                "DELETE FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
-                                (stored,),
-                            )
-                            conn.execute(
-                                """
-                                UPDATE logging_universe SET
-                                    category = ?, enrollment_source = ?, enrolled_ts_utc = ?,
-                                    last_seen_ts_utc = ?, last_background_log_ts_utc = ?
-                                WHERE ticker = ? COLLATE NOCASE
-                                """,
-                                (merged["category"], merged["enrollment_source"],
-                                 merged["enrolled_ts_utc"], merged["last_seen_ts_utc"],
-                                 merged["last_background_log_ts_utc"], canon),
-                            )
-                            by_ticker[canon] = {**merged, "ticker": canon}
-                            del by_ticker[stored]
-                            report["merges"].append({"legacy": stored, "canonical": canon,
-                                                     "category": merged["category"]})
-                        else:
-                            conn.execute(
-                                "UPDATE logging_universe SET ticker = ? WHERE ticker = ? COLLATE NOCASE",
-                                (canon, stored),
-                            )
-                            by_ticker[canon] = {**row, "ticker": canon}
-                            del by_ticker[stored]
-                            report["renames"].append({"legacy": stored, "canonical": canon})
-
-                    report["rows_after"] = conn.execute(
-                        "SELECT COUNT(*) FROM logging_universe"
-                    ).fetchone()[0]
-
-                    if dry_run:
-                        conn.execute("ROLLBACK")
-                    else:
-                        conn.execute("COMMIT")
-                except Exception:
-                    conn.execute("ROLLBACK")
-                    raise
-            return report
-
-        return _do()
-
-    def _lu_merge_rows(self, a: dict, b: dict) -> Optional[dict]:
-        """Deterministic field-wise merge of a legacy-alias row and its canonical row.
-        Returns None only if neither category is recognized (fail-closed)."""
-        pa = self._LU_CATEGORY_PRIORITY.get(str(a.get("category")))
-        pb = self._LU_CATEGORY_PRIORITY.get(str(b.get("category")))
-        if pa is None or pb is None:
-            return None
-        strong = a if pa < pb else b  # lower priority number = stronger; ties -> b (canonical row)
-
-        def _min(x, y):
-            xs = [v for v in (x, y) if v is not None]
-            return min(xs) if xs else None
-
-        def _max(x, y):
-            xs = [v for v in (x, y) if v is not None]
-            return max(xs) if xs else None
-
-        return {
-            "category": strong["category"],
-            "enrollment_source": strong.get("enrollment_source"),
-            "enrolled_ts_utc": _min(a.get("enrolled_ts_utc"), b.get("enrolled_ts_utc")),
-            "last_seen_ts_utc": _max(a.get("last_seen_ts_utc"), b.get("last_seen_ts_utc")),
-            "last_background_log_ts_utc": _max(
-                a.get("last_background_log_ts_utc"), b.get("last_background_log_ts_utc")),
-        }
 
     def _migrate_schema(self):
         """Add columns that may be missing from older databases.
@@ -3885,158 +3220,7 @@ class EdDB:
         audit["updates_executed"] = total_updates
         return audit
 
-    def refresh_governed_outcomes_for_mutated_bar_starts(
-        self,
-        ticker: str,
-        bar_start_ts_utc: set[float] | list[float],
-        *,
-        ts_eval_utc: float | None = None,
-    ) -> int:
-        """
-        Recompute BAR_ANCHOR_V1 snapshot rows affected by 1m bars at the given starts.
 
-        Call after any price_bars_1m write that does not go through upsert_1m_bars (e.g. repair SQL).
-        """
-        tz = float(ts_eval_utc if ts_eval_utc is not None else _wall_time.time())
-        tkr = ticker_storage_key(ticker)
-        if not tkr:
-            return 0
-        changed = {float(x) for x in bar_start_ts_utc}
-        if not changed:
-            return 0
-        with self._connect() as conn:
-            n = _refresh_governed_outcomes_after_bar_mutation(
-                conn, tkr=tkr, changed_bar_starts=changed, tz=tz
-            )
-            conn.commit()
-            return n
-
-    def fill_outcomes_pin_neutral_backfill_v1(
-        self,
-        *,
-        dry_run: bool = False,
-    ) -> dict:
-        """
-        Repair outcomes for historical pin_neutral rows left unfilled because live
-        fill_outcomes only considers snapshots in a rolling 14-day window.
-
-        Same bar-anchor contract as fill_outcomes. Evaluation time is wall-clock now
-        so forward horizons are complete when 1m bar history exists.
-
-        Scope: zone='pin_neutral', outcome_filled=0, BAR_ANCHOR_V1, **canonical timeframe (1m) only**.
-        Legacy ``timeframe='5m'`` rows are **excluded** (counted in ``legacy_timeframe_rows_excluded``)
-        so repair does not extend labels into non-canonical snapshot metadata used by Issue 19.
-        Labeling still uses ``price_bars_1m`` (same bar grid as ``fill_outcomes``).
-        """
-        tz = float(_wall_time.time())
-        _max_fwd_min = max(s[2] for s in OUTCOME_BAR_SPECS)
-        bar_pad = float(_max_fwd_min) * 60.0 + 120.0
-        audit: dict = {
-            "schema": "pin_neutral_outcome_repair_v1",
-            "dry_run": dry_run,
-            "ts_eval_utc": tz,
-            "timeframes_in_scope": [CANONICAL_TIMEFRAME],
-            "legacy_timeframe_rows_excluded": 0,
-            "updates_executed": 0,
-            "tickers_touched": [],
-            "snapshots_scanned": 0,
-        }
-
-        def _do() -> None:
-            with self._connect() as conn:
-                leg = conn.execute(
-                    """
-                    SELECT COUNT(*) AS n FROM snapshots
-                    WHERE zone = 'pin_neutral'
-                      AND outcome_filled = 0
-                      AND timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
-                    """,
-                    (
-                        DERIVED_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-                    ),
-                ).fetchone()
-                audit["legacy_timeframe_rows_excluded"] = int(leg["n"] if leg else 0)
-                if audit["legacy_timeframe_rows_excluded"]:
-                    log.info(
-                        "fill_outcomes_pin_neutral_backfill_v1: excluding %s legacy %s pin_neutral rows "
-                        "(canonical repair is 1m-only)",
-                        audit["legacy_timeframe_rows_excluded"],
-                        DERIVED_TIMEFRAME,
-                    )
-                rows = conn.execute(
-                    """
-                    SELECT ticker, snapshot_id, ts_utc, atr
-                    FROM snapshots
-                    WHERE zone = 'pin_neutral'
-                      AND outcome_filled = 0
-                      AND timeframe = ?
-                      AND COALESCE(horizon_outcome_schema_version, ?) = ?
-                    ORDER BY ticker, ts_utc
-                    """,
-                    (
-                        CANONICAL_TIMEFRAME,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-                        HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-                    ),
-                ).fetchall()
-                audit["snapshots_scanned"] = len(rows)
-                by_ticker: dict[str, list] = {}
-                for r in rows:
-                    tkr_row = r["ticker"]
-                    by_ticker.setdefault(tkr_row, []).append(r)
-
-                total_updates = 0
-                tickers_touched: list[str] = []
-                for tkr_raw, trows in sorted(by_ticker.items()):
-                    t_key = ticker_storage_key(tkr_raw)
-                    min_ts = min(float(x["ts_utc"]) for x in trows)
-                    bar_low = min_ts - 120.0 * 86400.0
-                    bar_high = tz + bar_pad
-
-                    close_by_start: dict[float, float] = {}
-                    for r in conn.execute(
-                        """
-                        SELECT bar_start_ts_utc, close FROM price_bars_1m
-                        WHERE ticker = ? AND bar_start_ts_utc >= ? AND bar_start_ts_utc <= ?
-                        """,
-                        (t_key, bar_low, bar_high),
-                    ).fetchall():
-                        close_by_start[float(r["bar_start_ts_utc"])] = float(r["close"])
-
-                    bar_end_rows = conn.execute(
-                        """
-                        SELECT bar_end_ts_utc, close FROM price_bars_1m
-                        WHERE ticker = ? AND bar_start_ts_utc >= ? AND bar_end_ts_utc <= ?
-                        ORDER BY bar_end_ts_utc ASC
-                        """,
-                        (t_key, bar_low, tz),
-                    ).fetchall()
-                    bar_ends = [float(r["bar_end_ts_utc"]) for r in bar_end_rows]
-                    bar_end_closes = [float(r["close"]) for r in bar_end_rows]
-
-                    if dry_run:
-                        tickers_touched.append(t_key)
-                        continue
-                    n = _apply_bar_based_outcome_updates(
-                        conn,
-                        tz=tz,
-                        unfilled_rows=trows,
-                        bar_ends=bar_ends,
-                        bar_end_closes=bar_end_closes,
-                        close_by_start=close_by_start,
-                    )
-                    total_updates += n
-                    if n:
-                        tickers_touched.append(t_key)
-
-                audit["updates_executed"] = total_updates
-                audit["tickers_touched"] = sorted(set(tickers_touched))
-
-        _do()
-        return audit
 
     def get_recent_snapshots(
         self,
@@ -4076,408 +3260,8 @@ class EdDB:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_recent_iv_levels(
-        self,
-        ticker: str,
-        timeframe: str,
-        n: int = 5000,
-        *,
-        as_of_ts_utc: Optional[float] = None,
-    ) -> list:
-        """iv_level column of the N most recent snapshots (DESC by ts_utc).
 
-        Narrow projection twin of get_recent_snapshots for the live IV rank /
-        percentile path (burndown 2026-07-05): the hot loop pulled 5,000
-        FULL-WIDTH rows (200+ columns including the option_chain_json /
-        replay_context_json blobs) per tick per ticker and read exactly one
-        float from each — py-spy attributed 1,258 of 3,062 samples to that
-        read. Same row window, ordering, and as-of visibility as
-        get_recent_snapshots(filled_only=False); only the projection narrows,
-        so consumer-visible iv_level values are identical.
-        """
-        timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_recent_iv_levels")
-        ticker = ticker_storage_key(ticker)
-        asof_clause = " AND ts_utc < ? " if as_of_ts_utc is not None else ""
-        params: tuple = (ticker, timeframe)
-        if as_of_ts_utc is not None:
-            params = params + (float(as_of_ts_utc),)
-        params = params + (n,)
-        with self._connect() as conn:
-            rows = conn.execute(
-                f"""
-                SELECT iv_level FROM snapshots
-                WHERE ticker = ? AND timeframe = ?
-                {asof_clause}
-                ORDER BY ts_utc DESC
-                LIMIT ?
-            """,
-                params,
-            ).fetchall()
-        return [r["iv_level"] for r in rows]
 
-    def get_similar_setups(self, ticker: str, timeframe: str,
-                            zone: Optional[str], vwap_side: Optional[str],
-                            nearest_above_dist: Optional[float],
-                            nearest_below_dist: Optional[float],
-                            n_similar: int = 500,
-                            *,
-                            return_trace: bool = False,
-                            as_of_ts_utc: Optional[float] = None,
-                            exclude_heavy_json_columns: bool = False) -> list | tuple[list, dict]:
-        """
-        Find historical snapshots similar to current setup.
-        Uses PROGRESSIVE RELAXATION — tries tight match first, then
-        loosens criteria until empirical viability is met (Issue 19), or tier 5 is reached.
-
-        Tiers (Issue 19 — stop at the **narrowest** tier where **SIMILARITY_TIER_STOP_OUTCOME_COLUMNS**
-        (1c / 5c / 15c) each have >= MIN_SAMPLES_STATISTICAL labeled rows — aligned with
-        multi_horizon_decision primary candidates except sparse 60c; same bar as
-        prediction_engine._literal_empirical_horizon for those columns):
-          1. zone + vwap_side + both distance buckets  (tightest)
-          2. zone + vwap_side + above distance bucket only
-          3. zone + vwap_side  (drop all distance criteria)
-          4. zone only  (drop vwap_side)
-          5. all filled snapshots for this ticker  (broadest; always returned if reached)
-
-        SQL still requires outcome_1c IS NOT NULL for pool membership; tier-stop viability uses
-        SIMILARITY_TIER_STOP_OUTCOME_COLUMNS. Auxiliary horizons (3c/8c/13c/60c) may still be
-        withheld per _literal_empirical_horizon without broadening the match tier.
-
-        Returns: list of snapshot dicts, plus a 'match_tier' key on each
-        indicating which tier matched (1=tightest, 5=broadest).
-
-        If return_trace is True, returns (rows, trace_dict) for verification only;
-        default False preserves the original single-list return type.
-
-        as_of_ts_utc: when set (e.g. replay), only rows with ts_utc < as_of_ts_utc are
-        considered. Default None is identical to historical behavior (all history visible).
-        Production callers do not pass this.
-
-        exclude_heavy_json_columns (burndown 2026-07-05): opt-in projection that
-        drops option_chain_json / replay_context_json from the SELECT. The live
-        similarity consumers (fusion overlay, prediction core, enrichment,
-        similarity_labeled_counts) read only outcome_*, outcome_*_pts, ts_utc,
-        and match_tier — enumerated end-to-end before this landed — while the
-        two blobs dominate row width. Default False is byte-identical for every
-        other caller (audit / replay / verification tools keep full rows).
-        """
-        timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_similar_setups")
-        ticker = ticker_storage_key(ticker)
-        # Issue 19 / production similarity: canonical 1m snapshot rows only — no 5m legacy pool mixing.
-        if timeframe != CANONICAL_TIMEFRAME:
-            log.warning(
-                "get_similar_setups: timeframe=%r is not canonical %r — Issue 19 similarity is "
-                "1m-only; returning empty similar set (legacy timeframes excluded by policy).",
-                timeframe,
-                CANONICAL_TIMEFRAME,
-            )
-            if return_trace:
-                return [], {
-                    "trace_schema": "similarity_trace_issue21_v1",
-                    "rejected": True,
-                    "reject_reason": "non_canonical_timeframe_for_issue19",
-                    "requested_timeframe": timeframe,
-                    "canonical_timeframe": CANONICAL_TIMEFRAME,
-                    "ticker": ticker,
-                    "zone": zone,
-                    "vwap_side": vwap_side,
-                    "final_similar_count": 0,
-                    "tiers": [],
-                }
-            return []
-
-        above_bucket = _dist_bucket(nearest_above_dist)
-        below_bucket = _dist_bucket(nearest_below_dist)
-        _asof_sql = "" if as_of_ts_utc is None else " AND ts_utc < ? "
-
-        _query_ctx: Optional[dict] = None
-        trace: Optional[dict] = None
-        if return_trace:
-            _query_ctx = query_context_for_similarity(
-                ticker=ticker,
-                timeframe=timeframe,
-                zone=zone,
-                vwap_side=vwap_side,
-                nearest_above_dist=nearest_above_dist,
-                nearest_below_dist=nearest_below_dist,
-                n_similar=n_similar,
-                as_of_ts_utc=as_of_ts_utc,
-            )
-            trace = {
-                "trace_schema": "similarity_trace_issue21_v1",
-                "ticker": ticker,
-                "timeframe": timeframe,
-                "zone": zone,
-                "vwap_side": vwap_side,
-                "nearest_above_dist": nearest_above_dist,
-                "nearest_below_dist": nearest_below_dist,
-                "query_context": _query_ctx,
-                "MIN_SAMPLES_STATISTICAL": MIN_SAMPLES_STATISTICAL,
-                "empirical_outcome_columns": list(SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS),
-                "tier_stop_outcome_columns": list(SIMILARITY_TIER_STOP_OUTCOME_COLUMNS),
-                "LIMIT": n_similar,
-                "as_of_ts_utc": as_of_ts_utc,
-                "note": (
-                    "Session/regime are NOT SQL filters here; narrowing is tier 1–5 only. "
-                    "All tiers require outcome_1c IS NOT NULL for SQL pool membership. "
-                    "Tiers 1–4 stop when SIMILARITY_TIER_STOP_OUTCOME_COLUMNS (1c/5c/15c) "
-                    f"each have ≥{MIN_SAMPLES_STATISTICAL} labeled rows."
-                ),
-                "tiers": [],
-            }
-
-        def _finish(rows_raw, tier_num: int, *, stop_reason: str):
-            out = [dict(r) for r in rows_raw]
-            if return_trace and trace is not None:
-                trace["chosen_tier"] = tier_num
-                trace["final_similar_count"] = len(out)
-                trace["final_labeled_counts"] = similarity_labeled_counts(out)
-                fc = trace["final_labeled_counts"]
-                ftsv = similarity_tier_stop_viable(fc)
-                fatv = similarity_empirically_viable(fc)
-                trace["final_empirically_viable"] = ftsv
-                trace["final_all_tracked_viable"] = fatv
-                trace["final_selected_tier"] = tier_num
-                trace["final_selected_row_count"] = len(out)
-                trace["final_selected_labeled_counts"] = dict(fc)
-                trace["final_tier_stop_viable"] = ftsv
-                trace["stop_reason"] = stop_reason
-                trace["withheld_horizons"] = withheld_horizons_report(fc)
-                trace["tier_stop_weak_horizons"] = tier_stop_weak_horizons(fc)
-                trace["weakest_tracked_horizons"] = weakest_tracked_horizons(fc)
-                trace["widening_analysis"] = widening_summary_from_tiers(
-                    trace.get("tiers", []), tier_num
-                )
-                return out, trace
-            return out
-
-        def _append_tier(
-            tier_num: int,
-            nrows: int,
-            selected: bool,
-            *,
-            counts: Optional[dict[str, int]] = None,
-            stop_reason: Optional[str] = None,
-        ):
-            if trace is not None and _query_ctx is not None:
-                c = dict(counts or {})
-                tsv = similarity_tier_stop_viable(c) if c else False
-                atv = similarity_empirically_viable(c) if c else False
-                entry: dict = {
-                    "tier": tier_num,
-                    "constraint_definition": structured_constraints_for_tier(tier_num, _query_ctx),
-                    "relaxed_vs_previous_tier": relaxed_constraints_vs_previous_tier(tier_num),
-                    "row_count_after_query_limit": nrows,
-                    "selected": selected,
-                    "labeled_counts": c,
-                    "tier_stop_viable": tsv,
-                    "empirically_viable": tsv,
-                    "all_tracked_viable": atv,
-                }
-                if stop_reason:
-                    entry["stop_reason"] = stop_reason
-                trace["tiers"].append(entry)
-
-        def _maybe_return_tier(rows_raw, tier_num: int):
-            """Return this tier if it satisfies full empirical viability; else record trace and continue."""
-            out_dicts = [dict(r) for r in rows_raw]
-            counts = similarity_labeled_counts(out_dicts)
-            viable = similarity_tier_stop_viable(counts)
-            _append_tier(tier_num, len(rows_raw), viable, counts=counts)
-            if viable:
-                log.debug(
-                    "get_similar_setups %s/%s zone=%s vwap_side=%s: tier %s ACCEPT "
-                    "(n=%s labeled_counts=%s min=%s)",
-                    ticker,
-                    timeframe,
-                    zone,
-                    vwap_side,
-                    tier_num,
-                    len(out_dicts),
-                    counts,
-                    MIN_SAMPLES_STATISTICAL,
-                )
-                return _finish(rows_raw, tier_num, stop_reason="tier_stop_satisfied")
-            log.debug(
-                "get_similar_setups %s/%s: tier %s not empirically viable (n=%s counts=%s need %s each) — widening",
-                ticker,
-                timeframe,
-                tier_num,
-                len(out_dicts),
-                counts,
-                MIN_SAMPLES_STATISTICAL,
-            )
-            return None
-
-        # When canonical zone/vwap are withheld, do not SQL-match fabricated sentinels.
-        if zone is None:
-            _start_tier = 5
-        elif vwap_side is None:
-            _start_tier = 4
-        else:
-            _start_tier = 1
-
-        with self._connect() as conn:
-            _sel = "*"
-            if exclude_heavy_json_columns:
-                _all_cols = [
-                    r["name"] for r in conn.execute("PRAGMA table_info(snapshots)")
-                ]
-                _sel = ", ".join(
-                    c for c in _all_cols
-                    if c not in ("option_chain_json", "replay_context_json")
-                )
-
-            if _start_tier <= 1:
-                # ── Tier 1: zone + vwap_side + both distance buckets ──────────
-                _p1 = (
-                    ticker, timeframe, zone, vwap_side,
-                    nearest_above_dist,
-                    _bucket_lo(above_bucket), _bucket_hi(above_bucket),
-                    nearest_below_dist,
-                    _bucket_lo(below_bucket), _bucket_hi(below_bucket),
-                )
-                if as_of_ts_utc is not None:
-                    _p1 = _p1 + (as_of_ts_utc, n_similar)
-                else:
-                    _p1 = _p1 + (n_similar,)
-                rows = conn.execute(f"""
-                    SELECT {_sel}, 1 as match_tier FROM snapshots
-                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                      AND outcome_1c IS NOT NULL
-                      AND (
-                        (nearest_above_dist IS NULL AND ? IS NULL)
-                        OR (nearest_above_dist BETWEEN ? AND ?)
-                      )
-                      AND (
-                        (nearest_below_dist IS NULL AND ? IS NULL)
-                        OR (nearest_below_dist BETWEEN ? AND ?)
-                      )
-                    """ + _asof_sql + """
-                    ORDER BY ts_utc DESC LIMIT ?
-                """, _p1).fetchall()
-
-                done = _maybe_return_tier(rows, 1)
-                if done is not None:
-                    return done
-
-                # ── Tier 2: zone + vwap_side + above distance only ────────────
-                _p2 = (
-                    ticker, timeframe, zone, vwap_side,
-                    nearest_above_dist,
-                    _bucket_lo(above_bucket), _bucket_hi(above_bucket),
-                )
-                if as_of_ts_utc is not None:
-                    _p2 = _p2 + (as_of_ts_utc, n_similar)
-                else:
-                    _p2 = _p2 + (n_similar,)
-                rows = conn.execute(f"""
-                    SELECT {_sel}, 2 as match_tier FROM snapshots
-                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                      AND outcome_1c IS NOT NULL
-                      AND (
-                        (nearest_above_dist IS NULL AND ? IS NULL)
-                        OR (nearest_above_dist BETWEEN ? AND ?)
-                      )
-                    """ + _asof_sql + """
-                    ORDER BY ts_utc DESC LIMIT ?
-                """, _p2).fetchall()
-
-                done = _maybe_return_tier(rows, 2)
-                if done is not None:
-                    return done
-
-                # ── Tier 3: zone + vwap_side only ─────────────────────────────
-                _p3 = (ticker, timeframe, zone, vwap_side)
-                if as_of_ts_utc is not None:
-                    _p3 = _p3 + (as_of_ts_utc, n_similar)
-                else:
-                    _p3 = _p3 + (n_similar,)
-                rows = conn.execute(f"""
-                    SELECT {_sel}, 3 as match_tier FROM snapshots
-                    WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?
-                      AND outcome_1c IS NOT NULL
-                    """ + _asof_sql + """
-                    ORDER BY ts_utc DESC LIMIT ?
-                """, _p3).fetchall()
-
-                done = _maybe_return_tier(rows, 3)
-                if done is not None:
-                    return done
-
-            if _start_tier <= 4:
-                # ── Tier 4: zone only ─────────────────────────────────────────
-                _p4 = (ticker, timeframe, zone)
-                if as_of_ts_utc is not None:
-                    _p4 = _p4 + (as_of_ts_utc, n_similar)
-                else:
-                    _p4 = _p4 + (n_similar,)
-                rows = conn.execute(f"""
-                    SELECT {_sel}, 4 as match_tier FROM snapshots
-                    WHERE ticker = ? AND timeframe = ? AND zone = ?
-                      AND outcome_1c IS NOT NULL
-                    """ + _asof_sql + """
-                    ORDER BY ts_utc DESC LIMIT ?
-                """, _p4).fetchall()
-
-                done = _maybe_return_tier(rows, 4)
-                if done is not None:
-                    return done
-
-            # ── Tier 5: all filled snapshots for this ticker ──────────────
-            _p5 = (ticker, timeframe)
-            if as_of_ts_utc is not None:
-                _p5 = _p5 + (as_of_ts_utc, n_similar)
-            else:
-                _p5 = _p5 + (n_similar,)
-            rows = conn.execute(f"""
-                SELECT {_sel}, 5 as match_tier FROM snapshots
-                WHERE ticker = ? AND timeframe = ?
-                  AND outcome_1c IS NOT NULL
-                """ + _asof_sql + """
-                ORDER BY ts_utc DESC LIMIT ?
-            """, _p5).fetchall()
-
-            out5 = [dict(r) for r in rows]
-            c5 = similarity_labeled_counts(out5)
-            v5 = similarity_tier_stop_viable(c5)
-            _append_tier(
-                5,
-                len(rows),
-                True,
-                counts=c5,
-                stop_reason="max_tier_broadest_pool",
-            )
-            if trace is not None:
-                trace["tier5_empirically_viable"] = v5
-                trace["tier5_all_tracked_viable"] = similarity_empirically_viable(c5)
-                if not v5:
-                    trace["tier5_note"] = (
-                        "Tier-stop columns (1c/5c/15c) may still be sparse; "
-                        "or auxiliary horizons may be withheld per horizon where "
-                        f"labeled count < {MIN_SAMPLES_STATISTICAL}."
-                    )
-            return _finish(rows, 5, stop_reason="max_tier_broadest_pool_forced")
-
-    def snapshot_exists_in_minute(self, ticker: str, timeframe: str, minute_bucket: int) -> bool:
-        """True when a snapshot row already exists for (ticker, timeframe) in the
-        given UTC minute bucket (int(ts_utc // 60)).
-
-        Repo-wide audit 2026-07-05: durable half of the 1-insert/ticker/minute
-        throttle (server._snapshot_row_insert_allowed). The in-process bucket
-        cannot survive restarts and raced concurrent callers — 4,783 duplicate
-        (ticker, minute) groups accumulated on disk. Uses idx_snap_ticker_tf_ts
-        (~0.06ms measured). Ticker is matched EXACTLY as insert_snapshot writes
-        it (no storage-key normalization) so probe and write key identically.
-        """
-        lo = float(minute_bucket) * 60.0
-        with self._connect() as conn:
-            r = conn.execute(
-                "SELECT 1 FROM snapshots WHERE ticker = ? AND timeframe = ?"
-                " AND ts_utc >= ? AND ts_utc < ? LIMIT 1",
-                (ticker, timeframe, lo, lo + 60.0),
-            ).fetchone()
-        return r is not None
 
     def count_snapshots(self, ticker: str, timeframe: str) -> dict:
         """Return snapshot counts for UI display.
@@ -4500,102 +3284,6 @@ class EdDB:
             ).fetchone()[0]
         return {"total": total, "filled": filled, "pending": total - filled}
 
-    def get_avg_move(self, ticker: str, timeframe: str,
-                      zone: str, vwap_side: str,
-                      nearest_above_dist: Optional[float],
-                      nearest_below_dist: Optional[float],
-                      *,
-                      as_of_ts_utc: Optional[float] = None) -> dict:
-        """
-        Return avg and median point move for similar setups.
-        Used by 'What the Data Says' to show WHERE price typically goes,
-        not just direction probability.
-
-        as_of_ts_utc: when set, only rows with ts_utc < as_of_ts_utc (same contract as get_similar_setups).
-
-        Non-canonical timeframes return empty stats (same policy as get_similar_setups / Issue 19).
-
-        Returns:
-          avg_1c_pts   : average move over next 1 candle (signed, +up/-down)
-          avg_5c_pts   : average move over next 5 candles (product 5m clock)
-          median_1c_pts: median move
-          median_5c_pts: median over 5c window
-          n            : sample count used
-        """
-        timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_avg_move")
-        if timeframe != CANONICAL_TIMEFRAME:
-            log.warning(
-                "get_avg_move: timeframe=%r is not canonical %r — returning empty stats (Issue 19).",
-                timeframe,
-                CANONICAL_TIMEFRAME,
-            )
-            return {
-                "avg_1c_pts": None,
-                "avg_5c_pts": None,
-                "median_1c_pts": None,
-                "median_5c_pts": None,
-                "n": 0,
-                "reject_reason": "non_canonical_timeframe",
-            }
-        ticker = ticker_storage_key(ticker)
-        above_bucket = _dist_bucket(nearest_above_dist)
-        below_bucket = _dist_bucket(nearest_below_dist)
-        _asof_sql = "" if as_of_ts_utc is None else " AND ts_utc < ? "
-
-        with self._connect() as conn:
-            _params = (
-                ticker, timeframe, zone, vwap_side,
-                nearest_above_dist,
-                _bucket_lo(above_bucket), _bucket_hi(above_bucket),
-                nearest_below_dist,
-                _bucket_lo(below_bucket), _bucket_hi(below_bucket),
-            )
-            if as_of_ts_utc is not None:
-                _params = _params + (as_of_ts_utc,)
-            rows = conn.execute(f"""
-                SELECT outcome_1c_pts, outcome_5c_pts
-                FROM snapshots
-                WHERE ticker = ?
-                  AND timeframe = ?
-                  AND zone = ?
-                  AND vwap_side = ?
-                  AND outcome_1c_pts IS NOT NULL
-                  AND (
-                    (nearest_above_dist IS NULL AND ? IS NULL)
-                    OR (nearest_above_dist BETWEEN ? AND ?)
-                  )
-                  AND (
-                    (nearest_below_dist IS NULL AND ? IS NULL)
-                    OR (nearest_below_dist BETWEEN ? AND ?)
-                  )
-                  {_asof_sql}
-                ORDER BY ts_utc DESC
-                LIMIT 500
-            """, _params).fetchall()
-
-        if not rows:
-            return {"avg_1c_pts": None, "avg_5c_pts": None,
-                    "median_1c_pts": None, "median_5c_pts": None, "n": 0}
-
-        pts1 = [r["outcome_1c_pts"] for r in rows if r["outcome_1c_pts"] is not None]
-        pts5 = [r["outcome_5c_pts"] for r in rows if r["outcome_5c_pts"] is not None]
-
-        def _avg(lst):
-            return round(sum(lst) / len(lst), 2) if lst else None
-
-        def _median(lst):
-            if not lst: return None
-            s = sorted(lst)
-            n = len(s)
-            return round(s[n // 2] if n % 2 else (s[n//2 - 1] + s[n//2]) / 2, 2)
-
-        return {
-            "avg_1c_pts":    _avg(pts1),
-            "avg_5c_pts":    _avg(pts5),
-            "median_1c_pts": _median(pts1),
-            "median_5c_pts": _median(pts5),
-            "n":             len(pts1),
-        }
 
     # ════════════════════════════════════════════════════════════════════════
     # LEVEL CROSS OPERATIONS
@@ -4760,26 +3448,6 @@ class EdDB:
             """, (ticker, n)).fetchall()
         return [dict(r) for r in rows]
 
-    def get_zone_distribution(self, ticker: str, timeframe: str) -> dict[str, int]:
-        """Count snapshots per zone for ticker/timeframe (debug / diagnostics)."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT zone, COUNT(*) AS cnt
-                FROM snapshots
-                WHERE ticker = ? AND timeframe = ? AND zone IS NOT NULL
-                GROUP BY zone
-                ORDER BY cnt DESC
-                """,
-                (ticker, timeframe),
-            ).fetchall()
-        out: dict[str, int] = {}
-        for row in rows:
-            r = dict(row)
-            zone = r.get("zone")
-            if zone is not None:
-                out[str(zone)] = int(r.get("cnt") or 0)   # external-key-ok: SQL alias (GROUP BY zone / ORDER BY cnt)
-        return out
 
     def count_level_tests(self, ticker: str, level_name: str,
                            level_value: float, lookback_hours: float = 6.5) -> dict:
@@ -4817,100 +3485,6 @@ class EdDB:
     ACCURACY_RTH_START_MIN: int = _RTH_START_MINS_AUTH
     ACCURACY_RTH_END_MIN: int = _RTH_END_MINS_AUTH
 
-    def compute_accuracy(self, ticker: str, timeframe: str,
-                          model_version: str,
-                          *, rth_only: bool = False) -> dict:
-        """
-        Compute prediction accuracy for a given model version.
-        Compares pred_Nc_up/down/flat_prob to actual outcome_Nc.
-
-        rth_only (2026-07-06 operator decision): restrict to rows stamped inside
-        RTH (09:30–16:00 ET). The model-accuracy audit measured SPY 5c at 40.1%
-        all-hours but 34.5% RTH-only vs a 38.1% RTH majority baseline — the
-        all-hours number flatters tradeable-session performance, so trading-facing
-        surfaces read rth_only=True and keep all-hours as audit context only.
-
-        Each horizon entry also carries the majority-class baseline of the SAME
-        row set (baseline_pct / baseline_label / edge_vs_baseline_pp) so raw
-        accuracy can never masquerade as edge, plus a scope stamp.
-        """
-        timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.compute_accuracy")
-        results = {}
-        from ml_horizon import PRIMARY_DECISION_HORIZONS
-
-        scope = "rth_0930_1600_et" if rth_only else "all_hours"
-        rth_clause = ""
-        if rth_only:
-            # A row with no et_minute cannot be placed inside RTH -- it used to be read as :00
-            # (COALESCE(et_minute, 0)) and counted or dropped by that guess (no fallbacks).
-            rth_clause = (
-                " AND et_minute IS NOT NULL"
-                f" AND (et_hour * 60 + et_minute) >= {self.ACCURACY_RTH_START_MIN}"
-                f" AND (et_hour * 60 + et_minute) < {self.ACCURACY_RTH_END_MIN} "
-            )
-
-        for horizon in PRIMARY_DECISION_HORIZONS:
-            pred_col    = f"pred_{horizon}_up_prob"
-            outcome_col = f"outcome_{horizon}"
-
-            with self._connect() as conn:
-                rows = conn.execute(f"""
-                    SELECT {pred_col}, pred_{horizon}_down_prob,
-                           pred_{horizon}_flat_prob, {outcome_col}
-                    FROM snapshots
-                    WHERE ticker = ?
-                      AND timeframe = ?
-                      AND pred_model_version = ?
-                      AND {pred_col} IS NOT NULL
-                      AND {outcome_col} IS NOT NULL
-                      {rth_clause}
-                """, (ticker, timeframe, model_version)).fetchall()
-
-            if not rows:
-                # Fail closed: no rows in scope -> accuracy None (consumers drop the
-                # horizon); NEVER silently widen the scope to all-hours.
-                results[horizon] = {"total": 0, "accuracy": None, "scope": scope}
-                continue
-
-            correct = 0
-            scored = 0
-            from numeric_contract import direction_from_normalized_triplet, float_finite_or_none
-            outcome_counts: dict[str, int] = {}
-            for row in rows:
-                # RC-345 / F22: predicted direction = the ONE argmax authority
-                # numeric_contract.direction_from_normalized_triplet (same up>down>flat
-                # tie-break), not a local max(probs, key=...). A row whose pred triplet is
-                # MISSING is SKIPPED — never scored as a fabricated 'up' via `or 0`.
-                _pu = float_finite_or_none(row[f"pred_{horizon}_up_prob"])
-                _pd = float_finite_or_none(row[f"pred_{horizon}_down_prob"])
-                _pf = float_finite_or_none(row[f"pred_{horizon}_flat_prob"])
-                if _pu is None or _pd is None or _pf is None:
-                    continue
-                predicted = direction_from_normalized_triplet(_pu, _pd, _pf)
-                actual    = row[outcome_col]
-                outcome_counts[actual] = outcome_counts.get(actual, 0) + 1
-                scored += 1
-                if predicted == actual:
-                    correct += 1
-
-            total    = scored  # only rows with a real predicted triplet are scored (F22)
-            accuracy = round(correct / total * 100, 1) if total > 0 else None
-            baseline_label = max(outcome_counts, key=outcome_counts.get) if outcome_counts else None
-            baseline_pct = (round(outcome_counts[baseline_label] / total * 100, 1)
-                            if (total > 0 and baseline_label is not None) else None)
-            results[horizon] = {
-                "total": total,
-                "correct": correct,
-                "accuracy": accuracy,
-                "scope": scope,
-                "baseline_pct": baseline_pct,
-                "baseline_label": baseline_label,
-                "edge_vs_baseline_pp": (
-                    round(accuracy - baseline_pct, 1) if accuracy is not None else None
-                ),
-            }
-
-        return results
 
     # Pass 5a: minimum delta between two persisted accuracy rows for the same
     # (ticker, timeframe, model_version, horizon). The accuracy_pct value
@@ -4918,121 +3492,9 @@ class EdDB:
     # is the natural dedup signal — but small floating noise should not skip.
     MODEL_ACCURACY_DEDUP_EPSILON: float = 0.05  # percentage points
 
-    def log_model_accuracy(
-        self,
-        *,
-        ticker: str,
-        timeframe: str,
-        model_version: str,
-        horizon: str,
-        total_predictions: int,
-        correct_direction: Optional[int],
-        accuracy_pct: Optional[float],
-        avg_confidence: Optional[float] = None,
-        ts_utc: Optional[float] = None,
-    ) -> int:
-        """Pass 5a writer for model_accuracy.
 
-        Schema (see db.py:1247): one row per accuracy snapshot per
-        (ticker, timeframe, model_version, horizon, ts_utc). Caller is
-        expected to dedup via get_latest_model_accuracy before INSERT
-        (the accuracy value only changes when new outcomes land — natural
-        throttle).
-        """
-        ts = float(ts_utc) if ts_utc is not None else utc_ts()
-        cd = int(correct_direction) if correct_direction is not None else None
-        ap = float(accuracy_pct) if accuracy_pct is not None else None
-        ac = float(avg_confidence) if avg_confidence is not None else None
 
-        def _do() -> int:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    "INSERT INTO model_accuracy "
-                    "(ts_utc, ticker, timeframe, model_version, horizon, "
-                    " total_predictions, correct_direction, accuracy_pct, avg_confidence) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        ts, ticker, timeframe, model_version, horizon,
-                        int(total_predictions), cd, ap, ac,
-                    ),
-                )
-                return int(cur.lastrowid)
 
-        return _do()
-
-    def get_latest_model_accuracy(
-        self,
-        *,
-        ticker: str,
-        timeframe: str,
-        model_version: str,
-        horizon: str,
-    ) -> Optional[dict]:
-        """Pass 5a reader: latest row for (ticker, timeframe, model_version, horizon)."""
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM model_accuracy "
-                "WHERE ticker = ? AND timeframe = ? "
-                "  AND model_version = ? AND horizon = ? "
-                "ORDER BY ts_utc DESC LIMIT 1",
-                (ticker, timeframe, model_version, horizon),
-            ).fetchone()
-        return dict(row) if row is not None else None
-
-    def get_model_accuracy_history(
-        self,
-        *,
-        ticker: str,
-        timeframe: str,
-        model_version: str,
-        horizon: str,
-        limit: int = 50,
-    ) -> list[dict]:
-        """Pass 5a/5b reader: history of accuracy snapshots for chart / panel."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM model_accuracy "
-                "WHERE ticker = ? AND timeframe = ? "
-                "  AND model_version = ? AND horizon = ? "
-                "ORDER BY ts_utc DESC LIMIT ?",
-                (ticker, timeframe, model_version, horizon, int(limit)),
-            ).fetchall()
-        return [dict(r) for r in rows]
-
-    def maybe_log_model_accuracy(
-        self,
-        *,
-        ticker: str,
-        timeframe: str,
-        model_version: str,
-        horizon: str,
-        total_predictions: int,
-        correct_direction: Optional[int],
-        accuracy_pct: Optional[float],
-        avg_confidence: Optional[float] = None,
-        ts_utc: Optional[float] = None,
-    ) -> Optional[int]:
-        """Pass 5a throttled writer: log only when accuracy_pct meaningfully changed
-        vs the latest persisted row for this (ticker, timeframe, model_version, horizon).
-
-        Returns the new row id when logged, or None when skipped (dedup or input None).
-        """
-        if accuracy_pct is None:
-            return None
-        latest = self.get_latest_model_accuracy(
-            ticker=ticker, timeframe=timeframe,
-            model_version=model_version, horizon=horizon,
-        )
-        if latest is not None:
-            prev = latest.get("accuracy_pct")   # external-key-ok: sqlite column from get_latest_model_accuracy()
-            if prev is not None and abs(float(prev) - float(accuracy_pct)) < self.MODEL_ACCURACY_DEDUP_EPSILON:
-                return None
-        return self.log_model_accuracy(
-            ticker=ticker, timeframe=timeframe, model_version=model_version,
-            horizon=horizon, total_predictions=total_predictions,
-            correct_direction=correct_direction, accuracy_pct=accuracy_pct,
-            avg_confidence=avg_confidence, ts_utc=ts_utc,
-        )
 
     # ════════════════════════════════════════════════════════════════════════
     # UTILITY
@@ -5098,10 +3560,6 @@ class EdDB:
 # DO NOT redefine these here. If you need to change thresholds or logic,
 # change them in math_exposure.py ONLY.
 
-def _tf_seconds(timeframe: str) -> float:
-    """Return seconds per candle for a given timeframe string."""
-    mapping = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
-    return mapping.get(timeframe, 300)
 
 def _snapshot_update_key(row) -> tuple[str, int | None]:
     """
@@ -5496,101 +3954,28 @@ def sql_flow_audit_rows_where(base_where: str) -> str:
     )
 
 
-def sql_select_snapshots_columns(cols_sql: str) -> str:
-    return f"SELECT {cols_sql} FROM snapshots"
 
 
-def sql_select_snapshots_ticker_tf_order(sel: str, *, order_suffix: str) -> str:
-    return f"SELECT {sel} FROM snapshots WHERE ticker = ? AND timeframe = ? {order_suffix}"
 
 
-def sql_overlay_count_zpred(zpred: str) -> str:
-    return (
-        "SELECT COUNT(*) FROM snapshots WHERE ticker = ? AND timeframe = ? AND ("
-        + zpred
-        + ") AND outcome_1c IS NOT NULL"
-    )
 
 
-def sql_overlay_count_zpred_vwap(zpred: str) -> str:
-    return (
-        "SELECT COUNT(*) FROM snapshots\n            WHERE ticker = ? AND timeframe = ? AND ("
-        + zpred
-        + ") AND vwap_side = ? AND outcome_1c IS NOT NULL\n            "
-    )
 
 
-def sql_overlay_count_zpred_vwap_bucket(zpred: str, bsql: str) -> str:
-    return (
-        "SELECT COUNT(*) FROM snapshots\n            WHERE ticker = ? AND timeframe = ? AND ("
-        + zpred
-        + ") AND vwap_side = ? AND outcome_1c IS NOT NULL\n              AND ("
-        + bsql
-        + ")\n            "
-    )
 
 
-def sql_overlay_select_star_where(where_clause: str) -> str:
-    return (
-        "SELECT * FROM snapshots\n                WHERE "
-        + where_clause
-        + "\n                ORDER BY ts_utc DESC, snapshot_id DESC\n                LIMIT 1\n            "
-    )
 
 
-def sql_issue19_tier1_candidate_rows(asof_sql: str) -> str:
-    return (
-        "SELECT * FROM snapshots\n            WHERE ticker = ? AND timeframe = ? AND zone = ? AND vwap_side = ?\n"
-        "              AND outcome_1c IS NOT NULL\n"
-        "              AND (\n"
-        "                (nearest_above_dist IS NULL AND ? IS NULL)\n"
-        "                OR (nearest_above_dist BETWEEN ? AND ?)\n"
-        "              )\n"
-        "              AND (\n"
-        "                (nearest_below_dist IS NULL AND ? IS NULL)\n"
-        "                OR (nearest_below_dist BETWEEN ? AND ?)\n"
-        "              )\n            "
-        + asof_sql
-        + "\n            ORDER BY ts_utc DESC, snapshot_id DESC\n            LIMIT ?\n            "
-    )
 
 
-def sql_adaptive_broad_similarity_pool(asof_sql: str) -> str:
-    return (
-        "SELECT * FROM snapshots\n            WHERE ticker = ? AND timeframe = ?\n"
-        "              AND outcome_1c IS NOT NULL\n            "
-        + asof_sql
-        + "\n            ORDER BY ts_utc DESC, snapshot_id DESC\n            LIMIT ?\n            "
-    )
 
 
-def sql_db_coverage_snap_tot() -> str:
-    return "SELECT COUNT(*) FROM snapshots WHERE ticker=? AND timeframe=?"
 
 
-def sql_db_coverage_col_nonnull(col: str) -> str:
-    return f"SELECT COUNT(*) FROM snapshots WHERE ticker=? AND timeframe=? AND {col} IS NOT NULL"
 
 
-def sql_db_coverage_col_labeled(col: str) -> str:
-    return (
-        "SELECT COUNT(*) FROM snapshots WHERE ticker=? AND timeframe=? AND "
-        + col
-        + " IN ('up','down','flat')"
-    )
 
 
-def sql_db_coverage_gap_lag() -> str:
-    return (
-        "SELECT COUNT(*) FROM (\n"
-        "                      SELECT ts_utc,\n"
-        "                        LAG(ts_utc) OVER (ORDER BY ts_utc) AS prev_ts\n"
-        "                      FROM snapshots\n"
-        "                      WHERE ticker=? AND timeframe=?\n"
-        "                    ) x\n"
-        "                    WHERE prev_ts IS NOT NULL AND (ts_utc - prev_ts) > 120\n"
-        "                    "
-    )
 
 
 def sql_snapshots_training_fingerprint_select(aggs_csv: str) -> str:
@@ -5601,20 +3986,8 @@ def sql_snapshots_training_fingerprint_select(aggs_csv: str) -> str:
     )
 
 
-_ISSUE19_CTX_GROUP_COLS = frozenset(
-    {"session_bucket", "regime_primary", "vix_bucket", "market_session"}
-)
 
 
-def sql_issue19_snapshots_context_group(col: str) -> str:
-    """Labeled-row distribution for Issue 19 context audit (whitelist columns only)."""
-    if col not in _ISSUE19_CTX_GROUP_COLS:
-        raise ValueError(f"unsupported context group column: {col!r}")
-    return (
-        f"SELECT COALESCE({col}, '(null)') AS k, COUNT(*) AS n FROM snapshots "
-        "WHERE timeframe = ? AND outcome_1c IS NOT NULL "
-        "GROUP BY k ORDER BY n DESC LIMIT 50"
-    )
 
 
 # ════════════════════════════════════════════════════════════════════════════════

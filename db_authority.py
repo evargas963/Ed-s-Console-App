@@ -25,8 +25,6 @@ Classification = Literal["canonical", "harness", "proof", "backup", "unknown"]
 PermanentDatabaseIdentity = Literal["ed_console", "stream_capture"]
 
 
-def project_root() -> Path:
-    return Path(__file__).resolve().parent
 
 
 def canonical_console_db_path() -> Path:
@@ -47,9 +45,6 @@ def canonical_stream_db_path() -> Path:
     return (data_dir() / "stream_capture.db").resolve()
 
 
-def canonical_permanent_db_paths() -> tuple[Path, Path]:
-    """The complete permanent SQLite population, in stable backup order."""
-    return canonical_console_db_path(), canonical_stream_db_path()
 
 
 def permanent_database_identity(p: Path | str) -> PermanentDatabaseIdentity | None:

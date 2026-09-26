@@ -19,8 +19,6 @@ from numeric_contract import direction_from_normalized_triplet, float_finite_or_
 
 log = logging.getLogger(__name__)
 
-# Backward-compatible name: product horizons for MH fusion authority (primary only).
-MH_PRODUCT_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS
 
 _RENORM_SUM_EPS = 0.01
 
@@ -53,23 +51,6 @@ def _applied_fusion_temperatures() -> dict[str, float]:
     return _calibration_cache["temps"]
 
 
-def fusion_calibration_status() -> dict[str, Any]:
-    """Host-visible calibration provenance (ticker-agnostic lock, 2026-07-06).
-
-    The temperature artifact is host-local (models/** is gitignored), so a
-    production host could silently serve raw probabilities if the artifact was
-    never fitted there. This accessor exposes the loader state for the payload
-    diagnostic block: artifact_loaded=False + applied_horizons=[] IS the
-    fail-closed raw-serving state, made observable instead of silent.
-    Horizon-keyed only — there is no per-ticker calibration surface.
-    """
-    temps = _applied_fusion_temperatures()
-    return {
-        "artifact_loaded": bool(temps),
-        "applied_horizons": sorted(temps.keys()),
-        "applied_temperatures": {k: float(v) for k, v in sorted(temps.items())},
-        "keying": "horizon_only",
-    }
 
 
 def _unavailable_horizon_snapshot(
@@ -158,23 +139,8 @@ class MultiHorizonMLFusionBundle:
         s = self.by_horizon.get(hz)
         return bool(s and s.horizon_fusion_available)
 
-    def directional_authorization_map(self) -> dict[str, bool]:
-        return {
-            hz: bool(s.stack_directional_authorized)
-            for hz, s in self.by_horizon.items()
-        }
 
-    def directional_authorization_reason_map(self) -> dict[str, str | None]:
-        return {
-            hz: s.stack_directional_authorization_reason
-            for hz, s in self.by_horizon.items()
-        }
 
-    def fusion_availability_map(self) -> dict[str, bool]:
-        return {
-            hz: bool(s.horizon_fusion_available)
-            for hz, s in self.by_horizon.items()
-        }
 
 
 def fusion_payload_to_horizon_snapshot(hz: str, fus: Any) -> HorizonMLFusionSnapshot:

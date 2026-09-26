@@ -865,43 +865,20 @@
     });
   }
 
-  // #6: canonical market session (RTH / Pre-Market / After-Hours / Closed) — a DIFFERENT truth
-  // from feed liveness, so both are shown. session_label is the canonical carrier (/api/live/state).
+  // market session (RTH / Pre-Market / After-Hours / Closed) <- /api/session
   function paintSession(label) {
     var el = document.getElementById('hSession'); if (!el) return;
     var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'] };
     var v = m[label] || [(label || '—'), ''];
     el.textContent = v[0]; el.className = 'sess ' + v[1];
   }
-  // Canonical plane identity the view modules cache against (no second clock in JS): the market
-  // session state and the Tier C bundle generation (analytics_lightweight.analytics_version), both
-  // carried by /api/live/state, which the shell already reads on its slow tick / fallback poll.
-  // A change dispatches ONE ed:plane event; nothing here decides what a view does with it.
-  // Tier C state is keyed by (ticker, expiry) and its generation is per entry, so the read carries
-  // the workspace's expiry context (server: _tier_a_live_state_dict(tkr, expiry) resolves THAT
-  // entry; without one, the newest entry for the ticker — the same rule /api/analytics/state uses
-  // for a request without expiry). The plane record names the context it was read for.
-  var _plane = { ticker: null, expiry: null, session: null, analyticsVersion: null };
-  function liveStateUrl() {
-    var ex = state.expiryFilter || '';
-    return '/api/live/state?ticker=' + encodeURIComponent(state.ticker) + (ex ? '&expiry=' + encodeURIComponent(ex) : '');
-  }
-  function notePlane(d, expiry) {
-    var lw = d.analytics_lightweight || {};
-    var next = { ticker: state.ticker, expiry: expiry || '', session: (d.session_label != null ? d.session_label : null),
-      analyticsVersion: (lw.analytics_version != null ? lw.analytics_version : null) };
-    if (next.ticker === _plane.ticker && next.expiry === _plane.expiry && next.session === _plane.session &&
-        next.analyticsVersion === _plane.analyticsVersion) return;
-    _plane = next;
-    emit('ed:plane', Object.assign({}, _plane));
-  }
 
   var _sessGen = 0;
-  function refreshSession() {   // slow, session-only read used while the SSE push carries the quote
-    var g = ++_sessGen, ex = state.expiryFilter || '';
-    fetch(liveStateUrl(), { cache: 'no-store' })
+  function refreshSession() {
+    var g = ++_sessGen;
+    fetch('/api/session', { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _sessGen) { paintSession(d.session_label); notePlane(d, ex); } })
+      .then(function (d) { if (g === _sessGen) paintSession(d.session_label); })
       .catch(function () { if (g === _sessGen) paintSession(null); });
   }
 
@@ -1051,6 +1028,5 @@
     scopeRows: scopeRows, scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     setMeasure: setMeasure, getMeasure: function () { return state.measure; },
-    getPlane: function () { return Object.assign({}, _plane); },
     setMaximize: applyMaximize, toggleMaximize: toggleMaximize, setSubview: setSubview };
 })();
