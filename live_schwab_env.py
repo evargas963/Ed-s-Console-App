@@ -19,7 +19,7 @@ was decided by whether one upstream vendor's credentials happened to resolve. ME
 2026-09-03: a ghost `python-dotenv` distribution made `.env` unloadable (RC-513) and the desk
 would not start, with the API, UI, health and observability all perfectly capable of running.
 
-docs/ARCHITECTURE.md §4 separates application availability from capability availability:
+docs/ARCHITECTURE.md "Failure domains" separates application availability from capability availability:
 Schwab unavailable degrades the Schwab capability and fails Schwab-dependent exposure closed;
 it does not kill the application. So this now answers "is the Schwab CAPABILITY available",
 the launcher reports rather than aborts, and the fail-closed half lives where it always did —

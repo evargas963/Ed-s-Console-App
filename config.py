@@ -55,7 +55,7 @@ def schwab_live_blocked_for(
     ED_CI_OFFLINE with explicit non-placeholder credentials (unit tests) does not block.
 
     RC-514: absent credentials block too, and did not before. That was the hole under the
-    failure-domain architecture (docs/ARCHITECTURE.md §4).
+    failure-domain architecture (docs/ARCHITECTURE.md "Failure domains").
     `schwab_credentials_are_ci_placeholders` returns False for an empty value, so with NO
     credentials this returned False: `build_client_from_token` built a client and
     `_block_live_schwab_in_ci_offline` waved calls through, and the capability presented itself
@@ -122,7 +122,7 @@ def build_config(app_dir: str) -> AppConfig:
     # and `server.py` calls `build_config` at module scope — so `import server`, and therefore
     # `uvicorn server:app`, failed outright with no credentials. The entire application refused
     # to exist because one vendor's secrets were missing, which is the boundary
-    # docs/ARCHITECTURE.md §4 rejects: Schwab unavailable degrades the Schwab capability.
+    # docs/ARCHITECTURE.md "Failure domains" rejects: Schwab unavailable degrades the Schwab capability.
     #
     # This is not a relaxation. That raise was a SECOND place deciding "can we do Schwab",
     # duplicating `schwab_live_blocked_for()` — which now blocks on absent credentials, so an

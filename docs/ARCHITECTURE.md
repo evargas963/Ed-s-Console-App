@@ -1,641 +1,90 @@
-# Ed Console — Canonical Repository Architecture
+# Ed Console — Architecture
 
-This is the canonical target architecture for Ed Console.
+Where the code lives. The structure follows the data flow (`docs/DATA_FLOW.md`): one folder per
+process, plus what they share and the page. Nothing else. A file belongs to the process that runs
+it; a function exists in one place. This document is updated in the same change as every move.
 
-The repository is being migrated incrementally toward this structure. Whenever work materially
-touches an area, the affected files, responsibilities, imports, and ownership should move toward
-this target when that movement is safe and cohesive.
+## 1. The structure
 
-Do not silently create a competing architecture. If this target is technically wrong, impossible,
-or materially inferior for something encountered, raise the specific objection with evidence
-before deviating.
-
----
-
-## 1. Canonical target schematic
-
-```text
-Trading/
-│
-├── EdWebConsole/                         # SOURCE / RELEASE CODE ONLY
-│   │
-│   ├── app/
-│   │   │
-│   │   ├── api/                          # Thin application/API composition
-│   │   │   ├── routes/
-│   │   │   ├── dependencies/
-│   │   │   └── lifespan/
-│   │   │
-│   │   ├── domain/                       # Canonical market/domain semantics
-│   │   │   ├── instruments/
-│   │   │   ├── sessions/
-│   │   │   ├── prices/
-│   │   │   ├── levels/
-│   │   │   ├── regimes/
-│   │   │   └── shared canonical types
-│   │   │
-│   │   ├── market_data/                  # COLLECT
-│   │   │   ├── schwab/
-│   │   │   │   ├── client/
-│   │   │   │   ├── quotes/
-│   │   │   │   ├── price_history/
-│   │   │   │   └── streaming/
-│   │   │   ├── normalization/
-│   │   │   ├── enrollment/
-│   │   │   ├── snapshots/
-│   │   │   ├── bars/
-│   │   │   └── market_state/
-│   │   │
-│   │   ├── options/                      # Canonical options truth
-│   │   │   ├── chains/
-│   │   │   ├── contracts/
-│   │   │   ├── greeks/
-│   │   │   ├── gamma/
-│   │   │   ├── delta/
-│   │   │   ├── vanna/
-│   │   │   ├── charm/
-│   │   │   ├── exposure/
-│   │   │   ├── dealer_positioning/
-│   │   │   └── order_flow/
-│   │   │
-│   │   ├── liquidity/                    # Canonical liquidity/value structure
-│   │   │   ├── vwap/
-│   │   │   ├── volume_profile/
-│   │   │   ├── liquidity_levels/
-│   │   │   └── playbook/
-│   │   │
-│   │   ├── signals/                      # Production signal computations
-│   │   │   ├── technical/
-│   │   │   ├── structural/
-│   │   │   ├── flow/
-│   │   │   └── regime/
-│   │   │
-│   │   ├── models/                       # Promoted production inference only
-│   │   │   ├── xgb/
-│   │   │   ├── lstm/
-│   │   │   ├── monte_carlo/
-│   │   │   ├── fusion/
-│   │   │   ├── calibration/
-│   │   │   └── registry/loading
-│   │   │
-│   │   ├── decision/                     # DECIDE
-│   │   │   ├── admission/
-│   │   │   ├── policy/
-│   │   │   ├── confidence/
-│   │   │   ├── sizing/
-│   │   │   └── trade_wait_avoid/
-│   │   │
-│   │   └── infrastructure/
-│   │       ├── database/
-│   │       │   ├── connection/
-│   │       │   ├── schema/
-│   │       │   ├── repositories/
-│   │       │   └── migrations/
-│   │       ├── external_clients/
-│   │       ├── scheduling/
-│   │       ├── observability/
-│   │       └── runtime_state/
-│   │
-│   ├── research/                          # FIND & PROVE
-│   │   ├── experiments/
-│   │   ├── validation/
-│   │   ├── backtests/
-│   │   ├── calibration/
-│   │   ├── training/
-│   │   ├── ablation/
-│   │   └── candidate_models/
-│   │
-│   ├── static/                            # Modular operator UI
-│   │   ├── pages/
-│   │   ├── components/
-│   │   ├── js/
-│   │   └── css/
-│   │
-│   ├── tests/
-│   │   ├── unit/
-│   │   ├── integration/
-│   │   ├── runtime/
-│   │   └── e2e/
-│   │
-│   ├── tools/                             # SMALL active operator/dev toolbox
-│   │
-│   ├── config/                            # Product configuration/contracts
-│   │
-│   ├── governance/                        # MINIMAL dev/agent/merge governance
-│   │
-│   ├── docs/
-│   │   └── ARCHITECTURE.md                # THIS DOCUMENT
-│   │
-│   ├── AGENTS.md
-│   ├── OPEN_ITEMS.md
-│   ├── pyproject.toml
-│   └── README.md
-│
-├── runtime/
-│   └── EdWebConsole/                      # LIVE MUTABLE STATE
-│       ├── ed_console.db
-│       ├── stream_capture.db
-│       ├── tokens/
-│       ├── logs/
-│       └── state/
-│
-├── artifacts/
-│   └── EdWebConsole/                      # GENERATED / PROMOTED ARTIFACTS
-│       ├── models/
-│       ├── research_outputs/
-│       ├── calibration_outputs/
-│       └── temporary_outputs/
-│
-├── recovery/
-│   └── EdWebConsole/                      # VERIFIED RECOVERY ASSETS
-│       └── backups/
-│
-└── worktrees/                             # DEVELOPMENT ONLY
-    └── active worktrees/
+```
+EdWebConsole/
+├── daemon/      the capture daemon: the one Schwab connection (stream and REST), the in-memory
+│                state, the push to the console and the browser, the one database writer, the
+│                database schema
+├── producer/    the levels producer: every derived value (gamma, exposure, vanna, charm, flip,
+│                walls, max pain, PCR, liquidity levels, order-flow measures), computed once
+├── console/     the web server: the page and the read routes; computes nothing, writes nothing
+├── shared/      what more than one process uses: market calendar and sessions, config, runtime
+│                paths, instrument identity
+├── static/      the page (one shell)
+├── tests/
+├── tools/       the few checks and scripts the repository needs
+├── docs/
+└── start_ed_console.bat, start_capture_daemon.bat, and the launch checks they run
 ```
 
----
-
-## 2. Current → target ownership
-
-The current repository is not required to reach this structure in one rewrite. It is required to
-move toward it whenever materially touched.
-
-```text
-CURRENT                                  TARGET
-
-server.py
-  routes                         →       app/api/routes/
-  lifespan/startup               →       app/api/lifespan/
-  business logic                 →       owning domain package
-  market calculations            →       app/domain / app/market_data /
-                                         app/options / app/signals
-  decision logic                 →       app/decision/
-
-db.py                            →       app/infrastructure/database/
-
-market_state.py                  →       app/market_data/market_state/
-
-schwab_client.py                 →       app/market_data/schwab/
-                                         or infrastructure/external_clients/
-                                         depending on responsibility
-
-polling_adapter.py               →       app/market_data/
-
-order_flow_engine.py             →       app/options/order_flow/
-
-options chain logic              →       app/options/chains/
-
-gamma / delta / vanna / charm    →       app/options/
-
-liquidity_value_engine.py        →       app/liquidity/
-
-liquidity_models.py              →       app/liquidity/
-
-signals.py                       →       app/signals/
-
-regime_engine.py                 →       app/domain/regimes/
-                                         or app/signals/regime/
-                                         based on actual responsibility
-
-prediction_engine.py             →       app/models/
-
-bayesian_fusion.py               →       app/models/fusion/
-
-monte_carlo.py                   →       app/models/monte_carlo/
-
-call_engine.py                   →       app/decision/
-
-rules_engine.py                  →       app/decision/
-                                         or owning domain package
-
-static/index.html                →       modular static/pages/components/js/css
-
-training scripts                 →       research/training/
-
-ablation / experiments           →       research/ablation/
-                                         research/experiments/
-
-calibration research             →       research/calibration/
-
-production calibration artifacts →       artifacts/EdWebConsole/
-
-large tools population           →       delete obsolete tools;
-                                         move real responsibilities to owners;
-                                         retain only small active toolbox
-
-governance sprawl                →       minimal governance/
-
-reports/evidence/generated data  →       artifacts/EdWebConsole/
-                                         or research outputs
-
-data/ed_console.db               →       runtime/EdWebConsole/ed_console.db
-
-stream_capture.db                →       runtime/EdWebConsole/
-
-logs                             →       runtime/EdWebConsole/logs/
-
-backups/db                       →       recovery/EdWebConsole/backups/
-
-model files                      →       artifacts/EdWebConsole/models/
-
-temporary generated files        →       artifacts/EdWebConsole/temporary_outputs/
-
-development worktrees            →       Trading/worktrees/
-```
-
----
-
-## 3. Architectural direction of flow
-
-The production system has one directional flow:
-
-```text
-                    ┌────────────────────┐
-                    │   EXTERNAL MARKET  │
-                    │       DATA         │
-                    └─────────┬──────────┘
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │      COLLECT       │
-                    │                    │
-                    │ market_data        │
-                    │ options            │
-                    │ normalization      │
-                    └─────────┬──────────┘
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │ CANONICAL TRUTHS   │
-                    │                    │
-                    │ domain             │
-                    │ market state       │
-                    │ options truth      │
-                    │ liquidity truth    │
-                    └─────────┬──────────┘
-                              │
-                 ┌────────────┴────────────┐
-                 │                         │
-                 ▼                         ▼
-      ┌────────────────────┐    ┌────────────────────┐
-      │   FIND & PROVE     │    │ PRODUCTION SIGNALS │
-      │                    │    │ + PROMOTED MODELS  │
-      │ research           │    │                    │
-      │ experiments        │    │ signals            │
-      │ validation         │    │ models             │
-      │ training           │    └─────────┬──────────┘
-      └─────────┬──────────┘              │
-                │                         │
-                │ PROMOTION ONLY          │
-                └────────────┬────────────┘
-                             ▼
-                    ┌────────────────────┐
-                    │       DECIDE       │
-                    │                    │
-                    │ TRADE              │
-                    │ WAIT               │
-                    │ AVOID              │
-                    └─────────┬──────────┘
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │      API / UI      │
-                    │ operator surfaces  │
-                    └────────────────────┘
-```
-
-Research may consume production computations.
-Production must not depend on experimental research implementations.
-
----
-
-## 4. Failure-domain architecture
-
-Application availability and capability availability are separate.
-
-```text
-                        ED CONSOLE
-                            │
-             ┌──────────────┴──────────────┐
-             │                             │
-             ▼                             ▼
-      APPLICATION SHELL              CAPABILITIES
-      API / UI / health              │
-      observability                  ├─ Schwab market data
-                                     ├─ streaming
-                                     ├─ options
-                                     ├─ models
-                                     ├─ signals
-                                     └─ decision inputs
-```
-
-A subsystem failure does not unnecessarily kill the application. Examples:
-
-```text
-Schwab unavailable
-    → app stays alive
-    → Schwab capability unavailable/degraded
-    → Schwab-dependent decision influence fails closed
-
-Options stream unavailable
-    → app stays alive
-    → options capability unavailable/degraded
-    → options-dependent decision influence fails closed
-
-Model unavailable
-    → app stays alive
-    → model cannot participate
-
-Decision inputs incomplete/untrusted
-    → app stays alive
-    → exposure cannot be authorized
-
-Governance broken/missing
-    → app stays alive
-    → no runtime effect
-
-Git/GitHub unavailable
-    → app stays alive
-    → no runtime effect
-```
-
-Whole-application startup refusal is reserved for cases where the application genuinely cannot
-execute coherently, such as a broken Python runtime or inability to load required core
-application code.
-
----
-
-## 5. One faucet = one computation
-
-A material semantic truth has one canonical computation authority.
-
-Not one writer. Not one serializer. **One computation.**
-
-Therefore the following are not allowed to independently reproduce production truth:
-
-- duplicate helpers
-- alternate builders
-- fallback calculators
-- adapters that recompute
-- SQL-derived replacements
-- frontend reconstruction
-- training-only reimplementations
-- research copies
-- compatibility shims
-- cached/replayed alternate formulas
-- convenience wrappers containing their own computation
-- inline calculations that recreate canonical semantics
-
-Consumers import and use the canonical computation.
-
----
-
-## 6. Product architecture
-
-The system has exactly three primary responsibilities:
-
-```text
-COLLECT
-    ↓
-FIND & PROVE
-    ↓
-DECIDE
-```
-
-### COLLECT
-
-Capture high-fidelity, causally honest market information. Includes:
-
-- price
-- quotes
-- NBBO
-- bars
-- streaming
-- options chains
-- Greeks
-- open interest
-- volume
-- order flow
-- market state
-- canonical normalization
-
-### FIND & PROVE
-
-Discover potential predictive edge and test it honestly. Includes:
-
-- experiments
-- ablation
-- training
-- walk-forward validation
-- purging/embargo
-- leakage controls
-- baseline comparisons
-- calibration
-- cost-aware evaluation
-- candidate model evaluation
-
-Failed candidates are removed. Research is not automatically production.
-
-### DECIDE
-
-Only proven and admitted information may influence exposure. Output:
-
-```text
-TRADE
-WAIT
-AVOID
-```
-
-Abstention/fail-closed behavior is the default when necessary truth is unavailable or unproven.
-
----
-
-## 7. Governance boundary
-
-Governance exists only to control development behavior.
-
-**It may govern:**
-
-- Claude
-- Cursor
-- other development agents
-- commits
-- CI
-- merges
-- destructive repository operations
-- proof/closure requirements
-
-**It must not govern:**
-
-- application startup
-- API availability
-- UI availability
-- market-data collection
-- production calculations
-- database availability
-- Schwab connectivity
-- runtime scheduling
-- model inference
-- decision execution
-
-The production application must not require:
-
-```text
-governance/
-.claude/
-.cursor/
-git
-GitHub
-branch state
-worktree state
-CI state
-agent state
-```
-
-in order to operate.
-
----
-
-## 8. Source / runtime / artifact / recovery separation
-
-These are separate concerns.
-
-```text
-SOURCE
-Trading/EdWebConsole/
-
-RUNTIME
-Trading/runtime/EdWebConsole/
-
-GENERATED ARTIFACTS
-Trading/artifacts/EdWebConsole/
-
-RECOVERY
-Trading/recovery/EdWebConsole/
-
-DEVELOPMENT WORKTREES
-Trading/worktrees/
-```
-
-Source updates must not endanger runtime databases, logs, tokens, generated model artifacts, or
-recovery backups. Runtime state must not pollute the source checkout.
-
-**Mechanism (RC-523 / RC-534):** `runtime_layout.py` is the ONE owner of these roots.
-`ED_RUNTIME_ROOT` moves the live database, logs, the Schwab token and diagnostics;
-`ED_ARTIFACTS_ROOT` (default: the runtime root) moves runtime-written reports and scorecards.
-Unset, a standalone checkout uses itself; a linked Git worktree reads Git's native
-``commondir`` metadata and converges on the primary worktree, so a feature worktree cannot
-silently become another production data root. An explicit runtime root may be a dedicated
-directory, never another linked source worktree. Converging is for reading: a live console or capture daemon starts only
-from the checkout that owns its runtime (`runtime_layout.live_binding_error`); a worktree that
-needs to run one sets `ED_RUNTIME_ROOT` to a separate sandbox directory. `db_authority`, `db`, `config`, `server` and
-the report-writing tools read their paths from it; the module imports nothing from `tools/` or
-`governance/`. Model artifacts under `models/` are still read from the source tree (a later
-move, with its own row).
-
----
-
-## 9. Incremental rehabilitation rule
-
-This architecture is not permission for an unrelated flag-day rewrite. It is also not permission
-to leave everything where it is.
-
-When a mission materially touches an area:
-
-```text
-1. Fix the actual root problem.
-
-2. Identify the cohesive responsibility being touched.
-
-3. Compare its current ownership/location to this schematic.
-
-4. If the responsibility can safely and cohesively move toward its canonical owner,
-   move it as part of the mission.
-
-5. Rewire consumers.
-
-6. Delete superseded implementations.
-
-7. Do not create another temporary architecture between CURRENT and TARGET.
-
-8. Do not preserve bad placement solely because tests currently import it there.
-
-9. Do not broaden into unrelated repository migration.
-
-10. If this architecture is wrong for the encountered responsibility,
-    stop the competing design and raise the evidence-based objection.
-```
-
-The goal is meaningful architectural movement as ordinary work proceeds.
-
-**What a touched responsibility must expose for review.** Whatever module or boundary a change
-materially touches — regardless of whether it moves toward its target location this session —
-review needs four things made explicit, not inferred: its **behavior** (what it does, stated as
-observable input/output, not as its own implementation restated); its **ownership** (which module
-is the one canonical producer of the fact it computes or the state it holds — §5, "One faucet =
-one computation"); its **data semantics** (identity, freshness, provenance, and what a missing or
-stale value means, versus a genuine zero); and its **failure boundary** (what breaks when this
-responsibility fails, and — per §4 — what must NOT break: a capability failure degrades that
-capability, never the application shell around it). A responsibility can be given focused,
-passing tests and still be wrong at the boundary: proof that one module works is not proof that
-the modules it depends on, or that depend on it, work TOGETHER — a change that touches more than
-one responsibility needs both kinds of proof, module and connection. The full review structure
-this operationalizes is `governance/AGENT_OPERATING_PROCESS_V1.md` §8, requirement 8
-("Architecture judgment").
-
----
-
-## 10. Required agent rule
-
-Claude, Cursor, and any future implementation agent operate under this rule:
-
-> `docs/ARCHITECTURE.md` is the canonical target architecture for Ed Console. As you perform
-> ordinary implementation work, use the schematic to move materially touched files,
-> responsibilities, imports, and ownership toward their canonical target when that movement is
-> safe and cohesive. Do not create new structure that moves away from the target, and do not
-> preserve misplaced architecture merely because it exists today. Do not launch unrelated
-> repository-wide rewrites. If you determine that the canonical architecture is technically
-> wrong, impossible, or materially inferior for something encountered, say so with the evidence
-> and fix it — reversing a demonstrably bad target is expected engineering, not an amendment
-> that waits on permission (this restates AGENTS.md's Placement rule, the governing statement,
-> for a reader who starts here). What still needs the operator is a genuine product or business
-> tradeoff with no answer available in engineering evidence — not a disagreement the code and
-> its own behavior can settle.
-
----
-
-## 11. End state
-
-The rehabilitation is complete when the repository itself communicates its architecture without
-requiring historical knowledge:
-
-```text
-api                 → application surface
-domain              → canonical semantics
-market_data         → collected market truth
-options             → canonical options truth
-liquidity           → canonical liquidity/value truth
-signals             → production signals
-models              → promoted inference
-decision            → TRADE / WAIT / AVOID
-infrastructure      → technical implementation services
-research            → Find & Prove
-static              → operator UI
-config              → product configuration
-governance          → minimal development controls
-
-runtime             → live mutable state
-artifacts           → generated/promoted outputs
-recovery            → backups
-worktrees           → development
-```
-
-No giant root modules.
-No duplicate semantic owners.
-No runtime/governance coupling.
-No source/runtime-state mixing.
-No research/production ambiguity.
-No hidden alternate computation paths.
-
-**One intentional system.**
+Outside the repository: the runtime folder (the one database, the token, logs) and worktrees.
+
+## 2. Where each file goes
+
+Moves happen one change at a time. `delete` rows go with the change named in `ACTIVE_PROGRAM.md`.
+
+| Today | Goes to |
+|---|---|
+| `app/market_data/schwab/streaming/` (capture, live_push, live_ui), `stream_spine.py`, `live_market_plane.py`, `live_price_rows.py` | `daemon/` |
+| `schwab_client.py`, `api_pressure.py`, `market_context.py` (Schwab REST calls) | `daemon/` |
+| From `server.py`: the chain fetch (`fetch_full_chain`, the chain gate, chain captures) | `daemon/` |
+| `calibration/complete_chain_capture.py` (the chain history, DATA_FLOW decision 7) | `daemon/` |
+| `calibration/option_chain_morning_full.py` | delete (its table folds into the chain history; P2-DB3) |
+| `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
+| `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
+| `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
+| `app/options/order_flow/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
+| From `server.py`: the levels loop, `_publish_levels`, the gamma-surface projection | `producer/` |
+| From `server.py`: the routes, startup; `app/api/routes/options_order_flow.py`, `release_object.py`, `desk_store.py` | `console/` |
+| `time_et.py`, `timeframe_config.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `scheduler_user_tickers.py`, `numeric_contract.py` | `shared/` |
+| `static/index.html`, `static/js/`, `static/css/` | `static/` |
+| `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
+| `ml_horizon.py`, `horizon_outcomes.py`, `movement_target_threshold.py`, `decision_record.py`, `execution_identity.py`, `calibration/schema.py` | delete (the ML stack; P2-5) |
+| `static/chart.html`, `desk.html`, `exposure.html`, `options.html` | delete after P2-4 (what is unique moves into the shell) |
+| `schwab_field_dictionary_builder.py` | checked at its step: delete if nothing needs it |
+
+## 3. Taking apart the two big files (measured 2026-09-26)
+
+Each step is one change: delete what has no job, move what remains, update §2, pass the full test
+suite and the browser suite, check the running app. Nothing is copied.
+
+**db.py (3,892 lines).** Product code calls 14 of the database class's 35 methods (664 lines); it
+reads or writes 6 of the 12 tables the file creates.
+- Delete: the snapshot writer and `SnapshotRow` (~700 lines), the ML outcome labels (~470), the
+  migrations for tables that are gone, `market_session` (the session comes from `time_et`),
+  `get_db_stats`, and the one-time JSON migration once its flag shows it ran.
+- Keep, and move to `daemon/`: bars, level history (crosses, daily OI and IV), enrollment (the
+  ticker board), the connection — about 900 lines.
+- The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's writer.
+
+**server.py (6,130 lines: 40 routes, 112 functions).**
+- To `daemon/`: the chain fetch and chain captures.
+- To `producer/`: the levels loop, `_publish_levels`, the gamma-surface projection and its
+  stream-state stamping.
+- To `console/`: the routes (grouped by what they serve) and startup.
+- What remains is the app assembly: create the app, include the routes, start.
+
+**The other large files** (`liquidity_value_engine.py` 1,947; order-flow `streaming.py` 1,124 and
+`engine.py` 1,093; `math_exposure_core.py` 1,018; `ed-core.js` 1,063; `ed-gamma.js` 1,039): each is
+measured the same way (part, lines, used or not) and the plan written here before its step starts.
+
+## 4. Failure domains
+
+The app and each capability fail separately. If Schwab (or its stream) is unavailable, the app
+still starts and serves; the Schwab-dependent panels say they are unavailable, and nothing is
+filled in from elsewhere. The app refuses to start only when it cannot run at all (a broken Python
+environment, core code that will not load).
+
+## 5. Runtime state lives outside the source
+
+The database, the Schwab token, logs and diagnostics are runtime state, not source.
+`runtime_layout.py` is the one owner of where they live: `ED_RUNTIME_ROOT` moves them; unset, a
+standalone checkout uses itself and a linked worktree uses the primary checkout's runtime (it
+reads, and never starts a live console or daemon on it). Source changes never touch runtime state,
+and runtime output never lands in the source tree.

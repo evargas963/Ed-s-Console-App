@@ -1,4 +1,4 @@
-"""RUNTIME LAYOUT — the ONE owner of where runtime state lives (docs/ARCHITECTURE.md §8).
+"""RUNTIME LAYOUT — the ONE owner of where runtime state lives (docs/ARCHITECTURE.md "Runtime state lives outside the source").
 
 Source, runtime state and generated artifacts are separate concerns:
 
