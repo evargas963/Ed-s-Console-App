@@ -1,5 +1,6 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
+import sys
 import inspect
 
 from math_exposure_core import (
@@ -392,9 +393,10 @@ def test_consensus_oi_vanna_walls_withheld_not_selected_expiry():
     assert '(_poi, "Put OI Wall")' not in ms_src
 
 
-def test_terrain_cache_get_derives_staleness_from_computed_ts():
+def test_terrain_cache_get_derives_staleness_from_computed_ts(monkeypatch):
     """RC-424: production cache stores computed_ts_utc, not levels_stale. terrain_cache_get
     must merge terrain_staleness so missing levels_stale cannot fail-open as fresh."""
+    monkeypatch.setattr(sys.modules["server"], "_is_loggable_session", lambda: True)   # an open-market test
     import time
 
     import server as srv
@@ -419,9 +421,10 @@ def test_terrain_cache_get_derives_staleness_from_computed_ts():
     assert fresh["levels_stale"] is False
 
 
-def test_consensus_walls_withhold_when_cache_stale_via_computed_ts():
+def test_consensus_walls_withhold_when_cache_stale_via_computed_ts(monkeypatch):
     """RC-424: consensus_walls_bind_terrain_ssot must withhold when terrain_cache_get
     marks the snapshot stale — not treat absent levels_stale as fresh."""
+    monkeypatch.setattr(sys.modules["server"], "_is_loggable_session", lambda: True)   # an open-market test
     import time
 
     import server as srv

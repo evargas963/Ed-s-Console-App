@@ -106,7 +106,11 @@
     // freshness / provenance line
     var src = document.getElementById('klSrc');
     if (src) {
-      if (d.levels_stale) {
+      if (d.levels_market_closed) {
+        src.textContent = 'as of ' + d.levels_as_of;
+        src.title = 'market closed: levels from the last session';
+        src.style.color = '';
+      } else if (d.levels_stale) {
         // compact status grammar: state + age on the panel; the full reason is disclosed in the
         // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
         var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)

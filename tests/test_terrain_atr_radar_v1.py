@@ -145,6 +145,8 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
 def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     """Seam: _terrain_refresh_one must call the logger AFTER a successful cache
     write; a TypeError inside the logger must not turn ok: into error:."""
+    import server as srv
+    monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)   # an open-market test
     from types import SimpleNamespace
 
     import server as srv
@@ -179,9 +181,10 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
 
     class _Snap:
         confidence = "TRUSTED"
-        profile = object()
+        profile: list = []
         per_strike: dict = {}
         books: dict = {}
+        charm_by_strike: dict = {}
 
         def to_dict(self):
             return {"gamma_flip": 99.5, "spot": 100.0, "confidence": "TRUSTED"}
@@ -199,12 +202,13 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
 
     class _BadSnap:
         confidence = "TRUSTED"
-        profile = object()
+        profile: list = []
         per_strike: dict = {}
         books: dict = {}
+        charm_by_strike: dict = {}
 
         def to_dict(self):
-            return {"gamma_flip": object(), "spot": 100.0, "confidence": "TRUSTED"}
+            return {"gamma_flip": "not-a-number", "spot": 100.0, "confidence": "TRUSTED"}
 
     monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _BadSnap())
     out2 = srv._terrain_refresh_one("SPY")

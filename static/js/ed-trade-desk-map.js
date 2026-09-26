@@ -362,7 +362,7 @@
         c.querySelector('.tdm-rows').innerHTML = row('Reason', t === undefined ? 'loading the full-chain terrain…' : esc((t && t.error) || 'terrain request failed'));
       } else {
         var reg = String(t.regime || '').replace(/_/g, ' ');
-        state(c, t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : (reg || '—'), t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
+        state(c, t.levels_market_closed ? 'AS OF ' + t.levels_as_of : t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : (reg || '—'), t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + ((t.net_gex_at_spot || 0) >= 0 ? 'up' : 'dn') + '">' + usd(t.net_gex_at_spot) + '</span><small>net dealer gamma at spot (per 1% move)</small>';
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall) + (t.call_wall_state ? ' · ' + esc(t.call_wall_state) : ''), 'up') +
           row('Put wall', num(t.put_wall) + (t.put_wall_state ? ' · ' + esc(t.put_wall_state) : ''), 'dn') +

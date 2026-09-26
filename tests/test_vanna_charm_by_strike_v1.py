@@ -3,12 +3,14 @@ audit, 2026-09-13): both wrap ALREADY-canonical, already-tested faucets --
 math_exposure_core.compute_exposures_by_strike's own call_vanna/put_vanna (RC-211's exact
 BS-vanna faucet) and math_levels.compute_charm_by_strike (the same function /api/forces's
 charm_below/charm_above already sum) -- read off the snapshot _publish_levels last
-published (_terrain_snapshots[tk]), zero extra vendor calls or pricing. These tests
+published (the _vanna_rows/_charm_rows _publish_levels writes into the cached payload),
+zero extra vendor calls or pricing. These tests
 prove the wiring, not the math (bs_vanna/bs_charm/compute_charm_by_strike are proven
 elsewhere: test_charm_by_strike_v1.py, test_charm_sign_finite_difference.py)."""
 from __future__ import annotations
 
 import json
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -42,12 +44,14 @@ TK = server.ticker_storage_key("CRWD")
 def _clear_cache():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-        server._terrain_snapshots.pop(TK, None)
 
 
 def _put_live_chain():
+    snap = compute_terrain(TK, _CONTRACTS, _SPOT)
     with server._terrain_cache_lock:
-        server._terrain_snapshots[TK] = compute_terrain(TK, _CONTRACTS, _SPOT)
+        server._terrain_cache[TK] = {"ticker": TK, "spot": snap.spot, "computed_ts_utc": time.time(),
+                                     "_vanna_rows": server._vanna_rows(snap),
+                                     "_charm_rows": server._charm_rows(snap)}
 
 
 def setup_function(_fn):

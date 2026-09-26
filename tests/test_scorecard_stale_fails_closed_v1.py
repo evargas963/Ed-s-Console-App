@@ -20,6 +20,13 @@ import pytest  # noqa: E402
 
 import server  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def _session_open(monkeypatch):
+    """These tests are about the open market: levels are computed only then (closed-market
+    behaviour: tests/test_one_levels_producer_v1.py)."""
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+
 ROOT = Path(__file__).resolve().parent.parent
 CHART = ROOT / "static" / "chart.html"
 

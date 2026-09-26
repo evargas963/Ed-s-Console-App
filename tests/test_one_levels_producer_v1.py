@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import pytest
@@ -46,12 +48,12 @@ def _cached():
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", 1.0))
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # the open market, unless a test closes it
     ofs._active_option_contract = _A
     ofs._active_option_contracts = [_B]
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-        server._terrain_snapshots.pop(TK, None)
     server._gamma_surface_demand.pop(TK, None)
     while not server._l1_sse_thread_queue.empty():
         server._l1_sse_thread_queue.get_nowait()
@@ -70,7 +72,7 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation(monkeypatch):
     _put_chain()
     snap = server._publish_levels(TK)
     c = _cached()
-    assert server._published_snapshot(TK) is snap and c["_per_strike"] is snap.per_strike
+    assert c["_per_strike"] is snap.per_strike and c["_vanna_rows"] == server._vanna_rows(snap)
     assert c["gamma_flip"] == snap.gamma_flip and c["call_wall"] == snap.call_wall
     full, _ = merge_exposure_books(snap.books.values())
     surface = c["_gamma_surface"]
@@ -341,3 +343,43 @@ def test_an_option_quote_lands_in_state_with_no_callback(monkeypatch):
     ofls.clear_all_live_state()
     _optquote(_GREEKS)
     assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_OPT))
+
+
+# ── the closed market: the last session's levels stand, saved and labeled ─────────────────────
+
+def test_a_publication_is_saved_and_a_restart_restores_it(monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "SESSION_LEVELS_DIR", tmp_path)
+    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time()}}, monkeypatch)
+    _put_chain(fetched_ts=time.time() - 5.0)
+    server._publish_levels(TK)
+    published = _cached()
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(TK)
+    assert server._load_session_levels() == 1
+    restored = _cached()
+    assert "_chain" not in restored, "the raw chain is not saved"
+    for k in ("gamma_flip", "call_wall", "put_wall", "computed_ts_utc", "_per_strike",
+              "_vanna_rows", "_charm_rows"):
+        assert restored[k] == json.loads(json.dumps(published[k])), k
+    # nothing has streamed a saved heatmap since it was saved
+    states = {leg["state"] for cell in restored["_gamma_surface"]["cells"]
+              for pair in cell["stream"] if pair for leg in pair.values() if isinstance(leg, dict)}
+    assert "live" not in states
+
+
+def test_while_closed_the_levels_are_the_last_sessions_labeled_with_their_time(monkeypatch):
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    fri_close = datetime(2026, 9, 25, 16, 29, tzinfo=ZoneInfo("America/New_York")).timestamp()
+    st = server.terrain_staleness(fri_close, TK)
+    assert st["levels_market_closed"] is True and st["levels_stale"] is False
+    assert st["levels_as_of"] == "Fri 09/25 03:29 PM CT"
+    assert st["levels_refresh_active"] is False and st["levels_failing"] is False
+
+
+def test_a_tick_while_closed_reprices_nothing(monkeypatch):
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    calls = _count_publishes(monkeypatch)
+    _put_chain()
+    server._on_stream_tick("CRWD")
+    time.sleep(0.05)
+    assert calls == []
