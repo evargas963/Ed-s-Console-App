@@ -99,7 +99,7 @@ def test_db_write_path_d_import_does_not_trigger_db_universe_load():
     code = (
         "import server;"
         "assert server._LOGGING_UNIVERSE_DB_LOAD_COUNT == 0, server._LOGGING_UNIVERSE_DB_LOAD_COUNT;"
-        "assert (not server._HAS_SIGNALS) or server._logger_tickers == list(server.CORE_TICKERS),"
+        "assert server._logger_tickers == list(server.CORE_TICKERS),"
         " server._logger_tickers;"
         "print('IMPORT_DEFER_OK')"
     )

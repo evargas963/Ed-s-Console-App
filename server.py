@@ -148,49 +148,11 @@ _install_visual_severity_markers(logging.INFO)
 log = logging.getLogger("ed_server")
 
 
-def _log_calibration_logging_state_at_boot() -> None:
-    """One-shot boot diagnostic: surface whether calibration writer is enabled.
-
-    Root cause of the 2026-04-12 → 2026-05-05 calibration_decision_log gap was the
-    writer being env-gated (ED_CALIBRATION_LOG default-OFF) with zero operator
-    visibility — silent return None on every call. Emit a clear WARNING (visible
-    via the level-marker formatter) at boot when the writer is disabled so the
-    operator never restarts into "writer silently dropping all rows" without
-    knowing it.
-    """
-    # RC-230 (second cut): importing config does NOT load .env — only build_config() calls
-    # _ensure_dotenv_loaded(). The first fix moved this call after the import and the false
-    # DISABLED warning still fired (measured, PID 35680). Load .env explicitly here.
-    try:
-        from config import _ensure_dotenv_loaded
-        _ensure_dotenv_loaded()
-    except ImportError:
-        pass
-    try:
-        from calibration.writer import calibration_logging_enabled
-    except ImportError:
-        log.warning(
-            "calibration writer import failed at boot — calibration_decision_log will be silent"
-        )
-        return
-    if calibration_logging_enabled():
-        log.info("calibration logging ENABLED (ED_CALIBRATION_LOG=on) — writer will persist decisions")
-    else:
-        log.warning(
-            "calibration logging DISABLED — ED_CALIBRATION_LOG not in {1,true,yes,on}; "
-            "calibration_decision_log writer will silently skip all rows. "
-            "Set ED_CALIBRATION_LOG=1 in .env to enable."
-        )
 
 
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
 from config import build_config
 
-# RC-230 quiet-gate finding: this boot diagnostic ran BEFORE the config import that loads
-# .env, so it read a bare os.environ and warned "calibration logging DISABLED" on every
-# boot even with ED_CALIBRATION_LOG=1 correctly present in .env — a false alarm that also
-# failed the ed_server_warn_quiet_window gate. It must run AFTER dotenv is loaded.
-_log_calibration_logging_state_at_boot()
 from schwab_client import (
     auth_is_refreshable,
     build_client_from_token,

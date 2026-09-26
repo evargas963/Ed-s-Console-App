@@ -110,7 +110,7 @@ def test_chain_with_no_listed_expiry_is_unavailable_with_its_reason(monkeypatch,
 
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [])
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": []})
     body = json.loads(srv.get_chain(ticker="ZZZZ", expiry=None).body)
     assert body["ticker"] == "ZZZZ"
     assert body["contracts"] == [] and body["status"] == "unavailable"
@@ -129,7 +129,7 @@ def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
     _no_live_client(monkeypatch, srv)
     _fake_db(monkeypatch, srv, tmp_path)
     seen = []
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: seen.append(t) or [])
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": seen.append(t) or []})
     body = json.loads(srv.get_chain(ticker=" spy ", expiry=None).body)
     assert body["ticker"] == "SPY"
     assert seen == ["SPY"]
@@ -162,7 +162,7 @@ def test_chain_live_fetch_uses_strike_range_all_never_a_bare_count(monkeypatch, 
     import server as srv
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": [_TSLA_EXPIRY]})
     _fake_db(monkeypatch, srv, tmp_path)
     c_json = _chain_json_for(_TSLA_CONTRACTS)
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
@@ -188,7 +188,7 @@ def test_chain_fractional_strikes_survive_vendor_to_api_unchanged(monkeypatch, t
     import server as srv
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": [_TSLA_EXPIRY]})
     _fake_db(monkeypatch, srv, tmp_path)
     c_json = _chain_json_for(_TSLA_CONTRACTS)
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
@@ -294,7 +294,7 @@ def test_chain_overlays_streamed_volume_onto_the_rest_snapshot(monkeypatch, tmp_
         ofs, target_symbol, "TSLA", streamed_volume, now)
     try:
         monkeypatch.setattr(srv, "get_client", lambda: object())
-        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+        monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": [_TSLA_EXPIRY]})
         _fake_db(monkeypatch, srv, tmp_path)
         c_json = _chain_json_for(contracts)
         c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
@@ -365,7 +365,7 @@ def test_chain_does_not_let_an_older_streamed_volume_replace_a_newer_rest_value(
         ofs, target_symbol, "TSLA", stale_streamed_volume, now - 1.0)
     try:
         monkeypatch.setattr(srv, "get_client", lambda: object())
-        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+        monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": [_TSLA_EXPIRY]})
         _fake_db(monkeypatch, srv, tmp_path)
         c_json = _chain_json_for(contracts)
         c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
@@ -415,7 +415,7 @@ def test_chain_streamed_overlay_reaches_the_route_over_real_http(monkeypatch, tm
     streamed_volume = (rest_volume or 0) + 4321
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": [_TSLA_EXPIRY]})
     _fake_db(monkeypatch, srv, tmp_path)
     c_json = _chain_json_for(contracts)
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
@@ -498,7 +498,7 @@ def test_chain_overlay_does_not_let_one_fresh_field_borrow_another_fields_freshn
         }, ts_recv=now)
 
         monkeypatch.setattr(srv, "get_client", lambda: object())
-        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+        monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": [_TSLA_EXPIRY]})
         _fake_db(monkeypatch, srv, tmp_path)
         c_json = _chain_json_for(contracts)
         c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
@@ -539,7 +539,7 @@ def test_chain_never_serves_an_older_persisted_capture_when_live_fails(monkeypat
         ts_utc=1000.0)
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": [_TSLA_EXPIRY]})
 
     def _boom(*a, **k):
         raise RuntimeError("simulated live-fetch outage")
@@ -561,7 +561,7 @@ def test_chain_expiry_mismatch_is_unavailable_not_another_expiry(monkeypatch, tm
     import server as srv
 
     monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {"expiries": [_TSLA_EXPIRY]})
     _fake_db(monkeypatch, srv, tmp_path)
     drifted = dict(_TSLA_CONTRACTS[0])
     drifted["expirationDate"] = "2099-01-01T00:00:00.000+00:00"
@@ -586,8 +586,8 @@ def test_chain_live_fetch_accepts_explicit_expiry_param(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "get_client", lambda: object())
     _fake_db(monkeypatch, srv, tmp_path)
     fetch_expiries_called = []
-    monkeypatch.setattr(srv, "_fetch_expiries_light",
-                        lambda t: fetch_expiries_called.append(t) or ["9999-01-01"])
+    monkeypatch.setattr(srv, "terrain_cache_get",
+                        lambda t: fetch_expiries_called.append(t) or {"expiries": ["9999-01-01"]})
     c_json = _chain_json_for(_TSLA_CONTRACTS)
     c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
     monkeypatch.setattr(srv, "_gated_safe_get_chain",
