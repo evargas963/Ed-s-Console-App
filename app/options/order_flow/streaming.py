@@ -870,8 +870,13 @@ def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
 #: Which stocks/indexes a screen shows a live price for, by source. The daemon streams its
 #: fixed --symbols roster only; everything else is requested here (the no-fallback rule
 #: means an unstreamed symbol reads UNAVAILABLE, so every shown symbol must be requested).
-_EQUITY_DEMAND_ORDER = ("watchlist", "board")
+#: The market context every page's header shows beside the selected ticker (Trade Desk,
+#: operator 2026-09-25). Standing demand: measured 2026-09-25, a page whose watchlist did not
+#: happen to hold them showed SPX/NDX/VIX as "—" all session because nobody requested them.
+MARKET_CONTEXT_SYMBOLS = ("$SPX", "$NDX", "$VIX")
+_EQUITY_DEMAND_ORDER = ("context", "watchlist", "board")
 _equity_demand: "dict[str, list[str]]" = {k: [] for k in _EQUITY_DEMAND_ORDER}
+_equity_demand["context"] = list(MARKET_CONTEXT_SYMBOLS)
 _equity_not_admitted: "dict[str, str]" = {}
 _equity_last_written: "list[str] | None" = None
 _equity_lock = threading.Lock()
@@ -881,7 +886,8 @@ def rank_equity_symbols(active: "str | None", demand: "dict[str, list[str]]",
                         budget: int = EQUITY_SYMBOLS_MAX_HELD,
                         ) -> "tuple[list[str], dict[str, str]]":
     """(admitted, {not_admitted: reason}). Order of importance: the active ticker, then the
-    watchlist in its own order, then the gamma board. Duplicates count once, at their
+    market context (MARKET_CONTEXT_SYMBOLS), then the watchlist in its own order, then the
+    gamma board. Duplicates count once, at their
     most important place; everything past the budget is named, never silently cut."""
     ordered: list[str] = []
     for sym in [active, *[s for k in _EQUITY_DEMAND_ORDER for s in demand.get(k, [])]]:

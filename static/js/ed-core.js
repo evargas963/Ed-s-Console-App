@@ -27,7 +27,7 @@
   // sub id (map/filter/find/sort/... are all real Array.prototype methods). ----
   var NAV = {
     'trade-desk': { title: 'TRADE DESK', subs: [
-      { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
+      { id: 'desk', label: 'Desk' }, { id: 'right-now', label: 'Right Now' }, { id: 'plan', label: 'Plan' },
       { id: 'expression', label: 'Expression', state: 'na' } ], views: Object.create(null) },
     // Book/DOM first (real, wired 2026-09-13 to /api/order-flow/microstructure); the rest stay
     // `na` until they have their own real wiring -- Overview/Heatmap/Tape/Options Book/History
@@ -767,9 +767,13 @@
     if (!/^\d+$/.test(port)) return null;
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
   }
+  // The market context the server always streams (streaming.MARKET_CONTEXT_SYMBOLS); the
+  // socket pushes only what a page subscribes to, so every page asks for it.
+  var MARKET_CONTEXT = ['SPX', 'NDX', 'VIX'];
   function priceSymbols() {
     var out = [];
     if (state.ticker) out.push(String(state.ticker).toUpperCase());
+    MARKET_CONTEXT.forEach(function (s) { if (out.indexOf(s) === -1) out.push(s); });
     loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
     return out;
   }
@@ -1048,5 +1052,5 @@
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     setMeasure: setMeasure, getMeasure: function () { return state.measure; },
     getPlane: function () { return Object.assign({}, _plane); },
-    setMaximize: applyMaximize, toggleMaximize: toggleMaximize };
+    setMaximize: applyMaximize, toggleMaximize: toggleMaximize, setSubview: setSubview };
 })();
