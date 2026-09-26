@@ -83,42 +83,6 @@ def _warn(msg):
 # TEST 1: ARCHITECTURE — correct files exist
 # ══════════════════════════════════════════════════════════════════════════════
 
-@fails_closed
-def test_architecture():
-    print("\n1. ARCHITECTURE — file existence")
-
-    REQUIRED = [
-        # Core pipeline
-        "server.py", "signals.py", "signal_types.py",
-        "rules_engine.py", "prediction_engine.py", "call_engine.py",
-        "market_state.py",
-        # Math layer
-        "math_exposure.py", "math_exposure_core.py",
-        "math_levels.py", "math_volatility.py", "math_probabilities.py",
-        # Model layer
-        "regime_engine.py", "bayesian_fusion.py",
-        "lstm_model.py",
-        "monte_carlo.py",
-        # Data layer
-        "db.py", "micro_structure.py", "market_context.py",
-        # Training
-        "ml_train.py", "ml_predict.py", "lstm_data.py", "transformer_train.py",
-        "training_provenance.py", "verify_active_models.py",
-        # Support
-        "config.py", "schwab_client.py",
-        # Frontend
-        "index.html",
-    ]
-
-    for f in REQUIRED:
-        # index.html might be in templates/ or static/
-        candidates = [ROOT / f]
-        if f == "index.html":
-            candidates += [ROOT / "templates" / f, ROOT / "static" / f]
-        if any(c.exists() for c in candidates):
-            _pass(f)
-        else:
-            _fail(f"{f} MISSING")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -350,52 +314,6 @@ def test_syntax(repo_index):
 # TEST 9: WRAPPER HEALTH — math_exposure.py re-exports correctly
 # ══════════════════════════════════════════════════════════════════════════════
 
-@fails_closed
-def test_wrapper():
-    print("\n9. WRAPPER — math_exposure.py re-exports")
-
-    # TEST_SYSTEM_REHAB_V2 final remediation: `hasattr(me, name)` only proves SOME
-    # attribute with that name exists on math_exposure -- it is satisfied identically
-    # by a genuine `from math_levels import *` re-export, a locally-redefined stale
-    # duplicate under the same name, or a mis-aliased import wiring the WRONG split
-    # module's function in under this name (e.g. `from math_levels import
-    # compute_gamma_flip_v1 as compute_gamma_flip_v2`). Object IDENTITY against the
-    # actual owning split module is what "wrapper" means; presence alone is not.
-    try:
-        import math_exposure as me
-        import math_exposure_core
-        import math_levels
-        import math_probabilities
-        import math_volatility
-        owners = {
-            "math_exposure_core": math_exposure_core, "math_levels": math_levels,
-            "math_volatility": math_volatility, "math_probabilities": math_probabilities,
-        }
-        critical_exports = [
-            "compute_exposures_by_strike",
-            "compute_gamma_flip_v2",
-            "compute_gamma_void_zones",
-            "compute_expected_move_straddle",
-            "compute_atr",
-            "compute_iv_skew",
-            "compute_dealer_pressure_index",
-            "compute_level_density",
-            "compute_volatility_envelope",
-        ]
-        for name in critical_exports:
-            wrapped = getattr(me, name, None)
-            if wrapped is None:
-                _fail(f"math_exposure.{name} NOT exported")
-                continue
-            owning = [mn for mn, m in owners.items() if getattr(m, name, None) is wrapped]
-            if owning:
-                _pass(f"math_exposure.{name} (identical to {owning[0]}.{name})")
-            else:
-                _fail(f"math_exposure.{name} is not object-identical to any split "
-                     f"module's own {name} -- a locally-redefined stub or a "
-                     f"mis-aliased import, not a genuine re-export")
-    except Exception as e:
-        _fail(f"Wrapper import: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

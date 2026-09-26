@@ -6,13 +6,10 @@ retirement end-to-end: the producers are gone and the engine emits None for the 
 """
 from __future__ import annotations
 
-import math_exposure as me
 import app.options.order_flow.engine as ofe
 from app.options.order_flow.engine import OrderFlowEngine
 
 
-def test_compute_order_flow_verdict_producer_is_deleted():
-    assert not hasattr(me, "compute_order_flow_verdict"), "the double-counting verdict must stay deleted"
 
 
 def test_order_flow_score_verdict_family_is_retired():

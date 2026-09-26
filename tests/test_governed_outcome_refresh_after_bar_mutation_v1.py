@@ -190,7 +190,7 @@ def test_refresh_all_governed_bar_anchor_outcomes_v1_aligns_with_bars(tmp_path):
 
     import bisect
 
-    from math_exposure import classify_direction_pts
+    from math_probabilities import classify_direction_pts
     from movement_target_threshold import (
         load_movement_thresholds_by_horizon_v1,
         threshold_move_pts_for_slug,

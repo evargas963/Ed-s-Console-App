@@ -21,7 +21,7 @@ from typing import Any, Optional
 
 import math as _of_math
 
-from math_exposure import MISSING_GREEK_SENTINEL
+from math_exposure_core import MISSING_GREEK_SENTINEL
 from l1_trade_observation import (
     canonical_tape_prints,
     compute_cum_delta_proxy as _canonical_cum_delta,

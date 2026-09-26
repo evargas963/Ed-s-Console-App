@@ -69,9 +69,7 @@ from movement_target_threshold import (
 # ── Centralized math (single source of truth) ────────────────────────────────
 # Direction classification, distance bucketing, and all thresholds live in
 # math_exposure.py. db.py MUST NOT define its own versions.
-from math_exposure import (
-    classify_direction_pts as _classify_direction_per_horizon,
-)
+from math_probabilities import classify_direction_pts as _classify_direction_per_horizon
 
 # Issue 19 / 21 — tier column tuples + audit helpers (single source: similarity_audit)
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 
-from math_exposure import MISSING_GREEK_SENTINEL
+from math_exposure_core import MISSING_GREEK_SENTINEL
 
 
 def _row(**overrides):

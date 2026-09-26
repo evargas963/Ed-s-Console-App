@@ -6,8 +6,7 @@ import re
 
 import pytest
 
-from math_exposure import MISSING_GREEK_SENTINEL
-from math_exposure_core import MISSING_GREEK_SENTINEL as CORE_SENTINEL
+from math_exposure_core import MISSING_GREEK_SENTINEL
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {
@@ -55,7 +54,6 @@ def _offending_literal_lines(src: str, rel_name: str) -> list[str]:
 
 
 def test_missing_greek_sentinel_constant_value_is_negative_999_point_0():
-    assert CORE_SENTINEL == pytest.approx(-999.0)
     assert MISSING_GREEK_SENTINEL == pytest.approx(-999.0)
 
 

@@ -200,9 +200,7 @@ from schwab_client import (
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
 from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
-from math_exposure import (
-    gamma_at_price,
-)
+from math_levels import gamma_at_price
 from market_context import (
     market_context_panel_symbols_excluding_core,
 )
@@ -1416,7 +1414,8 @@ LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
 #   1-min bars = ~2 ticks per bar
 # Bars are keyed by ticker. Completed bars stored in ring buffer; maxlen from math_exposure.
 # ─────────────────────────────────────────────────────────────────────────────
-from math_exposure import CANDLE_1M_MAX_BARS
+#: one RTH day of 1-minute bars
+CANDLE_1M_MAX_BARS: int = 390
 from micro_structure import Candle
 from timeframe_config import CANONICAL_TIMEFRAME
 # Imported at MODULE LEVEL deliberately: the terrain loop's morning-window guard depends
