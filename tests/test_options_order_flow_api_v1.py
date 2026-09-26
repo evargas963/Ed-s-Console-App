@@ -277,7 +277,6 @@ def test_active_option_contracts_post_surfaces_setter_failure(monkeypatch, fresh
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-
 def _force_live_option_plane(ofs, active_contract):
     """Make the plane maximally healthy on its own terms, so anything failing closed
     below is doing so on contract identity and nothing else. NOTE this sets only the
@@ -291,68 +290,23 @@ def _force_live_option_plane(ofs, active_contract):
 
 
 def _seed_producer_epochs(ofs, monkeypatch, tmp_path, *, l1=None, book=None):
-    """Point the diagnostics at a real stream DB and write REAL open coverage epochs --
-    producer-side subscription truth, exactly as the daemon records it after a confirmed
-    vendor subscribe. Fresh heartbeat too, so identity/liveness is not the thing failing.
-    Passing None for a service leaves it with no open epoch (not subscribed)."""
-    import time as _t
-
-    from stream_spine import CaptureWriter
-
-    db = tmp_path / "producer_stream.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        # RC-UI-3 (2026-09-12): claimed_coverage is now a LIST of currently-claimed
-        # epoch ids per service (multiple concurrently-open contracts are normal), not a
-        # single epoch id or None.
-        claim = {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}
-        if l1:
-            claim["LEVELONE_OPTIONS"] = [w.open_coverage_epoch(
-                ofs.ticker_storage_key(l1), "LEVELONE_OPTIONS", reason="active_contract_set")]
-        if book:
-            claim["OPTIONS_BOOK"] = [w.open_coverage_epoch(
-                ofs.ticker_storage_key(book), "OPTIONS_BOOK", reason="active_contract_set")]
-        # A live daemon publishes WHICH epoch it currently claims alongside its heartbeat.
-        # An open row on its own is history, not an assertion -- a failed durable close
-        # leaves one open on a subscription already surrendered. Seeding the claim is what
-        # makes this fixture a LIVE producer rather than a ledger that merely has rows.
-        w.write_heartbeat(ts=_t.time(), claimed_coverage=claim)
-    finally:
-        w.close()
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    return db
+    """A live daemon's status saying what Schwab holds: `l1` on LEVELONE_OPTIONS, `book` on
+    OPTIONS_BOOK (None = not held). Producer truth arrives only this way now."""
+    held = {"LEVELONE_OPTIONS": [ofs.ticker_storage_key(l1)] if l1 else [],
+            "OPTIONS_BOOK": [ofs.ticker_storage_key(book)] if book else []}
+    monkeypatch.setattr(ofs, "_daemon_status", None)
+    ofs._note_daemon_status({"schwab_socket_open": True, "held": held, "health": {}})
 
 
 def _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, *,
                                          primary=None, primary_book=True, extra=None):
-    """RC-UI-3 multi-contract variant of _seed_producer_epochs: `primary` claims
-    LEVELONE_OPTIONS (+ OPTIONS_BOOK unless primary_book=False); every symbol in `extra`
-    claims LEVELONE_OPTIONS ONLY -- mirroring the real orchestrator's service split (see
-    EXTRA_OPTION_CONTRACT_SVC_KEY in capture.py). All claimed together in ONE heartbeat,
-    exactly as the real daemon republishes its whole claim on every transition."""
-    import time as _t
-    from stream_spine import CaptureWriter
-
-    db = tmp_path / "producer_stream.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        l1_ids, book_ids = [], []
-        if primary:
-            l1_ids.append(w.open_coverage_epoch(
-                ofs.ticker_storage_key(primary), "LEVELONE_OPTIONS", reason="active_contract_set"))
-            if primary_book:
-                book_ids.append(w.open_coverage_epoch(
-                    ofs.ticker_storage_key(primary), "OPTIONS_BOOK", reason="active_contract_set"))
-        for sym in (extra or []):
-            l1_ids.append(w.open_coverage_epoch(
-                ofs.ticker_storage_key(sym), "LEVELONE_OPTIONS", reason="active_contract_set"))
-        w.write_heartbeat(ts=_t.time(), claimed_coverage={"LEVELONE_OPTIONS": l1_ids, "OPTIONS_BOOK": book_ids})
-    finally:
-        w.close()
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    return db
+    """Multi-contract variant: `primary` held on LEVELONE_OPTIONS (+ OPTIONS_BOOK unless
+    primary_book=False); every symbol in `extra` held on LEVELONE_OPTIONS only."""
+    l1 = ([ofs.ticker_storage_key(primary)] if primary else []) +         [ofs.ticker_storage_key(s) for s in (extra or [])]
+    book = [ofs.ticker_storage_key(primary)] if primary and primary_book else []
+    monkeypatch.setattr(ofs, "_daemon_status", None)
+    ofs._note_daemon_status({"schwab_socket_open": True, "health": {},
+                             "held": {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book}})
 
 
 def _reset_option_plane(ofs):
@@ -429,17 +383,10 @@ def test_additional_contract_never_requires_options_book(monkeypatch, tmp_path):
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_CONTRACT)]
-    db = _seed_multi_contract_producer_epochs(
+    _seed_multi_contract_producer_epochs(
         ofs, monkeypatch, tmp_path, primary=_QQQ_CONTRACT, extra=[_SPY_CONTRACT])
-    # Sanity: SPY genuinely has no OPTIONS_BOOK row in the ledger at all.
-    import sqlite3
-    con = sqlite3.connect(db)
-    try:
-        rows = con.execute(
-            "SELECT symbol FROM stream_coverage_epochs WHERE service='OPTIONS_BOOK'").fetchall()
-    finally:
-        con.close()
-    assert ofs.ticker_storage_key(_SPY_CONTRACT) not in {r[0] for r in rows}
+    # Sanity: Schwab genuinely holds no OPTIONS_BOOK for SPY.
+    assert ofs.ticker_storage_key(_SPY_CONTRACT) not in ofs.daemon_status()["held"]["OPTIONS_BOOK"]
     try:
         plane = json.loads(srv.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
@@ -629,140 +576,6 @@ def test_gap1a_producer_switches_to_b_then_identity_is_confirmed(monkeypatch, tm
         _reset_option_plane(ofs)
 
 
-def test_duplicate_symbol_ledger_fails_closed_not_newest_row_wins(monkeypatch, tmp_path):
-    """PR214 defect 1F, refined for RC-UI-3 (2026-09-12) multi-contract coverage. A
-    corrupted/hand-edited ledger with TWO open epochs for the SAME symbol on one option
-    service must fail CLOSED for that symbol, not silently resolve to the newer row.
-
-    Before RC-UI-3, "more than one open row on a service" was itself the ambiguity this
-    guarded. That is no longer true: two DIFFERENT symbols legitimately open at once on
-    one service is now the intended multi-contract shape (see
-    test_multi_contract_producer_confirms_each_symbol_independently below). The genuine
-    corruption this must still refuse is a DUPLICATED symbol -- two open rows that both
-    claim to be the SAME contract's coverage, which the per-(symbol,service) uniqueness
-    guard makes unreachable through the normal path. Seeded here by direct SQL."""
-    import json
-
-    import app.options.order_flow.streaming as ofs
-    import server as srv
-    from stream_spine import CaptureWriter, read_open_coverage_symbols
-
-    db = tmp_path / "duplicate_symbol.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        # Direct SQL: bypass the uniqueness guard to simulate a corrupted ledger --
-        # QQQ open TWICE on LEVELONE_OPTIONS, plus an unambiguous OPTIONS_BOOK control row.
-        w._conn.execute(
-            "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
-            "VALUES(?,?,1.0,'seed'),(?,?,2.0,'seed'),(?,?,1.0,'seed')",
-            (ofs.ticker_storage_key(_QQQ_CONTRACT), "LEVELONE_OPTIONS",
-             ofs.ticker_storage_key(_QQQ_CONTRACT), "LEVELONE_OPTIONS",   # duplicate, newer id
-             ofs.ticker_storage_key(_QQQ_CONTRACT), "OPTIONS_BOOK"))
-        w._conn.commit()
-        # A LIVE producer claiming all three forged rows: the ambiguity must be refused on
-        # its own terms, not merely because the claim happens not to cover them.
-        w.write_heartbeat(ts=__import__("time").time(),
-                          claimed_coverage={"LEVELONE_OPTIONS": [1, 2], "OPTIONS_BOOK": [3]})
-    finally:
-        w.close()
-
-    import sqlite3
-    con = sqlite3.connect(db)
-    try:
-        got = read_open_coverage_symbols(
-            con, ("LEVELONE_OPTIONS", "OPTIONS_BOOK"),
-            stale_sec=ofs.STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
-    finally:
-        con.close()
-    assert got["LEVELONE_OPTIONS"] == [], (
-        "a duplicated symbol on one service is AMBIGUOUS -- it must not resolve to the "
-        "newest row")
-    assert got["OPTIONS_BOOK"] == [ofs.ticker_storage_key(_QQQ_CONTRACT)], (
-        "the unambiguous service is still answered normally")
-
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    _force_live_option_plane(ofs, _QQQ_CONTRACT)
-    try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
-            contract=_QQQ_CONTRACT).body)["streaming_plane"]
-        assert plane["producer_l1_contract"] is None
-        assert plane["contract_match"] is False, (
-            "contract_match must not become true from an ambiguous ledger")
-        assert plane["streaming_healthy"] is False, (
-            "health must not become true from an ambiguous ledger")
-    finally:
-        _reset_option_plane(ofs)
-
-
-def test_multi_contract_producer_confirms_each_symbol_independently(monkeypatch, tmp_path):
-    """RC-UI-3 (2026-09-12): two DIFFERENT symbols genuinely open at once on the SAME
-    service is the normal multi-contract shape, not the ambiguity the test above guards
-    against -- each row confirms entirely on its own terms (its own symbol has exactly
-    one open row, and its own epoch id is in the live producer's claim)."""
-    import app.options.order_flow.streaming as ofs
-    from stream_spine import CaptureWriter, read_open_coverage_symbols
-
-    db = tmp_path / "multi_contract.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        spy_id = w.open_coverage_epoch(ofs.ticker_storage_key(_SPY_CONTRACT),
-                                       "LEVELONE_OPTIONS", reason="active_contract_set")
-        qqq_id = w.open_coverage_epoch(ofs.ticker_storage_key(_QQQ_CONTRACT),
-                                       "LEVELONE_OPTIONS", reason="active_contract_set")
-        w.write_heartbeat(ts=__import__("time").time(),
-                          claimed_coverage={"LEVELONE_OPTIONS": [spy_id, qqq_id],
-                                            "OPTIONS_BOOK": []})
-    finally:
-        w.close()
-
-    import sqlite3
-    con = sqlite3.connect(db)
-    try:
-        got = read_open_coverage_symbols(
-            con, ("LEVELONE_OPTIONS", "OPTIONS_BOOK"),
-            stale_sec=ofs.STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
-    finally:
-        con.close()
-    assert got["LEVELONE_OPTIONS"] == sorted(
-        [ofs.ticker_storage_key(_SPY_CONTRACT), ofs.ticker_storage_key(_QQQ_CONTRACT)]), (
-        "both concurrently-open, distinctly-claimed symbols must confirm")
-    assert got["OPTIONS_BOOK"] == []
-
-
-def test_multi_contract_one_unclaimed_symbol_does_not_block_the_other(monkeypatch, tmp_path):
-    """A row whose epoch id the producer no longer claims (surrendered but the close is
-    still pending, say) must refuse ONLY that symbol -- not the other, still-claimed,
-    concurrently-open symbol on the same service. Per-row independence is the entire
-    point of the RC-UI-3 redesign: one symbol's fate must not gate another's."""
-    import app.options.order_flow.streaming as ofs
-    from stream_spine import CaptureWriter, read_open_coverage_symbols
-
-    db = tmp_path / "partial_claim.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        spy_id = w.open_coverage_epoch(ofs.ticker_storage_key(_SPY_CONTRACT),
-                                       "LEVELONE_OPTIONS", reason="active_contract_set")
-        w.open_coverage_epoch(ofs.ticker_storage_key(_QQQ_CONTRACT),
-                              "LEVELONE_OPTIONS", reason="active_contract_set")
-        # Only SPY's epoch id is claimed; QQQ's row stays open but unclaimed.
-        w.write_heartbeat(ts=__import__("time").time(),
-                          claimed_coverage={"LEVELONE_OPTIONS": [spy_id], "OPTIONS_BOOK": []})
-    finally:
-        w.close()
-
-    import sqlite3
-    con = sqlite3.connect(db)
-    try:
-        got = read_open_coverage_symbols(
-            con, ("LEVELONE_OPTIONS", "OPTIONS_BOOK"),
-            stale_sec=ofs.STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
-    finally:
-        con.close()
-    assert got["LEVELONE_OPTIONS"] == [ofs.ticker_storage_key(_SPY_CONTRACT)], (
-        "the claimed symbol confirms and the unclaimed one is refused, independently")
-
-
 def test_gap1a_partial_producer_state_is_not_a_fully_healthy_plane(monkeypatch, tmp_path):
     """REQUIRED: partial producer state (L1=B, BOOK=A or absent) must NOT become a fully
     healthy B plane -- both option services are required for a full contract match."""
@@ -790,12 +603,13 @@ def test_gap1a_partial_producer_state_is_not_a_fully_healthy_plane(monkeypatch, 
             _reset_option_plane(ofs)
 
 
-def test_blocker1a_whole_plane_query_keeps_historical_unbound_answer():
+def test_blocker1a_whole_plane_query_keeps_historical_unbound_answer(monkeypatch, tmp_path):
     """No caller-specified subject -> contract_match is None (not fabricated), and the
     historical whole-plane answer is unchanged for existing callers."""
     import app.options.order_flow.streaming as ofs
 
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
+    _seed_producer_epochs(ofs, monkeypatch, tmp_path, l1=_QQQ_CONTRACT, book=_QQQ_CONTRACT)
     try:
         diag = ofs.get_option_contract_streaming_diagnostics()
         assert diag["contract_match"] is None
@@ -839,72 +653,6 @@ def test_blocker1a_post_ack_health_is_bound_to_the_requested_contract(monkeypatc
 # had already moved off. Ordering is now enforced at the writer itself.
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_gap2_delayed_older_command_cannot_overwrite_newer_desired_state(monkeypatch, tmp_path):
-    """REQUIRED attack: command A generation N, command B generation N+1, execute B's
-    write FIRST, then let the delayed A write proceed. Final server desired state and
-    signal file must both be B, and A must report as superseded — not as the successful
-    current authority."""
-    import app.options.order_flow.streaming as ofs
-    from stream_spine import read_active_option_contract_signal
-
-    signal = tmp_path / "stream_active_option_contract.json"
-    monkeypatch.setattr("stream_spine.ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT", signal)
-    monkeypatch.setattr(ofs, "write_active_option_contract_signal",
-                        lambda c: __import__("stream_spine").write_active_option_contract_signal(
-                            c, path=signal))
-    ofs._active_option_contract = None
-    try:
-        gen_a = ofs.begin_option_contract_command()      # A admitted first...
-        gen_b = ofs.begin_option_contract_command()      # ...B admitted second
-        assert gen_b > gen_a
-
-        # B's write completes FIRST (its thread-pool body finished sooner).
-        assert ofs.set_active_option_contract(_QQQ_CONTRACT, command_generation=gen_b) is True
-        assert ofs._active_option_contract == ofs.ticker_storage_key(_QQQ_CONTRACT)
-
-        # Now the DELAYED A write resumes. It must be refused, not applied.
-        with pytest.raises(ofs.StaleOptionCommandError) as exc:
-            ofs.set_active_option_contract(_SPY_CONTRACT, command_generation=gen_a)
-        assert "superseded" in str(exc.value)
-
-        # FINAL desired state and the daemon-facing signal file are both B.
-        assert ofs._active_option_contract == ofs.ticker_storage_key(_QQQ_CONTRACT)
-        assert read_active_option_contract_signal(path=signal) == ofs.ticker_storage_key(_QQQ_CONTRACT)
-    finally:
-        ofs._active_option_contract = None
-
-
-def test_gap2_superseded_command_endpoint_reports_conflict_not_success(monkeypatch, tmp_path):
-    """The superseded command's HTTP response must not read as a successful subscription
-    of its own contract — a client validating the ack must reject it."""
-    import asyncio
-    import json
-
-    import app.options.order_flow.streaming as ofs
-    import server as srv
-
-    signal = tmp_path / "stream_active_option_contract.json"
-    monkeypatch.setattr(ofs, "write_active_option_contract_signal",
-                        lambda c: __import__("stream_spine").write_active_option_contract_signal(
-                            c, path=signal))
-    ofs._active_option_contract = None
-    try:
-        # A newer command has already been admitted and written B.
-        gen_b = ofs.begin_option_contract_command()
-        ofs.set_active_option_contract(_QQQ_CONTRACT, command_generation=gen_b)
-
-        # A stale command body then runs: force its generation below the newest.
-        monkeypatch.setattr(ofs, "begin_option_contract_command", lambda: 1)
-        resp = asyncio.run(srv.post_streaming_active_option_contract(
-            payload={"contract": _SPY_CONTRACT}))
-        assert resp.status_code == 409
-        body = json.loads(resp.body)
-        assert body["ok"] is False and body["superseded"] is True
-        assert ofs._active_option_contract == ofs.ticker_storage_key(_QQQ_CONTRACT), (
-            "the superseded command must not have moved desired state")
-    finally:
-        ofs._active_option_contract = None
-
 
 def test_gap2_a_command_with_no_generation_keeps_historical_behavior():
     """Internal/test callers that pass no generation are unaffected (single-caller
@@ -929,194 +677,3 @@ def test_gap2_a_command_with_no_generation_keeps_historical_behavior():
 # daemon subscribed, was refused a durable epoch, and unsubscribed again, capturing
 # nothing, while the ledger kept naming the contract.
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _surrendered_but_unclosed_db(tmp_path, monkeypatch, ofs, contract):
-    """The exact durable state a FAILED close leaves behind, produced by driving the REAL
-    daemon helpers — not hand-written rows. Returns (db, epoch ids still open)."""
-    from stream_spine import CaptureWriter, CoverageWriteError
-    import app.market_data.schwab.streaming.capture as d
-
-    db = tmp_path / "surrendered.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        epoch_state = {"l1": None, "book": None}
-        for key, service in d.COVERAGE_CLAIM_SERVICES.items():
-            d._open_coverage_epoch_tracked(w, epoch_state, key,
-                                           ofs.ticker_storage_key(contract), service,
-                                           reason="active_contract_set")
-        open_ids = {k: epoch_state[k] for k in ("l1", "book")}
-
-        def _failing(*a, **k):
-            raise CoverageWriteError("durable-write failure during surrender")
-        monkeypatch.setattr(w, "close_coverage_epoch", _failing)
-        for key in ("l1", "book"):
-            d._close_coverage_epoch_tracked(w, epoch_state, key, reason="stream_recycle",
-                                            surrendered_ts=200.0)
-        assert epoch_state["l1"] is None and epoch_state["book"] is None
-    finally:
-        w.close()
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    return db, open_ids
-
-
-def test_durable_truth_surrendered_epoch_is_never_producer_confirmation(tmp_path, monkeypatch):
-    """A KNOWINGLY SURRENDERED epoch whose durable close failed must never confirm.
-
-    The rows are still `ended_ts IS NULL` — that is the whole point. What must stop
-    confirming them is that the live producer no longer CLAIMS those epoch ids."""
-    import sqlite3
-
-    import app.options.order_flow.streaming as ofs
-
-    db, open_ids = _surrendered_but_unclosed_db(tmp_path, monkeypatch, ofs, _SPY_CONTRACT)
-
-    con = sqlite3.connect(db)
-    try:
-        still_open = con.execute(
-            "SELECT id, service FROM stream_coverage_epochs WHERE ended_ts IS NULL"
-        ).fetchall()
-    finally:
-        con.close()
-    assert len(still_open) == 2, (
-        f"the attack requires the rows to REMAIN OPEN; got {still_open}")
-
-    _reset_option_plane(ofs)
-    _force_live_option_plane(ofs, _SPY_CONTRACT)
-    plane = ofs.get_option_contract_streaming_diagnostics(for_contract=_SPY_CONTRACT)
-
-    assert plane["producer_l1_contract"] is None, (
-        f"a surrendered epoch was reported as producer identity: {plane}")
-    assert plane["producer_book_contract"] is None
-    assert plane["contract_match"] is not True, (
-        "contract_match=true over a surrendered subscription is the false positive this "
-        f"exists to prevent: {plane}")
-    assert plane["streaming_healthy"] is False
-
-
-def test_durable_truth_repeated_ticks_during_the_write_failure_stay_fail_closed(
-        tmp_path, monkeypatch):
-    """The failure was RE-ENTRANT, so one tick is not a sufficient proof. Every tick the
-    daemon re-subscribes, is refused a durable epoch and unsubscribes again; producer
-    identity must read UNKNOWN throughout rather than naming the contract."""
-    import asyncio
-
-    import app.options.order_flow.streaming as ofs
-    import app.market_data.schwab.streaming.capture as d
-    from stream_spine import CaptureWriter, CoverageWriteError
-
-    db = tmp_path / "reentrant.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    _reset_option_plane(ofs)
-    _force_live_option_plane(ofs, _SPY_CONTRACT)
-
-    calls = []
-
-    class _V:
-        async def sub(self, syms):
-            calls.append("SUB")
-
-        async def unsub(self, syms):
-            calls.append("UNSUB")
-
-    try:
-        epoch_state = {"l1": None, "book": None}
-        d._open_coverage_epoch_tracked(w, epoch_state, "l1",
-                                       ofs.ticker_storage_key(_SPY_CONTRACT),
-                                       "LEVELONE_OPTIONS", reason="active_contract_set")
-
-        def _failing(*a, **k):
-            raise CoverageWriteError("persistent durable-write failure")
-        monkeypatch.setattr(w, "close_coverage_epoch", _failing)
-        d._close_coverage_epoch_tracked(w, epoch_state, "l1", reason="stream_recycle",
-                                        surrendered_ts=200.0)
-
-        v = _V()
-        held = None
-        for tick in range(5):
-            held = asyncio.run(d._reconcile_option_service(
-                None, held, ofs.ticker_storage_key(_SPY_CONTRACT),
-                subs_fn=v.sub, unsubs_fn=v.unsub, writer=w, epoch_state=epoch_state,
-                epoch_key="l1", service_name="LEVELONE_OPTIONS"))
-            reported = ofs.get_option_contract_streaming_diagnostics(
-                for_contract=_SPY_CONTRACT)["producer_l1_contract"]
-            assert reported is None, (
-                f"tick {tick}: producer identity re-confirmed a surrendered epoch "
-                f"({reported!r}) while the vendor held {held!r}")
-    finally:
-        w.close()
-    assert calls, "the attack must actually have driven vendor operations"
-
-
-def test_durable_truth_a_producer_that_cannot_write_goes_unknown_not_confirmed(
-        tmp_path, monkeypatch):
-    """The other direction. If the daemon cannot write AT ALL it also cannot republish its
-    claim, so the claim it left behind still names the open epochs. Staleness of the
-    heartbeat is what must make that unknown — otherwise the last claim stands forever."""
-    import time as _t
-
-    import app.options.order_flow.streaming as ofs
-    from stream_spine import CaptureWriter
-
-    db = tmp_path / "stale_producer.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        l1 = w.open_coverage_epoch(ofs.ticker_storage_key(_SPY_CONTRACT),
-                                   "LEVELONE_OPTIONS", reason="active_contract_set")
-        book = w.open_coverage_epoch(ofs.ticker_storage_key(_SPY_CONTRACT),
-                                     "OPTIONS_BOOK", reason="active_contract_set")
-        # Its LAST heartbeat still claims both epochs; the daemon then stopped writing.
-        w.write_heartbeat(ts=_t.time() - (ofs.STREAM_PRODUCER_HEARTBEAT_STALE_SEC + 5.0),
-                          claimed_coverage={"LEVELONE_OPTIONS": [l1], "OPTIONS_BOOK": [book]})
-    finally:
-        w.close()
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
-    _reset_option_plane(ofs)
-    _force_live_option_plane(ofs, _SPY_CONTRACT)
-
-    plane = ofs.get_option_contract_streaming_diagnostics(for_contract=_SPY_CONTRACT)
-    assert plane["producer_l1_contract"] is None, (
-        f"a stale producer's standing claim was treated as confirmation: {plane}")
-    assert plane["contract_match"] is not True
-
-
-def test_durable_truth_recovery_still_records_the_original_surrender_timestamp(tmp_path,
-                                                                               monkeypatch):
-    """The new gate must not disturb the existing law: when persistence recovers, the
-    deferred close records the instant coverage was SURRENDERED, not the repair time."""
-    import sqlite3
-
-    import app.options.order_flow.streaming as ofs
-    import app.market_data.schwab.streaming.capture as d
-    from stream_spine import CaptureWriter, CoverageWriteError
-
-    db = tmp_path / "recover.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        epoch_state = {"l1": None, "book": None}
-        d._open_coverage_epoch_tracked(w, epoch_state, "l1",
-                                       ofs.ticker_storage_key(_SPY_CONTRACT),
-                                       "LEVELONE_OPTIONS", reason="active_contract_set")
-        real_close = w.close_coverage_epoch
-
-        def _failing(*a, **k):
-            raise CoverageWriteError("outage")
-        monkeypatch.setattr(w, "close_coverage_epoch", _failing)
-        d._close_coverage_epoch_tracked(w, epoch_state, "l1", reason="stream_recycle",
-                                        surrendered_ts=200.0)
-        monkeypatch.setattr(w, "close_coverage_epoch", real_close)
-        d._retry_pending_epoch_closes(w, epoch_state, "l1", reason="retry_pending_close")
-    finally:
-        w.close()
-
-    con = sqlite3.connect(db)
-    try:
-        ended = con.execute("SELECT ended_ts FROM stream_coverage_epochs").fetchone()[0]
-    finally:
-        con.close()
-    assert ended == 200.0, (
-        f"the repair must replay the ORIGINAL surrender instant, got {ended}")

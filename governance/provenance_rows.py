@@ -2072,11 +2072,6 @@ ROWS: tuple[Row, ...] = (
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_log_stream).',
     ),
     Row(
-        file='app/options/order_flow/streaming.py', derivation='_open_capture_db_readonly', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='SINGLE-STREAM-AUTHORITY repair 2026-08-30: read-only capture-DB handle for the producer heartbeat / coverage-epoch reads (health); live values arrive by push since 2026-09-23, not through this handle (_open_capture_db_readonly).',
-    ),
-    Row(
         file='app/options/order_flow/streaming.py', derivation='_option_streaming_healthy', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
         justification='FRESHNESS/HEALTH 2026-08-30: same feed-connection health gate as _streaming_healthy, mirrored for the independent option-contract slot (_option_streaming_healthy).',
@@ -2084,17 +2079,12 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='app/options/order_flow/streaming.py', derivation='_read_daemon_upstream_health', disposition='ALLOWLISTED',
         allowlist_id='mega1_diagnostic_log',
-        justification="FRESHNESS/HEALTH SEMANTIC AUDIT 2026-08-30: reads the canonical daemon's own status file (stream_spine.HealthRegistry via tools/run_stream_capture.py's write_status) for the REAL per-service Schwab-socket truth, distinct from this module's local-replay-proxy streaming_healthy (_read_daemon_upstream_health).",
+        justification="Per-service Schwab health from the capture daemon's own status (its HealthRegistry), pushed on the console socket every second (_read_daemon_upstream_health).",
     ),
     Row(
         file='app/options/order_flow/streaming.py', derivation='_read_producer_option_contracts', disposition='ALLOWLISTED',
         allowlist_id='mega1_diagnostic_log',
-        justification="PR214 premerge gap 1A: PRODUCER-side option subscription identity -- the current OPEN coverage epoch symbol per Schwab option service, read from the canonical stream_capture.db, distinct from the server's DESIRED/requested contract (_read_producer_option_contracts).",
-    ),
-    Row(
-        file='app/options/order_flow/streaming.py', derivation='_stream_db_identity_status', disposition='ALLOWLISTED',
-        allowlist_id='mega1_diagnostic_log',
-        justification="PR214 Gap 2: producer identity via the shared data plane -- reads the daemon's stream_producer_heartbeat row through this process's own resolved stream_capture.db connection, proving identity structurally rather than by comparing two independently-resolved path strings (_stream_db_identity_status).",
+        justification="What Schwab holds per option service, from the capture daemon's pushed status -- distinct from the console's DESIRED contract (_read_producer_option_contracts).",
     ),
     Row(
         file='app/options/order_flow/streaming.py', derivation='_streaming_healthy', disposition='ALLOWLISTED',

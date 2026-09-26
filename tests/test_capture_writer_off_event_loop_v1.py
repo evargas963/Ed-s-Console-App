@@ -70,7 +70,6 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path, monkeypatch):
         return max(gaps)
 
     worst = asyncio.run(go())
-    writer.close()
     assert worst < 0.25, f"the event loop stalled {worst:.2f}s behind a 0.6s commit"
     n = real_connect(str(tmp_path / "cap.db")).execute(
         "SELECT count(*) FROM stream_quotes_raw").fetchone()[0]
@@ -99,5 +98,4 @@ def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path, monkeypatch):
         stop.set()
         await task
     asyncio.run(go())
-    writer.close()
     assert seen == {"stream-capture-writer"}

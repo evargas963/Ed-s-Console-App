@@ -17,12 +17,12 @@ permanent record (options history reads it); nothing live reads it. If the push 
 drops, the live values go stale and the screen says so; nothing falls back to the database
 (operator rule 2026-09-23: no fallbacks).
 
-Dynamic ticker switching survives the process boundary via a small signal file
-(`stream_spine.write_active_ticker_signal` / `read_active_ticker_signal`): this module
-WRITES the desired active ticker, the daemon POLLS it and adds/drops NASDAQ_BOOK /
-NYSE_BOOK subscription for that one symbol. Equity L1 needs no signal — the daemon
-already captures LEVELONE_EQUITIES for its whole configured roster; whichever symbol
-this module is asked to serve, its rows are already there.
+What to stream is decided HERE and sent to the daemon over the same socket, as one
+complete list per Schwab service (current_wanted(); {"op": "wanted", ...}). Every change to
+the active ticker, the equity demand or the option contracts bumps _wanted_version and the
+feed loop sends the new list. The daemon's one-second status comes back on the same socket
+(topic "daemon.heartbeat") and is the one source for "is the daemon / Schwab alive" and
+"what does Schwab hold / refuse".
 
 Public API is unchanged from the pre-repair module (same names, same call sites in
 server.py): `start_order_flow_stream` / `stop_order_flow_stream` /
@@ -35,7 +35,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -51,18 +50,7 @@ from instrument_identity import (
 from stream_spine import (
     EQUITY_SYMBOLS_MAX_HELD,
     OPTION_CONTRACTS_MAX_HELD,
-    PRODUCER_CLAIM_TTL_SEC,
-    STREAM_DB_DEFAULT,
-    read_open_coverage_symbols,
     rank_option_contracts,
-    read_producer_heartbeat,
-    read_rejected_option_contracts,
-    resolve_stream_db_path,
-    read_active_option_contract_signal,
-    write_active_option_contract_signal,
-    write_active_option_contracts_signal,
-    write_active_ticker_signal,
-    write_equity_symbols_signal,
 )
 
 from app.options.order_flow.state import (
@@ -85,6 +73,60 @@ LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
+#: How often the feed loop checks whether the wanted list changed (it sends only on change).
+WANTED_SEND_SEC = 0.25
+#: The daemon's last status (its one-second heartbeat on the push socket) and when it came.
+_daemon_status: "dict | None" = None
+_daemon_status_rx: "float | None" = None
+#: A daemon status older than this means the daemon, or the socket to it, is down.
+DAEMON_STATUS_STALE_SEC = 5.0
+#: Bumped whenever what this console wants streamed changes; the feed loop sends the new list.
+_wanted_version = 0
+
+
+def _wanted_changed() -> None:
+    global _wanted_version
+    _wanted_version += 1
+
+
+def _note_daemon_status(msg) -> None:
+    global _daemon_status, _daemon_status_rx
+    if isinstance(msg, dict):
+        _daemon_status, _daemon_status_rx = msg, time.time()
+        _lmp.record_feed_heartbeat(msg, _daemon_status_rx)
+
+
+def daemon_status() -> "dict | None":
+    """The daemon's latest status, or None when it is older than DAEMON_STATUS_STALE_SEC."""
+    if (_daemon_status is None or _daemon_status_rx is None
+            or time.time() - _daemon_status_rx > DAEMON_STATUS_STALE_SEC):
+        return None
+    return _daemon_status
+
+
+def current_wanted() -> "dict[str, list[str]]":
+    """Everything this console wants streamed, per Schwab service -- the ONE list sent to the
+    daemon. Equities (L1, 1-minute bars, news): the ranked equity demand. Books: the active
+    ticker (NYSE_BOOK = the exchange book, NASDAQ_BOOK = market-maker quotes). Options: the
+    primary contract (L1 + book) plus the views' ranked contracts (L1)."""
+    with _equity_lock:
+        equities, _ = rank_equity_symbols(_active_ticker, _equity_demand)
+    books = [_active_ticker] if _active_ticker else []
+    primary = [_active_option_contract] if _active_option_contract else []
+    return {"LEVELONE_EQUITIES": equities, "CHART_EQUITY": equities, "NEWS_HEADLINE": equities,
+            "NYSE_BOOK": books, "NASDAQ_BOOK": books,
+            "LEVELONE_OPTIONS": sorted(set(primary) | set(_active_option_contracts)),
+            "OPTIONS_BOOK": primary}
+
+
+async def _send_wanted(ws) -> None:
+    """Send the wanted list now, then again whenever it changes, for this connection's life."""
+    sent = None
+    while True:
+        if sent != _wanted_version:
+            sent = _wanted_version
+            await ws.send(json.dumps({"op": "wanted", "wanted": current_wanted()}))
+        await asyncio.sleep(WANTED_SEND_SEC)
 
 # ── Runtime state (single asyncio task inside the SAME event loop as the server —
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
@@ -209,34 +251,11 @@ GRACE_AFTER_SUBSCRIBE_SEC = 8.0
 #: masquerade as "Schwab stream connected" — _read_daemon_upstream_health is the ground
 #: truth for that distinct question, surfaced as its own field, never blended into
 #: streaming_healthy.
-from runtime_layout import reports_dir as _artifact_reports_dir  # RC-523: artifacts root
-
-_DAEMON_STATUS_PATH = _artifact_reports_dir() / "stream_capture_status.json"
-#: The daemon's write_status() loop runs on a 10s cadence — 3x that as a liveness bound on
-#: the STATUS FILE ITSELF (not the per-service health it carries): if the file hasn't been
-#: touched this recently, the daemon PROCESS may be dead, and every entry inside a dead
-#: process's last-written snapshot would be lying about "recent" if trusted at face value.
-_DAEMON_STATUS_STALE_SEC = 30.0
-
-
 def _read_daemon_upstream_health(services: tuple[str, ...]) -> dict[str, dict]:
-    """Ground truth for "is the Schwab websocket itself actually connected and receiving
-    frames for these services" — read from the CANONICAL DAEMON's own status file, never
-    derived from this module's local replay state. Fails closed to state='UNKNOWN' (never
-    fabricates 'RUNNING') on any read/parse failure, or when the status file's own
-    last-write timestamp is stale enough that the daemon PROCESS itself may not be
-    running — a per-service health entry from a dead process's last snapshot is not
-    'current' just because the JSON happens to still say RUNNING."""
-    try:
-        status = json.loads(_DAEMON_STATUS_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {s: {"state": "UNKNOWN", "age_sec": None} for s in services}
-    status_ts = status.get("ts")
-    status_age = (time.time() - status_ts) if isinstance(status_ts, (int, float)) else None
-    if status_age is None or status_age > _DAEMON_STATUS_STALE_SEC:
-        return {s: {"state": "UNKNOWN", "age_sec": None,
-                    "daemon_status_stale_sec": status_age} for s in services}
-    health = status.get("health")
+    """Per Schwab service {state, age_sec} from the daemon's own status (its HealthRegistry);
+    UNKNOWN for every service when that status is missing or stale."""
+    st = daemon_status()
+    health = (st or {}).get("health")
     health = health if isinstance(health, dict) else {}
     out: dict[str, dict] = {}
     for s in services:
@@ -297,85 +316,6 @@ def streaming_l1_cache_usable(ticker: str) -> bool:
     return (time.time() - last) * 1000.0 <= FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS
 
 
-#: How stale a producer heartbeat row may be before it stops counting as "current" —
-#: matches the daemon's own status-write cadence bound (_DAEMON_STATUS_STALE_SEC, 3x
-#: its ~10s write loop), the SAME grounding that already governs the file-based
-#: upstream-health check. write_status() writes the DB heartbeat and the status file
-#: on the SAME call, so one bound serves both.
-#: Defined in stream_spine so the DAEMON reads the identical bound: a controlled surrender
-#: has to know exactly how long a claim it could not retract can still confirm. Same value
-#: as _DAEMON_STATUS_STALE_SEC (30s, 3x the ~10s write loop); one definition, two readers.
-STREAM_PRODUCER_HEARTBEAT_STALE_SEC = PRODUCER_CLAIM_TTL_SEC
-
-
-def _stream_db_identity_status() -> dict[str, Any]:
-    """PRODUCER IDENTITY VIA THE SHARED DATA PLANE (PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS,
-    Gap 2): opens THIS process's own resolved db_path — the SAME connection the replay
-    loop already reads quote/book rows through — and looks for a fresh
-    stream_producer_heartbeat row the daemon wrote through that identical file. Identity
-    is proven STRUCTURALLY (same file => same connection sees the same row), not by
-    string-comparing two independently-resolved path values.
-
-    PR214_RTH_DEFECT_REMEDIATION_V1's prior mechanism compared this process's resolved
-    path against a path the daemon self-reported into a SEPARATE, ALSO checkout-relative
-    status file (_DAEMON_STATUS_PATH) — the identical defect class Defect 2 fixed, one
-    level up: in the real two-checkout failure geometry, the server read its OWN
-    checkout's copy of that status file and got identity_match=None (unknown), never the
-    confirmed-False the fail-closed guard requires. Reading the heartbeat OUT OF the
-    exact file already being consumed removes that second path-identity channel
-    entirely — there is nothing left to independently mis-resolve.
-
-    `identity_match`:
-      True  — a heartbeat row is visible on THIS connection and is fresh (within
-              STREAM_PRODUCER_HEARTBEAT_STALE_SEC). Confirmed live producer, same file.
-      False — a heartbeat row is visible but STALE. CONFIRMED, not unknown: something
-              wrote here, but not recently enough to trust as a live producer.
-      None  — no heartbeat row at all (the DB cannot be opened yet, is empty, or a
-              pre-heartbeat daemon has never written one here). Unknown — covers cold
-              start AND "this resolved path is not the file a producer is writing to"
-              (e.g. a genuine two-checkout mismatch) identically; callers must not treat
-              an indefinite None as healthy (see get_streaming_diagnostics)."""
-    resolved = str(resolve_stream_db_path(STREAM_DB_DEFAULT))
-    con = _open_capture_db_readonly()
-    if con is None:
-        return {"server_resolved_path": resolved, "producer_heartbeat": None, "identity_match": None}
-    try:
-        beat = read_producer_heartbeat(con)
-    finally:
-        con.close()
-    if beat is None:
-        return {"server_resolved_path": resolved, "producer_heartbeat": None, "identity_match": None}
-    age = time.time() - beat["heartbeat_ts"]
-    return {
-        "server_resolved_path": resolved,
-        "producer_heartbeat": {**beat, "age_sec": age},
-        "identity_match": age <= STREAM_PRODUCER_HEARTBEAT_STALE_SEC,
-    }
-
-
-def _identity_forces_unhealthy(db_identity: dict, last_subscribe_completed_ts: Optional[float],
-                               now: float) -> bool:
-    """Gap 2: streaming_healthy=True must never coexist indefinitely with an unproven
-    producer identity. A CONFIRMED stale/absent-then-found-stale heartbeat
-    (identity_match is False) fails closed unconditionally, regardless of local replay
-    freshness. identity_match is None (no heartbeat visible on this resolved path at
-    all — cold start, or a genuine cross-checkout mismatch, indistinguishable from each
-    other by design; see _stream_db_identity_status) is tolerated ONLY within the SAME
-    startup grace window _streaming_healthy/_option_streaming_healthy already grant
-    local replay staleness (GRACE_AFTER_SUBSCRIBE_SEC) — brief cold-start unknown is
-    fine, an indefinite unknown is not (operator requirement, verbatim: 'Unknown may
-    exist briefly during cold startup, but it cannot coexist indefinitely with a
-    positive healthy connected stream plane claim')."""
-    m = db_identity["identity_match"]
-    if m is False:
-        return True
-    if m is None:
-        within_grace = (last_subscribe_completed_ts is not None
-                        and (now - last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC)
-        return not within_grace
-    return False
-
-
 def get_streaming_diagnostics() -> dict[str, Any]:
     now = time.time()
     last = _streaming_last_update_ts
@@ -386,55 +326,18 @@ def get_streaming_diagnostics() -> dict[str, Any]:
         stale_ms = 0.0
     else:
         stale_ms = None
-
-    db_identity = _stream_db_identity_status()
-    healthy = _streaming_healthy()
-    if _identity_forces_unhealthy(db_identity, _last_subscribe_completed_ts, now):
-        # Fail closed: producer identity is confirmed mismatched/stale, or has never
-        # been established beyond the startup grace window -- never report a connected
-        # stream plane on that basis, no matter what the local replay staleness says.
-        healthy = False
+    st = daemon_status()
     return {
         "streaming_connected": bool(_feed_running),
         "streaming_ticker": _active_ticker,
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
-        "streaming_healthy": healthy,
-        # Ground truth for the Schwab socket itself (see _read_daemon_upstream_health's
-        # docstring) — distinct from streaming_healthy above, which only proves this
-        # module's own live-push feed is alive and recently updated.
+        # healthy needs BOTH: fresh rows for the active ticker and a live daemon status
+        "streaming_healthy": _streaming_healthy() and st is not None,
         "daemon_upstream_health": _read_daemon_upstream_health(("LEVELONE_EQUITIES",)),
-        "stream_db_identity": db_identity,
+        "daemon_status_age_sec": None if _daemon_status_rx is None else round(now - _daemon_status_rx, 2),
+        "schwab_socket_open": bool(st and st.get("schwab_socket_open")),
     }
-
-
-def _open_capture_db_readonly(db_path=None) -> Optional[sqlite3.Connection]:
-    """Read-only by construction (uri mode=ro), never a write handle onto the daemon's
-    database — this module carries observations, it does not produce them.
-
-    `db_path` defaults to the MODULE ATTRIBUTE at call time, not a parameter default bound
-    once at function-definition time — a default of `STREAM_DB_DEFAULT` directly would
-    freeze whatever that name pointed to when this module was imported, so a caller (or a
-    test) that reassigns the module attribute afterward would silently be ignored.
-
-    PR214_RTH_DEFECT_REMEDIATION_V1: goes through `resolve_stream_db_path`, the ONE
-    canonical resolver `app.market_data.schwab.streaming.capture`'s CaptureWriter also uses, with
-    THIS module's own `STREAM_DB_DEFAULT` (still test-monkeypatchable, unchanged) as the
-    explicit reader default; production resolves to the one runtime_layout path (RC-534)."""
-    if db_path is None:
-        db_path = resolve_stream_db_path(STREAM_DB_DEFAULT)
-    try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        # Autocommit: a caller that reuses this handle must see later CaptureWriter
-        # commits. Default isolation_level="" opens a deferred snapshot on the first
-        # SELECT and holds it until commit, hiding them. One statement = one snapshot.
-        con.isolation_level = None
-        return con
-    except sqlite3.OperationalError:
-        return None   # daemon has not created the DB yet (cold start) — retry next tick
-
-
-_tick_callback_failures = 0
 
 
 def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
@@ -686,6 +589,23 @@ async def _feed_loop() -> None:
     def _note_qualifying(sym: str, ts: float) -> None:
         if burst.note(sym, ts):
             loop.call_soon(_flush_burst)
+
+    async def _consume(ws) -> None:
+        async for frame in ws:
+            if not _feed_running:
+                return
+            try:
+                env = json.loads(frame)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(env, dict):
+                continue
+            if env.get("topic") == "daemon.heartbeat":
+                _note_daemon_status(env.get("msg"))
+                continue
+            hit = _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
+            if hit is not None and _streamed_greeks_hook is not None:
+                _note_qualifying(hit[0], hit[1])
     try:
         while _feed_running:
             try:
@@ -693,21 +613,12 @@ async def _feed_loop() -> None:
                                    ping_interval=20, ping_timeout=20) as ws:
                     _push_connected_ts = time.time()
                     _log_stream("PUSH_CONNECTED", url=LIVE_PUSH_URL)
-                    async for frame in ws:
-                        if not _feed_running:
-                            break
-                        try:
-                            env = json.loads(frame)
-                        except (TypeError, ValueError):
-                            continue
-                        if not isinstance(env, dict):
-                            continue
-                        if env.get("topic") == "daemon.heartbeat":
-                            _lmp.record_feed_heartbeat(env.get("msg") or {}, time.time())
-                            continue
-                        hit = _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
-                        if hit is not None and _streamed_greeks_hook is not None:
-                            _note_qualifying(hit[0], hit[1])
+                    sender = asyncio.create_task(_send_wanted(ws))
+                    try:
+                        await _consume(ws)
+                    finally:
+                        sender.cancel()
+                        await asyncio.gather(sender, return_exceptions=True)
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
@@ -820,9 +731,9 @@ def clear_active_option_contract(*, reason: str) -> None:
         clear_symbol(old)
         _option_contract_last_update_ts.pop(old, None)
         _log_stream("OPTION_CONTRACT_CLEARED", old=old, reason=reason)
-    write_active_option_contract_signal("")
     _active_option_contract = None
     _option_streaming_last_update_ts = None
+    _wanted_changed()
 
 
 def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
@@ -843,11 +754,10 @@ def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
         _active_option_contract, ticker, chain_db_path=chain_db,
     ):
         return
-    signaled = read_active_option_contract_signal()
+    # After a console restart: keep the contract the daemon still holds, if it is this ticker's
+    held = ((daemon_status() or {}).get("held") or {}).get("OPTIONS_BOOK") or []
+    signaled = held[0] if held else None
     if _contract_matches_underlying(signaled, ticker, chain_db_path=chain_db):
-        # Same signal file the daemon already polls. Bind the plane to it on
-        # process start instead of leaving OPTIONS_BOOK browser-gated when the
-        # default-contract lookup is not ready.
         set_active_option_contract(signaled)
         return
     try:
@@ -878,7 +788,6 @@ _EQUITY_DEMAND_ORDER = ("context", "watchlist", "board")
 _equity_demand: "dict[str, list[str]]" = {k: [] for k in _EQUITY_DEMAND_ORDER}
 _equity_demand["context"] = list(MARKET_CONTEXT_SYMBOLS)
 _equity_not_admitted: "dict[str, str]" = {}
-_equity_last_written: "list[str] | None" = None
 _equity_lock = threading.Lock()
 
 
@@ -901,15 +810,11 @@ def rank_equity_symbols(active: "str | None", demand: "dict[str, list[str]]",
 
 
 def _publish_equity_symbols() -> None:
-    """Re-rank and hand the daemon the list (written only when it changed)."""
-    global _equity_last_written, _equity_not_admitted
+    """Re-rank the equity demand; the daemon gets it with the next wanted list."""
+    global _equity_not_admitted
     with _equity_lock:
-        admitted, not_admitted = rank_equity_symbols(_active_ticker, _equity_demand)
-        _equity_not_admitted = not_admitted
-        if sorted(admitted) == _equity_last_written:
-            return
-        _equity_last_written = sorted(admitted)
-    write_equity_symbols_signal(admitted)
+        _, _equity_not_admitted = rank_equity_symbols(_active_ticker, _equity_demand)
+    _wanted_changed()
 
 
 def declare_equity_symbols(kind: str, symbols: "list[str]") -> "dict[str, str]":
@@ -950,7 +855,6 @@ def set_streaming_active_ticker(ticker: str) -> bool:
         return True
     _log_stream("STREAM_RESUBSCRIBE_START", old=old, new=[t])
     forget_unsubscribed_symbols(old, [t])
-    write_active_ticker_signal(t)
     _active_ticker = t
     _publish_equity_symbols()
     _last_subscribe_completed_ts = time.time()
@@ -1030,8 +934,8 @@ def set_active_option_contract(contract_symbol: str,
         # would erase state the additional-contracts subscription still depends on.
         if old and old not in _active_option_contracts:
             clear_symbol(old)
-        write_active_option_contract_signal(t)
         _active_option_contract = t
+        _wanted_changed()
         _option_last_subscribe_completed_ts = time.time()
         _option_streaming_last_update_ts = None
         log.info("Live-plane feed active option contract -> %s", t)
@@ -1040,12 +944,8 @@ def set_active_option_contract(contract_symbol: str,
 
 
 #: The ADDITIONAL option contracts to stream beside the one primary/pinned
-#: `_active_option_contract` (RC-UI-3, 2026-09-12 multi-contract coverage --
-#: operator-authorized: "historical coverage failures establish properties to preserve;
-#: they do not establish that single-contract operation must survive"). A separate slot,
-#: mirroring `_active_option_contract` exactly, so the daemon's plural desired-state
-#: signal (stream_spine.write_active_option_contracts_signal) has a server-side writer
-#: symmetric to the existing singular one.
+#: `_active_option_contract` (RC-UI-3, 2026-09-12 multi-contract coverage). Both go to the
+#: daemon in current_wanted()'s LEVELONE_OPTIONS list.
 _active_option_contracts: "list[str]" = []
 #: {symbol: reason} for every contract the last plural request asked for that was not
 #: admitted to the stream (outside the budget, or no spot to rank it by).
@@ -1204,8 +1104,8 @@ def set_active_option_contracts(contract_symbols: "list[str]") -> bool:
             if s not in symbols and s != _active_option_contract:
                 clear_symbol(s)
                 _option_contract_last_update_ts.pop(s, None)
-        write_active_option_contracts_signal(symbols)
         _active_option_contracts = symbols
+        _wanted_changed()
         log.info("Live-plane feed additional option contracts -> %s", symbols)
         _log_stream("OPTION_CONTRACTS_RESUBSCRIBE_DONE", contracts=symbols)
         return True
@@ -1268,26 +1168,10 @@ OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
 def _read_producer_option_contracts() -> dict[str, list[str]]:
-    """Currently open coverage SYMBOLS per option service, from the canonical stream DB
-    (RC-UI-3, 2026-09-12: a service can now durably hold more than one concurrently-open
-    contract, so this is a list, not a single symbol-or-None). Fails closed to an empty
-    list per service on any read problem: an unreadable ledger is 'unknown', and unknown
-    must never be treated as producer confirmation."""
-    con = _open_capture_db_readonly()
-    if con is None:
-        return {s: [] for s in OPTION_PRODUCER_SERVICES}
-    try:
-        # An open coverage row confirms only while the LIVE producer still claims that
-        # epoch: a failed durable close leaves the row open on a subscription the daemon
-        # has already surrendered. Same TTL the DB-identity check already uses — the
-        # producer's liveness and its claim are one signal, not a second knob.
-        return read_open_coverage_symbols(
-            con, OPTION_PRODUCER_SERVICES,
-            stale_sec=STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
-    except Exception:   # noqa: BLE001 — diagnostics must never raise into a route
-        return {s: [] for s in OPTION_PRODUCER_SERVICES}
-    finally:
-        con.close()
+    """What Schwab holds per option service, from the daemon's status; empty when that status
+    is missing or stale (unknown is never confirmation)."""
+    held = (daemon_status() or {}).get("held") or {}
+    return {s: sorted(held.get(s) or []) for s in OPTION_PRODUCER_SERVICES}
 
 
 def read_producer_admitted_option_contracts() -> "dict[str, list[str]]":
@@ -1300,36 +1184,14 @@ def read_producer_admitted_option_contracts() -> "dict[str, list[str]]":
 
 
 def is_option_producer_daemon_available() -> bool:
-    """True only when a FRESH producer heartbeat is confirmed on THIS process's own
-    resolved stream-db connection (2026-09-16, independent-review follow-up: 'daemon-
-    unavailable' must be its own disclosed state, distinct from 'requested but not yet
-    processed' -- a contract that will never admit because the daemon itself is down reads
-    very differently from one that is merely queued behind a live daemon's own poll cycle).
-
-    Delegates to `_stream_db_identity_status`'s own `identity_match` — True only for a
-    heartbeat visible AND fresh on this exact connection; both False (stale) and None
-    (absent/unknown, including a cold-start or cross-checkout mismatch) report unavailable
-    here, fail-closed: an indefinite unknown must never be disclosed as 'the daemon is
-    fine, just busy'."""
-    return _stream_db_identity_status().get("identity_match") is True
+    """True while the daemon's status is fresh."""
+    return daemon_status() is not None
 
 
 def read_producer_rejected_option_contracts() -> "dict[str, str]":
-    """{symbol: vendor_error} for every additional option contract the capture daemon's
-    most recent batched subscribe attempt had the vendor explicitly REFUSE (2026-09-16,
-    bounded-vendor-call reconciliation — see capture.py's
-    _batch_subscribe_with_bisection). Fails closed to {} on any read problem or a stale/
-    absent producer heartbeat, same TTL and same DB-identity discipline as
-    _read_producer_option_contracts: unknown is never 'not rejected'."""
-    con = _open_capture_db_readonly()
-    if con is None:
-        return {}
-    try:
-        return read_rejected_option_contracts(con, stale_sec=STREAM_PRODUCER_HEARTBEAT_STALE_SEC)
-    except Exception:   # noqa: BLE001 — diagnostics must never raise into a route
-        return {}
-    finally:
-        con.close()
+    """{symbol: Schwab's reason} for option contracts Schwab refused, from the daemon's status."""
+    refused = (daemon_status() or {}).get("refused") or {}
+    return dict(refused.get("LEVELONE_OPTIONS") or {})
 
 
 def _pick_producer_contract(symbols: "list[str]", queried: Optional[str]) -> Optional[str]:
@@ -1392,10 +1254,9 @@ def get_option_contract_streaming_diagnostics(
     else:
         stale_ms = None
 
-    db_identity = _stream_db_identity_status()
     healthy = _option_streaming_healthy(for_contract=queried) if queried else _option_streaming_healthy()
-    if _identity_forces_unhealthy(db_identity, _option_last_subscribe_completed_ts, now):
-        healthy = False   # fail closed — see get_streaming_diagnostics' identical guard
+    if daemon_status() is None:
+        healthy = False   # no live daemon status: nothing can be confirmed
 
     # Contract binding: compare on the SAME canonical key set_active_option_contract
     # stores (ticker_storage_key), so a caller passing the raw chain "symbol" string
@@ -1457,7 +1318,6 @@ def get_option_contract_streaming_diagnostics(
         # consumer cannot mistake one service's freshness for the other's.
         "daemon_upstream_health": _read_daemon_upstream_health(
             ("LEVELONE_OPTIONS", "OPTIONS_BOOK")),
-        "stream_db_identity": db_identity,
     }
 
 

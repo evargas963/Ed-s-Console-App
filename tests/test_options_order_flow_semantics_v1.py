@@ -66,13 +66,19 @@ def _reset(tmp_path, monkeypatch):
     ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
     db = tmp_path / "stream_capture.db"
-    monkeypatch.setattr(ofs, "STREAM_DB_DEFAULT", db)
-    monkeypatch.delenv("STREAM_CAPTURE_DB_PATH", raising=False)
+    monkeypatch.setattr(ofs, "_daemon_status", None)
+    monkeypatch.setattr(ofs, "_daemon_status_rx", None)
     monkeypatch.setattr(
         "app.options.contracts.default.default_option_contract",
         lambda *a, **k: None,
     )
     return db
+
+
+def _live_daemon():
+    """The daemon's status arriving on the console socket: health can only be confirmed
+    while the daemon itself is alive."""
+    ofs._note_daemon_status({"schwab_socket_open": True, "held": {}, "health": {}})
 
 
 def _push_option_l1(symbol, content, ts_recv):
@@ -136,16 +142,13 @@ def test_get_option_contract_book_microstructure_fails_closed_with_no_book():
 
 
 def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path, monkeypatch):
-    calls = []
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
-                        lambda s: calls.append(s))
     cleared = []
     monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
     ofs._active_option_contract = "OLD   260101C00100000"
 
     ok = ofs.set_active_option_contract(_SPY_CONTRACT)
     assert ok is True
-    assert calls == [_SPY_CONTRACT]
+    assert ofs.current_wanted()["OPTIONS_BOOK"] == [_SPY_CONTRACT], "the daemon is told"
     assert cleared == ["OLD   260101C00100000"]
     assert ofs._active_option_contract == _SPY_CONTRACT
 
@@ -155,9 +158,6 @@ def test_set_active_option_contracts_writes_plural_signal_and_clears_only_droppe
     for the ADDITIONAL-symbols slot, except a symbol still (or newly) requested must keep
     replaying -- only a symbol actually DROPPED from the desired set gets its cursor
     cleared, otherwise every unchanged tick would spuriously reset a live replay."""
-    calls = []
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
-                        lambda s: calls.append(list(s)))
     cleared = []
     monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
     old = "OLD   260101C00100000"
@@ -165,7 +165,7 @@ def test_set_active_option_contracts_writes_plural_signal_and_clears_only_droppe
 
     ok = ofs.set_active_option_contracts([_SPY_CONTRACT, _QQQ_CONTRACT])
     assert ok is True
-    assert calls == [sorted([_SPY_CONTRACT, _QQQ_CONTRACT])]
+    assert ofs.current_wanted()["LEVELONE_OPTIONS"] == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
     assert cleared == [old], "only the dropped symbol is cleared; SPY keeps replaying"
     assert sorted(ofs._active_option_contracts) == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
     ofs._active_option_contracts = []
@@ -177,8 +177,6 @@ def test_dropping_an_additional_contract_that_is_still_primary_does_not_clear_it
     symbol remains the PRIMARY/pinned contract -- wiping the one shared per-symbol live
     store (cursors, streamed greeks, book state) out from under a subscription that is
     still actively depending on it."""
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
-                        lambda *_a, **_k: None)
     cleared = []
     monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
     try:
@@ -200,8 +198,6 @@ def test_switching_the_primary_away_does_not_clear_a_symbol_still_additional(mon
     """The mirror case: the primary switches from SPY to QQQ while SPY remains desired in
     the ADDITIONAL set -- SPY must not be cleared either, for the same reason (its shared
     live store is still needed by the additional-contracts subscription)."""
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contract_signal",
-                        lambda *_a, **_k: None)
     cleared = []
     monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
     try:
@@ -224,8 +220,6 @@ def test_dropping_an_additional_contract_not_also_primary_still_clears_it(monkey
     """Negative control on the two tests above: a symbol dropped from the additional set
     that is genuinely NOT the primary must still be cleared -- the guard must be scoped
     to the actual cross-slot overlap, not disable clearing altogether."""
-    monkeypatch.setattr("app.options.order_flow.streaming.write_active_option_contracts_signal",
-                        lambda *_a, **_k: None)
     cleared = []
     monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
     try:
@@ -300,12 +294,15 @@ def _reset_option_feed_globals():
     ofs._active_option_contracts = []
     ofs._option_streaming_last_update_ts = None
     ofs._option_last_subscribe_completed_ts = None
+    ofs._daemon_status = None
+    ofs._daemon_status_rx = None
 
 
 def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
     """Mirrors get_streaming_diagnostics()'s own equity-side contract exactly, for the
     independent option-contract slot: a recent update ts reads healthy with ~0 staleness."""
     _reset_option_feed_globals()
+    _live_daemon()
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
@@ -341,6 +338,7 @@ def test_option_contract_streaming_diagnostics_grace_window_before_first_tick():
     (GRACE_AFTER_SUBSCRIBE_SEC=8s) must read healthy with a fabricated-zero staleness —
     not unhealthy just because no tick has landed yet."""
     _reset_option_feed_globals()
+    _live_daemon()
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_last_subscribe_completed_ts = time.time()
@@ -366,6 +364,7 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     stale/dead equity ticker must not drag down a healthy option contract, and vice
     versa, since the mission requires both to be watchable independently at once."""
     _reset_option_feed_globals()
+    _live_daemon()
     ofs._active_ticker = "SPY"
     ofs._streaming_last_update_ts = time.time() - 60.0
     ofs._last_subscribe_completed_ts = None
@@ -383,17 +382,3 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True
 
 
-def test_ensure_default_adopts_matching_signal_file(tmp_path, monkeypatch):
-    """Process start with empty in-memory slot must bind the daemon's existing signal.
-    # universal-scope-ok: vendor OSI fixture, not a SPY-only product claim.
-    """
-    _reset(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        ofs, "read_active_option_contract_signal", lambda: _SPY_CONTRACT)
-    written = []
-    monkeypatch.setattr(ofs, "write_active_option_contract_signal", lambda s: written.append(s))
-    monkeypatch.setattr(ofs, "_contract_matches_underlying", lambda c, t, **k: c == _SPY_CONTRACT)
-    ofs._active_option_contract = None
-    ofs._ensure_default_option_contract_for_ticker("SPY")
-    assert ofs._active_option_contract == _SPY_CONTRACT
-    assert written == [_SPY_CONTRACT]

@@ -1,24 +1,16 @@
-"""CR-01 streaming spine: topic bus + last-value cache + capture writer + feed health.
+"""The pieces the capture daemon and its readers share: the stream database path and schema,
+the message shapes, the in-process message bus, feed health, and the database writer.
 
-Consensus plan v1.2 (docs/CONSOLE_REBUILD_PLAN_CR_V1.md §4). Laws encoded here:
-  - cache-then-publish: the cache is written BEFORE subscribers are notified, so any
-    consumer can snapshot-then-ride-deltas without a poll-to-hydrate step.
-  - every queue is BOUNDED with an explicit policy: quotes coalesce-to-latest,
-    prints are NEVER coalesced (drops are counted and surface in health).
-  - raw streams write ONLY to stream_capture.db — ed_console.db grows zero bytes.
-  - health is first-class: a stale feed must look different from a quiet market.
-
-Pure asyncio; no Schwab imports here. The capture daemon (tools/) plugs feed
-clients into `MessageBus.publish` and runs `CaptureWriter.run` + `HealthRegistry`.
+  - Every Schwab message is published once on the MessageBus; the writer, the console socket
+    and the browser socket each read their own bounded queue from it (drops are counted).
+  - Raw stream data goes ONLY to stream_capture.db -- ed_console.db is never written here.
+  - The writer runs on its own thread with its own SQLite connection, so a slow disk can
+    never stall the Schwab socket (measured 2026-09-23: in-loop commits dropped 9,784 msgs).
 """
-
 from __future__ import annotations
-
-from contextlib import contextmanager
 
 import asyncio
 import json
-import os
 import queue
 import sqlite3
 import threading
@@ -33,49 +25,12 @@ STREAM_DB_DEFAULT = canonical_stream_db_path()
 
 
 def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
-    """THE ONE canonical stream-capture DB path authority every producer and
-    consumer (tools/run_stream_capture.py's CaptureWriter,
-    app/options/order_flow/streaming.py's feed-loop reader) resolves through.
-
-    RC-534 removed the ambient STREAM_CAPTURE_DB_PATH authority. Linked worktrees
-    already converge through runtime_layout; recovery/tests pass an explicit path
-    to the owning API instead of changing the production default process-wide.
-    ``default`` remains solely for test-monkeypatched reader modules."""
+    """The one stream-database path (runtime_layout / RC-534). `default` is for tests."""
     if default is not None:
         return Path(default).resolve()
     return canonical_stream_db_path()
 
-def default_active_ticker_signal_path(db_path: Path | str | None = None) -> Path:
-    """Ticker signal beside the resolved stream DB — the ONE cross-process channel by which
-    the server tells the daemon which symbol's book to add/drop. The server never opens its
-    own StreamClient (single-stream-authority law).
 
-    Resolved fresh each call through the canonical `resolve_stream_db_path`, so a worktree
-    daemon and a production server converge on the same file (RC-523/RC-534 runtime_layout)
-    and the live StreamClient sees exactly the contract the UI requested — never bound as a
-    function default, which would freeze at import.
-    """
-    return resolve_stream_db_path(db_path).with_name("stream_active_ticker.json")
-
-
-def default_active_option_contract_signal_path(db_path: Path | str | None = None) -> Path:
-    """Option-contract signal beside the resolved stream DB. Same one channel, for the one
-    option CONTRACT (OSI symbol, e.g. "SPY   260820C00767000") the daemon streams
-    LEVELONE_OPTIONS/OPTIONS_BOOK for. The symbol MUST come from a chain response's own
-    "symbol" field (schwab_client.safe_get_chain), never constructed here."""
-    return resolve_stream_db_path(db_path).with_name("stream_active_option_contract.json")
-
-
-#: Import-time snapshots of the canonical resolver above, kept for tests that monkeypatch
-#: the module attribute and for callers that read a constant. Production writers/readers call
-#: default_active_*_signal_path() at call time; these are that same path resolved once here,
-#: so constant and function agree. ONE owner: the functions. (RC-534: the runtime_layout path
-#: subsumes the older _runtime_data_dir() constant and the removed STREAM_CAPTURE_DB_PATH env.)
-ACTIVE_TICKER_SIGNAL_DEFAULT = default_active_ticker_signal_path()
-ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT = default_active_option_contract_signal_path()
-
-#: Queue policies. COALESCE keeps only the newest pending message per topic (quotes).
-#: COUNT_DROPS rejects new messages when full and counts them loudly (prints).
 COALESCE = "coalesce"
 COUNT_DROPS = "count_drops"
 
@@ -106,25 +61,6 @@ CREATE TABLE IF NOT EXISTS stream_options_quotes_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv);
--- One row per (symbol, service) SUBSCRIPTION INTERVAL. ended_ts NULL means still open.
--- WHY THIS EXISTS: a gap in stream_options_quotes_raw/stream_book_raw is ambiguous
--- between "we were not subscribed" (a hole in coverage) and "we were subscribed and
--- nothing changed" (the vendor's silence IS the observation) — without this record both
--- read identically as "no rows", and a reader would mistake our subscription window for
--- a market fact. Multiple option contracts may be concurrently open now (RC-UI-3,
--- 2026-09-12): this remains one open-interval ledger per (symbol, service) — each
--- concurrently-streamed contract gets its OWN row per service, closed and reopened
--- independently of every other contract's row, via _apply_active_option_contract_subs'
--- one-reconciler-instance-per-desired-symbol design (capture.py).
-CREATE TABLE IF NOT EXISTS stream_coverage_epochs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol TEXT NOT NULL,
-    service TEXT NOT NULL,
-    started_ts REAL NOT NULL,
-    ended_ts REAL,
-    reason TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_sce_sym_svc ON stream_coverage_epochs(symbol, service);
 CREATE TABLE IF NOT EXISTS stream_bars_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -133,439 +69,44 @@ CREATE TABLE IF NOT EXISTS stream_bars_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_ms);
--- PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS (Gap 2): the daemon's own producer identity
--- and liveness, written INTO this same file rather than a separate checkout-relative
--- status file. A consumer that opens its OWN resolved db_path and finds a fresh row
--- here has, by construction, proven it is reading the SAME physical file the daemon is
--- writing to -- no second, independently-resolved path string to keep in sync (the
--- prior _DAEMON_STATUS_PATH-based identity check inherited the exact checkout-relative
--- defect class it was built to catch). Singleton row (id=1, upserted).
--- `claimed_coverage_json` (PR214 durable producer truth): the epoch id the LIVE producer
--- currently asserts per option service, as {service: epoch_id|null}. An OPEN coverage row
--- is NOT by itself a subscription claim: a durable CLOSE that failed leaves ended_ts NULL
--- on an epoch the daemon has already KNOWINGLY surrendered, and reading that row as
--- producer identity produced a false "subscribed" that the UI rendered. The claim rides
--- this existing liveness row so there is still exactly ONE producer-truth channel, and it
--- fails closed in both directions: the daemon republishes the claim the instant a close
--- fails, and if the daemon cannot write at all the heartbeat goes stale and nothing is
--- confirmed. The coverage rows remain the coverage HISTORY; this is the live assertion.
--- `rejected_contracts_json` (bounded-vendor-call reconciliation, 2026-09-16): symbols the
--- vendor explicitly refused on the most recent subscribe attempt, as {symbol: reason}. A
--- symbol that is simply not-yet-attempted is absent from this map entirely, never a false
--- "rejected" -- only a call that actually returned a non-zero response code for that exact
--- symbol (isolated by bisection when it was rejected as part of a larger batch) is
--- recorded here. Rides the same heartbeat row as claimed_coverage_json for the same
--- reason: one producer-truth channel, one clock, fails closed the same way (a stale
--- heartbeat means UNKNOWN, not "not rejected").
-CREATE TABLE IF NOT EXISTS stream_producer_heartbeat (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    daemon_pid INTEGER,
-    heartbeat_ts REAL NOT NULL,
-    resolved_db_path TEXT NOT NULL,
-    claimed_coverage_json TEXT,
-    rejected_contracts_json TEXT
+-- NEWS_HEADLINE items, verbatim (not in Schwab's Streamer Guide; answers code 0, 2026-09-25).
+CREATE TABLE IF NOT EXISTS stream_news_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_snr_sym_ts ON stream_news_raw(symbol, ts_recv);
+-- Every subscribe/unsubscribe the daemon sent and Schwab's answer. With it, a gap in the
+-- data tables can be told apart: "we were not subscribed" versus "subscribed, nothing
+-- changed". code 0 = accepted; anything else carries Schwab's reason.
+CREATE TABLE IF NOT EXISTS stream_subscriptions (
+    ts REAL NOT NULL,
+    service TEXT NOT NULL,
+    command TEXT NOT NULL,
+    symbols_json TEXT NOT NULL,
+    code INTEGER,
+    reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ssub_ts ON stream_subscriptions(ts);
 """
 
-
-#: How long a PUBLISHED producer coverage claim can still confirm a subscription. It is
-#: the consumer's staleness bound AND, read from the other side, the producer's own lease:
-#: a claim written at T can be used as positive evidence until T + this. The daemon needs
-#: the same number the reader uses — it is what tells a controlled surrender how long a
-#: claim it failed to retract remains capable of confirming — so the value lives here, in
-#: the module both sides already share, rather than being duplicated on either side.
-PRODUCER_CLAIM_TTL_SEC = 30.0
-
-
-def read_producer_heartbeat(conn: sqlite3.Connection) -> "dict | None":
-    """Read the producer identity/liveness row from THIS connection's own
-    stream_capture.db (Gap 2) -- the SAME data plane the caller already reads
-    quote/book rows from, never a second independent channel. Returns None when the
-    table does not exist yet (a pre-heartbeat daemon, or a DB nothing has ever written
-    a heartbeat into) or holds no row. The caller judges freshness/identity from the
-    returned `heartbeat_ts`, not this function."""
-    try:
-        row = conn.execute(
-            "SELECT daemon_pid, heartbeat_ts, resolved_db_path, claimed_coverage_json, "
-            "rejected_contracts_json FROM stream_producer_heartbeat WHERE id = 1").fetchone()
-    except sqlite3.OperationalError:
-        return None
-    if row is None:
-        return None
-    try:
-        claimed = json.loads(row[3]) if row[3] else None
-    except (TypeError, ValueError):
-        claimed = None      # unparseable claim is UNKNOWN, never confirmation
-    try:
-        rejected = json.loads(row[4]) if row[4] else None
-    except (TypeError, ValueError):
-        rejected = None      # unparseable rejection map is UNKNOWN, never confirmation
-    return {"daemon_pid": row[0], "heartbeat_ts": row[1], "resolved_db_path": row[2],
-            "claimed_coverage": claimed, "rejected_contracts": rejected}
-
-
-def read_rejected_option_contracts(conn: sqlite3.Connection, *, stale_sec: float,
-                                   now: "float | None" = None) -> "dict[str, str]":
-    """PRODUCER-SIDE rejection identity: {symbol: reason} for every additional option
-    contract the vendor explicitly refused on its most recent subscribe attempt, per
-    `read_producer_heartbeat`'s own claim (never a second channel). A stale or absent
-    heartbeat yields {} -- unknown is never "not rejected", the same fail-closed rule
-    `read_open_coverage_symbols` applies to confirmed coverage. `stale_sec` is required
-    for the same reason it is required there: there is no correct ungated read."""
-    beat = read_producer_heartbeat(conn)
-    if beat is None:
-        return {}
-    hb_ts = beat.get("heartbeat_ts")
-    t = time.time() if now is None else now
-    if not isinstance(hb_ts, (int, float)) or (t - float(hb_ts)) > float(stale_sec):
-        return {}
-    rejected = beat.get("rejected_contracts")
-    if not isinstance(rejected, dict):
-        return {}
-    return {str(k): str(v) for k, v in rejected.items()}
-
-
-def read_open_coverage_symbols(conn: sqlite3.Connection,
-                               services: "tuple[str, ...]", *,
-                               stale_sec: float,
-                               now: "float | None" = None) -> "dict[str, list[str]]":
-    """PRODUCER-SIDE subscription identity, read from THIS connection's own
-    stream_capture.db (PR214 premerge gap 1A).
-
-    The active-contract SIGNAL FILE(s) are DESIRED state -- what the server asked for. The
-    OPEN COVERAGE EPOCH is PRODUCER state -- what the daemon actually holds a vendor
-    subscription for, written only after a confirmed subscribe. Between an operator's
-    request and the daemon's next poll, those disagree, and a health verdict built on
-    desired state alone would claim a contract is live while the producer still physically
-    holds a different (or no) set.
-
-    Returns {service: [confirmed_symbol, ...]} -- MULTIPLE concurrently-open, independently
-    confirmed symbols per service are the NORMAL case as of RC-UI-3 (2026-09-12,
-    multi-contract coverage; previously this returned {service: symbol|None} because the
-    daemon's reconciler could only ever hold one symbol per service at all). Each OPEN row
-    is confirmed or refused entirely on ITS OWN claimed epoch id -- one row's confirmation
-    or refusal never depends on how many OTHER rows are also open for the same service.
-
-    A missing table, unreadable DB, or stale/absent producer heartbeat likewise yields []
-    for every service: unknown is never confirmation.
-
-    AN OPEN ROW IS NOT BY ITSELF A CLAIM (PR214 durable producer truth). `ended_ts IS
-    NULL` used to be sufficient, and it lied: when a durable CLOSE fails, the row stays
-    open for an epoch the daemon has ALREADY KNOWINGLY SURRENDERED, so this reader
-    answered with a contract the vendor was no longer subscribed to and the UI rendered it
-    as "subscribed". Measured at that shape, the state was re-entrant -- every tick the
-    daemon subscribed, was refused a durable epoch, and unsubscribed again, capturing
-    nothing, while this function kept naming the contract.
-
-    A row therefore confirms only when the LIVE producer currently asserts that exact
-    epoch id, via `claimed_coverage` on its heartbeat (now {service: [epoch_id, ...]} --
-    the SET of epoch ids this producer currently claims for that service, not one bare
-    id). That closes both directions of the failure:
-      * daemon alive, close failed -> it republishes the claim immediately (the surrendered
-        id is gone from the list), so that ROW returns unconfirmed even though it is still
-        open in the table;
-      * daemon cannot write at all -> the heartbeat itself goes stale past `stale_sec`,
-        and a stale producer confirms nothing.
-    A durable-write failure can therefore make producer identity UNKNOWN. It can no longer
-    manufacture a false positive.
-
-    A DUPLICATE symbol -- the SAME symbol open on the SAME service via two different rows
-    -- remains refused for that symbol even though the underlying CaptureWriter guard
-    (open_coverage_epoch's per-(symbol,service) uniqueness check) should make it
-    unreachable through the normal path; a corrupted or hand-edited ledger must not be
-    laundered into a confident double-confirmation here.
-
-    `stale_sec` is required, not defaulted: there is no correct "ungated" read of this
-    table, and an optional gate is one a caller can forget."""
-    out: "dict[str, list[str]]" = {s: [] for s in services}
-    beat = read_producer_heartbeat(conn)
-    if beat is None:
-        return out              # no producer has ever asserted anything here
-    hb_ts = beat.get("heartbeat_ts")
-    t = time.time() if now is None else now
-    if not isinstance(hb_ts, (int, float)) or (t - float(hb_ts)) > float(stale_sec):
-        return out              # the producer is not currently able to assert anything
-    claimed = beat.get("claimed_coverage")
-    if not isinstance(claimed, dict):
-        return out              # a producer that publishes no claim confirms nothing
-    for service in services:
-        try:
-            rows = conn.execute(
-                "SELECT id, symbol FROM stream_coverage_epochs "
-                "WHERE service = ? AND ended_ts IS NULL", (service,)).fetchall()
-        except sqlite3.OperationalError:
-            return {s: [] for s in services}
-        if not rows:
-            continue             # not subscribed to anything, as far as the ledger knows
-        claimed_ids = claimed.get(service)
-        if not isinstance(claimed_ids, list):
-            continue             # no live claim for this service at all (surrendered/unknown)
-        claimed_id_set = {v for v in claimed_ids if isinstance(v, int) and not isinstance(v, bool)}
-        symbol_row_counts: dict[str, int] = {}
-        for _row_id, sym in rows:
-            symbol_row_counts[sym] = symbol_row_counts.get(sym, 0) + 1
-        confirmed: list[str] = []
-        for row_id, sym in rows:
-            if symbol_row_counts[sym] != 1:
-                continue          # the SAME symbol open twice on one service: refuse it
-            if row_id in claimed_id_set:
-                confirmed.append(sym)
-        out[service] = sorted(confirmed)
-    return out
-
-
-def quote_msg(*, symbol: str, bid=None, ask=None, last=None, bid_size=None, ask_size=None,
-              last_size=None, total_volume=None, quote_time_ms=None, trade_time_ms=None,
-              src: str, ts_recv: float | None = None, native: dict | None = None) -> dict:
-    """The ONE producer shape for quote.* topics — daemon and tests both build through
-    here so the writer's reads and the producers' writes can never drift (RC-15 class).
-
-    ``native``: the Schwab content-item dict verbatim, when the caller has it (e.g. a
-    LEVEL_ONE_EQUITY handler). Stored alongside the flattened columns so a downstream
-    consumer that needs FIELD FIDELITY (e.g. live-plane hydration, which reads
-    BID_TIME_MILLIS / REGULAR_MARKET_CHANGE_PERCENT — fields the flattened columns do
-    not carry) is not forced to re-derive a lossy approximation from them. Optional:
-    existing quote producers that lack the native dict are unaffected."""
-    return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
-            "bid": bid, "ask": ask, "last": last, "bid_size": bid_size,
-            "ask_size": ask_size, "last_size": last_size, "total_volume": total_volume,
-            "quote_time_ms": quote_time_ms, "trade_time_ms": trade_time_ms, "src": src,
-            "native": native}
-
-
-def book_msg(*, symbol: str, service: str, content: dict, src: str,
-             ts_recv: float | None = None) -> dict:
-    """The ONE producer shape for book.* topics (NASDAQ_BOOK / NYSE_BOOK).
-
-    ``content`` is the Schwab content-item dict verbatim (BIDS/ASKS/BOOK_TIME) — stored
-    as-is, never flattened, since book depth has no meaningful scalar projection."""
-    return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
-            "service": service, "content": content, "src": src}
-
-
-def options_quote_msg(*, symbol: str, content: dict, src: str,
-                      ts_recv: float | None = None) -> dict:
-    """The ONE producer shape for optquote.* topics (LEVELONE_OPTIONS).
-
-    ``content`` is the Schwab content-item dict verbatim (57 native fields: greeks, OI,
-    IV, DTE, ...) — stored as native JSON, never flattened; nothing in this repo reads a
-    flattened options-quote column, so inventing one would be speculative schema, not a
-    compatibility need."""
-    return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
-            "content": content, "src": src}
-
-
-def _write_json_signal(value_key: str, value: str, *, path: Path) -> None:
-    """Shared atomic write for the server->daemon signal files: write-temp-then-replace,
-    so the daemon (polling on its own schedule) never observes a half-written body."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps({value_key: (value or "").upper().strip(),
-                               "requested_at": time.time()}), encoding="utf-8")
-    tmp.replace(path)
-
-
-def _read_json_signal_body(path: Path) -> dict:
-    """Shared malformed-content guard for every signal reader below (singular and
-    plural): any read/parse failure, OR valid JSON whose root is not an object (a bare
-    list, string, number, `true`/`false`, or `null` -- all legal JSON, none of them a
-    signal body), returns {} uniformly. Independent-review finding (2026-09-12): both
-    _read_json_signal and _read_json_list_signal called `.get(value_key)` directly on
-    the parsed root, raising AttributeError on `[]` or `null` content instead of the
-    fail-closed 'nothing requested' every caller here documents and depends on -- a
-    malformed signal must never raise into the daemon's poll loop."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _read_json_signal(value_key: str, *, path: Path) -> str | None:
-    """Shared read: None on any absence/corruption/malformed-root content — a missing or
-    unusable signal means 'no subscription', never a guessed value."""
-    v = str(_read_json_signal_body(path).get(value_key) or "").upper().strip()
-    return v or None
-
-
-def write_active_ticker_signal(ticker: str, *, path: Path | None = None) -> None:
-    """The server's ONE write into the daemon's book-subscription decision."""
-    dest = path if path is not None else default_active_ticker_signal_path()
-    _write_json_signal("ticker", ticker, path=dest)
-
-
-def read_active_ticker_signal(*, path: Path | None = None) -> str | None:
-    """The daemon's read of the server's requested active ticker."""
-    dest = path if path is not None else default_active_ticker_signal_path()
-    return _read_json_signal("ticker", path=dest)
-
-
-def write_active_option_contract_signal(
-    contract_symbol: str, *, path: Path | None = None,
-) -> None:
-    """The server's ONE write into the daemon's options-subscription decision.
-    `contract_symbol` MUST be a chain response's own "symbol" field — never constructed
-    here."""
-    dest = path if path is not None else default_active_option_contract_signal_path()
-    _write_json_signal("contract_symbol", contract_symbol, path=dest)
-
-
-def read_active_option_contract_signal(
-    *, path: Path | None = None,
-) -> str | None:
-    """The daemon's read of the server's requested active option contract."""
-    dest = path if path is not None else default_active_option_contract_signal_path()
-    return _read_json_signal("contract_symbol", path=dest)
-
-
-def default_active_option_contracts_signal_path(db_path: Path | str | None = None) -> Path:
-    """PLURAL companion to default_active_option_contract_signal_path (RC-UI-3, 2026-09-12:
-    "historical coverage failures establish properties to preserve; they do not establish
-    that single-contract operation must survive" — operator authorization to move past the
-    single-contract ceiling). A SEPARATE file/key from the singular signal, not a shape
-    change to it: every existing reader of the singular signal is completely unaffected,
-    and the daemon's reconciler (capture.py) treats the union of "the one pinned contract"
-    (singular signal, unchanged) and "additionally desired contracts" (this, plural) as the
-    full requested set — see _apply_active_option_contract_subs."""
-    return resolve_stream_db_path(db_path).with_name("stream_active_option_contracts.json")
-
-
-def _write_json_list_signal(value_key: str, values: "list[str]", *, path: Path) -> None:
-    """PLURAL counterpart to _write_json_signal: a de-duplicated, normalized (upper/strip,
-    empties dropped) JSON list under `value_key`, same atomic write-temp-then-replace
-    discipline so the daemon (polling on its own schedule) never observes a half-written
-    body."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    norm = sorted({str(v or "").upper().strip() for v in (values or [])} - {""})
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps({value_key: norm, "requested_at": time.time()}), encoding="utf-8")
-    tmp.replace(path)
-
-
-def _read_json_list_signal(value_key: str, *, path: Path) -> "list[str]":
-    """PLURAL counterpart to _read_json_signal: [] on any absence/corruption, malformed
-    root, or malformed (non-list) value — a missing/broken signal means 'no additional
-    contracts', never a guessed set, exactly the same fail-closed discipline the singular
-    signal uses (see _read_json_signal_body)."""
-    raw = _read_json_signal_body(path).get(value_key)
-    if not isinstance(raw, list):
-        return []
-    return sorted({str(v or "").upper().strip() for v in raw} - {""})
-
-
-def write_active_option_contracts_signal(
-    symbols: "list[str]", *, path: Path | None = None,
-) -> None:
-    """The server's write of the ADDITIONAL (beyond the one singular/pinned contract)
-    option contracts it wants concurrently streamed. Each symbol MUST be a chain
-    response's own "symbol" field, exactly like the singular signal — never constructed
-    here. Passing an empty list clears the additional set (the singular contract, if any,
-    is unaffected — it has its own signal)."""
-    dest = path if path is not None else default_active_option_contracts_signal_path()
-    _write_json_list_signal("contract_symbols", symbols, path=dest)
-
-
-def default_equity_symbols_signal_path(db_path: Path | str | None = None) -> Path:
-    """The console's requested LEVELONE_EQUITIES symbols beyond the daemon's fixed roster."""
-    return resolve_stream_db_path(db_path).with_name("stream_equity_symbols.json")
-
-
-def write_equity_symbols_signal(symbols: "list[str]", *, path: Path | None = None) -> None:
-    """The console's write of every stock/index whose live price a screen shows (active
-    ticker, watchlist, gamma board). Already cut to EQUITY_SYMBOLS_MAX_HELD by the console."""
-    dest = path if path is not None else default_equity_symbols_signal_path()
-    _write_json_list_signal("symbols", symbols, path=dest)
-
-
-def read_equity_symbols_signal(*, path: Path | None = None) -> "list[str]":
-    """The daemon's read of that list; [] when absent or malformed (fail closed)."""
-    dest = path if path is not None else default_equity_symbols_signal_path()
-    return _read_json_list_signal("symbols", path=dest)
-
-
-#: How many LEVELONE_EQUITIES symbols (beyond the daemon's --symbols roster) the shared
-#: socket carries on the console's request. Equity L1 is light next to options: the
-#: measured socket deaths were driven by tens of thousands of option subscriptions
-#: (OPTION_CONTRACTS_MAX_HELD below), and the daemon ran its first months on a ~60-symbol
-#: equity roster. The console ranks what it asks for (active ticker, then watchlist, then
-#: gamma board) and names every symbol it leaves out.
+#: Most equities the console asks the daemon to stream on LEVELONE_EQUITIES (ranked by the
+#: console: the active ticker, then the market context, then the watchlist, then the board).
 EQUITY_SYMBOLS_MAX_HELD = 150
-
-
-#: How many ADDITIONAL option contracts the ONE shared Schwab streaming socket may hold.
-#:
-#: MEASURED 2026-09-23 (stream_capture.db, 08:30-15:00 CT each day): LEVELONE_OPTIONS load
-#: on the socket that also carries LEVELONE_EQUITIES / books / chart kills the WHOLE socket,
-#: and every Schwab service (SPY's live price included) goes dark until a recycle:
-#:   9/15    10 option subscriptions opened  ->  0 recycles, 0 SPY gaps >60s (max 24s)
-#:   9/16  4,442                              ->  4 recycles, 5 gaps (max 131s)
-#:   9/22 48,333 (~850-2,500 held at once)    -> 39 recycles, 41 gaps (max 824s)
-#:   9/23 53,754 (~850-5,200 held at once)    -> 42 recycles, 49 gaps (max 1,341s)
-#: Deaths arrive every 3-4 min with ~2,500 held and every 4-20 min with ~850 held, and every
-#: one of them lands as `ConnectionClosedError: no close frame` (3,223 of 3,224 rejections
-#: recorded on 9/23). Alpaca write volume is NOT the driver (5.0M rows on the clean 9/15).
-#: Schwab allows ONE streamer connection per account, so options cannot move to a second
-#: socket. The budget below is the starting bound, set well under the smallest held count
-#: that still died (~850); tools/stream_socket_budget_probe.py re-measures recycles/hour
-#: against the held count at the next RTH, and this number moves only on that evidence.
+#: Most option contracts on LEVELONE_OPTIONS (measured 2026-09-23: 510-1,080 contracts on the
+#: one socket caused 4-9 socket deaths an hour; 200 held clean).
 OPTION_CONTRACTS_MAX_HELD = 200
 
-#: How long a control write (heartbeat, coverage epoch) waits for the tick-writer thread to
-#: START it before it is cancelled and reported failed. The thread takes control writes ahead
-#: of queued ticks, so the normal wait is one tick insert; this bound only matters if the
-#: thread is stuck.
-CONTROL_WRITE_WAIT_SEC = 10.0
-
-
-class _ControlOp:
-    """One control write handed to the tick-writer thread (CaptureWriter._control_write).
-    PENDING -> RUNNING (the thread took it) or CANCELLED (the caller gave up first); exactly
-    one side wins, so a cancelled write is never run and a running one is always waited for."""
-
-    def __init__(self, fn):
-        self.fn = fn
-        self.result = None
-        self.exc: "BaseException | None" = None
-        self.done = threading.Event()
-        self._state = "pending"
-        self._lock = threading.Lock()
-
-    def start(self) -> bool:
-        with self._lock:
-            if self._state != "pending":
-                return False
-            self._state = "running"
-            return True
-
-    def cancel(self) -> bool:
-        with self._lock:
-            if self._state != "pending":
-                return False
-            self._state = "cancelled"
-            return True
-
-#: The WAL file is truncated back to this size whenever a checkpoint lets it restart.
-#: MEASURED 2026-09-24: with no limit SQLite never shrinks the file, and
-#: stream_capture.db-wal sat at 44.9 GB (twice the 21.5 GB database) while holding only 240
-#: live frames -- the high-water mark of a past checkpoint backlog, kept on disk forever.
-#: The limit is per connection, so both writer connections set it.
 WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
 
 
 def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
                           budget: int = OPTION_CONTRACTS_MAX_HELD,
                           ) -> "tuple[list[str], dict[str, str]]":
-    """(admitted, {not_admitted_symbol: reason}) -- the ONE ranking of which contracts the
-    shared socket carries, done by the console.
-
-    Inputs are canonical Schwab fields only, supplied per requested symbol in
-    `contract_inputs[symbol]`:
-      expirationDate -- the chain contract's own field, compared as sent   (0 hops)
-      strikePrice    -- the chain contract's own field                     (0 hops)
-      spot           -- the underlying's streamed LEVELONE_EQUITIES LAST_PRICE (0 hops)
-    Rank = expirationDate, then |strikePrice - spot| (1 hop: one subtraction of two
-    canonical fields), then symbol. A symbol with ANY input missing is not admitted and
-    says which -- nothing is parsed out of the symbol text and nothing is guessed."""
+    """(admitted, {not_admitted_symbol: reason}) -- which contracts fit the budget, ranked by
+    expirationDate, then |strikePrice - spot|, then symbol (Schwab's own fields; a contract
+    missing any of them is not admitted and says which)."""
     from numeric_contract import float_finite_or_none
 
     not_admitted: "dict[str, str]" = {}
@@ -590,48 +131,69 @@ def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
     return admitted, not_admitted
 
 
-def enforce_option_contracts_budget(symbols, budget: int = OPTION_CONTRACTS_MAX_HELD
-                                    ) -> "tuple[list[str], dict[str, str]]":
-    """The DAEMON's guard. It holds no spot, so it never ranks: a request within the budget
-    is held as sent; a request over it is refused whole (every symbol not admitted, with the
-    reason), because only the console can choose by spot. The console always sends a set
-    already ranked to the budget, so a refusal here means the console broke its contract."""
-    uniq = sorted({str(s).upper().strip() for s in symbols or ()} - {""})
-    if len(uniq) <= budget:
-        return uniq, {}
-    reason = (f"not admitted: request of {len(uniq)} contracts exceeds the shared-socket "
-              f"budget ({budget}); the console must rank by spot before sending")
-    return [], {s: reason for s in uniq}
+# ---------------------------------------------------------------------------- message shapes
+# The one shape per topic; the daemon builds through these and the writer reads them.
+
+def _now(ts_recv: "float | None") -> float:
+    return ts_recv if ts_recv is not None else time.time()
 
 
-def read_active_option_contracts_signal(
-    *, path: Path | None = None,
-) -> "list[str]":
-    """The daemon's read of the server's ADDITIONALLY-requested option contracts (beyond
-    the one singular/pinned contract, which keeps reading from its own unchanged signal)."""
-    dest = path if path is not None else default_active_option_contracts_signal_path()
-    return _read_json_list_signal("contract_symbols", path=dest)
+def quote_msg(*, symbol: str, bid=None, ask=None, last=None, bid_size=None, ask_size=None,
+              last_size=None, total_volume=None, quote_time_ms=None, trade_time_ms=None,
+              src: str, ts_recv: float | None = None, native: dict | None = None) -> dict:
+    """quote.* (LEVELONE_EQUITIES). `native` is Schwab's item verbatim -- readers need fields
+    the flat columns do not carry (BID_TIME_MILLIS, LAST_MIC_ID, ...)."""
+    return {"ts_recv": _now(ts_recv), "symbol": symbol,
+            "bid": bid, "ask": ask, "last": last, "bid_size": bid_size,
+            "ask_size": ask_size, "last_size": last_size, "total_volume": total_volume,
+            "quote_time_ms": quote_time_ms, "trade_time_ms": trade_time_ms, "src": src,
+            "native": native}
+
+
+def book_msg(*, symbol: str, service: str, content: dict, src: str,
+             ts_recv: float | None = None) -> dict:
+    """book.* (NYSE_BOOK / NASDAQ_BOOK / OPTIONS_BOOK), Schwab's item verbatim."""
+    return {"ts_recv": _now(ts_recv), "symbol": symbol, "service": service,
+            "content": content, "src": src}
+
+
+def options_quote_msg(*, symbol: str, content: dict, src: str,
+                      ts_recv: float | None = None) -> dict:
+    """optquote.* (LEVELONE_OPTIONS), Schwab's item verbatim."""
+    return {"ts_recv": _now(ts_recv), "symbol": symbol, "content": content, "src": src}
 
 
 def bar_msg(*, symbol: str, bar_start_ms=None, open=None, high=None, low=None, close=None,  # noqa: A002
             volume=None, src: str, ts_recv: float | None = None) -> dict:
-    return {"ts_recv": ts_recv if ts_recv is not None else time.time(), "symbol": symbol,
-            "bar_start_ms": bar_start_ms, "open": open, "high": high, "low": low,
-            "close": close, "volume": volume, "src": src}
+    """bar1m.* (CHART_EQUITY)."""
+    return {"ts_recv": _now(ts_recv), "symbol": symbol, "bar_start_ms": bar_start_ms,
+            "open": open, "high": high, "low": low, "close": close, "volume": volume, "src": src}
 
+
+def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = None) -> dict:
+    """news.* (NEWS_HEADLINE), Schwab's item verbatim."""
+    return {"ts_recv": _now(ts_recv), "symbol": symbol, "content": content, "src": src}
+
+
+def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: "int | None",
+                     reason: str, ts: float | None = None) -> dict:
+    """sub.* -- one request the daemon sent and Schwab's answer."""
+    return {"ts": _now(ts), "service": service, "command": command,
+            "symbols": list(symbols), "code": code, "reason": reason}
+
+
+# ---------------------------------------------------------------------------- the bus
 
 @dataclass
 class Subscription:
     prefix: str
     policy: str
     queue: asyncio.Queue
-    #: COALESCE keeps the newest pending message per exact topic here instead of the queue.
     pending: dict[str, Any] = field(default_factory=dict)
     dropped: int = 0
 
     def deliver(self, topic: str, msg: Any) -> None:
         if self.policy == COALESCE:
-            # Newest wins per topic; the queue carries topic keys, payload rides pending.
             fresh = topic not in self.pending
             self.pending[topic] = msg
             if fresh:
@@ -666,18 +228,14 @@ class MessageBus:
 
     def subscribe(self, prefix: str, *, policy: str = COUNT_DROPS, maxsize: int = 2048,
                   name: str | None = None) -> Subscription:
-        """`name` identifies the consumer in drop_counts (default: the prefix). Consumers that
-        share a prefix (the writer, every push client, the push history all take "") must
-        pass distinct names -- keyed by prefix they overwrote each other's counts."""
+        """`name` identifies the consumer in drop_counts (default: the prefix)."""
         sub = Subscription(prefix=prefix, policy=policy, queue=asyncio.Queue(maxsize=maxsize))
         self._sub_names[id(sub)] = name if name is not None else prefix
         self._subs.append(sub)
         return sub
 
     def unsubscribe(self, sub: Subscription) -> None:
-        """Stop delivering to `sub` (a disconnected push client must not accumulate). Its drop
-        count is kept under its name -- a client that dropped and then disconnected still
-        shows in drop_counts."""
+        """Stop delivering to `sub`; its drop count is kept under its name."""
         if sub in self._subs:
             self._subs.remove(sub)
             name = self._sub_names.pop(id(sub), sub.prefix)
@@ -704,14 +262,13 @@ class MessageBus:
         return {k: v for k, v in out.items() if v}
 
 
-#: Health thresholds (seconds since last message). DEGRADED warns; STALE is the
-#: fail-closed state that CR-07's law hooks (STALE -> directional prompts suppressed).
+#: Seconds since a service's last message: DEGRADED past the first, STALE past the second.
 HEALTH_DEGRADED_SEC = 5.0
 HEALTH_STALE_SEC = 30.0
 
 
 class HealthRegistry:
-    """Per-feed liveness: RUNNING / DEGRADED / STALE / DOWN, judged by message age."""
+    """Per-service liveness: RUNNING / DEGRADED / STALE / DOWN, judged by message age."""
 
     def __init__(self) -> None:
         self._last: dict[str, float] = {}
@@ -732,42 +289,54 @@ class HealthRegistry:
 
     def report(self, now: float | None = None) -> dict[str, dict]:
         t = now if now is not None else time.time()
-        return {
-            f: {"state": self.state(f, t), "age_sec": round(t - ts, 3)}
-            for f, ts in self._last.items()
-        }
-
-    def any_stale(self, now: float | None = None) -> bool:
-        return any(v["state"] in ("STALE", "DOWN") for v in self.report(now).values())
+        return {f: {"state": self.state(f, t), "age_sec": round(t - ts, 3)}
+                for f, ts in self._last.items()}
 
 
-class CoverageWriteError(Exception):
-    """A durable coverage-epoch write did not land.
+# ---------------------------------------------------------------------------- the writer
 
-    Raised, not swallowed, so a caller advancing IN-MEMORY subscription state (e.g. the
-    daemon's option_state["contract"]) can gate that advance on the durable record
-    actually being written — memory must never claim coverage the epoch table never
-    recorded, or a reader trusting the epoch table would see a coverage window that was
-    never actually live.
-    """
+_INSERTS = {
+    "quote": ("INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
+              "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json) "
+              "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("bid"), m.get("ask"),
+                         m.get("last"), m.get("bid_size"), m.get("ask_size"), m.get("last_size"),
+                         m.get("total_volume"), m.get("quote_time_ms"), m.get("trade_time_ms"),
+                         m["src"], _json(m.get("native")))),
+    "book": ("INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) VALUES(?,?,?,?,?)",
+             lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("service"),
+                        json.dumps(m["content"]), m["src"])),
+    "optquote": ("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) "
+                 "VALUES(?,?,?,?)",
+                 lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"])),
+    "bar1m": ("INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
+              "volume,src) VALUES(?,?,?,?,?,?,?,?,?)",
+              lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("bar_start_ms"), m.get("open"),
+                         m.get("high"), m.get("low"), m.get("close"), m.get("volume"), m["src"])),
+    "news": ("INSERT INTO stream_news_raw(ts_recv,symbol,native_json,src) VALUES(?,?,?,?)",
+             lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"])),
+    "sub": ("INSERT INTO stream_subscriptions(ts,service,command,symbols_json,code,reason) "
+            "VALUES(?,?,?,?,?,?)",
+            lambda m: (m.get("ts"), m.get("service"), m.get("command"),
+                       json.dumps(m.get("symbols") or []), m.get("code"), m.get("reason"))),
+}
+
+
+#: Topics stored as Schwab's item verbatim: a message without that item is not a row.
+_VERBATIM = {"book", "optquote", "news"}
+
+
+def _json(v) -> "str | None":
+    return json.dumps(v) if v is not None else None
 
 
 class CaptureWriter:
-    """Single writer draining bus subscriptions into stream_capture.db in batches.
-
-    NEVER points at ed_console.db — guarded at construction, not by convention.
-    Commit every `batch_rows` rows or `batch_sec`, whichever first.
-    """
+    """Writes every bus message to stream_capture.db from its own thread, in batches
+    (commit every `batch_rows` rows or `batch_sec`). Never points at ed_console.db."""
 
     def __init__(self, db_path: "Path | str | None" = None, *,
                  batch_rows: int = 500, batch_sec: float = 0.25) -> None:
-        # None always means the canonical permanent stream DB. An explicit path is
-        # retained for isolated tests/recovery APIs; the production daemon exposes no
-        # path option.
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
-        # RESOLVED path, not basename: `data/x/../ed_console.db`, symlinks and junctions
-        # all collapse under resolve() (Cursor review 2026-07-21: basename-only guard
-        # was bypassable — an RC-6 law hole).
         if p.name == "ed_console.db":
             raise ValueError("CaptureWriter must never write the operational DB (RC-6 law)")
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -775,507 +344,77 @@ class CaptureWriter:
         self.batch_rows = int(batch_rows)
         self.batch_sec = float(batch_sec)
         self.rows_written = 0
-        self.commits = 0
         self.insert_errors = 0
-        #: When a POSITIVE coverage claim was last successfully published, or None if the
-        #: most recent successful publication claimed nothing. This is the producer's own
-        #: view of its outstanding lease: a controlled surrender that cannot retract the
-        #: claim must not proceed until this + PRODUCER_CLAIM_TTL_SEC has passed, because
-        #: until then a consumer can still confirm coverage from it.
-        self._positive_claim_ts: "float | None" = None
-        #: Sticky last-published rejection map. `write_heartbeat` is called far more often
-        #: (every coverage-epoch open/close/retry) than the caller that actually knows the
-        #: current rejection set (the reconciler, on its own slower cadence) — if every one
-        #: of those more-frequent calls wrote `rejected_contracts=None` literally, each
-        #: would NULL OUT a standing rejection until the reconciler's next tick republished
-        #: it, a real gap a consumer could read as "no longer rejected" mid-window. Passing
-        #: None therefore means "unchanged", not "clear"; pass {} explicitly to clear it.
-        self._last_rejected_contracts: "dict[str, str] | None" = None
-        self._closed = False
-        #: control writes go to the tick-writer thread while it runs (_control_write)
-        self._control_ops: "queue.SimpleQueue" = queue.SimpleQueue()
-        self._control_route_lock = threading.Lock()
-        self._writer_accepting = False
-        self._writer_queue: "queue.SimpleQueue | None" = None
-        self._conn = sqlite3.connect(str(p))
+        conn = sqlite3.connect(str(p))
         try:
-            self._conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
-            self._conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
-            self._conn.executescript(STREAM_SCHEMA_SQL)
-            # CREATE TABLE IF NOT EXISTS does not add columns to a table that already
-            # exists from a prior daemon run. Migrate forward, idempotently.
-            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(stream_quotes_raw)")}
+            conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+            conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
+            conn.executescript(STREAM_SCHEMA_SQL)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(stream_quotes_raw)")}
             if "native_json" not in cols:
-                self._conn.execute("ALTER TABLE stream_quotes_raw ADD COLUMN native_json TEXT")
-            hb_cols = {r[1] for r in
-                       self._conn.execute("PRAGMA table_info(stream_producer_heartbeat)")}
-            if "claimed_coverage_json" not in hb_cols:
-                self._conn.execute("ALTER TABLE stream_producer_heartbeat "
-                                   "ADD COLUMN claimed_coverage_json TEXT")
-            if "rejected_contracts_json" not in hb_cols:
-                self._conn.execute("ALTER TABLE stream_producer_heartbeat "
-                                   "ADD COLUMN rejected_contracts_json TEXT")
-            self._conn.commit()
-        except Exception:
-            # Init failed after connect — close before the object is discarded so the
-            # SQLite handle cannot leak until GC (Bugbot 2026-07-21 HIGH).
-            self._conn.close()
-            self._closed = True
-            raise
-
-    def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None) -> None:
-        """Write one bus message. `conn` is the writer thread's own connection in `run`;
-        direct callers (tests, recovery tools) write on the control connection."""
-        db = self._conn if conn is None else conn
-        kind = topic.split(".", 1)[0]
-        if kind == "quote":
-            native = msg.get("native")
-            db.execute(
-                "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
-                "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (msg.get("ts_recv"), msg.get("symbol"), msg.get("bid"), msg.get("ask"),
-                 msg.get("last"), msg.get("bid_size"), msg.get("ask_size"), msg.get("last_size"),
-                 msg.get("total_volume"), msg.get("quote_time_ms"), msg.get("trade_time_ms"),
-                 msg.get("src", "?"),  # caps-ok: src is a required kwarg on quote_msg (no default); "?" only guards a dict built outside that constructor, never a legitimately-absent value
-                 json.dumps(native) if native is not None else None))
-        elif kind == "book":
-            content = msg.get("content")
-            if content is None:
-                return
-            db.execute(
-                "INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) "
-                "VALUES(?,?,?,?,?)",
-                (msg.get("ts_recv"), msg.get("symbol"), msg.get("service"),
-                 json.dumps(content),
-                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on book_msg (no default); same guard as the quote branch above
-        elif kind == "optquote":
-            content = msg.get("content")
-            if content is None:
-                return
-            db.execute(
-                "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) "
-                "VALUES(?,?,?,?)",
-                (msg.get("ts_recv"), msg.get("symbol"), json.dumps(content),
-                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on options_quote_msg (no default); same guard as the quote branch above
-        elif kind == "bar1m":
-            db.execute(
-                "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
-                "volume,src) VALUES(?,?,?,?,?,?,?,?,?)",
-                (msg.get("ts_recv"), msg.get("symbol"), msg.get("bar_start_ms"), msg.get("open"),
-                 msg.get("high"), msg.get("low"), msg.get("close"), msg.get("volume"),
-                 msg.get("src", "?")))  # caps-ok: src is a required kwarg on bar_msg (no default); same guard as the quote branch above
-        else:
-            return
-        self.rows_written += 1
-
-    def commit(self) -> None:
-        self._conn.commit()
-        self.commits += 1
-
-    #: Canonical reason stamped on epochs left open by a prior daemon lifetime.
-    COVERAGE_ORPHAN_REASON = "daemon_restart_orphan"
-
-    #: RETIRED (2026-09-12, RC-UI-3 multi-contract coverage — operator-authorized:
-    #: "historical coverage failures establish properties to preserve; they do not
-    #: establish that single-contract operation must survive"). Previously named
-    #: LEVELONE_OPTIONS/OPTIONS_BOOK here to scope their open-epoch uniqueness check to
-    #: the WHOLE SERVICE regardless of symbol, because the two-key ("l1"/"book")
-    #: reconciler in capture.py could only ever hold ONE symbol per service, and a
-    #: switch whose close failed could otherwise open a SECOND symbol's epoch while the
-    #: first was still open. That reconciler now runs one independent instance PER
-    #: desired symbol (still using this exact per-(symbol,service) uniqueness check
-    #: below, in the `else` branch, which already existed for every OTHER service) — so
-    #: the constraint this set existed to add is now redundant with, and strictly
-    #: weaker than, the ordinary per-(symbol,service) rule every service gets: two
-    #: DIFFERENT symbols legitimately open at once is the whole point of multi-contract
-    #: coverage; the SAME symbol open twice remains refused, exactly as for any other
-    #: service. `claimed_coverage`'s shape changed accordingly (server.py's
-    #: _publish_coverage_claim publishes a LIST of currently-claimed epoch ids per
-    #: service, not one bare id) — see read_open_coverage_symbols below, which now
-    #: confirms EACH open row against its OWN claimed epoch id instead of refusing
-    #: whenever more than one row is open.
-    SINGLE_CONTRACT_SERVICES: frozenset[str] = frozenset()
-
-    def reconcile_orphan_coverage_epochs(self, *, reason: str | None = None,
-                                         ts: float | None = None) -> int:
-        """Close every epoch still open from a PRIOR daemon lifetime. Returns the count.
-
-        PR214 merge blocker 2A. stream_coverage_epochs exists to separate "we were NOT
-        subscribed" from "we were subscribed and the vendor was silent". A clean
-        shutdown closes its epochs; a hard process death (SIGKILL, power loss, OOM)
-        skips that cleanup entirely, leaving `ended_ts IS NULL` rows behind. On restart
-        the in-memory epoch state is new, so those rows would persist as
-        INDEFINITELY-SUBSCRIBED forever -- a historically false claim of coverage over
-        a window in which the daemon was not even running.
-
-        This runs at startup, BEFORE any new live epoch is opened, and closes those
-        rows durably. History is never deleted and the crash time is never fabricated:
-        `ended_ts` here is the RECONCILIATION timestamp, and its documented meaning is
-        "coverage is KNOWN CLOSED NO LATER THAN this new daemon's startup" -- an upper
-        bound on the true end, not a claim to know when the previous process died. The
-        `reason` column records that provenance so a reader can tell a reconciled
-        boundary from an observed one and never mistake it for a measured close.
-        """
-        t = ts if ts is not None else time.time()
-        r = reason if reason is not None else self.COVERAGE_ORPHAN_REASON
-        try:
-            # MEASURE the orphan count, never infer it from cursor.rowcount: sqlite3
-            # reports -1 when it cannot determine the affected-row count, and coercing
-            # that to 0 would silently report "no orphans found" for a reconciliation
-            # that may have closed many -- the exact silent-zero shape this repo bans.
-            # The count is read in the same write transaction as the UPDATE that
-            # consumes it, so it is the number of rows actually reconciled.
-            def _reconcile(con) -> int:
-                n = int(con.execute(
-                    "SELECT COUNT(*) FROM stream_coverage_epochs "
-                    "WHERE ended_ts IS NULL").fetchone()[0])
-                con.execute(
-                    "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
-                    "WHERE ended_ts IS NULL", (t, r))
-                return n
-            return self._control_write(_reconcile)
-        except Exception as e:
-            raise CoverageWriteError(f"reconcile_orphan_coverage_epochs: {e}") from e
-
-    def open_coverage_epoch(self, symbol: str, service: str, *, reason: str,
-                            ts: float | None = None) -> int:
-        """Open ONE epoch and return its row id; a refusal (see open_coverage_epochs) is
-        raised as CoverageWriteError. The one-symbol form of open_coverage_epochs."""
-        opened, refused = self.open_coverage_epochs([symbol], service, reason=reason, ts=ts)
-        if symbol in refused:
-            raise CoverageWriteError(refused[symbol])
-        return opened[symbol]
-
-    def open_coverage_epochs(self, symbols: "list[str]", service: str, *, reason: str,
-                             ts: float | None = None) -> "tuple[dict[str, int], dict[str, str]]":
-        """Open one epoch per symbol for `service` in ONE committed transaction:
-        ({symbol: new row id}, {symbol: why it was refused}).
-
-        One commit per subscription change, not one per contract. MEASURED 2026-09-24:
-        these writes run on the capture daemon's event loop, and a 200-contract swap made
-        ~200 separate commits here (plus a heartbeat commit each) -- spans of 5-13 s with
-        the loop unable to read the Schwab socket, which then missed its keepalive pong.
-
-        PR214 merge blocker 2B: refuses a SECOND open epoch for the same (symbol, service)
-        -- or, for a single-contract service, a second open epoch on the service at all.
-        Two concurrently-open rows for one pair is contradictory history (a gap can no
-        longer be attributed to a single subscription window): OPEN_EPOCH_COUNT <= 1. A
-        refused symbol is reported, never written, and does not stop the others. If the
-        transaction itself fails, NOTHING landed: CoverageWriteError, and the caller must
-        treat every symbol as not durably covered."""
-        t = ts if ts is not None else time.time()
-        opened: "dict[str, int]" = {}
-        refused: "dict[str, str]" = {}
-
-        def _open(con) -> None:
-            single = service in self.SINGLE_CONTRACT_SERVICES
-            for symbol in dict.fromkeys(symbols):
-                # For a single-contract service the scope is the SERVICE, regardless of
-                # symbol (see SINGLE_CONTRACT_SERVICES); otherwise it is (symbol, service).
-                if single:
-                    existing = con.execute(
-                        "SELECT id, symbol FROM stream_coverage_epochs "
-                        "WHERE service=? AND ended_ts IS NULL", (service,)).fetchall()
-                    scope = f"service {service}"
-                else:
-                    existing = con.execute(
-                        "SELECT id, symbol FROM stream_coverage_epochs "
-                        "WHERE symbol=? AND service=? AND ended_ts IS NULL",
-                        (symbol, service)).fetchall()
-                    scope = f"({symbol}, {service})"
-                if existing:
-                    refused[symbol] = (
-                        f"open_coverage_epoch({symbol},{service}): refusing to open a second "
-                        f"epoch while {len(existing)} is/are still open for {scope} (row id(s) "
-                        f"{[r[0] for r in existing]}, symbol(s) {[r[1] for r in existing]}). "
-                        f"Close the prior epoch, or run reconcile_orphan_coverage_epochs() at "
-                        f"startup -- two open epochs on one option service is contradictory "
-                        f"coverage history and makes producer identity unanswerable.")
-                    continue
-                cur = con.execute(
-                    "INSERT INTO stream_coverage_epochs(symbol,service,started_ts,reason) "
-                    "VALUES(?,?,?,?)", (symbol, service, t, reason))
-                opened[symbol] = cur.lastrowid
-        try:
-            self._control_write(_open)
-        except Exception as e:
-            raise CoverageWriteError(f"open_coverage_epochs({len(symbols)} x {service}): {e}") from e
-        return opened, refused
-
-    def _control_write(self, fn):
-        """Run one control write `fn(connection)` as ONE write transaction; return its result.
-
-        While the tick-writer thread runs, the write runs ON that thread's connection, so the
-        daemon has a single SQLite writer and the lock race between two connections of one
-        process -- the 2026-09-25 wedge (see _control_txn) -- cannot happen. The thread takes
-        control writes ahead of queued ticks, so they never wait behind a tick backlog.
-        Before the thread starts (startup reconciliation) and after it stops, the write runs
-        on the control connection through _control_txn. A write the thread has not STARTED
-        within CONTROL_WRITE_WAIT_SEC is cancelled and raised, so it can never land later
-        behind a caller that already treated it as failed."""
-        op = None
-        with self._control_route_lock:
-            if self._writer_accepting:
-                op = _ControlOp(fn)
-                self._control_ops.put(op)
-                self._writer_queue.put(self._WRITER_WAKE)
-        if op is None:
-            with self._control_txn() as con:
-                return fn(con)
-        if not op.done.wait(CONTROL_WRITE_WAIT_SEC) and op.cancel():
-            raise sqlite3.OperationalError(
-                f"the writer thread did not start this control write within "
-                f"{CONTROL_WRITE_WAIT_SEC:.0f} s; cancelled, nothing written")
-        op.done.wait()
-        if op.exc is not None:
-            raise op.exc
-        return op.result
-
-    def _run_control_ops(self, conn) -> None:
-        """Writer-thread side of _control_write: each pending control write as its own
-        BEGIN IMMEDIATE transaction on this thread's connection (the caller has already
-        committed the thread's pending ticks)."""
-        while True:
-            try:
-                op = self._control_ops.get_nowait()
-            except queue.Empty:
-                return
-            if not op.start():
-                continue                       # cancelled by a caller that stopped waiting
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                try:
-                    op.result = op.fn(conn)
-                    conn.commit()
-                except BaseException:
-                    conn.rollback()
-                    raise
-            except BaseException as e:  # noqa: BLE001 -- handed back to the waiting caller
-                op.exc = e
-            finally:
-                op.done.set()
-
-    @contextmanager
-    def _control_txn(self):
-        """ONE write transaction on the control connection: BEGIN IMMEDIATE (the write lock is
-        taken BEFORE anything is read), commit on success, roll back on any failure.
-
-        MEASURED 2026-09-25 12:50-13:40 CT on the production stream_capture.db: a control
-        write lost the lock race to the tick-writer thread and raised with its implicit
-        transaction still open -- nothing rolled it back. The next control call's SELECT then
-        read INSIDE that leftover transaction and pinned a snapshot; the tick writer
-        committed; and from then on every control write failed INSTANTLY with "database is
-        locked" (a stale snapshot cannot be upgraded to a write, so SQLite does not even wait
-        the busy timeout): 3,302 failures in 43 minutes, every option coverage epoch refused
-        (so every option subscription was compensated away), and the WAL checkpoint pinned at
-        frame 624 while the log grew past 176,000 frames. Reproduced on a scratch database
-        (tests/test_stream_control_txn_v1.py); a rollback clears it. With the write lock taken
-        first the read can never be stale, and a busy database is waited for (busy timeout)
-        instead of refused."""
-        if self._conn.in_transaction:        # never inherit a transaction a failure left open
-            self._rollback_quietly()
-        self._conn.execute("BEGIN IMMEDIATE")
-        try:
-            yield self._conn
-            self._conn.commit()
-        except BaseException:
-            self._rollback_quietly()
-            raise
-
-    def _rollback_quietly(self) -> None:
-        """Undo an uncommitted control-connection transaction after a failed write, so a
-        half-written batch can never be committed by the NEXT control write. A rollback
-        that itself fails leaves nothing more to undo (the connection is unusable), and the
-        write that failed has already been reported by the caller's CoverageWriteError."""
-        try:
-            self._conn.rollback()
-        except sqlite3.Error:  # caps-ok: the original failure is already being raised
-            pass
-
-    def write_heartbeat(self, *, pid: int | None = None, ts: float | None = None,
-                        claimed_coverage: "dict[str, list[int]] | None" = None,
-                        rejected_contracts: "dict[str, str] | None" = None) -> None:
-        """Producer identity/liveness signal written INTO the canonical stream_capture.db
-        itself (PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS, Gap 2) -- not a separate
-        checkout-relative status file. A consumer opening its OWN resolved db_path and
-        finding a fresh row here has, by construction, proven it is reading the SAME
-        physical file this writer is writing to. `resolved_db_path` is carried for human
-        diagnostics only (what the daemon believes its own path is) -- it is NOT the
-        trust mechanism; the trust mechanism is "this connection can see this row at
-        all". Immediately committed (like open/close_coverage_epoch): a low-frequency
-        liveness signal where durability matters more than batching throughput."""
-        t = ts if ts is not None else time.time()
-        p = pid if pid is not None else os.getpid()
-        claim = None if claimed_coverage is None else json.dumps(
-            {str(k): v for k, v in claimed_coverage.items()}, sort_keys=True)
-        if rejected_contracts is not None:
-            self._last_rejected_contracts = {str(k): str(v) for k, v in rejected_contracts.items()}
-        rejected = None if self._last_rejected_contracts is None else json.dumps(
-            self._last_rejected_contracts, sort_keys=True)
-        try:
-            self._control_write(lambda con: con.execute(
-                    "INSERT INTO stream_producer_heartbeat(id, daemon_pid, heartbeat_ts, "
-                    "resolved_db_path, claimed_coverage_json, rejected_contracts_json) "
-                    "VALUES (1, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(id) DO UPDATE SET daemon_pid=excluded.daemon_pid, "
-                    "heartbeat_ts=excluded.heartbeat_ts, resolved_db_path=excluded.resolved_db_path, "
-                    "claimed_coverage_json=excluded.claimed_coverage_json, "
-                    "rejected_contracts_json=excluded.rejected_contracts_json",
-                    (p, t, str(self.db_path), claim, rejected)))
-        except Exception as e:
-            raise CoverageWriteError(f"write_heartbeat: {e}") from e
-        # Only a LANDED write changes the outstanding lease. A publication that claims
-        # nothing clears it; one that names any epoch starts a fresh one at `t`.
-        # RC-UI-3 (2026-09-12): claimed_coverage's per-service values are now LISTS of
-        # epoch ids (multi-contract), not a bare id-or-None -- an EMPTY list must count
-        # as "nothing claimed for this service", the same as the old None did, so this is
-        # a plain truthiness check (an empty list, like None, is falsy) rather than the
-        # old `is not None` (which would have misread {} as a positive claim).
-        self._positive_claim_ts = t if (
-            claimed_coverage and any(v for v in claimed_coverage.values())
-        ) else None
-
-    @property
-    def positive_claim_published_ts(self) -> "float | None":
-        """When this producer last successfully published a POSITIVE coverage claim.
-
-        None means nothing it published is capable of confirming coverage. Otherwise the
-        claim can still confirm until this + PRODUCER_CLAIM_TTL_SEC — which is exactly the
-        barrier a controlled surrender must clear when it cannot retract the claim."""
-        return self._positive_claim_ts
-
-    def close_coverage_epoch(self, epoch_id: int, *, reason: str,
-                             ts: float | None = None) -> None:
-        """Close ONE epoch -- the one-id form of close_coverage_epochs."""
-        self.close_coverage_epochs([epoch_id], reason=reason, ts=ts)
-
-    def close_coverage_epochs(self, epoch_ids: "list[int]", *, reason: str,
-                              ts: float | None = None) -> None:
-        """Close these epochs in ONE committed transaction (see open_coverage_epochs for
-        why one commit per change, not per contract). Idempotent: only an OPEN epoch
-        (ended_ts IS NULL) is closed, so a duplicate close cannot overwrite an
-        already-recorded end time. On failure nothing landed: CoverageWriteError."""
-        ids = [int(i) for i in dict.fromkeys(epoch_ids)]
-        if not ids:
-            return
-        t = ts if ts is not None else time.time()
-        try:
-            self._control_write(lambda con: con.executemany(
-                "UPDATE stream_coverage_epochs SET ended_ts=?, reason=? "
-                "WHERE id=? AND ended_ts IS NULL", [(t, reason, i) for i in ids]))
-        except Exception as e:
-            raise CoverageWriteError(f"close_coverage_epochs({ids}): {e}") from e
-
-    def _insert_guarded(self, topic: str, msg: Any, *,
-                        conn: "sqlite3.Connection | None" = None) -> int:
-        """1 if a row landed; insert failures are COUNTED, never kill the writer
-        (Cursor review MEDIUM: an uncaught insert() death silently stopped capture)."""
-        try:
-            before = self.rows_written
-            self.insert(topic, msg, conn=conn)
-            return self.rows_written - before
-        except Exception:  # noqa: BLE001 — counted + surfaced in status; capture continues
-            self.insert_errors += 1
-            return 0
-
-    #: Sentinel that tells the writer thread to commit what it holds and exit.
-    _WRITER_STOP = object()
-    #: Sentinel that wakes the writer thread to take a queued control write.
-    _WRITER_WAKE = object()
-
-    async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
-        """Persist every bus message -- WITHOUT ever blocking the event loop.
-
-        MEASURED 2026-09-23: this used to execute every SQLite insert and commit on the SAME
-        asyncio loop that reads the Schwab websocket. A slow commit (a busy
-        disk, a reader holding the WAL) stalled the socket reads; the writer queue reached
-        6,565 and 9,784 messages were dropped. Now the loop only hands each message to a
-        thread-safe queue (put, never blocks) and a dedicated thread, which owns its own
-        SQLite connection, does all tick inserts and batch commits -- and, while it runs, the
-        control writes too (coverage epochs, heartbeat; _control_write): ONE writer
-        connection, so no lock race inside the daemon (2026-09-25 wedge, see _control_txn).
-
-        Stop semantics are unchanged: everything already delivered to the subscription is
-        handed to the thread, which writes and commits it all before `run` returns."""
-        q: "queue.SimpleQueue" = queue.SimpleQueue()
-        self._writer_queue = q
-        thread = threading.Thread(target=self._writer_thread, args=(q,),
-                                  name="stream-capture-writer", daemon=True)
-        thread.start()
-        with self._control_route_lock:
-            self._writer_accepting = True       # control writes now go to the thread
-        try:
-            while not stop.is_set():
-                try:
-                    item = await asyncio.wait_for(sub.get(), timeout=0.25)
-                except asyncio.TimeoutError:
-                    continue
-                q.put(item)
-            while not sub.queue.empty():
-                q.put(await sub.get())
-        finally:
-            with self._control_route_lock:
-                self._writer_accepting = False  # later control writes use _control_txn
-            q.put(self._WRITER_STOP)
-            await asyncio.to_thread(thread.join)
-            self._writer_queue = None
-
-    def writer_backlog(self) -> "int | None":
-        """Messages handed to the writer thread and not yet written (None when not running)."""
-        q = getattr(self, "_writer_queue", None)  # caps-ok: None before run() starts or after it returns -- the documented "not running" answer
-        return q.qsize() if q is not None else None
-
-    def _writer_thread(self, q: "queue.SimpleQueue") -> None:
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-        conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
-        pending = 0
-        last_commit = time.monotonic()
-        try:
-            conn.execute("PRAGMA synchronous=NORMAL")
-            while True:
-                timeout = max(self.batch_sec - (time.monotonic() - last_commit), 0.01)
-                try:
-                    item = q.get(timeout=timeout)
-                except queue.Empty:
-                    item = None
-                if not self._control_ops.empty():
-                    if pending:                 # this thread's ticks land before the write
-                        conn.commit()
-                        self.commits += 1
-                        pending = 0
-                        last_commit = time.monotonic()
-                    self._run_control_ops(conn)
-                if item is self._WRITER_STOP:
-                    break
-                if item is not None and item is not self._WRITER_WAKE:
-                    topic, msg = item
-                    pending += self._insert_guarded(topic, msg, conn=conn)
-                if pending and (pending >= self.batch_rows
-                                or time.monotonic() - last_commit >= self.batch_sec):
-                    conn.commit()
-                    self.commits += 1
-                    pending = 0
-                    last_commit = time.monotonic()
-            if pending:
-                conn.commit()
-                self.commits += 1
-            self._run_control_ops(conn)         # nothing queued before the stop is left waiting
+                conn.execute("ALTER TABLE stream_quotes_raw ADD COLUMN native_json TEXT")
+            conn.commit()
         finally:
             conn.close()
 
-    def close(self) -> None:
-        """Idempotent — the daemon closes in a finally that may run after an inner
-        close (Cursor round-3 MEDIUM: login-failure paths leaked the connection).
-
-        Commit-then-close: `_closed` is set only after both attempts so a failed
-        commit cannot skip a later close and leak the handle (Bugbot 2026-07-21)."""
-        if self._closed:
+    def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None) -> None:
+        """One bus message -> one row (topics without a table are skipped). Without `conn`
+        (a test, a recovery tool) it opens, writes and commits a connection of its own."""
+        kind = topic.split(".", 1)[0]
+        spec = _INSERTS.get(kind)
+        if spec is None:
+            return
+        if isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None:
+            return                         # nothing Schwab sent to keep
+        if conn is None:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as own:
+                self.insert(topic, msg, conn=own)
             return
         try:
-            self._conn.commit()
+            conn.execute(spec[0], spec[1](msg))
+            self.rows_written += 1
+        except Exception:  # noqa: BLE001 -- counted in status; capture continues
+            self.insert_errors += 1
+
+    async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
+        """Hand every bus message to the writer thread until `stop`; everything delivered
+        before the stop is written and committed before this returns."""
+        q: "queue.SimpleQueue" = queue.SimpleQueue()
+        thread = threading.Thread(target=self._thread, args=(q,), name="stream-capture-writer",
+                                  daemon=True)
+        thread.start()
+        try:
+            while not stop.is_set():
+                try:
+                    q.put(await asyncio.wait_for(sub.get(), timeout=0.25))
+                except asyncio.TimeoutError:
+                    continue
+            while not sub.queue.empty():
+                q.put(await sub.get())
         finally:
-            try:
-                self._conn.close()
-            finally:
-                self._closed = True
+            q.put(None)
+            await asyncio.to_thread(thread.join)
+
+    def _thread(self, q: "queue.SimpleQueue") -> None:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
+        pending, last_commit = 0, time.monotonic()
+        try:
+            while True:
+                try:
+                    item = q.get(timeout=max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
+                except queue.Empty:
+                    item = False
+                if item is None:
+                    break
+                if item:
+                    self.insert(*item, conn=conn)
+                    pending += 1
+                if pending and (pending >= self.batch_rows
+                                or time.monotonic() - last_commit >= self.batch_sec):
+                    conn.commit()
+                    pending, last_commit = 0, time.monotonic()
+            conn.commit()
+        finally:
+            conn.close()
