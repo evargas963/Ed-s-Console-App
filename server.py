@@ -5125,6 +5125,7 @@ def get_terrain(ticker: str = Query(...)):
     math on the same chain, so it never needs to compete for that budget.
     """
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
+    _note_gamma_surface_demand(tk)          # a viewed ticker's full chain is kept by the levels loop
     cached = terrain_cache_get(tk)
     if cached is None:
         # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
@@ -5558,46 +5559,17 @@ COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 @app.get("/api/chain")
 def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
-    """CONTRACT-SELECTION surface: the COMPLETE real vendor contract set for one ticker and
-    one expiry — every strike Schwab actually lists, not a bounded analytical window — so a
-    UI can let an operator pick one option contract and pass its `symbol` straight to POST
-    /api/streaming/active-option-contract or GET /api/order-flow/options-microstructure —
-    the same "chain response's own symbol field, never constructed" rule those two routes
-    already document.
-
-    COMPLETE, separate from the bounded analytical chain views: fetches LIVE, scoped to
-    exactly one expiry, through _gated_safe_get_chain — the SAME single, rate-limited,
-    coalesced chain-fetch faucet every other chain read in this file already uses (RC-59/
-    RC-127/Cursor-audit F2's chain_width_single_faucet invariant) — using
-    `strike_range="ALL"` (see COMPLETENESS_BASIS_STRIKE_RANGE_ALL's comment above for the
-    measured proof this is genuinely complete, not merely wide), never a bare strike_count
-    bound, and never a second per-contract parsing path (reuses flatten_chain_contracts/
-    resolve_spot verbatim, same as every other chain consumer). Every native Schwab field
-    is served AS-IS — nothing here rounds, filters, or reconstructs a strike from assumed
-    spacing; fractional strikes (.50/.25/...) survive exactly as the vendor sent them.
-
-    `expiry` optional: defaults to the ticker's nearest listed expiry (/api/expiries).
-
-    ONE answer, no fallbacks (operator rule 2026-09-23, governance/fallback_register.md
-    R-01): `scope.kind` is
-      'complete_single_expiry' -- a live strike_range=ALL fetch succeeded AND the vendor's
-         own returned expiries matched the requested expiry EXACTLY. The capture is also
-         persisted (calibration/complete_chain_capture.py) as its own durable record; or
-      'unavailable' -- status='unavailable', no contracts, and `scope.reason` names why
-         (no listed expiry, the vendor's HTTP status, the fetch error, or the expiry the
-         vendor returned instead of the one asked for).
-    It used to serve, in turn, the vendor's mismatched expiry, an older persisted capture,
-    or a bounded analytical snapshot that could belong to a DIFFERENT expiry than the one
-    requested -- each labeled, each still a substitute shown in place of the chain asked
-    for (measured 2026-09-24: SPY's expired 0DTE drew a vendor 400 and was answered from
-    storage on every refresh)."""
-    t = ticker.upper().strip()
-    # TICKER-PREVIEW-NO-ENROLL: listing a chain is a VIEW — touch last-seen only.
+    """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
+    -- from the chain the levels loop downloads (strike_range=ALL), with streamed option updates
+    newer than that download overlaid. The loop keeps a ticker's chain while it is viewed
+    (/api/terrain and this route mark it). Answers `status: unavailable` with a reason when no
+    chain is held."""
+    t = ticker_storage_key(_required_ticker(ticker))
     _touch_tracked_ticker_view(t)
 
-    resolved_expiry = (expiry or "").strip()[:10] or None
-    if resolved_expiry is None:
-        resolved_expiry = ((terrain_cache_get(t) or {}).get("expiries") or [None])[0]
+    _note_gamma_surface_demand(t)          # a viewed ticker's full chain is kept by the levels loop
+    held = terrain_cache_get(t) or {}
+    resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
 
     def _unavailable(reason: str) -> JSONResponse:
         return JSONResponse({"ticker": t, "spot": None, "expiry": resolved_expiry,
@@ -5605,67 +5577,25 @@ def get_chain(ticker: str = Query(...),
                              "scope": {"kind": "unavailable", "requested_expiry": resolved_expiry,
                                        "reason": reason}})
 
+    chain = held.get("_chain")
+    if not chain:
+        return _unavailable(held.get("error") or "the chain for this ticker has not been downloaded")
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")
-    try:
-        d = date.fromisoformat(resolved_expiry)
-        client = get_client()
-        c_resp, _gate_wait, _fetch_sec = _gated_safe_get_chain(
-            client, t, strike_range="ALL", from_date=d, to_date=d, priority=False)
-    except Exception as e:
-        log.warning("chain: live fetch failed for %s expiry %s (%s) -- served unavailable",
-                    t, resolved_expiry, e)
-        return _unavailable(f"live chain fetch failed: {type(e).__name__}: {e}")
-    if c_resp is None or c_resp.status_code != 200:
-        code = None if c_resp is None else c_resp.status_code
-        log.warning("chain: live fetch non-200 for %s expiry %s (HTTP %s) -- served unavailable",
-                    t, resolved_expiry, code)
-        return _unavailable(f"vendor chain request returned HTTP {code}" if code is not None
-                            else "vendor chain request returned no response")
-    # This fetch's OWN as-of instant -- captured the moment the vendor's response is in
-    # hand, before any overlay -- is the correct `newer_than_ts` baseline.
-    _rest_fetch_ts = time.time()
-    c_json = c_resp.json()
-    spot, _spot_source, _spot_as_of = resolve_spot(t, chain_json=c_json)
-    contracts = flatten_chain_contracts(c_json)
-    # SCOPE CHECK, not defensive-only: never trust the request alone to guarantee the
-    # response's own expirationDate matches what was actually asked for -- a mismatch is
-    # the difference between serving and NOT serving the REQUESTED expiry.
-    returned_exps = sorted({
-        str(c.get("expirationDate") or "")[:10]
-        for c in contracts if isinstance(c, dict) and c.get("expirationDate")
-    })
-    if returned_exps != [resolved_expiry]:
-        log.warning("chain: expiry scope mismatch for %s -- requested %s, vendor returned %s; "
-                    "served unavailable", t, resolved_expiry, returned_exps)
-        return _unavailable(f"vendor returned expiries {returned_exps}, not {resolved_expiry}")
-    # Independent-review finding (2026-09-13): a real streamed tick for the SAME contract
-    # can already be sitting in app.options.order_flow.state, newer than this REST read;
-    # `_gamma_surface_contracts_with_stream_overlay` applies the one overlay
-    # (overlay_streamed_contract_fields, as _publish_levels does), ordered by this fetch's own instant so an older
-    # streamed value never replaces a newer REST one. The OVERLAID result is for the
-    # RESPONSE only -- the persisted capture stores the PRE-overlay `contracts`, so the
-    # durable complete-REST record is never blended with fields it cannot timestamp.
+    contracts = [c for c in chain if str(c.get("expirationDate") or "")[:10] == resolved_expiry]
+    if not contracts:
+        return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
+    fetched_ts = held.get("_chain_fetched_ts")
     response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-        t, contracts, newer_than_ts=_rest_fetch_ts)
-    try:
-        persist_complete_chain_capture(
-            get_db().db_path, ticker=t, expiry=resolved_expiry,
-            contracts=contracts, spot=spot,
-            completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL)
-    except Exception as e:
-        log.warning("chain: complete-capture persist failed for %s %s: %s",
-                    t, resolved_expiry, e)
+        t, contracts, newer_than_ts=fetched_ts)
     return JSONResponse({
-        "ticker": t, "spot": spot, "expiry": resolved_expiry,
-        "contracts": response_contracts, "status": "ok" if response_contracts else "no_chain",
+        "ticker": t, "spot": held.get("spot"), "expiry": resolved_expiry,
+        "chain_as_of_ts_utc": fetched_ts,
+        "contracts": response_contracts, "status": "ok",
         "stream_overlay_contracts": overlay_n,
-        "scope": {"kind": "complete_single_expiry",
-                  "requested_expiry": resolved_expiry,
-                  "returned_expiries": returned_exps,
+        "scope": {"kind": "complete_single_expiry", "requested_expiry": resolved_expiry,
                   "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
     })
-
 
 @app.get("/api/health")
 def health():
