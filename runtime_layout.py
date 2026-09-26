@@ -28,10 +28,8 @@ SOURCE_ROOT = Path(__file__).resolve().parent
 
 
 def _load_env_file() -> None:
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        return
+    from dotenv import load_dotenv
+
     env_path = SOURCE_ROOT / ".env"
     if env_path.is_file():
         load_dotenv(env_path, override=False)

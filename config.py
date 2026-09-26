@@ -8,10 +8,8 @@ _ROOT = Path(__file__).resolve().parent
 
 def _load_dotenv_if_present() -> None:
     """Load repo-root ``.env`` when present (host secrets; never committed)."""
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        return
+    from dotenv import load_dotenv
+
     env_path = _ROOT / ".env"
     if env_path.is_file():
         load_dotenv(env_path, override=False)

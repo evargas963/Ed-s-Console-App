@@ -175,13 +175,6 @@ from db import get_db
 import live_market_plane as _lmp
 import live_price_rows as _lpr        # THE displayed price row (shared with the capture daemon)
 
-try:
-    from crash_trace import step as _diag_step, step_done as _diag_done, trace_crash as _diag_crash, _on as _diag_on
-except ImportError:
-    _diag_on = lambda: False
-    _diag_step = _diag_done = lambda n, t="": None
-    _diag_crash = lambda n, e, t="": None
-
 # ── Config + Schwab client (refreshable singleton) ────────────────────────────
 cfg     = build_config(APP_DIR)
 _client = None
@@ -1994,15 +1987,10 @@ async def _app_lifespan(app):
     # gating it behind account resolution was a correctness bug under the new
     # architecture (a broken/expiring token would silently disable the live UI's quote
     # feed even though the daemon was capturing fine). Unconditional.
-    try:
-        from app.options.order_flow.streaming import start_order_flow_stream
-        # every streamed equity quote and option greeks/OI/volume quote -> _on_stream_tick,
-        # which reprices a viewed ticker through the one levels producer
-        start_order_flow_stream(None, None, None, on_tick_callback=_on_stream_tick)
-    except ImportError as ie:
-        log.debug(f"Order flow streaming not started: {ie}")
-    except Exception as e:
-        log.warning(f"Order flow streaming startup: {e}")
+    from app.options.order_flow.streaming import start_order_flow_stream
+    # every streamed equity quote and option greeks/OI/volume quote -> _on_stream_tick,
+    # which reprices a viewed ticker through the one levels producer
+    start_order_flow_stream(None, None, None, on_tick_callback=_on_stream_tick)
 
     global _main_event_loop
     _main_event_loop = asyncio.get_running_loop()
