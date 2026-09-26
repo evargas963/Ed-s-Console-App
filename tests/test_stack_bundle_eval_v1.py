@@ -14,7 +14,7 @@ from arch_competition.stack_bundle_eval_v1 import (
     pack_metrics_for_probs,
 )
 import ml_predict as mp
-from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 
 
 def test_norm_triplet_none_on_degenerate_sum():

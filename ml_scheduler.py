@@ -23,7 +23,6 @@ import sys
 import json
 import sqlite3
 import logging
-import threading
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -36,7 +35,10 @@ from instrument_identity import ticker_storage_key
 # RC-340: THE row-enrichment authority for every engineer_single_snapshot call in this
 # module — five cascade/bridge routes previously fed RAW rows (cf_* -> 0.0, dgex -> NaN).
 from ml_data_common import prepare_row_for_xgb_features
-from datetime import datetime, timezone, timedelta
+from datetime import (
+    datetime,
+    timezone,
+)
 from typing import Any, Optional, Set
 import argparse
 import time
@@ -50,14 +52,12 @@ DB_PATH = str(_DB_PATH_OBJ)
 MODEL_DIR = APP_DIR / "models"
 PARALLEL_DIR = MODEL_DIR / "parallel"
 CASCADE_DIR = MODEL_DIR / "cascade"
-ACTIVE_DIR = MODEL_DIR / "active"
 ARCH_STATE_PATH = MODEL_DIR / "arch_state.json"
 TRAINING_REPORT_PATH = MODEL_DIR / "training_report.jsonl"
 RUN_AT_HOUR = 16
 RUN_AT_MINUTE = 15
 
 from numeric_contract import direction_from_normalized_triplet
-from time_et import ET
 
 log = logging.getLogger("ml_scheduler")
 
@@ -277,7 +277,8 @@ def _training_ticker_union(
 def _get_tickers_with_rth_data(
     db_path: str, timeframe: str = None, *, label_column: str = DEFAULT_TRAINING_LABEL_COLUMN,
 ) -> list[str]:
-    from ml_data_common import is_rth_ts_utc, training_base_where_clause
+    from ml_data_common import training_base_where_clause
+    from time_et import is_rth_ts_utc
     from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
     _tf = timeframe or CANONICAL_TIMEFRAME
     if _tf != CANONICAL_TIMEFRAME:
@@ -3833,124 +3834,12 @@ def run_once(
     }
 
 
-_bg_scheduler_lock = threading.Lock()
-_bg_scheduler_thread: Optional[threading.Thread] = None
-_bg_scheduler_started = False
 
 
-def _next_scheduled_run_et(now: datetime) -> datetime:
-    """Earliest RUN_AT_HOUR:RUN_AT_MINUTE ET on a market day strictly after ``now``."""
-    from datetime import time as dtime
-
-    for i in range(0, 28):
-        day = now.date() + timedelta(days=i)
-        cand = datetime.combine(day, dtime(RUN_AT_HOUR, RUN_AT_MINUTE)).replace(tzinfo=ET)
-        if cand <= now:
-            continue
-        if _is_market_day(cand):
-            return cand
-    return now + timedelta(days=1)
 
 
-def start_background_scheduler() -> None:
-    """
-    Start a daemon thread that sleeps until the next market-day 16:15 ET, then calls ``run_once``
-    (scheduled mode: no --run-now). Safe to call once per process; duplicates are ignored.
-
-    Default (ED_ML_SCHEDULER_ALL_HORIZONS=1): trains/promotes all four primary horizons per night.
-    Set ED_ML_SCHEDULER_ALL_HORIZONS=0 to run only ED_ML_SCHEDULER_HORIZON (legacy single-horizon).
-    """
-    global _bg_scheduler_thread, _bg_scheduler_started
-    with _bg_scheduler_lock:
-        if _bg_scheduler_started:
-            log.warning("start_background_scheduler: already started; ignoring duplicate")
-            return
-        _bg_scheduler_started = True
-
-    from arch_competition.scheduler_auto_promote_policy import scheduler_nightly_all_horizons_enabled
-
-    single_hz = os.environ.get("ED_ML_SCHEDULER_HORIZON", DEFAULT_ML_HORIZON_SLUG)
-
-    def _run_scheduled_nightly() -> None:
-        if scheduler_nightly_all_horizons_enabled():
-            from ml_horizon import ALL_GOVERNED_HORIZONS
-
-            agg_exit = 0
-            for _hz in ALL_GOVERNED_HORIZONS:
-                log.info("ML scheduler background: starting horizon %s", _hz)
-                summary = run_once(
-                    wait=False,
-                    force_retrain=False,
-                    bypass_cache=False,
-                    allow_non_market_day=False,
-                    promote_from_manifests_only=False,
-                    ml_horizon_slug=str(_hz),
-                )
-                code = int(summary.get("exit_code", 0))
-                agg_exit |= code
-                log.info(
-                    "ML scheduler background: finished horizon %s (exit=%s)",
-                    _hz,
-                    code,
-                )
-            if agg_exit:
-                log.warning(
-                    "ML scheduler background: one or more horizons failed (agg_exit=%s)",
-                    agg_exit,
-                )
-        else:
-            run_once(
-                wait=False,
-                force_retrain=False,
-                bypass_cache=False,
-                allow_non_market_day=False,
-                promote_from_manifests_only=False,
-                ml_horizon_slug=str(single_hz),
-            )
-
-    def _loop() -> None:
-        while True:
-            try:
-                now = _now_et()
-                nxt = _next_scheduled_run_et(now)
-                delay = max(1.0, (nxt - now).total_seconds())
-                log.info(
-                    "ML scheduler background: next run at %s ET (in %.0f s)",
-                    nxt.strftime("%Y-%m-%d %H:%M"),
-                    delay,
-                )
-                time.sleep(delay)
-                _run_scheduled_nightly()
-            except Exception as e:
-                log.exception("ML scheduler background loop error: %s", e)
-                time.sleep(300.0)
-
-    _bg_scheduler_thread = threading.Thread(
-        target=_loop,
-        name="ml_scheduler_nightly",
-        daemon=True,
-    )
-    _bg_scheduler_thread.start()
-    if scheduler_nightly_all_horizons_enabled():
-        log.info(
-            "ML background scheduler thread started (nightly market-day %02d:%02d ET; all horizons)",
-            RUN_AT_HOUR,
-            RUN_AT_MINUTE,
-        )
-    else:
-        log.info(
-            "ML background scheduler thread started (nightly market-day %02d:%02d ET; horizon=%s)",
-            RUN_AT_HOUR,
-            RUN_AT_MINUTE,
-            single_hz,
-        )
 
 
-# deprecated aliases — unified-stack vocabulary migration
-_meta_base_triplet = _meta_ml_layer_triplet
-_assemble_meta_base_prob_vectors = _assemble_meta_ml_layer_prob_vectors
-_train_parallel_base_models_into = _train_parallel_ml_stack_layers_into
-_train_cascade_base_models_into = _train_cascade_ml_stack_layers_into
 
 
 if __name__ == "__main__":

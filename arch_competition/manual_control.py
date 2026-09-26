@@ -455,6 +455,3 @@ def load_governance_visibility(
     return out
 
 
-def assert_active_mutation_only_via_manual_control(caller: str = "test") -> None:
-    """Deprecated alias — use assert_active_writes_use_governed_executor (PR4 P3-1b)."""
-    assert_active_writes_use_governed_executor(caller)

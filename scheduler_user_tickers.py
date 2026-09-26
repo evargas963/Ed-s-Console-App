@@ -13,7 +13,6 @@ snapshots_1m_normalized but are absent from logging_universe — that does not e
 from __future__ import annotations
 
 import os
-import time
 from pathlib import Path
 from typing import Optional
 import logging
@@ -108,20 +107,6 @@ def load_user_scheduler_tickers_or_empty() -> list[str]:
     return load_user_scheduler_tickers() or []
 
 
-def panel_auto_ticker_set(db_path: str) -> frozenset[str]:
-    """Symbols enrolled as confluence-only (panel_auto) — quote context, not ML training."""
-    try:
-        from db import EdDB
-
-        rows = EdDB(str(db_path)).logging_universe_list_rows()
-    except Exception as e:
-        log.warning("panel_auto_ticker_set: cannot read logging_universe (%s)", e)
-        return frozenset()
-    return frozenset(
-        ticker_storage_key(str(row.get("ticker") or ""))  # RC-345/F25: canonical membership key
-        for row in rows
-        if str(row.get("category") or "") in CONFLUENCE_ONLY_UNIVERSE_CATEGORIES
-    )
 
 
 def filter_tickers_for_background_logging(tickers: list[str], db_path: str) -> list[str]:
@@ -213,21 +198,3 @@ def resolve_ml_training_roster(enrolled: list[str], db_path: str) -> list[str]:
     return pool
 
 
-def record_user_ticker(ticker: str) -> None:
-    """
-    Shim for code paths that register without server._register_tracked_ticker.
-    Authoritative enrollment remains logging_universe (same upsert as UI/API).
-    """
-    from production_universe import is_valid_production_ticker, normalize_production_ticker
-
-    s = normalize_production_ticker(ticker)
-    if not s or not is_valid_production_ticker(s):
-        return
-    try:
-        from db import get_db
-
-        get_db().logging_universe_upsert_user_persisted(
-            s, "scheduler_shim", time.time()
-        )
-    except Exception as e:
-        log.debug("scheduler user tickers: %s", e, exc_info=True)

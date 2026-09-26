@@ -10,12 +10,8 @@ import pytest
 
 from calibration.schema import ensure_calibration_schema
 from json_blob_codec import decode_json_blob
-from calibration.writer import (
-    _json_excerpt,
-    _sqlite_busy_or_locked,
-    append_calibration_decision,
-    sqlite_busy_retry_sleep_seconds,
-)
+from calibration.writer import _json_excerpt, append_calibration_decision, sqlite_busy_retry_sleep_seconds
+from db import _sqlite_busy_or_locked
 from db import EdDB, configure_sqlite_connection
 from instrument_identity import ticker_storage_key
 from timeframe_config import CANONICAL_TIMEFRAME

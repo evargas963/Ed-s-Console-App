@@ -29,7 +29,7 @@ from arch_competition.live_drift_monitoring import (
     live_drift_monitoring_artifact_path,
     persist_live_drift_monitoring,
 )
-from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 
 
 def _write_minimal_governed(model_dir: Path, *, with_lineage: bool = True):

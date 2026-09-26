@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -38,7 +37,6 @@ def artifact_ticker_key(ticker: str) -> str:
     return ticker_storage_key(ticker)
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
-ACTIVE_DIR = MODELS_DIR / "active"
 
 # (model_kind, model_file, meta_file) per horizon bundle — six ML layer artifact pairs + meta-stack pkl.
 BUNDLE_ARTIFACT_TRIPLE = (
@@ -314,41 +312,6 @@ def write_bundle_integrity_manifest(
     return manifest
 
 
-def refresh_bundle_integrity_manifest(bundle_dir: Path) -> dict[str, Any] | None:
-    """
-    Re-stamp the integrity manifest after a governed in-place write to an active
-    bundle (e.g. movement-head training tools). Identity (ticker/horizon) comes
-    from the existing manifest; its source lineage is preserved. No-op (returns
-    None) when the bundle has no integrity manifest — legacy bundles stay
-    explicitly legacy rather than gaining a manifest that would launder
-    unpromoted artifacts as verified.
-    """
-    bd = Path(bundle_dir)
-    existing = load_bundle_integrity_manifest(bd)
-    if existing is None:
-        return None
-    lineage = existing.get("source_lineage")
-    provenance = existing.get("provenance")
-    manifest = write_bundle_integrity_manifest(
-        bd,
-        existing["ticker"],
-        existing["ml_horizon_slug"],
-        allow_missing_required=bool(existing.get("missing_required_artifacts")),
-    )
-    rewrite = False
-    if isinstance(lineage, dict):
-        manifest["source_lineage"] = lineage
-        rewrite = True
-    if isinstance(provenance, dict):
-        # Migration provenance (repromotion/reconstruction evidence) survives
-        # governed in-place refreshes — it names how trust was established.
-        manifest["provenance"] = provenance
-        rewrite = True
-    if rewrite:
-        bundle_integrity_manifest_path(bd).write_text(
-            json.dumps(manifest, indent=2, default=str), encoding="utf-8"
-        )
-    return manifest
 
 
 def load_bundle_integrity_manifest(bundle_dir: Path) -> dict[str, Any] | None:
@@ -669,37 +632,6 @@ def bundle_artifact_paths(ticker: str, hz: str, bundle_dir: Path) -> list[tuple[
     return out
 
 
-def legacy_layout_source_dirs(
-    ticker: str,
-    hz: str,
-    *,
-    models_dir: Path | None = None,
-) -> tuple[Path, ...]:
-    """
-    Legacy dirs that may hold misplaced horizon artifacts (split-brain migration).
-
-    Non-1c horizons may have weights under models/active/{T}/ instead of active_{hz}/{T}/.
-    """
-    root = models_dir or MODELS_DIR
-    t = artifact_ticker_key(ticker)  # RC-345/F25: one canonical ticker-identity authority
-    su = normalize_ml_horizon_slug(hz)
-    canonical = active_bundle_dir(ticker, hz, models_dir=root)
-    legacy: list[Path] = []
-    if su != DEFAULT_ML_HORIZON_SLUG:
-        legacy.append(root / "active" / t)
-    wrong_slug = root / f"active_{su}" / t
-    if wrong_slug != canonical:
-        legacy.append(wrong_slug)
-    if su == DEFAULT_ML_HORIZON_SLUG:
-        legacy.append(root / "active_1c" / t)
-    seen: set[Path] = set()
-    ordered: list[Path] = []
-    for d in legacy:
-        if d in seen or d == canonical:
-            continue
-        seen.add(d)
-        ordered.append(d)
-    return tuple(ordered)
 
 
 def check_active_bundle_complete(
@@ -820,12 +752,6 @@ def check_active_bundle_complete(
     return result
 
 
-def strict_active_bundle_dir_for_horizon(ticker: str, hz: str, *, models_dir: Path | None = None) -> Path | None:
-    """Canonical active dir for hz when the full bundle contract passes (P2-4: no tie-break)."""
-    bd = active_bundle_dir(ticker, hz, models_dir=models_dir)
-    if check_active_bundle_complete(ticker, hz, bundle_dir=bd, models_dir=models_dir)["compliant"]:
-        return bd
-    return None
 
 
 def check_candidate_bundle_complete(
@@ -902,55 +828,5 @@ def promote_horizon_bundle_from_candidate(
     return active_ticker_dir
 
 
-def consolidate_horizon_layout_plan(
-    ticker: str,
-    hz: str,
-    *,
-    models_dir: Path | None = None,
-) -> dict[str, Any]:
-    """Plan moves from legacy dirs into canonical active_{hz}/{T}/ (dry-run helper)."""
-    root = models_dir or MODELS_DIR
-    canonical = active_bundle_dir(ticker, hz, models_dir=root)
-    canonical.mkdir(parents=True, exist_ok=True)
-    moves: list[dict[str, str]] = []
-    for fname in horizon_bundle_filenames(ticker, hz):
-        dest = canonical / fname
-        if dest.is_file():
-            continue
-        for legacy in legacy_layout_source_dirs(ticker, hz, models_dir=root):
-            src = legacy / fname
-            if src.is_file():
-                moves.append({"file": fname, "from": str(src), "to": str(dest)})
-                break
-    return {
-        "ticker": artifact_ticker_key(ticker),  # RC-345/F25: one canonical ticker identity
-        "horizon": normalize_ml_horizon_slug(hz),
-        "canonical_dir": str(canonical),
-        "moves": moves,
-    }
 
 
-def apply_consolidate_horizon_layout_plan(
-    plan: dict[str, Any],
-    *,
-    remove_from_legacy: bool = False,
-) -> list[str]:
-    """Apply a plan from consolidate_horizon_layout_plan; returns copied filenames."""
-    copied: list[str] = []
-    for move in plan.get("moves") or []:
-        if not isinstance(move, dict):
-            continue
-        src = Path(str(move.get("from") or ""))
-        dest = Path(str(move.get("to") or ""))
-        fname = str(move.get("file") or dest.name)
-        if not src.is_file():
-            continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
-        copied.append(fname)
-        if remove_from_legacy and src.is_file():
-            try:
-                src.unlink()
-            except OSError:
-                pass
-    return copied

@@ -34,8 +34,6 @@ _log = logging.getLogger(__name__)
 FP_FLAG_KEY = "normalized_training_snapshot_fp_v1"
 
 _materialize_lock = threading.Lock()
-_debounce_timer: Optional[threading.Timer] = None
-_debounce_lock = threading.Lock()
 
 _INLINE_NORMSYNC_SKIP_ENV = "ED_TRAINING_SKIP_INLINE_NORMSYNC"
 
@@ -267,26 +265,6 @@ def persist_training_fingerprint_after_materialize(db_path: str | Path) -> dict[
         conn.close()
 
 
-def verify_normalized_freshness(db_path: str | Path) -> dict[str, Any]:
-    """Diagnostic: True if stored fingerprint matches current snapshots (normalized assumed in sync)."""
-    db_path = Path(db_path)
-    out: dict[str, Any] = {"fresh": False, "current_fp": None, "stored_fp": None}
-    if not db_path.exists():
-        return out
-    conn = sqlite3.connect(str(db_path), timeout=60.0)
-    try:
-        conn.row_factory = sqlite3.Row
-        from db import configure_sqlite_connection
-
-        configure_sqlite_connection(conn)
-        cur = compute_snapshots_training_fingerprint(conn)
-        st = _get_stored_fp(conn)
-        out["current_fp"] = cur
-        out["stored_fp"] = st
-        out["fresh"] = st is not None and st == cur
-        return out
-    finally:
-        conn.close()
 
 
 def ensure_normalized_training_table(
@@ -378,157 +356,13 @@ def ensure_normalized_training_table(
     return out
 
 
-_base_debounce_timer: Optional[threading.Timer] = None
-_base_debounce_lock = threading.Lock()
 
 
-def base_money_path_normalize_debounce_sec(
-    *,
-    capture_interval_sec: Optional[float] = None,
-    delay_s: Optional[float] = None,
-) -> float:
-    """Effective debounce delay — must stay below capture cadence or the timer never fires.
-
-    When the base logger schedules refresh every ~60s but debounce is 120s and each schedule
-    cancels the prior timer, materialization starves (norm rows freeze while raw rows grow).
-    """
-    if delay_s is not None:
-        return max(5.0, float(delay_s))
-    raw = os.environ.get("ED_BASE_MONEY_PATH_NORMALIZE_DEBOUNCE_SEC", "").strip()
-    if raw:
-        return max(5.0, float(raw))
-    if capture_interval_sec is None:
-        try:
-            from money_path_ticker_tiers import base_money_path_capture_interval_sec
-
-            capture_interval_sec = base_money_path_capture_interval_sec()
-        except Exception:
-            capture_interval_sec = 60.0
-    cycle = max(15.0, float(capture_interval_sec))
-    # Default: fire well before the next capture cycle can cancel this timer (~75% of cycle).
-    return max(15.0, min(90.0, cycle * 0.75))
 
 
-# Incremental refresh window for the live base path: must cover the longest outcome
-# backfill horizon (outcome_60c ≈ 60 minutes after the row lands) plus margin, so
-# fill_outcomes updates reach normalized rows exactly as under a full rebuild. Rows
-# older than this window carry final outcomes and never change on the live path.
-BASE_NORMALIZE_INCREMENTAL_LOOKBACK_SEC: float = 75.0 * 60.0
 
 
-def materialize_base_money_path_tickers(db_path: str | Path) -> dict[str, Any]:
-    """Per-ticker normalized refresh for SPY/QQQ/IWM only (live base capture path).
-
-    Does not advance the global training fingerprint — full ``ensure_normalized_training_table``
-    still owns the all-ticker sync before training. This keeps base money-path observability
-    current without requiring ``ED_LIVE_SNAPSHOT_MATERIALIZE=1`` for every snapshot insert.
-
-    INCREMENTAL on this path (2026-07-03): the previous full clear+rebuild re-read the entire
-    multi-GB snapshots history and rewrote every trio row each ~60s cycle, holding the
-    SQLite write lock 5-22s and starving live snapshot/bar inserts (the observed
-    DB DEGRADED incident). Only the trailing outcome window is replaced per cycle now;
-    training's full-history rebuild is untouched.
-    """
-    from money_path_ticker_tiers import BASE_MONEY_PATH_TICKERS
-
-    return materialize_normalized_table(
-        Path(db_path),
-        tickers=list(BASE_MONEY_PATH_TICKERS),
-        clear_first=True,
-        incremental_lookback_sec=BASE_NORMALIZE_INCREMENTAL_LOOKBACK_SEC,
-    )
 
 
-def schedule_debounced_base_money_path_normalized_refresh(
-    db_path: str | Path,
-    *,
-    delay_s: Optional[float] = None,
-    logger: Optional[logging.Logger] = None,
-) -> None:
-    """After base-ticker capture cycles, materialize SPY/QQQ/IWM into snapshots_1m_normalized."""
-    global _base_debounce_timer
-    lg = logger or _log
-    db_path = Path(db_path)
-    effective_delay = base_money_path_normalize_debounce_sec(delay_s=delay_s)
-
-    with _base_debounce_lock:
-        if _base_debounce_timer is not None:
-            lg.debug(
-                "base_money_path normalized refresh: timer already pending (debounce=%.1fs)",
-                effective_delay,
-            )
-            return
-
-    def _fire() -> None:
-        global _base_debounce_timer
-        try:
-            with _materialize_lock:
-                with cross_process_materialize_lock(db_path):
-                    mat = materialize_base_money_path_tickers(db_path)
-            if mat.get("errors"):
-                lg.warning(
-                    "base_money_path normalized refresh errors: %s",
-                    mat.get("errors"),
-                )
-            else:
-                lg.info(
-                    "base_money_path normalized refresh: rows=%s by_ticker=%s",
-                    mat.get("normalized_rows"),
-                    mat.get("by_ticker"),
-                )
-        except TimeoutError as e:
-            lg.warning("base_money_path normalized refresh lock timeout: %s", e)
-        except Exception as e:
-            lg.warning("base_money_path normalized refresh failed: %s", e)
-        finally:
-            with _base_debounce_lock:
-                _base_debounce_timer = None
-
-    t = threading.Timer(float(effective_delay), _fire)
-    t.daemon = True
-    with _base_debounce_lock:
-        _base_debounce_timer = t
-    lg.debug(
-        "base_money_path normalized refresh scheduled in %.1fs",
-        effective_delay,
-    )
-    t.start()
 
 
-def schedule_debounced_normalized_refresh(
-    db_path: str | Path,
-    *,
-    delay_s: Optional[float] = None,
-    logger: Optional[logging.Logger] = None,
-) -> None:
-    """
-    Coalesce live-path snapshot/outcome writes: after delay since the last schedule, run
-    ensure_normalized_training_table(force=False). Training and scheduler call ensure at entry
-    so data is fresh even if the timer has not fired yet.
-    """
-    global _debounce_timer
-    lg = logger or _log
-    db_path = Path(db_path)
-    if delay_s is None:
-        delay_s = float(os.environ.get("ED_NORMALIZED_REFRESH_DEBOUNCE_SEC", "120"))
-
-    def _fire() -> None:
-        global _debounce_timer
-        try:
-            ensure_normalized_training_table(db_path, force=False, logger=lg)
-        except Exception as e:
-            lg.warning("normalized_training_sync: debounced refresh failed: %s", e)
-        finally:
-            with _debounce_lock:
-                _debounce_timer = None
-
-    t = threading.Timer(float(delay_s), _fire)
-    t.daemon = True
-    with _debounce_lock:
-        if _debounce_timer is not None:
-            try:
-                _debounce_timer.cancel()
-            except Exception as e:
-                _log.debug("debounce timer cancel: %s", e, exc_info=True)
-        _debounce_timer = t
-    t.start()

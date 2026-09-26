@@ -450,7 +450,7 @@ def test_row_count_mismatch_aligns_to_common_rows_not_fails():
 
 
 def test_missing_probability_vectors_fail_closed_when_n_sufficient():
-    from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+    from math_probabilities import MIN_SAMPLES_STATISTICAL
 
     detail = {"prob_rows": [], "y_true": [], "rows_used": []}
     n = MIN_SAMPLES_STATISTICAL

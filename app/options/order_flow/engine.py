@@ -17,7 +17,6 @@ Output: dict of order flow metrics for scoring and regime classification.
 
 from __future__ import annotations
 
-import logging
 from typing import Any, Optional
 
 import math as _of_math
@@ -27,25 +26,16 @@ from l1_trade_observation import (
     canonical_tape_prints,
     compute_cum_delta_proxy as _canonical_cum_delta,
     compute_tape_pressure as _canonical_tape_pressure,
-    iter_content_prints,
     iter_signed_cum_points,
     source_contract as l1_source_contract,
 )
 
-log = logging.getLogger(__name__)
 
-# RETIRED (mission TRUTH_V1, RC-473/RC-474): the order_flow composite score / direction / readiness /
-# verdict and their weight + ±threshold constants (OF_COMPOSITE_WEIGHT_*, OF_COMPOSITE_MIN_LEGS,
-# OF_DIRECTION_*, OF_READINESS_*, OF_RVOL_TERM_*/READINESS_OK/NEUTRAL_CENTER) were DELETED — no fitted
-# weights, no OOS validation. Only the generic normalization range survives.
-OF_CLIP_LOW: float = -1.0
-OF_CLIP_HIGH: float = 1.0
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
 OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
-OF_ABSORPTION_PRICE_EPS: float = 0.01
 # Per-field top-of-book freshness boundary (PR214 remediation, Gap 1). A carried-forward
 # field (e.g. BID_PRICE surviving a size-only delta) is valid only while it is within this
 # many seconds of its own last observation -- NOT an arbitrary unbounded historical carry.
@@ -99,35 +89,8 @@ def _safe_int(val: Any) -> Optional[int]:
     return int(v) if v is not None else None
 
 
-def _collect_from_nested(obj: Any, key: str, collector: list) -> None:
-    """Recursively collect values for a key from nested dicts/lists."""
-    if obj is None:
-        return
-    if isinstance(obj, dict):
-        if key in obj:
-            v = obj[key]
-            if v is not None and not isinstance(v, (dict, list)):
-                collector.append(v)
-        for v in obj.values():
-            _collect_from_nested(v, key, collector)
-    elif isinstance(obj, list):
-        for item in obj:
-            _collect_from_nested(item, key, collector)
 
 
-def _get_nested(obj: Any, *keys: str) -> Optional[Any]:
-    """Get value at path keys[0].keys[1]...; handles dict and list (first item)."""
-    cur = obj
-    for k in keys:
-        if cur is None:
-            return None
-        if isinstance(cur, dict):
-            cur = cur.get(k)
-        elif isinstance(cur, list) and len(cur) > 0:
-            cur = cur[0].get(k) if isinstance(cur[0], dict) else None
-        else:
-            return None
-    return cur
 
 
 def _iter_content(data: dict) -> list:
@@ -191,9 +154,6 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
     return out
 
 
-def _iter_tape_prints(content_items: list) -> list[dict]:
-    """Extract tape prints in list/receive order. ONE FAUCET: l1_trade_observation."""
-    return iter_content_prints(content_items)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -230,22 +190,6 @@ def _book_imbalance_from_totals(bid_total: Optional[float], ask_total: Optional[
     return (bid_total - ask_total) / total
 
 
-def _compute_book_imbalance(data: dict, depth: int) -> Optional[float]:
-    """
-    Book imbalance at given depth: (bid_vol - ask_vol) / (bid_vol + ask_vol).
-    ONE CANONICAL PATH: reads the SAME `_extract_canonical_book` (sorted + validated levels)
-    and the SAME `_book_side_depth_total` + `_book_imbalance_from_totals` helpers the
-    microstructure depth ladder uses — it does not walk or sum the raw book on its own. The
-    engine's compute() no longer calls this; it reads book_imbalance from the single
-    compute_book_microstructure result. Kept for standalone/tests, consistent by construction.
-    """
-    cb = _extract_canonical_book(data)
-    if not cb["has_book"]:
-        return None
-    return _book_imbalance_from_totals(
-        _book_side_depth_total(cb["bid_levels"], depth),
-        _book_side_depth_total(cb["ask_levels"], depth),
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -751,12 +695,6 @@ def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[f
 # ABSORPTION / REPLENISHMENT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _earliest_book_snapshot(items: list) -> Optional[dict]:
-    """Return the earliest content item that has both BIDS and ASKS."""
-    for item in items:
-        if isinstance(item, dict) and item.get("BIDS") and item.get("ASKS"):
-            return item
-    return None
 
 
 # RETIRED (mission TRUTH_V1): _compute_absorption (P1) was a whole-buffer volume/price-range density

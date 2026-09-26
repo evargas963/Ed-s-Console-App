@@ -8,14 +8,7 @@ so offline ablation and live serve converge without silent omission semantics.
 """
 from __future__ import annotations
 
-import math
-import os
-from contextlib import contextmanager
-from contextvars import ContextVar, Token
-from dataclasses import dataclass
-from typing import Any, Iterator, Optional
 
-from instrument_identity import ticker_storage_key
 from ml_horizon import ALL_GOVERNED_HORIZONS, ML_HORIZON_SLUGS
 
 # ── Authoritative inference stack (operator binding 2026-06-04) ──
@@ -40,49 +33,8 @@ FULL_STACK_MODEL_DISPLAY: tuple[str, ...] = (
     "Regime",
     "Bayesian Fusion",
 )
-FEATURE_ABLATION_ML_STACK_LAYERS: tuple[str, ...] = ("xgb", "lstm", "transformer")
-FEATURE_ABLATION_BASE_MODELS = FEATURE_ABLATION_ML_STACK_LAYERS  # deprecated alias
-STACK_AUTHORITY_LAYERS: tuple[str, ...] = ("meta", "monte_carlo", "regime", "fusion")
-FEATURE_ABLATION_ALL_MODELS: tuple[str, ...] = FULL_STACK_MODEL_LAYERS
 
-# Snapshot columns each stack layer reads for ablation placement (one layer per cell).
-# Upper layers MUST NOT delegate to FEATURE_ABLATION_ML_STACK_LAYERS union knockouts.
-REGIME_LAYER_SNAPSHOT_COLUMNS: frozenset[str] = frozenset(
-    {
-        "zone",
-        "prev_zone",
-        "vwap_side",
-        "nearest_above_dist",
-        "nearest_below_dist",
-        "net_gamma",
-        "spot",
-        "pin_width_pts",
-        "charm_direction",
-        "charm_drift_toward",
-        "candle_body_pts",
-        "candle_range_pts",
-        "dist_call_gamma_wall",
-        "dist_put_gamma_wall",
-        "iv_direction",
-        "vix_bucket",
-        "vix_level",
-        "zone_since_bars",
-        "zone_since_bars_1m",
-    }
-)
 
-MONTE_CARLO_LAYER_SNAPSHOT_COLUMNS: frozenset[str] = frozenset(
-    {
-        "spot",
-        "call_gamma_wall",
-        "put_gamma_wall",
-        "em_upper",
-        "em_lower",
-        "realized_vol",
-        "atr",
-        "garch_sigma_bars",
-    }
-)
 
 # build_fusion_model_overlay raw keys minus MVP tabular + ticker + empirical pred_* outputs.
 FUSION_OVERLAY_SNAPSHOT_COLUMNS: frozenset[str] = frozenset(
@@ -142,595 +94,68 @@ FUSION_OVERLAY_SNAPSHOT_COLUMNS: frozenset[str] = frozenset(
 # Ablation placement + production ingest share this registry (Fix-1 equal consumers).
 META_LAYER_SNAPSHOT_COLUMNS: frozenset[str] = FUSION_OVERLAY_SNAPSHOT_COLUMNS
 
-META_STACK_PROB_DIM: int = 9
 
 
 def meta_tabular_feature_order() -> tuple[str, ...]:
     """Stable column order for meta tabular vector (ablation-aligned raw snapshot keys)."""
     return tuple(sorted(META_LAYER_SNAPSHOT_COLUMNS))
 
-_STACK_LAYER_ABLATION_COLUMNS: dict[str, frozenset[str]] = {
-    "regime": REGIME_LAYER_SNAPSHOT_COLUMNS,
-    "monte_carlo": MONTE_CARLO_LAYER_SNAPSHOT_COLUMNS,
-    "fusion": FUSION_OVERLAY_SNAPSHOT_COLUMNS,
-    "meta": META_LAYER_SNAPSHOT_COLUMNS,
-}
 
 
-def stack_layer_ablation_snapshot_columns(model_family: str) -> frozenset[str]:
-    """Registered snapshot columns a stack layer reads directly (ablation placement registry)."""
-    key = str(model_family or "").strip().lower()
-    if key in _STACK_LAYER_ABLATION_COLUMNS:
-        return _STACK_LAYER_ABLATION_COLUMNS[key]
-    if key in FEATURE_ABLATION_ML_STACK_LAYERS:
-        from tools.build_feature_assignment_matrix_v2 import _registered_ml_columns
-
-        reg = _registered_ml_columns()
-        if key == "xgb":
-            return frozenset(reg.get("xgb", set()))
-        if key == "lstm":
-            return frozenset(reg.get("lstm_5m", set()) | reg.get("lstm_1m", set()))
-        if key == "transformer":
-            try:
-                from features.lstm_sequence_input import ENCODED_FEATURES_5M
-            except ImportError:
-                ENCODED_FEATURES_5M = ()
-            return frozenset(ENCODED_FEATURES_5M)
-    raise ValueError(f"stack_layer_ablation_snapshot_columns: unknown model_family {model_family!r}")
 
 
-def atomic_column_consumed_by_stack_layer(column: str, model_family: str) -> bool:
-    """True when ``column`` is in the layer's ablation snapshot registry."""
-    col = str(column or "").strip()
-    if not col:
-        return False
-    if col.startswith("cf_") and model_family in (
-        "xgb",
-        "regime",
-        "monte_carlo",
-        "fusion",
-        "meta",
-    ):
-        return True
-    return col in stack_layer_ablation_snapshot_columns(model_family)
-# Tickers pooled into Stage 3 whole-stack scoring (not a grid axis).
-ABLATION_ANCHOR_TICKERS: tuple[str, ...] = ("SPY", "QQQ", "IWM")
-# Authoritative ML stack — promoted bundles on disk; fusion cards are authoritative.
-ML_AUTHORITATIVE_TICKERS: tuple[str, ...] = ABLATION_ANCHOR_TICKERS
-# Per-horizon product triplet provenance when guest ticker uses anchor weights + guest features.
-MH_PROB_SOURCE_GUEST_ANCHOR: str = "guest_anchor_fusion"
-STAGE3_ABLATION_HORIZONS: tuple[str, ...] = ("1c", "5c", "15c", "60c")
-# Guest anchor v2 affiliation slugs (operator-visible; not index membership claims).
-GUEST_ANCHOR_AFFILIATION_SPY_BROAD: str = "spy_broad_default"
-GUEST_ANCHOR_AFFILIATION_IWM_SMALL_CAP: str = "iwm_small_cap_sample"
 
 
-def guest_anchor_inference_enabled() -> bool:
-    """Guest tickers borrow SPY/QQQ/IWM promoted weights on live guest features (default on)."""
-    return os.environ.get("ED_GUEST_ANCHOR_INFERENCE", "1").strip().lower() not in (
-        "0",
-        "false",
-        "no",
-    )
 
 
-def is_ml_authoritative_ticker(ticker: str) -> bool:
-    return ticker_storage_key(ticker) in {ticker_storage_key(t) for t in ML_AUTHORITATIVE_TICKERS}  # RC-345/F25: canonical membership
 
 
-def resolve_guest_anchor_route(guest_ticker: str) -> tuple[str, str, str]:
-    """
-    Guest-anchor route without a built-in holdings roster.
-
-    The retired IWM_TOP_HOLDINGS table is gone. Every non-empty guest uses the
-    existing broad default. Returns (anchor_ticker, affiliation_slug, operator_rationale).
-    """
-    g = ticker_storage_key(guest_ticker)  # RC-345/F25: canonical guest identity for routing
-    if not g:
-        return (
-            "SPY",
-            GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
-            "Broad market default — SPY anchor",
-        )
-    return (
-        "SPY",
-        GUEST_ANCHOR_AFFILIATION_SPY_BROAD,
-        "No holdings roster — broad SPY anchor (index confluence retired)",
-    )
 
 
-def route_guest_anchor_weights_ticker(guest_ticker: str) -> str:
-    """Anchor weights ticker among SPY / QQQ / IWM (v2: IWM sample holdings or SPY)."""
-    return resolve_guest_anchor_route(guest_ticker)[0]
 
 
-@dataclass(frozen=True)
-class GuestAnchorContext:
-    guest_ticker: str
-    anchor_ticker: str
-    affiliation: str
-    rationale: str
-
-    @property
-    def wait_reason(self) -> str:
-        return (
-            f"Provisional anchor ({self.anchor_ticker}) — {self.rationale} — advisory only"
-        )
 
 
-_guest_anchor_cv: ContextVar[GuestAnchorContext | None] = ContextVar(
-    "guest_anchor_context", default=None
-)
 
 
-def active_guest_anchor_context() -> GuestAnchorContext | None:
-    return _guest_anchor_cv.get()
 
 
-@contextmanager
-def guest_anchor_context_scope(ctx: GuestAnchorContext | None) -> Iterator[None]:
-    if ctx is None:
-        yield
-        return
-    tok: Token = _guest_anchor_cv.set(ctx)
-    try:
-        yield
-    finally:
-        _guest_anchor_cv.reset(tok)
 
 
-def resolve_guest_anchor_for_ticker(ticker: str) -> GuestAnchorContext | None:
-    """None when ticker is authoritative or guest anchor mode is disabled."""
-    if not guest_anchor_inference_enabled():
-        return None
-    g = ticker_storage_key(ticker)  # RC-345/F25: canonical guest identity (callee owns the semantic)
-    if not g or is_ml_authoritative_ticker(g):
-        return None
-    anchor, affiliation, rationale = resolve_guest_anchor_route(g)
-    if not is_ml_authoritative_ticker(anchor):
-        return None
-    return GuestAnchorContext(
-        guest_ticker=g,
-        anchor_ticker=anchor,
-        affiliation=affiliation,
-        rationale=rationale,
-    )
 
 
-def remap_prob_sources_for_guest_anchor(sources: dict[str, str]) -> dict[str, str]:
-    """Stamp guest_anchor_fusion instead of fusion_ml_primary on product horizons."""
-    out: dict[str, str] = {}
-    for hz, src in sources.items():
-        if src == "fusion_ml_primary":
-            out[hz] = MH_PROB_SOURCE_GUEST_ANCHOR
-        else:
-            out[hz] = src
-    return out
 
 
-def guest_anchor_trade_policy() -> dict[str, Any] | None:
-    """Non-tradeable sizing policy while guest anchor is active on this tick."""
-    ctx = active_guest_anchor_context()
-    if ctx is None:
-        return None
-    return {
-        "guest_ticker": ctx.guest_ticker,
-        "anchor_ticker": ctx.anchor_ticker,
-        "affiliation": ctx.affiliation,
-        "rationale": ctx.rationale,
-        "wait_reason": ctx.wait_reason,
-        "tradeable": False,
-        "size_modifier": 0.0,
-    }
 FULL_STACK_MODEL_COUNT: int = len(FULL_STACK_MODEL_LAYERS)
 assert FULL_STACK_MODEL_COUNT == 7
 assert len(FULL_STACK_MODEL_DISPLAY) == FULL_STACK_MODEL_COUNT
 
-# ── Production fused prediction path (operator binding 2026-06-05) ──
-# The operator-facing probability is NOT per-base-model output. It is the contiguous
-# production inference graph ending in bayesian_fusion.fuse + mc_fusion_adjustment.
-#
-# Layer roles (all seven in FULL_STACK_MODEL_LAYERS participate):
-#   xgb, lstm, transformer — ML stack layers; direct evidence to bayesian_fusion.fuse
-#   meta — stack_probs from base triplets; feeds monte_carlo drift via
-#          mc_model_direction_inputs inside _run_model_stack (NOT a fuse() argument)
-#   monte_carlo — simulate after bases+meta; post-fusion adjustment via mc_fusion_adjustment
-#   regime — direct context to bayesian_fusion.fuse (with rules)
-#   fusion — bayesian_fusion posterior + mc_fusion_adjustment (final triplet)
-#
-# Ablation whole-stack scoring MUST use the same entrypoints as live signals:
-#   live: signals._compute_signals_impl → _run_model_stack → fuse → mc adjustment
-#   ablation: stack_bundle_eval_v1._full_fusion_prob_for_row (same sequence)
-PRODUCTION_FUSION_SCORE_LAYERS: tuple[str, ...] = FULL_STACK_MODEL_LAYERS
-PRODUCTION_FUSION_LIVE_ENTRYPOINT = "signals._compute_signals_impl"
-PRODUCTION_FUSION_ABLATION_ENTRYPOINT = (
-    "arch_competition.stack_bundle_eval_v1._full_fusion_prob_for_row"
-)
-PRODUCTION_FUSION_FINAL_PREDICTION = (
-    "bayesian_fusion.fuse + mc_fusion_adjustment.fuse_payload_apply_mc_adjustment"
-)
-META_PRODUCTION_ROLE = "stack_probs_feeds_monte_carlo_drift_not_bayesian_fuse_input"
 
-# ── STACK-WIRE-4: named thresholds (Phase 6 ablation surface) ──
-MC_ML_LAYER_WEIGHT_XGBOOST: float = 0.40
-MC_ML_LAYER_WEIGHT_LSTM: float = 0.35
-MC_ML_LAYER_WEIGHT_TRANSFORMER: float = 0.25
-MC_BASE_MODEL_WEIGHT_XGBOOST = MC_ML_LAYER_WEIGHT_XGBOOST  # deprecated alias
-MC_BASE_MODEL_WEIGHT_LSTM = MC_ML_LAYER_WEIGHT_LSTM  # deprecated alias
-MC_BASE_MODEL_WEIGHT_TRANSFORMER = MC_ML_LAYER_WEIGHT_TRANSFORMER  # deprecated alias
-MC_DIRECTION_CONFIDENCE_HIGH_THRESHOLD: float = 0.5
-MC_DIRECTION_CONFIDENCE_MEDIUM_THRESHOLD: float = 0.4
-# Display-only Key Levels wall-clock EFE/EAE (not used for sizing / fusion / ML features).
-MC_DISPLAY_N_PATHS: int = 2000
-MC_DISPLAY_WALL_CLOCK_MINUTES: tuple[int, ...] = (5, 15)
 
 # Full inference loop uses all governed slugs (primary + secondary).
 GOVERNED_STACK_HORIZONS: tuple[str, ...] = ALL_GOVERNED_HORIZONS
 assert GOVERNED_STACK_HORIZONS == ML_HORIZON_SLUGS
 
 
-def horizon_slug_to_mc_bars(slug: str) -> int:
-    """Monte Carlo `horizon_bars` aligned to governed horizon slug (e.g. 13c → 13).
-
-    ALIGNMENT RESOLVED (2026-07-08, BAR_MINUTES sizing alignment): with
-    ``monte_carlo.BAR_MINUTES = 1`` a slug's bar COUNT equals its wall-clock
-    MINUTES (5c → 5 bars → 5 minutes), matching the 1-minute ``outcome_Nc``
-    training labels. The pre-fix misalignment (BAR_MINUTES=5 made 5c simulate
-    25 minutes and fed 5x over-horizon mc_eae/mc_efe into position sizing) is
-    locked against in tests/test_governed_stack_contract.py.
-    """
-    su = str(slug or "").strip().lower()
-    if not su.endswith("c"):
-        raise ValueError(f"horizon_slug_to_mc_bars: invalid slug {slug!r}")
-    n = int(su[:-1])
-    if n < 1:
-        raise ValueError(f"horizon_slug_to_mc_bars: non-positive bars in {slug!r}")
-    return n
 
 
-def wall_clock_minutes_to_mc_bars(minutes: int) -> int:
-    """Convert a TRUE wall-clock horizon (in minutes) to MC ``horizon_bars``.
-
-    The MC engine advances ``monte_carlo.BAR_MINUTES`` minutes per simulated bar. To get a
-    genuine N-minute forward forecast, request ``N / BAR_MINUTES`` bars. With the
-    BAR_MINUTES=1 alignment (2026-07-08) this is the identity map — 5 min → 5 bars,
-    15 min → 15 bars — and every positive whole minute (including 1) is representable.
-    Used by the Key Levels display-only 5m/15m EFE/EAE rows.
-
-    Raises ValueError if ``minutes`` is not a positive whole multiple of BAR_MINUTES
-    (vacuously never for whole positive minutes while BAR_MINUTES=1; the guard stays so
-    any future BAR_MINUTES change fails loudly instead of silently mis-scaling).
-    """
-    from monte_carlo import BAR_MINUTES
-
-    m = int(minutes)
-    if m < 1:
-        raise ValueError(f"wall_clock_minutes_to_mc_bars: non-positive minutes {minutes!r}")
-    if m % int(BAR_MINUTES) != 0:
-        raise ValueError(
-            f"wall_clock_minutes_to_mc_bars: {m} min is not a whole multiple of "
-            f"BAR_MINUTES={BAR_MINUTES}; cannot represent without the BAR_MINUTES alignment fix"
-        )
-    return m // int(BAR_MINUTES)
 
 
-def mc_model_direction_inputs(
-    *,
-    xgb_out: Any,
-    lstm_out: Any,
-    transformer_out: Any,
-    stack_probs: Optional[dict[str, float]],
-) -> tuple[float, float, str, dict[str, bool], str]:
-    """
-    Derive Monte Carlo drift inputs from unified-stack ML layer outputs (never returns None probs).
-
-    Precedence:
-    1) Meta / weighted stack triplet in `stack_probs` when present.
-    2) Renormalized average of available xgb/lstm/transformer ``prob_up`` / ``prob_down``.
-    3) Explicit uniform (1/3, 1/3) with confidence \"low\" when no ML-layer tri-class signal exists.
-
-    Returns:
-        (model_prob_up, model_prob_down, model_confidence, availability_map, source_note)
-    """
-    avail = {
-        "xgboost": bool(getattr(xgb_out, "available", False)),
-        "lstm": bool(getattr(lstm_out, "available", False)),
-        "transformer": bool(getattr(transformer_out, "available", False)),
-    }
-    if stack_probs and isinstance(stack_probs, dict):
-        u = stack_probs.get("up")
-        d = stack_probs.get("down")
-        f = stack_probs.get("flat")
-        if u is not None and d is not None and f is not None:
-            tot = float(u) + float(d) + float(f)
-            if tot > 0:
-                nu, nd = float(u) / tot, float(d) / tot
-                mx = max(nu, nd, float(f) / tot)
-                conf = (
-                    "high"
-                    if mx >= MC_DIRECTION_CONFIDENCE_HIGH_THRESHOLD
-                    else "medium"
-                    if mx >= MC_DIRECTION_CONFIDENCE_MEDIUM_THRESHOLD
-                    else "low"
-                )
-                return nu, nd, conf, avail, "stack_probs_meta_or_weighted"
-
-    ups: list[float] = []
-    dns: list[float] = []
-    weights: list[float] = []
-    wmap = {
-        "xgboost": MC_ML_LAYER_WEIGHT_XGBOOST,
-        "lstm": MC_ML_LAYER_WEIGHT_LSTM,
-        "transformer": MC_ML_LAYER_WEIGHT_TRANSFORMER,
-    }
-    for name, out, w in (
-        ("xgboost", xgb_out, wmap["xgboost"]),
-        ("lstm", lstm_out, wmap["lstm"]),
-        ("transformer", transformer_out, wmap["transformer"]),
-    ):
-        if not getattr(out, "available", False):
-            continue
-        pu = float(getattr(out, "prob_up", 0.33) or 0.33)
-        pd = float(getattr(out, "prob_down", 0.33) or 0.33)
-        ups.append(pu)
-        dns.append(pd)
-        weights.append(w)
-
-    if ups and weights:
-        tw = sum(weights)
-        au = sum(p * w for p, w in zip(ups, weights)) / tw
-        ad = sum(p * w for p, w in zip(dns, weights)) / tw
-        mx = max(au, ad, 1.0 - au - ad)
-        conf = (
-            "high"
-            if mx >= MC_DIRECTION_CONFIDENCE_HIGH_THRESHOLD
-            else "medium"
-            if mx >= MC_DIRECTION_CONFIDENCE_MEDIUM_THRESHOLD
-            else "low"
-        )
-        return au, ad, conf, avail, "average_available_ml_layers"
-
-    return (1.0 / 3.0, 1.0 / 3.0, "low", avail, "uniform_no_stack_tri_class_signal")
 
 
-# Backward-compatible aliases for audit JSON / older callers.
-UNIFORM_NO_STACK_TRI_CLASS_SIGNAL = "uniform_no_stack_tri_class_signal"
-LEGACY_UNIFORM_MC_SOURCE = "uniform_no_base_tri_class_signal"
-LEGACY_AVERAGE_AVAILABLE_ML_LAYERS = "average_available_base_models"
 
 
-def _model_out_triplet_complete(out: Any) -> bool:
-    if not getattr(out, "available", False):
-        return False
-    values: list[float] = []
-    for key in ("prob_up", "prob_down", "prob_flat"):
-        try:
-            value = float(getattr(out, key, None))
-        except (TypeError, ValueError):
-            return False
-        if not math.isfinite(value) or value < 0.0 or value > 1.0:
-            return False
-        values.append(value)
-    return sum(values) > 0.0 and abs(sum(values) - 1.0) <= 0.01
 
 
-def stack_probs_triplet_complete(stack_probs: Optional[dict[str, float]]) -> bool:
-    if not isinstance(stack_probs, dict):
-        return False
-    values: list[float] = []
-    for key in ("up", "down", "flat"):
-        try:
-            value = float(stack_probs.get(key))
-        except (TypeError, ValueError):
-            return False
-        if not math.isfinite(value) or value < 0.0 or value > 1.0:
-            return False
-        values.append(value)
-    return sum(values) > 0.0 and abs(sum(values) - 1.0) <= 0.01
 
 
-def count_unified_stack_ml_layers_available(
-    xgb_out: Any,
-    lstm_out: Any,
-    transformer_out: Any,
-) -> int:
-    """Count xgb/lstm/transformer layers that produced complete directional triplets this tick."""
-    return sum(
-        1
-        for out in (xgb_out, lstm_out, transformer_out)
-        if _model_out_triplet_complete(out)
-    )
 
 
-def unified_stack_team_can_authorize(
-    *,
-    xgb_out: Any,
-    lstm_out: Any,
-    transformer_out: Any,
-    stack_probs: Optional[dict[str, float]],
-    stack_probs_composition: Optional[dict[str, Any]],
-) -> tuple[bool, str]:
-    """THE directional-authorization authority. One computation; everyone downstream transports it.
-
-    A horizon's directional stack is authorized only when the COMPLETE APPROVED COMPOSITION for
-    that horizon actually produced the triplet. The approved composition is owned by
-    active_bundle_contract (the serving/promotion contract) and is neither weakened nor re-derived
-    here; ml_predict.stack_probs_composition_record() reports, per tick, whether that contract is
-    satisfied AND which legs produced. This gate reads that one record.
-
-    WHY THE OLD SHAPE TEST WAS UNSOUND. It authorized on either of two shape-only conditions:
-      * `stack_probs_triplet_complete(stack_probs)` — three `is None` checks, which cannot see
-        composition. _weighted_average_partial renormalises surviving legs to weight 1.0, so a
-        SINGLE leg yields a complete-looking triplet. Measured on this tree: a lone xgb leg gave
-        {'up':0.55,'down':0.25,'flat':0.2} and this function returned
-        (True, 'stack_probs_meta_or_weighted'). One model masqueraded as an authorized stack.
-      * `all(_model_out_triplet_complete(...))` over exactly three hardcoded layers, which also
-        ignores whether the serving contract for that horizon is satisfied at all.
-
-    A partial or contract-noncompliant composition may still COMPUTE (the 5c xgb_plus_transformer
-    blend keeps running for diagnostics); it simply inherits no directional authorization. The
-    runtime-vs-bundle-contract divergence at 5c is reported separately as NOT_PROVEN, not resolved
-    here by blessing the runtime branch.
-
-    `stack_probs_composition` is REQUIRED, with no default, so every caller must supply provenance
-    or fail loudly rather than silently re-deriving a weaker answer.
-    """
-    comp = stack_probs_composition if isinstance(stack_probs_composition, dict) else None
-    if comp is None:
-        return False, "composition_unknown"
-    if comp.get("authorization_schema_version") != 1:
-        return False, "composition_schema_invalid"
-    if not comp.get("contract_compliant"):
-        issues = comp.get("contract_issues") or []
-        why = str(issues[0])[:60] if issues else "bundle contract not satisfied"
-        return False, f"composition_contract_noncompliant:{why}"
-
-    from active_bundle_contract import BUNDLE_ARTIFACT_TRIPLE, META_STACK_KIND
-
-    required = [kind for kind, _model, _meta in BUNDLE_ARTIFACT_TRIPLE]
-    if list(comp.get("required") or []) != required:
-        return False, "composition_required_legs_invalid"
-    if comp.get("approved_computation") != META_STACK_KIND:
-        return False, "composition_approved_computation_invalid"
-    executed = comp.get("executed_computation")
-    if executed != META_STACK_KIND or comp.get("computation_compliant") is not True:
-        return False, f"composition_computation_unapproved:{executed or 'none'}"
-
-    missing = list(comp.get("missing") or [])
-    if missing:
-        return False, f"composition_incomplete:missing={'+'.join(sorted(missing))}"
-    produced = list(comp.get("produced") or [])
-    if produced != required:
-        return False, "composition_produced_legs_invalid"
-    actual_complete = {
-        "xgb": _model_out_triplet_complete(xgb_out),
-        "lstm": _model_out_triplet_complete(lstm_out),
-        "transformer": _model_out_triplet_complete(transformer_out),
-    }
-    actual_missing = [name for name in required if not actual_complete.get(name, False)]
-    if actual_missing:
-        return False, f"composition_runtime_mismatch:missing={'+'.join(actual_missing)}"
-    if comp.get("complete") is not True:
-        return False, "composition_record_incomplete"
-    if not stack_probs_triplet_complete(stack_probs):
-        return False, "composition_complete_but_no_triplet"
-    return True, f"composition_complete:{'+'.join(produced)}:{executed}"
 
 
-def mc_team_should_fail_closed(
-    team_ok: bool,
-    mc_probability_source: str | None,
-) -> bool:
-    """Monte Carlo must not solo-green when the unified stack did not authorize scoring."""
-    if not team_ok:
-        return True
-    src = (mc_probability_source or "").strip()
-    if src in (UNIFORM_NO_STACK_TRI_CLASS_SIGNAL, LEGACY_UNIFORM_MC_SOURCE):
-        return True
-    return False
 
 
-def mc_stack_probability_source_from_mapping(bundle: Optional[dict[str, Any]]) -> str | None:
-    """Read canonical MC stack source from ml_bundle or ablation audit dict (legacy key fallback)."""
-    if not isinstance(bundle, dict):
-        return None
-    src = bundle.get("mc_stack_probability_source")
-    if src is not None:
-        return str(src)
-    legacy = bundle.get("mc_base_probability_source")
-    return str(legacy) if legacy is not None else None
 
 
-def derive_stack_layers_scored(
-    *,
-    xgb_out: Any,
-    lstm_out: Any,
-    transformer_out: Any,
-    mc_out: Any,
-    ml_bundle: Optional[dict[str, Any]],
-    regime: Any,
-    fusion_payload: Any,
-) -> list[str]:
-    """Layers that actually participated in one production fusion score (ordered subset of the 7).
-
-    Meta is scored when stack_probs from the meta/weighted combiner fed MC drift
-    (``mc_stack_probability_source == stack_probs_meta_or_weighted``) — the production path.
-    Never return a hardcoded full list; only layers with evidence on this row.
-    """
-    from fusion_contract import fusion_is_authoritative
-    from ml_predict import stack_probs_bundle_key
-
-    scored: list[str] = []
-    if getattr(xgb_out, "available", False):
-        scored.append("xgb")
-    if getattr(lstm_out, "available", False):
-        scored.append("lstm")
-    if getattr(transformer_out, "available", False):
-        scored.append("transformer")
-
-    bundle = ml_bundle if isinstance(ml_bundle, dict) else {}
-    spk = stack_probs_bundle_key()
-    stack_probs = bundle.get(spk)
-    mc_src = mc_stack_probability_source_from_mapping(bundle)
-    # META is credited only when the approved composition actually ran. The source string alone is
-    # not evidence: mc_model_direction_inputs returns "stack_probs_meta_or_weighted" for ANY
-    # complete triplet, including the 5c weighted blend for which zero meta_*_5c.pkl exists — so
-    # the old test credited a meta layer that never executed. The composition record carries the
-    # contract verdict (meta_stack is part of the approved composition), so require it.
-    _comp = bundle.get("stack_probs_composition")
-    _composition_complete = bool(
-        isinstance(_comp, dict)
-        and _comp.get("authorization_schema_version") == 1
-        and _comp.get("complete") is True
-        and _comp.get("approved_computation") == "meta_stack"
-        and _comp.get("executed_computation") == "meta_stack"
-    )
-    if (
-        isinstance(stack_probs, dict)
-        and stack_probs.get("up") is not None
-        and stack_probs.get("down") is not None
-        and stack_probs.get("flat") is not None
-        and mc_src == "stack_probs_meta_or_weighted"
-        and _composition_complete
-    ):
-        scored.append("meta")
-
-    if getattr(mc_out, "available", False):
-        scored.append("monte_carlo")
-
-    reg_primary = getattr(regime, "primary", None) if regime is not None else None
-    if reg_primary not in (None, "", "unknown"):
-        scored.append("regime")
-
-    if fusion_payload is not None and fusion_is_authoritative(fusion_payload):
-        scored.append("fusion")
-
-    order = {name: idx for idx, name in enumerate(FULL_STACK_MODEL_LAYERS)}
-    return sorted(scored, key=lambda name: order[name])
 
 
-def classify_stack_health(
-    *,
-    fusion_available: bool,
-    mc_available: bool,
-    n_ml_layers_available: int,
-    unified_stack_team_ok: bool,
-) -> str:
-    """
-    Coarse health for operator surfaces (not a trading gate on its own).
-
-    INVALID — unified stack team did not score together, fusion/MC withheld, or partial ML
-    FULL    — tradable fusion + MC + all three xgb/lstm/transformer layers scored as one team
-
-    `unified_stack_team_ok` is REQUIRED: it is the transported verdict from
-    unified_stack_team_can_authorize. It previously defaulted to None and was then substituted with
-    `n_ml_layers_available >= 3 and fusion_available` — a fusion-AVAILABILITY predicate standing in
-    for directional AUTHORIZATION, i.e. the exact weaker-predicate substitution this contract exists
-    to prevent. There is one authority; this surface consumes it.
-    """
-    team_ok = unified_stack_team_ok
-    if not team_ok or not fusion_available or not mc_available:
-        return "INVALID"
-    if n_ml_layers_available >= 3:
-        return "FULL"
-    return "INVALID"

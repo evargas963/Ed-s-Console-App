@@ -15,7 +15,7 @@ from arch_competition.eval_runner import (
     write_evaluation_manifest,
 )
 from arch_competition.exceptions import EvaluationLineageError
-from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 
 
 def _base_lineage():

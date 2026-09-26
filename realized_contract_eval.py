@@ -20,7 +20,9 @@ import json
 import logging
 import sqlite3
 from collections import Counter
-from dataclasses import asdict, fields
+from dataclasses import (
+    fields,
+)
 from pathlib import Path
 from typing import Any, Optional
 
@@ -28,12 +30,13 @@ from instrument_identity import ticker_storage_key
 
 from lifecycle_rule_core import SameBarResolution, fire_exit, resolve_same_bar_conflict
 from market_state import recommend_option_expression
-from math_levels import WallsRow, TotalsRow
+from math_levels import (
+    WallsRow,
+)
 from numeric_contract import float_finite_or_none
 from replay_bundle_coverage import REPLAY_BUNDLE_MIN_JSON_LENGTH
 from replay_hold_bars import (
     replay_max_hold_bars_from_context,
-    resolve_replay_max_hold_bars_for_payload,
 )
 from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
@@ -162,23 +165,6 @@ def classify_replay_row_tier(row: dict) -> str:
     return ROW_TIER_NON_DECISION_NO_SIGNAL
 
 
-def decision_row_context_starvation_reason(
-    *,
-    combined_signal: str | None,
-    replay_context_json: str | None,
-    option_chain_json: str | None,
-) -> str | None:
-    """Producer-side guard (fail-LOUD, ECON-01): a tradeable decision row about to
-    persist without its execution-replay context is a starvation defect at the
-    source — the only place it can be fixed without fabricating history."""
-    sig = str(combined_signal or "").strip().lower()
-    if sig not in TRADEABLE_SIGNALS:
-        return None
-    if not replay_context_json or len(str(replay_context_json)) <= REPLAY_BUNDLE_MIN_JSON_LENGTH:
-        return "tradeable_missing_replay_context"
-    if not option_chain_json or len(str(option_chain_json)) <= REPLAY_BUNDLE_MIN_JSON_LENGTH:
-        return "tradeable_missing_option_chain"
-    return None
 
 
 def trade_log_path_for_architecture(architecture_type: str) -> Path:
@@ -201,90 +187,8 @@ def aggregate_path() -> Path:
     return AGGREGATE_JSON
 
 
-def serialize_option_chain_for_eval(contracts: list, selected_exp: str | None) -> str | None:
-    """Persist minimal contract rows for historical replay (same keys as scoring path)."""
-    if not contracts or not selected_exp:
-        return None
-    exp_key = str(selected_exp)[:10]
-    out: list[dict[str, Any]] = []
-    for ct in contracts:
-        if not isinstance(ct, dict):
-            continue
-        raw_exp = ct.get("expirationDate") or ""
-        if str(raw_exp)[:10] != exp_key:
-            continue
-        row = dict(ct)
-        row.pop("raw", None)
-        out.append(row)
-    if not out:
-        return None
-    return json.dumps(out, default=str)
 
 
-def build_replay_context_payload(
-    *,
-    walls: list,
-    totals: list,
-    option_chain_selection_proof: dict | None,
-    regime_primary: str | None,
-    regime_confidence: str | None,
-    zone: str | None,
-    vol_regime: str | None,
-    trade_type: str | None,
-    time_qualifier: str | None,
-    replay_max_hold_bars_live: int | None = None,
-    vwap: float | None,
-    vwap_side: str | None,
-) -> str:
-    """Called from server when logging a snapshot (JSON string for DB)."""
-    wall_dicts: list[dict[str, Any]] = []
-    for w in walls or []:
-        if isinstance(w, WallsRow):
-            wall_dicts.append(asdict(w))
-        elif isinstance(w, dict):
-            wall_dicts.append(w)
-    total_dicts: list[dict[str, Any]] = []
-    for t in totals or []:
-        if isinstance(t, TotalsRow):
-            total_dicts.append(asdict(t))
-        elif isinstance(t, dict):
-            total_dicts.append(t)
-    hold_resolved, hold_src, hold_fb = resolve_replay_max_hold_bars_for_payload(
-        trade_type=trade_type,
-        replay_max_hold_bars_live=replay_max_hold_bars_live,
-    )
-    payload = {
-        "version": 1,
-        "walls": wall_dicts,
-        "totals": total_dicts,
-        "regime_primary": regime_primary,
-        "regime_confidence": regime_confidence,
-        "zone": zone,
-        "vol_regime": vol_regime,
-        "call_trade_type": trade_type,
-        "time_qualifier": time_qualifier,
-        "replay_max_hold_bars": hold_resolved,
-        "replay_max_hold_bars_source": hold_src,
-        "replay_max_hold_bars_fallback": hold_fb,
-        "replay_time_expiry_policy": (
-            f"max_forward_1m_bars={hold_resolved}; source={hold_src}; "
-            f"time_qualifier={time_qualifier!r}; trade_type={trade_type!r}; "
-            f"fallback_bars_if_card_missing={hold_fb}"
-        ),
-        "replay_entry_policy": (
-            "option_leg_long_at_signal_snapshot: entry_price=ask on chain row matching "
-            "recommend_option_expression strike/side; underlying reference=spot at signal."
-        ),
-        "replay_exit_policy": (
-            "underlying levels rules_stop/rules_target vs forward 1m bars; option leg exit_bid on "
-            "exit_bar chain; same_bar_stop_target uses candle_open/close body direction when both "
-            "OHLC present, else conservative_stop_first; time_expiry after max_forward bars."
-        ),
-        "vwap": vwap,
-        "vwap_side": vwap_side,
-        "option_chain_selection_proof": option_chain_selection_proof,
-    }
-    return json.dumps(payload, default=str)
 
 
 def _f(v) -> Optional[float]:

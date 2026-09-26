@@ -45,9 +45,6 @@ def schwab_credentials_are_ci_placeholders(api_key: str | None = None, app_secre
     )
 
 
-def is_schwab_ci_offline_mode() -> bool:
-    """Explicit CI/test offline — blocks live Schwab client construction and API calls."""
-    return schwab_live_blocked_for()
 
 
 def schwab_live_blocked_for(

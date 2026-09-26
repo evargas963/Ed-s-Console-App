@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -214,8 +213,3 @@ def ensure_calibration_schema(conn: sqlite3.Connection) -> None:
     _migrate_calibration_pending_index(conn)
 
 
-def ensure_calibration_schema_at_path(db_path: Path | str) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    ensure_calibration_schema(conn)
-    return conn

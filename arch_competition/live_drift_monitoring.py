@@ -31,7 +31,7 @@ from arch_competition.scheduler_integration import (
     promotion_decision_path,
     validate_persisted_governed_artifacts_or_raise,
 )
-from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 from training_cache import (
     _normalize_data_fp,
     compute_training_code_fingerprint,

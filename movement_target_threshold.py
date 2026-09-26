@@ -117,17 +117,6 @@ def directional_and_move_labels_v2(
     return None, omove, 0
 
 
-# Back-compat aliases (tests / older imports)
-def directional_and_move_labels_v1(
-    pts_move: float,
-    threshold_pts: float,
-) -> tuple[str | None, str]:
-    d, m, v = directional_and_move_labels_v2(
-        pts_move, threshold_pts, dir_allowed=True
-    )
-    return d, m
 
 
-def load_movement_threshold_params_v1(path: Path | None = None) -> dict[str, Any]:
-    return load_legacy_atr_params(path)
 

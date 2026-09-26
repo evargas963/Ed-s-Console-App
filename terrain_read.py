@@ -74,8 +74,6 @@ class TerrainRead:
     put_wall: float | None = None
     call_wall: float | None = None
 
-    def as_text(self) -> str:
-        return "\n".join([self.headline, *self.lines])
 
 
 def _pct_from(spot: float, level: float) -> float:

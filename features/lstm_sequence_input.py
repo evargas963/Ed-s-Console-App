@@ -48,33 +48,18 @@ from features.fusion_model_input import FusionModelInputError, validate_inferenc
 from features.xgb_model_input import CANONICAL_TO_XGB_TABULAR, MVP_LEGACY_KEYS
 
 # Re-export for callers documenting sequence length (single source in lstm_data).
-from lstm_data import (  # noqa: F401
+from lstm_data import (
     ENCODED_FEATURES_1M,
     ENCODED_FEATURES_5M,
-    FEATURES_1M,
-    FEATURES_5M,
-    LSTM_ENCODER_SCHEMA_VERSION,
-    STREAM_1M_LOOKBACK,
-    STREAM_5M_LOOKBACK,
     VWAP_SIDE_MAP,
-    ZONE_MAP,
     encode_zone,
-    encoded_width_5m,
-    encoded_width_1m,
     encode_snapshot_1m,
     encode_snapshot_5m,
 )
 
-# Encoded sentinel when canonical zone is missing (distinct from pin_neutral=2).
-ZONE_MISSING_ENCODED = -1.0
 # Encoded sentinel when canonical vwap_side is missing (distinct from above=1, below=-1).
 VWAP_SIDE_UNKNOWN_ENCODED = 2.0
 
-# Canonical MVP numerics mirrored in LSTM feature lists → missingness mask channel (1=present).
-_CANONICAL_NUMERIC_MASK_ORDER: tuple[str, ...] = (
-    "structure.net_gamma",
-    "anchor.vwap_dist_pts",
-)
 
 
 class LstmSequenceInputError(ValueError):
@@ -85,8 +70,6 @@ class TransformerSequenceInputError(LstmSequenceInputError):
     """Transformer encoder-window preparation failed (canonical MVP / contract / history)."""
 
 
-def _canonical_missing_masks(canonical_features: dict[str, Any]) -> list[float]:
-    return [1.0 if canonical_features.get(k) is not None else 0.0 for k in _CANONICAL_NUMERIC_MASK_ORDER]
 
 
 def _patch_lstm_categoricals(
@@ -216,32 +199,8 @@ def encode_lstm_micro_sequence_bar_for_checkpoint(
     return base
 
 
-def encode_lstm_structure_bar_with_masks(
-    merged_row: Mapping[str, Any],
-    canonical_features: dict[str, Any],
-    ref_spot: float,
-) -> dict[str, Any]:
-    """Test/diagnostic wrapper around ``encode_lstm_structure_sequence_bar``."""
-    return {
-        "features": encode_lstm_structure_sequence_bar(
-            merged_row, ref_spot, canonical_features=canonical_features
-        ),
-        "canonical_missing_masks": _canonical_missing_masks(canonical_features),
-    }
 
 
-def encode_lstm_micro_bar_with_masks(
-    merged_row: Mapping[str, Any],
-    canonical_features: dict[str, Any],
-    ref_spot: float,
-) -> dict[str, Any]:
-    """Test/diagnostic wrapper around ``encode_lstm_micro_sequence_bar``."""
-    return {
-        "features": encode_lstm_micro_sequence_bar(
-            merged_row, ref_spot, canonical_features=canonical_features
-        ),
-        "canonical_missing_masks": _canonical_missing_masks(canonical_features),
-    }
 
 
 def merge_db_row_with_canonical_mvp(

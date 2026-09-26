@@ -337,7 +337,7 @@ def test_engine_and_context_agree_on_one_profile():
     """Same bars, same tick, same value-area pct -> the two entry points must agree (they now
     share an implementation; rounding differs by design, 4dp vs 2dp)."""
     from liquidity_value_engine import _volume_profile_poc_vah_val as eng
-    from market_context import _volume_profile_poc_vah_val as ctx
+    from liquidity_value_engine import _volume_profile_poc_vah_val as ctx
     bars = [
         {"high": 100.04, "low": 100.00, "close": 100.02, "volume": 500.0},
         {"high": 100.06, "low": 100.02, "close": 100.05, "volume": 800.0},

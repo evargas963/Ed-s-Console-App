@@ -35,33 +35,8 @@ def float_nonnegative_or_none(value: Any) -> float | None:
     return v if v is not None and v >= 0.0 else None
 
 
-def float_or_none(value: Any) -> float | None:
-    """Backward-compatible alias for finite-or-none parsing."""
-    return float_finite_or_none(value)
 
 
-def direction_from_triplet(
-    up: Any,
-    down: Any,
-    flat: Any,
-    *,
-    parse: Any = float_finite_or_none,
-) -> DirectionLabel | None:
-    """
-    Argmax over present finite triplet legs.
-
-    Tie-break (stable): up, then down, then flat — matches legacy
-    ``max("up", "down", "flat", key=...)`` and ``max(present.items(), ...)``
-    insertion order.
-    """
-    present: list[tuple[DirectionLabel, float]] = []
-    for lab in _TRIPLET_LABELS:
-        v = parse(up if lab == "up" else down if lab == "down" else flat)
-        if v is not None:
-            present.append((lab, v))
-    if not present:
-        return None
-    return max(present, key=lambda kv: kv[1])[0]
 
 
 def direction_from_normalized_triplet(

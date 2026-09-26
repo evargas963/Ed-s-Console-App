@@ -7,31 +7,8 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-NEAREST_DIST_ROUND_DECIMALS = 4
 
 
-def canonical_nearest_distances(
-    spot: Optional[float],
-    nearest_above_level: Optional[float],
-    nearest_below_level: Optional[float],
-) -> Tuple[Optional[float], Optional[float]]:
-    """
-    Return (nearest_above_dist, nearest_below_dist) as rounded non-negative magnitudes.
-
-    If spot is None, both distances are None. A missing chosen level yields None for
-    that side only.
-    """
-    r = NEAREST_DIST_ROUND_DECIMALS
-    if spot is None:
-        return None, None
-    spot_f = float(spot)
-    nad: Optional[float] = None
-    if nearest_above_level is not None:
-        nad = round(abs(float(nearest_above_level) - spot_f), r)
-    nbd: Optional[float] = None
-    if nearest_below_level is not None:
-        nbd = round(abs(spot_f - float(nearest_below_level)), r)
-    return nad, nbd
 
 
 def canonicalize_distance_read(

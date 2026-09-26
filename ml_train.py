@@ -28,7 +28,6 @@ MODEL_DIR = Path("models")
 from canonical_distances import canonicalize_distance_read
 from ml_horizon import (
     DEFAULT_ML_HORIZON_SLUG,
-    DEFAULT_TRAINING_LABEL_COLUMN,
     directional_label_column,
     move_label_column,
     normalize_ml_horizon_slug,
@@ -39,7 +38,6 @@ from time_et import RTH_OPEN_MINS, RTH_SESSION_MINUTES
 # identity the readers/verifier/predictor expect — one canonical authority, no local .upper().
 from instrument_identity import ticker_storage_key
 
-TARGET_COL = DEFAULT_TRAINING_LABEL_COLUMN  # Default tabular label; training uses outcome_column(ml_horizon_slug).
 
 # movement-target v1 binary heads (parallel to legacy triclass)
 TARGET_MODE_TRICLASS = "triclass"
@@ -233,10 +231,6 @@ def meta_path(
 # FEATURE COLUMN DEFINITIONS
 # =============================================================================
 
-DOLLAR_COLS = [
-    "candle_body_pts",     "candle_range_pts",
-    "nearest_above_dist",   "nearest_below_dist",
-]
 
 WALL_DISTANCE_COLS = [
     "dist_call_gamma_wall", "dist_put_gamma_wall",
@@ -254,16 +248,6 @@ WALL_DISTANCE_COLS = [
 ]
 
 
-def model_feature_wall_distance_cols() -> list[str]:
-    """Wall-distance columns eligible for *new* model feature contracts (RC-436).
-
-    Excludes STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS. Not wired into live
-    ``WALL_DISTANCE_COLS`` / ``FEATURES_5M`` until a host retrain co-lands a
-    FEATURE_SCHEMA_VERSION bump — wiring early would shrink encoder widths and
-    fail-close serveable schema-v3 sequence checkpoints mid-flight.
-    """
-    withheld = set(STRUCTURALLY_WITHHELD_WALL_DISTANCE_COLS)
-    return [c for c in WALL_DISTANCE_COLS if c not in withheld]
 
 
 SCALE_INVARIANT_COLS = [
@@ -299,8 +283,6 @@ SCALE_INVARIANT_COLS = [
 # commit as the retrained artifacts. [REAL-GATE: training-skew] — OPEN_ITEMS
 # row PA-CONE-V8-RETRAIN. Until then pa_* are ablation/discovery candidates only.
 
-TIME_COLS   = ["et_hour", "et_minute"]
-ALL_DB_COLS = TIME_COLS + DOLLAR_COLS + WALL_DISTANCE_COLS + SCALE_INVARIANT_COLS
 
 CATEGORICALS = [
     "zone", "prev_zone", "vwap_side", "candle_direction",
@@ -311,7 +293,6 @@ CATEGORICALS = [
     "liquidity_behavior_label",
 ]
 
-CATEGORICAL_FEATURES = CATEGORICALS
 
 
 # =============================================================================

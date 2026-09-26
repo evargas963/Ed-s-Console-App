@@ -59,63 +59,8 @@ _lock = threading.Lock()
 _observations: dict[str, dict[str, Any]] = {}
 
 
-def _direction_candidate(change: Optional[float]) -> Optional[str]:
-    if change is None:
-        return None
-    if change > 0:
-        return "rising"
-    if change < 0:
-        return "falling"
-    return "flat"
 
 
-def record_market_vol_observation(mkt_ctx: Any, vol_ctx: Any) -> None:
-    """Record one per-cycle observation of the three vol indices.
-
-    Called once per _fetch_state cycle right after the V1 vol context is
-    built. Reads only already-fetched values; performs no I/O; never raises
-    (observability must not break the serve cycle)."""
-    try:
-        now = time.time()
-        # Direct attribute access on purpose (no silent getattr defaults):
-        # a malformed context is an explicit AttributeError handled by the
-        # observability-only except below — absence stays UNAVAILABLE.
-        as_of = vol_ctx.as_of_ts if vol_ctx is not None else None
-        if mkt_ctx is None:
-            values = {"$VIX": None, "$VXN": None, "$RVX": None}
-        else:
-            values = {
-                "$VIX": mkt_ctx.vix,
-                "$VXN": mkt_ctx.vxn,
-                "$RVX": mkt_ctx.rvx,
-            }
-        with _lock:
-            for sym, raw in values.items():
-                try:
-                    cur = float(raw) if raw is not None else None
-                except (TypeError, ValueError):
-                    cur = None
-                prev_rec = _observations.get(sym) or {}
-                prev_val = prev_rec.get("value")
-                change = (
-                    round(cur - prev_val, 4)
-                    if cur is not None and prev_val is not None
-                    else None
-                )
-                _observations[sym] = {
-                    "value": cur,
-                    "previous_value": prev_val,
-                    "change": change,
-                    "direction_candidate": _direction_candidate(change),
-                    "source_ts": as_of,
-                    "recorded_ts": now,
-                    "quality_status": "VALID" if cur is not None else "UNAVAILABLE",
-                }
-    except Exception:
-        # institutional-swallow-ok: fail-open for observability only — a recording defect
-        # must never break the serve cycle; absence stays honest (-> UNAVAILABLE),
-        # nothing is fabricated.
-        pass
 
 
 def _ticker_class_candidate(ticker: Optional[str]) -> dict[str, Any]:

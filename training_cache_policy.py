@@ -129,77 +129,7 @@ MODEL_ARCHIVE_SUBDIR: str = "_artifact_archive"
 MODEL_ARCHIVE_MAX_SNAPSHOTS_PER_TICKER_ARCH: int = int(os.environ.get("ED_MODEL_ARCHIVE_MAX_SNAPSHOTS", "8"))
 MODEL_ARCHIVE_MAX_AGE_DAYS: int = int(os.environ.get("ED_MODEL_ARCHIVE_MAX_AGE_DAYS", "120"))
 
-# ── Compare runs ─────────────────────────────────────────────────────────────
-COMPARE_MANIFEST_FILENAME: str = "compare_run_manifest.json"
-COMPARE_USE_PRODUCTION_CACHE_KEYS: bool = True
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SCHEDULER DECISION TREE (executable order in ml_scheduler.run_once)
-# ══════════════════════════════════════════════════════════════════════════════
-SCHEDULER_DECISION_TREE = """
-1) if bypass_cache:
-       -> full_rebuild (train+eval all; torch resume disabled via bypass)
-2) if force_retrain (CLI flag):
-       -> same as bypass for skip gating only (must train+eval); promotion logic unchanged
-3) if consecutive_scheduler_skips >= MAX_CONSECUTIVE_SCHEDULER_SKIPS:
-       -> force_train (retrain_reason=consecutive_skips_cap)
-4) full_skip_eligible(manifest, ...) strict:
-       a) schema_version == MANIFEST_SCHEMA_VERSION (exact)
-       b) training_code_fingerprint == current
-       c) scheduler_cache_key + data_fingerprint match
-       d) trained_at age <= MANIFEST_SKIP_MAX_AGE_DAYS (if enabled)
-       e) artifact_sha256 present, keys == exact required set, every file on disk matches hash
-       f) all inference artifacts exist
-       -> if all pass: full_skip_train_eval (reuse manifest eval metrics)
-5) else:
-       -> train+eval (retrain_reason / cache_miss_reason from full_skip_eligible failure)
-6) Promotion: validate_for_promotion; copy winner to active (never pruned as "current")
-"""
 
-# ══════════════════════════════════════════════════════════════════════════════
-# CACHE LAYERS (read order)
-# ══════════════════════════════════════════════════════════════════════════════
-CACHE_LAYERS = """
-L1  scheduler_run_manifest.json (per models/{parallel|cascade}/{ticker}/)
-    strict schema v2 + artifact_sha256 set equality + code_fp + scheduler key + data_fp
-L2  models/cache/features/{feature_cache_key}/  (LSTM npz, parallel Transformer npz, identity)
-L3  models/cache/features/{feature_cache_key}/cascade_tf_{w16}_{t16}/  (cascade XGB+LSTM tensor npz;
-    w16 = sha256(xgb_meta|lstm.pt)[:16], t16 = sha256(tensor bytes)[:16] — path invalidates on weights or tensor)
-L4  PyTorch resume blobs lstm_*_train_resume.pt, transformer_*_train_resume.pt (+ every-N-epoch writes)
-L5  Optional XGBoost continuation when ED_XGB_INCREMENTAL=1 and append-only + schema checks pass
-L6  models/_artifact_archive/{parallel|cascade}/{ticker}/{utc_ts}/  snapshots before each full train
-"""
 
-# ══════════════════════════════════════════════════════════════════════════════
-# RETENTION BEHAVIOR
-# ══════════════════════════════════════════════════════════════════════════════
-RETENTION_BEHAVIOR = """
-- features/: cleanup_feature_cache_directories() — retain newest ED_FEATURE_CACHE_MAX_DIRS by mtime
-- _artifact_archive/: prune snapshots per (arch,ticker) — keep <= ED_MODEL_ARCHIVE_MAX_SNAPSHOTS, drop older than ED_MODEL_ARCHIVE_MAX_AGE_DAYS
-- models/active/{ticker}/: NEVER deleted by retention (current production tree)
-- models/parallel|/cascade/{ticker}/: live candidate dirs overwritten on train; pre-train copy goes to archive only
-"""
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FAILURE CONDITIONS (skip / cache miss)
-# ══════════════════════════════════════════════════════════════════════════════
-SCHEDULER_FAILURE_CONDITIONS = """
-full_skip_eligible returns False when any of:
-- bypass_cache or force_retrain
-- manifest missing
-- schema_version != MANIFEST_SCHEMA_VERSION
-- training_code_fingerprint mismatch
-- scheduler_cache_key or data_fingerprint mismatch
-- trained_at older than MANIFEST_SKIP_MAX_AGE_DAYS
-- artifact_sha256 missing, wrong key set, missing file, or hash mismatch
-- required model files absent on disk
-- consecutive_scheduler_skips cap (handled before full_skip_eligible in run_once)
-
-Feature cache miss: identity json / npz mismatch or missing.
-
-Cascade tensor cache miss: no cascade_tf_{w16}_*/ match, identity/tensor/hash/row mismatch, or legacy dir stale.
-
-Torch resume rejected: policy off, env ED_DISABLE_TORCH_RESUME, blob schema mismatch, fingerprint/key/architecture/n_features/cascade tensor fp / xgb_probs fp mismatch.
-
-XGB incremental rejected: ED_XGB_INCREMENTAL not set, or feature list / target / non-append-only fingerprint / missing prior model.
-"""

@@ -46,11 +46,6 @@ def is_valid_production_ticker(raw: str | None) -> bool:
     return bool(is_ticker(t))
 
 
-def assert_valid_production_ticker(raw: str | None, *, context: str) -> str:
-    t = normalize_production_ticker(raw)
-    if not is_valid_production_ticker(t):
-        raise ValueError(f"{context}: invalid production ticker {raw!r} (normalized {t!r})")
-    return t
 
 
 def filter_valid_tickers(tickers: Iterable[str | None]) -> list[str]:

@@ -22,15 +22,6 @@ from datetime import datetime
 
 from math_volatility import compute_atr
 
-#: Radar rings, in DAILY ATR. Derived from what the distance means, not invented:
-#: a wall inside a tenth of a day's range is effectively being touched now; beyond
-#: three quarters of a day's range it cannot matter today.
-RING_CONTACT = 0.10       # at the wall — flash + speak
-RING_CLOSING = 0.35       # reachable within the session — flash only
-RING_SECTOR = 0.75        # on the scope, silent
-#: Within this fraction of a daily ATR of the FLIP, a ticker is about to change regime.
-#: Ranked above wall proximity: a flip crossing changes what every other level means.
-RING_REGIME = 0.15
 
 ATR_PERIOD = 14
 #: ATR(14) daily needs 15 daily candles. MEASURED, not estimated: `price_bars_1m` carries
@@ -106,26 +97,5 @@ def compute_atr_pair(db_path: str, ticker: str) -> AtrPair:
 
 
 
-def ring_for(distance_pts: float | None, daily_atr: float | None) -> str | None:
-    """Classify a distance into a radar ring, or None when it is out of range.
-
-    Returns CONTACT / CLOSING / SECTOR. A missing ATR yields None rather than a guess:
-    without a scale, a distance in points means nothing and the contact must not appear.
-    """
-    if distance_pts is None or not daily_atr or daily_atr <= 0:
-        return None
-    d = abs(distance_pts) / daily_atr
-    if d <= RING_CONTACT:
-        return "CONTACT"
-    if d <= RING_CLOSING:
-        return "CLOSING"
-    if d <= RING_SECTOR:
-        return "SECTOR"
-    return None
 
 
-def atr_distance(distance_pts: float | None, atr: float | None) -> float | None:
-    """Distance expressed in ATR units, or None when it cannot be scaled."""
-    if distance_pts is None or not atr or atr <= 0:
-        return None
-    return abs(distance_pts) / atr

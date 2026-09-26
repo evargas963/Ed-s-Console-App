@@ -284,7 +284,8 @@ from pathlib import Path as _Path
 
 import pytest as _pytest
 
-from market_state import MarketVolContextV1, VOL_INPUT_CONTRACT_VERSION
+from market_state import MarketVolContextV1
+from vol_observability import VOL_INPUT_CONTRACT_VERSION
 
 _REPO = _Path(__file__).resolve().parent.parent
 

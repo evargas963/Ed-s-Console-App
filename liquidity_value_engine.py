@@ -21,13 +21,12 @@ from typing import TYPE_CHECKING, Any, Optional
 from instrument_identity import ticker_storage_key
 from liquidity_models import (
     PlaybookConfig,
-    PlaybookState,
     SnapshotOutput,
     SnapshotSummary,
     SnapshotType,
     Zone,
     ZoneType,
-    volume_profile_poc_vah_val,   # LP-01 Step 1 (RC-152): the ONE profile construction
+    volume_profile_poc_vah_val,
 )
 
 if TYPE_CHECKING:  # forward-ref only — the "pd.DataFrame" annotations; no runtime pandas import
@@ -35,7 +34,11 @@ if TYPE_CHECKING:  # forward-ref only — the "pd.DataFrame" annotations; no run
 
 log = logging.getLogger(__name__)
 
-from time_et import ET, RTH_END_MINS, RTH_OPEN_MINS, is_trading_day_et, now_et
+from time_et import (
+    ET,
+    RTH_END_MINS,
+    RTH_OPEN_MINS,
+)
 
 # RC-324: DERIVED from the time_et minute-of-day authority, not inlined. These were
 # `time(9, 30)` and `time(16, 0)` written here, and FIND-MC-1 had already removed exactly
@@ -444,9 +447,6 @@ def compute_session_vwap_series(
     return series
 
 
-SESSION_VWAP_PRESENT = "present"
-SESSION_VWAP_EXPECTED_ABSENT = "expected_absent"
-SESSION_VWAP_RTH_PRODUCER_FAILURE = "rth_producer_failure"
 
 
 def count_session_rth_positive_volume_bars(
@@ -460,28 +460,6 @@ def count_session_rth_positive_volume_bars(
     return n
 
 
-def classify_session_vwap_presence(
-    *,
-    vwap: Optional[float],
-    session_date: date,
-    now_et_dt: datetime,
-    session_rth_positive_volume_bars: int,
-) -> str:
-    """Classify current-session VWAP as present, expected-absent, or producer failure.
-
-    Weekend / holiday / premarket / no same-session positive-volume RTH bars yet
-    are expected absence. Genuine failure is: those bars exist and VWAP is still None.
-    """
-    if vwap is not None:
-        return SESSION_VWAP_PRESENT
-    if not is_trading_day_et(session_date.isoformat()):
-        return SESSION_VWAP_EXPECTED_ABSENT
-    open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=now_et_dt.tzinfo or ET)
-    if now_et_dt < open_dt:
-        return SESSION_VWAP_EXPECTED_ABSENT
-    if session_rth_positive_volume_bars <= 0:
-        return SESSION_VWAP_EXPECTED_ABSENT
-    return SESSION_VWAP_RTH_PRODUCER_FAILURE
 
 
 def compute_session_vwap_path(
@@ -1436,20 +1414,6 @@ def build_live_snapshot(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def summarize_snapshot(out: SnapshotOutput) -> str:
-    """Generate readable interpretation summary."""
-    lines = [f"{out.ticker} {out.snapshot_type.value.upper()} Snapshot ({out.session_date})"]
-    if out.summary:
-        s = out.summary
-        if s.value_state:
-            lines.append(f"  Value state: {s.value_state}")
-        if s.vwap_relation:
-            lines.append(f"  VWAP relation: {s.vwap_relation}")
-        if s.auction_interpretation:
-            lines.append(f"  Auction: {s.auction_interpretation}")
-    for z in out.zones:
-        lines.append(f"  [{z.zone_type.value}] {z.zone_low:.2f}–{z.zone_high:.2f} — {z.interpretation_notes or '—'}")
-    return "\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1509,133 +1473,8 @@ def generate_liquidity_value_snapshot(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def generate_playbook_state(
-    ticker: str,
-    bars_dataframe: list | "pd.DataFrame",
-    session_date: str | date,
-    config: Optional[PlaybookConfig] = None,
-) -> PlaybookState:
-    """
-    Generate all structural snapshots and package into PlaybookState.
-    Each snapshot uses only data available through its cutoff time (no lookahead).
-
-    Args:
-        ticker: Instrument symbol
-        bars_dataframe: OHLCV bars (DataFrame or list of dicts)
-        session_date: "YYYY-MM-DD" or date
-        config: Optional. Uses defaults if None.
-
-    Returns:
-        PlaybookState with premarket, opening, midday, afternoon snapshots.
-    """
-    if config is None:
-        config = PlaybookConfig()
-
-    if isinstance(session_date, str):
-        session_date = date.fromisoformat(session_date)
-
-    bars = _bars_to_list(bars_dataframe)
-    premarket = build_premarket_snapshot(ticker, bars, session_date, config)
-    opening = build_opening_snapshot(ticker, bars, session_date, config)
-    midday = build_midday_snapshot(ticker, bars, session_date, config)
-    afternoon = build_afternoon_snapshot(ticker, bars, session_date, config)
-
-    latest_type = SnapshotType.AFTERNOON
-    latest_summary = afternoon.summary
-    if latest_summary is None:
-        latest_type = SnapshotType.MIDDAY
-        latest_summary = midday.summary
-    if latest_summary is None:
-        latest_type = SnapshotType.OPENING
-        latest_summary = opening.summary
-
-    session_bias = ""
-    auction_state = ""
-    if latest_summary:
-        auction_state = latest_summary.auction_interpretation or ""
-        if latest_summary.auction_interpretation == "bullish_acceptance":
-            session_bias = "bullish"
-        elif latest_summary.auction_interpretation == "bearish_acceptance":
-            session_bias = "bearish"
-        elif latest_summary.value_state == "shifted_higher":
-            session_bias = "bullish"
-        elif latest_summary.value_state == "shifted_lower":
-            session_bias = "bearish"
-
-    return PlaybookState(
-        ticker=ticker,
-        session_date=session_date.isoformat(),
-        premarket_snapshot=premarket,
-        opening_snapshot=opening,
-        midday_snapshot=midday,
-        afternoon_snapshot=afternoon,
-        latest_snapshot_type=latest_type,
-        latest_summary=latest_summary,
-        session_bias=session_bias,
-        auction_state=auction_state,
-        generated_at=now_et().isoformat(),
-    )
 
 
-def playbook_state_to_dict(state: PlaybookState) -> dict:
-    """Serialize PlaybookState to JSON-serializable dict."""
-
-    def _snap_to_dict(snap: Optional[SnapshotOutput]) -> Optional[dict]:
-        if snap is None:
-            return None
-        d = {
-            "ticker": snap.ticker,
-            "session_date": snap.session_date,
-            "snapshot_type": snap.snapshot_type.value,
-            "zones": [
-                {
-                    "zone_type": z.zone_type.value,
-                    "zone_class": z.zone_class,
-                    "zone_low": z.zone_low,
-                    "zone_high": z.zone_high,
-                    "zone_mid": z.zone_mid,
-                    "zone_width": round(z.zone_high - z.zone_low, 4),
-                    "source_levels": z.source_levels,
-                    "source_tags": z.source_tags,
-                    "confluence_score": z.confluence_score,
-                    "interpretation_notes": z.interpretation_notes or "",
-                }
-                for z in snap.zones
-            ],
-            "summary": None,
-            "raw_levels": snap.raw_levels,
-        }
-        if snap.summary:
-            d["summary"] = {
-                "value_state": snap.summary.value_state,
-                "vwap_relation": snap.summary.vwap_relation,
-                "auction_interpretation": snap.summary.auction_interpretation,
-                "notes": snap.summary.notes,
-            }
-        return d
-
-    return {
-        "ticker": state.ticker,
-        "session_date": state.session_date,
-        "premarket_snapshot": _snap_to_dict(state.premarket_snapshot),
-        "opening_snapshot": _snap_to_dict(state.opening_snapshot),
-        "midday_snapshot": _snap_to_dict(state.midday_snapshot),
-        "afternoon_snapshot": _snap_to_dict(state.afternoon_snapshot),
-        "latest_snapshot_type": state.latest_snapshot_type.value if state.latest_snapshot_type else None,
-        "latest_summary": (
-            {
-                "value_state": state.latest_summary.value_state,
-                "vwap_relation": state.latest_summary.vwap_relation,
-                "auction_interpretation": state.latest_summary.auction_interpretation,
-                "notes": state.latest_summary.notes,
-            }
-            if state.latest_summary
-            else None
-        ),
-        "session_bias": state.session_bias,
-        "auction_state": state.auction_state,
-        "generated_at": state.generated_at,
-    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1690,29 +1529,8 @@ PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
 #: not a market claim — reading __name__ keeps the stamp honest and the lock intact.
 _PRODUCER_NS: str = __name__
 
-PHASE2A_CANONICAL_HELPERS: frozenset[str] = frozenset({
-    "get_previous_day_levels",
-    "get_overnight_levels",
-    "compute_opening_range",
-    "compute_session_vwap",
-    "compute_session_vwap_path",
-    "compute_vwap_bands",
-    "compute_volume_profile_levels",
-})
 
 
-def scoped_level_id(level_id: str, semantic_scope: str) -> str:
-    """The id a NON-canonical scope must use, so two scopes can never share an id.
-
-    A midday-cutoff VWAP is a legitimate, different measurement — it just is not the
-    repo-wide canonical `VWAP`. It travels as `VWAP@checkpoint:midday`, which no
-    canonical consumer reads and no divergence check compares against `VWAP`.
-    """
-    lid = str(level_id).strip().upper()
-    scope = str(semantic_scope).strip()
-    if lid in PHASE2A_LEVEL_IDS and scope == PHASE2A_LEVEL_IDS[lid][1]:
-        return lid
-    return f"{lid}@{scope}"
 
 
 #: semantic_scope -> the trading-session character the /api/levels contract has always
@@ -1818,8 +1636,6 @@ class PriceLevelSnapshot:
         lv = self.levels.get(level_id)
         return None if lv is None else lv.price
 
-    def prices(self, *level_ids: str) -> tuple:
-        return tuple(self.price(i) for i in level_ids)
 
 
 def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list,
@@ -2049,19 +1865,8 @@ def materialize_price_level_snapshot(
         return snap
 
 
-def get_materialized_snapshot(ticker: str, session_date: date) -> Optional[PriceLevelSnapshot]:
-    """READ the materialized snapshot. Never computes — absent means absent."""
-    return _MATERIALIZED_SNAPSHOTS.get(
-        (ticker_storage_key(ticker), session_date.isoformat()))  # RC-345/F25: read key matches canonical write
 
 
-def clear_materialized_snapshots(ticker: Optional[str] = None) -> None:
-    if ticker is None:
-        _MATERIALIZED_SNAPSHOTS.clear()
-        return
-    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
-    for k in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-        _MATERIALIZED_SNAPSHOTS.pop(k, None)
 
 
 # ── runtime carrier contract ─────────────────────────────────────────────────
@@ -2083,13 +1888,6 @@ class LevelCarrierConflict(RuntimeError):
 _CARRIER_LEDGER: dict[tuple[str, str, str, str, int], tuple[tuple, str]] = {}
 
 
-def reset_level_carrier_ledger(ticker: Optional[str] = None) -> None:
-    if ticker is None:
-        _CARRIER_LEDGER.clear()
-        return
-    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
-    for k in [k for k in _CARRIER_LEDGER if k[0] == tk]:
-        _CARRIER_LEDGER.pop(k, None)
 
 
 def _prune_carrier_ledger(ticker: str, session_date_iso: str, generation: int) -> None:

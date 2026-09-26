@@ -13,14 +13,8 @@ from math_exposure_core import (
     pick_key_delta_strike,
     pick_volatility_point_strikes,
 )
-from math_levels import (
-    build_summary_rows,
-    build_walls_rows,
-    compute_pin_width_pts,
-    consensus_walls_bind_terrain_ssot,
-    pick_gamma_wall_strikes,
-    WallsRow,
-)
+from math_levels import build_summary_rows, build_walls_rows, compute_pin_width_pts, consensus_walls_bind_terrain_ssot, WallsRow
+from math_exposure_core import pick_gamma_wall_strikes
 
 
 def _dollarized_exposures():

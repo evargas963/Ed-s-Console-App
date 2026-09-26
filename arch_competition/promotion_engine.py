@@ -11,7 +11,7 @@ from typing import Any
 
 from ml_horizon import normalize_ml_horizon_slug
 
-from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 
 from arch_competition.atomic_io import write_json_file_atomically
 from arch_competition.eval_runner import EVALUATION_MANIFEST_SCHEMA_VERSION

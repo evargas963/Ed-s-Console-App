@@ -139,10 +139,8 @@ def test_fusion_vwap_side_parent_default_above_would_fail_gate():
 
 def test_lstm_missing_numerics_emit_mask_not_zero():
     from features.canonical_contract import get_mvp_feature_names
-    from features.lstm_sequence_input import (
-        ZONE_MISSING_ENCODED,
-        encode_lstm_structure_bar_with_masks,
-    )
+    from features.lstm_sequence_input import encode_lstm_structure_bar_with_masks
+    from lstm_data import ZONE_MISSING_ENCODED
     from lstm_data import ENCODED_FEATURES_5M
 
     cf = {k: None for k in get_mvp_feature_names()}

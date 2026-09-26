@@ -6,16 +6,8 @@ import math
 
 import pytest
 
-from calibration.statistical_integrity import (
-    MIN_SAMPLES_STATISTICAL,
-    bucket_gate,
-    gated_mean,
-    gated_ratio,
-    thresholds_dict,
-    verify_edge_discovery_no_numeric_leak,
-    verify_phase3_no_numeric_leak,
-    verify_phase4_no_numeric_leak,
-)
+from calibration.statistical_integrity import bucket_gate, gated_mean, gated_ratio, thresholds_dict, verify_edge_discovery_no_numeric_leak, verify_phase3_no_numeric_leak, verify_phase4_no_numeric_leak
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 
 
 def test_thresholds_dict_aligns_with_math_probabilities_floor():
