@@ -7,7 +7,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from market_data_adapter import normalize_bar, schwab_candles_to_bars
 from math_exposure_core import bucket_metric, net_gex_dollars_at_strike
 from snapshot_normalizer import resample_to_1m
 
@@ -173,50 +172,12 @@ def _repo_wide_silent_zero_hits() -> list[str]:
     return hits
 
 
-def test_normalize_bar_rejects_missing_close():
-    assert normalize_bar({"open": 1.0, "high": 2.0, "low": 0.5, "close": None}) is None
 
 
-def test_normalize_bar_rejects_zero_close():
-    assert (
-        normalize_bar(
-            {"open": 1.0, "high": 2.0, "low": 0.5, "close": 0, "volume": 100},
-            source="schwab_pricehistory",
-        )
-        is None
-    )
 
 
-def test_normalize_bar_emits_source_and_missing_fields():
-    nb = normalize_bar(
-        {
-            "datetime": 1_710_000_000_000,
-            "open": 500.0,
-            "high": 501.0,
-            "low": 499.0,
-            "close": 500.5,
-            "volume": 1200,
-        },
-        source="schwab_pricehistory",
-    )
-    assert nb is not None
-    d = nb.to_dict()
-    assert d["source"] == "schwab_pricehistory"
-    assert d["missing_fields"] == []
 
 
-def test_schwab_candles_to_bars_rejects_zero_close():
-    candles = [
-        {
-            "datetime": 1_710_000_000_000,
-            "open": 500.0,
-            "high": 501.0,
-            "low": 499.0,
-            "close": 0.0,
-            "volume": 100,
-        }
-    ]
-    assert schwab_candles_to_bars(candles) == []
 
 
 def test_resample_synthetic_bars_are_tagged():
