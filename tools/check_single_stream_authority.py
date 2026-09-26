@@ -16,13 +16,11 @@ count; an unrelated class of the same name in an unrelated module does not.
 
 CLASSIFICATION, one of:
     PRODUCTION_OWNER   app/market_data/schwab/streaming/capture.py — the canonical capture daemon.
-    OFFLINE_TOOL       schwab_full_field_inventory.py — manual field-discovery CLI, only
-                       reachable via `if __name__ == "__main__"`, never imported by any
-                       automated path (verified 2026-08-30: its one production import,
-                       tools/sync_schwab_field_dictionary.py, pulls a pure JSON-flattening
-                       helper, never the streaming function).
     TEST_ONLY          anything under tests/ — isolated by convention, never live Schwab.
     VIOLATION          anything else. A single VIOLATION fails the gate.
+
+    (An OFFLINE_TOOL class once exempted schwab_full_field_inventory.py, a manual
+    field-discovery CLI; that CLI was deleted as unused code, so no exemption remains.)
 
     .venv/Scripts/python.exe tools/check_single_stream_authority.py
 """
@@ -38,7 +36,6 @@ REPO = Path(__file__).resolve().parent.parent
 #: `git ls-files` always yields forward-slash paths regardless of OS — compare against
 #: that literally, never a Path-joined (backslash-on-Windows) string.
 PRODUCTION_OWNER = "app/market_data/schwab/streaming/capture.py"
-OFFLINE_TOOLS = {"schwab_full_field_inventory.py"}
 
 
 def _tracked_python() -> list[str]:
@@ -149,8 +146,6 @@ def find_stream_client_constructions(path: Path) -> list[int]:
 def classify(rel_path: str) -> str:
     if rel_path == PRODUCTION_OWNER:
         return "PRODUCTION_OWNER"
-    if rel_path in OFFLINE_TOOLS:
-        return "OFFLINE_TOOL"
     if rel_path.startswith("tests/") or rel_path.startswith("tests\\"):
         return "TEST_ONLY"
     return "VIOLATION"
@@ -159,7 +154,7 @@ def classify(rel_path: str) -> str:
 def run_census() -> dict[str, list[str]]:
     """{classification: [file:line, ...]} for every StreamClient constructor found."""
     out: dict[str, list[str]] = {
-        "PRODUCTION_OWNER": [], "OFFLINE_TOOL": [], "TEST_ONLY": [], "VIOLATION": [],
+        "PRODUCTION_OWNER": [], "TEST_ONLY": [], "VIOLATION": [],
     }
     for rel in _tracked_python():
         lines = find_stream_client_constructions(REPO / rel)
@@ -192,7 +187,7 @@ def main() -> int:
     violations = census["VIOLATION"]
 
     print("SINGLE-STREAM-AUTHORITY CENSUS")
-    for cls in ("PRODUCTION_OWNER", "OFFLINE_TOOL", "TEST_ONLY", "VIOLATION"):
+    for cls in ("PRODUCTION_OWNER", "TEST_ONLY", "VIOLATION"):
         for site in census[cls]:
             print(f"  {cls:18s} {site}")
 

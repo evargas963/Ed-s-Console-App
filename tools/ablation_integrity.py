@@ -340,11 +340,11 @@ def check_no_ablation_gate_bypass_in_money_path() -> list[str]:
     # (arch_competition/**) is the ONLY place legacy-bundle adaptation may live.
     money_path = (
         # xgb
-        "xgboost_model.py", "ml_predict.py", "ml_train.py", "features/xgb_model_input.py",
+        "ml_predict.py", "ml_train.py", "features/xgb_model_input.py",
         # lstm
         "lstm_data.py", "lstm_model.py", "features/lstm_sequence_input.py",
         # transformer
-        "transformer_model.py", "transformer_train.py",
+        "transformer_train.py",
         # meta (weighted / stacked overlay)
         "prediction_engine.py",
         # monte_carlo

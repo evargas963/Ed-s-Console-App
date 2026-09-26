@@ -7,11 +7,8 @@ studies read each stored placeholder as a LONG call.
 """
 from __future__ import annotations
 
-import json
 
 from call_engine import _canonical_stack_vote, _level_proximity_label, _readiness_canonical_fields
-from calibration.analyze_phase3 import _canonical_prob_triplet
-from calibration.edge_validation import _effective_directional_signal
 from setup_readiness import compute_call_readiness, compute_put_readiness
 from signal_types import CanonicalForecast
 from signals import canonical_forecast_from_fusion
@@ -62,20 +59,6 @@ def test_level_proximity_absent_is_none_not_far():
     assert _level_proximity_label(None) is None
     assert _level_proximity_label(0.0) == "near"
     assert _level_proximity_label(1e9) == "far"
-
-
-def test_calibration_reader_ignores_placeholder_triplets():
-    u = 1.0 / 3.0
-    placeholder = json.dumps({"probability_up": u, "probability_down": u, "probability_flat": u,
-                              "provenance": "fusion_unavailable"})
-    no_prov = json.dumps({"probability_up": u, "probability_down": u, "probability_flat": u})
-    real = json.dumps({"probability_up": 0.2, "probability_down": 0.6, "probability_flat": 0.2,
-                       "provenance": "bayesian_fusion"})
-    assert _canonical_prob_triplet(placeholder) is None
-    assert _canonical_prob_triplet(no_prov) is None
-    # the placeholder used to win the p_up >= p_dn >= p_fl tie-break -> "long"
-    assert _effective_directional_signal({"final_signal": "wait", "canonical_json": placeholder}) == "wait"
-    assert _effective_directional_signal({"final_signal": "wait", "canonical_json": real}) == "short"
 
 
 # ── L-01 / F-11: the stamped model version is what RAN, or None ────────────────

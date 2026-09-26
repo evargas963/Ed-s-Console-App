@@ -586,7 +586,7 @@ def overlay_streamed_contract_fields(
         # This contract's OWN vendor-reported observation time, not the shared REST-fetch
         # instant -- see the docstring's fifth-review finding. Schwab reports
         # `quoteTimeInLong` in epoch milliseconds; `_ts_recv` values are epoch seconds.
-        native_qt = ct.get("quoteTimeInLong") if isinstance(ct, dict) else None
+        native_qt = ct.get("quoteTimeInLong") if isinstance(ct, dict) else None  # external-key-ok: Schwab option-chain contract field (vendor wire, epoch ms)
         try:
             native_baseline = float(native_qt) / 1000.0 if native_qt else None
         except (TypeError, ValueError):

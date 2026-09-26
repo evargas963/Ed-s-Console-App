@@ -14,8 +14,6 @@ from calibration.a1_conformal_artifact_production import (
     current_pointer_path,
     update_current_pointer_atomically,
 )
-from calibration.a1_isotonic_artifact_production import produce_a1_isotonic_artifact
-from calibration.run_a1_isotonic_artifact_production import build_arg_parser
 from v2_decision.a1_conformal_artifact_contract import (
     artifact_output_path,
     is_eligible_for_current_pointer_isotonic,
@@ -48,61 +46,6 @@ def _isotonic_artifact(**overrides) -> dict:
     }
     base.update(overrides)
     return base
-
-
-def test_successful_isotonic_production_writes_artifact_and_pointer(monkeypatch, tmp_path):
-    _patch_basic_pipeline(monkeypatch)
-
-    result = _produce(tmp_path)
-
-    assert result["status"] == "ok"
-    assert result["pointer_updated"] is True
-    artifact = result["artifact"]
-    assert artifact["ticker_universe"] == ["SPY"]
-    assert artifact["governed_max_age_seconds"] == 691200
-    assert artifact["generated_at_epoch_seconds"] == 1000
-    assert artifact["artifact_lifecycle_schema_version"] == "1"
-    assert artifact["calibration_lineage_id"] == compute_calibration_lineage_id(_isotonic_artifact())
-    assert result["artifact_path"].is_file()
-    pointer = current_pointer_path(ticker="SPY", horizon="5c", data_root=tmp_path, artifact_kind="isotonic")
-    assert json.loads(pointer.read_text(encoding="utf-8")) == {
-        "artifact_relative_path": "v2_calibration/isotonic/A/A1/SPY/5c/cal-test-run.json"
-    }
-
-
-def test_isotonic_status_skipped_writes_artifact_but_not_pointer(monkeypatch, tmp_path):
-    _patch_basic_pipeline(monkeypatch, artifact=_isotonic_artifact(status="calibration_skipped_insufficient_training_variance"))
-
-    result = _produce(tmp_path)
-
-    assert result["status"] == "audit_not_promoted"
-    assert result["pointer_updated"] is False
-    assert "status" in str(result["eligibility_reason"])
-    assert result["artifact_path"].is_file()
-    assert not current_pointer_path(ticker="SPY", horizon="5c", data_root=tmp_path, artifact_kind="isotonic").exists()
-
-
-def test_isotonic_insufficient_holdout_samples_writes_artifact_but_not_pointer(monkeypatch, tmp_path):
-    _patch_basic_pipeline(
-        monkeypatch,
-        artifact=_isotonic_artifact(sample_gate={"aggregate_holdout": {"sufficient_sample": False, "n": 10}}),
-    )
-
-    result = _produce(tmp_path)
-
-    assert result["status"] == "audit_not_promoted"
-    assert result["pointer_updated"] is False
-    assert "aggregate_holdout" in str(result["eligibility_reason"])
-    assert result["artifact_path"].is_file()
-
-
-def test_isotonic_invalid_cli_args_fail_explicitly():
-    parser = build_arg_parser()
-
-    with pytest.raises(SystemExit) as excinfo:
-        parser.parse_args(["--ticker", "SPY"])
-
-    assert excinfo.value.code == 2
 
 
 def test_isotonic_lineage_hash_matches_locked_recipe():
@@ -140,20 +83,6 @@ def test_isotonic_path_convention_under_isotonic_subdir():
     )
 
     assert path == Path("DATA_ROOT") / "v2_calibration" / "isotonic" / "A" / "A1" / "SPY" / "5c" / "cal-test-run.json"
-
-
-def test_isotonic_no_partial_artifact_or_pointer_on_failure(monkeypatch, tmp_path):
-    _patch_basic_pipeline(monkeypatch)
-
-    def fail_fit(rows, *, horizon, split):
-        raise RuntimeError("simulated isotonic failure")
-
-    monkeypatch.setattr("calibration.a1_isotonic_artifact_production.fit_a1_isotonic_artifact", fail_fit)
-
-    with pytest.raises(RuntimeError):
-        _produce(tmp_path)
-
-    assert not list(tmp_path.rglob("*.json"))
 
 
 def test_is_eligible_for_current_pointer_isotonic_returns_reason_per_gate():
@@ -210,18 +139,3 @@ def _patch_basic_pipeline(monkeypatch, *, artifact: dict | None = None) -> None:
     )
 
 
-def _produce(tmp_path):
-    return produce_a1_isotonic_artifact(
-        db_path=Path("unused.db"),
-        ticker="SPY",
-        horizon="5c",
-        train_start=0,
-        train_end=1,
-        calibration_start=1,
-        calibration_end=2,
-        holdout_start=2,
-        holdout_end=3,
-        governed_max_age_seconds=691200,
-        now_epoch_seconds=1000,
-        data_root=tmp_path,
-    )

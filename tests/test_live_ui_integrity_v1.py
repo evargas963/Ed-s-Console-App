@@ -1,4 +1,4 @@
-"""LIVE_UI_INTEGRITY_V1 — render-coherence guard, Tier-C dedup, card-trust-gate harness.
+"""LIVE_UI_INTEGRITY_V1 — render-coherence guard, Tier-C dedup, ticker-switch classification.
 
 The coherence-headline / stack INVALID chip / lane-stale-label DOM tests this file used to
 mirror against legacy static/index.html were retired (/console cutover, operator directive
@@ -7,27 +7,7 @@ mirror against legacy static/index.html were retired (/console cutover, operator
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import importlib.util
 import pytest
-
-ROOT = Path(__file__).resolve().parent.parent
-HARNESS = ROOT / "tools" / "run_universal_card_fidelity_runtime.py"
-
-
-def _load_harness_module():
-    name = "run_universal_card_fidelity_runtime_for_live_ui_integrity"
-    spec = importlib.util.spec_from_file_location(name, HARNESS)
-    mod = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(mod)
-    return mod
-
-
-_HARNESS = _load_harness_module()
-analytics_card_trust_gate = _HARNESS.analytics_card_trust_gate
-engine_tradeable_setup = _HARNESS.engine_tradeable_setup
 
 
 def _full_trusted_card_payload(ticker: str = "SPY", **overrides) -> dict:
@@ -58,10 +38,8 @@ def _full_trusted_card_payload(ticker: str = "SPY", **overrides) -> dict:
 # edPaintNetGex, coherence-headline, dr-trust-stack chips, horizon withhold reasons, Tier-C
 # dedup DOM hooks, DB-contention operator chips) -- none of it has any footprint in the new
 # console (confirmed by direct grep across static/js/*.js and static/console.html). The
-# harness-backed tests below (analytics_card_trust_gate / engine_tradeable_setup from
-# tools/run_universal_card_fidelity_runtime.py) and the pure-Python render-coherence-guard /
-# dedup / ticker-switch-classification tests are UNAFFECTED -- none of them read index.html at
-# all -- and are preserved as-is.
+# pure-Python render-coherence-guard / dedup / ticker-switch-classification tests below are
+# UNAFFECTED -- none of them read index.html at all -- and are preserved as-is.
 
 
 def _derive_integrity(
@@ -683,108 +661,11 @@ def test_guest_switch_sla_report_classifications():
     assert "LIVE_GUEST_SLA_NOT_PROVEN" in report["classifications"]
 
 
-@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
-def test_analytics_stale_suppresses_engine_tradeable_setup(ticker):
-    payload = _full_trusted_card_payload(ticker, analytics_stale=True)
-    assert analytics_card_trust_gate(payload, active_ticker=ticker)["trusted"] is False
-    assert engine_tradeable_setup(payload) is False
-
-
-@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
-def test_pending_shell_suppresses_engine_tradeable_setup(ticker):
-    payload = _full_trusted_card_payload(ticker, analytics_pending_shell=True)
-    assert analytics_card_trust_gate(payload, active_ticker=ticker)["trusted"] is False
-    assert engine_tradeable_setup(payload) is False
-
-
-@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
-def test_cache_restore_stale_suppresses_engine_tradeable_setup(ticker):
-    cached = _full_trusted_card_payload(ticker, analytics_stale=False)
-    restored = snapshot_cache_restore_marks_stale(cached)
-    assert restored["analytics_stale"] is True
-    assert analytics_card_trust_gate(restored, active_ticker=ticker)["trusted"] is False
-    assert engine_tradeable_setup(restored) is False
-
-
-@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
-def test_partial_mhap_suppresses_engine_tradeable_setup(ticker):
-    payload = _full_trusted_card_payload(
-        ticker,
-        mhap_rows=[
-            {"horizon": "1c", "call": "LONG", "confidence": 0.71},
-            {"horizon": "5c", "call": "LONG", "confidence": 0.65},
-        ],
-    )
-    assert analytics_card_trust_gate(payload, active_ticker=ticker)["trusted"] is False
-    assert engine_tradeable_setup(payload) is False
-
-
-@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
-def test_ticker_mismatch_fails_card_trust_gate(ticker):
-    payload = _full_trusted_card_payload(ticker)
-    result = analytics_card_trust_gate(payload, active_ticker="OTHER")
-    assert result["trusted"] is False
-    assert result["reason"] == "ticker_mismatch"
-
-
-@pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM"])
-def test_trusted_full_payload_passes_card_trust_gate(ticker):
-    payload = _full_trusted_card_payload(ticker)
-    result = analytics_card_trust_gate(payload, active_ticker=ticker)
-    assert result["trusted"] is True
-    assert engine_tradeable_setup(payload) is True
-
-
-def test_fusion_unavailable_fails_card_trust_gate():
-    payload = _full_trusted_card_payload("SPY", fusion_available=False)
-    assert analytics_card_trust_gate(payload, active_ticker="SPY")["trusted"] is False
-    assert analytics_card_trust_gate(payload, active_ticker="SPY")["reason"] == "fusion_unavailable"
-
-
 def test_wrong_ticker_render_coherence_guard_blocks_before_card_paint():
     payload = _full_trusted_card_payload("QQQ")
     guard = render_coherence_guard(payload, active_ticker="SPY")
     assert guard.ok is False
     assert guard.reason == "ticker"
-    assert analytics_card_trust_gate(payload, active_ticker="SPY")["trusted"] is False
-
-
-
-
-def test_quote_plane_hypothetical_fields_do_not_affect_card_trust_gate():
-    """Even if plane keys appear on ms_dict, card trust ignores them (not gate inputs)."""
-    payload = _full_trusted_card_payload("SPY")
-    payload["plane_quote_authority"] = "rest_fallback_explicit"
-    payload["streaming_fallback_explicit"] = True
-    payload["rest_fallback_explicit"] = True
-    assert analytics_card_trust_gate(payload, active_ticker="SPY")["trusted"] is True
-    assert engine_tradeable_setup(payload) is True
-
-
-def test_syncing_non_cache_refresh_in_progress_still_passes_card_trust_gate():
-    """Server refresh without client cache restore: last trusted bundle may paint (SYNCING)."""
-    payload = _full_trusted_card_payload(
-        "SPY",
-        analytics_refresh_in_progress=True,
-        analytics_stale=False,
-        _update_source="sse_tier_c",
-    )
-    gate = analytics_card_trust_gate(payload, active_ticker="SPY")
-    assert gate["trusted"] is True
-    assert engine_tradeable_setup(payload) is True
-
-
-def test_client_ticker_cache_refresh_fail_closed_vs_syncing_non_cache():
-    cached = _full_trusted_card_payload("SPY", analytics_stale=False)
-    restored = snapshot_cache_restore_marks_stale(cached)
-    assert analytics_card_trust_gate(restored, active_ticker="SPY")["trusted"] is False
-    syncing = _full_trusted_card_payload(
-        "SPY",
-        analytics_refresh_in_progress=True,
-        analytics_stale=False,
-        _update_source="sse_tier_c",
-    )
-    assert analytics_card_trust_gate(syncing, active_ticker="SPY")["trusted"] is True
 
 
 # ── TERRAIN COMMAND DECK — layout contract ──────────────────────────────────

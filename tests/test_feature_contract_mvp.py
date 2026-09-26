@@ -377,15 +377,6 @@ def test_inference_snapshot_rejects_invalid_features():
         )
 
 
-def test_gap_report_structure():
-    from features.feature_gap_report import compare_live_and_db_feature_support
-
-    r = compare_live_and_db_feature_support()
-    assert r["contract_version"] == "v1_1m_mvp"
-    assert len(r["features"]) == 10
-    assert all("chosen_live_source" in x for x in r["features"])
-
-
 def test_validate_rejects_nan_in_canonical_row():
     from features.canonical_contract import validate_feature_contract_row, get_mvp_feature_names
 
@@ -545,31 +536,3 @@ def test_inference_snapshot_raises_on_invalid_l1_coercion():
         )
 
 
-def test_semantic_parity_controlled_fixtures():
-    from features.semantic_parity import assert_live_db_canonicalization_equivalent
-
-    live = {
-        "spot": 450.0,
-        "spread": 0.0002,
-        "spread_pts": 0.02,
-        "zone": "pin_bull",
-        "nearest_above_dist": 1.5,
-        "nearest_below_dist": -2.0,
-        "net_gamma": 1e6,
-        "vwap_side": "above",
-        "dist_to_vwap_pts": 0.25,
-        "liquidity_summary": {"absorption_score": 0.3, "continuation_score": -0.1},
-    }
-    db = {
-        "spot": 450.0,
-        "spread": 0.02,
-        "zone": "pin_bull",
-        "nearest_above_dist": 1.5,
-        "nearest_below_dist": -2.0,
-        "net_gamma": 1e6,
-        "vwap_side": "above",
-        "vwap_dist_pts": 0.25,
-        "absorption_score": 0.3,
-        "continuation_score": -0.1,
-    }
-    assert_live_db_canonicalization_equivalent(live, db)

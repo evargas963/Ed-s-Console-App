@@ -52,15 +52,6 @@ def test_engineer_features_does_not_derive_rules_15c_from_empirical_preds():
     assert "rules_15c_confidence" not in names
 
 
-def test_transformer_meta_horizon_label():
-    from transformer_model import _horizon_label_from_meta
-
-    assert (
-        _horizon_label_from_meta({"target_column": "outcome_15c"}) == "15c"
-    )
-    assert _horizon_label_from_meta({}) == "1c"
-
-
 @pytest.mark.parametrize("slug", ["1c", "5c", "15c", "60c"])
 def test_train_ticker_writes_horizon_metadata(tmp_path: Path, slug: str):
     """End-to-end XGB save: meta.target_column and filenames match horizon (small synthetic df)."""

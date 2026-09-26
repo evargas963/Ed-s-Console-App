@@ -479,27 +479,6 @@ def test_liquidity_snapshot_scopes_checkpoint_ids_away_from_canonical():
     assert not (live & mid), "a checkpoint scope shares ids with the canonical scope"
 
 
-def test_live_one_faucet_check_sees_level_rows_inside_lists():
-    """The live check compared nothing inside levels[] — the payload shape it must read."""
-    from tools.check_one_faucet_live import numeric_leaves
-
-    levels_payload = {"levels": [{"id": "OVERNIGHT_HIGH", "price": 773.3975},
-                                 {"id": "PDL", "price": 749.59}]}
-    liq_payload = {"raw_levels_used": [{"tag": "OVERNIGHT_HIGH", "value": 773.40}]}
-    a = numeric_leaves(levels_payload)
-    b = numeric_leaves(liq_payload)
-    assert a["level:overnight_high"] == 773.3975
-    assert b["level:overnight_high"] == 773.40
-    assert a["level:overnight_high"] != b["level:overnight_high"], (
-        "the fixture that reproduces the measured divergence must be visible to the "
-        "live check — before this it descended into no list at all")
-
-    radar = {"rows": [{"gex": 1.0}, {"gex": 2.0}]}
-    assert not any(k.startswith("level:") for k in numeric_leaves(radar)), (
-        "anonymous collection rows must stay excluded — comparing row zero of two "
-        "different collections manufactures failures")
-
-
 def test_phase2a_check_is_registered_enforced():
     from tools.check_institutional_correctness import CHECKS
 

@@ -5,7 +5,6 @@ import datetime
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -15,27 +14,6 @@ if str(ROOT) not in sys.path:
 
 def _ts(y, m, d, hh, mm) -> float:
     return datetime.datetime(y, m, d, hh, mm, tzinfo=datetime.timezone.utc).timestamp()
-
-
-def test_session_safe_abs_price_moves_drops_weekend_gap():
-    from research.tcn_eval_v1.runner import session_safe_abs_price_moves
-
-    # Fri 15:58/15:59 then Mon 09:31/09:32 — weekend gap must not enter the median basis.
-    ends = np.array([
-        _ts(2026, 7, 24, 19, 58),  # 15:58 ET
-        _ts(2026, 7, 24, 19, 59),
-        _ts(2026, 7, 27, 13, 31),  # 09:31 ET Mon
-        _ts(2026, 7, 27, 13, 32),
-    ])
-    closes = np.array([100.0, 100.1, 105.0, 105.05])  # +4.9 Fri->Mon gap
-    safe = session_safe_abs_price_moves(ends, closes)
-    assert len(safe) == 2
-    assert np.isclose(safe[0], 0.1)
-    assert np.isclose(safe[1], 0.05)
-    raw = np.abs(np.diff(closes))
-    assert float(np.max(raw)) > 4.0, "raw series still contains the weekend gap"
-    assert 4.9 not in set(np.round(safe, 6)), "session-safe must drop the Fri->Mon step"
-    assert float(np.median(safe)) < 0.2, "session-safe median excludes the gap"
 
 
 def test_market_session_saturday_is_closed_not_rth():
@@ -73,17 +51,3 @@ def test_bar_accumulator_gap_resets_volume_delta():
     # one bar, which is the RC-168 finding this branch exists for. The accurate word wins.
     assert cur.get("volume_source") == "schwab_quote_totalVolume_gap_unattributable"
 
-
-def test_cost_aware_and_survival_fallback_not_raw_npdiff():
-    """Structural lock: the RC-107 fallback sites must not use raw np.diff(closes)."""
-    import re
-
-    for rel in (
-        "research/cost_aware_eval_v1/runner.py",
-        "research/survival_eval_v1/runner.py",
-    ):
-        text = (ROOT / rel).read_text(encoding="utf-8")
-        assert "session_safe_abs_price_moves" in text, f"{rel} missing session-safe fallback"
-        assert not re.search(r"np\.median\(np\.abs\(np\.diff\(closes\)\)\)", text), (
-            f"{rel} still has raw np.diff fallback"
-        )

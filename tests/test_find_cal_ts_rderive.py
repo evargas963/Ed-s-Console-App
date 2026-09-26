@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pandas as pd
 
@@ -100,9 +99,6 @@ def test_ml_train_load_data_where_has_no_rth_where_clause():
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
 )
-_ISSUE14_DIAGNOSTIC_BANNER = (
-    "Diagnostic only — not referenced by production runbooks or schedulers"
-)
 
 
 def test_no_rth_where_clause_callers_repo_wide(repo_index):
@@ -120,15 +116,6 @@ def test_no_rth_where_clause_callers_repo_wide(repo_index):
         if "rth_where_clause()" in src:
             offenders.append(str(rel).replace("\\", "/"))
     assert not offenders, f"rth_where_clause() callers: {offenders}"
-
-
-def test_issue14_rowcount_proof_diagnostic_only_docstring():
-    import ast
-
-    path = Path(__file__).resolve().parents[1] / "tools/_issue14_rowcount_proof.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    doc = ast.get_docstring(tree) or ""
-    assert _ISSUE14_DIAGNOSTIC_BANNER in doc
 
 
 def test_v2_advisory_backfill_stamps_et_clock_from_ts_utc():

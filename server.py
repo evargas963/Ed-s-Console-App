@@ -5460,12 +5460,12 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
     ``node`` is the ticker object from GET /quotes JSON (keys quote, extended, regular).
     """
     _q = node.get("quote") or {}
-    _ext = node.get("extended") or {}
-    _reg = node.get("regular") or {}
+    _ext = node.get("extended") or {}  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
+    _reg = node.get("regular") or {}  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
     last = _safe_float_quote(_q.get("lastPrice"))
     if last is None or last <= 0:
         last = _safe_float_quote(_ext.get("lastPrice"))
-    regular_close = _safe_float_quote(_reg.get("regularMarketLastPrice"))
+    regular_close = _safe_float_quote(_reg.get("regularMarketLastPrice"))  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
     mark = _safe_float_quote(_q.get("mark"))
     if mark is None or mark <= 0:
         mark = _safe_float_quote(_ext.get("mark"))
@@ -5482,15 +5482,15 @@ def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
         # seconds-unit outcome filler matched zero bars and no snapshot got labeled all day.
         return v / 1000.0 if v is not None and v > 1e10 else v
 
-    quote_time = _safe_float_quote(_q.get("quoteTime"))
+    quote_time = _safe_float_quote(_q.get("quoteTime"))  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
     if quote_time is None:
         quote_time = _safe_float_quote(_ext.get("quoteTime"))
     quote_time = _epoch_seconds(quote_time)
-    trade_time = _safe_float_quote(_q.get("tradeTime"))
+    trade_time = _safe_float_quote(_q.get("tradeTime"))  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
     if trade_time is None:
         trade_time = _safe_float_quote(_ext.get("tradeTime"))
     if trade_time is None:
-        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))
+        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
     trade_time = _epoch_seconds(trade_time)
     # Current live spot is quote/extended lastPrice only. regularMarketLastPrice is
     # a session close; mark is the vendor mid. Neither may become spot.

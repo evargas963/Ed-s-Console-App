@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from live_vs_replay_validation import run_live_vs_replay_validation
 from replay_bundle_coverage import _coverage_for_table
 from timeframe_config import CANONICAL_TIMEFRAME
 
@@ -82,11 +81,3 @@ def test_replay_bundle_coverage_reads_blobs_via_join_after_drop(tmp_path):
         c.close()
 
 
-def test_live_vs_replay_counts_bundles_via_join_after_drop(tmp_path):
-    p = tmp_path / "d.db"
-    _build_postdrop_db(p)
-    # table defaults to snapshots_1m_normalized; a non-repointed reader would raise
-    # 'no such column: option_chain_json' here.
-    report = run_live_vs_replay_validation(str(p), n=_N, min_required=1)
-    assert isinstance(report, dict)
-    assert report["rows_available_full_bundle"] == _N

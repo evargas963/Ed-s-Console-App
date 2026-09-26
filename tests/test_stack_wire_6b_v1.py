@@ -20,8 +20,6 @@ def test_replay_bundle_min_json_length_authority_and_adoption():
     assert REPLAY_BUNDLE_MIN_JSON_LENGTH == 10
     consumers = (
         "realized_contract_eval.py",
-        "live_vs_replay_validation.py",
-        "tools/measure_post_fix_theta_v1.py",
     )
     root = _repo_root()
     for rel in consumers:
@@ -80,19 +78,6 @@ def test_no_hardcoded_strike_tolerance_literals_in_realized_contract_eval():
     src_expr = inspect.getsource(rce._expressions_match_live)
     assert re.search(r"(?<![\w.])0\.02(?![\w.])", src_expr) is None
     assert "STRIKE_MATCH_TOL_NICKEL" in src_expr
-
-
-def test_strike_match_tol_nickel_adopted_in_live_vs_replay_validation():
-    """FIND-WIRE6-4 extension: live_vs_replay_validation strike comparison uses authority constant.
-
-    Caught by gap-closure self-audit after WIRE-6b: the L298 strike-match in
-    live_vs_replay_validation.py was using bare 0.021 (inconsistent with L316/L468
-    docs saying 0.02). Now uses STRIKE_MATCH_TOL_NICKEL imported from realized_contract_eval.
-    """
-    import live_vs_replay_validation as lvr
-    src = inspect.getsource(lvr)
-    assert re.search(r"(?<![\w.])0\.021(?![\w.])", src) is None, "bare 0.021 literal still present"
-    assert "STRIKE_MATCH_TOL_NICKEL" in src
 
 
 def test_live_decision_bundle_tick_refresh_default_constants():

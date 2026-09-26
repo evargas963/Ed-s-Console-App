@@ -82,41 +82,6 @@ ROWS: tuple[Row, ...] = (
         justification='Orchestrator: takes db_path, calls calibration.v2_a1_calibration.load_a1_calibration_rows which reads persisted calibration rows from SQLite; composes fit_a1_isotonic_artifact + build_a1_conformal_artifact + lifecycle augmentation + atomic artifact + pointer writes. No direct Schwab wire derivation.',
     ),
     Row(
-        file='calibration/a1_isotonic_artifact_production.py', derivation='produce_a1_isotonic_artifact', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Orchestrator: takes db_path, calls calibration.v2_a1_calibration.load_a1_calibration_rows which reads persisted calibration rows from SQLite; composes fit_a1_isotonic_artifact + lifecycle augmentation + atomic artifact + pointer writes. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/analyze_phase3.py', derivation='_snapshot_fallback', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens a row read on the caller-supplied sqlite3 Connection (parameter, not opened here) to compute fallback bucket aggregates for phase3 analysis. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/analyze_phase3.py', derivation='analyze', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Phase3 orchestrator: takes db_path, opens SQLite connection on the calibration DB, loads decision-log rows + snapshot fallback, composes Brier triplet + bucket statistical-integrity gates. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/analyze_phase4.py', derivation='analyze', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Phase4 orchestrator: takes db_path, opens SQLite connection on the calibration DB, reads decision-log + snapshot rows, computes directional-PnL EV by direction + bucket statistical-integrity. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/anchor_audit.py', derivation='snapshot_has_bar_anchor', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads via caller-supplied sqlite3.Connection (parameter, not opened here) to check whether a bar anchor exists for (ticker, ts_utc). Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/audit_phase1.py', derivation='_connect', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens a sqlite3 read-only connection on the caller-supplied db_path. Mega4 internal SQLite connection factory; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/audit_phase1.py', derivation='_table_exists', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads via caller-supplied sqlite3 Connection (sqlite_master row) to check table existence. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
         file='calibration/backfill_outcomes.py', derivation='_resync_existing_outcomes_from_snapshots', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Per-row outcomes resync writer on caller-supplied sqlite3 Connection. Persistence-only; no Schwab wire derivation.',
@@ -130,21 +95,6 @@ ROWS: tuple[Row, ...] = (
         file='calibration/backfill_outcomes.py', derivation='resolve_snapshot_for_backfill', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Opens SQLite read on caller-supplied sqlite3 Connection to resolve the source snapshot for an outcomes backfill row. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/backfill_signal_layer_v1_bundle.py', derivation='backfill', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Signal-layer-v1-bundle backfill orchestrator: opens SQLite on caller-supplied db_path, iterates calibration_decision_log rows lacking the signal_layer_v1 bundle, writes the rebuilt bundle per row. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/build_trusted_anchor_proof_dataset.py', derivation='_seed_bars_and_snapshots', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite write on caller-supplied db_path; seeds price_bars_1m + snapshots with controlled fixture data for the proof dataset. Mega4 internal SQLite write; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/canonical_1m_grid_scan.py', derivation='scan_db', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; walks price_bars_1m rows to verify canonical 60s UTC grid alignment per ticker. Mega4 internal SQLite read; no Schwab wire derivation.',
     ),
     Row(
         file='calibration/canonical_enforcement.py', derivation='enforce_calibration_decision_log_only_1m', disposition='ALLOWLISTED',
@@ -167,136 +117,6 @@ ROWS: tuple[Row, ...] = (
         justification='Opens SQLite on the caller-supplied db_path; counts 1m-labeled vs other-tf snapshots for enforcement reporting. Mega4 internal SQLite read; no Schwab wire derivation.',
     ),
     Row(
-        file='calibration/edge_discovery.py', derivation='_fusion_top_probs', disposition='DERIVED',
-        producer_refs=('market_state.py:build_market_state',),
-        justification='Probability fusion; consumes model outputs only.',
-    ),
-    Row(
-        file='calibration/edge_discovery.py', derivation='load_labeled_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on the caller-supplied db_path; loads calibration_decision_log + label columns into Python dict rows. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/edge_discovery.py', derivation='run_discovery', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Orchestrator: takes db_path, calls load_labeled_rows for SQLite reads, runs the edge-discovery slice + bootstrap evaluation pipeline. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/edge_discovery.py', derivation='run_discovery_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Orchestrator variant: same as run_discovery but works on already-loaded rows; if rows are None it loads via load_labeled_rows (SQLite read). No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/edge_validation.py', derivation='analyze_edge', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Orchestrator: takes db_path, calls edge_discovery.load_labeled_rows for SQLite reads, runs the edge-validation slice / bootstrap pipeline. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/legacy_report.py', derivation='analyze', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Legacy report orchestrator: takes db_path, opens SQLite connection on the calibration DB, reads calibration_decision_log rows, builds the legacy summary report. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/movement_target_phase5_discrimination_v1.py', derivation='run', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Orchestrator: takes db_path, calls phase6_edge_discovery_governed_v1.load_rows which reads persisted calibration rows from SQLite, then composes movement_target_eval_common metrics + discrimination gates. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/movement_target_phase65_isolation_v1.py', derivation='run_phase65_movement', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Orchestrator: takes db_path, calls phase6_edge_discovery_governed_v1.load_rows which reads persisted calibration rows from SQLite, then composes IS/OOS isolation evaluations. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/movement_target_phase6_edge_v1.py', derivation='run', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Orchestrator: takes db_path, calls phase6_edge_discovery_governed_v1.load_rows which reads persisted calibration rows from SQLite, then composes horizon-level edge metrics for the movement heads. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/phase65_edge_isolation_v1.py', derivation='run_phase65', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Phase 6.5 orchestrator: takes db_path, calls phase6_edge_discovery_governed_v1.load_rows for SQLite reads, walks marginal slices via pure binners, evaluates IS/OOS slices via multiclass_metrics. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/phase6_edge_discovery_governed_v1.py', derivation='_load_bar_ends', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads via caller-supplied sqlite3.Connection from price_bars_1m table; returns dict of ticker → sorted bar_end ts list for anchor presence checks. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/phase6_edge_discovery_governed_v1.py', derivation='load_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite on caller-supplied db_path; reads calibration_decision_log rows joined with outcomes for the configured horizon range. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/phase6_edge_discovery_governed_v1.py', derivation='run_phase6', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Phase 6 orchestrator: takes db_path, calls load_rows for SQLite read, composes horizon_metrics + split_time_quartiles + bootstrap CI. No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/repair_anchor_coverage_pad_v1.py', derivation='_tickers_needing_pad', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; returns tickers whose anchor-coverage needs padding for the repair pass. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/repair_anchor_coverage_pad_v1.py', derivation='run', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Anchor-coverage pad repair orchestrator: opens SQLite, iterates _tickers_needing_pad, inserts pad rows into price_bars_1m. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/repair_canonical_1m_bars_for_outcomes.py', derivation='repair_snapshot_horizon_bars', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read+write on caller-supplied db_path; repairs missing horizon bars for snapshots that have outcomes but lack the forward bars. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/repair_canonical_1m_edge_carry_v1.py', derivation='_planned_edge_carries', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; computes the planned edge-carry operations for the repair pass. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/repair_canonical_1m_edge_carry_v1.py', derivation='run_repair', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Edge-carry repair orchestrator: opens SQLite, iterates _planned_edge_carries, writes carry-forward bars to price_bars_1m. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/repair_canonical_1m_interior_gaps_v1.py', derivation='_collect_interior_missing', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; collects interior-gap (missing bar) entries per ticker for the repair pass. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/repair_canonical_1m_interior_gaps_v1.py', derivation='run_repair', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Interior-gap repair orchestrator: opens SQLite, iterates _collect_interior_missing, writes fill rows to price_bars_1m. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/run_production_accumulation_validation.py', derivation='_duplicate_key_groups', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; returns groups of duplicate (ticker, ts_utc, ml_horizon) keys for the validation pass. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/run_production_accumulation_validation.py', derivation='_outcome_row_for_index', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; returns the outcome row at a given index for validation comparison. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/run_production_accumulation_validation.py', derivation='_seed_bars_and_snapshots', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite write on caller-supplied db_path; seeds price_bars_1m + snapshots with controlled fixture data for the validation harness. Mega4 internal SQLite write; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/run_production_accumulation_validation.py', derivation='_stub_models', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Pure helper: returns stub model artifact dicts for the accumulation-validation harness. No DB read here; classified ALLOWLISTED because the parent run() pipeline is the orchestrator that DOES open SQLite; this helper is filesystem fixture only. No market-field derivation.',
-    ),
-    Row(
-        file='calibration/run_production_accumulation_validation.py', derivation='_unsafe_non_exact_joins', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Opens SQLite read on caller-supplied db_path; returns rows whose snapshot/outcome joins are non-exact (would-be-unsafe inserts) for the validation pass. Mega4 internal SQLite read; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/run_production_accumulation_validation.py', derivation='run', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Production accumulation validation orchestrator: takes db_path, seeds fixtures, validates that every snapshot ↔ outcome join is exact and that no duplicate keys exist. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
         file='calibration/schema.py', derivation='_migrate_calibration_decision_log_columns', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='DDL migration: takes a sqlite3.Connection, ADD COLUMN on calibration_decision_log for any missing nullable columns under the current schema. Persistence-only; no Schwab wire derivation.',
@@ -310,16 +130,6 @@ ROWS: tuple[Row, ...] = (
         file='calibration/schema.py', derivation='_migrate_calibration_unique_ticker_decision_ts', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='DDL migration: takes a sqlite3.Connection, alters calibration_decision_log to add the (ticker, decision_ts_utc) unique constraint. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/signal_engineering.py', derivation='run_engineering', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Orchestrator: takes db_path, calls calibration.edge_discovery.load_labeled_rows(db_path) which reads persisted calibration_decision_log rows from SQLite, then composes pure analysis (directional_diagnostics, failure_identification, filter combinations). No direct Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/signal_layer_discrimination.py', derivation='run_discrimination', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Discrimination orchestrator: takes db_path, calls edge_discovery.load_labeled_rows for SQLite reads, then composes Pearson / Spearman / MI per feature. No direct Schwab wire derivation.',
     ),
     Row(
         file='calibration/v2_a1_calibration.py', derivation='load_a1_5c_calibration_rows', disposition='ALLOWLISTED',
@@ -347,19 +157,9 @@ ROWS: tuple[Row, ...] = (
         justification='DB writer orchestrator: takes db_path, delegates to calibration.writer.append_calibration_decision which inserts a row into the calibration_decision_log SQLite table. Idempotent upsert; no direct Schwab wire derivation.',
     ),
     Row(
-        file='calibration/validate_outcome_join.py', derivation='analyze', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Outcome-join validator: takes db_path, opens SQLite on the calibration DB, reads outcomes + snapshots join + reports gap statistics. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
         file='calibration/writer.py', derivation='append_calibration_decision', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Single canonical inserter for the calibration_decision_log SQLite table; opens connection on caller-supplied db_path, idempotent upsert with retry-on-busy. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='debug_flow_snapshot.py', derivation='_contracts_from_chain_json', disposition='SCHWAB_LEAF',
-        schwab_leaf='chains.callExpDateMap.*.openInterest',
-        justification='Parses option chain JSON for debug snapshot.',
     ),
     Row(
         file='features/canonical_contract.py', derivation='get_feature_spec', disposition='DERIVED',
@@ -552,11 +352,6 @@ ROWS: tuple[Row, ...] = (
         justification='Composes Mega1 producers for signal_input_from_snapshot_row_dict output fields.',
     ),
     Row(
-        file='features/semantic_parity.py', derivation='assert_live_db_canonicalization_equivalent', disposition='DERIVED',
-        producer_refs=('features/live_feature_adapter.py:build_live_mvp_feature_row', 'features/db_feature_adapter.py:build_db_mvp_feature_row'),
-        justification='Composes Mega1 producers for assert_live_db_canonicalization_equivalent output fields.',
-    ),
-    Row(
         file='features/shared_sequence_context.py', derivation='_max_transformer_seq_len_for_ticker', disposition='DERIVED',
         producer_refs=('market_state.py:build_market_state',),
         justification='Composes Mega1 producers for _max_transformer_seq_len_for_ticker output fields.',
@@ -652,26 +447,6 @@ ROWS: tuple[Row, ...] = (
         justification='Governed stack contract validation.',
     ),
     Row(
-        file='levels.py', derivation='key_levels_to_plot_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega2_internal_helper',
-        justification='Plot row formatter; no derivation.',
-    ),
-    Row(
-        file='levels.py', derivation='to_display_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega2_display_formatter',
-        justification='ALLOWLISTED for to_display_rows: Display mapping only.',
-    ),
-    Row(
-        file='levels.py', derivation='totals_to_df_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega2_display_formatter',
-        justification='Totals display mapping.',
-    ),
-    Row(
-        file='levels.py', derivation='walls_to_df_rows', disposition='ALLOWLISTED',
-        allowlist_id='mega2_display_formatter',
-        justification='Walls display mapping.',
-    ),
-    Row(
         file='live_decision_bundle.py', derivation='_key_levels_from_ms_dict', disposition='DERIVED',
         producer_refs=('market_state.py:build_market_state', 'server.py:_fetch_state'),
         justification='Extracts level tuples from cached state.',
@@ -725,26 +500,6 @@ ROWS: tuple[Row, ...] = (
         file='live_market_plane.py', derivation='take_fresh_sse_quote_payload', disposition='DERIVED',
         producer_refs=('server.py:_fetch_state',),
         justification='Delegates to Schwab transport producers for take_fresh_sse_quote_payload.',
-    ),
-    Row(
-        file='live_vs_replay_validation.py', derivation='_live_expiry_from_proof', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_live_expiry_from_proof).',
-    ),
-    Row(
-        file='live_vs_replay_validation.py', derivation='_live_from_row', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_live_from_row).',
-    ),
-    Row(
-        file='live_vs_replay_validation.py', derivation='_replay_one_row', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_replay_one_row).',
-    ),
-    Row(
-        file='live_vs_replay_validation.py', derivation='run_live_vs_replay_validation', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (run_live_vs_replay_validation).',
     ),
     Row(
         file='lstm_data.py', derivation='_connect', disposition='ALLOWLISTED',
@@ -3031,19 +2786,9 @@ ROWS: tuple[Row, ...] = (
         justification='Run-start aggregator: composes payload from caller-supplied (ml_horizon, target_column, tickers) + `enrollment_category_counts(db_path)` SQLite read, writes via `write_status`. No Schwab wire derivation.',
     ),
     Row(
-        file='transformer_model.py', derivation='predict', disposition='DERIVED',
-        producer_refs=('features/inference_snapshot.py:build_inference_snapshot_v1', 'market_state.py:build_market_state'),
-        justification='Transformer inference: takes inference_snapshot_v1 (built from build_market_state Mega1 producer + canonical features), runs forward pass on the in-memory model, returns probability triplet.',
-    ),
-    Row(
         file='volatility_regime.py', derivation='classify_volatility_regime', disposition='DERIVED',
         producer_refs=('market_state.py:build_market_state',),
         justification='Vol policy from rv/iv/atr/vix upstream fields.',
-    ),
-    Row(
-        file='xgboost_model.py', derivation='predict', disposition='DERIVED',
-        producer_refs=('features/inference_snapshot.py:build_inference_snapshot_v1', 'market_state.py:build_market_state'),
-        justification='Inference on canonical features; no Schwab wire ingest.',
     ),
     Row(
         file='server.py', derivation='_attach_analytics_freshness_contract', disposition='ALLOWLISTED',

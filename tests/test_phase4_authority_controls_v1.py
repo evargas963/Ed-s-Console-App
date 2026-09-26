@@ -86,7 +86,7 @@ def test_mutation_control_the_gate_actually_discriminates():
     orig = gate.run_census
     gate.run_census = lambda: {
         "PRODUCTION_OWNER": ["tools/run_stream_capture.py:555"],
-        "OFFLINE_TOOL": [], "TEST_ONLY": [],
+        "TEST_ONLY": [],
         "VIOLATION": ["app/options/order_flow/streaming.py:999"],
     }
     try:
