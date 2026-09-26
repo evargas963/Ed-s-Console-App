@@ -11501,7 +11501,7 @@ def _publish_levels(tk: str, chain: "list | None" = None,
         payload.update({
             "computed_ts_utc": time.time(), "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
             "chain_basis": "full", "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-            "_snap": snap, "_per_strike": snap.per_strike, "_gamma_surface": None,
+            "_per_strike": snap.per_strike, "_gamma_surface": None,
             # only a viewed ticker is repriced between chain fetches, so only its chain is kept
             "_chain": chain if viewed else None, "_chain_fetched_ts": fetched_ts,
         })
@@ -11519,6 +11519,7 @@ def _publish_levels(tk: str, chain: "list | None" = None,
             if payload["_gamma_surface"] is not None:
                 payload["_gamma_surface"]["surface_seq"] = _next_gamma_surface_seq(tk)
             _terrain_cache[tk] = payload
+            _terrain_snapshots[tk] = snap
             _terrain_profile_cache[tk] = snap.profile
         return snap
 
@@ -12067,6 +12068,10 @@ LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the si
 #: Gamma profiles for cached tickers, keyed by ticker. Kept beside the payload cache so a
 #: cached payload can be re-priced without refetching the chain (RC-28).
 _terrain_profile_cache: dict[str, list] = {}
+#: The TerrainSnapshot each ticker's payload was published from (its exposure books and charm map
+#: serve the vanna/charm-by-strike panels). Kept beside the cache, never inside it: the payload is
+#: served as JSON, and the books are keyed by (expiry, dte) tuples. Guarded by _terrain_cache_lock.
+_terrain_snapshots: "dict[str, TerrainSnapshot]" = {}
 
 
 def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
@@ -12459,7 +12464,7 @@ def _merge_forming_bar(bars: list[dict], forming: dict) -> list[dict]:
 def _published_snapshot(tk: str) -> "TerrainSnapshot | None":
     """The snapshot _publish_levels last published for `tk`, or None."""
     with _terrain_cache_lock:
-        return (_terrain_cache.get(tk) or {}).get("_snap")
+        return _terrain_snapshots.get(tk)
 
 
 @app.get("/api/options/vanna-by-strike")
@@ -13428,7 +13433,9 @@ def get_terrain(ticker: str = Query(...)):
         cached = terrain_cache_get(tk)
     if cached is not None:
         # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
-        return _reprice_cached_terrain(cached, tk)
+        # internal fields (the kept chain, the heatmap grid, per-strike rows) are served by their
+        # own endpoints -- never shipped on every terrain poll
+        return {k: v for k, v in _reprice_cached_terrain(cached, tk).items() if not k.startswith("_")}
     spot, spot_source, spot_ts = resolve_spot(tk)
     _why = _terrain_refresh_last_error.get(tk)
     return compute_terrain(tk, None, spot).to_dict() | {
