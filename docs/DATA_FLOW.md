@@ -65,7 +65,7 @@ operator.
 | Daemon memory | daemon | the message bus; the latest equity quote per symbol (for the browser's price row) |
 | Console memory | console | a second copy of the live quotes and books (fed from 8799); the downloaded chains; the computed levels |
 | `stream_capture.db` (21.8 GB) | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers |
-| `ed_console.db` (71.7 GB) | console | 1-minute bars, level crosses, daily OI and IV, the ticker board — plus the tables of the deleted ML pipeline |
+| `ed_console.db` (77.0 GB) | console | 1-minute bars, level crosses, daily OI and IV, the ticker board, chain captures (22.2 GB) and a morning chain per ticker (2.7 GB) — plus about 49 GB of tables of the deleted ML pipeline |
 | files | console | #303's saved levels per ticker (the fallback to delete) |
 
 ### 3.4 The journey of each kind of data
@@ -79,7 +79,9 @@ operator.
   console's own bar writer → `ed_console.db` → `/api/bars1m` → browser, **read on a timer**. The
   forming candle rides the price row.
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per ticker.
-  **Never stored** — only a morning copy and occasional captures are.
+  Captures are stored whenever a ticker is viewed, on no clock and on weekends too (2026-09-13, a
+  Sunday: 10,928 rows for 3 tickers); plus one morning copy per ticker. Stored compressed since
+  2026-09-23 (167–541 MB a day), plain text before (1.4–3.5 GB a day).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a push signal → the browser reads `/api/terrain` and
   four other slice routes. **Never stored** — a restart or the close loses them.
@@ -112,12 +114,17 @@ operator.
 
 - **Quote, option quote, book, bar:** Schwab → daemon state → pushed to the browser; written by the
   one writer.
-- **Chain:** Schwab REST, fetched by the daemon → daemon state → the producer; written by the one
-  writer. The browser is never pushed a whole chain.
-- **Levels, alerts, crosses:** producer → daemon state → pushed to the browser; written by the one
-  writer.
-- **After a restart, a weekend or the close:** the daemon loads the latest stored chain, levels and
-  bars at startup; the screens show them with their time.
+- **Chain:** Schwab REST, fetched by the daemon → daemon state → the producer. The browser is never
+  pushed a whole chain.
+- **Chain history:** every 30 minutes from 9:30 to 16:00 ET on market days (14 a day), the daemon
+  writes the full chain (every expiry) of each ticker on the board, compressed, one row per expiry,
+  through the one writer. Nothing is captured while the market is closed. This is what research
+  reads and what startup loads (the newest capture per ticker).
+- **Levels and alerts:** producer → daemon state → pushed to the browser; not stored (decision 7).
+- **Level crosses:** producer → written by the one writer.
+- **After a restart, a weekend or the close:** at startup the newest stored chain per ticker and the
+  bars are loaded, the levels are computed from them once, and the screens show them with their
+  time.
 
 ## 5. Checks that enforce this (a check that fails blocks the change)
 
@@ -140,10 +147,15 @@ operator.
 4. **One shell, one connection.** One page; tabs switch what is shown; one push connection.
 5. **One database, written only by the daemon's writer; the console reads it read-only.** The
    console's writes today (bars, level crosses, daily OI/IV, the ticker board) move to the
-   daemon's writer. The stored chain is the latest per ticker (what startup needs), not every
-   5-second chain; no table without a job (no alerts table — alerts are derived and expire).
+   daemon's writer. The stored chain is the chain history of decision 7, not every 5-second
+   chain; no table without a job (no alerts table — alerts are derived and expire).
 6. **Before any table is dropped:** each table's size is measured read-only; dropping needs a
    verified copy or the operator's explicit word; reclaiming space (VACUUM) is an offline
    maintenance window, never part of a code change.
+7. **Chain history is kept for research.** Schwab's API has no past option chains: a chain not
+   saved is gone. One table holds it (§4.2): full chain, every 30 minutes, market hours only,
+   compressed. Levels are not stored as history; research runs the one levels producer over the
+   stored chains, so research and the screen are one computation. The morning table folds into
+   this table and the chain gate's view-triggered captures stop.
 
 The work that closes the gaps in §3.5, in order, is `ACTIVE_PROGRAM.md`.

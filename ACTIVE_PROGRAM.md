@@ -2,8 +2,8 @@
 
 The one record of operator-directed work: what is in flight, queued or blocked. The design every
 item is built to is `docs/DATA_FLOW.md`; where code lives is `docs/ARCHITECTURE.md`. Rows leave this
-file when they finish (git keeps them). Rewritten 2026-09-26: the rows for the ML stack, the
-research program and the scheduled tasks were removed with that code and those tasks.
+file when they finish (git keeps them). The first rule is simple: the simplest plan that fits the
+design, with nothing kept that has no job. Plan approved by the operator 2026-09-26.
 
 Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 
@@ -11,32 +11,47 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 
 | ID | Status | Work item |
 |---|---|---|
-| P1-1 | NEXT | **Chain and levels through the daemon's writer, loaded at startup.** Every publish sends the latest chain per ticker as Schwab sent it and the derived levels, with their time, to the daemon's writer (not a new console writer); the latest are loaded at startup. Deletes #303's closed-market branch and its saved files. Restores the weekend/after-close screens. Checked on the running app. |
-| P1-2 | IN PROGRESS | **Console noise + the page's one reader** (branch `rehab/host-jobs`): no per-request log lines, no idle terrain line; every panel reads through one store; no page timer reads `/api` on a closed market. Open: 8 pytest + 1 browser test failing; then full suites, then checked on the running app. |
+| P1-0 | NEXT | **Clean production.** Delete `docs/CARD_TRUST_CONTRACT.md` (it describes a UI that no longer exists; the freshness badges it asked for live in `ed-core.js`). The terrain quarantine ledger becomes log lines: delete the tracked `reports/terrain_quarantine_ledger.jsonl`, its environment override and the test machinery that guarded the tracked file. In production: discard the local edits to those two files and delete the untracked `RUN_COMPRESSION_BACKFILL.md` (its chain steps are P2-DB3; its ML steps die with the drop). Close PR #267 (a fix to the backfill tool for tables being dropped). |
+| P1-1 | NEXT | **Chain history, and the screens after the close.** The daemon captures the full chain (every expiry) of each ticker on the board every 30 minutes, 9:30–16:00 ET, market days only, written compressed by its writer into `complete_chain_captures`, one row per expiry (DATA_FLOW decision 7). The console stops writing chain captures and the morning chain. At startup the console loads the newest capture per ticker and computes the levels once, shown with their time. `/api/terrain/strikes` compares with the previous market day's last capture; with none it says so (the live-chain fallback is deleted). Deletes #303's saved files and its closed-market branch. Checked on the running app, weekend screens included. Until P2-1 the console's live 5-second chain fetch remains. |
+| P1-2 | IN PROGRESS | **Console noise + the page's one reader** (branch `rehab/host-jobs`): no per-request log lines, no idle terrain line; every panel reads through one store; no page timer reads `/api` on a closed market. Open: 8 pytest + 1 browser test failing; then full suites; the Trade Desk checked on the running app before merge. |
 
 ## Phase 2 — the rest of the design, then decomposition
 
 | ID | Status | Work item |
 |---|---|---|
-| P2-1 | QUEUED | **The daemon fetches the chain** (DATA_FLOW decision 1). |
-| P2-2 | QUEUED | **The levels producer in its own process** (DATA_FLOW decision 2); results pushed and written. |
+| P2-1 | QUEUED | **The daemon fetches the chain** (DATA_FLOW decision 1); the console's chain fetch is deleted. |
+| P2-2 | QUEUED | **The levels producer in its own process** (DATA_FLOW decision 2); results pushed. |
 | P2-3 | QUEUED | **Everything pushed to the browser**: bars, order flow, liquidity; the page has no refresh timer; one push connection. |
-| P2-4 | OPERATOR | **The four standalone pages** (/chart, /desk, /exposure, /options): list what each has that the console lacks; the operator decides what moves into the console; the pages are deleted. |
-| P2-5 | QUEUED | **db.py**: delete the methods and tables only the deleted ML stack used, and `ml_horizon`, `movement_target_threshold`, `horizon_outcomes`, `decision_record`, `execution_identity`; move what remains (bars, level history, enrollment, connection) to `daemon/`. |
+| P2-4 | OPERATOR | **The four standalone pages** (/chart, /desk, /exposure, /options): list what each has that the console lacks, including anything a placeholder waits for; the operator decides what moves into the console; the pages are deleted. |
+| P2-5 | QUEUED | **db.py**: delete the methods and tables only the deleted ML stack used, and `ml_horizon`, `movement_target_threshold`, `horizon_outcomes`, `decision_record`, `execution_identity`, `calibration/schema.py`; move what remains (bars, level history, enrollment, connection) to `daemon/`. |
 | P2-6 | QUEUED | **server.py**: the chain fetch to `daemon/`, the levels loop and gamma-surface projection to `producer/`, the routes and startup to `console/`. |
-| P2-7 | QUEUED | **The other large files**: liquidity_value_engine.py, app/options/order_flow/streaming.py and engine.py, math_exposure_core.py, ed-core.js, ed-gamma.js — cut what has no job, move each part to the process that runs it (`daemon/`, `producer/`, `console/`). |
-| P2-DB1 | IN PROGRESS | **Measure each table's size** in ed_console.db, read-only (operator approved 2026-09-26). |
-| P2-DB2 | OPERATOR | **Review the sizes; decide the copy and which tables are dropped.** Dropping needs a verified copy or the operator's word. |
-| P2-DB3 | QUEUED | **Drop the orphaned ML tables** on the operator's word; VACUUM in an offline maintenance window. |
-| P2-DB4 | QUEUED | **One database**: the console's tables move into the daemon's database; the daemon's writer writes them. |
+| P2-7 | QUEUED | **The other large files**: liquidity_value_engine.py, app/options/order_flow/streaming.py and engine.py, math_exposure_core.py, ed-core.js, ed-gamma.js — cut what has no job, move each part to the process that runs it. |
+| P2-DB3 | QUEUED | **One offline maintenance window, after P2-5** (sizes measured 2026-09-26): copy `ed_console.db` whole; stop the app; drop the ML tables (~49 GB) and the bar leftovers (`price_bars_1m_quarantine`, `price_bars_1m_staging`); compress the plain-text chain rows; move the morning chains into `complete_chain_captures` and drop the morning table; VACUUM; restart and check. Rows captured while the market was closed are deleted only on the operator's word. The codec's plain-text branch and the backfill tool are deleted after. |
+| P2-DB4 | QUEUED | **One database**: the console's tables (bars, level crosses, daily OI/IV, the ticker board, desk facts) move into the daemon's database; the daemon's writer writes them. |
 | P2-DB5 | QUEUED | **The console reads read-only.** |
 | P2-8 | QUEUED | **Docs pass**: every document matches the tree. Known stale: AGENTS.md (the Decide layer, `decision_gate.py`, the `/governance` and `/ops` pages, the decision-path admission law — all deleted); OPEN_ITEMS.md; DATA_STEWARDSHIP.md, PIPELINE_QUALITY.md, PROMOTION_POLICY.md, MODEL_RESTORE_LOG.md, TRAINING_AND_MAINTENANCE.md (describe deleted systems); docs/ (about 60 reports on deleted code). |
 
-## Carried from the previous file — the operator keeps or drops
+## Phase 3 — the placeholders on screen (after Phase 1 and 2)
 
-| ID | Work item |
+| ID | Placeholder | What fills it |
+|---|---|---|
+| TU-05 | Options → Multi-Map; Key Levels → Vanna Support, Charm Resistance | vanna/charm exposure in dollar units per strike × expiry |
+| TU-08 | Key Levels → Zero Gamma, Volatility Trigger | regime dead-zone around the flip |
+| TU-11 | Options → Multi-Map | skew and term fields |
+| TU-06, 07, 09, 10, 12 | none yet | call−put IV spread and implied 1-day move, ΔOI flow, GEX/ADV normalization, external GEX benchmark, intraday DDOI (meaning confirmed from its source before building) |
+| LP-01 | Liquidity | steps 1–3 are in `liquidity_models.py` / `liquidity_value_engine.py` (`/api/liquidity-snapshot`); left: check the raw levels show on the chart |
+
+## Operator designing — nothing is built until the operator decides
+
+| ID | Item |
 |---|---|
-| LP-01 | Session value levels: volume profile across each bar's range (not typical price), overnight window from the prior trading session, raw levels on the chart. Authority: liquidity_value_engine.py, /api/liquidity-snapshot. |
-| TU-05..TU-12 | Terrain upgrades: vanna/charm exposure units, call−put IV spread and implied 1-day move, ΔOI flow, regime dead-zone around the flip, GEX/ADV normalization, external GEX benchmark, skew/term fields, intraday DDOI. |
-| RECON-02 | Disk purge of ~53 GB quarantined files, after the operator's purge word. |
-| RUNTIME-SEPARATION | Move the runtime state (database, logs, token, diagnostics) out of the production checkout into a runtime folder (operator host step). |
+| RESEARCH | Quant formulas that decide stock, calls, puts or spreads, and research run on the stored chain history. Where it lives (Trade Desk or its own screen) is undecided. |
+| PLAN | Trade Desk → Plan. |
+| PORTFOLIO | Portfolio / Risk: needs the operator's positions from Schwab's account API, fetched by the daemon. |
+
+## Operator host steps
+
+| ID | Item |
+|---|---|
+| RECON-02 | `Trading/_disk_cleanup_quarantine_20260716` (53 GB): its MANIFEST.txt is shown to the operator; purged only on the operator's word. |
+| RUNTIME-SEPARATION | Move the runtime state (database, logs, token, diagnostics) out of the production checkout into a runtime folder. |

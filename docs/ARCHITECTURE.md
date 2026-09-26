@@ -34,7 +34,8 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `app/market_data/schwab/streaming/` (capture, live_push, live_ui), `stream_spine.py`, `live_market_plane.py`, `live_price_rows.py` | `daemon/` |
 | `schwab_client.py`, `api_pressure.py`, `market_context.py` (Schwab REST calls) | `daemon/` |
 | From `server.py`: the chain fetch (`fetch_full_chain`, the chain gate, chain captures) | `daemon/` |
-| `calibration/complete_chain_capture.py`, `calibration/option_chain_morning_full.py` | `daemon/` |
+| `calibration/complete_chain_capture.py` (the chain history, DATA_FLOW decision 7) | `daemon/` |
+| `calibration/option_chain_morning_full.py` | delete (its table folds into the chain history; P2-DB3) |
 | `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
