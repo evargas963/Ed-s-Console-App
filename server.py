@@ -12102,12 +12102,13 @@ def get_forces(ticker: str = Query(...)):
             per1 = _cebs(decode_json_blob(c1), spot=float(s1))[0]
             per0 = _cebs(decode_json_blob(c0), spot=float(s0))[0]
 
-            def _g(v: dict, k: str) -> float:
-                x = v.get(k)
-                return float(x) if x is not None else 0.0
+            from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
 
-            oi1 = {k: _g(v, "call_oi") + _g(v, "put_oi") for k, v in per1.items()}
-            oi0 = {k: _g(v, "call_oi") + _g(v, "put_oi") for k, v in per0.items()}
+            # a strike's OI change exists only when its OI is known on both days
+            oi1 = {k: t for k, v in per1.items() if (t := _sto(v)) is not None}
+            oi0 = {k: t for k, v in per0.items() if (t := _sto(v)) is not None}
+            doi = {k: oi1[k] - oi0[k] for k in oi1 if k in oi0}
+            dex1 = {k: d for k, v in per1.items() if (d := _bm(v, "net_dex_dollars")) is not None}
             spot1 = float(s1)
             # RC-199: CHARM below/above from the NEWER banked wide chain (full book).
             # Dealer-signed net_charm = call_charm - put_charm per strike (RC-179).
@@ -12139,12 +12140,11 @@ def get_forces(ticker: str = Query(...)):
                 charm_err = str(_ce)[:120]
             payload = {
                 "ticker": tk, "available": True,
-                "doi_below": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k < spot1)),
-                "doi_above": round(sum(oi1[k] - oi0.get(k, 0.0) for k in oi1 if k > spot1)),
-                "dex_below_dollars": round(sum(
-                    _g(v, "net_dex_dollars") for k, v in per1.items() if k < spot1)),
-                "dex_above_dollars": round(sum(
-                    _g(v, "net_dex_dollars") for k, v in per1.items() if k > spot1)),
+                "doi_below": round(sum(d for k, d in doi.items() if k < spot1)),
+                "doi_above": round(sum(d for k, d in doi.items() if k > spot1)),
+                "dex_below_dollars": round(sum(d for k, d in dex1.items() if k < spot1)),
+                "dex_above_dollars": round(sum(d for k, d in dex1.items() if k > spot1)),
+                "strikes_diffed": len(doi),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
                 # RC-288: DERIVED from the chain actually summed, not asserted. This was the

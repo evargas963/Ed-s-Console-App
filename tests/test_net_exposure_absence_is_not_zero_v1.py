@@ -48,7 +48,7 @@ def test_no_valid_delta_is_none_not_zero():
                     _c(500.0, "PUT", delta=None, gamma=0.02)])
     assert all(not b["has_valid_delta"] for b in ex.values())
     assert aggregate_net_dex(ex, ks) is None      # was 0.0 -> a LONG regime vote
-    assert aggregate_net_gex(ex, ks) is not None  # gamma was fine
+    assert aggregate_net_gex(ex, ks) is None      # a strike with an invalid contract is excluded whole
 
 
 def test_spot_built_book_with_no_valid_gamma_stays_dollarized():
@@ -56,10 +56,7 @@ def test_spot_built_book_with_no_valid_gamma_stays_dollarized():
                     _c(500.0, "PUT", delta=-0.4, gamma=None)])
     assert exposures_have_dollar_gex(ex)          # was False -> raw-unit fall-through
     assert aggregate_net_gex(ex, ks) is None      # no valid gamma -> absent, not $0
-    dex = aggregate_net_dex(ex, ks)
-    assert dex is not None
-    raw_shares = sum(b["net_delta"] for b in ex.values())
-    assert dex != raw_shares                      # dollars, not shares
+    assert aggregate_net_dex(ex, ks) is None      # the strike is excluded whole
 
 
 def test_book_without_spot_has_no_dollar_aggregates():
@@ -128,7 +125,8 @@ def test_per_strike_bars_are_dollar_gex_on_valid_gamma_only():
     cts[0]["totalVolume"] = 0                                             # a REAL zero volume
     ex, _ = _book(cts)
     rows = _per_strike_rows(ex, cts)
-    assert [r[0] for r in rows] == [500.0]          # no bar for the invalid-gamma strike
+    assert [r[0] for r in rows] == [500.0, 510.0]
+    assert rows[1] == [510.0, None, None]           # excluded strike: listed, GEX null, never $0
     assert rows[0][2] == 0                          # reported zero stays zero
     ex2, _ = _book([_c(500.0, "CALL", delta=0.5, gamma=0.02)])
     assert _per_strike_rows(ex2, [_c(500.0, "CALL", delta=0.5, gamma=0.02)])[0][2] is None

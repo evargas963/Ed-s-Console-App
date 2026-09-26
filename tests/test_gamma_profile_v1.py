@@ -492,16 +492,17 @@ def test_rc361_dex_wired_end_to_end():
 
 def test_rc359_delta_oi_walls_build_unwind_and_fail_closed():
     """RC-359: ΔOI walls — biggest call/put OI builds + biggest unwind; None until a
-    prior session exists; a strike absent yesterday diffs against 0 (genuinely new)."""
+    prior session exists; only a strike present both days has a change (a strike missing from
+    yesterday's bank is not known to have had zero)."""
     from math_exposure_core import compute_delta_oi_walls
 
     prev = {700.0: (1000.0, 500.0), 705.0: (2000.0, 800.0)}
     today = {700.0: (1500.0, 450.0),          # call +500, put −50
              705.0: (1800.0, 3000.0),         # call −200, put +2200
-             710.0: (900.0, 100.0)}           # new strike: +900 / +100 vs 0
+             710.0: (900.0, 100.0)}           # not in yesterday's bank: no change computed
     out = compute_delta_oi_walls(today, prev)
     assert out is not None
-    assert out["call_build_strike"] == 710.0 and out["call_build_doi"] == 900
+    assert out["call_build_strike"] == 700.0 and out["call_build_doi"] == 500
     assert out["put_build_strike"] == 705.0 and out["put_build_doi"] == 2200
     assert out["unwind_strike"] is None       # no strike shrank NET (705: -200+2200>0)
 

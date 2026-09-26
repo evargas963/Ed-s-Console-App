@@ -1,200 +1,161 @@
-"""Canonical GEX input-validity / data-authority rules (operator directive, 2026-09-15).
+"""Schwab's Greeks, used as reported, with one validity rule (math_exposure_core).
 
-Live-reproduced root cause: Schwab reports internally self-contradictory greeks for many
-ITM contracts (both sides -- calls pinned delta=1.0, puts pinned delta=-1.0, gamma AND vega
-both exactly 0.0, alongside a real-looking, smoothly-varying implied volatility) that used to
-be accepted as a genuine computed $0 contribution to net GEX. Two independently-real capture
-sets prove this is a recurring vendor defect, not a one-off: tests/fixtures/
-real_spy_0dte_chain_with_poison.json (captured from data/ed_console.db on an earlier session,
-six SPY CALLs at strikes 734-739) and a QQQ 0DTE capture from 2026-09-15 (SPY/QQQ PUTs at/above
-spot, reproduced live in this session -- see math_exposure_core.vendor_greeks_unavailable's own
-docstring for the exact field values).
+A contract's gamma / delta is invalid only when it is missing, Schwab's -999 marker, or
+physically impossible: negative gamma, |delta| > 1, or gamma above the contract's peak possible
+gamma 1 / (sqrt(2 pi) S sigma sqrt(T)) with room for Schwab's pricing basis and its 3-decimal
+rounding. MEASURED 2026-09-26 on 9,428 SPY contracts with OI: reported / peak gamma p99 1.078;
+the one contract past the bound reported 5.274 (222x its peak).
 
-Fix, once, in the canonical input-validity path (math_exposure_core.py):
-  1. `vendor_greeks_unavailable` / `gamma_is_plausible` -- IV=-999 or the internally-
-     inconsistent degenerate pattern invalidates a contract's greeks; it is EXCLUDED from
-     accumulation, never contributes a fabricated $0. Never conditioned on strike-vs-spot
-     distance (operator directive: no "was this genuinely deep ITM" heuristic).
-  2. `_strike_bucket`'s new `has_valid_gamma` flag -- independent from `has_oi` (a strike can
-     have real OI and simultaneously zero valid greeks).
-  3. `project_gamma_surface` (server.py) gates gex/dex/vanna on has_oi AND has_valid_gamma
-     (OI/Volume stay gated on has_oi alone -- they never depended on greeks).
-  4. (retired 2026-09-23) `_backfill_gex_cells_from_last_valid` -- when current inputs are invalid for
-     a cell, serve the latest valid timestamped snapshot for THAT cell instead of blanking it;
-     '—' only when no valid current OR historical snapshot exists anywhere. Applies uniformly
-     to SPX-style whole-surface outages too (that is simply every cell in the surface hitting
-     the same "no valid current data" case at once) -- no separate SPX-specific code path.
+Values that look odd but are Schwab's own pricing are real and used:
+  * 0.000 / 0.001 gamma: Schwab rounds every Greek to 3 decimals.
+  * delta exactly +-1 with gamma 0 and vega 0 on an in-the-money leg: Schwab's American-exercise
+    pricing. MEASURED 2026-09-15..26 on the banked full chains: never on European $SPX (0 of
+    47,382 legs), and on American contracts 31,501 in the money vs 1 out of the money.
 
-This file proves each piece, then proves them composed end-to-end across multiple tickers and
-expirations, with true-zero, invalid-sentinel, and SPX-fallback controls, per the operator's own
-required proof list.
+A strike holding any contract with OI and invalid Greeks is excluded whole from every Greek
+total -- never a partial strike -- and the excluded contracts are listed with the levels.
 """
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
-import server
 from math_exposure_core import (
-    compute_exposures_by_strike,
-    gamma_is_plausible,
-    vendor_greeks_unavailable,
     MISSING_GREEK_SENTINEL,
+    bucket_metric,
+    compute_exposures_by_strike,
+    compute_net_vanna,
+    delta_is_plausible,
+    exposure_books,
+    gamma_is_plausible,
+    merge_exposure_books,
+    vendor_greeks_unavailable,
 )
-from math_exposure_core import exposure_books
 from server import project_gamma_surface
 
 _FX = Path(__file__).resolve().parent / "fixtures"
+NOW = datetime(2026, 9, 26, 14, 0, tzinfo=timezone.utc)
+EXP = "2026-10-01T20:00:00.000+00:00"       # 5 days after NOW
 
 
-def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, vega=0.01, iv=20.0, dte=0,
-        exp="2026-09-15T20:00:00.000+00:00", vol=0, symbol=None, mult=100.0):
-    # institutional-synthetic-ok: boundary-condition proof of the validity gate needs fully
-    # controlled fields per leg (exact sentinel, exact degenerate pattern, exact real-looking
-    # deep value) -- no real capture can guarantee every one of these exact combinations at
-    # once. Real-vendor proof of the SAME defect is covered separately below with the two
-    # independently-captured real fixtures.
+def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, vega=0.01, iv=20.0,
+        exp=EXP, vol=0, symbol=None, mult=100.0):
+    # institutional-synthetic-ok: each validity boundary needs one exactly-controlled field
     return {
         "strikePrice": strike, "putCall": side, "openInterest": oi, "multiplier": mult,
         "delta": delta if side == "CALL" else -abs(delta) if delta is not None else None,
         "gamma": gamma, "vega": vega, "volatility": iv, "totalVolume": vol,
-        "daysToExpiration": dte, "expirationDate": exp,
-        "symbol": symbol or f"TEST  260915{'C' if side == 'CALL' else 'P'}{int(strike * 1000):08d}",
+        "expirationDate": exp,
+        "symbol": symbol or f"TEST  261001{'C' if side == 'CALL' else 'P'}{int(strike * 1000):08d}",
     }
 
 
 SPOT = 100.0
 
 
-# ---------------------------------------------------------------------------
-# 1. vendor_greeks_unavailable / gamma_is_plausible -- pure boundary-condition proof
-# ---------------------------------------------------------------------------
+# ── 1. the validity rule ────────────────────────────────────────────────────────────────────
 
-def test_iv_sentinel_alone_marks_greeks_invalid():
-    assert vendor_greeks_unavailable(iv=MISSING_GREEK_SENTINEL, gamma=0.04, delta=0.5, vega=0.01) is True
-
-
-def test_degenerate_pinned_call_delta_with_zero_gamma_and_vega_is_invalid():
-    # The exact live-reproduced pattern (real_spy_0dte_chain_with_poison.json, strikes
-    # 734-739): a REAL-looking, varying IV alongside gamma=vega=0.0 and delta pinned to 1.0.
-    assert vendor_greeks_unavailable(iv=61.39, gamma=0.0, delta=1.0, vega=0.0) is True
+def test_the_minus_999_marker_invalidates_every_greek_on_the_contract():
+    assert vendor_greeks_unavailable(MISSING_GREEK_SENTINEL)
+    assert not gamma_is_plausible(0.04, iv=MISSING_GREEK_SENTINEL)
+    assert not delta_is_plausible(0.5, iv=MISSING_GREEK_SENTINEL)
+    assert not gamma_is_plausible(MISSING_GREEK_SENTINEL, iv=20.0)
 
 
-def test_degenerate_pinned_put_delta_with_zero_gamma_and_vega_is_invalid():
-    # The exact live-reproduced pattern (QQQ/SPY 0DTE puts, 2026-09-15).
-    assert vendor_greeks_unavailable(iv=7.83, gamma=0.0, delta=-1.0, vega=0.0) is True
+def test_schwab_rounding_is_real_data():
+    for g in (0.0, 0.001, 0.0005):
+        assert gamma_is_plausible(g, iv=20.0, spot=740.0, t_years=5 / 365)
 
 
-def test_real_near_the_money_greeks_are_never_flagged():
-    """Negative control: real, plausible near-ATM greeks (nonzero gamma/vega, moderate
-    delta) must never be flagged, at ANY delta magnitude -- proves the gate reads the
-    contract's own internal consistency, not a strike-vs-spot moneyness judgment."""
-    assert vendor_greeks_unavailable(iv=11.61, gamma=0.138, delta=-0.027, vega=0.003) is False
+def test_the_american_exercise_pin_is_real_data():
+    assert gamma_is_plausible(0.0, iv=61.39)
+    assert delta_is_plausible(1.0, iv=61.39) and delta_is_plausible(-1.0, iv=7.83)
 
 
-def test_genuinely_tiny_but_nonzero_deep_greeks_are_never_flagged():
-    """The operator's own explicit constraint: no 'was this genuinely deep ITM/OTM'
-    heuristic. A contract whose gamma/vega are real, tiny, NON-ZERO floats (a genuine deep
-    contract's true numerical output) and whose delta is close to but does not float-equal
-    a boundary must NOT be excluded -- the gate keys on exact zero/exact boundary, never on
-    'how close to deep is this'."""
-    assert vendor_greeks_unavailable(iv=9.0, gamma=1e-6, delta=-0.999, vega=1e-5) is False
-    assert vendor_greeks_unavailable(iv=9.0, gamma=1e-6, delta=-1.0, vega=1e-5) is False  # gamma nonzero -> not degenerate
+def test_negative_gamma_and_delta_past_one_are_impossible():
+    assert not gamma_is_plausible(-91965.237, iv=35.51)
+    assert not delta_is_plausible(1.2)
+    assert not delta_is_plausible(float("nan"))
 
 
-def test_gamma_is_plausible_rejects_iv_sentinel_even_when_gamma_delta_look_fine():
-    # Rule 1: "IV = -999 means invalid vendor Greeks" -- the WHOLE contract, even if gamma/
-    # delta happen to look numerically fine on their own.
-    assert gamma_is_plausible(0.04, 0.5, iv=MISSING_GREEK_SENTINEL, vega=0.01) is False
+def test_gamma_past_the_contracts_peak_is_impossible():
+    # 2026-09-26 SPY 261001C739: gamma 5.274, spot ~740, 5 days; peak ~0.03
+    assert not gamma_is_plausible(5.274, iv=15.0, spot=740.0, t_years=5 / 365)
+    peak = 0.0307
+    assert gamma_is_plausible(peak * 1.4, iv=15.0, spot=740.0, t_years=5 / 365)
 
 
-def test_gamma_is_plausible_still_rejects_existing_implausible_magnitude_case():
-    # Pre-existing behavior (real_spy_0dte_chain_with_poison.json's OWN documented poison
-    # contract: gamma=-91965.237 at delta=-0.979) must be unaffected by the new checks.
-    assert gamma_is_plausible(-91965.237, -0.979) is False
+# ── 2. a strike with an invalid contract is excluded whole, and listed ─────────────────────
+
+def test_a_strike_with_one_invalid_contract_has_no_greek_value():
+    bad = _ct(100.0, "PUT", 700, gamma=5.274, delta=0.5, iv=15.0)
+    good = _ct(100.0, "CALL", 500, gamma=0.04, delta=0.5, iv=20.0)
+    other = _ct(105.0, "CALL", 300, gamma=0.03, delta=0.3, iv=20.0)
+    exp, diag = compute_exposures_by_strike([bad, good, other], spot=SPOT, now=NOW)
+    b = exp[100.0]
+    assert b["has_oi"] and b["greeks_invalid"] == 1
+    for key in ("call_gamma", "net_gamma", "net_gex_1pct", "net_dex_dollars", "call_vanna"):
+        assert bucket_metric(b, key) is None, key          # never the call leg alone
+    assert bucket_metric(b, "call_oi") == 500.0             # OI does not depend on Greeks
+    assert bucket_metric(exp[105.0], "net_gamma") == 0.03 * 300 * 100
+    assert diag.excluded == ((bad["symbol"], 100.0, 700.0),)
 
 
-# ---------------------------------------------------------------------------
-# 2. compute_exposures_by_strike -- has_valid_gamma, real captured poison fixtures
-# ---------------------------------------------------------------------------
+def test_net_vanna_leaves_out_an_excluded_strike():
+    good = _ct(105.0, "CALL", 300, iv=20.0)
+    bad = _ct(100.0, "CALL", 700, gamma=-1.0, iv=20.0)
+    only_good, _ = compute_exposures_by_strike([good], spot=SPOT, now=NOW)
+    with_bad, _ = compute_exposures_by_strike([good, bad], spot=SPOT, now=NOW)
+    assert compute_net_vanna(with_bad, SPOT) == compute_net_vanna(only_good, SPOT)
 
-def test_real_spy_poison_fixture_itm_calls_excluded_not_fabricated_zero():
-    """tests/fixtures/real_spy_0dte_chain_with_poison.json, strikes 734-739: six REAL
-    captured ITM calls with delta=1.0/gamma=0.0/vega=0.0 alongside a real, varying IV.
-    Proves has_valid_gamma correctly separates 'has real OI' from 'has usable greeks' on
-    genuine vendor data, not just a hand-built synthetic case."""
+
+def test_merged_books_keep_the_exclusion_and_the_list():
+    bad = _ct(100.0, "PUT", 700, gamma=-1.0)
+    a = compute_exposures_by_strike([bad], spot=SPOT, now=NOW)
+    b = compute_exposures_by_strike([_ct(100.0, "CALL", 500)], spot=SPOT, now=NOW)
+    merged, diag = merge_exposure_books([a, b])
+    assert bucket_metric(merged[100.0], "net_gex_1pct") is None
+    assert [e[0] for e in diag.excluded] == [bad["symbol"]]
+
+
+def test_real_spy_capture_corrupt_put_is_excluded_and_pinned_calls_are_used():
+    """tests/fixtures/real_spy_0dte_chain_with_poison.json: the 748 put reports gamma
+    -91965.237 (excluded, strike 748 has no Greek value); the in-the-money 734-739 calls
+    report delta 1.0 / gamma 0.0 (Schwab's American pricing -- used)."""
     fx = json.loads((_FX / "real_spy_0dte_chain_with_poison.json").read_text(encoding="utf-8"))
-    exposures, _diag = compute_exposures_by_strike(fx["chain"], spot=fx["spot"], require_oi=True)
-    poisoned_strikes = [734.0, 735.0, 736.0, 737.0, 738.0, 739.0]
-    checked = 0
-    for k in poisoned_strikes:
-        b = exposures.get(k)
-        if b is None:
-            continue
-        # has_oi stays True (real OI on these strikes); has_valid_gamma must be False for
-        # any strike whose ONLY contributing legs were the poisoned calls.
-        assert b["has_oi"] is True, f"strike {k} must still show real OI"
-        checked += 1
-    assert checked == len(poisoned_strikes)
+    exp, diag = compute_exposures_by_strike(fx["chain"], spot=fx["spot"], require_oi=True)
+    assert bucket_metric(exp[748.0], "net_gex_1pct") is None
+    assert [e[1] for e in diag.excluded] == [748.0]
+    for k in (734.0, 735.0, 736.0, 737.0, 738.0, 739.0):
+        assert exp[k]["has_valid_delta"] and exp[k]["has_valid_gamma"]
+        assert bucket_metric(exp[k], "call_delta") > 0          # delta 1.0 x OI counted
 
 
-def test_real_qqq_0dte_put_pattern_direct_from_live_capture():
-    """The exact 2026-09-15 live reproduction, re-verified here as a permanent regression
-    fixture: a real QQQ 0DTE put at strike 706 (barely ITM, spot ~705.40) with delta=-1.0,
-    gamma=0.0, vega=0.0, and a real, smoothly-varying IV (7.83%) alongside genuine bid/ask/
-    last prices. This is the contract that used to make net_gex_1pct at that strike collapse
-    to a fabricated-looking figure driven by a zero it should never have contributed."""
-    ct = _ct(706.0, "PUT", 2676, gamma=0.0, delta=-1.0, vega=0.0, iv=7.83, mult=100.0)
-    real_call = _ct(706.0, "CALL", 500, gamma=0.05, delta=0.4, vega=0.02, iv=15.0)
-    exposures, _diag = compute_exposures_by_strike([ct, real_call], spot=705.40, require_oi=True)
-    b = exposures[706.0]
-    assert b["has_oi"] is True
-    assert b["has_valid_gamma"] is True   # the CALL leg is real and DID contribute
-    assert b["put_gamma"] == 0.0          # the poisoned PUT contributed NOTHING, not a fabricated 0
-    assert b["call_gamma"] > 0.0          # the real call's own gamma is untouched
-
-
-# ---------------------------------------------------------------------------
-# 3. Valid true-zero case -- the gate must NOT swallow a genuine computed zero
-# ---------------------------------------------------------------------------
+# ── 3. a true zero stays a zero ─────────────────────────────────────────────────────────────
 
 def test_genuine_balanced_zero_is_not_treated_as_invalid():
-    """A real call and a real put with fully valid, non-degenerate greeks that happen to
-    net to exactly zero GEX must still show has_valid_gamma=True and a real 0 -- the
-    validity gate is about CONTRACT-LEVEL input consistency, never about the AGGREGATE
-    result happening to be zero (see tests/test_gamma_exposure_honest_absence_v1.py for the
-    sibling proof at the has_oi layer)."""
     call = _ct(100.0, "CALL", 500, gamma=0.04, delta=0.5, vega=0.1, iv=20.0)
     put = _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5, vega=0.1, iv=20.0)
-    exposures, _diag = compute_exposures_by_strike([call, put], spot=SPOT, require_oi=True)
-    b = exposures[100.0]
-    assert b["has_oi"] is True
-    assert b["has_valid_gamma"] is True
-    assert b["net_gex_1pct"] == 0.0
+    exposures, _diag = compute_exposures_by_strike([call, put], spot=SPOT, now=NOW)
+    assert bucket_metric(exposures[100.0], "net_gex_1pct") == 0.0
     surface = project_gamma_surface([call, put], exposure_books([call, put], spot=SPOT))
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
-    assert row["gex"] == [0], "a genuine computed zero must render as 0, never absence/backfill"
+    assert row["gex"] == [0], "a genuine computed zero renders as 0"
 
 
-# ---------------------------------------------------------------------------
-# 4. project_gamma_surface -- has_valid_gamma-gated cells, honest unavailable reason
-# ---------------------------------------------------------------------------
+# ── 4. the surface ──────────────────────────────────────────────────────────────────────────
 
-def test_surface_cell_with_oi_but_all_invalid_greeks_is_none_not_fabricated_zero():
-    call = _ct(100.0, "CALL", 500, gamma=0.0, delta=1.0, vega=0.0, iv=30.0)
-    put = _ct(100.0, "PUT", 500, gamma=0.0, delta=-1.0, vega=0.0, iv=25.0)
+def test_surface_cell_with_oi_but_invalid_greeks_is_none_not_zero():
+    call = _ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)
+    put = _ct(100.0, "PUT", 500, gamma=-3.0, iv=25.0)
     surface = project_gamma_surface([call, put], exposure_books([call, put], spot=SPOT))
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
-    assert row["gex"] == [None]
-    assert row["dex"] == [None]
-    assert row["vanna"] == [None]
-    # OI itself is untouched -- it never depended on greeks validity.
+    assert row["gex"] == [None] and row["dex"] == [None] and row["vanna"] == [None]
     assert row["oi"] == [{"call": 500, "put": 500}]
     assert surface["gamma_available"] is False
     assert surface["cells_with_oi_but_invalid_greeks"] == 1
     assert "invalid" in surface["gamma_unavailable_reason"].lower()
-    assert "open interest" not in surface["gamma_unavailable_reason"].lower() or \
-        "no usable open interest" not in surface["gamma_unavailable_reason"].lower()
 
 
 def test_surface_reason_distinguishes_no_oi_from_invalid_greeks():
@@ -206,20 +167,23 @@ def test_surface_reason_distinguishes_no_oi_from_invalid_greeks():
     assert "no usable open interest" in surface["gamma_unavailable_reason"].lower()
 
 
-# ---------------------------------------------------------------------------
-# 5. No last-valid refill (operator rule 2026-09-23: no fallbacks)
-# ---------------------------------------------------------------------------
+# ── 5. no refill from an older value ────────────────────────────────────────────────────────
 
 def test_no_cell_is_ever_refilled_from_an_older_value():
-    """A cell with no valid data THIS cycle stays empty. The last-known-valid store that used
-    to refill it (computed at an older spot, possibly hours old, while gamma_available read
-    True) is gone -- with its DB write-through."""
     import inspect
 
     import db as db_mod
+    import server
     src = inspect.getsource(server)
     for gone in ("_backfill_gex_cells_from_last_valid", "_LAST_VALID_GEX_CELLS",
                  "banked_morning_reference"):
         assert gone not in src, gone
     assert not hasattr(db_mod.EdDB, "load_gamma_surface_last_valid")
     assert not hasattr(db_mod.EdDB, "persist_gamma_surface_last_valid")
+
+
+def test_the_levels_payload_lists_every_excluded_contract():
+    from terrain_engine import compute_terrain
+    fx = json.loads((_FX / "real_spy_0dte_chain_with_poison.json").read_text(encoding="utf-8"))
+    out = compute_terrain("SPY", fx["chain"], fx["spot"]).to_dict()
+    assert out["greeks_excluded"] == [{"symbol": "SPY   260717P00748000", "strike": 748.0, "oi": 21605.0}]

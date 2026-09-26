@@ -52,7 +52,9 @@ def test_rows_are_the_shape_the_panel_renders():
     served today_source=terrain_live_cache with today_age_sec=7.4 — live and fresh — and ZERO
     rows, because it rebuilt synthetic contracts from these numbers and re-ran the exposure
     engine, which rejected them for having no open interest."""
-    ps = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT).per_strike
+    snap = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT)
+    ps = snap.per_strike
+    excluded = {e["strike"] for e in snap.greeks_excluded}
     assert set(ps) == {"all", "near", "far"}, (
         "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
         f"empty panel on that chip. got {sorted(ps)}"
@@ -60,7 +62,12 @@ def test_rows_are_the_shape_the_panel_renders():
     for scope, rows in ps.items():
         for r in rows:
             assert len(r) == 3, f"{scope}: row {r} is not [strike, net_gex_1pct, volume]"
-            assert all(isinstance(x, (int, float)) for x in r), f"{scope}: non-numeric row {r}"
+            assert isinstance(r[0], (int, float)) and isinstance(r[2], (int, float)), f"{scope}: {r}"
+            # GEX is null exactly on a strike excluded for invalid Greeks (listed with the levels)
+            if r[0] in excluded:
+                assert r[1] is None, f"{scope}: excluded strike {r[0]} carries a GEX value"
+            else:
+                assert isinstance(r[1], (int, float)), f"{scope}: non-numeric row {r}"
     assert ps["all"], "the ALL scope is empty on a real 40-contract chain"
     assert any(r[1] != 0 for r in ps["all"]), "every gamma bar is zero — nothing would render"
 

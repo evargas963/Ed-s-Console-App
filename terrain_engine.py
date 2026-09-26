@@ -220,6 +220,9 @@ class TerrainSnapshot:
     #: {strike: charm bucket} from compute_charm_by_strike -- the charm walls above and the
     #: charm-by-strike panel read the same map.
     charm_by_strike: dict = field(default_factory=dict, repr=False)
+    #: Every contract with open interest whose Schwab Greeks were invalid ({symbol, strike, oi}):
+    #: its whole strike is left out of every Greek total above; this lists what was left out.
+    greeks_excluded: list = field(default_factory=list)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
@@ -283,14 +286,17 @@ def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
         if sk is None:                      # a NaN strike must never become a rendered bar
             continue
         # has_oi: the strike's contracts cleared the OI gate (a no-OI strike drew a $0 bar,
-        # reproduced live on SPX 2026-09-14); has_valid_gamma: its 0.0 net GEX is not the
-        # bucket initialiser.
-        if not (isinstance(b, dict) and b.get("has_oi") and b.get("has_valid_gamma")):
+        # reproduced live on SPX 2026-09-14). A strike excluded for invalid Greeks keeps its
+        # row -- its volume is real -- with its GEX null.
+        if not (isinstance(b, dict) and b.get("has_oi")):
             continue
-        gf = float_finite_or_none(net_gex_dollars_at_strike(b))
-        if gf is None:
+        excluded = bool(b.get("greeks_invalid"))
+        if not excluded and not b.get("has_valid_gamma"):
             continue
-        rows.append([round(sk, 2), round(gf, 1), vol_int.get(sk)])
+        gf = None if excluded else float_finite_or_none(net_gex_dollars_at_strike(b))
+        if gf is None and not excluded:
+            continue
+        rows.append([round(sk, 2), None if gf is None else round(gf, 1), vol_int.get(sk)])
     rows.sort(key=lambda r: r[0])
     return rows
 
@@ -846,6 +852,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # frozen morning archive purely because nothing persisted this. Session volume is carried
         # alongside so the volume panel stops serving a 09:47 corpse at 11:31.
         per_strike=per_strike_view(books, exposures, contracts),
+        greeks_excluded=[{"symbol": s, "strike": k, "oi": oi} for s, k, oi in diag.excluded],
         books=books,
         charm_by_strike=charm_by_strike,
         computed_ts_utc=_time.time(),

@@ -236,11 +236,11 @@
         if (bar) readLines.push('close ' + Number(bar.c).toFixed(2), ctTime(bar.t) + ' CT');
       } else {
         var srow = nearestStrikeAt(_lastCtx.win, vy, lo, hi);
-        if (srow) readLines.push('strike ' + srow[0], 'GEX ' + usd(srow[1]));
+        if (srow) readLines.push('strike ' + srow[0], 'GEX ' + (srow[1] == null ? 'excluded' : usd(srow[1])));
       }
     } else {
       var srow2 = nearestStrikeAt(_lastCtx.win, vy, lo, hi);
-      if (srow2) readLines.push('strike ' + srow2[0], 'GEX ' + usd(srow2[1]));
+      if (srow2) readLines.push('strike ' + srow2[0], 'GEX ' + (srow2[1] == null ? 'excluded' : usd(srow2[1])));
     }
     var boxX = Math.min(vx + 8, W - 118), boxY = Math.max(T, Math.min(vy - 8, H - B - readLines.length * 13 - 8));
     lines += '<rect x="' + boxX.toFixed(1) + '" y="' + boxY.toFixed(1) + '" width="112" height="' + (readLines.length * 13 + 8) +
@@ -564,7 +564,8 @@
     var hitHalfH = _hitTargetHalfSize(win, lo, hi, 10);
     s += '<line x1="' + cx + '" x2="' + cx + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + COL.axis + '" stroke-width="1"/>';
     win.forEach(function (r) {
-      var k = r[0], v = Number(r[1]) || 0, w = Math.abs(v) / maxAbs * halfW;
+      if (r[1] == null) return;            // excluded for invalid Greeks: no bar, never $0
+      var k = r[0], v = Number(r[1]), w = Math.abs(v) / maxAbs * halfW;
       var y = yOf(k, lo, hi), pos = v >= 0;
       s += '<rect class="gmark" data-strike="' + k + '" x="' + (pos ? cx : cx - w).toFixed(1) + '" y="' + (y - 3).toFixed(1) + '" width="' + w.toFixed(1) +
         '" height="6" fill="' + (pos ? COL.pos : COL.neg) + '" opacity="0.85"/>';
@@ -583,7 +584,8 @@
         '" width="' + (2 * halfW).toFixed(1) + '" height="' + (2 * hitHalfH).toFixed(1) + '" fill="transparent"/>';
     });
     // biggest-magnitude label
-    var top = win.slice().sort(function (a, b) { return Math.abs(b[1]) - Math.abs(a[1]); })[0];
+    var top = win.filter(function (r) { return r[1] != null; })
+      .sort(function (a, b) { return Math.abs(b[1]) - Math.abs(a[1]); })[0];
     if (top) { var yt = yOf(top[0], lo, hi); s += '<text x="' + (cx + 4) + '" y="' + (yt - 5).toFixed(1) + '" font-size="10" fill="var(--ed-ink-2)">' + esc(usd(top[1])) + '</text>'; }
     // overlays
     s += levelLines(terrain, lo, hi, L, W - R);
@@ -608,7 +610,8 @@
     var hitR = _hitTargetHalfSize(win, lo, hi, 10);
     s += '<line x1="' + cx + '" x2="' + cx + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + COL.axis + '" stroke-width="0.5" opacity="0.4"/>';
     win.forEach(function (r) {
-      var k = r[0], v = Number(r[1]) || 0, y = yOf(k, lo, hi);
+      if (r[1] == null) return;            // excluded for invalid Greeks: no dot, never $0
+      var k = r[0], v = Number(r[1]), y = yOf(k, lo, hi);
       var rad = 3 + Math.sqrt(Math.abs(v) / maxAbs) * 22;
       var pos = v >= 0, x = cx + (pos ? 1 : -1) * (rad + 10);
       s += '<circle class="gmark" data-strike="' + k + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + rad.toFixed(1) +
