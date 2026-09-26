@@ -376,3 +376,7 @@ def validate_persisted_governed_artifacts_or_raise(
     return mj, pj
 
 
+def assert_no_active_directory_write(scheduler_fn: str = "ml_scheduler.run_once") -> None:
+    """Test hook: scheduler must not copy to models/active/ (use manual_control for promotion)."""
+    if scheduler_auto_promote_to_active_enabled():
+        raise PromotionGovernanceError(f"{scheduler_fn}: scheduler must not auto-copy to active/")

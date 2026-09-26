@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from typing import Optional
+from typing import Any, Optional
 from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, float_nonnegative_or_none
@@ -267,6 +267,21 @@ class OrderFlowState:
             out.extend(dict(item) for item in self._get_tape(sym))
         return out
 
+    def get_l1_stream_input_probe(self, symbol: str) -> tuple[Any, ...]:
+        """Return the cheap L1 gate snapshot for one symbol."""
+        sym = ticker_storage_key(symbol)
+        if not sym:
+            return (0, 0, None, None, None)
+        with self._lock:
+            book = self._book.get(sym)
+            tape = self._tape.get(sym)
+            bl = len(book) if book else 0
+            tl = len(tape) if tape else 0
+            last_ms = tape[-1].get("TRADE_TIME_MILLIS") if tape else None
+            top = self._top.get(sym)
+            tb = top.get("BID_PRICE") if top else None
+            ta = top.get("ASK_PRICE") if top else None
+        return (bl, tl, last_ms, tb, ta)
 
     def clear_all(self) -> None:
         """Drop tape/book/top/prev-print identity for every symbol."""
@@ -296,6 +311,13 @@ class OrderFlowState:
             if key and key not in new_keys:
                 self.clear_symbol(key)
 
+    def get_receive_log(self, symbol: str) -> list[dict]:
+        """Return receipts including restatements for one symbol."""
+        sym = ticker_storage_key(symbol)
+        if not sym:
+            return []
+        with self._lock:
+            return [dict(x) for x in self._receive_log.get(sym, ())]
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol."""
@@ -313,6 +335,13 @@ class OrderFlowState:
             self._stream_volume.pop(sym, None)
             self._stream_greeks.pop(sym, None)
 
+    def get_stream_volume(self, symbol: str) -> Optional[float]:
+        """Return the latest positive streamed total volume."""
+        sym = ticker_storage_key(symbol)
+        if not sym:
+            return None
+        with self._lock:
+            return self._stream_volume.get(sym)
 
     def get_stream_greeks(self, symbol: str) -> Optional[dict]:
         """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME for one OPTION
@@ -328,7 +357,35 @@ class OrderFlowState:
             g = self._stream_greeks.get(sym)
             return dict(g) if g else None
 
+    def get_top_of_book_sizes(self, symbol: str) -> dict[str, Optional[int]]:
+        """Return latest L1 bid/ask sizes for one symbol."""
+        sym = ticker_storage_key(symbol)
+        if not sym:
+            return {"bid_size": None, "ask_size": None}
 
+        def _to_int(value: Any) -> Optional[int]:
+            if value is None:
+                return None
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return None
+
+        with self._lock:
+            top = self._top.get(sym) or {}
+            return {
+                "bid_size": _to_int(top.get("BID_SIZE")),
+                "ask_size": _to_int(top.get("ASK_SIZE")),
+            }
+
+    def get_stats(self) -> dict[str, Any]:
+        """Return counts per symbol for diagnostics."""
+        with self._lock:
+            return {
+                "book": {k: len(v) for k, v in self._book.items()},
+                "tape": {k: len(v) for k, v in self._tape.items()},
+                "top": list(self._top),
+            }
 
 
 _LIVE_STATE = OrderFlowState()
@@ -351,6 +408,9 @@ def get_content_for_symbol(symbol: str) -> list[dict]:
     return _LIVE_STATE.get_content_for_symbol(symbol)
 
 
+def get_l1_stream_input_probe(symbol: str) -> tuple[Any, ...]:
+    """Return the live singleton's cheap L1 gate snapshot."""
+    return _LIVE_STATE.get_l1_stream_input_probe(symbol)
 
 
 def clear_all_live_state() -> None:
@@ -367,6 +427,9 @@ def forget_unsubscribed_symbols(old: list[str], new: list[str]) -> None:
     _LIVE_STATE.forget_unsubscribed_symbols(old, new)
 
 
+def get_receive_log(symbol: str) -> list[dict]:
+    """Local receive receipts including restatements. Not a native trade id."""
+    return _LIVE_STATE.get_receive_log(symbol)
 
 
 def clear_symbol(symbol: str) -> None:
@@ -374,6 +437,9 @@ def clear_symbol(symbol: str) -> None:
     _LIVE_STATE.clear_symbol(symbol)
 
 
+def get_stream_volume(symbol: str) -> Optional[float]:
+    """Return latest TOTAL_VOLUME from WebSocket level_one_equity for symbol, or None."""
+    return _LIVE_STATE.get_stream_volume(symbol)
 
 
 def get_stream_greeks(symbol: str) -> Optional[dict]:
@@ -382,5 +448,11 @@ def get_stream_greeks(symbol: str) -> Optional[dict]:
     return _LIVE_STATE.get_stream_greeks(symbol)
 
 
+def get_top_of_book_sizes(symbol: str) -> dict[str, Optional[int]]:
+    """Latest L1 BID_SIZE / ASK_SIZE from streaming top-of-book, if present."""
+    return _LIVE_STATE.get_top_of_book_sizes(symbol)
 
 
+def get_stats() -> dict[str, Any]:
+    """Return counts per symbol for debugging."""
+    return _LIVE_STATE.get_stats()

@@ -509,8 +509,18 @@ def _delivery_record(
     }
 
 
+class EmailNotificationAdapter:
+    """Pluggable email backend; default uses ``email_deliver`` hook."""
+
+    def deliver(self, body: dict[str, Any]) -> tuple[bool, str | None]:
+        return email_deliver(body)
 
 
+class SlackRoutingAdapter:
+    """Pluggable Slack / desktop-compatible routing; default uses ``slack_deliver`` hook."""
+
+    def deliver(self, body: dict[str, Any]) -> tuple[bool, str | None]:
+        return slack_deliver(body)
 
 
 def read_recent_notification_delivery_records(

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import urllib.error
 import urllib.request
 from typing import Any
@@ -11,7 +12,9 @@ from arch_competition.scheduler_auto_promote_policy import (
     resolve_console_reload_url,
 )
 
+log = logging.getLogger(__name__)
 
+RELOAD_SCHEMA_VERSION = "reload_models_v1"
 
 
 def build_live_reload_report(

@@ -38,3 +38,34 @@ def record_schwab_http_response(resp, endpoint: str) -> None:
     _log.warning("Schwab HTTP %s on %s — possible rate limit (UI banner active ~%ds)", ic, ep, int(THROTTLE_WARN_WINDOW_SEC))
 
 
+def throttle_ui_payload(window_sec: float | None = None) -> dict:
+    """
+    Return a small dict for JSON / UI:
+    { active, message, hint, n_429_recent }
+    """
+    win = float(window_sec if window_sec is not None else THROTTLE_WARN_WINDOW_SEC)
+    now = time.time()
+    with _lock:
+        ev = list(_events)
+    hits = [(t, c, w) for t, c, w in ev if c == 429 and (now - t) <= win]
+    if not hits:
+        return {
+            "active": False,
+            "message": "",
+            "hint": "",
+            "n_429_recent": 0,
+        }
+    n = len(hits)
+    last_where = hits[-1][2]
+    return {
+        "active": True,
+        "n_429_recent": n,
+        "message": (
+            f"Schwab HTTP 429 (rate limit) on {last_where} — {n} hit(s) in the last ~{int(win)}s. "
+            "Quotes or option data may be delayed."
+        ),
+        "hint": (
+            "Increase refresh interval: set ED_VIEWER_SSE_REFRESH_SEC=2 (or 3) and "
+            "ED_VIEWER_STATE_CACHE_TTL_SEC to the same, then restart the server."
+        ),
+    }

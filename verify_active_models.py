@@ -35,6 +35,7 @@ if sys.stdout.encoding and "cp1252" in sys.stdout.encoding.lower():
 APP_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(APP_DIR))
 
+ACTIVE_DIR = APP_DIR / "models" / "active"
 MODELS_DIR = APP_DIR / "models"
 
 
@@ -72,6 +73,10 @@ def _get_active_tickers() -> list[str]:
     return out
 
 
+def _active_bundle_dir(ticker: str, hz: str) -> Path:
+    from active_bundle_contract import active_bundle_dir
+
+    return active_bundle_dir(ticker, hz, models_dir=MODELS_DIR)
 
 
 def check_artifact_compliance(ticker: str) -> dict:

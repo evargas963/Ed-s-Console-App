@@ -19,18 +19,28 @@ manifest per source. The previous validated backup is untouched until validation
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+import json
 import os
+import re
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from db_authority import (
+    canonical_permanent_db_paths,
     is_canonical_db_path,
+    permanent_database_identity,
 )
+from runtime_layout import RUNTIME_ROOT
 
 DANGEROUS_SQL_UNRESTRICTED_ENV = "ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED"
 SQL_EXECUTE_GUARD_ENV = "ED_CONSOLE_SQL_EXECUTE_GUARD"
 
 
+class UnsafeSqlError(sqlite3.DatabaseError):
+    """Raised when a guarded connection attempts disallowed SQL on the production DB."""
 
 
 def dangerous_sql_unrestricted() -> bool:
@@ -46,30 +56,322 @@ def sql_execute_guard_enabled() -> bool:
     return v not in ("0", "false", "no", "off")
 
 
+def default_backup_root() -> Path:
+    return (RUNTIME_ROOT / "backups" / "db").resolve()
 
 
+def preflight_exclusive_sqlite_write(db_path: Path, *, timeout_s: float = 30.0) -> tuple[bool, str | None]:
+    """Try BEGIN IMMEDIATE; wait up to ``timeout_s`` before declaring the DB locked.
+
+    DB-INIT FIX: was 2.0s — 15x shorter than the 30s busy_timeout every real connection
+    uses (db.py configure_sqlite_connection). At startup, when the live logger or a
+    concurrent retrain holds the write lock for >2s, this returned (False, 'database is
+    locked'), the migration preflight raised RuntimeError, and the logger-universe bootstrap
+    fell back to CORE+JSON — silently dropping the operator's pinned/user-persisted tickers
+    for that boot (surfaced only as the 'db load failed' warning). Aligning to 30s lets a
+    transient writer clear instead of spuriously failing the load.
+    """
+    db_path = Path(db_path).resolve()
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=float(timeout_s))
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("COMMIT")
+        finally:
+            conn.close()
+        return True, None
+    except sqlite3.OperationalError as e:
+        return False, str(e)
+    except Exception as e:
+        return False, str(e)
 
 
+def critical_table_row_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    """Best-effort row counts for integrity checks (tables may be absent during bootstrap)."""
+    candidates = (
+        "snapshots",
+        "price_bars_1m",
+        "logging_universe",
+        "ml_predictions",
+        "ml_prediction_runs",
+        "model_registry",
+    )
+    out: dict[str, int] = {}
+    for t in candidates:
+        try:
+            row = conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()
+            out[t] = int(row[0] if row is not None else 0)
+        except sqlite3.Error:
+            continue
+    return out
 
 
+def assert_critical_row_counts_no_drop(before: dict[str, int], after: dict[str, int]) -> None:
+    """Hard-fail if any tracked table loses rows (bootstrap growth allowed for new keys)."""
+    for k, b in before.items():
+        a = int(after.get(k, 0))
+        if a < int(b):
+            raise RuntimeError(
+                f"db_safety: critical row count dropped for {k}: before={b} after={a} "
+                "(aborting to prevent silent data loss)"
+            )
 
 
+_BACKUP_FILENAMES = {
+    "ed_console": ("ed_console_backup.db", "ed_console_backup_manifest.json", {"snapshots"}),
+    "stream_capture": (
+        "stream_capture_backup.db",
+        "stream_capture_backup_manifest.json",
+        {"stream_quotes_raw", "stream_subscriptions"},
+    ),
+}
 
 
+def _schema_identity(conn: sqlite3.Connection) -> tuple[tuple[str, str, str, str], ...]:
+    return tuple(
+        (str(row[0]), str(row[1]), str(row[2]), str(row[3] or ""))
+        for row in conn.execute(
+            "SELECT type, name, tbl_name, sql FROM sqlite_schema "
+            "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+        )
+    )
 
 
+def _validate_backup(
+    backup_path: Path,
+    *,
+    expected_schema: tuple[tuple[str, str, str, str], ...],
+    required_tables: set[str],
+) -> str:
+    conn = sqlite3.connect(f"{backup_path.as_uri()}?mode=ro", uri=True)
+    try:
+        rows = [str(row[0]) for row in conn.execute("PRAGMA quick_check")]
+        if rows != ["ok"]:
+            raise RuntimeError(f"backup quick_check failed: {rows!r}")
+        actual_schema = _schema_identity(conn)
+        if actual_schema != expected_schema:
+            raise RuntimeError("backup schema identity differs from source")
+        actual_tables = {row[1] for row in actual_schema if row[0] == "table"}
+        missing = sorted(required_tables - actual_tables)
+        if missing:
+            raise RuntimeError(f"backup database identity missing required tables: {missing}")
+    finally:
+        conn.close()
+    return "ok"
 
 
+@contextmanager
+def _exclusive_backup_lock(root: Path):
+    """Serialize promotion so a DB and its manifest cannot be crossed by two callers."""
+    lock_path = root / ".backup.lock"
+    lock_file = lock_path.open("a+b")
+    locked = False
+    try:
+        lock_file.seek(0, os.SEEK_END)
+        if lock_file.tell() == 0:
+            lock_file.write(b"\0")
+            lock_file.flush()
+        lock_file.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            locked = True
+        except OSError as exc:
+            raise RuntimeError(f"another permanent-database backup is already running: {exc}") from exc
+        yield
+    finally:
+        try:
+            if locked:
+                lock_file.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_file.close()
 
 
+def backup_permanent_database(
+    source_db: Path,
+    *,
+    reason: str,
+    backup_root: Path | None = None,
+) -> tuple[Path, Path, dict[str, Any]]:
+    """Refresh one approved stable backup using SQLite's Online Backup API."""
+    src = Path(source_db).resolve()
+    if not src.is_file():
+        raise FileNotFoundError(f"backup source missing: {src}")
+    identity = permanent_database_identity(src)
+    if identity is None:
+        raise ValueError(f"backup source is not an approved canonical permanent database: {src}")
+    db_name, manifest_name, required_tables = _BACKUP_FILENAMES[identity]
+    root = Path(backup_root).resolve() if backup_root is not None else default_backup_root()
+    root.mkdir(parents=True, exist_ok=True)
+    dest = root / db_name
+    manifest_path = root / manifest_name
+    staging = root / f".{db_name}.staging"
+    manifest_staging = root / f".{manifest_name}.staging"
+    rollback = root / f".{db_name}.previous"
+    manifest_rollback = root / f".{manifest_name}.previous"
+    if dest.resolve() == src.resolve():
+        raise ValueError("backup destination cannot equal source path")
+    with _exclusive_backup_lock(root):
+        if rollback.exists() or manifest_rollback.exists():
+            if not (rollback.exists() and manifest_rollback.exists()):
+                raise RuntimeError(
+                    f"incomplete prior backup rollback pair: {rollback}, {manifest_rollback}"
+                )
+            dest.unlink(missing_ok=True)
+            manifest_path.unlink(missing_ok=True)
+            os.replace(rollback, dest)
+            os.replace(manifest_rollback, manifest_path)
+        staging_files = (
+            staging,
+            Path(f"{staging}-wal"),
+            Path(f"{staging}-shm"),
+            manifest_staging,
+        )
+        for temporary in staging_files:
+            temporary.unlink(missing_ok=True)
+        try:
+            source_conn = sqlite3.connect(f"{src.as_uri()}?mode=ro", uri=True, timeout=30.0)
+            try:
+                source_schema = _schema_identity(source_conn)
+                destination_conn = sqlite3.connect(str(staging), timeout=30.0)
+                try:
+                    source_conn.backup(destination_conn)
+                    destination_conn.execute("PRAGMA journal_mode=DELETE")
+                    destination_conn.commit()
+                finally:
+                    destination_conn.close()
+            finally:
+                source_conn.close()
+
+            validation = _validate_backup(
+                staging,
+                expected_schema=source_schema,
+                required_tables=required_tables,
+            )
+            source_size = src.stat().st_size
+            backup_size = staging.stat().st_size
+            manifest: dict[str, Any] = {
+                "database_identity": identity,
+                "source": str(src),
+                "destination": str(dest),
+                "completed_utc": datetime.now(timezone.utc).isoformat(),
+                "source_size_bytes": source_size,
+                "backup_size_bytes": backup_size,
+                "reason": reason,
+                "validation": validation,
+            }
+            manifest_staging.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            companions = [
+                path for path in (
+                    Path(f"{dest}-wal"),
+                    Path(f"{dest}-shm"),
+                )
+                if path.exists()
+            ]
+            if companions:
+                raise RuntimeError(
+                    f"backup destination has forbidden WAL/SHM companions: {companions}"
+                )
+            previous_pair_exists = dest.exists() and manifest_path.exists()
+            if dest.exists() != manifest_path.exists():
+                raise RuntimeError(
+                    "stable backup database and manifest must either both exist or both be absent"
+                )
+            if previous_pair_exists:
+                os.link(dest, rollback)
+                try:
+                    os.link(manifest_path, manifest_rollback)
+                except Exception:
+                    rollback.unlink(missing_ok=True)
+                    raise
+            try:
+                os.replace(staging, dest)
+                os.replace(manifest_staging, manifest_path)
+            except Exception:
+                dest.unlink(missing_ok=True)
+                manifest_path.unlink(missing_ok=True)
+                if previous_pair_exists:
+                    os.replace(rollback, dest)
+                    os.replace(manifest_rollback, manifest_path)
+                raise
+            rollback.unlink(missing_ok=True)
+            manifest_rollback.unlink(missing_ok=True)
+            return dest, manifest_path, manifest
+        except Exception:
+            for temporary in staging_files:
+                temporary.unlink(missing_ok=True)
+            raise
 
 
+def backup_all_permanent_databases(
+    *, reason: str, backup_root: Path | None = None
+) -> list[tuple[Path, Path, dict[str, Any]]]:
+    """Refresh both permanent authorities through the same producer."""
+    return [
+        backup_permanent_database(source, reason=reason, backup_root=backup_root)
+        for source in canonical_permanent_db_paths()
+    ]
 
 
+def _split_sql_statements(sql: str) -> list[str]:
+    parts = [p.strip() for p in sql.split(";")]
+    return [p for p in parts if p]
 
 
+_RE_DROP = re.compile(r"(?is)\bDROP\s+(TABLE|INDEX|VIEW|TRIGGER)\b")
+_RE_TRUNCATE = re.compile(r"(?is)\bTRUNCATE\b")
+_RE_VACUUM_INTO = re.compile(r"(?is)\bVACUUM\s+INTO\b")
+_RE_ALTER_DROP = re.compile(r"(?is)\bALTER\s+TABLE\b.+\bDROP\b")
+_RE_DELETE_FROM = re.compile(r"(?is)\bDELETE\s+FROM\b")
+_RE_WHERE = re.compile(r"(?is)\bWHERE\b")
 
 
+def validate_sql_for_production_guard(sql: str) -> None:
+    """
+    Block obviously destructive patterns unless ``ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED=1``.
+
+    Heuristic (not a full SQL parser): ``DELETE`` must contain the keyword ``WHERE``.
+    """
+    if dangerous_sql_unrestricted():
+        return
+    raw = (sql or "").strip()
+    if not raw:
+        return
+    for stmt in _split_sql_statements(raw):
+        s = stmt.strip()
+        if not s or s.startswith("--"):
+            continue
+        up = s.upper()
+        if up.startswith("PRAGMA"):
+            continue
+        if up.startswith("BEGIN") or up.startswith("COMMIT") or up.startswith("ROLLBACK"):
+            continue
+        if up.startswith("SAVEPOINT") or up.startswith("RELEASE"):
+            continue
+        if _RE_DROP.search(s):
+            raise UnsafeSqlError("blocked: DROP TABLE/INDEX/VIEW/TRIGGER (set ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED=1 to override)")
+        if _RE_TRUNCATE.search(s):
+            raise UnsafeSqlError("blocked: TRUNCATE")
+        if _RE_VACUUM_INTO.search(s):
+            raise UnsafeSqlError("blocked: VACUUM INTO overwrite path")
+        if _RE_ALTER_DROP.search(s):
+            raise UnsafeSqlError("blocked: ALTER TABLE ... DROP ...")
+        if _RE_DELETE_FROM.search(s) and not _RE_WHERE.search(s):
+            raise UnsafeSqlError("blocked: DELETE without WHERE clause")
 
 
 def install_production_sql_authorizer(conn: sqlite3.Connection) -> None:
@@ -108,3 +410,18 @@ def maybe_install_sql_guard_on_connection(conn: sqlite3.Connection, db_path: Pat
     install_production_sql_authorizer(conn)
 
 
+def refuse_canonical_db_path_as_shutil_destination(dest: Path) -> None:
+    """
+    Block ``shutil.copy*(..., canonical_ed_console.db)`` style overwrites unless explicitly ack'd.
+
+    Restores should use SQLite backup API or ops-approved flows, not silent file replace.
+    """
+    d = Path(dest).resolve()
+    if not is_canonical_db_path(d):
+        return
+    if dangerous_sql_unrestricted():
+        return
+    raise ValueError(
+        f"refusing shutil-style write to canonical production DB path {d!r}. "
+        "Use backups under backups/db/ or set ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED=1 with explicit ops sign-off."
+    )

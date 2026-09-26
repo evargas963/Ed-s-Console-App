@@ -38,6 +38,9 @@ def scheduler_auto_promote_strict_core_freshness() -> bool:
     return _env_truthy("ED_SCHEDULER_AUTO_PROMOTE_STRICT_CORE_FRESHNESS")
 
 
+def scheduler_nightly_all_horizons_enabled() -> bool:
+    """Phase 2 stack honesty: nightly background + default train path covers all four primaries."""
+    return _env_falsy_default_true("ED_ML_SCHEDULER_ALL_HORIZONS", "1")
 
 
 def resolve_console_reload_url() -> str:

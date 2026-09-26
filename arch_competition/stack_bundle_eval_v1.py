@@ -21,51 +21,808 @@ from instrument_identity import ticker_storage_key
 
 import json
 import logging
+import math
 from functools import lru_cache
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    confusion_matrix,
+    f1_score,
+    log_loss,
+    precision_recall_fscore_support,
+)
 
-from ml_horizon import normalize_ml_horizon_slug
+from calibration.statistical_integrity import MIN_SAMPLES_STATISTICAL
+from ml_horizon import normalize_ml_horizon_slug, outcome_column
+from ml_predict import stack_probs_bundle_key
 
 log = logging.getLogger(__name__)
 
+SCHEMA_VERSION = "1"
+UNIFORM_3CLASS_LOG_LOSS = float(math.log(3.0))
+# Heuristic stack-bundle gate (distinct from promotion_engine.PromotionPolicy.max_ece_regression_vs_incumbent).
+POLICY_CALIBRATION_MAX_ECE = 0.35
+
+# Full component matrix (default CLI). All scored on the same row intersection.
+DEFAULT_ALL_MODES: tuple[str, ...] = (
+    "xgb_only",
+    "lstm_only",
+    "transformer_only",
+    "xgb_plus_lstm",
+    "xgb_plus_transformer",
+    "xgb_plus_lstm_plus_transformer",
+    "fusion_without_mc",
+    "full_fusion",
+)
+
+# Backward-compatible alias.
+DEFAULT_CORE_MODES: tuple[str, ...] = DEFAULT_ALL_MODES
+
+# Optional: trained meta-learner on 9-dim stack vs explicit 40/35/25 weighted blend (see evaluation_contract).
+META_STACK_MODE = "meta_stack"
+
+VALID_MODES: frozenset[str] = frozenset(
+    {
+        "xgb_only",
+        "lstm_only",
+        "transformer_only",
+        "xgb_plus_lstm",
+        "xgb_plus_transformer",
+        "xgb_plus_lstm_plus_transformer",
+        META_STACK_MODE,
+        "fusion_without_mc",
+        "full_fusion",
+    }
+)
+
+# Embedded in JSON manifests for auditors.
+MODE_DEFINITIONS: dict[str, str] = {
+    "xgb_only": "fusion.xgb from run_unified_stack_ml_once only (tabular XGB, parallel_runtime stack).",
+    "lstm_only": "fusion.lstm only — no XGB or Transformer probabilities in the triplet.",
+    "transformer_only": "fusion.transformer only — no XGB or LSTM probabilities in the triplet.",
+    "xgb_plus_lstm": "ml_predict._weighted_average with XGB + LSTM only (base weights 0.40+0.35 renormalized).",
+    "xgb_plus_transformer": "ml_predict._weighted_average with XGB + Transformer only (0.40+0.25 renormalized).",
+    "xgb_plus_lstm_plus_transformer": (
+        "ml_predict._weighted_average(xgb, lstm, transformer) — explicit 0.40/0.35/0.25 blend; "
+        "does NOT use the trained meta-learner (meta_*.pkl)."
+    ),
+    META_STACK_MODE: (
+        "Production stack_probs: _predict_meta(meta_*.pkl) when present, else _weighted_average "
+        "of three bases — differs from xgb_plus_lstm_plus_transformer when meta learner exists."
+    ),
+    "fusion_without_mc": (
+        "bayesian_fusion.fuse (XGB+LSTM+Transformer+rules+regime); Monte Carlo is excluded from fusion math."
+    ),
+    "full_fusion": (
+        "Same base fusion as fusion_without_mc, then mc_fusion_adjustment.fuse_payload_apply_mc_adjustment "
+        "when MC is available (contextual volatility/tail/bias only)."
+    ),
+}
 
 
+def _outcome_class_index(outcome_raw: Any) -> Optional[int]:
+    """Map outcome column value to {up:0, down:1, flat:2}; None if missing or invalid."""
+    if outcome_raw is None:
+        return None
+    key = str(outcome_raw).strip().lower()
+    if not key:
+        return None
+    return {"up": 0, "down": 1, "flat": 2}.get(key)
 
 
+def _norm_triplet(pu: float, pd: float, pf: float) -> Optional[list[float]]:
+    fpu, fpd, fpf = float(pu), float(pd), float(pf)
+    if not all(math.isfinite(v) for v in (fpu, fpd, fpf)):
+        return None
+    s = fpu + fpd + fpf
+    if s <= 0:
+        return None
+    return [fpu / s, fpd / s, fpf / s]
 
 
+def _dict_to_probs(d: Optional[dict]) -> Optional[list[float]]:
+    if not d:
+        return None
+    if not all(k in d for k in ("up", "down", "flat")):
+        return None
+    try:
+        return _norm_triplet(float(d["up"]), float(d["down"]), float(d["flat"]))
+    except (TypeError, ValueError):
+        return None
 
 
+def _probs_from_fusion_branch(b: Optional[dict]) -> Optional[list[float]]:
+    """run_unified_stack_ml_once fusion.* uses prob_up / prob_down / prob_flat."""
+    if not b or not b.get("available"):
+        return None
+    if not all(k in b for k in ("prob_up", "prob_down", "prob_flat")):
+        return None
+    try:
+        return _norm_triplet(float(b["prob_up"]), float(b["prob_down"]), float(b["prob_flat"]))
+    except (TypeError, ValueError):
+        return None
 
 
+def _fusion_branch_to_prob_dict(b: Optional[dict]) -> Optional[dict]:
+    """Convert fusion branch to {up,down,flat} for _weighted_average."""
+    if not b or not b.get("available"):
+        return None
+    if not all(k in b for k in ("prob_up", "prob_down", "prob_flat")):
+        return None
+    try:
+        return {
+            "up": float(b["prob_up"]),
+            "down": float(b["prob_down"]),
+            "flat": float(b["prob_flat"]),
+        }
+    except (TypeError, ValueError):
+        return None
 
 
+def _weighted_blend_probs(
+    mp: Any,
+    ticker: str,
+    *,
+    xgb_d: Optional[dict],
+    lstm_d: Optional[dict],
+    tr_d: Optional[dict],
+) -> Optional[list[float]]:
+    """
+    Explicit blend among provided branches only.
+    Missing branches are omitted (weights renormalized over XGB=0.40, LSTM=0.35, TR=0.25).
+    Full triple delegates to ml_predict._weighted_average (collapse-aware).
+    """
+    if xgb_d is not None and lstm_d is not None and tr_d is not None:
+        collapsed = mp._active_base_collapse_flags(ticker)
+        wa = mp._weighted_average(ticker, xgb_d, lstm_d, tr_d, collapsed=collapsed)
+        return _dict_to_probs(wa)
+
+    collapsed = mp._active_base_collapse_flags(ticker)
+
+    base_weights = (
+        ("xgb", xgb_d, 0.40),
+        ("lstm", lstm_d, 0.35),
+        ("transformer", tr_d, 0.25),
+    )
+    healthy = [
+        (name, p, w)
+        for name, p, w in base_weights
+        if p is not None and name not in collapsed and _dict_to_probs(p) is not None
+    ]
+    if not healthy:
+        return None
+
+    total_w = sum(w for _, _, w in healthy)
+    if total_w <= 0:
+        return None
+
+    acc = {"up": 0.0, "down": 0.0, "flat": 0.0}
+    for _name, probs, w in healthy:
+        tri = _dict_to_probs(probs)
+        assert tri is not None
+        nw = w / total_w
+        acc["up"] += tri[0] * nw
+        acc["down"] += tri[1] * nw
+        acc["flat"] += tri[2] * nw
+    return _norm_triplet(acc["up"], acc["down"], acc["flat"])
 
 
+def _pack_full_metrics(
+    name: str,
+    y_true: list[int],
+    prob_rows: list[list[float]],
+    rows_used: list[dict],
+) -> dict[str, Any]:
+    from arch_competition.metrics import (
+        confidence_bucket_summaries,
+        confidence_reliability_proxy,
+        expected_calibration_error_multiclass,
+        half_split_log_loss_std,
+        multiclass_brier_score,
+        overconfidence_diagnostics,
+        regime_bucket_metrics,
+        regime_conditional_calibration,
+        reliability_bins_table,
+    )
+
+    n = len(y_true)
+    if n < MIN_SAMPLES_STATISTICAL or len(prob_rows) != n:
+        return {
+            "config": name,
+            "n_rows_scored": n,
+            "error": "insufficient_rows_or_misaligned_probs",
+        }
+    P = np.asarray(prob_rows, dtype=np.float64)
+    preds = list(np.argmax(P, axis=1).astype(int))
+    acc = float(accuracy_score(y_true, preds))
+    bal = float(balanced_accuracy_score(y_true, preds))
+    macro_f1 = float(f1_score(y_true, preds, average="macro", labels=[0, 1, 2], zero_division=0))
+    prec, rec, f1, _ = precision_recall_fscore_support(
+        y_true, preds, labels=[0, 1, 2], zero_division=0, average=None
+    )
+    per_class = {
+        "up": {"precision": float(prec[0]), "recall": float(rec[0]), "f1": float(f1[0])},
+        "down": {"precision": float(prec[1]), "recall": float(rec[1]), "f1": float(f1[1])},
+        "flat": {"precision": float(prec[2]), "recall": float(rec[2]), "f1": float(f1[2])},
+    }
+    cm = confusion_matrix(y_true, preds, labels=[0, 1, 2]).tolist()
+    ll = float(log_loss(y_true, P, labels=[0, 1, 2]))
+    brier = multiclass_brier_score(y_true, prob_rows)
+    stab = half_split_log_loss_std(y_true, prob_rows)
+    ece = expected_calibration_error_multiclass(y_true, prob_rows, n_bins=10)
+    rel = reliability_bins_table(y_true, prob_rows, n_bins=10)
+    cb = confidence_bucket_summaries(y_true, prob_rows, n_buckets=5)
+    conf_rel = confidence_reliability_proxy(prob_rows, y_true)
+    occ = overconfidence_diagnostics(y_true, prob_rows)
+
+    # Directional: max prob on correct class vs incorrect (multiclass separation)
+    p_correct = []
+    p_wrong_max = []
+    for pr, yt in zip(prob_rows, y_true):
+        arr = np.asarray(pr, dtype=np.float64)
+        p_correct.append(float(arr[yt]))
+        mask = np.ones(3, dtype=bool)
+        mask[yt] = False
+        p_wrong_max.append(float(np.max(arr[mask])) if mask.any() else 0.0)
+    dir_sep = float(np.mean(np.asarray(p_correct) - np.asarray(p_wrong_max)))
+
+    return {
+        "config": name,
+        "n_rows_scored": n,
+        "accuracy": acc,
+        "balanced_accuracy": bal,
+        "macro_f1": macro_f1,
+        "per_class_precision_recall_f1": per_class,
+        "confusion_matrix": {"labels_order": ["up", "down", "flat"], "matrix": cm},
+        "multiclass_log_loss": ll,
+        "brier_score_multiclass_mean_squared_error": brier,
+        "calibration_top_predicted_class_ece": ece,
+        "reliability_bins_top_class": rel,
+        "confidence_buckets_quantile": cb,
+        "confidence_reliability_proxy": conf_rel,
+        "overconfidence_diagnostics": occ,
+        "stability_log_loss_std_halves": stab,
+        "directional_separation_mean_p_correct_minus_max_p_wrong": dir_sep,
+        "regime_slices": regime_bucket_metrics(y_true, prob_rows, rows_used),
+        "regime_conditional_ece": regime_conditional_calibration(y_true, prob_rows, rows_used),
+    }
 
 
+def _authority_block(
+    by_config: dict[str, dict[str, Any]],
+    *,
+    min_rows: int,
+    min_delta_log_loss: float,
+) -> dict[str, Any]:
+    """Rank by multiclass_log_loss on paired intersection subset."""
+    ranked: list[tuple[str, float]] = []
+    for name, m in by_config.items():
+        ll = m.get("multiclass_log_loss")
+        n = m.get("n_rows_scored", 0)
+        if ll is None or n < min_rows:
+            continue
+        ranked.append((name, float(ll)))
+    ranked.sort(key=lambda x: x[1])
+    winner = ranked[0][0] if ranked else None
+    runner = ranked[1][0] if len(ranked) > 1 else None
+    best_ll = ranked[0][1] if ranked else None
+    second_ll = ranked[1][1] if len(ranked) > 1 else None
+    margin = (second_ll - best_ll) if (best_ll is not None and second_ll is not None) else None
+
+    meta = by_config.get("meta_stack") or {}
+    triplet_explicit = by_config.get("xgb_plus_lstm_plus_transformer") or {}
+    full = by_config.get("full_fusion") or {}
+    no_mc = by_config.get("fusion_without_mc") or {}
+    xgb = by_config.get("xgb_only") or {}
+
+    ll_meta = meta.get("multiclass_log_loss")
+    ll_triplet_explicit = triplet_explicit.get("multiclass_log_loss")
+    ll_full = full.get("multiclass_log_loss")
+    ll_nomc = no_mc.get("multiclass_log_loss")
+    ll_xgb = xgb.get("multiclass_log_loss")
+
+    mc_helps: Optional[bool] = None
+    if ll_nomc is not None and ll_full is not None:
+        mc_helps = bool(ll_nomc - ll_full > 1e-6)
+
+    fusion_helps_vs_meta_stack: Optional[bool] = None
+    if ll_meta is not None and ll_full is not None:
+        fusion_helps_vs_meta_stack = bool(ll_meta - ll_full > 1e-6)
+
+    fusion_helps_vs_explicit_weighted_triplet: Optional[bool] = None
+    if ll_triplet_explicit is not None and ll_full is not None:
+        fusion_helps_vs_explicit_weighted_triplet = bool(ll_triplet_explicit - ll_full > 1e-6)
+
+    edge_vs_uniform: Optional[bool] = None
+    if best_ll is not None:
+        edge_vs_uniform = bool(UNIFORM_3CLASS_LOG_LOSS - best_ll > 1e-4)
+
+    deployable = bool(
+        winner
+        and best_ll is not None
+        and edge_vs_uniform
+        and ranked[0][1] < UNIFORM_3CLASS_LOG_LOSS - 1e-4
+        and len(ranked) >= 2
+        and margin is not None
+        and margin >= min_delta_log_loss
+    )
+
+    policy_calibration_ok = False
+    policy_calibration_status = "no_winner"
+    if winner:
+        ece = by_config[winner].get("calibration_top_predicted_class_ece")
+        if ece is None:
+            policy_calibration_status = "missing_ece"
+            policy_calibration_ok = False
+        elif float(ece) < POLICY_CALIBRATION_MAX_ECE:
+            policy_calibration_status = "ok"
+            policy_calibration_ok = True
+        else:
+            policy_calibration_status = "above_threshold"
+            policy_calibration_ok = False
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "primary_metric": "multiclass_log_loss",
+        "secondary_metrics": ["balanced_accuracy", "macro_f1", "calibration_top_predicted_class_ece", "brier_score_multiclass_mean_squared_error"],
+        "authoritative_winner_config": winner,
+        "runner_up_config": runner,
+        "winner_multiclass_log_loss": best_ll,
+        "margin_log_loss_vs_runner_up": margin,
+        "full_stack_beats_xgb_meta_stack_log_loss": (
+            bool(ll_full is not None and ll_meta is not None and ll_full < ll_meta - 1e-6)
+            if (ll_full is not None and ll_meta is not None)
+            else None
+        ),
+        "full_fusion_beats_xgb_only_log_loss": (
+            bool(ll_full is not None and ll_xgb is not None and ll_full < ll_xgb - 1e-6)
+            if (ll_full is not None and ll_xgb is not None)
+            else None
+        ),
+        "monte_carlo_improves_vs_fusion_without_mc_log_loss": mc_helps,
+        "bayesian_fusion_improves_vs_meta_stack_log_loss": fusion_helps_vs_meta_stack,
+        "bayesian_fusion_improves_vs_explicit_weighted_triplet_log_loss": fusion_helps_vs_explicit_weighted_triplet,
+        "edge_vs_uniform_3class_baseline": edge_vs_uniform,
+        "uniform_baseline_log_loss": UNIFORM_3CLASS_LOG_LOSS,
+        "deployable_now_governance_heuristic": deployable,
+        "policy_calibration_may_proceed_heuristic": policy_calibration_ok,
+        "policy_calibration_status": policy_calibration_status,
+        "trade_plan_work_may_proceed_heuristic": bool(deployable and policy_calibration_ok),
+        "notes": (
+            "Heuristic gates only — arch_competition.promotion_engine.decide_promotion applies to "
+            "parallel-vs-cascade manifests, not this bundle. MC/Fusion deltas are paired-row deltas "
+            "on the same timestamps."
+        ),
+    }
 
 
+@dataclass
+class StackBundleEvalOptions:
+    allowed_et_dates: Optional[set[str]] = None
+    min_paired_rows: int = 50
+    min_delta_log_loss: float = 0.02
+    max_rows: Optional[int] = None
 
 
+def run_stack_bundle_evaluation(
+    *,
+    db_path: str,
+    ticker: str,
+    model_dir: Path,
+    ml_horizon_slug: str,
+    options: Optional[StackBundleEvalOptions] = None,
+    modes: tuple[str, ...] = DEFAULT_ALL_MODES,
+) -> dict[str, Any]:
+    """
+    Evaluate named stack configurations on identical RTH rows (intersection pairing).
+
+    Returns a JSON-serializable manifest including per-config metrics and authority block.
+
+    Isolation: single-model modes use only that model's fusion branch from run_unified_stack_ml_once.
+    xgb_plus_* modes use ml_predict._weighted_average with only the listed branches (renormalized).
+    xgb_plus_lstm_plus_transformer is never the trained meta-learner; use meta_stack for that.
+    """
+    import bayesian_fusion
+    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+    from features.replay_signal_input_v1 import signal_input_from_snapshot_row_dict
+    from ml_scheduler import _load_rth_rows_for_ticker
+    from regime_engine import classify_regime
+    from rules_engine import compute_rules
+    from train_all import preload_historical_db_for_eval
+
+    import ml_predict as mp
+    from prediction_engine import build_fusion_model_overlay_for_stack
+    from signals import _run_model_stack, _spot_for_mc_fusion_adjustment
+
+    opts = options or StackBundleEvalOptions()
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    target_column = outcome_column(hz)
+
+    unknown = [m for m in modes if m not in VALID_MODES]
+    if unknown:
+        raise ValueError(f"Unknown mode(s) {unknown!r}. Valid: {sorted(VALID_MODES)}")
+
+    rows = _load_rth_rows_for_ticker(db_path, ticker, label_column=target_column)
+    if opts.allowed_et_dates is not None:
+        rows = [r for r in rows if r.get("ts_et") and str(r["ts_et"])[:10] in opts.allowed_et_dates]
+    if opts.max_rows is not None and opts.max_rows > 0:
+        # Most recent slice (chronological tail), not a random subsample.
+        rows = rows[-int(opts.max_rows) :]
+
+    orig_model_dir = mp.MODEL_DIR
+    htok = mp.set_ml_infer_horizon_slug(hz)
+    buffers: dict[str, list[list[float]]] = {m: [] for m in modes}
+    y_paired: list[int] = []
+    rows_paired: list[dict] = []
+
+    skip_reasons: dict[str, int] = {}
+
+    def _bump(key: str) -> None:
+        skip_reasons[key] = skip_reasons.get(key, 0) + 1
+
+    try:
+        mp.MODEL_DIR = _models_root_from_bundle_dir(Path(model_dir))
+        mp.reset_caches()
+        # One snapshot preload for the whole eval window — no per-row sqlite for history.
+        _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+        hist_db = (
+            preload_historical_db_for_eval(db_path, ticker, max(_tss))
+            if _tss
+            else None
+        )
+
+        for row in rows:
+            ts_utc = row.get("ts_utc")
+            if not ts_utc:
+                _bump("missing_ts_utc")
+                continue
+            try:
+                inp = signal_input_from_snapshot_row_dict(row)
+            except Exception as e:
+                _bump(f"signal_input:{type(e).__name__}")
+                log.debug("skip row signal_input: %s", e)
+                continue
+            try:
+                inf_v1 = build_inference_snapshot_v1_from_db_row(
+                    ticker=ticker,
+                    expiry=None,
+                    as_of_ts=float(ts_utc),
+                    db_row=row,
+                )
+            except Exception as e:
+                _bump(f"inference_snapshot:{type(e).__name__}")
+                log.debug("skip row inf_v1: %s", e)
+                continue
+            mvp = inf_v1.get("features") or {}
+            try:
+                rules = compute_rules(inp, mvp_features=mvp)
+                regime = classify_regime(inp, rules, mvp_features=mvp)
+            except Exception as e:
+                _bump(f"rules_regime:{type(e).__name__}")
+                log.debug("skip row rules/regime: %s", e)
+                continue
+
+            try:
+                snap = build_fusion_model_overlay_for_stack(
+                    inp, hist_db, rules, inference_snapshot_v1=inf_v1
+                )
+            except Exception as e:
+                _bump(f"fusion_overlay:{type(e).__name__}")
+                log.debug("skip row fusion overlay: %s", e)
+                continue
+
+            try:
+                once = mp.run_unified_stack_ml_once(
+                    snap,
+                    ticker,
+                    hist_db,
+                    getattr(rules, "signal", "wait") or "wait",
+                    inference_snapshot_v1=inf_v1,
+                )
+            except Exception as e:
+                _bump(f"run_unified_stack_ml_once:{type(e).__name__}")
+                log.debug("skip row unified stack ML layers: %s", e)
+                continue
+
+            fused_pack = once.get("fusion") or {}
+            xgb_d = _fusion_branch_to_prob_dict(fused_pack.get("xgb"))
+            lstm_d = _fusion_branch_to_prob_dict(fused_pack.get("lstm"))
+            tr_d = _fusion_branch_to_prob_dict(fused_pack.get("transformer"))
+
+            spk = stack_probs_bundle_key()
+            meta_probs: Optional[list[float]] = None
+            if META_STACK_MODE in modes:
+                stack_d = once.get(spk)
+                meta_probs = _dict_to_probs(stack_d) if stack_d else None
+                if meta_probs is None:
+                    meta_probs = _weighted_blend_probs(mp, ticker, xgb_d=xgb_d, lstm_d=lstm_d, tr_d=tr_d)
+
+            row_probs: dict[str, Optional[list[float]]] = {m: None for m in modes}
+
+            if "xgb_only" in modes:
+                row_probs["xgb_only"] = _probs_from_fusion_branch(fused_pack.get("xgb"))
+            if "lstm_only" in modes:
+                row_probs["lstm_only"] = _probs_from_fusion_branch(fused_pack.get("lstm"))
+            if "transformer_only" in modes:
+                row_probs["transformer_only"] = _probs_from_fusion_branch(fused_pack.get("transformer"))
+            if "xgb_plus_lstm" in modes:
+                row_probs["xgb_plus_lstm"] = _weighted_blend_probs(
+                    mp, ticker, xgb_d=xgb_d, lstm_d=lstm_d, tr_d=None
+                )
+            if "xgb_plus_transformer" in modes:
+                row_probs["xgb_plus_transformer"] = _weighted_blend_probs(
+                    mp, ticker, xgb_d=xgb_d, lstm_d=None, tr_d=tr_d
+                )
+            if "xgb_plus_lstm_plus_transformer" in modes:
+                row_probs["xgb_plus_lstm_plus_transformer"] = _weighted_blend_probs(
+                    mp, ticker, xgb_d=xgb_d, lstm_d=lstm_d, tr_d=tr_d
+                )
+            if META_STACK_MODE in modes:
+                row_probs[META_STACK_MODE] = meta_probs
+
+            # Full stack + MC + fusion requires _run_model_stack
+            fusion_payload_base: Any = None
+            fusion_payload_full: Any = None
+            if "full_fusion" in modes or "fusion_without_mc" in modes:
+                try:
+                    from features.monte_carlo_stack_input import (
+                        MonteCarloStackInputError,
+                        resolve_monte_carlo_stack_inputs,
+                    )
+
+                    _smc = None
+                    _mc_e = None
+                    try:
+                        _smc = resolve_monte_carlo_stack_inputs(inp, inf_v1)
+                    except MonteCarloStackInputError as e:
+                        _mc_e = e
+                    try:
+                        from ml_predict import build_xgb_pre_engineering_snapshot_for_tick
+
+                        _xgb_pre = build_xgb_pre_engineering_snapshot_for_tick(inf_v1, snap)
+                    except Exception:
+                        _xgb_pre = None
+                    xgb_out, lstm_out, transformer_out, mc_out, _mlb = _run_model_stack(
+                        inp,
+                        rules,
+                        regime,
+                        hist_db,
+                        inference_snapshot_v1=inf_v1,
+                        fusion_overlay=snap,
+                        mc_spot_ctx=_smc,
+                        mc_context_error=_mc_e,
+                        xgb_pre_engineering_snapshot=_xgb_pre,
+                    )
+                    _fusion_tc = bayesian_fusion.build_fusion_tick_cache(regime, rules)
+                    fusion_payload_base = bayesian_fusion.fuse(
+                        regime,
+                        xgb_out,
+                        lstm_out,
+                        transformer_out,
+                        mc_out,
+                        rules,
+                        signal_layer_v1=inf_v1.get("signal_layer_v1"),
+                        fusion_tick_cache=_fusion_tc,
+                    )
+                    fusion_payload_full = fusion_payload_base
+                    try:
+                        from mc_fusion_adjustment import fuse_payload_apply_mc_adjustment
+
+                        _adj_spot = _spot_for_mc_fusion_adjustment(_smc, inf_v1)
+                        fusion_payload_full = fuse_payload_apply_mc_adjustment(
+                            fusion_payload_base,
+                            mc_out,
+                            _adj_spot,
+                        )
+                    except Exception:
+                        fusion_payload_full = fusion_payload_base
+                except Exception as e:
+                    _bump(f"fusion_stack:{type(e).__name__}")
+                    log.debug("skip row fusion stack: %s", e)
+
+                if fusion_payload_base is not None and "fusion_without_mc" in modes:
+                    _bpu = getattr(fusion_payload_base, "prob_up", None)
+                    _bpd = getattr(fusion_payload_base, "prob_down", None)
+                    _bpf = getattr(fusion_payload_base, "prob_flat", None)
+                    if _bpu is not None and _bpd is not None and _bpf is not None:
+                        row_probs["fusion_without_mc"] = _norm_triplet(
+                            float(_bpu), float(_bpd), float(_bpf)
+                        )
+                    else:
+                        _bump("fusion_without_mc:null_probs")
+                if fusion_payload_full is not None and "full_fusion" in modes:
+                    _pu = getattr(fusion_payload_full, "prob_up", None)
+                    _pd = getattr(fusion_payload_full, "prob_down", None)
+                    _pf = getattr(fusion_payload_full, "prob_flat", None)
+                    if _pu is not None and _pd is not None and _pf is not None:
+                        row_probs["full_fusion"] = _norm_triplet(
+                            float(_pu), float(_pd), float(_pf)
+                        )
+                    else:
+                        _bump("full_fusion:null_probs")
+
+            outcome_raw = row.get(target_column)
+            yt = _outcome_class_index(outcome_raw)
+            if yt is None:
+                _bump(f"missing_or_invalid_outcome:{outcome_raw!r}")
+                continue
+
+            if all(row_probs.get(m) is not None for m in modes):
+                for m in modes:
+                    buffers[m].append(row_probs[m])  # type: ignore[arg-type]
+                y_paired.append(yt)
+                rows_paired.append(row)
+            else:
+                _bump("incomplete_mode_set")
+
+    finally:
+        mp.MODEL_DIR = orig_model_dir
+        mp.reset_caches()
+        mp.reset_ml_infer_horizon_slug(htok)
+
+    by_config: dict[str, Any] = {}
+    for m in modes:
+        probs = buffers.get(m) or []
+        y = y_paired
+        if len(probs) == len(y) and len(y) >= MIN_SAMPLES_STATISTICAL:
+            by_config[m] = _pack_full_metrics(m, y, probs, rows_paired)
+        else:
+            by_config[m] = {
+                "config": m,
+                "n_rows_scored": len(probs),
+                "error": "insufficient_paired_rows_or_alignment",
+            }
+
+    authority = _authority_block(
+        by_config,
+        min_rows=opts.min_paired_rows,
+        min_delta_log_loss=opts.min_delta_log_loss,
+    )
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "evaluation_contract": {
+            "time_ordering": "rows from _load_rth_rows_for_ticker ORDER BY ts_utc ASC (no random shuffle)",
+            "label_column": target_column,
+            "ml_horizon_slug": hz,
+            "pairing": "A row is scored only if every requested mode produced a probability triplet.",
+            "leakage_audit": (
+                "InferenceSnapshotV1 built with as_of_ts = row ts_utc. preload_historical_db_for_eval loads "
+                "rows with ts_utc < max(row ts_utc) once; PreloadedHistoricalDB.get_recent_snapshots filters "
+                "each call to ts_utc < as_of_ts_utc (per-row causal slice). Outcomes excluded when "
+                "target_column is null or not in {up, down, flat} (never fabricated as flat)."
+            ),
+            "outcome_validity": "Rows without valid outcome labels are skipped before pairing (see skip_reason_counts).",
+            "primary_metric": "multiclass_log_loss",
+            "promotion_engine_note": (
+                "arch_competition.promotion_engine.decide_promotion remains the governed contract for "
+                "parallel-vs-cascade artifact promotion; this bundle answers stack/MC/fusion authority separately."
+            ),
+            "meta_stack_vs_explicit_triplet": (
+                "meta_stack uses trained logistic meta-learner on 9 stacked probs when meta_*.pkl exists; "
+                "xgb_plus_lstm_plus_transformer always uses fixed _weighted_average (0.40/0.35/0.25) with no meta."
+            ),
+        },
+        "mode_definitions": {k: MODE_DEFINITIONS[k] for k in modes if k in MODE_DEFINITIONS},
+        "db_path": str(Path(db_path).resolve()),
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25
+        "model_dir": str(Path(model_dir).resolve()),
+        "allowed_et_dates": sorted(opts.allowed_et_dates) if opts.allowed_et_dates else None,
+        "ml_horizon_slug": hz,
+        "modes_requested": list(modes),
+        "rows_loaded": len(rows),
+        "max_rows_cap": opts.max_rows,
+        "paired_rows_all_modes": len(y_paired),
+        "skip_reason_counts": skip_reasons,
+        "metrics_by_config": by_config,
+        "authority_decision": authority,
+    }
 
 
+WHOLE_STACK_DECISION_MODE = "full_fusion"
 
 
+def _models_root_from_bundle_dir(model_dir: Path) -> Path:
+    """mp.MODEL_DIR must be repo ``models/`` — not the per-ticker leaf passed by callers."""
+    md = Path(model_dir).resolve()
+    if any(md.glob("xgb_*.pkl")) or any(md.glob("lstm_*.pt")) or any(md.glob("transformer_*.pt")):
+        return md.parent.parent
+    return md
 
 
+def _synthetic_ablation_snapshot_rows() -> tuple[dict, dict]:
+    """Two distinct synthetic rows for engineer_features → raw snapshot dependency map."""
+    from ml_train import CATEGORICALS, SCALE_INVARIANT_COLS, WALL_DISTANCE_COLS
+
+    row1: dict[str, Any] = {
+        "ticker": "SPY",
+        "ts_utc": 1_700_000_000.0,
+        "spot": 100.0,
+        "outcome_1c": "up",
+        "et_hour": 10,
+        "et_minute": 15,
+        "candle_body_pts": 0.5,
+        "candle_range_pts": 1.0,
+        "nearest_above_dist": 1.0,
+        "nearest_below_dist": 1.0,
+        "vwap_dist_pts": 0.25,
+        "flow_imbalance": 0.55,
+        "bid_ask_imbalance": 0.55,
+        "candle_volume": 1000.0,
+        "net_gamma": 1.0,
+    }
+    for c in list(WALL_DISTANCE_COLS) + list(SCALE_INVARIANT_COLS):
+        row1.setdefault(c, 1.0)
+    for c in CATEGORICALS:
+        row1.setdefault(c, "neutral")
+    row1["zone"] = "pin_neutral"
+    row1["vwap_side"] = "above"
+    row2 = {
+        **row1,
+        "ts_utc": row1["ts_utc"] + 60.0,
+        "candle_volume": 1100.0,
+        "net_gamma": 2.0,
+    }
+    return row1, row2
 
 
+@lru_cache(maxsize=1)
+def _xgb_engineered_to_raw_deps() -> dict[str, frozenset[str]]:
+    """Engineered XGB column → raw DB snapshot keys (cached; drives grouped permutation)."""
+    import functools
+
+    @functools.lru_cache(maxsize=1)
+    def _build() -> dict[str, frozenset[str]]:
+        import pandas as pd
+        from ml_train import engineer_features
+
+        row1, row2 = _synthetic_ablation_snapshot_rows()
+        df0 = pd.DataFrame([row1, row2])
+        X0, feat_names, _, _ = engineer_features(df0)
+        raw_keys = set(row1.keys()) - {"ticker", "outcome_1c", "ts_utc"}
+        deps: dict[str, set[str]] = {str(n): set() for n in feat_names}
+        for raw in sorted(raw_keys):
+            base = row1[raw]
+            perturbed: list[Any]
+            if isinstance(base, str):
+                perturbed = [f"perturb_{base}", "alt_" + base[:3]]
+            else:
+                try:
+                    fv = float(base)
+                except (TypeError, ValueError):
+                    continue
+                perturbed = [fv * 1.37 + 0.17, fv * -0.83 + 0.42]
+            for new_val in perturbed:
+                r_pert = dict(row1)
+                r_pert[raw] = new_val
+                df_pert = pd.DataFrame([r_pert, row2])
+                Xp, _, _, _ = engineer_features(df_pert)
+                for n in feat_names:
+                    if n not in X0.columns or n not in Xp.columns:
+                        continue
+                    v0 = X0[n].to_numpy(dtype=np.float64)
+                    vp = Xp[n].to_numpy(dtype=np.float64)
+                    if not np.allclose(v0, vp, rtol=0, atol=1e-9, equal_nan=True):
+                        deps[str(n)].add(raw)
+        return {k: frozenset(v) for k, v in deps.items()}
+
+    return _build()
 
 
-
-
-
-
-
+def xgb_engineered_members_to_raw_snapshot(engineered: list[str]) -> list[str]:
+    """Map manifest XGB engineered members to raw snapshot columns for permutation."""
+    dep = _xgb_engineered_to_raw_deps()
+    out: set[str] = set()
+    for n in engineered:
+        out.update(dep.get(n, ()))
+    return sorted(out)
 
 
 def group_snapshot_columns(group: dict, enriched_rows: list[dict] | None = None) -> list[str]:
@@ -77,12 +834,67 @@ def group_snapshot_columns(group: dict, enriched_rows: list[dict] | None = None)
     return _whole_stack_knockout_columns(group, enriched_rows)
 
 
+def permute_snapshot_columns_across_rows(
+    rows: list[dict],
+    columns: list[str],
+    rng: np.random.Generator,
+) -> list[dict]:
+    """Grouped permutation on raw DB snapshot columns — one row shuffle for all group members."""
+    if len(rows) < 2:
+        return [dict(r) for r in rows]
+    present = [c for c in columns if any(c in r for r in rows)]
+    if not present:
+        return [dict(r) for r in rows]
+    perm = rng.permutation(len(rows))
+    out = [dict(r) for r in rows]
+    for col in present:
+        shuffled = [rows[int(i)].get(col) for i in perm]
+        for i, val in enumerate(shuffled):
+            out[i][col] = val
+    return out
 
 
+ABLATION_ROW_TICKER_FIELD = "_ablation_ticker"
 
 
+def permute_snapshot_columns_pooled_by_ticker(
+    rows: list[dict],
+    columns: list[str],
+    rng: np.random.Generator,
+    *,
+    ticker_field: str = ABLATION_ROW_TICKER_FIELD,
+) -> list[dict]:
+    """Grouped permutation within each ticker — no cross-ticker column shuffle."""
+    from collections import defaultdict
+
+    if len(rows) < 2:
+        return [dict(r) for r in rows]
+    present = [c for c in columns if any(c in r for r in rows)]
+    if not present:
+        return [dict(r) for r in rows]
+    out = [dict(r) for r in rows]
+    by_ticker: dict[str, list[int]] = defaultdict(list)
+    for i, row in enumerate(rows):
+        t = ticker_storage_key(str(row.get(ticker_field) or row.get("ticker") or ""))  # RC-345/F25
+        by_ticker[t].append(i)
+    for indices in by_ticker.values():
+        if len(indices) < 2:
+            continue
+        sub = [rows[i] for i in indices]
+        perm_sub = permute_snapshot_columns_across_rows(sub, present, rng)
+        for j, idx in enumerate(indices):
+            out[idx] = perm_sub[j]
+    return out
 
 
+# Full per-model × horizon primary matrix size (O-56): 3 models × 4 horizons × ablation groups =
+# 828 scored cells. resolve_ablation_drop_group_ids requires a COMPLETE primary matrix before it
+# will consider any report-derived drop; the legacy 276-cell partial threshold is retired.
+# (The old DEFAULT_ABLATION_DROP_GROUP_IDS 12-tuple was a fabricated fallback — it silently dropped
+# volume/vwap/iv/price_candle, which are not verified non-survivors — and has been removed. The
+# money path now fails closed to the full feature set unless drops are confirm-verified.)
+# Legacy compound-era constant (828) retired — target is read from expanded manifest on disk.
+ABLATION_FULL_MATRIX_CELL_TARGET: int = 0
 
 
 def ablation_full_matrix_cell_target() -> int:
@@ -111,10 +923,22 @@ ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS: frozenset[str] = frozenset(
 
 ABLATION_SURVIVORS_ENV = "ED_APPLY_ABLATION_SURVIVORS"
 ABLATION_DROP_GROUPS_ENV = "ED_ABLATION_DROP_GROUPS"
+LEGACY_COMPOUND_MANIFEST_PATH = Path("reports/artifacts/feature_ablation_manifest.json")
 ABLATION_LEAF_MANIFEST_PATH = Path("reports/artifacts/feature_ablation_manifest_leaf.json")
+ABLATION_MANIFEST_PATH = ABLATION_LEAF_MANIFEST_PATH
 LEGACY_COMPOUND_REPORT_PATH = Path("reports/artifacts/feature_ablation_report.json")
 ABLATION_LEAF_REPORT_PATH = Path("reports/artifacts/feature_ablation_report_leaf.json")
+ABLATION_REPORT_PATH = ABLATION_LEAF_REPORT_PATH
 ABLATION_SURVIVOR_STATUS_PATH = Path("reports/artifacts/ablation_survivor_status.json")
+# Per-anchor survivor artifacts void_compound_ablation_survivors stamps VOID onto. A module-level
+# constant (not inline literals in the function body) so a test can monkeypatch it the same way it
+# already does LEGACY_COMPOUND_REPORT_PATH/ABLATION_SURVIVOR_STATUS_PATH above -- without this, the
+# function always wrote the REAL tracked repo files on every test run, regardless of tmp_path.
+SURVIVOR_SCOPE_ARTIFACT_PATHS = (
+    Path("reports/artifacts/survivor_edge_probe.json"),
+    Path("reports/artifacts/survivor_validation_run.json"),
+    Path("reports/artifacts/survivor_inference_backtest.json"),
+)
 ABLATION_LEAF_FEATURE_GRAIN = "schwab_expanded_atomic"
 ABLATION_AUTHORITATIVE_GRAINS = frozenset(
     {"atomic_leaf_or_derived_column", "schwab_expanded_atomic"}
@@ -138,6 +962,7 @@ PRIMARY_SCORING_UNTRUSTED_CELLS: frozenset[tuple[str, str]] = frozenset(
 ABLATION_SCORING_PASS_ENV = "ED_ABLATION_SCORING_PASS"
 # Pre-train observe experiment: live cards score from candidate bundles + survivor masks (not strict active).
 LIVE_ABLATION_EXPERIMENT_ENV = "ED_LIVE_ABLATION_EXPERIMENT"
+SEQUENCE_ABLATION_MODELS: frozenset[str] = frozenset({"lstm", "transformer"})
 
 
 def ablation_scoring_pass_active() -> bool:
@@ -196,10 +1021,125 @@ def resolve_experiment_bundle_dir(ticker: str, hz: str, *, models_dir: Path) -> 
     )
 
 
+def sequence_encoder_lineage_admissible(
+    meta: dict | None,
+    checkpoint: dict | None,
+) -> tuple[bool, str]:
+    """Offline ablation sequence encode requires v3 names or pinned v2 registry."""
+    from arch_competition.encoder_lineage_v2 import resolve_encoder_lineage
+
+    if not isinstance(meta, dict):
+        return False, "missing_meta"
+    _ver, _n5, _n1, err = resolve_encoder_lineage(
+        checkpoint if isinstance(checkpoint, dict) else {},
+        meta,
+    )
+    if err:
+        return False, err
+    return True, ""
 
 
+def _load_sequence_checkpoint_meta(
+    bundle_dir: Path,
+    ticker: str,
+    hz: str,
+    kind: str,
+) -> tuple[dict | None, dict | None, list[str]]:
+    """Return (meta_json, checkpoint_dict, issues) for lstm or transformer."""
+    import torch
+
+    t = ticker_storage_key(ticker)  # RC-345/F25
+    su = normalize_ml_horizon_slug(hz)
+    model_path = bundle_dir / f"{kind}_{t}_{su}.pt"
+    meta_path = bundle_dir / f"{kind}_{t}_{su}_meta.json"
+    issues: list[str] = []
+    if not model_path.is_file():
+        issues.append(f"{model_path.name} missing")
+        return None, None, issues
+    if not meta_path.is_file():
+        issues.append(f"{meta_path.name} missing")
+        return None, None, issues
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as ex:
+        issues.append(f"{meta_path.name} unreadable: {ex}")
+        return None, None, issues
+    try:
+        checkpoint = torch.load(str(model_path), map_location="cpu", weights_only=False)
+    except Exception as ex:
+        issues.append(f"{model_path.name} unreadable: {type(ex).__name__}: {ex}")
+        return meta, None, issues
+    return meta, checkpoint if isinstance(checkpoint, dict) else {}, issues
 
 
+def assess_bundle_ablation_lineage(
+    ticker: str,
+    hz: str,
+    bundle_dir: Path,
+    *,
+    models_dir: Path | None = None,
+) -> dict[str, Any]:
+    """
+    Offline ablation eligibility for one (ticker, horizon) bundle.
+
+    Fail-closed on missing artifacts or unrecoverable encoder lineage. Production
+    bundle compliance is informational — offline v2 lineage encode unlocks whole-stack
+    scoring without relaxing production loaders.
+    """
+    from active_bundle_contract import active_bundle_dir, check_active_bundle_complete
+
+    bd = bundle_dir if bundle_dir.is_dir() else active_bundle_dir(ticker, hz, models_dir=models_dir)
+    prod = check_active_bundle_complete(ticker, hz, bundle_dir=bd, models_dir=models_dir)
+    compliant = bool(prod.get("compliant"))
+    result: dict[str, Any] = {
+        "ticker": ticker_storage_key(ticker),  # RC-345/F25
+        "horizon": normalize_ml_horizon_slug(hz),
+        "bundle_dir": str(bd),
+        "production_compliant": compliant,
+        "production_issues": list(prod.get("issues") or []),
+        "xgb_per_model_ablation_eligible": bd.is_dir(),
+        "sequence_ablation_eligible": False,
+        "whole_stack_ablation_eligible": False,
+        "sequence_gates": {},
+        "issues": [],
+    }
+    if not bd.is_dir():
+        result["xgb_per_model_ablation_eligible"] = False
+        result["issues"].append(f"missing bundle dir: {bd}")
+        return result
+
+    xgb_meta_path = bd / f"xgb_{ticker_storage_key(ticker)}_{normalize_ml_horizon_slug(hz)}_meta.json"  # RC-345/F25
+    if xgb_meta_path.is_file():
+        try:
+            xgb_meta = json.loads(xgb_meta_path.read_text(encoding="utf-8"))
+            feats = xgb_meta.get("features")
+            if not isinstance(feats, list) or not feats:
+                result["issues"].append("xgb meta missing features[]")
+        except (OSError, json.JSONDecodeError) as ex:
+            result["issues"].append(f"xgb meta unreadable: {ex}")
+    else:
+        result["issues"].append(f"{xgb_meta_path.name} missing")
+
+    seq_ok = True
+    for kind in ("lstm", "transformer"):
+        meta, ckpt, load_issues = _load_sequence_checkpoint_meta(bd, ticker, hz, kind)
+        gate: dict[str, Any] = {"load_issues": load_issues}
+        if load_issues:
+            ok, reason = False, load_issues[0]
+        else:
+            ok, reason = sequence_encoder_lineage_admissible(meta, ckpt)
+        gate["eligible"] = ok
+        gate["reason"] = reason or None
+        result["sequence_gates"][kind] = gate
+        if not ok:
+            seq_ok = False
+    result["sequence_ablation_eligible"] = seq_ok
+    result["whole_stack_ablation_eligible"] = seq_ok and not result["issues"]
+    if not seq_ok:
+        result["issues"].append(
+            "sequence encoder lineage incomplete — LSTM/Transformer offline encode blocked"
+        )
+    return result
 
 
 def ablation_manifest_feature_grain(manifest: dict) -> str:
@@ -238,8 +1178,76 @@ def compound_survivors_voided() -> bool:
     return report_survivor_authority_voided(legacy)
 
 
+def survivor_authority_voided(report: dict | None = None) -> bool:
+    """Backward-compatible alias: per-report void check, or compound authority when report is None."""
+    if report is not None:
+        return report_survivor_authority_voided(report)
+    return compound_survivors_voided()
 
 
+def void_compound_ablation_survivors(*, write_artifacts: bool = True) -> dict:
+    """Retire compound-group survivor authority; leaf manifest is the only valid source going forward."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    out: dict = {
+        "compound_survivors": "VOID",
+        "voided_at": now,
+        "reason": COMPOUND_ABLATION_VOID_REASON,
+        "replacement_manifest": str(ABLATION_LEAF_MANIFEST_PATH),
+        "replacement_report": str(ABLATION_LEAF_REPORT_PATH),
+        "artifacts_stamped": [],
+    }
+    for fn in (
+        ablated_drop_group_ids_for_model_horizon,
+        ablated_drop_members_for_model_horizon,
+        ablation_drop_snapshot_columns_for_model_horizon,
+    ):
+        fn.cache_clear()
+    _ablation_drop_snapshot_columns_cached.cache_clear()
+
+    if not write_artifacts:
+        return out
+
+    ABLATION_SURVIVOR_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # newline="\n": Path.write_text on Windows otherwise translates every "\n" json.dumps emits
+    # into "\r\n" (os.linesep), silently violating .gitattributes' `eol: lf` for reports/** and
+    # leaving a tracked file that git shows as modified with an empty diff on every run.
+    ABLATION_SURVIVOR_STATUS_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8", newline="\n")
+    out["artifacts_stamped"].append(str(ABLATION_SURVIVOR_STATUS_PATH))
+
+    legacy_report = _read_json_path(LEGACY_COMPOUND_REPORT_PATH)
+    if legacy_report is not None:
+        legacy_report["survivor_authority"] = {
+            "status": "VOID",
+            "reason": COMPOUND_ABLATION_VOID_REASON,
+            "voided_at": now,
+            "replacement_manifest": str(ABLATION_LEAF_MANIFEST_PATH),
+        }
+        ss = legacy_report.get("survivor_summary")
+        if isinstance(ss, dict):
+            ss["confirm_pass_authority"] = "VOID"
+        LEGACY_COMPOUND_REPORT_PATH.write_text(
+            json.dumps(legacy_report, indent=2), encoding="utf-8", newline="\n")
+        out["artifacts_stamped"].append(str(LEGACY_COMPOUND_REPORT_PATH))
+
+    # SURVIVOR_SCOPE_ARTIFACT_PATHS (not inline literals): a test isolating this function's other
+    # two output paths via monkeypatch must be able to isolate these three the same way, or every
+    # run mutates the real tracked repo files (see test_ml_feature_schema_parity.py's own finding,
+    # 2026-09-15).
+    for p in SURVIVOR_SCOPE_ARTIFACT_PATHS:
+        data = _read_json_path(p)
+        if data is None:
+            continue
+        data["voided"] = True
+        data["void_reason"] = COMPOUND_ABLATION_VOID_REASON
+        data["ready_for_full_retrain"] = False
+        data["ready"] = False
+        data["ready_for_production"] = False
+        p.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
+        out["artifacts_stamped"].append(str(p))
+
+    return out
 
 
 def _authoritative_ablation_report_path() -> Path | None:
@@ -513,8 +1521,41 @@ def resolve_ablation_drop_group_ids() -> list[str]:
     return []
 
 
+@lru_cache(maxsize=1)
+def _ablation_drop_snapshot_columns_cached() -> tuple[str, ...]:
+    """Cached column list — extract/train loops call apply_ablation per row."""
+    drop_groups = resolve_ablation_drop_group_ids()
+    if not drop_groups:
+        return ()
+    manifest_path = _authoritative_ablation_manifest_path()
+    if not manifest_path.is_file():
+        log.warning("ablation survivor mask: manifest missing at %s", manifest_path)
+        return ()
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("ablation survivor mask: manifest read failed: %s", e)
+        return ()
+    if ablation_manifest_feature_grain(manifest) not in ABLATION_AUTHORITATIVE_GRAINS:
+        log.warning(
+            "ablation survivor mask: manifest %s grain not authoritative; fail-closed.",
+            manifest_path,
+        )
+        return ()
+    groups_by_id = {g["group_id"]: g for g in manifest.get("groups") or []}
+    cols: set[str] = set()
+    for gid in drop_groups:
+        grp = groups_by_id.get(gid)
+        if not grp:
+            log.warning("ablation survivor mask: unknown group_id %r", gid)
+            continue
+        cols.update(group_snapshot_columns(grp))
+    return tuple(sorted(c for c in cols if c not in ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS))
 
 
+def ablation_drop_snapshot_columns() -> list[str]:
+    """Raw DB columns to null when survivor mask is active."""
+    return list(_ablation_drop_snapshot_columns_cached())
 
 
 # Categoricals with locked MVP vocabulary — must null to None/NA, not generic "neutral".
@@ -542,6 +1583,21 @@ def ablation_null_value_for_snapshot_column(col: str, *, for_pandas: bool = Fals
     return None
 
 
+def drop_snapshot_columns_across_rows(
+    rows: list[dict],
+    columns: list[str],
+) -> list[dict]:
+    """Null-out raw DB snapshot columns for confirm pass (pre-retrain inference drop)."""
+    present = [c for c in columns if any(c in r for r in rows)]
+    if not present:
+        return [dict(r) for r in rows]
+    out = [dict(r) for r in rows]
+    for col in present:
+        for row in out:
+            if col not in row:
+                continue
+            row[col] = ablation_null_value_for_snapshot_column(col)
+    return out
 
 
 def ablation_survivors_fingerprint_part() -> str:
@@ -564,8 +1620,30 @@ def ablation_survivors_fingerprint_part() -> str:
     return f"ablation_survivors=on|global={global_part}|per_model={per_model_part}"
 
 
+def apply_ablation_survivor_nulls_to_snapshot(row: dict) -> dict:
+    """In-place null-out of DROP-group raw columns (train + live when env is on)."""
+    cols = _ablation_drop_snapshot_columns_cached()
+    if not cols:
+        return row
+    out = dict(row)
+    for col in cols:
+        if col not in out:
+            continue
+        out[col] = ablation_null_value_for_snapshot_column(col)
+    return out
 
 
+def apply_ablation_survivor_nulls_to_dataframe(df):
+    """Apply survivor mask to a training DataFrame (column-wise)."""
+    cols = ablation_drop_snapshot_columns()
+    if not cols or df is None or len(df) == 0:
+        return df
+    out = df.copy()
+    for col in cols:
+        if col not in out.columns:
+            continue
+        out[col] = ablation_null_value_for_snapshot_column(col, for_pandas=True)
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -718,6 +1796,21 @@ def null_snapshot_dict_for_drop_groups(
     return out
 
 
+def null_snapshot_dataframe_for_drop_groups(df, manifest: dict, drop_group_ids: list[str]):
+    """Confirm-path tabular nulling — mirrors production raw-null step before engineer_features."""
+    if df is None or len(df) == 0 or not drop_group_ids:
+        return df
+    by_id = {g["group_id"]: g for g in (manifest.get("groups") or [])}
+    cols: set[str] = set()
+    for gid in drop_group_ids:
+        grp = by_id.get(gid)
+        if grp:
+            cols.update(group_snapshot_columns(grp))
+    out = df.copy()
+    for col in cols:
+        if col in out.columns and col not in ABLATION_SURVIVOR_PROTECTED_SNAPSHOT_COLUMNS:
+            out[col] = ablation_null_value_for_snapshot_column(col, for_pandas=True)
+    return out
 
 
 def drop_ablated_xgb_engineered_columns(
@@ -835,21 +1928,934 @@ def zero_ablated_lstm_conf_channels(
     return out
 
 
+def _production_fusion_prob_for_row(
+    row: dict,
+    *,
+    ticker: str,
+    target_column: str,
+    hist_db,
+    ablation_model_family: str | None = None,
+    ablation_permuted_row: dict | None = None,
+    ablation_knockout_columns: list[str] | None = None,
+) -> tuple[Optional[list[float]], Optional[int], Optional[str], dict[str, Any]]:
+    """Score one row through the unified ablation stack (one wire row, seven equal layers).
+
+    ``ablation_model_family`` tags attribution only — not a separate ingest/knockout path.
+    """
+    _ = ablation_model_family
+    _ = ablation_knockout_columns
+    _ = hist_db
+
+    score_row = ablation_permuted_row if ablation_permuted_row is not None else row
+
+    if ablation_scoring_pass_active():
+        from arch_competition.ablation_bundle_inference import score_unified_ablation_fusion_from_wire_row
+
+        return score_unified_ablation_fusion_from_wire_row(
+            score_row,
+            ticker=ticker,
+            target_column=target_column,
+        )
+
+    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
+    from features.replay_signal_input_v1 import signal_input_from_snapshot_row_dict
+    from prediction_engine import build_fusion_model_overlay_for_stack
+    from regime_engine import classify_regime
+    from rules_engine import compute_rules
+    from signals import production_fusion_payload_for_stack, production_fusion_triplet_from_payload
+
+    ts_utc = score_row.get("ts_utc")
+    if not ts_utc:
+        return None, None, "missing_ts_utc", {}
+    yt = _outcome_class_index(score_row.get(target_column))
+    if yt is None:
+        return None, None, f"missing_or_invalid_outcome:{score_row.get(target_column)!r}", {}
+    try:
+        inp = signal_input_from_snapshot_row_dict(score_row)
+    except Exception as e:
+        return None, yt, f"signal_input:{type(e).__name__}", {}
+    try:
+        inf_v1 = build_inference_snapshot_v1_from_db_row(
+            ticker=ticker,
+            expiry=None,
+            as_of_ts=float(ts_utc),
+            db_row=score_row,
+        )
+    except Exception as e:
+        return None, yt, f"inference_snapshot:{type(e).__name__}", {}
+    mvp = inf_v1.get("features") or {}
+    try:
+        rules = compute_rules(inp, mvp_features=mvp)
+        regime = classify_regime(inp, rules, mvp_features=mvp)
+    except Exception as e:
+        return None, yt, f"rules_regime:{type(e).__name__}", {}
+    try:
+        snap = build_fusion_model_overlay_for_stack(
+            inp, hist_db, rules, inference_snapshot_v1=inf_v1
+        )
+    except Exception as e:
+        return None, yt, f"fusion_overlay:{type(e).__name__}", {}
+    try:
+        from features.monte_carlo_stack_input import (
+            MonteCarloStackInputError,
+            resolve_monte_carlo_stack_inputs,
+        )
+
+        _smc = None
+        _mc_e = None
+        try:
+            _smc = resolve_monte_carlo_stack_inputs(inp, inf_v1)
+        except MonteCarloStackInputError as e:
+            _mc_e = e
+        try:
+            from ml_predict import build_xgb_pre_engineering_snapshot_for_tick
+
+            _xgb_pre = build_xgb_pre_engineering_snapshot_for_tick(inf_v1, snap)
+        except Exception:
+            _xgb_pre = None
+        fusion_payload, audit = production_fusion_payload_for_stack(
+            inp,
+            rules,
+            regime,
+            hist_db,
+            inference_snapshot_v1=inf_v1,
+            fusion_overlay=snap,
+            mc_spot_ctx=_smc,
+            mc_context_error=_mc_e,
+            xgb_pre_engineering_snapshot=_xgb_pre,
+            signal_layer_v1=inf_v1.get("signal_layer_v1"),
+            meta_tabular_overlay=snap,
+        )
+    except Exception as e:
+        return None, yt, f"fusion_stack:{type(e).__name__}", {}
+
+    try:
+        triplet = _norm_triplet(*production_fusion_triplet_from_payload(fusion_payload))
+    except (TypeError, ValueError):
+        return None, yt, "full_fusion_triplet_invalid", audit
+    if triplet is None:
+        return None, yt, "full_fusion_triplet_invalid", audit
+    return triplet, yt, None, audit
 
 
+def _full_fusion_prob_for_row(
+    row: dict,
+    *,
+    ticker: str,
+    target_column: str,
+    hist_db,
+) -> tuple[Optional[list[float]], Optional[int], Optional[str]]:
+    """Backward-compatible wrapper — prefer ``_production_fusion_prob_for_row`` for audit."""
+    triplet, yt, skip, _audit = _production_fusion_prob_for_row(
+        row,
+        ticker=ticker,
+        target_column=target_column,
+        hist_db=hist_db,
+    )
+    return triplet, yt, skip
 
 
+def probe_whole_stack_seven_layers(
+    *,
+    db_path: str,
+    ticker: str,
+    ml_horizon_slug: str,
+    bundle_dir: Path,
+    bundle_artifact_report: dict | None = None,
+) -> dict[str, Any]:
+    """Preflight: all seven stack layers must score via unified ablation wire-row path."""
+    import os
+
+    import ml_predict as mp
+    from governed_stack_contract import FULL_STACK_MODEL_LAYERS
+    from ml_horizon import normalize_ml_horizon_slug, outcome_column
+    from train_all import preload_historical_db_for_eval
+
+    required = list(FULL_STACK_MODEL_LAYERS)
+    layers: dict[str, dict[str, Any]] = {}
+    art = (bundle_artifact_report or {}).get("artifacts") or {}
+
+    def _mark(layer: str, status: str, reason: str = "") -> None:
+        layers[layer] = {"status": status, "reason": reason or None}
+
+    file_map = (
+        ("xgb", "xgb"),
+        ("lstm", "lstm"),
+        ("transformer", "transformer"),
+        ("meta", "meta_stack"),
+    )
+    for layer, kind in file_map:
+        blockers = list((art.get(kind) or {}).get("issues") or [])
+        if blockers:
+            _mark(layer, "blocked", "; ".join(blockers[:3]))
+        elif kind == "meta_stack" and not (art.get(kind) or {}).get("exists"):
+            _mark(layer, "blocked", "meta_stack missing")
+
+    for layer in required:
+        layers.setdefault(layer, {"status": "pending_probe", "reason": None})
+
+    t = ticker_storage_key(ticker)  # RC-345/F25
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    target_column = outcome_column(hz)
+
+    prev_strict = os.environ.get("ED_XGB_STRICT_ACTIVE_ONLY")
+    os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = "0"
+    orig_model_dir = mp.MODEL_DIR
+    htok = mp.set_ml_infer_horizon_slug(hz)
+    try:
+        mp.MODEL_DIR = _models_root_from_bundle_dir(Path(bundle_dir))
+        mp.reset_caches()
+        rows = _load_chronological_rth_rows(
+            db_path,
+            t,
+            target_column=target_column,
+            options=StackBundleEvalOptions(max_rows=200),
+        )
+        if not rows:
+            for layer in required:
+                if layers[layer]["status"] == "pending_probe":
+                    _mark(layer, "blocked", "no_rth_rows_for_probe")
+            return {
+                "ok": False,
+                "stack_layers_required": required,
+                "stack_layers": layers,
+                "stack_layers_scored": [],
+                "missing_layers": list(required),
+                "probe_reason": "no_rth_rows",
+            }
+
+        tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+        hist_db = None
+        if not ablation_scoring_pass_active():
+            hist_db = (
+                preload_historical_db_for_eval(db_path, t, max(tss))
+                if tss
+                else None
+            )
+        if hist_db is None and not ablation_scoring_pass_active():
+            for layer in required:
+                if layers[layer]["status"] == "pending_probe":
+                    _mark(layer, "blocked", "hist_db_preload_failed")
+            return {
+                "ok": False,
+                "stack_layers_required": required,
+                "stack_layers": layers,
+                "stack_layers_scored": [],
+                "missing_layers": list(required),
+                "probe_reason": "hist_db_preload_failed",
+            }
+
+        last_skip = "no_scorable_probe_row"
+        for row in reversed(rows):
+            prob, yt, skip, audit = _production_fusion_prob_for_row(
+                row,
+                ticker=t,
+                target_column=target_column,
+                hist_db=hist_db,
+            )
+            if prob is not None and yt is not None:
+                scored = list(audit.get("stack_layers_scored") or [])
+                for layer in required:
+                    if layer in scored:
+                        _mark(layer, "ok", "unified_ablation_probe")
+                    elif layers[layer]["status"] == "pending_probe":
+                        _mark(layer, "not_scored", "absent_from_probe_audit")
+                missing = [name for name in required if name not in scored]
+                return {
+                    "ok": not missing,
+                    "stack_layers_required": required,
+                    "stack_layers": layers,
+                    "stack_layers_scored": scored,
+                    "missing_layers": missing,
+                    "mc_stack_probability_source": (
+                        audit.get("mc_stack_probability_source")
+                        or audit.get("mc_base_probability_source")
+                    ),
+                    "probe_reason": None,
+                }
+            last_skip = str(skip or last_skip)
+
+        for layer in required:
+            if layers[layer]["status"] == "pending_probe":
+                _mark(layer, "blocked", last_skip)
+        return {
+            "ok": False,
+            "stack_layers_required": required,
+            "stack_layers": layers,
+            "stack_layers_scored": [],
+            "missing_layers": list(required),
+            "probe_reason": last_skip,
+        }
+    finally:
+        mp.reset_caches()
+        mp.MODEL_DIR = orig_model_dir
+        mp.reset_ml_infer_horizon_slug(htok)
+        if prev_strict is None:
+            os.environ.pop("ED_XGB_STRICT_ACTIVE_ONLY", None)
+        else:
+            os.environ["ED_XGB_STRICT_ACTIVE_ONLY"] = prev_strict
 
 
+def _load_chronological_rth_rows(
+    db_path: str,
+    ticker: str,
+    *,
+    target_column: str,
+    options: StackBundleEvalOptions,
+) -> list[dict]:
+    from ml_scheduler import _load_rth_rows_for_ticker
+
+    rows = _load_rth_rows_for_ticker(db_path, ticker, label_column=target_column)
+    if options.allowed_et_dates is not None:
+        rows = [
+            r
+            for r in rows
+            if r.get("ts_et") and str(r["ts_et"])[:10] in options.allowed_et_dates
+        ]
+    if options.max_rows is not None and options.max_rows > 0:
+        rows = rows[-int(options.max_rows) :]
+    return rows
 
 
+def prepare_whole_stack_pooled_baseline_cache(
+    *,
+    db_path: str,
+    tickers: list[str],
+    ml_horizon_slug: str,
+    model_dir_by_ticker: dict[str, Path],
+    options: Optional[StackBundleEvalOptions] = None,
+    progress_every: int = 100,
+    on_progress=None,
+) -> dict[str, Any]:
+    """Ticker-agnostic baseline: pool RTH rows; each row scored with its ticker's production stack."""
+    from train_all import preload_historical_db_for_eval
+
+    import ml_predict as mp
+
+    opts = options or StackBundleEvalOptions()
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    target_column = outcome_column(hz)
+    pooled_rows: list[dict] = []
+    for ticker in tickers:
+        t = ticker_storage_key(ticker)  # RC-345/F25
+        chunk = _load_chronological_rth_rows(
+            db_path, t, target_column=target_column, options=opts
+        )
+        for row in chunk:
+            tagged = dict(row)
+            tagged[ABLATION_ROW_TICKER_FIELD] = t
+            pooled_rows.append(tagged)
+    if not pooled_rows:
+        return {
+            "status": "skipped",
+            "hz": hz,
+            "reason": "no_pooled_rth_rows",
+            "rows": [],
+            "baseline_probs": [],
+            "y_outcome": [],
+            "pooled": True,
+            "pool_tickers": list(tickers),
+        }
+
+    orig_model_dir = mp.MODEL_DIR
+    htok = mp.set_ml_infer_horizon_slug(hz)
+    skip_reasons: dict[str, int] = {}
+    model_root_by_ticker = {
+        ticker_storage_key(t): _models_root_from_bundle_dir(Path(model_dir_by_ticker[ticker_storage_key(t)]))
+        for t in tickers
+        if ticker_storage_key(t) in model_dir_by_ticker
+    }  # RC-345/F25: model-dir identity keyed canonically
+    hist_db_by_ticker: dict[str, Any] = {}
+    baseline_probs: list[Optional[list[float]]] = [None] * len(pooled_rows)
+    y_outcome: list[Optional[int]] = [None] * len(pooled_rows)
+    stack_layers_scored: list[str] = []
+    mc_stack_probability_source: str | None = None
+    active_ticker: str | None = None
+
+    def _bump(key: str) -> None:
+        skip_reasons[key] = skip_reasons.get(key, 0) + 1
+
+    try:
+        for i, row in enumerate(pooled_rows):
+            ticker = ticker_storage_key(str(row.get(ABLATION_ROW_TICKER_FIELD) or row.get("ticker") or ""))  # RC-345/F25
+            if ticker != active_ticker:
+                mp.MODEL_DIR = model_root_by_ticker.get(ticker, mp.MODEL_DIR)
+                mp.reset_caches()
+                active_ticker = ticker
+            if ticker not in hist_db_by_ticker:
+                if ablation_scoring_pass_active():
+                    hist_db_by_ticker[ticker] = None
+                else:
+                    _tss = [
+                        float(r["ts_utc"])
+                        for r in pooled_rows
+                        if r.get(ABLATION_ROW_TICKER_FIELD) == ticker and r.get("ts_utc") is not None
+                    ]
+                    hist_db_by_ticker[ticker] = (
+                        preload_historical_db_for_eval(db_path, ticker, max(_tss)) if _tss else None
+                    )
+            prob, yt, skip, audit = _production_fusion_prob_for_row(
+                row,
+                ticker=ticker,
+                target_column=target_column,
+                hist_db=hist_db_by_ticker.get(ticker),
+            )
+            if skip:
+                _bump(skip)
+            y_outcome[i] = yt
+            baseline_probs[i] = prob
+            if prob is not None and yt is not None and not stack_layers_scored:
+                stack_layers_scored = list(audit.get("stack_layers_scored") or [])
+                mc_stack_probability_source = (
+                    audit.get("mc_stack_probability_source")
+                    or audit.get("mc_base_probability_source")
+                )
+            if on_progress and (
+                i == 0 or (i + 1) % max(1, progress_every) == 0 or i + 1 == len(pooled_rows)
+            ):
+                paired_so_far = sum(
+                    1
+                    for p, y in zip(baseline_probs[: i + 1], y_outcome[: i + 1])
+                    if p is not None and y is not None
+                )
+                on_progress(
+                    {
+                        "phase": "baseline_pooled",
+                        "horizon_slug": hz,
+                        "rows_done": i + 1,
+                        "rows_total": len(pooled_rows),
+                        "paired_so_far": paired_so_far,
+                        "pool_tickers": tickers,
+                    }
+                )
+    finally:
+        mp.MODEL_DIR = orig_model_dir
+        mp.reset_caches()
+        mp.reset_ml_infer_horizon_slug(htok)
+
+    paired = sum(
+        1 for p, y in zip(baseline_probs, y_outcome) if p is not None and y is not None
+    )
+    if paired < opts.min_paired_rows:
+        return {
+            "status": "skipped",
+            "hz": hz,
+            "reason": f"insufficient_baseline_paired_rows:{paired}",
+            "rows": pooled_rows,
+            "baseline_probs": baseline_probs,
+            "y_outcome": y_outcome,
+            "skip_reason_counts": skip_reasons,
+            "pooled": True,
+            "pool_tickers": list(tickers),
+        }
+
+    y_p = [y for p, y in zip(baseline_probs, y_outcome) if p is not None and y is not None]
+    p_p = [p for p, y in zip(baseline_probs, y_outcome) if p is not None and y is not None]
+    ll_b = float(log_loss(y_p, np.asarray(p_p, dtype=np.float64), labels=[0, 1, 2]))
+
+    return {
+        "status": "ok",
+        "hz": hz,
+        "rows": pooled_rows,
+        "rows_scored": len(pooled_rows),
+        "baseline_probs": baseline_probs,
+        "y_outcome": y_outcome,
+        "baseline_multiclass_log_loss": ll_b,
+        "paired_rows": paired,
+        "skip_reason_counts": skip_reasons,
+        "stack_layers_scored": stack_layers_scored,
+        "mc_stack_probability_source": mc_stack_probability_source,
+        "pooled": True,
+        "pool_tickers": list(tickers),
+        "model_dir_by_ticker": {k: str(v) for k, v in model_dir_by_ticker.items()},
+    }
 
 
+def prepare_whole_stack_baseline_cache(
+    *,
+    db_path: str,
+    ticker: str,
+    model_dir: Path,
+    ml_horizon_slug: str,
+    options: Optional[StackBundleEvalOptions] = None,
+    progress_every: int = 100,
+    on_progress=None,
+) -> dict[str, Any]:
+    """One production-path baseline per (anchor, horizon): full_fusion probs on chronological RTH rows."""
+    from train_all import preload_historical_db_for_eval
+
+    import ml_predict as mp
+
+    opts = options or StackBundleEvalOptions()
+    hz = normalize_ml_horizon_slug(ml_horizon_slug)
+    target_column = outcome_column(hz)
+    rows = _load_chronological_rth_rows(
+        db_path, ticker, target_column=target_column, options=opts
+    )
+    if not rows:
+        return {
+            "status": "skipped",
+            "hz": hz,
+            "reason": "no_rth_rows",
+            "rows": [],
+            "baseline_probs": [],
+            "y_outcome": [],
+        }
+
+    orig_model_dir = mp.MODEL_DIR
+    htok = mp.set_ml_infer_horizon_slug(hz)
+    skip_reasons: dict[str, int] = {}
+
+    def _bump(key: str) -> None:
+        skip_reasons[key] = skip_reasons.get(key, 0) + 1
+
+    baseline_probs: list[Optional[list[float]]] = [None] * len(rows)
+    y_outcome: list[Optional[int]] = [None] * len(rows)
+    stack_layers_scored: list[str] = []
+    mc_stack_probability_source: str | None = None
+    try:
+        mp.MODEL_DIR = _models_root_from_bundle_dir(Path(model_dir))
+        mp.reset_caches()
+        _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+        hist_db = (
+            preload_historical_db_for_eval(db_path, ticker, max(_tss))
+            if _tss
+            else None
+        )
+        for i, row in enumerate(rows):
+            prob, yt, skip, audit = _production_fusion_prob_for_row(
+                row,
+                ticker=ticker,
+                target_column=target_column,
+                hist_db=hist_db,
+            )
+            if skip:
+                _bump(skip)
+            y_outcome[i] = yt
+            baseline_probs[i] = prob
+            if prob is not None and yt is not None and not stack_layers_scored:
+                stack_layers_scored = list(audit.get("stack_layers_scored") or [])
+                mc_stack_probability_source = (
+                    audit.get("mc_stack_probability_source")
+                    or audit.get("mc_base_probability_source")
+                )
+            if on_progress and (
+                i == 0 or (i + 1) % max(1, progress_every) == 0 or i + 1 == len(rows)
+            ):
+                paired_so_far = sum(
+                    1
+                    for p, y in zip(baseline_probs[: i + 1], y_outcome[: i + 1])
+                    if p is not None and y is not None
+                )
+                on_progress(
+                    {
+                        "phase": "baseline",
+                        "anchor_ticker": ticker,
+                        "horizon_slug": hz,
+                        "rows_done": i + 1,
+                        "rows_total": len(rows),
+                        "paired_so_far": paired_so_far,
+                    }
+                )
+    finally:
+        mp.MODEL_DIR = orig_model_dir
+        mp.reset_caches()
+        mp.reset_ml_infer_horizon_slug(htok)
+
+    paired = sum(
+        1
+        for p, y in zip(baseline_probs, y_outcome)
+        if p is not None and y is not None
+    )
+    if paired < opts.min_paired_rows:
+        return {
+            "status": "skipped",
+            "hz": hz,
+            "reason": f"insufficient_baseline_paired_rows:{paired}",
+            "rows": rows,
+            "baseline_probs": baseline_probs,
+            "y_outcome": y_outcome,
+            "skip_reason_counts": skip_reasons,
+        }
+
+    y_p = [y for p, y in zip(baseline_probs, y_outcome) if p is not None and y is not None]
+    p_p = [p for p, y in zip(baseline_probs, y_outcome) if p is not None and y is not None]
+    ll_b = float(log_loss(y_p, np.asarray(p_p, dtype=np.float64), labels=[0, 1, 2]))
+
+    return {
+        "status": "ok",
+        "hz": hz,
+        "rows": rows,
+        "rows_scored": len(rows),
+        "baseline_probs": baseline_probs,
+        "y_outcome": y_outcome,
+        "baseline_multiclass_log_loss": ll_b,
+        "paired_rows": paired,
+        "skip_reason_counts": skip_reasons,
+        "stack_layers_scored": stack_layers_scored,
+        "mc_stack_probability_source": mc_stack_probability_source,
+    }
 
 
+def run_whole_stack_feature_group_ablation(
+    *,
+    db_path: str,
+    ticker: str,
+    model_dir: Path,
+    ml_horizon_slug: str,
+    group_id: str,
+    group_columns: list[str],
+    baseline_cache: dict,
+    options: Optional[StackBundleEvalOptions] = None,
+    random_state: int = 42,
+    model_family: str | None = None,
+) -> dict[str, Any]:
+    """Permute one feature group on the production path; measure full_fusion log_loss delta."""
+    from train_all import preload_historical_db_for_eval
+
+    import ml_predict as mp
+
+    opts = options or StackBundleEvalOptions()
+    pooled = bool(baseline_cache.get("pooled"))
+    if baseline_cache.get("status") != "ok":
+        skipped: dict[str, Any] = {
+            "horizon_slug": baseline_cache.get("hz", ml_horizon_slug),
+            "group_id": group_id,
+            "status": "skipped",
+            "reason": baseline_cache.get("reason", "baseline_not_ready"),
+            "ablation_kind": "whole_stack_feature_group",
+            "decision_mode": WHOLE_STACK_DECISION_MODE,
+            "model_family": model_family,
+        }
+        if pooled:
+            skipped["pool_tickers"] = list(baseline_cache.get("pool_tickers") or [])
+        else:
+            skipped["anchor_ticker"] = ticker
+        return skipped
+
+    rows = baseline_cache["rows"]
+    baseline_probs = baseline_cache["baseline_probs"]
+    y_outcome = baseline_cache["y_outcome"]
+    hz = baseline_cache["hz"]
+    target_column = outcome_column(hz)
+
+    present = [c for c in group_columns if any(c in r for r in rows)]
+    if group_columns and not present:
+        noop: dict[str, Any] = {
+            "horizon_slug": hz,
+            "group_id": group_id,
+            "status": "skipped",
+            "reason": "noop_knockout:columns_absent_from_rows",
+            "ablation_kind": "whole_stack_feature_group",
+            "decision_mode": WHOLE_STACK_DECISION_MODE,
+            "model_family": model_family,
+            "columns_requested": list(group_columns),
+            "columns_permuted": [],
+            "columns_permuted_count": 0,
+            "skip_reason_counts": dict(baseline_cache.get("skip_reason_counts") or {}),
+            "stack_layers_scored": list(baseline_cache.get("stack_layers_scored") or []),
+            "mc_stack_probability_source": (
+                baseline_cache.get("mc_stack_probability_source")
+                or baseline_cache.get("mc_base_probability_source")
+            ),
+        }
+        if pooled:
+            noop["pool_tickers"] = list(baseline_cache.get("pool_tickers") or [])
+        else:
+            noop["anchor_ticker"] = ticker
+        return noop
+    rng = np.random.default_rng(random_state)
+    if pooled:
+        permuted_rows = permute_snapshot_columns_pooled_by_ticker(rows, group_columns, rng)
+    else:
+        permuted_rows = permute_snapshot_columns_across_rows(rows, group_columns, rng)
+
+    orig_model_dir = mp.MODEL_DIR
+    htok = mp.set_ml_infer_horizon_slug(hz)
+    skip_reasons: dict[str, int] = {}
+
+    def _bump(key: str) -> None:
+        skip_reasons[key] = skip_reasons.get(key, 0) + 1
+
+    permuted_probs: list[Optional[list[float]]] = [None] * len(rows)
+    try:
+        if pooled:
+            model_root_by_ticker = {
+                t: _models_root_from_bundle_dir(Path(p))
+                for t, p in (baseline_cache.get("model_dir_by_ticker") or {}).items()
+            }
+            hist_db_by_ticker: dict[str, Any] = {}
+            active_ticker: str | None = None
+            for i, perm_row in enumerate(permuted_rows):
+                if baseline_probs[i] is None or y_outcome[i] is None:
+                    continue
+                clean_row = rows[i]
+                row_ticker = ticker_storage_key(str(
+                    clean_row.get(ABLATION_ROW_TICKER_FIELD) or clean_row.get("ticker") or ""
+                ))  # RC-345/F25: row identity canonical to match model_root_by_ticker keys
+                if row_ticker != active_ticker:
+                    mp.MODEL_DIR = model_root_by_ticker.get(row_ticker, mp.MODEL_DIR)
+                    mp.reset_caches()
+                    active_ticker = row_ticker
+                if row_ticker not in hist_db_by_ticker and not ablation_scoring_pass_active():
+                    _tss = [
+                        float(r["ts_utc"])
+                        for r in rows
+                        if ticker_storage_key(str(r.get(ABLATION_ROW_TICKER_FIELD) or r.get("ticker") or ""))
+                        == row_ticker  # RC-345/F25: canonical row identity
+
+                        and r.get("ts_utc") is not None
+                    ]
+                    hist_db_by_ticker[row_ticker] = (
+                        preload_historical_db_for_eval(db_path, row_ticker, max(_tss))
+                        if _tss
+                        else None
+                    )
+                prob, _yt, skip, _audit = _production_fusion_prob_for_row(
+                    clean_row,
+                    ticker=row_ticker,
+                    target_column=target_column,
+                    hist_db=hist_db_by_ticker.get(row_ticker) if not ablation_scoring_pass_active() else None,
+                    ablation_model_family=model_family,
+                    ablation_permuted_row=perm_row,
+                    ablation_knockout_columns=group_columns,
+                )
+                if skip:
+                    _bump(skip)
+                permuted_probs[i] = prob
+        else:
+            mp.MODEL_DIR = _models_root_from_bundle_dir(Path(model_dir))
+            mp.reset_caches()
+            hist_db = None
+            if not ablation_scoring_pass_active():
+                _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+                hist_db = (
+                    preload_historical_db_for_eval(db_path, ticker, max(_tss))
+                    if _tss
+                    else None
+                )
+            for i, perm_row in enumerate(permuted_rows):
+                if baseline_probs[i] is None or y_outcome[i] is None:
+                    continue
+                prob, _yt, skip, _audit = _production_fusion_prob_for_row(
+                    rows[i],
+                    ticker=ticker,
+                    target_column=target_column,
+                    hist_db=hist_db,
+                    ablation_model_family=model_family,
+                    ablation_permuted_row=perm_row,
+                    ablation_knockout_columns=group_columns,
+                )
+                if skip:
+                    _bump(skip)
+                permuted_probs[i] = prob
+    finally:
+        mp.MODEL_DIR = orig_model_dir
+        mp.reset_caches()
+        mp.reset_ml_infer_horizon_slug(htok)
+
+    y_paired: list[int] = []
+    b_paired: list[list[float]] = []
+    p_paired: list[list[float]] = []
+    for i in range(len(rows)):
+        b = baseline_probs[i]
+        p = permuted_probs[i]
+        y = y_outcome[i]
+        if b is None or p is None or y is None:
+            continue
+        y_paired.append(int(y))
+        b_paired.append(b)
+        p_paired.append(p)
+
+    if len(y_paired) < opts.min_paired_rows:
+        fail: dict[str, Any] = {
+            "horizon_slug": hz,
+            "group_id": group_id,
+            "status": "skipped",
+            "reason": f"insufficient_paired_rows:{len(y_paired)}",
+            "ablation_kind": "whole_stack_feature_group",
+            "decision_mode": WHOLE_STACK_DECISION_MODE,
+            "model_family": model_family,
+            "columns_requested": list(group_columns),
+            "columns_permuted": present,
+            "columns_permuted_count": len(present),
+            "skip_reason_counts": skip_reasons,
+        }
+        if pooled:
+            fail["pool_tickers"] = list(baseline_cache.get("pool_tickers") or [])
+        else:
+            fail["anchor_ticker"] = ticker
+        return fail
+
+    ll_b = float(log_loss(y_paired, np.asarray(b_paired, dtype=np.float64), labels=[0, 1, 2]))
+    ll_p = float(log_loss(y_paired, np.asarray(p_paired, dtype=np.float64), labels=[0, 1, 2]))
+    delta = round(ll_p - ll_b, 6)
+
+    ok_cell: dict[str, Any] = {
+        "horizon_slug": hz,
+        "group_id": group_id,
+        "status": "ok",
+        "ablation_kind": "whole_stack_feature_group",
+        "decision_mode": WHOLE_STACK_DECISION_MODE,
+        "model_family": model_family,
+        "metric": "multiclass_log_loss",
+        "columns_requested": list(group_columns),
+        "columns_permuted": present,
+        "columns_permuted_count": len(present),
+        "paired_rows": len(y_paired),
+        "baseline_multiclass_log_loss": ll_b,
+        "permuted_multiclass_log_loss": ll_p,
+        "log_loss_delta": delta,
+        "group_matters": bool(delta > 1e-6),
+        "skip_reason_counts": skip_reasons,
+        "stack_layers_scored": list(baseline_cache.get("stack_layers_scored") or []),
+        "mc_stack_probability_source": (
+            baseline_cache.get("mc_stack_probability_source")
+            or baseline_cache.get("mc_base_probability_source")
+        ),
+    }
+    if pooled:
+        ok_cell["pool_tickers"] = list(baseline_cache.get("pool_tickers") or [])
+    else:
+        ok_cell["anchor_ticker"] = ticker
+    return ok_cell
 
 
+WHOLE_STACK_CONFIRM_DECISION_MODE = "full_fusion_confirm_drop"
 
 
+def run_whole_stack_feature_group_confirm_drop(
+    *,
+    db_path: str,
+    ticker: str,
+    model_dir: Path,
+    ml_horizon_slug: str,
+    group_id: str,
+    group_columns: list[str],
+    baseline_cache: dict,
+    options: Optional[StackBundleEvalOptions] = None,
+) -> dict[str, Any]:
+    """Confirm pass: drop (null) one feature group's raw columns; measure full_fusion log_loss delta.
+
+    Pre-retrain inference validation — not model refit. Refit-on-survivors is the post-ablation retrain.
+    """
+    from train_all import preload_historical_db_for_eval
+
+    import ml_predict as mp
+
+    opts = options or StackBundleEvalOptions()
+    if baseline_cache.get("status") != "ok":
+        return {
+            "anchor_ticker": ticker,
+            "horizon_slug": baseline_cache.get("hz", ml_horizon_slug),
+            "group_id": group_id,
+            "status": "skipped",
+            "reason": baseline_cache.get("reason", "baseline_not_ready"),
+            "ablation_kind": "confirm_drop_feature_group",
+            "decision_mode": WHOLE_STACK_CONFIRM_DECISION_MODE,
+        }
+
+    rows = baseline_cache["rows"]
+    baseline_probs = baseline_cache["baseline_probs"]
+    y_outcome = baseline_cache["y_outcome"]
+    hz = baseline_cache["hz"]
+    target_column = outcome_column(hz)
+
+    present = [c for c in group_columns if any(c in r for r in rows)]
+    dropped_rows = drop_snapshot_columns_across_rows(rows, group_columns)
+
+    orig_model_dir = mp.MODEL_DIR
+    htok = mp.set_ml_infer_horizon_slug(hz)
+    skip_reasons: dict[str, int] = {}
+
+    def _bump(key: str) -> None:
+        skip_reasons[key] = skip_reasons.get(key, 0) + 1
+
+    dropped_probs: list[Optional[list[float]]] = [None] * len(rows)
+    try:
+        mp.MODEL_DIR = _models_root_from_bundle_dir(Path(model_dir))
+        mp.reset_caches()
+        _tss = [float(r["ts_utc"]) for r in rows if r.get("ts_utc") is not None]
+        hist_db = (
+            preload_historical_db_for_eval(db_path, ticker, max(_tss))
+            if _tss
+            else None
+        )
+        for i, row in enumerate(dropped_rows):
+            if baseline_probs[i] is None or y_outcome[i] is None:
+                continue
+            prob, _yt, skip = _full_fusion_prob_for_row(
+                row,
+                ticker=ticker,
+                target_column=target_column,
+                hist_db=hist_db,
+            )
+            if skip:
+                _bump(skip)
+            dropped_probs[i] = prob
+    finally:
+        mp.MODEL_DIR = orig_model_dir
+        mp.reset_caches()
+        mp.reset_ml_infer_horizon_slug(htok)
+
+    y_paired: list[int] = []
+    b_paired: list[list[float]] = []
+    d_paired: list[list[float]] = []
+    for i in range(len(rows)):
+        b = baseline_probs[i]
+        d = dropped_probs[i]
+        y = y_outcome[i]
+        if b is None or d is None or y is None:
+            continue
+        y_paired.append(int(y))
+        b_paired.append(b)
+        d_paired.append(d)
+
+    if len(y_paired) < opts.min_paired_rows:
+        return {
+            "anchor_ticker": ticker,
+            "horizon_slug": hz,
+            "group_id": group_id,
+            "status": "skipped",
+            "reason": f"insufficient_paired_rows:{len(y_paired)}",
+            "ablation_kind": "confirm_drop_feature_group",
+            "decision_mode": WHOLE_STACK_CONFIRM_DECISION_MODE,
+            "columns_requested": list(group_columns),
+            "columns_dropped": present,
+            "columns_dropped_count": len(present),
+            "skip_reason_counts": skip_reasons,
+        }
+
+    ll_b = float(log_loss(y_paired, np.asarray(b_paired, dtype=np.float64), labels=[0, 1, 2]))
+    ll_d = float(log_loss(y_paired, np.asarray(d_paired, dtype=np.float64), labels=[0, 1, 2]))
+    delta = round(ll_d - ll_b, 6)
+    safe_to_drop = bool(delta <= 1e-4)
+
+    return {
+        "anchor_ticker": ticker,
+        "horizon_slug": hz,
+        "group_id": group_id,
+        "status": "ok",
+        "ablation_kind": "confirm_drop_feature_group",
+        "decision_mode": WHOLE_STACK_CONFIRM_DECISION_MODE,
+        "metric": "multiclass_log_loss",
+        "columns_requested": list(group_columns),
+        "columns_dropped": present,
+        "columns_dropped_count": len(present),
+        "paired_rows": len(y_paired),
+        "baseline_multiclass_log_loss": ll_b,
+        "dropped_multiclass_log_loss": ll_d,
+        "log_loss_delta": delta,
+        "safe_to_drop": safe_to_drop,
+        "skip_reason_counts": skip_reasons,
+    }
 
 
+# --- tests / tooling: expose metric packer ---
+def pack_metrics_for_probs(
+    name: str,
+    y_true: list[int],
+    prob_rows: list[list[float]],
+    rows_used: Optional[list[dict]] = None,
+) -> dict[str, Any]:
+    return _pack_full_metrics(name, y_true, prob_rows, rows_used or [])

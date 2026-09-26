@@ -58,6 +58,10 @@ TARGET_CLASSES      = {"up": 0, "down": 1, "flat": 2}
 # time_et.RTH_START_MINS / RTH_END_MINS. These names are minute-of-day aliases OF that
 # authority, not an independent 9/30/16/0 redefinition.
 from time_et import RTH_START_MINS as _RTH_START_MINS, RTH_END_MINS as _RTH_END_MINS
+RTH_START_HOUR      = _RTH_START_MINS // 60
+RTH_START_MIN       = _RTH_START_MINS % 60
+RTH_END_HOUR        = _RTH_END_MINS // 60
+RTH_END_MIN         = _RTH_END_MINS % 60
 
 # ── Feature definitions (Stage 2: full XGB tabular universe on both streams) ──
 
@@ -107,6 +111,8 @@ def _encode_vwap_side_feature(snap: dict) -> float:
 
 # Schema v3: flat tabular vectors (no __present mask channels).
 LOG_TRANSFORM_COLS: frozenset[str] = frozenset({"net_gamma", "net_delta", "charm_net"})
+NULLABLE_NUMERIC_COLS_5M: frozenset[str] = frozenset()
+NULLABLE_NUMERIC_COLS_1M: frozenset[str] = frozenset()
 
 # Bump when encoder layout changes (requires full LSTM/Transformer retrain).
 LSTM_ENCODER_SCHEMA_VERSION = 3

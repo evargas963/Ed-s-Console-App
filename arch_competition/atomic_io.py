@@ -40,3 +40,27 @@ def write_json_file_atomically(
         raise
 
 
+def write_text_atomically(
+    path: Path,
+    text: str,
+    *,
+    encoding: str = "utf-8",
+) -> None:
+    """Write text via temp file + fsync + os.replace (no partial destination on crash)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        # newline="\n": see write_json_file_atomically's comment above -- this sibling function
+        # was missed when that fix landed (2026-09-15), leaving this one write_text_atomically
+        # call site (calibration/edge_discovery.py) still exposed to the same platform-default
+        # CRLF flip on Windows.
+        with os.fdopen(fd, "w", encoding=encoding, newline="\n") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise

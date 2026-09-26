@@ -44,6 +44,7 @@ from math_probabilities import (
 )
 from timeframe_config import CANONICAL_TIMEFRAME, DERIVED_TIMEFRAME
 
+ROOT = Path(__file__).resolve().parent
 
 
 def _positive_float_or_none(value):

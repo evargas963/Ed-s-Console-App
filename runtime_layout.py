@@ -137,3 +137,11 @@ def live_binding_error(source_root: "Path | None" = None,
     return None
 
 
+def describe() -> dict[str, str]:
+    """The resolved layout, for a launch banner or a probe — never for a decision."""
+    return {
+        "source_root": str(SOURCE_ROOT),
+        "runtime_root": str(RUNTIME_ROOT),
+        "artifacts_root": str(ARTIFACTS_ROOT),
+        "separated": str(RUNTIME_ROOT != SOURCE_ROOT),
+    }

@@ -118,3 +118,22 @@ def read_optional_vwap_side(parent: Mapping[str, Any], key: str, canonical_field
     return t
 
 
+def read_liquidity_summary_subdict(l1_payload: Mapping[str, Any]) -> dict[str, Any]:
+    """
+    Resolve `liquidity_summary` for live payloads.
+
+    Missing key → {} (no absorption/continuation keys).
+    Null → {}.
+    Non-dict, non-null → MvpFeatureSourceError.
+    """
+    l1_payload = _require_mapping(l1_payload, "liquidity_summary")
+    if not _contains_key(l1_payload, "liquidity_summary"):
+        return {}
+    raw = l1_payload["liquidity_summary"]
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise MvpFeatureSourceError(
+            f"liquidity_summary: expected dict or null, got {type(raw).__name__!r}"
+        )
+    return raw

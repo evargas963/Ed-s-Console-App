@@ -25,3 +25,29 @@ def derive_vwap_side(spot: Any, vwap: Any) -> Optional[str]:
     return "below"
 
 
+def derive_pressure_trend(
+    prev_dpi_norm: Optional[float],
+    cur_dpi_norm: Optional[float],
+    *,
+    eps: float = 2.0,
+) -> Optional[str]:
+    """
+    Compare dealer-pressure index (0–100) to previous tick for the same ticker.
+    """
+    if cur_dpi_norm is None:
+        return None
+    try:
+        cur = float(cur_dpi_norm)
+    except (TypeError, ValueError):
+        return None
+    if prev_dpi_norm is None:
+        return "flat"
+    try:
+        prev = float(prev_dpi_norm)
+    except (TypeError, ValueError):
+        return "flat"
+    if cur > prev + eps:
+        return "rising"
+    if cur < prev - eps:
+        return "falling"
+    return "flat"

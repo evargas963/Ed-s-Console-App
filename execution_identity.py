@@ -44,20 +44,42 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 import sqlite3
+import time
+from pathlib import Path
 from typing import Any, Optional
 
+from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_text_blob, encode_text_blob
 
+log = logging.getLogger(__name__)
 
 ENVELOPE_SCHEMA_VERSION = "1"
+REPO_ROOT = Path(__file__).resolve().parent
+CAS_ROOT = REPO_ROOT / "models" / "_artifact_cas"
 
+IDENTITY_CLASS_FULL = "FULL_STACK_PINNED"
+IDENTITY_CLASS_DEGRADED = "DEGRADED_PINNED"
+IDENTITY_CLASS_FAIL_CLOSED = "FAIL_CLOSED_PINNED"
+IDENTITY_CLASSES = (IDENTITY_CLASS_FULL, IDENTITY_CLASS_DEGRADED, IDENTITY_CLASS_FAIL_CLOSED)
 
 # Row-level classification for persisted surfaces (snapshots).
 ROW_CLASS_MODEL_DERIVED = "MODEL_DERIVED"
 ROW_CLASS_NOT_APPLICABLE = "NOT_APPLICABLE"  # quote-only / non-model rows
 
+# Historical (pre-schema) row classification — evidence-only, never backfilled.
+LEGACY_PROVEN = "PROVEN"
+LEGACY_PARTIALLY_RECOVERABLE = "PARTIALLY_RECOVERABLE"
+LEGACY_UNRECOVERABLE = "UNRECOVERABLE_LEGACY"
+LEGACY_NOT_APPLICABLE = "NOT_APPLICABLE"
 
+LEDGER_OPEN = "OPEN"
+LEDGER_COMPLETE = "COMPLETE"
+LEDGER_INCOMPLETE = "INCOMPLETE"  # terminal: a required surface never landed
 
+_SHA256_HEX = frozenset("0123456789abcdef")
 
 
 class ExecutionIdentityError(ValueError):
@@ -142,8 +164,86 @@ def execution_identity_sha256(envelope: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_envelope_json(envelope).encode("ascii")).hexdigest()
 
 
+def build_execution_envelope(
+    *,
+    release: dict[str, Any],
+    requested_ticker: str,
+    bundle_ticker: str,
+    guest_anchor: bool,
+    guest_anchor_ticker: Optional[str],
+    horizons_attempted: list[str],
+    bundles_by_horizon: dict[str, dict[str, Any]],
+    calibration_by_horizon: dict[str, dict[str, Any]] | None,
+    calibration_logging_enabled: bool,
+    stack_pins: dict[str, Any],
+    runtime_class: str,
+    degradation: dict[str, Any] | None,
+    tradeable_policy: dict[str, Any] | None,
+    executed_at_utc: float,
+) -> dict[str, Any]:
+    """Assemble the canonical envelope from the ACTUAL execution surfaces.
+
+    ``bundles_by_horizon`` entries come from the Item-4 verification provenance
+    registry + bundle integrity manifests (per-role sha256 map, manifest sha,
+    integrity class, lineage).  Calibration absence is explicit, never silent.
+    """
+    calibration: dict[str, Any]
+    if calibration_by_horizon:
+        calibration = {"attached": True, "by_horizon": calibration_by_horizon,
+                       "logging_enabled": bool(calibration_logging_enabled)}
+    else:
+        calibration = {
+            "attached": False,
+            "logging_enabled": bool(calibration_logging_enabled),
+            "reason": ("calibration logging disabled" if not calibration_logging_enabled
+                       else "no calibration artifacts attached for this execution"),
+        }
+    envelope = {
+        "envelope_schema_version": ENVELOPE_SCHEMA_VERSION,
+        "release": {
+            "release_id": release.get("release_id"),
+            "git_sha": release.get("git_sha"),
+            "config_hash": release.get("config_hash"),
+            "build_generation": release.get("build_generation"),
+        },
+        "routing": {
+            # requested_ticker = REQUEST ECHO (what was asked for); explicitly NOT the canonical
+            # routing identity and never substituted for it (RC-345/F25).
+            "requested_ticker": str(requested_ticker).strip().upper(),
+            # bundle_ticker / guest_anchor_ticker = CANONICAL instrument used for bundle/model/
+            # storage/routing → the one storage-key authority.
+            "bundle_ticker": ticker_storage_key(bundle_ticker),
+            "guest_anchor": bool(guest_anchor),
+            "guest_anchor_ticker": (ticker_storage_key(guest_anchor_ticker)
+                                     if guest_anchor_ticker else None),
+            "horizons_attempted": sorted(horizons_attempted),
+            "horizons_executed": sorted(bundles_by_horizon),
+        },
+        "bundles": bundles_by_horizon,
+        "calibration": calibration,
+        "stack_pins": stack_pins,
+        "runtime": {
+            "runtime_class": runtime_class,
+            "degradation": degradation or {"degraded": False},
+            "tradeable_policy": tradeable_policy or {"evaluated": False},
+        },
+        "executed_at_utc": float(executed_at_utc),
+    }
+    # canonicalization check happens here so a malformed envelope never
+    # reaches the insert path
+    canonical_envelope_json(envelope)
+    return envelope
 
 
+def identity_class_for_envelope(envelope: dict[str, Any]) -> str:
+    runtime = envelope.get("runtime") or {}
+    degradation = runtime.get("degradation") or {}
+    rc = str(runtime.get("runtime_class") or "")
+    if "FAIL_CLOSED" in rc:
+        return IDENTITY_CLASS_FAIL_CLOSED
+    if degradation.get("degraded"):
+        return IDENTITY_CLASS_DEGRADED
+    return IDENTITY_CLASS_FULL
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -265,40 +365,326 @@ def ensure_execution_identity_schema(conn: sqlite3.Connection) -> None:
 # Identity + ledger persistence (the atomic anchor)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _canon_list(items: list[str]) -> str:
+    return json.dumps(sorted(set(items)), separators=(",", ":"))
 
 
+def insert_execution_identity(
+    conn: sqlite3.Connection,
+    envelope: dict[str, Any],
+    *,
+    decision_id: str,
+    expected_surfaces: list[str],
+) -> str:
+    """Atomically persist the identity anchor: envelope row + ledger binding.
+
+    Concurrent identical inserts deduplicate safely (same sha, byte-identical
+    envelope); a same-sha different-envelope collision is refused.  Returns the
+    execution_identity_sha256.
+    """
+    payload = canonical_envelope_json(envelope)
+    sha = hashlib.sha256(payload.encode("ascii")).hexdigest()
+    identity_class = identity_class_for_envelope(envelope)
+    rel = envelope["release"]
+    routing = envelope["routing"]
+    now = time.time()
+    with conn:  # one physical transaction: identity + ledger anchor
+        # Concurrency-safe dedupe: ON CONFLICT DO NOTHING then verify the
+        # surviving row byte-matches — two racing identical inserts both
+        # succeed; a same-address different-bytes registration is refused.
+        conn.execute(
+            """INSERT INTO model_execution_identities (
+                   execution_identity_sha256, envelope_schema_version, envelope_json,
+                   created_at_utc, release_id, git_sha, config_hash,
+                   requested_ticker, bundle_ticker, runtime_class, identity_class
+               ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(execution_identity_sha256) DO NOTHING""",
+            (
+                sha, ENVELOPE_SCHEMA_VERSION, encode_text_blob(payload), now,
+                str(rel.get("release_id") or ""), str(rel.get("git_sha") or ""),
+                str(rel.get("config_hash") or ""),
+                routing["requested_ticker"], routing["bundle_ticker"],
+                str((envelope.get("runtime") or {}).get("runtime_class") or ""),
+                identity_class,
+            ),
+        )
+        existing = conn.execute(
+            "SELECT envelope_json FROM model_execution_identities WHERE execution_identity_sha256=?",
+            (sha,),
+        ).fetchone()
+        # RC-REHAB-3: envelope_json is stored gzip-compressed (encode_text_blob above) —
+        # decode_text_blob back to the raw canonical text before this byte-identity
+        # comparison, or every insert (including the one that just landed) would read as
+        # a hash collision with DIFFERENT bytes.
+        if existing is None or decode_text_blob(existing[0]) != payload:
+            raise ExecutionIdentityError(
+                "ENVELOPE_HASH_MISMATCH",
+                f"identity {sha[:16]} already registered with DIFFERENT envelope bytes",
+            )
+        conn.execute(
+            """INSERT INTO decision_persistence_ledger (
+                   decision_id, execution_identity_sha256, expected_surfaces,
+                   landed_surfaces, status, created_at_utc, updated_at_utc
+               ) VALUES (?,?,?,?,?,?,?)
+               ON CONFLICT(decision_id) DO NOTHING""",
+            (decision_id, sha, _canon_list(expected_surfaces), "[]",
+             LEDGER_OPEN, now, now),
+        )
+        led = conn.execute(
+            "SELECT execution_identity_sha256 FROM decision_persistence_ledger WHERE decision_id=?",
+            (decision_id,),
+        ).fetchone()
+        if led is None or led[0] != sha:
+            raise ExecutionIdentityError(
+                "LEDGER_CONFLICT",
+                f"decision {decision_id} already bound to a different execution identity",
+            )
+    return sha
 
 
+def mark_surface_landed(conn: sqlite3.Connection, decision_id: str, surface: str) -> str:
+    """Record one dependent surface as persisted; returns resulting ledger status."""
+    row = conn.execute(
+        "SELECT expected_surfaces, landed_surfaces FROM decision_persistence_ledger WHERE decision_id=?",
+        (decision_id,),
+    ).fetchone()
+    if row is None:
+        raise ExecutionIdentityError("LEDGER_MISSING", f"no ledger for decision {decision_id}")
+    expected = set(json.loads(row[0]))
+    landed = set(json.loads(row[1])) | {surface}
+    status = LEDGER_COMPLETE if expected <= landed else LEDGER_OPEN
+    with conn:
+        conn.execute(
+            "UPDATE decision_persistence_ledger SET landed_surfaces=?, status=?, updated_at_utc=? WHERE decision_id=?",
+            (_canon_list(sorted(landed)), status, time.time(), decision_id),
+        )
+    return status
 
 
+def ledger_consistency_scan(conn: sqlite3.Connection, *, stale_after_s: float = 900.0) -> dict[str, Any]:
+    """Mechanical partial-persistence detector: OPEN ledgers older than the
+    threshold are explicitly INCOMPLETE (terminal, non-tradeable, audit-visible)."""
+    now = time.time()
+    incomplete = []
+    for did, exp, landed, updated in conn.execute(
+        "SELECT decision_id, expected_surfaces, landed_surfaces, updated_at_utc "
+        "FROM decision_persistence_ledger WHERE status='OPEN'"
+    ).fetchall():
+        if now - float(updated) >= stale_after_s:
+            missing = sorted(set(json.loads(exp)) - set(json.loads(landed)))
+            incomplete.append({"decision_id": did, "missing_surfaces": missing})
+            with conn:
+                conn.execute(
+                    "UPDATE decision_persistence_ledger SET status='INCOMPLETE', updated_at_utc=? WHERE decision_id=?",
+                    (now, did),
+                )
+    complete = conn.execute(
+        "SELECT COUNT(*) FROM decision_persistence_ledger WHERE status='COMPLETE'"
+    ).fetchone()[0]
+    return {"incomplete_marked": incomplete, "complete_count": int(complete)}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Content-addressed artifact store (CAS)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _cas_path(sha: str, cas_root: Path | None = None) -> Path:
+    s = str(sha).lower()
+    if len(s) != 64 or not set(s) <= _SHA256_HEX:
+        raise ExecutionIdentityError("ARTIFACT_CAS_MISSING", f"invalid sha256 address {sha!r}")
+    root = Path(cas_root) if cas_root else CAS_ROOT
+    return root / s[:2] / s
 
 
+def _sha256_file(p: Path) -> str:
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
+def archive_artifact(source: Path, expected_sha256: str, *, cas_root: Path | None = None) -> Path:
+    """Verify-then-archive one artifact into the CAS (atomic; collision-refusing)."""
+    src = Path(source)
+    if not src.is_file():
+        raise ExecutionIdentityError("ARTIFACT_SOURCE_MISSING", str(src))
+    actual = _sha256_file(src)
+    if actual != str(expected_sha256).lower():
+        raise ExecutionIdentityError(
+            "ARTIFACT_SOURCE_HASH_MISMATCH",
+            f"{src}: expected {expected_sha256} actual {actual}",
+        )
+    dest = _cas_path(actual, cas_root)
+    if dest.is_file():
+        if _sha256_file(dest) != actual:
+            raise ExecutionIdentityError(
+                "ARTIFACT_CAS_COLLISION",
+                f"CAS address {actual[:16]} holds DIFFERENT bytes — refusing overwrite",
+            )
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(".tmp")
+    tmp.write_bytes(src.read_bytes())
+    if _sha256_file(tmp) != actual:
+        tmp.unlink(missing_ok=True)
+        raise ExecutionIdentityError("ARTIFACT_CAS_CORRUPT", f"atomic write verify failed for {actual[:16]}")
+    os.replace(tmp, dest)
+    return dest
 
 
+def retrieve_artifact(sha256: str, *, cas_root: Path | None = None) -> Path:
+    """Resolve archived bytes by hash; verifies bytes on retrieval; fails closed."""
+    dest = _cas_path(sha256, cas_root)
+    if not dest.is_file():
+        raise ExecutionIdentityError(
+            "ARTIFACT_CAS_MISSING",
+            f"{sha256[:16]}… not in the archive — replay MUST NOT fall back to models/active",
+        )
+    if _sha256_file(dest) != str(sha256).lower():
+        raise ExecutionIdentityError("ARTIFACT_CAS_CORRUPT", f"CAS bytes for {sha256[:16]} fail hash verification")
+    return dest
 
 
+def envelope_artifact_shas(envelope: dict[str, Any]) -> set[str]:
+    """Every artifact sha256 the envelope references (bundle manifests + roles)."""
+    shas: set[str] = set()
+    for hz_entry in (envelope.get("bundles") or {}).values():
+        m = hz_entry.get("manifest_sha256")
+        if isinstance(m, str) and len(m) == 64:
+            shas.add(m.lower())
+        for role_sha in (hz_entry.get("artifacts") or {}).values():
+            if isinstance(role_sha, str) and len(role_sha) == 64:
+                shas.add(role_sha.lower())
+    return shas
 
 
+def archive_envelope_artifacts(
+    envelope: dict[str, Any],
+    source_paths_by_sha: dict[str, Path],
+    *,
+    cas_root: Path | None = None,
+) -> list[str]:
+    """Archive EVERY artifact referenced by the envelope; refuse when a source
+    is unavailable — an identity must never persist with unretained bytes."""
+    archived = []
+    for sha in sorted(envelope_artifact_shas(envelope)):
+        dest = _cas_path(sha, cas_root)
+        if dest.is_file():
+            continue
+        src = source_paths_by_sha.get(sha)
+        if src is None:
+            raise ExecutionIdentityError(
+                "ARTIFACT_SOURCE_MISSING",
+                f"no source bytes offered for referenced artifact {sha[:16]}…",
+            )
+        archive_artifact(Path(src), sha, cas_root=cas_root)
+        archived.append(sha)
+    return archived
 
 
+def gc_check_artifact(conn: sqlite3.Connection, sha256: str) -> None:
+    """Garbage collection guard: refuse removal while ANY persisted execution
+    identity references the artifact (full reference scan, no cached counts)."""
+    needle = str(sha256).lower()
+    for (raw,) in conn.execute("SELECT envelope_json FROM model_execution_identities"):
+        payload = decode_text_blob(raw)
+        if payload is not None and needle in payload:
+            raise ExecutionIdentityError(
+                "ARTIFACT_REFERENCED",
+                f"artifact {needle[:16]}… is referenced by a persisted execution identity",
+            )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Replay resolver (current-pointer-free by construction)
 # ══════════════════════════════════════════════════════════════════════════════
 
+REPLAY_PROOF_LEVELS = (
+    "ARTIFACT_BYTE_IDENTITY",       # proven here when all bytes resolve+verify
+    "CONFIGURATION_IDENTITY",       # proven here (envelope pins)
+    "EXECUTABLE_REPLAY_AVAILABILITY",  # NOT claimed by this resolver
+    "ENVIRONMENT_IDENTITY",         # NOT claimed
+    "STOCHASTIC_SEED_IDENTITY",     # NOT claimed
+    "OUTPUT_EQUIVALENCE",           # NOT claimed
+)
 
 
+def resolve_execution_for_replay(
+    conn: sqlite3.Connection,
+    *,
+    decision_id: str | None = None,
+    execution_identity_sha256: str | None = None,
+    cas_root: Path | None = None,
+) -> dict[str, Any]:
+    """row → identity → envelope → EXACT archived bytes.  Never touches
+    models/active; fails closed on any unresolved component."""
+    sha = execution_identity_sha256
+    if sha is None:
+        if not decision_id:
+            raise ExecutionIdentityError("REPLAY_COMPONENT_UNRESOLVED", "no decision_id or identity given")
+        row = conn.execute(
+            "SELECT execution_identity_sha256 FROM decision_persistence_ledger WHERE decision_id=?",
+            (decision_id,),
+        ).fetchone()
+        if row is None:
+            raise ExecutionIdentityError(
+                "LEGACY_ROW_NO_IDENTITY",
+                f"decision {decision_id} has no execution identity — UNRECOVERABLE_LEGACY; model replay refused",
+            )
+        sha = row[0]
+    rec = conn.execute(
+        "SELECT envelope_json FROM model_execution_identities WHERE execution_identity_sha256=?",
+        (sha,),
+    ).fetchone()
+    if rec is None:
+        raise ExecutionIdentityError("IDENTITY_MISSING", f"identity {str(sha)[:16]}… not registered")
+    # RC-REHAB-3: envelope_json may be gzip-compressed (encode_text_blob at insert) or a
+    # pre-migration plain string — decode_text_blob returns the raw canonical text either
+    # way, which the hash below must verify against (the hash was computed over that
+    # exact text, never over compressed bytes).
+    payload = decode_text_blob(rec[0])
+    if hashlib.sha256(payload.encode("ascii")).hexdigest() != str(sha).lower():
+        raise ExecutionIdentityError("ENVELOPE_HASH_MISMATCH", "stored envelope bytes fail content address")
+    envelope = json.loads(payload)
+    artifact_paths: dict[str, str] = {}
+    for art_sha in sorted(envelope_artifact_shas(envelope)):
+        artifact_paths[art_sha] = str(retrieve_artifact(art_sha, cas_root=cas_root))
+    return {
+        "execution_identity_sha256": str(sha).lower(),
+        "envelope": envelope,
+        "artifact_paths": artifact_paths,
+        "proof_levels": {
+            "ARTIFACT_BYTE_IDENTITY": "PROVEN",
+            "CONFIGURATION_IDENTITY": "PROVEN",
+            "EXECUTABLE_REPLAY_AVAILABILITY": "NOT_PROVEN",
+            "ENVIRONMENT_IDENTITY": "NOT_PROVEN",
+            "STOCHASTIC_SEED_IDENTITY": "NOT_PROVEN",
+            "OUTPUT_EQUIVALENCE": "NOT_PROVEN",
+        },
+    }
 
 
+def classify_historical_row(
+    conn: sqlite3.Connection,
+    *,
+    decision_id: str | None,
+    execution_identity_sha256: str | None,
+    is_model_derived: bool,
+) -> str:
+    """Evidence-only historical classification.  NEVER writes anything."""
+    if not is_model_derived:
+        return LEGACY_NOT_APPLICABLE
+    if execution_identity_sha256:
+        rec = conn.execute(
+            "SELECT 1 FROM model_execution_identities WHERE execution_identity_sha256=?",
+            (execution_identity_sha256,),
+        ).fetchone()
+        return LEGACY_PROVEN if rec else LEGACY_UNRECOVERABLE
+    if decision_id:
+        # a decision record may pin release/git identity without artifact bytes
+        return LEGACY_PARTIALLY_RECOVERABLE
+    return LEGACY_UNRECOVERABLE
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -335,3 +721,143 @@ def require_identity_for_model_derived_write(
 # Live-cycle anchor (server persist tail)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def anchor_production_execution(
+    *,
+    requested_ticker: str,
+    serving_provenance: dict[str, Any] | None,
+    calibration_info: dict[str, Any] | None,
+    db_conn: sqlite3.Connection,
+    decision_id: str,
+    executed_at_utc: float,
+    expected_surfaces: list[str],
+    cas_root: Path | None = None,
+) -> str:
+    """Create the identity anchor for one live decision cycle BEFORE any
+    model-derived persistence.  Assembles the envelope from the ACTUAL
+    execution surfaces (release object, Item-4 verification provenance
+    registry, serving provenance, calibration attach identity), archives every
+    referenced artifact byte into the CAS, and registers identity + ledger.
+
+    Raises ExecutionIdentityError on any unresolvable component — the caller
+    must then REFUSE the model-derived write (fail closed), never persist a
+    model-derived row without identity.
+    """
+    from release_object import get_current_release, validate_release_for_emission
+
+    release = get_current_release(required=False)
+    ok, reason = validate_release_for_emission(release)
+    if not ok or not isinstance(release, dict):
+        raise ExecutionIdentityError(
+            "WRITE_WITHOUT_IDENTITY", f"release unavailable for identity anchor: {reason}"
+        )
+
+    prov = serving_provenance or {}
+    # RC-345/F25: bundle_ticker is canonical routing identity — even when it falls back to the
+    # request echo, it resolves through the one storage-key authority (echo never leaks raw).
+    bundle_ticker = ticker_storage_key(prov.get("bundle_ticker") or requested_ticker)
+    runtime_class = str(prov.get("runtime_class") or "UNKNOWN")
+
+    import ml_predict as mp
+    from ml_horizon import ML_HORIZON_SLUGS
+
+    bundles: dict[str, dict[str, Any]] = {}
+    sources: dict[str, Path] = {}
+    for hz in ML_HORIZON_SLUGS:
+        roles = mp.get_artifact_verification_provenance(bundle_ticker, hz)
+        verified = {r: p for r, p in roles.items() if p.get("verified")}
+        if not verified:
+            continue
+        artifacts: dict[str, str] = {}
+        manifest_sha = None
+        bundle_dir = None
+        for role, rp in sorted(verified.items()):
+            sha = str(rp.get("actual_sha256") or "").lower()
+            if len(sha) != 64:
+                raise ExecutionIdentityError(
+                    "WRITE_WITHOUT_IDENTITY",
+                    f"verified role {role} for {bundle_ticker}/{hz} lacks an artifact sha256",
+                )
+            artifacts[role] = sha
+            ap = rp.get("artifact_path")
+            if ap:
+                sources[sha] = Path(ap)
+            m_sha = str(rp.get("manifest_sha256") or "").lower()
+            if len(m_sha) == 64:
+                manifest_sha = m_sha
+                mpth = rp.get("manifest_path")
+                if mpth:
+                    sources[m_sha] = Path(mpth)
+            bundle_dir = bundle_dir or rp.get("bundle_dir") or str(Path(str(ap)).parent if ap else "")
+        bundles[hz] = {
+            "bundle_dir_identity": str(bundle_dir or ""),
+            "manifest_sha256": manifest_sha,
+            "artifacts": artifacts,
+            "source_lineage": {
+                "trained_at": next((v.get("trained_at") for v in verified.values()
+                                     if v.get("trained_at")), None),
+                "scheduler_cache_key": next((v.get("scheduler_cache_key") for v in verified.values()
+                                              if v.get("scheduler_cache_key")), None),
+            },
+            "integrity_class": "VERIFIED_AGAINST_BUNDLE_MANIFEST",
+            "serving_complete": bool(prov.get("bundle_complete")),
+        }
+
+    from calibration.writer import calibration_logging_enabled
+
+    cal_enabled = calibration_logging_enabled()
+    cal_by_hz = None
+    if isinstance(calibration_info, dict) and calibration_info:
+        cal_by_hz = calibration_info
+
+    # fail-loud pins: a missing contract constant is an ImportError, never a
+    # silently-None envelope field
+    from model_contract import (
+        CONTRACT_FIELDS,
+        CURRENT_FEATURE_SCHEMA_VERSION,
+        CURRENT_LABEL_CONFIG_VERSION,
+        CURRENT_PREPROCESSING_VERSION,
+    )
+
+    stack_pins = {
+        "feature_schema_version": CURRENT_FEATURE_SCHEMA_VERSION,
+        "preprocessing_version": CURRENT_PREPROCESSING_VERSION,
+        "label_config_version": CURRENT_LABEL_CONFIG_VERSION,
+        "contract_fields": sorted(CONTRACT_FIELDS),
+        "env_controlled_behavior": {
+            k: os.environ.get(k)
+            for k in (
+                "ED_APPLY_ABLATION_SURVIVORS", "ED_ARTIFACT_INTEGRITY_STRICT",
+                "ED_CALIBRATION_LOG", "ED_XGB_STRICT_ACTIVE_ONLY",
+                "ED_ARTIFACT_REVERIFY_TTL_SECONDS",
+            )
+            if os.environ.get(k) is not None
+        },
+    }
+
+    degraded_reasons = []
+    if prov.get("relaxation_active"):
+        degraded_reasons.append("relaxation_active")
+    if prov.get("fail_closed_reason"):
+        degraded_reasons.append(str(prov.get("fail_closed_reason")))
+    envelope = build_execution_envelope(
+        release=release,
+        requested_ticker=requested_ticker,
+        bundle_ticker=bundle_ticker,
+        guest_anchor=bool(prov.get("guest_anchor")),
+        guest_anchor_ticker=prov.get("guest_anchor_ticker"),
+        horizons_attempted=list(ML_HORIZON_SLUGS),
+        bundles_by_horizon=bundles,
+        calibration_by_horizon=cal_by_hz,
+        calibration_logging_enabled=cal_enabled,
+        stack_pins=stack_pins,
+        runtime_class=runtime_class,
+        degradation=({"degraded": True, "reasons": degraded_reasons}
+                     if degraded_reasons else None),
+        tradeable_policy={"evaluated": True,
+                          "model_load_status": prov.get("model_load_status")},
+        executed_at_utc=executed_at_utc,
+    )
+    archive_envelope_artifacts(envelope, sources, cas_root=cas_root)
+    return insert_execution_identity(
+        db_conn, envelope, decision_id=decision_id, expected_surfaces=expected_surfaces
+    )

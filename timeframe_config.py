@@ -47,7 +47,19 @@ DERIVED_TIMEFRAME: str = "5m"
 # Table for 1m training data — normalized from sub-minute snapshots (never raw timeframe='5m')
 SNAPSHOT_TABLE_1M: str = "snapshots_1m_normalized"
 
+# Outcome horizon semantics (when using CANONICAL_TIMEFRAME='1m'):
+#   outcome_1c: 1 × 1m bar = ~1 min ahead (was 5 min with 5m)
+#   outcome_5c: 5 × 1m bars = ~5 min ahead (was 25 min with 5m)
+#   outcome_15c: 15 × 1m bars — product “15m” clock (outcome_13c / 3c / 8c retired post-D3).
+# See MIGRATION_OUTCOME_HORIZONS in this file for historical notes.
+MIGRATION_OUTCOME_HORIZONS: dict = {
+    "outcome_1c": "1m: ~1 min ahead | 5m (legacy): ~5 min ahead",
+    "outcome_5c": "1m: ~5 min ahead | 5m (legacy): ~25 min ahead",
+    "outcome_15c": "PRODUCT: 15×1m bars (~15 min ahead on canonical 1m clock)",
+}
 
 # Tri-class empirical horizons persisted on snapshots as pred_{slug}_* (canonical 1m clock).
 # Keep in sync with PRIMARY_DECISION_HORIZONS and prediction_engine empirical heads.
+from ml_horizon import PRIMARY_DECISION_HORIZONS
 
+EMPIRICAL_TRI_CLASS_HORIZONS: tuple[str, ...] = PRIMARY_DECISION_HORIZONS

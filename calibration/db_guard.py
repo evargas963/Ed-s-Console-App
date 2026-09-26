@@ -33,3 +33,17 @@ def require_canonical_db_target(
     )
 
 
+def enforce_resolved_path(
+    db_path: Path,
+    *,
+    allow_noncanonical: bool,
+    tool_name: str,
+    write_capable: bool,
+) -> None:
+    """For tools that resolve --db via pick_db_path() or similar."""
+    cli_require_canonical_or_ack(
+        db_path.resolve(),
+        allow_noncanonical=allow_noncanonical,
+        tool_name=tool_name,
+        write_capable=write_capable,
+    )

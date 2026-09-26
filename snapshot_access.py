@@ -15,9 +15,12 @@ so callers cannot pass None/empty silently.
 
 from __future__ import annotations
 
+from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
 
+SNAPSHOTS_TABLE: str = "snapshots"
 """Logical name for the raw multi-timeframe snapshot store."""
 
+NORMALIZED_1M_TABLE: str = SNAPSHOT_TABLE_1M
 """1m-only normalized training table; not mixed with multi-tf ``snapshots`` reads."""
 
 
@@ -44,3 +47,5 @@ def require_snapshot_timeframe(timeframe: str | None, *, caller: str = "") -> st
     return s
 
 
+def is_canonical_timeframe(timeframe: str) -> bool:
+    return timeframe.strip() == CANONICAL_TIMEFRAME

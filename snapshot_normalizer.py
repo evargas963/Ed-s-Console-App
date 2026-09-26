@@ -199,6 +199,15 @@ def resample_to_1m(
     return out
 
 
+def fetch_raw_subminute_rows(
+    conn: sqlite3.Connection, ticker: str
+) -> list[dict[str, Any]]:
+    """Fetch legacy sub-minute snapshot rows for a ticker (timeframe='5m')."""
+    rows = conn.execute(
+        get_snapshot_sql("snapshot_normalizer.py:176"),
+        (ticker, SUBMINUTE_SOURCE_TIMEFRAME),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def resolve_source_timeframe(conn: sqlite3.Connection, ticker: str) -> str:
@@ -239,6 +248,15 @@ def fetch_rows_for_normalization(
     return [dict(r) for r in rows], tf
 
 
+def normalize_ticker(db_path: Path, ticker: str) -> list[dict[str, Any]]:
+    """Fetch source rows for ticker and resample to 1m. Returns list of normalized dicts."""
+    conn = _connect(db_path)
+    try:
+        raw, source_tf = fetch_rows_for_normalization(conn, ticker)
+        norm_flag = 1 if source_tf == SUBMINUTE_SOURCE_TIMEFRAME else 0
+        return resample_to_1m(raw, ticker, normalized_from_subminute=norm_flag)
+    finally:
+        conn.close()
 
 
 def _normalized_table_exists(conn: sqlite3.Connection) -> bool:
@@ -418,6 +436,15 @@ def materialize_normalized_table(
     return result
 
 
+def clear_normalized_table(db_path: Path = DB_PATH) -> int:
+    """Clear snapshots_1m_normalized. Returns number of rows deleted."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("DELETE FROM snapshots_1m_normalized")
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
 
 
 def validate_normalization(db_path: Path = DB_PATH) -> dict[str, Any]:
@@ -515,6 +542,29 @@ def validate_normalization(db_path: Path = DB_PATH) -> dict[str, Any]:
     return out
 
 
+def load_normalized_rows(
+    db_path: Path = DB_PATH,
+    ticker: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """
+    Load normalized rows for training/analysis. Same interface as reading from snapshots.
+
+    Returns rows with timeframe='1m' from snapshots_1m_normalized.
+    """
+    conn = _connect(db_path)
+    try:
+        if ticker:
+            rows = conn.execute(
+                "SELECT * FROM snapshots_1m_normalized WHERE ticker = ? ORDER BY ts_utc ASC",
+                (ticker,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM snapshots_1m_normalized ORDER BY ticker, ts_utc ASC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 def run_full_materialization(db_path: Path = DB_PATH) -> dict[str, Any]:

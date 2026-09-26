@@ -30,7 +30,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -42,9 +43,25 @@ from numeric_contract import (
     float_positive_or_none,
 )
 
+#: Evidence tier. The Desk renders these; nothing below ESTIMATED may drive an action.
+#: MEASURED  — a fetched fact carrying its own source and vintage.
+#: DERIVED   — arithmetic over MEASURED facts (no forecast, no free parameter).
+#: ESTIMATED — model output that has a calibration record behind it.
+#: UNPROVEN  — model output without one.
+TIERS: tuple[str, ...] = ("MEASURED", "DERIVED", "ESTIMATED", "UNPROVEN")
 
+#: Widest offset any naive wall-clock string in this repo could be behind UTC. US/Eastern is
+#: UTC-4/-5, so a naive string that is really ET is at most 5h EARLIER than the same string read
+#: as UTC. Resolving conservatively means adding that, never subtracting it.
+_MAX_NAIVE_LAG_HOURS = 5
 
+#: RC-167: a median needs sessions to be a median OF. Below this the statistic is the outlier.
+_MIN_SESSIONS_FOR_ADV = 3
 
+#: RC-167/RC-168: a session whose dollar volume exceeds this multiple of the symbol's own median
+#: is counted and reported, never silently dropped. Measured, not categorical — the multiple is
+#: applied to every symbol identically and the count reaches the payload.
+_SUSPECT_SESSION_MULTIPLE = 5.0
 
 #: A median spread formed from a handful of quotes is a quote, not a spread.
 _MIN_QUOTES_FOR_SPREAD = 30
@@ -89,7 +106,26 @@ _RISK_NEUTRAL_UNAVAILABLE = (
 #: a brief that ages silently is worse than no brief.
 _BRIEF_BLOCK_SHELF_LIFE_SEC = 36 * 3600.0
 
+DESK_FACTS_SQL = """
+CREATE TABLE IF NOT EXISTS desk_facts (
+    subject            TEXT NOT NULL,
+    kind               TEXT NOT NULL,
+    event_time_utc     REAL NOT NULL,
+    knowledge_time_utc REAL NOT NULL,
+    source             TEXT NOT NULL,
+    source_ref         TEXT,
+    tier               TEXT NOT NULL,
+    value_num          REAL,
+    payload_json       TEXT,
+    ingested_at_utc    REAL NOT NULL,
+    PRIMARY KEY (subject, kind, event_time_utc, source)
+)
+"""
 
+DESK_FACTS_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS ix_desk_facts_knowledge "
+    "ON desk_facts (kind, knowledge_time_utc, subject)"
+)
 
 
 class DeskFactError(ValueError):
@@ -108,6 +144,14 @@ def _connect(db_path: str | Path, *, read_only: bool = False) -> sqlite3.Connect
     return con
 
 
+def ensure_schema(db_path: str | Path) -> None:
+    con = _connect(db_path)
+    try:
+        con.execute(DESK_FACTS_SQL)
+        con.execute(DESK_FACTS_INDEX_SQL)
+        con.commit()
+    finally:
+        con.close()
 
 
 def _iso_utc_to_epoch(text: str) -> float | None:
@@ -130,8 +174,87 @@ def _iso_utc_to_epoch(text: str) -> float | None:
     return dt.timestamp()
 
 
+def _naive_text_to_utc_conservative(text: str) -> float | None:
+    """Resolve a naive 'YYYY-MM-DD HH:MM:SS' stamp to the LATEST instant it could mean.
+
+    The `world_*` tables store `fetched_at` without a timezone (MEASURED 2026-07-31:
+    world_finra_short_volume.fetched_at = '2026-07-21 13:02:27', typeof=text). Read as UTC it
+    is the earliest reading; read as US/Eastern it is up to 5 hours later. We take the later
+    one. Knowledge time is a claim about when we were ENTITLED to act, and over-claiming it is
+    the one error that cannot be detected downstream — it just makes every study look better.
+    """
+    s = (text or "").strip()
+    if not s:
+        return None
+    # Drop a trailing fractional-seconds suffix (e.g. "13:02:27.123456") before matching —
+    # none of the formats below carry %f, and a naive strptime rejects any unconverted tail.
+    if "." in s:
+        head, _, tail = s.partition(".")
+        if tail[:6].isdigit():
+            s = head
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+        dt = dt.replace(tzinfo=timezone.utc) + timedelta(hours=_MAX_NAIVE_LAG_HOURS)
+        return dt.timestamp()
+    return None
 
 
+def put_fact(
+    db_path: str | Path,
+    *,
+    subject: str,
+    kind: str,
+    event_time_utc: float,
+    knowledge_time_utc: float,
+    source: str,
+    tier: str,
+    source_ref: str | None = None,
+    value_num: float | None = None,
+    payload: Mapping[str, Any] | None = None,
+) -> None:
+    """Write one fact. Every argument above `source_ref` is required — deliberately.
+
+    There is no `knowledge_time_utc=None` path that fills in `time.time()`. If a caller cannot
+    say when we learned something, the honest outcome is no row.
+    """
+    if not subject or not kind or not source:
+        raise DeskFactError("subject, kind and source are all required")
+    if tier not in TIERS:
+        raise DeskFactError(f"tier {tier!r} is not one of {TIERS}")
+    if not isinstance(event_time_utc, (int, float)) or event_time_utc <= 0:
+        raise DeskFactError(f"event_time_utc must be a positive epoch, got {event_time_utc!r}")
+    if not isinstance(knowledge_time_utc, (int, float)) or knowledge_time_utc <= 0:
+        raise DeskFactError(
+            f"knowledge_time_utc must be a positive epoch, got {knowledge_time_utc!r} — "
+            "a fact whose knowledge time is unknown does not get stored"
+        )
+    if knowledge_time_utc < event_time_utc:
+        raise DeskFactError(
+            f"knowledge_time_utc {knowledge_time_utc} precedes event_time_utc {event_time_utc} "
+            f"for {subject}/{kind} — we cannot have known it before it happened"
+        )
+    con = _connect(db_path)
+    try:
+        con.execute(DESK_FACTS_SQL)
+        con.execute(DESK_FACTS_INDEX_SQL)
+        con.execute(
+            "INSERT OR REPLACE INTO desk_facts (subject, kind, event_time_utc, "
+            "knowledge_time_utc, source, source_ref, tier, value_num, payload_json, "
+            "ingested_at_utc) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                subject.upper(), kind, float(event_time_utc), float(knowledge_time_utc),
+                source, source_ref, tier,
+                None if value_num is None else float(value_num),
+                None if payload is None else json.dumps(dict(payload), separators=(",", ":")),
+                time.time(),
+            ),
+        )
+        con.commit()
+    finally:
+        con.close()
 
 
 def facts_as_of(
@@ -245,16 +368,325 @@ def latest_by_subject(
 # stamp `ts_utc`. A source without such a stamp is skipped, and says so in the return value.
 # ---------------------------------------------------------------------------
 
+def materialize_short_volume(db_path: str | Path, *, limit_symbols: int = 0) -> dict[str, int]:
+    """FINRA daily short volume -> `short_volume_ratio`, MEASURED.
+
+    Knowledge time is `fetched_at`, which trails the event date by days. That lag is the point.
+    """
+    con = _connect(db_path, read_only=True)
+    try:
+        rows = con.execute(
+            "SELECT date, symbol, short_volume, total_volume, fetched_at "
+            "FROM world_finra_short_volume WHERE total_volume > 0"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {"written": 0, "skipped_no_knowledge_time": 0, "source_rows": 0}
+    finally:
+        con.close()
+
+    written = skipped = 0
+    seen: set[str] = set()
+    target = _connect(db_path)
+    try:
+        target.execute(DESK_FACTS_SQL)
+        target.execute(DESK_FACTS_INDEX_SQL)
+        batch = []
+        for r in rows:
+            kt = _naive_text_to_utc_conservative(str(r["fetched_at"] or ""))
+            if kt is None:
+                skipped += 1
+                continue
+            sym = str(r["symbol"] or "").upper()
+            if not sym:
+                skipped += 1
+                continue
+            if limit_symbols and sym not in seen and len(seen) >= limit_symbols:
+                continue
+            seen.add(sym)
+            et = _naive_text_to_utc_conservative(str(r["date"] or ""))
+            if et is None:
+                skipped += 1
+                continue
+            tot = float_positive_or_none(r["total_volume"])
+            if tot is None:
+                skipped += 1
+                continue
+            # RC-274: a NULL short_volume is FINRA not reporting, which is not the same fact as
+            # zero shares sold short. Divided into total it used to publish a 0.0 ratio under
+            # tier "MEASURED" — a number no one measured.
+            short = float_nonnegative_or_none(r["short_volume"])
+            if short is None:
+                skipped += 1
+                continue
+            ratio = short / tot
+            batch.append((
+                sym, "short_volume_ratio", et, max(kt, et), "finra.daily_short_volume",
+                str(r["date"]), "MEASURED", ratio,
+                json.dumps({"short": r["short_volume"], "total": r["total_volume"]},
+                           separators=(",", ":")),
+                time.time(),
+            ))
+        if batch:
+            target.executemany(
+                "INSERT OR REPLACE INTO desk_facts (subject, kind, event_time_utc, "
+                "knowledge_time_utc, source, source_ref, tier, value_num, payload_json, "
+                "ingested_at_utc) VALUES (?,?,?,?,?,?,?,?,?,?)", batch)
+            written = len(batch)
+        target.commit()
+    finally:
+        target.close()
+    return {"written": written, "skipped_no_knowledge_time": skipped, "source_rows": len(rows)}
 
 
+def materialize_earnings(db_path: str | Path) -> dict[str, int]:
+    """Scheduled earnings dates -> `earnings_date`, MEASURED.
+
+    An earnings DATE is knowable before the event, so here knowledge time legitimately precedes
+    event time and the `knowledge >= event` guard in `put_fact` does not apply; the row is
+    written through the bulk path with both stamps recorded as the source gives them.
+    """
+    con = _connect(db_path, read_only=True)
+    try:
+        rows = con.execute(
+            "SELECT date, symbol, time_hint, fetched_at FROM world_earnings"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {"written": 0, "skipped_no_knowledge_time": 0, "source_rows": 0}
+    finally:
+        con.close()
+
+    written = skipped = 0
+    target = _connect(db_path)
+    try:
+        target.execute(DESK_FACTS_SQL)
+        target.execute(DESK_FACTS_INDEX_SQL)
+        batch = []
+        for r in rows:
+            kt = _naive_text_to_utc_conservative(str(r["fetched_at"] or ""))
+            et = _naive_text_to_utc_conservative(str(r["date"] or ""))
+            sym = str(r["symbol"] or "").upper()
+            if kt is None or et is None or not sym:
+                skipped += 1
+                continue
+            batch.append((
+                sym, "earnings_date", et, kt, "world.earnings", str(r["date"]),
+                "MEASURED", et,
+                json.dumps({"time_hint": r["time_hint"]}, separators=(",", ":")),
+                time.time(),
+            ))
+        if batch:
+            target.executemany(
+                "INSERT OR REPLACE INTO desk_facts (subject, kind, event_time_utc, "
+                "knowledge_time_utc, source, source_ref, tier, value_num, payload_json, "
+                "ingested_at_utc) VALUES (?,?,?,?,?,?,?,?,?,?)", batch)
+            written = len(batch)
+        target.commit()
+    finally:
+        target.close()
+    return {"written": written, "skipped_no_knowledge_time": skipped, "source_rows": len(rows)}
 
 
+def is_cash_index(symbol: str) -> bool:
+    """Cash indices carry no shares, so they carry no dollar volume.
+
+    RC-167: the first real run of this materializer published `$SPX` with an ADV of
+    $108,127,149,193,795 — a hundred and eight TRILLION dollars a day, roughly the planet's
+    annual output, printed in a capacity column whose entire job is to say how much size a name
+    can absorb. `close * volume` is only dollars traded when `volume` counts SHARES; on a cash
+    index it counts nothing purchasable. The derivation was applied to every row in
+    `price_bars_1m` without first asking whether the instrument has the quantity being derived.
+    """
+    return str(symbol or "").startswith("$")
 
 
+def materialize_dollar_volume(db_path: str | Path, *, window_days: int = 20) -> dict[str, int]:
+    """20-session average dollar volume from 1m bars -> `adv_dollar`, DERIVED.
+
+    Knowledge time is the close of the LAST bar in the window: that is the first instant the
+    average existed. Capacity is a first-class column on the Desk, so this is not decoration —
+    a candidate that cannot absorb size is not a candidate.
+
+    RC-167 governs three details that look like arithmetic and are actually correctness:
+
+    1. Cash indices are excluded (`is_cash_index`) — no shares, so no dollar volume.
+    2. The statistic is the MEDIAN session, not the mean. MEASURED 2026-07-31: MSFT's four most
+       recent sessions ran $9.42B, $9.25B, $59.48B, $333.72B. A mean over that is a number about
+       the outlier, not about the name.
+    3. Those outliers are a defect in `price_bars_1m` itself, not here (RC-168): one 2026-07-31
+       MSFT bar carries 25,118,525 shares in a single minute while its neighbours carry
+       thousands, and the day's bars are NOT a cumulative series (232 of 420 steps
+       non-decreasing — coin-flip, not monotone). The median makes the Desk robust to it; it
+       does not repair it, so the count of suspect sessions rides along in the payload where it
+       stays visible instead of being smoothed away.
+    """
+    from time_et import et_date_str_from_ts_utc
+
+    cutoff = time.time() - (window_days * 86400.0)
+    con = _connect(db_path, read_only=True)
+    try:
+        raw = con.execute(
+            "SELECT ticker, bar_end_ts_utc, close, volume FROM price_bars_1m "
+            "WHERE bar_end_ts_utc >= ? AND volume > 0", (cutoff,)
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {"written": 0, "skipped_no_knowledge_time": 0, "source_rows": 0}
+    finally:
+        con.close()
+
+    # RC-170: `price_bars_1m` carries extended hours BY DESIGN, and coverage differs per name.
+    # MEASURED 2026-07-31 before this filter: SPY averaged 687 bars per session against MSFT's
+    # 358 — one name's ADV was counting pre- and post-market turnover and the other's was not,
+    # so the column ranked names against each other on different definitions of a day. Session
+    # membership is the `time_et` authority's call, never a bar count.
+    now = time.time()
+    per_day: dict[tuple[str, str], list[float]] = {}
+    last_bar: dict[str, float] = {}
+    skipped_non_rth = skipped_incomplete = 0
+    complete: dict[str, bool] = {}
+    for r in raw:
+        ts = float_positive_or_none(r["bar_end_ts_utc"])
+        sym = str(r["ticker"] or "").upper()
+        if not sym or ts is None:
+            continue
+        # RC-176: both clock AND calendar. `price_bars_1m` really does carry weekend/holiday
+        # rows (2026-07-03/04/05/11/18 measured), and the clock-only filter counted them as
+        # sessions.
+        if not is_rth_trading_ts(ts):
+            skipped_non_rth += 1
+            continue
+        d = et_date_str_from_ts_utc(ts)
+        # RC-173: a session in progress contributes a FRACTION of a session's turnover. Letting
+        # it into the sample drags the median down for as long as the market is open.
+        if d not in complete:
+            complete[d] = session_is_complete(d, now)
+        if not complete[d]:
+            skipped_incomplete += 1
+            continue
+        # RC-274: a NULL close used to contribute 0 dollars, quietly deflating the very turnover
+        # ADV ranks names on — while a NULL volume raised TypeError two characters later. Same
+        # absence, two behaviours. A bar we cannot price is a bar we do not count.
+        close = float_positive_or_none(r["close"])
+        vol = float_nonnegative_or_none(r["volume"])
+        if close is None or vol is None:
+            skipped_incomplete += 1
+            continue
+        per_day.setdefault((sym, d), []).append(close * vol)
+        if ts > last_bar.get(sym, 0.0):
+            last_bar[sym] = ts
+
+    per_symbol: dict[str, list[tuple[float, float, int]]] = {}
+    for (sym, _d), dollars in per_day.items():
+        total = sum(dollars)
+        if total <= 0:
+            continue
+        per_symbol.setdefault(sym, []).append((total, last_bar.get(sym, 0.0), len(dollars)))
+
+    written = skipped = suspect_total = 0
+    target = _connect(db_path)
+    try:
+        target.execute(DESK_FACTS_SQL)
+        target.execute(DESK_FACTS_INDEX_SQL)
+        batch = []
+        for sym, sessions in per_symbol.items():
+            if is_cash_index(sym):
+                skipped += 1  # no shares, so no dollar volume — absence, not a fabricated number
+                continue
+            if len(sessions) < _MIN_SESSIONS_FOR_ADV:
+                skipped += 1
+                continue
+            last = max(s[1] for s in sessions)
+            if last <= 0:
+                skipped += 1
+                continue
+            dollars = sorted(s[0] for s in sessions)
+            mid = len(dollars) // 2
+            median = (dollars[mid] if len(dollars) % 2
+                      else 0.5 * (dollars[mid - 1] + dollars[mid]))
+            if median <= 0:
+                skipped += 1
+                continue
+            suspect = sum(1 for d in dollars if d > _SUSPECT_SESSION_MULTIPLE * median)
+            suspect_total += suspect
+            batch.append((
+                sym, "adv_dollar", last, last, "derived.price_bars_1m",
+                f"{window_days}d median", "DERIVED", median,
+                json.dumps({"sessions": len(dollars), "suspect_sessions": suspect,
+                            "max_session": dollars[-1], "window_days": window_days},
+                           separators=(",", ":")),
+                time.time(),
+            ))
+        if batch:
+            target.executemany(
+                "INSERT OR REPLACE INTO desk_facts (subject, kind, event_time_utc, "
+                "knowledge_time_utc, source, source_ref, tier, value_num, payload_json, "
+                "ingested_at_utc) VALUES (?,?,?,?,?,?,?,?,?,?)", batch)
+            written = len(batch)
+        target.commit()
+    finally:
+        target.close()
+    return {"written": written, "skipped_no_knowledge_time": skipped,
+            "source_rows": len(raw), "skipped_non_rth_bars": skipped_non_rth,
+            "skipped_incomplete_session_bars": skipped_incomplete,
+            "suspect_sessions": suspect_total}
 
 
+def materialize_options_listed(db_path: str | Path) -> dict[str, int]:
+    """Chain presence and width from banked chains -> `options_listed`, MEASURED."""
+    con = _connect(db_path, read_only=True)
+    try:
+        rows = con.execute(
+            "SELECT ticker, MAX(ts_utc) AS ts, n_strikes, session_volume "
+            "FROM option_chain_accrual GROUP BY ticker"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {"written": 0, "skipped_no_knowledge_time": 0, "source_rows": 0}
+    finally:
+        con.close()
+
+    written = skipped = 0
+    target = _connect(db_path)
+    try:
+        target.execute(DESK_FACTS_SQL)
+        target.execute(DESK_FACTS_INDEX_SQL)
+        batch = []
+        for r in rows:
+            ts = float_positive_or_none(r["ts"])
+            sym = str(r["ticker"] or "").upper()
+            if ts is None or not sym:
+                skipped += 1
+                continue
+            # RC-274: tier "MEASURED" is a claim about provenance. A NULL n_strikes written as
+            # 0 makes that claim about a number nobody produced.
+            n_strikes = float_nonnegative_or_none(r["n_strikes"])
+            if n_strikes is None:
+                skipped += 1
+                continue
+            batch.append((
+                sym, "options_listed", ts, ts, "schwab.option_chain_accrual", None,
+                "MEASURED", n_strikes,
+                json.dumps({"session_volume": r["session_volume"]}, separators=(",", ":")),
+                time.time(),
+            ))
+        if batch:
+            target.executemany(
+                "INSERT OR REPLACE INTO desk_facts (subject, kind, event_time_utc, "
+                "knowledge_time_utc, source, source_ref, tier, value_num, payload_json, "
+                "ingested_at_utc) VALUES (?,?,?,?,?,?,?,?,?,?)", batch)
+            written = len(batch)
+        target.commit()
+    finally:
+        target.close()
+    return {"written": written, "skipped_no_knowledge_time": skipped, "source_rows": len(rows)}
 
 
+def materialize_all(db_path: str | Path, *, limit_symbols: int = 0) -> dict[str, dict[str, int]]:
+    ensure_schema(db_path)
+    return {
+        "short_volume_ratio": materialize_short_volume(db_path, limit_symbols=limit_symbols),
+        "earnings_date": materialize_earnings(db_path),
+        "adv_dollar": materialize_dollar_volume(db_path),
+        "options_listed": materialize_options_listed(db_path),
+    }
 
 
 def effective_spread_bps(
@@ -778,8 +1210,53 @@ def probability_of_profit(dist: Mapping[str, Any], breakeven: float,
             "risk_neutral_pop": None, "risk_neutral_reason": _RISK_NEUTRAL_UNAVAILABLE}
 
 
+BRIEF_SQL = """
+CREATE TABLE IF NOT EXISTS desk_briefs (
+    brief_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    et_date         TEXT NOT NULL,
+    generated_utc   REAL NOT NULL,
+    title           TEXT NOT NULL,
+    producer        TEXT NOT NULL,
+    blocks_json     TEXT NOT NULL,
+    sources_json    TEXT NOT NULL,
+    ingested_at_utc REAL NOT NULL
+)
+"""
 
 
+def put_brief(db_path: str | Path, *, et_date: str, title: str, producer: str,
+              generated_utc: float, blocks: Sequence[Mapping[str, Any]],
+              sources: Sequence[Mapping[str, Any]]) -> int:
+    """Store a research brief as STRUCTURED BLOCKS, never as rendered HTML.
+
+    Blocks are what make the Brief replayable and self-scoring: each carries its own `as_of`, so
+    the page can grey a stale block instead of ageing silently as one opaque document. A stored
+    blob of HTML can do neither.
+    """
+    if not et_date or not title or not producer:
+        raise DeskFactError("et_date, title and producer are required")
+    if not blocks:
+        raise DeskFactError("a brief with no blocks is not a brief")
+    for i, b in enumerate(blocks):
+        if "as_of_utc" not in b:
+            raise DeskFactError(f"block {i} has no as_of_utc — it could never be shown as stale")
+    con = _connect(db_path)
+    try:
+        con.execute(BRIEF_SQL)
+        cur = con.execute(
+            "INSERT INTO desk_briefs (et_date, generated_utc, title, producer, blocks_json, "
+            "sources_json, ingested_at_utc) VALUES (?,?,?,?,?,?,?)",
+            (et_date, float(generated_utc), title, producer,
+             json.dumps(list(blocks), separators=(",", ":")),
+             json.dumps(list(sources), separators=(",", ":")), time.time()))
+        con.commit()
+        # RC-274: rowid 0 is not a rowid. Returning it hands the caller a handle that resolves
+        # to no row, and the failure surfaces later somewhere with no connection to this INSERT.
+        if cur.lastrowid is None:
+            raise DeskFactError("brief INSERT reported no rowid — the write did not land")
+        return int(cur.lastrowid)
+    finally:
+        con.close()
 
 
 def latest_brief(db_path: str | Path, as_of_utc: float) -> dict[str, Any] | None:

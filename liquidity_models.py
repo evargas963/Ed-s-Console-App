@@ -232,3 +232,21 @@ class PlaybookConfig:
     tick_size: float = 0.01
 
 
+@dataclass
+class PlaybookState:
+    """
+    Full session state across all structural snapshots.
+    Used for historical or live session tracking and dashboard integration.
+    Snapshots may be None when not yet available (e.g. live mode before checkpoint).
+    """
+    ticker: str
+    session_date: str
+    premarket_snapshot: Optional[SnapshotOutput] = None
+    opening_snapshot: Optional[SnapshotOutput] = None
+    midday_snapshot: Optional[SnapshotOutput] = None
+    afternoon_snapshot: Optional[SnapshotOutput] = None
+    latest_snapshot_type: Optional[SnapshotType] = None
+    latest_summary: Optional[SnapshotSummary] = None
+    session_bias: str = ""   # "bullish" | "bearish" | "neutral" | ""
+    auction_state: str = ""  # derived from latest summary
+    generated_at: Optional[str] = None  # ISO timestamp when state was built

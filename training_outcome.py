@@ -46,8 +46,14 @@ def is_training_anchor_ticker(ticker: str) -> bool:
     return _is_anchor(ticker)
 
 
+def core_tickers_upper() -> frozenset[str]:
+    from server import CORE_TICKERS
+
+    return frozenset(ticker_storage_key(t) for t in CORE_TICKERS)  # RC-345/F25: canonical membership
 
 
+def is_core_ticker(ticker: str) -> bool:
+    return ticker_storage_key(ticker) in core_tickers_upper()  # RC-345/F25: canonical membership
 
 
 def outcome_fails_core_run(

@@ -8,12 +8,20 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 log = logging.getLogger(__name__)
 
 AUDIT_RECORD_SCHEMA_VERSION = "1"
 
+AUDIT_ACTION = Literal[
+    "manual_promote_attempt",
+    "manual_promote_success",
+    "manual_promote_failure",
+    "rollback_attempt",
+    "rollback_success",
+    "rollback_failure",
+]
 
 # Stable field set for consumers (additive fields require schema bump).
 AUDIT_RECORD_REQUIRED_KEYS: frozenset[str] = frozenset(

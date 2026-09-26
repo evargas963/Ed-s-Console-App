@@ -389,7 +389,22 @@ def build_governance_panel_payload(
     return base
 
 
+def is_governance_ui_actions_enabled() -> bool:
+    """POST /api/governance/* mutations require this env (and localhost unless allow-remote)."""
+    import os
+
+    return os.environ.get("ED_GOVERNANCE_UI_ACTIONS", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def allow_governance_remote() -> bool:
+    import os
+
+    return os.environ.get("ED_GOVERNANCE_ALLOW_REMOTE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def client_may_run_governance_action(host: str | None) -> bool:
+    from ops_runner import client_may_trigger
+
+    if allow_governance_remote():
+        return True
+    return client_may_trigger(host)

@@ -32,6 +32,11 @@ HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1: int = 3
 
 # Source tag stored on price_bars_1m rows.
 AUTHORITATIVE_1M_SOURCE: str = "schwab_1m_accumulator_sqlite"
+# Interior gap repair: linear interpolation between real Schwab bars on the 60s grid (canonical_1m_grid closure).
+SYNTHETIC_INTERIOR_GRID_REPAIR_V1: str = "synthetic_interior_grid_repair_v1"
+SYNTHETIC_EDGE_CARRY_V1: str = "synthetic_edge_carry_v1"
+# One bar per ticker: bar_end = floor(min(ts_utc)/60)*60 so BAR_ANCHOR exists for pre-history snapshots.
+SYNTHETIC_ANCHOR_COVERAGE_PAD_V1: str = "synthetic_anchor_coverage_pad_v1"
 
 # outcome column -> exact forward offset in minutes (canonical 1m clock).
 OUTCOME_HORIZON_MINUTES: dict[str, int] = {
@@ -67,7 +72,12 @@ OUTCOME_MOVEMENT_V1_SPECS: tuple[tuple[str, str, str, str, str, int, str], ...] 
     for odir, _opt, n_min in OUTCOME_BAR_SPECS
 )
 
+MOVEMENT_TARGET_SLUGS: tuple[str, ...] = tuple(s[6] for s in OUTCOME_MOVEMENT_V1_SPECS)
 
+# Back-compat: (outcome_dir, outcome_move, legacy_thr_pts_col, n_min)
+OUTCOME_DIRECTIONAL_SPECS: tuple[tuple[str, str, str, int], ...] = tuple(
+    (s[0], s[1], s[4], s[5]) for s in OUTCOME_MOVEMENT_V1_SPECS
+)
 
 OUTCOME_DIR_HORIZON_MINUTES: dict[str, int] = {s[0]: s[5] for s in OUTCOME_MOVEMENT_V1_SPECS}
 OUTCOME_MOVE_HORIZON_MINUTES: dict[str, int] = {s[1]: s[5] for s in OUTCOME_MOVEMENT_V1_SPECS}
@@ -99,5 +109,9 @@ def bar_complete_by_utc(bar_start_ts_utc: float, ts_now_utc: float) -> bool:
     return float(ts_now_utc) >= float(bar_start_ts_utc) + 60.0
 
 
+def expected_bar_end_utc(bar_start_ts_utc: float) -> float:
+    return float(bar_start_ts_utc) + 60.0
 
 
+def pts_move_anchor_close_to_forward_close(anchor_close: float, forward_close: float) -> float:
+    return float(forward_close) - float(anchor_close)

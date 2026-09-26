@@ -65,9 +65,16 @@ from lstm_data import (  # noqa: F401
     encode_snapshot_5m,
 )
 
+# Encoded sentinel when canonical zone is missing (distinct from pin_neutral=2).
+ZONE_MISSING_ENCODED = -1.0
 # Encoded sentinel when canonical vwap_side is missing (distinct from above=1, below=-1).
 VWAP_SIDE_UNKNOWN_ENCODED = 2.0
 
+# Canonical MVP numerics mirrored in LSTM feature lists → missingness mask channel (1=present).
+_CANONICAL_NUMERIC_MASK_ORDER: tuple[str, ...] = (
+    "structure.net_gamma",
+    "anchor.vwap_dist_pts",
+)
 
 
 class LstmSequenceInputError(ValueError):
@@ -78,6 +85,8 @@ class TransformerSequenceInputError(LstmSequenceInputError):
     """Transformer encoder-window preparation failed (canonical MVP / contract / history)."""
 
 
+def _canonical_missing_masks(canonical_features: dict[str, Any]) -> list[float]:
+    return [1.0 if canonical_features.get(k) is not None else 0.0 for k in _CANONICAL_NUMERIC_MASK_ORDER]
 
 
 def _patch_lstm_categoricals(
@@ -207,8 +216,32 @@ def encode_lstm_micro_sequence_bar_for_checkpoint(
     return base
 
 
+def encode_lstm_structure_bar_with_masks(
+    merged_row: Mapping[str, Any],
+    canonical_features: dict[str, Any],
+    ref_spot: float,
+) -> dict[str, Any]:
+    """Test/diagnostic wrapper around ``encode_lstm_structure_sequence_bar``."""
+    return {
+        "features": encode_lstm_structure_sequence_bar(
+            merged_row, ref_spot, canonical_features=canonical_features
+        ),
+        "canonical_missing_masks": _canonical_missing_masks(canonical_features),
+    }
 
 
+def encode_lstm_micro_bar_with_masks(
+    merged_row: Mapping[str, Any],
+    canonical_features: dict[str, Any],
+    ref_spot: float,
+) -> dict[str, Any]:
+    """Test/diagnostic wrapper around ``encode_lstm_micro_sequence_bar``."""
+    return {
+        "features": encode_lstm_micro_sequence_bar(
+            merged_row, ref_spot, canonical_features=canonical_features
+        ),
+        "canonical_missing_masks": _canonical_missing_masks(canonical_features),
+    }
 
 
 def merge_db_row_with_canonical_mvp(
