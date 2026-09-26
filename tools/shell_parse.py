@@ -203,7 +203,7 @@ def iter_command_segments(cmd: str, payload_cwd: str = ""):
         yield cur, seg
 
 
-def _segment_head(seg: str) -> tuple[str, list[str]]:
+def segment_head(seg: str) -> tuple[str, list[str]]:
     """(command head, its tokens) for a segment, skipping leading VAR=val assignments and
     command wrappers (env/sudo/time/...) so `sudo git checkout` reads as a git invocation and
     `echo git` does not."""
@@ -229,7 +229,7 @@ def iter_git_invocations(cmd: str, payload_cwd: str = ""):
     `--work-tree`, else the cwd in effect at that segment. Reuses the SAME path helpers as
     resolve_target_repo (RC-129 one-faucet)."""
     for cur, seg in iter_command_segments(cmd, payload_cwd):
-        head, _toks = _segment_head(seg)
+        head, _toks = segment_head(seg)
         if head not in ("git", "git.exe"):
             continue
         target = ""
