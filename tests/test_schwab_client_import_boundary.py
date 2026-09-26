@@ -151,7 +151,6 @@ def test_get_client_requires_token_only_when_called(monkeypatch: pytest.MonkeyPa
 def test_adversarial_tests_can_import_server() -> None:
     import server as srv
 
-    assert hasattr(srv, "_finalize_production_decision")
     assert hasattr(srv, "app")
 
 

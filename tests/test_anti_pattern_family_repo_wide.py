@@ -92,5 +92,5 @@ def test_production_scan_covers_all_py_outside_tools_tests(repo_index):
     }
     _scanned = {rel for _ln, rel, _vid, _expr in scan_all(production_only=True)}
     # Files with zero pattern hits won't appear in scan output; ensure core modules were scanned.
-    for must in ("server.py", "market_data_adapter.py", "math_levels.py", "lstm_data.py"):
+    for must in ("server.py", "terrain_engine.py", "math_levels.py", "db.py"):
         assert must in prod_files

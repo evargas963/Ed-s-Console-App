@@ -71,6 +71,16 @@ def _tape():
     return bars
 
 
+@pytest.fixture(autouse=True)
+def _clean_ledgers():
+    import liquidity_value_engine as lve
+    lve._MATERIALIZED_SNAPSHOTS.clear()
+    lve._CARRIER_LEDGER.clear()
+    yield
+    lve._MATERIALIZED_SNAPSHOTS.clear()
+    lve._CARRIER_LEDGER.clear()
+
+
 
 
 # ── the materialized snapshot ────────────────────────────────────────────────

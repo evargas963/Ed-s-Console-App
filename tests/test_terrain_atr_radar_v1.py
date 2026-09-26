@@ -131,17 +131,10 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "flatten_chain_contracts", lambda _j: [])
     monkeypatch.setattr(srv, "resolve_spot", lambda _tk, **_kw: (100.0, "test", 1.0))
 
-    class _Snap:
-        confidence = "TRUSTED"
-        profile: list = []
-        per_strike: dict = {}
-        books: dict = {}
-        charm_by_strike: dict = {}
+    from terrain_engine import TerrainSnapshot
 
-        def to_dict(self):
-            return {"gamma_flip": 99.5, "spot": 100.0, "confidence": "TRUSTED"}
-
-    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _Snap())
+    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: TerrainSnapshot(
+        ticker="SPY", spot=100.0, gamma_flip=99.5, confidence="TRUSTED"))
     monkeypatch.setattr(srv, "_atr_pair", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
 
     out = srv._terrain_refresh_one("SPY")
@@ -152,17 +145,8 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     # Fail-soft: non-numeric flip would raise inside float() — terrain must stay ok:
     monkeypatch.setattr(srv, "_log_flip_drift", real)
 
-    class _BadSnap:
-        confidence = "TRUSTED"
-        profile: list = []
-        per_strike: dict = {}
-        books: dict = {}
-        charm_by_strike: dict = {}
-
-        def to_dict(self):
-            return {"gamma_flip": "not-a-number", "spot": 100.0, "confidence": "TRUSTED"}
-
-    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _BadSnap())
+    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: TerrainSnapshot(
+        ticker="SPY", spot=100.0, gamma_flip="not-a-number", confidence="TRUSTED"))
     out2 = srv._terrain_refresh_one("SPY")
     assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
 

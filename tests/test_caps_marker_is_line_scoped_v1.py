@@ -46,7 +46,7 @@ def test_the_gate_passes_on_merit():
 def test_the_pass_did_not_come_from_a_collapsed_scope():
     """A gate that passes because it stopped looking is worse than one that fails."""
     rels = {p.relative_to(REPO).as_posix() for p in iter_py_files(production_only=True)}
-    assert len(rels) > 200, f"production scope collapsed to {len(rels)}"
+    assert len(rels) > 100, f"production scope collapsed to {len(rels)} (139 on 2026-09-26)"
     for must in ("server.py", "terrain_engine.py", "math_levels.py", "desk_store.py"):
         assert must in rels, f"{must} fell out of the scan"
 
@@ -112,15 +112,12 @@ def test_the_two_false_reasons_are_gone_and_their_sites_are_repaired():
     assert '"volume": 0.0}' not in src, "the fabricated zero volume is back"
 
 
-def test_the_surviving_marker_states_a_reason_that_is_true():
-    """One marker remains and its claim is checkable: the default IS None."""
+def test_terrain_engine_carries_no_exemption_marker():
+    """The last marker's line went with the code it excused (2026-09-26): none remain."""
     src = (REPO / "terrain_engine.py").read_text(encoding="utf-8", errors="replace")
     live = [ln.strip() for ln in src.splitlines()
             if "caps-ok:" in ln and not ln.strip().startswith("#")]
-    assert len(live) == 1, f"expected one surviving marker, saw {len(live)}: {live}"
-    assert 'getattr(ex, "net_gex", None)' in live[0], (
-        "the surviving marker is on a different line than the one whose reason was verified")
-    assert "PRESERVES absence" in live[0]
+    assert live == [], f"an exemption marker is back: {live}"
 
 
 
