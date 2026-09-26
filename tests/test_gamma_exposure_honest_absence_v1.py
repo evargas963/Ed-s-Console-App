@@ -29,7 +29,9 @@ from datetime import timedelta
 
 import server
 from math_exposure_core import compute_exposures_by_strike
+from math_exposure_core import exposure_books
 from server import get_options_gamma_surface, project_gamma_surface, ticker_storage_key
+from terrain_engine import compute_terrain
 from terrain_engine import _per_strike_rows
 from time_et import is_trading_day_et, now_et
 
@@ -66,7 +68,7 @@ def test_zero_oi_everywhere_yields_has_oi_false_not_a_fabricated_zero():
 def test_zero_oi_everywhere_surface_reports_gamma_unavailable_and_null_cells():
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
              _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
-    surface = project_gamma_surface(chain, SPOT)
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT))
     assert surface["gamma_available"] is False
     assert surface["gamma_unavailable_reason"] is not None
     assert "no usable open interest" in surface["gamma_unavailable_reason"]
@@ -89,7 +91,7 @@ def test_vanna_by_strike_route_omits_no_oi_strikes_instead_of_a_fabricated_zero(
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
              _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
     with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_contracts_rest": chain, "_contracts_rest_spot": SPOT}
+        server._terrain_cache[tk] = {"_snap": compute_terrain(tk, chain, SPOT)}
     try:
         import json
         body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
@@ -115,7 +117,7 @@ def test_real_oi_that_nets_to_exactly_zero_still_has_oi_true_and_reports_zero():
 def test_real_oi_that_nets_to_exactly_zero_surface_cell_is_zero_not_null():
     chain = [_ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
              _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5)]
-    surface = project_gamma_surface(chain, SPOT)
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT))
     assert surface["gamma_available"] is True
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
     assert row["gex"] == [0], f"a genuinely computed zero was suppressed as absence: {row}"
@@ -136,7 +138,7 @@ def test_a_mixed_chain_keeps_the_no_oi_strike_absent_beside_the_real_zero_strike
         _ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
         _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5),                # real OI, nets to 0
     ]
-    surface = project_gamma_surface(chain, SPOT)
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT))
     assert surface["gamma_available"] is True, "one real strike is enough to make the surface available"
     row95 = [r for r in surface["cells"] if r["strike"] == 95.0][0]
     row100 = [r for r in surface["cells"] if r["strike"] == 100.0][0]

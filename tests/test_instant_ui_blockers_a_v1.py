@@ -214,13 +214,20 @@ def test_the_price_row_carries_feed_state_trade_age_and_the_forming_bar(monkeypa
 
 
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch):
+    import threading
+    import time
     import server as srv
-    submitted = []
-    monkeypatch.setattr(srv, "_get_spot_gamma_refresh_executor",
-                        lambda: type("E", (), {"submit": staticmethod(lambda fn, tk: submitted.append(tk))})())
-    monkeypatch.setattr(srv, "_gamma_surface_demand", {"ZZVIEW": __import__("time").time()})
-    srv._spot_gamma_refresh_inflight.discard("ZZVIEW")
-    srv._dispatch_spot_gamma_refresh("ZZNOTVIEWED")
-    srv._dispatch_spot_gamma_refresh("ZZVIEW")
-    srv._spot_gamma_refresh_inflight.discard("ZZVIEW")
-    assert submitted == ["ZZVIEW"]
+    ran, done = [], threading.Event()
+
+    def worker(tk):
+        ran.append(tk)
+        with srv._reprice_guard:
+            srv._reprice_dirty.discard(tk)
+            srv._reprice_running.discard(tk)
+        done.set()
+    monkeypatch.setattr(srv, "_reprice_worker", worker)
+    monkeypatch.setattr(srv, "_gamma_surface_demand", {"ZZVIEW": time.time()})
+    srv._on_stream_tick("ZZNOTVIEWED")
+    srv._on_stream_tick("ZZVIEW")
+    assert done.wait(5)
+    assert ran == ["ZZVIEW"]

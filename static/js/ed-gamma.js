@@ -822,7 +822,7 @@
     // change must always rebuild the grid, never reuse a prior symbol's/expiry's table.
     var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
     // Independent-review finding (2026-09-12), REPRODUCED: a streamed update can change cell
-    // VALUES (server.py's eager refresh_gamma_surface_from_stream) without touching
+    // VALUES (server.py's eager _publish_levels) without touching
     // chain_as_of_ts_utc/spot_as_of_ts_utc at all — those are stamped only by the ~60s REST
     // cycle. With only REST-only fields in this key, a genuinely new surface hashed identical
     // to the old one and the table silently kept showing stale cells. surface_seq is a

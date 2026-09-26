@@ -294,7 +294,7 @@
   // CONFIRMED REGRESSION (2026-09-17, live-UI field audit): /api/terrain was ALSO excluded
   // here on the reasoning "a streamed OPTION tick carries no new terrain/spot information" --
   // true when this was written, but FALSE now that ed:gamma-push also fires on a canonical
-  // SPOT-ONLY tick (refresh_gamma_surface_from_spot_tick, server.py) with no option tick at
+  // SPOT-ONLY tick (_publish_levels, server.py) with no option tick at
   // all. (Then /api/terrain's spot field was this chart's spot; since the audit of #280 the
   // spot is the header's quote_tick and /api/terrain supplies only flip/walls.) It was left pointing at `_lastRaw.terrain` -- the STALE
   // object from the last full 12s-cadence load() -- so the header's spot could move on every

@@ -23,7 +23,7 @@ scheduling live in the caller, so this stays trivially testable.
 from __future__ import annotations
 
 import time as _time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from math_exposure_core import (
@@ -213,20 +213,25 @@ class TerrainSnapshot:
     #: additional vendor cost — the chain is already in hand. Kept OUT of to_dict() for the same
     #: reason as `profile`: too heavy for every poll; the strikes endpoint reads it directly.
     per_strike: dict[float, dict[str, Any]] = field(default_factory=dict, repr=False)
+    #: The exposure_books every number above was priced from ({(expiry, dte): (book, diag)}):
+    #: the gamma-surface grid is shaped from them, so levels, per-strike rows and heatmap
+    #: cells come from one pricing pass.
+    books: dict = field(default_factory=dict, repr=False)
+    #: {strike: charm bucket} from compute_charm_by_strike -- the charm walls above and the
+    #: charm-by-strike panel read the same map.
+    charm_by_strike: dict = field(default_factory=dict, repr=False)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        d = asdict(self)
-        d.pop("profile", None)
-        # RC-68: per_strike is hundreds of entries — far too heavy for every poll, same reason
-        # `profile` is excluded. /api/terrain/strikes reads it off the cached snapshot directly.
-        # computed_ts_utc DOES stay in the payload: every consumer must be able to show an age.
-        d.pop("per_strike", None)
-        # RC-359: same weight class as per_strike — banked server-side, never per-poll.
-        d.pop("oi_by_strike", None)
-        return d
+        """The per-poll payload: every field except the heavy maps (profile, per_strike,
+        oi_by_strike, books, charm_by_strike), which the server reads off the snapshot."""
+        light = replace(self, **{n: None for n in _HEAVY_FIELDS})
+        return {k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS}
+
+
+_HEAVY_FIELDS = ("profile", "per_strike", "oi_by_strike", "books", "charm_by_strike")
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
@@ -841,5 +846,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # frozen morning archive purely because nothing persisted this. Session volume is carried
         # alongside so the volume panel stops serving a 09:47 corpse at 11:31.
         per_strike=per_strike_view(books, exposures, contracts),
+        books=books,
+        charm_by_strike=charm_by_strike,
         computed_ts_utc=_time.time(),
     )

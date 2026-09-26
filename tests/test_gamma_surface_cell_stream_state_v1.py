@@ -7,7 +7,7 @@ up into a cell-level 'live' / 'partial' / 'stale' / 'unavailable' aggregate.
 Proven directly against `_stamp_gamma_surface_cell_stream_state` /
 `_gamma_surface_cell_state_counts` (the pure, in-place annotation functions — RC-80: they never
 touch a cell's already-computed exposure value, only annotate it), against the real end-to-end
-`refresh_gamma_surface_from_stream` path with a REAL captured chain fixture (matching this
+`_publish_levels` path with a REAL captured chain fixture (matching this
 repo's existing gamma-surface test convention, not invented contracts), and against
 `/api/options/gamma-surface`'s own served JSON for both the live and banked-morning-reference
 branches."""
@@ -22,8 +22,7 @@ from server import (
     _stamp_gamma_surface_cell_stream_state,
     _gamma_surface_cell_state_counts,
     get_options_gamma_surface,
-    refresh_gamma_surface_from_stream,
-    project_gamma_surface,
+    _publish_levels,
     ticker_storage_key,
 )
 
@@ -186,7 +185,7 @@ def test_cell_state_counts_tallies_across_cells_and_columns():
 
 
 # ---------------------------------------------------------------------------
-# End-to-end: refresh_gamma_surface_from_stream stamps a REAL fixture-derived surface
+# End-to-end: _publish_levels stamps a REAL fixture-derived surface
 # ---------------------------------------------------------------------------
 
 def _clear_cache():
@@ -194,16 +193,20 @@ def _clear_cache():
         server._terrain_cache.pop(TK, None)
 
 
-def _put_rest_baseline(*, computed_ts_utc=None):
-    ts = time.time() if computed_ts_utc is None else computed_ts_utc
+def _put_chain(*, fetched_ts=None):
+    """A viewed ticker whose chain the terrain loop fetched at `fetched_ts`."""
     with server._terrain_cache_lock:
         server._terrain_cache[TK] = {
-            "_contracts_rest": _CONTRACTS, "_contracts_rest_spot": _SPOT,
-            "_contracts_rest_computed_ts": ts,
-            "_gamma_surface": project_gamma_surface(_CONTRACTS, _SPOT),
-            "computed_ts_utc": ts,
+            "_chain": _CONTRACTS,
+            "_chain_fetched_ts": time.time() if fetched_ts is None else fetched_ts,
         }
+    server._note_gamma_surface_demand(TK)
     server._gamma_surface_seq.pop(TK, None)
+
+
+def _published_surface():
+    with server._terrain_cache_lock:
+        return server._terrain_cache[TK]["_gamma_surface"]
 
 
 def _drain_l1_sse_thread_queue():
@@ -230,16 +233,15 @@ def teardown_function(_fn):
     _ofs._active_option_contracts = []
 
 
-def test_eager_refresh_marks_the_ticking_contracts_own_cell_live(monkeypatch):
-    _put_rest_baseline(computed_ts_utc=time.time() - 10.0)
+def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch):
+    _put_chain(fetched_ts=time.time() - 10.0)
     now = time.time()
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
-    assert refresh_gamma_surface_from_stream(_CONTRACT_SYMBOL, now) == "ok"
-    with server._terrain_cache_lock:
-        cells = server._terrain_cache[TK]["_gamma_surface"]["cells"]
+    assert _publish_levels(TK) is not None
+    cells = _published_surface()["cells"]
 
     found_live = False
     for cell in cells:
@@ -253,37 +255,31 @@ def test_eager_refresh_marks_the_ticking_contracts_own_cell_live(monkeypatch):
     assert found_live, "fixture must contain the streamed symbol on at least one cell"
 
 
-def test_rest_only_cycle_marks_desired_contract_stale_never_live(monkeypatch):
-    # The contract is currently desired (primary slot, set in setup_function) but its own
-    # streamed record is old enough to fail the staleness gate this cycle -- REST alone must
-    # never present it as 'live'.
-    _put_rest_baseline(computed_ts_utc=time.time())
-    stale_ts = time.time() - 999.0
-    live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": stale_ts}}
+def test_a_desired_contract_with_an_old_tick_is_stale_never_live(monkeypatch):
+    # The contract is desired (primary slot, set in setup_function) but its streamed record is
+    # too old to pass the staleness gate -- the chain alone must never present it as 'live'.
+    _put_chain()
+    live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": time.time() - 999.0}}
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
-    # Drive it through the same code path _terrain_refresh_one uses for stamping, without a
-    # live vendor fetch: call the overlay + stamp directly, matching server.py's own sequence.
-    from server import _gamma_surface_contracts_with_stream_overlay, _desired_stream_greeks_for_ticker
-    overlaid, n, overlay_syms = _gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS, newer_than_ts=time.time())
-    assert n == 0   # too stale to overlay at all
-    surface = project_gamma_surface(overlaid, _SPOT)
-    _stamp_gamma_surface_cell_stream_state(surface, _desired_stream_greeks_for_ticker(TK), set(overlay_syms))
+    _publish_levels(TK)
+    surface = _published_surface()
+    assert surface["stream_overlay_contracts"] == 0   # too stale to overlay at all
     counts = _gamma_surface_cell_state_counts(surface)
     assert counts["live"] == 0
-    assert counts["stale"] > 0   # the desired contract's own cell(s) show up as stale, not live
+    assert counts["stale"] > 0
 
 
 def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch):
     import app.options.order_flow.streaming as _ofs
-    from server import _gamma_surface_contracts_with_stream_overlay, _desired_stream_greeks_for_ticker
-    _put_rest_baseline(computed_ts_utc=time.time())
+    _put_chain()
     _ofs._active_option_contract = None   # coverage genuinely ended -- no longer desired at all
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: None)
-    overlaid, n, overlay_syms = _gamma_surface_contracts_with_stream_overlay(TK, _CONTRACTS, newer_than_ts=time.time())
-    surface = project_gamma_surface(overlaid, _SPOT)
-    _stamp_gamma_surface_cell_stream_state(surface, _desired_stream_greeks_for_ticker(TK), set(overlay_syms))
-    counts = _gamma_surface_cell_state_counts(surface)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
+
+    _publish_levels(TK)
+    counts = _gamma_surface_cell_state_counts(_published_surface())
     assert counts["live"] == 0 and counts["stale"] == 0
     assert counts["unavailable"] > 0
 

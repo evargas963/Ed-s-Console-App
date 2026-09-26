@@ -15,15 +15,11 @@ rows is invented.
 """
 import inspect
 import json
+import re
 from pathlib import Path
 
-from server import (
-    project_gamma_surface,
-    project_gamma_surface_update_expiry,
-    _per_strike_view_from_contracts,
-    _per_strike_view_update_expiry,
-)
-from math_exposure_core import compute_exposures_by_strike
+from server import project_gamma_surface
+from math_exposure_core import compute_exposures_by_strike, exposure_books
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -54,6 +50,11 @@ def _slice(chain: list[dict], exp: str) -> list[dict]:
     return [ct for ct in chain if _exp_key(ct) == exp]
 
 
+def _surface(chain: list[dict], spot: float) -> dict:
+    """The grid as _publish_levels builds it: shaped from the chain's exposure_books."""
+    return project_gamma_surface(chain, exposure_books(chain, spot=spot))
+
+
 def _cell(surface, strike, expiry):
     try:
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == expiry][0]
@@ -77,7 +78,7 @@ def test_fixture_preconditions_are_real_two_expiry_input():
 # A. EXACT CELL EQUALITY — a surface cell equals the canonical faucet on that expiry's slice.
 def test_A_cell_equals_canonical_faucet_per_expiry_slice():
     chain = _chain()
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     checked = 0
     for exp in (E1, E2):
@@ -107,7 +108,7 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
 def test_B_per_expiry_sum_reconciles_to_full_book():
     chain = _chain()
     full, _ = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     per = {exp: compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)[0]
            for exp in (E1, E2)}
     for k, bucket in full.items():
@@ -123,11 +124,11 @@ def test_B_per_expiry_sum_reconciles_to_full_book():
 #    only link). The mutation is a REAL subset: every other E2 row removed.
 def test_C_expiry_isolation():
     chain = _chain()
-    base = project_gamma_surface(chain, SPOT)
+    base = _surface(chain, SPOT)
     e2_rows = _slice(chain, E2)
     kept_e2 = e2_rows[::2]
     mutated = _slice(chain, E1) + kept_e2
-    after = project_gamma_surface(mutated, SPOT)
+    after = _surface(mutated, SPOT)
     e1_strikes = [k for k in base["strikes"] if _cell(base, k, E1) is not None]
     assert e1_strikes
     for k in e1_strikes:
@@ -140,7 +141,7 @@ def test_C_expiry_isolation():
 #    the put-heavy (net-short-gamma) strikes the real captures contain.
 def test_D_sign_preserved():
     chain = _chain()
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     negatives = 0
     for exp in (E1, E2):
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
@@ -159,7 +160,7 @@ def test_D_sign_preserved():
 #    live terrain chain is strike_count-bounded and the API discloses complete=false/coverage.
 def test_F_input_projection_coverage():
     chain = _chain()
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     expected_strikes = set()
     for exp in (E1, E2):
@@ -179,11 +180,11 @@ def test_G_malformed_expiry_excluded_not_reassigned():
     clean_chain = _chain()
     probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)   # the heaviest real row
     chain = clean_chain + [dict(probe, expirationDate=None), dict(probe, expirationDate="bad")]
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     assert surface["contracts_excluded_malformed_expiry"] == 2
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     # the malformed OI must not have inflated the legitimate cells at that strike
-    clean = project_gamma_surface(clean_chain, SPOT)
+    clean = _surface(clean_chain, SPOT)
     k = float(probe["strikePrice"])
     assert _cell(surface, k, E1) == _cell(clean, k, E1)
     assert _cell(surface, k, E2) == _cell(clean, k, E2)
@@ -199,19 +200,19 @@ def test_H_spx_identity_unchanged():
     # is the only thing this identity check reads.
     probe = max(CRWD["chain"], key=lambda ct: ct.get("openInterest") or 0)
     spxw = [dict(probe, symbol="SPXW  260918C07690000", strikePrice=7690)]
-    surface = project_gamma_surface(spxw, 7690.0)
+    surface = _surface(spxw, 7690.0)
     assert surface["expirations"] and surface["strikes"] == [7690.0]
 
 
-# I. NO DUPLICATE PRODUCER — the surface code contains no GEX dollarization; it only reads the
-#    faucet's net_gex_1pct output and calls compute_exposures_by_strike.
+# I. NO DUPLICATE PRODUCER — the surface code prices nothing: it shapes the exposure books the
+#    levels were computed from.
 def test_I_no_second_gex_computation():
     src = inspect.getsource(project_gamma_surface)
     # the canonical dollarization ( gamma * oi * mult * spot*spot * 0.01 ) must NOT appear here
     assert "spot * spot" not in src and "spot*spot" not in src
     assert "* 0.01" not in src
-    # the only exposure computation is the shared faucet
-    assert "compute_exposures_by_strike" in src
+    assert "compute_exposures_by_strike" not in src
+    assert not re.search(r"(?<!merge_)exposure_books\(", src)   # merging priced books is not pricing
 
 
 # J. LIVE-HEATMAP CONTRACT IDENTITY (state-authority review, 2026-09-12) — every cell must carry
@@ -221,7 +222,7 @@ def test_I_no_second_gex_computation():
 #    same real contract rows compute_exposures_by_strike already aggregates for this cell.
 def test_J_cell_carries_the_real_vendor_symbols_for_its_strike_and_expiry():
     chain = _chain()
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     col1 = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
     row95 = [r for r in surface["cells"] if r["strike"] == 95.0][0]
     contracts95 = row95["contracts"][col1]
@@ -249,7 +250,7 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
     probe["strikePrice"] = lonely_strike
     probe["symbol"] = "CRWD  260918C" + str(int(lonely_strike * 1000)).zfill(8)
     probe["putCall"] = "CALL"
-    surface = project_gamma_surface([probe], SPOT)
+    surface = _surface([probe], SPOT)
     row = [r for r in surface["cells"] if r["strike"] == lonely_strike][0]
     assert row["contracts"][0]["call"] == probe["symbol"]
     assert row["contracts"][0]["put"] is None
@@ -267,7 +268,7 @@ def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_w
     no_symbol = dict(probe)
     no_symbol.pop("symbol", None)
     chain = [no_symbol]
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     k = float(probe["strikePrice"])
     row = [r for r in surface["cells"] if r["strike"] == k][0]
     side = "call" if probe["putCall"] == "CALL" else "put"
@@ -283,7 +284,7 @@ def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_w
 # union.
 def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
     chain = _chain()
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     checked = 0
     for exp in (E1, E2):
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
@@ -299,7 +300,7 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
 
 def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex():
     chain = _chain()
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     checked = 0
     for exp in (E1, E2):
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
@@ -324,7 +325,7 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
 
 def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_totals():
     chain = _chain()
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     checked = 0
     for exp in (E1, E2):
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
@@ -349,7 +350,7 @@ def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zer
     would be indistinguishable from "genuinely zero dealer DEX/vanna/OI/volume at this strike",
     which is a real, different fact."""
     chain = _chain()
-    surface = project_gamma_surface(chain, SPOT)
+    surface = _surface(chain, SPOT)
     e1_col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
     e1_strikes = {float(ct["strikePrice"]) for ct in _slice(chain, E1)}
     e2_only_strikes = [k for k in surface["strikes"] if k not in e1_strikes]
@@ -363,115 +364,16 @@ def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zer
     assert row["volume"][e1_col] == {"call": None, "put": None}
 
 
-# ---- project_gamma_surface_update_expiry (2026-09-16, audit finding #2: bounded eager-tick
-# recompute) — must reconcile EXACTLY to a full recompute for the changed expiry, and leave
-# every other expiry's cells genuinely untouched, not merely equal-by-coincidence. ----
-
-def test_incremental_update_matches_a_full_recompute_for_the_changed_expiry(monkeypatch):
-    import time_et
-    # Vanna is time-to-expiry-dependent and compute_exposures_by_strike reads now_et()
-    # fresh on every call -- frozen here so three separate calls (prior/full/updated),
-    # each genuinely microseconds apart, compare exactly rather than drifting by the
-    # wall-clock time between them (a real effect, not a bug, that would otherwise make
-    # this proof flaky).
-    frozen = time_et.now_et()
-    monkeypatch.setattr(time_et, "now_et", lambda: frozen)
-    chain = _chain()
-    prior = project_gamma_surface(chain, SPOT)
-    full = project_gamma_surface(chain, SPOT)   # independent second full computation
-    updated = project_gamma_surface_update_expiry(prior, chain, SPOT, E1, prior_spot=SPOT)
-    assert updated is not None, "a real two-expiry union surface must never force a fallback"
-    e1_col = [i for i, e in enumerate(full["expirations"]) if e["expiry"] == E1][0]
-    for full_row, upd_row in zip(full["cells"], updated["cells"]):
-        assert full_row["strike"] == upd_row["strike"]
-        for field in ("gex", "dex", "vanna", "oi", "volume", "contracts"):
-            assert full_row[field][e1_col] == upd_row[field][e1_col], (
-                f"{field} at strike {full_row['strike']}, expiry {E1} must match a full "
-                f"recompute exactly — the incremental path is the SAME canonical faucet on "
-                f"a narrower input, never an approximation"
-            )
-    assert updated["gamma_available"] == full["gamma_available"]
-    assert updated["cells_total"] == full["cells_total"]
-
-
-def test_incremental_update_leaves_the_other_expirys_cells_byte_identical_objects():
-    """Genuine incrementality, not a full recompute in disguise: an UNAFFECTED strike row must
-    be the SAME object the prior surface already held, never rebuilt — proving E2's data was
-    never re-touched, let alone recomputed, when only E1 changed."""
-    chain = _chain()
-    prior = project_gamma_surface(chain, SPOT)
-    updated = project_gamma_surface_update_expiry(prior, chain, SPOT, E1, prior_spot=SPOT)
-    assert updated is not None
-    e1_strikes = {float(ct["strikePrice"]) for ct in _slice(chain, E1)}
-    prior_by_strike = {row["strike"]: row for row in prior["cells"]}
-    untouched = 0
-    for row in updated["cells"]:
-        if row["strike"] in e1_strikes:
-            continue    # this row's E1 column WAS recomputed; a new dict is expected here
-        assert row is prior_by_strike[row["strike"]], (
-            f"strike {row['strike']} carries no E1 contract and must not have been rebuilt"
-        )
-        untouched += 1
-    assert untouched > 0, "the two real captures must share at least one E1-absent strike"
-
-
-def test_incremental_update_falls_back_to_none_for_an_unknown_expiry():
-    chain = _chain()
-    prior = project_gamma_surface(chain, SPOT)
-    assert project_gamma_surface_update_expiry(
-        prior, chain, SPOT, "1999-01-01", prior_spot=SPOT) is None
-
-
-def test_incremental_update_falls_back_to_none_when_prior_surface_lacks_the_strike():
-    """A prior surface computed from a NARROWER chain (missing a strike the fresh slice now
-    reports) must never be spliced into -- the caller's job is to fall back to a full
-    recompute rather than publish a surface with a hole in its own strikes list."""
-    chain = _chain()
-    e1_slice = _slice(chain, E1)
-    target_strike = float(e1_slice[0]["strikePrice"])
-    # Remove EVERY contract (both sides) at target_strike so it vanishes from E1's slice
-    # entirely, not merely loses one side of it.
-    narrow_chain = [ct for ct in chain
-                    if not (_exp_key(ct) == E1 and float(ct["strikePrice"]) == target_strike)]
-    prior = project_gamma_surface(narrow_chain, SPOT)
-    assert target_strike not in prior["strikes"], (
-        "test setup must actually remove the strike, or this proves nothing")
-    assert project_gamma_surface_update_expiry(prior, chain, SPOT, E1, prior_spot=SPOT) is None
-
-
-def test_incremental_update_falls_back_to_none_when_spot_has_moved():
-    """Independent-review finding (2026-09-16, follow-up mandate): net_gex_1pct/net_dex_
-    dollars/vanna are functions of spot for EVERY expiry, not only the one a streamed tick
-    touched. Splicing in a fresh E1 slice (priced at the NEW spot) while leaving E2's cells
-    at their OLD spot's values would silently show two columns priced off different
-    underlying prices. `prior_spot` != the call's own `spot` must force a full recompute,
-    never a partial splice, regardless of how small the spot move is (identity check, not a
-    tolerance)."""
-    chain = _chain()
-    prior = project_gamma_surface(chain, SPOT)
-    moved_spot = SPOT + 0.01   # the smallest possible genuine move -- proves this is an
-    # identity check, not a magnitude-gated tolerance that would let a tiny move slip through.
-    assert project_gamma_surface_update_expiry(
-        prior, chain, moved_spot, E1, prior_spot=SPOT) is None
-    # prior_spot=None (unknown/never recorded) must fail closed identically.
-    assert project_gamma_surface_update_expiry(
-        prior, chain, SPOT, E1, prior_spot=None) is None
-
-
-# ---- per-strike 'all' aggregate incrementality (2026-09-16, operator follow-up mandate:
-# "dependent strike aggregates" must not be fully recomputed on every streamed tick either,
-# once the surface itself no longer is) — same reconcile-exactly / fall-back-to-None
-# discipline as project_gamma_surface_update_expiry above. ----
+# ---- the exposure books every view is shaped from merge back to the one full book ----
 
 def test_per_expiry_exposures_additively_merge_to_the_full_recompute(monkeypatch):
-    """The building block the incremental per-strike update relies on: partitioning the
+    """The identity the heatmap, per-strike rows and levels rely on: partitioning the
     two-expiry union chain by expiry and merging the two per-expiry exposures dicts must
     reproduce compute_exposures_by_strike's own single-call result over the WHOLE chain,
     strike for strike, field for field -- proving the merge is a real additive identity,
     not merely 'close enough'."""
     import time_et
-    # bs_vanna's t_years input reads now_et() fresh on every call (see
-    # test_gamma_surface_stream_refresh_v1.py's identical fix) -- frozen so the two
+    # bs_vanna's t_years input reads now_et() fresh on every call -- frozen so the two
     # separate compute_exposures_by_strike passes below compare exactly, not to within a
     # wall-clock-drift tolerance.
     frozen = time_et.now_et()
@@ -488,59 +390,3 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute(monkeypatch
         assert merged[strike] == bucket, (
             f"merged per-expiry exposures at strike {strike} must equal the full single-call "
             f"recompute exactly: {merged[strike]} != {bucket}")
-
-
-def test_per_strike_view_update_expiry_matches_a_full_recompute_for_the_changed_expiry(monkeypatch):
-    import time_et
-    frozen = time_et.now_et()
-    monkeypatch.setattr(time_et, "now_et", lambda: frozen)
-    chain = _chain()
-    by_expiry: dict = {}
-    prior_view = _per_strike_view_from_contracts(chain, SPOT, by_expiry_out=by_expiry)
-    full_view = _per_strike_view_from_contracts(chain, SPOT)   # independent second full pass
-    result = _per_strike_view_update_expiry(
-        by_expiry, prior_view, chain, SPOT, [E1], prior_spot=SPOT)
-    assert result is not None, "a real two-expiry union chain must never force a fallback"
-    updated_view, updated_by_expiry = result
-    assert updated_view["all"] == full_view["all"], (
-        "the incremental 'all' aggregate must reconcile exactly to a full recompute — the "
-        "same canonical faucet on a narrower input, never an approximation")
-    # near/far are recomputed from the same books, so they also equal a full recompute
-    assert updated_view["near"] == full_view["near"]
-    assert updated_view["far"] == full_view["far"]
-    # the book for the UNAFFECTED expiry (E2) must be the untouched prior object.
-    (e2_key,) = [k for k in by_expiry if k[0] == E2]
-    assert updated_by_expiry[e2_key] is by_expiry[e2_key]
-
-
-def test_per_strike_view_update_expiry_falls_back_to_none_with_no_prior_cache():
-    chain = _chain()
-    prior_view = _per_strike_view_from_contracts(chain, SPOT)
-    assert _per_strike_view_update_expiry(
-        None, prior_view, chain, SPOT, [E1], prior_spot=SPOT) is None
-    assert _per_strike_view_update_expiry(
-        {}, prior_view, chain, SPOT, [E1], prior_spot=SPOT) is None
-
-
-def test_per_strike_view_update_expiry_falls_back_to_none_with_no_affected_expiries():
-    chain = _chain()
-    by_expiry: dict = {}
-    prior_view = _per_strike_view_from_contracts(chain, SPOT, by_expiry_out=by_expiry)
-    assert _per_strike_view_update_expiry(
-        by_expiry, prior_view, chain, SPOT, [], prior_spot=SPOT) is None
-
-
-def test_per_strike_view_update_expiry_falls_back_to_none_when_spot_has_moved():
-    """Independent-review finding (2026-09-16, follow-up mandate): the per-strike 'all'
-    aggregate is as spot-dependent as the surface itself, for every expiry -- a moved spot
-    must force a full recompute, never a partial merge of a fresh E1 slice against E2's
-    stale-spot cached contribution. Identity check, not a tolerance: even the smallest
-    genuine move must be caught."""
-    chain = _chain()
-    by_expiry: dict = {}
-    prior_view = _per_strike_view_from_contracts(chain, SPOT, by_expiry_out=by_expiry)
-    moved_spot = SPOT + 0.01
-    assert _per_strike_view_update_expiry(
-        by_expiry, prior_view, chain, moved_spot, [E1], prior_spot=SPOT) is None
-    assert _per_strike_view_update_expiry(
-        by_expiry, prior_view, chain, SPOT, [E1], prior_spot=None) is None

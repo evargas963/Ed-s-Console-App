@@ -37,12 +37,10 @@ import json
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 from instrument_identity import (
-    BROKER_INDEX_BARE_ROOTS,
     option_underlying_root,
     ticker_storage_key,
     vendor_option_root,
@@ -132,20 +130,6 @@ async def _send_wanted(ws) -> None:
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
 _feed_task: Optional[asyncio.Task] = None
 _feed_running = False
-#: A FIFTH independent review (2026-09-13), REPRODUCED: `_feed_running` alone cannot tell
-#: "this dispatched work belongs to the CURRENT feed lifecycle" from "some earlier
-#: lifecycle also happened to leave `_feed_running` True" -- a stop() then a start() BEFORE
-#: an old queued task drains flips `_feed_running` False then back to True, and a check of
-#: the boolean alone cannot distinguish the two lifecycles. Concretely reproduced: hold an
-#: AMD hook call, queue a PLTR dispatch behind it, stop the feed (PLTR still queued,
-#: unstarted), RESTART the feed (`_feed_running` -> True again, a NEW lifecycle), THEN
-#: release AMD -- PLTR's task, dispatched under the OLD lifecycle, incorrectly ran under
-#: the NEW one because `_run_streamed_greeks_hook_if_live`'s own re-check only ever asked
-#: "is SOME feed running right now," never "is the SAME feed running that queued me."
-#: Bumped once per `start_order_flow_stream` call; each dispatched hook task captures the
-#: generation active when `_feed_loop` itself started and must match it again at actual
-#: execution time, not just find `_feed_running` true.
-_feed_generation = 0
 _active_ticker: Optional[str] = None
 _streaming_last_update_ts: Optional[float] = None
 _last_subscribe_completed_ts: Optional[float] = None
@@ -171,69 +155,24 @@ _option_last_subscribe_completed_ts: Optional[float] = None
 #: set_active_option_contract/set_active_option_contracts already normalize to.
 _option_contract_last_update_ts: dict[str, float] = {}
 
+#: Called with the symbol of every streamed equity quote and every option quote carrying
+#: GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME (server._on_stream_tick: reprices a viewed
+#: ticker). Runs on the event loop, so it must return at once.
 _on_tick_callback: Optional[Callable[[str], None]] = None
-
-#: Called with (contract_symbol, ts_recv) at most ONCE per underlying per burst of pushed
-#: messages carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME (ts_recv is the FRESHEST such
-#: message's own receive time -- see HookBurst) -- lets a consumer
-#: (server.py's gamma-surface cache) freshen itself the instant new Greeks/OI/volume are known,
-#: instead of waiting for the next wide-chain REST cycle. TOTAL_VOLUME is included (not just
-#: the Greeks) so a volume-only tick -- no Greeks/OI change -- still reaches the per-strike
-#: volume column and compute_exposures_by_strike's own call/put volume aggregation, not just
-#: the ticker-level header display; independent-review finding (2026-09-12): "the current hook
-#: is triggered by GAMMA/DELTA/OPEN_INTEREST; that does not complete volume-only update
-#: delivery." Once-per-burst (not once-per-message) is itself a fix for a separate independent-
-#: review finding (2026-09-12), REPRODUCED: calling this per row meant a burst of N rows
-#: triggered N sequential expensive recomputes on the consumer side. Same
-#: shape/precedent as `_on_tick_callback` above; kept separate because ITS payload (an option
-#: contract symbol + the field's own receive time) is different from a bare ticker, and a
-#: caller wanting only one of the two must not be forced to filter the other's calls.
-_streamed_greeks_hook: Optional[Callable[[str, float], None]] = None
+_tick_callback_failures = 0
 
 
-def set_streamed_greeks_hook(fn: Optional[Callable[[str, float], None]]) -> None:
-    """Register (or clear, with None) the callback `_feed_loop` dispatches at most once per
-    underlying per burst of pushed messages carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME.
-    One slot, like `_on_tick_callback` -- the daemon has exactly one composition
-    root (server.py's startup) that wires this, not a list of subscribers to fan out to."""
-    global _streamed_greeks_hook
-    _streamed_greeks_hook = fn
-
-
-def _run_streamed_greeks_hook_if_live(rep_sym: str, rep_ts: float, generation: int) -> str:
-    """The actual executor-thread entry point `_start_hook_task` submits, in place of calling
-    `_streamed_greeks_hook` directly.
-
-    A FOURTH independent review (2026-09-13), REPRODUCED: `_dispatch_hook_background`'s fresh-
-    dispatch path (a root not already in `_hook_inflight_roots`) submits straight to
-    `hook_executor` with NO `_feed_running` check at all -- only `_done`'s trailing-rerun path
-    checks it. `hook_executor` is single-worker (RC-556): two different underlyings' tasks
-    (e.g. a long-running AMD hook and a freshly-dispatched PLTR hook) can both be legitimately
-    SUBMITTED while only one runs at a time, so PLTR's task can still be sitting queued, not
-    yet started, at the instant shutdown sets `_feed_running = False` -- and `executor.shutdown
-    (wait=False)` does not cancel queued-but-unstarted work, so PLTR's task WILL eventually run
-    once AMD's finishes, regardless of shutdown, because nothing upstream of the task's own
-    entry point ever re-checks liveness.
-
-    Fixed here, at the one point every hook invocation funnels through regardless of which root
-    or dispatch path submitted it: re-check `_feed_running` the instant this actually starts
-    executing on the worker thread (not when it was submitted) and skip the real hook body
-    entirely if the feed has already stopped -- closing the gap `_done`'s existing shutdown
-    check (RC-556) only ever covered for a same-root trailing rerun, never a different root's
-    independently-submitted fresh dispatch.
-
-    A FIFTH independent review (2026-09-13), REPRODUCED: `_feed_running` alone is not enough --
-    a stop() followed by a restart() before this task drains flips it back to True for a NEW
-    lifecycle, and this check alone would then wrongly treat OLD, pre-restart work as
-    belonging to the current one. `generation` is the lifecycle identifier `_feed_loop`
-    captured for itself when IT started; this only runs the real hook body when that captured
-    generation still matches the CURRENT `_feed_generation` -- not merely when some feed
-    happens to be running right now."""
-    if not _feed_running or generation != _feed_generation:
-        return "feed_stopped"
-    if _streamed_greeks_hook is None:
-        return "no_hook_registered"
-    return _streamed_greeks_hook(rep_sym, rep_ts)
+def _tick(sym: str) -> None:
+    global _tick_callback_failures
+    if _on_tick_callback is None:
+        return
+    try:
+        _on_tick_callback(sym)
+    except Exception as e:  # noqa: BLE001 -- counted + WARNING; ingest must go on
+        _tick_callback_failures += 1
+        if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
+            log.warning("tick callback failed for %s (%s failures): %s",
+                        sym, _tick_callback_failures, e)
 
 
 STREAMING_STALE_MS = 25_000.0
@@ -340,7 +279,7 @@ def get_streaming_diagnostics() -> dict[str, Any]:
     }
 
 
-def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
+def _ingest_pushed(topic: str, msg: Any) -> None:
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
     The same plane-ingest calls the DB replay made, now fed straight from the daemon's
@@ -354,10 +293,10 @@ def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
 
-    Returns (contract, ts_recv) when an option L1 message carried GAMMA/DELTA/
-    OPEN_INTEREST/TOTAL_VOLUME/VOLUME -- the caller dispatches the streamed-greeks hook,
-    coalesced per underlying -- else None. A message missing its symbol, its receive time
-    or its Schwab payload is dropped whole: nothing is applied with a guessed part."""
+    Every equity quote, and every option quote carrying GAMMA/DELTA/OPEN_INTEREST/
+    TOTAL_VOLUME/VOLUME, is passed to the tick callback. A message missing its symbol, its
+    receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
+    part."""
     global _streaming_last_update_ts, _option_streaming_last_update_ts, _push_messages_applied
     if not isinstance(msg, dict):
         return None
@@ -379,18 +318,7 @@ def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
         _push_messages_applied += 1
         if sym == _active_ticker:
             _streaming_last_update_ts = ts
-        if _on_tick_callback:
-            # every equity tick; the callback (server._dispatch_spot_gamma_refresh) decides by
-            # the heatmap's OWN demand registry whether this ticker's surface is being viewed --
-            # one "viewed" signal, not a second one built here from the raw watchlist
-            try:
-                _on_tick_callback(sym)
-            except Exception as e:  # noqa: BLE001 -- counted + WARNING; ingest must go on
-                global _tick_callback_failures
-                _tick_callback_failures += 1
-                if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
-                    log.warning("spot tick callback failed for %s (%s failures): %s",
-                                sym, _tick_callback_failures, e)
+        _tick(sym)
         return None
     if kind == "book":
         content = msg.get("content")
@@ -414,72 +342,8 @@ def _ingest_pushed(topic: str, msg: Any) -> "tuple[str, float] | None":
         _option_contract_last_update_ts[sym] = ts
         if ("GAMMA" in content or "DELTA" in content or "OPEN_INTEREST" in content
                 or "TOTAL_VOLUME" in content or "VOLUME" in content):
-            return sym, ts
-        return None
+            _tick(sym)
     return None
-
-
-def _hook_grouping_key(symbol: str) -> str:
-    """The cheap, symbol-only proxy _feed_loop's hook-coalescing groups by: "which
-    contracts likely share one underlying / one terrain-cache entry."
-
-    Independent-review finding (2026-09-12), REPRODUCED: grouping by the RAW
-    `vendor_option_root` alone treats a bare-rooted contract (root "SPX") and a
-    weekly-rooted contract (root "SPXW") as two DIFFERENT groups, even when both
-    genuinely belong to the SAME underlying ($SPX) -- refresh_gamma_surface_from_stream
-    itself resolves this correctly via contract_matches_underlying's chain-aware
-    fallback, but that fallback needs a candidate TICKER and a live chain-DB read;
-    _feed_loop has neither readily available (it operates on bare option-contract
-    symbols, with no reverse symbol->ticker mapping and no visibility into server.py's
-    enrolled-ticker roster) and must not add a per-tick chain-DB dependency just to
-    group cheaply. Root-caused with a NARROW, non-invented canonicalization: Schwab/OCC
-    weekly-root suffixes for the specific handful of BROKER-INDEX products this repo
-    already names as `$`-prefixed bare roots (BROKER_INDEX_BARE_ROOTS: SPX, NDX, RUT,
-    DJX, XSP, OEX, ...) are that SAME bare root plus a trailing "W" (SPXW, NDXW, RUTW,
-    ...) -- a real, documented vendor/exchange convention for these specific products,
-    not a guess. Stripping a trailing "W" is applied ONLY when the resulting bare root
-    is in that SAME small, curated set, so an unrelated real equity root that happens
-    to end in "W" is never affected (it would have to coincidentally equal one of the
-    ~11 named index roots after stripping, which real stock tickers do not). This does
-    NOT replace contract_matches_underlying's full chain-aware equivalence check
-    anywhere it is used for correctness (subscription reconciliation, coverage epochs,
-    the hook's own terrain-cache resolution) -- it exists ONLY to avoid an
-    over-eager, redundant-but-still-individually-correct extra hook call for this one
-    well-known aliasing case; a contract this heuristic fails to group correctly still
-    gets its own (still individually correct, merely less coalesced) hook call."""
-    root = vendor_option_root(symbol) or symbol
-    if root.endswith("W") and len(root) > 1:
-        bare = root[:-1]
-        if bare in BROKER_INDEX_BARE_ROOTS:
-            return bare
-    return root
-
-
-class HookBurst:
-    """Qualifying option ticks that arrived together, one entry per underlying.
-
-    The streamed-greeks hook re-gathers EVERY desired contract of an underlying on each call,
-    so ticks that arrive together need ONE call per underlying (grouped by
-    `_hook_grouping_key`), carrying the freshest tick's receive time. Across bursts,
-    `_dispatch_hook_background` keeps at most one call in flight per underlying plus one
-    trailing re-run."""
-
-    def __init__(self) -> None:
-        self._by_root: "dict[str, tuple[str, float]]" = {}
-
-    def note(self, sym: str, ts: float) -> bool:
-        """Record one qualifying tick. True when it opens a new burst (schedule a flush)."""
-        opens = not self._by_root
-        root = _hook_grouping_key(sym)
-        cur = self._by_root.get(root)
-        if cur is None or ts >= cur[1]:
-            self._by_root[root] = (sym, ts)
-        return opens
-
-    def take(self) -> "list[tuple[str, float]]":
-        out = list(self._by_root.values())
-        self._by_root.clear()
-        return out
 
 
 async def _feed_loop() -> None:
@@ -490,105 +354,8 @@ async def _feed_loop() -> None:
     every PUSH_RECONNECT_SEC; while it is down, the live values age out through their own
     freshness checks and the screen shows them stale. There is no second source."""
     global _feed_running
-    # This lifecycle's own identity (see `_feed_generation`'s module-level docstring) --
-    # captured ONCE here, not re-read per dispatch, so every hook task this ONE loop
-    # invocation ever submits carries the SAME generation number regardless of how many
-    # times `_feed_generation` itself is bumped by a LATER, unrelated restart.
-    my_generation = _feed_generation
-    # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the
-    # streamed-greeks hook call (below) used to be AWAITED on the feed's single-worker DB
-    # executor before the loop could proceed to its next poll tick -- a real, structurally
-    # guaranteed cost, not a hypothetical: the hook's own committed benchmark
-    # (tests/test_streamed_greeks_hook_v1.py::test_hook_coalescing_avoids_the_real_per_
-    # call_cost_at_spxw_scale) MEASURED ~1.95s for one real call at full SPXW scale (42,001
-    # contracts). Because state capture for the CURRENT tick's own newer rows (and every
-    # OTHER contract/ticker this loop replays) only resumes once the awaited hook call
-    # returns, a single slow surface recompute for one ticker delayed CAPTURE -- not just
-    # publication -- for every ticker, by however long that one ticker's hook took.
-    # Fixed by decoupling the two: the hook is dispatched as a background task on its own
-    # dedicated executor and the loop's own progression to the next message no longer
-    # waits for it (with the live push, the loop never waits on the hook at all).
-    # Safe to run detached: refresh_gamma_surface_from_stream already compare-and-swaps
-    # against the cache's own generation marker (_contracts_rest_computed_ts) before
-    # publishing, so an overlapping or out-of-order background hook call for the same
-    # ticker can only ever be silently superseded, never corrupt a newer result -- the
-    # exact protection this file's own history (RC-UI-2/finding#2, the CAS fix) already
-    # established for a REST cycle landing mid-eager-computation.
-    hook_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="daemon-plane-feed-hook")
-    hook_tasks: "set[asyncio.Task]" = set()
-    loop = asyncio.get_event_loop()
-    # Independent-review finding (2026-09-13), REPRODUCED: this dispatched one hook task
-    # PER QUALIFYING TICK, per root, unconditionally -- with no check for "is a call for
-    # this root already queued or running." Holding the hook callback while four
-    # qualifying poll batches arrived queued FOUR separate tasks on the single-worker
-    # executor; stopping the feed loop after only the first had started still let the
-    # other THREE start running afterward, because each was already an independently
-    # submitted `run_in_executor` future the executor's own non-blocking shutdown lets
-    # finish. Coalescing within one burst already existed (HookBurst); nothing bounded it
-    # ACROSS bursts. Fixed the same way the client-side coalescing
-    # loader does it: at most one call in flight per root, and a call requested while one
-    # is already in flight is coalesced into exactly one trailing re-run -- never piled up.
-    # The hook itself (_desired_stream_greeks_for_ticker, called fresh every run) always
-    # re-gathers the CURRENT state of every desired contract regardless of which symbol's
-    # tick triggered the call, so a coalesced trailing run loses nothing a discarded
-    # duplicate call would have captured.
-    _hook_inflight_roots: "set[str]" = set()
-    _hook_pending_by_root: "dict[str, tuple[str, float]]" = {}
-
-    def _start_hook_task(root: str, rep_sym: str, rep_ts: float) -> None:
-        fut = loop.run_in_executor(
-            hook_executor, _run_streamed_greeks_hook_if_live, rep_sym, rep_ts, my_generation)
-        task = asyncio.ensure_future(fut)
-        hook_tasks.add(task)
-
-        def _done(t: "asyncio.Task", _root: str = root, _sym: str = rep_sym) -> None:
-            hook_tasks.discard(t)
-            _hook_inflight_roots.discard(_root)
-            exc = t.exception() if not t.cancelled() else None
-            if exc is not None:
-                log.debug("streamed-greeks hook failed for %s: %s", _sym, exc)
-            nxt = _hook_pending_by_root.pop(_root, None)
-            # Independent-review finding (2026-09-13), REPRODUCED, connected: the trailing
-            # coalesced run must NOT start once this loop has stopped -- `_feed_running`
-            # going False is this loop's own shutdown signal, checked here (not just at the
-            # top of the while-loop below) precisely because this callback can fire AFTER
-            # the loop has already exited. A task already in flight at shutdown still runs
-            # to completion (existing CAS-protected, harmless-if-late publish); this only
-            # stops a NEW one from ever being scheduled into a lifecycle that has ended.
-            #
-            # A FIFTH independent review (2026-09-13), REPRODUCED: `_feed_running` alone
-            # let a trailing rerun queued under THIS generation start under a LATER one --
-            # a stop() then a restart() between this callback firing and its own check
-            # flips `_feed_running` back to True for a NEW lifecycle. `my_generation ==
-            # _feed_generation` closes that gap the same way `_run_streamed_greeks_hook_
-            # if_live` now does for a fresh dispatch.
-            if nxt is not None and _feed_running and my_generation == _feed_generation:
-                _hook_inflight_roots.add(_root)
-                _start_hook_task(_root, nxt[0], nxt[1])
-        task.add_done_callback(_done)
-
-    def _dispatch_hook_background(rep_sym: str, rep_ts: float) -> None:
-        root = _hook_grouping_key(rep_sym)
-        if root in _hook_inflight_roots:
-            _hook_pending_by_root[root] = (rep_sym, rep_ts)
-            return
-        _hook_inflight_roots.add(root)
-        _start_hook_task(root, rep_sym, rep_ts)
     global _push_connected_ts
     from websockets.asyncio.client import connect
-
-    # Frames already received are applied back to back without the loop yielding, so a
-    # flush scheduled with call_soon runs once the whole burst has been applied -- one hook
-    # dispatch per underlying for exactly what arrived together, no timer, no added delay.
-    burst = HookBurst()
-
-    def _flush_burst() -> None:
-        for rep_sym, rep_ts in burst.take():
-            _dispatch_hook_background(rep_sym, rep_ts)
-
-    def _note_qualifying(sym: str, ts: float) -> None:
-        if burst.note(sym, ts):
-            loop.call_soon(_flush_burst)
 
     async def _consume(ws) -> None:
         async for frame in ws:
@@ -603,9 +370,7 @@ async def _feed_loop() -> None:
             if env.get("topic") == "daemon.heartbeat":
                 _note_daemon_status(env.get("msg"))
                 continue
-            hit = _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
-            if hit is not None and _streamed_greeks_hook is not None:
-                _note_qualifying(hit[0], hit[1])
+            _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
     try:
         while _feed_running:
             try:
@@ -631,11 +396,6 @@ async def _feed_loop() -> None:
     finally:
         _push_connected_ts = None
         _lmp.record_feed_down()
-        # A background hook dispatch already submitted to hook_executor keeps running on
-        # its worker thread to completion even after this loop stops -- its CAS in
-        # refresh_gamma_surface_from_stream makes a late publish after a restart harmless
-        # (superseded by whatever the next real cycle computes), never corrupting.
-        hook_executor.shutdown(wait=False)
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
@@ -963,7 +723,7 @@ def _contract_ranking_inputs(symbols: "list[str]") -> "dict[str, dict]":
     wanted = set(symbols)
     out: "dict[str, dict]" = {}
     with _srv._terrain_cache_lock:
-        chains = [(tk, list(payload.get("_contracts_rest") or []))
+        chains = [(tk, list(payload.get("_chain") or []))
                   for tk, payload in _srv._terrain_cache.items()]
     spot_by_ticker: "dict[str, float | None]" = {}
     for tk, contracts in chains:
@@ -1331,17 +1091,13 @@ def start_order_flow_stream(
     of its own, so it has no account dependency — kept for call-site compatibility.
     `initial_ticker` may be None: the feed then runs with no active ticker until the browser
     chooses one (no built-in ticker -- universality, operator 2026-09-23)."""
-    global _feed_task, _feed_running, _feed_generation, _on_tick_callback
+    global _feed_task, _feed_running, _on_tick_callback
     it = (initial_ticker or "").upper().strip()
     if _feed_task is not None and not _feed_task.done():
         log.info("Live-plane feed already running")
         return True
     _on_tick_callback = on_tick_callback
     _feed_running = True
-    # A new lifecycle -- see `_feed_generation`'s module-level docstring. Bumped here
-    # (never in stop_order_flow_stream) so a restart is what invalidates in-flight work
-    # from before it, matching exactly the reproduced stop-then-restart-before-drain gap.
-    _feed_generation += 1
     if it:
         set_streaming_active_ticker(it)
     _feed_task = asyncio.get_event_loop().create_task(_feed_loop(), name="daemon-plane-feed")

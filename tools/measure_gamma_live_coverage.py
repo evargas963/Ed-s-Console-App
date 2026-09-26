@@ -63,7 +63,7 @@ Metrics captured per (ticker, scope):
   - first_fully_classified_render_ms: measured from stream_coverage.meets_live_requirement
     becoming true.
   - backend_compute_ms: stream_overlay_receipt_to_computed_ms already stamped on the surface
-    by refresh_gamma_surface_from_stream/refresh_gamma_surface_from_spot_tick (server.py) --
+    by _publish_levels (server.py) --
     the canonical, already-measured number, not a second stopwatch.
   - rest_requests_startup / rest_requests_per_streamed_update / rest_requests_ticker_switch:
     counted via /api/build's own request-count diagnostics when present, else via the

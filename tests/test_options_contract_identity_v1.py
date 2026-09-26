@@ -124,8 +124,8 @@ def test_spxw_matches_dollar_spx_only_via_banked_chain():
 
 
 def test_public_contract_matches_underlying_wrapper_resolves_the_weekly_root(monkeypatch):
-    """server.py's streaming-overlay wiring (_gamma_surface_contracts_with_stream_overlay,
-    refresh_gamma_surface_from_stream) uses the PUBLIC contract_matches_underlying wrapper so
+    """server.py's streaming-overlay wiring (_desired_option_symbols_for_ticker,
+    _tick_ticker) uses the PUBLIC contract_matches_underlying wrapper so
     it does not need to know about DB_PATH/chain_db_path plumbing. Independent-review finding
     (2026-09-12): a bare vendor-root == ticker-root equality check would silently exclude this
     exact SPXW/$SPX case -- proving the wrapper reaches the SAME chain-aware fallback as
