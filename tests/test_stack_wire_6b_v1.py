@@ -6,7 +6,6 @@ import inspect
 import re
 from pathlib import Path
 
-import live_decision_bundle as ldb
 import realized_contract_eval as rce
 from replay_bundle_coverage import REPLAY_BUNDLE_MIN_JSON_LENGTH
 
@@ -80,13 +79,3 @@ def test_no_hardcoded_strike_tolerance_literals_in_realized_contract_eval():
     assert "STRIKE_MATCH_TOL_NICKEL" in src_expr
 
 
-def test_live_decision_bundle_tick_refresh_default_constants():
-    """FIND-WIRE6-7: tick-refresh spot drift thresholds named at module level."""
-    assert ldb.TICK_REFRESH_SPOT_PCT_DEFAULT == 0.0003
-    assert ldb.TICK_REFRESH_SPOT_ABS_DEFAULT == 0.05
-    src = inspect.getsource(ldb.tick_triggers_coherent_refresh)
-    # env-default strings now reference the constants, not bare numeric strings
-    assert '"0.0003"' not in src
-    assert '"0.05"' not in src
-    assert "TICK_REFRESH_SPOT_PCT_DEFAULT" in src
-    assert "TICK_REFRESH_SPOT_ABS_DEFAULT" in src

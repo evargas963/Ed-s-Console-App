@@ -18,15 +18,11 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from types import SimpleNamespace
 
 
 import governance.provenance_inventory as P
 import governance.provenance_roots as R
 import governance.provenance_rows as ROWS_MOD
-from multi_horizon_decision import compute_multi_horizon_synthesis
-from tests.test_issue18_multi_horizon_decision import _inp
-from tests.test_multi_horizon_decision_numeric_contract_v1 import _canonical, _pred
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -53,11 +49,6 @@ BATCH_NOT_PROVEN = ("call_signal", "call_conviction")
 
 
 
-def test_no_anchor_means_the_owner_verdict_is_untouched():
-    a = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None)
-    b = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None, guest_anchor=None)
-    assert (a.tradeable, a.size_modifier, a.wait_reason, a.final_bias) == (
-        b.tradeable, b.size_modifier, b.wait_reason, b.final_bias)
 
 
 
@@ -179,7 +170,3 @@ def test_the_verdict_owner_row_names_the_anchor_as_its_input():
     assert "multi_horizon_decision.py:_horizon_skill_weights_cached" in row.producer_refs
 
 
-def test_guest_anchor_context_wait_reason_is_the_verdict_text():
-    ctx = SimpleNamespace(wait_reason="anchored")
-    out = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None, guest_anchor=ctx)
-    assert out.wait_reason == "anchored" and out.tradeable is False

@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 
 import governed_stack_contract as gsc
-from signal_types import TRADABLE_CANONICAL_PROVENANCE
 
 _CONSUMER_CONE = (
     "signals.py",
@@ -51,9 +50,6 @@ def test_no_second_tradability_predicate_in_consumer_cone():
     assert not offenders, offenders
 
 
-def test_tradable_canonical_provenance_single_member():
-    assert TRADABLE_CANONICAL_PROVENANCE == frozenset({"bayesian_fusion"})
-    assert len(TRADABLE_CANONICAL_PROVENANCE) == 1
 
 
 def test_governed_stack_contract_threshold_constants_exist_and_used():

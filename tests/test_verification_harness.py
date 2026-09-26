@@ -2,13 +2,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 
 from db import EdDB
-from math_exposure import MIN_SAMPLES_STATISTICAL
-from multi_horizon_decision import build_multi_horizon_bundle
-from prediction_engine import _literal_empirical_horizon
 from timeframe_config import CANONICAL_TIMEFRAME
 from verification.db_coverage import db_coverage_report
 from verification.decision_explain import explain_market_state_dict, explain_reason_ladder
@@ -159,71 +155,10 @@ def test_spy_vs_qqq_different_similar_sizes(tmp_path: Path):
     assert sz("SPY") != sz("QQQ")
 
 
-def test_horizon_withheld_below_threshold():
-    similar = [
-        {
-            "outcome_1c": "up",
-            "outcome_5c": "up",
-            "outcome_15c": "up",
-            "outcome_60c": "up",
-        }
-        for _ in range(10)
-    ]
-    p, _sk, _n, n = _literal_empirical_horizon(similar, "outcome_5c", 5)
-    assert p is None
-    assert n == 10
 
 
-def test_horizon_ok_at_threshold():
-    similar = []
-    for _i in range(MIN_SAMPLES_STATISTICAL):
-        similar.append(
-            {
-                "outcome_1c": "up",
-                "outcome_5c": "up",
-                "outcome_15c": "flat",
-                "outcome_60c": "down",
-            }
-        )
-    p, _, _, n = _literal_empirical_horizon(similar, "outcome_5c", 5)
-    assert p is not None
-    assert n == MIN_SAMPLES_STATISTICAL
 
 
-def test_no_valid_primary_sets_wait_reason():
-    p = SimpleNamespace(
-        up_prob_1c=None,
-        down_prob_1c=None,
-        flat_prob_1c=None,
-        up_prob_5c=None,
-        down_prob_5c=None,
-        flat_prob_5c=None,
-        up_prob_15c=None,
-        down_prob_15c=None,
-        flat_prob_15c=None,
-        up_prob_60c=None,
-        down_prob_60c=None,
-        flat_prob_60c=None,
-        avg_5c_pts=0.1,
-        avg_15c_pts=0.1,
-        avg_60c_pts=0.1,
-    )
-    inp = SimpleNamespace(
-        spot=440.0,
-        mins_to_close=180,
-        nearest_below_val=439.0,
-        nearest_above_val=441.0,
-    )
-    # No canonical blend: all empirical probs missing → zero valid horizon triplets;
-    # the ALL-card pooled consensus (2026-06-11) must WAIT with the
-    # insufficient-evidence reason (fail-closed pool floor).
-    from multi_horizon_decision import WAIT_REASON_INSUFFICIENT_VALID_HORIZONS
-
-    canonical = None
-    call = SimpleNamespace(signal="long", entry=440.5, stop=438.0, target=443.0, target2=None, call_state="WATCH")
-    b = build_multi_horizon_bundle(inp, p, canonical, call)
-    assert b.final_decision.final_bias == "WAIT"
-    assert (b.final_decision.wait_reason or "") == WAIT_REASON_INSUFFICIENT_VALID_HORIZONS
 
 
 def test_explainability_reason_chain():

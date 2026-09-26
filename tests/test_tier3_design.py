@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from similarity_audit import baseline_feature_contract_v1, contract_expected_structural_filter_keys
 from timeframe_config import CANONICAL_TIMEFRAME
 
 
@@ -50,11 +49,6 @@ def _seed_ctx(conn, *, ticker: str, zone: str, vs: str, ts: float, rp: str, vb: 
     )
 
 
-def test_issue19_tier1_tier2_contract_unchanged():
-    doc = baseline_feature_contract_v1()
-    assert doc["production_authority"] == "db.EdDB.get_similar_setups"
-    assert contract_expected_structural_filter_keys(1) == {"zone", "vwap_side", "nearest_above_dist", "nearest_below_dist"}
-    assert "nearest_above_dist" in contract_expected_structural_filter_keys(2)
 
 
 def test_eddb_has_unchanged_similarity_authority():

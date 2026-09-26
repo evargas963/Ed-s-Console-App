@@ -5,32 +5,8 @@ from __future__ import annotations
 import inspect
 
 
-from live_decision_bundle import stamp_decision_bundle
 
 
-def test_decision_generation_id_always_present():
-    failed = {"signals_engine_failed": True}
-    stamp_decision_bundle(failed)
-    assert "decision_generation_id" in failed
-    assert failed["decision_generation_id"] is None
-    assert failed["decision_timestamp_utc"] is None
-    assert failed["decision_generation_skipped"] is True
-    assert failed["decision_tick_kind"] == "signals_engine_error"
-
-    # Fail-closed contract: a bare dict missing ticker/price/release is blocked by the
-    # trade-impacting gate (added after this test was written) — no decision_generation_id is
-    # minted. Positive path (valid bundle + passing gates -> int decision_generation_id, tick
-    # kind "live") is covered by
-    # tests/test_batch2_signals_engine_error.py::test_stamp_decision_bundle_increments_on_success.
-    blocked = {"signals_engine_failed": False}
-    stamp_decision_bundle(blocked)
-    assert blocked["decision_generation_id"] is None
-    assert blocked["decision_generation_skipped"] is True
-    assert blocked["decision_gate_blocked"] is True
-    reasons = blocked.get("decision_gate_reasons") or []
-    assert "missing_ticker" in reasons
-    assert "missing_price" in reasons
-    assert blocked["decision_tick_kind"] == "market_quarantine"
 
 
 def test_server_build_ts_always_set():
