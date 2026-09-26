@@ -47,7 +47,7 @@ def test_start_ed_console_bat_wires_live_schwab_env_preflight():
     # RC-514: an unavailable Schwab capability is REPORTED, never a launch veto. The
     # sanitization asserted above is unchanged; only the consequence of a bad result changed,
     # because one vendor's credentials must not decide whether the application may exist
-    # (docs/ARCHITECTURE.md §4).
+    # (docs/ARCHITECTURE.md "Failure domains").
     assert "SCHWAB CAPABILITY UNAVAILABLE" in bat
     assert "LAUNCH BLOCKED: live Schwab env" not in bat
     # preflight (unsets + sanitize) runs before uvicorn so the child inherits the sanitized env

@@ -5591,7 +5591,7 @@ def health():
     with _logger_lock:
         running = _logger_running
         n       = len(_logger_tickers)
-    # RC-514 / docs/ARCHITECTURE.md section 4: application availability and capability
+    # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
     # availability are separate, so `status` answers "is the app alive" and never folds a
     # vendor outage into it. The capability verdict comes from schwab_capability_state(),
     # which asks the canonical client -- credentials, CI gate AND token state -- rather than

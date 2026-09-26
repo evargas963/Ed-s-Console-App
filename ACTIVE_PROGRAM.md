@@ -22,9 +22,9 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | P2-2 | QUEUED | **The levels producer in its own process** (DATA_FLOW decision 2); results pushed and written. |
 | P2-3 | QUEUED | **Everything pushed to the browser**: bars, order flow, liquidity; the page has no refresh timer; one push connection. |
 | P2-4 | OPERATOR | **The four standalone pages** (/chart, /desk, /exposure, /options): list what each has that the console lacks; the operator decides what moves into the console; the pages are deleted. |
-| P2-5 | QUEUED | **db.py**: delete the methods and tables only the deleted ML stack used, and `ml_horizon`, `movement_target_threshold`, `horizon_outcomes`, `decision_record`, `execution_identity`; split what remains by what it stores, under `app/`. |
-| P2-6 | QUEUED | **server.py**: routes to `app/api/routes/` by what they serve, the levels loop to the producer, startup to `app/api/`. |
-| P2-7 | QUEUED | **The other large files**: liquidity_value_engine.py, app/options/order_flow/streaming.py and engine.py, math_exposure_core.py, ed-core.js, ed-gamma.js — cut what has no job, split by job into its domain folder. |
+| P2-5 | QUEUED | **db.py**: delete the methods and tables only the deleted ML stack used, and `ml_horizon`, `movement_target_threshold`, `horizon_outcomes`, `decision_record`, `execution_identity`; move what remains (bars, level history, enrollment, connection) to `daemon/`. |
+| P2-6 | QUEUED | **server.py**: the chain fetch to `daemon/`, the levels loop and gamma-surface projection to `producer/`, the routes and startup to `console/`. |
+| P2-7 | QUEUED | **The other large files**: liquidity_value_engine.py, app/options/order_flow/streaming.py and engine.py, math_exposure_core.py, ed-core.js, ed-gamma.js — cut what has no job, move each part to the process that runs it (`daemon/`, `producer/`, `console/`). |
 | P2-DB1 | IN PROGRESS | **Measure each table's size** in ed_console.db, read-only (operator approved 2026-09-26). |
 | P2-DB2 | OPERATOR | **Review the sizes; decide the copy and which tables are dropped.** Dropping needs a verified copy or the operator's word. |
 | P2-DB3 | QUEUED | **Drop the orphaned ML tables** on the operator's word; VACUUM in an offline maintenance window. |

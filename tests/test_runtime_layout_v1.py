@@ -3,7 +3,7 @@
 
 Before this, every runtime path was `Path(__file__).parent / "data" | "logs" | "reports"`,
 with an override for the database alone, so the production checkout had to be the desk's
-cwd and runtime output polluted the source tree (docs/ARCHITECTURE.md §8). These controls
+cwd and runtime output polluted the source tree (docs/ARCHITECTURE.md "Runtime state lives outside the source"). These controls
 drive the real modules through a subprocess with the two variables set and unset, because
 the roots are read at import.
 """

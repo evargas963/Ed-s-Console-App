@@ -77,7 +77,7 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
     # RC-514: this used to require build_config to RAISE without secrets. server.py calls
     # build_config at MODULE SCOPE, so that raise made `import server` — and therefore
     # `uvicorn server:app` — fail outright: the whole application refused to exist because one
-    # vendor's credentials were absent, the boundary docs/ARCHITECTURE.md §4 rejects.
+    # vendor's credentials were absent, the boundary docs/ARCHITECTURE.md "Failure domains" rejects.
     #
     # Nothing is weakened. What the raise protected — no live Schwab without credentials — is
     # asserted here at `schwab_live_blocked_for`, the gate `schwab_client` refuses on, so the

@@ -6,7 +6,7 @@ one upstream vendor's credentials happened to resolve. A ghost `python-dotenv` d
 made `.env` unloadable (RC-513) and the desk would not start — while the API, UI, health and
 observability were all perfectly able to run.
 
-docs/ARCHITECTURE.md §4 separates application availability from capability availability:
+docs/ARCHITECTURE.md "Failure domains" separates application availability from capability availability:
 
     Schwab unavailable
         -> app stays alive
