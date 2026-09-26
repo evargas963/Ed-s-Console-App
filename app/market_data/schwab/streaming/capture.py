@@ -435,8 +435,9 @@ async def run() -> int:
     """The whole daemon: writer, the two local sockets, and the Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
     from app.market_data.schwab.streaming.live_ui import serve_live_ui
-    from config import build_config
+    from config import build_config, load_dotenv_file
     from schwab_client import build_client_from_token
+    load_dotenv_file()
     cfg = build_config(str(ROOT))
 
     def make_client():
