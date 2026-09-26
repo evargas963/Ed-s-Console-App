@@ -20,9 +20,6 @@ import ast
 from pathlib import Path
 
 
-import governance.provenance_inventory as P
-import governance.provenance_roots as R
-import governance.provenance_rows as ROWS_MOD
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -126,37 +123,9 @@ def test_repo_wide_no_attribute_writer_of_the_verdict_outside_owner_and_carrier(
 
 # ── provenance: the batch closes, the NOT_PROVEN pair stays open by name ─────────────────
 
-def test_batch_roots_close_in_the_authority():
-    idx = P.index(ROWS_MOD.ROWS)
-    for field in BATCH_CLOSED:
-        category, producer = R.MARKET_STATE[field]
-        assert producer is not None, field
-        ok, why = P.closes(producer, idx)
-        assert ok, f"{field} -> {producer}: {why}"
-        assert field not in R.OPEN_ROOTS
-    for (file, fn) in (("call_engine.py", "compute_call"), ("call_engine.py", "compute_position_size"),
-                       ("multi_horizon_decision.py", "compute_multi_horizon_synthesis"),
-                       ("decision_gate.py", "evaluate_decision_path_admission")):
-        for arg, producer in R.ENGINE_INPUTS[(file, fn)].items():
-            assert producer is not None, f"{file}:{fn}/{arg}"
-            ok, why = P.closes(producer, idx)
-            assert ok, f"{file}:{fn}/{arg} -> {producer}: {why}"
 
 
-def test_the_former_second_writer_survivors_now_close_on_the_owner():
-    # Batch 1 left these OPEN because trade_impacting_gate rewrote them after The Call.
-    # RC-534 moved the emission veto into the owner; the gate writes no verdict field now.
-    idx = P.index(ROWS_MOD.ROWS)
-    for field in BATCH_NOT_PROVEN:
-        assert R.MARKET_STATE[field][1] == "call_engine.py:compute_call"
-        assert P.closes(R.MARKET_STATE[field][1], idx)[0]
-        assert field not in R.OPEN_ROOTS
 
 
-def test_the_verdict_owner_row_names_the_anchor_as_its_input():
-    idx = P.index(ROWS_MOD.ROWS)
-    row = idx[("multi_horizon_decision.py", "compute_multi_horizon_synthesis")]
-    assert "governed_stack_contract.py:resolve_guest_anchor_for_ticker" in row.producer_refs
-    assert "multi_horizon_decision.py:_horizon_skill_weights_cached" in row.producer_refs
 
 

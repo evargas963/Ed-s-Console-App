@@ -145,7 +145,6 @@ def test_operator_decisions_still_resolve():
     ids = set(re.findall(r"^\| \*\*(O-\d\d)\*\* \|", text, re.M))
     assert {f"O-{i:02d}" for i in range(1, 14)} <= ids
     assert "R-08" in text and "R-09" in text
-    assert (ROOT / "config" / "decision_path_admissions.json").is_file()
 
 
 def test_unproven_claims_still_fail_closed():

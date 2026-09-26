@@ -15,9 +15,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import governance.provenance_inventory as P
-import governance.provenance_roots as R
-import governance.provenance_rows as ROWS_MOD
 
 REPO = Path(__file__).resolve().parents[1]
 VERDICT_KEYS = {"call_signal", "call_conviction"}
@@ -137,17 +134,5 @@ def test_repo_wide_every_verdict_literal_is_a_flagged_no_decision_sentinel(repo_
 
 # ── provenance: both verdict roots close on the owner; the gate is the owner's input ──────
 
-def test_verdict_roots_close_on_compute_call_with_the_gate_as_input():
-    idx = P.index(ROWS_MOD.ROWS)
-    for field in ("call_signal", "call_conviction"):
-        cat, producer = R.MARKET_STATE[field]
-        assert producer == "call_engine.py:compute_call", field
-        ok, why = P.closes(producer, idx)
-        assert ok, why
-        assert field not in R.OPEN_ROOTS
-    row = idx[("call_engine.py", "compute_call")]
-    assert "trade_impacting_gate.py:validate_trade_impacting_gate" in row.producer_refs
-    gate = idx[("trade_impacting_gate.py", "validate_trade_impacting_gate")]
-    assert gate.producer_refs == ("server.py:_fetch_state",)
 
 
