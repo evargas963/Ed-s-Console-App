@@ -206,7 +206,6 @@ from math_exposure import (
 from market_context import (
     market_context_panel_symbols_excluding_core,
 )
-from vol_observability import vol_observability_payload
 from terrain_read import build_terrain_read
 from terrain_engine import TerrainSnapshot, compute_terrain, wall_geometry_state
 from terrain_atr import AtrPair, compute_atr_pair
@@ -5953,12 +5952,6 @@ def api_build():
     }
 
 
-@app.get("/api/vol-observability")
-def api_vol_observability(ticker: Optional[str] = Query(default=None)):
-    """VOL_OBSERVABILITY_V1: read-only projection of the per-cycle vol-index
-    observations ($VIX consumed; $VXN/$RVX FETCHED_UNCONSUMED) plus the
-    ratified ticker-class mapping candidate. Never feeds the money path."""
-    return vol_observability_payload(ticker)
 
 
 def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]:

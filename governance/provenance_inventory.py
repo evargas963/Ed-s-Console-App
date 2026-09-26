@@ -122,8 +122,6 @@ class AllowlistEntry:
 ALLOWLIST: tuple[AllowlistEntry, ...] = (
     AllowlistEntry("mega1_schwab_py_client", "INTERNAL", "transport",
                    "constructs the schwab-py HTTP client from the token; wire calls happen in the transport chain"),
-    AllowlistEntry("mega1_env_config", "INTERNAL", "config",
-                   "reads environment / config values (base URL, timeouts, flags); no market field produced"),
     AllowlistEntry("mega1_session_calendar", "INTERNAL", "clock",
                    "ET clock and session calendar (RTH windows, trading days); the only source of time"),
     AllowlistEntry("mega1_sqlite_internal", "INTERNAL", "internal_state",
@@ -132,23 +130,10 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
                    "pure helper over already-typed inputs; produces no market field of its own"),
     AllowlistEntry("mega1_live_plane_state", "INTERNAL", "internal_state",
                    "in-process live-plane cache state (last quote, freshness, sequence)"),
-    AllowlistEntry("mega1_l1_sse_counters", "INTERNAL", "counter",
-                   "SSE / L1 delivery counters and latency observability"),
     AllowlistEntry("mega1_diagnostic_log", "INTERNAL", "internal_state",
                    "diagnostic logging and error capture; not a market field"),
-    AllowlistEntry("mega1_filesystem", "INTERNAL", "filesystem",
-                   "reads or writes local files (token, diagnostics, reports)"),
-    AllowlistEntry("mega2_internal_helper", "INTERNAL", "internal_state",
-                   "pure helper over already-typed inputs; produces no market field of its own"),
     AllowlistEntry("mega2_schwab_stream_l1", "INTERNAL", "transport",
                    "Schwab streaming L1 frame decoder; the streamed fields close at the stream leaf rows"),
-    AllowlistEntry("mega3_internal_helper", "INTERNAL", "internal_state",
-                   "pure helper over already-typed inputs; produces no market field of its own"),
-    AllowlistEntry("mega4_governed_stack_contract", "INTERNAL", "config",
-                   "reads the governed model-stack contract (feature contract, release identity)"),
-    AllowlistEntry("analytics_cache_state", "INTERNAL", "internal_state",
-                   "in-process analytics cache freshness (stale / pending-shell / refresh-in-progress): "
-                   "a CONTROL truth whose source is the server's own cache clock, not a market field"),
 )
 ALLOWLIST_IDS = frozenset(e.id for e in ALLOWLIST)
 
@@ -267,13 +252,7 @@ def function_args(rel: str, name: str) -> list[str]:
 
 # ── the root rule ──────────────────────────────────────────────────────────────────────────
 #: B1 — decision-engine entries. An argument of any of these is a material root.
-ENGINE_ENTRIES: tuple[tuple[str, str], ...] = (
-    ("call_engine.py", "compute_call"),
-    ("call_engine.py", "compute_position_size"),
-    ("multi_horizon_decision.py", "compute_multi_horizon_synthesis"),
-    ("prediction_engine.py", "compute_prediction"),
-    ("decision_gate.py", "evaluate_decision_path_admission"),
-)
+ENGINE_ENTRIES: tuple[tuple[str, str], ...] = ()
 
 #: Route classes. PRODUCER routes carry roots of their own (a payload not drawn from
 #: MarketState); CARRIER routes serialize MarketState or another producer's payload.

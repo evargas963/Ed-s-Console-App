@@ -15,7 +15,6 @@ semantic truth, and the suite never says otherwise.
 from __future__ import annotations
 
 import ast
-import json
 import re
 import sys
 from pathlib import Path
@@ -44,7 +43,8 @@ def test_every_row_is_schema_valid_and_none_is_bookkeeping():
     # _parse_quote_node_session_fields, _radar_atr, _radar_atr_compute_into_cache,
     # _radar_daily_atr_vendor_fallback) and added 2 for their live replacements
     # (_atr_pair, _read_bars_1m) (556 -> 541)
-    assert len(ROWS) >= 541, "the consolidated rows lost provenance claims"
+    # 2026-09-26: the ML stack and the analytics pipeline were deleted with their rows (541 -> 170)
+    assert len(ROWS) >= 170, "the consolidated rows lost provenance claims"
 
 
 def _qualified_defs(tree: ast.AST) -> set[str]:
@@ -130,18 +130,6 @@ def test_every_root_with_a_producer_closes_and_the_open_list_is_exact():
     print(f"\nPROVENANCE: {rep['roots']} roots, {rep['closed']} closed, {len(rep['open'])} OPEN (NOT_PROVEN)")
 
 
-def test_the_card_contract_fields_are_roots_or_declared_exclusions():
-    """The card contract is a CONSUMER contract. Each emitted field points at a MarketState
-    root (its api_key); it never becomes a provenance authority of its own."""
-    card = json.loads((ROOT / "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8"))
-    bad = []
-    for f in card["fields"]:
-        key = f.get("provenance_root")
-        if key == "not_emitted" or key == "client_state":
-            continue
-        if key not in R.MARKET_STATE and key not in R.PAYLOAD_EXTRAS:
-            bad.append((f["field_name"], key))
-    assert bad == [], f"card fields whose provenance_root is not a root: {bad}"
 
 
 # ── transport invariant (ported from the retired mega1 suite) ─────────────────────────────
