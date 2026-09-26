@@ -334,38 +334,6 @@ def test_publish_progressive_tier_c_cache_non_pending_shell():
         srv._terrain_cache.pop(ticker.upper(), None)
 
 
-def test_post_analytics_warm_schedules_recompute_and_prewarm(monkeypatch):
-    """TEST_SYSTEM_REHAB_V2 final remediation: post_analytics_warm is an async
-    handler (real thread-pool offload via loop.run_in_executor, no auth/middleware/
-    serialization-shaping dependency) -- the HTTP round trip added nothing a direct
-    asyncio.run(...) call doesn't already prove."""
-    import asyncio
-    import json
-
-    import server as srv
-
-    scheduled: list[tuple] = []
-
-    monkeypatch.setattr(
-        srv,
-        "_schedule_analytics_warm",
-        lambda ticker, expiry, source, **kw: scheduled.append((ticker, expiry, source, kw))
-        or {"ok": True, "ticker": ticker, "scheduled_refresh": True},
-    )
-    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda _t: None)
-
-    # symbol/expiry must be passed explicitly: calling the handler directly bypasses
-    # FastAPI's Query(...) dependency resolution, so an omitted Query-typed param
-    # stays the unresolved Query() sentinel object rather than its declared default.
-    resp = asyncio.run(srv.post_analytics_warm(ticker="SPY", symbol=None, expiry=None))
-    body = json.loads(resp.body)
-    assert body.get("ok") is True
-    assert body.get("ticker") == "SPY"
-    assert scheduled
-    assert scheduled[0][0] == "SPY"
-    assert scheduled[0][2] == "client_warm_post"
-
-
 def test_api_build_exposes_ui_maximize_sla(monkeypatch):
     """TEST_SYSTEM_REHAB_V2 final remediation: api_build is a plain sync handler
     with no auth/middleware/serialization-shaping dependency -- the HTTP round trip

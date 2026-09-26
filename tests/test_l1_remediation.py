@@ -246,29 +246,6 @@ def test_notify_ticker_expiry_changed_cold_start_then_cache_read(monkeypatch):
     assert d2.get("l1_instrumentation", {}).get("l1_projection_read") is True
 
 
-def test_l1_diagnostics_endpoint_exposes_ed_l1(monkeypatch):
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_l1_diagnostics is a plain sync
-    handler with no auth/middleware/lifespan dependency -- nothing here asserts on
-    startup/shutdown sequencing, so the HTTP round trip added nothing a direct call
-    doesn't already prove."""
-    import json
-
-    import server as srv
-
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {"spot": 400.0, "bid": 399.0, "ask": 401.0},
-    )
-    j = json.loads(srv.get_l1_diagnostics().body)
-    assert "ed_l1" in j
-    assert "l1_build_total" in j["ed_l1"]
-    assert "l1_build_by_reason" in j["ed_l1"]
-    assert "policy" in j["ed_l1"]
-    assert "L1_ORDER_FLOW_STALE_SEC" in j["ed_l1"]["policy"]
-    assert "l1_lru_order_len" in j["ed_l1"]
-
-
 def test_index_html_l1_scope_and_generation_guards():
     """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 4 of the 17-20 block):
     the last assertion was `"REJECTED stale l1_generation" in html or "stale

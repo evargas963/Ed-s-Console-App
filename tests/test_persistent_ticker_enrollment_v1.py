@@ -68,30 +68,3 @@ def test_second_registration_does_not_remove_first_ticker(monkeypatch, tmp_path)
         srv.CORE_TICKERS[:] = prev
 
 
-def test_logger_status_includes_enrollment_policy(monkeypatch, tmp_path):
-    """TEST_SYSTEM_REHAB_V2 final remediation: logger_status is a plain sync
-    handler with no auth/middleware/serialization-shaping dependency -- the HTTP
-    round trip added nothing a direct call doesn't already prove."""
-    import json
-
-    import server as srv
-
-    edb = EdDB(tmp_path / "st.db")
-    now = 1.0
-    edb.logging_universe_sync_core(["SPY"], now)
-    monkeypatch.setattr("db._db_instance", edb)
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-    monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
-    monkeypatch.delenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", raising=False)
-    prev = list(srv.CORE_TICKERS)
-    try:
-        srv.CORE_TICKERS[:] = ["SPY"]
-        with srv._logger_lock:
-            srv._logger_tickers[:] = ["SPY"]
-        body = json.loads(srv.logger_status().body)
-        pol = body.get("user_persisted_enrollment_policy")
-        assert pol is not None
-        assert pol.get("fifo_eviction_enabled") is False
-        assert pol.get("unlimited_user_persisted") is True
-    finally:
-        srv.CORE_TICKERS[:] = prev

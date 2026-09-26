@@ -113,34 +113,3 @@ def test_blind_reconstruction_single_query(tmp_path, release_ready):
     assert payload["ticker"] == "QQQ"
 
 
-def test_api_decision_endpoint(tmp_path, release_ready, monkeypatch):
-    monkeypatch.setenv("ED_DISABLE_STARTUP_ANALYTICS_WARM", "1")
-    from starlette.testclient import TestClient
-
-    import db as db_mod
-    import server as srv
-
-    db_path = tmp_path / "api.db"
-    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-
-    from live_decision_bundle import persist_stamped_decision, stamp_decision_bundle
-
-    ms = {
-        "ticker": "SPY",
-        "spot": 510.0, "prior_close": 510.0,
-        "call_signal": "wait",
-        "mhap_rows": [],
-        "fusion_by_horizon": {},
-        "validation_summary": "x",
-    }
-    stamp_decision_bundle(ms, route=_PRODUCTION_ROUTE)
-    persist_stamped_decision(ms, route=_PRODUCTION_ROUTE, db_path=db_path)
-
-    with TestClient(srv.app) as client:
-        r = client.get(f"/api/decision/{ms['decision_id']}")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["ok"] is True
-        assert body["reconstruction_complete"] is True
-        assert body["decision"]["decision_id"] == ms["decision_id"]

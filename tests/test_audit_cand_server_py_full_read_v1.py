@@ -273,10 +273,12 @@ def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
 
 
 # FIND-SERVERPY-6
-def test_price_levels_cache_sec_at_module_level():
+def test_price_levels_carry_is_generation_keyed_not_a_wall_clock_ttl():
     import server
 
-    assert server.PRICE_LEVELS_CACHE_SEC == 15
+    # PRICE_LEVELS_CACHE_SEC (15s) was already retired as a TTL (RC-416) and nothing read it;
+    # it was deleted with the uncalled routes. The carry must never re-grow a wall-clock TTL.
+    assert not hasattr(server, "PRICE_LEVELS_CACHE_SEC")
     src = _fn_src("_fetch_state")
     assert "_PL_CACHE_SEC" not in src
     assert "carried_price_levels_match_snapshot" in src
@@ -388,26 +390,6 @@ def test_stack_mode_value_is_authority_only():
 
 
 # FIND-SERVERPY-17
-def test_prediction_override_rejects_empty_direction():
-    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
-    The rejection is authored by the handler itself -- `d = (direction or "").strip()
-    .lower()` then `raise HTTPException(status_code=400, ...)` -- not by FastAPI
-    request validation: both params are plain `str = Query(...)`, and an empty query
-    value binds to the empty string, which is exactly what is passed here. FastAPI's
-    only role is translating the raised HTTPException into a response, which is
-    framework behavior, not this endpoint's contract; asserting the raised exception
-    and its status_code proves the same rejection with the same specificity."""
-    import pytest
-    from fastapi import HTTPException
-
-    import server
-
-    with pytest.raises(HTTPException) as exc:
-        server.prediction_override(ticker="SPY", direction="", source="user")
-    assert exc.value.status_code == 400
-    assert "up, flat, or down" in str(exc.value.detail)
-
-
 # FIND-SERVERPY-18
 def test_tradeable_score_calls_liquidity_engine_authority():
     src = _fn_src("_liquidity_zone_tradeable_fields")
@@ -416,46 +398,6 @@ def test_tradeable_score_calls_liquidity_engine_authority():
 
 
 # FIND-SERVERPY-19
-def test_debug_prediction_returns_populated_distribution(monkeypatch):
-    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
-    debug_prediction is `(ticker: str)` -- a plain required parameter, not even
-    a Query -- returning a bare dict. Its fail-closed R-011 gate is a plain
-    os.environ read INSIDE the function body, and the NEGATIVE side of that gate
-    (404 without the flag) is separately and deliberately proven over real HTTP by
-    tests/adversarial/test_remaining_route_inventory.py::
-    test_r011_debug_endpoint_blocked_without_flag, which stays on TestClient. This
-    test only covers the positive-path body shape, which the direct call reproduces."""
-    import server
-
-    # /api/debug/prediction is fail-closed gated (R-011): it 404s unless
-    # ED_ALLOW_DEBUG_ENDPOINTS is enabled. Enable it for this test only
-    # (monkeypatch auto-reverts) — the production gate is unchanged.
-    monkeypatch.setenv("ED_ALLOW_DEBUG_ENDPOINTS", "1")
-
-    with patch.object(server, "_fetch_state") as fs:
-        fs.return_value = {
-            "zone": "pin_bull",
-            "vwap_side": "above",
-            "bias_signal": "neutral",
-            "pin_strength": 0.5,
-            "net_delta": 0,
-            "net_gamma": 0,
-            "gex_magnitude": 0,
-            "dex_magnitude": 0,
-            "samples_used": 1,
-            "model_note": "test",
-            "session_bucket": "RTH",
-            "vix_bucket": "low",
-        }
-        with patch.object(server, "get_db") as gdb:
-            gdb.return_value = MagicMock(
-                get_zone_distribution=MagicMock(return_value={"pin_bull": 3})
-            )
-            body = server.debug_prediction(ticker="SPY")
-    assert "error" not in body
-    assert body.get("db_zone_distribution") == {"pin_bull": 3}
-
-
 # FIND-SERVERPY-20 / cross-cutting
 def test_server_module_imports_with_strict_name_resolution():
     src = _server_src()

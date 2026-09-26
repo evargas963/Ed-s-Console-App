@@ -241,6 +241,15 @@ def test_skip_and_error_dicts_share_one_ticker_normalisation():
         server._clear_terrain_skips()
 
 
+def _drop_quarantine(tk: str) -> None:
+    """Test cleanup: forget a fixture ticker's quarantine state directly. Cleanup must not
+    depend on (or append an operator_release row through) the operator release path."""
+    with server._terrain_quarantine_lock:
+        server._terrain_quarantine.pop(tk, None)
+        server._terrain_consecutive_fails.pop(tk, None)
+        server._terrain_quarantine_skips.pop(tk, None)
+
+
 def test_hard_rejection_quarantines_and_stops_touching_the_gate():
     """RC-148: RTY/XXT were re-requested every ~60s all session for a symbol Schwab answers with
     HTTP 400 — two wasted slots per minute out of a 2-slot gate. Visibility alone is not a fix;
@@ -274,10 +283,7 @@ def test_hard_rejection_quarantines_and_stops_touching_the_gate():
         assert server._terrain_quarantine_blocks(tk) is False
         assert server.terrain_quarantine_state(tk) == {}
     finally:
-        with server._terrain_quarantine_lock:
-            server._terrain_quarantine.pop(tk, None)
-            server._terrain_consecutive_fails.pop(tk, None)
-            server._terrain_quarantine_skips.pop(tk, None)
+        _drop_quarantine(tk)
 
 
 def test_soft_failure_backs_off_and_self_releases():
@@ -297,7 +303,7 @@ def test_soft_failure_backs_off_and_self_releases():
         assert server._terrain_quarantine_blocks(tk) is False, "soft hold failed to self-release"
         assert server.terrain_quarantine_state(tk) == {}
     finally:
-        server.terrain_quarantine_release(tk)
+        _drop_quarantine(tk)
 
 
 def test_success_clears_the_failure_streak():
@@ -315,7 +321,7 @@ def test_success_clears_the_failure_streak():
             "the streak survived a success, so non-consecutive failures accumulate to eviction"
         )
     finally:
-        server.terrain_quarantine_release(tk)
+        _drop_quarantine(tk)
 
 
 def test_quarantine_state_is_distinguishable_from_pause_and_failure():
@@ -338,7 +344,7 @@ def test_quarantine_state_is_distinguishable_from_pause_and_failure():
         assert n["levels_quarantined"] is True and n["levels_failing"] is True
         assert "QUARANTINED" in n["levels_stale_reason"]
     finally:
-        server.terrain_quarantine_release(tk)
+        _drop_quarantine(tk)
 
 
 def _fake_chain(n_expiries: int, spot: float = 7400.0) -> list:

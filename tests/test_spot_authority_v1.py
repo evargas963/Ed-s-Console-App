@@ -104,25 +104,6 @@ def _cold_quote_memo():
         server._quote_memo.clear()
 
 
-def test_spot_from_quote_actually_returns_the_quote_price(monkeypatch) -> None:
-    """THE RC-15 REGRESSION TEST.
-
-    An earlier version of this file only asserted the parser's key contract, which still
-    passed when `_spot_from_quote` read the wrong key -- a test that cannot fail is not a
-    test. This drives the real function with a stubbed transport and asserts the value
-    comes back, which is what actually broke.
-    """
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(
-        server, "safe_get_quote",
-        lambda _client, tk, **_kw: _FakeResp({tk: {"quote": {"lastPrice": 742.49,
-                                                      "tradeTime": 1_784_491_628_000}}}),
-    )
-    spot, trade_time = server._spot_from_quote("SPY")
-    assert spot == 742.49, "the quote leg must return the quote price, not None"
-    assert trade_time is not None
-
-
 def test_resolve_spot_never_serves_a_rest_quote(monkeypatch) -> None:
     """SPOT is the streamed LAST_PRICE only (operator rule 2026-09-23: no fallbacks). A REST
     quote being available changes nothing: with no fresh streamed row, spot is UNAVAILABLE."""
@@ -273,7 +254,7 @@ def test_cached_terrain_is_repriced_against_a_live_spot(monkeypatch) -> None:
     monkeypatch.setitem(L._by_ticker, "SPY", _streamed_row("SPY", 744.93))
 
     cached = {
-        "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
+        "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_PLANE,  # the loop's own stamp, 60s old
         "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
         "gamma_flip": 745.00, "call_wall": 750.0, "put_wall": 740.0,
         "headline": "stale", "lines": ["stale"],
@@ -318,7 +299,7 @@ def test_terrain_ENDPOINT_serves_live_spot_from_a_cached_payload(monkeypatch) ->
     import live_market_plane as L
     monkeypatch.setitem(L._by_ticker, "SPY", _streamed_row("SPY", 744.93))
     monkeypatch.setitem(server._terrain_cache, "SPY", {
-        "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_SNAPSHOT,
+        "ticker": "SPY", "spot": 745.10, "spot_source": server.SPOT_SOURCE_PLANE,  # the loop's own stamp, 60s old
         "confidence": "TRUSTED", "regime": "LONG_GAMMA_CHOP", "posture": "FADE_EDGES",
         "gamma_flip": 745.00, "call_wall": 750.0, "put_wall": 740.0,
         "headline": "stale", "lines": ["stale"],
@@ -530,12 +511,20 @@ def test_project_l1_withholds_a_stale_plane_spot(monkeypatch) -> None:
 class _StubQuoteResp:
     status_code = 200
     def json(self):
-        return {"SPY": {"quote": {"lastPrice": 700.25, "tradeTime": 1785250000000}}}
+        return {"SPY": {"quote": {"lastPrice": 700.25, "tradeTime": 1785250000000},
+                        "fundamental": {"avg10DaysVolume": 12345.0}}}
 
 
 def test_quote_memo_one_vendor_call_serves_both_paths(monkeypatch):
-    """The OPEN_ITEMS acceptance verbatim: one vendor call serves both paths inside the TTL."""
+    """The OPEN_ITEMS acceptance verbatim: one vendor call serves both paths inside the TTL.
+
+    The second reader used to be `_spot_from_quote` (the REST spot leg); it was deleted with
+    the uncalled routes that used it, and spot is the streamed LAST_PRICE only
+    (test_schwab_stream_option_budget_v1::test_no_rest_quote_is_ever_consulted_for_spot).
+    The live second reader of the same memo is `_daily_quote_reference` (the quote's daily
+    fundamental block), so the shared-memo guarantee is proven through it."""
     import server as S
+    assert not hasattr(S, "_spot_from_quote"), "the REST spot leg is back"
     calls = {"n": 0}
     def fake(client, tk, attempt_hook=None):
         calls["n"] += 1
@@ -544,10 +533,13 @@ def test_quote_memo_one_vendor_call_serves_both_paths(monkeypatch):
     monkeypatch.setattr(S, "get_client", lambda force_refresh=False: object())
     with S._quote_memo_lock:
         S._quote_memo.clear()
-    S._memoized_quote_response("SPY")          # the fast lane's read
-    spot, ts = S._spot_from_quote("SPY")       # the math authority's read
+    with S._quote_reference_lock:
+        monkeypatch.delitem(S._quote_reference_by_ticker, "SPY", raising=False)
+    S._memoized_quote_response("SPY")                   # a direct memo reader
+    ref = S._daily_quote_reference("SPY", object())     # the daily-reference reader
     assert calls["n"] == 1, "two vendor calls inside the TTL — the memo is not shared"
-    assert spot == 700.25, "the shared read must still parse to the authority's spot"
+    assert ref.get("fundamental") == {"avg10DaysVolume": 12345.0}, (
+        "the shared read must still parse for the second reader")
     # Expiry: age the entry past the TTL and the vendor must be consulted again.
     with S._quote_memo_lock:
         k, (t, r) = next(iter(S._quote_memo.items()))
