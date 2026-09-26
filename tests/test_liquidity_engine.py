@@ -1009,22 +1009,6 @@ def test_max_zone_width():
     assert len(clusters_cap) >= len(clusters), "cap should produce more zones when width limited"
 
 
-def test_merge_live_overlay_overwrites_minute():
-    from liquidity_value_engine import merge_schwab_bars_with_live_overlay
-
-    t0 = datetime(2026, 6, 15, 14, 30, 0, tzinfo=ET)
-    ts_ms = int(t0.timestamp() * 1000)
-    base = [
-        {"timestamp": ts_ms, "open": 100, "high": 101, "low": 99, "close": 100, "volume": 1000},
-    ]
-    over = [
-        {"timestamp": ts_ms, "open": 100, "high": 102, "low": 99, "close": 101.5, "volume": 50},
-    ]
-    m = merge_schwab_bars_with_live_overlay(base, over)
-    assert len(m) == 1
-    assert m[0]["close"] == 101.5
-
-
 def test_build_live_snapshot_smoke():
     """Live path runs without error on synthetic session bars."""
     from liquidity_value_engine import build_live_snapshot
@@ -1062,7 +1046,6 @@ def run_all():
     test_source_levels_use_actual_values()
     test_max_zone_width()
     test_build_live_snapshot_smoke()
-    test_merge_live_overlay_overwrites_minute()
     print("All liquidity engine tests passed.")
 
 

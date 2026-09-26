@@ -38,8 +38,13 @@ def test_every_row_is_schema_valid_and_none_is_bookkeeping():
     assert all(r.disposition != "NONE" for r in ROWS)
     # a row leaves only with its code: the 2026-09-25 unused-code prune removed 51 rows of 30
     # deleted files (600 -> 577); the uncalled-routes prune 21 rows of deleted server.py
-    # functions (577 -> 556)
-    assert len(ROWS) >= 556, "the consolidated rows lost provenance claims"
+    # functions (577 -> 556); the bars-from-the-stream change 17 rows of deleted code
+    # (polling_adapter.py x4, schwab_client.safe_get_price_history/safe_get_daily_price_history,
+    # server._CandleAccumulator x5, _bars_collect_one, _enrollment_history_seed,
+    # _parse_quote_node_session_fields, _radar_atr, _radar_atr_compute_into_cache,
+    # _radar_daily_atr_vendor_fallback) and added 2 for their live replacements
+    # (_atr_pair, _read_bars_1m) (556 -> 541)
+    assert len(ROWS) >= 541, "the consolidated rows lost provenance claims"
 
 
 def _qualified_defs(tree: ast.AST) -> set[str]:
@@ -153,9 +158,9 @@ def test_the_card_contract_fields_are_roots_or_declared_exclusions():
 
 
 # ── transport invariant (ported from the retired mega1 suite) ─────────────────────────────
-TRANSPORT_FILES = frozenset({"schwab_client.py", "reauth_schwab.py", "polling_adapter.py"})
-_SCHWAB_API = frozenset({"safe_get_quote", "safe_get_chain", "safe_get_price_history", "schwab_candles_to_bars"})
-_TRANSPORT_PREFIXES = ("schwab_client.py:", "polling_adapter.py:")
+TRANSPORT_FILES = frozenset({"schwab_client.py", "reauth_schwab.py"})
+_SCHWAB_API = frozenset({"safe_get_quote", "safe_get_chain", "schwab_candles_to_bars"})
+_TRANSPORT_PREFIXES = ("schwab_client.py:",)
 
 
 def _function_at_line(tree: ast.AST, lineno: int) -> str:
@@ -196,7 +201,7 @@ def test_no_direct_schwab_api_call_outside_a_transport_chain(repo_index):
     """Sourced from the shared `repo_index` corpus; scoped to the files that carry rows."""
     corpus = {rel.as_posix(): (text, tree) for rel, text, tree in repo_index.items()}
     files = sorted({r.file for r in ROWS if r.file in corpus})
-    call_re = re.compile(r"(?<![.\w])(safe_get_quote|safe_get_chain|safe_get_price_history|schwab_candles_to_bars)\s*\(")
+    call_re = re.compile(r"(?<![.\w])(safe_get_quote|safe_get_chain|schwab_candles_to_bars)\s*\(")
     violations = []
     for rel in files:
         if rel in TRANSPORT_FILES:

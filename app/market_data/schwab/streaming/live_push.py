@@ -42,7 +42,7 @@ LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: op
 
 #: topic prefix -> the only `src` forwarded for it
 _FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
-              "news.": "schwab_news"}
+              "news.": "schwab_news", "bar1m.": "schwab_chart"}
 
 
 def is_forwarded(topic: str, msg) -> bool:

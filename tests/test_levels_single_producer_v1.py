@@ -709,10 +709,11 @@ def test_forward_only_grandfather_old_rows_exempt_new_rows_enforced():
     assert _apply_forward_only_grandfather("single_spot_authority", [other]) == [other]
 
 
-def test_api_levels_truncated_accumulator_falls_through_to_banked(monkeypatch, tmp_path):
-    """t12 (RC-227 residual): a TRUNCATED prior session in the accumulator must not serve
-    a wrong PDL — coverage below the full-session floor falls through to banked bars.
-    Measured live: PDL 756.84 (truncated min) vs true 749.59 while PDH/PDC matched."""
+def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monkeypatch, tmp_path):
+    """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
+    live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
+    matched. price_bars_1m (written only from Schwab's streamed bars) is now the one bar
+    source, so the full prior session there must set every prior-day level."""
     import json
     import sqlite3
     from datetime import datetime as _dt
@@ -720,23 +721,13 @@ def test_api_levels_truncated_accumulator_falls_through_to_banked(monkeypatch, t
     import server as srv
     from time_et import ET
 
-    def _bar_ms(y, mo, d, h, mi, o, hi, lo, c):
-        return {"timestamp": int(_dt(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000),
-                "open": o, "high": hi, "low": lo, "close": c, "volume": 100.0}
-
-    # Accumulator: prior session PRESENT but only 3 bars — truncated tail, wrong low 756.
-    truncated = [
-        _bar_ms(2026, 8, 3, 15, 30, 757, 758, 756.84, 757),
-        _bar_ms(2026, 8, 3, 15, 59, 757, 758.58, 757, 757.67),
-        _bar_ms(2026, 8, 4, 9, 45, 758, 759, 757, 758),
-    ]
-    monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda t: truncated)
+    monkeypatch.setattr(srv._lpr, "forming_bar", lambda t: None)   # no forming minute
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (758.0, "schwab_quote_last", 1.0))
     import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 4, 10, 0, tzinfo=ET))
 
-    # Banked DB: the FULL prior session (390 bars) with the true low 749.59.
-    dbf = tmp_path / "bank.db"
+    # The FULL prior session (390 bars) with the true low 749.59 mid-session.
+    dbf = tmp_path / "bars.db"
     con = sqlite3.connect(str(dbf))
     con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, "
                 "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
@@ -746,7 +737,7 @@ def test_api_levels_truncated_accumulator_falls_through_to_banked(monkeypatch, t
         lo = 749.59 if i == 100 else 755.0
         con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
                     ("SPY", t0 + i * 60, t0 + i * 60 + 60, 756, 758.58 if i == 200 else 757,
-                     lo, 757.67 if i == 389 else 756, 100.0, "bank"))
+                     lo, 757.67 if i == 389 else 756, 100.0, "schwab_chart"))
     con.commit(); con.close()
 
     class _Db:
@@ -755,11 +746,11 @@ def test_api_levels_truncated_accumulator_falls_through_to_banked(monkeypatch, t
 
     payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
     by_id = {lv["id"]: lv for lv in payload["levels"]}
-    assert by_id["PDL"]["price"] == 749.59, (
-        "truncated accumulator served its partial min — the t12 fallthrough is dead"
-    )
-    assert "banked" in by_id["PDL"]["provenance"]["vendor_basis"], (
-        "provenance must name the banked source after the fallthrough"
+    assert by_id["PDL"]["price"] == 749.59, "PDL is not the full prior session's min"
+    assert by_id["PDH"]["price"] == 758.58
+    assert by_id["PDC"]["price"] == 757.67
+    assert "price_bars_1m" in by_id["PDL"]["provenance"]["vendor_basis"], (
+        "provenance must name the one bar source"
     )
 
 

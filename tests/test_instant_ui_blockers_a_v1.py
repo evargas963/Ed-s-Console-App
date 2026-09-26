@@ -78,20 +78,26 @@ def test_sse_dispatch_has_its_own_single_thread():
 
 
 def test_forming_bar_is_keyed_on_trade_time_only(monkeypatch):
+    """The forming minute (live_price_rows.forming_bar, the one forming-bar source) is placed on
+    the trade's own TRADE_TIME minute; the quote / receive clocks never stand in for it."""
+    import live_price_rows as lpr
     import server as srv
-    from tests.feed_live_helper import mark_feed_live
 
     tk = "ZZTT"
-    mark_feed_live(tk)
+    monkeypatch.setattr(lpr, "_forming", {})
+    monkeypatch.setattr(lpr, "_forming_seen", {})
+    # receive and quote clocks sit in the NEXT minute (..160); only TRADE_TIME is in ..100
     row = {"ticker": tk, "spot": 50.0, "quote_ingestion": "schwab_streaming_level_one",
-           "quote_source_detail": {"spot": "LAST_PRICE"}, "spot_received_ts": 1_700_000_130.0,
-           "server_received_ts": 1_700_000_130.0, "exchange_quote_ts": 1_700_000_130.0}
-    monkeypatch.setattr(srv._lmp, "get_quote", lambda t: dict(row) if t == tk else None)
-    monkeypatch.setattr(srv._candles_1m, "forming_bar", lambda t: None)
+           "quote_source_detail": {"spot": "LAST_PRICE"}, "spot_received_ts": 1_700_000_170.0,
+           "server_received_ts": 1_700_000_170.0, "exchange_quote_ts": 1_700_000_170.0}
+    monkeypatch.setattr(lpr.lmp, "get_quote", lambda t: dict(row) if t == tk else None)
     bars = [{"t": 1_700_000_100.0, "o": 49.0, "h": 49.5, "l": 48.5, "c": 49.2, "v": 5}]
-    # no TRADE_TIME: the quote clock / receive clock never stand in for the trade's minute
+    # no TRADE_TIME: no forming minute at all
+    lpr._note_trade(tk)
+    assert lpr.forming_bar(tk) is None
     assert srv.overlay_forming_bar_from_plane(bars, tk) == bars
     row["trade_ts"] = 1_700_000_130.0          # epoch SECONDS, as the plane stores TRADE_TIME (..100 minute)
+    lpr._note_trade(tk)
     out = srv.overlay_forming_bar_from_plane(bars, tk)
     assert len(out) == 1 and out[0]["t"] == 1_700_000_100.0
     assert (out[0]["c"], out[0]["h"], out[0]["l"]) == (50.0, 50.0, 48.5)

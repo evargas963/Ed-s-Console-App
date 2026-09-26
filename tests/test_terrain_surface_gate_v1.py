@@ -41,7 +41,7 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
     monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
-    monkeypatch.setattr(server, "_radar_atr", lambda t: types.SimpleNamespace(daily=None, m15=None))
+    monkeypatch.setattr(server, "_atr_pair", lambda t: types.SimpleNamespace(daily=None, m15=None))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(server, "project_gamma_surface", proj)
 

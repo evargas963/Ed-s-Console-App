@@ -70,33 +70,6 @@ def test_fetch_price_levels_skips_candle_missing_datetime():
     ) is None, "the ONE vendor ingestion point accepted a candle with no datetime"
 
 
-def test_candle_accumulator_seed_skips_missing_datetime():
-    from server import _CandleAccumulator
-
-    acc = _CandleAccumulator(bar_seconds=60, max_bars=25)
-    bars = [
-        {
-            "datetime": 1_710_000_000_000,
-            "open": 1.0,
-            "high": 2.0,
-            "low": 0.5,
-            "close": 1.5,
-            "volume": 100.0,
-        },
-        {
-            "open": 9.0,
-            "high": 9.0,
-            "low": 9.0,
-            "close": 9.0,
-            "volume": 9.0,
-        },
-    ]
-    acc.seed("SPY", bars)
-    seeded = acc.get_bars("SPY")
-    assert len(seeded) == 1
-    assert seeded[0].high == 2.0
-
-
 def test_returns_from_candles_skips_missing_datetime():
     from math_exposure_core import returns_from_candles
 

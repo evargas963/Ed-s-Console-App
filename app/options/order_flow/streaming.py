@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import queue
 import logging
 import threading
 import time
@@ -160,6 +161,8 @@ _option_contract_last_update_ts: dict[str, float] = {}
 #: ticker). Runs on the event loop, so it must return at once.
 _on_tick_callback: Optional[Callable[[str], None]] = None
 _tick_callback_failures = 0
+#: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
+streamed_bars: "queue.SimpleQueue[dict]" = queue.SimpleQueue()
 
 
 def _tick(sym: str) -> None:
@@ -306,6 +309,9 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         return None
     ts = float(ts)
     kind = topic.split(".", 1)[0]
+    if kind == "bar1m":
+        streamed_bars.put(msg)
+        return None
     if kind == "quote":
         item = msg.get("native")
         if not isinstance(item, dict):
