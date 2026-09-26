@@ -35,7 +35,7 @@ def _listed_paths(tree):
         for e in elts:
             s = _entry(e)
             if s and _PATH.match(s) and ("/" in s or s.endswith(".py")):
-                yield e.lineno, s.lstrip("./")
+                yield e.lineno, s
 
 
 def test_every_file_a_gate_lists_exists(repo_index):
