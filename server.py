@@ -1068,13 +1068,17 @@ _full_chain_parts_lock = threading.Lock()
 
 
 def _option_expiries(client, ticker: str) -> "list[date] | None":
-    """Every listed expiry for `ticker` from Schwab's expiration chain, ascending; None when
-    the vendor does not answer 200."""
+    """Every listed expiry for `ticker` that has not passed (ET date), ascending; None when the
+    vendor does not answer 200. MEASURED 2026-09-26 (Saturday): the expiration chain still lists
+    Friday's expired 2026-09-25, and a chain request whose fromDate is in the past is refused
+    with HTTP 400 ("Check Param Values") -- the same range from today answers 200."""
     resp = client.get_option_expiration_chain(ticker)
     if resp is None or resp.status_code != 200:
         return None
-    out = sorted({date.fromisoformat(str(e["expirationDate"])[:10])
-                  for e in (resp.json().get("expirationList") or []) if e.get("expirationDate")})  # external-key-ok: Schwab expiration chain response
+    today = now_et().date()
+    out = sorted({d for d in (date.fromisoformat(str(e["expirationDate"])[:10])
+                              for e in (resp.json().get("expirationList") or []) if e.get("expirationDate"))  # external-key-ok: Schwab expiration chain response
+                  if d >= today})
     return out
 
 
@@ -1172,10 +1176,9 @@ def _listed_expiries(client, ticker: str) -> "list[date] | None":
     hit = _expiry_list_cache.get(key)
     if hit is not None and time.monotonic() - hit[0] < _EXPIRY_LIST_TTL_SEC:
         return hit[1]
-    exps = _option_expiries(client, tk)
-    if exps is None:
+    listed = _option_expiries(client, tk)
+    if listed is None:
         return None
-    listed = [e for e in exps if e >= today]
     _expiry_list_cache[key] = (time.monotonic(), listed)
     return listed
 
@@ -10453,9 +10456,11 @@ _terrain_skip_lock = threading.Lock()
 #: 60 s against a 2-slot chain gate, indefinitely. A permanently-rejected symbol is not a
 #: transient error to retry — it is a symbol that will never answer, and retrying it spends a
 #: scarce vendor slot the healthy book needs. Hard rejections (HTTP 4xx: the symbol itself is
-#: refused) quarantine PERMANENTLY after TERRAIN_QUARANTINE_HARD_FAILS consecutive hits and stay
-#: out until an operator re-admits. Soft failures (timeout / 5xx / 429: the venue is busy, the
-#: symbol is fine) back off exponentially and re-admit themselves.
+#: refused) hold the ticker out after TERRAIN_QUARANTINE_HARD_FAILS consecutive hits until the
+#: next ET day, when it is tried again -- a 4xx can be our own request's fault (2026-09-26: every
+#: ticker was refused all weekend for asking for Friday's expired expiry), and a hold nobody
+#: lifts would keep a real instrument dark. Soft failures (timeout / 5xx / 429: the venue is
+#: busy, the symbol is fine) back off exponentially and re-admit themselves.
 TERRAIN_QUARANTINE_HARD_FAILS: int = 3
 TERRAIN_QUARANTINE_SOFT_BASE_SEC: float = 60.0
 TERRAIN_QUARANTINE_SOFT_MAX_SEC: float = 900.0
@@ -10522,11 +10527,10 @@ def terrain_quarantine_reason(ticker: str | None) -> str:
         e = _terrain_quarantine.get(tk)
         if not e:
             return ""
-        if e.get("permanent"):
+        if e.get("hard"):
             return (f"QUARANTINED after {e.get('failures')} consecutive hard rejections — "
-                    f"{e.get('reason')}. The vendor refuses this symbol, so the loop has stopped "
-                    f"requesting it; it stays out until an operator re-admits it "
-                    f"(POST /api/terrain/quarantine/release?ticker={tk})")
+                    f"{e.get('reason')}. The vendor refused this symbol, so the loop has stopped "
+                    f"requesting it until the next ET day, when it is tried again")
         # RC-281: every constructor supplies until_ts, so absence is MALFORMED STATE, not
         # "no cooldown". My earlier reason claimed the latter; Cursor's runtime probe showed
         # it releases the hold and erases the entry, turning an invariant failure into an
@@ -10549,9 +10553,6 @@ def _terrain_quarantine_blocks(tk: str) -> bool:
         e = _terrain_quarantine.get(tk)
         if not e:
             return False
-        if e.get("permanent"):
-            _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
-            return True
         # RC-281: fail CLOSED on a malformed hold. `or 0.0` dated the expiry to 1970, so the
         # branch never fired, the entry was popped, and the ticker went straight back into
         # rotation — the opposite of a quarantine, reached by a missing field.
@@ -10560,8 +10561,8 @@ def _terrain_quarantine_blocks(tk: str) -> bool:
         if until is None or now < until:
             _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
             return True
-        _terrain_quarantine.pop(tk, None)      # soft hold expired — back into the rotation
-    _quarantine_ledger_append("soft_release", tk, {"note": "backoff elapsed, retrying"})
+        _terrain_quarantine.pop(tk, None)      # hold expired — back into the rotation
+    _quarantine_ledger_append("hold_expired", tk, {"note": "hold elapsed, retrying"})
     return False
 
 
@@ -10580,19 +10581,22 @@ def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
         _terrain_consecutive_fails[tk] = n
         if n >= TERRAIN_QUARANTINE_HARD_FAILS:
             if kind == "hard":
-                already = bool(_terrain_quarantine.get(tk, {}).get("permanent"))
-                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "permanent": True,
-                                           "since_ts": time.time(), "until_ts": None,
-                                           "kind": kind}
+                already = bool(_terrain_quarantine.get(tk, {}).get("hard"))
+                next_day = (now_et() + timedelta(days=1)).replace(hour=0, minute=0, second=0,
+                                                                  microsecond=0)
+                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "hard": True,
+                                           "since_ts": time.time(),
+                                           "until_ts": next_day.timestamp(), "kind": kind}
                 if not already:
-                    log_msg = ("terrain QUARANTINE (permanent) %s after %d hard rejections: %s",
-                               tk, n, reason)
-                    ledger = ("quarantine_permanent", {"failures": n, "reason": reason})
+                    log_msg = ("terrain QUARANTINE %s until the next ET day after %d hard "
+                               "rejections: %s", tk, n, reason)
+                    ledger = ("quarantine_hard", {"failures": n, "reason": reason,
+                                                  "until_et": next_day.isoformat()})
             else:
                 wait = min(TERRAIN_QUARANTINE_SOFT_MAX_SEC,
                            TERRAIN_QUARANTINE_SOFT_BASE_SEC
                            * (2 ** (n - TERRAIN_QUARANTINE_HARD_FAILS)))
-                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "permanent": False,
+                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "hard": False,
                                            "since_ts": time.time(),
                                            "until_ts": time.time() + wait, "kind": kind}
                 log_msg = ("terrain backoff %s for %.0fs after %d failures: %s",
@@ -10611,12 +10615,12 @@ def _note_terrain_success(tk: str) -> None:
     with _terrain_quarantine_lock:
         _terrain_consecutive_fails.pop(tk, None)
         had = _terrain_quarantine.pop(tk, None)
-    if had and not had.get("permanent"):
+    if had:
         _quarantine_ledger_append("cleared_by_success", tk, {})
 
 
 def terrain_quarantine_release(ticker: str) -> dict:
-    """Operator re-admission. Explicit, logged, and the ONLY way out of a permanent hold."""
+    """Operator re-admission before a hold expires. Explicit and logged."""
     tk = ticker_storage_key(ticker)
     with _terrain_quarantine_lock:
         had = _terrain_quarantine.pop(tk, None)
@@ -11043,7 +11047,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
     quarantined = terrain_quarantine_reason(ticker)
     failure = "" if (skipped or quarantined) else str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
-    hard_quarantine = bool(q_entry.get("permanent"))
+    hard_quarantine = bool(q_entry.get("hard"))
     if computed_ts_utc is None:
         return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
                 "levels_stale_reason": (
@@ -11905,7 +11909,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # the endpoint can tell the operator WHY instead of an eternal shrug.
         _terrain_refresh_last_error[tk] = f"{type(e).__name__}: {e}"
         # RC-148: an exception is never a symbol rejection (those arrive as a 4xx RESPONSE), so
-        # it always classifies soft — backoff, never a permanent hold. A crash in our own code
+        # it always classifies soft — backoff, never a hard hold. A crash in our own code
         # must not be able to evict a real instrument from the board.
         _note_terrain_failure(tk, f"{type(e).__name__}: {e}", "soft")
         log.warning("terrain refresh %s failed: %s", tk, e, exc_info=True)
@@ -12651,7 +12655,7 @@ def get_terrain_producer_diagnostics():
 
 @app.post("/api/terrain/quarantine/release")
 def post_terrain_quarantine_release(ticker: str = Query(...)):
-    """Operator re-admission — the ONLY exit from a permanent hold, and it is logged.
+    """Operator re-admission before a hold expires, and it is logged.
 
     A quarantine with no way back is a deletion the operator never approved, so this exists in
     the same commit as the quarantine itself rather than as a follow-up.

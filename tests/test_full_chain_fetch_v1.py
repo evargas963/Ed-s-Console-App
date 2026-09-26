@@ -158,3 +158,24 @@ def test_vectorized_gamma_profile_equals_the_per_contract_black_scholes_loop():
                     if g is not None:
                         ref += ml._dealer_sign(sign, model) * g * oi * mult * s * s * 0.01
                 assert math.isclose(total, ref, rel_tol=1e-9, abs_tol=1e-6), (name, model, s, total, ref)
+
+
+def test_an_expired_listed_expiry_is_never_requested(vendor, monkeypatch):
+    """MEASURED 2026-09-26 (Saturday): Schwab's expiration list still carries Friday's expired
+    expiry, and any chain request whose fromDate is in the past is refused with HTTP 400 -- every
+    board ticker failed all weekend and was quarantined. The expired listing is dropped before
+    the date ranges are built."""
+    v = vendor(3)
+    yesterday = srv.now_et().date() - timedelta(days=1)
+    monkeypatch.setattr(v, "get_option_expiration_chain", lambda ticker: _Resp(200, {
+        "expirationList": [{"expirationDate": e.isoformat()} for e in [yesterday, *_EXPIRIES]]}))
+    real = v.gated
+
+    def refuses_the_past(client, ticker, **kw):
+        if kw.get("from_date") is not None and kw["from_date"] < srv.now_et().date():
+            return _Resp(400), 0.1, 0.2
+        return real(client, ticker, **kw)
+    monkeypatch.setattr(srv, "_gated_safe_get_chain", refuses_the_past)
+    r = srv.fetch_full_chain(v, "ZZ")
+    assert r.status_code == 200, r.reason
+    assert all(lo >= srv.now_et().date() for lo, _hi in v.calls[1:])

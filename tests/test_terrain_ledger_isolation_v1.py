@@ -53,7 +53,7 @@ def test_mid_test_server_import_cannot_bind_the_tracked_ledger():
         server._note_terrain_failure(
             "ZZLATEIMPORT", "synthetic hard rejection (isolation prover)", "hard")
     entry = server.terrain_quarantine_state("ZZLATEIMPORT")
-    assert entry.get("permanent") is True, entry
+    assert entry.get("hard") is True, entry
     text = Path(override).read_text(encoding="utf-8") if Path(override).exists() else ""
     assert "ZZLATEIMPORT" in text, "the quarantine write did not land in the override file"
 '''

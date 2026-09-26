@@ -243,8 +243,9 @@ def test_skip_and_error_dicts_share_one_ticker_normalisation():
 
 def test_hard_rejection_quarantines_and_stops_touching_the_gate():
     """RC-148: RTY/XXT were re-requested every ~60s all session for a symbol Schwab answers with
-    HTTP 400 — two permanently-wasted slots per minute out of a 2-slot gate. Visibility alone is
-    not a fix; the retry must actually STOP."""
+    HTTP 400 — two wasted slots per minute out of a 2-slot gate. Visibility alone is not a fix;
+    the retry must actually STOP -- until the next ET day, when the symbol is tried again (a 4xx
+    can be our own request's fault: 2026-09-26 every ticker was refused all weekend)."""
     tk = "ZZTESTHARD"
     try:
         msg = "chain fetch failed (HTTP 400)"
@@ -257,24 +258,26 @@ def test_hard_rejection_quarantines_and_stops_touching_the_gate():
         server._note_terrain_failure(tk, msg, "hard")
         assert server._terrain_quarantine_blocks(tk) is True, "the retry storm was not stopped"
         st = server.terrain_quarantine_state(tk)
-        assert st["permanent"] is True and st["failures"] >= server.TERRAIN_QUARANTINE_HARD_FAILS
+        assert st["hard"] is True and st["failures"] >= server.TERRAIN_QUARANTINE_HARD_FAILS
+        from datetime import timedelta
+        next_day = (server.now_et() + timedelta(days=1)).replace(hour=0, minute=0, second=0,
+                                                                  microsecond=0)
+        assert st["until_ts"] == next_day.timestamp(), "a hard hold lasts until the next ET day"
         why = server.terrain_quarantine_reason(tk)
-        assert "QUARANTINED" in why and "re-admit" in why, (
-            "a hold with no stated way back is a deletion the operator never approved"
-        )
+        assert "QUARANTINED" in why and "next ET day" in why, "the hold must state its way back"
         # the producer must refuse BEFORE spending any vendor budget, priority or not
         assert server._terrain_refresh_one(tk, priority=True) == "skip:quarantined"
         assert server._terrain_quarantine_skips.get(tk, 0) >= 1, "avoided fetches are not counted"
-        # a permanent hold NEVER self-releases, however long you wait
+        # once the day turns, the symbol is tried again with no one lifting it
         with server._terrain_quarantine_lock:
             server._terrain_quarantine[tk]["until_ts"] = 0.0
-        assert server._terrain_quarantine_blocks(tk) is True
-        # ...only the operator releases it
-        out = server.terrain_quarantine_release(tk)
-        assert out["released"] is True
         assert server._terrain_quarantine_blocks(tk) is False
+        assert server.terrain_quarantine_state(tk) == {}
     finally:
-        server.terrain_quarantine_release(tk)
+        with server._terrain_quarantine_lock:
+            server._terrain_quarantine.pop(tk, None)
+            server._terrain_consecutive_fails.pop(tk, None)
+            server._terrain_quarantine_skips.pop(tk, None)
 
 
 def test_soft_failure_backs_off_and_self_releases():
@@ -286,7 +289,7 @@ def test_soft_failure_backs_off_and_self_releases():
         for _ in range(server.TERRAIN_QUARANTINE_HARD_FAILS):
             server._note_terrain_failure(tk, "chain fetch failed (HTTP timeout)", "soft")
         st = server.terrain_quarantine_state(tk)
-        assert st["permanent"] is False, "a timeout must never earn a permanent hold"
+        assert st["hard"] is False, "a timeout must never earn a hard hold"
         assert server._terrain_quarantine_blocks(tk) is True
         assert "backing off" in server.terrain_quarantine_reason(tk)
         with server._terrain_quarantine_lock:      # simulate the backoff elapsing
