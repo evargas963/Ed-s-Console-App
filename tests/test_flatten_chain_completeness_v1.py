@@ -3,8 +3,8 @@
 Uses banked complete captures (strike_range=ALL) that match live /api/chain this session:
   CDE 2026-09-04  — $0.50 strikes (10.5 … 26.5)
   CRWD 2026-09-18 — $0.25/$0.75 plus $0.50 (38.75, 41.25, …)
-No ticker-specific product branch. Reconstructs the Schwab nested map the same way
-/api/chain tests already do, then runs the live flatten_chain_contracts.
+No ticker-specific product branch. Rebuilds the Schwab nested map from the flat capture, then runs the live
+flatten_chain_contracts.
 """
 from __future__ import annotations
 
@@ -12,11 +12,19 @@ import json
 from pathlib import Path
 
 from server import flatten_chain_contracts
-from tests.test_chain_api_v1 import _chain_json_for
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _CDE = json.loads((_FIXTURES / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8"))
 _CDE_CONTRACTS = _CDE["chain"]
+
+
+def _chain_json_for(contracts):
+    """The Schwab callExpDateMap/putExpDateMap payload a flat contract list came from."""
+    out = {"callExpDateMap": {}, "putExpDateMap": {}}
+    for c in contracts:
+        side = "callExpDateMap" if c.get("putCall") == "CALL" else "putExpDateMap"
+        out[side].setdefault(f"{c['expirationDate'][:10]}:1", {}).setdefault(str(c["strikePrice"]), []).append(c)
+    return out
 
 
 def _symbols(contracts):
@@ -36,7 +44,6 @@ def test_flatten_preserves_real_cde_half_dollar_set():
     assert len(_frac(after)) == len(_frac(_CDE_CONTRACTS))
     strikes = {float(c["strikePrice"]) for c in after}
     assert 21.0 in strikes and 21.5 in strikes
-
 
 
 _CRWD = json.loads((_FIXTURES / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
