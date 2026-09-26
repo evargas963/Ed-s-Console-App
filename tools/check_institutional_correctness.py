@@ -247,6 +247,12 @@ CLOSE_COMMAND_CUTOVER = "2026-09-06"
 #: the required hardening check (RC-391: deleting the failing check is not paying the debt).
 #: Entries are removed once the retirement has landed on main; git keeps them.
 RETIRED_CHECKS: dict[str, str] = {
+    "decision_path_wired": "retired 2026-09-26 (operator): checked that call_engine.py wired the "
+                   "decision-path admission gate; the decision stack (call_engine, decision_gate, "
+                   "the ML models) was deleted with the analytics pipeline -- nothing left to wire.",
+    "admission_evidence_resolves": "retired 2026-09-26 (operator): resolved the evidence paths in "
+                   "config/decision_path_admissions.json; that registry and the decision gate that "
+                   "read it were deleted with the decision stack.",
     # 2026-09-11 (PR #239, RC-550): three registrations that measured something other than
     # the tree they were asked to judge.
     "venv_parity": "retired 2026-09-11: a property of the interpreter running the gate, not of "
@@ -2897,25 +2903,6 @@ def check_collect_window_single_law() -> list[Violation]:
 # retirement rows cited was superseded when the authority model was torn down).
 
 
-def check_admission_evidence_resolves() -> list[Violation]:
-    """ADMITTED decision-path rows: evidence paths must resolve (SR 11-7 / RSK-02).
-
-    WHAT WAS OBSERVED: empty registry already forces WAIT at runtime, but a future ADMITTED row
-    with vibe-string evidence refs would pass schema while citing nothing real — SR 11-7 validation
-    substance gap.
-
-    Rule: when config/decision_path_admissions.json lists ADMITTED entries, every evidence
-    field that is a repo path must resolve to an existing file (http URLs exempt). Empty list -> [].
-
-    HOW VALIDATED: tests/test_find_prove_locks_v1.py drives admission_evidence_resolves_violations.
-    """
-    try:
-        from tools.find_prove_locks import admission_evidence_resolves_violations
-    except ImportError:
-        from find_prove_locks import admission_evidence_resolves_violations  # type: ignore
-    p = REPO / "config" / "decision_path_admissions.json"
-    reasons = admission_evidence_resolves_violations()
-    return [Violation(p, 0, r) for r in reasons]
 
 
 def check_purged_cv_research() -> list[Violation]:
@@ -2984,24 +2971,6 @@ def check_prereg_before_confirmatory() -> list[Violation]:
     return out
 
 
-def check_decision_path_wired() -> list[Violation]:
-    """call_engine.compute_call must invoke evaluate_decision_path_admission (SR 11-7).
-
-    WHAT WAS OBSERVED: runtime gate exists but no commit-time AST proof that TRADE authority
-    cannot bypass admission — regression could re-wire around the gate silently.
-
-    Rule: call_engine.compute_call() source must call evaluate_decision_path_admission and surface
-    WAIT_BLOCKER_REASON_ADMISSION.
-
-    HOW VALIDATED: tests/test_find_prove_locks_v1.py strips the call -> BLOCK.
-    """
-    try:
-        from tools.find_prove_locks import decision_path_wired_violations
-    except ImportError:
-        from find_prove_locks import decision_path_wired_violations  # type: ignore
-    p = REPO / "call_engine.py"
-    reasons = decision_path_wired_violations()
-    return [Violation(p, 0, r) for r in reasons]
 
 
 # claude_cursor_guard_parity RETIRED (declared governance/retired_checks.md 2026-08-24;
@@ -3324,10 +3293,8 @@ CHECKS = [
     # operator-reviewed at merge (RC-475); honesty_guard.py itself stays on Stop.
     # find_prove_significance_substance REMOVED 2026-09-06 (bedrock PR B; declared): matched
     # significance vocabulary in staged prose. The structural Find&Prove checks stay below.
-    ("admission_evidence_resolves", check_admission_evidence_resolves, True),  # RC-210: SR 11-7 evidence paths
     ("purged_cv_research", check_purged_cv_research, True),  # RC-210: AFML no plain KFold
     ("prereg_before_confirmatory", check_prereg_before_confirmatory, True),  # RC-210: Arnott/COS prereg
-    ("decision_path_wired", check_decision_path_wired, True),  # RC-210: SR 11-7 AST TRADE gate
     ("collect_datasheet_staged", check_collect_datasheet_staged, True),  # RC-210: Gebru datasheets
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # 2026-09-25: full chain for level math
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted

@@ -11,7 +11,6 @@ Institutional sources mapped to detectable artifacts (research 7c2d87a8, 28 sour
 from __future__ import annotations
 
 import ast
-import json
 import re
 from pathlib import Path
 
@@ -57,36 +56,6 @@ def _path_resolves(ref: str) -> bool:
     return False
 
 
-def admission_evidence_resolves_violations(doc: dict | None = None) -> list[str]:
-    """SR 11-7: ADMITTED registry rows — every evidence ref must resolve to a repo file."""
-    if doc is None:
-        p = REPO / "config" / "decision_path_admissions.json"
-        try:
-            doc = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError) as e:
-            return [f"decision_path_admissions.json unreadable: {e}"]
-    admissions = doc.get("admissions") or []
-    if not admissions:
-        return []
-    out: list[str] = []
-    for rec in admissions:
-        if not isinstance(rec, dict) or str(rec.get("status") or "").strip() != "ADMITTED":
-            continue
-        comp = rec.get("component", "?")
-        evidence = rec.get("evidence")
-        if not isinstance(evidence, dict):
-            out.append(f"{comp}: evidence block missing for ADMITTED row")
-            continue
-        for field, val in evidence.items():
-            s = str(val or "").strip()
-            if not s or s.startswith("http://") or s.startswith("https://"):
-                continue
-            if not _path_resolves(s):
-                out.append(
-                    f"{comp}: evidence.{field}={s!r} does not resolve — ADMITTED paths must "
-                    f"exist (SR 11-7 / RSK-02)",
-                )
-    return out
 
 
 def prereg_confirmatory_violations(text: str, *, rel: str = "", file_dir: Path | None = None) -> list[str]:
@@ -146,32 +115,6 @@ def purged_cv_violations(source: str, *, rel: str = "") -> list[str]:
     ]
 
 
-def decision_path_wired_violations(source: str | None = None) -> list[str]:
-    """SR 11-7 fail-closed: compute_call must call evaluate_decision_path_admission before TRADE."""
-    p = REPO / "call_engine.py"
-    if source is None:
-        try:
-            source = p.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            return ["call_engine.py missing — decision path gate unwired"]
-    if not re.search(r"\bevaluate_decision_path_admission\s*\(", source):
-        return ["call_engine.py does not call evaluate_decision_path_admission() (SR 11-7 WAIT gate)"]
-    if "WAIT_BLOCKER_REASON_ADMISSION" not in source:
-        return ["call_engine.py missing WAIT_BLOCKER_REASON_ADMISSION — admission WAIT not surfaced"]
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "compute_call":
-            fn_src = ast.get_source_segment(source, node) or ""
-            if not re.search(r"\bevaluate_decision_path_admission\s*\(", fn_src):
-                return [
-                    "compute_call() does not invoke evaluate_decision_path_admission() — "
-                    "unadmitted TRADE path possible (SR 11-7)",
-                ]
-            break
-    return []
 
 
 # claude_cursor_parity_violations RETIRED with check_claude_cursor_guard_parity
