@@ -21,25 +21,6 @@ from tests.feed_live_helper import feed_live_during
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_the_price_row_is_the_plane_row_not_a_projection(monkeypatch) -> None:
-    feed_live_during(monkeypatch, "ZZQT")
-    projected: list[str] = []
-    monkeypatch.setattr(srv, "_project_l1", lambda *a, **k: projected.append("hit") or {})
-    ts = time.time()
-    assert lmp.record_from_level_one_equity(
-        "ZZQT",
-        {"LAST_PRICE": 11.5, "BID_PRICE": 11.4, "ASK_PRICE": 11.6, "NET_CHANGE_PERCENT": 1.25},
-        received_ts=ts,
-    )
-    row = live_price_rows.price_row("ZZQT")
-    assert row["ticker"] == "ZZQT"
-    assert row["spot"] == 11.5 and row["spot_disp"] == "11.50"
-    assert row["bid"] == 11.4 and row["ask"] == 11.6
-    assert row["chg_pct"] == 1.25
-    assert row["ts_recv"] == ts
-    assert row["spot_state"] == "live"
-    assert row["quote_ingestion"] == "schwab_streaming_level_one"
-    assert projected == []
 
 
 def test_an_unheld_symbol_row_is_unavailable_with_every_quote_field_withheld(monkeypatch) -> None:

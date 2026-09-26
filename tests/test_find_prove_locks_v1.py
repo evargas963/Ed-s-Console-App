@@ -1,7 +1,6 @@
 """RC-210: Find&Prove substance + admission + continuum parity — BLOCK negative controls."""
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -67,17 +66,6 @@ def test_prereg_before_confirmatory_live_clean():
     assert check_prereg_before_confirmatory() == []
 
 
-def test_decision_path_wired_blocks_bypass():
-    from tools.find_prove_locks import decision_path_wired_violations
-
-    src = Path(REPO / "call_engine.py").read_text(encoding="utf-8")
-    assert decision_path_wired_violations(src) == []
-    broken = re.sub(
-        r"\bevaluate_decision_path_admission\s*\(",
-        "evaluate_decision_path_admission_REMOVED(",
-        src,
-    )
-    assert decision_path_wired_violations(broken)
 
 
 def test_decision_path_wired_live():

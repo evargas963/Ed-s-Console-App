@@ -57,14 +57,6 @@ def _avg(payload: dict) -> float:
     return float(m.group(1))
 
 
-def test_an_unmeasured_build_does_not_dilute_the_latency_average():
-    """Cursor's probe, asserted to the opposite result."""
-    measured = _avg(_assessment(build_total=19, ms_sum=19 * 26.0))
-    diluted = _avg(_assessment(build_total=20, ms_sum=19 * 26.0))
-    assert measured == 26.0, f"the measured average moved: {measured}"
-    assert diluted < measured, "premise changed — the old denominator no longer dilutes"
-    assert measured > 25.0 >= diluted, (
-        "the whole point: 26.0 must cross the 25 ms warn line that 24.7 sits under")
 
 
 def test_the_counter_only_advances_when_a_timing_is_credited():

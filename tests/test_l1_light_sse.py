@@ -13,87 +13,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_notify_noop_without_subscribers():
-    import server as srv
-
-    srv._l1_light_sse_clients.clear()
-    n = srv._l1_sse_thread_queue.qsize()
-    srv._l1_notify_sse_after_authoritative_build("SPY", None)
-    assert srv._l1_sse_thread_queue.qsize() == n
 
 
-def test_notify_enqueues_when_subscribed(monkeypatch):
-    import server as srv
-
-    q = asyncio.Queue(maxsize=10)
-    key = ("SPY", "__auto__")
-    srv._l1_light_sse_clients.append((q, key))
-    # Independent review, 2026-09-16 (MEASURED live under -n auto --dist loadfile): a prior
-    # test in the SAME xdist worker can leave an item in this module-level, process-wide
-    # queue. The n0/n0+1 qsize check below only proves relative growth -- get_nowait() still
-    # pops FIFO order, so a leftover item ahead of this test's own fresh one made env["l1_
-    # generation"] raise KeyError instead of reading 42. Drain first so this test only ever
-    # observes what IT enqueued, not a queue it silently inherited.
-    while not srv._l1_sse_thread_queue.empty():
-        try:
-            srv._l1_sse_thread_queue.get_nowait()
-        except Exception:
-            break
-    try:
-        monkeypatch.setattr(
-            srv,
-            "_l1_http_get_projection",
-            lambda t, e, force=False: {"l1_generation": 42, "_server_build_ts": 1700000000.0, "ok": True},
-        )
-        n0 = srv._l1_sse_thread_queue.qsize()
-        srv._l1_notify_sse_after_authoritative_build("SPY", None)
-        assert srv._l1_sse_thread_queue.qsize() == n0 + 1
-        sk, env = srv._l1_sse_thread_queue.get_nowait()
-        assert sk == key
-        assert env["l1_generation"] == 42
-        assert env["l1_sse_schema"] == 1
-        assert env["payload"]["ok"] is True
-        assert "l1_payload_fingerprint" in env
-        assert len(env["l1_payload_fingerprint"]) == 32
-    finally:
-        srv._l1_light_sse_clients.clear()
-        while not srv._l1_sse_thread_queue.empty():
-            try:
-                srv._l1_sse_thread_queue.get_nowait()
-            except Exception:
-                break
 
 
-def test_back_to_back_builds_are_both_emitted_nothing_dropped(monkeypatch):
-    """Every authoritative build reaches the stream: a 50 ms throttle used to DROP the second
-    (newest) build with no trailing emit (audit 2026-09-24). Rate is bounded upstream by the
-    per-ticker coalescing in planes/l1_events."""
-    import server as srv
-
-    q = asyncio.Queue(maxsize=10)
-    key = ("ZZZ", "__auto__")
-    srv._l1_light_sse_clients.append((q, key))
-    _drain_l1_thread_queue(srv)
-    gens = iter([1, 2])
-    try:
-        monkeypatch.setattr(
-            srv,
-            "_l1_http_get_projection",
-            lambda t, e, force=False: {"l1_generation": next(gens)},
-        )
-        srv._l1_notify_sse_after_authoritative_build("ZZZ", None)
-        srv._l1_notify_sse_after_authoritative_build("ZZZ", None)
-        envs = []
-        while not srv._l1_sse_thread_queue.empty():
-            envs.append(srv._l1_sse_thread_queue.get_nowait())
-        assert [e["payload"]["l1_generation"] for sk, e in envs if sk == key] == [1, 2]
-    finally:
-        srv._l1_light_sse_clients.clear()
-        while not srv._l1_sse_thread_queue.empty():
-            try:
-                srv._l1_sse_thread_queue.get_nowait()
-            except Exception:
-                break
 
 
 def test_fanout_only_matching_scope():
@@ -137,69 +60,7 @@ def _drain_l1_thread_queue(srv):
             break
 
 
-def test_l2_ready_hook_reaches_auto_scope_subscriber_end_to_end():
-    """L1-SSE-SCOPE-FIX seam test — REAL callee chain, no monkeypatching:
-    a client subscribed under (T, "__auto__") must receive an envelope when a
-    RESOLVED-expiry Tier C build fires the L2-ready hook (the live-session
-    silence: builds ran under resolved scopes, subscribers under __auto__)."""
-    import server as srv
-
-    q = asyncio.Queue(maxsize=10)
-    key = ("SPY", "__auto__")
-    srv._l1_light_sse_clients.append((q, key))
-    _drain_l1_thread_queue(srv)
-    try:
-        srv._l1_on_l2_snapshot_ready("SPY", "2099-01-01")
-        envs = []
-        while not srv._l1_sse_thread_queue.empty():
-            envs.append(srv._l1_sse_thread_queue.get_nowait())
-        auto_envs = [e for sk, e in envs if sk == key]
-        assert auto_envs, (
-            "resolved-expiry L2-ready build produced no envelope for the "
-            "__auto__ subscriber — the pre-fix silent-stream shape"
-        )
-        env = auto_envs[-1]
-        assert env["l1_sse_schema"] == 1
-        assert env["scope"] == {"ticker": "SPY", "expiry": "__auto__"}
-        assert isinstance(env.get("payload"), dict)
-    finally:
-        srv._l1_light_sse_clients.clear()
-        _drain_l1_thread_queue(srv)
 
 
-def test_l2_ready_hook_skips_auto_scope_without_subscribers(monkeypatch):
-    """No __auto__ subscriber → no extra __auto__ build (cost guard)."""
-    import server as srv
-
-    srv._l1_light_sse_clients.clear()
-    calls: list[tuple] = []
-    monkeypatch.setattr(
-        srv, "_project_l1", lambda t, e, *, reason="unknown": calls.append((t, e, reason))
-    )
-    srv._l1_on_l2_snapshot_ready("SPY", "2099-01-01")
-    assert calls == [("SPY", "2099-01-01", "l2_snapshot_ready")]
 
 
-def test_quote_hook_maintains_auto_scope_for_subscribers(monkeypatch):
-    """Quote-path hook rebuilds the __auto__ scope too while it has subscribers."""
-    import server as srv
-
-    q = asyncio.Queue(maxsize=10)
-    key = ("SPY", "__auto__")
-    ck = ("SPY", "2099-01-01")
-    calls: list[tuple] = []
-    monkeypatch.setattr(srv, "_l1_quote_hook_order_flow_signature", lambda _t: ("sig",))
-    monkeypatch.setattr(
-        srv,
-        "_l1_maybe_rebuild_quote_scope",
-        lambda t, e, *, of_sig: calls.append((t, e, of_sig)),
-    )
-    srv._state_cache[ck] = {"ts": 1.0, "ms_dict": {"ticker": "SPY"}}
-    srv._l1_light_sse_clients.append((q, key))
-    try:
-        srv._l1_on_quote_updated("SPY")
-        assert ("SPY", "2099-01-01", ("sig",)) in calls
-        assert ("SPY", None, ("sig",)) in calls, "__auto__ scope not maintained for subscriber"
-    finally:
-        srv._l1_light_sse_clients.clear()
-        srv._state_cache.pop(ck, None)

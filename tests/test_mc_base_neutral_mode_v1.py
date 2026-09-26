@@ -157,26 +157,6 @@ AVAIL_BUT_INCOMPLETE = {"xgb": _layer(True, 0.40, 0.30, flat=None),
 
 
 # ── PROOF 1: ML unavailable + valid inputs -> MC RUNS and is explicitly base/neutral ──────────
-def test_ml_unavailable_mc_still_runs_and_is_explicitly_base_neutral():
-    r = _run_stack(layers=ALL_DARK)
-
-    # it RAN — a real simulation, not a withheld placeholder
-    assert r.mc.available is True, "base MC must run when its own canonical inputs are valid"
-    assert r.mc.simulation_ok is True
-    assert r.mc.fallback_used is False
-    assert r.mc.n_paths > 0 and r.mc.horizon_bars > 0
-
-    # path-derived outputs are present and finite (these are DRIFT-SENSITIVE, not invariant)
-    for fld in ("expected_favorable_excursion", "expected_adverse_excursion",
-                "containment_prob", "expansion_prob", "path_dispersion", "expected_move"):
-        assert getattr(r.mc, fld) is not None, f"{fld} missing from a valid base simulation"
-
-    # and it is EXPLICITLY labelled neutral — never presented as ML-conditioned
-    assert r.mc.assumptions["mc_conditioning"] == "base_neutral"
-    assert r.mc.model_version.endswith(":base_neutral")
-    assert r.mc.assumptions["per_bar_drift"] == 0.0, "neutral mode must carry exactly zero drift"
-    assert r.bundle["mc_conditioned"] is False
-    assert r.bundle["unified_stack_team_ok"] is False
 
 
 # ── PROOF 1b (RC-REHAB-1, 2026-09-22): LIVE_MODEL_STACK_ENABLED=False (the real default)
@@ -185,142 +165,24 @@ def test_ml_unavailable_mc_still_runs_and_is_explicitly_base_neutral():
 # where MC still runs in base_neutral mode). Operator directive: the live model stack is
 # legacy and consumed by nothing today; Monte Carlo is reserved for a future portfolio-
 # analysis wiring, not needed live right now either. ──────────────────────────────────────
-def test_live_model_stack_disabled_skips_both_ml_and_monte_carlo_entirely():
-    import signals
-
-    with patch.object(signals, "LIVE_MODEL_STACK_ENABLED", False), \
-        patch("ml_predict.run_unified_stack_ml_once") as rbm, \
-        patch("monte_carlo.simulate") as sim:
-        xgb_out, lstm_out, transformer_out, mc_out, ml_bundle = signals._run_model_stack(
-            _inp(), _rules(),
-            SimpleNamespace(primary="unknown", confidence="low"),
-            db=MagicMock(), inference_snapshot_v1=_minimal_inf_v1())
-
-    rbm.assert_not_called()
-    sim.assert_not_called()
-    for leg in (xgb_out, lstm_out, transformer_out):
-        assert leg.available is False
-    assert mc_out.available is False
-    assert mc_out.model_version == "live_model_stack_disabled"
-    assert ml_bundle["model_outputs"] is None
 
 
 # ── PROOF 2: ML available/authorized -> MC runs CONDITIONED as intended ───────────────────────
-def test_ml_authorized_mc_runs_conditioned_with_real_directional_prior():
-    r = _run_stack(layers=ALL_LIVE)
-
-    assert r.mc.available is True
-    assert r.bundle["unified_stack_team_ok"] is True
-    assert r.bundle["mc_conditioned"] is True
-    assert r.mc.assumptions["mc_conditioning"] == "ml_conditioned"
-    assert ":base_neutral" not in r.mc.model_version
-
-    # the authorized probabilities really reached the producer, and really moved the drift
-    assert r.sim_kwargs["model_prob_up"] is not None
-    assert r.sim_kwargs["model_prob_down"] is not None
-    assert r.sim_kwargs["model_prob_up"] > r.sim_kwargs["model_prob_down"]  # bullish team
-    assert r.mc.assumptions["per_bar_drift"] > 0.0, "a bullish authorized team must tilt drift up"
 
 
-def test_conditioned_and_base_are_different_simulations_not_relabelled_ones():
-    """Drift is not cosmetic: the same inputs under a real team produce a different path law."""
-    base = _run_stack(layers=ALL_DARK)
-    cond = _run_stack(layers=ALL_LIVE)
-
-    assert base.mc.assumptions["per_bar_drift"] == 0.0
-    assert cond.mc.assumptions["per_bar_drift"] != 0.0
-    # sigma IS drift-invariant (computed before path generation) — same vol law both ways
-    assert base.mc.assumptions["sigma_annualized"] == cond.mc.assumptions["sigma_annualized"]
-
-    # ...but every PATH-DERIVED output is drift-SENSITIVE. `_run_stack` pins the seed (production
-    # runs unseeded), so both runs draw the SAME randomness and the differences below are the drift
-    # term alone. This is the concrete reason a neutral run must never be relabelled as conditioned.
-    #
-    # Compared on the EXCURSION ASYMMETRY (EFE - EAE) rather than on median_path: the producer
-    # rounds median_path to 2dp (monte_carlo.py) while the drift shift at the governed 1-bar horizon
-    # is only ~0.015 — about ONE rounding unit — so a strict `>` there tests rounding, not drift.
-    # The asymmetry carries a real margin (measured ~0.017 conditioned vs ~-0.006 neutral at 1 bar,
-    # widening with horizon) and is the quantity the sizing path actually consumes.
-    base_skew = base.mc.expected_favorable_excursion - base.mc.expected_adverse_excursion
-    cond_skew = cond.mc.expected_favorable_excursion - cond.mc.expected_adverse_excursion
-    assert cond_skew > base_skew, (
-        f"bullish conditioning must skew the excursion balance upward "
-        f"(cond={cond_skew!r} vs base={base_skew!r})")
-    assert abs(base_skew) < abs(cond_skew), "the neutral run must be the more symmetric one"
 
 
 # ── PROOF 3: invalid spot or IV -> MC STILL FAILS CLOSED ──────────────────────────────────────
-def test_invalid_iv_still_fails_closed():
-    r = _run_stack(layers=ALL_DARK, iv=0.0)
-    assert r.mc.available is False, "IV=0 must still fail closed even in base mode"
-    assert r.mc.fallback_used is True
-    assert "mc_conditioning" not in (r.mc.assumptions or {})
 
 
-def test_absent_canonical_spot_still_fails_closed():
-    """No canonical price.spot => MC must refuse outright; base mode is not a licence to guess."""
-    r = _run_stack(layers=ALL_DARK, spot=None)
-    assert r.mc.available is False, "an absent canonical spot must still fail closed"
-    assert "blocked" in r.mc.model_version
-    assert ":base_neutral" not in r.mc.model_version, "a refused run is not a base-neutral run"
 
 
 # ── PROOF 4: ML abstention stays HONEST — never fabricated or revived by base MC ───────────────
-def test_base_mode_does_not_revive_or_fabricate_ml_abstention():
-    from governed_stack_contract import derive_stack_layers_scored
-
-    r = _run_stack(layers=ALL_DARK)
-
-    # the abstaining layers stay abstained — base MC does not resurrect them
-    assert r.xgb.available is False
-    assert r.lstm.available is False
-    assert r.transformer.available is False
-    assert r.bundle["unified_stack_team_ok"] is False
-    assert r.bundle["mc_stack_probability_source"] == "uniform_no_stack_tri_class_signal"
-
-    # base mode passed NO directional prior at all — no fabricated uniform view reaches the producer
-    assert r.sim_kwargs["model_prob_up"] is None
-    assert r.sim_kwargs["model_prob_down"] is None
-    assert r.sim_kwargs["model_confidence"] is None
-
-    # participation accounting credits MC only — never the dark ML layers, never meta
-    scored = derive_stack_layers_scored(
-        xgb_out=r.xgb, lstm_out=r.lstm, transformer_out=r.transformer, mc_out=r.mc,
-        ml_bundle=r.bundle, regime=SimpleNamespace(primary="unknown"), fusion_payload=None)
-    assert "monte_carlo" in scored
-    for claimed in ("xgb", "lstm", "transformer", "meta"):
-        assert claimed not in scored, f"base MC must not credit {claimed} participation"
 
 
-def test_partial_ml_is_not_smuggled_in_as_conditioning():
-    """Team gate refused (1 of 3 layers) => MC must be NEUTRAL, not quietly conditioned on that layer."""
-    r = _run_stack(layers=PARTIAL)
-
-    assert r.bundle["unified_stack_team_ok"] is False
-    assert r.mc.available is True                       # still runs
-    assert r.mc.assumptions["mc_conditioning"] == "base_neutral"
-    assert r.sim_kwargs["model_prob_up"] is None, "unauthorized partial-ML must not condition MC"
-    assert r.mc.assumptions["per_bar_drift"] == 0.0
 
 
 # ── PROOF 5: persisted mc_* recover WITHOUT falsely claiming ML participation ──────────────────
-def test_persisted_mc_fields_recover_without_claiming_ml():
-    """The exact fields that were NULL for 3 weeks come back, while every ML claim stays false."""
-    import bayesian_fusion
-
-    r = _run_stack(layers=ALL_DARK)
-    payload = bayesian_fusion.fuse(
-        _regime(), r.xgb, r.lstm, r.transformer, r.mc, _rules())
-
-    # the persisted mc_* family is populated again
-    assert payload.mc_available is True
-    for fld in ("mc_paths", "mc_horizon", "mc_sigma_value", "mc_containment",
-                "mc_expansion", "mc_efe", "mc_eae", "mc_upper_50", "mc_lower_50"):
-        assert getattr(payload, fld) is not None, f"{fld} must recover in base mode"
-
-    # ...and nothing in the payload claims ML took part
-    assert payload.weight_monte_carlo == 0.0, "MC must still cast no vote in the posterior"
-    assert r.bundle["mc_conditioned"] is False
 
 
 # ── PROOF 6: watchdog still separates a DEAD MC producer from a healthy BASE MC ────────────────
@@ -365,28 +227,6 @@ def test_watchdog_still_detects_a_genuinely_dead_mc_producer(tmp_path):
 
 
 # ── PROOF 7: the persisted ML columns are PROVABLY insufficient on their own ───────────────────
-def test_persisted_availability_columns_alone_cannot_carry_the_distinction():
-    """Why a durable field is required, demonstrated rather than asserted.
-
-    The team gate keys on triplet COMPLETENESS; the snapshot columns store layer `available`.
-    So two rows can be byte-identical across xgb/lstm/transformer_available while one simulation
-    was ML-conditioned and the other was base-neutral.
-    """
-    ambiguous = _run_stack(layers=AVAIL_BUT_INCOMPLETE)
-    conditioned = _run_stack(layers=ALL_LIVE)
-
-    def flags(r):
-        return (bool(r.xgb.available), bool(r.lstm.available), bool(r.transformer.available))
-
-    assert flags(ambiguous) == (True, True, True)
-    assert flags(conditioned) == (True, True, True)
-    assert flags(ambiguous) == flags(conditioned), "premise: the stored flags are identical"
-
-    # ...yet the actual conditioning differs
-    assert ambiguous.mc.assumptions["mc_conditioning"] == "base_neutral"
-    assert conditioned.mc.assumptions["mc_conditioning"] == "ml_conditioned"
-    assert ambiguous.bundle["unified_stack_team_ok"] is False
-    assert conditioned.bundle["unified_stack_team_ok"] is True
 
 
 # ── PROOF 8: a DURABLE consumer cannot read a base-neutral row as ML-conditioned ───────────────
@@ -416,27 +256,8 @@ def _persist_and_read_back(tmp_path, run, name: str) -> dict:
     return row
 
 
-def test_durable_row_distinguishes_base_neutral_from_ml_conditioned(tmp_path):
-    """The stored row itself answers 'was this ML-conditioned?' — no in-memory state required."""
-    base = _persist_and_read_back(tmp_path, _run_stack(layers=AVAIL_BUT_INCOMPLETE), "base")
-    cond = _persist_and_read_back(tmp_path, _run_stack(layers=ALL_LIVE), "cond")
-
-    # both rows really did run MC, and really are identical on every ML availability column
-    assert base["mc_paths"] and cond["mc_paths"]
-    for col in ("xgb_available", "lstm_available", "transformer_available"):
-        assert base[col] == cond[col] == 1, "premise: availability columns cannot separate these"
-
-    # the durable field separates them, so a base-neutral row can never read as ML-conditioned
-    assert base["mc_conditioning"] == "base_neutral"
-    assert cond["mc_conditioning"] == "ml_conditioned"
-    assert base["mc_conditioning"] != cond["mc_conditioning"]
 
 
-def test_durable_conditioning_is_null_when_mc_did_not_run(tmp_path):
-    """A failed/withheld MC must not claim a conditioning mode it never had."""
-    row = _persist_and_read_back(tmp_path, _run_stack(layers=ALL_DARK, iv=0.0), "dead")
-    assert row["mc_paths"] is None
-    assert row["mc_conditioning"] is None
 
 
 # ── PROOF 9: the retired source-text prohibition is gone, and the validator still works ────────

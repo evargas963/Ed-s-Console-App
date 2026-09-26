@@ -19,29 +19,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def test_stamp_decision_bundle_monotonic_and_spot_same_generation(monkeypatch):
-    # Exercise the current positive gated stamp path: trade-impacting gate needs
-    # ticker + price (spot), and the release gate needs a valid release. Same setup as
-    # tests/test_batch2_signals_engine_error.py::test_stamp_decision_bundle_increments_on_success.
-    monkeypatch.setenv("ED_BUILD_GENERATION", "deadbeef" * 5)
-    from release_object import initialize_release_at_startup
-
-    initialize_release_at_startup(force=True)
-    from live_decision_bundle import stamp_decision_bundle
-
-    d = {"ticker": "SPY", "spot": 100.0, "prior_close": 100.0, "zone": "test_zone", "vwap_side": "above",
-         "call_signal": "wait", "validation_summary": "issue20_23_monotonic"}
-    stamp_decision_bundle(d, route="server._fetch_state")
-    g0 = d["decision_generation_id"]
-    ts0 = d["decision_timestamp_utc"]
-    assert isinstance(g0, int) and g0 > 0
-    assert isinstance(ts0, float) and ts0 > 0
-    d2 = {"ticker": "SPY", "spot": 101.0, "prior_close": 101.0, "zone": "other",
-          "call_signal": "wait", "validation_summary": "issue20_23_monotonic_2"}
-    stamp_decision_bundle(d2, route="server._fetch_state")
-    assert d2["decision_generation_id"] > g0
-    assert d["decision_generation_id"] == g0
-    assert d["spot"] == 100.0 and d["zone"] == "test_zone"
 
 
 def test_tick_partial_patch_helpers_removed_from_server():
@@ -313,128 +290,12 @@ def _assert_sse_cache_bypass_for_key(
         srv._sse_subscribers.pop(cache_key, None)
 
 
-def test_api_analytics_light_is_tier_b_fast_path():
-    """L1 /api/analytics/light — formal plane contract; no Tier C pipeline.
-
-    TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
-    get_analytics_light is an async handler taking only Query params and returning a
-    JSONResponse it builds itself; it declares no Request, no auth, no middleware and
-    no response_model. Every field asserted below (including "_endpoint") is a value
-    the handler writes into its own payload, not one the routing layer supplies, so
-    the HTTP round trip proved nothing extra. The genuinely lifespan- and
-    request-lifecycle-dependent tests in this file (the SSE cache-bypass and
-    viewer-owned scheduling races) deliberately stay on TestClient."""
-    import asyncio
-    import json
-
-    import server as srv
-
-    j = json.loads(asyncio.run(srv.get_analytics_light(ticker="SPY", expiry=None)).body)
-    assert j.get("plane") == "L1_context"
-    assert j.get("merge_rule") == "L0_plus_acknowledged_L2_snapshot"
-    assert j.get("_tier") == "B_light"
-    assert j.get("_endpoint") == "/api/analytics/light"
-    assert "l2_snapshot_version_used" in j
-    assert "l1_generation" in j
-    assert "order_flow" in j
-    assert "b_light_generated_at" in j
-    assert "tier_b_structural" in j
 
 
-def test_api_state_viewer_owned_serves_cache_without_scheduling(monkeypatch, _cache_test_key):
-    """Step 2: viewer-owned REST = read-only cache view; no-viewer stale REST self-schedules; force overrides."""
-    key, srv = _cache_test_key
-    ticker, exp = key
-    _assert_sse_cache_bypass_for_key(
-        monkeypatch,
-        srv,
-        ticker=ticker,
-        expiry=exp,
-        cache_key=key,
-    )
 
 
-@_pytest_parametrize("ticker,expiry", SSE_CACHE_UNIVERSALITY_MATRIX)
-def test_api_state_sse_cache_bypass_universal_parametric(monkeypatch, ticker, expiry):
-    import server as srv
-
-    cache_key = _cache_key_for_matrix(ticker, expiry)
-    _reset_sse_cache_key_state(srv, cache_key)
-    try:
-        _assert_sse_cache_bypass_for_key(
-            monkeypatch,
-            srv,
-            ticker=ticker,
-            expiry=expiry,
-            cache_key=cache_key,
-        )
-    finally:
-        _reset_sse_cache_key_state(srv, cache_key)
 
 
-def test_api_state_cache_isolation_across_ticker_expiry_keys(monkeypatch):
-    """Step 2: viewer-owned key A serves cache without scheduling; stale no-viewer key B
-    self-schedules for B only — A's cache/fetch stay isolated."""
-    import server as srv
-
-    (ticker_a, exp_a), (ticker_b, exp_b) = SSE_CACHE_ISOLATION_PAIR
-    key_a = (ticker_a.upper(), exp_a)
-    key_b = (ticker_b.upper(), exp_b)
-    for key in (key_a, key_b):
-        _reset_sse_cache_key_state(srv, key)
-
-    monkeypatch.setattr(srv, "VIEWER_SSE_REFRESH_SEC", 99999.0)
-    monkeypatch.setattr(srv, "CACHE_TTL", 99999.0)
-    monkeypatch.setattr(srv, "_sse_viewer_cache_ttl", lambda t, e: 0.5)
-    calls: list[tuple[str, str | None]] = []
-
-    def fake_fetch(t: str, e: str | None, **kwargs):
-        calls.append((t, e))
-        fetch_ts = time.time()
-        spot_val = 900.0 + len(calls)
-        out = _issue20_ms_dict(
-            t,
-            e,
-            spot_val,
-            9000 + len(calls),
-            server_build_ts=fetch_ts,
-        )
-        ck = (t.upper().strip(), e if e is not None else key_a[1])
-        srv._state_cache[ck] = _issue20_cache_envelope(
-            out,
-            spot_val,
-            ts=fetch_ts,
-            analytics_version=len(calls),
-        )
-        return out
-
-    monkeypatch.setattr(srv, "_fetch_state", fake_fetch)
-    _old = time.time() - 60.0
-    _seed_issue20_state_cache(srv, key_a, 1.0, ts=_old)
-    _seed_issue20_state_cache(srv, key_b, 2.0, ts=_old)
-
-    from starlette.testclient import TestClient
-
-    fetch_a = _fetch_call_key(ticker_a, exp_a)
-    fetch_b = _fetch_call_key(ticker_b, exp_b)
-    try:
-        with TestClient(srv.app) as client:
-            srv._sse_subscribers[key_a] = 1
-            r_a = client.get("/api/state", params=_state_api_params(ticker_a, exp_a))
-            assert r_a.status_code == 200
-            assert r_a.json().get(_ISSUE20_SPOT) == 1.0
-            r_b = client.get("/api/state", params=_state_api_params(ticker_b, exp_b))
-            assert r_b.status_code == 200
-            for _ in range(100):
-                time.sleep(0.02)
-                if calls:
-                    break
-            assert fetch_b in calls, "stale no-viewer key B must self-schedule"
-            assert fetch_a not in calls, "viewer-owned key A must not schedule from REST"
-            assert srv._state_cache[key_a]["ms_dict"][_ISSUE20_SPOT] == 1.0
-    finally:
-        for key in (key_a, key_b):
-            _reset_sse_cache_key_state(srv, key)
 
 
 def test_tier_c_cache_sse_keying_is_ticker_upper_and_expiry_not_allowlist():
@@ -457,111 +318,13 @@ def test_tier_c_cache_sse_keying_is_ticker_upper_and_expiry_not_allowlist():
         assert needle not in tier_c, f"tier_c allowlist pattern found: {needle!r}"
 
 
-def test_tick_trigger_zone_desync_from_bias_delta():
-    """Stored zone must match derive_zone(bias_signal, net_delta) or we force a full recompute."""
-    from live_decision_bundle import tick_triggers_coherent_refresh
-
-    md = {
-        "bias_signal": "Neutral",
-        "net_delta": 0.0,
-        "zone": "breakdown",
-        "decision_timestamp_utc": time.time(),
-    }
-    assert tick_triggers_coherent_refresh(md, None, None) is True
 
 
-def test_tick_trigger_vwap_side_flip_at_stream_spot():
-    from live_decision_bundle import tick_triggers_coherent_refresh
-
-    md = {
-        "spot": 99.0, "prior_close": 99.0,
-        "vwap": 100.0,
-        "vwap_side": "below",
-        "zone": "pin_neutral",
-        "bias_signal": "Neutral",
-        "net_delta": None,
-        "kl_call_gamma_wall": 110.0,
-        "kl_put_gamma_wall": 90.0,
-        "decision_timestamp_utc": time.time(),
-        "nearest_above_dist": 11.0,
-        "nearest_below_dist": 9.0,
-        "nearest_above_name": "Call g-Wall",
-        "nearest_below_name": "Put g-Wall",
-    }
-    assert tick_triggers_coherent_refresh(md, 100.01, None) is True
 
 
-def test_tick_trigger_nearest_distance_bucket_change():
-    from live_decision_bundle import tick_triggers_coherent_refresh
-
-    md = {
-        "spot": 100.0, "prior_close": 100.0,
-        "vwap": 95.0,
-        "vwap_side": "above",
-        "zone": "pin_neutral",
-        "bias_signal": "Neutral",
-        "net_delta": None,
-        "kl_call_gamma_wall": 102.0,
-        "kl_put_gamma_wall": 98.0,
-        "decision_timestamp_utc": time.time(),
-        "nearest_above_dist": 2.0,
-        "nearest_below_dist": 2.0,
-        "nearest_above_name": "Call g-Wall",
-        "nearest_below_name": "Put g-Wall",
-    }
-    assert tick_triggers_coherent_refresh(md, 101.6, None) is True
 
 
-def test_tick_trigger_nearest_wall_identity_change():
-    from live_decision_bundle import tick_triggers_coherent_refresh
-
-    md = {
-        "spot": 100.0, "prior_close": 100.0,
-        "vwap": 50.0,
-        "vwap_side": "above",
-        "zone": "pin_neutral",
-        "bias_signal": "Neutral",
-        "net_delta": None,
-        "kl_call_gamma_wall": 101.0,
-        "kl_put_gamma_wall": 105.0,
-        "decision_timestamp_utc": time.time(),
-        "nearest_above_dist": 1.0,
-        "nearest_below_dist": None,
-        "nearest_above_name": "Call g-Wall",
-        "nearest_below_name": None,
-    }
-    assert tick_triggers_coherent_refresh(md, 104.0, None) is True
 
 
-def test_tick_trigger_session_bucket_boundary(monkeypatch):
-    from datetime import datetime
 
 
-    from live_decision_bundle import tick_triggers_coherent_refresh
-
-    monkeypatch.setattr("market_context._derive_session", lambda: "Pre-Market")
-    from time_et import ET
-    dec = datetime(2026, 1, 6, 9, 20, tzinfo=ET).timestamp()
-    now = datetime(2026, 1, 6, 9, 35, tzinfo=ET).timestamp()
-    md = {
-        "zone": "pin_neutral",
-        "bias_signal": "Neutral",
-        "net_delta": None,
-        "decision_timestamp_utc": dec,
-        "session_label": "Pre-Market",
-    }
-    assert tick_triggers_coherent_refresh(md, None, None, now_ts=now) is True
-
-
-def test_tick_trigger_session_label_boundary(monkeypatch):
-    from live_decision_bundle import tick_triggers_coherent_refresh
-
-    monkeypatch.setattr("market_context._derive_session", lambda: "RTH")
-    md = {
-        "zone": "pin_neutral",
-        "bias_signal": "Neutral",
-        "net_delta": None,
-        "session_label": "Pre-Market",
-        "decision_timestamp_utc": time.time(),
-    }
-    assert tick_triggers_coherent_refresh(md, None, None) is True

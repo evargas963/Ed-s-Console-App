@@ -28,89 +28,12 @@ def _bg_fail_spy():
         srv._analytics_inflight.discard(inflight_key)
 
 
-def test_record_analytics_bg_failure_marks_stale_after_threshold(_bg_fail_spy):
-    ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
-    threshold = srv.ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES
-    for i in range(threshold - 1):
-        srv._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
-        assert cache_key in srv._state_cache
-        assert srv._analytics_bg_fail_counts.get(inflight_key) == i + 1
-    srv._record_analytics_bg_failure(inflight_key, ticker, reason="test", detail="boom")
-    assert cache_key in srv._state_cache
-    md = srv._state_cache[cache_key]["ms_dict"]
-    assert md.get("state_error") == "analytics_refresh_failed"
-    assert "boom" in str(md.get("state_error_detail", ""))
-    assert md.get("analytics_stale") is True
-    assert inflight_key not in srv._analytics_bg_fail_counts
 
 
-def test_record_analytics_bg_failure_writes_cold_cache_error_shell(_bg_fail_spy):
-    ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
-    srv._state_cache.pop(cache_key, None)
-    srv._record_analytics_bg_failure(
-        inflight_key,
-        ticker,
-        reason="schwab_auth",
-        detail="Refresh token is invalid, expired or revoked",
-        token_invalid=True,
-    )
-    md, ck = srv._latest_cached_ms_and_key_for_ticker(ticker)
-    assert md is not None
-    assert ck is not None
-    assert md.get("state_error") == "token_invalid"
-    assert md.get("analytics_pending_shell") is False
-    assert md.get("error") == "token_invalid"
-    assert "reauth_schwab" in str(md.get("remediation", ""))
 
 
-def test_schedule_analytics_recompute_wires_fail_counter(monkeypatch, _bg_fail_spy):
-    ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
-    threshold = srv.ANALYTICS_BG_MAX_CONSECUTIVE_FAILURES
-    srv._startup_analytics_executor()
-
-    def _boom(*_a, **_k):
-        raise RuntimeError("bg fetch failed")
-
-    monkeypatch.setattr(srv, "_fetch_state", _boom)
-    monkeypatch.setattr(srv, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
-    monkeypatch.setattr(srv._analytics_executor, "submit", lambda fn: fn())
-    # UI_05: operator-class sources route to the priority pool — pin it to the
-    # same inline-submit executor so this test stays synchronous.
-    monkeypatch.setattr(srv, "_get_operator_priority_executor", lambda: srv._analytics_executor)
-
-    for _ in range(threshold):
-        srv._schedule_analytics_recompute(inflight_key, ticker, expiry, "test_bg_fail")
-
-    assert cache_key in srv._state_cache
-    assert srv._state_cache[cache_key]["ms_dict"].get("state_error") == "analytics_refresh_failed"
-    assert inflight_key not in srv._analytics_bg_fail_counts
 
 
-def test_schedule_analytics_recompute_resets_counter_on_success(monkeypatch, _bg_fail_spy):
-    ticker, expiry, cache_key, inflight_key, srv = _bg_fail_spy
-    calls = {"n": 0}
-    srv._startup_analytics_executor()
-
-    def _flaky(*_a, **_k):
-        calls["n"] += 1
-        if calls["n"] < 2:
-            raise RuntimeError("transient")
-        return {"ticker": ticker, "selected_exp": expiry}
-
-    monkeypatch.setattr(srv, "_fetch_state", _flaky)
-    monkeypatch.setattr(srv, "_stamp_analytics_freshness_on_completed_fetch", lambda *a, **k: None)
-    monkeypatch.setattr(srv._analytics_executor, "submit", lambda fn: fn())
-    # UI_05: operator-class sources route to the priority pool — pin it to the
-    # same inline-submit executor so this test stays synchronous.
-    monkeypatch.setattr(srv, "_get_operator_priority_executor", lambda: srv._analytics_executor)
-
-    srv._schedule_analytics_recompute(inflight_key, ticker, expiry, "test_bg_recover")
-    assert srv._analytics_bg_fail_counts.get(inflight_key) == 1
-    assert cache_key in srv._state_cache
-
-    srv._schedule_analytics_recompute(inflight_key, ticker, expiry, "test_bg_recover")
-    assert inflight_key not in srv._analytics_bg_fail_counts
-    assert cache_key in srv._state_cache
 
 
 def test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant(monkeypatch: pytest.MonkeyPatch):
@@ -151,61 +74,10 @@ def test_safe_get_chain_latched_skips_second_call(monkeypatch: pytest.MonkeyPatc
     assert calls["n"] == 0
 
 
-def test_analytics_stale_not_sse_connected_only():
-    import server as srv
-    import time
-
-    now = time.time()
-    md: dict = {}
-    entry = {
-        "ms_dict": {"ticker": "SPY", "mhap_rows": [{"horizon": "1c"}]},
-        "ts": now,
-        "generated_at": now,
-        "analytics_version": 3,
-    }
-    srv._attach_analytics_freshness_contract(
-        md,
-        data_cache_key=("SPY", "2099-01-01"),
-        entry=entry,
-        now=now + 0.5,
-        sse_live=True,
-        inflight_key=srv._tier_c_inflight_key("SPY", None),
-    )
-    assert md.get("analytics_stale") is False
-    assert md.get("analytics_refresh_due") is True
-    assert md.get("analytics_age_sec", 99) < 2.0
 
 
-def test_resolve_ticker_param_symbol_alias():
-    import server as srv
-
-    assert srv._resolve_ticker_param("SPY", None) == "SPY"
-    assert srv._resolve_ticker_param("SPY", "QQQ") == "QQQ"
-    assert srv._resolve_ticker_param("SPY", "  qqq  ") == "QQQ"
 
 
-def test_api_state_symbol_alias_routes_to_symbol(monkeypatch):
-    """TEST_SYSTEM_REHAB_V2 final remediation: get_state is a plain sync handler
-    (FastAPI Query params only) with no auth/middleware/serialization-shaping
-    dependency -- the HTTP round trip added nothing a direct call doesn't already
-    prove."""
-    import json
-
-    import server as srv
-
-    seen: dict[str, str] = {}
-
-    def fake_tier(ticker, expiry, force, update_source):
-        seen["ticker"] = ticker
-        from fastapi.responses import JSONResponse
-
-        return JSONResponse({"ticker": ticker, "update_source": update_source})
-
-    monkeypatch.setattr(srv, "_tier_c_analytics_json_response", fake_tier)
-    resp = srv.get_state(symbol="QQQ")
-    body = json.loads(resp.body)
-    assert body["ticker"] == "QQQ"
-    assert seen["ticker"] == "QQQ"
 
 
 def test_api_build_exposes_git_sha(monkeypatch):

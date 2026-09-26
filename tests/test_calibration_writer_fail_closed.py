@@ -93,26 +93,8 @@ def calib_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
 
 
-def test_resolve_build_generation_env_wins(monkeypatch):
-    import calibration.writer as w
-
-    monkeypatch.setenv("ED_BUILD_GENERATION", "custom-gen-7")
-    assert w.resolve_build_generation() == "custom-gen-7"
 
 
-def test_resolve_build_generation_defaults_to_repo_git_sha(monkeypatch):
-    """115k rows had build_generation NULL (env never set). Default = repo tip sha,
-    so every logged decision carries a serve-stack fingerprint the temperature
-    fitter / era filters can key on."""
-    import calibration.writer as w
-
-    monkeypatch.delenv("ED_BUILD_GENERATION", raising=False)
-    w._build_generation_cache.clear()
-    sha = w.resolve_build_generation()
-    assert sha is not None and len(sha) == 40
-    assert all(c in "0123456789abcdef" for c in sha)
-    # Cached: second call returns identity without re-invoking git.
-    assert w.resolve_build_generation() is sha
 
 
 

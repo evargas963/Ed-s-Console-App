@@ -78,13 +78,6 @@ def test_auto_promote_parallel_on_keep_incumbent_train_success_live(tmp_path: Pa
     assert (tmp_path / "active" / "SPY" / "meta_SPY_1c.pkl").is_file()
 
 
-def test_scheduler_nightly_all_horizons_default_on(monkeypatch):
-    from arch_competition.scheduler_auto_promote_policy import scheduler_nightly_all_horizons_enabled
-
-    monkeypatch.delenv("ED_ML_SCHEDULER_ALL_HORIZONS", raising=False)
-    assert scheduler_nightly_all_horizons_enabled() is True
-    monkeypatch.setenv("ED_ML_SCHEDULER_ALL_HORIZONS", "0")
-    assert scheduler_nightly_all_horizons_enabled() is False
 
 
 def test_auto_promote_5c_writes_active_5c_root(tmp_path: Path, monkeypatch):

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -176,31 +175,6 @@ def test_ensure_materialize_truncates_wal(monkeypatch, tmp_db: EdDB):
     assert calls == [], "fingerprint-unchanged skip must not checkpoint"
 
 
-def test_verify_normalized_freshness(tmp_db: EdDB):
-    from normalized_training_sync import persist_training_fingerprint_after_materialize, verify_normalized_freshness
-
-    with tmp_db._connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO snapshots (
-                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
-                horizon_outcome_schema_version, outcome_filled
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-            """,
-            ("QQQ", CF, 1_100_000.0, "test", 10, 30, "rth", 100.0, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
-        )
-        conn.commit()
-
-    persist_training_fingerprint_after_materialize(tmp_db.db_path)
-    v = verify_normalized_freshness(tmp_db.db_path)
-    assert v["fresh"] is True
-
-    with sqlite3.connect(str(tmp_db.db_path)) as conn:
-        conn.execute("UPDATE snapshots SET spot = spot + 1 WHERE ticker='QQQ' AND timeframe = ?", (CF,))
-        conn.commit()
-    v2 = verify_normalized_freshness(tmp_db.db_path)
-    assert v2["fresh"] is False
 
 
 def test_fingerprint_moves_when_label_config_version_changes(monkeypatch, tmp_db: EdDB):

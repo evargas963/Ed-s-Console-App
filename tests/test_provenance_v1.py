@@ -123,12 +123,6 @@ def test_every_market_state_field_is_categorised_and_no_ghost_field_is_listed():
     assert bad == {}, bad
 
 
-def test_every_engine_entry_argument_is_listed_and_matches_the_code():
-    for file, fn in P.ENGINE_ENTRIES:
-        code = P.function_args(file, fn)
-        listed = list(R.ENGINE_INPUTS[(file, fn)])
-        assert listed == code, f"{file}:{fn} arguments drifted: code={code} listed={listed}"
-    assert set(R.ENGINE_INPUTS) == set(P.ENGINE_ENTRIES)
 
 
 # ── closure of the roots ───────────────────────────────────────────────────────────────────

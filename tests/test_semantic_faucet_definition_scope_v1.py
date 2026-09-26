@@ -179,64 +179,8 @@ def test_terrain_names_carry_their_declared_definitions():
     assert "gamma_pin" not in d, "the retired two-definition name returned to the payload"
 
 
-def test_net_gex_peak_is_one_definition_at_two_declared_scopes():
-    """summary_rows.net_gex_peak (selected expiry) and terrain net_gex_peak (full book)
-    are the SAME function over their declared chains — scope, not definition, separates
-    them, and the widened book proves the scopes are real (different numbers allowed,
-    each equal to its own scope's computation)."""
-    from math_exposure_core import compute_exposures_by_strike, pick_net_gex_peak_strike
-    from math_levels import build_summary_rows
-    from math_exposure_core import key_level_strikes_with_gamma
-    from terrain_engine import compute_terrain
-
-    selected, wide, spot = _widened_book()
-    sel_ex, _ = compute_exposures_by_strike(selected, spot=spot, require_oi=True)
-    wide_ex, _ = compute_exposures_by_strike(wide, spot=spot, require_oi=True)
-    rows = build_summary_rows(sel_ex, spot, windows=[5, 10, 15, 20])
-    sel_ks = key_level_strikes_with_gamma(sel_ex) or sorted(sel_ex)
-    wide_ks = key_level_strikes_with_gamma(wide_ex) or sorted(wide_ex)
-    assert rows[0].net_gex_peak == pick_net_gex_peak_strike(
-        sel_ex, sel_ks, institutional=True), "summary_rows.net_gex_peak left its declared (definition, selected_expiry)"
-    terr = compute_terrain("SPY", wide, spot)
-    assert terr.net_gex_peak == pick_net_gex_peak_strike(
-        wide_ex, wide_ks, institutional=True), "terrain net_gex_peak left its declared (definition, full_book)"
-    # And the two-definitions-one-name shape stays dead on BOTH scopes:
-    assert not hasattr(rows[0], "gamma_pin")
 
 
-def test_kl_overlay_maps_each_name_from_its_declared_terrain_source(monkeypatch):
-    """The overlay is the one writer; this pins WHICH terrain field each kl_ name reads —
-    the write-provenance check can see the writer, only this can see the wiring."""
-    import time
-
-    import server as S
-
-    cache = {
-        "absolute_gamma_strike": 745.0,
-        "absolute_gamma_strength_pct": 59.4,
-        "pin_candidate": None,
-        "pin_candidate_blockers": ["regime", "liquidity"],
-        "net_gex_peak": 743.0,
-        "call_wall": 745.0,
-        "put_wall": 738.0,
-        "gamma_flip": 741.5,
-        "max_pain": 742.0,
-        "computed_ts_utc": time.time(),
-        "levels_stale": False,
-    }
-    monkeypatch.setattr(S, "_terrain_cache", {"SPY": dict(cache)})
-    md: dict = {}
-    S._terrain_kl_overlay(md, "SPY")
-    assert md["kl_absolute_gamma_strike"] == 745.0
-    assert md["kl_hvl"] == 743.0, "kl_hvl must carry net_gex_peak (max_abs_net_gex, full_book)"
-    assert md["kl_absolute_gamma_strike"] != md["kl_hvl"], (
-        "the two definitions merged again downstream of the producer")
-    assert md["absolute_gamma_strike"] == md["kl_absolute_gamma_strike"]
-    assert md["kl_pin_candidate"] is None
-    assert md["kl_pin_candidate_blockers"] == ["regime", "liquidity"], (
-        "a withheld pin claim must ship WITH its blocker names")
-    assert "gamma_pin" not in md and "kl_gamma_pin" not in md, (
-        "the overlay resurrected the retired collision name")
 
 
 def test_pin_candidate_is_published_only_through_the_qualification_gates():

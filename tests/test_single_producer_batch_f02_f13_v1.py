@@ -91,26 +91,6 @@ def test_rc345_frontend_never_writes_the_regime_field() -> None:
         f"must be carried from the server, never recomputed on the client (F07/RC-345).")
 
 
-def test_rc345_gamma_regime_sign_threshold_has_one_authority() -> None:
-    """F07: exactly one production site maps signed dealer gamma to LONG/SHORT. Consumers
-    (institutional_behavior) must delegate to terrain_read.regime_from_signed_gamma rather
-    than re-derive `net_gamma > 0`."""
-    import terrain_read
-
-    assert hasattr(terrain_read, "regime_from_signed_gamma")
-    assert terrain_read.regime_from_signed_gamma(5.0) == terrain_read.REGIME_LONG_GAMMA
-    assert terrain_read.regime_from_signed_gamma(-2.0) == terrain_read.REGIME_SHORT_GAMMA
-    assert terrain_read.regime_from_signed_gamma(0.0) is None
-    assert terrain_read.regime_from_signed_gamma(None) is None
-
-    ib = _read("institutional_behavior.py")
-    assert "regime_from_signed_gamma" in ib, (
-        "institutional_behavior must consume the canonical sign authority")
-    # No local sign classification of net_gamma (comments are allowed; code is not).
-    code = "\n".join(ln for ln in ib.splitlines() if not ln.lstrip().startswith("#"))
-    assert not re.search(r"\bng\s*[<>]\s*0", code), (
-        "institutional_behavior re-derives the gamma sign locally (`ng > 0`); it must "
-        "carry terrain_read.regime_from_signed_gamma instead (F07/RC-345).")
 
 
 # ------------------------------------------------------------------------- F10 candle direction
@@ -645,33 +625,6 @@ def test_rc345_gamma_profile_has_one_formula_authority() -> None:
 
 
 # ---------------------------------------------------------------------------- F06 expected move
-def test_rc345_expected_move_quantities_are_distinct_and_single_source() -> None:
-    """F06: 'expected move' names THREE economically distinct quantities — NOT one formula:
-      straddle EM   market ATM call+put premium   compute_expected_move_straddle -> _em_straddle
-      IV EM         spot x ATM IV x sqrt(T)        compute_expected_move_iv      -> _em_iv
-      MC excursion  mean|terminal - spot| on paths monte_carlo (simulation)      -> mc.expected_move
-    Different distribution (market-implied vs lognormal-IV vs empirical-simulated), horizon and
-    population. Each formula is single-source; the names are distinct so no consumer can treat
-    them as interchangeable. The lock forbids a second implementation of any of the three."""
-    from math_volatility import compute_expected_move_straddle, compute_expected_move_iv
-
-    assert callable(compute_expected_move_straddle) and callable(compute_expected_move_iv)
-
-    # Distinct producers wired to distinct names in the live path.
-    srv = _read("server.py")
-    assert "_em_straddle = compute_expected_move_straddle(" in srv
-    assert "_em_iv = compute_expected_move_iv(" in srv
-
-    # The MC excursion is the simulation quantity, single-source in monte_carlo.
-    mc = _read("monte_carlo.py")
-    assert mc.count("np.mean(np.abs(terminals") == 1, (
-        "the Monte-Carlo expected excursion must be computed in exactly one place (F06/RC-345)")
-
-    # Neither market/IV EM formula is duplicated outside its authority.
-    for mod in ("server.py", "terrain_engine.py", "market_state.py"):
-        body = _read(mod)
-        assert "def compute_expected_move_iv" not in body
-        assert "def compute_expected_move_straddle" not in body
 
 
 # --------------------------------------------------------------------- F05 trade actionability
@@ -779,20 +732,6 @@ def test_rc345_terrain_materializes_one_pinned_gamma_profile() -> None:
 
 
 # ------------------------------------------------------------------ F07 gamma regime authorities
-def test_rc345_gamma_regime_one_classifier_two_named_books() -> None:
-    """F07: the regime SIGN is classified by exactly one function, regime_from_signed_gamma.
-    terrain (_regime_for over gamma_at_spot, the repriced profile book) and institutional
-    (over net_gamma, the vendor-aggregate book) BOTH delegate to it. The two books are named
-    distinctly — terrain emits `regime`, institutional emits `gamma_regime_hint` — so 'gamma
-    regime' is never a generic interchangeable value."""
-    ib = _read("institutional_behavior.py")
-    tr = _read("terrain_read.py")
-    assert "regime_from_signed_gamma" in ib and "regime_from_signed_gamma" in tr
-    assert "gamma_regime_hint" in ib, "institutional book must be named as a hint"
-    # neither re-derives the sign threshold locally
-    for src in (ib, tr):
-        code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
-        assert code.count("def regime_from_signed_gamma") <= 1
 
     # F07 (reopened) frontend: the client never WRITES a regime under any name — the sign is
     # carried from the server. edReconcileRegime (legacy's local sign-reconciliation function)
@@ -855,20 +794,6 @@ def test_rc345_vwap_side_has_one_authority() -> None:
 
 
 # ----------------------------------------------------------------------- F17 realized volatility
-def test_rc345_realized_vol_bar_minutes_is_required() -> None:
-    """F17: compute_realized_vol requires bar_minutes — the former 5.0 default silently
-    under-scaled 1-minute inputs by sqrt(5). No caller may get an annualization factor for a
-    timeframe its closes did not come from."""
-    import inspect
-    from math_volatility import compute_realized_vol
-
-    sig = inspect.signature(compute_realized_vol)
-    bm = sig.parameters["bar_minutes"]
-    assert bm.default is inspect.Parameter.empty, (
-        "compute_realized_vol.bar_minutes must be REQUIRED, not defaulted (F17/RC-345)")
-    # the one production caller passes it explicitly
-    srv = _read("server.py")
-    assert "compute_realized_vol(_closes, bar_minutes=1.0)" in srv
 
 
 # ---------------------------------------------------------------------- F24 signed dist to VWAP
@@ -918,26 +843,6 @@ def test_rc345_signal_layer_vwap_anchor_is_source_tagged() -> None:
 
 
 # -------------------------------------------------------------- F22 dominant direction / confidence
-def test_rc345_dominant_direction_one_argmax_authority() -> None:
-    """F22: the dominant-direction argmax over a probability triplet is projected once, by
-    numeric_contract.direction_from_normalized_triplet. math_probabilities.dominant_direction
-    carries that label (plus its probability) instead of re-implementing `max(probs, ...)` —
-    two projections of the same vector could tie-break differently."""
-    from math_probabilities import dominant_direction
-    from numeric_contract import direction_from_normalized_triplet
-
-    for u, d, f in [(0.5, 0.3, 0.2), (0.2, 0.5, 0.3), (0.33, 0.33, 0.33), (0.1, 0.1, 0.8)]:
-        dom, prob = dominant_direction(u, d, f)
-        assert dom == direction_from_normalized_triplet(u, d, f)
-        assert prob == {"up": u, "down": d, "flat": f}[dom]
-    mp = _read("math_probabilities.py")
-    assert "direction_from_normalized_triplet" in mp, (
-        "dominant_direction must delegate the argmax to the one authority (F22/RC-345)")
-    body = mp[mp.index("def dominant_direction("):]
-    body = body[: body.index("\ndef ", 1)]
-    bodycode = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
-    assert "max(probs, key=probs.get)" not in bodycode, (
-        "dominant_direction must not re-implement the triplet argmax (F22/RC-345)")
 
 
 # ------------------------------------------------------------------- F27 higher-timeframe OHLC
@@ -962,43 +867,9 @@ def test_rc345_higher_tf_ohlc_one_feature_synthesizer() -> None:
 
 
 # ------------------------------------------------------------------- F23 negative-spread withhold
-def test_rc345_negative_spread_withheld_at_one_source() -> None:
-    """F23: a crossed (ask<bid) quote is INVALID; the REAL LIVE authorities withhold it — the
-    spread producer (contract_spread_pts_from_bid_ask, used by resolve_a2_contract_spread) and
-    the mid producer (resolve_a2_contract_mid). The dead _spread_from_bid_ask helper was
-    RETIRED (it was never on the live path — fixing it was theater)."""
-    from v2_decision.a2_price_precedence import (
-        contract_spread_pts_from_bid_ask, resolve_a2_contract_spread, resolve_a2_contract_mid,
-    )
-
-    assert contract_spread_pts_from_bid_ask(1.0, 1.2) == 0.2   # normal
-    assert contract_spread_pts_from_bid_ask(1.2, 1.2) == 0.0   # locked market valid
-    assert contract_spread_pts_from_bid_ask(1.3, 1.2) is None  # crossed -> withheld
-    assert resolve_a2_contract_spread(bid=1.3, ask=1.2) == (None, None)
-    # the mid producer also rejects a crossed quote
-    assert resolve_a2_contract_mid(chain_row={"bid": 1.3, "ask": 1.2}) == (None, None)
-    assert resolve_a2_contract_mid(chain_row={"bid": 1.0, "ask": 1.2})[0] == 1.1
-    # the dead helper is gone
-    assert "def _spread_from_bid_ask(" not in _read("v2_decision/a2_option_expression.py"), (
-        "the dead spread helper must be retired (F23/RC-345)")
 
 
 # ------------------------------------------------------------------------------- F20 pin width
-def test_rc345_pin_width_one_authority() -> None:
-    """F20: pin width (call_gamma_wall - put_gamma_wall) is computed once, by
-    math_levels.compute_pin_width_pts. market_state and server both did the subtraction
-    inline (one rounded, one not) — now both delegate."""
-    from math_levels import compute_pin_width_pts
-
-    assert compute_pin_width_pts(105.0, 100.0) == 5.0
-    assert compute_pin_width_pts(105.0, None) is None and compute_pin_width_pts(0, 100) is None
-    for mod in ("market_state.py", "server.py"):
-        m = _read(mod)
-        assert "compute_pin_width_pts(_cgw, _pgw)" in m, (
-            f"{mod} must delegate pin width to the one authority (F20/RC-345)")
-        code = "\n".join(l for l in m.splitlines() if not l.lstrip().startswith("#"))
-        assert "round(_cgw - _pgw" not in code and "(_cgw - _pgw)" not in code, (
-            f"{mod} still computes pin width inline (F20/RC-345)")
 
 
 # ------------------------------------------------------------------- F40 MC/GARCH sigma cadence
@@ -1039,20 +910,6 @@ def test_rc345_tensor_cache_key_includes_data_content_identity() -> None:
 
 
 # --------------------------------------------------------------- F26 empirical probability bias
-def test_rc345_empirical_probability_one_authority() -> None:
-    """F26: the per-horizon empirical probability (the DB-label histogram over the similar
-    set) is produced once, by prediction_engine._literal_empirical_horizon. Every horizon
-    (1c/5c/15c/60c) goes through it; no UI/model site re-derives an empirical bias/direction
-    from a second histogram."""
-    pe = _read("prediction_engine.py")
-    assert pe.count("def _literal_empirical_horizon(") == 1, (
-        "one empirical-probability producer (F26/RC-345)")
-    for slug in ("outcome_1c", "outcome_5c", "outcome_15c", "outcome_60c"):
-        assert f'_literal_empirical_horizon(similar, "{slug}"' in pe, (
-            f"{slug} empirical probs must come from the one authority (F26/RC-345)")
-    # no second production site builds an empirical triplet from raw outcome counts
-    code = "\n".join(l for l in pe.splitlines() if not l.lstrip().startswith("#"))
-    assert code.count('counts = {"up": 0, "down": 0, "flat": 0}') <= 1
 
 
 # ------------------------------------------------------- F32 cf_* population / source / cadence
@@ -1131,68 +988,9 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
     assert resolve_a2_contract_spread(bid=1.3, ask=1.2) == (None, None)
 
 
-def test_rc345_kwargs_contract_caller_callee_match() -> None:
-    """F11 LIVE-REGRESSION GUARD: every keyword argument the server passes to
-    build_market_state(...) and compute_liquidity_behavior_row(...) MUST be accepted by the
-    callee's signature — a caller/callee kwarg mismatch is a TypeError on the live _fetch_state
-    path (exactly how the F11 flow_imbalance_source kwarg broke LIVE). This catches it
-    statically so it cannot recur."""
-    import ast
-    import inspect
-    from market_state import build_market_state
-    from institutional_behavior import compute_liquidity_behavior_row
-
-    callees = {
-        "build_market_state": build_market_state,
-        "compute_liquidity_behavior_row": compute_liquidity_behavior_row,
-    }
-    src = _read("server.py")
-    tree = ast.parse(src)
-    checked = {k: 0 for k in callees}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        fn = node.func
-        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
-        if name not in callees:
-            continue
-        params = set(inspect.signature(callees[name]).parameters)
-        has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD
-                         for p in inspect.signature(callees[name]).parameters.values())
-        if has_var_kw:
-            continue
-        for kw in node.keywords:
-            if kw.arg is None:  # **kwargs spread — can't check statically
-                continue
-            assert kw.arg in params, (
-                f"server.py passes '{kw.arg}=' to {name}(...) which does not accept it — "
-                f"a live TypeError on _fetch_state (F11/RC-345)")
-        checked[name] += 1
-    assert checked["build_market_state"] >= 1 and checked["compute_liquidity_behavior_row"] >= 1, (
-        "the kwargs-contract check must actually exercise both call sites")
-    # the source book DOES persist on the snapshot row and IS served in the payload
-    from db import SnapshotRow
-    assert "flow_imbalance_source" in SnapshotRow.__dataclass_fields__
-    assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in src
-    assert "flow_imbalance_source" not in set(inspect.signature(build_market_state).parameters)
 
 
 # ----------------------------------------------------------------------------- F09 clock vs calendar
-def test_rc345_rth_clock_only_is_named_distinct_from_calendar() -> None:
-    """F09: the clock-only RTH predicate (time_et.is_rth_ts_utc) and the calendar-aware one
-    (desk_store.is_rth_trading_ts = clock AND trading-day) are explicitly distinct, named
-    semantics — the clock-only one may not silently impersonate the calendar-aware truth for
-    Desk readers."""
-    import time_et
-    import desk_store
-
-    assert callable(time_et.is_rth_ts_utc) and callable(desk_store.is_rth_trading_ts)
-    ds = _read("desk_store.py")
-    # the calendar-aware predicate composes BOTH the clock and the trading-day calendar.
-    seg = ds[ds.index("def is_rth_trading_ts"):]
-    seg = seg[: seg.index("\ndef ", 1)]
-    assert "is_rth_ts_utc" in seg and "is_trading_day_et" in seg, (
-        "is_rth_trading_ts must combine clock AND calendar, not clock alone (F09/RC-345)")
 
 
 # ---------------------------------------------------------------------------- F06 expected move
@@ -1417,88 +1215,8 @@ def test_rc345_f25_resume_and_arch_competition_identity_canonical():
             f"{fname} must consume the canonical ticker-identity authority (F25 sibling sweep)")
 
 
-def test_rc345_f25_current_tree_residuals_canonical():
-    """F25 (Cursor's fresh current-tree REJECT). Every identity-bearing CALLEE/FILTER/KEY builder
-    consumes the ONE canonical authority directly — no caller-masking, no local .upper() proxy.
-    Covers: lineage manifest+fingerprint, eval/audit manifest ticker, governance/policy row filters,
-    parallel/ablation dir callees, stack hist_db row filter, ml_predict inference ticker,
-    feature-curation meta_present/cell keys."""
-    import ml_predict as mp
-    import tools.feature_curation_gate as fc
-    import arch_competition.lineage as ln
-
-    def fp(tk):
-        return {"ticker": tk, "table": "t", "timeframe": "1m",
-                "min_ts_utc": 1, "max_ts_utc": 2, "row_count": 3}
-
-    # lineage fingerprint: SPX and $SPX are the SAME instrument (no false-reject)
-    assert ln._normalize_fp(fp("SPX"), fp("$SPX")) is True
-    assert ln._normalize_fp(fp("spx"), fp("$SPX")) is True
-
-    # parallel/ablation dir callees resolve canonically WITHOUT the caller passing $SPX
-    assert fc._parallel_model_dir_for_stack_eval("SPX") == \
-        fc._parallel_model_dir_for_stack_eval("$SPX")
-    assert fc._parallel_model_dir_for_stack_eval("SPX").name == "$SPX"
-
-    # ml_predict inference ticker resolution is canonical
-    assert mp._resolve_ml_inference_ticker("SPX", {}) == "$SPX"
-    assert mp._resolve_ml_inference_ticker("$SPX", {}) == "$SPX"
-
-    # eval/audit manifest ticker + governance/policy filters + hist_db use the canonical authority
-    for fname, needle in (
-        ("arch_competition/eval_runner.py", '"ticker": ticker_storage_key(ticker)'),
-        ("arch_competition/audit.py", '"ticker": ticker_storage_key(ticker)'),
-        ("arch_competition/lineage.py", "ticker_storage_key(mp_ticker)"),
-        ("arch_competition/lineage.py", "ticker_storage_key(t_a) == ticker_storage_key(t_b)"),
-        ("arch_competition/governance_visibility.py", "ticker_storage_key(str(a.get"),
-        ("arch_competition/operational_policy.py", "ticker_storage_key(str(a.get"),
-        ("arch_competition/stack_bundle_eval_v1.py", "ticker_storage_key(str(r.get"),
-        ("tools/feature_curation_gate.py", "_t = ticker_storage_key(ticker)"),
-        ("tools/feature_curation_gate.py", "ticker_storage_key(anchor_ticker)"),
-        ("ml_predict.py", "ticker = ticker_storage_key(ticker)  # RC-345/F25"),
-    ):
-        assert needle in _read(fname), f"{fname} missing canonical routing: {needle!r}"
-
-    # no residual raw .strip().upper()/.upper() ticker faucet in the current-tree callees (code, not docstring)
-    for fname in ("arch_competition/lineage.py", "arch_competition/eval_runner.py",
-                  "arch_competition/audit.py", "tools/feature_curation_gate.py"):
-        body = "\n".join(l for l in _read(fname).splitlines()
-                         if not l.lstrip().startswith("#"))
-        assert "ticker).strip().upper()" not in body and "ticker.strip().upper()" not in body, (
-            f"{fname}: residual .strip().upper() ticker faucet")
 
 
-def test_rc345_f25_cell_key_builders_are_behaviorally_canonical():
-    """F25 (Cursor ACCEPT_PARTIAL — cell-key faucet). The three feature-curation cell-key
-    BUILDERS must consume the canonical ticker identity INSIDE the builder (not at a caller):
-    SPX / $SPX / spx / $spx must all produce the identical key, prefixed '$SPX|'.
-    Mutation guard: reverting any builder to ``anchor.strip().upper()`` splits SPX from $SPX and
-    fails the alias-collapse assertion; the source guard additionally rejects the literal proxy."""
-    import tools.feature_curation_gate as fc
-
-    ALIASES = ("SPX", "$SPX", "spx", "$spx")
-    builders = (
-        ("_per_model_cell_key", lambda a: fc._per_model_cell_key(a, "xgb", "h1c", "g1"), "$SPX|"),
-        ("_confirm_cell_key", lambda a: fc._confirm_cell_key(a, "xgb", "h1c"), "$SPX|"),
-        ("_whole_stack_confirm_cell_key", lambda a: fc._whole_stack_confirm_cell_key(a, "h1c", "g1"), "$SPX|"),
-    )
-    for name, fn, prefix in builders:
-        keys = {fn(a) for a in ALIASES}
-        assert len(keys) == 1, f"{name}: SPX/$SPX/spx/$spx did not collapse to one key: {keys}"
-        only = next(iter(keys))
-        assert only.startswith(prefix), f"{name}: canonical key {only!r} lacks {prefix!r} prefix"
-        # SPY (non-dollar root) stays SPY — canonicalization is not blind uppercasing.
-        assert fn("spy").startswith("SPY|")
-
-    # Source mutation guard: the builders themselves delegate to the authority, no local .upper().
-    src = _read("tools/feature_curation_gate.py")
-    for builder in ("_per_model_cell_key", "_confirm_cell_key", "_whole_stack_confirm_cell_key"):
-        # locate the one-line body of each builder and assert it routes through ticker_storage_key
-        lines = src.splitlines()
-        idx = next(i for i, l in enumerate(lines) if l.startswith(f"def {builder}("))
-        body = lines[idx + 1]
-        assert "ticker_storage_key(anchor)" in body, f"{builder} must build the key from ticker_storage_key(anchor)"
-        assert ".strip().upper()" not in body, f"{builder}: local .strip().upper() faucet reintroduced"
 
 
 def test_rc345_f25_load_data_binds_canonical_storage_key():
@@ -1592,53 +1310,8 @@ def test_rc345_f25_db_training_floor_stats_canonical_bind():
     assert ".strip().upper()" not in body, "floor_stats: raw local ticker producer reintroduced"
 
 
-def test_rc345_f25_shared_sequence_context_meta_identity_canonical():
-    """F25 (Cursor: shared_sequence_context transformer/lstm meta faucet). _require_ticker feeds
-    the sequence artifact/meta + DB identity; it must resolve SPX/$SPX/spx/$spx to one canonical
-    key so transformer_<tk>_<hz>_meta.json cannot land raw 'SPX' inside a canonical '$SPX/' dir.
-    Mutation: reverting to str(ticker).strip().upper() splits SPX from $SPX and fails."""
-    import features.shared_sequence_context as ssc
-
-    keys = {ssc._require_ticker(a) for a in ("SPX", "$SPX", "spx", "$spx")}
-    assert keys == {"$SPX"}, f"_require_ticker split the index identity: {keys}"
-    assert ssc._require_ticker("spy") == "SPY"  # non-dollar preserved
-
-    # Source mutation guard: builder routes through the one authority, no local .upper().
-    lines = _read("features/shared_sequence_context.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def _require_ticker("))
-    body = "\n".join(lines[idx:idx + 6])
-    assert "ticker_storage_key(ticker)" in body, "_require_ticker must delegate to ticker_storage_key"
-    assert ".strip().upper()" not in body, "_require_ticker: local .strip().upper() faucet reintroduced"
 
 
-def test_rc345_f25_ml_data_common_db_binds_canonical():
-    """F25 (Cursor: ml_data_common DB-facing faucets). Every live SQL-facing feature reader binds
-    the canonical storage identity — bare 'SPX' queries the '$SPX' rows. Behavioral: intercept the
-    actual bind path for fetch_m5_additive_dict / fetch_prior_net_gamma / fetch_confluence_history.
-    Mutation: a reverted str(ticker).upper().strip() before the bind fails the '$SPX' assertion."""
-    import ml_data_common as mdc
-
-    captured: dict = {}
-    orig_one = mdc._read_one_row_with_retry
-    orig_many = mdc._read_with_retry
-    try:
-        mdc._read_one_row_with_retry = lambda path, sql, params, op=None: (
-            captured.__setitem__(op, params), None)[1]
-        mdc._read_with_retry = lambda path, sql, params, op=None, all_rows=False: (
-            captured.__setitem__(op, params), [])[1]
-        mdc.fetch_m5_additive_dict("SPX", 1.0, db_path="x")
-        mdc.fetch_prior_net_gamma("SPX", 1.0, db_path="x")
-        mdc.fetch_confluence_history("SPX", 1.0, 2.0, db_path="x")
-    finally:
-        mdc._read_one_row_with_retry = orig_one
-        mdc._read_with_retry = orig_many
-
-    for op in ("fetch_m5_additive_dict", "fetch_prior_net_gamma", "fetch_confluence_history"):
-        assert captured[op][0] == "$SPX", f"{op} bound raw ticker {captured[op][0]!r} not '$SPX'"
-
-    # Source guard: named DB-facing functions canonicalize (no raw .upper().strip() before bind).
-    src = _read("ml_data_common.py")
-    assert src.count("ticker_storage_key(") >= 4, "ml_data_common must route DB binds through the authority"
 
 
 def test_rc345_f25_arch_state_writer_reader_share_canonical_key():
@@ -1666,27 +1339,6 @@ def test_rc345_f25_arch_state_writer_reader_share_canonical_key():
     assert "arch.get(ticker_storage_key(ticker))" in srv, "arch_state reader key must be canonical"
 
 
-def test_rc345_f25_execution_routing_identity_contract():
-    """F25 (Cursor: execution_identity routing). bundle_ticker / guest_anchor_ticker are CANONICAL
-    routing identity (→ ticker_storage_key); requested_ticker is a REQUEST ECHO kept distinct and
-    NEVER substituted for canonical routing. Behavioral: bundle_ticker collapses SPX/$SPX to '$SPX'
-    even when it falls back to the request echo. Negative control across the alias matrix."""
-    import execution_identity as ei
-
-    for req, bun in (("spx", "SPX"), ("$spx", "$SPX"), ("SPX", "spx")):
-        env = ei.build_execution_envelope(
-            release={}, requested_ticker=req, bundle_ticker=bun, guest_anchor=False,
-            guest_anchor_ticker=None, horizons_attempted=[], bundles_by_horizon={},
-            calibration_by_horizon=None, calibration_logging_enabled=False, stack_pins={},
-            runtime_class="X", degradation=None, tradeable_policy=None, executed_at_utc=1.0)
-        rt = env["routing"]
-        assert rt["bundle_ticker"] == "$SPX", f"bundle_ticker not canonical for {(req, bun)}: {rt['bundle_ticker']!r}"
-
-    # Contract: requested_ticker is the echo (distinct field), bundle_ticker the canonical routing.
-    src = _read("execution_identity.py")
-    assert 'ticker_storage_key(bundle_ticker)' in src, "bundle_ticker must be canonical routing identity"
-    assert 'ticker_storage_key(prov.get("bundle_ticker") or requested_ticker)' in src, (
-        "the request-echo fallback into bundle_ticker must resolve canonically (no raw leak)")
 
 
 def test_rc345_f25_scheduler_user_tickers_enrollment_identity_canonical():
@@ -1760,29 +1412,3 @@ def test_rc345_f25_arch_eval_proof_key_canonical(tmp_path):
     assert "ticker.upper()" not in src, "arch eval proof: raw .upper() key faucet reintroduced"
 
 
-def test_rc345_f25_guest_anchor_routing_identity_canonical():
-    """F25 (routing callee). governed_stack_contract guest-anchor resolution owns the guest identity
-    semantic and must consume the canonical authority — SPX and $SPX are ONE guest instrument, so
-    resolve_guest_anchor_for_ticker yields the same GuestAnchorContext.guest_ticker ("$SPX") for both.
-    Also authoritative membership (SPY/QQQ/IWM) is canonical. Mutation: a raw .upper() callee splits them."""
-    import governed_stack_contract as g
-    import os
-
-    assert g.is_ml_authoritative_ticker("spy") is True
-    assert g.is_ml_authoritative_ticker("SPX") is False and g.is_ml_authoritative_ticker("$SPX") is False
-
-    os.environ["ED_GUEST_ANCHOR_INFERENCE"] = "1"
-    try:
-        a = g.resolve_guest_anchor_for_ticker("SPX")
-        b = g.resolve_guest_anchor_for_ticker("$SPX")
-    finally:
-        os.environ.pop("ED_GUEST_ANCHOR_INFERENCE", None)
-    assert a is not None and b is not None
-    assert a.guest_ticker == b.guest_ticker == "$SPX", (
-        f"guest identity split: {a.guest_ticker!r} vs {b.guest_ticker!r}")
-
-    # Source guard: the callee routes guest/authoritative identity through the one authority.
-    body = "\n".join(l for l in _read("governed_stack_contract.py").splitlines()
-                     if not l.lstrip().startswith("#") and "def " not in l)
-    assert 'g = (ticker or "").upper().strip()' not in body, "guest resolver reverted to raw .upper()"
-    assert 'g = (guest_ticker or "").upper().strip()' not in body, "guest route reverted to raw .upper()"

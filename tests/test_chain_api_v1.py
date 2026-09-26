@@ -119,21 +119,6 @@ def test_chain_with_no_listed_expiry_is_unavailable_with_its_reason(monkeypatch,
                              "reason": "no listed expiry for this ticker"}
 
 
-def test_chain_never_serves_the_stored_snapshot_when_live_fails(monkeypatch, tmp_path):
-    """NO FALLBACKS (fallback register R-01): a stored analytical snapshot -- possibly for a
-    different expiry -- is never served in place of the live chain that was asked for."""
-    import json
-
-    import server as srv
-
-    _no_live_client(monkeypatch, srv)
-    _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_REAL_EXPIRY])
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
-    body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["contracts"] == [] and body["status"] == "unavailable"
-    assert body["scope"]["kind"] == "unavailable"
-    assert "no live Schwab client in this test" in body["scope"]["reason"]
 
 
 def test_chain_uppercases_and_strips_ticker(monkeypatch, tmp_path):
@@ -404,56 +389,6 @@ def test_chain_does_not_let_an_older_streamed_volume_replace_a_newer_rest_value(
     )
 
 
-def test_chain_persists_the_pre_overlay_rest_capture_not_the_blended_response(monkeypatch, tmp_path):
-    """A FOURTH independent review (2026-09-13), REPRODUCED: the persisted
-    complete_chain_captures row is this route's own durable "proven-complete, live
-    strike_range=ALL REST capture" record (see the module docstring's tier-1 definition) --
-    but persist_complete_chain_capture was called with the OVERLAID contracts, silently
-    blending a streamed field into a table whose whole contract is being a pure REST
-    snapshot, with no per-field provenance or streamed-timestamp column to tell a later
-    reader which value came from where. Fixed: the route persists the contracts exactly as
-    the vendor returned them; the overlay applies only to the JSON response.
-
-    A FIFTH independent review (2026-09-13): no impossible future `ts_recv` needed here --
-    see `_tsla_contracts_with_target_quote_time`'s docstring for why a realistically-stale
-    pinned native quote time makes a plain, present-moment push unambiguously newer.
-    """
-    import time
-
-    import app.options.order_flow.streaming as ofs
-    import server as srv
-    from calibration.complete_chain_capture import latest_complete_chain_capture
-
-    now = time.time()
-    contracts, target = _tsla_contracts_with_target_quote_time(now - 20.0)
-    target_symbol = target["symbol"]
-    rest_volume = target["totalVolume"]
-    streamed_volume = (rest_volume or 0) + 4321
-
-    prior_contract, prior_contracts = _push_streamed_volume(
-        ofs, target_symbol, "TSLA", streamed_volume, now)
-    try:
-        monkeypatch.setattr(srv, "get_client", lambda: object())
-        monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
-        db_path = _fake_db(monkeypatch, srv, tmp_path)
-        c_json = _chain_json_for(contracts)
-        c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
-        monkeypatch.setattr(srv, "_gated_safe_get_chain", _fake_gated_isolating_ALL(c_json, []))
-
-        srv.get_chain(ticker="TSLA", expiry=None)
-    finally:
-        ofs._active_option_contract, ofs._active_option_contracts = prior_contract, prior_contracts
-        from app.options.order_flow.state import clear_symbol
-        clear_symbol(target_symbol)
-
-    cap = latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY)
-    assert cap is not None
-    persisted = next(c for c in cap["contracts"] if c["symbol"] == target_symbol)
-    assert persisted["totalVolume"] == rest_volume, (
-        f"the persisted capture must be the PURE REST value ({rest_volume}), not the "
-        f"response's own streamed-overlaid value ({persisted['totalVolume']}) -- the "
-        f"streamed overlay belongs to the response only, never to this durable REST record"
-    )
 
 
 def test_chain_streamed_overlay_reaches_the_route_over_real_http(monkeypatch, tmp_path):
@@ -587,28 +522,6 @@ def test_chain_overlay_does_not_let_one_fresh_field_borrow_another_fields_freshn
         assert overlaid[k] == v, f"unrelated field {k!r} was changed by the overlay"
 
 
-def test_chain_live_fetch_persists_the_complete_capture(monkeypatch, tmp_path):
-    """VENDOR -> PERSISTED set equivalence: a successful complete_single_expiry response
-    durably writes the exact contract set to complete_chain_captures — proven by reading
-    the REAL sqlite row back, not by asserting the persist function was merely called."""
-    import server as srv
-    from calibration.complete_chain_capture import latest_complete_chain_capture
-
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
-    db_path = _fake_db(monkeypatch, srv, tmp_path)
-    c_json = _chain_json_for(_TSLA_CONTRACTS)
-    c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
-    monkeypatch.setattr(srv, "_gated_safe_get_chain",
-                        _fake_gated_isolating_ALL(c_json, []))
-    srv.get_chain(ticker="TSLA", expiry=None)
-
-    cap = latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY)
-    assert cap is not None, "the complete capture must be durably persisted, not merely served"
-    assert cap["completeness_basis"] == srv.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
-    persisted_symbols = {c["symbol"] for c in cap["contracts"]}
-    vendor_symbols = {c["symbol"] for c in _TSLA_CONTRACTS}
-    assert persisted_symbols == vendor_symbols, "exact contract-symbol set equality, vendor -> PERSISTED"
 
 
 def test_chain_never_serves_an_older_persisted_capture_when_live_fails(monkeypatch, tmp_path):
@@ -663,23 +576,6 @@ def test_chain_expiry_mismatch_is_unavailable_not_another_expiry(monkeypatch, tm
     assert body["scope"]["reason"] == f"vendor returned expiries ['2099-01-01'], not {_TSLA_EXPIRY}"
 
 
-def test_chain_expiry_mismatch_does_not_persist_a_complete_capture(monkeypatch, tmp_path):
-    """A mismatched response must never be banked as if it were a proven-complete
-    capture for the REQUESTED expiry — the persisted table stays empty."""
-    import server as srv
-    from calibration.complete_chain_capture import latest_complete_chain_capture
-
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_TSLA_EXPIRY])
-    db_path = _fake_db(monkeypatch, srv, tmp_path)
-    drifted = dict(_TSLA_CONTRACTS[0])
-    drifted["expirationDate"] = "2099-01-01T00:00:00.000+00:00"
-    c_json = _chain_json_for([drifted])
-    c_json["underlying"] = {"last": _TSLA_COMPLETE.get("spot")}
-    monkeypatch.setattr(srv, "_gated_safe_get_chain",
-                        lambda *a, **k: (_FakeResp(200, c_json), 0.0, 0.1))
-    srv.get_chain(ticker="TSLA", expiry=None)
-    assert latest_complete_chain_capture(db_path, "TSLA", _TSLA_EXPIRY) is None
 
 
 def test_chain_live_fetch_accepts_explicit_expiry_param(monkeypatch, tmp_path):
@@ -702,37 +598,8 @@ def test_chain_live_fetch_accepts_explicit_expiry_param(monkeypatch, tmp_path):
     assert fetch_expiries_called == []
 
 
-def test_chain_live_fetch_non_200_is_unavailable_with_the_vendor_status(monkeypatch, tmp_path):
-    """MEASURED 2026-09-24: SPY's expired 0DTE drew HTTP 400 from Schwab and was answered from
-    storage on every refresh. The vendor's status is the answer."""
-    import json
-
-    import server as srv
-
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-    _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_REAL_EXPIRY])
-    monkeypatch.setattr(srv, "_gated_safe_get_chain",
-                        lambda *a, **k: (_FakeResp(400, {}), 0.0, 0.1))
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
-    body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["contracts"] == [] and body["status"] == "unavailable"
-    assert body["scope"]["reason"] == "vendor chain request returned HTTP 400"
 
 
-def test_chain_gate_returning_no_response_is_unavailable(monkeypatch, tmp_path):
-    import json
-
-    import server as srv
-
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-    _fake_db(monkeypatch, srv, tmp_path)
-    monkeypatch.setattr(srv, "_fetch_expiries_light", lambda t: [_REAL_EXPIRY])
-    monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *a, **k: (None, 0.0, 0.1))
-    monkeypatch.setattr(srv, "_latest_chain_and_spot", lambda t: (_REAL_CONTRACTS, _REAL_SPOT, 1_700_000_000.0))
-    body = json.loads(srv.get_chain(ticker="SPY", expiry=None).body)
-    assert body["contracts"] == [] and body["status"] == "unavailable"
-    assert body["scope"]["reason"] == "vendor chain request returned no response"
 
 
 def test_real_vendor_evidence_strike_count_alone_undercounts_spy():

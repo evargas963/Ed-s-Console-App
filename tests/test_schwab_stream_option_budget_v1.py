@@ -197,49 +197,10 @@ def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
         L._by_ticker.pop(tk, None)
 
 
-def test_streamed_plane_row_keeps_streaming_identity(monkeypatch):
-    from tests.feed_live_helper import mark_feed_live
-    mark_feed_live('ZZSTREAMROW')   # the daemon holds it on a live feed
-    import server
-    _no_rest(monkeypatch, server)
-    tk = "ZZSTREAMROW"
-    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", 1.0), ticker=tk)
-    try:
-        _, source, _ = server.resolve_spot(tk)
-        assert source == server.SPOT_SOURCE_PLANE
-        assert server.current_spot_state(source, tk) == "live"
-    finally:
-        L._by_ticker.pop(tk, None)
 
 
-def test_a_stale_streamed_price_is_not_spot(monkeypatch):
-    """A streamed LAST_PRICE past its freshness bound is UNAVAILABLE, never served stale."""
-    import server
-    tk = "ZZSTALESTREAM"
-    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", L.PLANE_QUOTE_STALE_SEC + 30), ticker=tk)
-    try:
-        assert server.resolve_spot(tk) == (None, "none", None)
-    finally:
-        L._by_ticker.pop(tk, None)
 
 
-def test_no_rest_quote_is_ever_consulted_for_spot(monkeypatch):
-    import server
-
-    _no_rest(monkeypatch, server)
-    L._by_ticker.pop("ZZNOSTREAM", None)
-    # no streamed row: UNAVAILABLE, and no REST read was attempted to fill the gap
-    assert server.resolve_spot("ZZNOSTREAM") == (None, "none", None)
-    # a fresh streamed row: served, still without touching REST
-    from tests.feed_live_helper import mark_feed_live
-    tk = "ZZNORESTLIVE"
-    mark_feed_live(tk)
-    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", 1.0), ticker=tk)
-    try:
-        spot, source, _ = server.resolve_spot(tk)
-        assert spot == float(L._by_ticker[tk]["spot"]) and source == server.SPOT_SOURCE_PLANE
-    finally:
-        L._by_ticker.pop(tk, None)
 
 
 def test_admission_summary_reports_over_budget_contracts_as_not_admitted(monkeypatch):

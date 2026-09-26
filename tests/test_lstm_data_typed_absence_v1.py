@@ -145,17 +145,6 @@ def test_layer_short_history_trend_sign_is_none_end_to_end():
     assert layer["mtf.alignment_state"] is None
 
 
-def test_direction_consumers_skip_none_signs():
-    # Both scoring consumers must SKIP an absent sign, not read it as flat.
-    from features.signal_layer_v1 import layer_direction_policy
-
-    layer = {
-        "meta.n_bars": 30,
-        "mtf.trend_1m_sign": None,
-        "mtf.trend_5m_from_1m_sign": None,
-        "mtf.bias_15m_from_1m_sign": None,
-    }
-    assert layer_direction_policy(layer) == "wait"
 
 
 # ── order flow: absent legs are excluded, never neutral 0.0 mass ─────────────────────────

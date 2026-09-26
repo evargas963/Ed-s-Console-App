@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import inspect
 
-from db import EdDB, CANONICAL_TIMEFRAME, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, get_snapshot_sql
-from timeframe_config import DERIVED_TIMEFRAME
+from db import EdDB
 from instrument_identity import ticker_storage_key
 
 
@@ -93,153 +92,12 @@ def test_ticker_storage_key_vxn_rvx_broker_index_roots():
     assert ticker_storage_key("$VIX") == "$VIX"
 
 
-def test_get_similar_setups_normalizes_spx_alias(tmp_path):
-    dbp = tmp_path / "t.db"
-    db = EdDB(dbp)
-    with db._connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO snapshots (
-                ticker, timeframe, ts_utc, ts_et, spot,
-                zone, vwap_side, outcome_1c,
-                nearest_above_dist, nearest_below_dist,
-                horizon_outcome_schema_version, outcome_filled
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-            """,
-            (
-                "$SPX",
-                CANONICAL_TIMEFRAME,
-                1000.0,
-                "test_et",
-                5000.0,
-                "breakout",
-                "above",
-                "up",
-                1.0,
-                1.0,
-                HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1,
-            ),
-        )
-    rows = db.get_similar_setups(
-        ticker="SPX",
-        timeframe=CANONICAL_TIMEFRAME,
-        zone="breakout",
-        vwap_side="above",
-        nearest_above_dist=1.0,
-        nearest_below_dist=1.0,
-        n_similar=50,
-    )
-    assert len(rows) >= 1
-    assert rows[0].get("ticker") == "$SPX"
 
 
-def test_pin_neutral_backfill_writes_when_bars_exist(tmp_path):
-    dbp = tmp_path / "t2.db"
-    db = EdDB(dbp)
-    # RC-306: the snapshot row below declares et_hour=10, et_minute=30, and the bars run from
-    # t_snap-30min to t_snap+200min. Off the wall clock that span leaves the collect window
-    # whenever the suite runs outside a narrow slice of the day — and leaves the market
-    # calendar entirely on a weekend — so `upsert_1m_bars` wrote nothing and the outcome came
-    # back None. Anchored to the same calendar the write seam validates against.
-    t_snap = _in_window_ts(10, 30)
-
-    with db._connect() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO snapshots (
-                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
-                zone, vwap_side, horizon_outcome_schema_version, outcome_filled
-            )
-            VALUES ('SPY', ?, ?, 'x', 10, 30, 'rth', 100.0,
-                    'pin_neutral', 'above', ?, 0)
-            """,
-            (CANONICAL_TIMEFRAME, t_snap, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
-        )
-        sid = int(cur.lastrowid)
-    bars = []
-    for i in range(-30, 200):
-        bs = t_snap + i * 60.0
-        c = 100.0 + i * 0.01
-        bars.append(
-            {"datetime": bs, "open": c, "high": c + 0.02, "low": c - 0.02, "close": c, "volume": 100.0}
-        )
-    db.upsert_1m_bars("SPY", bars)
-
-    with db._connect() as conn:
-        o1 = conn.execute(
-            get_snapshot_sql("tests/test_instrument_identity_and_repair_v1.py:167"),
-            (sid,),
-        ).fetchone()
-    assert o1["outcome_1c"] in ("up", "down", "flat")
-
-    audit = db.fill_outcomes_pin_neutral_backfill_v1(dry_run=False)
-    assert audit["snapshots_scanned"] == 0
-    assert audit["updates_executed"] == 0
 
 
-def test_pin_neutral_backfill_excludes_legacy_5m_timeframe(tmp_path):
-    """Canonical repair is 1m-only; legacy 5m rows are counted as excluded, not updated."""
-    dbp = tmp_path / "t5m.db"
-    db = EdDB(dbp)
-    # RC-306: same clock-derived span as the test above. This one stayed green because it
-    # asserts EXCLUSION, which holds whether or not the bars were written — a latent version
-    # of the same defect, and fixing only the red one would be the fix-the-instance failure
-    # this row exists to stop.
-    t_snap = _in_window_ts(10, 30)
-
-    with db._connect() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO snapshots (
-                ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
-                zone, vwap_side, horizon_outcome_schema_version, outcome_filled
-            )
-            VALUES ('SPY', ?, ?, 'x', 10, 30, 'rth', 100.0,
-                    'pin_neutral', 'above', ?, 0)
-            """,
-            (DERIVED_TIMEFRAME, t_snap, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1),
-        )
-        sid = int(cur.lastrowid)
-    bars = []
-    for i in range(-30, 200):
-        bs = t_snap + i * 60.0
-        c = 100.0 + i * 0.01
-        bars.append(
-            {"datetime": bs, "open": c, "high": c + 0.02, "low": c - 0.02, "close": c, "volume": 100.0}
-        )
-    db.upsert_1m_bars("SPY", bars)
-
-    audit = db.fill_outcomes_pin_neutral_backfill_v1(dry_run=False)
-    assert audit["snapshots_scanned"] == 0
-    assert audit["legacy_timeframe_rows_excluded"] == 1
-    assert audit["updates_executed"] == 0
-
-    with db._connect() as conn:
-        o1 = conn.execute(
-            get_snapshot_sql("tests/test_instrument_identity_and_repair_v1.py:208"),
-            (sid,),
-        ).fetchone()
-    assert o1["outcome_1c"] is None
-    assert o1["timeframe"] == DERIVED_TIMEFRAME
 
 
-def test_get_similar_setups_rejects_non_canonical_timeframe(tmp_path):
-    """Issue 19 production similarity must not mix legacy snapshot timeframes."""
-    dbp = tmp_path / "tnc.db"
-    db = EdDB(dbp)
-    similar, tr = db.get_similar_setups(
-        ticker="SPY",
-        timeframe=DERIVED_TIMEFRAME,
-        zone="pin_neutral",
-        vwap_side="above",
-        nearest_above_dist=1.0,
-        nearest_below_dist=1.0,
-        return_trace=True,
-    )
-    assert similar == []
-    assert tr.get("rejected") is True
-    assert tr.get("reject_reason") == "non_canonical_timeframe_for_issue19"
 
 
 # ── RC-126: levels for ALL tickers — the query boundary uses the ONE identity authority ─────

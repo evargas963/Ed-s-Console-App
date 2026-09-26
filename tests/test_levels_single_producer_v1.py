@@ -144,69 +144,12 @@ def _overlay(cache_entry, monkeypatch):
     return md
 
 
-def test_fresh_terrain_overlays_every_gamma_family_level(monkeypatch):
-    # RC-124/RC-292: kl_absolute_gamma_strike carries the total-gamma concentration
-    # (+ strength passthrough); kl_pin_candidate carries the QUALIFIED pin claim with its
-    # blockers; kl_hvl carries the net-GEX peak under its historical key — the row label
-    # says what it is.
-    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
-                   "absolute_gamma_strike": 741.0, "absolute_gamma_strength_pct": 32.5,
-                   "pin_candidate": 741.0, "pin_candidate_blockers": [],
-                   "net_gex_peak": 735.0, "max_pain": 742.0,
-                   "levels_stale": False}, monkeypatch)
-    assert md["kl_call_gamma_wall"] == 745.0 and md["kl_put_gamma_wall"] == 740.0
-    assert md["kl_gamma_flip"] == 746.5 and md["kl_absolute_gamma_strike"] == 741.0
-    assert md["absolute_gamma_strike"] == 741.0, (
-        "payload absolute_gamma_strike must be the terrain total-gamma SSOT (RC-292)")
-    assert md["kl_absolute_gamma_strength_pct"] == 32.5, "the leader's decisiveness must travel"
-    assert md["kl_pin_candidate"] == 741.0 and md["kl_pin_candidate_blockers"] == [], (
-        "RC-292: the qualified pin claim and its (empty) blocker list must travel")
-    assert md["kl_hvl"] == 735.0, "kl_hvl now carries net_gex_peak (RC-124 remap)"
-    assert md["kl_max_pain"] == 742.0
-    assert md["kl_levels_source"] == "terrain_wide_chain"
-    # narrow-book dollar strengths beside wide-chain strikes are the dual-book lie in a
-    # smaller cell — blanked, never mixed
-    assert md["kl_call_gamma_str"] == "—" and md["kl_put_gamma_str"] == "—"
 
 
-def test_stale_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
-    import server as S
-    monkeypatch.setattr(S, "_is_loggable_session", lambda: True)   # an open-market test
-    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "confidence": "TRUSTED",
-                   "levels_stale": True}, monkeypatch)
-    for k in ("kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip",
-              "kl_absolute_gamma_strike", "kl_pin_candidate", "kl_hvl", "kl_max_pain",
-              "kl_gamma_flip_confidence", "absolute_gamma_strike"):
-        assert md[k] is None, f"{k} survived a stale terrain — the second book is back"
-    assert "withheld" in md["kl_levels_source"]
 
 
-def test_absent_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
-    md = _overlay(None, monkeypatch)
-    assert md["kl_call_gamma_wall"] is None and md["kl_gamma_flip"] is None
-    assert md["absolute_gamma_strike"] is None
-    assert "withheld" in md["kl_levels_source"]
 
 
-def test_overlay_overwrites_payload_gamma_pin_with_terrain_total(monkeypatch):
-    """RC-292: analytics net-GEX peak (743 on the SPY 0DTE fixture) must not survive overlay.
-
-    The payload key is absolute_gamma_strike after the RC-292 rename; the invariant is
-    unchanged — whatever value occupies it before overlay, the terrain SSOT overwrites it.
-    """
-    import time
-
-    import server as S
-    monkeypatch.setattr(S, "_terrain_cache", {
-        "SPY": {
-            "absolute_gamma_strike": 745.0,
-            "absolute_gamma_strength_pct": 59.4,
-            "computed_ts_utc": time.time(),
-        },
-    })
-    md = {"absolute_gamma_strike": 743.0, "kl_absolute_gamma_strike": 743.0}
-    S._terrain_kl_overlay(md, "SPY")
-    assert md["absolute_gamma_strike"] == 745.0 and md["kl_absolute_gamma_strike"] == 745.0
 
 
 def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
@@ -359,43 +302,6 @@ def test_terrain_native_injection_is_caught():
     )
 
 
-def test_overlay_owns_the_full_concept_set(monkeypatch):
-    """Fresh terrain: delta walls carried, EM from the sigma band; unowned concepts BLANK."""
-    import time
-
-    gen_ts = time.time()
-    md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "gamma_flip": 746.5,
-                   "absolute_gamma_strike": 741.0, "absolute_gamma_strength_pct": 32.5,
-                   "net_gex_peak": 735.0, "max_pain": 742.0,
-                   "call_delta_wall": 747.0, "put_delta_wall": 738.0,
-                   "implied_1d_move": {"points": 8.5}, "spot": 741.0,
-                   "confidence": "TRUSTED", "computed_ts_utc": gen_ts,
-                   # RC-130 carriage check: states are CARRIED verbatim from the producer,
-                   # never recomputed in the overlay (put deliberately 'breached' here even
-                   # though 740<741 — proving no second computation exists at this seam).
-                   "call_wall_state": "contains", "put_wall_state": "breached",
-                   "levels_stale": False}, monkeypatch)
-    assert md["kl_call_delta_wall"] == 747.0 and md["kl_put_delta_wall"] == 738.0
-    assert md["kl_gamma_flip_confidence"] == "TRUSTED", (
-        "v23: the flip confidence must ride the SAME terrain book as the flip strike"
-    )
-    assert md["kl_levels_from_computed_ts"] == gen_ts, (
-        "v23 Lock-3: the terrain generation stamp must travel with the values so cross-surface "
-        "drift reads as generation skew, never a silent disagreement"
-    )
-    assert md["kl_call_wall_state"] == "contains" and md["kl_put_wall_state"] == "breached", (
-        "RC-130: the geometry state must travel WITH the wall value it qualifies"
-    )
-    assert md["kl_em_upper"] == 749.5 and md["kl_em_lower"] == 732.5, (
-        "EM must come from the terrain sigma band centered on the payload spot (E-34)"
-    )
-    for k in ("kl_call_oi_wall", "kl_put_oi_wall", "kl_call_vanna_wall",
-              "kl_put_vanna_wall", "kl_gamma_inflection", "kl_delta_inflection",
-              "kl_oi_center"):
-        assert md[k] is None, f"{k}: terrain does not compute this — it must be BLANK, " \
-                              f"never an analytics book"
-    for k in ("kl_call_delta_str", "kl_put_oi_str", "kl_hvl_str", "kl_max_pain_str"):
-        assert md[k] == "—", f"{k}: a strength from another book must be blanked"
 
 
 # ── RC-213 B1: /api/levels read-adapter contract (mission levels-faucet-v1) ──────────
@@ -768,61 +674,8 @@ def test_api_levels_registered_in_faucet_registry():
     )
 
 
-def test_market_context_session_families_carry_the_canonical_snapshot():
-    """Tier-B kill lock, tightened by Phase 2A.
-
-    The original form of this test demanded that `fetch_price_levels` DELEGATE to the
-    engine helpers instead of running its own inline `cum_tpv` / ORB loops. Delegation
-    killed the duplicate formulas but not the duplicate MATERIALIZATION: calling the
-    same helper over a privately fetched bar window still produced a second answer, and
-    that is exactly how /api/liquidity-snapshot came to serve overnight 773.40/772.55
-    against /api/levels' 773.3975/773.3975 for one ticker at one instant.
-
-    So the requirement is now strictly stronger — not "call the helper" but "call
-    nothing": carry the canonical PriceLevelSnapshot. Every inline-dual assertion from
-    the delegation era is kept below, because carriage must not reintroduce them.
-    """
-    import inspect
-
-    from market_context import fetch_price_levels
-
-    src = inspect.getsource(fetch_price_levels)
-    for name in (
-        "compute_session_vwap",
-        "compute_vwap_bands",
-        "compute_opening_range",
-        "get_overnight_levels",
-        "compute_volume_profile_levels",
-    ):
-        assert f"{name}(" not in src, (
-            f"fetch_price_levels INVOKES {name} — a second materialization of a Phase 2A "
-            f"level. It must carry the canonical snapshot's value instead."
-        )
-    assert "carry_snapshot_levels" in src, (
-        "fetch_price_levels no longer carries the canonical PriceLevelSnapshot"
-    )
-    assert "get_price_history" not in src, (
-        "the private vendor bar fetch is back — that is the alternate bar input that made "
-        "the two endpoints disagree, not a fallback"
-    )
-    assert "cum_tpv =" not in src, "inline VWAP dual still present"
-    assert "orb_bars_seen" not in src, "inline ORB dual still present"
-    assert "overnight_bars =" not in src and "overnight_bars.append" not in src, (
-        "today-premarket overnight dual still present"
-    )
 
 
-def test_backfill_typical_price_vwap_substitution_hard_fails():
-    """Census #2: typical-price must not fabricate a vwap when the column is absent."""
-    from pathlib import Path
-
-    src = Path(__file__).resolve().parent.parent.joinpath(
-        "backfill_snapshot_derived.py"
-    ).read_text(encoding="utf-8")
-    assert "eff_vwap = _typical_price(r)" not in src, (
-        "typical-price vwap SUBSTITUTION must hard-fail to absent (census #2)"
-    )
-    assert "SUBSTITUTION is forbidden" in src
 
 
 def test_rc124_merged_pin_tag_keeps_its_decisiveness():

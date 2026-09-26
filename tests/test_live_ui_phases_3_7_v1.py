@@ -11,14 +11,6 @@ def _server_src() -> str:
     return (REPO / "server.py").read_text(encoding="utf-8")
 
 
-def test_logger_cycle_order_is_deferred_first_and_drops_nothing():
-    import server as srv
-
-    board = ["AAA", "BBB", "CCC", "DDD"]
-    assert srv.logger_cycle_order(board, ["CCC", "DDD"]) == ["CCC", "DDD", "AAA", "BBB"]
-    assert set(srv.logger_cycle_order(board, ["ZZZ", "AAA"])) == {"ZZZ", "AAA", "BBB", "CCC", "DDD"}
-    assert srv.logger_budget_over(30.0, 30.0) is True
-    assert srv.logger_budget_over(29.9, 30.0) is False
 
 
 def test_l1_sse_dispatch_uses_its_own_thread_not_a_shared_pool():

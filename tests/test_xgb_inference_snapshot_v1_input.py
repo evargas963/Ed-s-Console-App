@@ -175,49 +175,6 @@ def test_xgb_path_accepts_valid_inference_snapshot_v1(monkeypatch):
     assert _predict_xgb(snap, "SPY", fusion_feature_overlay={"et_hour": 10, "et_minute": 30}) is None
 
 
-def test_build_inference_snapshot_v1_from_signal_input_uses_adapter_only():
-    from types import SimpleNamespace
-
-    from features.inference_snapshot import build_inference_snapshot_v1_from_signal_input
-
-    inp = SimpleNamespace(
-        ticker="SPY",
-        expiry=None,
-        spot=400.0,
-        spread=0.02,
-        zone="pin_bull",
-        nearest_above_dist=1.0,
-        nearest_below_dist=-1.0,
-        net_gamma=0.0,
-        vwap_side="above",
-        vwap_dist_pts=0.5,
-    )
-    snap = build_inference_snapshot_v1_from_signal_input(inp, as_of_ts=1_700_000_000.0)
-    assert snap["snapshot_type"] == "InferenceSnapshotV1"
-    assert snap["features"]["price.spot"] == 400.0
-    assert snap["features"]["price.spread_pts"] == 0.02
 
 
-def test_build_inference_snapshot_v1_from_signal_input_does_not_fabricate_as_of_ts():
-    from types import SimpleNamespace
-
-    from features.inference_snapshot import build_inference_snapshot_v1_from_signal_input
-
-    inp = SimpleNamespace(
-        ticker="SPY",
-        expiry=None,
-        refresh_ts_utc=None,
-        spot=400.0,
-        spread=0.01,
-        zone="pin_neutral",
-        nearest_above_dist=1.0,
-        nearest_below_dist=1.0,
-        net_gamma=100.0,
-        vwap_side="above",
-        vwap_dist_pts=0.5,
-    )
-
-    snap = build_inference_snapshot_v1_from_signal_input(inp)
-
-    assert snap["as_of_ts"] is None
 

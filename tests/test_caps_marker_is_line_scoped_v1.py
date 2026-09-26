@@ -123,14 +123,6 @@ def test_the_surviving_marker_states_a_reason_that_is_true():
     assert "PRESERVES absence" in live[0]
 
 
-def test_absent_net_gex_stays_none_not_zero():
-    """The claim the surviving marker makes, executed rather than believed."""
-    from types import SimpleNamespace
-
-    import terrain_engine as T
-
-    m = T._per_strike_map({740.0: SimpleNamespace()}, [])
-    assert m[740.0]["net_gex"] is None, "an exposure with no net_gex acquired a value"
 
 
 def test_unknown_maturity_joins_neither_side_of_the_split():

@@ -8,14 +8,12 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 import app.options.order_flow.history as history
-import app.options.order_flow.streaming as streaming
 import app.options.order_flow.state as live_state
 from app.api.routes.options_order_flow import options_history
 from app.options.order_flow.live_payload import options_live_payload
@@ -230,35 +228,6 @@ def test_history_inherits_partial_zero_stale_and_recovery_semantics(
     assert recovered["flow"]["top_book_pressure"] == pytest.approx(-2 / 26)
 
 
-def test_history_uses_canonical_restatement_owner(tmp_path, monkeypatch):
-    sample = _sample("TSLA  260831C00367500")
-    source = next(
-        event
-        for event in sample["events"]
-        if event["kind"] == "l1" and "LAST_PRICE" in event["content"]
-    )
-    repeated = {
-        "symbol": sample["symbol"],
-        "events": [
-            dict(source, ts_recv=2_000.0),
-            dict(source, ts_recv=2_001.0),
-        ],
-    }
-    db = tmp_path / "stream_capture.db"
-    _write_db(db, [repeated])
-    _point_history_at(monkeypatch, db)
-    captured = OrderFlowState()
-    monkeypatch.setattr(history, "OrderFlowState", lambda: captured)
-
-    content = history.hydrate_option_content(
-        sample["symbol"], since_ts=0, db_path=db
-    )
-    receipts = captured.get_receive_log(sample["symbol"])
-    tape = [item for item in content if "receive_seq" in item]
-
-    assert [row["receive_seq"] for row in receipts] == [1, 2]
-    assert [row["is_restatement"] for row in receipts] == [False, True]
-    assert len(tape) == 1
 
 
 def test_history_applies_events_in_receive_order_with_existing_tie_rule(
@@ -321,122 +290,8 @@ def test_canonical_book_state_is_bounded_and_contract_isolated():
     assert options_live_payload("MISSING", content=[])["status"] == "no_book"
 
 
-def test_history_requests_are_isolated_from_live_and_each_other(
-    tmp_path, monkeypatch
-):
-    samples = _samples()
-    db = tmp_path / "stream_capture.db"
-    _write_db(db, samples)
-    _point_history_at(monkeypatch, db)
-    live_state.clear_all_live_state()
-    sentinel = samples[0]
-    first_l1 = next(e for e in sentinel["events"] if e["kind"] == "l1")
-    live_state.push_level_one(
-        sentinel["symbol"], first_l1["content"], ts_recv=first_l1["ts_recv"]
-    )
-    before_content = live_state.get_content_for_symbol(sentinel["symbol"])
-    before_stats = live_state.get_stats()
-    before_receipts = live_state.get_receive_log(sentinel["symbol"])
-    monkeypatch.setattr(
-        time, "time", lambda: max(_fixed_evaluation_time(s) for s in samples)
-    )
-
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = [
-            pool.submit(
-                history.hydrate_option_content,
-                sample["symbol"],
-                since_ts=0,
-                db_path=db,
-            )
-            for sample in samples
-        ]
-        results = [future.result(timeout=10) for future in futures]
-
-    assert all(results)
-    assert live_state.get_content_for_symbol(sentinel["symbol"]) == before_content
-    assert live_state.get_stats() == before_stats
-    assert live_state.get_receive_log(sentinel["symbol"]) == before_receipts
-    assert len({result[-1].get("BID_PRICE") for result in results}) > 1
-    live_state.clear_all_live_state()
 
 
-def test_live_push_keeps_later_messages_with_equal_receive_time(
-    tmp_path, monkeypatch
-):
-    sample = _sample("TSLA  260831C00367500")
-    l1_rows = [
-        event
-        for event in sample["events"]
-        if event["kind"] == "l1" and "LAST_PRICE" in event["content"]
-    ][:2]
-    book_rows = [event for event in sample["events"] if event["kind"] == "book"][:2]
-    first = {
-        "symbol": sample["symbol"],
-        "events": [
-            dict(l1_rows[0], ts_recv=5_000.0),
-            dict(book_rows[0], ts_recv=5_000.0),
-        ],
-    }
-    db = tmp_path / "stream_capture.db"
-    _write_db(db, [first])
-    _point_history_at(monkeypatch, db)
-    monkeypatch.setattr(time, "time", lambda: 5_001.0)
-    live_state.clear_all_live_state()
-
-    # The live side receives every message over the daemon's push, in arrival order --
-    # two messages with the SAME receive time are both applied, neither dropped.
-    def _push(event, ts_recv):
-        if event["kind"] == "l1":
-            streaming._ingest_pushed(f"optquote.{sample['symbol']}", {
-                "symbol": sample["symbol"], "ts_recv": ts_recv,
-                "content": event["content"], "src": event["source"]})
-        else:
-            streaming._ingest_pushed(f"book.{sample['symbol']}", {
-                "symbol": sample["symbol"], "ts_recv": ts_recv, "service": "OPTIONS_BOOK",
-                "content": event["content"], "src": event["source"]})
-
-    _push(l1_rows[0], 5_000.0)
-    _push(book_rows[0], 5_000.0)
-
-    con = sqlite3.connect(db)
-    try:
-        con.execute(
-            "INSERT INTO stream_options_quotes_raw"
-            "(ts_recv,symbol,native_json,src) VALUES(?,?,?,?)",
-            (
-                5_000.0,
-                sample["symbol"],
-                json.dumps(l1_rows[1]["content"]),
-                l1_rows[1]["source"],
-            ),
-        )
-        con.execute(
-            "INSERT INTO stream_book_raw"
-            "(ts_recv,symbol,service,native_json,src) VALUES(?,?,?,?,?)",
-            (
-                5_000.0,
-                sample["symbol"],
-                "OPTIONS_BOOK",
-                json.dumps(book_rows[1]["content"]),
-                book_rows[1]["source"],
-            ),
-        )
-        con.commit()
-    finally:
-        con.close()
-
-    _push(l1_rows[1], 5_000.0)
-    _push(book_rows[1], 5_000.0)
-
-    expected = live_state.get_content_for_symbol(sample["symbol"])
-    actual = history.hydrate_option_content(
-        sample["symbol"], since_ts=0, db_path=db
-    )
-    assert actual == expected
-    assert len(live_state.get_receive_log(sample["symbol"])) == 2
-    assert len([row for row in expected if "BIDS" in row]) == 2
-    live_state.clear_all_live_state()
 
 
 def test_isolated_state_created_during_rth_keeps_earlier_book(

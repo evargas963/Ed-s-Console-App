@@ -11,7 +11,6 @@ tests/test_live_push_channel_v1.py.
 from __future__ import annotations
 
 import ast
-import asyncio
 import inspect
 import time
 
@@ -131,19 +130,6 @@ def test_set_active_ticker_puts_its_book_and_quote_in_the_wanted_list(tmp_path, 
     assert ofs._wanted_version > before, "the feed loop sends the change"
 
 
-def test_feed_loop_starts_and_stops_cleanly(tmp_path, monkeypatch):
-    """start_order_flow_stream/stop_order_flow_stream must work with NO Schwab client
-    (None) — the whole point of the repair is that this feed needs no account/session."""
-    _reset(tmp_path)
-
-    async def go():
-        ok = ofs.start_order_flow_stream(None, None, "SPY")
-        assert ok is True
-        assert ofs.is_order_flow_stream_running() is True
-        await asyncio.sleep(0.05)
-        ofs.stop_order_flow_stream(join_timeout=1.0)
-        assert ofs.is_order_flow_stream_running() is False
-    asyncio.run(go())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

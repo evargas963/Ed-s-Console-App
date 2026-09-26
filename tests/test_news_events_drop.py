@@ -78,22 +78,6 @@ def test_news_events_create_table_removed_from_db_py_source() -> None:
     assert "CREATE TABLE NEWS_EVENTS" not in upper
 
 
-def test_persist_events_parameter_removed_from_news_sentiment() -> None:
-    """The dead persist_events plumbing in news_sentiment.refresh_and_context /
-    refresh_and_context_for_ui must be gone so callers can't reintroduce
-    a phantom persist toggle."""
-    text = (REPO_ROOT / "news_sentiment.py").read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.name in ("refresh_and_context", "refresh_and_context_for_ui"):
-                arg_names = {a.arg for a in node.args.args}
-                kwarg_names = {a.arg for a in node.args.kwonlyargs}
-                all_args = arg_names | kwarg_names
-                assert "persist_events" not in all_args, (
-                    f"news_sentiment.{node.name} still accepts persist_events; "
-                    "Pass 8 removed the param + dead persist block — clean the signature"
-                )
 
 
 def test_no_persist_events_kwarg_in_any_refresh_and_context_call(repo_index) -> None:

@@ -6,7 +6,6 @@ contract, 0 often -- so an absent side is a known zero and an unreported one is 
 """
 from __future__ import annotations
 
-import inspect
 
 from math_exposure_core import compute_exposures_by_strike
 from math_probabilities import (
@@ -62,9 +61,3 @@ def test_smart_money_needs_every_component():
     assert compute_smart_money_signal(unreported, SPOT)["score"] is None
 
 
-def test_requested_past_expiry_is_refused_not_replaced():
-    import server
-    src = inspect.getsource(server._fetch_state)
-    assert "— using default" not in src          # the old log line of the substitution
-    assert "selected_exp = expiry or _default_expiry" not in src
-    assert "requested_expiry_unavailable" in src

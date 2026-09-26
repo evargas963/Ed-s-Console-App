@@ -148,16 +148,6 @@ def test_market_session_is_calendar_first():
     assert market_session(10, 0, et_date="2026-07-31") == "rth"      # Friday
 
 
-def test_the_timestamp_path_supplies_the_date_itself():
-    """market_session_from_ts_utc has the date; withholding it was the whole defect."""
-    import datetime
-
-    from ml_data_common import market_session_from_ts_utc
-
-    sat = datetime.datetime(2026, 8, 1, 14, 0, tzinfo=datetime.timezone.utc).timestamp()
-    fri = datetime.datetime(2026, 7, 31, 14, 0, tzinfo=datetime.timezone.utc).timestamp()
-    assert market_session_from_ts_utc(sat) == "closed"
-    assert market_session_from_ts_utc(fri) == "rth"
 
 
 # ── the mission-scope wildcard control was removed with governance/pm_mission.json

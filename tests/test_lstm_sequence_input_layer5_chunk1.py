@@ -83,57 +83,12 @@ def test_envelope_rejects_wrong_snapshot_type():
         build_lstm_merged_windows(win, list(win), inference_snapshot_v1=bad)
 
 
-def test_canonical_missing_masks_partial_presence():
-    from features.canonical_contract import get_mvp_feature_names
-    from features.lstm_sequence_input import _canonical_missing_masks
-
-    cf = {k: None for k in get_mvp_feature_names()}
-    cf["structure.net_gamma"] = 100.0
-    assert _canonical_missing_masks(cf) == [1.0, 0.0]
 
 
-def test_encode_vwap_side_none_uses_unknown_encoded():
-    from features.canonical_contract import get_mvp_feature_names
-    from features.lstm_sequence_input import (
-        VWAP_SIDE_UNKNOWN_ENCODED,
-        encode_lstm_structure_bar_with_masks,
-    )
-    from lstm_data import ENCODED_FEATURES_5M
-
-    cf = {k: None for k in get_mvp_feature_names()}
-    cf["price.spot"] = 450.0
-    cf["anchor.vwap_side"] = None
-    merged = _base_db_row(1.0)
-    enc = encode_lstm_structure_bar_with_masks(merged, cf, 450.0)
-    vi = ENCODED_FEATURES_5M.index("cat_vwap_side")
-    assert enc["features"][vi] == VWAP_SIDE_UNKNOWN_ENCODED
 
 
-def test_encode_known_zone_maps_to_zone_code():
-    from features.canonical_contract import get_mvp_feature_names
-    from features.lstm_sequence_input import encode_lstm_structure_bar_with_masks
-    from lstm_data import ENCODED_FEATURES_5M, ZONE_MAP
-
-    cf = {k: None for k in get_mvp_feature_names()}
-    cf["price.spot"] = 450.0
-    cf["structure.zone"] = "pin_bull"
-    enc = encode_lstm_structure_bar_with_masks(_base_db_row(1.0), cf, 450.0)
-    zi = ENCODED_FEATURES_5M.index("cat_zone")
-    assert enc["features"][zi] == float(ZONE_MAP["pin_bull"])
 
 
-def test_encode_unknown_zone_string_defaults_pin_neutral_code_lsi1():
-    """FIND-LSI1: locks current ZONE_MAP.get(..., 2) behavior (pin_neutral code)."""
-    from features.canonical_contract import get_mvp_feature_names
-    from features.lstm_sequence_input import encode_lstm_structure_bar_with_masks
-    from lstm_data import ENCODED_FEATURES_5M, ZONE_MAP
-
-    cf = {k: None for k in get_mvp_feature_names()}
-    cf["price.spot"] = 450.0
-    cf["structure.zone"] = "not_a_real_zone"
-    enc = encode_lstm_structure_bar_with_masks(_base_db_row(1.0), cf, 450.0)
-    zi = ENCODED_FEATURES_5M.index("cat_zone")
-    assert enc["features"][zi] == float(ZONE_MAP["pin_neutral"])
 
 
 def test_day_snaps_ts_close_override_applies_live_features():

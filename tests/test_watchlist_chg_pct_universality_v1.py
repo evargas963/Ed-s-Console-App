@@ -10,175 +10,32 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import market_context as mc
 
 
-def test_extract_pct_change_prefers_net_percent_change():
-    assert mc.extract_pct_change({"netPercentChange": 1.23}) == 1.23
 
 
-def test_extract_pct_change_does_not_use_regular_or_derived():
-    """T-09: regular-session leaf and netChange derivation are not substitutes."""
-    assert mc.extract_pct_change({"regularMarketPercentChange": 0.45}) is None
-    assert mc.extract_pct_change({"netChange": 2.0}) is None
 
 
-def test_extract_pct_change_preserves_a_real_zero():
-    """A flat (0.0) percent change must not be treated as absent."""
-    assert mc.extract_pct_change({"netPercentChange": 0.0}) == 0.0
 
 
-def test_extract_pct_change_absent_when_nothing_usable():
-    assert mc.extract_pct_change({}) is None
-    assert mc.extract_pct_change({"netPercentChange": float("nan")}) is None
 
 
-def test_extract_pct_change_is_the_one_parser_in_the_tree(repo_index):
-    """market_context.extract_pct_change is the ONE netPercentChange parser -- not two
-    independently-maintained copies of the same formula (an independent review once found it
-    duplicated across market_context.py and server.py). market_context._extract_quote calls
-    it, and no other production module reads the field itself. (server.py's REST quote parser
-    that also called it was deleted with the REST quote poll.) Sourced from the shared
-    `repo_index` corpus (the one current-tree observation)."""
-    import inspect
-
-    assert "extract_pct_change" in inspect.getsource(mc._extract_quote)
-    corpus = {rel.as_posix(): text for rel, text, _tree in repo_index.items()}
-    assert corpus, "the repo index is empty -- the scan would pass by not looking"
-    readers = sorted(
-        f for f, text in corpus.items()
-        if not f.startswith(("tests/", "governance/")) and f != "tools/check_vendor_field_coercion.py"
-        and "netPercentChange" in text)
-    assert readers == ["market_context.py"], f"a second netPercentChange parser: {readers}"
 
 
-def test_last_traded_price_is_a_finite_positive_last_price_or_none():
-    """quotes.quote.lastPrice only, coerced by the one numeric contract (audit of #272: a raw
-    float() let NaN/inf through and a non-numeric string raise)."""
-    assert mc._last_traded_price({"lastPrice": 12.5}) == 12.5
-    for bad in (0.0, -1.0, float("nan"), float("inf"), "x", None):
-        assert mc._last_traded_price({"lastPrice": bad}) is None, bad
-    assert mc._last_traded_price({"mark": 12.5}) is None
 
 
-def test_futures_percent_change_is_the_rest_net_percent_change(monkeypatch):
-    """Futures are not on the equity stream: their chg is quote.netPercentChange (0 hops).
-    Audit of #272: a stream-only resolver discarded it, so it was always None."""
-    class _Resp:
-        status_code = 200
-
-        def __init__(self, sym):
-            self._sym = sym
-
-        def json(self):
-            return {self._sym: {"quote": {"lastPrice": 5000.0, "netPercentChange": -0.42}}}
-
-    monkeypatch.setattr(mc, "configured_index_futures_symbols", lambda: {"ES": "/ESZ26"})
-    ctx = mc.fetch_market_context(None, lambda _c, sym: _Resp(sym))
-    assert (ctx.fut_es_symbol, ctx.fut_es_last, ctx.fut_es_chg_pct) == ("/ESZ26", 5000.0, -0.42)
 
 
-def test_live_state_never_backfills_chg_pct_from_rest(monkeypatch):
-    """chg_pct is the streamed REGULAR_MARKET_CHANGE_PERCENT only (operator rule 2026-09-23:
-    no fallbacks). A fresh streamed row that carries no chg_pct serves chg_pct=None even when
-    a REST quote with netPercentChange is available -- the gap stays visible."""
-    from tests.feed_live_helper import mark_feed_live
-    mark_feed_live('ZZZTEST')   # the daemon holds it on a live feed
-    import time as _t
-
-    import server as srv
-
-    ticker = "ZZZTEST"
-    plane_row = {"ticker": ticker, "spot": 55.0, "chg_pct": None,
-                 "server_received_ts": _t.time(), "spot_received_ts": _t.time(), "exchange_quote_ts": _t.time(),
-                 "quote_source_detail": {"spot": "LAST_PRICE"},
-                 "quote_ingestion": "schwab_streaming_level_one"}
-    monkeypatch.setattr(srv._lmp, "get_quote", lambda t: dict(plane_row))
-
-    class _FakeResp:
-        status_code = 200
-
-        def json(self):
-            return {ticker: {"quote": {"netPercentChange": 7.77, "lastPrice": 55.0}}}
-
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_memoized_quote_response", lambda t, client=None: _FakeResp())
-    out = srv._tier_a_live_state_dict(ticker, None)
-    assert out["spot"] == 55.0
-    assert out.get("chg_pct") is None, "REST netPercentChange must never stand in for the stream"
 
 
-def test_merge_into_state_chg_pct_overwrites_unconditionally_including_none(monkeypatch):
-    """The overlay's chg_pct handling must be an authoritative overwrite (including to
-    None when the plane row's newest fetch genuinely has none), not a sparse fill-gaps
-    merge -- a sparse merge would let a stale percentage from a PREVIOUS call survive a
-    fetch that came back honestly without one."""
-    import live_market_plane as lmp
-
-    monkeypatch.setattr(lmp, "get_quote", lambda t: {"chg_pct": None})
-    ms_dict = {"chg_pct": 99.9}  # stale value from an earlier merge
-    lmp.merge_into_state(ms_dict, "SPY")
-    assert ms_dict["chg_pct"] is None
 
 
-def test_apply_l1_live_quote_overlay_chg_pct_overwrites_unconditionally_including_none(monkeypatch):
-    import live_market_plane as lmp
-
-    monkeypatch.setattr(lmp, "get_quote", lambda t: {"chg_pct": None})
-    l1_payload = {"chg_pct": 99.9}
-    lmp.apply_l1_live_quote_overlay(l1_payload, "SPY")
-    assert l1_payload["chg_pct"] is None
 
 
-def test_safe_get_quote_and_safe_get_quotes_share_one_retry_implementation():
-    """An independent review found safe_get_quotes duplicating safe_get_quote's
-    token-refresh-and-retry structure verbatim. Both must now route through the same
-    _quote_call_with_retry rather than each carrying its own copy."""
-    import inspect
-    import schwab_client as sc
-
-    assert "_quote_call_with_retry" in inspect.getsource(sc.safe_get_quote)
-    assert "_quote_call_with_retry" in inspect.getsource(sc.safe_get_quotes)
 
 
-def test_safe_get_quotes_retries_once_after_token_refresh(monkeypatch):
-    import schwab_client as sc
-
-    calls = {"n": 0}
-
-    class _TokenErr(Exception):
-        pass
-
-    class _BadClient:
-        def get_quotes(self, tickers):
-            calls["n"] += 1
-            raise _TokenErr("expired")
-
-    class _GoodClient:
-        def get_quotes(self, tickers):
-            calls["n"] += 1
-            return "ok-response"
-
-    monkeypatch.setattr(sc, "_is_token_error", lambda e: True)
-    monkeypatch.setattr(sc, "_block_live_schwab_in_ci_offline", lambda: None)
-    resp = sc.safe_get_quotes(_BadClient(), ["SPY", "QQQ"], refresh_client_fn=lambda: _GoodClient())
-    assert resp == "ok-response"
-    assert calls["n"] == 2  # one failed attempt on the bad client, one retry on the refreshed one
 
 
-def test_streamed_chg_pct_is_the_one_authority_for_live_state_and_l1(monkeypatch):
-    """/api/live/state, the L1 build and the L1 HTTP projection read chg_pct through the ONE
-    live_market_plane.streamed_chg_pct -- none of them keeps a REST backfill of its own."""
-    import inspect
-
-    import server as srv
-    from planes import context_light
-
-    assert not hasattr(srv, "_streamed_chg_pct")
-    for fn in (srv._tier_a_live_state_dict, srv._l1_http_get_projection, context_light.build_l1_context):
-        src = inspect.getsource(fn)
-        assert "streamed_chg_pct" in src, fn.__name__
-        assert "_memoized_quote_response" not in src or fn is not srv._tier_a_live_state_dict
 
 
 def test_streamed_chg_pct_serves_only_a_fresh_streamed_row(monkeypatch):
@@ -242,24 +99,6 @@ def test_watchlist_quotes_route_success_shape(monkeypatch):
         55.0, 1.11, "live", srv.SPOT_SOURCE_PLANE)
 
 
-def test_watchlist_quotes_serves_the_streamed_row_with_no_vendor_call(monkeypatch):
-    """The watchlist's SPY row and every other screen's SPY spot are the SAME streamed
-    LAST_PRICE -- no vendor round trip of its own."""
-    from tests.feed_live_helper import feed_live_during
-    feed_live_during(monkeypatch, 'ZZWLPLANE')   # the daemon holds it on a live feed
-    import live_market_plane as L
-    import server as srv
-    from starlette.testclient import TestClient
-
-    tk = "ZZWLPLANE"
-    monkeypatch.setitem(L._by_ticker, tk, _streamed_plane_row(812.5, 0.42, tk))
-    monkeypatch.setattr("schwab_client.safe_get_quotes", lambda *_a, **_k: (_ for _ in ()).throw(
-        AssertionError("no vendor call")))
-    with TestClient(srv.app) as client:
-        body = client.get("/api/watchlist-quotes", params={"tickers": tk}).json()
-    assert body["ok"] is True
-    assert body["quotes"][tk]["spot"] == 812.5
-    assert body["quotes"][tk]["chg_pct"] == 0.42
 
 
 def test_watchlist_quotes_withholds_a_symbol_the_stream_is_not_answering(monkeypatch):

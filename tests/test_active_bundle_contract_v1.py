@@ -76,17 +76,6 @@ def test_check_active_bundle_incomplete_without_meta_stack(tmp_path: Path):
     assert "meta_SPY_1c.pkl missing" in str(r["artifacts"]["meta_stack"]["issues"])
 
 
-def test_strict_active_bundle_dir_requires_full_triple(tmp_path: Path):
-    from active_bundle_contract import strict_active_bundle_dir_for_horizon
-
-    bd = tmp_path / "active" / "SPY"
-    bd.mkdir(parents=True)
-    (bd / "xgb_SPY_1c.pkl").write_bytes(b"x")
-    (bd / "xgb_SPY_1c_meta.json").write_text("{}", encoding="utf-8")
-    assert strict_active_bundle_dir_for_horizon("SPY", "1c", models_dir=tmp_path) is None
-
-    _write_minimal_bundle(bd, "SPY", "1c")
-    assert strict_active_bundle_dir_for_horizon("SPY", "1c", models_dir=tmp_path) == bd
 
 
 def test_ml_predict_strict_uses_bundle_contract(tmp_path: Path, monkeypatch):

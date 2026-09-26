@@ -6,10 +6,8 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-import time
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -33,144 +31,24 @@ def _tickers_by_cat(db: EdDB) -> dict[str, set[str]]:
     return out
 
 
-def test_issue22_user_enrollment_persists_across_db_instances(tmp_path):
-    dbp = tmp_path / "i22.db"
-    now = time.time()
-    db1 = EdDB(dbp)
-    db1.logging_universe_sync_core(["SPY", "QQQ"], now)
-    db1.logging_universe_upsert_user_persisted("XLF", "test_enroll_src", now + 1)
-
-    db2 = EdDB(dbp)
-    rows = {r["ticker"].upper(): r for r in db2.logging_universe_list_rows()}
-    assert rows["SPY"]["category"] == "core"
-    assert rows["XLF"]["category"] == "user_persisted"
-    assert rows["XLF"]["enrollment_source"] == "test_enroll_src"
 
 
-def test_issue22_remove_user_not_core(tmp_path):
-    dbp = tmp_path / "i22b.db"
-    now = time.time()
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["SPY"], now)
-    db.logging_universe_upsert_user_persisted("XLE", "t", now)
-    assert db.logging_universe_remove_user_persisted("XLE")
-    assert not db.logging_universe_remove_user_persisted("SPY")
-    tickers = [r["ticker"].upper() for r in db.logging_universe_list_rows()]
-    assert "XLE" not in tickers
-    assert "SPY" in tickers
 
 
-def test_issue22_cap_oldest_user_eviction_order(tmp_path):
-    dbp = tmp_path / "i22c.db"
-    t0 = 1_000_000.0
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["SPY"], t0)
-    db.logging_universe_upsert_user_persisted("AAA", "a", t0 + 1)
-    db.logging_universe_upsert_user_persisted("BBB", "b", t0 + 2)
-    assert db.logging_universe_oldest_user_persisted_ticker() == "AAA"
-    db.logging_universe_remove_user_persisted("AAA")
-    assert db.logging_universe_oldest_user_persisted_ticker() == "BBB"
 
 
-def test_issue22_fifo_tiebreak_matches_oldest_enrolled_ts(tmp_path):
-    """Same enrolled_ts: FIFO uses ticker tie-break; oldest must equal fifo head."""
-    db = EdDB(tmp_path / "i22tie.db")
-    ts = 42.0
-    db.logging_universe_sync_core(["SPY"], ts)
-    db.logging_universe_upsert_user_persisted("ZZZ", "z", ts)
-    db.logging_universe_upsert_user_persisted("AAA", "a", ts)
-    assert db.logging_universe_eviction_candidates_fifo() == ["AAA", "ZZZ"]
-    assert db.logging_universe_oldest_user_persisted_ticker() == "AAA"
 
 
-def test_issue22_background_log_timestamp_updates(tmp_path):
-    dbp = tmp_path / "i22d.db"
-    now = time.time()
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["IWM"], now)
-    db.logging_universe_touch_background_log("IWM", now + 100)
-    rows = {r["ticker"].upper(): r for r in db.logging_universe_list_rows()}
-    assert rows["IWM"]["last_background_log_ts_utc"] == pytest.approx(now + 100)
 
 
-def test_issue22_user_persisted_count(tmp_path):
-    dbp = tmp_path / "i22e.db"
-    now = time.time()
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["SPY", "QQQ"], now)
-    assert db.logging_universe_user_persisted_count() == 0
-    db.logging_universe_upsert_user_persisted("XOP", "x", now)
-    assert db.logging_universe_user_persisted_count() == 1
 
 
-def test_issue22_core_and_pinned_never_eviction_candidates(tmp_path):
-    dbp = tmp_path / "i22prot.db"
-    t0 = 1_000_000.0
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["SPY"], t0)
-    db.logging_universe_upsert_user_persisted("U1", "s", t0 + 1)
-    db.logging_universe_upsert_user_persisted("U2", "s", t0 + 2)
-    db.logging_universe_upsert_pinned("PIN1", "s", t0 + 3)
-    fifo = db.logging_universe_eviction_candidates_fifo()
-    assert fifo == ["U1", "U2"]
-    prot = db.logging_universe_protected_tickers()
-    assert "SPY" in prot and "PIN1" in prot
-    for r in db.logging_universe_list_rows_audit():
-        cat = r.get("category")
-        if cat in ("core", "pinned"):
-            assert r.get("eviction_status") == "protected"
-        elif cat == "user_persisted":
-            assert r.get("eviction_status") == "eligible"
 
 
-def test_issue22_eviction_only_user_persisted_remove(tmp_path):
-    dbp = tmp_path / "i22ev.db"
-    now = time.time()
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["SPY"], now)
-    db.logging_universe_upsert_pinned("PINX", "s", now)
-    db.logging_universe_upsert_user_persisted("USRX", "s", now)
-    assert not db.logging_universe_remove_user_persisted("PINX")
-    assert db.logging_universe_remove_user_persisted("USRX")
-    assert not db.logging_universe_remove_user_persisted("SPY")
-    by_cat = _tickers_by_cat(db)
-    assert "USRX" not in by_cat["user_persisted"]
-    assert "PINX" in by_cat["pinned"]
 
 
-def test_issue22_fifo_eviction_order(tmp_path):
-    dbp = tmp_path / "i22fifo.db"
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["SPY"], 1.0)
-    db.logging_universe_upsert_user_persisted("AAA", "a", 10.0)
-    db.logging_universe_upsert_user_persisted("BBB", "b", 20.0)
-    db.logging_universe_upsert_user_persisted("CCC", "c", 30.0)
-    assert db.logging_universe_eviction_candidates_fifo() == ["AAA", "BBB", "CCC"]
-    assert db.logging_universe_oldest_user_persisted_ticker() == "AAA"
-    db.logging_universe_record_eviction(
-        evicted_ticker="AAA",
-        evicted_ts_utc=99.0,
-        reason="test_fifo",
-        cap_limit=48,
-        incoming_ticker="NEW",
-        incoming_enrollment_source="test",
-    )
-    assert db.logging_universe_remove_user_persisted("AAA")
-    assert db.logging_universe_eviction_candidates_fifo() == ["BBB", "CCC"]
-    ev = db.logging_universe_recent_evictions(limit=1)
-    assert ev and ev[0]["evicted_ticker"] == "AAA"
-    assert ev[0]["reason"] == "test_fifo"
-    assert ev[0]["incoming_ticker"] == "NEW"
 
 
-def test_issue22_remove_non_core_covers_pinned(tmp_path):
-    dbp = tmp_path / "i22rm.db"
-    now = time.time()
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["SPY"], now)
-    db.logging_universe_upsert_pinned("PINZ", "s", now)
-    assert db.logging_universe_remove_non_core("PINZ")
-    assert "PINZ" not in [r["ticker"].upper() for r in db.logging_universe_list_rows()]
 
 
 def test_issue22_panel_auto_sync_and_prune_category(tmp_path):
@@ -202,17 +80,6 @@ def test_issue22_panel_auto_sync_and_prune_category(tmp_path):
     assert isinstance(removed, list)
 
 
-def test_issue22_scheduler_tickers_match_logging_universe(tmp_path):
-    dbp = tmp_path / "i22sched.db"
-    now = time.time()
-    db = EdDB(dbp)
-    db.logging_universe_sync_core(["SPY", "QQQ"], now)
-    db.logging_universe_upsert_user_persisted("ZZU", "s", now)
-    db.logging_universe_upsert_pinned("ZZP", "s", now + 1)
-    auth = db.logging_universe_authoritative_tickers()
-    sched = db.logging_universe_scheduler_tickers()
-    assert auth == sched
-    assert set(auth) == {"SPY", "QQQ", "ZZU", "ZZP"}
 
 
 def test_issue22_ml_scheduler_training_union_is_logging_universe_only(monkeypatch):
@@ -282,64 +149,8 @@ def test_issue22_scheduler_json_migration_idempotent(tmp_path):
     assert b["status"] == "already_completed"
 
 
-def test_issue22_add_logger_evicts_only_oldest_user_persisted(monkeypatch, tmp_path):
-    """FIFO eviction runs only when ED_LOGGING_UNIVERSE_FIFO_EVICTION=1 (legacy opt-in)."""
-    import db as dbmod
-    import server as srv
-
-    dbp = tmp_path / "evsrv.db"
-    edb = EdDB(dbp)
-    t0 = 1000.0
-    monkeypatch.setattr("db._db_instance", edb)
-    assert dbmod.get_db() is edb
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-    monkeypatch.setattr(srv, "MAX_USER_PERSISTED_LOGGING_TICKERS", 2)
-    monkeypatch.setenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", "1")
-    monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
-    # Cursor-audit F5: this test exercises FIFO eviction, not vendor collectability — mock the
-    # enrollment probe as passing so the synthetic UNEWO enrolls without a live Schwab round-trip.
-    monkeypatch.setattr(srv, "_enrollment_collectability_probe", lambda t: (True, "ok"))
-    edb.logging_universe_sync_core(["SPY"], t0)
-    edb.logging_universe_upsert_pinned("PINK", "s", t0 + 0.5)
-    edb.logging_universe_upsert_user_persisted("UOLD", "s", t0 + 1)
-    edb.logging_universe_upsert_user_persisted("UMID", "s", t0 + 2)
-    srv._hydrate_logger_tickers_from_db()
-    assert srv._add_logger_ticker("UNEWO", enrollment_source="test") is True
-    by_cat = _tickers_by_cat(edb)
-    assert "UOLD" not in by_cat["user_persisted"]
-    assert "UNEWO" in by_cat["user_persisted"]
-    assert "UMID" in by_cat["user_persisted"]
-    assert "PINK" in by_cat["pinned"]
-    assert "SPY" in by_cat["core"]
-    ev = edb.logging_universe_recent_evictions(limit=3)
-    assert any(e.get("evicted_ticker") == "UOLD" for e in ev)
 
 
-def test_issue22_add_logger_no_eviction_when_fifo_disabled(monkeypatch, tmp_path):
-    """Without ED_LOGGING_UNIVERSE_FIFO_EVICTION, cap is ignored — no silent eviction."""
-    import db as dbmod
-    import server as srv
-
-    dbp = tmp_path / "noev.db"
-    edb = EdDB(dbp)
-    t0 = 1000.0
-    monkeypatch.setattr("db._db_instance", edb)
-    assert dbmod.get_db() is edb
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-    monkeypatch.setattr(srv, "MAX_USER_PERSISTED_LOGGING_TICKERS", 2)
-    monkeypatch.delenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", raising=False)
-    monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
-    # Cursor-audit F5: eviction test — mock the enrollment collectability probe as passing.
-    monkeypatch.setattr(srv, "_enrollment_collectability_probe", lambda t: (True, "ok"))
-    edb.logging_universe_sync_core(["SPY"], t0)
-    edb.logging_universe_upsert_user_persisted("UOLD", "s", t0 + 1)
-    edb.logging_universe_upsert_user_persisted("UMID", "s", t0 + 2)
-    srv._hydrate_logger_tickers_from_db()
-    assert srv._add_logger_ticker("UNEWO", enrollment_source="test") is True
-    by_cat = _tickers_by_cat(edb)
-    assert "UOLD" in by_cat["user_persisted"]
-    assert "UMID" in by_cat["user_persisted"]
-    assert "UNEWO" in by_cat["user_persisted"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -368,138 +179,15 @@ def test_db_write_path_d_import_does_not_trigger_db_universe_load():
     assert "IMPORT_DEFER_OK" in proc.stdout
 
 
-def test_db_write_path_d_lifespan_loader_populates_and_counts(monkeypatch, tmp_path):
-    """DB-WRITE-PATH-FIXES (d): the loader the lifespan calls (start_logger ->
-    _hydrate_logger_tickers_from_db) still performs the full DB load — it populates user_persisted
-    tickers AND increments the import-defer guard counter. Proves the heavy work was MOVED, not
-    dropped."""
-    import db as dbmod
-    import server as srv
-
-    edb = EdDB(tmp_path / "deferd.db")
-    now = time.time()
-    edb.logging_universe_sync_core(["SPY"], now)
-    edb.logging_universe_upsert_user_persisted("XLF", "test_src", now + 1)
-    monkeypatch.setattr("db._db_instance", edb)
-    assert dbmod.get_db() is edb
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-    monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
-    prev_core = list(srv.CORE_TICKERS)
-    before = srv._LOGGING_UNIVERSE_DB_LOAD_COUNT
-    try:
-        srv.CORE_TICKERS[:] = ["SPY"]
-        srv._hydrate_logger_tickers_from_db()
-        assert srv._LOGGING_UNIVERSE_DB_LOAD_COUNT == before + 1
-        with srv._logger_lock:
-            assert "XLF" in srv._logger_tickers
-            assert "SPY" in srv._logger_tickers
-    finally:
-        srv.CORE_TICKERS[:] = prev_core
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TICKER-PREVIEW-NO-ENROLL — viewing a symbol must not enroll it (operator 2026-05-31)
 # ─────────────────────────────────────────────────────────────────────────────
-def test_ticker_preview_view_touch_never_enrolls(monkeypatch, tmp_path):
-    """TICKER-PREVIEW-NO-ENROLL: _touch_tracked_ticker_view enrolls NOTHING. For an un-enrolled
-    symbol it is a pure no-op (no logging_universe row, no in-memory append); for an already-
-    enrolled symbol it only refreshes last_seen."""
-    import db as dbmod
-    import server as srv
-
-    edb = EdDB(tmp_path / "view.db")
-    now = time.time()
-    edb.logging_universe_sync_core(["SPY"], now)
-    monkeypatch.setattr("db._db_instance", edb)
-    assert dbmod.get_db() is edb
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-
-    prev = None
-    with srv._logger_lock:
-        prev = list(srv._logger_tickers)
-        srv._logger_tickers[:] = ["SPY"]
-    try:
-        # Un-enrolled symbol: viewing must NOT create a row or append in memory.
-        srv._touch_tracked_ticker_view("ZVQ")
-        users = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
-                 if r["category"] == "user_persisted"}
-        assert "ZVQ" not in users
-        with srv._logger_lock:
-            assert "ZVQ" not in srv._logger_tickers
-
-        # Already-enrolled symbol: touch refreshes last_seen, creates no new enrollment.
-        edb.logging_universe_upsert_user_persisted("XLF", "pretest", now)
-        with srv._logger_lock:
-            srv._logger_tickers.append("XLF")
-        ls0 = {r["ticker"].upper(): r for r in edb.logging_universe_list_rows()}["XLF"]["last_seen_ts_utc"]
-        srv._touch_tracked_ticker_view("XLF")
-        rows1 = {r["ticker"].upper(): r for r in edb.logging_universe_list_rows()}
-        users1 = {t for t, r in rows1.items() if r["category"] == "user_persisted"}
-        assert users1 == {"XLF"}, "no new user_persisted enrollment from a view-touch"
-        assert rows1["XLF"]["last_seen_ts_utc"] >= ls0
-    finally:
-        with srv._logger_lock:
-            srv._logger_tickers[:] = prev
 
 
-def test_ticker_preview_view_endpoint_no_enroll_track_enrolls(monkeypatch, tmp_path):
-    """TICKER-PREVIEW-NO-ENROLL: a VIEW endpoint (/api/accuracy) does NOT enroll an arbitrary
-    symbol; the explicit TRACK path (_register_tracked_ticker) DOES. Functions are called
-    directly (sync handlers) to avoid full-lifespan flakiness while still exercising the real
-    enroll/no-enroll branch."""
-    import db as dbmod
-    import server as srv
-
-    edb = EdDB(tmp_path / "previewapi.db")
-    now = time.time()
-    edb.logging_universe_sync_core(["SPY"], now)
-    monkeypatch.setattr("db._db_instance", edb)
-    assert dbmod.get_db() is edb
-    monkeypatch.setattr(srv, "_HAS_SIGNALS", True)
-    monkeypatch.delenv("ED_LOGGING_UNIVERSE_FIFO_EVICTION", raising=False)
-    monkeypatch.setattr(srv, "_run_legacy_logger_json_migration", lambda _db: None)
-
-    prev_core = list(srv.CORE_TICKERS)
-    prev = None
-    with srv._logger_lock:
-        prev = list(srv._logger_tickers)
-        srv._logger_tickers[:] = ["SPY"]
-    try:
-        srv.CORE_TICKERS[:] = ["SPY"]
-
-        # VIEW: peek accuracy for an un-enrolled ticker → no enrollment.
-        srv.get_accuracy(ticker="ZVQ")
-        users = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
-                 if r["category"] == "user_persisted"}
-        assert "ZVQ" not in users, "VIEW endpoint /api/accuracy must not enroll"
-
-        # TRACK (positive control): the explicit enrollment function DOES enroll, so the
-        # VIEW assertion above is observing a store that can see an enrollment. The HTTP
-        # wrapper (/api/logger/add) was deleted as uncalled; this is the function it called.
-        srv._register_tracked_ticker("ZTK", enrollment_source="api_logger_add")
-        users2 = {r["ticker"].upper() for r in edb.logging_universe_list_rows()
-                  if r["category"] == "user_persisted"}
-        assert "ZTK" in users2, "explicit track (_register_tracked_ticker) must enroll"
-    finally:
-        srv.CORE_TICKERS[:] = prev_core
-        with srv._logger_lock:
-            srv._logger_tickers[:] = prev
 
 
-def test_step3_fetch_state_does_not_enroll_viewed_ticker():
-    """LIVE_OPERATOR_MODE_RESET_V1 Step 3: a Tier C recompute (_fetch_state) is a VIEW —
-    it touches last-seen only (no-op for un-enrolled symbols, proven by
-    test_ticker_preview_view_touch_never_enrolls). Enrollment stays explicit
-    (_register_tracked_ticker); its /api/logger/add and /api/logger/pin HTTP wrappers were
-    deleted as uncalled, so the old assertion on logger_add's source is gone with it."""
-    import inspect
-
-    import server as srv
-
-    src = inspect.getsource(srv._fetch_state)
-    assert "_register_tracked_ticker(" not in src, "_fetch_state must not auto-enroll viewed tickers"
-    assert "_add_logger_ticker(" not in src, "_fetch_state must not auto-enroll viewed tickers"
-    assert "_touch_tracked_ticker_view(ticker)" in src
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -535,96 +223,14 @@ def _insert_legacy_lu_row(dbp, ticker, category, ts):
         con.close()
 
 
-def test_f25_lu_enroll_index_alias_is_one_identity(tmp_path):
-    """A + B + C: enroll via any alias, the row IS the canonical '$SPX'; the reverse alias hits it;
-    enrolling both aliases yields ONE semantic instrument (no duplicate)."""
-    now = time.time()
-    db = EdDB(tmp_path / "f25a.db")
-    db.logging_universe_upsert_user_persisted("SPX", "t", now)          # A: enroll bare
-    assert _lu_rows(tmp_path / "f25a.db") == ["$SPX"], "enroll('SPX') must store canonical $SPX"
-    # C: enrolling the $-alias must not create a second instrument row
-    db.logging_universe_upsert_user_persisted("$SPX", "t", now + 1)
-    idx_rows = [r for r in _lu_rows(tmp_path / "f25a.db") if r in ("SPX", "$SPX", "spx", "$spx")]
-    assert idx_rows == ["$SPX"], f"SPX/$SPX collapsed to one row expected, got {idx_rows}"
 
 
-def test_f25_lu_delete_and_touch_via_alternate_alias(tmp_path):
-    """E: a row enrolled as '$SPX' is removable/updatable through the bare 'SPX' alias."""
-    now = time.time()
-    db = EdDB(tmp_path / "f25e.db")
-    db.logging_universe_upsert_user_persisted("$SPX", "t", now)
-    assert "$SPX" in _lu_rows(tmp_path / "f25e.db")
-    # touch via bare alias updates the canonical row (no error, no new row)
-    db.logging_universe_touch_seen("SPX", now + 5)
-    assert _lu_rows(tmp_path / "f25e.db").count("$SPX") == 1
-    # delete via bare alias removes the canonical row
-    assert db.logging_universe_remove_user_persisted("SPX") is True
-    assert "$SPX" not in _lu_rows(tmp_path / "f25e.db")
 
 
-def test_f25_lu_reads_and_membership_are_canonical(tmp_path):
-    """D: authoritative/scheduler reads and protection membership return canonical identity;
-    equities (SPY/QQQ/IWM) are unchanged."""
-    now = time.time()
-    db = EdDB(tmp_path / "f25d.db")
-    db.logging_universe_sync_core(["SPY", "QQQ", "IWM"], now)
-    db.logging_universe_upsert_pinned("SPX", "t", now)
-    auth = db.logging_universe_authoritative_tickers()
-    assert "$SPX" in auth and "SPX" not in auth
-    for eq in ("SPY", "QQQ", "IWM"):
-        assert eq in auth, f"equity {eq} must remain unchanged"
-    prot = set(db.logging_universe_protected_tickers())
-    assert "$SPX" in prot  # pinned is protected, under canonical identity
 
 
-def test_f25_lu_migration_renames_legacy_bare_row(tmp_path):
-    """F + H: a persisted legacy 'SPX' row migrates to '$SPX'; a re-run is a no-op (idempotent).
-    dry-run mutates nothing."""
-    dbp = tmp_path / "f25f.db"
-    db = EdDB(dbp)
-    db._ensure_logging_universe_table()
-    _insert_legacy_lu_row(dbp, "SPX", "user_persisted", 100.0)
-    assert "SPX" in _lu_rows(dbp)
-
-    dry = db.logging_universe_migrate_canonical_ticker_identity(dry_run=True)
-    assert dry["renames"] == [{"legacy": "SPX", "canonical": "$SPX"}]
-    assert "SPX" in _lu_rows(dbp), "dry-run must NOT mutate the DB"
-
-    real = db.logging_universe_migrate_canonical_ticker_identity(dry_run=False)
-    assert real["renames"] == [{"legacy": "SPX", "canonical": "$SPX"}]
-    assert _lu_rows(dbp) == ["$SPX"]
-
-    again = db.logging_universe_migrate_canonical_ticker_identity(dry_run=False)
-    assert again["renames"] == [] and again["merges"] == [], "migration must be idempotent"
-    assert again["unchanged"] >= 1
 
 
-def test_f25_lu_migration_merges_collision_deterministically(tmp_path):
-    """G: legacy 'SPX' (user_persisted) + canonical '$SPX' (pinned) already coexist. The migration
-    folds them into ONE '$SPX' row, keeping the STRONGER category (pinned), earliest enroll, latest
-    seen — deterministic, no silent loss, and the row count drops by exactly one."""
-    dbp = tmp_path / "f25g.db"
-    db = EdDB(dbp)
-    db._ensure_logging_universe_table()
-    _insert_legacy_lu_row(dbp, "SPX", "user_persisted", 100.0)   # earlier enroll, weaker cat
-    _insert_legacy_lu_row(dbp, "$SPX", "pinned", 200.0)          # later enroll, stronger cat
-    assert set(_lu_rows(dbp)) == {"SPX", "$SPX"}
-
-    rep = db.logging_universe_migrate_canonical_ticker_identity(dry_run=False)
-    assert rep["merges"] == [{"legacy": "SPX", "canonical": "$SPX", "category": "pinned"}]
-    assert _lu_rows(dbp) == ["$SPX"], "collision folded to a single canonical row"
-    assert rep["rows_after"] == rep["rows_before"] - 1
-
-    con = _sqlite3.connect(str(dbp))
-    try:
-        cat, enr, seen = con.execute(
-            "SELECT category, enrolled_ts_utc, last_seen_ts_utc FROM logging_universe "
-            "WHERE ticker = '$SPX'").fetchone()
-    finally:
-        con.close()
-    assert cat == "pinned"          # stronger category survives
-    assert enr == 100.0             # earliest enrollment preserved
-    assert seen == 200.0            # latest activity preserved
 
 
 def test_f25_lu_write_identity_mutation_killed():

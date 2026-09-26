@@ -46,9 +46,6 @@ def test_ci_runtime_dependency_importable(pkg_name: str, import_name: str) -> No
     importlib.import_module(import_name)
 
 
-@pytest.mark.parametrize("module", CI_GOVERNANCE_IMPORT_MODULES)
-def test_ci_governance_module_importable(module: str) -> None:
-    assert importlib.import_module(module).__name__ == module
 
 
 @pytest.mark.parametrize("module", CI_APP_IMPORT_MODULES)

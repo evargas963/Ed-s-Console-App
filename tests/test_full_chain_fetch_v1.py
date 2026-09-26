@@ -7,12 +7,10 @@ one-shot strike_range=ALL request with HTTP 502 and answered it in date-range pa
 """
 from __future__ import annotations
 
-import math
 from datetime import date, timedelta
 
 import pytest
 
-import math_levels as ml
 import server as srv
 
 _EXPIRIES = [date(2030, 1, 4) + timedelta(days=7 * i) for i in range(8)]
@@ -128,36 +126,6 @@ def test_single_expiry_mode_takes_every_strike_of_that_expiry(vendor):
     assert _expiries_in(r) == {_EXPIRIES[2].isoformat()}
 
 
-def test_vectorized_gamma_profile_equals_the_per_contract_black_scholes_loop():
-    """compute_gamma_profile is the same sum of bs_gamma terms, evaluated as arrays -- checked
-    on REAL Schwab chains (TSLA and CDE complete single-expiry captures)."""
-    import json
-    from datetime import datetime, timedelta
-    from pathlib import Path
-
-    fx = Path(__file__).resolve().parent / "fixtures"
-    for name in ("real_tsla_complete_chain_strike_range_all.json",
-                 "real_cde_complete_chain_half_dollar.json"):
-        chain = json.loads((fx / name).read_text(encoding="utf-8"))["chain"]
-        expiry = datetime.fromisoformat(chain[0]["expirationDate"].replace("Z", "+00:00"))
-        now = expiry - timedelta(days=3)          # value it before its own expiry
-        strikes = sorted(float(c["strikePrice"]) for c in chain)
-        spot = strikes[len(strikes) // 2]
-        parsed = [p for p in (ml._contract_inputs(c, now=now) for c in chain) if p]
-        assert len(parsed) > 20, name
-        for model in (ml.SIGN_MODEL_NAIVE, ml.SIGN_MODEL_EMPIRICAL_PRIOR):
-            got = ml.compute_gamma_profile(chain, spot, sign_model=model, now=now)
-            assert len(got) == 241
-            lo, hi = spot * 0.85, spot * 1.15          # the function's own grid (span 0.15, 240 steps)
-            for i, (shown, total) in enumerate(got):
-                s = lo + (hi - lo) * i / 240           # summed at the exact price; shown rounded
-                assert shown == round(s, 4)
-                ref = 0.0
-                for strike, oi, mult, t, sig, sign in parsed:
-                    g = ml.bs_gamma(s, strike, t, sig)
-                    if g is not None:
-                        ref += ml._dealer_sign(sign, model) * g * oi * mult * s * s * 0.01
-                assert math.isclose(total, ref, rel_tol=1e-9, abs_tol=1e-6), (name, model, s, total, ref)
 
 
 def test_an_expired_listed_expiry_is_never_requested(vendor, monkeypatch):

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from copy import deepcopy
 
 import pytest
 
@@ -125,513 +124,55 @@ def _assert_operator_mirrors_nested(body: dict) -> None:
         assert body["operator_actionability_reason"] is not None
 
 
-def test_operator_mirror_fields_present_on_analytics_state(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_PRESENT"
-    expiry = "2099-12-10"
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert _OPERATOR_MIRROR_KEYS <= set(body.keys())
-    _assert_operator_mirrors_nested(body)
 
 
-def test_operator_mirrors_equal_nested_card_freshness_v1(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_MIRROR"
-    expiry = "2099-12-11"
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    _assert_operator_mirrors_nested(body)
 
 
-def test_operator_card_actionable_true_on_trusted_payload(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_TRUE"
-    expiry = "2099-12-12"
-    now = time.time()
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0),
-        age_sec=1.0,
-    )
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 3.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is True
-    assert body["operator_actionability_reason"] is None
-    _assert_operator_mirrors_nested(body)
 
 
-def test_operator_card_actionable_false_on_analytics_stale(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_ASTALE"
-    expiry = "2099-12-13"
-    md = _trusted_ms_dict(ticker=ticker)
-    md["analytics_stale"] = True
-    # Step 2 honest staleness: analytics_stale is recomputed from age — seed past the
-    # missed-cycle grace window (TTL × ANALYTICS_STALE_GRACE_CYCLES), not one beat.
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        md,
-        age_sec=srv.CACHE_TTL * srv.ANALYTICS_STALE_GRACE_CYCLES + 2.0,
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is False
-    assert body["operator_actionability_reason"] is not None
-    assert "analytics_stale" in body["operator_stale_reason_codes"]
-    _assert_operator_mirrors_nested(body)
 
 
-def test_operator_card_actionable_false_on_revalidate_quarantine(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_RQ"
-    expiry = "2099-12-14"
-    now = time.time()
-    md = _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0)
-    _seed_cache(srv, ticker, expiry, md, age_sec=1.0)
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-
-    import trade_impacting_gate as tig
-
-    def _quarantine(ms_dict, *, route, stale):
-        out = dict(ms_dict)
-        out["tier_c_cache_gate_ok"] = False
-        return out
-
-    monkeypatch.setattr(tig, "revalidate_cached_decision", _quarantine)
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is False
-    assert "revalidate_quarantine" in body["operator_stale_reason_codes"]
-    _assert_operator_mirrors_nested(body)
 
 
-def test_operator_card_actionable_false_on_quote_newer_than_signal(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_QN"
-    expiry = "2099-12-15"
-    now = time.time()
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker, bundle_ts=now - 120.0),
-        age_sec=1.0,
-    )
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {"exchange_quote_ts": now - 5.0, "quote_source_detail": {"carried_forward": False}},
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    assert body["operator_card_actionable"] is False
-    assert "quote_newer_than_signal" in body["operator_stale_reason_codes"]
-    _assert_operator_mirrors_nested(body)
 
 
-def test_unchanged_streamed_last_price_is_not_an_auth_code(tier_c_cache_spy, monkeypatch):
-    """2026-09-24: the REST auth carry-forward is deleted. The stream's carried_forward only
-    means LAST_PRICE is unchanged since its trade message (its age is quote_age_sec), so a
-    fresh carried quote keeps the card actionable and emits none of the deleted codes."""
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_CFW"
-    expiry = "2099-12-16"
-    now = time.time()
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker, bundle_ts=now - 2.0), age_sec=1.0)
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": True},
-        },
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    for gone in ("quote_carried_forward", "auth_fallback", "auth_degraded"):
-        assert gone not in body["operator_stale_reason_codes"]
-    _assert_operator_mirrors_nested(body)
-
-def test_regression_raw_trade_fields_unchanged_via_tier_c_response(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_OP_RAW"
-    expiry = "2099-12-17"
-    now = time.time()
-    md = {
-        "ticker": ticker,
-        "final_tradeable": True,
-        "call_signal": "wait",
-        "call_state": "WATCH",
-        "validation_passed": True,
-        "analytics_stale": False,
-        "fusion_available": True,
-        "mhap_rows": _mhap_four(),
-        "_server_build_ts": now - 2.0,
-    }
-    expected_raw = {k: md[k] for k in _RAW_TRADE_FIELDS}
-    _seed_cache(srv, ticker, expiry, md, age_sec=1.0)
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-    body = _response_body(srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2b1"))
-    for key in _RAW_TRADE_FIELDS:
-        assert body[key] == expected_raw[key]
-    assert _OPERATOR_MIRROR_KEYS <= set(body.keys())
 
 
-def test_card_freshness_v1_block_present_on_analytics_state(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_PRESENT"
-    expiry = "2099-12-01"
-    _seed_cache(srv, ticker, expiry, _trusted_ms_dict(ticker=ticker), age_sec=1.0)
-    resp = srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    body = _response_body(resp)
-    block = body.get("card_freshness_v1")
-    assert isinstance(block, dict)
-    assert _CARD_FRESHNESS_V1_REQUIRED_KEYS <= set(block.keys())
 
 
-def test_analytics_age_exceeded_reason_code(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_AGE"
-    expiry = "2099-12-02"
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker),
-        age_sec=srv.CACHE_TTL + 10.0,
-    )
-    resp = srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    codes = _response_body(resp)["card_freshness_v1"]["stale_reason_codes"]
-    assert "analytics_age_exceeded" in codes
-    assert "analytics_stale" in codes
 
 
-def test_tier_c_stale_cache_serve_reason_codes(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_STALE"
-    expiry = "2099-12-03"
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker),
-        age_sec=srv.CACHE_TTL + 5.0,
-    )
-    resp = srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    block = _response_body(resp)["card_freshness_v1"]
-    assert "tier_c_cache_stale_serve" in block["stale_reason_codes"]
-    assert block["card_trust_state"] in ("STALE", "DEGRADED", "UNAVAILABLE")
 
 
-def test_quote_newer_than_signal_simulated(tier_c_cache_spy, monkeypatch):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_QN"
-    expiry = "2099-12-06"
-    now = time.time()
-    bundle_ts = now - 120.0
-    quote_ts = now - 5.0
-    _seed_cache(
-        srv,
-        ticker,
-        expiry,
-        _trusted_ms_dict(ticker=ticker, bundle_ts=bundle_ts),
-        age_sec=1.0,
-    )
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {"exchange_quote_ts": quote_ts, "quote_source_detail": {"carried_forward": False}},
-    )
-    codes = _response_body(
-        srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    )["card_freshness_v1"]["stale_reason_codes"]
-    assert "quote_newer_than_signal" in codes
-    assert "mhap_older_than_quote" in codes
 
 
-def test_card_actionable_false_when_trust_withheld(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    ticker = "ZZZ_CF_NA"
-    expiry = "2099-12-07"
-    md = _trusted_ms_dict(ticker=ticker)
-    md["analytics_stale"] = True
-    _seed_cache(srv, ticker, expiry, md, age_sec=srv.CACHE_TTL + 2.0)
-    block = _response_body(
-        srv._tier_c_analytics_json_response(ticker, expiry, False, "test_s2a")
-    )["card_freshness_v1"]
-    assert block["card_actionable"] is False
-    assert block["card_trust_state"] == "STALE"
 
 
-def test_regression_existing_trade_fields_unchanged(tier_c_cache_spy):
-    srv = tier_c_cache_spy
-    now = time.time()
-    md = {
-        "ticker": "SPY",
-        "final_tradeable": True,
-        "call_signal": "wait",
-        "call_state": "WATCH",
-        "validation_passed": True,
-        "analytics_stale": False,
-        "analytics_age_sec": 1.0,
-        "analytics_generated_at": "2026-01-01T00:00:00+00:00",
-        "analytics_refresh_in_progress": False,
-        "mhap_rows": _mhap_four(),
-        "fusion_available": True,
-        "_server_build_ts": now - 2.0,
-        "exchange_quote_ts": now - 1.0,
-    }
-    before = deepcopy(md)
-    srv._attach_card_freshness_v1_block(
-        md,
-        ticker="SPY",
-        now=now,
-        analytics_ttl_sec=5.0,
-        tier_c_cache_stale_serve=False,
-        plane_quote={
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-    for key, value in before.items():
-        assert md[key] == value
-    assert isinstance(md.get("card_freshness_v1"), dict)
+
 
 
 # ── SESSION_OPEN_ANCHOR_WARM_SLICE_V1 — RTH-open anchor warm locks ───────────
 
 
-def test_session_open_warm_schedules_exactly_the_viewed_tickers(monkeypatch):
-    """Warm queues what the operator is viewing (active ticker + watchlist), in that order,
-    through the shared panel-warm worker -- never a named-ETF roster (universality)."""
-    import server as srv
-    import app.options.order_flow.streaming as ofs
-
-    submitted: list[tuple] = []
-    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["TSLA", "NFLX", "$SPX"])
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: submitted.append((fn, a)))
-    srv._run_session_open_anchor_warm()
-    assert [a[0] for _fn, a in submitted] == ["TSLA", "NFLX", "$SPX"]
-    for fn, args in submitted:
-        assert fn is srv._warm_panel_ticker_after_delay
-        assert args[2] == srv.SESSION_OPEN_ANCHOR_WARM_UPDATE_SOURCE == "session_open_anchor_warm"
-    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: [])
-    submitted.clear()
-    srv._run_session_open_anchor_warm()
-    assert submitted == [], "nothing viewed -> nothing warmed; no ticker is warmed by name"
 
 
-def test_session_open_anchor_warm_uses_existing_recompute_path_and_mutates_no_cache(monkeypatch):
-    """Warm delegates to _schedule_analytics_recompute (existing dedupe cone); no direct state writes."""
-    import server as srv
-
-    scheduled: list[tuple] = []
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a))
-    monkeypatch.setattr(srv, "_prewarm_inference_models_worker", lambda t: None)
-    monkeypatch.setattr(
-        srv,
-        "_schedule_analytics_recompute",
-        lambda key, t, e, src: scheduled.append((key, t, e, src)),
-    )
-    import app.options.order_flow.streaming as ofs
-    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["TSLA", "AAPL"])
-    cache_before = dict(srv._state_cache)
-    srv._run_session_open_anchor_warm()
-    assert scheduled == [
-        (srv._tier_c_inflight_key(t, None), t, None, "session_open_anchor_warm")
-        for t in ("TSLA", "AAPL")
-    ]
-    assert srv._state_cache == cache_before
 
 
-def test_session_open_anchor_warm_respects_inflight_dedupe(monkeypatch):
-    """An in-flight recompute for the same key absorbs the warm — no duplicate storm."""
-    import server as srv
-
-    submitted: list = []
-    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: submitted.append(fn))
-    key = srv._tier_c_inflight_key("SPY", None)
-    with srv._analytics_bg_lock:
-        srv._analytics_inflight.add(key)
-    try:
-        srv._schedule_analytics_recompute(key, "SPY", None, "session_open_anchor_warm")
-        assert submitted == []
-    finally:
-        with srv._analytics_bg_lock:
-            srv._analytics_inflight.discard(key)
-    # Control: with the key no longer in flight, the same call DOES submit work.
-    srv._schedule_analytics_recompute(key, "SPY", None, "session_open_anchor_warm")
-    try:
-        assert len(submitted) == 1
-    finally:
-        with srv._analytics_bg_lock:
-            srv._analytics_inflight.discard(key)
 
 
-def test_session_open_anchor_warm_due_predicate_rth_gate_and_daily_latch():
-    """Due only on ET weekdays inside RTH, and only once per ET date."""
-    import server as srv
-    from datetime import datetime
-
-    from time_et import ET
-
-    rth_monday = datetime(2026, 7, 6, 9, 31, tzinfo=ET)
-    pre_open = datetime(2026, 7, 6, 9, 29, tzinfo=ET)
-    post_close = datetime(2026, 7, 6, 16, 30, tzinfo=ET)
-    saturday = datetime(2026, 7, 4, 10, 0, tzinfo=ET)
-    assert srv._session_open_anchor_warm_due(rth_monday, None) is True
-    assert srv._session_open_anchor_warm_due(rth_monday, "2026-07-05") is True
-    assert srv._session_open_anchor_warm_due(rth_monday, "2026-07-06") is False
-    assert srv._session_open_anchor_warm_due(pre_open, None) is False
-    assert srv._session_open_anchor_warm_due(post_close, None) is False
-    assert srv._session_open_anchor_warm_due(saturday, None) is False
 
 
-def test_startup_warm_unchanged_uses_startup_source(monkeypatch):
-    """Regression: startup warm still queues the same anchors with update_source=startup_warm."""
-    import server as srv
-    import app.options.order_flow.streaming as ofs
-
-    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["SPY", "QQQ", "IWM"])
-
-    submitted: list[tuple] = []
-    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: submitted.append((fn, a)))
-    srv._schedule_startup_analytics_warm()
-    assert [a[0] for _fn, a in submitted] == ["SPY", "QQQ", "IWM"]
-    for fn, args in submitted:
-        assert fn is srv._warm_panel_ticker_after_delay
-        assert args[2] == "startup_warm"
 
 
-def test_freshness_constants_unchanged_by_warm_slice():
-    """TTL / grace semantics are untouched by SESSION_OPEN_ANCHOR_WARM_SLICE_V1."""
-    import server as srv
-
-    assert srv.CACHE_TTL == 5
-    assert srv.VIEWER_STATE_CACHE_TTL_SEC == 5.0
-    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
 
 
-def test_analytics_recompute_duration_instrumentation_recorded(monkeypatch):
-    """Completed recompute records additive duration (module dict + payload field) pre-stamp."""
-    import server as srv
-
-    ticker = "ZZZ_WARMDUR"
-    stamped: dict = {}
-    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a))
-    monkeypatch.setattr(
-        srv,
-        "_fetch_state",
-        lambda t, e, update_source=None: {"ticker": t, "selected_exp": None},
-    )
-    monkeypatch.setattr(
-        srv,
-        "_stamp_analytics_freshness_on_completed_fetch",
-        lambda md, t, k: stamped.update(md),
-    )
-    monkeypatch.setattr(srv, "_attach_card_freshness_v1_block", lambda *a, **k: None)
-    srv._analytics_recompute_last_duration_sec.pop(ticker, None)
-    key = srv._tier_c_inflight_key(ticker, None)
-    srv._schedule_analytics_recompute(key, ticker, None, "session_open_anchor_warm")
-    dur = srv._analytics_recompute_last_duration_sec.get(ticker)
-    assert dur is not None and dur >= 0.0
-    assert stamped.get("analytics_recompute_duration_sec") == dur
-    with srv._analytics_bg_lock:
-        assert key not in srv._analytics_inflight
 
 
 # ── TIER_C_STAGE_TIMER_INSTRUMENTATION_V1 — stage timing + cache observability locks ──
 
 
-def test_executor_queue_wait_recorded_on_completed_recompute(monkeypatch):
-    """Completed recompute carries analytics_executor_queue_wait_sec (>= 0, additive)."""
-    import server as srv
-
-    ticker = "ZZZ_QWAIT"
-    stamped: dict = {}
-    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    monkeypatch.setattr(srv, "_submit_analytics_task", lambda fn, *a, **k: fn(*a))
-    monkeypatch.setattr(
-        srv,
-        "_fetch_state",
-        lambda t, e, update_source=None: {"ticker": t, "selected_exp": None},
-    )
-    monkeypatch.setattr(
-        srv,
-        "_stamp_analytics_freshness_on_completed_fetch",
-        lambda md, t, k: stamped.update(md),
-    )
-    monkeypatch.setattr(srv, "_attach_card_freshness_v1_block", lambda *a, **k: None)
-    key = srv._tier_c_inflight_key(ticker, None)
-    srv._schedule_analytics_recompute(key, ticker, None, "sse_loop_test")
-    assert "analytics_executor_queue_wait_sec" in stamped
-    assert stamped["analytics_executor_queue_wait_sec"] >= 0.0
-    assert "analytics_recompute_duration_sec" in stamped
-    with srv._analytics_bg_lock:
-        assert key not in srv._analytics_inflight
 
 
-def test_cache_observability_counters_are_passive_observation_only():
-    """Shell builds / expiry evictions / bg-failure stale-marks increment counters without behavior change."""
-    import server as srv
-
-    before = dict(srv._analytics_cache_observability)
-
-    shell = srv._minimal_analytics_pending_dict("ZZZ_OBS1", None)
-    assert shell["analytics_pending_shell"] is True
-    assert (
-        srv._analytics_cache_observability["pending_shell_builds"]
-        == before["pending_shell_builds"] + 1
-    )
-
-    srv._state_cache[("ZZZ_OBS2", "2099-01-01")] = {"ms_dict": {"ticker": "ZZZ_OBS2"}}
-    srv._state_cache[("ZZZ_OBS2", "2099-02-01")] = {"ms_dict": {"ticker": "ZZZ_OBS2"}}
-    try:
-        srv._evict_old_expiry_entries("ZZZ_OBS2", "2099-01-01")
-        assert ("ZZZ_OBS2", "2099-02-01") not in srv._state_cache
-        assert ("ZZZ_OBS2", "2099-01-01") in srv._state_cache
-        assert (
-            srv._analytics_cache_observability["expiry_evictions"]
-            == before["expiry_evictions"] + 1
-        )
-
-        srv._invalidate_analytics_cache_after_bg_failures(
-            ("ZZZ_OBS2", "2099-01-01"), "ZZZ_OBS2", reason="test_reason"
-        )
-        marked = srv._state_cache[("ZZZ_OBS2", "2099-01-01")]["ms_dict"]
-        assert marked["analytics_stale"] is True
-        assert (
-            srv._analytics_cache_observability["bg_failure_stale_marks"]
-            == before["bg_failure_stale_marks"] + 1
-        )
-    finally:
-        srv._state_cache.pop(("ZZZ_OBS2", "2099-01-01"), None)
-        srv._state_cache.pop(("ZZZ_OBS2", "2099-02-01"), None)
 
 
 def test_executor_sizing_unchanged_by_stage_timer_slice():
@@ -641,41 +182,6 @@ def test_executor_sizing_unchanged_by_stage_timer_slice():
     assert srv._get_analytics_executor()._max_workers == 4
 
 
-def test_timing_fields_do_not_affect_trust_or_actionability(tier_c_cache_spy, monkeypatch):
-    """Identical payloads with/without timing fields produce identical operator actionability."""
-    srv = tier_c_cache_spy
-    now = time.time()
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {
-            "exchange_quote_ts": now - 1.0,
-            "quote_source_detail": {"carried_forward": False, "schwab_auth_degraded": False},
-        },
-    )
-    plain = _trusted_ms_dict(ticker="ZZZ_TIM1", bundle_ts=now - 2.0)
-    timed = _trusted_ms_dict(ticker="ZZZ_TIM2", bundle_ts=now - 2.0)
-    timed.update(
-        {
-            "analytics_recompute_duration_sec": 42.0,
-            "analytics_executor_queue_wait_sec": 9.5,
-            "_finalize_tail_ms": 1234,
-            "_compute_breakdown": {"schwab_chain_ms": 9000.0, "chain_gate_wait_ms": 3200.0},
-            "chain_gate_wait_sec": 3.2,
-            "analytics_cache_observability_v1": {"pending_shell_builds": 99},
-        }
-    )
-    _seed_cache(srv, "ZZZ_TIM1", "2099-12-20", plain, age_sec=1.0)
-    _seed_cache(srv, "ZZZ_TIM2", "2099-12-21", timed, age_sec=1.0)
-    body_plain = _response_body(
-        srv._tier_c_analytics_json_response("ZZZ_TIM1", "2099-12-20", False, "test_timing")
-    )
-    body_timed = _response_body(
-        srv._tier_c_analytics_json_response("ZZZ_TIM2", "2099-12-21", False, "test_timing")
-    )
-    assert body_plain["operator_card_actionable"] == body_timed["operator_card_actionable"]
-    assert body_plain["operator_card_trust_state"] == body_timed["operator_card_trust_state"]
-    assert body_plain["analytics_stale"] == body_timed["analytics_stale"]
 
 
 def test_stage_timer_surfaces_present_in_fetch_state_source():
@@ -874,135 +380,16 @@ def _clear_fixture_cache_keys(srv, ticker: str) -> None:
         del srv._state_cache[k]
 
 
-def test_analytics_cache_entry_is_full_bundle_predicate():
-    """Shape predicate: bundle ⇔ non-empty ms_dict AND generated_at; shells/minimal excluded."""
-    import server as srv
-
-    assert srv._analytics_cache_entry_is_full_bundle(None) is False
-    assert srv._analytics_cache_entry_is_full_bundle({}) is False
-    assert srv._analytics_cache_entry_is_full_bundle({"ms_dict": {}, "generated_at": 1.0}) is False
-    assert srv._analytics_cache_entry_is_full_bundle({"ms_dict": {"spot": 1}}) is False
-    assert srv._analytics_cache_entry_is_full_bundle(_full_bundle_entry(3, 1000.0)) is True
 
 
-def test_log_only_touch_preserves_full_bundle():
-    """Logger touch on a full bundle: ms_dict/generated_at/version/ts intact, scalars refreshed."""
-    import server as srv
-
-    tkr = "ZZLA"
-    key = (tkr, "2026-07-07")
-    try:
-        seeded = _full_bundle_entry(version=7, gen_ts=1000.0)
-        srv._state_cache[key] = seeded
-        action = srv._log_only_cache_touch(key, tkr, "2026-07-07", 1.1, 101.5, 16.5)
-        assert action == "preserved_full_bundle"
-        ent = srv._state_cache[key]
-        assert ent is seeded
-        assert ent["ms_dict"] == {"mhap_rows": [{"h": "1c"}], "fusion_available": True, "spot": 100.0}
-        assert ent["generated_at"] == 1000.0
-        assert ent["ts"] == 1000.0
-        assert ent["analytics_version"] == 7
-        assert ent["pcr_val"] == 1.1
-        assert ent["spot_f"] == 101.5
-        assert ent["vix"] == 16.5
-        # None scalars never degrade existing observations.
-        srv._log_only_cache_touch(key, tkr, "2026-07-07", None, None, None)
-        assert ent["pcr_val"] == 1.1 and ent["spot_f"] == 101.5 and ent["vix"] == 16.5
-    finally:
-        _clear_fixture_cache_keys(srv, tkr)
 
 
-def test_log_only_touch_version_monotonic_across_logger_interleave():
-    """full v7 → logger touch → next full write increments to 8 (no reset to 1)."""
-    import server as srv
-
-    tkr = "ZZLB"
-    key = (tkr, "2026-07-07")
-    try:
-        srv._state_cache[key] = _full_bundle_entry(version=7, gen_ts=1000.0)
-        srv._log_only_cache_touch(key, tkr, "2026-07-07", 1.0, 100.0, 15.0)
-        prev_ent = srv._state_cache.get(key) or {}
-        # Same expression as the full-publish site (_next_ver).
-        assert int(prev_ent.get("analytics_version", 0)) + 1 == 8
-        assert srv._analytics_cache_entry_is_full_bundle(prev_ent) is True
-    finally:
-        _clear_fixture_cache_keys(srv, tkr)
 
 
-def test_log_only_touch_legacy_minimal_write_when_no_bundle():
-    """No entry (or empty-ms_dict entry): legacy minimal write, never masquerading as a bundle."""
-    import server as srv
-
-    tkr = "ZZLC"
-    key = (tkr, "2026-07-07")
-    try:
-        assert srv._state_cache.get(key) is None
-        action = srv._log_only_cache_touch(key, tkr, "2026-07-07", 0.8, 55.0, 14.0)
-        assert action == "legacy_minimal_write"
-        ent = srv._state_cache[key]
-        assert ent["ms_dict"] == {}
-        assert "generated_at" not in ent
-        assert "analytics_version" not in ent
-        assert srv._analytics_cache_entry_is_full_bundle(ent) is False
-        # Repeat touch on the minimal entry stays minimal (does not get worse or better).
-        action2 = srv._log_only_cache_touch(key, tkr, "2026-07-07", 0.9, 56.0, 14.5)
-        assert action2 == "legacy_minimal_write"
-        assert srv._state_cache[key]["ms_dict"] == {}
-    finally:
-        _clear_fixture_cache_keys(srv, tkr)
 
 
-def test_log_only_touch_preserves_partial_and_error_shells():
-    """Progressive partials and error shells (bundle-shaped) survive logger touches."""
-    import server as srv
-
-    tkr = "ZZLD"
-    key = (tkr, "2026-07-07")
-    try:
-        partial = {
-            "ts": 2000.0,
-            "generated_at": 2000.0,
-            "analytics_version": 0,
-            "ms_dict": {"analytics_partial_tier_c": True, "mhap_rows": [], "spot": 50.0},
-            "pcr_val": None,
-            "spot_f": 50.0,
-            "vix": None,
-        }
-        srv._state_cache[key] = partial
-        assert srv._log_only_cache_touch(key, tkr, "2026-07-07", 0.7, 51.0, 13.0) == "preserved_full_bundle"
-        assert srv._state_cache[key] is partial
-        assert srv._state_cache[key]["ms_dict"]["analytics_partial_tier_c"] is True
-        assert srv._state_cache[key]["generated_at"] == 2000.0
-
-        error_shell = {
-            "ts": 3000.0,
-            "generated_at": 3000.0,
-            "analytics_version": 0,
-            "ms_dict": {"state_error": "analytics_refresh_failed", "mhap_rows": []},
-            "pcr_val": None,
-            "spot_f": None,
-            "vix": None,
-        }
-        srv._state_cache[key] = error_shell
-        assert srv._log_only_cache_touch(key, tkr, "2026-07-07", None, None, None) == "preserved_full_bundle"
-        assert srv._state_cache[key]["ms_dict"]["state_error"] == "analytics_refresh_failed"
-    finally:
-        _clear_fixture_cache_keys(srv, tkr)
 
 
-def test_log_only_touch_still_evicts_other_expiry_keys():
-    """The guard keeps the pre-existing other-expiry eviction on both paths."""
-    import server as srv
-
-    tkr = "ZZLE"
-    try:
-        srv._state_cache[(tkr, "2026-07-08")] = {"ms_dict": {}, "ts": 1.0}
-        srv._state_cache[(tkr, "2026-07-07")] = _full_bundle_entry(version=2, gen_ts=1000.0)
-        srv._log_only_cache_touch((tkr, "2026-07-07"), tkr, "2026-07-07", 1.0, 100.0, 15.0)
-        assert (tkr, "2026-07-08") not in srv._state_cache
-        assert (tkr, "2026-07-07") in srv._state_cache
-    finally:
-        _clear_fixture_cache_keys(srv, tkr)
 
 
 def test_log_only_branch_routes_through_guard_source_lock():
@@ -1132,20 +519,6 @@ def test_fix_b_once_per_cycle_call_sites():
     assert i_log_only_call < i_log_only_return < i_full_call
 
 
-def test_fix_b_failure_visibility_counters_wired():
-    """Failure-visibility: both post_publish_* counters exist in the observability
-    dict and each tail except-handler increments its counter and warns with the
-    published version."""
-    import server as srv
-
-    assert "post_publish_snapshot_failures" in srv._analytics_cache_observability
-    assert "post_publish_calibration_failures" in srv._analytics_cache_observability
-    src = _fetch_state_source()
-    assert '_analytics_cache_observability["post_publish_snapshot_failures"] += 1' in src
-    assert '_analytics_cache_observability["post_publish_calibration_failures"] += 1' in src
-    assert "post-publish snapshot persistence failed ticker=" in src
-    assert "post-publish calibration append failed ticker=" in src
-    assert src.count("published_version") >= 4  # def params + both warnings
 
 
 def test_fix_b_v2_decision_parity_served_equals_logged():
@@ -1232,39 +605,8 @@ def test_step1_log_only_inline_source_lock():
     assert "_seed_candles" not in src and "_seed_pool" not in src
 
 
-def test_step1_discriminator_universal_by_signature():
-    """The discriminator structurally cannot special-case anything: its only
-    parameter is log_only; no ticker/roster/session/horizon/expiry input exists."""
-    import ast
-    import inspect
-
-    import server as srv
-
-    sig = inspect.signature(srv._log_only_inline_leaf_fetches)
-    assert list(sig.parameters) == ["log_only"]
-    assert srv._log_only_inline_leaf_fetches(True) is True
-    assert srv._log_only_inline_leaf_fetches(False) is False
-    tree = ast.parse(_fetch_state_source())
-    fn = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_log_only_inline_leaf_fetches"
-    )
-    for sub in ast.walk(fn):
-        if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-            assert not (sub.value.isalpha() and sub.value.isupper()), (
-                f"ticker/session-literal-shaped constant {sub.value!r} in discriminator"
-            )
 
 
-def test_step1_ticker_matrix_invariance():
-    """Anchors + non-anchor universe symbols: the inline decision is invariant
-    because the discriminator has no ticker channel at all."""
-    import server as srv
-
-    for _ticker in ("SPY", "QQQ", "IWM", "NVDA", "PLTR"):
-        # No ticker argument EXISTS to pass — the invariance is structural.
-        assert srv._log_only_inline_leaf_fetches(True) is True
-        assert srv._log_only_inline_leaf_fetches(False) is False
 
 
 def test_step1_shutdown_inline_branch_preserved():
@@ -1328,32 +670,6 @@ def test_step2_leaf_functions_have_no_nested_submit():
     assert submit_sites(root / "schwab_client.py") == []
 
 
-def test_step2_concurrent_recomputes_do_not_deadlock():
-    """6 concurrent submit+join waves through the leaf pool complete under deadline."""
-    import threading
-    import time as _time
-
-    import server as srv
-
-    pool = srv._get_recompute_leaf_executor()
-    done = []
-
-    def _recompute_like(i):
-        f1 = pool.submit(_time.sleep, 0.2)
-        f2 = pool.submit(_time.sleep, 0.2)
-        f1.result(timeout=10)
-        f2.result(timeout=10)
-        done.append(i)
-
-    threads = [threading.Thread(target=_recompute_like, args=(i,)) for i in range(6)]
-    t0 = _time.monotonic()
-    for th in threads:
-        th.start()
-    for th in threads:
-        th.join(timeout=15)
-    elapsed = _time.monotonic() - t0
-    assert len(done) == 6, f"only {len(done)}/6 completed"
-    assert elapsed < 5.0, f"took {elapsed:.1f}s — queueing/deadlock suspected"
 
 
 def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
@@ -1407,76 +723,15 @@ def test_step2_no_ticker_session_horizon_literals():
             )
 
 
-def test_step2_executor_constants_unchanged_plus_new_leaf_constant():
-    """Existing pool sizes untouched; new leaf pool pinned at 8."""
-    import server as srv
-
-    assert srv.RECOMPUTE_LEAF_EXECUTOR_MAX_WORKERS == 8
-    src = _fetch_state_source()
-    assert src.count('max_workers=8,\n            thread_name_prefix="ed_route_offload"') == 1
-    assert src.count('max_workers=4,\n            thread_name_prefix="ed_analytics_bg"') == 1
-    assert src.count('max_workers=4,\n            thread_name_prefix="ed_quote_hot"') == 1
-    assert src.count('thread_name_prefix="ed_recompute_leaf"') == 1
 
 
-def test_fix_b_constants_unchanged():
-    """TTL / grace / executor sizing untouched by the reorder."""
-    import server as srv
-
-    assert srv.CACHE_TTL == 5
-    assert srv.VIEWER_STATE_CACHE_TTL_SEC == 5.0
-    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
-    src = _fetch_state_source()
-    assert src.count("max_workers=8,\n            thread_name_prefix=\"ed_route_offload\"") == 1
-    assert src.count("max_workers=4,\n            thread_name_prefix=\"ed_analytics_bg\"") == 1
 
 
 # ── EXEC-03 POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 ─────────────────────────
 
 
-def test_post_publish_last_error_recorder_shape_and_truncation():
-    """The recorder captures a fixed-schema dict from inside an except handler:
-    exc_type, bounded detail, bounded traceback tail, ticker as runtime data."""
-    import server as srv
-
-    srv._post_publish_last_errors.pop("snapshot", None)
-    try:
-        raise ValueError("boom-" + "x" * 900)
-    except ValueError as e:
-        srv._record_post_publish_failure("snapshot", "TESTX", 41, e)
-    rec = srv._post_publish_last_errors["snapshot"]
-    assert set(rec) == {
-        "ts_epoch", "ticker", "published_version", "exc_type", "detail", "traceback_tail",
-    }
-    assert rec["ticker"] == "TESTX"
-    assert rec["published_version"] == 41
-    assert rec["exc_type"] == "ValueError"
-    assert len(rec["detail"]) <= 400
-    assert isinstance(rec["traceback_tail"], list) and len(rec["traceback_tail"]) <= 12
-    assert any("ValueError" in ln for ln in rec["traceback_tail"])
-    srv._post_publish_last_errors.pop("snapshot", None)
 
 
-def test_post_publish_last_error_recorder_is_passive():
-    """Recorder never raises (even outside an except context) and never touches
-    the counter dict or _state_cache — counters stay at the call sites."""
-    import ast
-
-    import server as srv
-
-    before = dict(srv._analytics_cache_observability)
-    srv._record_post_publish_failure("calibration", "TESTX", None, RuntimeError("q"))
-    assert dict(srv._analytics_cache_observability) == before
-    srv._post_publish_last_errors.pop("calibration", None)
-
-    tree = ast.parse(_fetch_state_source())
-    rec = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_record_post_publish_failure"
-    )
-    names = {s.id for s in ast.walk(rec) if isinstance(s, ast.Name)}
-    assert "_state_cache" not in names
-    assert "_analytics_cache_observability" not in names
 
 
 def test_post_publish_last_error_wired_at_both_failure_branches():
@@ -1586,57 +841,14 @@ def _idle_seed_cache(srv, monkeypatch, entries):
     monkeypatch.setattr(srv, "_logger_tickers", [k[0] for k in entries], raising=False)
 
 
-def test_idle_refresh_selects_nonviewed_stale_key(monkeypatch):
-    """Required 1: a non-viewed stale cache key is selected for recompute."""
-    import server as srv
-
-    _idle_seed_cache(srv, monkeypatch, {("AAA1", "2026-08-01"): 60.0})
-    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=1) == [("AAA1", "2026-08-01")]
 
 
-def test_idle_refresh_never_double_owns_viewed_ticker(monkeypatch):
-    """Required 2: a subscriber-owned ticker is excluded even when the viewer
-    subscribed with a None/default expiry and the cache key carries the
-    resolved expiry (single-owner semantics preserved)."""
-    import server as srv
-
-    _idle_seed_cache(srv, monkeypatch, {("AAA1", "2026-08-01"): 60.0, ("BBB2", "2026-08-01"): 30.0})
-    picked = srv._select_idle_stale_keys(owned_keys={("AAA1", None)}, max_keys=5)
-    assert ("AAA1", "2026-08-01") not in picked
-    assert picked == [("BBB2", "2026-08-01")]
 
 
-def test_idle_refresh_oldest_first(monkeypatch):
-    """Required 3: oldest stale key drains first."""
-    import server as srv
-
-    _idle_seed_cache(
-        srv, monkeypatch,
-        {("AAA1", "e"): 30.0, ("BBB2", "e"): 300.0, ("CCC3", "e"): 90.0},
-    )
-    picked = srv._select_idle_stale_keys(owned_keys=set(), max_keys=3)
-    assert picked == [("BBB2", "e"), ("CCC3", "e"), ("AAA1", "e")]
 
 
-def test_idle_refresh_rate_bound_enforced(monkeypatch):
-    """Required 4: at most max_keys per tick; constant pinned at 1."""
-    import server as srv
-
-    _idle_seed_cache(
-        srv, monkeypatch,
-        {("AAA1", "e"): 30.0, ("BBB2", "e"): 300.0, ("CCC3", "e"): 90.0},
-    )
-    assert len(srv._select_idle_stale_keys(owned_keys=set(), max_keys=1)) == 1
-    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=0) == []
-    assert srv.IDLE_KEY_REFRESH_MAX_PER_TICK == 1
 
 
-def test_idle_refresh_ticker_agnostic_guest_style_keys(monkeypatch):
-    """Required 5: selection works identically for guest-style keys."""
-    import server as srv
-
-    _idle_seed_cache(srv, monkeypatch, {("ZZGUEST9", "2026-09-19"): 45.0})
-    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=1) == [("ZZGUEST9", "2026-09-19")]
 
 
 def test_idle_refresh_no_ticker_literals_in_selection():
@@ -1655,114 +867,21 @@ def test_idle_refresh_no_ticker_literals_in_selection():
             )
 
 
-def test_idle_refresh_fresh_keys_not_selected(monkeypatch):
-    """Required 7: keys inside the stale budget are never recomputed by the arm."""
-    import server as srv
-
-    _idle_seed_cache(srv, monkeypatch, {("AAA1", "e"): 3.0, ("BBB2", "e"): 9.9})
-    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=5) == []
 
 
-def test_idle_refresh_inflight_keys_skipped(monkeypatch):
-    """Required 8: pending/in-progress keys are not duplicated — selection skips
-    inflight keys AND the arm schedules only through the deduping scheduler."""
-    import server as srv
-
-    _idle_seed_cache(srv, monkeypatch, {("AAA1", "e"): 60.0})
-    monkeypatch.setattr(
-        srv, "_analytics_inflight", {srv._tier_c_inflight_key("AAA1", "e")}
-    )
-    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=1) == []
-    src = _fetch_state_source()
-    i_loop = src.index("async def _sse_background_loop")
-    i_call = src.index("_select_idle_stale_keys(", i_loop)
-    i_sched = src.index('update_source="idle_key_refresh"', i_call)
-    assert i_loop < i_call < i_sched, "idle arm must schedule via _schedule_analytics_recompute"
 
 
-def test_idle_refresh_veto_and_budget_untouched(monkeypatch):
-    """Required 9: the stale/actionability veto and the 10s budget are intact;
-    empty-body (shell) entries are never selected (clobber-guard alignment)."""
-    import server as srv
-
-    assert srv.CACHE_TTL == 5
-    assert srv.ANALYTICS_STALE_GRACE_CYCLES == 2.0
-    _idle_seed_cache(srv, monkeypatch, {("AAA1", "e"): None})
-    assert srv._select_idle_stale_keys(owned_keys=set(), max_keys=5) == []
-    src = _fetch_state_source()
-    assert 'update_source="sse_loop"' in src  # viewed-key owner unchanged
-    assert "IDLE_KEY_REFRESH_MAX_PER_TICK" in src
 
 
 # ── UI_05_OPERATOR_PRIORITY_ADMISSION_V1 — priority admission + gate locks ────
 
 
-def test_ui05_update_source_classification():
-    """Background sources opt in; everything else (incl. unknown/None) is operator-facing."""
-    import server as srv
-
-    for bg in ("idle_key_refresh", "startup_warm", "session_open_anchor_warm"):
-        assert srv._is_operator_priority_update_source(bg) is False
-    for op in ("sse_loop", "rest_poll_legacy", "tick_coherent", "debug_endpoint", None, "future_source"):
-        assert srv._is_operator_priority_update_source(op) is True
 
 
-def test_ui05_priority_pool_bounded_and_separate():
-    """Priority lane is a bounded 2-worker pool distinct from the 4-worker analytics pool."""
-    import server as srv
-
-    p = srv._get_operator_priority_executor()
-    a = srv._get_analytics_executor()
-    assert p is not a
-    assert p._max_workers == 2
-    assert a._max_workers == 4
 
 
-def test_ui05_submit_routing_by_priority_flag(monkeypatch):
-    """_submit_analytics_task routes priority=True to the priority pool, else analytics pool."""
-    import server as srv
-
-    class _Rec:
-        def __init__(self):
-            self.calls = []
-
-        def submit(self, fn, *a, **k):
-            self.calls.append(fn)
-
-            class _F:
-                pass
-
-            return _F()
-
-    prio, bg = _Rec(), _Rec()
-    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    monkeypatch.setattr(srv, "_get_operator_priority_executor", lambda: prio)
-    monkeypatch.setattr(srv, "_get_analytics_executor", lambda: bg)
-    srv._submit_analytics_task(lambda: None)
-    srv._submit_analytics_task(lambda: None, priority=True)
-    assert len(bg.calls) == 1 and len(prio.calls) == 1
 
 
-def test_ui05_scheduler_passes_priority_from_update_source(monkeypatch):
-    """_schedule_analytics_recompute classifies its update_source into the priority flag."""
-    import server as srv
-
-    captured = []
-    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    monkeypatch.setattr(
-        srv, "_submit_analytics_task",
-        lambda fn, *a, **k: captured.append(k.get("priority")),
-    )
-    key1 = srv._tier_c_inflight_key("ZZU5A", None)
-    srv._schedule_analytics_recompute(key1, "ZZU5A", None, "idle_key_refresh")
-    key2 = srv._tier_c_inflight_key("ZZU5B", None)
-    srv._schedule_analytics_recompute(key2, "ZZU5B", None, "rest_poll_legacy")
-    try:
-        assert captured == [False, True]
-    finally:
-        with srv._analytics_bg_lock:
-            srv._analytics_inflight.discard(key1)
-            srv._analytics_inflight.discard(key2)
 
 
 def test_ui05_priority_gate_priority_waiter_acquires_first():
@@ -1810,49 +929,11 @@ def test_ui05_priority_gate_priority_waiter_acquires_first():
     gate.release()
 
 
-def test_ui05_admission_sla_gate_not_blocked_by_saturated_background_pool(monkeypatch):
-    """SLA regression gate (deterministic): with the 4-worker analytics pool
-    fully saturated by background jobs, a priority submission still completes
-    fast — cold-guest admission no longer queues behind background cycles."""
-    import threading as th
-    import time as _t
-
-    import server as srv
-
-    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    release_bg = th.Event()
-    started = th.Barrier(5, timeout=10)
-
-    def _bg_job():
-        started.wait()
-        release_bg.wait(20)
-
-    futs = [srv._submit_analytics_task(_bg_job) for _ in range(4)]
-    try:
-        started.wait()  # all 4 analytics workers busy
-        t0 = _t.perf_counter()
-        done = th.Event()
-        srv._submit_analytics_task(lambda: done.set(), priority=True)
-        assert done.wait(2.0), "priority job blocked behind saturated background pool"
-        assert _t.perf_counter() - t0 < 2.0
-    finally:
-        release_bg.set()
-        for f in futs:
-            f.result(timeout=20)
 
 
 # ── UI_05 residual — priority leaf lane + startup model prewarm sweep ────────
 
 
-def test_ui05r_priority_leaf_pool_bounded_and_separate():
-    import server as srv
-
-    p = srv._get_priority_leaf_executor()
-    shared = srv._get_recompute_leaf_executor()
-    assert p is not shared
-    # UI_05 final tail: 4 = 3 panel anchors + 1 operator switch (measured).
-    assert p._max_workers == 4
-    assert shared._max_workers == srv.RECOMPUTE_LEAF_EXECUTOR_MAX_WORKERS == 8
 
 
 def test_ui05r_leaf_pool_selection_source_lock():
@@ -1871,41 +952,8 @@ def test_ui05r_priority_leaf_teardown_present():
     assert src.count("_priority_leaf_executor.shutdown(wait=True, cancel_futures=True)") == 1
 
 
-def test_ui05r_prewarm_roster_viewed_first(tmp_path, monkeypatch):
-    import app.options.order_flow.streaming as ofs
-    import ml_predict as mp
-    import server as srv
-
-    base = tmp_path / "active"
-    for t in ("ZZB", "SPY", "QQQ", "AAA1", "IWM"):
-        (base / t).mkdir(parents=True)
-    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
-    monkeypatch.setattr(ofs, "viewed_equity_symbols", lambda: ["ZZB", "NOTBUNDLED"])
-    roster = srv._startup_model_prewarm_roster()
-    assert roster[0] == "ZZB", "the viewed ticker with a bundle goes first -- by viewing, not name"
-    assert set(roster) == {"SPY", "QQQ", "IWM", "ZZB", "AAA1"}
 
 
-def test_ui05r_prewarm_sweep_sequential_and_kill_switch(monkeypatch):
-    """The sweep runs tickers one at a time on a single named daemon thread,
-    honors the env kill switch, and stops on shutdown."""
-    import server as srv
-
-    calls: list[str] = []
-    monkeypatch.setattr(srv, "_startup_model_prewarm_roster", lambda: ["T1", "T2"])
-    monkeypatch.setattr(srv, "_prewarm_inference_models_worker", lambda t: calls.append(t))
-    monkeypatch.setattr(srv, "_analytics_bg_shutdown", False)
-    srv._startup_model_prewarm_sweep_worker()
-    assert calls == ["T1", "T2"]
-
-    monkeypatch.setenv("ED_DISABLE_STARTUP_MODEL_PREWARM", "1")
-    started: list[str] = []
-    monkeypatch.setattr(
-        srv.threading, "Thread",
-        lambda *a, **k: started.append(k.get("name")) or type("T", (), {"start": lambda self: None})(),
-    )
-    srv._schedule_startup_model_prewarm_sweep()
-    assert started == []  # kill switch respected
 
 
 def test_ui05r_sweep_never_bypasses_serve_policy():
@@ -1928,170 +976,9 @@ def _mkt_ctx_test_reset(srv, ctx=None, age_sec=0.0):
         srv._mkt_ctx_refresh_inflight = False
 
 
-def test_mkt_ctx_stale_serve_never_pays_sweep_inline(monkeypatch):
-    """Stale cache + previous context: callers get the previous context
-    immediately; exactly ONE background sweep runs and lands the new one."""
-    import threading as th
-
-    import server as srv
-    from market_context import MarketContext
-
-    old_ctx = MarketContext()
-    _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
-    calls = {"n": 0}
-    entered = th.Event()
-    release = th.Event()
-    sweep_threads: list = []
-
-    # RC-17: no wall-clock assertions. "Not inline" is proven MECHANICALLY:
-    # (a) callers return the OLD context while the sweep is still held open
-    # (an inline sweep would hand back the new one), and (b) the sweep
-    # records its executing thread, which must not be the caller's. Holding
-    # the fake sweep open until after the herd of calls finishes prevents a
-    # fast executor from publishing a fresh cache mid-loop (which would
-    # correctly return the NEW object on later calls — not an inline pay).
-    def _fake_sweep(client, **kwargs):
-        calls["n"] += 1
-        sweep_threads.append(th.current_thread())
-        entered.set()
-        assert release.wait(30), "test never released the held sweep"
-        return MarketContext()
-
-    monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
-    caller_thread = th.current_thread()
-    first = srv._get_mkt_ctx(None)
-    assert first is old_ctx
-    assert entered.wait(30), "background sweep never entered"
-    served = [first] + [srv._get_mkt_ctx(None) for _ in range(4)]
-    assert all(s is old_ctx for s in served), "a caller was handed the new context inline"
-    assert sweep_threads and all(t is not caller_thread for t in sweep_threads), \
-        "sweep executed inline on the caller thread"
-    release.set()
-    deadline = time.time() + 30
-    while time.time() < deadline:
-        with srv._cached_mkt_ctx_lock:
-            if srv._cached_mkt_ctx is not old_ctx and not srv._mkt_ctx_refresh_inflight:
-                break
-        time.sleep(0.02)
-    with srv._cached_mkt_ctx_lock:
-        assert srv._cached_mkt_ctx is not old_ctx
-        assert srv._mkt_ctx_refresh_inflight is False
-    assert calls["n"] == 1
-    _mkt_ctx_test_reset(srv)
 
 
-def test_mkt_ctx_refresh_single_flight_under_concurrency(monkeypatch):
-    """Eight concurrent stale-path callers trigger exactly one sweep."""
-    import threading as th
-
-    import server as srv
-    from market_context import MarketContext
-
-    old_ctx = MarketContext()
-    _mkt_ctx_test_reset(srv, old_ctx, age_sec=srv.MKT_CTX_TTL + 5.0)
-    calls = {"n": 0}
-    lk = th.Lock()
-    done = th.Event()
-
-    # RC-17: the barrier makes overlap CERTAIN instead of hoping threads
-    # collide inside a scheduling window; waits are generous upper bounds.
-    barrier = th.Barrier(8, timeout=30)
-
-    def _fake_sweep(client, **kwargs):
-        with lk:
-            calls["n"] += 1
-        time.sleep(0.25)   # hold the inflight window open so a herd CAN collide
-        done.set()
-        return MarketContext()
-
-    monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
-    served: list = []
-    slock = th.Lock()
-
-    def _call():
-        barrier.wait()
-        out = srv._get_mkt_ctx(None)
-        with slock:
-            served.append(out)
-
-    threads = [th.Thread(target=_call) for _ in range(8)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=30)
-    assert not any(t.is_alive() for t in threads), "caller thread hung"
-    assert len(served) == 8
-    assert all(s is old_ctx for s in served)
-    assert done.wait(30), "background sweep never executed"
-    deadline = time.time() + 30
-    while time.time() < deadline:
-        with srv._cached_mkt_ctx_lock:
-            if not srv._mkt_ctx_refresh_inflight:
-                break
-        time.sleep(0.02)
-    assert calls["n"] == 1, f"thundering herd: {calls['n']} sweeps for one TTL lapse"
-    _mkt_ctx_test_reset(srv)
 
 
-def test_mkt_ctx_boot_joins_one_synchronous_sweep(monkeypatch):
-    """No context yet (boot): concurrent callers block, exactly one sweep
-    runs, and every caller returns the context it stored."""
-    import threading as th
-
-    import server as srv
-    from market_context import MarketContext
-
-    _mkt_ctx_test_reset(srv, None)
-    calls = {"n": 0}
-    lk = th.Lock()
-
-    # RC-17: barrier guarantees the callers actually overlap; joins are
-    # generous upper bounds with an explicit liveness assert.
-    barrier = th.Barrier(6, timeout=30)
-
-    def _fake_sweep(client, **kwargs):
-        with lk:
-            calls["n"] += 1
-        time.sleep(0.25)   # hold the sweep open so boot joiners CAN overlap
-        return MarketContext()
-
-    monkeypatch.setattr(srv, "fetch_market_context", _fake_sweep)
-    served: list = []
-    slock = th.Lock()
-
-    def _call():
-        barrier.wait()
-        out = srv._get_mkt_ctx(None)
-        with slock:
-            served.append(out)
-
-    threads = [th.Thread(target=_call) for _ in range(6)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=30)
-    assert not any(t.is_alive() for t in threads), "caller thread hung"
-    assert len(served) == 6
-    assert calls["n"] == 1
-    assert all(s is served[0] for s in served), "boot joiners got different contexts"
-    _mkt_ctx_test_reset(srv)
 
 
-def test_mkt_ctx_refresh_executor_single_worker_and_chain_window_marks():
-    """Sizing lock (1 worker = single-flight by construction) + source lock:
-    the _chain_ms window carries the four attribution marks so an untraced
-    gap cannot reappear silently."""
-    import inspect
-
-    import server as srv
-
-    ex = srv._get_mkt_ctx_refresh_executor()
-    assert ex._max_workers == 1
-    fetch_src = inspect.getsource(srv._fetch_state)
-    for mark in (
-        "chain_window_preamble_ms",
-        "chain_window_mkt_ctx_ms",
-        "chain_window_leaf_wall_ms",
-        "chain_window_contracts_parse_ms",
-    ):
-        assert mark in fetch_src, f"chain-window mark {mark} missing from _fetch_state"

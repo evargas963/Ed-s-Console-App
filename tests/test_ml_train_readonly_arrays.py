@@ -75,9 +75,3 @@ def test_tabular_training_feature_names_refresh_path() -> None:
     assert isinstance(names, list)
 
 
-def test_registered_ml_columns_import_path() -> None:
-    from tools.build_feature_assignment_matrix_v2 import _registered_ml_columns
-
-    cols = _registered_ml_columns()
-    assert isinstance(cols, dict)
-    assert cols

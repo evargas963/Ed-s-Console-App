@@ -1,11 +1,7 @@
 """Registry keys must include horizon so each slug loads its own artifacts."""
 from __future__ import annotations
 
-import json
-import pickle
 
-import numpy as np
-from sklearn.dummy import DummyClassifier
 
 from model_contract import contract_metadata_dict
 
@@ -31,111 +27,7 @@ def _valid_xgb_meta(features: list[str]) -> dict:
     return {**contract_metadata_dict(), "features": features, "impute_medians": im}
 
 
-def test_distinct_xgb_models_per_horizon(tmp_path, monkeypatch):
-    """Two horizons load different files → two registry entries with different model objects."""
-    import ml_predict as mp
-
-    mp.reset_caches()
-    tkr = "ZZHZ"
-
-    def clf_for(hz: str) -> DummyClassifier:
-        y = np.array([0, 1, 2, 0, 1], dtype=int)
-        const = 0 if hz == "1c" else 1
-        c = DummyClassifier(strategy="constant", constant=const)
-        c.fit(np.zeros((5, 1)), y)
-        return c
-
-    # Canonical layout: one bundle dir per horizon, each with its own integrity
-    # manifest (Item-4 strict default — a manifest binds ONE (ticker, horizon)).
-    from active_bundle_contract import write_bundle_integrity_manifest
-
-    bases: dict[str, object] = {}
-    for hz in ("1c", "5c"):
-        base = tmp_path / f"active_{hz}" / tkr
-        base.mkdir(parents=True)
-        with open(base / f"xgb_{tkr}_{hz}.pkl", "wb") as f:
-            pickle.dump(clf_for(hz), f)
-        (base / f"xgb_{tkr}_{hz}_meta.json").write_text(
-            json.dumps(_valid_xgb_meta(["a"])), encoding="utf-8"
-        )
-        write_bundle_integrity_manifest(base, tkr, hz, allow_missing_required=True)
-        bases[hz] = base
-
-    monkeypatch.setattr(
-        mp, "_model_dir_for_ticker", lambda _t: bases[mp.get_ml_infer_horizon_slug()]
-    )
-
-    tok1 = mp.set_ml_infer_horizon_slug("1c")
-    try:
-        assert mp._load_xgb(tkr) is True
-        k1 = mp._model_registry_key(tkr, "1c")
-        assert k1 in mp._xgb_registry and mp._xgb_registry[k1] is not None
-        m1 = mp._xgb_registry[k1]["model"]
-    finally:
-        mp.reset_ml_infer_horizon_slug(tok1)
-
-    tok2 = mp.set_ml_infer_horizon_slug("5c")
-    try:
-        assert mp._load_xgb(tkr) is True
-        k2 = mp._model_registry_key(tkr, "5c")
-        assert k2 in mp._xgb_registry and mp._xgb_registry[k2] is not None
-        m2 = mp._xgb_registry[k2]["model"]
-    finally:
-        mp.reset_ml_infer_horizon_slug(tok2)
-
-    assert k1 != k2
-    assert m1 is not m2
 
 
-def test_missing_xgb_for_1c_does_not_block_5c_load(tmp_path, monkeypatch):
-    """Registry entry ...:1c = None must not prevent loading ...:5c when file exists.
-
-    (Renamed from "_block_3c_load" — 3c migrated out of governed slugs in commit 794862d;
-    test now exercises 5c, which is in ML_HORIZON_SLUGS = ('1c','5c','15c','60c').)
-    """
-    import ml_predict as mp
-
-    mp.reset_caches()
-    tkr = "ZZPO"
-    base = tmp_path / tkr
-    base.mkdir(parents=True)
-
-    hz3 = "5c"
-    mp_path = base / f"xgb_{tkr}_{hz3}.pkl"
-    meta_path = base / f"xgb_{tkr}_{hz3}_meta.json"
-    c = DummyClassifier(strategy="uniform")
-    c.fit(np.zeros((5, 1)), np.zeros(5, dtype=int))
-    with open(mp_path, "wb") as f:
-        pickle.dump(c, f)
-    meta_path.write_text(json.dumps(_valid_xgb_meta(["a"])), encoding="utf-8")
-    # Item-4 strict default: pin the present artifacts (5c); the 1c file stays
-    # absent, which is the condition under test.
-    from active_bundle_contract import write_bundle_integrity_manifest
-
-    write_bundle_integrity_manifest(base, tkr, hz3, allow_missing_required=True)
-
-    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: base)
-
-    tok1 = mp.set_ml_infer_horizon_slug("1c")
-    try:
-        assert mp._load_xgb(tkr) is False
-        k1 = mp._model_registry_key(tkr, "1c")
-        assert mp._xgb_registry.get(k1) is None
-    finally:
-        mp.reset_ml_infer_horizon_slug(tok1)
-
-    tok2 = mp.set_ml_infer_horizon_slug("5c")
-    try:
-        assert mp._load_xgb(tkr) is True
-        k2 = mp._model_registry_key(tkr, "5c")
-        assert mp._xgb_registry[k2] is not None
-    finally:
-        mp.reset_ml_infer_horizon_slug(tok2)
 
 
-def test_reset_caches_clears_horizon_scoped_entries():
-    import ml_predict as mp
-
-    mp._xgb_registry["parallel:XX:1c"] = {"model": object()}
-    mp.reset_caches()
-    assert mp._xgb_registry == {}

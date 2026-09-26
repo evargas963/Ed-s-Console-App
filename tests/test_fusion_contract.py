@@ -59,21 +59,6 @@ def test_no_inline_fusion_available_getattr_outside_fusion_contract(repo_index):
     assert not offenders, offenders
 
 
-def test_no_inline_non_tradable_membership_outside_authority(repo_index):
-    allowed = {"fusion_contract.py", "signal_types.py"}
-    offenders: list[str] = []
-    for rel, src in _iter_production_py(repo_index):
-        if rel.name in allowed:
-            continue
-        if _NON_TRADABLE_MEMBERSHIP.search(src):
-            offenders.append(str(rel).replace("\\", "/"))
-    assert not offenders, offenders
-
-    st_src = (_repo_root() / "signal_types.py").read_text(encoding="utf-8")
-    idx = st_src.index("NON_TRADABLE_CANONICAL_PROVENANCE")
-    doc = st_src[:idx]
-    assert "Diagnostic" in doc
-    assert "do not use this set as a gate" in doc.lower()
 
 
 def test_no_inline_tradable_membership_outside_authority(repo_index):

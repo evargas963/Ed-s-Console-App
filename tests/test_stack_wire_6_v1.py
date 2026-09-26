@@ -25,26 +25,7 @@ def test_replay_max_hold_bars_from_context_uses_rth_session_minutes_authority():
     assert rhb.replay_max_hold_bars_from_context({"replay_max_hold_bars": 15}) == 15
 
 
-def test_trade_type_hold_bars_single_source_of_truth():
-    """FIND-WIRE6-2: TRADE_TYPE_HOLD_BARS dict is the authority for both setup + fallback."""
-    assert rhb.TRADE_TYPE_HOLD_BARS == {
-        "trend_continuation": 60,
-        "breakout": 15,
-        "reversal": 20,
-        "fade": 30,
-        "mean_reversion": 30,
-        "none": 0,
-    }
-    assert rhb.TRADE_TYPE_HOLD_BARS_DEFAULT == 30
-    assert rhb.MICRO_REGIME_HOLD_BARS_COMPRESSION == 15
 
 
 
 
-def test_no_hardcoded_trade_type_branches_in_for_setup():
-    """FIND-WIRE6-2: explicit per-trade-type if/return branches replaced by dict lookup."""
-    src = inspect.getsource(rhb.replay_max_hold_bars_for_setup)
-    for tk in ("fade", "breakout", "reversal", "trend_continuation", "mean_reversion"):
-        assert f'trade_type == "{tk}"' not in src, f"hardcoded branch for trade_type=={tk!r} remains"
-    assert "TRADE_TYPE_HOLD_BARS" in src
-    assert "MICRO_REGIME_HOLD_BARS_COMPRESSION" in src

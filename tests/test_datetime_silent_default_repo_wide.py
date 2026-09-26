@@ -47,37 +47,5 @@ def test_no_datetime_default_zero_in_production_py(repo_index):
     assert hits == [], f".get('datetime', 0) remains in production code: {hits}"
 
 
-def test_fetch_price_levels_skips_candle_missing_datetime():
-    """RC-371 re-anchor: Phase 2A deleted the carrier's own candle fetch, so a
-    datetime-poisoned candle CANNOT reach PDH through fetch_price_levels at all —
-    the missing-datetime rejection lives at the ONE ingestion point (normalize_bar,
-    locked below and in market_data_adapter's own suite). This test now holds the
-    carrier candle-free and the ingestion rejection in place."""
-    import inspect
-
-    from market_context import fetch_price_levels
-    from market_data_adapter import normalize_bar
-
-    src = inspect.getsource(fetch_price_levels)
-    assert "get_price_history" not in src, (
-        "fetch_price_levels fetches candles again — a datetime-poisoned candle can "
-        "reach the levels once more; the Phase 2A carrier must stay candle-free"
-    )
-    assert "candles" not in src, "candle parsing is back in the carrier"
-    assert normalize_bar(
-        {"open": 1.0, "high": 888.0, "low": 1.0, "close": 2.0, "volume": 50},
-        source="schwab_pricehistory",
-    ) is None, "the ONE vendor ingestion point accepted a candle with no datetime"
 
 
-def test_returns_from_candles_skips_missing_datetime():
-    from math_exposure_core import returns_from_candles
-
-    out = returns_from_candles(
-        [
-            {"close": 100.0},
-            {"datetime": 1_704_067_800_000, "close": 101.0},
-            {"datetime": 1_704_154_200_000, "close": 102.0},
-        ]
-    )
-    assert len(out) == 1

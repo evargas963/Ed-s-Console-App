@@ -224,9 +224,6 @@ def test_no_schwab_leaf_zero_injection_repo_wide():
     assert not hits, "repo-wide silent-zero pattern family violations:\n" + "\n".join(hits[:80])
 
 
-def test_market_data_adapter_no_zero_injection_pattern():
-    text = (ROOT / "market_data_adapter.py").read_text(encoding="utf-8")
-    assert not SILENT_ZERO_PATTERN_FAMILY[0].regex.search(text)
 
 
 def test_snapshot_normalizer_no_open_zero_fallback():

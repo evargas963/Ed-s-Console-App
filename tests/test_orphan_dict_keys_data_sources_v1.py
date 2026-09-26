@@ -146,19 +146,6 @@ def test_calendar_reads_are_no_longer_reported(live_orphans):
         "the calendar-backed reads are still flagged as orphans")
 
 
-def test_micro_5m_headline_is_a_stale_name_not_a_missing_producer(live_orphans):
-    """The 5-minute micro signal ships as rules_headline (headline_5m -> RulesCard.headline)."""
-    rules = (REPO / "rules_engine.py").read_text(encoding="utf-8")
-    assert "headline=micro.headline_5m" in rules
-    adapter = (REPO / "v2_decision" / "module_a_adapter.py").read_text(encoding="utf-8")
-    html = (REPO / "static" / "index.html").read_text(encoding="utf-8")
-    assert 'ms.get("micro_5m_headline")' not in adapter
-    assert "d.micro_5m_headline" not in html
-    reported_keys = []
-    for v in live_orphans:
-        if "key '" in v.msg:
-            reported_keys.append(v.msg.split("key '", 1)[1].split("'", 1)[0])
-    assert "micro_5m_headline" not in reported_keys
 
 
 def test_two_never_written_fallback_spellings_are_gone(live_orphans):

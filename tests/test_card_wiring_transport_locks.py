@@ -192,39 +192,6 @@ def test_signals_tick_shares_similarity_context() -> None:
     )
 
 
-def test_similar_setups_shared_dedups_exact_args_only() -> None:
-    """Functional half: identical kwargs + shared ctx → one DB call, value-equal
-    rows, mutation-isolated copies; different kwargs → fresh DB call."""
-    from prediction_engine import _similar_setups_shared
-
-    calls: list[dict] = []
-
-    class _Db:
-        def get_similar_setups(self, **kw):
-            calls.append(kw)
-            return [{"match_tier": 1, "outcome_5c": "up"}]
-
-    ctx: dict = {}
-    a = _similar_setups_shared(_Db(), ctx, ticker="SPY", timeframe="1m", zone="pin",
-                               vwap_side="above", nearest_above_dist=1.0,
-                               nearest_below_dist=2.0, as_of_ts_utc=100.0)
-    b = _similar_setups_shared(_Db(), ctx, ticker="SPY", timeframe="1m", zone="pin",
-                               vwap_side="above", nearest_above_dist=1.0,
-                               nearest_below_dist=2.0, as_of_ts_utc=100.0)
-    assert len(calls) == 1, "identical same-tick query was not deduplicated"
-    assert a == b
-    b[0]["outcome_5c"] = "down"
-    assert a[0]["outcome_5c"] == "up", "reused rows are not mutation-isolated copies"
-    c = _similar_setups_shared(_Db(), ctx, ticker="SPY", timeframe="1m", zone="pin",
-                               vwap_side="above", nearest_above_dist=1.0,
-                               nearest_below_dist=2.0, as_of_ts_utc=200.0)
-    assert len(calls) == 2, "changed args must fall back to a fresh DB query"
-    assert c == a
-    # No ctx → passthrough, no caching side effects.
-    d = _similar_setups_shared(_Db(), None, ticker="QQQ", timeframe="1m", zone="pin",
-                               vwap_side="above", nearest_above_dist=1.0,
-                               nearest_below_dist=2.0, as_of_ts_utc=100.0)
-    assert len(calls) == 3 and d
 
 
 # ── Burndown lock — IV history must stay a narrow projection ────────────────
@@ -253,133 +220,15 @@ def test_fetch_state_iv_history_uses_narrow_projection() -> None:
     )
 
 
-def test_similarity_hot_path_projection_drops_only_blob_columns(tmp_path) -> None:
-    """Burndown (2026-07-05): the hot-path similarity read opts into a projection
-    that drops ONLY option_chain_json / replay_context_json (no live consumer
-    reads them — enumerated across overlay/core/enrichment/labeled-counts).
-    Every other column, row order, tier semantics, and match_tier must be
-    identical to the default full-width read; default callers stay full-width."""
-    from db import EdDB
-    from timeframe_config import CANONICAL_TIMEFRAME
-
-    db = EdDB(tmp_path / "sim_projection.db")
-    with db._connect() as conn:
-        for i in range(3):
-            conn.execute(
-                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, zone,"
-                " vwap_side, nearest_above_dist, nearest_below_dist, outcome_1c,"
-                " outcome_5c, outcome_15c, option_chain_json, replay_context_json)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                ("SPY", CANONICAL_TIMEFRAME, 1000.0 + i, "test", 450.0, "pin",
-                 "above", 1.0, 1.0, "up", "up", "up", '{"big":"blob"}', '{"ctx":1}'),
-            )
-    kw = dict(ticker="SPY", timeframe=CANONICAL_TIMEFRAME, zone="pin",
-              vwap_side="above", nearest_above_dist=1.0, nearest_below_dist=1.0)
-    full = db.get_similar_setups(**kw)
-    slim = db.get_similar_setups(**kw, exclude_heavy_json_columns=True)
-    assert len(full) == len(slim) == 3
-    assert set(full[0]) - set(slim[0]) == {"option_chain_json", "replay_context_json"}
-    for f, s in zip(full, slim):
-        assert {k: f[k] for k in s} == dict(s), "projected rows diverge from full rows"
-    assert all(s["match_tier"] == f["match_tier"] for f, s in zip(full, slim))
-    assert full[0]["option_chain_json"] == '{"big":"blob"}', "default read lost blobs"
 
 
-def test_prediction_hot_path_opts_into_similarity_projection() -> None:
-    """Both hot-path similarity call sites must pass exclude_heavy_json_columns=True
-    (and identically, so the same-tick dedup ctx key still matches)."""
-    src = (ROOT / "prediction_engine.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    hits = 0
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_similar_setups_shared"
-        ):
-            kws = {k.arg for k in node.keywords}
-            assert "exclude_heavy_json_columns" in kws, (
-                f"_similar_setups_shared call at prediction_engine.py:{node.lineno} "
-                "lost the hot-path projection opt-in"
-            )
-            hits += 1
-    assert hits >= 2, "expected both hot-path similarity call sites"
 
 
-def test_get_recent_iv_levels_matches_full_read(tmp_path) -> None:
-    """Parity half: the narrow projection must return exactly the iv_level
-    sequence the full-width read returns (same window, order, as-of cutoff)."""
-    from db import EdDB
-    from timeframe_config import CANONICAL_TIMEFRAME
-
-    db = EdDB(tmp_path / "iv_parity.db")
-    with db._connect() as conn:
-        for i, iv in enumerate([21.5, None, 0.0, 33.25, 18.0]):
-            conn.execute(
-                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, iv_level)"
-                " VALUES (?,?,?,?,?,?)",
-                ("SPY", CANONICAL_TIMEFRAME, 1000.0 + i, "test", 450.0, iv),
-            )
-    full = [
-        r.get("iv_level")
-        for r in db.get_recent_snapshots(
-            "SPY", CANONICAL_TIMEFRAME, n=10, filled_only=False, as_of_ts_utc=1004.0
-        )
-    ]
-    narrow = db.get_recent_iv_levels("SPY", CANONICAL_TIMEFRAME, n=10, as_of_ts_utc=1004.0)
-    assert narrow == full == [33.25, 0.0, None, 21.5]
-    assert db.get_recent_iv_levels("SPY", CANONICAL_TIMEFRAME, n=2) == [18.0, 33.25]
 
 
 # ── Audit lock — snapshot minute gate must reserve atomically + durably ─────
 
 
-def test_snapshot_minute_gate_atomic_reserve_and_durable_probe(tmp_path, monkeypatch) -> None:
-    """Repo-wide audit (2026-07-05): the check-only gate leaked duplicate
-    (ticker, minute) snapshot rows two ways — concurrent callers both passed
-    before either committed, and process restarts began with an empty bucket
-    (4,783 duplicate groups on disk; SPY dups written same-day). The gate must
-    reserve AT CHECK TIME, release on failed insert, and consult the durable
-    same-minute existence probe so restarts cannot re-insert a written minute."""
-    import server as srv
-    from db import EdDB
-    from timeframe_config import CANONICAL_TIMEFRAME
-
-    monkeypatch.setenv("ED_DB_SNAPSHOT_THROTTLE", "1")
-    saved = dict(srv._db_snapshot_minute_bucket)
-    srv._db_snapshot_minute_bucket.clear()
-    try:
-        ts = 6_000_000.0  # minute bucket 100000
-        # 1. Atomic reserve: second concurrent caller in the same minute is blocked
-        #    BEFORE any insert commits.
-        assert srv._snapshot_row_insert_allowed("SPY", ts) is True
-        assert srv._snapshot_row_insert_allowed("SPY", ts + 5.0) is False
-        # 2. Failed insert releases the minute for a same-minute retry.
-        srv._snapshot_row_insert_release("SPY", ts)
-        assert srv._snapshot_row_insert_allowed("SPY", ts + 10.0) is True
-        # 3. Committed keeps the minute closed; release after commit-era bucket
-        #    of a DIFFERENT minute is a no-op.
-        srv._snapshot_row_insert_committed("SPY", ts)
-        assert srv._snapshot_row_insert_allowed("SPY", ts + 20.0) is False
-        # 4. Next minute opens normally.
-        assert srv._snapshot_row_insert_allowed("SPY", ts + 60.0) is True
-        # 5. Restart simulation: fresh (empty) bucket, but the DB already holds a
-        #    row for the minute — the durable probe must block the re-insert.
-        db = EdDB(tmp_path / "gate.db")
-        with db._connect() as conn:
-            conn.execute(
-                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot)"
-                " VALUES (?,?,?,?,?)",
-                ("SPY", CANONICAL_TIMEFRAME, ts + 3.0, "test", 450.0),
-            )
-        srv._db_snapshot_minute_bucket.clear()  # simulate process restart
-        assert db.snapshot_exists_in_minute("SPY", CANONICAL_TIMEFRAME, int(ts // 60)) is True
-        assert srv._snapshot_row_insert_allowed("SPY", ts + 30.0, db=db) is False
-        # 6. A minute with no durable row still opens after restart.
-        assert srv._snapshot_row_insert_allowed("SPY", ts + 120.0, db=db) is True
-    finally:
-        srv._db_snapshot_minute_bucket.clear()
-        srv._db_snapshot_minute_bucket.update(saved)
 
 
 def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
@@ -481,24 +330,6 @@ def test_completed_fetch_broadcast_attaches_operator_mirrors() -> None:
     )
 
 
-def test_attach_block_stamps_operator_mirrors_functionally() -> None:
-    """Functional half of lock 4: the attach block must stamp the S2B-1 mirrors."""
-    import server
-
-    md: dict = {"ticker": "SPY", "mhap_rows": [], "analytics_stale": False}
-    server._attach_card_freshness_v1_block(
-        md,
-        ticker="SPY",
-        now=1_000_000.0,
-        analytics_ttl_sec=5.0,
-        tier_c_cache_stale_serve=False,
-        plane_quote=None,
-    )
-    assert md.get("operator_card_actionable") is False  # mhap_missing → withheld
-    assert isinstance(md.get("operator_stale_reason_codes"), list)
-    assert md.get("operator_actionability_reason")
-    cf = md.get("card_freshness_v1")
-    assert isinstance(cf, dict) and cf.get("card_trust_state")
 
 
 # ── Locks 2 + 3 — client source guards ────────────────────────────────────

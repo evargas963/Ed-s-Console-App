@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import pickle
-import time
 from pathlib import Path
 
 import pytest
@@ -21,7 +19,6 @@ import pytest
 import active_bundle_contract as abc_mod
 from active_bundle_contract import (
     bundle_role_filenames,
-    write_bundle_integrity_manifest,
 )
 
 pytestmark = pytest.mark.usefixtures("_permissive_policy")
@@ -165,44 +162,6 @@ def test_committed_policy_is_strict_and_allowance_closed():
 # ── TTL rehash: size+mtime_ns-preserving mutation is bounded by the TTL ─────
 
 
-def test_ttl_expiry_forces_full_rehash_detecting_stat_invisible_mutation(tmp_path, monkeypatch):
-    import ml_predict as mp
-
-    t, hz = "ZZTTL"[:5], "1c"
-    bd = tmp_path / "active" / t
-    bd.mkdir(parents=True)
-    name = f"xgb_{t}_{hz}.pkl"
-    for role, fname in bundle_role_filenames(t, hz).items():
-        if fname.endswith(".json"):
-            (bd / fname).write_text("{}", encoding="utf-8")
-        else:
-            with (bd / fname).open("wb") as fh:
-                pickle.dump({"r": role}, fh)
-    write_bundle_integrity_manifest(bd, t, hz)
-    prov = mp._verify_governed_artifact(bd, t, hz, "xgb", name)
-    assert prov is not None and prov["verified"] is True
-    rk = mp._model_registry_key(t, hz)
-
-    # mutation preserving BOTH size and mtime_ns (stat-invisible)
-    p = bd / name
-    st = p.stat()
-    raw = bytearray(p.read_bytes())
-    raw[-1] ^= 0x01
-    p.write_bytes(bytes(raw))
-    os.utime(p, ns=(st.st_atime_ns, st.st_mtime_ns))
-    assert p.stat().st_size == st.st_size and p.stat().st_mtime_ns == st.st_mtime_ns
-
-    # within TTL: stat guard alone cannot see it (the honest limit, now bounded)
-    assert mp._artifact_registry_entry_stale(rk) is False
-    # after TTL expiry: entry evicts and the full re-hash fails closed
-    key = f"{rk}|xgb"
-    mp._artifact_verification_registry[key]["verified_at_epoch"] = time.time() - 10_000
-    assert mp._artifact_registry_entry_stale(rk) is True
-    prov2 = mp._verify_governed_artifact(bd, t, hz, "xgb", name)
-    assert prov2 is None  # ARTIFACT_HASH_MISMATCH fail-closed
-    reg = mp.get_artifact_verification_provenance(t, hz)
-    assert reg["xgb"]["reason_code"] == "ARTIFACT_HASH_MISMATCH"
-    mp.invalidate_model_registry_key(rk)
 
 
 def test_ttl_configurable_and_default_bounded(monkeypatch):

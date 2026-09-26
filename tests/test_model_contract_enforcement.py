@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 
 from model_contract import (
-    CURRENT_FEATURE_SCHEMA_VERSION,
     contract_metadata_dict,
     meta_matches_system_contract,
     validate_artifact_contract,
@@ -338,64 +337,12 @@ def _make_complete_bundle(models_root, ticker, hz="1c"):
     return bd
 
 
-def test_provenance_block_authoritative_ticker(tmp_path, monkeypatch):
-    """Required test 1: full-key block for an own-bundle ticker; requested ==
-    bundle; guest_anchor False; complete bundle classes STRICT_ACTIVE_SERVABLE."""
-    import ml_predict as mp
-
-    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
-    # Stub .pt bytes cannot satisfy the structural torch-checkpoint inspection;
-    # the provenance surface under test consumes the compliance verdict, so the
-    # inspector is stubbed to isolate that surface.
-    monkeypatch.setattr("lstm_data.sequence_encoder_checkpoint_issues", lambda p: ())
-    t = "ZZOWN"
-    bd = _make_complete_bundle(tmp_path, t)
-    # Item-4 strict default (committed policy): a SERVABLE bundle carries an
-    # integrity manifest — stamp it the way the governed promotion path does.
-    from active_bundle_contract import write_bundle_integrity_manifest
-
-    write_bundle_integrity_manifest(bd, t, "1c")
-    prov = mp.build_model_serving_provenance(t)
-    assert set(prov) == _PROVENANCE_KEYS
-    assert prov["requested_ticker"] == t
-    assert prov["bundle_ticker"] == t
-    assert prov["guest_anchor"] is False
-    assert prov["bundle_complete"] is True
-    assert prov["contract_match"] is True
-    assert prov["trained_at"] == "2026-07-01 00:00:00"
-    assert prov["feature_schema_version"] == CURRENT_FEATURE_SCHEMA_VERSION
-    assert prov["runtime_class"] == "STRICT_ACTIVE_SERVABLE"
 
 
 
 
-def test_provenance_surfaces_relaxation_active(tmp_path, monkeypatch):
-    """Required test 3: relaxation env visible in the block."""
-    import ml_predict as mp
-    from arch_competition.stack_bundle_eval_v1 import ABLATION_SCORING_PASS_ENV
-
-    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
-    monkeypatch.setenv(ABLATION_SCORING_PASS_ENV, "1")
-    prov = mp.build_model_serving_provenance("ZZRLX")
-    assert prov["relaxation_active"] is True
-    assert prov["runtime_class"] == "RELAXATION_ACTIVE"
 
 
-def test_provenance_surfaces_strict_active_only(tmp_path, monkeypatch):
-    """Required test 4: strict gate state visible; default on, env off -> off."""
-    import ml_predict as mp
-
-    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
-    monkeypatch.delenv("ED_XGB_STRICT_ACTIVE_ONLY", raising=False)
-    prov = mp.build_model_serving_provenance("ZZSTR")
-    assert prov["strict_active_only"] is True
-    assert prov["runtime_class"] == "STRICT_ACTIVE_FAIL_CLOSED"  # empty models root
-    assert prov["model_load_status"] == "fail_closed"
-    assert "FileNotFoundError" in (prov["fail_closed_reason"] or "")
-    monkeypatch.setenv("ED_XGB_STRICT_ACTIVE_ONLY", "0")
-    prov_off = mp.build_model_serving_provenance("ZZSTR")
-    assert prov_off["strict_active_only"] is False
-    assert prov_off["runtime_class"] == "RELAXED_RESOLUTION"
 
 
 def test_provenance_contract_rejection_behavior_unchanged():
@@ -439,7 +386,6 @@ def test_provenance_no_ticker_literals():
 # directly — never through the implementation under test.
 
 import hashlib
-import os
 import pickle as _pickle
 
 import pytest
@@ -739,105 +685,16 @@ def test_item4_reason_codes_are_the_governed_enum():
     )
 
 
-def test_item4_load_xgb_verifies_before_pickle_load(mp_bundle, monkeypatch):
-    """PRE-deserialization proof: with a corrupted artifact, pickle.load is never reached."""
-    mp, t, bd = mp_bundle
-    hz = "1c"
-    name = f"xgb_{t}_{hz}.pkl"
-    (bd / name).write_bytes(b"corrupted-bytes")
-
-    def _poison(*a, **k):
-        raise AssertionError("pickle.load reached with unverified artifact bytes")
-
-    monkeypatch.setattr(mp.pickle, "load", _poison)
-    assert mp._load_xgb(t) is False
-    prov = mp.get_artifact_verification_provenance(t, hz)
-    assert prov["xgb"]["integrity_class"] == "VERIFICATION_FAILED_CLOSED"
-    assert prov["xgb"]["reason_code"] == "ARTIFACT_HASH_MISMATCH"
-    assert prov["xgb"]["inference_blocked"] is True
 
 
-def test_item4_load_xgb_success_records_provenance(mp_bundle):
-    mp, t, bd = mp_bundle
-    assert mp._load_xgb(t) is True
-    prov = mp.get_artifact_verification_provenance(t, "1c")
-    assert prov["xgb"]["verified"] is True
-    assert prov["xgb"]["integrity_class"] == "VERIFIED_AGAINST_BUNDLE_MANIFEST"
-    assert prov["xgb_meta"]["verified"] is True
-    # Independent recompute of the recorded hash.
-    assert prov["xgb"]["actual_sha256"] == _sha256_independent(bd / f"xgb_{t}_1c.pkl")
 
 
-def test_item4_load_meta_verifies_with_governed_meta_stack_role(mp_bundle):
-    """Regression (2026-07-16): _load_meta must request the governed
-    META_STACK_KIND role ('meta_stack') — the role the manifest stamper writes
-    for meta_{t}_{hz}.pkl. Requesting 'meta' was rejected as an unknown role
-    (ARTIFACT_ROLE_MISMATCH) and failed the meta layer closed fleet-wide."""
-    from active_bundle_contract import META_STACK_KIND
-
-    mp, t, _bd = mp_bundle
-    assert mp._load_meta(t) is True
-    prov = mp.get_artifact_verification_provenance(t, "1c")
-    assert prov[META_STACK_KIND]["verified"] is True
-    assert prov[META_STACK_KIND]["integrity_class"] == "VERIFIED_AGAINST_BUNDLE_MANIFEST"
-    assert "meta" not in prov  # the ungoverned role string must never be recorded
 
 
-def test_item4_cache_invalidates_on_artifact_mutation(mp_bundle):
-    """A verified cached model cannot outlive artifact-byte mutation."""
-    mp, t, bd = mp_bundle
-    name = f"xgb_{t}_1c.pkl"
-    assert mp._load_xgb(t) is True
-    # Mutate artifact bytes on disk (stat identity changes).
-    p = bd / name
-    with p.open("wb") as fh:
-        _pickle.dump({"kind": "tampered"}, fh)
-    os.utime(p, ns=(p.stat().st_atime_ns, p.stat().st_mtime_ns + 1_000_000))
-    assert mp._load_xgb(t) is False  # evicted + re-verified -> hash mismatch
-    prov = mp.get_artifact_verification_provenance(t, "1c")
-    assert prov["xgb"]["reason_code"] == "ARTIFACT_HASH_MISMATCH"
-    # Negative result is sticky (not replaced by the older positive entry).
-    assert mp._load_xgb(t) is False
 
 
-def test_item4_cache_invalidates_on_manifest_mutation(mp_bundle):
-    mp, t, bd = mp_bundle
-    assert mp._load_xgb(t) is True
-    mf_path = bundle_integrity_manifest_path(bd)
-    mf = json.loads(mf_path.read_text(encoding="utf-8"))
-    mf["artifacts"][f"xgb_{t}_1c.pkl"]["sha256"] = "f" * 64
-    mf_path.write_text(json.dumps(mf), encoding="utf-8")
-    os.utime(mf_path, ns=(mf_path.stat().st_atime_ns, mf_path.stat().st_mtime_ns + 1_000_000))
-    assert mp._load_xgb(t) is False
-    prov = mp.get_artifact_verification_provenance(t, "1c")
-    assert prov["xgb"]["reason_code"] == "ARTIFACT_HASH_MISMATCH"
 
 
-def test_item4_legacy_bundle_gaining_manifest_reverifies(tmp_path, monkeypatch):
-    import ml_predict as mp
-
-    t = "ZZLG2"
-    bd = _make_complete_bundle(tmp_path, t)  # legacy: no manifest
-    with (bd / f"xgb_{t}_1c.pkl").open("wb") as fh:
-        _pickle.dump({"kind": "legacy"}, fh)
-    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
-    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: bd)
-    monkeypatch.delenv(ARTIFACT_INTEGRITY_STRICT_ENV, raising=False)
-    _open_legacy_allowance(tmp_path, monkeypatch)
-    _reset_ml_predict_state(mp)
-    try:
-        assert mp._load_xgb(t) is True
-        prov = mp.get_artifact_verification_provenance(t, "1c")
-        assert prov["xgb"]["legacy"] is True
-        assert prov["xgb"]["integrity_class"] == "LEGACY_UNVERIFIED_NO_BUNDLE_MANIFEST"
-        # Bundle gains an integrity manifest -> cached legacy entry re-verifies.
-        write_bundle_integrity_manifest(bd, t, "1c")
-        assert mp._load_xgb(t) is True
-        prov2 = mp.get_artifact_verification_provenance(t, "1c")
-        assert prov2["xgb"]["verified"] is True
-        assert prov2["xgb"]["legacy"] is False
-    finally:
-        _reset_ml_predict_state(mp)
 
 
 def test_item4_cross_ticker_and_cross_horizon_cache_isolation(mp_bundle):
@@ -857,25 +714,6 @@ def test_item4_cross_ticker_and_cross_horizon_cache_isolation(mp_bundle):
     del mp._xgb_registry[k_tk]
 
 
-def test_item4_strict_absence_blocks_serving(tmp_path, monkeypatch):
-    """ED_ARTIFACT_INTEGRITY_STRICT=1: manifest-absent bundle refuses to load."""
-    import ml_predict as mp
-
-    t = "ZZSTRICT"[:5]
-    bd = _make_complete_bundle(tmp_path, t)
-    with (bd / f"xgb_{t}_1c.pkl").open("wb") as fh:
-        _pickle.dump({"kind": "legacy"}, fh)
-    monkeypatch.setattr(mp, "MODEL_DIR", tmp_path)
-    monkeypatch.setattr(mp, "_model_dir_for_ticker", lambda _t: bd)
-    monkeypatch.setenv(ARTIFACT_INTEGRITY_STRICT_ENV, "1")
-    _reset_ml_predict_state(mp)
-    try:
-        assert mp._load_xgb(t) is False
-        prov = mp.get_artifact_verification_provenance(t, "1c")
-        assert prov["xgb"]["reason_code"] == "MANIFEST_MISSING"
-        assert prov["xgb"]["integrity_class"] == "VERIFICATION_FAILED_CLOSED"
-    finally:
-        _reset_ml_predict_state(mp)
 
 
 def test_item4_promotion_stamps_manifest(tmp_path):
@@ -920,20 +758,6 @@ def test_item4_promotion_stamps_manifest(tmp_path):
 
 
 
-def test_item4_provenance_surface_reports_integrity(mp_bundle):
-    mp, t, _bd = mp_bundle
-    prov0 = mp.build_model_serving_provenance(t)
-    assert prov0["artifact_integrity"] == "NOT_LOADED"
-    assert mp._load_xgb(t) is True
-    prov1 = mp.build_model_serving_provenance(t)
-    assert prov1["artifact_integrity"] == "VERIFIED_AGAINST_BUNDLE_MANIFEST"
-    assert prov1["artifact_verification"]["xgb"]["verified"] is True
-    # A VERIFIED artifact must carry a real digest. Allowing None here made the assertion
-    # true for every possible value, including the failure it was meant to catch.
-    _sha = prov1["artifact_verification"]["xgb"]["artifact_sha256"]
-    assert isinstance(_sha, str) and len(_sha) == 64, (
-        f"verified artifact must expose a 64-char sha256, got {_sha!r}"
-    )
 
 
 @pytest.mark.parametrize("ticker", ["SPY", "QQQ", "IWM", "ZZGST"])

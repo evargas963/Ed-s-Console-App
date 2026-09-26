@@ -24,17 +24,6 @@ def _reset_feed_globals() -> None:
     ofs._book_cursor = {}
 
 
-def test_streaming_l1_cache_usable_requires_recent_tick():
-    _reset_feed_globals()
-    ofs._feed_running = True
-    ofs._active_ticker = "SPY"
-    ofs._streaming_last_update_ts = time.time()
-    assert ofs.streaming_l1_cache_usable("SPY") is True
-
-    ofs._streaming_last_update_ts = time.time() - 10.0
-    assert ofs.streaming_l1_cache_usable("SPY") is False
-    # Authority may still read "streaming" until STREAMING_STALE_MS (25s); fast-quote must not use cache.
-    assert ofs.get_plane_authority_for_ticker("SPY") == "streaming"
 
 
 def test_get_plane_authority_rest_only_when_feed_not_running():

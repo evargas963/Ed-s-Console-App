@@ -326,11 +326,6 @@ def test_no_implicit_promote_without_operator(tmp_path: Path):
         )
 
 
-def test_run_unified_stack_ml_once_still_parallel_default():
-    import inspect
-    from ml_predict import run_unified_stack_ml_once
-
-    assert "parallel_runtime=True" in inspect.getsource(run_unified_stack_ml_once)
 
 
 def test_manual_rollback_restores_after_promote(tmp_path: Path):

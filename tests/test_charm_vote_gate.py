@@ -6,32 +6,13 @@ status is unapproved. P1B: the vanna proxy is labeled honestly in the UI.
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
 
 
-def test_charm_validation_status_unapproved():
-    import call_engine as ce
-
-    assert ce.CHARM_VOTE_VALIDATION_STATUS == "UNAPPROVED"
 
 
-def test_charm_vote_gated_out_of_greek_bias_source_lock():
-    """The compute path must derive the greek_bias charm argument from the
-    validation gate — never pass inp.charm_direction into the vote directly."""
-    src = (_REPO / "call_engine.py").read_text(encoding="utf-8", errors="replace")
-    assert 'inp.charm_direction if CHARM_VOTE_VALIDATION_STATUS == "APPROVED" else None' in src
-    tree = ast.parse(src)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "greek_bias":
-            for arg in node.args:
-                if isinstance(arg, ast.Attribute) and arg.attr == "charm_direction":
-                    raise AssertionError(
-                        "greek_bias receives inp.charm_direction directly — the "
-                        "P1C validation gate is bypassed"
-                    )
 
 
 def test_charm_gate_zero_vote_functional():

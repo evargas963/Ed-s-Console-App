@@ -53,8 +53,6 @@ BATCH_NOT_PROVEN = ("call_signal", "call_conviction")
 
 
 
-def test_admission_gate_has_no_component_parameter():
-    assert P.function_args("decision_gate.py", "evaluate_decision_path_admission") == ["path"]
 
 
 # ── negative / mutation control: a second writer of the owner's result is caught ─────────

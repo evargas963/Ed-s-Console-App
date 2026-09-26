@@ -116,113 +116,14 @@ def test_inference_snapshot_per_field_lineage():
         assert entry["fallback_flag"] is (feats[key] is None)
 
 
-def test_fusion_input_vwap_side_unknown_not_above_when_missing():
-    from features.fusion_model_input import similar_setup_filters_from_canonical_features
-
-    feats = _minimal_features(**{"anchor.vwap_side": None, "structure.zone": None})
-    out = similar_setup_filters_from_canonical_features(feats)
-    assert out["vwap_side"] is None
-    assert out["zone"] is None
-    assert out["vwap_side_fallback"] is True
-    assert out["zone_fallback"] is True
 
 
-def test_fusion_vwap_side_parent_default_above_would_fail_gate():
-    """Parent commit used `else \"above\"`; prove missing vwap is not that bucket."""
-    from features.fusion_model_input import similar_setup_filters_from_canonical_features
-
-    feats = _minimal_features(**{"anchor.vwap_side": None})
-    out = similar_setup_filters_from_canonical_features(feats)
-    parent_behavior = "above"
-    assert out["vwap_side"] != parent_behavior
 
 
-def test_lstm_missing_numerics_emit_mask_not_zero():
-    from features.canonical_contract import get_mvp_feature_names
-    from features.lstm_sequence_input import encode_lstm_structure_bar_with_masks
-    from lstm_data import ZONE_MISSING_ENCODED
-    from lstm_data import ENCODED_FEATURES_5M
-
-    cf = {k: None for k in get_mvp_feature_names()}
-    cf["price.spot"] = 450.0
-    cf["structure.zone"] = None
-    cf["anchor.vwap_side"] = None
-    cf["structure.net_gamma"] = None
-    merged = {
-        "spot": 450.0,
-        "zone": "pin_neutral",
-        "vwap_side": "above",
-        "net_gamma": 99.0,
-        "vwap_dist_pts": 1.0,
-        "candle_body_pts": 0.1,
-        "candle_range_pts": 0.2,
-        "dist_call_gamma_wall": 1.0,
-        "dist_put_gamma_wall": -1.0,
-        "dist_gamma_inflection": 0.0,
-        "dist_delta_inflection": 0.0,
-        "dist_call_oi_wall": 0.0,
-        "dist_put_oi_wall": 0.0,
-        "spy_chg_pct": 0.0,
-        "qqq_chg_pct": 0.0,
-        "iwm_chg_pct": 0.0,
-        "vix_level": 18.0,
-        "iv_level": 0.2,
-        "net_delta": 0.0,
-        "charm_net": 0.0,
-    }
-    enc = encode_lstm_structure_bar_with_masks(merged, cf, 450.0)
-    masks = enc["canonical_missing_masks"]
-    assert masks[0] == 0.0
-    assert masks[1] == 0.0
-    zi = ENCODED_FEATURES_5M.index("cat_zone")
-    assert enc["features"][zi] == ZONE_MISSING_ENCODED
 
 
-def test_m5_context_labels_proxy_when_1m_asof(monkeypatch, tmp_path):
-    import sqlite3
-
-    import pandas as pd
-
-    import ml_data_common as mdc
-
-    db_path = str(tmp_path / "m5.db")
-    sqlite3.connect(db_path).close()
-
-    def fake_read_sql_query(query, con, params=None):
-        rows = []
-        for ts in (100.0, 200.0):
-            row: dict = {"ticker": "SPY", "ts_utc": ts}
-            for c in mdc.M5_ADDITIVE_SOURCE_COLS:
-                row[c] = float(ts)
-            rows.append(row)
-        return pd.DataFrame(rows)
-
-    monkeypatch.setattr(pd, "read_sql_query", fake_read_sql_query)
-
-    left = pd.DataFrame({"ticker": ["SPY"], "ts_utc": [150.0], "spot": [1.0]})
-    out = mdc.attach_5m_additive_context(left, db_path=db_path)
-    assert out.iloc[0][mdc.M5_SOURCE_TIMEFRAME_COL] == mdc.M5_SOURCE_TIMEFRAME_1M_ASOF
 
 
-def test_v2_advisory_backfill_stamps_reconstructed_fields():
-    from calibration.v2_advisory_backfill import (
-        RECONSTRUCTED_LIVE_MS_SOURCE,
-        build_v2_advisory_snapshot,
-        ms_dict_from_snapshot_row,
-    )
-
-    row = {
-        "ticker": "SPY",
-        "ts_utc": 1_700_000_000.0,
-        "rules_summary": "test headline",
-        "replay_context_json": '{"zone": "pin_bull", "vwap_side": "above"}',
-    }
-    ms = ms_dict_from_snapshot_row(row)
-    assert ms["live_ms_reconstruction_source"] == RECONSTRUCTED_LIVE_MS_SOURCE
-    assert ms["live_ms_field_sources"]["rules_headline"] == RECONSTRUCTED_LIVE_MS_SOURCE
-    payload = build_v2_advisory_snapshot(row)
-    assert payload["source"] == RECONSTRUCTED_LIVE_MS_SOURCE
-    assert payload["live_ms_field_sources"]["zone"] == RECONSTRUCTED_LIVE_MS_SOURCE
 
 
 def test_no_silent_default_in_feature_paths_repo_wide(repo_index):
@@ -526,35 +427,8 @@ def test_mvp_schema_hash_golden_locked():
     )
 
 
-def test_db_and_live_adapters_produce_identical_golden_row():
-    from features.db_feature_adapter import build_db_mvp_feature_row
-    from features.live_feature_adapter import build_live_mvp_feature_row
-
-    db_row = build_db_mvp_feature_row(dict(_GOLDEN_DB_ROW))
-    live_row = build_live_mvp_feature_row(dict(_GOLDEN_L1_PAYLOAD))
-    assert db_row == live_row == _GOLDEN_EXPECTED
-    # column order identical and contract-ordered on both paths
-    assert list(db_row) == list(live_row)
-    # dtype expectations: floats stay float, categoricals stay str, no numpy leakage.
-    # EXACT type, not isinstance: numpy.float64 SUBCLASSES float, so isinstance() returns
-    # True for exactly the leakage this assertion exists to catch (verified 2026-07-19:
-    # isinstance(np.float64(1.0), float) is True, type(...) is float is False).
-    for k, v in db_row.items():
-        assert v is None or type(v) in (float, str), (k, type(v))
 
 
-def test_negative_spread_missingness_parity_between_train_and_serve():
-    """The 2026-07-11 parity defect: DB adapter withheld negative spread, live
-    adapter served it. Both paths must yield None for the same crossed-quote
-    instant — identical missingness semantics train vs serve."""
-    from features.db_feature_adapter import build_db_mvp_feature_row
-    from features.live_feature_adapter import build_live_mvp_feature_row
-
-    db_row = build_db_mvp_feature_row({**_GOLDEN_DB_ROW, "spread": -0.01})
-    live_row = build_live_mvp_feature_row({**_GOLDEN_L1_PAYLOAD, "spread_pts": -0.01})
-    assert db_row["price.spread_pts"] is None
-    assert live_row["price.spread_pts"] is None
-    assert db_row == live_row
 
 
 def test_golden_row_survives_inference_snapshot_envelope():

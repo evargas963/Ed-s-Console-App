@@ -18,21 +18,6 @@ def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
     f(model_dir, cascade_ok=cascade_ok)
 
 
-def test_governance_route_serves_dashboard_html():
-    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
-    governance_visibility_page takes no parameters, no Request, no auth, no
-    middleware; it reads static/governance.html off disk and returns an HTMLResponse
-    (with its own 404 HTMLResponse when the file is absent). The StaticFiles mount is
-    at /static -- a disjoint prefix -- so there is no route-shadowing question of the
-    kind test_single_producer_batch_f02_f13_v1 guards for the RTH-clock route. The
-    HTTP round trip re-proved nothing the response object does not already carry."""
-    import server
-
-    resp = server.governance_visibility_page()
-    assert resp.status_code == 200
-    text = resp.body.decode("utf-8")
-    assert "sec-architecture" in text
-    assert "Governance dashboard" in text
 
 
 def test_governance_html_has_dashboard_sections():

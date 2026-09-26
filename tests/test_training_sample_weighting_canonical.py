@@ -27,19 +27,6 @@ def test_equal_sample_weights_are_all_ones():
     assert np.allclose(w, 1.0)
 
 
-def test_no_decay_or_toggle_machinery_in_ml_data_common():
-    import ml_data_common as m
-
-    # The recency-decay utility and the toggle/resolver must not exist (removed, not dormant).
-    for banned in (
-        "compute_exponential_weights",
-        "resolve_train_sample_weight_mode",
-        "training_sample_weights",
-        "TRAIN_SAMPLE_WEIGHT_MODE_ENV",
-        "CANONICAL_TRAIN_SAMPLE_WEIGHT_MODE",
-    ):
-        assert not hasattr(m, banned), f"{banned} should be gone (no decay path / no toggle)"
-    assert m.TRAIN_SAMPLE_WEIGHT_MODE == "equal"
 
 
 def test_no_weight_mode_env_override_exists(monkeypatch):

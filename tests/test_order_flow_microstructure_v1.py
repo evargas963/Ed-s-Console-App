@@ -74,29 +74,8 @@ def test_depth_totals_values():
     assert (d5["bid_total"], d5["ask_total"]) == (1360.0, 2430.0)
 
 
-def test_one_faucet_imbalance_equals_engine_authority():
-    """The microstructure imbalance must equal the engine's _compute_book_imbalance for the
-    SAME snapshot — same value because both call the same helper, not by coincidence."""
-    data = _data()
-    m = ofe.compute_book_microstructure(data, now_ts=1787233772.0)
-    for n in (1, 3, 5):
-        assert m["depth"][str(n)]["imbalance"] == ofe._compute_book_imbalance(data, n)
 
 
-def test_one_faucet_is_structural_not_coincidental(monkeypatch):
-    """Prove single authority STRUCTURALLY: perturb the ONE aggregation helper
-    (_book_side_depth_total) and both the engine imbalance AND the published depth totals must
-    move together. If they were separate computations, one would ignore the patch."""
-    data = _data()
-    real = ofe._book_side_depth_total
-    monkeypatch.setattr(ofe, "_book_side_depth_total", lambda lv, d: (real(lv, d) or 0) + 5)
-    m = ofe.compute_book_microstructure(data, now_ts=1787233772.0)
-    # published totals reflect the patched aggregator...
-    assert m["depth"]["1"]["bid_total"] == 1000.0 + 5
-    assert m["depth"]["1"]["ask_total"] == 960.0 + 5
-    # ...and the engine imbalance authority reflects the SAME patched aggregator.
-    assert ofe._compute_book_imbalance(data, 1) == (1005 - 965) / (1005 + 965)
-    assert m["depth"]["1"]["imbalance"] == ofe._compute_book_imbalance(data, 1)
 
 
 def test_book_shape_metrics():

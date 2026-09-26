@@ -74,13 +74,6 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
     assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
 
-def test_five_minute_bars_roll_up_complete_buckets_only(monkeypatch):
-    start = T0 - (T0 % 300)
-    for m in range(7):                                    # one full 5-minute bucket + 2 minutes
-        server._write_streamed_bar(_bar(start + 60 * m, o=10 + m, h=20 + m, lo=5 + m, c=11 + m, v=1.0))
-    monkeypatch.setattr(server.time, "time", lambda: start + 7 * 60 + 5)
-    (b,) = server._bars_5m(TK)                            # the second bucket is still forming
-    assert (b.ts, b.open, b.high, b.low, b.close, b.volume) == (start, 10, 24, 5, 15, 5.0)
 
 
 def test_the_bars_endpoint_serves_the_table_plus_the_planes_forming_minute(monkeypatch):

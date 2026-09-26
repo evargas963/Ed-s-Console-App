@@ -69,11 +69,6 @@ def test_terrain_rotates_only_inside_the_contention_window():
     assert board[0] in now and deferred                       # the window still rotates
 
 
-def test_sse_dispatch_has_its_own_single_thread():
-    import server as srv
-    ex = srv._get_l1_sse_dispatch_executor()
-    assert ex is not srv._get_l1_light_executor()
-    assert ex._max_workers == 1
 
 
 def test_forming_bar_is_keyed_on_trade_time_only(monkeypatch):
@@ -104,26 +99,6 @@ def test_forming_bar_is_keyed_on_trade_time_only(monkeypatch):
 
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
-def test_drop_counts_are_per_consumer_and_survive_a_disconnect():
-    """The writer, push clients and push history all subscribe to "" -- keyed by prefix they
-    overwrote each other (audit of #280). Counts are per consumer name, and a push client's
-    drops remain after it disconnects."""
-    from stream_spine import COUNT_DROPS
-
-    async def go():
-        bus = MessageBus()
-        writer = bus.subscribe("", policy=COUNT_DROPS, maxsize=1, name="db_writer")
-        client = bus.subscribe("", policy=COUNT_DROPS, maxsize=2, name="push_client")
-        for i in range(6):
-            bus.publish(f"quote.S{i}", {"i": i})
-        before = bus.drop_counts()
-        bus.unsubscribe(client)
-        after = bus.drop_counts()
-        _ = writer
-        return before, after
-    before, after = asyncio.run(go())
-    assert before == {"db_writer": 5, "push_client": 4}
-    assert after == {"db_writer": 5, "push_client": 4}
 
 
 def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):

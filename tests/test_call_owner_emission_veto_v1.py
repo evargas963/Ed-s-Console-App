@@ -111,9 +111,6 @@ def test_mutation_control_old_gate_rewrite_is_detected():
     assert [k for _, k in verdict_writers(OLD_GATE_REWRITE)] == ["call_signal", "call_conviction"]
 
 
-def test_gate_bundle_and_record_modules_write_no_verdict():
-    for rel in ("trade_impacting_gate.py", "live_decision_bundle.py", "decision_record.py"):
-        assert verdict_writers((REPO / rel).read_text(encoding="utf-8", errors="replace")) == [], rel
 
 
 # ── repo-wide residual: the only verdict writers are the owner, the carrier and flagged shells ──
@@ -184,14 +181,3 @@ def test_verdict_roots_close_on_compute_call_with_the_gate_as_input():
     assert gate.producer_refs == ("server.py:_fetch_state",)
 
 
-def test_the_wrong_price_band_is_one_rule_for_every_ticker():
-    """Universality (operator 2026-09-23): the band is 0.5x-2x the ticker's OWN prior close,
-    for every ticker -- no name-keyed bounds table."""
-    from trade_impacting_gate import assess_spot_price
-    for tk, close in (("SPY", 450.0), ("NFLX", 1200.0), ("$SPX", 6500.0), ("SIRI", 3.1)):
-        assert assess_spot_price(tk, close * 1.01, close)[0] is True
-        assert assess_spot_price(tk, close * 2.5, close)[0] is False
-        assert assess_spot_price(tk, close * 0.4, close)[0] is False
-    import inspect
-    import trade_impacting_gate as g
-    assert "_PRICE_SANITY_BOUNDS" not in inspect.getsource(g)

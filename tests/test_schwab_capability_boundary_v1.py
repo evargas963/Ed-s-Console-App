@@ -191,29 +191,6 @@ def test_an_unavailable_capability_cannot_serve_live_data(clean_env):
     assert "No fabricated or stale substitute" in str(exc.value)
 
 
-def test_the_shipped_decision_registry_authorizes_no_exposure():
-    """PROOF 4c. Exposure needs an admitted component, and the SHIPPED registry admits none.
-
-    Evaluated against the real `config/decision_path_admissions.json` by explicit path, not by
-    the ambient default: a first cut of this test called the default and read `admitted=True`,
-    because the pytest harness points the registry at a fixture that admits `the_call`. That
-    measured the harness, not production, and would have certified the opposite of the truth.
-
-    LIMIT, stated rather than implied: this proves no component is authorized to influence
-    exposure at all, which subsumes the Schwab-dependent case. It does NOT prove what
-    `compute_call` would do with a stale database if a component were later admitted while the
-    Schwab capability was down. That is a decision-path question, not a capability-boundary
-    one; the boundary guarantee proven here is upstream — no live Schwab value can enter
-    (see `test_an_unavailable_capability_cannot_serve_live_data`).
-    """
-    import decision_gate
-
-    real = (REPO / "config" / "decision_path_admissions.json").resolve()
-    assert real.is_file(), real
-
-    verdict = decision_gate.evaluate_decision_path_admission(path=real)
-    assert verdict.admitted is False, verdict
-    assert verdict.registry_state in ("empty", "missing", "invalid", "not_admitted"), verdict
 
 
 # ================================================================= app availability

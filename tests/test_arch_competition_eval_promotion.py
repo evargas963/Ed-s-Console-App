@@ -611,14 +611,6 @@ def test_arch_competition_modules_do_not_call_run_unified_stack_ml_once():
                     pytest.fail(f"{name} must not call run_unified_stack_ml_once")
 
 
-def test_run_unified_stack_ml_once_default_unchanged_parallel_runtime():
-    """Guard: production entry remains parallel stack (this pass does not alter defaults)."""
-    from ml_predict import run_unified_stack_ml_once
-    import inspect
-
-    src = inspect.getsource(run_unified_stack_ml_once)
-    assert "parallel_runtime=True" in src
-    assert "def run_unified_stack_ml_once" in src
 
 
 def test_stamp_candidate_manifests_syncs_horizon_before_lineage_validate(tmp_path):

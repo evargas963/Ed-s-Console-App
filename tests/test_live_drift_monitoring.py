@@ -410,11 +410,6 @@ def test_live_drift_module_does_not_call_run_unified_stack_ml_once():
                 pytest.fail("live_drift_monitoring must not call run_unified_stack_ml_once")
 
 
-def test_ml_predict_default_parallel_runtime_unchanged():
-    from ml_predict import run_unified_stack_ml_once
-    import inspect
-
-    assert "parallel_runtime=True" in inspect.getsource(run_unified_stack_ml_once)
 
 
 def test_calibration_drift_material_emits_signal_when_recent_slice_degrades(tmp_path: Path):

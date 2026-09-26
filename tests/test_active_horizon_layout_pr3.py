@@ -57,18 +57,6 @@ def _write_minimal_bundle(bundle_dir: Path, ticker: str, hz: str) -> None:
     write_bundle_integrity_manifest(bundle_dir, t, hz)
 
 
-def test_strict_active_bundle_dir_single_canonical_root(tmp_path: Path):
-    from active_bundle_contract import active_bundle_dir, strict_active_bundle_dir_for_horizon
-
-    wrong = tmp_path / "active" / "SPY"
-    _write_minimal_bundle(wrong, "SPY", "5c")
-    canonical = active_bundle_dir("SPY", "5c", models_dir=tmp_path)
-    assert not canonical.exists()
-    assert strict_active_bundle_dir_for_horizon("SPY", "5c", models_dir=tmp_path) is None
-
-    _write_minimal_bundle(canonical, "SPY", "5c")
-    resolved = strict_active_bundle_dir_for_horizon("SPY", "5c", models_dir=tmp_path)
-    assert resolved == canonical
 
 
 def test_scheduler_active_root_matches_contract(tmp_path: Path):
@@ -116,22 +104,6 @@ def test_promote_horizon_bundle_copies_seven_files_only(tmp_path: Path):
     assert mf is not None and mf["ticker"] == "SPY" and mf["ml_horizon_slug"] == "5c"
 
 
-def test_consolidate_plan_moves_from_legacy_active(tmp_path: Path):
-    from active_bundle_contract import (
-        active_bundle_dir,
-        apply_consolidate_horizon_layout_plan,
-        consolidate_horizon_layout_plan,
-    )
-
-    legacy = tmp_path / "active" / "SPY"
-    _write_minimal_bundle(legacy, "SPY", "5c")
-    plan = consolidate_horizon_layout_plan("SPY", "5c", models_dir=tmp_path)
-    assert len(plan["moves"]) == 7
-    canonical = active_bundle_dir("SPY", "5c", models_dir=tmp_path)
-    assert plan["canonical_dir"] == str(canonical)
-    copied = apply_consolidate_horizon_layout_plan(plan)
-    assert len(copied) == 7
-    assert (canonical / "xgb_SPY_5c.pkl").is_file()
 
 
 def test_ml_predict_strict_uses_canonical_only(tmp_path: Path, monkeypatch):

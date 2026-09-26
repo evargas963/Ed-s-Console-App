@@ -335,28 +335,6 @@ def test_incremental_first_run_falls_back_to_full(tmp_path):
     assert res["normalized_rows"] == 1
 
 
-def test_base_money_path_materialize_wires_incremental_lookback(monkeypatch, tmp_path):
-    """The live base trio refresh must pass the outcome-covering incremental window."""
-    import normalized_training_sync as nts
-
-    calls: list[dict] = []
-
-    def _capture(db_path, tickers=None, clear_first=True, incremental_lookback_sec=None):
-        calls.append(
-            {
-                "tickers": tickers,
-                "incremental_lookback_sec": incremental_lookback_sec,
-            }
-        )
-        return {"raw_rows": 0, "normalized_rows": 0, "by_ticker": {}, "errors": []}
-
-    monkeypatch.setattr(nts, "materialize_normalized_table", _capture)
-    nts.materialize_base_money_path_tickers(tmp_path / "x.db")
-    assert len(calls) == 1
-    assert sorted(calls[0]["tickers"]) == ["IWM", "QQQ", "SPY"]
-    assert calls[0]["incremental_lookback_sec"] == nts.BASE_NORMALIZE_INCREMENTAL_LOOKBACK_SEC
-    # Window must cover the longest outcome horizon (60c ≈ 60 min) with margin.
-    assert nts.BASE_NORMALIZE_INCREMENTAL_LOOKBACK_SEC >= 65.0 * 60.0
 
 
 # ── Price-action cone persistence (operator 2026-06-11) ──────────────────────

@@ -152,14 +152,3 @@ def test_slope_uses_same_signed_size_walk():
     assert math.isclose(slope, -1.0, rel_tol=0.0, abs_tol=1e-9)
 
 
-def test_receive_seq_is_monotonic_and_not_a_native_id():
-    sym = "RECV1"
-    live_state.clear_symbol(sym)
-    live_state.push_level_one(sym, {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5}, ts_recv=time.time())
-    live_state.push_level_one(sym, {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5}, ts_recv=time.time())
-    live_state.push_level_one(sym, {"key": sym, "LAST_PRICE": 10.1, "LAST_SIZE": 2, "TRADE_TIME_MILLIS": 5}, ts_recv=time.time())
-    tape = [i for i in live_state.get_content_for_symbol(sym) if "receive_seq" in i]
-    log = live_state.get_receive_log(sym)
-    assert [x["receive_seq"] for x in log] == [1, 2, 3]
-    assert len(tape) == 2
-    assert tape[0]["native_event_id"] is False

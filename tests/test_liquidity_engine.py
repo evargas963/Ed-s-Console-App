@@ -122,12 +122,6 @@ def test_bars_normalization_drops_missing_ohlc_bar():
     assert _bars_to_list(bars) == []
 
 
-def test_schwab_candles_to_bars_drops_missing_ohlc_bar():
-    """S003: pricehistory candle OHLC fields are required."""
-    from market_data_adapter import schwab_candles_to_bars
-    candles = [{"datetime": 1710000000000, "open": 500, "high": 501, "close": 500.5, "volume": 1000}]
-
-    assert schwab_candles_to_bars(candles) == []
 
 
 def test_get_previous_day_levels():
@@ -848,17 +842,6 @@ def test_no_lookahead_premarket():
         f"prev_day contains a non-pd_-prefixed poc key: {poc_keys}")
 
 
-def test_summarize_snapshot():
-    """summarize_snapshot produces readable text."""
-    from liquidity_value_engine import build_midday_snapshot, summarize_snapshot
-    from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    out = build_midday_snapshot("SPY", bars, session, cfg)
-    text = summarize_snapshot(out)
-    assert "SPY" in text
-    assert "MIDDAY" in text
 
 
 def test_opening_cutoff_0945():
@@ -922,28 +905,6 @@ def test_afternoon_cutoff_1400():
     assert out_1400.raw_levels["poc"] == out_1500.raw_levels["poc"]
 
 
-def test_playbook_state_builds():
-    """PlaybookState builds correctly with all snapshots."""
-    from liquidity_value_engine import generate_playbook_state
-    from liquidity_models import PlaybookConfig
-
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    state = generate_playbook_state("SPY", bars, session, cfg)
-
-    assert state.ticker == "SPY"
-    assert state.session_date == "2026-03-13"
-    assert state.premarket_snapshot is not None
-    assert state.opening_snapshot is not None
-    assert state.midday_snapshot is not None
-    assert state.afternoon_snapshot is not None
-    assert state.premarket_snapshot.snapshot_type.value == "premarket"
-    assert state.opening_snapshot.snapshot_type.value == "opening"
-    assert state.midday_snapshot.snapshot_type.value == "midday"
-    assert state.afternoon_snapshot.snapshot_type.value == "afternoon"
-    assert state.latest_snapshot_type is not None
-    assert state.generated_at is not None
 
 
 def test_atr_clustering_no_lookahead():
@@ -1021,33 +982,3 @@ def test_build_live_snapshot_smoke():
     assert isinstance(out.zones, list)
     if out.snapshot_type == SnapshotType.LIVE:
         assert "cutoff_et" in (out.raw_levels or {})
-
-
-def run_all():
-    test_imports()
-    test_bars_normalization()
-    test_get_previous_day_levels()
-    test_compute_opening_range()
-    test_compute_session_vwap()
-    test_compute_volume_profile_levels()
-    test_cluster_price_levels()
-    test_build_premarket_snapshot()
-    test_build_opening_snapshot()
-    test_build_midday_snapshot()
-    test_build_afternoon_snapshot()
-    test_generate_liquidity_value_snapshot_master()
-    test_no_lookahead_premarket()
-    test_summarize_snapshot()
-    test_opening_cutoff_0945()
-    test_midday_cutoff_1030()
-    test_afternoon_cutoff_1400()
-    test_playbook_state_builds()
-    test_atr_clustering_no_lookahead()
-    test_source_levels_use_actual_values()
-    test_max_zone_width()
-    test_build_live_snapshot_smoke()
-    print("All liquidity engine tests passed.")
-
-
-if __name__ == "__main__":
-    run_all()

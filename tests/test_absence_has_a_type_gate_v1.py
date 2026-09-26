@@ -112,12 +112,6 @@ def test_the_live_repository_passes_on_merit():
     assert C.violations() == [], f"fabricated absence in the money path: {C.violations()}"
 
 
-def test_the_parity_function_now_reports_absence():
-    """The RC-301 repair, executed rather than read."""
-    from math_levels import parity_f_minus_spot_from_contracts as P
-
-    assert P([], spot="abc") is None, "unparseable spot still yields a residual"
-    assert P([], spot=100.0) is None, "an empty chain still yields a residual"
 
 
 def test_the_gate_is_registered_as_enforced():

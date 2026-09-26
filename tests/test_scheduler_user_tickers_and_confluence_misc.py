@@ -161,27 +161,6 @@ def test_filter_tickers_for_background_logging_is_universal():
     assert out == ["SPY", "PSCI", "QQQ"]
 
 
-def test_retired_confluence_code_is_deleted_not_stubbed():
-    """Audit of #272 (2026-09-24): the retirement left None-returning stubs and their callers.
-    Stubs are dead code carrying a retired contract -- they are deleted."""
-    import backfill_snapshot_derived
-    import market_context
-    import math_probabilities
-    import server
-    for mod, name in ((market_context, "missing_confluence_weighted_pushes"),
-                      (market_context, "weighted_pushes_from_snapshot_row"),
-                      (market_context, "iwm_blended_participation_push"),
-                      (market_context, "stamp_confluence_display_fields"),
-                      (market_context, "resolve_chg_pct"),
-                      (market_context, "ConfluenceRead"),
-                      (math_probabilities, "compute_iwm_confluence"),
-                      (math_probabilities, "compute_sector_strength"),
-                      (backfill_snapshot_derived, "backfill_weighted_pushes"),
-                      (server, "_ensure_mkt_ctx_confluence_complete")):
-        assert not hasattr(mod, name), f"{mod.__name__}.{name}"
-    ctx = market_context.MarketContext()
-    for field in ("spy_chg_pct", "constituents", "confluence", "iwm_sectors", "iwm_holdings"):
-        assert not hasattr(ctx, field), field
 
 
 def test_filter_tickers_for_ml_training_excludes_panel_auto():
@@ -232,27 +211,6 @@ def test_evaluate_training_readiness_empty_db(tmp_path):
     assert r["reasons"]
 
 
-def test_confluence_quote_ticks_upsert_and_inventory(tmp_path):
-    """Thin panel quote table: write path + read inventory consumer."""
-    from db import EdDB
-
-    dbp = tmp_path / "cq.db"
-    db = EdDB(dbp, allow_noncanonical=True)
-    n = db.upsert_confluence_quote_ticks(
-        [
-            {
-                "ticker": "PSCI",
-                "ts_utc": 1_777_000_000.0,
-                "ts_et": "2026-01-02 10:00:00",
-                "last_price": 42.5,
-                "chg_pct": 0.12,
-            }
-        ]
-    )
-    assert n == 1
-    inv = db.confluence_quote_tick_inventory()
-    assert inv["total_rows"] == 1
-    assert inv["distinct_tickers"] == 1
 
 
 def test_retired_chg_map_cannot_alias_goog_onto_googl():
@@ -263,33 +221,6 @@ def test_retired_chg_map_cannot_alias_goog_onto_googl():
     assert not hasattr(mc, "snapshot_row_chg_map")
 
 
-def test_fetch_confluence_quote_chg_as_of(tmp_path):
-    from db import EdDB
-
-    dbp = tmp_path / "cq_asof.db"
-    db = EdDB(dbp, allow_noncanonical=True)
-    db.upsert_confluence_quote_ticks(
-        [
-            {
-                "ticker": "WMT",
-                "ts_utc": 100.0,
-                "ts_et": "2026-01-01 09:00:00",
-                "last_price": 50.0,
-                "chg_pct": 0.11,
-            },
-            {
-                "ticker": "WMT",
-                "ts_utc": 200.0,
-                "ts_et": "2026-01-01 10:00:00",
-                "last_price": 50.5,
-                "chg_pct": 0.22,
-            },
-        ]
-    )
-    got = db.fetch_confluence_quote_chg_as_of(150.0, ["WMT"])
-    assert got["WMT"] == 0.11
-    got2 = db.fetch_confluence_quote_chg_as_of(250.0, ["WMT"])
-    assert got2["WMT"] == 0.22
 
 
 def test_no_stored_percent_change_patches_a_live_confluence_value():
