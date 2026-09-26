@@ -51,6 +51,7 @@ def _clean(monkeypatch):
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
+        server._terrain_snapshots.pop(TK, None)
     server._gamma_surface_demand.pop(TK, None)
     while not server._l1_sse_thread_queue.empty():
         server._l1_sse_thread_queue.get_nowait()
@@ -69,7 +70,7 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation(monkeypatch):
     _put_chain()
     snap = server._publish_levels(TK)
     c = _cached()
-    assert c["_snap"] is snap and c["_per_strike"] is snap.per_strike
+    assert server._published_snapshot(TK) is snap and c["_per_strike"] is snap.per_strike
     assert c["gamma_flip"] == snap.gamma_flip and c["call_wall"] == snap.call_wall
     full, _ = merge_exposure_books(snap.books.values())
     surface = c["_gamma_surface"]
@@ -89,6 +90,20 @@ def test_published_levels_equal_compute_terrain_on_the_same_inputs(monkeypatch):
     for k in ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike", "max_pain",
               "net_gex_peak", "contracts_used"):
         assert got[k] == expected[k], k
+
+
+def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal_fields(monkeypatch):
+    """2026-09-26: the payload carried the snapshot object and /api/terrain served the whole
+    entry -- HTTP 500 for every published ticker, and the kept chain on every poll."""
+    from fastapi.testclient import TestClient
+    _stream({}, monkeypatch)
+    _put_chain()
+    snap = server._publish_levels(TK)
+    r = TestClient(server.app).get(f"/api/terrain?ticker={TK}")
+    assert r.status_code == 200, r.text[:300]
+    body = r.json()
+    assert body["call_wall"] == snap.call_wall and body["gamma_flip"] == snap.gamma_flip
+    assert not [k for k in body if k.startswith("_")]
 
 
 # ── streamed greeks: fresher wins, older or stale never does, nothing compounds ──────────────
