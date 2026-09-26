@@ -333,39 +333,9 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     assert "ED_RTH_START_MINS" in chart and "ED_RTH_END_MINS" in chart
     assert "mm >= 570" not in chart and "mm < 960" not in chart
 
-    dh = _read("verification/daily_health.py")
-    assert "from time_et import" in dh and "RTH_START_MINS" in dh
-    assert "RTH_START_MINS = 570" not in dh
-    dl = _read("research/pilot_step3/data_loader.py")
-    assert "from time_et import" in dl and "RTH_START_MINS = 570" not in dl
     am = _read("audit_model_readiness.py")
     assert "from time_et import" in am and "RTH_START_MINS" in am
     assert ">= 570" not in am
-    d2 = _read("tools/research/d2_build_dual_label_scratch_db.py")
-    assert "RTH_START_MINS as RTH_START_MIN" in d2
-    assert "RTH_START_MIN, RTH_END_MIN = 570, 960" not in d2
-    for study in (
-        "tools/study_pin_direction_v1.py",
-        "tools/study_pin_charm_v1.py",
-        "tools/study_pin_residence_v1.py",
-        "tools/study_pin_regime_cut_v1.py",
-        "tools/study_terrain_readiness_v1.py",
-        "tools/study_card2_am_pm_v1.py",
-        "tools/study_card_lateday_v1.py",
-        "tools/study_card_lateday_v2.py",
-        "tools/study_timeslice_reversal_v1.py",
-        "tools/lp01_touch_study_v1.py",
-        "tools/liquidity_synthesis_experiments_v1.py",
-        "tools/liquidity_oi_volume_stickiness_v1.py",
-        "tools/liquidity_gamma_levels_experiment_v1.py",
-        "tools/liquidity_gamma_hold_horizon_experiments_v1.py",
-    ):
-        st = _read(study)
-        assert "RTH_START_MINS" in st and "9 * 60 + 30" not in st, study
-    gex = _read("research/gex_r1_screen_v1/signal.py")
-    assert "RTH_START_MINS" in gex and "start_mins: int = 570" not in gex
-    tod = _read("research/tod_eval_v1/runner.py")
-    assert "RTH_START_MINS" in tod and "9 * 60 + 30" not in tod
     poll = _read("polling_adapter.py")
     assert "RTH_END_MINS" in poll and "time(16, 0)" not in poll
     a2e = _read("v2_decision/a2_eod_force_exit.py")
@@ -379,8 +349,6 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     assert "RTH_START_MINS" in ns and "m < 30" not in ns
     lve = _read("liquidity_value_engine.py")
     assert "RTH_OPEN_MINS" in lve and "time(9, 29)" not in lve.split("def _cutoff_for_snapshot")[1][:800]
-    ccm = _read("compare_clustering_modes.py")
-    assert "RTH_START_MINS" in ccm and "9 * 60 + 30" not in ccm
     tbr = _read("tools/terrain_backtest_report_v1.py")
     assert "RTH_START_MINS" in tbr and "9 * 60 + 45" not in tbr
 
@@ -826,15 +794,6 @@ def test_rc345_gamma_regime_one_classifier_two_named_books() -> None:
         code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
         assert code.count("def regime_from_signed_gamma") <= 1
 
-    # F07 (reopened) tools/backtest: the regime SIGN is routed through the one authority,
-    # not a local `gex > 0` reconstruction under the LONG_GAMMA/SHORT_GAMMA research vocab.
-    bt = _read("tools/liquidity_gamma_hold_horizon_experiments_v1.py")
-    assert "regime_from_signed_gamma(gex)" in bt, (
-        "backtest must classify the sign via the one authority (F07/RC-345)")
-    btcode = "\n".join(l for l in bt.splitlines() if not l.lstrip().startswith("#"))
-    assert 'regime = "LONG_GAMMA" if gex > 0 else "SHORT_GAMMA"' not in btcode, (
-        "backtest must not re-derive gex>0 locally (F07/RC-345)")
-
     # F07 (reopened) frontend: the client never WRITES a regime under any name — the sign is
     # carried from the server. edReconcileRegime (legacy's local sign-reconciliation function)
     # was retired here (/console cutover, operator directive 2026-09-14): the new console
@@ -1127,14 +1086,6 @@ def test_rc345_confluence_features_full_contract_one_authority() -> None:
 # the rename; they are preserved below as their own function.
 def test_rc345_adversarial_residuals_backend_only_paths() -> None:
     """The backend half of the surviving adversarial defects (frontend half retired above)."""
-    # F07: NEITHER backtest tool reconstructs regime from spot>gamma_flip.
-    for _bt in ("tools/liquidity_gamma_hold_horizon_experiments_v1.py",
-                "tools/liquidity_gamma_levels_experiment_v1.py"):
-        btcode = "\n".join(l for l in _read(_bt).splitlines() if not l.lstrip().startswith("#"))
-        assert "float(spot) > float(snap.gamma_flip)" not in btcode, (
-            f"{_bt} must not reconstruct regime from spot>flip (F07/RC-345)")
-        assert "regime_from_signed_gamma(gex)" in btcode
-
     # F18: charm_drift_toward is WITHHELD — server no longer feeds the net-GEX peak as the
     # charm target (a different-Greek substitution).
     srv18 = _read("server.py")

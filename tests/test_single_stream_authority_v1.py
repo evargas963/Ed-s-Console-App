@@ -15,7 +15,6 @@ from pathlib import Path
 import pytest
 
 from tools.check_single_stream_authority import (
-    OFFLINE_TOOLS,
     PRODUCTION_OWNER,
     classify,
     find_stream_client_constructions,
@@ -23,7 +22,7 @@ from tools.check_single_stream_authority import (
 )
 
 
-#: TEST_SYSTEM_REHAB_V2: the two tests below both independently called run_census() on
+#: TEST_SYSTEM_REHAB_V2: the current-tree tests below each independently called run_census() on
 #: the REAL, unmutated tree (measured ~21-26s each) to assert different facts about the
 #: SAME result. One canonical current-tree census, shared -- the mutation controls
 #: further down (genuine repository-input changes via monkeypatch) still each run their
@@ -41,13 +40,8 @@ def test_current_tree_has_exactly_one_production_owner(current_tree_census):
     assert census["VIOLATION"] == [], census["VIOLATION"]
 
 
-def test_offline_tool_is_classified_not_counted_as_a_violation(current_tree_census):
-    assert any(site.startswith(tuple(OFFLINE_TOOLS)) for site in current_tree_census["OFFLINE_TOOL"])
-
-
 def test_classify_production_owner_and_default_violation():
     assert classify(PRODUCTION_OWNER) == "PRODUCTION_OWNER"
-    assert classify("schwab_full_field_inventory.py") == "OFFLINE_TOOL"
     assert classify("tests/test_whatever.py") == "TEST_ONLY"
     assert classify("some_new_module.py") == "VIOLATION"
 
@@ -199,6 +193,6 @@ def test_mutation_two_production_owners_also_fails(monkeypatch):
 
     monkeypatch.setattr(gate, "run_census", lambda: {
         "PRODUCTION_OWNER": ["tools/run_stream_capture.py:555", "tools/run_stream_capture_2.py:10"],
-        "OFFLINE_TOOL": [], "TEST_ONLY": [], "VIOLATION": [],
+        "TEST_ONLY": [], "VIOLATION": [],
     })
     assert gate.main() == 1

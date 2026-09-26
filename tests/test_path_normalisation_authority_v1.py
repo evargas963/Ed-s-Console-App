@@ -99,13 +99,12 @@ def test_no_module_reintroduces_the_character_stripping_idiom(repo_index):
     Matched by AST, not by text, so a docstring that names the bad idiom in order to explain
     the defect is not an offender (the use-versus-mention error this repository has already
     been bitten by — RC-186, RC-253). Sourced from the shared `repo_index` corpus, so this is
-    not a new independent repo scan.
+    not a new independent repo scan. Scans EVERY tracked module (it once scanned only tools/ and
+    governance/, and pruning unused tools shrank that slice to the size of its own floor).
     """
     offenders = []
     scanned = 0
     for rel, _text, tree in sorted(repo_index.items()):
-        if rel.parts[0] not in ("tools", "governance"):
-            continue
         scanned += 1
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call)

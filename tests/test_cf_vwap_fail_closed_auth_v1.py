@@ -109,9 +109,3 @@ def test_null_pa_vwap_roll_contamination_only_null_vwap_rows(tmp_path: Path) -> 
     assert rows[1] == (2, None, None)  # contamination nulled
     assert rows[2] == (3, None, None)
 
-
-def test_research_runners_exclude_null_session_vwap() -> None:
-    pa = Path("research/pa_returns_eval_v1/runner.py").read_text(encoding="utf-8")
-    zone = Path("research/zone_vwap_eval_v1/runner.py").read_text(encoding="utf-8")
-    assert "AND vwap IS NOT NULL" in pa
-    assert "AND vwap IS NOT NULL" in zone

@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parent.parent
 _MULTIPLIER_CONSUMER_FILES = (
     "math_exposure_core.py",
     "backfill_flow_imbalance.py",
-    "debug_flow_snapshot.py",
     "v2_decision/post_trade_attribution.py",
     "realized_contract_eval.py",  # STACK-WIRE-6b: _contract_multiplier reads chains.*.multiplier (fail-closed)
 )

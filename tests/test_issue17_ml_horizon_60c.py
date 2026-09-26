@@ -49,12 +49,6 @@ def test_engineer_features_does_not_derive_rules_60c_from_empirical_preds():
     assert "rules_60c_confidence" not in names
 
 
-def test_transformer_meta_horizon_label_60c():
-    from transformer_model import _horizon_label_from_meta
-
-    assert _horizon_label_from_meta({"target_column": "outcome_60c"}) == "60c"
-
-
 def test_build_manifest_accepts_60c_suffix():
     from training_cache import build_manifest
 

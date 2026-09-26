@@ -150,24 +150,3 @@ def test_scheduler_auto_verify_fail_rolls_back(tmp_path: Path, monkeypatch):
     assert (active_dir / "marker_prior.txt").read_text(encoding="utf-8") == "prior"
 
 
-def test_preflip_verify_fails_when_active_missing_expected_files(tmp_path: Path):
-    from tools.validate_autopromote_preflip import PREFLIP_SCHEMA, _decisions_path
-
-    decisions = {
-        "schema_version": PREFLIP_SCHEMA,
-        "run_id": "test1",
-        "decisions": [
-            {
-                "ticker": "SPY",
-                "horizon": "1c",
-                "would_promote": True,
-                "winner_architecture": "cascade",
-                "expected_active_files": ["xgb_SPY_1c.pkl", "xgb_SPY_1c_meta.json"],
-            }
-        ],
-    }
-    _decisions_path(tmp_path, "test1").parent.mkdir(parents=True, exist_ok=True)
-    _decisions_path(tmp_path, "test1").write_text(json.dumps(decisions), encoding="utf-8")
-    from tools.validate_autopromote_preflip import verify
-
-    assert verify(tmp_path, "test1") == 1

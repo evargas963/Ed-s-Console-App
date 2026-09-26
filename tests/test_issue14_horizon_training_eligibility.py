@@ -112,7 +112,6 @@ def test_transformer_uses_same_lstm_extract_and_target():
     assert "outcome_filled" not in src_prepare
 
 
-
 # ── D2 dual-label research registry locks (2026-07-06) ───────────────────────
 
 
@@ -143,42 +142,6 @@ def test_tb_research_labels_registered_additively_only():
     )
 
 
-def test_tb_label_core_policies():
-    """D2 generator core (pure function): PT/SL touch, ambiguous close-side with
-    tag, vertical flat, and session-truncation flag — the approved policies."""
-    from tools.research.d2_build_dual_label_scratch_db import tb_label_for_window
-
-    bars_up = [(1.0, 105.0, 99.5, 104.0)]
-    assert tb_label_for_window(100.0, bars_up, 2.0, 5) == ("up", "pt_up", 0)
-    bars_dn = [(1.0, 100.4, 95.0, 96.0)]
-    assert tb_label_for_window(100.0, bars_dn, 2.0, 5) == ("down", "sl_down", 0)
-    # ambiguous: both barriers inside one bar -> close side + 'ambiguous'
-    bars_amb_up = [(1.0, 103.0, 97.0, 101.0)]
-    assert tb_label_for_window(100.0, bars_amb_up, 2.0, 5) == ("up", "ambiguous", 0)
-    bars_amb_dn = [(1.0, 103.0, 97.0, 99.0)]
-    assert tb_label_for_window(100.0, bars_amb_dn, 2.0, 5) == ("down", "ambiguous", 0)
-    # vertical: full window, no touch -> flat, not truncated
-    quiet = [(float(i), 100.5, 99.5, 100.1) for i in range(5)]
-    assert tb_label_for_window(100.0, quiet, 2.0, 5) == ("flat", "vertical", 0)
-    # truncated: session cut the window short with no touch -> flat + truncated flag
-    short = quiet[:3]
-    assert tb_label_for_window(100.0, short, 2.0, 5) == ("flat", "vertical_truncated", 1)
-    # first-touch order: barrier hit in bar 2 wins over later bars
-    seq = [(1.0, 100.5, 99.5, 100.2), (2.0, 102.5, 99.8, 102.2), (3.0, 100.0, 95.0, 96.0)]
-    assert tb_label_for_window(100.0, seq, 2.0, 5) == ("up", "pt_up", 0)
-
-
-def test_d2_builder_opens_production_read_only():
-    """The scratch builder must open the source DB via sqlite URI mode=ro —
-    production mutation impossible by construction."""
-    src = (ROOT / "tools" / "research" / "d2_build_dual_label_scratch_db.py").read_text(
-        encoding="utf-8"
-    )
-    assert "?mode=ro" in src and "uri=True" in src, (
-        "d2 scratch builder no longer opens the production DB read-only"
-    )
-
-
 # ── D2 matrix runner + scratch normalized-carry locks (2026-07-06) ───────────
 
 
@@ -196,34 +159,6 @@ def test_production_normalizer_is_intersection_driven_and_tb_free():
     assert "_normalized_insert_columns" in sn and "c in norm" in sn, (
         "normalizer insert-column intersection design changed — re-audit the "
         "scratch carry assumption"
-    )
-
-
-def test_d2_matrix_runner_guards():
-    """Isolation guards: production DB refused; models/ output refused; output
-    outside data/research refused; label mapping explicit; promotion disabled."""
-    import pytest
-    from tools.research.d2_run_dual_label_matrix import guard_paths, label_column_for
-
-    research_out = ROOT / "data" / "research" / "d2_models"
-    with pytest.raises(SystemExit):
-        guard_paths(ROOT / "data" / "ed_console.db", research_out)
-    scratch = ROOT / "data" / "research" / "d2_dual_label.db"
-    for bad in (ROOT / "models", ROOT / "models" / "parallel",
-                ROOT / "models" / "cascade", ROOT / "models" / "active",
-                ROOT / "reports" / "d2_out"):
-        with pytest.raises(SystemExit):
-            guard_paths(scratch, bad)
-    guard_paths(scratch, research_out)  # must not raise
-    assert label_column_for("fixed", "5c") == "outcome_5c"
-    assert label_column_for("tb", "5c") == "outcome_tb_5c"
-    with pytest.raises(SystemExit):
-        label_column_for("prod", "5c")
-    src = (ROOT / "tools" / "research" / "d2_run_dual_label_matrix.py").read_text(
-        encoding="utf-8"
-    )
-    assert 'os.environ["ED_SCHEDULER_AUTO_PROMOTE"] = "0"' in src, (
-        "matrix runner no longer disables promotion"
     )
 
 

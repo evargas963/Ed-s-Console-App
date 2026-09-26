@@ -34,13 +34,6 @@ _SELECT_PIN = re.compile(
     re.IGNORECASE,
 )
 
-PIN_STUDIES = (
-    "tools/study_pin_residence_v1.py",
-    "tools/study_pin_regime_cut_v1.py",
-    "tools/study_pin_direction_v1.py",
-    "tools/study_pin_charm_v1.py",
-)
-
 
 def snapshot_gamma_pin_sql_without_era_split(src: str) -> bool:
     """True when SQL reads snapshots.gamma_pin without naming the era split."""
@@ -115,8 +108,6 @@ def test_injected_unsplit_select_is_caught_and_tracked_readers_are_split(repo_in
     offenders: list[str] = []
     scoped = {rel.as_posix(): text for rel, text, _tree in repo_index.items()
               if rel.as_posix().startswith(("tools/", "research/"))}
-    for rel in PIN_STUDIES:
-        assert rel in scoped, rel
     for rel, src in sorted(scoped.items()):
         if snapshot_gamma_pin_sql_without_era_split(src):
             offenders.append(rel)

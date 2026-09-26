@@ -19,7 +19,6 @@ from calibration.a1_conformal_artifact_production import (
     produce_a1_conformal_artifact,
     update_current_pointer_atomically,
 )
-from calibration.run_a1_conformal_artifact_production import build_arg_parser
 
 
 def _calibration_artifact(**overrides) -> dict:
@@ -139,16 +138,6 @@ def test_eval_window_too_small_writes_artifact_but_not_pointer(monkeypatch, tmp_
     assert "aggregate_holdout" in str(result["eligibility_reason"])
     assert result["artifact_path"].is_file()
     assert not current_pointer_path(ticker="SPY", horizon="5c", data_root=tmp_path).exists()
-
-
-def test_invalid_cli_args_fail_explicitly():
-    """Contract §196 bullet 4: missing required CLI args fail validation."""
-    parser = build_arg_parser()
-
-    with pytest.raises(SystemExit) as excinfo:
-        parser.parse_args(["--ticker", "SPY"])
-
-    assert excinfo.value.code == 2
 
 
 def test_lineage_hash_matches_locked_recipe():

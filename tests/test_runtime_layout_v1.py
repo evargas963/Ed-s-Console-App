@@ -25,14 +25,14 @@ REPO = Path(__file__).resolve().parent.parent
 
 PROBE = r"""
 import json, runtime_layout as rl, db_authority as da, db, config
-from tools import terrain_backtest_report_v1 as tb, operable_surface_gate as og
+from tools import terrain_backtest_report_v1 as tb
 cfg = config.build_config(str(rl.SOURCE_ROOT))
 print(json.dumps({
     "runtime_root": str(rl.RUNTIME_ROOT), "artifacts_root": str(rl.ARTIFACTS_ROOT),
     "canonical_db": str(da.canonical_console_db_path()), "db_path": str(db.DB_PATH),
     "db_dir": str(db.DB_DIR), "token": cfg.token_path, "barchart": cfg.barchart_dir,
     "terrain_json": str(tb.OUT_JSON), "terrain_history": str(tb.HISTORY),
-    "operable_report": str(og.REPORT_LATEST), "separated": rl.describe()["separated"],
+    "separated": rl.describe()["separated"],
 }))
 """
 
@@ -59,7 +59,6 @@ def test_unset_roots_converge_on_git_primary_worktree():
     assert Path(got["db_path"]) == primary / "data" / "ed_console.db"
     assert Path(got["token"]) == primary / "schwab_token.json"
     assert Path(got["terrain_json"]) == primary / "reports" / "terrain_backtest_latest.json"
-    assert Path(got["operable_report"]) == primary / "reports" / "operable_surface_gate_latest.json"
 
 
 def test_linked_worktree_metadata_failure_refuses_local_runtime(
@@ -92,9 +91,8 @@ def test_runtime_root_moves_database_token_and_data_and_artifacts_follow(tmp_pat
     # artifacts default to the runtime root
     assert Path(got["terrain_json"]) == rt.resolve() / "reports" / "terrain_backtest_latest.json"
     assert Path(got["terrain_history"]) == rt.resolve() / "reports" / "terrain_scorecard_history.jsonl"
-    assert Path(got["operable_report"]) == rt.resolve() / "reports" / "operable_surface_gate_latest.json"
     # nothing under the source checkout is named any more
-    for key in ("canonical_db", "db_path", "token", "terrain_json", "operable_report"):
+    for key in ("canonical_db", "db_path", "token", "terrain_json"):
         assert not Path(got[key]).is_relative_to(REPO.resolve()), (key, got[key])
 
 
@@ -103,7 +101,6 @@ def test_artifacts_root_separates_reports_from_runtime_state(tmp_path):
     got = _probe({"ED_RUNTIME_ROOT": str(rt), "ED_ARTIFACTS_ROOT": str(art)})
     assert Path(got["canonical_db"]) == (rt / "data" / "ed_console.db").resolve()
     assert Path(got["terrain_json"]) == art.resolve() / "reports" / "terrain_backtest_latest.json"
-    assert Path(got["operable_report"]) == art.resolve() / "reports" / "operable_surface_gate_latest.json"
 
 
 def test_ambient_db_override_is_refused(tmp_path):
@@ -212,10 +209,8 @@ def test_no_runtime_path_is_rooted_in_the_source_checkout_any_more():
     or `APP_DIR / "reports"` in the runtime modules and the report-writing tools."""
     offenders: list[str] = []
     for rel in ("server.py", "db.py", "db_authority.py", "config.py", "desk_store.py",
-                "stream_spine.py", "app/options/order_flow/streaming.py", "ticker_readiness_lookup.py",
-                "tools/terrain_backtest_report_v1.py", "tools/operable_surface_gate.py",
-                "tools/run_operable_surface_ops.py", "tools/ed_server_warn_quiet_window.py",
-                "tools/console_liveness_check.py"):
+                "stream_spine.py", "app/options/order_flow/streaming.py",
+                "tools/terrain_backtest_report_v1.py", "tools/console_liveness_check.py"):
         for i, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue

@@ -95,24 +95,3 @@ def test_normal_atm_gamma_retained() -> None:
     assert gamma_is_plausible(0.04, 0.50) is True
 
 
-def test_gex_r1_screen_skips_corrupt_gamma() -> None:
-    from research.gex_r1_screen_v1.signal import gex_0dte_from_chain
-
-    import json
-    import math
-    from pathlib import Path
-
-    # Real captured SPY 0DTE chain that actually contains the -91965 poison PUT.
-    fx = json.loads(
-        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_with_poison.json").read_text(encoding="utf-8")
-    )
-    chain, spot = fx["chain"], float(fx["spot"])
-    poison = [c for c in chain if c.get("gamma") is not None and abs(float(c["gamma"])) > 1.0]
-    assert poison, "fixture must contain a real poisoned-gamma contract"
-    p = poison[0]
-    poison_raw = abs(float(p["gamma"]) * float(p["openInterest"]) * 100.0 * spot * spot * 0.01)
-
-    gex, n_c, n_p = gex_0dte_from_chain(chain, spot)
-    assert math.isfinite(gex)
-    # sanitizer excluded the poison: |gex| is orders of magnitude below its raw contribution
-    assert abs(gex) < poison_raw * 0.01

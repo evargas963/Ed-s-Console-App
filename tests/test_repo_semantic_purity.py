@@ -9,15 +9,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_inspect_similar_set_exposes_canonical_and_raw_sql_debug_subcommands():
-    src = (ROOT / "tools" / "inspect_similar_set.py").read_text(encoding="utf-8")
-    assert "canonical" in src
-    assert "raw-sql-debug" in src
-    assert "similar_setup_filters_from_canonical_features" in src
-    assert "RAW_SQL_DEBUG_NON_SEMANTIC" in src
-    assert "CANONICAL_MVP_FILTERS" in src
-
-
 def test_compute_rules_signature_requires_mvp_features():
     src = (ROOT / "rules_engine.py").read_text(encoding="utf-8")
     assert "def compute_rules(inp: SignalInput, *, mvp_features: dict)" in src

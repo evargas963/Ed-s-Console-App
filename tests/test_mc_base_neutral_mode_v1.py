@@ -440,26 +440,3 @@ def test_durable_conditioning_is_null_when_mc_did_not_run(tmp_path):
 
 
 # ── PROOF 9: the retired source-text prohibition is gone, and the validator still works ────────
-def test_governed_stack_validator_passes_and_stale_none_pin_is_retired():
-    """signals.py now passes NO directional prior in base mode — the validator must not forbid it,
-    and must still catch the legacy-substrate violations it actually exists for."""
-    import importlib
-
-    v = importlib.import_module("tools.validate_governed_stack_policy_compliance_v1")
-
-    # the real behaviour the retired pin tried to describe IS present in the source now
-    src = (ROOT / "signals.py").read_text(encoding="utf-8", errors="replace")
-    assert "_mc_up = _mc_dn = _mc_conf_in = None" in src, "base mode must pass no prior"
-
-    assert v.main() == 0, "validator must pass on the proven base-neutral contract"
-
-    # NEGATIVE CONTROL: the checks it is genuinely scoped to still fire
-    real_read = v._read
-
-    def poisoned(p):
-        txt = real_read(p)
-        return txt + "\npred_move_prob_5m = 1\n" if p.name.startswith("run_phase8") else txt
-
-    with patch.object(v, "_read", side_effect=poisoned):
-        # main() returns 0 on PASS and 3 on FAIL
-        assert v.main() == 3, "validator must still detect legacy pred_move_prob_* policy substrate"

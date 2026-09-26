@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import inspect
 
-from adaptive_shadow_v2_calibration import load_survivorship_anchors_v1
 from db import EdDB, CANONICAL_TIMEFRAME, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, get_snapshot_sql
 from timeframe_config import DERIVED_TIMEFRAME
 from instrument_identity import ticker_storage_key
 from market_data_adapter import schwab_candles_to_bars
-
 
 
 def _in_window_ts(hour: int = 10, minute: int = 0) -> float:
@@ -111,18 +109,6 @@ def test_ticker_storage_key_vxn_rvx_broker_index_roots():
     assert ticker_storage_key("$RVX") == "$RVX"
     assert ticker_storage_key("VIX") == "$VIX"
     assert ticker_storage_key("$VIX") == "$VIX"
-
-
-def test_survivorship_anchor_ticker_matches_snapshots_row(tmp_path):
-    """Regression: anchors must use same key as snapshots for $SPX (no SPX-only form)."""
-    p = tmp_path / "surv.json"
-    p.write_text(
-        '{"anchors_used":[{"ticker":"$SPX","timeframe":"1m","zone":"breakout","vwap_side":"above",'
-        '"nearest_above_dist":1.0,"nearest_below_dist":1.0}]}',
-        encoding="utf-8",
-    )
-    anchors = load_survivorship_anchors_v1(path=p)
-    assert anchors[0]["ticker"] == "$SPX"
 
 
 def test_get_similar_setups_normalizes_spx_alias(tmp_path):

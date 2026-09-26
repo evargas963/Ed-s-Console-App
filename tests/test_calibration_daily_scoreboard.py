@@ -1575,29 +1575,6 @@ def test_lane_a_mutation_manifest_purity():
         assert {r["id"] for r in b["mutations"]} == {"M2", "M3"}
 
 
-def test_legacy_differential_artifact_reproduces(tmp_path):
-    """Packaged, independently executable legacy differential (Lane-A evidence):
-    the program reruns old-vs-new on the canonical fixture and must prove the
-    numeric-subset and field-value identities with a deterministic fixture id.
-    REHAB 2026-08-24: the run writes to tmp_path — every suite execution was
-    rewriting the TRACKED evidence artifact's shas (found dirty in git status);
-    the tracked file stays the committed evidence, regenerated deliberately."""
-    import subprocess
-
-    root = Path(__file__).resolve().parent.parent
-    prog = root / "reports/scoreboard_forensic/legacy_differential/compare_legacy_differential.py"
-    out = tmp_path / "legacy_differential_result.json"
-    base = subprocess.run(["git", "merge-base", "HEAD", "HEAD"], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=root).stdout.strip()
-    r = subprocess.run([sys.executable, str(prog), base, str(out)], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=root)
-    assert r.returncode == 0, r.stdout + r.stderr
-    res = json.loads(out.read_text(encoding="utf-8"))
-    assert res["LEGACY_NUMERIC_SUBSET_IDENTITY"] == "PROVEN"
-    assert res["LEGACY_FIELD_VALUE_IDENTITY"] == "PROVEN"
-    assert res["numeric_fields_compared"] > 100 and res["all_fields_compared"] > 150
-    assert res["legacy_subset_json_sha256_old"] == res["legacy_subset_json_sha256_new"]
-    assert "NOT_PROVEN" in res["LEGACY_COMPLETE_JSON_BYTE_IDENTITY"]
-
-
 def test_forensic_packet_lane_purity():
     """Package truth: the forensic packet machine-readably excludes Lane-B design
     from the Lane-A patch and never claims identity-first implementation for Lane A."""

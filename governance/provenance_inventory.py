@@ -138,8 +138,6 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
                    "diagnostic logging and error capture; not a market field"),
     AllowlistEntry("mega1_filesystem", "INTERNAL", "filesystem",
                    "reads or writes local files (token, diagnostics, reports)"),
-    AllowlistEntry("mega2_display_formatter", "INTERNAL", "internal_state",
-                   "formats an already-derived value for display; changes no semantics"),
     AllowlistEntry("mega2_internal_helper", "INTERNAL", "internal_state",
                    "pure helper over already-typed inputs; produces no market field of its own"),
     AllowlistEntry("mega2_schwab_stream_l1", "INTERNAL", "transport",

@@ -13,15 +13,13 @@ _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
 )
 
-# COH-SA-1 redirect sites (v2_a1_execution_ev covers isotonic production via v2_a1_calibration).
+# COH-SA-1 redirect sites.
 _COH_SA1_FLOAT_OR_NONE: tuple[tuple[str, str], ...] = (
     ("lifecycle_rule_core", "_float_or_none"),
     ("live_decision_bundle", "_float_or_none"),
     ("v2_decision.a2_lifecycle_sidecar", "_float_or_none"),
     ("calibration.v2_a1_calibration", "_float_or_none"),
     ("calibration.v2_a1_conformal", "_float_or_none"),
-    ("calibration.v2_a1_ev_bounds", "_float_or_none"),
-    ("calibration.v2_a1_execution_ev", "_float_or_none"),
     ("v2_decision.a2_price_precedence", "_num"),
 )
 

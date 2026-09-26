@@ -99,7 +99,7 @@ def test_architecture():
         "math_levels.py", "math_volatility.py", "math_probabilities.py",
         # Model layer
         "regime_engine.py", "bayesian_fusion.py",
-        "xgboost_model.py", "lstm_model.py", "transformer_model.py",
+        "lstm_model.py",
         "monte_carlo.py",
         # Data layer
         "db.py", "micro_structure.py", "market_context.py",
