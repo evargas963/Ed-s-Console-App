@@ -1,5 +1,16 @@
 # Ed Console — Governing Charter
 
+## Read first — before any change
+
+1. **[`docs/DATA_FLOW.md`](docs/DATA_FLOW.md)** — how data moves from Schwab to the screen, and the
+   operator's rules. Agreed by the operator; every change is built to it.
+2. **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** — where code lives (the module tree),
+   updated in the same change as every move.
+3. **[`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md)** — the current work, in order.
+
+Every change states which part of `DATA_FLOW.md` it builds or preserves. A change that does not
+fit it stops and goes to the operator; it is never worked around.
+
 **This file is SPECIFICATION. It enforces nothing.** Where it names a mechanism, the code is the
 authority on what that mechanism actually DOES; this file and the records it names are the
 authority on what it MUST do; a measurement is the only authority on what is TRUE. When a

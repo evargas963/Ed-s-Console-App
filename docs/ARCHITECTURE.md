@@ -12,6 +12,11 @@ before deviating.
 
 ---
 
+> **Status 2026-09-26.** The ML stack, the decision layer and the research program were deleted
+> (operator decisions); their target branches are gone from §1 and §2. Later sections still
+> describe them and are rewritten in the docs pass (ACTIVE_PROGRAM P2-8). How data moves is
+> `docs/DATA_FLOW.md`.
+
 ## 1. Canonical target schematic
 
 ```text
@@ -39,7 +44,7 @@ Trading/
 │   │   │   │   ├── client/
 │   │   │   │   ├── quotes/
 │   │   │   │   ├── price_history/
-│   │   │   │   └── streaming/
+│   │   │   │   └── streaming/          # the capture daemon process (DATA_FLOW §4)
 │   │   │   ├── normalization/
 │   │   │   ├── enrollment/
 │   │   │   ├── snapshots/
@@ -56,34 +61,14 @@ Trading/
 │   │   │   ├── charm/
 │   │   │   ├── exposure/
 │   │   │   ├── dealer_positioning/
-│   │   │   └── order_flow/
+│   │   │   ├── order_flow/
+│   │   │   └── levels_producer/          # its own process (DATA_FLOW §4)
 │   │   │
 │   │   ├── liquidity/                    # Canonical liquidity/value structure
 │   │   │   ├── vwap/
 │   │   │   ├── volume_profile/
 │   │   │   ├── liquidity_levels/
 │   │   │   └── playbook/
-│   │   │
-│   │   ├── signals/                      # Production signal computations
-│   │   │   ├── technical/
-│   │   │   ├── structural/
-│   │   │   ├── flow/
-│   │   │   └── regime/
-│   │   │
-│   │   ├── models/                       # Promoted production inference only
-│   │   │   ├── xgb/
-│   │   │   ├── lstm/
-│   │   │   ├── monte_carlo/
-│   │   │   ├── fusion/
-│   │   │   ├── calibration/
-│   │   │   └── registry/loading
-│   │   │
-│   │   ├── decision/                     # DECIDE
-│   │   │   ├── admission/
-│   │   │   ├── policy/
-│   │   │   ├── confidence/
-│   │   │   ├── sizing/
-│   │   │   └── trade_wait_avoid/
 │   │   │
 │   │   └── infrastructure/
 │   │       ├── database/
@@ -95,15 +80,6 @@ Trading/
 │   │       ├── scheduling/
 │   │       ├── observability/
 │   │       └── runtime_state/
-│   │
-│   ├── research/                          # FIND & PROVE
-│   │   ├── experiments/
-│   │   ├── validation/
-│   │   ├── backtests/
-│   │   ├── calibration/
-│   │   ├── training/
-│   │   ├── ablation/
-│   │   └── candidate_models/
 │   │
 │   ├── static/                            # Modular operator UI
 │   │   ├── pages/
@@ -133,17 +109,13 @@ Trading/
 │
 ├── runtime/
 │   └── EdWebConsole/                      # LIVE MUTABLE STATE
-│       ├── ed_console.db
-│       ├── stream_capture.db
+│       ├── the one database                 # written only by the daemon's writer (DATA_FLOW §6)
 │       ├── tokens/
 │       ├── logs/
 │       └── state/
 │
 ├── artifacts/
-│   └── EdWebConsole/                      # GENERATED / PROMOTED ARTIFACTS
-│       ├── models/
-│       ├── research_outputs/
-│       ├── calibration_outputs/
+│   └── EdWebConsole/                      # GENERATED ARTIFACTS
 │       └── temporary_outputs/
 │
 ├── recovery/
@@ -156,93 +128,139 @@ Trading/
 
 ---
 
-## 2. Current → target ownership
+## 2. Current → target (every product file, 2026-09-26)
 
-The current repository is not required to reach this structure in one rewrite. It is required to
-move toward it whenever materially touched.
+Moves happen one change at a time, and this table is updated in the same change as each move.
+`→ delete` rows go with the change named in `ACTIVE_PROGRAM.md`.
 
 ```text
-CURRENT                                  TARGET
+CURRENT (root unless shown)            TARGET
 
-server.py
-  routes                         →       app/api/routes/
-  lifespan/startup               →       app/api/lifespan/
-  business logic                 →       owning domain package
-  market calculations            →       app/domain / app/market_data /
-                                         app/options / app/signals
-  decision logic                 →       app/decision/
+server.py (6,130)
+  routes                         →     app/api/routes/  (by what they serve)
+  startup / lifespan             →     app/api/lifespan/
+  levels loop                    →     the levels producer process (DATA_FLOW decision 2)
 
-db.py                            →       app/infrastructure/database/
+db.py (3,892), db_authority.py,  →     app/infrastructure/database/  (split by what it stores)
+db_safety.py, json_blob_codec.py,
+snapshot_access.py, desk_store.py
 
-market_state.py                  →       app/market_data/market_state/
+ml_horizon.py, horizon_outcomes.py,    →  delete (ML stack; P2-5)
+movement_target_threshold.py,
+decision_record.py, execution_identity.py,
+calibration/schema.py
 
-schwab_client.py                 →       app/market_data/schwab/
-                                         or infrastructure/external_clients/
-                                         depending on responsibility
+calibration/complete_chain_capture.py, →  app/options/chains/
+calibration/option_chain_morning_full.py
 
-polling_adapter.py               →       app/market_data/
+schwab_client.py, reauth_schwab.py,    →  app/market_data/schwab/client/
+api_pressure.py
 
-order_flow_engine.py             →       app/options/order_flow/
+app/market_data/schwab/streaming/      →  stays (the daemon)
+stream_spine.py, live_market_plane.py, →  app/market_data/schwab/streaming/
+live_price_rows.py
 
-options chain logic              →       app/options/chains/
+app/options/order_flow/,              →  app/options/order_flow/
+l1_trade_observation.py,
+micro_structure.py
 
-gamma / delta / vanna / charm    →       app/options/
+terrain_engine.py, terrain_read.py,    →  app/options/  (gamma / exposure / levels)
+terrain_atr.py, math_exposure_core.py,
+math_levels.py, math_probabilities.py,
+math_volatility.py
 
-liquidity_value_engine.py        →       app/liquidity/
+liquidity_value_engine.py,            →  app/liquidity/
+liquidity_models.py
 
-liquidity_models.py              →       app/liquidity/
+time_et.py, timeframe_config.py        →  app/domain/sessions/
+instrument_identity.py,               →  app/domain/instruments/
+production_universe.py,
+scheduler_user_tickers.py
+market_context.py                      →  app/market_data/
+numeric_contract.py                    →  app/domain/
+config.py, runtime_layout.py           →  app/infrastructure/runtime_state/
+release_object.py                      →  app/infrastructure/observability/
+schwab_field_dictionary_builder.py     →  decided in P2-7 (job to be confirmed)
 
-signals.py                       →       app/signals/
+start_ed_console.bat,                  →  stay at the root (what the operator runs)
+start_capture_daemon.bat,
+runtime_preflight.py, live_schwab_env.py,
+launcher_port_guard.py,
+wait_for_ready_then_open.py
 
-regime_engine.py                 →       app/domain/regimes/
-                                         or app/signals/regime/
-                                         based on actual responsibility
-
-prediction_engine.py             →       app/models/
-
-bayesian_fusion.py               →       app/models/fusion/
-
-monte_carlo.py                   →       app/models/monte_carlo/
-
-call_engine.py                   →       app/decision/
-
-rules_engine.py                  →       app/decision/
-                                         or owning domain package
-
-static/index.html                →       modular static/pages/components/js/css
-
-training scripts                 →       research/training/
-
-ablation / experiments           →       research/ablation/
-                                         research/experiments/
-
-calibration research             →       research/calibration/
-
-production calibration artifacts →       artifacts/EdWebConsole/
-
-large tools population           →       delete obsolete tools;
-                                         move real responsibilities to owners;
-                                         retain only small active toolbox
-
-governance sprawl                →       minimal governance/
-
-reports/evidence/generated data  →       artifacts/EdWebConsole/
-                                         or research outputs
-
-data/ed_console.db               →       runtime/EdWebConsole/ed_console.db
-
-stream_capture.db                →       runtime/EdWebConsole/
-
-logs                             →       runtime/EdWebConsole/logs/
-
-backups/db                       →       recovery/EdWebConsole/backups/
-
-model files                      →       artifacts/EdWebConsole/models/
-
-temporary generated files        →       artifacts/EdWebConsole/temporary_outputs/
-
-development worktrees            →       Trading/worktrees/
+static/index.html, js/, css/           →  static/  (the one shell)
+static/chart.html, desk.html,          →  delete after P2-4 (what is unique moves into the shell)
+exposure.html, options.html
 ```
+
+---
+
+## 2b. Taking apart the large files (measured 2026-09-26)
+
+Each step is one change: it deletes what has no job, moves what remains to its target folder with
+no change in behaviour, updates §2 in the same change, passes the full test suite and the browser
+suite, and is checked on the running app. Nothing is copied: a moved function exists in one place.
+
+### db.py — 3,892 lines
+
+Measured: the `EdDB` class is 2,563 lines with 35 methods. Product code calls 14 of them (664 lines).
+Of the 12 tables it creates, the product reads or writes 6.
+
+| Part | Lines | Used by the product | Plan |
+|---|---|---|---|
+| `SnapshotRow` + snapshot writer (`insert_snapshot`, `_tier1_snapshot_write`, `count_snapshots`) | ~700 | no — only the deleted ML pipeline wrote snapshots; only tests call them | delete, with their tests |
+| Outcome labels (`fill_outcomes`, `refresh_all_governed_bar_anchor_outcomes_v1`, `_apply_bar_based_outcome_updates`, `_refresh_governed_outcomes_after_bar_mutation`, `_snapshot_rows_affected_by_bar_mutations`) | ~470 | no — ML training labels | delete, and the call from `upsert_1m_bars` |
+| Migrations (`_migrate_schema` 555, horizon/outcome/drop migrations) | ~720 | run once at startup; most migrate tables that are gone | keep only what creates the live tables; delete the rest |
+| Table creation (`_init_schema` 457) | 457 | yes | keep only the live tables: `price_bars_1m`, `level_crosses`, `oi_daily`, `iv_daily`, `logging_universe`, `ed_schema_flags`; stop creating `snapshots`, `model_accuracy`, `gamma_surface_last_valid`, `confluence_quote_ticks`, `logging_universe_eviction_log`, `logging_universe_migration_log` (existing tables are not dropped — that is the operator's database decision) |
+| `market_session` | 28 | no — labelled snapshot rows; `time_et.session_label` is the one session producer | delete |
+| `get_db_stats` | 46 | no | delete |
+| `logging_universe_migrate_legacy_json_file` | 130 | called at startup; a one-time migration from a JSON file | delete if the migration has run (check its flag in `ed_schema_flags`) |
+| Bars (`upsert_1m_bars`) | 198 | yes | `app/infrastructure/database/bars.py` |
+| Levels history (`detect_and_log_level_crosses`, `log_level_cross`, `get_recent_crosses`, `count_level_tests`, `bank_daily_strike_oi`, `prev_session_strike_oi`, `bank_daily_atm_iv`) | ~170 | yes | `app/infrastructure/database/levels_history.py` |
+| Enrollment (`logging_universe_*`) | ~180 | yes | `app/infrastructure/database/enrollment.py` |
+| Connection, SQLite settings, contention log, `get_db` | ~120 | yes | `app/infrastructure/database/connection.py` |
+
+The five modules only the ML stack used go in the same step: `ml_horizon.py`, `horizon_outcomes.py`,
+`movement_target_threshold.py`, `decision_record.py`, `execution_identity.py`, and
+`calibration/schema.py`. Expected result: about 3,900 lines become about 900, in four files.
+
+Data flow (DATA_FLOW.md decision 5): one database, written only by the daemon's writer; the
+console reads read-only. Today the console writes bars, level crosses, daily OI/IV and the ticker
+board to its own database; those writes move to the daemon's writer (ACTIVE_PROGRAM P2-DB4/DB5),
+and what remains of this file is the read side.
+
+### server.py — 6,130 lines
+
+Measured: 40 routes (1,463 lines), 112 other functions (2,986 lines), 6 classes, 129 module-level
+statements.
+
+| Part | What is in it | Plan |
+|---|---|---|
+| Page routes | `/`, `/favicon.ico`, and `/chart`, `/desk`, `/exposure`, `/options` | `/` stays; the four standalone pages go with P2-4 |
+| Options routes | `/api/terrain`, `/api/terrain/strikes` (174 lines), `/api/options/gamma-surface` (119), `/api/chain`, vanna, charm, tape, `/api/expiries`, `/api/level_crosses`, `/api/alerts`, `/api/forces` (101), `/api/exposure/flow` | `app/api/routes/options.py`; P2 collapses the terrain / per-strike / surface / vanna / charm slices into one read of the published record |
+| Liquidity route | `/api/liquidity-snapshot` (150), `/api/levels` | `app/api/routes/liquidity.py` |
+| Market routes | `/api/bars1m`, `/api/spot`, `/api/watchlist-quotes`, `/api/session` | `app/api/routes/market.py` |
+| Order-flow routes | `/api/order-flow/*` (3) | `app/api/routes/order_flow.py` |
+| Stream-control routes | `/api/streaming/*` (4) | `app/api/routes/streaming.py` |
+| Desk routes | `/api/desk/*` (5) | decided with P2-4 (check who calls them) |
+| Ops routes | `/api/health`, `/api/build`, `/api/release/current` | `app/api/routes/ops.py` |
+| Push | `/api/analytics/light/stream` and the `_l1_light_sse_*` queue | `app/api/routes/push.py`; replaced by the daemon push in P2-3 |
+| Chain fetch | `fetch_full_chain` (78), `_gated_safe_get_chain` (105), `_ChainGateV2`, universal/complete-chain capture | moves to the daemon (P2-1) |
+| Levels producer | `_terrain_loop` (110), `_terrain_refresh_one` (112), `_publish_levels` (56), `_reprice_cached_terrain` (64), `terrain_cycle_tickers`, `terrain_staleness` (99), failure/skip notes | `app/options/levels_producer.py`, then its own process (P2-2) |
+| Gamma surface projection | `project_gamma_surface` (92), `_stamp_gamma_surface_cell_stream_state` (124), coverage summary (79), stream overlay, contract admission summary (72), desired greeks | `app/options/gamma_surface.py`, with the producer |
+| Bars | `aggregate_bars`, `_bar_writer` | `app/market_data/bars.py` |
+| Startup | `_app_lifespan` (202), signal handlers, log sink, Schwab startup diagnostics | `app/api/lifespan.py` |
+| Process identity | `_capture_process_identity` (100), `ProcessIdentityV1` | `app/infrastructure/observability/` |
+
+Order: routes first (pure moves), then the producer and surface code, then startup. What remains
+of `server.py` is the app assembly: create the app, include the route modules, attach the lifespan.
+
+### The other large files — inventory owed before each is touched
+
+`liquidity_value_engine.py` (1,947), `app/options/order_flow/streaming.py` (1,124) and
+`engine.py` (1,093), `math_exposure_core.py` (1,018), `static/js/ed-core.js` (1,063),
+`static/js/ed-gamma.js` (1,039). Their internals have not been measured yet; each gets the same
+table (part, lines, used or not, plan) here before its step starts.
 
 ---
 
