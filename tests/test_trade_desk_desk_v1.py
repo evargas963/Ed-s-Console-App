@@ -121,3 +121,18 @@ def test_equity_microstructure_serves_the_engines_tick_rule_flow_labelled_proxy(
     assert set(flow) >= {"tape_pressure_30s", "tape_pressure_2m", "tape_pressure_5m", "cum_delta_proxy"}
     assert flow["classification"]["tape_pressure_5m"] == "PROXY"
     assert flow["native_aggressor_available"] is False
+
+
+def test_every_shipped_page_script_parses():
+    """Measured 2026-09-25: a Python-side edit un-escaped an apostrophe inside a single-quoted
+    JS string in ed-trade-desk-map.js -- a syntax error that would have stopped the whole Desk
+    page from loading, and no Python test noticed. Every script the console serves must parse."""
+    import shutil
+    import subprocess
+    import pytest
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    for js in sorted((ROOT / "static" / "js").glob("*.js")):
+        r = subprocess.run([node, "--check", str(js)], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, f"{js.name}: {r.stderr[:400]}"

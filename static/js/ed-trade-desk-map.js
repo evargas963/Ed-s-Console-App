@@ -346,7 +346,7 @@
       var p5 = fl ? fl.tape_pressure_5m : null;
       state(c, p5 == null ? (m === undefined ? 'LOADING' : 'NO TRADES SEEN') : (p5 > 0 ? 'NET BUYING' : p5 < 0 ? 'NET SELLING' : 'BALANCED'),
         p5 == null ? 'warn' : (p5 > 0 ? 'up' : p5 < 0 ? 'dn' : ''));
-      c.querySelector('.tdm-hero').innerHTML = p5 == null ? '—<small>no trades in the console's tape buffer yet</small>'
+      c.querySelector('.tdm-hero').innerHTML = p5 == null ? '—<small>no trades in the tape buffer yet</small>'
         : pct(p5) + '<small>net traded volume, last 5 min (tick rule, PROXY)</small>';
       c.querySelector('.tdm-rows').innerHTML =
         row('Last 30 s · 2 min', (fl ? pct(fl.tape_pressure_30s) : '—') + ' · ' + (fl ? pct(fl.tape_pressure_2m) : '—')) +
