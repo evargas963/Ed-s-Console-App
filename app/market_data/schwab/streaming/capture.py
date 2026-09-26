@@ -322,8 +322,8 @@ class Daemon:
         if s is not None:
             try:
                 await asyncio.wait_for(s.logout(), timeout=5)
-            except Exception:  # noqa: BLE001 -- it is being thrown away either way
-                pass
+            except Exception as e:  # noqa: BLE001 -- the session is dropped either way
+                log.info("schwab: logout of the old session failed (%s: %s)", type(e).__name__, e)
 
     async def read_for(self, seconds: float) -> None:
         """Handle Schwab frames for `seconds`. One task does both reading and requesting, so
