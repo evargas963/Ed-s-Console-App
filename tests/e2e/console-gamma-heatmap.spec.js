@@ -221,7 +221,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('a streamed-only surface update still triggers a re-render even when every REST field is unchanged (RC-UI-2 finding #1)', async ({ page }) => {
     // Independent-review finding (2026-09-12), REPRODUCED: server.py's eager
-    // refresh_gamma_surface_from_stream changes _gamma_surface's CELL VALUES without ever
+    // _publish_levels changes _gamma_surface's CELL VALUES without ever
     // touching chain_as_of_ts_utc/spot_as_of_ts_utc/chain_basis/et_date -- those are stamped
     // only by the ~60s REST cycle. surfaceRevision()'s old key was built ENTIRELY from those
     // REST-only fields, so a genuinely new surface hashed identical to the old one and
@@ -569,7 +569,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a live gamma_surface_seq push re-renders and re-declares demand for the CURRENTLY SELECTED scope, never reverts to Auto (2026-09-17, spot-tick live-UI mandate)', async ({ page }) => {
-    // The spot-tick fix (refresh_gamma_surface_from_spot_tick, server.py) makes a NEW surface
+    // The spot-tick fix (_publish_levels, server.py) makes a NEW surface
     // generation arrive live while the operator may be looking at Wider or All, not just Auto
     // -- every prior push test in this file only ever exercised the DEFAULT (Auto) scope, and
     // every prior scope test only ever exercised a STATIC load with no push in between. This
@@ -2297,7 +2297,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
     // CONFIRMED REGRESSION (2026-09-17, live-UI field audit): a gamma-surface push can now
     // mean "canonical spot moved with NO option tick at all"
-    // (refresh_gamma_surface_from_spot_tick) -- /api/terrain's own spot/walls/flip/net-GEX
+    // (_publish_levels) -- /api/terrain's own spot/walls/flip/net-GEX
     // fields (the Gamma Chart's spot line, Key Levels) are exactly as gamma-surface-derived
     // as /api/terrain/strikes is, and moved from "unrelated" into the reacting set.
     await page.route('**/api/terrain?**', (route) => { terrainCalls += 1; return route.fallback(); });

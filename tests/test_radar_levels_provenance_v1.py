@@ -38,7 +38,7 @@ def test_the_two_producers_are_distinguishable():
 
 
 def test_each_producer_stamps_itself():
-    assert "LEVELS_SOURCE_WIDE_CHAIN" in _fn("_terrain_refresh_one"), (
+    assert "LEVELS_SOURCE_WIDE_CHAIN" in _fn("_publish_levels"), (
         "the wide-chain loop no longer stamps its output, so its rows become indistinguishable "
         "from the narrower fallback's"
     )

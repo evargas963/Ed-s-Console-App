@@ -412,7 +412,7 @@
     var bars = '';
     win.forEach(function (r) {
       // r = [strike, net_gex_1pct$, session_volume] -- terrain_engine._per_strike_rows' own
-      // shape (server.py's _per_strike_view_from_contracts keeps it, streamed or not).
+      // shape (server.py's _publish_levels keeps it, streamed or not).
       // Independent-review finding (2026-09-12): r[2] (volume) reached this row and was never
       // rendered. It is a MAGNITUDE (native totalVolume), never signed/colored like GEX$.
       var k = r[0], v = Number(r[1]) || 0, vol = r[2], w = Math.min(100, Math.abs(v) / maxAbs * 100);
@@ -933,7 +933,7 @@
   // tape -- none of them gamma-surface-tick-derived) refetched on every single streamed
   // tick, not just the two pieces that actually ARE gamma-surface-derived (GEX-by-strike
   // and a selected Strike Detail row, both backed by the SAME _per_strike cache
-  // server.py's refresh_gamma_surface_from_stream also refreshes). Those two now react to
+  // server.py's _publish_levels also refreshes). Those two now react to
   // the narrow ed:gamma-push event instead; everything else stays on the 12s cadence above.
   //
   // CONFIRMED REGRESSION (2026-09-17, live-UI field audit), FIXED: Key Levels (klSpot/
@@ -941,7 +941,7 @@
   // OUT of that split entirely -- it stayed on the 12s cadence alone, yet its own "terrain
   // · live" label (renderLevels, above) claimed unconditional liveness whenever not stale.
   // /api/terrain's spot/walls/flip/net-GEX-at-spot are exactly as gamma-surface/spot-
-  // derived as GEX-by-strike is -- a spot-only tick (refresh_gamma_surface_from_spot_tick)
+  // derived as GEX-by-strike is -- a spot-only tick (_publish_levels)
   // moves every one of them just as much as it moves the heatmap. loadLevels() now reacts
   // to the SAME push, closing the identical "header moves, this panel does not" gap the
   // Gamma Chart's own spot line just had fixed.

@@ -210,7 +210,7 @@
     // canonical per-cell live path for it to update through incrementally -- a full re-fetch
     // is genuinely the only mechanism available today. The interval below is set to the
     // wide-chain REST cycle's OWN real cadence (TERRAIN_REFRESH_SEC, ~60s server-side,
-    // documented at refresh_gamma_surface_from_stream's own docstring) rather than an
+    // documented at _publish_levels's own docstring) rather than an
     // arbitrary guess: refreshing faster than the producer itself recomputes would only
     // ever re-serve the same response.
     var CHAIN_REFRESH_MS = 60000;

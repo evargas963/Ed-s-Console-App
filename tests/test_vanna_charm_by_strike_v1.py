@@ -2,8 +2,8 @@
 audit, 2026-09-13): both wrap ALREADY-canonical, already-tested faucets --
 math_exposure_core.compute_exposures_by_strike's own call_vanna/put_vanna (RC-211's exact
 BS-vanna faucet) and math_levels.compute_charm_by_strike (the same function /api/forces's
-charm_below/charm_above already sum) -- against the SAME live wide chain the terrain loop
-already cached (_terrain_cache[tk]["_contracts_rest"]), zero extra vendor calls. These tests
+charm_below/charm_above already sum) -- read off the snapshot _publish_levels last
+published (_terrain_cache[tk]["_snap"]), zero extra vendor calls or pricing. These tests
 prove the wiring, not the math (bs_vanna/bs_charm/compute_charm_by_strike are proven
 elsewhere: test_charm_by_strike_v1.py, test_charm_sign_finite_difference.py)."""
 from __future__ import annotations
@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import server
+from terrain_engine import compute_terrain
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -45,9 +46,7 @@ def _clear_cache():
 
 def _put_live_chain():
     with server._terrain_cache_lock:
-        server._terrain_cache[TK] = {
-            "_contracts_rest": _CONTRACTS, "_contracts_rest_spot": _SPOT,
-        }
+        server._terrain_cache[TK] = {"_snap": compute_terrain(TK, _CONTRACTS, _SPOT)}
 
 
 def setup_function(_fn):

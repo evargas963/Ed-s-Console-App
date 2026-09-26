@@ -180,6 +180,8 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     class _Snap:
         confidence = "TRUSTED"
         profile = object()
+        per_strike: dict = {}
+        books: dict = {}
 
         def to_dict(self):
             return {"gamma_flip": 99.5, "spot": 100.0, "confidence": "TRUSTED"}
@@ -198,6 +200,8 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     class _BadSnap:
         confidence = "TRUSTED"
         profile = object()
+        per_strike: dict = {}
+        books: dict = {}
 
         def to_dict(self):
             return {"gamma_flip": object(), "spot": 100.0, "confidence": "TRUSTED"}

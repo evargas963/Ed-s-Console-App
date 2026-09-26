@@ -89,7 +89,7 @@
   /**
    * Coalesced "no overlap, nothing dropped" async trigger (RC-UI-1 round 7, 2026-09-13).
    *
-   * Root cause this fixes: server.py's refresh_gamma_surface_from_stream pushes a
+   * Root cause this fixes: server.py's _publish_levels pushes a
    * `gamma_surface_seq` SSE event on every streamed publish — unboundedly frequent, not the
    * 12s slow-poll tick it rides in on (ed-core.js dispatches it as `ed:refresh{slow:true,
    * pushed:true}`, reusing the same event the slow poll uses). Every one of the six gamma

@@ -41,6 +41,7 @@ from math_exposure_core import (
     vendor_greeks_unavailable,
     MISSING_GREEK_SENTINEL,
 )
+from math_exposure_core import exposure_books
 from server import project_gamma_surface
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -170,7 +171,7 @@ def test_genuine_balanced_zero_is_not_treated_as_invalid():
     assert b["has_oi"] is True
     assert b["has_valid_gamma"] is True
     assert b["net_gex_1pct"] == 0.0
-    surface = project_gamma_surface([call, put], SPOT)
+    surface = project_gamma_surface([call, put], exposure_books([call, put], spot=SPOT))
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
     assert row["gex"] == [0], "a genuine computed zero must render as 0, never absence/backfill"
 
@@ -182,7 +183,7 @@ def test_genuine_balanced_zero_is_not_treated_as_invalid():
 def test_surface_cell_with_oi_but_all_invalid_greeks_is_none_not_fabricated_zero():
     call = _ct(100.0, "CALL", 500, gamma=0.0, delta=1.0, vega=0.0, iv=30.0)
     put = _ct(100.0, "PUT", 500, gamma=0.0, delta=-1.0, vega=0.0, iv=25.0)
-    surface = project_gamma_surface([call, put], SPOT)
+    surface = project_gamma_surface([call, put], exposure_books([call, put], spot=SPOT))
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
     assert row["gex"] == [None]
     assert row["dex"] == [None]
@@ -199,7 +200,7 @@ def test_surface_cell_with_oi_but_all_invalid_greeks_is_none_not_fabricated_zero
 def test_surface_reason_distinguishes_no_oi_from_invalid_greeks():
     no_oi_call = _ct(100.0, "CALL", 0)
     no_oi_put = _ct(100.0, "PUT", 0)
-    surface = project_gamma_surface([no_oi_call, no_oi_put], SPOT)
+    surface = project_gamma_surface([no_oi_call, no_oi_put], exposure_books([no_oi_call, no_oi_put], spot=SPOT))
     assert surface["gamma_available"] is False
     assert surface["cells_with_oi_but_invalid_greeks"] == 0
     assert "no usable open interest" in surface["gamma_unavailable_reason"].lower()

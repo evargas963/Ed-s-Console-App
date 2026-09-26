@@ -54,7 +54,7 @@ def spot_authority(monkeypatch):
               "QQQ": [{"symbol": _QQQ_CONTRACT, "strikePrice": 450.0,
                        "expirationDate": "2026-08-20T20:00:00.000+00:00"}]}
     for tk, cts in chains.items():
-        monkeypatch.setitem(server._terrain_cache, tk, {"_contracts_rest": cts})
+        monkeypatch.setitem(server._terrain_cache, tk, {"_chain": cts})
     return spots
 
 

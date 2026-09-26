@@ -219,7 +219,7 @@ def latest_complete_chain_capture(
 #: root (e.g. every SPXW/$SPX-style weekly-root contract, by design -- not a bug). Caught live
 #: via py-spy: the daemon-plane-feed-hook thread was parked inside this exact call chain
 #: (path.resolve() -> sqlite3.connect -> json.loads) on every one of 5 consecutive samples
-#: across 7 real seconds, and refresh_gamma_surface_from_stream's surface_seq (the incremental
+#: across 7 real seconds, and the gamma surface's surface_seq (the incremental
 #: push this hook exists to drive) advanced only 4 times across the same ~4 minutes the
 #: periodic terrain cycle was separately measured to take -- the hook cannot keep up with a
 #: real contract-demand set, so the "live" gamma heatmap falls back to that slow cycle. The

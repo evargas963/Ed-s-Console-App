@@ -124,7 +124,7 @@ def test_viewed_watchlist_quote_fires_gamma_tick_callback(monkeypatch):
     assert hits == ["BBB"]
 
     # every equity tick reaches the callback; WHICH surfaces reprice is decided by the heatmap
-    # demand registry inside server._dispatch_spot_gamma_refresh (one "viewed" signal, audit
+    # demand registry inside server._on_stream_tick (one "viewed" signal, audit
     # of #280) -- tests/test_instant_ui_blockers_a_v1.py pins that gate
     hits.clear()
     msg2 = {"symbol": "CCC", "ts_recv": 1_700_000_001.0, "native": {"LAST_PRICE": 11.0}}

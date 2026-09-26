@@ -272,13 +272,13 @@ def test_chain_overlays_streamed_volume_onto_the_rest_snapshot(monkeypatch, tmp_
     advanced, then hit the actual /api/chain route and got the REST-only volume back
     unchanged -- the streamed value never reached this response at all. This route now
     calls the SAME overlay faucet (_gamma_surface_contracts_with_stream_overlay ->
-    overlay_streamed_contract_fields) refresh_gamma_surface_from_stream already uses for
+    overlay_streamed_contract_fields) _publish_levels applies for
     the terrain/gamma-surface path, so a genuinely fresher streamed volume overrides the
     REST snapshot's own value for the exact contract it belongs to -- and only that one.
 
     Uses the REAL TSLA fixture and the REAL push_level_one ingestion write (not a
     reimplementation of the merge/freshness logic), exactly like
-    tests/test_streamed_greeks_hook_v1.py already does for the gamma-surface path.
+    tests/test_one_levels_producer_v1.py does for the gamma-surface path.
 
     A FOURTH independent review (2026-09-13): the ordering fix below (newer_than_ts is now
     THIS fetch's own instant, not None) means a streamed observation must be newer than the
