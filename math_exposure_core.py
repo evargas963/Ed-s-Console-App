@@ -443,18 +443,61 @@ def compute_exposures_by_strike(
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
         b["total_oi_dollars"] = b.get("call_oi_dollars", 0.0) + b.get("put_oi_dollars", 0.0)
 
+    return exposures, _diagnostics(total, used, missing)
+
+
+def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
     note = "OK"
     if used == 0:
         note = "No usable contracts (OI filtered or chain empty)."
     elif missing == used:
         note = "All greeks missing (-999). You will still get OI center; gamma/delta pin/inf may be N/A until RTH."
+    return ExposureDiagnostics(contracts_total=total, contracts_used=used,
+                               greeks_missing=missing, note=note)
 
-    return exposures, ExposureDiagnostics(
-        contracts_total=total,
-        contracts_used=used,
-        greeks_missing=missing,
-        note=note,
-    )
+
+def exposure_books(contracts: List[dict], *, spot: float | None, now=None
+                   ) -> "Dict[tuple[str, float | None], tuple[Dict[float, dict], ExposureDiagnostics]]":
+    """compute_exposures_by_strike (require_oi=True) once per (expiration date, days to
+    expiry) group. Every contract is priced once; any subset of expiries is then a
+    merge_exposure_books of its groups (the full book, 0DTE, the front expiry, <=7 / >7 days)."""
+    groups: "dict[tuple[str, float | None], list]" = {}
+    for ct in contracts or []:
+        if isinstance(ct, dict):
+            key = (str(ct.get("expirationDate") or "")[:10], _f(ct.get("daysToExpiration")))
+            groups.setdefault(key, []).append(ct)
+    return {k: compute_exposures_by_strike(cs, spot=spot, require_oi=True, now=now)
+            for k, cs in groups.items()}
+
+
+def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics]":
+    """One book from books over DISJOINT contracts -- the same result one
+    compute_exposures_by_strike call over all their contracts gives (up to float addition
+    order): every bucket field is a per-contract sum or an OR of a per-contract flag, and a
+    leg no contract reported stays None (None + x = x)."""
+    merged: Dict[float, dict] = {}
+    total = used = missing = 0
+    for exposures, diag in books:
+        total += diag.contracts_total
+        used += diag.contracts_used
+        missing += diag.greeks_missing
+        for strike, bucket in exposures.items():
+            cur = merged.get(strike)
+            if cur is None:
+                merged[strike] = dict(bucket)
+                continue
+            for k, v in bucket.items():
+                if k in _BUCKET_FLAGS:
+                    cur[k] = cur.get(k, False) or v
+                elif v is not None:
+                    c = cur.get(k)
+                    cur[k] = v if c is None else c + v
+    return merged, _diagnostics(total, used, missing)
+
+
+#: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is
+#: a sum, None when no contract reported it (_strike_bucket, compute_exposures_by_strike).
+_BUCKET_FLAGS = frozenset({"has_oi", "has_valid_gamma", "has_valid_delta", "dollarized"})
 
 
 #: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
