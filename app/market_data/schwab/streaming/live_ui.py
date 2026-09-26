@@ -92,8 +92,7 @@ class LiveUiServer:
     def beat(self) -> dict:
         hb = self.heartbeat_fn()
         lmp.record_feed_heartbeat(hb, time.time())
-        return {"ts": hb.get("ts"), "schwab_socket_open": hb.get("schwab_socket_open") is True,
-                "equities_held": hb.get("equities_held")}
+        return {"ts": hb.get("ts"), "schwab_socket_open": hb.get("schwab_socket_open") is True}
 
     # -- browser side -----------------------------------------------------------------
 
@@ -196,7 +195,7 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
         async with serve(srv.serve_client, host, port, max_size=65536, compression=None,
                          ping_interval=20, ping_timeout=20):
             stats["listening"] = f"ws://{host}:{port}"
-            print(f"live ui: serving price rows to browsers on ws://{host}:{port}")
+            log.info("live ui: serving price rows to browsers on ws://%s:%s", host, port)
             await stop.wait()
     finally:
         for t in tasks:

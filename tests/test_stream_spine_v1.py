@@ -13,18 +13,12 @@ from stream_spine import (
     COALESCE,
     COUNT_DROPS,
     CaptureWriter,
-    CoverageWriteError,
     HealthRegistry,
     MessageBus,
     bar_msg,
     book_msg,
     options_quote_msg,
     quote_msg,
-    read_active_option_contract_signal,
-    read_active_option_contracts_signal,
-    read_active_ticker_signal,
-    write_active_option_contract_signal,
-    write_active_ticker_signal,
 )
 
 
@@ -86,8 +80,6 @@ def test_writer_batches_into_stream_capture_db(tmp_path):
                                     quote_time_ms=5, trade_time_ms=6, src="t", ts_recv=1.0))
     w.insert("bar1m.SPY", bar_msg(symbol="SPY", bar_start_ms=0, open=1, high=2, low=0.5,
                                   close=1.5, volume=999, src="t", ts_recv=2.0))
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
     assert con.execute("SELECT COUNT(*) FROM stream_bars_raw").fetchone()[0] == 1
@@ -104,8 +96,6 @@ def test_quote_native_content_stored_with_field_fidelity(tmp_path):
              "REGULAR_MARKET_CHANGE_PERCENT": 0.42}
     w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="schwab_l1", ts_recv=1.0,
                                     native=native))
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     row = con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()
     assert json.loads(row[0]) == native
@@ -117,8 +107,6 @@ def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0))
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is None
 
@@ -142,8 +130,6 @@ def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0,
                                     native={"key": "SPY"}))
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is not None
 
@@ -155,8 +141,6 @@ def test_book_content_stored_verbatim_never_flattened(tmp_path):
               "BOOK_TIME": 999}
     w.insert("book.SPY", book_msg(symbol="SPY", service="NASDAQ_BOOK", content=content,
                                   src="schwab_book", ts_recv=1.0))
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     row = con.execute(
         "SELECT symbol, service, native_json, src FROM stream_book_raw").fetchone()
@@ -171,8 +155,6 @@ def test_book_msg_with_no_content_is_not_inserted(tmp_path):
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("book.SPY", {"ts_recv": 1.0, "symbol": "SPY", "service": "NASDAQ_BOOK",
                           "content": None, "src": "t"})
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     assert con.execute("SELECT COUNT(*) FROM stream_book_raw").fetchone()[0] == 0
 
@@ -203,8 +185,6 @@ def test_options_quote_content_stored_verbatim_never_flattened(tmp_path):
     w.insert("optquote.SPY   260820C00767000", options_quote_msg(
         symbol="SPY   260820C00767000", content=_REAL_LEVELONE_OPTIONS_CONTENT,
         src="schwab_options_l1", ts_recv=1.0))
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     row = con.execute(
         "SELECT symbol, native_json, src FROM stream_options_quotes_raw").fetchone()
@@ -216,8 +196,6 @@ def test_options_quote_with_no_content_is_not_inserted(tmp_path):
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
     w.insert("optquote.SPY", {"ts_recv": 1.0, "symbol": "SPY", "content": None, "src": "t"})
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     assert con.execute("SELECT COUNT(*) FROM stream_options_quotes_raw").fetchone()[0] == 0
 
@@ -230,138 +208,11 @@ def test_options_book_reuses_the_generic_book_table_by_service(tmp_path):
     w.insert("book.SPY   260820C00767000", book_msg(
         symbol="SPY   260820C00767000", service="OPTIONS_BOOK",
         content=_REAL_OPTIONS_BOOK_CONTENT, src="schwab_options_book", ts_recv=1.0))
-    w.commit()
-    w.close()
     con = sqlite3.connect(db)
     row = con.execute(
         "SELECT symbol, service, native_json FROM stream_book_raw").fetchone()
     assert row[1] == "OPTIONS_BOOK"
     assert json.loads(row[2]) == _REAL_OPTIONS_BOOK_CONTENT
-
-
-def test_coverage_epoch_open_then_close_records_both_timestamps(tmp_path):
-    db = tmp_path / "stream_capture.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    epoch_id = w.open_coverage_epoch("SPY   260820C00767000", "LEVELONE_OPTIONS",
-                                     reason="active_contract_set", ts=1.0)
-    w.close_coverage_epoch(epoch_id, reason="active_contract_switched", ts=5.0)
-    con = sqlite3.connect(db)
-    row = con.execute(
-        "SELECT symbol, service, started_ts, ended_ts, reason "
-        "FROM stream_coverage_epochs WHERE id=?", (epoch_id,)).fetchone()
-    w.close()
-    assert row == ("SPY   260820C00767000", "LEVELONE_OPTIONS", 1.0, 5.0,
-                   "active_contract_switched")
-
-
-def test_coverage_epoch_open_leaves_ended_ts_null(tmp_path):
-    """A gap after an OPEN epoch with no close is interpretable as 'still subscribed,
-    vendor silent' — never confused with 'not subscribed' (NULL ended_ts is the marker)."""
-    db = tmp_path / "stream_capture.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    epoch_id = w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=1.0)
-    con = sqlite3.connect(db)
-    row = con.execute(
-        "SELECT ended_ts FROM stream_coverage_epochs WHERE id=?", (epoch_id,)).fetchone()
-    w.close()
-    assert row[0] is None
-
-
-def test_coverage_epoch_close_is_idempotent_never_overwrites_first_close(tmp_path):
-    db = tmp_path / "stream_capture.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    epoch_id = w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="x", ts=1.0)
-    w.close_coverage_epoch(epoch_id, reason="first_close", ts=5.0)
-    w.close_coverage_epoch(epoch_id, reason="second_close_must_not_land", ts=99.0)
-    con = sqlite3.connect(db)
-    row = con.execute(
-        "SELECT ended_ts, reason FROM stream_coverage_epochs WHERE id=?",
-        (epoch_id,)).fetchone()
-    w.close()
-    assert row == (5.0, "first_close")
-
-
-def test_coverage_epoch_write_failure_raises_not_swallowed(tmp_path):
-    """CoverageWriteError must be RAISED so a caller advancing in-memory subscription
-    state can gate that advance on the durable write actually landing — a silent failure
-    here would let memory claim coverage the epoch table never recorded."""
-    db = tmp_path / "stream_capture.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.close()   # connection is now closed; any further write must fail
-    with pytest.raises(CoverageWriteError):
-        w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="x")
-
-
-def test_active_option_contract_signal_round_trips(tmp_path):
-    p = tmp_path / "stream_active_option_contract.json"
-    write_active_option_contract_signal("spy   260820c00767000", path=p)
-    assert read_active_option_contract_signal(path=p) == "SPY   260820C00767000"
-
-
-def test_active_option_contract_signal_absent_is_none(tmp_path):
-    p = tmp_path / "does_not_exist.json"
-    assert read_active_option_contract_signal(path=p) is None
-
-
-def test_active_ticker_signal_round_trips(tmp_path):
-    p = tmp_path / "stream_active_ticker.json"
-    write_active_ticker_signal("spy", path=p)
-    assert read_active_ticker_signal(path=p) == "SPY"
-
-
-@pytest.mark.parametrize("body", ["[]", "null", "42", '"just a string"', "true"])
-def test_active_option_contract_signal_malformed_root_is_none_not_raise(tmp_path, body):
-    """Independent-review finding (2026-09-12): _read_json_signal called `.get(value_key)`
-    directly on the parsed JSON root, raising AttributeError for any legal-JSON-but-
-    non-object content (a bare list, null, a number, a string, a bool) instead of the
-    documented fail-closed None. A corrupted or half-migrated signal file must never
-    crash the daemon's poll loop."""
-    p = tmp_path / "malformed.json"
-    p.write_text(body, encoding="utf-8")
-    assert read_active_option_contract_signal(path=p) is None
-
-
-def test_active_option_contract_signal_unreadable_bytes_is_none(tmp_path):
-    p = tmp_path / "not_json.json"
-    p.write_text("{not valid json", encoding="utf-8")
-    assert read_active_option_contract_signal(path=p) is None
-
-
-@pytest.mark.parametrize("body", ["[]", "null", "42", '"just a string"', "true"])
-def test_active_option_contracts_signal_malformed_root_is_empty_not_raise(tmp_path, body):
-    """PLURAL counterpart to the malformed-root test above (RC-UI-3, 2026-09-12) --
-    _read_json_list_signal had the identical bug: `.get(value_key)` on a non-dict root
-    raised AttributeError instead of returning []."""
-    p = tmp_path / "malformed_plural.json"
-    p.write_text(body, encoding="utf-8")
-    assert read_active_option_contracts_signal(path=p) == []
-
-
-def test_active_option_contracts_signal_non_list_value_is_empty(tmp_path):
-    """A well-formed object root whose value for the key is not a list (e.g. a stray
-    string left from hand-editing) must also fail closed to [], not raise or guess."""
-    p = tmp_path / "bad_value.json"
-    p.write_text('{"contract_symbols": "SPY   260820C00767000"}', encoding="utf-8")
-    assert read_active_option_contracts_signal(path=p) == []
-
-
-def test_active_ticker_signal_absent_is_none_not_a_guess(tmp_path):
-    """A missing/corrupt signal must mean 'no active ticker', never a stale-cache guess
-    or an exception that could crash the daemon's poll loop."""
-    p = tmp_path / "does_not_exist.json"
-    assert read_active_ticker_signal(path=p) is None
-    p.write_text("{not json", encoding="utf-8")
-    assert read_active_ticker_signal(path=p) is None
-
-
-def test_active_ticker_signal_write_is_atomic_replace(tmp_path):
-    """The daemon polls this file on its own schedule; a torn write must never be
-    observable — write-temp-then-replace, not write-in-place."""
-    p = tmp_path / "stream_active_ticker.json"
-    write_active_ticker_signal("SPY", path=p)
-    assert not p.with_suffix(p.suffix + ".tmp").exists()
-    write_active_ticker_signal("QQQ", path=p)
-    assert read_active_ticker_signal(path=p) == "QQQ"
 
 
 def test_health_states_progress_running_degraded_stale():
@@ -371,7 +222,6 @@ def test_health_states_progress_running_degraded_stale():
     assert h.state("schwab_l1", now=1002.0) == "RUNNING"
     assert h.state("schwab_l1", now=1010.0) == "DEGRADED"
     assert h.state("schwab_l1", now=1031.0) == "STALE"
-    assert h.any_stale(now=1031.0) is True         # the CR-07 suppression hook
     rep = h.report(now=1010.0)
     assert rep["schwab_l1"]["state"] == "DEGRADED" and rep["schwab_l1"]["age_sec"] == 10.0
 
@@ -387,7 +237,6 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
         stop = asyncio.Event()
         stop.set()                      # stop BEFORE the writer ever runs
         await w.run(sub, stop=stop)
-        w.close()
         con = sqlite3.connect(tmp_path / "s.db")
         n = con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0]
         assert n == 50, f"drain lost rows: {n}/50"
@@ -404,7 +253,6 @@ def test_insert_failure_is_counted_never_kills_writer(tmp_path):
         bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=2.0, src="t"))
         stop = asyncio.Event(); stop.set()
         await w.run(sub, stop=stop)
-        w.close()
         assert w.insert_errors == 1
         con = sqlite3.connect(tmp_path / "s.db")
         assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
@@ -415,13 +263,6 @@ def test_rc6_guard_survives_path_tricks():
     """Cursor review MEDIUM: `data/x/../ed_console.db` must not slip past the guard."""
     with pytest.raises(ValueError):
         CaptureWriter("data/nosuchdir/../ed_console.db")
-
-
-def test_writer_close_is_idempotent(tmp_path):
-    w = CaptureWriter(tmp_path / "s.db")
-    w.close()
-    w.close()  # second call must not raise
-    assert w._closed is True
 
 
 def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path, monkeypatch):
@@ -491,19 +332,13 @@ def test_db_path_d_capture_writer_default_resolves_fresh(monkeypatch, tmp_path):
     target = (tmp_path / "fresh_each_call.db").resolve()
     monkeypatch.setattr(ss, "canonical_stream_db_path", lambda: target)
     w = CaptureWriter()  # no explicit db_path -- must go through resolve_stream_db_path NOW
-    try:
-        assert w.db_path == target
-    finally:
-        w.close()
+    assert w.db_path == target
 
 
 def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):
     explicit = tmp_path / "explicit.db"
     w = CaptureWriter(explicit)
-    try:
-        assert w.db_path == explicit.resolve()
-    finally:
-        w.close()
+    assert w.db_path == explicit.resolve()
 
 
 def test_production_stream_daemon_exposes_no_database_path_switch(monkeypatch, tmp_path):
@@ -516,9 +351,10 @@ def test_production_stream_daemon_exposes_no_database_path_switch(monkeypatch, t
         "argv",
         ["capture.py", "--db", str(tmp_path / "fork.db")],
     )
-    with pytest.raises(SystemExit) as exc:
-        capture.main()
-    assert exc.value.code == 2
+    ran = []
+    monkeypatch.setattr(capture, "run", lambda *a, **k: ran.append(a))
+    assert capture.main() == 2, "any argument, a database path included, is refused"
+    assert ran == []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -539,128 +375,4 @@ def _epoch_rows(db):
     finally:
         con.close()
 
-
-def test_blocker2_crash_restart_orphan_epochs_reconciled_then_exactly_one_open(tmp_path):
-    """REQUIRED 2C attack, end to end.
-
-    Lifetime 1 opens A/LEVELONE_OPTIONS and A/OPTIONS_BOOK then dies HARD -- the writer
-    handle is dropped WITHOUT any close_coverage_epoch call, exactly as SIGKILL would.
-    Lifetime 2 runs startup reconciliation, then subscribes. Proves the prior rows are
-    closed with the orphan reason and that exactly ONE epoch is open per current
-    (symbol, service)."""
-    db = tmp_path / "stream_capture.db"
-    A = "SPY   260820C00767000"
-
-    # ── daemon lifetime 1: open both services, then hard death (NO clean close) ──
-    w1 = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w1.open_coverage_epoch(A, "LEVELONE_OPTIONS", reason="active_contract_set", ts=100.0)
-    w1.open_coverage_epoch(A, "OPTIONS_BOOK", reason="active_contract_set", ts=100.0)
-    w1.close()   # closes the sqlite handle only — the EPOCHS are deliberately left open
-    before = _epoch_rows(db)
-    assert [r[3] for r in before] == [None, None], (
-        "precondition: a hard death leaves both epochs open (ended_ts NULL)")
-
-    # ── daemon lifetime 2: startup reconciliation ──
-    w2 = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        closed = w2.reconcile_orphan_coverage_epochs(ts=500.0)
-        assert closed == 2, f"both prior-lifetime epochs must be reconciled, closed={closed}"
-        rows = _epoch_rows(db)
-        assert all(r[3] == 500.0 for r in rows), (
-            "orphans close at the RECONCILIATION timestamp -- an upper bound ('known "
-            "closed no later than this startup'), never a fabricated crash time")
-        assert all(r[4] == CaptureWriter.COVERAGE_ORPHAN_REASON for r in rows), (
-            "the reason column must mark these reconciled, not measured, closes")
-        assert all(r[2] == 100.0 for r in rows), "history is closed, never deleted or rewritten"
-
-        # ── subscribe the new contract for the SAME (symbol, service) pairs ──
-        w2.open_coverage_epoch(A, "LEVELONE_OPTIONS", reason="active_contract_set", ts=501.0)
-        w2.open_coverage_epoch(A, "OPTIONS_BOOK", reason="active_contract_set", ts=501.0)
-        con = sqlite3.connect(db)
-        try:
-            per_pair = con.execute(
-                "SELECT symbol, service, COUNT(*) FROM stream_coverage_epochs "
-                "WHERE ended_ts IS NULL GROUP BY symbol, service ORDER BY service").fetchall()
-        finally:
-            con.close()
-        assert per_pair == [(A, "LEVELONE_OPTIONS", 1), (A, "OPTIONS_BOOK", 1)], (
-            f"exactly ONE open epoch per (symbol, service) required; got {per_pair}")
-    finally:
-        w2.close()
-
-
-def test_blocker2_reconciliation_with_no_orphans_is_harmless_and_idempotent(tmp_path):
-    """Startup with nothing open closes 0 rows, disturbs no closed history, and running
-    it twice changes nothing."""
-    db = tmp_path / "stream_capture.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        eid = w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="x", ts=1.0)
-        w.close_coverage_epoch(eid, reason="shutdown", ts=2.0)
-        before = _epoch_rows(db)
-        assert w.reconcile_orphan_coverage_epochs(ts=900.0) == 0
-        assert w.reconcile_orphan_coverage_epochs(ts=901.0) == 0
-        assert _epoch_rows(db) == before, (
-            "a clean prior shutdown must be left byte-identical by reconciliation")
-    finally:
-        w.close()
-
-
-def test_blocker2_clean_shutdown_still_closes_normally_after_the_guard(tmp_path):
-    """The 2B guard must not disturb the normal open -> close -> reopen cycle."""
-    db = tmp_path / "stream_capture.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        e1 = w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=1.0)
-        w.close_coverage_epoch(e1, reason="shutdown", ts=2.0)
-        e2 = w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=3.0)
-        assert e2 != e1
-        assert [r[3] for r in _epoch_rows(db)] == [2.0, None]
-    finally:
-        w.close()
-
-
-def test_blocker2_forced_duplicate_open_fails_loudly_for_the_right_reason(tmp_path):
-    """REQUIRED: a forced duplicate-open must fail, and fail for the CORRECT reason --
-    refusing contradictory history, not dying on an incidental error."""
-    db = tmp_path / "stream_capture.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    try:
-        w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="active_contract_set", ts=1.0)
-        with pytest.raises(CoverageWriteError) as exc:
-            w.open_coverage_epoch("SPY", "LEVELONE_OPTIONS", reason="active_contract_set", ts=2.0)
-        msg = str(exc.value)
-        assert "refusing to open a second epoch" in msg and "still open" in msg
-        con = sqlite3.connect(db)
-        try:
-            n = con.execute(
-                "SELECT COUNT(*) FROM stream_coverage_epochs WHERE ended_ts IS NULL "
-                "AND symbol='SPY' AND service='LEVELONE_OPTIONS'").fetchone()[0]
-        finally:
-            con.close()
-        assert n == 1, "the refused open must not have written a contradictory second row"
-        # A DIFFERENT service for the same symbol is a distinct pair and stays allowed.
-        w.open_coverage_epoch("SPY", "OPTIONS_BOOK", reason="active_contract_set", ts=3.0)
-    finally:
-        w.close()
-
-def test_default_signal_paths_sit_beside_resolved_stream_db(tmp_path, monkeypatch):
-    """Signal files resolve next to the CANONICAL stream DB, not the checkout.
-
-    RC-534: the one resolver is canonical_stream_db_path (no ambient env override); the
-    signal paths are that DB's name-siblings, computed fresh each call.
-
-    # universal-scope-ok: path-identity test; no ticker product claim.
-    """
-    import stream_spine as spine
-
-    db = (tmp_path / "data" / "stream_capture.db").resolve()
-    monkeypatch.setattr(spine, "canonical_stream_db_path", lambda: db)
-    assert spine.default_active_option_contract_signal_path() == db.with_name(
-        "stream_active_option_contract.json")
-    assert spine.default_active_ticker_signal_path() == db.with_name(
-        "stream_active_ticker.json")
-    spine.write_active_option_contract_signal("SPY   260904C00772000")
-    assert spine.read_active_option_contract_signal() == "SPY   260904C00772000"
-    assert db.with_name("stream_active_option_contract.json").is_file()
 

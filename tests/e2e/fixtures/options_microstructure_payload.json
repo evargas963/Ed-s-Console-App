@@ -147,11 +147,6 @@
     "producer_l1_contract": null,
     "queried_contract": "SPY   260911C00100000",
     "server_requested_contract": null,
-    "stream_db_identity": {
-      "identity_match": null,
-      "producer_heartbeat": null,
-      "server_resolved_path": "<isolated-runtime>/data/stream_capture.db"
-    },
     "streaming_connected": false,
     "streaming_healthy": false,
     "streaming_last_update_ts": null,

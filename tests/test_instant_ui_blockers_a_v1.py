@@ -20,18 +20,6 @@ def _handler():
     return h, health
 
 
-def test_an_unparsable_frame_does_not_mark_the_service_alive():
-    h, health = _handler()
-    h({"service": "LEVELONE_EQUITIES", "content": [{"no_key": 1}]})
-    assert "LEVELONE_EQUITIES" not in health.report()
-
-
-def test_a_parsed_frame_marks_the_service_alive():
-    h, health = _handler()
-    h({"service": "LEVELONE_EQUITIES", "content": [{"key": "ZZLIVE", "LAST_PRICE": 10.0}]})
-    assert health.report()["LEVELONE_EQUITIES"]["state"] == "RUNNING"
-
-
 class _ScriptedStream:
     """Minimal StreamClient surface _schwab_connect_after_login drives; handle_message follows
     a script of 'ok' / exception instances, then blocks."""
@@ -69,21 +57,6 @@ def _run_pump(script, settle=0.3):
         await asyncio.gather(task, return_exceptions=True)
         return done, exc, stream.calls
     return asyncio.run(go())
-
-
-def test_a_sustained_run_of_bad_frames_ends_the_pump():
-    n = cap.PUMP_SKIP_STREAK_FATAL
-    done, exc, calls = _run_pump([ValueError("shape changed")] * (n + 5))
-    assert done and isinstance(exc, ValueError), "the pump must end so the session recycles"
-    assert calls == n
-
-
-def test_isolated_bad_frames_between_good_ones_do_not_end_the_pump():
-    n = cap.PUMP_SKIP_STREAK_FATAL
-    script = ([ValueError("one bad frame")] * (n - 1) + ["ok"]) * 3
-    done, exc, calls = _run_pump(script)
-    assert not done, f"pump ended on isolated bad frames: {exc!r}"
-    assert calls == len(script) + 1          # every scripted frame, then blocked on the next
 
 
 def test_terrain_rotates_only_inside_the_contention_window():

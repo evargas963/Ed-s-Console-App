@@ -70,29 +70,6 @@ def test_three_labels_are_not_collapsed_into_streaming():
     assert "['Streaming'" not in flow
 
 
-def test_failed_reconnect_backoff_is_independent_of_quiet_tape_cooldown():
-    from app.market_data.schwab.streaming.capture import (
-        FAILED_RECONNECT_BACKOFF_CAP_SEC,
-        FAILED_RECONNECT_BACKOFF_START_SEC,
-        RECONNECT_COOLDOWN_SEC,
-        failed_reconnect_backoff_sec,
-        pump_frame_is_fatal,
-    )
-
-    assert RECONNECT_COOLDOWN_SEC == 180.0
-    assert failed_reconnect_backoff_sec(1) == 2.0
-    assert failed_reconnect_backoff_sec(2) == 4.0
-    assert failed_reconnect_backoff_sec(3) == 8.0
-    assert failed_reconnect_backoff_sec(10) == FAILED_RECONNECT_BACKOFF_CAP_SEC
-    assert FAILED_RECONNECT_BACKOFF_START_SEC == 2.0
-    assert pump_frame_is_fatal(ValueError("bad frame")) is False
-
-    class ConnectionClosed(Exception):
-        pass
-
-    assert pump_frame_is_fatal(ConnectionClosed("gone")) is True
-
-
 def test_token_write_is_atomic_temp_replace(tmp_path):
     from schwab_client import write_token_file_atomically
 

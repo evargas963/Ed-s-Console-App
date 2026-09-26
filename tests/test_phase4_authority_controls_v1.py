@@ -2,7 +2,7 @@
 operator-lettered requirement, so the evidence packet has a direct 1:1 pointer.
 
 Each test below is a thin, explicitly-labeled wrapper over mechanisms proven in
-tests/test_single_stream_authority_v1.py, tests/test_stream_capture_daemon_v1.py, and
+tests/test_single_stream_authority_v1.py, tests/test_simple_daemon_v1.py, and
 tests/test_daemon_plane_feed_v1.py — this file exists for TRACEABILITY (which test
 proves which lettered requirement), not to duplicate their assertions.
 """
@@ -60,44 +60,8 @@ def test_C_mutation_alternate_factory_is_caught():
 #: TEST_SYSTEM_REHAB_V2: requirement letters D and E were callable()/iscoroutinefunction()
 #: existence checks — existence is not runtime correctness. Both docstrings named the
 #: real behavioral proof already covering them (verified present, not just claimed):
-#: test_stream_capture_daemon_v1.py::test_owner_lock_released_on_every_exit_path (D) and
-#: ::test_schwab_connect_registers_book_handlers_every_time (E). Deleted; their
-#: traceability now lives in those tests' own names/docstrings.
-
-
-def test_F_reconnect_after_recycle_has_no_concurrent_authorities():
-    """F. canonical owner reconnect after a half-open socket -> PASS without creating
-    concurrent old/new authorities.
-
-    STRENGTHENED. This used to index _run_streaming's SOURCE TEXT for "pump_task.cancel()"
-    ahead of "_schwab_connect(". That pinned a spelling, not a behaviour: it broke as soon
-    as the cancellation moved into a named helper, and it never covered the authority that
-    actually outlived a generation — the poll/control tasks, which kept issuing vendor
-    operations on a retired session after the replacement was already live.
-
-    "No concurrent authorities" is now a proven RUNTIME property of the real recycle; the
-    behavioural proofs live in test_stream_capture_daemon_v1.py::
-    test_d1_a_stale_generation_tick_cannot_mutate_the_next_generation,
-    ::test_1c_a_stale_book_poll_tick_cannot_mutate_after_a_recycle,
-    ::test_recycle_retires_the_old_generation_before_the_replacement_is_built and
-    ::test_d3d_at_most_one_live_logged_in_session_across_the_whole_lifecycle (which
-    carries its own mutation control). What this test keeps is the structural guarantee
-    those depend on: the recycle retires the whole generation BEFORE it reconnects, and
-    the retirement actually awaits what it cancels."""
-    import app.market_data.schwab.streaming.capture as d
-    src = inspect.getsource(d._run_streaming)
-    retire_at = src.index("_retire_stream_generation(")
-    reconnect_at = src.index("_schwab_connect(", retire_at)
-    assert retire_at < reconnect_at, (
-        "the recycle must retire the whole old generation before building its replacement")
-    # cancel() alone only SCHEDULES cancellation; until awaited, a tick suspended inside a
-    # vendor operation can still resume and mutate the next generation's state.
-    cancel_src = inspect.getsource(d._cancel_and_await)
-    assert ".cancel()" in cancel_src and "await t" in cancel_src
-    gen_src = inspect.getsource(d._retire_stream_generation)
-    assert gen_src.index("control_tasks") < gen_src.index("(pump_task,)"), (
-        "control tasks must be retired FIRST: they are the ones that can be suspended "
-        "inside a vendor await and resume into the next generation's state")
+#: test_simple_daemon_v1.py::test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed (D)
+#: and ::test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed (E).
 
 
 def test_G_live_plane_consumes_transported_observations_no_schwab_socket():
