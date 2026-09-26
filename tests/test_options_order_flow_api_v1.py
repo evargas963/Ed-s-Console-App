@@ -676,4 +676,3 @@ def test_gap2_a_command_with_no_generation_keeps_historical_behavior():
 # shipped UI rendered the contract as "subscribed". It was re-entrant: every tick the
 # daemon subscribed, was refused a durable epoch, and unsubscribed again, capturing
 # nothing, while the ledger kept naming the contract.
-# ─────────────────────────────────────────────────────────────────────────────

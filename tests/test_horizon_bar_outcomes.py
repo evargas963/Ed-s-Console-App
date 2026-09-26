@@ -47,8 +47,6 @@ def tmp_db(tmp_path: Path) -> EdDB:
     return EdDB(tmp_path / "t.db")
 
 
-
-
 def test_fill_outcomes_live_batch_limit_caps_rows_per_call(tmp_db: EdDB, monkeypatch: pytest.MonkeyPatch):
     """Newest-first LIMIT bounds live fill_outcomes (no unbounded 14d scan)."""
     import db as dbmod
@@ -143,16 +141,3 @@ def test_upsert_1m_bars_normalizes_epoch_ms_for_candle_objects_and_dicts(tmp_db:
     assert [float(r["bar_start_ts_utc"]) for r in rows] == [sec_start, sec_start + 60.0]
     assert all(float(r["bar_end_ts_utc"]) - float(r["bar_start_ts_utc"]) == 60.0 for r in rows)
     assert [float(r["close"]) for r in rows] == [10.5, 11.5]
-
-
-
-
-# ── Phase 1 (horizon-collapse fix): per-horizon vol-scaled outcome threshold ──────
-
-
-
-
-
-
-# ── BAR_PERSISTENCE_GAP_TRACE_AND_FIX_V1 — stale-seed guard + explicit window locks ──
-

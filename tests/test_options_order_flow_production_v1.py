@@ -254,33 +254,8 @@ def test_flow_e2e_fixture_is_the_route_contract():
     assert fixture["status"] == "ok"
 
 
-def _isolated_stream_env(runtime_root):
-    """Child env: an isolated ED_RUNTIME_ROOT, Schwab blocked.
-
-    RC-534 disabled ambient STREAM_CAPTURE_DB_PATH / ED_CONSOLE_DB overrides — the daemon
-    resolves its DB and owner lock CANONICALLY under ED_RUNTIME_ROOT (db_authority /
-    stream_spine.resolve_stream_db_path). Isolation is one knob: point ED_RUNTIME_ROOT at a
-    tmp dir and the daemon's DB/lock live at ``<root>/data/stream_capture.{db,lock}``.
-    """
-    import os
-    from pathlib import Path as _P
-    root = _P(runtime_root).resolve()
-    env = os.environ.copy()
-    env.pop("ED_CONSOLE_DB", None)
-    env.pop("STREAM_CAPTURE_DB_PATH", None)
-    env["ED_RUNTIME_ROOT"] = str(root)
-    env["ED_ARTIFACTS_ROOT"] = str(root / "artifacts")
-    env["ED_CI_OFFLINE"] = "1"
-    env["SCHWAB_API_KEY"] = "ci-placeholder-key"
-    env["SCHWAB_APP_SECRET"] = "ci-placeholder-secret"
-    return env
 
 
-def _canonical_stream_paths(runtime_root):
-    """The daemon's canonical (db, lock) under an isolated ED_RUNTIME_ROOT."""
-    from pathlib import Path as _P
-    data = _P(runtime_root).resolve() / "data"
-    return data / "stream_capture.db", data / "stream_capture.lock"
 
 
 def test_options_api_carries_flow_block():

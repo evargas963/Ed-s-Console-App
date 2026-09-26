@@ -62,19 +62,6 @@ def test_bs_charm_sign_matches_finite_difference(label, S, dte):
     assert fd * bs > 0, f"{label}: bs_charm sign {bs:+.4f} disagrees with FD calendar charm {fd:+.4f}"
 
 
-def _mixed_book(exp: str, call_oi: int, put_oi: int) -> list[dict]:
-    """Two-sided book at one strike with controllable OI mix.
-
-    institutional-synthetic-ok: the dealer-sign convention is a pure aggregation identity
-    (net = call - put); proving it requires exact control of the OI mix, which no captured
-    chain can pin.
-    """
-    base = {"strikePrice": K, "expirationDate": exp, "gamma": 0.05,
-            "volatility": SIGMA * 100.0, "multiplier": 100}
-    return [
-        {**base, "putCall": "CALL", "delta": 0.55, "openInterest": call_oi},
-        {**base, "putCall": "PUT", "delta": -0.45, "openInterest": put_oi},
-    ]
 
 
 
@@ -105,17 +92,10 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
 
 # ── RC-211: the SAME ground-truth lock for VANNA (operator spec, independently verified) ──
 
-def _phi_pdf(x: float) -> float:
-    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
 
 
-def _Phi_cdf(x: float) -> float:
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
-def _bs_call_delta(S: float, K_: float, T: float, s: float) -> float:
-    d1 = (math.log(S / K_) + 0.5 * s * s * T) / (s * math.sqrt(T))
-    return _Phi_cdf(d1)
 
 
 

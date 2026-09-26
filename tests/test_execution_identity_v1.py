@@ -5,64 +5,11 @@ are recomputed independently with hashlib — never through the module under tes
 """
 from __future__ import annotations
 
-import hashlib
 import sqlite3
-from pathlib import Path
 
 import pytest
 
 import execution_identity as xi
-
-
-def _release():
-    return {"release_id": "rel-1", "git_sha": "a" * 40, "config_hash": "c" * 64,
-            "build_generation": "g1"}
-
-
-def _bundle_entry(seed: str = "x"):
-    return {
-        "bundle_dir_identity": f"active/{seed}",
-        "manifest_sha256": hashlib.sha256(f"manifest-{seed}".encode()).hexdigest(),
-        "artifacts": {
-            "xgb": hashlib.sha256(f"xgb-{seed}".encode()).hexdigest(),
-            "lstm": hashlib.sha256(f"lstm-{seed}".encode()).hexdigest(),
-        },
-        "source_lineage": {"trained_at": "2026-07-01T00:00:00Z"},
-        "integrity_class": "VERIFIED_AGAINST_BUNDLE_MANIFEST",
-        "serving_complete": True,
-    }
-
-
-def _envelope(**over):
-    env = xi.build_execution_envelope(
-        release=_release(),
-        requested_ticker=over.pop("requested_ticker", "ZZGST"),
-        bundle_ticker=over.pop("bundle_ticker", "SPY"),
-        guest_anchor=over.pop("guest_anchor", True),
-        guest_anchor_ticker=over.pop("guest_anchor_ticker", "SPY"),
-        horizons_attempted=over.pop("horizons_attempted", ["1c", "5c", "15c", "60c"]),
-        bundles_by_horizon=over.pop("bundles_by_horizon", {
-            "1c": _bundle_entry("1c"), "5c": _bundle_entry("5c"),
-            "15c": _bundle_entry("15c"), "60c": _bundle_entry("60c"),
-        }),
-        calibration_by_horizon=over.pop("calibration_by_horizon",
-                                        {"1c": {"conformal_run_id": "r1", "isotonic_run_id": "r2"}}),
-        calibration_logging_enabled=over.pop("calibration_logging_enabled", True),
-        stack_pins=over.pop("stack_pins", {
-            "feature_schema_version": "v5", "preprocessing_version": "p3",
-            "label_definition_version": "l2", "fusion_policy_contract": "f4",
-            "regime_engine_version": "r1", "monte_carlo_config_hash": "m" * 8,
-            "rules_policy_version": "rp1", "ablation_survivor_generation": "s7",
-            "meta_learner": "meta_SPY_1c.pkl", "movement_heads": None,
-            "env_controlled_behavior": {"ED_APPLY_ABLATION_SURVIVORS": "1"},
-        }),
-        runtime_class=over.pop("runtime_class", "STRICT_ACTIVE_SERVABLE"),
-        degradation=over.pop("degradation", None),
-        tradeable_policy=over.pop("tradeable_policy", {"evaluated": True, "tradeable": False}),
-        executed_at_utc=over.pop("executed_at_utc", 1_784_000_000.0),
-    )
-    assert not over, f"unused overrides: {over}"
-    return env
 
 
 @pytest.fixture()
@@ -79,28 +26,6 @@ def conn(tmp_path):
     c.close()
 
 
-# ── canonicalization + identity determinism ─────────────────────────────────
-
-
-
-
-
-
-
-
-# ── identity + ledger persistence ────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
 # ── dependent-table linkage (trigger-enforced consistency) ──────────────────
 
 
@@ -112,15 +37,9 @@ def test_dependent_write_without_registered_identity_rejected(conn):
         )
 
 
-
-
-
-
 def test_quote_only_rows_insert_with_null_identity(conn):
     conn.execute("INSERT INTO snapshots (ticker, ts_utc) VALUES ('SPY', 1.0)")
     assert conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 1
-
-
 
 
 # ── write-path guard ─────────────────────────────────────────────────────────
@@ -148,40 +67,7 @@ def test_quote_only_write_must_not_carry_identity():
     assert e.value.reason == "QUOTE_ONLY_NOT_MODEL_DERIVED"
 
 
-# ── CAS ──────────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-# ── replay resolution ────────────────────────────────────────────────────────
-
-
-def _fully_archived(tmp_path, conn, env):
-    cas = tmp_path / "cas"
-    sources = {}
-    for i, sha in enumerate(sorted(xi.envelope_artifact_shas(env))):
-        # test-only: CAS addresses are honored by constructing bytes per sha slot
-        p = tmp_path / f"src{i}.bin"
-        # we cannot invert sha; instead build envelope from REAL bytes below
-        sources[sha] = p
-    return cas, sources
-
-
-
-
-
-
-
-
 # ── historical classification (no fabrication) ──────────────────────────────
-
-
 
 
 def test_migration_is_additive_and_preserves_rows(tmp_path):
@@ -203,20 +89,7 @@ def test_migration_is_additive_and_preserves_rows(tmp_path):
     c.close()
 
 
-# ── envelope semantics ───────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
 # ── live-cycle wiring locks (server persist tail) ───────────────────────────
-
-
-
-
 
 
 def test_write_path_universe_inventory(repo_index):
@@ -269,60 +142,6 @@ def test_write_path_universe_inventory(repo_index):
 # refused IDENTITY_MISMATCH because the anchor lived in the post-publish tail
 # while _finalize_production_decision ran earlier in the same cycle).
 # ══════════════════════════════════════════════════════════════════════════════
-
-_SERVER_PY = Path(__file__).resolve().parent.parent / "server.py"
-
-
-def _server_text() -> str:
-    return _SERVER_PY.read_text(encoding="utf-8", errors="replace")
-
-
-
-
-def _dependent_tables(conn):
-    """Production-shaped dependent tables + real linkage triggers."""
-    from decision_record import ensure_production_decision_schema
-
-    conn.executescript(
-        """
-        CREATE TABLE snapshots (snapshot_id INTEGER PRIMARY KEY, ticker TEXT, ts_utc REAL);
-        CREATE TABLE calibration_decision_log (id INTEGER PRIMARY KEY, ticker TEXT);
-        """
-    )
-    ensure_production_decision_schema(conn)
-    xi.ensure_execution_identity_schema(conn)
-
-
-def _minimal_release():
-    return {"release_id": "rel-ord", "git_sha": "b" * 40, "config_hash": "d" * 64,
-            "build_generation": "g-ord"}
-
-
-def _persist_decision(conn_path, decision_id, identity_sha):
-    from decision_record import persist_production_decision
-
-    ms = {
-        "decision_id": decision_id,
-        "decision_generation_id": 1,
-        "decision_timestamp_utc": 1_784_000_100.0,
-        "ticker": "SPY",
-        "call_signal": "wait",
-        "call_conviction": "low",
-        "fusion_available": True,
-        "dominant_dir": "up",
-    }
-    return persist_production_decision(
-        ms, route="server._fetch_state", release=_minimal_release(),
-        db_path=conn_path, execution_identity_sha256=identity_sha,
-    )
-
-
-
-
-
-
-
-
 
 
 def test_fresh_database_gets_all_linkage_triggers(tmp_path, monkeypatch):

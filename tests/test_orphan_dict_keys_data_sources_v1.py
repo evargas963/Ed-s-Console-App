@@ -36,7 +36,6 @@ def _load_gate():
 
 GATE = _load_gate()
 
-POLICY_KEYS = ("legacy_allowance", "expires_at_utc", "strict_default")
 
 #: TEST_SYSTEM_REHAB_V2: the pure-read tests below now consume the SAME session-scoped
 #: `live_orphans` fixture (tests/conftest.py) test_money_path_orphan_keys_v1.py uses --

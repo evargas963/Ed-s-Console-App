@@ -1,32 +1,12 @@
 """I-01: fetch_market_context never raises; partial context on quote failure."""
 from __future__ import annotations
 
-from pathlib import Path
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-class _MockQuoteResponse:
-    def __init__(self, payload: dict, *, status_code: int = 200):
-        self.status_code = status_code
-        self._payload = payload
-
-    def json(self):
-        return self._payload
 
 
-def _quote_fn(*, fail: frozenset[str] = frozenset(), prices: dict[str, float] | None = None):
-    """Minimal safe_get_quote stub: fail-closed per symbol."""
-
-    def _quote(_client, sym: str):
-        if sym in fail:
-            raise RuntimeError(f"{sym} unavailable")
-        if prices and sym in prices:
-            return _MockQuoteResponse({sym: {"quote": {"lastPrice": prices[sym]}}})
-        return _MockQuoteResponse({})
-
-    return _quote
 
 
 

@@ -6,37 +6,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-@pytest.fixture()
-def l1_clean_spy(monkeypatch):
-    """Isolate SPY rows in server caches for this test."""
-    import server as srv
-
-    keys = [k for k in list(srv._state_cache.keys()) if isinstance(k, tuple) and k and k[0] == "SPY"]
-    backup = {k: srv._state_cache[k] for k in keys}
-    for k in keys:
-        srv._state_cache.pop(k, None)
-    for k in list(srv._l1_snapshot_cache.keys()):
-        if k[0] == "SPY":
-            srv._l1_snapshot_cache.pop(k, None)
-    monkeypatch.setattr(
-        srv._lmp,
-        "get_quote",
-        lambda t: {"spot": 500.0, "bid": 499.0, "ask": 501.0},
-    )
-    monkeypatch.setattr(srv, "_l2_refresh_in_progress_for_l1", lambda *a, **k: False)
-    monkeypatch.setattr(srv._lmp, "apply_l1_live_quote_overlay", lambda *a, **k: None)
-    yield srv
-    for k in list(srv._state_cache.keys()):
-        if isinstance(k, tuple) and k and k[0] == "SPY":
-            srv._state_cache.pop(k, None)
-    srv._state_cache.update(backup)
 
 
 

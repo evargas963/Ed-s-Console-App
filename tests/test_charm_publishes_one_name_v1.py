@@ -20,9 +20,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -36,10 +34,6 @@ if str(REPO) not in sys.path:
 _FIXTURE = json.loads(
     (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(
         encoding="utf-8"))
-REAL_CHAIN = _FIXTURE["chain"]
-REAL_SPOT = _FIXTURE["spot"]
-REAL_EXPIRY = "2026-09-22"
-DURING_THAT_SESSION = datetime(2026, 9, 22, 12, 46, tzinfo=ZoneInfo("America/New_York"))
 
 
 

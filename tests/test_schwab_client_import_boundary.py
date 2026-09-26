@@ -12,13 +12,6 @@ from fastapi import HTTPException
 REPO = Path(__file__).resolve().parent.parent
 
 
-@pytest.fixture
-def ci_schwab_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SCHWAB_API_KEY", "ci-test-key-not-live")
-    monkeypatch.setenv("SCHWAB_APP_SECRET", "ci-test-secret-not-live")
-    monkeypatch.setenv("SCHWAB_TOKEN_PATH", str(REPO / "nonexistent_ci_schwab_token.json"))
-
-
 @pytest.fixture(autouse=True)
 def _restore_server_module_binding():
     """Put `sys.modules["server"]` back exactly as found.
@@ -152,5 +145,3 @@ def test_adversarial_tests_can_import_server() -> None:
     import server as srv
 
     assert hasattr(srv, "app")
-
-

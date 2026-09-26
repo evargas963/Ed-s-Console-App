@@ -129,15 +129,6 @@ def test_accrual_is_a_time_series_not_one_row_a_day(tmp_path):
     assert lo == 555 and hi == 975, "span does not reach the mandated boundaries"
 
 
-# ── storm1 ───────────────────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
 # ── RC-161: the accrual producer is UNIVERSAL, not sentinel-only ─────────────────────────
 def _server():
     import server
@@ -235,5 +226,3 @@ def test_outside_contention_viewing_never_rotates_the_board():
     board = _board()
     now, deferred = s.terrain_cycle_tickers(board, 720, 1, viewed=[board[0]])
     assert deferred == [] and now == board
-
-

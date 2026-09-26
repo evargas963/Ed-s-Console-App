@@ -12,11 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
-from db import EdDB
 
 
-def _new_db(tmp_path: Path) -> EdDB:
-    return EdDB(tmp_path / "model_accuracy.db")
 
 
 
@@ -36,17 +33,6 @@ def _new_db(tmp_path: Path) -> EdDB:
 # ───────────────────── Pass 5b — ops.html surface presence ─────────────────────
 
 
-def _insert_pred_row(db: EdDB, *, et_hour: int, et_minute: int, ts: float,
-                     up: float, down: float, flat: float, outcome: str) -> None:
-    with db._connect() as conn:
-        conn.execute(
-            "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot,"
-            " et_hour, et_minute, pred_model_version,"
-            " pred_5c_up_prob, pred_5c_down_prob, pred_5c_flat_prob, outcome_5c)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("SPY", "1m", ts, "test", 450.0, et_hour, et_minute, "vtest",
-             up, down, flat, outcome),
-        )
 
 
 

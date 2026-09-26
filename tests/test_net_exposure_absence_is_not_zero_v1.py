@@ -32,24 +32,6 @@ def _book(contracts, spot=SPOT):
     return ex, sorted(ex)
 
 
-
-
-
-
-
-
-
-
-
-
-# ── M-03 / M-04 / M-05: unmeasured structure is None, not a label ──────────────
-
-
-
-
-
-
-
 # ── T-01 / T-04 / M-06: per-strike bars and OI totals from the one producer ────
 
 def test_unreported_oi_is_unknown_and_one_sided_oi_is_known():

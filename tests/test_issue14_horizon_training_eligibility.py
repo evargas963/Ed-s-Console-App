@@ -17,10 +17,6 @@ os.chdir(ROOT)
 sys.path.insert(0, str(ROOT))
 
 
-
-
-
-
 def test_row_counts_decoupled_sql_evidence():
     """Rows with partial backfill: outcome_1c set, outcome_filled=0 → included in new training filter only."""
     conn = sqlite3.connect(":memory:")
@@ -57,21 +53,3 @@ def test_row_counts_decoupled_sql_evidence():
     assert old_cnt == 1, "legacy filter should see only fully backfilled row"
     assert new_1c == 3, "1c training should use every row with outcome_1c"
     assert new_5c == 2, "5c training should use rows with outcome_5c only (subset)"
-
-
-
-
-
-
-
-
-# ── D2 dual-label research registry locks (2026-07-06) ───────────────────────
-
-
-
-
-# ── D2 matrix runner + scratch normalized-carry locks (2026-07-06) ───────────
-
-
-
-

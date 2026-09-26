@@ -22,45 +22,12 @@ because none is legible and a wrong number is not.
 
 from __future__ import annotations
 
-import inspect
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
-
-
-# ────────────────────────────── L1: the mean divides by what it measured ────
-
-def _assessment(build_total: int, ms_sum: float) -> dict:
-    from planes.l1_operational import build_l1_operational_assessment as B
-
-    kw = {p: 0 for p in inspect.signature(B).parameters}
-    kw["reasons"] = {}
-    kw["uptime_sec"] = 600.0
-    kw["l1_build_total"] = build_total
-    kw["l1_build_ms_sum"] = ms_sum
-    # RC-293 added timing_sample_count, which this helper's blanket `0` would supply as a
-    # zero sample count rather than "not given". None means "use l1_build_total", which is
-    # the shape this RC-291 test is asserting about.
-    kw["timing_sample_count"] = None
-    return B(**kw)
-
-
-def _avg(payload: dict) -> float:
-    import json
-    import re
-
-    m = re.search(r'"avg_build_ms":\s*([0-9.]+)', json.dumps(payload))
-    assert m, "avg_build_ms is no longer published; re-derive this test"
-    return float(m.group(1))
-
-
-
-
-
-
 
 
 # ─────────────────────────── model edge: no substituted metric ────

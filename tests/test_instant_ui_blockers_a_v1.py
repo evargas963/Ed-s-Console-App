@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 
 import app.market_data.schwab.streaming.capture as cap
 from stream_spine import HealthRegistry, MessageBus
@@ -20,43 +19,8 @@ def _handler():
     return h, health
 
 
-class _ScriptedStream:
-    """Minimal StreamClient surface _schwab_connect_after_login drives; handle_message follows
-    a script of 'ok' / exception instances, then blocks."""
-    def __init__(self, script):
-        self.script = list(script)
-        self.calls = 0
-
-    def add_level_one_equity_handler(self, h): pass
-    def add_chart_equity_handler(self, h): pass
-    def add_nasdaq_book_handler(self, h): pass
-    def add_nyse_book_handler(self, h): pass
-    def add_level_one_option_handler(self, h): pass
-    def add_options_book_handler(self, h): pass
-
-    async def handle_message(self):
-        self.calls += 1
-        if not self.script:
-            await asyncio.sleep(3600)
-        step = self.script.pop(0)
-        if step != "ok":
-            raise step
-        await asyncio.sleep(0)
 
 
-def _run_pump(script, settle=0.3):
-    async def go():
-        stream = _ScriptedStream(script)
-        stop = asyncio.Event()
-        _s, task, _o = await cap._schwab_connect_after_login(
-            stream, [], MessageBus(), HealthRegistry(), cap.CaptureStats(), stop)
-        await asyncio.sleep(settle)
-        done, exc = task.done(), (task.exception() if task.done() and not task.cancelled() else None)
-        stop.set()
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-        return done, exc, stream.calls
-    return asyncio.run(go())
 
 
 def test_terrain_rotates_only_inside_the_contention_window():

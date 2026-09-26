@@ -16,49 +16,6 @@ if str(ROOT) not in sys.path:
 from db import EdDB
 
 
-def _tickers_by_cat(db: EdDB) -> dict[str, set[str]]:
-    out: dict[str, set[str]] = {
-        "core": set(),
-        "pinned": set(),
-        "panel_auto": set(),
-        "user_persisted": set(),
-    }
-    for r in db.logging_universe_list_rows():
-        c = (r.get("category") or "").lower()
-        t = (r.get("ticker") or "").upper().strip()
-        if c in out:
-            out[c].add(t)
-    return out
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def test_issue22_legacy_migration_idempotent_no_duplicate_rows(tmp_path):
     primary = tmp_path / "legacy_tickers.json"
     archive = tmp_path / "legacy_tickers.json.migrated_issue22"
@@ -80,12 +37,6 @@ def test_issue22_legacy_migration_idempotent_no_duplicate_rows(tmp_path):
         core_tickers=["SPY"],
     )
     assert r2["status"] == "already_completed"
-
-
-
-
-
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -114,56 +65,11 @@ def test_db_write_path_d_import_does_not_trigger_db_universe_load():
     assert "IMPORT_DEFER_OK" in proc.stdout
 
 
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # TICKER-PREVIEW-NO-ENROLL — viewing a symbol must not enroll it (operator 2026-05-31)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-
-
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # RC-345 / F25 — logging_universe canonical ticker identity (SPX == $SPX == "$SPX").
 # The PK is COLLATE NOCASE (case folds) but "SPX" and "$SPX" are distinct rows; the enrollment
 # semantic must resolve every alias to ONE canonical instrument identity across write/read/dedup/
 # membership/update/delete, and a migration must fold legacy bare-root rows onto the canonical key.
 # ─────────────────────────────────────────────────────────────────────────────
-import sqlite3 as _sqlite3
-
-
-def _lu_rows(dbp) -> list[str]:
-    con = _sqlite3.connect(str(dbp))
-    try:
-        return [r[0] for r in con.execute("SELECT ticker FROM logging_universe").fetchall()]
-    finally:
-        con.close()
-
-
-def _insert_legacy_lu_row(dbp, ticker, category, ts):
-    """Insert a raw (possibly non-canonical) enrollment row, bypassing the canonical upsert —
-    simulates persisted legacy state (e.g. a bare 'SPX' enrolled before the F25 fix)."""
-    con = _sqlite3.connect(str(dbp))
-    try:
-        con.execute(
-            "INSERT INTO logging_universe (ticker, category, enrollment_source, "
-            "enrolled_ts_utc, last_seen_ts_utc) VALUES (?,?,?,?,?)",
-            (ticker, category, "legacy", ts, ts),
-        )
-        con.commit()
-    finally:
-        con.close()
-
-
-
-
-
-
-
-
-
-
-
-

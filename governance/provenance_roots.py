@@ -1,13 +1,7 @@
 """The root population under the root rule (governance/provenance_inventory.py, RC-532).
 
 ROUTES — every served route, classified (an unclassified route fails the suite).
-MARKET_STATE — every MarketState field: (category, producer row ref or None = OPEN).
-ENGINE_INPUTS — every argument of every decision-engine entry: producer row ref or None.
-
-Categories are reviewed human judgment from the closed vocabulary FIELD_CATEGORIES; the
-producer refs were seeded mechanically from build_market_state's assignments (2026-09-07)
-and are OPEN where the assembler takes the value from a local the seed could not trace.
-An OPEN root is NOT_PROVEN, listed by name, and reported — never hidden.
+A PRODUCER route with no producer row is OPEN: NOT_PROVEN, listed by name, never hidden.
 """
 from __future__ import annotations
 
@@ -54,13 +48,6 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/favicon.ico': ('PAGE', None),
     '/options': ('PAGE', None),
 }
-
-MARKET_STATE: dict[str, tuple[str, str | None]] = {}
-
-ENGINE_INPUTS: dict[tuple[str, str], dict[str, str | None]] = {}
-
-#: Keys the serializer adds to the card payload OUTSIDE MarketState (B2 payload fields).
-PAYLOAD_EXTRAS: dict[str, tuple[str, str | None]] = {}
 
 #: Roots with no producer yet — NOT_PROVEN, by name. The suite asserts this list is EXACT:
 #: a root cannot go OPEN silently, and a root that closes must leave this list.

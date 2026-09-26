@@ -20,32 +20,6 @@ REPO = Path(__file__).resolve().parents[1]
 VERDICT_KEYS = {"call_signal", "call_conviction"}
 
 
-# ── a directional setup (the same one test_call_prediction_vote proves reaches LONG) ──────
-
-
-
-
-
-# ── behavioural: the owner vetoes itself on the emission facts ───────────────────────────
-
-
-
-
-
-
-
-# ── the gate stamps facts and blocks; it rewrites no verdict field ────────────────────────
-
-
-
-
-
-# ── wiring: one route, one gate fact, computed before the state is built ────────────────
-
-
-
-
-
 # ── mutation control: the old second writer is detected; the live modules scan clean ─────
 
 def verdict_writers(source: str) -> list[tuple[int, str]]:
@@ -76,8 +50,6 @@ def apply_trade_impacting_gate(ms_dict, *, route):
 
 def test_mutation_control_old_gate_rewrite_is_detected():
     assert [k for _, k in verdict_writers(OLD_GATE_REWRITE)] == ["call_signal", "call_conviction"]
-
-
 
 
 # ── repo-wide residual: the only verdict writers are the owner, the carrier and flagged shells ──
@@ -130,9 +102,3 @@ def test_repo_wide_every_verdict_literal_is_a_flagged_no_decision_sentinel(repo_
                                 and any(m in body_src for m in _NO_DECISION_MARKERS)):
                             offenders.append(f"{rel}:{n.lineno} key write")
     assert offenders == [], offenders
-
-
-# ── provenance: both verdict roots close on the owner; the gate is the owner's input ──────
-
-
-

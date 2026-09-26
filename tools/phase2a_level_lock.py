@@ -79,8 +79,6 @@ ALLOWED_COMPUTATION_SITES: frozenset[tuple[str, str]] = frozenset({
     # RESEARCH REPLAY, per historical session. Not a serving path and never rendered
     # beside /api/levels: each study session is its own generation over banked bars, and
     # the outputs land in reports/, not in an API, a screen, a model feature or a row.
-    ("tools/lp01_touch_study_v1.py", "_levels_for_session"),
-    ("tools/liquidity_synthesis_experiments_v1.py", "_levels_for_session"),
 })
 
 #: Expression tokens that mark a value as READ from the canonical snapshot rather than

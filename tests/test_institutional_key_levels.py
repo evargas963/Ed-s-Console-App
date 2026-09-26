@@ -41,75 +41,12 @@ def test_pin_fails_closed_without_dollarized_gex():
 
 
 
-def _three_way_split_exposures():
-    # institutional-synthetic-ok: three-way split needs known buckets, not a captured chain.
-    # 100 = max raw call_gamma; 101 = max |call GEX$|; 120 = max total GEX$ (pin).
-    return {
-        100.0: {
-            "call_gamma": 1000.0, "put_gamma": 1.0,
-            "call_gex_1pct": 1.0, "put_gex_1pct": -1.0,
-            "call_delta": 1.0, "put_delta": 1.0,
-            "call_oi": 1.0, "put_oi": 1.0,
-            "dollarized": True,
-            "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
-        },
-        101.0: {
-            "call_gamma": 10.0, "put_gamma": 1.0,
-            "call_gex_1pct": 999.0, "put_gex_1pct": -1.0,
-            "call_delta": 1.0, "put_delta": 1.0,
-            "call_oi": 1.0, "put_oi": 1.0,
-            "dollarized": True,
-            "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
-        },
-        120.0: {
-            "call_gamma": 5.0, "put_gamma": 5.0,
-            "call_gex_1pct": 50.0, "put_gex_1pct": -5000.0,
-            "call_delta": 1.0, "put_delta": 1.0,
-            "call_oi": 1.0, "put_oi": 1.0,
-            "dollarized": True,
-            "call_dex_dollars": 1.0, "put_dex_dollars": 1.0,
-        },
-    }
 
 
 
 
 
 
-def _wide_vs_selected_wall_books():
-    """Live mixed-book construction: selected-expiry analytics vs wide-chain terrain.
-
-    OUT-OF-SCOPE: enrolled-universe live desk. This is the RC-80/RC-420 chain-width
-    split on the captured SPY 0DTE fixture plus one later-expiry CALL, not a
-    complete operable-surface claim.
-    """
-    import json
-    from pathlib import Path
-
-    from math_exposure_core import compute_exposures_by_strike
-    from terrain_engine import compute_terrain
-
-    fx = json.loads(
-        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    chain, spot = fx["chain"], float(fx["spot"])
-    src = next(
-        c for c in chain
-        if str(c.get("putCall", "")).upper() == "CALL"
-        and float(c.get("strikePrice") or 0) == 773.0
-    )
-    extra = dict(src)
-    extra["strikePrice"] = 790.0
-    extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
-    extra["expirationDate"] = "2026-10-22"
-    extra["openInterest"] = 500_000
-    extra["symbol"] = "SPY   261022C00790000"
-    wide = chain + [extra]
-    sel_ex, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
-    terr = compute_terrain("SPY", wide, spot)
-    return sel_ex, spot, terr.to_dict()
 
 
 

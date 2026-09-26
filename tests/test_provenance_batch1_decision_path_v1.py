@@ -20,7 +20,6 @@ import ast
 from pathlib import Path
 
 
-
 REPO = Path(__file__).resolve().parents[1]
 
 OWNER_FIELDS = {
@@ -30,26 +29,6 @@ OWNER_FIELDS = {
 # The only files that may assign these as attributes: the owner (constructs its result)
 # and the MarketState carrier (ms.<field> = owner's value).
 ATTRIBUTE_WRITER_FILES = {"multi_horizon_decision.py", "market_state.py"}
-
-BATCH_CLOSED = (
-    "final_bias", "final_confidence", "final_tradeable", "entry_state", "wait_reason", "mhap_rows",
-    "call_state", "call_forecast_state",
-    "is_no_trade", "rec_strike", "rec_side", "call_option_right", "call_option_expiry",
-    "bias_signal", "bias_resolved", "dte_warn",
-)
-BATCH_NOT_PROVEN = ("call_signal", "call_conviction")
-
-
-
-
-# ── behavioural: the veto lives in the owner ─────────────────────────────────────────────
-
-
-
-
-
-
-
 
 
 # ── negative / mutation control: a second writer of the owner's result is caught ─────────
@@ -97,8 +76,6 @@ def test_mutation_control_the_old_second_writer_is_detected():
     assert [a for _, a in hits] == ["tradeable", "size_modifier", "wait_reason"]
 
 
-
-
 _NON_PRODUCTION_PREFIXES = (
     "tests/", "governance/", "tools/", "verification/", "research/", "scripts/", "calibration/", "arch_competition/",
 )
@@ -119,13 +96,3 @@ def test_repo_wide_no_attribute_writer_of_the_verdict_outside_owner_and_carrier(
                     if isinstance(t, ast.Attribute) and t.attr in OWNER_FIELDS:
                         offenders.append(f"{rel}:{n.lineno} .{t.attr}")
     assert offenders == [], offenders
-
-
-# ── provenance: the batch closes, the NOT_PROVEN pair stays open by name ─────────────────
-
-
-
-
-
-
-

@@ -17,7 +17,6 @@ from tests.test_chain_api_v1 import _chain_json_for
 _FIXTURES = Path(__file__).parent / "fixtures"
 _CDE = json.loads((_FIXTURES / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8"))
 _CDE_CONTRACTS = _CDE["chain"]
-_CDE_EXPIRY = _CDE["expiry"]
 
 
 def _symbols(contracts):

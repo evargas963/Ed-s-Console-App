@@ -25,9 +25,7 @@ source table and read what comes out the other end.
 from __future__ import annotations
 
 import inspect
-import sqlite3
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -40,31 +38,10 @@ import terrain_engine as TE  # noqa: E402
 from liquidity_models import volume_profile_poc_vah_val  # noqa: E402
 
 
-def _facts(db: Path) -> list[sqlite3.Row]:
-    con = sqlite3.connect(db)
-    con.row_factory = sqlite3.Row
-    try:
-        return con.execute("SELECT * FROM desk_facts").fetchall()
-    except sqlite3.OperationalError:
-        return []
-    finally:
-        con.close()
 
 
 # ------------------------------------- a NULL short volume is not zero shares short ----
 
-def _finra_db(tmp_path: Path, short_volume) -> Path:
-    db = tmp_path / "finra.db"
-    con = sqlite3.connect(db)
-    con.execute(
-        "CREATE TABLE world_finra_short_volume (date TEXT, symbol TEXT, "
-        "short_volume REAL, total_volume REAL, fetched_at TEXT)")
-    con.execute(
-        "INSERT INTO world_finra_short_volume VALUES (?,?,?,?,?)",
-        ("2026-07-15", "SPY", short_volume, 1_000_000.0, "2026-07-17 10:00:00"))
-    con.commit()
-    con.close()
-    return db
 
 
 
@@ -75,17 +52,6 @@ def _finra_db(tmp_path: Path, short_volume) -> Path:
 
 # ------------------------------------------ a NULL strike count is not zero strikes ----
 
-def _chain_db(tmp_path: Path, n_strikes) -> Path:
-    db = tmp_path / "chain.db"
-    con = sqlite3.connect(db)
-    con.execute(
-        "CREATE TABLE option_chain_accrual (ticker TEXT, ts_utc REAL, "
-        "n_strikes INTEGER, session_volume INTEGER)")
-    con.execute("INSERT INTO option_chain_accrual VALUES (?,?,?,?)",
-                ("SPY", time.time(), n_strikes, 1234))
-    con.commit()
-    con.close()
-    return db
 
 
 

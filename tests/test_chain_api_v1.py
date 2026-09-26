@@ -37,9 +37,6 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 _SPY_POISON = json.loads(
     (_FIXTURES / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
 )
-_REAL_CONTRACTS = _SPY_POISON["chain"]
-_REAL_SPOT = _SPY_POISON["spot"]
-_REAL_EXPIRY = _REAL_CONTRACTS[0]["expirationDate"][:10]
 
 _TSLA_COMPLETE = json.loads(
     (_FIXTURES / "real_tsla_complete_chain_strike_range_all.json").read_text(encoding="utf-8")

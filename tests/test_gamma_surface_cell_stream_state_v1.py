@@ -31,7 +31,6 @@ _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(enc
 _SPOT = float(_REAL["spot"])
 _CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
 _CONTRACT_SYMBOL = _CONTRACTS[0]["symbol"]
-_CONTRACT_SYMBOL_B = _CONTRACTS[1]["symbol"]
 TK = ticker_storage_key("CRWD")
 
 

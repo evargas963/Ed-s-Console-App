@@ -1,9 +1,8 @@
 """RC-532 — ONE provenance authority; the root population is complete and every claim is real.
 
 What is ENFORCED here (a red test is a defect, never a number to tune):
-  * population: every served route is classified; every MarketState field is categorised; every
-    decision-engine entry's arguments are listed and match the code — so "every material truth"
-    is a demonstrated set, not an assumed one;
+  * population: every served route is classified -- so "every material truth" is a
+    demonstrated set, not an assumed one;
   * rows: schema-valid; every producer_ref names a real function and a real row; no NONE row;
   * closure: every DERIVED row's chain closes at a leaf; every root that declares a producer
     closes; a root with no producer is OPEN by name (the exact list is pinned as data, so an

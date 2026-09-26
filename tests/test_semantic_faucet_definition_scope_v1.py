@@ -79,7 +79,6 @@ DECLARED: dict[tuple[str, str], tuple[str, str]] = {
 #: readably by time_et.snapshots_gamma_pin_semantic (RC-429) and locked by
 #: tests/test_gamma_pin_semantic_split.py. It is listed here so coverage is a decision,
 #: never an omission.
-HISTORICAL_DB_COLUMNS = {("snapshots_db", "gamma_pin")}
 
 # Level-shaped payload keys: price-level fields the coverage law forces into DECLARED.
 _LEVEL_SUFFIXES = ("_wall", "_flip", "_strike", "_peak", "_candidate", "_pain")
@@ -94,23 +93,6 @@ _SINGLE_SURFACE_FULL_BOOK = {"hvp", "lvp", "gsf", "grc"}
 def _fixture_book():
     fx = json.loads(FIXTURE.read_text(encoding="utf-8"))
     return fx["chain"], float(fx["spot"])
-
-
-def _widened_book():
-    """The fixture chain plus one far-expiry call — full_book != selected_expiry."""
-    chain, spot = _fixture_book()
-    src = next(
-        c for c in chain
-        if str(c.get("putCall", "")).upper() == "CALL"
-        and float(c.get("strikePrice") or 0) == 773.0
-    )
-    extra = dict(src)
-    extra["strikePrice"] = 775.0
-    extra["daysToExpiration"] = int(src.get("daysToExpiration") or 0) + 30
-    extra["expirationDate"] = "2026-10-22"
-    extra["openInterest"] = 250_000
-    extra["symbol"] = "SPY   261022C00775000"
-    return chain, chain + [extra], spot
 
 
 def test_one_name_one_definition_across_all_declared_surfaces():
@@ -179,10 +161,6 @@ def test_terrain_names_carry_their_declared_definitions():
     assert "gamma_pin" not in d, "the retired two-definition name returned to the payload"
 
 
-
-
-
-
 def test_pin_candidate_is_published_only_through_the_qualification_gates():
     """RC-292 operator disposition, executed: every gate flips the claim off; all five
     passing publishes the strike; the real fixture withholds with named blockers."""
@@ -233,5 +211,3 @@ def test_every_level_shaped_payload_name_is_declared():
     # every declared terrain name really is published (a stale declaration is a lie too)
     for name in declared_terrain:
         assert name in payload, f"declared terrain name {name!r} is not published"
-
-

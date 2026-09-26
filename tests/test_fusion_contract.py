@@ -13,9 +13,6 @@ _FUSION_AVAILABLE_GETATTR = re.compile(
     r"""getattr\s*\(\s*_?fusion\w*\s*,\s*['"]available['"]\s*""",
     re.IGNORECASE,
 )
-_NON_TRADABLE_MEMBERSHIP = re.compile(
-    r"""in\s+NON_TRADABLE_CANONICAL_PROVENANCE"""
-)
 _TRADABLE_MEMBERSHIP = re.compile(
     r"""in\s+TRADABLE_CANONICAL_PROVENANCE"""
 )

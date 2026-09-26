@@ -10,16 +10,7 @@ _SKIP_PY_TREE_DIRS = frozenset(
 )
 
 # COH-SA-1 redirect sites.
-_COH_SA1_FLOAT_OR_NONE: tuple[tuple[str, str], ...] = (
-    ("lifecycle_rule_core", "_float_or_none"),
-    ("live_decision_bundle", "_float_or_none"),
-    ("v2_decision.a2_lifecycle_sidecar", "_float_or_none"),
-    ("calibration.v2_a1_calibration", "_float_or_none"),
-    ("calibration.v2_a1_conformal", "_float_or_none"),
-    ("v2_decision.a2_price_precedence", "_num"),
-)
 
-_COH_SA1_POSITIVE: tuple[tuple[str, str], ...] = (("lstm_data", "_positive_float_or_none"),)
 
 _INLINE_FLOAT_TRY_EXCEPT = re.compile(
     r"def\s+_float_or_none\s*\([^)]*\)[^:]*:\s*\n\s+try:",
@@ -75,12 +66,6 @@ def test_all_positive_float_helpers_delegate_to_numeric_contract(repo_index):
     assert not offenders, offenders
 
 
-_COH_SA1_F_DELEGATE: tuple[tuple[str, str], ...] = (
-    ("volatility_regime", "_f"),
-    ("math_exposure_core", "_f"),
-    ("features.signal_layer_v1", "_f"),
-    ("realized_contract_eval", "_f"),
-)
 
 
 

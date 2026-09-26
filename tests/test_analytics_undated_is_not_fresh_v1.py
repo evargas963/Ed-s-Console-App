@@ -24,7 +24,6 @@ These tests pin both surfaces to the same answer.
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -34,32 +33,6 @@ if str(REPO) not in sys.path:
 import server as srv  # noqa: E402
 
 KEY = ("ZZAN", "2026-08-07")
-
-
-def _freshness(entry: dict | None) -> dict:
-    md: dict = {}
-    srv._attach_analytics_freshness_contract(
-        md, data_cache_key=KEY, entry=entry, now=time.time(),
-        sse_live=False, inflight_key=KEY)
-    return md
-
-
-# ───────────────────────────────────────────── the helper stops lying by sentinel ────
-
-
-
-
-
-# ─────────────────────────────────────── the operator-facing card: Cursor's probe ────
-
-
-
-
-
-
-
-
-
 
 
 # ────────────────────────────────────── the two call sites must not disagree again ────

@@ -21,9 +21,6 @@ def _row(rc="RC-90", status="OPEN", opened="2026-07-24", why=None, fix=None):
     return f"| {rc} | {status} | {opened} | 2026-08-08 | defect text | {why} | {fix} |"
 
 
-# ── No-terminal-null clause (operator law 2026-07-24, second clause) ─────────
-
-
 # ── RC-49: adversarial-audit test-lock (every fix ships a locking test) ────────
 
 
@@ -227,18 +224,6 @@ def test_the_real_register_is_still_enforced_after_the_isolation_fix(monkeypatch
 
 
 # ── RC-65: the open-item ratchet must measure DEFERRAL, not discovery ─────────
-
-
-def _write_ledgers(tmp_path, rc_rows: list[str], reg_rows: list[str]):
-    g = tmp_path / "governance"
-    g.mkdir(exist_ok=True)
-    (g / "root_cause_log.md").write_text(
-        "| id | status | opened | due | defect | why | fix |\n" + "\n".join(rc_rows) + "\n",
-        encoding="utf-8")
-    (g / "unproven_register.md").write_text(
-        "| status | opened | due | claim | evidence |\n" + "\n".join(reg_rows) + "\n",
-        encoding="utf-8")
-    return g / "root_cause_log.md", g / "unproven_register.md"
 
 
 # BEDROCK 2026-09-06: the open_item_cap controls left with the check (two-step retirement,

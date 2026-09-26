@@ -1658,11 +1658,6 @@ def _rc_numeric_claims_cite_a_command_violations() -> list[Violation]:
 #: is a function of whether it sits on the request path, which is why server.py is NOT
 #: grandfathered -- a regression there blocks the commit.
 _SNAPSHOT_TF_GRANDFATHERED = frozenset({
-    "snapshot_normalizer.py",                      # deliberate full-history rebuild
-    "research/gex_r1_screen_v1/signal.py",
-    "tools/check_card_direction_integrity.py",
-    "verification/base_ticker_observability.py",
-    "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",   # frozen legacy backfill
 })
 _SNAPSHOTS_ORDER_RE = re.compile(
     r"FROM\s+snapshots\b(?:(?!;|\"\"\"|').){0,400}?ORDER\s+BY\s+ts_utc",
@@ -2123,33 +2118,7 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
 #: Addition prohibited — that is the lock. Top of the burn-down by blast radius:
 #: research/pilot_step3/data_loader.py (feeds the F2 pipeline) and challenger_eval_v1/runner.py.
 _PRICE_BARS_GRANDFATHERED = frozenset({
-    "tools/bar_history_recovery_audit_v1.py", "tools/canonical_1m_grid_validator_v1.py",
-    "tools/data_faucet_audit.py", "tools/historical_backfill_enrolled_1m_v1.py",
-    "tools/ingest_1m_to_staging.py", "tools/inspect_price_bars_1m_rth_gaps.py",
-    "tools/issue19_rehydration_range_v1.py", "tools/pin_neutral_anchor_feasibility_sample_v1.py",
-    "tools/study_pin_charm_v1.py", "tools/study_pin_direction_v1.py",
-    "tools/study_pin_regime_cut_v1.py", "tools/study_pin_residence_v1.py",
-    "tools/_multi_timeframe_audit_v1.py", "tools/_phase4a_fast_count.py",
-    "tools/_phase4a_proof_not_exists.py", "tools/_phase4a_quantify_anchor_miss.py",
-    "tools/_phase4b_audits.py", "tools/_phase4_bar_check.py", "tools/_phase4_snapshot_detail.py",
-    "tools/research/d2_build_dual_label_scratch_db.py",
-    "tools/legacy/horizon_7/audit_fused_policy_history_sufficiency_v1.py",
-    "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",
-    "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py",
-    "tools/legacy/horizon_7/batch_backfill_movement_predictions_v1.py",
-    "tools/legacy/horizon_7/build_checkpoint_provenance_bundle_v1.py",
-    "tools/legacy/horizon_7/enforce_universal_ticker_readiness_v1.py",
-    "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py",
-    "tools/legacy/horizon_7/report_pred_1c_governed_remediation_v1.py",
-    "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
-    "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
-    "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
-    "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
-    "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py",
-    "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
-    "tools/legacy/horizon_7/_quick_gov_pred1c.py",
-    "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py",
-    "research/challenger_eval_v1/runner.py", "research/pilot_step3/data_loader.py",
+    "tools/data_faucet_audit.py",
 })
 
 _PRICE_BARS_CAL_RE = re.compile(
@@ -2693,26 +2662,6 @@ _RTH_AUTHORITIES = re.compile(
 #: these 17). Visible debt, not hidden: several (study_pin_*) back conclusions in
 #: governance/unproven_register.md that must be re-run under RTH scoping before they are re-cited.
 _RTH_GRANDFATHERED = frozenset({
-    "calibration/analyze_phase3.py",
-    "research/cost_aware_eval_v1/faint_lead_kill_v1.py",
-    "tools/_multi_timeframe_audit_v1.py",
-    "tools/_phase8_remediate_tmp.py",
-    "tools/feature_curation_gate.py",
-    "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
-    "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
-    "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
-    "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
-    "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
-    "tools/run_final_fused_vs_xgb_comparison_v1.py",
-    "tools/run_phase8_calibration_global_v1.py",
-    "tools/study_pin_charm_v1.py",
-    "tools/study_pin_direction_v1.py",
-    "tools/study_pin_regime_cut_v1.py",
-    "tools/study_pin_residence_v1.py",
-    "tools/study_terrain_readiness_v1.py",
-    "scratchpad/_spy_hourly_gamma_vol_storm.py",
-    "tools/liquidity_synthesis_experiments_v1.py",
-    "tools/lp01_touch_study_v1.py",
 })
 
 

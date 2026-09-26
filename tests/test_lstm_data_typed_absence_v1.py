@@ -20,40 +20,6 @@ contract is pinned here so a future edit cannot silently shift legacy serve inpu
 from __future__ import annotations
 
 
-
-
-# ── canonical reference spot: absent -> typed row-drop (ValueError) ──────────────────────
-
-
-
-
-
-
-
-# ── micro reference spot: ONE producer, absence tested -> validated fallback ─────────────
-
-
-
-
-
-
-
-
-
-# ── legacy v2 checkpoint parity: the surviving coercion is pinned, not silent ────────────
-
-
-
-# ── signal layer: unmeasurable slope -> None, the layer's absence type ───────────────────
-
-
-
-
-
-
-
-
-
 # ── order flow: absent legs are excluded, never neutral 0.0 mass ─────────────────────────
 
 def test_no_present_leg_reweighting_helper_exists():

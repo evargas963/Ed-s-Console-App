@@ -14,18 +14,6 @@ This file pins:
 from __future__ import annotations
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 def test_filter_tickers_for_background_logging_is_universal():
     """UNIVERSAL COLLECTION (operator requirement, restated 2026-08-25): panel_auto
     enrollment no longer excludes a ticker from the full-snapshot roster — the filter
@@ -36,22 +24,12 @@ def test_filter_tickers_for_background_logging_is_universal():
     assert out == ["SPY", "PSCI", "QQQ"]
 
 
-
-
-
-
-
-
-
-
 def test_retired_chg_map_cannot_alias_goog_onto_googl():
     """The GOOG/GOOGL alias lived in the retired weighted-push map. Absence is the pin."""
     import market_context as mc
 
     assert not hasattr(mc, "SYMBOL_TO_SNAPSHOT_CHG_COL")
     assert not hasattr(mc, "snapshot_row_chg_map")
-
-
 
 
 def test_no_stored_percent_change_patches_a_live_confluence_value():
@@ -65,22 +43,3 @@ def test_no_stored_percent_change_patches_a_live_confluence_value():
     assert not hasattr(market_context, "patch_context_confluence_from_quote_ticks")
     assert not hasattr(db_mod.EdDB, "fetch_latest_confluence_quote_chg")
     assert "fetch_latest_confluence_quote_chg" not in inspect.getsource(server)
-
-
-def _logging_universe_rows(rows: list[tuple[str, str]]):
-    class _Row:
-        def __init__(self, ticker: str, category: str):
-            self._d = {"ticker": ticker, "category": category}
-
-        def get(self, key, default=None):
-            return self._d.get(key, default)
-
-    return [_Row(t, c) for t, c in rows]
-
-
-
-
-
-
-
-

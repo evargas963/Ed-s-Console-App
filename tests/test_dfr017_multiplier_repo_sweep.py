@@ -7,12 +7,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # Production modules that read Schwab chain ``multiplier``.
-_MULTIPLIER_CONSUMER_FILES = (
-    "math_exposure_core.py",
-    "backfill_flow_imbalance.py",
-    "v2_decision/post_trade_attribution.py",
-    "realized_contract_eval.py",  # STACK-WIRE-6b: _contract_multiplier reads chains.*.multiplier (fail-closed)
-)
 
 
 

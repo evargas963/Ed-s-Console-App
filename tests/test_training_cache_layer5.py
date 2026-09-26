@@ -3,62 +3,6 @@
 from __future__ import annotations
 
 
-
-
-
-# ── Workstream B1 — single authoritative walk-forward split ────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ── Expanding-window OOF folds (Workstream B2) ──────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ── Training epochs runtime override (per-anchor production retrain lever, 2026-06-03) ──
-
-
-
-
-
-
-
-
-
-
-
-
 # ── ML-PIPE-V2 Phase 6: split entry-point registry (governed splitters only) ──
 
 

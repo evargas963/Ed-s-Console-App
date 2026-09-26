@@ -22,67 +22,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-
-
-
-
-# ── Lock 1 — analytics-pool self-deadlock ────────────────────────────────────
-
-
-
-
-# ── Lane-3 lock — compute-stage instrumentation must stay stamped ────────────
-
-
-
-
-# ── Lane-4 lock — bars persistence must stay off the synchronous hot path ───
-
-
-
-
-
-
-# ── Burndown lock — same-tick similarity dedup must stay wired ──────────────
-
-
-
-
-
-
-
-# ── Burndown lock — IV history must stay a narrow projection ────────────────
-
-
-
-
-
-
-
-
-
-
-# ── Audit lock — snapshot minute gate must reserve atomically + durably ─────
-
-
-
-
-
-
-
-
-# ── Audit lock — accuracy must be computed for the SERVING model version ────
-
-
-
-
-# ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
-
-
-
-
-
-
 # ── Locks 2 + 3 — client source guards ────────────────────────────────────
 # The behavioral companion (tests/e2e/ticker-switch-expiry-reset.spec.js) was itself
 # retired 2026-09-15: every window.*/DOM id it exercised (__edTestHooks, #cv2-hd-ticker,

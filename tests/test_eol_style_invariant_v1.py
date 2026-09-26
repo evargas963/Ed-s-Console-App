@@ -54,12 +54,6 @@ def repo(tmp_path):
     return root, git
 
 
-def run_tool(root: Path, *extra: str) -> tuple[int, str]:
-    r = subprocess.run(
-        [sys.executable, str(TOOL), *extra], cwd=str(root),
-        capture_output=True, text=True, check=False,
-    )
-    return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
 def _patch_tool_repo(root: Path):

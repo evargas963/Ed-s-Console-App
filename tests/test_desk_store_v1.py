@@ -13,107 +13,16 @@ import time
 os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
 
 
-import desk_store as ds  # noqa: E402
 
 
 def _t(offset_sec: float) -> float:
     return time.time() + offset_sec
 
 
-def _rth_session_stamps(n: int) -> list[float]:
-    """`n` regular-session timestamps, most recent last, walking back over real trading days.
-
-    Derived from the `time_et` authority rather than `now - k*86400`: a fixture pinned to a
-    fixed offset lands on a weekend or a holiday depending on the day the suite runs, which is
-    the same going-stale-by-construction defect as a hard-coded date (RC-169).
-
-    RC-176: the first version asked `is_rth_ts_utc` alone, which answers only the CLOCK question
-    — Saturday 11:00 passed as a session, so the whole suite went red the first Saturday morning
-    it ran. The calendar question belongs to `is_trading_day_et`; a stamp must satisfy both.
-
-    RC-210 (2026-08-04): a third question was still missing — COMPLETENESS. `materialize_dollar_volume`
-    excludes sessions still in progress (RC-173: a live session contributes a fraction of a day's
-    turnover and drags the median down), so a fixture that walks back from *today* silently loses
-    one session whenever the suite runs during RTH and lands below `_MIN_SESSIONS_FOR_ADV`. These
-    four desk tests therefore passed after the close and failed mid-session — the same
-    stale-by-construction class the docstring above warns about, in the time dimension instead of
-    the calendar one. A stamp must satisfy clock AND calendar AND completeness, judged by the
-    same `session_is_complete` the production reader uses, so the fixture cannot disagree with it.
-    """
-    from datetime import datetime, timedelta
-
-    from time_et import ET, is_rth_ts_utc, is_trading_day_et
-
-    now = time.time()
-    out: list[float] = []
-    probe = datetime.now(ET).date()
-    guard = 0
-    while len(out) < n and guard < 40:
-        guard += 1
-        day = probe.isoformat()
-        ts = datetime(probe.year, probe.month, probe.day, 11, 0, tzinfo=ET).timestamp()
-        if (is_trading_day_et(day) and is_rth_ts_utc(ts)
-                and ds.session_is_complete(day, now)):
-            out.append(ts)
-        probe = probe - timedelta(days=1)
-    assert len(out) == n, "could not find enough COMPLETE regular sessions in the last 40 days"
-    return list(reversed(out))
 
 
-def _recent_non_session_stamp(window_days: int = 20) -> tuple[str, float]:
-    """The most recent NON-trading ET date (weekend or holiday) whose 11:00 ET bar still lands
-    INSIDE `materialize_dollar_volume`'s window (`now - window_days*86400`), walking back over the
-    real calendar.
-
-    Window-relative by construction, for the same reason `_rth_session_stamps` is: the original
-    fixture hard-coded a Saturday (`2026-08-01`). As real time advanced past that date + 20 days,
-    the weekend bar fell out of the rolling ADV window, so the `bar_end_ts_utc >= cutoff` filter
-    dropped it BEFORE the RTH/calendar filter (`is_rth_trading_ts`) could exclude it — leaving
-    `skipped_non_rth_bars == 0` and silently retiring the very gate the test exists to lock. That
-    is the stale-by-construction defect RC-169/RC-176 warn about, in the calendar dimension.
-    Production was never affected: an in-window weekend bar is still excluded (proven here)."""
-    from datetime import datetime, timedelta
-
-    from time_et import ET, is_trading_day_et
-
-    now = time.time()
-    cutoff = now - window_days * 86400.0
-    probe = datetime.now(ET).date() - timedelta(days=1)  # start yesterday: a past day is complete
-    guard = 0
-    while guard < window_days + 10:
-        guard += 1
-        day = probe.isoformat()
-        ts = datetime(probe.year, probe.month, probe.day, 11, 0, tzinfo=ET).timestamp()
-        if cutoff <= ts < now and not is_trading_day_et(day):
-            return day, ts
-        probe = probe - timedelta(days=1)
-    raise AssertionError("no in-window non-trading day found — window too small?")
 
 
-def _weekday_premarket_stamp(window_days: int = 20) -> tuple[str, float]:
-    """The most recent COMPLETE regular-session ET date's 08:00 ET (pre-market) bar, in-window.
-
-    Extended-hours bars live in `price_bars_1m` BY DESIGN (RC-170); ADV intentionally excludes them
-    because session membership is a `time_et` call, not a bar count. This gives a real trading-day
-    timestamp that is outside RTH, to prove the session gate excludes pre/post-market turnover
-    without deleting the underlying bars."""
-    from datetime import datetime, timedelta
-
-    from time_et import ET, is_rth_ts_utc, is_trading_day_et
-
-    now = time.time()
-    cutoff = now - window_days * 86400.0
-    probe = datetime.now(ET).date() - timedelta(days=1)
-    guard = 0
-    while guard < window_days + 10:
-        guard += 1
-        day = probe.isoformat()
-        pre = datetime(probe.year, probe.month, probe.day, 8, 0, tzinfo=ET).timestamp()
-        if (cutoff <= pre < now and is_trading_day_et(day)
-                and not is_rth_ts_utc(pre) and ds.session_is_complete(day, now)):
-            return day, pre
-        probe = probe - timedelta(days=1)
-    raise AssertionError("no in-window complete trading day with a pre-market slot found?")
 
 
 
@@ -309,23 +218,6 @@ def test_desk_page_is_navigable_without_a_mouse():
     assert "focus-visible" in ui, "keyboard focus has no visible state"
 
 
-def _make_bars_db(tmp_path, rows: list[tuple]):
-    """A throwaway `price_bars_1m` db seeded with (ticker, bar_end_ts, close, volume) rows."""
-    import sqlite3
-
-    db = tmp_path / "d.db"
-    ds.ensure_schema(db)
-    con = sqlite3.connect(str(db))
-    con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, "
-                "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
-                "volume REAL, source TEXT)")
-    con.executemany(
-        "INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
-        [(sym, ts - 60, ts, 1, 1, 1, close, vol, "unit") for (sym, ts, close, vol) in rows],
-    )
-    con.commit()
-    con.close()
-    return db
 
 
 

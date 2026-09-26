@@ -121,39 +121,6 @@ def test_levels_producers_are_enumerated_and_declared():
     )
 
 
-# ── RC-122 (W3-C1, operator P0b): ONE wall book on the screen ────────────────────────────────
-
-def _overlay(cache_entry, monkeypatch):
-    import time
-
-    import server as S
-    if cache_entry is not None:
-        entry = dict(cache_entry)
-        if "computed_ts_utc" not in entry:
-            entry["computed_ts_utc"] = (
-                time.time() - 99999.0 if entry.get("levels_stale") else time.time()
-            )
-    else:
-        entry = None
-    monkeypatch.setattr(S, "_terrain_cache",
-                        {"SPY": entry} if entry is not None else {})
-    md = {"kl_call_gamma_wall": 111.0, "kl_put_gamma_wall": 222.0, "kl_gamma_flip": 333.0,
-          "kl_absolute_gamma_strike": 444.0, "kl_hvl": 555.0, "kl_max_pain": 666.0,
-          "kl_call_gamma_str": "$9.9M/pt", "kl_put_gamma_str": "$8.8M/pt"}
-    S._terrain_kl_overlay(md, "SPY")
-    return md
-
-
-
-
-
-
-
-
-
-
-
-
 # ── RC-128 (operator mandate: ONE Levels Faucet) ─────────────────────────────────────────────
 # The invariant, enforced structurally: for every SSOT level concept there is exactly ONE
 # writer of its payload key — the carriage helper. The analytics assignments were DELETED,
@@ -279,8 +246,6 @@ def test_terrain_native_injection_is_caught():
     )
 
 
-
-
 # ── RC-213 B1: /api/levels read-adapter contract (mission levels-faucet-v1) ──────────
 
 
@@ -355,8 +320,6 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
 # ── RC-227: one-faucet closeout locks (mission one-faucet-closeout-v1) ────────────────
 
 _CHART = (Path(__file__).resolve().parent.parent / "static" / "chart.html").read_text(
-    encoding="utf-8", errors="replace")
-_SERVER_SRC = (Path(__file__).resolve().parent.parent / "server.py").read_text(
     encoding="utf-8", errors="replace")
 
 
@@ -527,8 +490,6 @@ def test_strip_states_the_server_spot_basis():
     assert "SPOT BASIS OK" in p.stdout
 
 
-
-
 def test_domain_faucet_registry_negative_control():
     """Negative control naming check_domain_faucet_registry (RC-95 pattern): inject an
     UNREGISTERED level-domain producer and the callee must scream; a registered one stays
@@ -635,10 +596,6 @@ def test_api_levels_registered_in_faucet_registry():
     assert "levels-tierb-session-collapse-v1" in reg.get("operator_quote", ""), (
         "adding a producer requires the operator_quote in the registry (RC-212)"
     )
-
-
-
-
 
 
 def test_rc124_merged_pin_tag_keeps_its_decisiveness():

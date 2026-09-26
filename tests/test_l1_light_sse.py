@@ -52,12 +52,6 @@ def test_light_stream_route_registered():
     assert "/api/analytics/light/stream" in paths
 
 
-def _drain_l1_thread_queue(srv):
-    while not srv._l1_sse_thread_queue.empty():
-        try:
-            srv._l1_sse_thread_queue.get_nowait()
-        except Exception:
-            break
 
 
 

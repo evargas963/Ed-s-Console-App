@@ -35,21 +35,6 @@ FORBIDDEN_PATTERNS = (
 )
 
 # Closed register IDs — derivations allowed with provenance in these modules.
-REGISTERED_KL_DERIVATIONS = frozenset(
-    {
-        "compute_max_pain",
-        "pick_gamma_wall",
-        "pick_hvl",
-        "aggregate_net_gex",
-        "compute_expected_move_straddle",
-        "compute_expected_move_iv",
-        "resolve_kl_em_anchor",
-        "resolve_mc_iv_for_kl_em_anchor",
-        "compute_exposures_by_strike",
-        "_oe_bid_ask_mid",
-        "resolve_a2_contract_spread",
-    }
-)
 
 
 def _load_dictionary_leaves() -> set[str]:

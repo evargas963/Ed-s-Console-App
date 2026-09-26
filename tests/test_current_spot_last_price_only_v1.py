@@ -18,14 +18,6 @@ class _FakeResp:
         return self._payload
 
 
-def _no_last_price_quote(tk: str) -> _FakeResp:
-    return _FakeResp({
-        tk: {
-            "quote": {"mark": 111.11, "closePrice": 110.0, "bidPrice": 110.9, "askPrice": 111.2},
-            "regular": {"regularMarketLastPrice": 110.0},
-            "extended": {"mark": 111.05},
-        }
-    })
 
 
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None:

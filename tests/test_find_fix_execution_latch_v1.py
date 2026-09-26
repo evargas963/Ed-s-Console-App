@@ -93,7 +93,6 @@ def _transcript(tmp_path, name: str, user_last: str | None = None,
 # ─────────────────────────────────────────────────────────────────────────────
 # PHASE 1 — a production mutation requires durable same-day mission state
 # ─────────────────────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────────────────────
 # RC-500 — AUTHORITY BINDS TO THE MISSION BEING EXECUTED, NOT TO THE CALENDAR
 #
 # The first build asked "does any row exist opened today". MEASURED: closing RC-498
@@ -108,38 +107,6 @@ def _introduced(monkeypatch, *rc_ids: str) -> None:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RC-501 — the two residual authority gaps
-# ─────────────────────────────────────────────────────────────────────────────
-def _real_repo(tmp_path: Path, name: str, trunk: list[str], branch: list[str]) -> Path:
-    """A REAL git checkout with a trunk and a feature branch.
-
-    Not stubbed: the defect being closed is precisely that resolution followed the guard
-    file's own repo, so a test that patches resolution away could not observe it.
-    """
-    import subprocess
-
-    root = tmp_path / name
-    (root / "governance").mkdir(parents=True)
-
-    def git(*a):
-        subprocess.run(["git", *a], cwd=str(root), capture_output=True, text=True, timeout=60)
-
-    git("init", "-q", "-b", "main")
-    git("config", "user.email", "a@b.c")
-    git("config", "user.name", "t")
-    (root / "governance" / "root_cause_log.md").write_text(
-        HDR + "".join(r + "\n" for r in trunk), encoding="utf-8")
-    (root / "server.py").write_text("x = 1\n", encoding="utf-8")
-    git("add", "-A")
-    git("commit", "-qm", "trunk")
-    git("checkout", "-qb", "feature")
-    if branch:
-        (root / "governance" / "root_cause_log.md").write_text(
-            HDR + "".join(r + "\n" for r in trunk + branch), encoding="utf-8")
-        git("add", "-A")
-        git("commit", "-qm", "mission")
-    return root
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # RC-502 — a BLOCKED mission cannot authorize the work it says cannot proceed
 # ─────────────────────────────────────────────────────────────────────────────
@@ -226,22 +193,6 @@ def test_the_stop_obligation_follows_the_same_row_across_midnight(tmp_path, monk
 # ─────────────────────────────────────────────────────────────────────────────
 # PHASE 1 — the shell-equivalent continuum
 # ─────────────────────────────────────────────────────────────────────────────
-_SHELL_MUTATIONS = [
-    "sed -i 's/a/b/' server.py",
-    "cp /tmp/new.py server.py",
-    "mv /tmp/new.py server.py",
-    "echo 'x=1' | tee server.py",
-    "truncate -s 0 server.py",
-    "dd of=server.py if=/tmp/x",
-    "git apply /tmp/change.patch",
-    "git checkout HEAD -- monte_carlo.py",
-    "git restore --source=HEAD~1 monte_carlo.py",
-    "patch -p1 < /tmp/x.patch",
-    ".venv/Scripts/python.exe tools/codemod.py --write server.py",
-    "python tools/fmt.py --in-place static/app.js",
-    "curl -o static/app.js https://example.test/app.js",
-    "cd tools && cp /tmp/x.py mission_latch.py",
-]
 
 
 def test_the_shell_clause_reuses_the_one_destination_enumerator():
@@ -472,5 +423,3 @@ def test_the_latch_adds_no_new_tracked_state_file():
     src = Path(ml.__file__).read_text(encoding="utf-8")
     assert "root_cause_log.md" in src
     assert ".json" not in src.split("ONE FAUCET")[-1].split("def all_rows")[0]
-
-

@@ -7,25 +7,6 @@ from pathlib import Path
 import pytest
 
 
-@pytest.fixture()
-def _bg_fail_spy():
-    import server as srv
-
-    ticker = "ZZZ_BG_FAIL"
-    expiry = "2099-03-01"
-    cache_key = (ticker, expiry)
-    inflight_key = srv._tier_c_inflight_key(ticker, expiry)
-    srv._state_cache[cache_key] = {"ms_dict": {"ticker": ticker}, "ts": 1.0}
-    srv._analytics_bg_fail_counts.pop(inflight_key, None)
-    srv._analytics_bg_last_error.pop(inflight_key, None)
-    with srv._analytics_bg_lock:
-        srv._analytics_inflight.discard(inflight_key)
-    yield ticker, expiry, cache_key, inflight_key, srv
-    srv._state_cache.pop(cache_key, None)
-    srv._analytics_bg_fail_counts.pop(inflight_key, None)
-    srv._analytics_bg_last_error.pop(inflight_key, None)
-    with srv._analytics_bg_lock:
-        srv._analytics_inflight.discard(inflight_key)
 
 
 

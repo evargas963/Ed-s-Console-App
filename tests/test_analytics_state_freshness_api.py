@@ -2,177 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import time
-
-import pytest
-
-_CARD_FRESHNESS_V1_REQUIRED_KEYS = frozenset(
-    {
-        "card_trust_state",
-        "card_actionable",
-        "analytics_age_sec",
-        "quote_age_sec",
-        "bundle_age_sec",
-        "analytics_ttl_sec",
-        "quote_stale_sec",
-        "bundle_trust_sec",
-        "source_freshness",
-        "stale_reason_codes",
-        "quote_ts",
-        "bundle_ts",
-        "mhap_bundle_ts",
-        "tier_c_cache_revalidated",
-        "tier_c_cache_gate_ok",
-        "analytics_stale",
-        "analytics_generated_at",
-        "analytics_refresh_in_progress",
-    }
-)
-
-_OPERATOR_MIRROR_KEYS = frozenset(
-    {
-        "operator_card_actionable",
-        "operator_card_trust_state",
-        "operator_stale_reason_codes",
-        "operator_actionability_reason",
-    }
-)
-
-_RAW_TRADE_FIELDS = (
-    "final_tradeable",
-    "call_signal",
-    "call_state",
-    "validation_passed",
-    "analytics_stale",
-)
-
-
-def _mhap_four() -> list[dict]:
-    return [{"horizon": h, "call": {"dir": "flat"}} for h in ("1c", "5c", "15c", "60c")]
-
-
-def _trusted_ms_dict(*, ticker: str = "ZZZ_CF1", bundle_ts: float | None = None) -> dict:
-    now = time.time()
-    ts = bundle_ts if bundle_ts is not None else now - 1.0
-    return {
-        "ticker": ticker,
-        "selected_exp": "2099-12-01",
-        "final_tradeable": True,
-        "call_signal": "wait",
-        "call_state": "WATCH",
-        "validation_passed": True,
-        "fusion_available": True,
-        "mhap_rows": _mhap_four(),
-        "_server_build_ts": ts,
-        "spot": 500.0,
-        "prior_close": 500.0,
-    }
-
-
-@pytest.fixture()
-def tier_c_cache_spy(monkeypatch):
-    import server as srv
-
-    monkeypatch.setattr(srv, "_schedule_analytics_recompute", lambda *a, **k: None)
-    monkeypatch.setattr(srv, "_attach_db_contention_operator_surface", lambda md: None)
-    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
-    try:
-        import market_state as ms
-
-        monkeypatch.setattr(ms, "attach_operator_visible_field_lineage", lambda md: None)
-    except ImportError:
-        pass
-    keys_before = set(srv._state_cache.keys())
-    yield srv
-    for key in list(srv._state_cache.keys()):
-        if key not in keys_before:
-            srv._state_cache.pop(key, None)
-
-
-def _seed_cache(srv, ticker: str, expiry: str, ms_dict: dict, *, age_sec: float = 1.0) -> tuple:
-    now = time.time()
-    gen = now - age_sec
-    key = (ticker, expiry)
-    ms = dict(ms_dict)
-    ms.setdefault("_server_build_ts", gen)
-    srv._state_cache[key] = {
-        "ms_dict": ms,
-        "ts": gen,
-        "generated_at": gen,
-        "analytics_version": 2,
-    }
-    return key
-
-
-def _response_body(resp) -> dict:
-    return json.loads(resp.body)
-
-
-def _operator_mirrors(body: dict) -> dict:
-    return {k: body.get(k) for k in _OPERATOR_MIRROR_KEYS}
-
-
-def _assert_operator_mirrors_nested(body: dict) -> None:
-    block = body["card_freshness_v1"]
-    assert body["operator_card_actionable"] is block["card_actionable"]
-    assert body["operator_card_trust_state"] == block["card_trust_state"]
-    assert body["operator_stale_reason_codes"] == block["stale_reason_codes"]
-    if block["card_actionable"]:
-        assert body["operator_actionability_reason"] is None
-    else:
-        assert body["operator_actionability_reason"] is not None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ── SESSION_OPEN_ANCHOR_WARM_SLICE_V1 — RTH-open anchor warm locks ───────────
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
 # ── TIER_C_STAGE_TIMER_INSTRUMENTATION_V1 — stage timing + cache observability locks ──
-
-
-
-
 
 
 def test_executor_sizing_unchanged_by_stage_timer_slice():
@@ -180,10 +14,6 @@ def test_executor_sizing_unchanged_by_stage_timer_slice():
     import server as srv
 
     assert srv._get_analytics_executor()._max_workers == 4
-
-
-
-
 
 
 # ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — chain-fetch gate locks ────────
@@ -286,19 +116,7 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
     srv._schwab_chain_fetch_gate.release()
 
 
-
-
 # ── ANCHOR_QUOTE_LANE_REFRESHER_V1 ────────────────────────────────────────────
-
-
-class _FakePlane:
-    """Minimal live_market_plane stand-in: per-ticker rows, read-only for the refresher."""
-
-    def __init__(self, rows: dict):
-        self.rows = rows
-
-    def get_quote(self, ticker: str):
-        return self.rows.get(ticker)
 
 
 def test_no_rest_quote_refresher_feeds_the_live_plane():
@@ -313,46 +131,6 @@ def test_no_rest_quote_refresher_feeds_the_live_plane():
     assert "_anchor_quote_lane" not in src and "rest_anchor_lane_refresher" not in src
 
 
-# ── ANALYTICS_LOG_ONLY_CACHE_CLOBBER_GUARD_V1 ────────────────────────────────
-
-
-def _full_bundle_entry(version: int, gen_ts: float) -> dict:
-    """Fixture: cache entry shaped like a full Tier C publish (server.py full-write site)."""
-    return {
-        "ts": gen_ts,
-        "generated_at": gen_ts,
-        "analytics_version": version,
-        "ms_dict": {"mhap_rows": [{"h": "1c"}], "fusion_available": True, "spot": 100.0},
-        "pcr_val": 0.9,
-        "spot_f": 100.0,
-        "vix": 15.0,
-        "price_levels": {"lvl": 1},
-        "pl_date": "2026-07-07",
-        "pl_mono": 123.0,
-    }
-
-
-def _clear_fixture_cache_keys(srv, ticker: str) -> None:
-    for k in [k for k in list(srv._state_cache) if k[0] == ticker]:
-        del srv._state_cache[k]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ── FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 ──────────────────────────────────────
 
 
@@ -362,47 +140,7 @@ def _fetch_state_source() -> str:
     return (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
 
 
-def _fetch_state_ast():
-    import ast
-
-    tree = ast.parse(_fetch_state_source())
-    fetch = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state"
-    )
-    tail = next(
-        n for n in ast.walk(fetch)
-        if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
-    )
-    return fetch, tail
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1 ───────────────────────────────
-
-
-
-
-
-
-
-
-
-
 # ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 ───────────────────────────────
-
-
 
 
 def test_step2_leaf_functions_have_no_nested_submit():
@@ -432,84 +170,7 @@ def test_step2_leaf_functions_have_no_nested_submit():
     assert submit_sites(root / "schwab_client.py") == []
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ── EXEC-03 POST_PUBLISH_LAST_ERROR_OBSERVABILITY_V1 ─────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-# ── IDLE_SENTINEL_FRESHNESS_V1 — idle-refresh standing producer locks ─────────
-
-
-def _idle_seed_cache(srv, monkeypatch, entries):
-    """entries: {(ticker, expiry): age_sec | None-for-shell}."""
-    import time as _t
-
-    now = _t.time()
-    cache = {}
-    for key, age in entries.items():
-        if age is None:
-            cache[key] = {"ts": now, "ms_dict": {}}  # pending-shell-like: empty body
-        else:
-            cache[key] = {"ts": now - age, "ms_dict": {"ticker": key[0]}}
-    monkeypatch.setattr(srv, "_state_cache", cache)
-    monkeypatch.setattr(srv, "_analytics_inflight", set())
-    # RC-483: the idle standing producer now keeps only ENROLLED cards warm (an un-enrolled
-    # viewed-once card must not be resurrected — the CRM/DKS defect). These tests exercise the
-    # selection MECHANICS (oldest-first, rate-bound, owner-exclusion), so their seeded tickers
-    # are enrolled here; the enrollment-scoping itself is pinned in
-    # tests/test_idle_producer_enrolled_only_v1.py.
-    monkeypatch.setattr(srv, "_logger_tickers", [k[0] for k in entries], raising=False)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ── UI_05_OPERATOR_PRIORITY_ADMISSION_V1 — priority admission + gate locks ────
-
-
-
-
-
-
-
-
 
 
 def test_ui05_priority_gate_priority_waiter_acquires_first():
@@ -557,39 +218,9 @@ def test_ui05_priority_gate_priority_waiter_acquires_first():
     gate.release()
 
 
-
-
 # ── UI_05 residual — priority leaf lane + startup model prewarm sweep ────────
-
-
-
-
 
 
 def test_ui05r_priority_leaf_teardown_present():
     src = _fetch_state_source()
     assert src.count("_priority_leaf_executor.shutdown(wait=True, cancel_futures=True)") == 1
-
-
-
-
-
-
-
-
-# ── UI_05 tail closure: market-context single-flight + stale-while-refresh ────
-
-
-def _mkt_ctx_test_reset(srv, ctx=None, age_sec=0.0):
-    with srv._cached_mkt_ctx_lock:
-        srv._cached_mkt_ctx = ctx
-        srv._cached_mkt_ctx_ts = (time.time() - age_sec) if ctx is not None else 0.0
-        srv._mkt_ctx_refresh_inflight = False
-
-
-
-
-
-
-
-

@@ -347,8 +347,6 @@ def test_git_ls_files_marked_specialized_scan_is_exempt(tmp_path):
 # Real-tree sanity: both ENFORCED-scoped checks currently PASS on the actual repo
 # (the scan lock is ADVISORY -- known pre-existing debt, not asserted at zero here).
 # ─────────────────────────────────────────────────────────────────────────────
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Lock 3 — constant-true `or` assertion (TEST_SYSTEM_REHAB_V2 final remediation).
 # Narrow, mechanical: `assert X or True` / `assert True or X` only -- not a general
 # Boolean-expression prover.

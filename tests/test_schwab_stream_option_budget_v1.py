@@ -123,35 +123,6 @@ def test_budget_is_below_the_load_that_still_died():
 
 # ── the daemon applies the guard and reports refusals honestly ─────────────────────────
 
-class _Stream:
-    def __init__(self, die_after: int | None = None):
-        self.calls: list[tuple[str, int]] = []
-        self.held: set[str] = set()
-        self._die_after = die_after
-
-    async def _op(self, name, syms):
-        self.calls.append((name, len(syms)))
-        if self._die_after is not None and len(self.calls) > self._die_after:
-            raise ConnectionError("no close frame received or sent")
-
-    async def level_one_option_subs(self, syms):
-        await self._op("subs", syms)
-        self.held |= set(syms)
-
-    async def level_one_option_add(self, syms):
-        await self._op("add", syms)
-        self.held |= set(syms)
-
-    async def level_one_option_unsubs(self, syms):
-        await self._op("unsubs", syms)
-        self.held -= set(syms)
-
-    async def options_book_subs(self, syms):
-        await self._op("book_subs", syms)
-
-    async def options_book_unsubs(self, syms):
-        await self._op("book_unsubs", syms)
-
 
 def _apply(stream, rejected, monkeypatch, symbols):
     monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: None)
@@ -161,28 +132,12 @@ def _apply(stream, rejected, monkeypatch, symbols):
         stream, state, rejected_state=rejected, rejection_backoff={}))
 
 
-# ── a dead socket stops the subscribe at once: no false rejections, one recycle ─────────
-
-
 # ── the console: honest spot identity, budgeted demand ─────────────────────────────────
 
 def _row(ingestion, age_sec):
     return {"spot": 700.42, "server_received_ts": time.time() - age_sec, "spot_received_ts": time.time() - age_sec,
             "exchange_quote_ts": time.time() - age_sec,
             "quote_source_detail": {"spot": "LAST_PRICE"}, "quote_ingestion": ingestion}
-
-
-def _no_rest(monkeypatch, server):
-    """Every REST quote read in server.py raises: a spot answer cannot have come from REST.
-    (The REST spot leg `_spot_from_quote` was deleted; the memo and its raw fetch are the
-    only remaining vendor quote reads, test_spot_authority_v1::
-    test_every_vendor_quote_read_goes_through_the_memo.)"""
-    def _boom(*_a, **_k):
-        raise AssertionError("resolve_spot must not call the REST quote")
-    assert not hasattr(server, "_spot_from_quote"), "the REST spot leg is back"
-    monkeypatch.setattr(server, "_memoized_quote_response", _boom)
-    monkeypatch.setattr(server, "_safe_get_quote_with_retry", _boom)
-    monkeypatch.setattr(server, "safe_get_quote", _boom)
 
 
 def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
@@ -195,12 +150,6 @@ def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
         assert server.resolve_spot(tk) == (None, "none", None)
     finally:
         L._by_ticker.pop(tk, None)
-
-
-
-
-
-
 
 
 def test_admission_summary_reports_over_budget_contracts_as_not_admitted(monkeypatch):

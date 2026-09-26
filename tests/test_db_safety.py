@@ -20,12 +20,6 @@ from db_safety import (
 
 
 
-def _canonical_console_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    import runtime_layout
-
-    runtime = tmp_path / "runtime"
-    monkeypatch.setattr(runtime_layout, "RUNTIME_ROOT", runtime)
-    return runtime / "data" / "ed_console.db"
 
 
 
@@ -48,24 +42,6 @@ def test_authorizer_blocks_drop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
 
 
-def _seed_both_permanent_databases(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Path]:
-    import runtime_layout
-
-    runtime = tmp_path / "runtime"
-    monkeypatch.setattr(runtime_layout, "RUNTIME_ROOT", runtime)
-    console = runtime / "data" / "ed_console.db"
-    stream = runtime / "data" / "stream_capture.db"
-    console.parent.mkdir(parents=True)
-    with sqlite3.connect(console) as conn:
-        conn.execute("CREATE TABLE snapshots(id INTEGER PRIMARY KEY, value TEXT)")
-        conn.execute("INSERT INTO snapshots(value) VALUES ('seed')")
-    with sqlite3.connect(stream) as conn:
-        conn.execute("CREATE TABLE stream_quotes_raw(id INTEGER PRIMARY KEY, value TEXT)")
-        conn.execute("CREATE TABLE stream_subscriptions(id INTEGER PRIMARY KEY)")
-        conn.execute("INSERT INTO stream_quotes_raw(value) VALUES ('seed')")
-    return console, stream
 
 
 
