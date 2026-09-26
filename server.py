@@ -151,7 +151,7 @@ log = logging.getLogger("ed_server")
 
 
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
-from config import build_config
+from config import build_config, load_dotenv_file
 
 from schwab_client import (
     auth_is_refreshable,
@@ -176,6 +176,7 @@ import live_market_plane as _lmp
 import live_price_rows as _lpr        # THE displayed price row (shared with the capture daemon)
 
 # ── Config + Schwab client (refreshable singleton) ────────────────────────────
+load_dotenv_file()
 cfg     = build_config(APP_DIR)
 _client = None
 

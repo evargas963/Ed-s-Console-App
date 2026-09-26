@@ -128,7 +128,6 @@ def test_contamination_remaining_after_sanitize_blocks(monkeypatch):
     """Missing live replacement after sentinel strip → fail closed."""
     import live_schwab_env as mod
 
-    monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("SCHWAB_API_KEY", raising=False)
@@ -139,7 +138,6 @@ def test_contamination_remaining_after_sanitize_blocks(monkeypatch):
 def test_placeholder_credentials_remaining_block(monkeypatch):
     import live_schwab_env as mod
 
-    monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.setenv("SCHWAB_API_KEY", "ci-not-live-placeholder")
@@ -150,7 +148,6 @@ def test_placeholder_credentials_remaining_block(monkeypatch):
 def test_legitimate_live_configuration_passes(monkeypatch):
     import live_schwab_env as mod
 
-    monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.setenv("SCHWAB_API_KEY", _LIVE_KEY)
@@ -164,7 +161,6 @@ def test_preflight_never_emits_secret_values(monkeypatch, capsys):
     import live_schwab_env as mod
 
     secret = "super-secret-live-value-xyz-9f3"
-    monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.setenv("ED_CI_OFFLINE", "1")
     monkeypatch.setenv("CI", "true")
     monkeypatch.setenv("SCHWAB_API_KEY", secret)
@@ -197,7 +193,6 @@ def test_preflight_refuses_contaminated_env_then_passes_after_isolated_sanitize(
     """Same contract as the old process-env test, but sanitize a copy — no xdist leak."""
     import live_schwab_env as mod
 
-    monkeypatch.setattr("config._ensure_dotenv_loaded", lambda: None)
     monkeypatch.setenv("ED_CI_OFFLINE", "1")
     monkeypatch.setenv("CI", "true")
     monkeypatch.setenv("SCHWAB_API_KEY", _TEST_SENTINEL)

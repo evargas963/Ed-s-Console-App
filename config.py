@@ -6,17 +6,17 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent
 
 
-def _load_dotenv_if_present() -> None:
-    """Load repo-root ``.env`` when present (host secrets; never committed)."""
+#: the host's secrets file (Schwab credentials; never committed)
+ENV_FILE = _ROOT / ".env"
+
+
+def load_dotenv_file(path: Path = ENV_FILE) -> None:
+    """Put `path`'s variables into the environment, never over ones already set. Entry points
+    call it once, first; library code reads the environment and never loads a file."""
     from dotenv import load_dotenv
 
-    env_path = _ROOT / ".env"
-    if env_path.is_file():
-        load_dotenv(env_path, override=False)
-
-
-def _ensure_dotenv_loaded() -> None:
-    _load_dotenv_if_present()
+    if path.is_file():
+        load_dotenv(path, override=False)
 
 
 # No default ticker (universality, operator 2026-09-23): every endpoint and CLI requires the
@@ -98,7 +98,6 @@ class AppConfig:
 
 def build_config(app_dir: str) -> AppConfig:
     """Build config. token_path is always absolute regardless of launch context."""
-    _ensure_dotenv_loaded()
     # Env override for launch-method debugging / explicit path
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:
