@@ -82,16 +82,6 @@ log = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-def _dedup_preserve(items: list[str]) -> list[str]:
-    """Order-preserving unique — used when canonicalizing enrollment reads can collapse a legacy
-    bare-root alias (``SPX``) and its canonical form (``$SPX``) onto one identity (RC-345/F25)."""
-    seen: set[str] = set()
-    out: list[str] = []
-    for it in items:
-        if it and it not in seen:
-            seen.add(it)
-            out.append(it)
-    return out
 
 # Tier 1 only: insert_snapshot + upsert_1m_bars (short transactions on the live console DB).
 # Heavy work (fill_outcomes, logging_universe, training materialize) must NOT share this lock
