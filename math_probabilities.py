@@ -21,9 +21,6 @@ from math_exposure_core import (
 
 DIRECTION_THRESHOLD_PCT = 0.05  # % of spot to classify up/down/flat
 
-DIST_BUCKET_EDGES    = [1.0, 2.0, 5.0]
-DIST_BUCKET_LABELS   = ["0-1", "1-2", "2-5"]
-DIST_BUCKET_OVERFLOW = "5+"
 
 MIN_SAMPLES_STATISTICAL = 30
 
@@ -278,38 +275,10 @@ def classify_direction_pts(pts_move: float, threshold_pts: float | None) -> str:
 
 # ── Distance bucketing ──────────────────────────────────────────────────────
 
-def dist_bucket(dist: float | None) -> str | None:
-    if dist is None:
-        return None
-    d = abs(dist)
-    for edge, label in zip(DIST_BUCKET_EDGES, DIST_BUCKET_LABELS):
-        if d <= edge:
-            return label
-    return DIST_BUCKET_OVERFLOW
 
 
-def bucket_lo(bucket: str | None) -> float:
-    if bucket is None:
-        # absence-literal-ok: RC-318 — a range BOUND, not a measurement. bucket=None means
-        # "no bucket constraint"; [0.0, 9999.0] is the full nonnegative distance domain, so
-        # the BETWEEN arm matches every valued row. The consumer tests ABSENCE separately:
-        # sql_issue19_tier1_candidate_rows pairs these bounds with an explicit
-        # `(nearest_*_dist IS NULL AND ? IS NULL)` arm carrying the raw anchor value.
-        return 0.0
-    raw = bucket.split("-")[0]
-    return float(raw.rstrip("+"))
 
 
-def bucket_hi(bucket: str | None) -> float:
-    if bucket is None:
-        # absence-literal-ok: RC-318 — the unbounded upper range BOUND (see bucket_lo);
-        # 9999.0 is also the genuine upper edge of the overflow ("250+") bucket below,
-        # so the value is a real answer in the bound domain either way.
-        return 9999.0
-    if bucket.endswith("+"):
-        return 9999.0
-    hi = bucket.split("-")[-1]
-    return 9999.0 if hi == "" else float(hi)
 
 
 # ── Probability computation ─────────────────────────────────────────────────

@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db import EdDB, MIN_SAMPLES_STATISTICAL
+from db import EdDB
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 from similarity_audit import (
     build_similar_inspection_bundle,
     inspection_row_projection,

@@ -71,14 +71,9 @@ from movement_target_threshold import (
 # math_exposure.py. db.py MUST NOT define its own versions.
 from math_exposure import (
     classify_direction_pts as _classify_direction_per_horizon,
-    MIN_SAMPLES_STATISTICAL,
 )
 
 # Issue 19 / 21 — tier column tuples + audit helpers (single source: similarity_audit)
-from similarity_audit import (
-    SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS,
-    SIMILARITY_TIER_STOP_OUTCOME_COLUMNS,
-)
 
 from instrument_identity import ticker_storage_key
 
@@ -245,29 +240,10 @@ def configure_sqlite_connection(
             log.debug("configure_sqlite_connection: %s failed: %s", pragma, e)
 
 
-def similarity_labeled_counts(rows: list) -> dict[str, int]:
-    """Labeled direction counts per horizon (same rule as prediction_engine._count_labeled)."""
-    out: dict[str, int] = {}
-    for col in SIMILARITY_EMPIRICAL_OUTCOME_COLUMNS:
-        out[col] = sum(1 for r in rows if r.get(col) in ("up", "down", "flat"))
-    return out
 
 
-def similarity_tier_stop_viable(labeled_by_col: dict[str, int]) -> bool:
-    """True iff tiers 1–4 may stop: 1c / 5c / 15c each have enough labeled rows."""
-    if not labeled_by_col:
-        return False
-    return all(
-        labeled_by_col.get(col, 0) >= MIN_SAMPLES_STATISTICAL
-        for col in SIMILARITY_TIER_STOP_OUTCOME_COLUMNS
-    )
 
 
-def similarity_empirically_viable(labeled_by_col: dict[str, int]) -> bool:
-    """True iff every tracked empirical column has enough labeled rows (full histogram set)."""
-    if not labeled_by_col:
-        return False
-    return all(n >= MIN_SAMPLES_STATISTICAL for n in labeled_by_col.values())
 
 # ── Database location (ONE APP, ONE MAIN, ONE DB) ───────────────────────────
 # Default: data/ed_console.db, for every process and every worktree.
@@ -1695,28 +1671,7 @@ class EdDB:
 
 
 
-    def logging_universe_eviction_candidates_fifo(self) -> list[str]:
-        """user_persisted only, oldest enrolled first — next eviction order."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker FROM logging_universe
-                WHERE category = 'user_persisted'
-                ORDER BY enrolled_ts_utc ASC, ticker COLLATE NOCASE
-                """
-            ).fetchall()
-            return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity
 
-    def logging_universe_protected_tickers(self) -> list[str]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker FROM logging_universe
-                WHERE category IN ('core', 'pinned', 'panel_auto')
-                ORDER BY ticker COLLATE NOCASE
-                """
-            ).fetchall()
-            return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity
 
 
 
@@ -2043,31 +1998,6 @@ class EdDB:
     _LU_CATEGORY_PRIORITY = {"core": 0, "pinned": 1, "panel_auto": 2, "user_persisted": 3}
 
 
-    def _lu_merge_rows(self, a: dict, b: dict) -> Optional[dict]:
-        """Deterministic field-wise merge of a legacy-alias row and its canonical row.
-        Returns None only if neither category is recognized (fail-closed)."""
-        pa = self._LU_CATEGORY_PRIORITY.get(str(a.get("category")))
-        pb = self._LU_CATEGORY_PRIORITY.get(str(b.get("category")))
-        if pa is None or pb is None:
-            return None
-        strong = a if pa < pb else b  # lower priority number = stronger; ties -> b (canonical row)
-
-        def _min(x, y):
-            xs = [v for v in (x, y) if v is not None]
-            return min(xs) if xs else None
-
-        def _max(x, y):
-            xs = [v for v in (x, y) if v is not None]
-            return max(xs) if xs else None
-
-        return {
-            "category": strong["category"],
-            "enrollment_source": strong.get("enrollment_source"),
-            "enrolled_ts_utc": _min(a.get("enrolled_ts_utc"), b.get("enrolled_ts_utc")),
-            "last_seen_ts_utc": _max(a.get("last_seen_ts_utc"), b.get("last_seen_ts_utc")),
-            "last_background_log_ts_utc": _max(
-                a.get("last_background_log_ts_utc"), b.get("last_background_log_ts_utc")),
-        }
 
     def _migrate_schema(self):
         """Add columns that may be missing from older databases.
@@ -3564,66 +3494,7 @@ class EdDB:
     # is the natural dedup signal — but small floating noise should not skip.
     MODEL_ACCURACY_DEDUP_EPSILON: float = 0.05  # percentage points
 
-    def log_model_accuracy(
-        self,
-        *,
-        ticker: str,
-        timeframe: str,
-        model_version: str,
-        horizon: str,
-        total_predictions: int,
-        correct_direction: Optional[int],
-        accuracy_pct: Optional[float],
-        avg_confidence: Optional[float] = None,
-        ts_utc: Optional[float] = None,
-    ) -> int:
-        """Pass 5a writer for model_accuracy.
 
-        Schema (see db.py:1247): one row per accuracy snapshot per
-        (ticker, timeframe, model_version, horizon, ts_utc). Caller is
-        expected to dedup via get_latest_model_accuracy before INSERT
-        (the accuracy value only changes when new outcomes land — natural
-        throttle).
-        """
-        ts = float(ts_utc) if ts_utc is not None else utc_ts()
-        cd = int(correct_direction) if correct_direction is not None else None
-        ap = float(accuracy_pct) if accuracy_pct is not None else None
-        ac = float(avg_confidence) if avg_confidence is not None else None
-
-        def _do() -> int:
-            with self._connect() as conn:
-                cur = conn.execute(
-                    "INSERT INTO model_accuracy "
-                    "(ts_utc, ticker, timeframe, model_version, horizon, "
-                    " total_predictions, correct_direction, accuracy_pct, avg_confidence) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        ts, ticker, timeframe, model_version, horizon,
-                        int(total_predictions), cd, ap, ac,
-                    ),
-                )
-                return int(cur.lastrowid)
-
-        return _do()
-
-    def get_latest_model_accuracy(
-        self,
-        *,
-        ticker: str,
-        timeframe: str,
-        model_version: str,
-        horizon: str,
-    ) -> Optional[dict]:
-        """Pass 5a reader: latest row for (ticker, timeframe, model_version, horizon)."""
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM model_accuracy "
-                "WHERE ticker = ? AND timeframe = ? "
-                "  AND model_version = ? AND horizon = ? "
-                "ORDER BY ts_utc DESC LIMIT 1",
-                (ticker, timeframe, model_version, horizon),
-            ).fetchone()
-        return dict(row) if row is not None else None
 
 
 

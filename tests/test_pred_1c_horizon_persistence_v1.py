@@ -113,7 +113,8 @@ def test_empirical_backfill_sets_pred_1c_when_similar_pool_sufficient(tmp_path):
     """End-to-end empirical path: similar-set + outcome_1c histogram → persisted pred_1c_*."""
     import sqlite3
 
-    from db import EdDB, MIN_SAMPLES_STATISTICAL
+    from db import EdDB
+    from math_probabilities import MIN_SAMPLES_STATISTICAL
     from prediction_engine import _literal_empirical_horizon, _tri_probs
 
     dbp = tmp_path / "pred1c.db"

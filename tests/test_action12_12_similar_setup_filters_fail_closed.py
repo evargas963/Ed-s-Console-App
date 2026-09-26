@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db import EdDB, MIN_SAMPLES_STATISTICAL
+from db import EdDB
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 from features.fusion_model_input import similar_setup_filters_from_canonical_features
 from timeframe_config import CANONICAL_TIMEFRAME
 

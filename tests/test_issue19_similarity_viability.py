@@ -16,13 +16,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db import (
-    EdDB,
-    MIN_SAMPLES_STATISTICAL,
-    similarity_empirically_viable,
-    similarity_labeled_counts,
-    similarity_tier_stop_viable,
-)
+from db import EdDB, similarity_empirically_viable, similarity_labeled_counts, similarity_tier_stop_viable
+from math_probabilities import MIN_SAMPLES_STATISTICAL
 from timeframe_config import CANONICAL_TIMEFRAME
 
 
