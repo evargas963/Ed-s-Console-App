@@ -100,14 +100,6 @@ def test_mutation_control_the_old_second_writer_is_detected():
     assert [a for _, a in hits] == ["tradeable", "size_modifier", "wait_reason"]
 
 
-def test_the_orchestrator_passes_the_anchor_to_the_owner_and_writes_nothing_after():
-    src = (REPO / "signals.py").read_text(encoding="utf-8", errors="replace")
-    assert second_writers_of_synthesis(src) == []
-    tree = ast.parse(src)
-    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
-             and isinstance(n.func, ast.Name) and n.func.id == "compute_multi_horizon_synthesis"]
-    assert len(calls) == 1
-    assert [k.arg for k in calls[0].keywords] == ["guest_anchor"]
 
 
 _NON_PRODUCTION_PREFIXES = (

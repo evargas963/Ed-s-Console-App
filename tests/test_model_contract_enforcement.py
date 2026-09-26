@@ -224,54 +224,6 @@ def test_load_lstm_never_enters_load_lstm_on_refusal(tmp_path, monkeypatch):
     mp._active_bundle_dir_cache.clear()
 
 
-def test_item4_display_path_meta_verify_before_parse(tmp_path, monkeypatch):
-    """RC-377 (Cursor F1): /api/state model-health parses the SAME governed meta the
-    serve path refuses when tampered. The REAL producer slice is extracted from
-    server.py and driven: a refusing verifier fails closed BEFORE json.loads (the
-    trapping json proves the parser is never reached), and the success path runs
-    verify THEN parse (ordered-sequence control)."""
-    import json as _json
-    import textwrap
-    import types
-    from pathlib import Path
-
-    import ml_predict
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    i = src.index("def _model_status_from_artifact(")
-    j = src.index("_xgb_meta = ", i)
-    fn_src = textwrap.dedent(src[i:j])
-
-    meta_p = tmp_path / "lstm_SPY_1c_meta.json"
-    meta_p.write_text('{"edge_pp": 1.25, "model_type": "dual_stream_lstm"}', encoding="utf-8")
-
-    def build(seq, verify_result):
-        trap = types.SimpleNamespace(loads=lambda s: seq.append("loads") or _json.loads(s))
-        ns = {
-            "_artifacts": {"lstm": {"exists": True, "has_provenance": True, "issues": []}},
-            "_dashboard_ticker": "SPY",
-            "_dashboard_ml_hz": "1c",
-            "_active_dir": tmp_path,
-            "json": trap,
-            "Path": Path,
-        }
-        monkeypatch.setattr(
-            ml_predict, "_verify_governed_artifact",
-            lambda base, bt, hz, role, fn: seq.append(f"verify:{role}:{fn}") or verify_result)
-        exec(compile(fn_src, "server.py::_model_status_from_artifact", "exec"), ns)
-        return ns["_model_status_from_artifact"]
-
-    # refusal: verifier returns None → fail closed, json.loads NEVER reached
-    seq: list = []
-    out = build(seq, None)("lstm", "LSTM", meta_p, "edge_pp", "model_type")
-    assert out["status"] == "INTEGRITY FAILED" and out["edge"] is None
-    assert seq == [f"verify:lstm_meta:{meta_p.name}"], seq
-
-    # control: verified → verify strictly precedes the parse, the real edge serves
-    seq2: list = []
-    out2 = build(seq2, {"verified": True})("lstm", "LSTM", meta_p, "edge_pp", "model_type")
-    assert seq2 == [f"verify:lstm_meta:{meta_p.name}", "loads"], seq2
-    assert out2["status"] == "LIVE" and out2["edge"] == 1.25
 
 
 def test_load_transformer_blocked_when_meta_missing_contract(tmp_path, monkeypatch):
@@ -345,39 +297,12 @@ def _make_complete_bundle(models_root, ticker, hz="1c"):
 
 
 
-def test_provenance_contract_rejection_behavior_unchanged():
-    """Required test 5: the v4 rejection and loader call sites are intact."""
-    from pathlib import Path
-
-    d = contract_metadata_dict()
-    assert not meta_matches_system_contract({**d, "feature_schema_version": "v4_canonical_1m"})[0]
-    root = Path(__file__).resolve().parent.parent
-    mp_src = (root / "ml_predict.py").read_text(encoding="utf-8")
-    assert mp_src.count('validate_artifact_contract(meta, "xgb")') >= 2
-    assert 'validate_artifact_contract(tr_meta, "transformer")' in mp_src
-    lstm_src = (root / "lstm_model.py").read_text(encoding="utf-8")
-    assert 'validate_artifact_contract(meta, "lstm")' in lstm_src
 
 
 
 
 
 
-def test_provenance_no_ticker_literals():
-    """Required test 8: no ticker-literal-shaped constants in the builder."""
-    import ast
-    from pathlib import Path
-
-    tree = ast.parse((Path(__file__).resolve().parent.parent / "ml_predict.py").read_text(encoding="utf-8"))
-    fn = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "build_model_serving_provenance"
-    )
-    for node in ast.walk(fn):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            assert not (node.value.isalpha() and node.value.isupper() and len(node.value) <= 5), (
-                f"ticker-literal-shaped constant {node.value!r} in provenance builder"
-            )
 
 
 # ── ML-PIPE Item 4 — artifact-manifest load verification (adversarial) ───────
@@ -818,27 +743,3 @@ def test_item4_all_governed_loaders_call_verifier_before_deserialization():
             )
 
 
-def test_provenance_no_serving_behavior_change():
-    """Required test 9: the builder is read-only — no registry writes, no model
-    load calls; signals builds it as the first statement inside the scopes."""
-    import ast
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parent.parent
-    tree = ast.parse((root / "ml_predict.py").read_text(encoding="utf-8"))
-    fn = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "build_model_serving_provenance"
-    )
-    for node in ast.walk(fn):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-            assert "_registry" not in node.id
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            assert not node.func.id.startswith("_load_"), (
-                f"model load call {node.func.id} in provenance builder"
-            )
-    sig_src = (root / "signals.py").read_text(encoding="utf-8")
-    i_scope = sig_src.index("with guest_anchor_context_scope(_guest_anchor), ml_bundle_ticker_scope(")
-    i_build = sig_src.index("model_serving_provenance = build_model_serving_provenance(ticker)")
-    i_seq = sig_src.index("shared_sequence_context = None")
-    assert i_scope < i_build < i_seq

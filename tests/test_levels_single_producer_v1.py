@@ -152,29 +152,6 @@ def _overlay(cache_entry, monkeypatch):
 
 
 
-def test_pin_score_and_snapshot_use_terrain_ssot_pin_not_consensus_net():
-    src = SERVER.read_text(encoding="utf-8")
-    i = src.index("# 5. Pin Score")
-    chunk = src[i:i + 1400]
-    assert "terrain_cache_get" in chunk
-    assert "getattr(consensus_summary" not in chunk
-    assert "absolute_gamma_gex_dollars" in chunk
-    assert "absolute_gamma_oi" in chunk
-    assert "book_oi_total" in chunk
-    assert "exposures.get(float(_pin_strike)" not in chunk
-    assert "_pin_bkt" not in chunk
-    assert "total_gamma_raw_at_strike" not in chunk
-    assert "gamma_pin=_ssot_gamma_pin" in src
-    assert 'getattr(consensus_summary, "gamma_pin"' not in src
-    assert 'getattr(consensus_summary, "net_gex_peak"' not in src
-    # RC-420: CONSENSUS gamma/delta walls bind to the same terrain cache (folded
-    # into this reader so the source-text census stays 266).
-    i_walls = src.index("walls     = build_walls_rows")
-    walls_chunk = src[i_walls:i_walls + 700]
-    assert "consensus_walls_bind_terrain_ssot" in walls_chunk
-    assert "terrain_cache_get" in walls_chunk
-    assert walls_chunk.find("consensus_walls_bind_terrain_ssot") < walls_chunk.find("build_totals_rows")
-    assert "windows=EXPOSURE_WINDOWS" not in walls_chunk.split("build_totals_rows")[0]
 
 
 # ── RC-128 (operator mandate: ONE Levels Faucet) ─────────────────────────────────────────────

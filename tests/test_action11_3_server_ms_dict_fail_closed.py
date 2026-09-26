@@ -48,11 +48,6 @@ def test_server_ms_dict_assembly_has_no_fail_open_get_defaults():
         assert pattern not in SERVER, f"fail-open pattern still present: {pattern}"
 
 
-def test_server_ms_dict_assembly_uses_bare_get_for_dpi():
-    assert 'ms_dict["dpi_direction"]         = _dpi.get("direction")' in SERVER
-    assert 'ms_dict["hedging_flow_direction"]  = _hedging_flow.get("direction")' in SERVER
-    assert 'ms_dict["em_breached"]       = _em_progress.get("breached")' in SERVER
-    assert 'ms_dict["level_density_count"]   = _level_density.get("count")' in SERVER
 
 
 

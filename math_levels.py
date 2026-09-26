@@ -8,9 +8,6 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 import math
-from dataclasses import (
-    dataclass,
-)
 from typing import Dict, List
 
 from math_exposure_core import (
@@ -23,39 +20,6 @@ from math_exposure_core import (
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
-@dataclass(frozen=True)
-class WallsRow:
-    label: str
-    window: int | None
-
-    call_gamma_wall: float | None
-    call_gamma_strength: float | None
-    put_gamma_wall: float | None
-    put_gamma_strength: float | None
-    dom_gamma_side: str
-    dom_gamma_wall: float | None
-    dom_gamma_strength: float | None
-
-    call_delta_wall: float | None
-    call_delta_strength: float | None
-    put_delta_wall: float | None
-    put_delta_strength: float | None
-    dom_delta_side: str
-    dom_delta_wall: float | None
-    dom_delta_strength: float | None
-
-    call_oi_wall: float | None
-    call_oi_strength: float | None
-    put_oi_wall: float | None
-    put_oi_strength: float | None
-    dom_oi_side: str
-    dom_oi_wall: float | None
-    dom_oi_strength: float | None
-    
-    call_vanna_wall: float | None = None
-    call_vanna_strength: float | None = None
-    put_vanna_wall: float | None = None
-    put_vanna_strength: float | None = None
 
 
 

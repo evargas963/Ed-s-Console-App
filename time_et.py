@@ -20,7 +20,6 @@ ET = ZoneInfo("America/New_York")
 RTH_START_MINS = 570
 RTH_OPEN_MINS = RTH_START_MINS  # 9:30 AM ET (alias for cross-module authority)
 RTH_END_MINS = 960
-RTH_SESSION_MINUTES = RTH_END_MINS - RTH_START_MINS  # 390 = single RTH session length as 1m bars
 
 
 def rth_clock_js_source() -> str:
@@ -66,10 +65,6 @@ def et_minute_total_from_ts_utc(ts_utc: float) -> int:
     return h * 60 + m
 
 
-def is_rth_ts_utc(ts_utc: float) -> bool:
-    """True when ts_utc falls in RTH (09:30 <= t < 16:00 ET)."""
-    mins = et_minute_total_from_ts_utc(ts_utc)
-    return RTH_START_MINS <= mins < RTH_END_MINS
 
 
 # ── Collect-window authority (RC-183, operator law 2026-08-01, non-negotiable) ──────────

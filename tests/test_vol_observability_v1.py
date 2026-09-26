@@ -7,7 +7,6 @@ models, regime, fusion, or decisions (native consumption = NOT_APPROVED).
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -71,35 +70,6 @@ def test_ticker_class_mapping_candidates():
 
 
 
-def test_server_recorder_call_is_statement_only_and_unconsumed():
-    """server.py may call record_market_vol_observation exactly once, as a
-    bare statement (no assignment), and vol_observability_payload only from
-    the read-only endpoint — nothing feeds the pipeline."""
-    src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    tree = ast.parse(src)
-    record_calls = []
-    payload_calls = []
-    parents: dict[ast.AST, ast.AST] = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            parents[child] = node
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id == "record_market_vol_observation":
-                record_calls.append(node)
-            if node.func.id == "vol_observability_payload":
-                payload_calls.append(node)
-    assert len(record_calls) == 1
-    assert isinstance(parents[record_calls[0]], ast.Expr), (
-        "recorder result must not be assigned/consumed"
-    )
-    assert len(payload_calls) == 1
-    fn = parents.get(payload_calls[0])
-    while fn is not None and not isinstance(fn, ast.FunctionDef):
-        fn = parents.get(fn)
-    assert fn is not None and fn.name == "api_vol_observability", (
-        "payload may only serve the read-only endpoint"
-    )
 
 
 def test_v1_no_consumer_wiring_lock_still_holds():

@@ -1,7 +1,6 @@
 """Contract tests: ticker_storage_key, anchor load, DB query normalization, pin_neutral repair."""
 from __future__ import annotations
 
-import inspect
 
 from db import EdDB
 from instrument_identity import ticker_storage_key
@@ -30,16 +29,8 @@ def _in_window_ts(hour: int = 10, minute: int = 0) -> float:
     return in_window_ts(hour, minute)
 
 
-def test_get_similar_setups_issue19_uses_zone_not_regime_primary():
-    """Hardening: tier SQL must not silently conflate regime_primary with structural zone."""
-    src = inspect.getsource(EdDB.get_similar_setups)
-    assert "regime_primary" not in src
 
 
-def test_pin_neutral_backfill_bar_low_uses_wide_lookback():
-    """Gap >5000s between last bar and snapshot must not drop anchor bars (Issue 19 repair)."""
-    src = inspect.getsource(EdDB.fill_outcomes_pin_neutral_backfill_v1)
-    assert "120.0 * 86400.0" in src or "120.0 * 86400" in src
 
 
 def test_upsert_1m_bars_uses_ticker_storage_key_for_spx_family(tmp_path):

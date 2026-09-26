@@ -197,7 +197,6 @@ def test_db_write_path_d_import_does_not_trigger_db_universe_load():
 # membership/update/delete, and a migration must fold legacy bare-root rows onto the canonical key.
 # ─────────────────────────────────────────────────────────────────────────────
 import sqlite3 as _sqlite3
-from instrument_identity import ticker_storage_key as _K
 
 
 def _lu_rows(dbp) -> list[str]:
@@ -233,20 +232,3 @@ def _insert_legacy_lu_row(dbp, ticker, category, ts):
 
 
 
-def test_f25_lu_write_identity_mutation_killed():
-    """Mutation: reverting the canonical write producer to a raw local one splits SPX from $SPX.
-    Proven behaviorally against the storage authority the enrollment writes consume."""
-    # canonical authority: both aliases map to one identity
-    assert _K("SPX") == _K("$SPX") == _K("spx") == _K("$spx") == "$SPX"
-    # the raw local producer the fix replaced would NOT collapse them:
-    assert ("SPX".upper().strip()) != ("$SPX".upper().strip())  # 'SPX' != '$SPX' -> would split
-
-    # Source guard: the live enrollment read/update/delete/touch consume the authority, not .upper()
-    from pathlib import Path as _P
-    src = (_P(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
-    for needle in (
-        "t = ticker_storage_key(ticker)  # RC-345/F25",           # unpin/remove/touch
-        "ticker_storage_key(r[0]) for r in rows",                 # canonical reads
-        "def logging_universe_migrate_canonical_ticker_identity",  # migration exists
-    ):
-        assert needle in src, f"db.py logging_universe missing canonical routing: {needle!r}"

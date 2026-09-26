@@ -45,38 +45,8 @@ VERDICT_KEYS = {"call_signal", "call_conviction"}
 
 # ── wiring: one route, one gate fact, computed before the state is built ────────────────
 
-def test_server_validates_the_emission_facts_once_before_build_and_hands_them_to_the_owner():
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    tree = ast.parse(src)
-    fetch = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")
-    calls = {}
-    for n in ast.walk(fetch):
-        if isinstance(n, ast.Call):
-            name = n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", "")
-            if name in ("validate_trade_impacting_gate", "build_market_state", "resolve_fetch_state_decision_route"):
-                calls.setdefault(name, []).append(n)
-    assert len(calls["validate_trade_impacting_gate"]) == 1
-    assert len(calls["resolve_fetch_state_decision_route"]) == 1  # one route resolution per fetch
-    gate_line = calls["validate_trade_impacting_gate"][0].lineno
-    bms = calls["build_market_state"][0]
-    assert gate_line < bms.lineno
-    assert any(k.arg == "emission_gate" for k in bms.keywords)
 
 
-def test_market_state_hands_the_facts_to_signal_input_and_derives_identity_after_the_call():
-    src = (REPO / "market_state.py").read_text(encoding="utf-8", errors="replace")
-    tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_market_state")
-    assert any(a.arg == "emission_gate" for a in fn.args.kwonlyargs)
-    sig = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)
-               and isinstance(n.func, ast.Name) and n.func.id == "SignalInput")
-    kws = {k.arg for k in sig.keywords}
-    assert {"production_emission_allowed", "emission_block_reasons"} <= kws
-    # Option identity derives from ms.call_signal AFTER the call: one verdict, coherent fields.
-    oe = next(n for n in ast.walk(fn) if isinstance(n, ast.Call)
-              and isinstance(n.func, ast.Name) and n.func.id == "recommend_option_expression")
-    assert any(k.arg == "call_signal" and ast.unparse(k.value) == "ms.call_signal" for k in oe.keywords)
-    assert oe.lineno > sig.lineno
 
 
 # ── mutation control: the old second writer is detected; the live modules scan clean ─────

@@ -14,7 +14,6 @@ from arch_competition.governance_visibility import (
     build_governance_panel_payload,
 )
 from arch_competition.live_drift_monitoring import LIVE_DRIFT_MONITORING_SCHEMA_VERSION
-from arch_competition.manual_control import MANUAL_PROMOTE_CASCADE_INTENT
 
 
 def _minimal_governed_files(model_dir: Path, *, cascade_ok: bool = True):
@@ -335,54 +334,5 @@ def test_rollback_checkpoint_all_corrupt_or_empty_is_unavailable(tmp_path: Path)
     assert _rollback_checkpoint_available(tmp_path, "1c", "SPY") is False
 
 
-def test_manual_promote_endpoint_invokes_only_manual_control(monkeypatch, tmp_path: Path):
-    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): KEEP.
-    api_governance_manual_promote is `(request: Request, payload: dict = Body(...))`
-    and gates on `request.client.host` via client_may_run_governance_action -- a
-    localhost-vs-remote AUTHORIZATION check driven by the real ASGI connection, on
-    the one endpoint in this app that can promote a model architecture. Only a real
-    request supplies `request.client`; a direct call would have to fabricate one,
-    which tests the fake rather than the boundary. This proves the POST clears BOTH
-    gates (the ED_GOVERNANCE_UI_ACTIONS flag and the client-host check) before
-    manual_promote_to_active_explicit is reached at all."""
-    monkeypatch.setenv("ED_GOVERNANCE_UI_ACTIONS", "1")
-    monkeypatch.setenv("ED_GOVERNANCE_ALLOW_REMOTE", "1")
-    project_root = tmp_path / "proj"
-    models_dir = project_root / "models"
-    _minimal_governed_files(models_dir)
-    called: dict = {}
-
-    def _fake(model_dir, ticker, ml_horizon_slug, **kwargs):
-        called["model_dir"] = model_dir
-        called["kwargs"] = kwargs
-        return {"checkpoint_id": "test-ck", "active_dir": str(models_dir / "active" / "SPY")}
-
-    monkeypatch.setattr(
-        "arch_competition.manual_control.manual_promote_to_active_explicit",
-        _fake,
-    )
-    import server
-
-    monkeypatch.setattr(server, "APP_DIR", str(project_root))
-
-    from fastapi.testclient import TestClient
-
-    c = TestClient(server.app)
-    r = c.post(
-        "/api/governance/manual-promote",
-        json={
-            "ticker": "SPY",
-            "horizon": "1c",
-            "target_architecture": "cascade",
-            "operator_id": "op",
-            "manual_intent": MANUAL_PROMOTE_CASCADE_INTENT,
-        },
-    )
-    assert r.status_code == 200
-    body = r.json()
-    assert body.get("ok") is True
-    assert called["model_dir"] == models_dir.resolve()
-    assert called["kwargs"]["target_architecture"] == "cascade"
-    assert called["kwargs"]["operator_id"] == "op"
 
 

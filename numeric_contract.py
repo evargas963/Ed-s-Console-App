@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Literal
+from typing import (
+    Any,
+)
 
-DirectionLabel = Literal["up", "down", "flat"]
 
-_TRIPLET_LABELS: tuple[DirectionLabel, ...] = ("up", "down", "flat")
 
 
 def float_finite_or_none(value: Any) -> float | None:
@@ -39,25 +39,4 @@ def float_nonnegative_or_none(value: Any) -> float | None:
 
 
 
-def direction_from_normalized_triplet(
-    up: Any,
-    down: Any,
-    flat: Any,
-) -> DirectionLabel | None:
-    """Argmax on already-finite normalized probabilities (no parsing).
-
-    Defensive single-producer (RC-363): returns ``None`` (WITHHELD) when any leg
-    is ``None`` or non-finite (NaN / ±inf / non-numeric), instead of raising
-    ``TypeError`` inside ``max()`` or emitting an order-dependent garbage label
-    (NaN comparisons are all False). Callers treat ``None`` as "withhold this
-    observation" — the same skip-the-row policy the finite-guarded producers
-    already apply.
-    """
-    for v in (up, down, flat):
-        try:
-            if v is None or not math.isfinite(v):
-                return None
-        except (TypeError, ValueError):
-            return None
-    return max(_TRIPLET_LABELS, key=lambda lab: {"up": up, "down": down, "flat": flat}[lab])
 

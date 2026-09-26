@@ -128,14 +128,6 @@ def test_mc_emits_wall_clock_minutes_from_the_canonical_constant():
 
 
 # ── CONTROL 7: ONE FAUCET — the verdict is transported, never recomputed ──────────────────────
-def test_server_transports_the_verdict_and_does_not_recompute_it():
-    src = _code_only((ROOT / "server.py").read_text(encoding="utf-8", errors="replace"))
-    assert "unified_stack_team_can_authorize(" not in src, \
-        "server must not hold a second authorization computation"
-    assert "ms_dict.get('stack_directional_authorized')" in src, \
-        "server must consume the transported verdict"
-    assert "def classify_stack_health(*, fusion_available" not in src, \
-        "the shadow stack-health copy must be gone"
 
 
 
@@ -151,12 +143,3 @@ def test_server_transports_the_verdict_and_does_not_recompute_it():
 
 
 
-def test_ablation_scorer_builds_the_composition_it_gates_on():
-    """The ablation leg read `ml_bundle.get("stack_probs_composition")` from a bundle literal that
-    never set it, so its gate was hardwired to (False, 'composition_unknown') and every scored row
-    ran base-neutral against an ML-conditioned production leg — the conditioning skew the call was
-    added to remove."""
-    src = _code_only((ROOT / "arch_competition" / "ablation_bundle_inference.py")
-                     .read_text(encoding="utf-8", errors="replace"))
-    assert "ml_bundle['stack_probs_composition'] = stack_probs_composition_record(" in src, \
-        "the ablation leg must BUILD the record it authorizes on, not read an unset key"

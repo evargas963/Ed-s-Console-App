@@ -537,25 +537,6 @@ def overlay_streamed_contract_fields(
 # Dollar GEX per 1% spot move: gamma × OI × mult × spot² × 0.01 (see compute_exposures_by_strike).
 
 
-def strike_flow_legs(bucket: dict) -> dict[str, float] | None:
-    """{call_bid, call_ask, put_bid, put_ask, call_volume, put_volume} at one strike when every
-    contract there reported its sizes and volume; None otherwise. An absent side is a known 0
-    (no contract on it). The ONE reader for option-flow sums (2026-09-24)."""
-    if (not isinstance(bucket, dict) or bucket.get("size_unreported") != 0
-            or bucket.get("volume_unreported") != 0):
-        return None
-    out: dict[str, float] = {}
-    for key, name in (("call_bid_size", "call_bid"), ("call_ask_size", "call_ask"),
-                      ("put_bid_size", "put_bid"), ("put_ask_size", "put_ask"),
-                      ("call_volume", "call_volume"), ("put_volume", "put_volume")):
-        if bucket.get(key) is None:
-            out[name] = 0.0
-            continue
-        v = bucket_metric(bucket, key)
-        if v is None:
-            return None
-        out[name] = v
-    return out
 
 
 def strike_total_oi(bucket: dict) -> float | None:

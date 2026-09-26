@@ -33,13 +33,6 @@ HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1: int = 3
 # Source tag stored on price_bars_1m rows.
 AUTHORITATIVE_1M_SOURCE: str = "schwab_1m_accumulator_sqlite"
 
-# outcome column -> exact forward offset in minutes (canonical 1m clock).
-OUTCOME_HORIZON_MINUTES: dict[str, int] = {
-    "outcome_1c": 1,
-    "outcome_5c": 5,
-    "outcome_15c": 15,
-    "outcome_60c": 60,
-}
 
 # (direction column, points column, forward minutes) — primary product horizons only (Phase 3 C2).
 OUTCOME_BAR_SPECS: tuple[tuple[str, str, int], ...] = (
@@ -69,23 +62,7 @@ OUTCOME_MOVEMENT_V1_SPECS: tuple[tuple[str, str, str, str, str, int, str], ...] 
 
 
 
-OUTCOME_DIR_HORIZON_MINUTES: dict[str, int] = {s[0]: s[5] for s in OUTCOME_MOVEMENT_V1_SPECS}
-OUTCOME_MOVE_HORIZON_MINUTES: dict[str, int] = {s[1]: s[5] for s in OUTCOME_MOVEMENT_V1_SPECS}
-VALID_DIR_HORIZON_MINUTES: dict[str, int] = {s[2]: s[5] for s in OUTCOME_MOVEMENT_V1_SPECS}
-THRESHOLD_MOVE_HORIZON_MINUTES: dict[str, int] = {s[3]: s[5] for s in OUTCOME_MOVEMENT_V1_SPECS}
 
-# D2 dual-label backtest (operator-approved research, 2026-07-06): triple-barrier
-# label columns that exist ONLY in an explicit run-private research DB.
-# Registered here so the training loaders'
-# allowed-label validation accepts them when pointed at the scratch DB with
-# label_column=outcome_tb_{hz}. ADDITIVE ONLY: these columns are never written
-# to the production DB, never appear in OUTCOME_BAR_SPECS (the production
-# outcome writer), and DEFAULT_TRAINING_LABEL_COLUMN is unchanged — both facts
-# are test-locked.
-TB_RESEARCH_LABEL_COLUMNS: dict[str, int] = {
-    f"outcome_tb_{_outcome_slug(odir)}": int(n_min)
-    for odir, _opt, n_min in OUTCOME_BAR_SPECS
-}
 
 
 def forward_bar_start_utc(ts_snapshot: float, n_minutes: int) -> float:

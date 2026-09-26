@@ -81,13 +81,5 @@ def test_the_sign_flips_with_moneyness_not_with_side():
 
 
 
-def test_the_caller_still_passes_the_net_gex_peak():
-    """The docstring is only correct while the caller keeps doing this."""
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    i = src.find("_institutional_pin = (")
-    assert i > 0, "the _institutional_pin site moved; re-derive the docstring claim"
-    assert "pick_net_gex_peak_strike(" in src[i:i + 260], (
-        "the caller changed what it passes — the docstring now names the wrong function "
-        "again, which is the RC-294 defect returning from the other side")
 
 

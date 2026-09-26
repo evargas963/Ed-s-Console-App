@@ -41,11 +41,7 @@ Stack / ML horizon alignment (trader policy — 1 / 5 / 15 / 60 minute clocks on
 # Canonical timeframe — primary candle source for live state, snapshots, features, training
 CANONICAL_TIMEFRAME: str = "1m"
 
-# Derived context timeframe — used for structure analysis, LSTM secondary stream
-DERIVED_TIMEFRAME: str = "5m"
 
-# Table for 1m training data — normalized from sub-minute snapshots (never raw timeframe='5m')
-SNAPSHOT_TABLE_1M: str = "snapshots_1m_normalized"
 
 
 # Tri-class empirical horizons persisted on snapshots as pred_{slug}_* (canonical 1m clock).

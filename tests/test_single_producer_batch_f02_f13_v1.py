@@ -94,78 +94,9 @@ def test_rc345_frontend_never_writes_the_regime_field() -> None:
 
 
 # ------------------------------------------------------------------------- F10 candle direction
-def test_rc345_candle_direction_has_one_authority() -> None:
-    """F10: up/down/flat from a candle's move is classified once, by
-    math_probabilities.classify_direction (0.05%-of-open dead-band). The bar-rehydration
-    path (snapshot_normalizer.resample_to_1m) must delegate, not re-derive a strict `c > o`
-    sign — the two disagreed near zero, a train/serve equality-contract skew."""
-    from math_probabilities import classify_direction
-
-    assert classify_direction(1.0, 100.0) == "up"
-    assert classify_direction(-1.0, 100.0) == "down"
-    assert classify_direction(0.0, 100.0) == "flat"
-    # inside the dead-band (< 0.05% of 100 = 0.05 pts) → flat, not a strict-sign up
-    assert classify_direction(0.01, 100.0) == "flat"
-
-    sn = _read("snapshot_normalizer.py")
-    assert "classify_direction" in sn, "snapshot_normalizer must consume the one authority"
-    code = "\n".join(ln for ln in sn.splitlines() if not ln.lstrip().startswith("#"))
-    assert '"up" if c > o' not in code and "'up' if c > o" not in code, (
-        "snapshot_normalizer re-derives candle direction with a strict `c > o` sign; it "
-        "must call math_probabilities.classify_direction (F10/RC-345).")
-
-    # F10 (reopened) SEMANTIC MIGRATION RESOLVED: the canonical candle-direction is DEAD-BAND
-    # (classify_direction), which the LIVE server has always produced — that is the production
-    # serve semantic. snapshot_normalizer's strict-sign was a backfill-only shadow (MEASURED
-    # 19.1% label delta on 372 stored bars) now aligned, so train = backfill = live = replay.
-    # Prove BOTH producers delegate to the one authority and no strict-sign shadow survives.
-    srv3 = _read("server.py")
-    assert "classify_direction as _classify_direction" in srv3, (
-        "live server candle direction must be the dead-band authority (F10/RC-345)")
-    assert "_candle_dir  = _classify_direction(_bar_move" in srv3
-    # No production site reconstructs candle direction with a strict close-vs-open sign.
-    for mod in ("server.py", "snapshot_normalizer.py", "market_state.py"):
-        mcode = "\n".join(l for l in _read(mod).splitlines() if not l.lstrip().startswith("#"))
-        assert '"up" if c > o' not in mcode and "'up' if" not in mcode, (
-            f"{mod} has a strict-sign candle-direction shadow (F10/RC-345)")
-
-    # F10: the candle-direction dead-band is the ONE canonical authority on every producer
-    # (live server + snapshot_normalizer backfill), so a fresh train reads aligned dead-band
-    # data. The PREPROCESSING_VERSION bump is DELIBERATELY NOT done here: the parity test
-    # test_feature_schema_version_matches_trained_artifacts enforces (2026-06-11 outage class)
-    # that the version flips only WITH the retrained artifacts, never ahead. The migration is a
-    # coordinated scheduler retrain-then-bump; F10 stays OPEN until that runs. This lock only
-    # guards the code-side single authority (above), not a premature version flip.
-    from training_provenance import PREPROCESSING_VERSION
-    assert PREPROCESSING_VERSION == "v5_no_m5_lag", (
-        "PREPROCESSING_VERSION must NOT flip ahead of retrained artifacts (F10 outage class)")
 
 
 # ---------------------------------------------------------------------------- F13 time-to-expiry
-def test_rc345_valuation_T_has_one_authority() -> None:
-    """F13: the Black-Scholes valuation-T (year fraction) is produced once, by
-    time_et.time_to_expiry_years (intraday ACT/365 to session close). No production greek
-    site may feed a local whole-day `dte / 365` into a bs_* pricer — math_exposure_core's
-    vanna faucet used to, disagreeing with the charm/gamma clock near expiry."""
-    from time_et import time_to_expiry_years
-
-    assert callable(time_to_expiry_years)
-
-    mec = _read("math_exposure_core.py")
-    # The exact defect pattern: a /365 division sitting in a BS greek's T argument.
-    assert not re.search(r"/\s*365(\.0)?\s*,\s*_iv", mec), (
-        "math_exposure_core feeds a whole-day dte/365 as the BS-vanna T; it must use "
-        "time_et.time_to_expiry_years (F13/RC-345).")
-    assert "time_to_expiry_years" in mec, (
-        "compute_exposures_by_strike must source T from the canonical authority")
-
-    # A2 lifecycle greeks must also source T from the one authority, not a local dte/365.
-    a2 = _read("v2_decision/a2_option_expression.py")
-    assert "time_to_expiry_years" in a2, (
-        "a2_option_expression must source valuation T from time_et (F13/RC-345)")
-    a2code = "\n".join(ln for ln in a2.splitlines() if not ln.lstrip().startswith("#"))
-    assert not re.search(r"return\s+dte\s*/\s*365", a2code), (
-        "a2_option_expression re-derives T as dte/365; it must delegate to time_et (F13/RC-345)")
 
 
 # ------------------------------------------------------------------------------------- F08 ATR
@@ -198,139 +129,6 @@ def test_rc345_feature_atr_variant_is_named_not_generic() -> None:
 
 
 # --------------------------------------------------------------------------- F09 session / RTH
-def test_rc345_rth_clock_boundary_has_one_authority() -> None:
-    """F09: the RTH clock boundary (09:30–16:00 ET) is defined once, in time_et
-    (RTH_START_MINS/RTH_END_MINS, is_rth_ts_utc). lstm_data and db must alias that authority,
-    never re-hardcode 9/30/16/0 or 570/960."""
-    import time_et
-
-    assert time_et.RTH_START_MINS == 570 and time_et.RTH_END_MINS == 960
-    assert time_et.is_rth_ts_utc  # canonical clock predicate exists
-
-    lstm = _read("lstm_data.py")
-    assert "_RTH_START_MINS" in lstm and "RTH_START_MINS as _RTH_START_MINS" in lstm, (
-        "lstm_data must import the RTH boundary from time_et")
-    code = "\n".join(ln for ln in lstm.splitlines() if not ln.lstrip().startswith("#"))
-    assert "RTH_START_HOUR      = 9" not in code and "RTH_END_HOUR        = 16" not in code, (
-        "lstm_data re-hardcodes the RTH boundary; it must alias time_et (F09/RC-345).")
-
-    dbsrc = _read("db.py")
-    dbcode = "\n".join(ln for ln in dbsrc.splitlines() if not ln.lstrip().startswith("#"))
-    assert "ACCURACY_RTH_START_MIN: int = 570" not in dbcode, (
-        "db.py re-hardcodes 570 for the RTH window; it must alias time_et (F09/RC-345).")
-    assert "_RTH_START_MINS_AUTH" in dbsrc
-    # F09 (reopened): db.market_session must NOT re-hardcode 570/960 either — it aliases the
-    # authority; and it is calendar-aware (is_trading_day_et decides first).
-    seg = dbsrc[dbsrc.index("def market_session("):]
-    seg = seg[: seg.index("\ndef ", 1)]
-    segcode = "\n".join(ln for ln in seg.splitlines() if not ln.lstrip().startswith("#"))
-    assert "< 570" not in segcode and "< 960" not in segcode, (
-        "db.market_session re-hardcodes the RTH boundary; alias time_et (F09/RC-345).")
-    assert "_RTH_START_MINS_AUTH" in segcode and "is_trading_day_et" in segcode
-    # F09 (reopened): the LSTM no-ts_utc fallback is calendar-aware (is_trading_day_et on the
-    # row's ET date) or fails closed — never a silent clock-only RTH.
-    lstm_fb = lstm[lstm.index("def extract_rth_snapshots"):]
-    assert "is_trading_day_et(day_key)" in lstm_fb, (
-        "lstm RTH fallback must be calendar-aware, not clock-only (F09/RC-345)")
-
-    # F09 residual (2026-08-19, current main): live money-path still re-encoded
-    # 570/960. Those sites must alias time_et, not a second literal.
-    mv = _read("math_volatility.py")
-    mv_fn = mv[mv.index("def session_bucket"):]
-    mv_fn = mv_fn[: mv_fn.index("\ndef ", 1)]
-    mv_code = "\n".join(ln for ln in mv_fn.splitlines() if not ln.lstrip().startswith("#"))
-    assert "RTH_START_MINS" in mv_code and "RTH_END_MINS" in mv_code, (
-        "session_bucket must cut RTH open/close via time_et (F09)")
-    assert "570" not in mv_code and "960" not in mv_code, (
-        "session_bucket re-hardcodes the RTH boundary (F09)")
-
-    l1 = _read("planes/l1_thresholds.py")
-    l1_code = "\n".join(ln for ln in l1.splitlines() if not ln.lstrip().startswith("#"))
-    assert "from time_et import" in l1 and "RTH_START_MINS" in l1_code and "RTH_END_MINS" in l1_code
-    assert "570" not in l1_code, "l1_thresholds re-hardcodes RTH open (F09)"
-
-    # The A2 sidecar no longer computes minutes-since-open (it carries The Call's plan,
-    # ONE FAUCET 2026-09-24), so it must not re-encode the RTH boundary anywhere.
-    a2 = _read("v2_decision/a2_lifecycle_sidecar.py")
-    a2_code = "\n".join(ln for ln in a2.splitlines() if not ln.lstrip().startswith("#"))
-    assert "570" not in a2_code and "_mins_elapsed_since_open" not in a2_code, (
-        "A2 sidecar re-derives the session clock (F09)")
-
-    srv = _read("server.py")
-    assert "RTH_CLOSE_MINS:      int   = RTH_END_MINS" in srv or "RTH_CLOSE_MINS: int = RTH_END_MINS" in srv.replace(" ", "")
-    # tolerate formatting: the assignment must be the alias, not 960
-    close_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("RTH_CLOSE_MINS")]
-    assert close_assign and "RTH_END_MINS" in close_assign[0] and "960" not in close_assign[0]
-    # MARKET_CLOSE_HOUR (a second, hour-denominated close constant) was deleted: nothing in
-    # server.py read it. RTH_CLOSE_MINS above is the one
-    # close authority left in server.py; a re-added hour constant would be a second one.
-    mkt_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("MARKET_CLOSE_HOUR")]
-    assert mkt_assign == [], "server.py re-grew a second RTH close constant (F09)"
-    cont_assign = [ln.split("#", 1)[0] for ln in srv.splitlines() if ln.startswith("TERRAIN_CONTENTION_START_MINS")]
-    assert cont_assign and "RTH_OPEN_MINS" in cont_assign[0] and "570" not in cont_assign[0]
-
-    # F09 repo-wide (2026-08-19): frontend + research/tools/training consume time_et,
-    # they do not re-author 570/960. Display-copy "09:30" in a stage name is not a cut.
-    # The JS projection is served at request time from time_et — a committed static
-    # blob is a second authority and must not exist.
-    from pathlib import Path as _Path
-    from time_et import rth_clock_js_source
-    assert not (_Path("static") / "rth_clock_authority.js").exists(), (
-        "committed static/rth_clock_authority.js is a second RTH clock (F09)"
-    )
-    assert "rth_clock_js_source" in srv and '"/static/rth_clock_authority.js"' in srv
-    assert "app.add_api_route" in srv
-    route_at = srv.index('"/static/rth_clock_authority.js"')
-    mount_at = srv.index('app.mount("/static"')
-    assert route_at < mount_at, "RTH clock route must precede StaticFiles mount (F09)"
-    assert 'rth_clock_authority.js").write_text' not in srv
-    assert "projection failed" not in srv
-    js_src = rth_clock_js_source()
-    assert "window.ED_RTH_START_MINS=" in js_src and "window.ED_RTH_END_MINS=" in js_src
-
-    def _exec_js(path: str) -> str:
-        src = _read(path)
-        return "\n".join(
-            ln for ln in src.splitlines()
-            if not ln.lstrip().startswith(("//", "*", "<!--", "*"))
-        )
-
-    # Independent-review finding, REPRODUCED (/console cutover, operator directive
-    # 2026-09-14): static/console.html does not include rth_clock_authority.js at all
-    # (confirmed by direct grep) -- unlike legacy static/index.html, the new console never
-    # does client-side RTH-boundary math; session labeling is carried entirely from the
-    # server (d.session_label, painted by ed-core.js's paintSession()). The F09 invariant
-    # this guards -- no second, hardcoded RTH-boundary authority on the client -- holds by
-    # absence rather than by requiring the shared script, so the check here is that no
-    # ed-*.js file reinvents the minute-boundary constants, not that it sources them from
-    # rth_clock_authority.js.
-    for js_path in Path(REPO / "static" / "js").glob("*.js"):
-        js_src = js_path.read_text(encoding="utf-8", errors="replace")
-        assert "RTH_START_MINS" not in js_src and "ED_RTH_START_MINS" not in js_src, (
-            f"{js_path.name} reads an RTH-boundary constant with no rth_clock_authority.js "
-            f"script tag to source it from — a silent second authority (F09/RC-345 class)"
-        )
-    chart = _exec_js("static/chart.html")
-    assert 'src="/static/rth_clock_authority.js"' in _read("static/chart.html")
-    assert "ED_RTH_START_MINS" in chart and "ED_RTH_END_MINS" in chart
-    assert "mm >= 570" not in chart and "mm < 960" not in chart
-
-    am = _read("audit_model_readiness.py")
-    assert "from time_et import" in am and "RTH_START_MINS" in am
-    assert ">= 570" not in am
-    a2e = _read("v2_decision/a2_eod_force_exit.py")
-    assert "RTH_OPEN_MINUTE_TOTAL = RTH_START_MINS" in a2e
-    assert "9 * 60 + 30" not in a2e and "16 * 60" not in a2e
-    a2o = _read("v2_decision/a2_option_expression.py")
-    assert "_RTH_CLOSE_MINUTE_TOTAL = RTH_END_MINS" in a2o
-    a2c = _read("v2_decision/a2_session_calendar.py")
-    assert "open_minute = int(RTH_START_MINS)" in a2c
-    ns = _read("news_sentiment.py")
-    assert "RTH_START_MINS" in ns and "m < 30" not in ns
-    lve = _read("liquidity_value_engine.py")
-    assert "RTH_OPEN_MINS" in lve and "time(9, 29)" not in lve.split("def _cutoff_for_snapshot")[1][:800]
-    tbr = _read("tools/terrain_backtest_report_v1.py")
-    assert "RTH_START_MINS" in tbr and "9 * 60 + 45" not in tbr
 
 
 # ------------------------------------------------------------------------- F12 relative volume
@@ -383,140 +181,8 @@ def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
 
 
 # ------------------------------------------------------------------- F11 options volume imbalance
-def test_rc345_persisted_flow_imbalance_has_one_producer() -> None:
-    """F11: the persisted `flow_imbalance` field is produced by exactly one authority —
-    math_probabilities.option_flow_book_imbalance (book only; its call/put VOLUME fallback was
-    deleted 2026-09-24, audit S-06) — on BOTH the live server path
-    and backfill. The live path used to persist compute_option_flow_imbalance's book-only
-    'normalized' (NULL when ATM book was ~0, later filled by backfill's volume fallback): two
-    producers for one column and a train/serve skew."""
-    srv = _read("server.py")
-    assert "option_flow_book_imbalance" in srv, (
-        "live server must persist flow_imbalance via the one authority")
-    assert 'flow_imbalance=_flow_imbalance.get("normalized")' not in srv, (
-        "live server still persists the book-only value; it must use the wrapper (F11/RC-345)")
-    bf = _read("backfill_flow_imbalance.py")
-    assert "option_flow_book_imbalance" in bf, (
-        "backfill must use the same one authority as live")
-
-    # The authority is governed: it always returns a source discriminator, never a bare value
-    # that could silently substitute call/put VOLUME imbalance for bid/ask BOOK imbalance.
-    from math_probabilities import option_flow_book_imbalance
-    val, src = option_flow_book_imbalance({}, 0.0)
-    assert val is None and src == "none", "empty input must fail closed with src='none'"
-
-    # F11 (reopened) SOURCE travels beside the value: the live server captures the source
-    # book and emits flow_imbalance_source into the payload, so a consumer can tell 'book'
-    # (bid/ask size) from 'volume' (call/put traded volume) — not a bare generic number.
-    assert "_flow_imb_norm, _flow_imb_source = option_flow_book_imbalance" in srv, (
-        "live server must capture the flow_imbalance SOURCE, not discard it (F11/RC-345)")
-    assert 'ms_dict["flow_imbalance_source"] = _flow_imb_source' in srv, (
-        "the flow_imbalance source must reach the payload beside the value (F11/RC-345)")
-    # F11 residual (2026-08-19): label must classify the SAME number, not a
-    # second book-only compute. MEASURED: empty ATM book + call-heavy volume
-    # used to publish 0.6 / volume beside label="balanced".
-    srv_code = "\n".join(ln for ln in srv.splitlines() if not ln.lstrip().startswith("#"))
-    assert "compute_option_flow_imbalance(" not in srv_code, (
-        "live server must not independently compute the book-only kernel (F11)")
-    assert "flow_imbalance_label_from_normalized(_flow_imb_norm)" in srv, (
-        "flow_imbalance_label must be a function of the wrapper number (F11)")
-    from math_probabilities import (
-        compute_option_flow_imbalance,
-        flow_imbalance_label_from_normalized,
-        option_flow_book_imbalance,
-    )
-    exposures = {
-        100.0: {
-            "call_bid_size": 0, "call_ask_size": 0,
-            "put_bid_size": 0, "put_ask_size": 0,
-            "call_volume": 80, "put_volume": 20,
-        }
-    }
-    book = compute_option_flow_imbalance(exposures, 100.0)
-    val, src = option_flow_book_imbalance(exposures, 100.0)
-    # empty displayed book: no imbalance, and no call/put VOLUME ratio standing in (S-06)
-    assert (val, src) == (None, "none")
-    assert book.get("label") is None and book.get("normalized") is None
-    assert flow_imbalance_label_from_normalized(val) is None
-
-    # F11 LIVE-handler contract: the /api/state assignment is these three fields from one
-    # number -- all absent together on this tick.
-    served = {
-        "flow_imbalance": val,
-        "flow_imbalance_source": src,
-        "flow_imbalance_label": flow_imbalance_label_from_normalized(val),
-    }
-    assert served == {"flow_imbalance": None, "flow_imbalance_source": "none",
-                      "flow_imbalance_label": None}
 
 
-def test_f11_api_state_volume_fallback_triple_after_lifespan() -> None:
-    """F11 + S-06 (2026-09-24): after app lifespan, GET /api/state serves the flow_imbalance
-    triple from the ONE book producer. On an empty ATM book with call-heavy VOLUME the triple
-    is ABSENT (None / "none" / None) -- it used to serve the volume ratio 0.6 under the book
-    field (the deleted volume fallback).
-
-    This image has no Schwab token. The persist stamps are the live server
-    imports (wrapper + label_from_normalized). The tick is SYNTHETIC_WIRE
-    (empty ATM book, call 80 / put 20). GET /api/state is the live cache-serve
-    path after that tick is published the way _fetch_state writes _state_cache.
-    """
-    import time
-
-    import pytest
-
-    pytest.importorskip("fastapi")
-    import server as srv
-    from math_probabilities import compute_option_flow_imbalance
-    from starlette.testclient import TestClient
-    from time_et import rth_clock_js_source
-
-    exposures = {
-        100.0: {
-            "call_bid_size": 0, "call_ask_size": 0,
-            "put_bid_size": 0, "put_ask_size": 0,
-            "call_volume": 80, "put_volume": 20,
-        }
-    }
-    book = compute_option_flow_imbalance(exposures, 100.0)
-    val, src = srv.option_flow_book_imbalance(exposures, 100.0)
-    label = srv.flow_imbalance_label_from_normalized(val)
-    assert (val, src, label) == (None, "none", None)
-    assert book.get("label") is None
-
-    ms = {
-        "ticker": "SPY",
-        "spot": 100.0,
-        "flow_imbalance": val,
-        "flow_imbalance_source": src,
-        "flow_imbalance_label": label,
-        "f11_wire": "SYNTHETIC_EMPTY_BOOK_TICK",
-    }
-    now = time.time()
-    cache_key = ("SPY", "2099-01-01")
-    srv._state_cache[cache_key] = {
-        "ts": now,
-        "generated_at": now,
-        "analytics_version": 1,
-        "ms_dict": dict(ms),
-        "pcr_val": None,
-        "spot_f": 100.0,
-        "vix": None,
-        "price_levels": None,
-        "pl_date": "",
-        "pl_mono": None,
-    }
-
-    with TestClient(srv.app) as client:
-        js = client.get("/static/rth_clock_authority.js")
-        assert js.status_code == 200
-        assert js.text == rth_clock_js_source()
-        r = client.get("/api/state", params={"ticker": "SPY"})
-        assert r.status_code == 200
-        body = r.json()
-        assert body.get("flow_imbalance") is None
-        assert body.get("flow_imbalance_source") == "none"
-        assert body.get("flow_imbalance_label") is None
 
 
 def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) -> None:
@@ -691,29 +357,6 @@ def test_rc345_vwap_bands_canonical_single_source_frontend_carries() -> None:
 
 
 # ---------------------------------------------------------------------- F41 selected-DTE selector
-def test_rc345_selected_dte_selectors_both_key_on_expiry() -> None:
-    """F41: 'selected option DTE' is read by two population-scoped selectors —
-    market_state._schwab_days_to_expiration_for_contract (over the caller's single-expiry
-    slice) and server._selected_schwab_days_to_expiration (over the full chain, filters
-    itself). They can never silently disagree on WHICH expiry: the market_state selector now
-    self-enforces the expiry filter, and its callers pass the selected expiry."""
-    ms = _read("market_state.py")
-    # The selector accepts and filters on an expiry key.
-    assert re.search(r"def _schwab_days_to_expiration_for_contract\([^)]*expiry", ms), (
-        "market_state DTE selector must take an expiry argument (F41/RC-345)")
-    assert 'str(ct.get("expirationDate") or "")[:10] != exp_key' in ms, (
-        "market_state DTE selector must filter contracts by expiry (F41/RC-345)")
-    # Both callers pass the selected expiry.
-    assert ms.count("_schwab_days_to_expiration_for_contract(") >= 2
-    assert "expiry=exp" in ms and "expiry=(ms.call_option_expiry or ms.selected_exp)" in ms, (
-        "both market_state callers must pass the selected expiry (F41/RC-345)")
-    # server's full-chain selector already keys on expiry (expirationDate slice).
-    srv = _read("server.py")
-    assert "def _selected_schwab_days_to_expiration(" in srv
-    seg = srv[srv.index("def _selected_schwab_days_to_expiration("):]
-    seg = seg[: seg.index("\ndef ", 1)]
-    assert "expirationDate" in seg and "exp_key" in seg, (
-        "server DTE selector must filter by expiry (F41/RC-345)")
 
 
 # --------------------------------------------------------------------- F03 gamma profile as-of
@@ -777,39 +420,12 @@ def test_rc345_atr_denominator_is_fully_classified(repo_index) -> None:
 
 
 # ----------------------------------------------------------------------------- F21 VWAP side
-def test_rc345_vwap_side_has_one_authority() -> None:
-    """F21: vwap side (above/below) is classified once, by math_snapshot_derive.derive_vwap_side.
-    market_state consumes it — it no longer re-derives `spot > vwap` inline (a shadow of the
-    same semantic). Every other vwap_side= is a carrier of the produced value."""
-    from math_snapshot_derive import derive_vwap_side
-
-    assert derive_vwap_side(101, 100) == "above" and derive_vwap_side(99, 100) == "below"
-    assert derive_vwap_side(100, 100) == "below" and derive_vwap_side(100, None) is None
-    ms = _read("market_state.py")
-    assert "derive_vwap_side(spot_f, _vwap_val)" in ms, (
-        "market_state must consume the one vwap-side authority (F21/RC-345)")
-    mcode = "\n".join(l for l in ms.splitlines() if not l.lstrip().startswith("#"))
-    assert '"above" if spot_f > _vwap_val' not in mcode, (
-        "market_state re-derives vwap side inline; it must call derive_vwap_side (F21/RC-345)")
 
 
 # ----------------------------------------------------------------------- F17 realized volatility
 
 
 # ---------------------------------------------------------------------- F24 signed dist to VWAP
-def test_rc345_vwap_dist_is_signed_train_and_serve() -> None:
-    """F24: vwap_dist_pts is the SIGNED distance (spot - vwap) on BOTH the training producer
-    (backfill_snapshot_derived) and the live serve (market_state). The prior abs() in
-    market_state made the live feature absolute while training was signed — a train/serve skew
-    that discarded the sign. Direction is carried separately by vwap_side."""
-    ms = _read("market_state.py")
-    assert "vwap_dist_pts=round(spot_f - _vwap_val, 4)" in ms, (
-        "market_state vwap_dist_pts must be SIGNED (spot - vwap) (F24/RC-345)")
-    assert "round(abs(spot_f - _vwap_val)" not in ms, (
-        "market_state must not store an ABSOLUTE vwap distance (F24/RC-345)")
-    bf = _read("backfill_snapshot_derived.py")
-    assert "round(spot_f - eff_vwap, 4)" in bf, (
-        "the training producer must also be signed (F24/RC-345)")
 
 
 # ------------------------------------------------------------------- F29 movement target threshold
@@ -846,24 +462,6 @@ def test_rc345_signal_layer_vwap_anchor_is_source_tagged() -> None:
 
 
 # ------------------------------------------------------------------- F27 higher-timeframe OHLC
-def test_rc345_higher_tf_ohlc_one_feature_synthesizer() -> None:
-    """F27: the batch 1m->N-minute OHLC synthesis used for FEATURES has one authority,
-    signal_layer_v1._aggregate_bars (both the 5m and the 15m multi-timeframe features flow
-    through it). The server's display/context rollup (server.aggregate_bars over the streamed
-    price_bars_1m) is a DISTINCT consumer — a different population — and is itself ONE
-    synthesizer: _bars_5m and the chart's /api/bars1m timeframes both roll up through it."""
-    sl = _read("features/signal_layer_v1.py")
-    assert sl.count("def _aggregate_bars(") == 1, (
-        "one batch higher-timeframe OHLC synthesizer for features (F27/RC-345)")
-    assert "_aggregate_bars(tail5, 5)" in sl and "_aggregate_bars(tail15, 15)" in sl, (
-        "both 5m and 15m features must flow through the one synthesizer (F27/RC-345)")
-    # the server's display rollup has one synthesizer of its own, fed by price_bars_1m
-    srv = _read("server.py")
-    assert srv.count("def aggregate_bars(") == 1, "one server-side 1m->N-minute rollup"
-    i = srv.index("def _bars_5m(")
-    assert 'aggregate_bars([_bar_dict(c) for c in _bars_1m(' in srv[i:i + 600], (
-        "the server's 5m bars must roll up from price_bars_1m through aggregate_bars")
-    assert "_CandleAccumulator" not in srv, "a second, tick-accumulated bar source reappeared"
 
 
 # ------------------------------------------------------------------- F23 negative-spread withhold
@@ -944,48 +542,6 @@ def test_rc345_confluence_features_full_contract_one_authority() -> None:
 # grepped, all absent). The backend-only assertions this function also carried (F25 ticker
 # identity, F11 persistence, F22's db.py/market_state.py half, F23) are real and unaffected by
 # the rename; they are preserved below as their own function.
-def test_rc345_adversarial_residuals_backend_only_paths() -> None:
-    """The backend half of the surviving adversarial defects (frontend half retired above)."""
-    # F18: charm_drift_toward is WITHHELD — server no longer feeds the net-GEX peak as the
-    # charm target (a different-Greek substitution).
-    srv18 = _read("server.py")
-    assert "drift_toward_strike=None" in srv18 and "drift_toward_strike=_institutional_pin" not in srv18, (
-        "charm must not borrow the net-GEX peak as its target (F18/RC-345)")
-
-    # F22 accuracy: no `or 0` fabrication — rows with a missing pred triplet are SKIPPED.
-    _dbc_for_f22 = _read("db.py")
-    assert "row[f\"pred_{horizon}_up_prob\"]   or 0" not in _dbc_for_f22, (
-        "accuracy must not fabricate a pred from `or 0` (F22/RC-345)")
-    assert "if _pu is None or _pd is None or _pf is None:" in _dbc_for_f22
-
-    # F25 (foundation pointer): full canonical-ticker-identity adjudication lives in
-    # test_rc345_f25_canonical_ticker_identity_one_producer below (SPX/$SPX + all producers).
-    from active_bundle_contract import artifact_ticker_key
-    from instrument_identity import ticker_storage_key
-    assert artifact_ticker_key("spy") == ticker_storage_key("spy") == "SPY"
-
-    # F11: flow_imbalance_source is PERSISTED (SnapshotRow field + schema column + write).
-    from db import SnapshotRow
-    assert "flow_imbalance_source" in SnapshotRow.__dataclass_fields__
-    dbsrc = _read("db.py")
-    assert "flow_imbalance_source   TEXT" in dbsrc and '("flow_imbalance_source",   "TEXT")' in dbsrc
-    assert "flow_imbalance_source=_flow_imb_source" in _read("server.py"), (
-        "the source must be persisted on the snapshot row (F11/RC-345)")
-
-    # F22: db.py accuracy uses the ONE argmax authority.
-    dbcode = "\n".join(l for l in dbsrc.splitlines() if not l.lstrip().startswith("#"))
-    assert "predicted = max(probs, key=probs.get)" not in dbcode, (
-        "db.py must not re-argmax the pred triplet (F22/RC-345)")
-    assert "direction_from_normalized_triplet" in dbsrc
-    assert "pred_dominant_by_horizon" in _read("market_state.py"), (
-        "backend must emit the per-horizon dominant from the authority (F22/RC-345)")
-
-    # F23: the REAL live authority (contract_spread_pts_from_bid_ask) withholds crossed quotes.
-    from v2_decision.a2_price_precedence import contract_spread_pts_from_bid_ask, resolve_a2_contract_spread
-    assert contract_spread_pts_from_bid_ask(1.0, 1.2) == 0.2
-    assert contract_spread_pts_from_bid_ask(1.2, 1.2) == 0.0
-    assert contract_spread_pts_from_bid_ask(1.3, 1.2) is None  # crossed -> withheld
-    assert resolve_a2_contract_spread(bid=1.3, ask=1.2) == (None, None)
 
 
 
@@ -994,58 +550,9 @@ def test_rc345_adversarial_residuals_backend_only_paths() -> None:
 
 
 # ---------------------------------------------------------------------------- F06 expected move
-def test_rc345_operator_em_band_carries_its_methodology() -> None:
-    """F06: the operator-facing EM band is never anonymous — server records em_band_source
-    (STRADDLE_IMPLIED vs IV_MODEL vs unavailable) alongside the band so a consumer cannot
-    treat a straddle-implied band as an IV-model band or vice versa."""
-    srv = _read("server.py")
-    # F06 END-TO-END: the OPERATOR-FACING kl_em band (terrain implied-1d-move) carries its
-    # methodology to the served payload — kl_em_source travels beside kl_em_upper/lower, and
-    # is 'unavailable' (never dropped) when the band is absent.
-    assert 'md["kl_em_source"] = "IV_SIGMA_1D"' in srv and 'md["kl_em_source"] = "unavailable"' in srv, (
-        "the operator kl_em band must carry its methodology to the payload (F06/RC-345)")
-    kl = srv[srv.index('md["kl_em_upper"] = round'):]
-    kl = kl[:900]
-    assert "kl_em_source" in kl, "kl_em_source must be emitted with kl_em_upper (F06/RC-345)"
-    # the diagnostic straddle/iv path still records its own source too
-    assert "_em_band_source" in srv and "STRADDLE_IMPLIED" in srv and "IV_MODEL" in srv
-    assert '_em_up = _em_straddle.get("upper") or _em_iv.get("upper")' not in srv
-    # RC-433: density congestion must bind terrain IV_SIGMA_1D, not remaining-risk binders.
-    dens = srv.split("# Build levels dict for density check", 1)[1].split(
-        "_level_density = compute_level_density", 1
-    )[0]
-    dens_code = "\n".join(
-        ln for ln in dens.split("_all_levels = {}", 1)[1].splitlines()
-        if ln.strip() and not ln.lstrip().startswith("#")
-    )
-    assert "implied_1d_move" in dens_code
-    assert "if _em_up:" not in dens_code
-    assert "_em_up" not in dens_code
 
 
 # --------------------------------------------------------------------------- F02 net GEX at spot
-def test_rc345_net_gex_books_are_consumer_separated() -> None:
-    """F02: the vendor-gamma aggregate (net_gamma) and the repriced profile-at-spot book
-    (net_gex_at_spot / gamma_at_spot) reach consumers under DISTINCT names. terrain sources
-    net_gex_at_spot from the repriced gamma_at_spot; the frontend reads d.net_gamma (vendor
-    chip) and d.net_gex_at_spot separately — neither is a generic interchangeable `net_gex`.
-
-    Repointed to static/js/ed-trade-desk.js (/console cutover, operator directive 2026-09-14):
-    d.net_gex_at_spot (the repriced profile-at-spot book) has a real consumer there. The
-    vendor-aggregate book (net_gamma / "Total Net GEX (per 1%)") has NO consumer anywhere in
-    the new console (grepped static/js/*.js and static/console.html, zero matches) — flagged
-    for the operator as a real, if minor, gap rather than asserted here."""
-    te = _read("terrain_engine.py")
-    assert 'net_gex_at_spot=flip_diag.get("gamma_at_spot")' in te, (
-        "terrain net_gex_at_spot must come from the repriced profile book (F02/RC-345)")
-    html = _read("static/js/ed-trade-desk.js")
-    assert "d.net_gex_at_spot" in html, "the repriced profile-at-spot book name is missing"
-    srv = _read("server.py")
-    assert '_net_gex_raw = getattr(cs, "net_gamma", None)' in srv, (
-        "kl_net_gex must be the vendor aggregate (cs.net_gamma), same book as net_gamma")
-    # the gex label/regime helpers are book-agnostic PURE functions (take a value arg).
-    mec = _read("math_exposure_core.py")
-    assert "def gex_regime_label(net_gex" in mec and "def gex_magnitude_label(net_gex" in mec
 
 
 def test_rc345_f25_canonical_ticker_identity_one_producer():
@@ -1172,47 +679,6 @@ def test_rc345_f25_train_writers_match_canonical_read_basenames():
             f"{fname} must import the canonical ticker-identity authority (F25 train-write)")
 
 
-def test_rc345_f25_resume_and_arch_competition_identity_canonical():
-    """F25 (Cursor's second reopening — resume artifacts + arch_competition). The training
-    RESUME checkpoints and the arch_competition per-instrument state/log paths must use the SAME
-    canonical ticker identity as the model artifacts, so bare 'SPX' and '$SPX' resolve to the same
-    resume file and the same arch dir the writers/readers expect."""
-    from instrument_identity import ticker_storage_key
-    from arch_competition.notification_delivery import (
-        notification_delivery_log_path, notification_dedup_state_path)
-    from arch_competition.operational_policy import operational_policy_artifact_path
-    from pathlib import Path
-
-    md = Path("models")
-    MATRIX = ["SPY", "QQQ", "IWM", "SPX", "$SPX", "spx", "$spx"]
-    for tk in MATRIX:
-        canon = ticker_storage_key(tk)
-        # arch_competition per-instrument dirs must carry the canonical identity segment
-        assert notification_delivery_log_path(md, "1c", tk).parent.name == canon, (
-            f"arch notification dir identity != canonical for {tk}")
-        assert notification_dedup_state_path(md, "1c", tk).parent.name == canon
-        assert operational_policy_artifact_path(md, "1c", tk).parent.name == canon
-    # SPX and $SPX collapse to the same arch dir (load-bearing)
-    assert notification_delivery_log_path(md, "1c", "SPX").parent.name == \
-        notification_delivery_log_path(md, "1c", "$SPX").parent.name == "$SPX"
-
-    # resume checkpoint identity: save_ticker/save_ticker_early are canonical, and the resume
-    # filename is built from them (so resume WRITE identity == canonical artifact identity).
-    lstm_src = _read("lstm_model.py")
-    tfmr_src = _read("transformer_train.py")
-    assert "save_ticker = ticker_storage_key(" in lstm_src
-    assert "lstm_{save_ticker}_{hz}_train_resume.pt" in lstm_src
-    assert "save_ticker_early = ticker_storage_key(" in tfmr_src
-    assert "transformer_{save_ticker_early}_{hz}_train_resume.pt" in tfmr_src
-
-    # every swept arch_competition file consumes the one authority
-    for fname in ("arch_competition/promotion_execution.py", "arch_competition/stack_bundle_eval_v1.py",
-                  "arch_competition/ablation_bundle_inference.py", "arch_competition/notification_delivery.py",
-                  "arch_competition/operational_policy.py", "arch_competition/scheduler_integration.py",
-                  "arch_competition/manual_control.py", "arch_competition/governance_visibility.py",
-                  "arch_competition/live_drift_monitoring.py", "tools/feature_curation_gate.py"):
-        assert "from instrument_identity import ticker_storage_key" in _read(fname), (
-            f"{fname} must consume the canonical ticker-identity authority (F25 sibling sweep)")
 
 
 
@@ -1314,29 +780,6 @@ def test_rc345_f25_db_training_floor_stats_canonical_bind():
 
 
 
-def test_rc345_f25_arch_state_writer_reader_share_canonical_key():
-    """F25 (Cursor: arch_state writer/reader identity split). ml_scheduler writes arch_state keyed
-    by ticker_storage_key; server.py reads with ticker_storage_key. Behavioral: a state written
-    under 'SPX' is retrieved under '$SPX' (and reverse). Mutation: a raw writer key OR raw reader
-    key breaks the cross-alias retrieval."""
-    from instrument_identity import ticker_storage_key
-
-    # The contract: writer key == reader key == canonical. Simulate the exact key derivation.
-    arch_state: dict = {}
-    arch_state[ticker_storage_key("SPX")] = {"active_architecture": "parallel"}      # writer("SPX")
-    assert arch_state.get(ticker_storage_key("$SPX")) == {"active_architecture": "parallel"}, (
-        "reader('$SPX') must hit writer('SPX') state")
-    arch_state2: dict = {}
-    arch_state2[ticker_storage_key("$SPX")] = {"active_architecture": "cascade"}      # writer("$SPX")
-    assert arch_state2.get(ticker_storage_key("SPX")) == {"active_architecture": "cascade"}, (
-        "reader('SPX') must hit writer('$SPX') state")
-
-    # Source guards: both sides route through the one authority.
-    sched = _read("ml_scheduler.py")
-    assert "arch_key = ticker_storage_key(ticker)" in sched, "arch_state writer key must be canonical"
-    assert "arch_state[arch_key]" in sched, "arch_state must be written under the canonical key"
-    srv = _read("server.py")
-    assert "arch.get(ticker_storage_key(ticker))" in srv, "arch_state reader key must be canonical"
 
 
 

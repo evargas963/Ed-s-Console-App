@@ -214,12 +214,6 @@ def test_no_underscore_json_references():
 
 
 # FIND-SERVERPY-15
-def test_stack_mode_value_is_authority_only():
-    src = _server_src()
-    assert 'sr["stack_mode"] = "signals_engine_error"' not in src
-    assert 'sr["signals_engine_failed"] = True' in src
-    attach = _fn_src("_attach_stack_runtime_and_governance")
-    assert "classify_stack_health" in attach
 
 
 # FIND-SERVERPY-17

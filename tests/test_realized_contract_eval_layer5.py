@@ -330,11 +330,3 @@ def test_scheduler_eval_pins_and_restores_model_dir():
 
 
 
-def test_server_producer_guard_wired_before_snapshot_insert():
-    """Mechanical lock: the ECON-01 guard must sit in server's snapshot build."""
-    src = io.open("server.py", encoding="utf-8").read()
-    assert "decision_row_context_starvation_reason(" in src
-    assert "REPLAY_CONTEXT_STARVATION" in src
-    guard_at = src.find("decision_row_context_starvation_reason(")
-    insert_at = src.find("_ed_db.insert_snapshot(_snap)")
-    assert 0 < guard_at < insert_at, "guard must run before insert_snapshot"

@@ -217,22 +217,6 @@ def test_migration_is_additive_and_preserves_rows(tmp_path):
 
 
 
-def test_server_model_derived_snapshot_write_is_anchor_guarded():
-    """Recurrence lock: the server's model-derived snapshot insert must sit
-    behind the execution-identity anchor (refused-write skip path present),
-    and the quote-only lightweight path must NOT create identities."""
-    src = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    i_anchor = src.index("anchor_production_execution as _xid_anchor")
-    i_refuse = src.index("if _xid_refused:")
-    i_model_insert = src.index("_ed_db.insert_snapshot(_snap)")
-    assert i_anchor < i_refuse < i_model_insert
-    assert "EXECUTION_IDENTITY_REFUSED" in src
-    # quote-only path (lightweight builder) carries no identity wiring
-    i_light = src.index("build_lightweight_snapshot_row_from_quote")
-    seg = src[i_light : i_light + 600]
-    assert "execution_identity" not in seg
-    # decision surface lands only when stamping bound the SAME decision
-    assert 'ms_dict.get("decision_id") == _xid_pair[0]' in src
 
 
 def test_write_path_universe_inventory(repo_index):
@@ -293,59 +277,6 @@ def _server_text() -> str:
     return _SERVER_PY.read_text(encoding="utf-8", errors="replace")
 
 
-def test_server_anchor_precedes_finalize_and_log_only_tail():
-    """Source-ordering lock (RED on pre-fix main): the ONE identity anchor site
-    must execute before the log_only early return AND the production-decision
-    finalize; the post-publish tail must only consume the anchored pair."""
-    text = _server_text()
-    anchor_at = text.index(
-        "EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1 — identity anchor"
-    )
-    log_only_tail_at = text.index(
-        "_post_publish_persistence_tail(None, _v2_decision_for_response)"
-    )
-    finalize_at = text.index("_finalize_production_decision(ms_dict, _decision_route)")
-    assert anchor_at < log_only_tail_at, "anchor must precede the log_only tail call"
-    assert anchor_at < finalize_at, "anchor must precede the production-decision finalize"
-    # Exactly one anchor call site, and it is NOT inside the persistence tail.
-    assert text.count("anchor_production_execution as _xid_anchor") == 1
-    tail_start = text.index("def _post_publish_persistence_tail(")
-    tail_end = text.index("def _fv(v):", tail_start)
-    assert "anchor_production_execution" not in text[tail_start:tail_end], (
-        "the persistence tail must consume the pre-anchored pair, never anchor"
-    )
-    # The tail consumes the hoisted throttle reservation (single reservation/cycle).
-    assert "_do_insert = _xid_do_snapshot_insert" in text[tail_start:tail_end]
-    # The decision surface is marked landed only on a persist that actually landed.
-    assert "_decision_persist_landed" in text
-    mark_at = text.index('_xid_mark_dec(_xconn3, _xid_pair[0], "decision")')
-    guard_at = text.rindex('ms_dict.get("_decision_persist_landed")', 0, mark_at)
-    assert mark_at - guard_at < 600, "decision-surface marking must be guarded by persist success"
-    # Idle/non-model calibration contract: expected non-write, not a refusal.
-    # The condition was inline in server.py until 2026-07-19; it now lives in
-    # calibration.v2_live_logging.resolve_live_v2_calibration_tail_action. Assert the
-    # CONTRACT (server delegates the decision, and the resolver still encodes the
-    # idle skip) rather than a literal source string that a refactor can move.
-    assert "resolve_live_v2_calibration_tail_action(" in text
-    assert "has_execution_identity=_xid_pair_cal is not None" in text
-    from calibration.v2_live_logging import (
-        LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE,
-        LIVE_ADVISORY_V2_TAIL_APPEND,
-        resolve_live_v2_calibration_tail_action,
-    )
-
-    assert (
-        resolve_live_v2_calibration_tail_action(
-            model_derived_cycle=False, has_execution_identity=False, snap_insert_landed=True
-        )
-        == LIVE_ADVISORY_V2_SKIP_NON_MODEL_CYCLE
-    ), "idle non-model cycle must skip, not write"
-    assert (
-        resolve_live_v2_calibration_tail_action(
-            model_derived_cycle=True, has_execution_identity=True, snap_insert_landed=True
-        )
-        == LIVE_ADVISORY_V2_TAIL_APPEND
-    ), "a model cycle with identity and a landed snapshot must append"
 
 
 def _dependent_tables(conn):

@@ -17,7 +17,6 @@ Policy (encoded here and in db.EdDB / stream_spine):
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 from typing import Literal
 
@@ -117,29 +116,3 @@ def eddb_allow_noncanonical_path(explicit: bool | None) -> bool:
     return env_allows_noncanonical_db()
 
 
-def cli_require_canonical_or_ack(
-    db_path: Path,
-    *,
-    allow_noncanonical: bool,
-    tool_name: str,
-    write_capable: bool,
-) -> None:
-    """
-    Exit with code 2 if db_path is not canonical and user did not pass --allow-noncanonical-db.
-    write_capable is for messaging only (both validators and writers use the same gate).
-    """
-    if is_canonical_db_path(db_path):
-        return
-    if allow_noncanonical:
-        return
-    cat = classify_db_path(db_path)
-    kind = "write" if write_capable else "read"
-    print(
-        f"{tool_name}: refusing {kind} on non-canonical DB:\n"
-        f"  path: {db_path.resolve()}\n"
-        f"  classified: {cat}\n"
-        f"  canonical: {canonical_console_db_path()}\n"
-        "Pass --allow-noncanonical-db to proceed (explicit opt-in).",
-        file=sys.stderr,
-    )
-    raise SystemExit(2)

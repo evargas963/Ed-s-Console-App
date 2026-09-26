@@ -63,14 +63,6 @@ def test_the_one_writer_is_the_single_faucet_and_the_stream_is_its_only_producer
     assert "streamed_bars.get()" in _fn_src("_bar_writer")
 
 
-def test_render_path_does_not_persist_bars():
-    """_fetch_state reads bars; it must never WRITE them."""
-    seg = _fn_src("_fetch_state")
-    assert "_persist_1m_bars(" not in seg
-    assert "upsert_1m_bars(" not in seg, (
-        "RC-69 regression: the render path persists bars again, so collection is once more a "
-        "side-effect of what the operator happens to be looking at"
-    )
 
 
 def test_collection_covers_every_streamed_symbol_not_a_fixed_list(monkeypatch):

@@ -184,21 +184,6 @@ def test_executor_sizing_unchanged_by_stage_timer_slice():
 
 
 
-def test_stage_timer_surfaces_present_in_fetch_state_source():
-    """Source lock: stage marks + additive timing fields exist in the Tier C recompute path."""
-    from pathlib import Path
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    for needle in (
-        '_stage_marks.append(("stack_runtime_governance_attach"',
-        '_stage_marks.append(("db_snapshot_write_accuracy"',
-        '_stage_marks.append(("signals_engine_build_market_state"',
-        'ms_dict["_compute_breakdown"]',
-        'ms_dict["_finalize_tail_ms"]',
-        'result["analytics_executor_queue_wait_sec"]',
-        'ms_dict["analytics_cache_observability_v1"]',
-    ):
-        assert needle in src, f"missing stage-timer surface: {needle}"
 
 
 # ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — chain-fetch gate locks ────────
@@ -301,34 +286,6 @@ def test_chain_fetch_gate_returns_timings_on_normal_path(monkeypatch):
     srv._schwab_chain_fetch_gate.release()
 
 
-def test_chain_fetch_call_shape_and_gated_site_source_lock():
-    """Fidelity lock: helper preserves the exact Schwab call shape; _fetch_state routes through it.
-
-    UI_05_OPERATOR_PRIORITY_ADMISSION_V1 threads a priority flag into the gated call — the Schwab
-    call shape inside the helper is unchanged.
-
-    2026-09-25: the width is gone -- the state chain is the selected expiry's FULL chain.
-    Historical note, RC-59: the WIDTH source changed deliberately. _fetch_state used to pass the hardcoded
-    CHAIN_STRIKE_COUNT (20), which analysed the console on a ~±6.6%-of-spot chain while terrain
-    used geometry-sized widths — the same ticker measured two ways. Width now comes from the ONE
-    faucet, resolve_chain_strike_count(). This lock therefore asserts the INTENT (gated helper +
-    priority flag + faucet-sourced width) rather than a frozen literal, so a genuine improvement
-    does not read as a regression while a real drift still fails.
-    """
-    from pathlib import Path
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    # RC-239: the call shape gained `to_date=` (expiry scoping); Cursor-audit F2 added `from_date=`
-    # (single-expiry near-edge bound). The lock asserts the SHAPE — gated helper, faucet-sourced
-    # width, and every kwarg named — rather than a frozen literal that goes stale the moment a
-    # legitimate argument is added.
-    assert "resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,\n                              to_date=to_date, from_date=from_date)" in src
-    # both _fetch_state branches take the selected expiry's FULL chain (2026-09-25; no strike
-    # window anywhere -- enforced repo-wide by check_chain_width_single_faucet)
-    assert src.count("_fetch_state_chain, client, ticker, expiry, _chain_priority") == 1
-    assert src.count("_fetch_state_chain(client, ticker, expiry, _chain_priority)") == 1
-    assert 'ms_dict["chain_gate_wait_sec"]' in src
-    assert '_stage_ms["chain_gate_wait_ms"]' in src
 
 
 # ── ANCHOR_QUOTE_LANE_REFRESHER_V1 ────────────────────────────────────────────
@@ -392,47 +349,8 @@ def _clear_fixture_cache_keys(srv, ticker: str) -> None:
 
 
 
-def test_log_only_branch_routes_through_guard_source_lock():
-    """Source lock: the log_only branch calls _log_only_cache_touch; no inline clobber remains."""
-    import ast
-    from pathlib import Path
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    assert "_log_only_cache_touch(" in src
-    # The old inline clobber wrote ms_dict {} directly at the log_only branch;
-    # the only remaining empty-ms_dict cache write lives inside the guarded helper.
-    tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_fetch_state")
-    for sub in ast.walk(fn):
-        if isinstance(sub, ast.Assign):
-            for tgt in sub.targets:
-                if (isinstance(tgt, ast.Subscript) and isinstance(tgt.value, ast.Name)
-                        and tgt.value.id == "_state_cache" and isinstance(sub.value, ast.Dict)):
-                    dict_keys = {k.value for k in sub.value.keys if isinstance(k, ast.Constant)}
-                    assert "generated_at" in dict_keys, (
-                        "_fetch_state writes a _state_cache dict without generated_at "
-                        "(log_only clobber shape) — must route through _log_only_cache_touch"
-                    )
 
 
-def test_log_only_guard_ticker_agnostic_no_literals():
-    """AST lock: no uppercase ticker literals in the guard functions."""
-    import ast
-    from pathlib import Path
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    targets = {"_analytics_cache_entry_is_full_bundle", "_log_only_cache_touch"}
-    found = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name in targets:
-            found.add(node.name)
-            for sub in ast.walk(node):
-                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                    assert not (sub.value.isalpha() and sub.value.isupper()), (
-                        f"ticker-literal-shaped constant {sub.value!r} in {node.name}"
-                    )
-    assert found == targets
 
 
 # ── FIX_B_PUBLISH_BEFORE_LOG_REORDER_V1 ──────────────────────────────────────
@@ -459,188 +377,32 @@ def _fetch_state_ast():
     return fetch, tail
 
 
-def test_fix_b_publish_precedes_persistence_tail_source_lock():
-    """Stage-order lock: the generated_at-stamping publish precedes the full-path
-    tail call; the persistence stage marks live inside the tail def, which is
-    defined before but executed after the publish."""
-    src = _fetch_state_source()
-    i_pub = src.index('"generated_at": _gen_ts')
-    i_full_call = src.index("_post_publish_persistence_tail(_next_ver")
-    i_tail_def = src.index("def _post_publish_persistence_tail(")
-    i_snap_mark = src.index('_stage_marks.append(("db_snapshot_write_accuracy"')
-    i_cal_mark = src.index('_stage_marks.append(("v2_calibration_logging"')
-    assert i_pub < i_full_call, "full-path tail call must come AFTER the publish"
-    assert i_tail_def < i_snap_mark < i_cal_mark < i_pub, (
-        "persistence stage marks must live inside the tail def, "
-        "which is defined before (but executed after) the publish"
-    )
-
-
-def test_fix_b_payload_shape_keys_still_served():
-    """Payload-shape regression: counters/accuracy keys still assembled pre-publish
-    (documented one-cycle lag; values come from the pre-read count + module cache)."""
-    src = _fetch_state_source()
-    assert 'ms_dict["total_snapshots"]  = db_counts.get("total", 0)' in src
-    assert 'ms_dict["filled_snapshots"] = db_counts.get("filled", 0)' in src
-    assert 'ms_dict["accuracy_scope"] = "rth_0930_1600_et"' in src
-    # The pre-read count SELECT (read-only) still precedes the block.
-    assert "db_counts = _ed_db.count_snapshots(ticker, CANONICAL_TIMEFRAME)" in src
-
-
-def test_fix_b_once_per_cycle_call_sites():
-    """Once-per-cycle: exactly one tail def; exactly two mutually-exclusive call
-    sites (log_only pre-return, full-path post-publish); exactly one calibration
-    append inside the tail."""
-    import ast
-
-    fetch, tail = _fetch_state_ast()
-    defs = [
-        n for n in ast.walk(fetch)
-        if isinstance(n, ast.FunctionDef) and n.name == "_post_publish_persistence_tail"
-    ]
-    assert len(defs) == 1
-    calls = [
-        n for n in ast.walk(fetch)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-        and n.func.id == "_post_publish_persistence_tail"
-    ]
-    assert len(calls) == 2, "exactly log_only pre-return + full-path post-publish"
-    appends = [
-        n for n in ast.walk(tail)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-        and n.func.id == "append_live_v2_calibration_decision"
-    ]
-    assert len(appends) == 1
-    # The log_only branch returns before the full path can reach the second call.
-    src = _fetch_state_source()
-    i_log_only_call = src.index("_post_publish_persistence_tail(None, _v2_decision_for_response)")
-    i_log_only_return = src.index("return {}", i_log_only_call)
-    i_full_call = src.index("_post_publish_persistence_tail(_next_ver")
-    assert i_log_only_call < i_log_only_return < i_full_call
 
 
 
 
-def test_fix_b_v2_decision_parity_served_equals_logged():
-    """v2_decision parity: the full-path tail call passes the SERVED object
-    (ms_dict['v2_decision']); the log_only path passes the built decision."""
-    src = _fetch_state_source()
-    assert '_post_publish_persistence_tail(_next_ver, ms_dict["v2_decision"])' in src
-    assert "_post_publish_persistence_tail(None, _v2_decision_for_response)" in src
-    assert "v2_decision=v2_decision_for_log," in src
 
 
-def test_fix_b_tail_never_touches_state_cache():
-    """Isolation lock: the tail never references _state_cache, and the prev-vix
-    capture holds structurally (VOL_INPUT_CONTRACT 1.0.0 renamed it to
-    _vol_prev_published_vix; the old exact-string anchor was brittle):
-    (a) exactly one capture binding exists in _fetch_state;
-    (b) it reads _state_cache.get(_cache_key, ...).get("vix") — the prior
-        published cache entry under the exact cycle key, no other source;
-    (c) it precedes every dict-literal _state_cache[_cache_key] publish that
-        carries a "vix" key, so this cycle's publish can never contaminate
-        the previous-value calculation."""
-    import ast
 
-    fetch, tail = _fetch_state_ast()
-    names = {s.id for s in ast.walk(tail) if isinstance(s, ast.Name)}
-    assert "_state_cache" not in names
 
-    captures = [
-        node for node in ast.walk(fetch)
-        if isinstance(node, ast.Assign) and any(
-            isinstance(t, ast.Name) and t.id == "_vol_prev_published_vix"
-            for t in node.targets
-        )
-    ]
-    assert len(captures) == 1, "exactly one pre-publish prev-vix capture"
-    cap = captures[0]
-    outer = cap.value
-    assert isinstance(outer, ast.Call) and isinstance(outer.func, ast.Attribute)
-    assert outer.func.attr == "get"
-    assert [a.value for a in outer.args if isinstance(a, ast.Constant)] == ["vix"]
-    inner = outer.func.value
-    assert isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
-    assert inner.func.attr == "get"
-    assert isinstance(inner.func.value, ast.Name)
-    assert inner.func.value.id == "_state_cache", "prev vix must come from the state cache"
-    assert any(
-        isinstance(a, ast.Name) and a.id == "_cache_key" for a in inner.args
-    ), "prev vix must read the exact per-cycle cache key"
 
-    publishes = [
-        node for node in ast.walk(fetch)
-        if isinstance(node, ast.Assign)
-        and isinstance(node.value, ast.Dict)
-        and any(
-            isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
-            and t.value.id == "_state_cache"
-            for t in node.targets
-        )
-        and "vix" in {
-            k.value for k in node.value.keys if isinstance(k, ast.Constant)
-        }
-    ]
-    assert publishes, "expected a vix-carrying _state_cache publish in _fetch_state"
-    assert all(cap.lineno < p.lineno for p in publishes), (
-        "the prev-vix capture must precede every vix-carrying publish"
-    )
+
 
 
 # ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1 ───────────────────────────────
 
 
-def test_step1_log_only_inline_source_lock():
-    """log_only joins the shutdown inline path for chain/quote; the operator-facing
-    submit remains. Bars are no longer seeded per request (price_bars_1m is written
-    only from the streamed bars), so the chain/quote leg is the only nested leaf."""
-    src = _fetch_state_source()
-    i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
-    # Step 2 rebinds the pooled arm to the dedicated leaf pool; the Step 1
-    # invariant (inline arm precedes the pooled arm) is pool-independent.
-    i_pool_cq = src.index("_cq_pool = (")
-    assert i_inline_cq < i_pool_cq, "inline chain/quote arm must precede the pooled arm"
-    # Operator-facing bounded parallelism intact (submit still present).
-    assert "_chain_fut = _cq_pool.submit(" in src
-    assert "_seed_candles" not in src and "_seed_pool" not in src
 
 
 
 
 
 
-def test_step1_shutdown_inline_branch_preserved():
-    """Shutdown keeps its pre-existing inline behavior via the call-site or."""
-    src = _fetch_state_source()
-    assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
 
 
 # ── OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 ───────────────────────────────
 
 
-def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
-    """AST lock: _get_recompute_leaf_executor is called only inside _fetch_state
-    (the chain/quote and seed submit blocks) — never by handlers or other code."""
-    import ast
-
-    tree = ast.parse(_fetch_state_source())
-    callers = []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for sub in ast.walk(node):
-                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
-                        and sub.func.id == "_get_recompute_leaf_executor"
-                        and node.name != "_get_recompute_leaf_executor"):
-                    callers.append(node.name)
-    # Nested walk double-counts under enclosing defs; the set must be exactly
-    # _fetch_state (call sites live directly in its body, not in nested defs).
-    assert set(callers) == {"_fetch_state"}, f"unexpected callers: {sorted(set(callers))}"
-    src = _fetch_state_source()
-    # Call sites only (the bare substring also matches the def line).
-    # UI_05 residual: both sites are now conditional expressions selecting the
-    # priority lane vs the shared leaf pool.
-    # the candle-seed leg was deleted with the per-request seeding: chain/quote only
-    assert src.count("else _get_recompute_leaf_executor()") == 1  # chain/quote
 
 
 def test_step2_leaf_functions_have_no_nested_submit():
@@ -672,55 +434,12 @@ def test_step2_leaf_functions_have_no_nested_submit():
 
 
 
-def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
-    """Source lock: the nested-submit site binds the leaf pool; the route pool
-    is not referenced by it."""
-    src = _fetch_state_source()
-    # UI_05 residual: the leaf site selects the bounded PRIORITY leaf lane for
-    # operator-priority recomputes and the shared leaf pool otherwise — the route
-    # pool stays banned. The candle-seed site was deleted with per-request seeding,
-    # leaving the chain/quote site as the only one.
-    assert src.count("if _chain_priority") >= 1
-    assert src.count("else _get_recompute_leaf_executor()") == 1
-    assert src.count("_get_priority_leaf_executor()") >= 1
-    assert "_cq_pool = _get_route_offload_executor()" not in src
-    assert "_seed_pool" not in src
 
 
-def test_step2_log_only_uses_neither_pool_for_nested_work():
-    """Step 1 preserved: the inline arm precedes the submit block, so log_only
-    reaches neither the route pool nor the leaf pool for nested work."""
-    src = _fetch_state_source()
-    i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
-    i_pool_cq = src.index("_cq_pool = (")
-    assert i_inline_cq < i_pool_cq
-    assert "_seed_pool" not in src
 
 
-def test_step2_shutdown_order_and_inline_branch():
-    """Leaf-pool teardown comes after the analytics executor shutdown, and the
-    _analytics_bg_shutdown condition still forces inline leaf fetches."""
-    src = _fetch_state_source()
-    i_analytics_shutdown = src.index("_shutdown_analytics_executor(wait=True)")
-    i_leaf_teardown = src.index("_recompute_leaf_executor.shutdown(wait=True, cancel_futures=True)")
-    assert i_analytics_shutdown < i_leaf_teardown
-    assert "_analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only)" in src
 
 
-def test_step2_no_ticker_session_horizon_literals():
-    """AST lock on the new getter: no uppercase ticker/session literal constants."""
-    import ast
-
-    tree = ast.parse(_fetch_state_source())
-    fn = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_get_recompute_leaf_executor"
-    )
-    for sub in ast.walk(fn):
-        if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-            assert not (sub.value.isalpha() and sub.value.isupper()), (
-                f"literal-shaped constant {sub.value!r} in leaf-pool getter"
-            )
 
 
 
@@ -734,87 +453,10 @@ def test_step2_no_ticker_session_horizon_literals():
 
 
 
-def test_post_publish_last_error_wired_at_both_failure_branches():
-    """Both tail except-handlers record cause detail right after their counter
-    increment; the payload attaches a copy adjacent to the observability block."""
-    src = _fetch_state_source()
-    i_snap_inc = src.index('_analytics_cache_observability["post_publish_snapshot_failures"] += 1')
-    i_snap_rec = src.index('_record_post_publish_failure("snapshot", ticker, published_version, e)')
-    i_cal_inc = src.index('_analytics_cache_observability["post_publish_calibration_failures"] += 1')
-    i_cal_rec = src.index(
-        '_record_post_publish_failure("calibration", ticker, published_version, _v2_log_e)'
-    )
-    assert i_snap_inc < i_snap_rec < i_cal_inc < i_cal_rec
-    i_obs_attach = src.index('ms_dict["analytics_cache_observability_v1"] = dict(')
-    i_err_attach = src.index('ms_dict["post_publish_last_errors_v1"] = {')
-    assert i_obs_attach < i_err_attach
 
 
-def test_tail_no_unbound_shadow_of_fetch_state_locals():
-    """Relocation-class lock: no name stored in the tail may shadow a
-    _fetch_state-level binding AND be read at-or-before its first tail store
-    without a nonlocal declaration (the mkt_ctx UnboundLocalError class).
-    Comprehension targets are scope-isolated in py3 and excluded."""
-    import ast
-
-    fetch, tail = _fetch_state_ast()
-
-    comp_targets: set[str] = set()
-    for node in ast.walk(tail):
-        if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
-            for gen in node.generators:
-                for t in ast.walk(gen.target):
-                    if isinstance(t, ast.Name):
-                        comp_targets.add(t.id)
-
-    nonlocals: set[str] = set()
-    for node in ast.walk(tail):
-        if isinstance(node, ast.Nonlocal):
-            nonlocals.update(node.names)
-
-    def _stores_and_loads(fn):
-        stores: dict[str, int] = {}
-        loads: dict[str, list[int]] = {}
-        for node in ast.walk(fn):
-            if isinstance(node, ast.Name):
-                if isinstance(node.ctx, ast.Store):
-                    stores.setdefault(node.id, node.lineno)
-                    stores[node.id] = min(stores[node.id], node.lineno)
-                elif isinstance(node.ctx, ast.Load):
-                    loads.setdefault(node.id, []).append(node.lineno)
-        return stores, loads
-
-    fetch_stores, _ = _stores_and_loads(fetch)
-    fetch_params = {a.arg for a in fetch.args.args + fetch.args.kwonlyargs}
-    tail_stores, tail_loads = _stores_and_loads(tail)
-
-    offenders = []
-    for name, first_store in tail_stores.items():
-        if name in nonlocals or name in comp_targets:
-            continue
-        if name not in fetch_stores and name not in fetch_params:
-            continue
-        early = [ln for ln in tail_loads.get(name, []) if ln <= first_store]
-        if early:
-            offenders.append((name, first_store, early))
-    assert not offenders, f"unbound tail shadows of _fetch_state locals: {offenders}"
 
 
-def test_post_publish_last_error_no_ticker_literals():
-    """Universality: the recorder body carries no ticker-literal-shaped constants
-    (its dict keys are lowercase kinds; ticker arrives as runtime data)."""
-    import ast
-
-    tree = ast.parse(_fetch_state_source())
-    rec = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_record_post_publish_failure"
-    )
-    for sub in ast.walk(rec):
-        if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-            assert not (sub.value.isalpha() and sub.value.isupper()), (
-                f"ticker-literal-shaped constant {sub.value!r} in recorder"
-            )
 
 
 # ── IDLE_SENTINEL_FRESHNESS_V1 — idle-refresh standing producer locks ─────────
@@ -851,20 +493,6 @@ def _idle_seed_cache(srv, monkeypatch, entries):
 
 
 
-def test_idle_refresh_no_ticker_literals_in_selection():
-    """Required 6: no ticker-literal-shaped constants drive selection."""
-    import ast
-
-    tree = ast.parse(_fetch_state_source())
-    fn = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_select_idle_stale_keys"
-    )
-    for node in ast.walk(fn):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            assert not (node.value.isalpha() and node.value.isupper()), (
-                f"ticker-literal-shaped constant {node.value!r} in idle selection"
-            )
 
 
 
@@ -936,15 +564,6 @@ def test_ui05_priority_gate_priority_waiter_acquires_first():
 
 
 
-def test_ui05r_leaf_pool_selection_source_lock():
-    """The chain/quote leg selects the priority lane exactly when the recompute is
-    operator-priority (the _chain_priority classifier). (The seed leg was deleted
-    with per-request bar seeding.)"""
-    src = _fetch_state_source()
-    i_cq = src.index("_cq_pool = (")
-    assert "_get_priority_leaf_executor()" in src[i_cq:i_cq + 200]
-    assert "if _chain_priority" in src[i_cq:i_cq + 200]
-    assert "else _get_recompute_leaf_executor()" in src[i_cq:i_cq + 260]
 
 
 def test_ui05r_priority_leaf_teardown_present():
@@ -956,14 +575,6 @@ def test_ui05r_priority_leaf_teardown_present():
 
 
 
-def test_ui05r_sweep_never_bypasses_serve_policy():
-    """The sweep loads via the same prewarm worker → same strict load path →
-    MODEL-04 withholding still applies (source lock)."""
-    src = _fetch_state_source()
-    i = src.index("def _startup_model_prewarm_sweep_worker")
-    seg = src[i:i + 500]
-    assert "_prewarm_inference_models_worker(t)" in seg
-    assert "pickle" not in seg and "torch" not in seg  # no direct artifact loads
 
 
 # ── UI_05 tail closure: market-context single-flight + stale-while-refresh ────

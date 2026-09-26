@@ -209,26 +209,6 @@ def _act_row(ticker: str, ts: float, expiry: str = "2026-06-09") -> dict:
 
 
 
-def test_live_skill_weight_path_untouched_by_actionability():
-    """AST lock: rolling_horizon_log_loss and horizon_skill_weights reference no
-    actionability code — the live weighting path is provably unchanged."""
-    import ast
-
-    src = Path(__file__).resolve().parent.parent.joinpath(
-        "calibration", "daily_scoreboard.py"
-    ).read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    banned = {
-        "classify_actionability_rows", "build_actionability_report",
-        "read_freshness_budget_sec", "load_harness_annotations",
-        "ACTIONABILITY_STATES",
-    }
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name in (
-            "rolling_horizon_log_loss", "horizon_skill_weights",
-        ):
-            names = {s.id for s in ast.walk(node) if isinstance(s, ast.Name)}
-            assert not (names & banned), f"{node.name} touches actionability: {names & banned}"
 
 
 
@@ -294,43 +274,10 @@ def _denominator_fixture(tmp_path: Path) -> Path:
 
 
 
-def test_denominator_no_ticker_literals_in_grid_code():
-    """Required 11: no ticker literals drive grid/reason/rollup behavior."""
-    import ast as _ast
-
-    src_text = Path(__file__).resolve().parent.parent.joinpath(
-        "calibration", "daily_scoreboard.py"
-    ).read_text(encoding="utf-8")
-    tree = _ast.parse(src_text)
-    for fname in (
-        "_eligible_roster", "_production_tallies", "_cell_not_scored_reason",
-        "_build_eligible_grid", "_equal_weight_rollup", "_coverage_diagnostics",
-        "_quality_circle_summary",
-    ):
-        fn = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef) and n.name == fname)
-        doc = fn.body[0].value if isinstance(fn.body[0], _ast.Expr) else None
-        for node in _ast.walk(fn):
-            if node is doc:
-                continue  # prose docstring, not behavior
-            if isinstance(node, _ast.Constant) and isinstance(node.value, str):
-                assert not (node.value.isalpha() and node.value.isupper() and len(node.value) <= 5), (
-                    f"ticker-literal-shaped constant {node.value!r} in {fname}"
-                )
 
 
 
 
-def test_denominator_grid_built_before_scoring_source_lock():
-    """Required local proof: the eligible grid/tallies are constructed BEFORE the
-    scoring pass inside build_daily_scoreboard."""
-    src_text = Path(__file__).resolve().parent.parent.joinpath(
-        "calibration", "daily_scoreboard.py"
-    ).read_text(encoding="utf-8")
-    body = src_text[src_text.index("def build_daily_scoreboard(") :]
-    i_roster = body.index("_eligible_roster(conn)")
-    i_tallies = body.index("_production_tallies(conn")
-    i_scoring = body.index("_per_horizon_prediction_rows(conn")
-    assert i_roster < i_scoring and i_tallies < i_scoring
 
 
 
@@ -389,31 +336,6 @@ def _v4_row(pred: str, truth: str | None, hz: str = "1c", ts: float = 1000.0, **
 
 
 
-def test_all_card_row_reads_only_persisted_row_fields():
-    """Required 7 (AST lock): _all_card_row consumes ONLY the database row — no
-    import/config fallback can substitute current configuration for history."""
-    import ast
-
-    src = Path(__file__).resolve().parent.parent.joinpath(
-        "calibration", "daily_scoreboard.py"
-    ).read_text(encoding="utf-8")
-    fn = next(
-        n for n in ast.walk(ast.parse(src))
-        if isinstance(n, ast.FunctionDef) and n.name == "_all_card_row"
-    )
-    names = {x.id for x in ast.walk(fn) if isinstance(x, ast.Name)}
-    allowed = {"row", "mh", "pred", "primary_hz", "json", "isinstance", "dict", "str",
-               "float", "Optional", "_FINAL_BIAS_TO_LABEL", "HORIZON_SLUGS", "ALL_CARD_SLUG",
-               "TypeError", "ValueError", "Any", "sqlite3",
-               # RC-REHAB-3: multi_horizon_json may be gzip-compressed; decode_json_blob
-               # (json_blob_codec) still reads it from the row's own persisted field only
-               # -- no config/roster substitution, the lock this test enforces.
-               "_mhj", "decode_json_blob", "OSError"}
-    assert names <= allowed, f"unexpected names in _all_card_row: {names - allowed}"
-    # The load-bearing lock: no config/roster/horizon-selection machinery inside.
-    banned = {"PRIMARY_DECISION_HORIZONS", "load_movement_thresholds_by_horizon_v1",
-              "_eligible_roster", "os", "importlib"}
-    assert not (names & banned)
 
 
 

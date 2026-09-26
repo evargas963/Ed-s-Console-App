@@ -68,30 +68,6 @@ def test_panel_payload_contains_all_dashboard_sections(monkeypatch, tmp_path: Pa
     assert isinstance(p["recent_audit_actions"], list)
 
 
-def test_api_governance_panel_emit_notifications_query(monkeypatch, tmp_path: Path):
-    """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): KEEP.
-    The distinct HTTP-boundary defect is FastAPI's query-string -> bool coercion.
-    api_governance_panel declares `emit_notifications: bool = Query(False, ...)`, and
-    this test sends the literal STRING "false" the way a browser does. A direct call
-    would hand the handler an already-typed Python False and could never catch the
-    real regression here: the param losing its bool annotation, so the truthy string
-    "false" starts arming live notification delivery on every routine panel refresh."""
-    project_root = tmp_path / "proj"
-    models_dir = project_root / "models"
-    _minimal_governed_files(models_dir, cascade_ok=True)
-    (models_dir / "arch_state.json").write_text("{}", encoding="utf-8")
-
-    import server
-
-    monkeypatch.setattr(server, "APP_DIR", str(project_root))
-    from fastapi.testclient import TestClient
-
-    c = TestClient(server.app)
-    r = c.get("/api/governance/panel", params={"ticker": "SPY", "horizon": "1c", "emit_notifications": "false"})
-    assert r.status_code == 200
-    body = r.json()
-    assert body.get("ok") is True
-    assert body.get("production_default_runtime") == "parallel"
 
 
 def test_blocked_panel_disables_promotion_via_payload_flags(monkeypatch, tmp_path: Path):

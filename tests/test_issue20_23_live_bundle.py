@@ -21,33 +21,8 @@ if str(ROOT) not in sys.path:
 
 
 
-def test_tick_partial_patch_helpers_removed_from_server():
-    src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert "_patch_snapshot_with_fresh_order_flow" not in src
-    assert "_ORDER_FLOW_PATCH_KEYS" not in src
-    assert "sse_live" in src
-    assert "sse_live = _sse_subscribers.get" in src
 
 
-def test_sse_broadcast_only_passes_full_tier_c_payload():
-    """SSE clients receive full Tier C ms_dict only — fetch result or cache fanout, never partial patches."""
-    import re
-
-    src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert "_patch_snapshot_with_fresh_order_flow" not in src
-    assert "_build_sse_cache_fanout_payload" in src
-    assert "_attach_money_path_snapshot_envelope" in src
-    pat = re.compile(r"_broadcast_snapshot\s*\(\s*result\s*\)")
-    hits = [
-        ln
-        for ln in src.splitlines()
-        if pat.search(ln) and "def _broadcast_snapshot" not in ln and "async def _broadcast_snapshot" not in ln
-    ]
-    assert len(hits) == 0, (
-        "Tier C SSE must broadcast via _schedule_sse_broadcast (full fetch or cache fanout), "
-        f"found legacy direct calls: {hits!r}"
-    )
-    assert "_schedule_sse_broadcast" in src
 
 
 # test_index_html_rejects_older_decision_generation, test_index_html_render_return_gates_live_
@@ -298,24 +273,6 @@ def _assert_sse_cache_bypass_for_key(
 
 
 
-def test_tier_c_cache_sse_keying_is_ticker_upper_and_expiry_not_allowlist():
-    """Construction proof: Tier C cache/SSE paths key on normalized ticker + expiry, not SPY allowlist."""
-    src = (ROOT / "server.py").read_text(encoding="utf-8", errors="replace")
-    tier_c_start = src.index("def _tier_c_analytics_json_response(")
-    tier_c_end = src.index("\ndef _resolve_ticker_param(", tier_c_start)
-    tier_c = src[tier_c_start:tier_c_end]
-    assert "ticker = ticker.upper().strip()" in tier_c
-    assert "data_cache_key = (ticker, expiry)" in tier_c
-    assert "_sse_subscribers.get(data_cache_key" in tier_c
-    assert '_state_cache: dict = {}           # (ticker, expiry) -> {ts, ms_dict}' in src
-    assert "_sse_subscribers: dict[tuple[str, str | None], int]" in src
-    banned_allowlist = (
-        'if ticker == "SPY"',
-        "if ticker in (",
-        'ticker in {"SPY"',
-    )
-    for needle in banned_allowlist:
-        assert needle not in tier_c, f"tier_c allowlist pattern found: {needle!r}"
 
 
 

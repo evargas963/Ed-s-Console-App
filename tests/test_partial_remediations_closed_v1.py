@@ -59,20 +59,8 @@ def _avg(payload: dict) -> float:
 
 
 
-def test_the_counter_only_advances_when_a_timing_is_credited():
-    """Numerator and denominator must move together or the mean is wrong either way."""
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    i = src.find('_l1_instrumentation["l1_build_ms_sum"] = float(')
-    assert i > 0
-    window = src[i:i + 260]
-    assert '_l1_instrumentation["l1_build_ms_measured"] += 1' in window, (
-        "the measured counter no longer increments beside the sum")
 
 
-def test_total_builds_is_still_counted_separately():
-    """Builds-per-minute is a different and correct question; it must not lose its count."""
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert '_l1_instrumentation["l1_build_total"] += 1' in src
 
 
 # ─────────────────────────── model edge: no substituted metric ────

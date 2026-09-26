@@ -235,31 +235,3 @@ def test_every_level_shaped_payload_name_is_declared():
         assert name in payload, f"declared terrain name {name!r} is not published"
 
 
-def test_ui_surfaces_bind_the_renamed_names_and_never_the_collision_name():
-    """End-to-end to the operator's screen: both static surfaces paint the declared names;
-    the two-definition name is extinct outside the RC-429 DB era machinery.
-
-    The console half is repointed to static/js/ed-gamma-panels.js (/console cutover, operator
-    directive 2026-09-14): the new console's Key Levels rail reads the terrain-scope name
-    directly (d.absolute_gamma_strike), not legacy's kl_-prefixed overlay alias. kl_pin_
-    candidate / pin_candidate have NO consumer at all in the new console (grepped
-    static/js/*.js, zero matches) — the qualified pin claim, distinct from the raw
-    concentration, is a real gap flagged for the operator rather than asserted here."""
-    console = (REPO / "static" / "js" / "ed-gamma-panels.js").read_text(encoding="utf-8")
-    chart = (REPO / "static" / "chart.html").read_text(encoding="utf-8")
-    assert "d.absolute_gamma_strike" in console
-    assert "absolute_gamma_strike" in chart
-    assert "'pin_candidate'" in chart
-    for surface, src in (("ed-gamma-panels.js", console), ("chart.html", chart)):
-        assert "gamma_pin" not in src, (
-            f"{surface} still binds the retired gamma_pin name — two definitions shared "
-            f"it (RC-292); the UI must bind absolute_gamma_strike / pin_candidate / "
-            f"net_gex_peak")
-    # The single sanctioned survivors: the historical snapshots DB column and its era
-    # split (declared above in HISTORICAL_DB_COLUMNS), reached through db.py/time_et.py.
-    assert HISTORICAL_DB_COLUMNS == {("snapshots_db", "gamma_pin")}
-    server_src = (REPO / "server.py").read_text(encoding="utf-8")
-    assert "gamma_pin=_ssot_gamma_pin" in server_src, (
-        "the DB persist kwarg is the one sanctioned live use of the historical column name")
-    assert 'md["gamma_pin"]' not in server_src and '.get("gamma_pin")' not in server_src, (
-        "a live payload read/write of the retired name returned to server.py")

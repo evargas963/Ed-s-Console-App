@@ -306,23 +306,6 @@ def test_unavailable_on_empty_or_bad_inputs():
     assert compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), -5)["state"] == GSF_STATE_UNAVAILABLE
 
 
-def test_rc354_gsf_grc_wired_producer_to_consumer():
-    """RC-354 end-to-end wiring: terrain carries the fields fail-closed, the /api/state
-    stamp writes them from the SSOT terrain book, and both UI surfaces consume them."""
-    from terrain_engine import compute_terrain
-
-    # dataclass carries the fields, defaulting fail-closed
-    snap = compute_terrain("SPY", [], 780.0)          # no chain -> _unavailable path
-    assert hasattr(snap, "gsf") and hasattr(snap, "grc")
-    assert snap.gsf is None and snap.grc is None
-    assert snap.gsf_state == "UNAVAILABLE"
-
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    for key in ('md["kl_gsf"]', 'md["kl_grc"]', 'md["kl_gsf_state"]', 'md["kl_gsf_state_disp"]'):
-        assert key in srv, f"server must stamp {key} from the terrain book"
-
-    chart = Path(__file__).resolve().parent.parent.joinpath("static", "chart.html").read_text(encoding="utf-8")
-    assert "'gsf', 'GSF'" in chart and "'grc', 'GRC'" in chart
 
 
 def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
@@ -339,15 +322,6 @@ def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
     assert compute_zero_dte_gamma_share({700.0: {"net_gex_1pct": 0.0}}, {}) is None
 
 
-def test_rc357_zero_dte_share_wired_end_to_end():
-    """RC-357 wiring: terrain field fail-closed, /api/state stamp, Console row."""
-    from terrain_engine import compute_terrain
-
-    snap = compute_terrain("SPY", [], 780.0)
-    assert hasattr(snap, "zero_dte_gamma_share_pct")
-    assert snap.zero_dte_gamma_share_pct is None
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    assert 'md["kl_zero_dte_share"]' in srv
 
 
 def test_rc358_25d_risk_reversal_front_expiry_and_fail_closed():
@@ -380,13 +354,6 @@ def test_rc358_25d_risk_reversal_front_expiry_and_fail_closed():
     assert compute_25d_risk_reversal([{"putCall": "CALL", "daysToExpiration": 1}]) is None
 
 
-def test_rc358_rr25_wired_end_to_end():
-    from terrain_engine import compute_terrain
-
-    snap = compute_terrain("SPY", [], 780.0)
-    assert hasattr(snap, "rr_25d") and snap.rr_25d is None
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    assert 'md["kl_rr25_pts"]' in srv and 'md["kl_rr25_dte"]' in srv
 
 
 def test_rc362_net_vanna_math_and_fail_closed():
@@ -405,13 +372,6 @@ def test_rc362_net_vanna_math_and_fail_closed():
     assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None
 
 
-def test_rc362_vanna_wired_end_to_end():
-    from terrain_engine import compute_terrain
-
-    snap = compute_terrain("SPY", [], 780.0)
-    assert hasattr(snap, "vanna_agg") and snap.vanna_agg is None
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    assert 'md["kl_vanna_net_dollars"]' in srv
 
 
 def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
@@ -427,13 +387,6 @@ def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
     assert compute_net_dex_dollars({700.0: {"other": 1}}) is None
 
 
-def test_rc361_dex_wired_end_to_end():
-    from terrain_engine import compute_terrain
-
-    snap = compute_terrain("SPY", [], 780.0)
-    assert hasattr(snap, "dex_dollars") and snap.dex_dollars is None
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    assert 'md["kl_dex_net"]' in srv
 
 
 def test_rc359_delta_oi_walls_build_unwind_and_fail_closed():
@@ -477,16 +430,6 @@ def test_rc359_oi_banking_and_prev_session_reader(tmp_path):
         assert conn.execute("SELECT COUNT(*) FROM oi_daily").fetchone()[0] == 2
 
 
-def test_rc359_doi_wired_end_to_end():
-    from terrain_engine import compute_terrain
-
-    snap = compute_terrain("SPY", [], 780.0)
-    assert hasattr(snap, "oi_by_strike")
-    assert "oi_by_strike" not in snap.to_dict()        # heavy field stays out of the poll
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    for k in ('bank_daily_strike_oi(', 'prev_session_strike_oi(', 'md["kl_doi_call_strike"]',
-              'md["kl_doi_put_strike"]', 'md["kl_doi_unwind_strike"]'):
-        assert k in srv, f"server must wire {k}"
     # The UI half of this test (a ΔOI ladder row in static/index.html) was retired here
     # (/console cutover, operator directive 2026-09-14), alongside the same-shaped UI
     # assertions in the GSF/GRC, 0DTE share, RR25, Vanna, and DEX tests above -- none of

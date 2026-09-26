@@ -98,16 +98,22 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
     (client_from_token_file_atomic / the OAuth exchange). schwab-py's own writer is
     open(path, 'w') + json.dump -- a reader in the other process (console / daemon both
     refresh the same file) could load a torn token and fail the session (audit of #280)."""
+    import tempfile
     from pathlib import Path
 
-    from arch_competition.atomic_io import write_json_file_atomically
-
     path = Path(_resolve_token_path(token_path))
+    path.parent.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, TOKEN_REPLACE_ATTEMPTS + 1):
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
         try:
-            write_json_file_atomically(path, payload)
+            with os.fdopen(fd, "w", encoding="utf-8", newline=chr(10)) as fh:
+                json.dump(payload, fh, indent=2, default=str)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
             return
         except PermissionError as e:
+            Path(tmp).unlink(missing_ok=True)
             if attempt == TOKEN_REPLACE_ATTEMPTS:
                 raise
             log.warning("token replace blocked by another reader (attempt %s/%s): %s",

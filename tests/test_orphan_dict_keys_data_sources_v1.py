@@ -148,17 +148,6 @@ def test_calendar_reads_are_no_longer_reported(live_orphans):
 
 
 
-def test_two_never_written_fallback_spellings_are_gone(live_orphans):
-    """Same proof as lstm_1c_sha256: git log -S '\"key\":' empty, so the OR was dead."""
-    src = (REPO / "v2_decision" / "a2_option_expression.py").read_text(encoding="utf-8")
-    assert 'ms_dict.get("minutes_to_close")' not in src
-    assert 'ms_dict.get("timestamp_ms")' not in src
-    reported_keys = []
-    for v in live_orphans:
-        if "key '" in v.msg:
-            reported_keys.append(v.msg.split("key '", 1)[1].split("'", 1)[0])
-    assert "minutes_to_close" not in reported_keys
-    assert "timestamp_ms" not in reported_keys
 
 
 def test_a_missing_or_malformed_source_contributes_nothing(monkeypatch, tmp_path):

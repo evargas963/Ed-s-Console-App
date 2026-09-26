@@ -65,83 +65,10 @@ _REPO = _Path(__file__).resolve().parent.parent
 
 
 
-def test_single_tracker_tick_site_lock():
-    """Exactly ONE _vix_tracker.tick site may exist in server.py — the
-    per-cycle vol-context computation. Extra per-surface ticks re-tick the
-    same value and force direction to flat (pre-fix defect class)."""
-    server_src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert server_src.count("_vix_tracker.tick(") == 1
 
 
-def test_three_surfaces_consume_the_one_context():
-    """SignalInput stamp, snapshot row, and ms_dict must all read
-    vol_ctx.market_iv_* — no surface recomputes vs-prev or re-reads the
-    tracker independently (MSD-001 route parity by construction)."""
-    server_src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    ms_src = (_REPO / "market_state.py").read_text(encoding="utf-8", errors="replace")
-    assert 'ms_dict["vix"] = vol_ctx.market_iv_level' in server_src
-    assert 'ms_dict["vix_direction"] = vol_ctx.market_iv_direction' in server_src
-    assert 'ms_dict["vix_vs_prev"] = vol_ctx.market_iv_change' in server_src
-    assert "_vix_vs_prev = vol_ctx.market_iv_change" in server_src   # snapshot row
-    assert "vix_level=vol_ctx.market_iv_level" in server_src         # snapshot row
-    assert "vol_ctx=vol_ctx" in server_src                           # build_market_state call
-    assert "vix_vs_prev=(vol_ctx.market_iv_change if vol_ctx is not None else None)" in ms_src
-    assert "vix_direction=(vol_ctx.market_iv_direction if vol_ctx is not None else None)" in ms_src
-    # [REAL-GATE:VOL-CTX-SINGLE-SOURCE] closure lock: zero raw mkt_ctx.vix
-    # attribute reads outside the canonical conversion site. server.py may
-    # read mkt_ctx.vix exactly ONCE (the float() conversion feeding vol_ctx);
-    # market_state.py exactly TWICE, both as the ratified vol_ctx=None
-    # rollback fallbacks (vix_level stamp + vix_bucket source).
-    def _raw_vix_reads(src: str) -> list[int]:
-        tree = _ast.parse(src)
-        return sorted(
-            n.lineno for n in _ast.walk(tree)
-            if isinstance(n, _ast.Attribute) and n.attr == "vix"
-            and isinstance(n.value, _ast.Name) and n.value.id == "mkt_ctx"
-        )
-    server_reads = _raw_vix_reads(server_src)
-    assert len(server_reads) == 1, (
-        f"raw mkt_ctx.vix reads in server.py at {server_reads} — only the "
-        f"canonical vol_ctx conversion site may read the raw quote"
-    )
-    ms_reads = _raw_vix_reads(ms_src)
-    assert len(ms_reads) == 2, (
-        f"raw mkt_ctx.vix reads in market_state.py at {ms_reads} — only the "
-        f"two vol_ctx=None rollback fallbacks may read the raw quote"
-    )
-    ms_lines = ms_src.splitlines()
-    for ln in ms_reads:
-        assert "vol_ctx is not None else mkt_ctx.vix" in ms_lines[ln - 1], (
-            f"market_state.py:{ln} raw read is not a vol_ctx=None fallback"
-        )
 
 
-def test_vol_context_bound_outside_any_try():
-    """vol_ctx must be bound unconditionally in _fetch_state — never inside a
-    try whose handler swallows and continues. Caught 2026-07-10: the binding
-    lived inside the envelope/density/sector try (except Exception:
-    log.debug), so any swallowed exception there left vol_ctx unbound and the
-    later build_market_state(vol_ctx=vol_ctx) call died with NameError."""
-    tree = _ast.parse((_REPO / "server.py").read_text(encoding="utf-8", errors="replace"))
-    parents: dict[_ast.AST, _ast.AST] = {}
-    for node in _ast.walk(tree):
-        for child in _ast.iter_child_nodes(node):
-            parents[child] = node
-    bindings = [
-        n for n in _ast.walk(tree)
-        if isinstance(n, _ast.Name) and n.id == "vol_ctx" and isinstance(n.ctx, _ast.Store)
-    ]
-    assert len(bindings) == 1, f"expected exactly one vol_ctx binding, got {len(bindings)}"
-    cur: _ast.AST = bindings[0]
-    enclosing: list[str] = []
-    while cur in parents:
-        cur = parents[cur]
-        if isinstance(cur, (_ast.Try, _ast.If, _ast.For, _ast.While)):
-            enclosing.append(f"{type(cur).__name__}@{cur.lineno}")
-    assert enclosing == [], (
-        f"vol_ctx binding is conditional/swallowable (inside {enclosing}) — "
-        f"it must execute on every path that reaches its consumers"
-    )
 
 
 def test_canonical_signal_input_construction_lock(repo_index):

@@ -13,7 +13,6 @@ from training_cache import (
     expanding_window_oof_folds,
     load_lstm_feature_cache,
     split_sessions_walk_forward,
-    walk_forward_session_split,
     xgb_meta_content_sha256,
 )
 from features.training_canonical_input import training_canonical_lineage_header
@@ -132,36 +131,6 @@ def test_expanding_window_oof_folds_invalid_n_folds_empty():
     assert expanding_window_oof_folds([f"d{i}" for i in range(10)], n_folds=0) == []
 
 
-def test_walk_forward_session_split_db_backed(tmp_path, monkeypatch):
-    import sqlite3
-
-    import ml_data_common as mdc
-
-    db = tmp_path / "wf.db"
-    conn = sqlite3.connect(str(db))
-    conn.execute(
-        "CREATE TABLE snapshots_1m_normalized (ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT, outcome_1c TEXT)"
-    )
-    rid = 0.0
-    days = [f"2026-05-{d:02d}" for d in range(1, 16)]  # 15 sessions
-    for day in days:
-        for i in range(3):
-            conn.execute(
-                "INSERT INTO snapshots_1m_normalized VALUES (?,?,?,?,?)",
-                ("ZZZ", "1m", rid, f"{day} 10:{i:02d}:00", "UP"),
-            )
-            rid += 1.0
-    conn.commit()
-    conn.close()
-
-    monkeypatch.setattr(mdc, "filter_ts_utc_list_to_rth", lambda ts: ts)
-    monkeypatch.setattr(mdc, "training_base_where_clause", lambda col, include_ticker=True: "timeframe = ? AND ticker = ?")
-    monkeypatch.setattr(mdc, "et_date_str_from_ts_utc", lambda ts: days[int(ts) // 3])
-
-    train, val = walk_forward_session_split(str(db), "ZZZ", label_column="outcome_1c")
-    assert val == days[-3:]
-    assert train == days[:-3]
-    assert set(train).isdisjoint(val)
 
 
 def test_normalize_data_fp_distinguishes_missing_row_count_from_zero():

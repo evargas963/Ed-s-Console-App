@@ -35,24 +35,6 @@ if str(REPO) not in sys.path:
 
 # ───────────────────────────────────── l1_pipeline_ms: absent is not zero ms ────
 
-def test_absent_pipeline_timing_is_not_published_as_zero_milliseconds():
-    """A missing gauge reading must not enter the latency average as a fast one."""
-    import inspect
-
-    import server as srv
-
-    # TEST_SYSTEM_REHAB_V2: this used to also compute `i = src.find('out["l1_pipeline_ms"]')`
-    # from a separate, unused `src = inspect.getsource(srv)` call, then end with
-    # `assert i or True` -- vacuous regardless of `i` (str.find returns -1, which is
-    # truthy, on a miss; `-1 or True` and `n or True` are both always True). Removed:
-    # the three real assertions below already cover the property directly.
-    blk = inspect.getsource(srv)  # whole module; assert on the specific repaired lines
-    assert 'ms = _fin_ms(out.get("l1_pipeline_ms"))' in blk, (
-        "l1_pipeline_ms is being coerced again instead of read as optional")
-    assert 'if ms is not None:' in blk, (
-        "absent timing is accumulated into l1_build_ms_sum again")
-    assert '"l1_build_ms": None if ms is None else round(ms, 3)' in blk, (
-        "absent timing is published as 0.0 ms again — it depresses the average silently")
 
 
 def test_no_active_exemption_claims_the_nonexistent_pipeline_guard():

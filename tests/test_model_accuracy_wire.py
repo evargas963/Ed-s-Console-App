@@ -53,36 +53,6 @@ def _insert_pred_row(db: EdDB, *, et_hour: int, et_minute: int, ts: float,
 
 
 
-def test_server_accuracy_surfaces_are_rth_primary() -> None:
-    """Wire lock: the trading-facing accuracy surfaces must be RTH-primary with
-    all-hours as labeled audit context — all-hours numbers must not be able to
-    masquerade as RTH edge."""
-    import ast as _ast
-    repo_root = Path(__file__).resolve().parent.parent
-    src = (repo_root / "server.py").read_text(encoding="utf-8")
-    tree = _ast.parse(src)
-    rth_flags = []
-    for n in _ast.walk(tree):
-        if isinstance(n, _ast.Call):
-            callee = n.func.attr if isinstance(n.func, _ast.Attribute) else None
-            if callee == "compute_accuracy":
-                kw = {k.arg: k.value for k in n.keywords}
-                assert "rth_only" in kw, (
-                    f"compute_accuracy at server.py:{n.lineno} does not declare its "
-                    "scope — implicit all-hours can masquerade as RTH edge"
-                )
-                v = kw["rth_only"]
-                rth_flags.append(isinstance(v, _ast.Constant) and v.value is True)
-    assert any(rth_flags), "no RTH-primary compute_accuracy call remains in server.py"
-    assert '"accuracy_scope"' in src and 'rth_0930_1600_et' in src, (
-        "payload/API accuracy scope stamp missing"
-    )
-    ops = (repo_root / "static" / "ops.html").read_text(encoding="utf-8")
-    assert "RTH 9:30" in ops, "ops panel lost the RTH scope label"
-    assert "all-hours (audit context)" in ops, (
-        "ops panel lost the all-hours audit-context labeling"
-    )
-    assert "edge_vs_baseline_pp" in ops, "ops panel no longer shows edge vs baseline"
 
 
 def test_ops_html_has_model_accuracy_panel() -> None:

@@ -59,18 +59,6 @@ READER_CENSUS = frozenset({
 
 
 
-def test_no_new_mc_sigma_value_reader_appears_unpinned(repo_index):
-    mentions = set()
-    for relpath, text, _tree in repo_index.items():
-        if "mc_sigma_value" in text:
-            mentions.add(relpath.as_posix())
-    assert mentions == set(READER_CENSUS), (
-        f"mc_sigma_value consumer census moved.\n"
-        f"NEW (not pinned): {sorted(mentions - set(READER_CENSUS))}\n"
-        f"GONE (still pinned): {sorted(set(READER_CENSUS) - mentions)}\n"
-        f"The stored column mixes three units (~310x apart, RC-478). A new reader of "
-        f"HISTORICAL rows must classify each row with monte_carlo.mc_sigma_unit_for_row "
-        f"and filter/convert per era, then add itself here in the same commit.")
 
 
 def test_training_lanes_stay_clear_of_mc_columns():

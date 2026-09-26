@@ -1518,21 +1518,6 @@ class EdDB:
             )
 
 
-    def confluence_quote_tick_inventory(self) -> dict[str, int]:
-        """Read-side inventory for panel_auto thin quotes (persistence consumer)."""
-        self._ensure_confluence_quote_table()
-
-        def _do() -> dict[str, int]:
-            with self._connect() as conn:
-                total = conn.execute(
-                    "SELECT COUNT(*) FROM confluence_quote_ticks"
-                ).fetchone()[0]
-                tickers = conn.execute(
-                    "SELECT COUNT(DISTINCT ticker) FROM confluence_quote_ticks"
-                ).fetchone()[0]
-            return {"total_rows": int(total), "distinct_tickers": int(tickers)}
-
-        return _do()
 
 
     def logging_universe_sync_panel_auto(self, panel_candidates: list[str], now_ts: float) -> dict[str, Any]:
@@ -1675,28 +1660,6 @@ class EdDB:
 
 
 
-    def logging_universe_authoritative_tickers(self) -> list[str]:
-        """Sole enrollment authority (Issue 22): core + pinned + panel_auto + user_persisted.
-
-        Background logger, ml_scheduler, and bulk train entry points use this same set.
-        ``panel_auto`` is maintained by ``logging_universe_sync_panel_auto`` (market_context panel).
-        Rows observed in snapshots are not authority — enroll via server/UI/API or sync_core.
-        """
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker FROM logging_universe
-                WHERE category IN ('core', 'pinned', 'panel_auto', 'user_persisted')
-                ORDER BY CASE category
-                    WHEN 'core' THEN 0
-                    WHEN 'pinned' THEN 1
-                    WHEN 'panel_auto' THEN 2
-                    WHEN 'user_persisted' THEN 3
-                    ELSE 4 END,
-                    ticker COLLATE NOCASE
-                """
-            ).fetchall()
-            return _dedup_preserve([ticker_storage_key(r[0]) for r in rows])  # RC-345/F25: canonical read identity (legacy bare rows resolve on-read)
 
 
     def logging_universe_migration_completed(self, name: str) -> bool:
@@ -1855,107 +1818,6 @@ class EdDB:
                 log.warning("legacy logger json archive replace failed: %s", e)
         return out
 
-    def logging_universe_migrate_scheduler_companion_json(
-        self,
-        *,
-        primary_path: Path,
-        archive_path: Path,
-    ) -> dict:
-        """One-time: data/user_scheduler_tickers.json → logging_universe (Issue 22 SSOT)."""
-        mname = "scheduler_user_tickers_json_v1"
-        if self.logging_universe_migration_completed(mname):
-            return {"status": "already_completed", "migration": mname}
-        src = primary_path if primary_path.is_file() else None
-        archived_only = False
-        if src is None and archive_path.is_file():
-            src = archive_path
-            archived_only = True
-        if src is None:
-            self.logging_universe_migration_mark(
-                mname, _wall_time.time(), "", {"detail": "no_source_file"}
-            )
-            return {"status": "skipped_no_source", "migration": mname}
-        raw = src.read_bytes()
-        h = hashlib.sha256(raw).hexdigest()
-        try:
-            data = json.loads(raw.decode("utf-8"))
-            raw_list = data.get("tickers") if isinstance(data, dict) else data
-            if not isinstance(raw_list, list):
-                raise ValueError("not_a_list")
-        except Exception as e:
-            return {"status": "error_json", "migration": mname, "error": str(e)}
-        now = _wall_time.time()
-
-        def _body() -> dict:
-            conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-            conn.row_factory = sqlite3.Row
-            configure_sqlite_connection(conn)
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                n = 0
-                seen: set[str] = set()
-                for item in raw_list:
-                    t = str(item).upper().strip()
-                    if not t or t.startswith("$") or t in seen:
-                        continue
-                    seen.add(t)
-                    cur = conn.execute(
-                        "SELECT category FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
-                        (t,),
-                    ).fetchone()
-                    if cur is None:
-                        conn.execute(
-                            """
-                            INSERT INTO logging_universe
-                              (ticker, category, enrollment_source, enrolled_ts_utc, last_seen_ts_utc)
-                            VALUES (?, 'user_persisted', ?, ?, ?)
-                            """,
-                            (t, "migrated_scheduler_user_tickers_json", now, now),
-                        )
-                        n += 1
-                    elif cur[0] == "user_persisted":
-                        conn.execute(
-                            """
-                            UPDATE logging_universe SET last_seen_ts_utc = ?
-                            WHERE ticker = ? COLLATE NOCASE AND category = 'user_persisted'
-                            """,
-                            (now, t),
-                        )
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO logging_universe_migration_log
-                        (name, completed_ts_utc, source_sha256, detail_json)
-                    VALUES (?,?,?,?)
-                    """,
-                    (
-                        mname,
-                        now,
-                        h,
-                        json.dumps(
-                            {
-                                "source": str(src.resolve()),
-                                "archived_only": archived_only,
-                                "rows_touched": n,
-                            }
-                        ),
-                    ),
-                )
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                raise
-            finally:
-                conn.close()
-            return {"status": "imported", "migration": mname, "rows_touched": n}
-
-        out = _body()
-        if not archived_only and primary_path.is_file():
-            try:
-                archive_path.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(str(primary_path), str(archive_path))
-            except OSError as e:
-                log.warning("scheduler json archive replace failed: %s", e)
-        return out
 
     def logging_universe_touch_seen(self, ticker: str, now_ts: float) -> None:
         t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — touch hits the $-canonical row via any alias
@@ -3224,43 +3086,6 @@ class EdDB:
 
 
 
-    def get_recent_snapshots(
-        self,
-        ticker: str,
-        timeframe: str,
-        n: int = 5000,
-        filled_only: bool = False,
-        *,
-        as_of_ts_utc: Optional[float] = None,
-    ) -> list:
-        """Return the N most recent snapshots for a ticker/timeframe (DESC by ts_utc).
-
-        as_of_ts_utc: when set (replay / causal inference), only rows with ts_utc < as_of_ts_utc
-        are eligible — same strict ordering contract as get_similar_setups. Default None preserves
-        legacy unbounded history reads (training/offline tools must pass explicitly when simulating
-        a decision at time T).
-        """
-        timeframe = require_snapshot_timeframe(timeframe, caller="EdDB.get_recent_snapshots")
-        ticker = ticker_storage_key(ticker)
-        filled_clause = "AND outcome_filled = 1" if filled_only else ""
-        asof_clause = " AND ts_utc < ? " if as_of_ts_utc is not None else ""
-        params: tuple = (ticker, timeframe)
-        if as_of_ts_utc is not None:
-            params = params + (float(as_of_ts_utc),)
-        params = params + (n,)
-        with self._connect() as conn:
-            rows = conn.execute(
-                f"""
-                SELECT * FROM snapshots
-                WHERE ticker = ? AND timeframe = ?
-                {filled_clause}
-                {asof_clause}
-                ORDER BY ts_utc DESC
-                LIMIT ?
-            """,
-                params,
-            ).fetchall()
-        return [dict(r) for r in rows]
 
 
 
@@ -3944,16 +3769,6 @@ def build_ts_et(dt: Optional[datetime] = None) -> str:
 # --- Dynamic snapshot SQL builders (strict BYPASS: only this file may embed FROM + snapshots) ---
 
 
-def sql_flow_audit_count_where(base_where: str) -> str:
-    return f"SELECT COUNT(*) FROM snapshots {base_where}"
-
-
-def sql_flow_audit_rows_where(base_where: str) -> str:
-    return (
-        "SELECT snapshot_id, spot, flow_imbalance, option_chain_json\n        FROM snapshots\n        "
-        + base_where.strip()
-        + "\n    "
-    )
 
 
 
@@ -3980,12 +3795,8 @@ def sql_flow_audit_rows_where(base_where: str) -> str:
 
 
 
-def sql_snapshots_training_fingerprint_select(aggs_csv: str) -> str:
-    """Grouped aggregate over snapshots for training fingerprinting (caller supplies SELECT list)."""
-    return (
-        f"SELECT timeframe, {aggs_csv} FROM snapshots "
-        "WHERE timeframe IN (?, ?) GROUP BY timeframe ORDER BY timeframe"
-    )
+
+
 
 
 
@@ -3998,25 +3809,8 @@ def sql_snapshots_training_fingerprint_select(aggs_csv: str) -> str:
 # Only this module may define loaders/builders that embed FROM + snapshots in Python source.
 # ════════════════════════════════════════════════════════════════════════════════
 
-_snapshot_sql_registry: Optional[dict[str, str]] = None
 
 
-def get_snapshot_sql(key: str) -> str:
-    """Return a registered snapshot SELECT/DELETE/COUNT SQL fragment by key."""
-    global _snapshot_sql_registry
-    if _snapshot_sql_registry is None:
-        import json as _json
-
-        d = Path(__file__).resolve().parent / "snapshot_sql"
-        if not d.is_dir():
-            raise FileNotFoundError(f"snapshot_sql/ directory missing next to db.py: {d}")
-        merged: dict[str, str] = {}
-        for p in sorted(d.glob("*.json")):
-            merged.update(_json.loads(p.read_text(encoding="utf-8")))
-        _snapshot_sql_registry = merged
-    if key not in _snapshot_sql_registry:
-        raise KeyError(f"Unknown snapshot SQL registry key: {key!r}")
-    return _snapshot_sql_registry[key]
 
 
 # ════════════════════════════════════════════════════════════════════════════════

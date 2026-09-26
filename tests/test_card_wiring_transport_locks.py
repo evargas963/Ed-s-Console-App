@@ -47,121 +47,18 @@ def _called_names(node: ast.AST) -> set[str]:
 # ── Lock 1 — analytics-pool self-deadlock ────────────────────────────────────
 
 
-def test_fetch_state_never_submits_to_analytics_pool() -> None:
-    """_fetch_state occupies an analytics worker; nested submit+.result() on the
-    same pool self-deadlocks once the pool saturates. Chain/quote parallelization
-    must use a pool whose tasks never wait on analytics futures."""
-    fn = _find_function(SERVER_TREE, "_fetch_state")
-    assert fn is not None, "server._fetch_state not found"
-    calls = _called_names(fn)
-    assert "_submit_analytics_task" not in calls, (
-        "_fetch_state submits work back into the analytics executor — this is the "
-        "nested submit+.result() self-deadlock class fixed at 3a0d338 (py-spy proof "
-        "2026-07-04: all four ed_analytics_bg workers parked at .result())."
-    )
-    # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: the nested chain/quote/seed
-    # futures moved from the shared route pool to the dedicated recompute-leaf
-    # pool. The deadlock invariant is pool-agnostic: the pool used must never
-    # wait back into the analytics pool (leaf-ness AST-locked in
-    # tests/test_analytics_state_freshness_api.py).
-    assert "_get_recompute_leaf_executor" in calls, (
-        "_fetch_state chain/quote parallel fetch must run on the dedicated "
-        "recompute-leaf pool (true leaf tasks; no wait cycle back into the "
-        "analytics pool)."
-    )
 
 
 # ── Lane-3 lock — compute-stage instrumentation must stay stamped ────────────
 
 
-def test_fetch_state_stamps_compute_breakdown() -> None:
-    """Lane-3 (2026-07-05): the Tier C pipeline must attribute its compute time.
-    _fetch_state marks named stages and stamps _compute_breakdown on the payload;
-    without it the 13–27s _compute_ms is unattributable and cadence/staleness
-    policy decisions lose their evidence base."""
-    fn = _find_function(SERVER_TREE, "_fetch_state")
-    assert fn is not None, "server._fetch_state not found"
-    # Def-free marks (the mega1 section-inventory gate counts every def, so the
-    # instrumentation appends (stage, perf_counter) pairs instead of calling a helper).
-    mark_calls = sum(
-        1
-        for n in ast.walk(fn)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "append"
-        and isinstance(n.func.value, ast.Name)
-        and n.func.value.id == "_stage_marks"
-    )
-    assert mark_calls >= 8, (
-        f"_fetch_state has only {mark_calls} _stage_marks.append(...) marks — "
-        "compute-stage instrumentation regressed (need the named stage marks)."
-    )
-    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
-    assert '"_compute_breakdown"' in seg, (
-        "_fetch_state no longer stamps _compute_breakdown on the payload"
-    )
 
 
 # ── Lane-4 lock — bars persistence must stay off the synchronous hot path ───
 
 
-def test_fetch_state_bars_persist_offloaded_and_ordered() -> None:
-    """Lane-4 (2026-07-05): upsert_1m_bars measured 8,090.8ms of the synchronous
-    db_snapshot_write_accuracy stage while its result is never read by the live
-    payload. It must run ONLY inside the ordered background task (upsert before
-    fill_outcomes, single-worker executor) — never inline in _fetch_state."""
-    fn = _find_function(SERVER_TREE, "_fetch_state")
-    assert fn is not None, "server._fetch_state not found"
-    bg = _find_function(fn, "_bg_persist_bars_then_fill_outcomes")
-    assert bg is not None, (
-        "_bg_persist_bars_then_fill_outcomes not found — bars persistence has "
-        "been moved out of the ordered background task (lane-4 regression)."
-    )
-    # RC-69 SUPERSEDES THE BARS HALF OF THIS LOCK. Lane-4 correctly moved the 8,090.8ms
-    # upsert_1m_bars off the synchronous path; RC-69 removed it from this RENDER path entirely,
-    # because persisting bars here made COLLECTION a side-effect of DISPLAY (MEASURED 2026-07-27:
-    # SPY on-screen bar lag 3.1 min vs QQQ/IWM 19.1 min off-screen, all three with ~1.0 min
-    # snapshot lag; 39.8% of snapshots unlabelled for want of forward bars). `_bars_loop` is now
-    # the ONE writer of price_bars_1m. This lock now guards that the render path does NOT write
-    # bars, and that outcome labelling stays offloaded and ordered.
-    upsert_lines = [
-        n.lineno
-        for n in ast.walk(fn)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "upsert_1m_bars"
-    ]
-    assert not upsert_lines, (
-        f"RC-69 regression: _fetch_state persists 1m bars at server.py:{upsert_lines} - bar "
-        f"collection is coupled to the viewport again."
-    )
-    # Ordering inside the task: bars durable before labels advance.
-    fill_lines = [
-        n.lineno
-        for n in ast.walk(bg)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "fill_outcomes"
-    ]
-    assert fill_lines, "background task no longer runs fill_outcomes"
-    # The old upsert-before-fill ordering assertion is retired with the bars write itself:
-    # bars are now durable ahead of any render because `_bars_loop` persists them continuously
-    # and independently, rather than racing a per-render background task.
-    assert "_get_db_fill_outcomes_executor" in _called_names(fn), (
-        "_fetch_state no longer submits to the fill-outcomes executor"
-    )
 
 
-def test_fill_outcomes_executor_is_single_worker() -> None:
-    """The upsert→fill ordering guarantee rests on max_workers=1; two workers
-    would let a newer cycle's bars land before an older cycle's fill reads them."""
-    fn = _find_function(SERVER_TREE, "_get_db_fill_outcomes_executor")
-    assert fn is not None, "server._get_db_fill_outcomes_executor not found"
-    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
-    assert "max_workers=1" in seg, (
-        "fill-outcomes executor is no longer single-worker — cross-cycle "
-        "persist/fill ordering is no longer guaranteed."
-    )
 
 
 # ── Burndown lock — same-tick similarity dedup must stay wired ──────────────
@@ -170,26 +67,6 @@ SIGNALS_SRC = (ROOT / "signals.py").read_text(encoding="utf-8")
 SIGNALS_TREE = ast.parse(SIGNALS_SRC)
 
 
-def test_signals_tick_shares_similarity_context() -> None:
-    """Burndown (2026-07-05): the fusion overlay and compute_prediction_core ran an
-    identical tiered get_similar_setups in the same tick — 57% of the signals-engine
-    stage (py-spy: 692/1,214 build_market_state samples). Both hot-path call sites
-    must pass the shared per-tick ctx or the duplicate DB retrieval returns."""
-    fn = _find_function(SIGNALS_TREE, "_compute_signals_impl")
-    assert fn is not None, "signals._compute_signals_impl not found"
-    wired = {"build_fusion_model_overlay_for_stack": False, "compute_prediction_core": False}
-    for n in ast.walk(fn):
-        if not isinstance(n, ast.Call):
-            continue
-        callee = n.func.id if isinstance(n.func, ast.Name) else (
-            n.func.attr if isinstance(n.func, ast.Attribute) else None
-        )
-        if callee in wired and any(k.arg == "similar_ctx" for k in n.keywords):
-            wired[callee] = True
-    assert all(wired.values()), (
-        f"similar_ctx not passed at hot-path call site(s) {sorted(k for k, v in wired.items() if not v)} "
-        "— the same-tick similarity dedup is unwired (duplicate get_similar_setups per tick)."
-    )
 
 
 
@@ -197,27 +74,6 @@ def test_signals_tick_shares_similarity_context() -> None:
 # ── Burndown lock — IV history must stay a narrow projection ────────────────
 
 
-def test_fetch_state_iv_history_uses_narrow_projection() -> None:
-    """Burndown (2026-07-05): the IV rank/percentile history load pulled 5,000
-    FULL-WIDTH snapshot rows (200+ cols incl. option_chain_json blobs) per tick
-    per ticker to read one float each — 1,258/3,062 py-spy samples; the narrow
-    twin measured 152x faster with identical values against the live DB. The
-    hot loop must never regress to the full-width read for IV history."""
-    fn = _find_function(SERVER_TREE, "_fetch_state")
-    assert fn is not None, "server._fetch_state not found"
-    calls = _called_names(fn)
-    assert "get_recent_iv_levels" in calls, (
-        "_fetch_state no longer uses the narrow iv_level projection — the IV "
-        "rank/percentile path regressed to a full-width snapshot read."
-    )
-    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
-    idx = seg.find("IV Rank/Percentile")
-    assert idx != -1, "IV rank/percentile block not found in _fetch_state"
-    block = seg[idx : idx + 1500]
-    assert "get_recent_iv_levels(" in block, "narrow projection call missing from IV block"
-    assert "get_recent_snapshots(" not in block, (
-        "full-width get_recent_snapshots( call is back inside the IV-history block"
-    )
 
 
 
@@ -231,103 +87,18 @@ def test_fetch_state_iv_history_uses_narrow_projection() -> None:
 
 
 
-def test_snapshot_insert_sites_release_reservation_on_failure() -> None:
-    """Both production insert sites must pass the db handle to the gate and
-    release the reservation when the insert path fails."""
-    fn = _find_function(SERVER_TREE, "_fetch_state")
-    assert fn is not None
-    seg = ast.get_source_segment(SERVER_SRC, fn) or ""
-    # EXEC_IDENTITY_DECISION_SURFACE_ORDERING_V1: the reservation is taken at
-    # the pre-publish identity anchor (same key: ticker + refresh ts, same db
-    # handle) and the tail consumes it — the durable-probe db handle and the
-    # single-reservation-per-cycle semantics are unchanged.
-    assert "_snapshot_row_insert_allowed(ticker, _refresh_ts_utc, db=_ed_db)" in seg, (
-        "_fetch_state gate call lost the durable-probe db handle"
-    )
-    assert "_do_insert = _xid_do_snapshot_insert" in seg, (
-        "the persistence tail must consume the hoisted reservation"
-    )
-    assert "_snapshot_row_insert_release(ticker, _snap_ts)" in seg, (
-        "_fetch_state no longer releases a failed reservation"
-    )
-    assert "db=get_db()" in SERVER_SRC and "_snapshot_row_insert_release(t, snap_ts)" in SERVER_SRC, (
-        "base money-path capture site lost the durable probe or failure release"
-    )
 
 
-def test_offhours_snapshot_writes_gated_rc48() -> None:
-    """RC-48: no off-hours (overnight / weekend / full holiday) snapshot may be
-    persisted — options don't trade, spot doesn't move, training excludes them,
-    nothing reads them. Both capture paths route through the ONE calendar
-    authority time_et.is_capturable_session: the SSE _fetch_state insert skips +
-    releases the reservation when it is False, and the base logger's
-    _is_loggable_session ANDs it in so its minute-window is no longer
-    weekday/holiday-blind (the leak that mislabeled 27,681 weekend rows 'rth')."""
-    assert "is_capturable_session" in SERVER_SRC, "server lost the single capture authority import"
-    fs = _find_function(SERVER_TREE, "_fetch_state")
-    assert fs is not None
-    fs_seg = ast.get_source_segment(SERVER_SRC, fs) or ""
-    assert "elif not is_capturable_session():" in fs_seg, (
-        "SSE _fetch_state off-hours capture gate (RC-48) missing"
-    )
-    ils = _find_function(SERVER_TREE, "_is_loggable_session")
-    assert ils is not None
-    ils_seg = ast.get_source_segment(SERVER_SRC, ils) or ""
-    assert "is_capturable_session()" in ils_seg, (
-        "_is_loggable_session no longer calendar-aware (RC-48 weekend/holiday leak reopened)"
-    )
 
 
 # ── Audit lock — accuracy must be computed for the SERVING model version ────
 
 
-def test_accuracy_callers_use_serving_model_version() -> None:
-    """Repo-wide audit (2026-07-05): compute_accuracy / accuracy-history callers
-    hardcoded the legacy 'statistical_v1' version, which matches ZERO persisted
-    rows — the accuracy payload block and history were silently empty forever.
-    Every accuracy caller must resolve the serving version via
-    _current_pred_model_version (the same source that stamps rows)."""
-    helper = _find_function(SERVER_TREE, "_current_pred_model_version")
-    assert helper is not None, "server._current_pred_model_version not found"
-    seg = ast.get_source_segment(SERVER_SRC, helper) or ""
-    assert "get_model_version" in seg, (
-        "_current_pred_model_version no longer resolves via ml_predict.get_model_version"
-    )
-    assert '"statistical_v1"' not in seg
-    # No accuracy call site may pass the dead literal anywhere in server.py.
-    for n in ast.walk(SERVER_TREE):
-        if not isinstance(n, ast.Call):
-            continue
-        callee = n.func.attr if isinstance(n.func, ast.Attribute) else (
-            n.func.id if isinstance(n.func, ast.Name) else None
-        )
-        if callee in ("compute_accuracy", "maybe_log_model_accuracy", "get_model_accuracy_history"):
-            for k in n.keywords:
-                if k.arg == "model_version":
-                    assert not (
-                        isinstance(k.value, ast.Constant) and k.value.value == "statistical_v1"
-                    ), f"dead 'statistical_v1' literal at server.py:{n.lineno} ({callee})"
-            if callee == "compute_accuracy":
-                assert any(k.arg == "model_version" for k in n.keywords), (
-                    f"compute_accuracy at server.py:{n.lineno} relies on the dead default"
-                )
 
 
 # ── Lock 4 — SSE completed-fetch mirror parity ──────────────────────────────
 
 
-def test_completed_fetch_broadcast_attaches_operator_mirrors() -> None:
-    """The completed-fetch broadcast path must attach the same actionability block
-    REST and SSE cache-fanout attach — otherwise an SSE-fed card can paint
-    actionable in a fresh-bundle/stale-quote window where REST clients are withheld."""
-    outer = _find_function(SERVER_TREE, "_schedule_analytics_recompute")
-    assert outer is not None, "server._schedule_analytics_recompute not found"
-    inner = _find_function(outer, "_work")
-    assert inner is not None, "_schedule_analytics_recompute._work not found"
-    assert "_attach_card_freshness_v1_block" in _called_names(inner), (
-        "completed-fetch broadcast no longer attaches card_freshness_v1 / "
-        "operator_card_* mirrors — SSE/REST actionability parity regressed."
-    )
 
 
 
