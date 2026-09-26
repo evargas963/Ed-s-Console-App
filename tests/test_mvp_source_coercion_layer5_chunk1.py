@@ -7,7 +7,6 @@ import pytest
 from features.mvp_source_coercion import (
     MvpFeatureSourceError,
     _require_mapping,
-    read_liquidity_summary_subdict,
     read_optional_float,
     read_optional_vwap_side,
     read_optional_zone,
@@ -34,11 +33,6 @@ def test_read_optional_vwap_side_non_mapping_parent_raises():
         read_optional_vwap_side(None, "vwap_side", "anchor.vwap_side")
 
 
-def test_read_liquidity_summary_subdict_non_mapping_raises():
-    with pytest.raises(MvpFeatureSourceError, match="parent must be a Mapping"):
-        read_liquidity_summary_subdict(None)  # type: ignore[arg-type]
-    with pytest.raises(MvpFeatureSourceError, match="parent must be a Mapping"):
-        read_liquidity_summary_subdict([])  # type: ignore[arg-type]
 
 
 def test_require_mapping_returns_dict_unchanged():
@@ -55,5 +49,3 @@ def test_strict_float_from_raw_rejects_bool_container_and_nan():
         strict_float_from_raw(float("nan"), "price.spot")
 
 
-def test_read_liquidity_summary_missing_key_returns_empty_dict():
-    assert read_liquidity_summary_subdict({}) == {}

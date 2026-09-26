@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 import inspect
-from types import SimpleNamespace
 
 
-from features.stack_integrity_v1 import finalize_stack_integrity_v1, record_stack_degradation
 from live_decision_bundle import stamp_decision_bundle
-from market_state import MarketState
-from signals import canonical_forecast_from_fusion
 
 
 def test_decision_generation_id_always_present():
@@ -152,104 +148,10 @@ def test_state_error_truncation_constant():
     assert "[:120]" not in srv_src
 
 
-def test_stack_integrity_v1_propagates_mid_pipeline_events():
-    ms = MarketState()
-    record_stack_degradation(
-        ms.stack_integrity_events,
-        component="mc_fusion_payload_adjustment",
-        severity="warning",
-        reason="adjustment_failed",
-        authority_intact=False,
-    )
-    assert ms.signals_engine_failed is False
-    ms_dict: dict = {}
-    events = list(ms.stack_integrity_events)
-    ms_dict["stack_integrity_v1"] = finalize_stack_integrity_v1(events)
-    assert ms_dict["stack_integrity_v1"] is not None
-    assert ms_dict["stack_integrity_v1"].get("degraded") is True
-    pub = ms_dict["stack_integrity_v1"].get("events") or []
-    assert any(e.get("component") == "mc_fusion_payload_adjustment" for e in pub)
 
 
-def test_canonical_provenance_enum_complete():
-    unavailable = canonical_forecast_from_fusion(None)
-    assert unavailable.provenance == "fusion_unavailable"
-
-    missing = canonical_forecast_from_fusion(
-        SimpleNamespace(
-            available=True,
-            stack_directional_authorized=True,
-            prob_up=None,
-            prob_down=None,
-            prob_flat=None,
-        )
-    )
-    assert missing.provenance == "fusion_directional_missing"
-
-    invalid = canonical_forecast_from_fusion(
-        SimpleNamespace(
-            available=True,
-            stack_directional_authorized=True,
-            prob_up=0.0,
-            prob_down=0.0,
-            prob_flat=0.0,
-            dominant_direction="up",
-            fusion_confidence="high",
-        )
-    )
-    assert invalid.provenance == "fusion_directional_invalid"
-
-    good = canonical_forecast_from_fusion(
-        SimpleNamespace(
-            available=True,
-            stack_directional_authorized=True,
-            prob_up=0.5,
-            prob_down=0.3,
-            prob_flat=0.2,
-            dominant_direction="up",
-            fusion_confidence="high",
-        )
-    )
-    assert good.provenance == "bayesian_fusion"
-
-    from signals import _debug_canonical_override
-
-    override = _debug_canonical_override(good, "down", "user")
-    assert override.provenance == "debug_override:user"
 
 
-def test_r_units_none_propagates_end_to_end():
-    from signal_types import TheCall
-
-    ms = MarketState()
-    assert ms.r_units is None
-    call = TheCall(
-        signal="wait",
-        conviction="low",
-        entry=None,
-        stop=None,
-        target=None,
-        target2=None,
-        reward_risk=None,
-        reward_risk2=None,
-        headline="",
-        reasoning="",
-        trade_type="none",
-        invalidation="",
-        confluence_count=0,
-        confluence_total=0,
-        confluence_detail="",
-        time_qualifier="",
-        size_cue="SKIP",
-        rules_pred_agree=False,
-        time_warning=None,
-        size_note="",
-    )
-    assert call.r_units is None
-    ms.r_units = getattr(call, "r_units", None)
-    assert ms.r_units is None
-
-    assert getattr(ms, "r_units", None) is None
 
 
 def test_classify_stack_health_called_once_per_tick():

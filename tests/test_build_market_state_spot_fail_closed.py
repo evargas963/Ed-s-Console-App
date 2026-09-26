@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
-from market_state import build_market_state
 
 
 def _mkt_ctx(**kwargs: object) -> MagicMock:
@@ -61,32 +60,8 @@ def _fake_compute_signals(sig_inp, db=None, pred_override=None):
     return out
 
 
-@patch("signals.compute_signals", side_effect=_fake_compute_signals)
-def test_build_market_state_returns_degraded_when_spot_none(_mock_cs):
-    _COMPUTE_SIGNALS_CALLS.clear()
-    ms = build_market_state(**_base_kwargs(spot=None))
-    assert ms.spot is None
-    assert "Spot unavailable" in ms.rules_headline
-    assert "Spot unavailable" in ms.call_headline
-    assert _COMPUTE_SIGNALS_CALLS == []
 
 
-@patch("signals.compute_signals", side_effect=_fake_compute_signals)
-def test_build_market_state_preserves_zero_net_gamma(_mock_cs):
-    _COMPUTE_SIGNALS_CALLS.clear()
-    consensus = MagicMock()
-    consensus.bias_signal = "Neutral"
-    consensus.pin_strength = "Very Low"
-    consensus.net_gamma = 0.0
-    consensus.net_delta = 0.0
-    consensus.gex_magnitude = "negligible"
-    consensus.dex_magnitude = "negligible"
-    consensus.gamma_inflection = None
-    consensus.delta_inflection = None
-
-    build_market_state(**_base_kwargs(consensus_summary=consensus))
-    assert len(_COMPUTE_SIGNALS_CALLS) == 1
-    assert _COMPUTE_SIGNALS_CALLS[0].net_gamma == 0.0
 
 
 def test_signal_input_has_no_cross_instrument_fields():

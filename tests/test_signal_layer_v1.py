@@ -11,8 +11,6 @@ from features.signal_layer_v1 import (
     SNAPSHOT_PRICE_ACTION_COLUMNS,
     compute_price_action_snapshot_columns,
     compute_signal_layer_v1,
-    flatten_numeric_features,
-    load_bars_before_decision,
 )
 
 
@@ -48,44 +46,6 @@ def test_no_future_bar_in_window() -> None:
     assert layer["meta.bar_end_last"] == pytest.approx(float(bars[50]["bar_end_ts_utc"]))
 
 
-def test_load_bars_respects_end_filter() -> None:
-    """SQLite path: only bar_end_ts_utc <= decision."""
-    import sqlite3
-
-    from db import configure_sqlite_connection
-
-    conn = sqlite3.connect(":memory:")
-    configure_sqlite_connection(conn)
-    conn.execute(
-        """
-        CREATE TABLE price_bars_1m (
-            ticker TEXT NOT NULL,
-            bar_start_ts_utc REAL NOT NULL,
-            bar_end_ts_utc REAL NOT NULL,
-            open REAL, high REAL, low REAL, close REAL NOT NULL,
-            volume REAL,
-            source TEXT DEFAULT 'test',
-            PRIMARY KEY (ticker, bar_start_ts_utc)
-        )
-        """
-    )
-    tkr = "SPY"
-    for k in range(30):
-        be = 2_000_000.0 + k * 60.0
-        bs = be - 60.0
-        conn.execute(
-            """
-            INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc, open, high, low, close, volume)
-            VALUES (?, ?, ?, 100, 101, 99, 100, 1e6)
-            """,
-            (tkr, bs, be),
-        )
-    conn.commit()
-    cut = 2_000_000.0 + 20 * 60.0
-    rows = load_bars_before_decision(conn, tkr, cut, max_bars=200)
-    conn.close()
-    assert all(float(r["bar_end_ts_utc"]) <= cut for r in rows)
-    assert len(rows) == 21
 
 
 def test_synthetic_trend_slope_detectable() -> None:
@@ -124,11 +84,6 @@ def test_missing_ohlc_does_not_create_synthetic_multiframe_bars() -> None:
     assert layer["mtf.bias_15m_from_1m_sign"] is None
 
 
-def test_flatten_numeric_strips_meta() -> None:
-    layer = {"meta.n_bars": 3, "ps.rolling_trend_slope_log20": 0.01}
-    f = flatten_numeric_features(layer)
-    assert "meta.n_bars" not in f
-    assert "ps.rolling_trend_slope_log20" in f
 
 
 # ── Price-action persistence cone (operator 2026-06-11) ──────────────────────

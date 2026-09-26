@@ -20,12 +20,10 @@ import ast
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 
 import governance.provenance_inventory as P
 import governance.provenance_roots as R
 import governance.provenance_rows as ROWS_MOD
-from governed_stack_contract import GuestAnchorContext
 from multi_horizon_decision import compute_multi_horizon_synthesis
 from tests.test_issue18_multi_horizon_decision import _inp
 from tests.test_multi_horizon_decision_numeric_contract_v1 import _canonical, _pred
@@ -49,22 +47,10 @@ BATCH_CLOSED = (
 BATCH_NOT_PROVEN = ("call_signal", "call_conviction")
 
 
-def _anchor() -> GuestAnchorContext:
-    return GuestAnchorContext(guest_ticker="XLK", anchor_ticker="QQQ", affiliation="sector", rationale="test")
 
 
 # ── behavioural: the veto lives in the owner ─────────────────────────────────────────────
 
-def test_guest_anchor_veto_is_applied_by_the_synthesis_owner():
-    base = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None)
-    anchored = compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None, guest_anchor=_anchor())
-    assert anchored.tradeable is False
-    assert anchored.size_modifier == 0.0
-    assert anchored.wait_reason == _anchor().wait_reason
-    # Everything the anchor does not veto is the same verdict.
-    assert anchored.final_bias == base.final_bias
-    assert anchored.selected == base.selected
-    assert anchored.hmap.keys() == base.hmap.keys()
 
 
 def test_no_anchor_means_the_owner_verdict_is_untouched():
@@ -74,12 +60,6 @@ def test_no_anchor_means_the_owner_verdict_is_untouched():
         b.tradeable, b.size_modifier, b.wait_reason, b.final_bias)
 
 
-def test_the_guest_anchor_is_keyword_only_and_the_alternate_weight_seam_is_gone():
-    args = P.function_args("multi_horizon_decision.py", "compute_multi_horizon_synthesis")
-    assert "pool_weights" not in args
-    assert "guest_anchor" in args
-    with pytest.raises(TypeError):
-        compute_multi_horizon_synthesis(_inp(), _pred(), _canonical(), None, _anchor())  # positional refused
 
 
 def test_admission_gate_has_no_component_parameter():

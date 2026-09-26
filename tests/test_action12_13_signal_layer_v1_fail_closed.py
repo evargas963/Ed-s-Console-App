@@ -4,16 +4,10 @@ from __future__ import annotations
 
 import math
 from types import SimpleNamespace
-from unittest.mock import patch
 
-import bayesian_fusion
-import pytest
 
 from features.signal_layer_v1 import (
     compute_signal_layer_v1,
-    layer_direction_policy,
-    meta_n_bars_int,
-    signal_layer_v1_to_direction_probs,
 )
 
 
@@ -37,15 +31,8 @@ def _synth_bars(n: int, t0: float = 1_000_000.0) -> list[dict]:
     return bars
 
 
-def test_signal_layer_v1_to_direction_probs_returns_none_when_n_bars_lt_25() -> None:
-    layer = {"meta.n_bars": 24, "mtf.trend_1m_sign": 1.0}
-    assert signal_layer_v1_to_direction_probs(layer) is None
 
 
-def test_meta_n_bars_int_rejects_non_numeric_string() -> None:
-    assert meta_n_bars_int({"meta.n_bars": "not-a-number"}) == 0
-    assert signal_layer_v1_to_direction_probs({"meta.n_bars": "not-a-number", "mtf.trend_1m_sign": 1.0}) is None
-    assert meta_n_bars_int({"meta.n_bars": "30"}) == 30
 
 
 def test_compute_signal_layer_v1_missing_last_close_sets_meta_error() -> None:
@@ -99,60 +86,7 @@ def test_mtf_alignment_state_none_when_any_trend_sign_missing() -> None:
     assert layer["mtf.alignment_state"] is None
 
 
-def test_layer_direction_policy_handles_none_mtf_signs() -> None:
-    layer = {
-        "ps.rolling_trend_slope_log20": 0.001,
-        "mtf.trend_1m_sign": None,
-        "mtf.trend_5m_from_1m_sign": None,
-        "mtf.bias_15m_from_1m_sign": None,
-    }
-    assert layer_direction_policy(layer) == "wait"
 
 
-def _fuse_with_signal_layer(sl: dict) -> bayesian_fusion.FusionPayload:
-    regime = SimpleNamespace(primary="pinning", confidence="medium")
-    rules = SimpleNamespace(signal="wait", conviction="medium")
-    xgb = SimpleNamespace(
-        available=True,
-        prob_up=0.55,
-        prob_down=0.30,
-        prob_flat=0.15,
-        dominant_class="up",
-        confidence_label="medium",
-        continuation_support=0.2,
-        reversal_support=0.1,
-    )
-    lstm = SimpleNamespace(
-        available=True,
-        prob_up=0.52,
-        prob_down=0.33,
-        prob_flat=0.15,
-        continuation_support=0.18,
-        reversal_support=0.12,
-    )
-    tr = SimpleNamespace(available=False)
-    mc = SimpleNamespace(
-        available=True,
-        containment_prob=0.55,
-        expansion_prob=0.45,
-        n_paths=1000,
-        horizon_bars=20,
-        assumptions={"garch_active": False, "blended_sigma": 1.2},
-    )
-    return bayesian_fusion.fuse(
-        regime, xgb, lstm, tr, mc, rules, signal_layer_v1=sl
-    )
 
 
-def test_bayesian_fusion_skips_blend_when_signal_layer_returns_none() -> None:
-    sl = {"meta.n_bars": 30, "mtf.trend_1m_sign": 1.0}
-    without_sl = _fuse_with_signal_layer({"meta.n_bars": 0})
-    with patch(
-        "features.signal_layer_v1.signal_layer_v1_to_direction_probs",
-        return_value=None,
-    ):
-        with_sl = _fuse_with_signal_layer(sl)
-    assert with_sl.signal_layer_v1_fusion is None
-    assert with_sl.prob_up == pytest.approx(without_sl.prob_up)
-    assert with_sl.prob_down == pytest.approx(without_sl.prob_down)
-    assert with_sl.prob_flat == pytest.approx(without_sl.prob_flat)

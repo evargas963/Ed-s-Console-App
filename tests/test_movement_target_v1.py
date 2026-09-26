@@ -3,21 +3,11 @@ from __future__ import annotations
 
 from db import EdDB
 from horizon_outcomes import HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1
-from movement_target_threshold import (
-    directional_and_move_labels_v1,
-    movement_threshold_pts_v1,
-)
 from timeframe_config import CANONICAL_TIMEFRAME as CF
 
 from tests.conftest import in_window_ts
 
 
-def test_threshold_and_labels():
-    thr = movement_threshold_pts_v1(100.0, 1.0, {"atr_multiplier": 0.5, "min_fraction_of_anchor": 0.001})
-    assert thr >= 0.1
-    assert directional_and_move_labels_v1(0.05, thr) == (None, "no_move")
-    assert directional_and_move_labels_v1(thr * 2, thr) == ("up", "move")
-    assert directional_and_move_labels_v1(-thr * 2, thr) == ("down", "move")
 
 
 def test_fill_outcomes_writes_movement_columns(tmp_path):

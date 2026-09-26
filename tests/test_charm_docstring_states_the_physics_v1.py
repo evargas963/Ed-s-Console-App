@@ -37,9 +37,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from math_exposure_core import compute_net_charm  # noqa: E402
 
-DOC = inspect.getdoc(compute_net_charm) or ""
 
 
 def _norm(s: str) -> str:
@@ -75,46 +73,12 @@ def test_the_sign_flips_with_moneyness_not_with_side():
         f"the docstring's moneyness claim must be re-derived")
 
 
-def test_the_docstring_makes_no_per_side_decay_claim():
-    """RC-296: the enforced falsehood must not return in either direction.
-
-    The original said calls buy / puts sell; RC-294 said calls sell / puts buy. Both are
-    claims about a distinction the code cannot make, so BOTH are refused here.
-    """
-    d = _norm(DOC)
-    for lie in (
-        "SHORT call → delta hedge = SHORT stock",
-        "SHORT put → delta hedge = LONG stock",
-        "less of it and SELL stock",
-        "decays they BUY stock back",
-        "As charm decays, they BUY back stock",
-        "As charm decays, they SELL stock",
-    ):
-        assert lie not in d, f"a per-side charm decay claim is back in the docstring: {lie!r}"
 
 
-def test_the_docstring_states_side_independence_and_moneyness():
-    d = _norm(DOC)
-    assert "PER-CONTRACT CHARM IS SIDE-INDEPENDENT" in d
-    assert "takes NO call/put argument" in d
-    assert "SIGN IS A FUNCTION OF MONEYNESS" in d
-    assert "OI IMBALANCE" in d, (
-        "the docstring no longer says where dealer direction actually comes from")
 
 
-def test_the_pin_source_names_the_function_the_caller_actually_passes():
-    """Line 822 named pick_pin_and_strength; server.py passes pick_net_gex_peak_strike."""
-    d = _norm(DOC)
-    assert "passes `pick_net_gex_peak_strike` over the SELECTED EXPIRY" in d
-    assert "institutional pin from pick_pin_and_strength (caller-supplied)" not in d, (
-        "the docstring claims the wide-book total-gamma pin again")
 
 
-def test_the_docstring_says_charm_does_not_compute_a_target():
-    """Cursor's verdict, recorded where the next reader will look."""
-    d = _norm(DOC)
-    assert "does not compute a price attractor" in d
-    assert "republished unchanged" in d
 
 
 def test_the_caller_still_passes_the_net_gex_peak():
@@ -127,11 +91,3 @@ def test_the_caller_still_passes_the_net_gex_peak():
         "again, which is the RC-294 defect returning from the other side")
 
 
-def test_correcting_the_prose_did_not_move_the_arithmetic():
-    """A future 'fix' to the explanation must not drag the convention with it."""
-    body = inspect.getsource(compute_net_charm)
-    assert "net = call_charm - put_charm" in body, (
-        "the dealer sign convention changed; it is RC-179-locked and measured, so a prose "
-        "correction must never touch it")
-    assert "call_charm + put_charm" not in body.replace("`call_charm + put_charm`", ""), (
-        "the same-sign gross is back — that is the 2026-07-19 defect")

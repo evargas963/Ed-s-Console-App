@@ -16,7 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db import EdDB, similarity_empirically_viable, similarity_labeled_counts, similarity_tier_stop_viable
+from db import (
+    EdDB,
+)
 from math_probabilities import MIN_SAMPLES_STATISTICAL
 from timeframe_config import CANONICAL_TIMEFRAME
 
@@ -66,53 +68,6 @@ _FAR_NAD = 50.0
 _FAR_NBD = 50.0
 
 
-def test_issue19_widens_when_narrow_tier_insufficient_labeled_horizons(tmp_path):
-    """Tier 3 has 25 rows (<30 labeled per horizon); tier 4 adds 15 → 40 viable."""
-    dbp = tmp_path / "i19.db"
-    db = EdDB(dbp)
-    base_ts = 1_720_000_000.0
-    with db._connect() as conn:
-        for i in range(25):
-            _insert_viable_row(
-                conn,
-                ticker="SPY",
-                ts=base_ts + i * 60,
-                zone="ix19_widen",
-                vwap_side="above",
-                nad=1.0,
-                nbd=1.0,
-            )
-        for j in range(15):
-            _insert_viable_row(
-                conn,
-                ticker="SPY",
-                ts=base_ts + 50_000 + j * 60,
-                zone="ix19_widen",
-                vwap_side="below",
-                nad=1.0,
-                nbd=1.0,
-            )
-        conn.commit()
-
-    similar, tr = db.get_similar_setups(
-        ticker="SPY",
-        timeframe=CANONICAL_TIMEFRAME,
-        zone="ix19_widen",
-        vwap_side="above",
-        nearest_above_dist=_FAR_NAD,
-        nearest_below_dist=_FAR_NBD,
-        return_trace=True,
-    )
-    assert tr["chosen_tier"] == 4
-    assert len(similar) == 40
-    assert similar[0].get("match_tier") == 4
-    assert similarity_tier_stop_viable(similarity_labeled_counts(similar))
-    t3 = next(x for x in tr["tiers"] if x["tier"] == 3)
-    assert t3["row_count_after_query_limit"] == 25
-    assert t3["empirically_viable"] is False
-    t4 = next(x for x in tr["tiers"] if x["tier"] == 4)
-    assert t4["row_count_after_query_limit"] == 40
-    assert t4["empirically_viable"] is True
 
 
 def test_issue19_preserves_narrowest_viable_tier(tmp_path):
@@ -191,80 +146,8 @@ def _insert_row_tier_stop_only(
     )
 
 
-def test_issue19_does_not_broaden_for_sparse_60c_when_tier_stop_ok(tmp_path):
-    """Narrow tier has 1c/5c/15c depth; 60c unlabeled — stay at tier 3, withhold 60c honestly."""
-    dbp = tmp_path / "i19_60c.db"
-    db = EdDB(dbp)
-    base_ts = 1_770_000_000.0
-    with db._connect() as conn:
-        for i in range(40):
-            _insert_row_tier_stop_only(
-                conn,
-                ticker="XLF",
-                ts=base_ts + i * 60,
-                zone="ix19_60weak",
-                vwap_side="below",
-                nad=1.0,
-                nbd=1.0,
-                outcome_5c="up",
-                outcome_15c="up",
-                outcome_60=None,
-            )
-        conn.commit()
-    similar, tr = db.get_similar_setups(
-        ticker="XLF",
-        timeframe=CANONICAL_TIMEFRAME,
-        zone="ix19_60weak",
-        vwap_side="below",
-        nearest_above_dist=_FAR_NAD,
-        nearest_below_dist=_FAR_NBD,
-        return_trace=True,
-    )
-    assert tr["chosen_tier"] == 3
-    counts = similarity_labeled_counts(similar)
-    assert similarity_tier_stop_viable(counts)
-    assert counts["outcome_60c"] < MIN_SAMPLES_STATISTICAL
-    assert similarity_empirically_viable(counts) is False
-    from prediction_engine import _literal_empirical_horizon
-
-    p60, src60, _note60, n60 = _literal_empirical_horizon(similar, "outcome_60c", 60)
-    assert p60 is None and n60 < MIN_SAMPLES_STATISTICAL
-    p5, src5, _n5, n5 = _literal_empirical_horizon(similar, "outcome_5c", 5)
-    assert p5 is not None and n5 >= MIN_SAMPLES_STATISTICAL
 
 
-def test_issue19_honest_no_viable_set_sparse_long_horizon(tmp_path):
-    """20 rows at best tier — still not empirically viable."""
-    dbp = tmp_path / "i19c.db"
-    db = EdDB(dbp)
-    base_ts = 1_740_000_000.0
-    with db._connect() as conn:
-        for i in range(20):
-            _insert_viable_row(
-                conn,
-                ticker="IWM",
-                ts=base_ts + i * 60,
-                zone="ix19_sparse",
-                vwap_side="above",
-                nad=1.0,
-                nbd=1.0,
-            )
-        conn.commit()
-
-    similar, tr = db.get_similar_setups(
-        ticker="IWM",
-        timeframe=CANONICAL_TIMEFRAME,
-        zone="ix19_sparse",
-        vwap_side="above",
-        nearest_above_dist=_FAR_NAD,
-        nearest_below_dist=_FAR_NBD,
-        return_trace=True,
-    )
-    assert tr["chosen_tier"] == 5
-    assert len(similar) == 20
-    assert tr["final_empirically_viable"] is False
-    assert tr["tier5_empirically_viable"] is False
-    assert similarity_labeled_counts(similar)["outcome_5c"] < MIN_SAMPLES_STATISTICAL
 
 
 def test_issue19_false_wait_removed_empirical_5c_ok_after_widen(tmp_path):

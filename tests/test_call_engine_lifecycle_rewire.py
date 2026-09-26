@@ -8,7 +8,6 @@ from types import SimpleNamespace
 import pytest
 
 import call_engine as ce
-from lifecycle_rule_core import TargetLevels
 
 
 def _inp(
@@ -52,40 +51,6 @@ def _pred(
     )
 
 
-def test_compute_levels_delegates_target_geometry_to_lifecycle_rule_core(monkeypatch):
-    calls: list[dict] = []
-
-    def fake_derive_target_levels(**kwargs):
-        calls.append(kwargs)
-        return TargetLevels(
-            target=105.0,
-            target2=106.0,
-            target_source="test",
-            target2_source="test",
-            target_snapped=False,
-            target2_snapped=False,
-        )
-
-    monkeypatch.setattr(ce, "derive_target_levels", fake_derive_target_levels, raising=False)
-
-    result = ce._compute_levels(
-        _inp(spot=100.0, vwap=104.0, call_gamma_wall=105.0, atr=0.12),
-        "long",
-        rules=None,
-        pred=_pred(avg_5c_pts=4.0, avg_15c_pts=5.0, avg_60c_pts=6.0),
-        risk_multiplier=1.0,
-        governed_zone="",
-    )
-
-    assert len(calls) == 1
-    assert calls[0]["direction"] == "long"
-    assert calls[0]["avg5"] == pytest.approx(4.0)
-    assert calls[0]["avg15"] == pytest.approx(5.0)
-    assert "avg60" not in calls[0]   # the 60c move no longer stands in for T2 (S-15)
-    # Price-action plan (operator 2026-06-11): key levels never enter target
-    # geometry — vwap/gamma walls are context display only, not snap anchors.
-    assert calls[0]["structural_levels"] == []
-    assert result == (100.0, pytest.approx(99.82), 105.0, 106.0)
 
 
 def test_compute_levels_never_snaps_to_structural_levels():

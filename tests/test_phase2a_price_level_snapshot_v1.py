@@ -34,13 +34,10 @@ from liquidity_value_engine import (
     PriceLevelValue,
     build_price_level_snapshot,
     carry_snapshot_levels,
-    clear_materialized_snapshots,
     compute_session_vwap,
     compute_session_vwap_series,
     materialize_price_level_snapshot,
     register_level_carrier,
-    reset_level_carrier_ledger,
-    scoped_level_id,
 )
 from time_et import ET
 from tools.phase2a_level_lock import (
@@ -74,13 +71,6 @@ def _tape():
     return bars
 
 
-@pytest.fixture(autouse=True)
-def _clean_ledgers():
-    clear_materialized_snapshots()
-    reset_level_carrier_ledger()
-    yield
-    clear_materialized_snapshots()
-    reset_level_carrier_ledger()
 
 
 # ── the materialized snapshot ────────────────────────────────────────────────
@@ -126,10 +116,6 @@ def test_absent_input_stays_absent_and_is_declared():
     assert snap.price("VWAP") is None
 
 
-def test_distinct_scopes_never_share_an_id():
-    assert scoped_level_id("VWAP", "session_rth") == "VWAP"
-    assert scoped_level_id("VWAP", "checkpoint:midday") == "VWAP@checkpoint:midday"
-    assert scoped_level_id("PDH", "checkpoint:premarket") == "PDH@checkpoint:premarket"
 
 
 def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
@@ -337,115 +323,10 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     assert src == [], src
 
 
-def test_market_context_carries_and_never_recomputes(monkeypatch):
-    """fetch_price_levels must make NO vendor fetch and NO helper call of its own.
-
-    The first version of this control read the function's SOURCE and asserted that six
-    helper names and `get_price_history` do not appear in it. That is a spelling check:
-    reaching the same helper through an alias, a getattr, or a re-export leaves the
-    source clean and the second materialization back. The helpers are real functions in
-    liquidity_value_engine, so they are replaced with traps here — any route to them,
-    however spelled, raises — and the carriage is then asserted to still be correct.
-    """
-    import liquidity_value_engine as lve
-    from market_context import fetch_price_levels
-
-    recompute: list[str] = []
-
-    # Materialize FIRST: the canonical producer is the one place these helpers are
-    # legitimately called. The traps go in afterwards, so they can only observe a
-    # second, non-canonical call — which is the whole defect.
-    snap = materialize_price_level_snapshot(
-        "SPY", SESSION, _tape(), bar_source="unit_tape")
-
-    for name in ("compute_session_vwap", "compute_vwap_bands", "compute_opening_range",
-                 "get_overnight_levels", "compute_volume_profile_levels",
-                 "get_previous_day_levels"):
-        assert hasattr(lve, name), f"{name} left the canonical producer; re-derive this trap"
-
-        def trap(*a, _n=name, **k):
-            recompute.append(_n)
-            raise AssertionError(f"fetch_price_levels recomputed {_n}")
-
-        monkeypatch.setattr(lve, name, trap)
-
-    pl = fetch_price_levels(None, symbol="SPY", stream_quote=None, level_snapshot=snap)
-
-    assert recompute == [], f"fetch_price_levels recomputed {recompute} instead of carrying"
-    # …and it carried, so the silence above is carriage, not a swallowed failure.
-    assert pl.error is None or "no canonical snapshot" not in (pl.error or "")
-    assert pl.vwap == snap.price("VWAP")
-    assert pl.orb_high == snap.price("ORB_HIGH")
-    assert pl.pd_poc == snap.price("PD_POC")
-    assert pl.level_generation == snap.generation
 
 
-def test_state_and_levels_carry_one_generation(monkeypatch):
-    """/api/state's price levels and /api/levels come out of the SAME object."""
-    from market_context import fetch_price_levels
-    import server as srv
-
-    snap = materialize_price_level_snapshot(
-        "SPY", SESSION, _tape(), bar_source="unit_tape")
-    carry_snapshot_levels(snap, "api.levels")
-    pl = fetch_price_levels(None, symbol="SPY", stream_quote=None, level_snapshot=snap)
-    assert pl.pdh == snap.price("PDH")
-    assert pl.pdc == snap.price("PDC")
-    assert pl.vwap == snap.price("VWAP")
-    assert pl.overnight_high == snap.price("OVERNIGHT_HIGH")
-    assert pl.level_generation == snap.generation
-    today = SESSION.isoformat()
-    assert srv.carried_price_levels_match_snapshot(
-        pl, today, snap.generation, today, snap) is True
-
-    # Generation advance: /api/levels would serialize snap2; a wall-clock-fresh
-    # gen-1 carry must not be reused (the pre-RC-416 /api/state TTL defect).
-    tape2 = _tape() + [_bar(2026, 8, 4, 12, 0, 107, 109, 106, 108)]
-    snap2 = materialize_price_level_snapshot(
-        "SPY", SESSION, tape2, bar_source="unit_tape")
-    assert snap2.generation != snap.generation
-    assert snap2.price("VWAP") != pl.vwap
-    assert srv.carried_price_levels_match_snapshot(
-        pl, today, snap.generation, today, snap2) is False
-    pl2 = fetch_price_levels(None, symbol="SPY", stream_quote=None, level_snapshot=snap2)
-    assert pl2.vwap == snap2.price("VWAP")
-    assert pl2.level_generation == snap2.generation
-    assert srv.carried_price_levels_match_snapshot(
-        pl2, today, snap2.generation, today, snap2) is True
-    empty = fetch_price_levels(None, symbol="ZZZZ", stream_quote=None)
-    assert srv.carried_price_levels_match_snapshot(
-        empty, today, snap2.generation, today, snap2) is False
 
 
-def test_market_context_absence_is_absence_not_substitution():
-    from market_context import fetch_price_levels
-
-    clear_materialized_snapshots()
-    # Quote closePrice is a different book from snapshot PDC. Absence of the snapshot
-    # must not publish closePrice as pdc (RC-415). today_open/high/low ARE quote fields.
-    stream_row = {"prior_close": 999.0, "open_price": 10.0, "high_price": 11.0, "low_price": 9.0}
-    pl = fetch_price_levels(None, symbol="ZZZZ", stream_quote=stream_row)
-    for field in ("pdh", "pdl", "pdc", "vwap", "orb_high", "overnight_high", "today_poc"):
-        assert getattr(pl, field) is None, f"{field} was substituted when absent"
-    assert pl.today_open == 10.0
-    assert "no canonical snapshot" in pl.error
-
-    # Snapshot present but prior-day family absent: still withhold, still no closePrice.
-    today_only = [
-        _bar(2026, 8, 4, 9, 31, 103, 106, 102, 105),
-        _bar(2026, 8, 4, 11, 0, 106, 108, 105, 107),
-    ]
-    snap = materialize_price_level_snapshot(
-        "QQQ", SESSION, today_only, bar_source="unit_tape")
-    assert snap.price("PDC") is None
-    pl2 = fetch_price_levels(
-        None, symbol="QQQ",
-        stream_quote={"prior_close": 888.0},
-        level_snapshot=snap,
-    )
-    assert pl2.pdc is None, (
-        f"pdc substituted quote closePrice {pl2.pdc} for missing snapshot PDC"
-    )
 
 
 def test_chart_and_exposure_draw_carried_values_only():

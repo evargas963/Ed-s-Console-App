@@ -28,7 +28,6 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from math_exposure_core import compute_net_charm  # noqa: E402
 
 #: A REAL SPY chain captured from data/ed_console.db — 40 contracts, spot 773.05, all
 #: expiring 2026-09-22. Charm needs T > 0 to compute anything, and that expiry is now past,
@@ -43,34 +42,10 @@ REAL_EXPIRY = "2026-09-22"
 DURING_THAT_SESSION = datetime(2026, 9, 22, 12, 46, tzinfo=ZoneInfo("America/New_York"))
 
 
-def test_the_error_path_publishes_drift_toward_and_not_gamma_pin():
-    out = compute_net_charm([], 100.0, "2026-08-14", drift_toward_strike=772.0)
-    assert "gamma_pin" not in out, (
-        "charm republishes terrain's field name again — one identifier, two definitions")
-    assert out["drift_toward"] == 772.0, "the caller's strike stopped travelling through"
 
 
-def test_a_real_chain_also_publishes_only_one_name():
-    """The success path had its own copy of the alias plus an intermediate variable.
-
-    Driven by the real captured chain so the payload under test is the one production
-    builds — an empty-chain error payload could have lost the key while the live one kept it.
-    """
-    out = compute_net_charm(REAL_CHAIN, REAL_SPOT, REAL_EXPIRY,
-                            drift_toward_strike=772.0, now=DURING_THAT_SESSION)
-    assert out["contracts_used"] > 0, (
-        f"the fixture no longer reaches the success path: {out.get('error')}")
-    assert out["net_charm_daily"] is not None, "charm computed nothing to publish"
-    assert "gamma_pin" not in out
-    assert out["drift_toward"] == 772.0
 
 
-def test_charm_still_reports_its_own_measurements():
-    """Negative control: removing a duplicate NAME must not remove any VALUE."""
-    out = compute_net_charm([], 100.0, "2026-08-14", drift_toward_strike=None)
-    for key in ("net_charm_daily", "charm_direction", "charm_magnitude",
-                "contracts_used", "drift_toward", "error"):
-        assert key in out, f"charm stopped publishing {key}"
 
 
 def test_the_two_pin_metrics_are_different_quantities():

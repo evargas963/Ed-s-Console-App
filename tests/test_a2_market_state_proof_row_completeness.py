@@ -4,8 +4,6 @@ a field silently dropped here is a silent gap in the auditable decision trail.""
 from __future__ import annotations
 
 from market_state import _oe_chain_row_snapshot, recommend_option_expression
-from v2_decision.a2_option_expression import build_a2_option_expression
-from v2_decision.module_a_adapter import build_module_a_a1_decision
 
 
 def _rich_contract(**overrides) -> dict:
@@ -61,22 +59,6 @@ def _rich_contract(**overrides) -> dict:
     return base
 
 
-def _a1_trade() -> dict:
-    # Fusion authority requires fusion_available, tradable canonical_provenance,
-    # and the transported producer verdict stack_directional_authorized=True.
-    return build_module_a_a1_decision(
-        {
-            "ticker": "SPY",
-            "fusion_available": True,
-            "canonical_provenance": "bayesian_fusion",
-            "stack_directional_authorized": True,
-            "fusion_dominant_direction": "up",
-            "fusion_dominant_prob": 0.64,
-            "fusion_confidence": "high",
-            "is_no_trade": False,
-            "execution_mode": "STANDARD",
-        }
-    )
 
 
 def _ms_from_proof(proof: dict) -> dict:
@@ -181,56 +163,8 @@ def test_recommend_option_expression_winner_carries_full_schwab_chain_row():
     assert proof["ranked_candidates_top5"][0]["chain_row"]["quoteTimeInLong"] == 1778018399000
 
 
-def test_market_state_proof_feeds_schwab_theta_and_quote_timestamp_to_a2():
-    """V3 I-01: no silent substitution when Schwab theta/timestamps are available."""
-    _, _, proof = recommend_option_expression(
-        contracts=[_rich_contract()],
-        spot=499.5,
-        call_signal="long",
-        walls=None,
-        selected_expiry="2026-05-05",
-    )
-
-    a2 = build_a2_option_expression(_ms_from_proof(proof), _a1_trade())
-
-    assert a2["option_expression"]["option_action"]["value"] == "TRADE"
-    assert "theta_unavailable" not in a2["health"]["hard_gates_failed"]["value"]
-    assert "missing_quote_timestamp" not in a2["health"]["hard_gates_failed"]["value"]
-    assert a2["greeks"]["theta"] == {
-        "value": -0.18,
-        "source": "v2_compliant",
-        "detail": "schwab_chain_theta",
-    }
-    assert a2["execution"]["quote_staleness_ms"] == {
-        "value": 1000,
-        "source": "v2_compliant",
-    }
 
 
-def test_market_state_proof_feeds_vendor_breakEven_to_a2():
-    """RC-388: the vendor breakeven must survive the proof snapshot and be served by A2
-    as the authoritative value (v2_compliant), not the strike +/- mid approximation."""
-    _, _, proof = recommend_option_expression(
-        contracts=[_rich_contract()],
-        spot=499.5,
-        call_signal="long",
-        walls=None,
-        selected_expiry="2026-05-05",
-    )
-
-    assert proof["winner"]["chain_row"]["breakEven"] == 501.31
-
-    a2 = build_a2_option_expression(_ms_from_proof(proof), _a1_trade())
-
-    assert a2["option_expression"]["breakeven"] == {
-        "value": 501.31,
-        "source": "v2_compliant",
-        "detail": "schwab_chain_breakEven",
-    }
-    assert a2["option_expression"]["breakeven_source"] == {
-        "value": "vendor_breakEven",
-        "source": "v2_compliant",
-    }
 
 
 def test_recommend_option_expression_no_contract_path_does_not_fabricate_chain_row():

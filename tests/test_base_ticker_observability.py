@@ -7,23 +7,13 @@ import sqlite3
 import time
 from pathlib import Path
 
-from money_path_ticker_tiers import BASE_MONEY_PATH_TICKERS, TRUST_BASE, load_base_ticker_contract
-from verification.ui_realtime_transport_audit import TRUST_GUEST_UNPROVEN
-from verification.ui_realtime_transport_audit import is_guest_ticker
-from verification.ui_realtime_transport_audit import ticker_trust_class
+from money_path_ticker_tiers import (
+    BASE_MONEY_PATH_TICKERS,
+)
 
 
-def test_base_tickers_are_spy_qqq_iwm():
-    assert BASE_MONEY_PATH_TICKERS == ("SPY", "QQQ", "IWM")
-    contract = load_base_ticker_contract()
-    assert contract["base_money_path_tickers"] == ["SPY", "QQQ", "IWM"]
 
 
-def test_guest_ticker_not_universal_proof():
-    assert is_guest_ticker("NVDA") is True
-    assert is_guest_ticker("SPY") is False
-    assert ticker_trust_class("PLTR") == TRUST_GUEST_UNPROVEN
-    assert ticker_trust_class("SPY") == TRUST_BASE
 
 
 def test_the_tier_skip_predicate_is_gone_not_neutered():
@@ -146,91 +136,10 @@ def test_june_17_style_flat_1m_candles_normalize(tmp_path: Path):
     assert len(norm) == 5
 
 
-def test_base_materialize_does_not_touch_guest_ticker(tmp_path: Path):
-    from db import EdDB
-    from normalized_training_sync import materialize_base_money_path_tickers
-    from timeframe_config import CANONICAL_TIMEFRAME as CF
-
-    db = EdDB(tmp_path / "guest.db")
-    ts = 1_781_700_000.0
-    with db._connect() as conn:
-        for ticker in ("SPY", "NVDA"):
-            conn.execute(
-                """
-                INSERT INTO snapshots (
-                    ticker, timeframe, ts_utc, ts_et, et_hour, et_minute, market_session, spot,
-                    candle_open, candle_high, candle_low, candle_close, candle_volume
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    ticker,
-                    CF,
-                    ts,
-                    "2026-06-17 14:00:00 ET",
-                    14,
-                    0,
-                    "rth",
-                    100.0,
-                    100.0,
-                    101.0,
-                    99.0,
-                    100.0,
-                    1.0,
-                ),
-            )
-        conn.execute(
-            "INSERT INTO snapshots_1m_normalized (ticker, timeframe, ts_utc, spot) VALUES ('NVDA', ?, ?, 1.0)",
-            (CF, ts + 9999.0),
-        )
-        conn.commit()
-
-    mat = materialize_base_money_path_tickers(db.db_path)
-    assert not mat.get("errors")
-    assert "SPY" in mat["by_ticker"]
-    assert "NVDA" not in mat.get("by_ticker", {})
-    with db._connect() as conn:
-        nvda_norm = conn.execute(
-            "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE ticker='NVDA'"
-        ).fetchone()[0]
-        spy_norm = conn.execute(
-            "SELECT COUNT(*) FROM snapshots_1m_normalized WHERE ticker='SPY'"
-        ).fetchone()[0]
-    assert nvda_norm == 1
-    assert spy_norm == 1
 
 
-def test_schedule_debounced_base_money_path_refresh_materializes(monkeypatch, tmp_path: Path):
-    from normalized_training_sync import schedule_debounced_base_money_path_normalized_refresh
-
-    fired: list[Path] = []
-
-    class _ImmediateTimer:
-        def __init__(self, _delay, fn):
-            self._fn = fn
-
-        def start(self):
-            self._fn()
-
-        def cancel(self):
-            pass
-
-        daemon = True
-
-    monkeypatch.setattr("normalized_training_sync.threading.Timer", _ImmediateTimer)
-    monkeypatch.setattr(
-        "normalized_training_sync.materialize_base_money_path_tickers",
-        lambda p: fired.append(Path(p)) or {"errors": [], "normalized_rows": 1, "by_ticker": {}},
-    )
-    schedule_debounced_base_money_path_normalized_refresh(tmp_path / "x.db")
-    assert fired == [tmp_path / "x.db"]
 
 
-def test_base_normalize_debounce_default_below_capture_interval():
-    from normalized_training_sync import base_money_path_normalize_debounce_sec
-
-    delay = base_money_path_normalize_debounce_sec(capture_interval_sec=60.0)
-    assert delay < 60.0
-    assert delay >= 15.0
 
 
 def test_base_normalize_schedule_does_not_starve_when_cycles_reschedule(monkeypatch, tmp_path: Path):

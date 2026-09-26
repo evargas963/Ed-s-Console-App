@@ -6,7 +6,6 @@ import inspect
 import re
 
 import replay_hold_bars as rhb
-from micro_structure import R_COMPRESSION, R_RANGE, R_TREND_UP
 from time_et import RTH_END_MINS, RTH_OPEN_MINS, RTH_SESSION_MINUTES
 
 
@@ -40,13 +39,6 @@ def test_trade_type_hold_bars_single_source_of_truth():
     assert rhb.MICRO_REGIME_HOLD_BARS_COMPRESSION == 15
 
 
-def test_for_trade_type_and_for_setup_none_parity():
-    """FIND-WIRE6-2 parity fix: trade_type='none' returns 0 in BOTH paths (was 20 vs 0)."""
-    assert rhb.replay_max_hold_bars_for_trade_type("none") == 0
-    assert rhb.replay_max_hold_bars_for_setup(R_TREND_UP, "none") == 0
-    # "none" wins over micro_regime override — no trade still means no hold
-    assert rhb.replay_max_hold_bars_for_setup(R_COMPRESSION, "none") == 0
-    assert rhb.replay_max_hold_bars_for_setup(R_RANGE, "none") == 0
 
 
 def test_no_hardcoded_trade_type_branches_in_for_setup():

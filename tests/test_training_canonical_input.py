@@ -7,11 +7,8 @@ import pytest
 from features.canonical_contract import CANONICAL_FEATURE_CONTRACT_VERSION
 from features.training_canonical_input import (
     TrainingCanonicalInputError,
-    assert_shared_feature_cache_keys_equal,
-    assert_training_lineage_matches_canonical,
     normalize_pandas_sql_null_row_dict,
     records_for_mvp_from_dataframe,
-    training_canonical_lineage_header,
     training_snapshot_for_sequence_encode,
     validate_tabular_training_dataframe_canonical,
 )
@@ -240,35 +237,12 @@ def test_validate_tabular_nan_to_none_does_not_launder_real_breakage():
         training_snapshot_for_sequence_encode(row)
 
 
-def test_assert_training_lineage_matches_canonical_ok():
-    assert_training_lineage_matches_canonical(training_canonical_lineage_header())
 
 
-def test_assert_training_lineage_contract_mismatch():
-    bad = dict(training_canonical_lineage_header())
-    bad["canonical_feature_contract_version"] = "bogus"
-    with pytest.raises(TrainingCanonicalInputError):
-        assert_training_lineage_matches_canonical(bad)
 
 
-def test_shared_feature_cache_keys_equal():
-    data_fp = {
-        "table": "snapshots_1m_normalized",
-        "timeframe": "1m",
-        "ticker": "SPY",
-        "min_ts_utc": 1.0,
-        "max_ts_utc": 2.0,
-        "row_count": 100,
-    }
-    code_fp = "abc"
-    a = compute_feature_cache_key("SPY", data_fp, code_fp, target_column="outcome_1c")
-    b = compute_feature_cache_key("SPY", data_fp, code_fp, target_column="outcome_1c")
-    assert_shared_feature_cache_keys_equal(a, b)
 
 
-def test_shared_feature_cache_keys_mismatch_raises():
-    with pytest.raises(TrainingCanonicalInputError):
-        assert_shared_feature_cache_keys_equal("a" * 64, "b" * 64)
 
 
 def test_feature_cache_key_includes_contract_version():

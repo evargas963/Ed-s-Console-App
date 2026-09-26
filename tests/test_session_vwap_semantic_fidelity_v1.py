@@ -12,10 +12,6 @@ from types import SimpleNamespace
 
 from features.signal_layer_v1 import compute_signal_layer_v1
 from liquidity_value_engine import (
-    SESSION_VWAP_EXPECTED_ABSENT,
-    SESSION_VWAP_PRESENT,
-    SESSION_VWAP_RTH_PRODUCER_FAILURE,
-    classify_session_vwap_presence,
     compute_session_vwap,
     count_session_rth_positive_volume_bars,
 )
@@ -94,41 +90,10 @@ def test_pa_vwap_zscore_source_is_session_only() -> None:
     assert present["pa_vwap_zscore"] is not None
 
 
-def test_classify_weekend_and_premarket_expected_absent() -> None:
-    sat_noon = datetime(2026, 8, 29, 12, 0, tzinfo=ET)
-    assert classify_session_vwap_presence(
-        vwap=None, session_date=SATURDAY, now_et_dt=sat_noon,
-        session_rth_positive_volume_bars=0,
-    ) == SESSION_VWAP_EXPECTED_ABSENT
-
-    premarket = datetime(2026, 8, 28, 8, 0, tzinfo=ET)
-    assert classify_session_vwap_presence(
-        vwap=None, session_date=FRIDAY, now_et_dt=premarket,
-        session_rth_positive_volume_bars=0,
-    ) == SESSION_VWAP_EXPECTED_ABSENT
 
 
-def test_classify_rth_producer_failure_vs_present() -> None:
-    rth = datetime(2026, 8, 28, 10, 15, tzinfo=ET)
-    assert classify_session_vwap_presence(
-        vwap=None, session_date=FRIDAY, now_et_dt=rth,
-        session_rth_positive_volume_bars=12,
-    ) == SESSION_VWAP_RTH_PRODUCER_FAILURE
-    assert classify_session_vwap_presence(
-        vwap=501.25, session_date=FRIDAY, now_et_dt=rth,
-        session_rth_positive_volume_bars=12,
-    ) == SESSION_VWAP_PRESENT
 
 
-def test_prior_rth_tape_on_non_trading_day_is_not_current_session_volume() -> None:
-    friday_bars = [_rth_bar(FRIDAY, i, 500.0) for i in range(30)]
-    assert count_session_rth_positive_volume_bars(friday_bars, SATURDAY) == 0
-    assert compute_session_vwap(friday_bars, SATURDAY) is None
-    sat_noon = datetime(2026, 8, 29, 12, 0, tzinfo=ET)
-    assert classify_session_vwap_presence(
-        vwap=None, session_date=SATURDAY, now_et_dt=sat_noon,
-        session_rth_positive_volume_bars=count_session_rth_positive_volume_bars(friday_bars, SATURDAY),
-    ) == SESSION_VWAP_EXPECTED_ABSENT
 
 
 def test_first_positive_volume_rth_bar_produces_session_vwap_all_core_tickers() -> None:

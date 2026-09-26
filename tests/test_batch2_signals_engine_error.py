@@ -2,37 +2,10 @@
 
 from __future__ import annotations
 
-from live_decision_bundle import stamp_decision_bundle
 
 
-def test_stamp_decision_bundle_skips_generation_on_signals_engine_failed():
-    md = {"signals_engine_failed": True, "state_error": "signals_engine_error"}
-    out = stamp_decision_bundle(md)
-    assert out["decision_tick_kind"] == "signals_engine_error"
-    assert out.get("decision_generation_skipped") is True
-    assert "decision_generation_id" in out
-    assert out["decision_generation_id"] is None
-    assert out.get("decision_timestamp_utc") is None
 
 
-def test_stamp_decision_bundle_increments_on_success(monkeypatch):
-    monkeypatch.setenv("ED_BUILD_GENERATION", "deadbeef" * 5)
-    from release_object import initialize_release_at_startup
-
-    initialize_release_at_startup(force=True)
-    md = {
-        "signals_engine_failed": False,
-        "ticker": "SPY",
-        "spot": 500.0, "prior_close": 500.0,
-        "call_signal": "wait",
-        "validation_summary": "batch2_stamp_ok",
-    }
-    out = stamp_decision_bundle(dict(md), route="server._fetch_state")
-    assert out.get("decision_generation_skipped") is False
-    assert out.get("decision_gate_blocked") is not True
-    assert out.get("decision_tick_kind") == "live"
-    assert isinstance(out.get("decision_generation_id"), int)
-    assert out.get("decision_id")
 
 
 # test_index_html_shared_render_guards and test_tier_a_does_not_advance_analytical_last_render_

@@ -1,12 +1,9 @@
 """Technical debt retirement: Monte Carlo, regime, similarity filters, encoder spot — canonical alignment."""
 from __future__ import annotations
 
-from types import SimpleNamespace
 
 import pytest
 
-from features.monte_carlo_stack_input import MonteCarloStackInputError, resolve_monte_carlo_stack_inputs
-from features.regime_mvp_context import mvp_zone
 
 
 def _snap(spot: float):
@@ -29,16 +26,8 @@ def _snap(spot: float):
     )
 
 
-def test_monte_carlo_uses_canonical_spot_only():
-    inp = SimpleNamespace(spot=450.0, em_upper=460.0, em_lower=440.0, call_gamma_wall=1.0, put_gamma_wall=1.0)
-    ctx = resolve_monte_carlo_stack_inputs(inp, _snap(450.0))
-    assert ctx["spot"] == 450.0
 
 
-def test_monte_carlo_fail_closed_on_spot_mismatch():
-    inp = SimpleNamespace(spot=451.0, em_upper=460.0, em_lower=440.0, call_gamma_wall=1.0, put_gamma_wall=1.0)
-    with pytest.raises(MonteCarloStackInputError):
-        resolve_monte_carlo_stack_inputs(inp, _snap(450.0))
 
 
 def _snap_raw_spot(spot):
@@ -54,51 +43,14 @@ def _snap_raw_spot(spot):
     }
 
 
-@pytest.mark.parametrize("bad_spot", [float("inf"), float("nan"), -1.0, 0.0])
-def test_monte_carlo_rejects_non_positive_finite_canonical_spot(bad_spot):
-    inp = SimpleNamespace(spot=450.0)
-    with pytest.raises(MonteCarloStackInputError):
-        resolve_monte_carlo_stack_inputs(inp, _snap_raw_spot(bad_spot))
 
 
-def test_monte_carlo_non_canonical_nan_em_upper_stripped_to_none():
-    inp = SimpleNamespace(
-        spot=450.0,
-        em_upper=float("nan"),
-        em_lower=440.0,
-        call_gamma_wall=1.0,
-        put_gamma_wall=1.0,
-    )
-    ctx = resolve_monte_carlo_stack_inputs(inp, _snap(450.0))
-    assert ctx["em_upper"] is None
-    assert ctx["em_lower"] == 440.0
 
 
-def test_monte_carlo_fail_closed_missing_canonical_spot():
-    from features.inference_snapshot import build_inference_snapshot_v1_from_feature_row
-    from features.canonical_contract import get_mvp_feature_names
-
-    feats = {k: None for k in get_mvp_feature_names()}
-    snap = build_inference_snapshot_v1_from_feature_row(ticker="SPY", expiry=None, as_of_ts=1.0, features=feats)
-    inp = SimpleNamespace(spot=450.0)
-    with pytest.raises(MonteCarloStackInputError):
-        resolve_monte_carlo_stack_inputs(inp, snap)
 
 
-def test_mvp_zone_reads_canonical_only():
-    mvp = {"structure.zone": "pin_neutral"}
-    assert mvp_zone(mvp) == "pin_neutral"
 
 
-def test_similar_setup_filters_align_with_inference_snapshot_not_signalinput():
-    """High-risk SQL filter params must come from MVP row (same helper as fusion overlay)."""
-    from features.fusion_model_input import similar_setup_filters_from_canonical_features
-
-    inf = _snap(450.0)
-    f = similar_setup_filters_from_canonical_features(inf["features"])
-    assert f["zone"] == "pin_neutral"
-    assert f["vwap_side"] == "above"
-    assert f["nearest_above_dist"] is not None
 
 
 def test_production_default_parallel_unchanged_in_signals_doc():

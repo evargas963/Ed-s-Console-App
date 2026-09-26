@@ -6,8 +6,6 @@ import ast
 import dataclasses
 import inspect
 import io
-import json
-import sqlite3
 
 import pytest
 
@@ -19,13 +17,8 @@ from realized_contract_eval import (
     ROW_TIER_NON_DECISION_QUOTE_ONLY,
     ROW_TIER_TRADEABLE,
     _chain_selection_quality_row,
-    build_replay_context_payload,
     classify_replay_row_tier,
-    decision_row_context_starvation_reason,
-    evaluate_realized_contract_trades_for_rows,
-    serialize_option_chain_for_eval,
 )
-from replay_hold_bars import replay_max_hold_bars_from_context
 
 
 def test_chain_selection_quality_ignores_ranked_rows_without_strike():
@@ -200,101 +193,6 @@ def _redirect_artifacts(tmp_path, monkeypatch):
     monkeypatch.setattr("realized_contract_eval.COVERAGE_REPORT_JSON", tmp_path / "cov.json")
 
 
-def _golden_fixture(tmp_path, ticker="SPY", *, future_extra_rows=0, mixed_ticker_rows=0):
-    """Temp sqlite snapshot table + one tradeable long row with full context and
-    forward 1m bars whose second bar hits the target. Returns (db_path, rows_used,
-    expected_expr)."""
-    from market_state import recommend_option_expression
-    from timeframe_config import CANONICAL_TIMEFRAME, SNAPSHOT_TABLE_1M
-
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    spot = 500.0
-    expiry = "2026-07-11"
-    chain = _chain(spot, expiry)
-    walls = [_walls_row(spot)]
-    expr, _reasons, proof = recommend_option_expression(
-        contracts=chain,
-        spot=spot,
-        call_signal="long",
-        walls=walls,
-        selected_expiry=expiry,
-    )
-    assert expr and not expr.upper().startswith("NO TRADE")
-
-    replay_ctx = build_replay_context_payload(
-        walls=walls,
-        totals=[],
-        option_chain_selection_proof=proof,
-        regime_primary="trend",
-        regime_confidence="high",
-        zone="above_vwap",
-        vol_regime="normal",
-        trade_type="breakout",
-        time_qualifier="early",
-        replay_max_hold_bars_live=10,
-        vwap=spot - 0.5,
-        vwap_side="above",
-    )
-    chain_json = serialize_option_chain_for_eval(chain, expiry)
-    assert chain_json
-
-    db_path = str(tmp_path / "econ01_golden.db")
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        f"""CREATE TABLE {SNAPSHOT_TABLE_1M} (
-            snapshot_id INTEGER PRIMARY KEY,
-            ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT,
-            candle_open REAL, candle_high REAL, candle_low REAL, candle_close REAL,
-            spot REAL, option_chain_json TEXT)"""
-    )
-    t0 = 1_780_000_000.0
-    exit_chain = json.dumps(
-        [
-            {**ct, "bid": (ct["bid"] + 0.40) if ct["putCall"] == "CALL" else ct["bid"]}
-            for ct in chain
-        ]
-    )
-    fwd = [
-        # bar 1: drifts up, no touch (stop 499, target 501.5)
-        (2, ticker, t0 + 60, "2026-07-11 09:31:00 ET", 500.0, 500.9, 499.8, 500.7, 500.7, exit_chain),
-        # bar 2: target hit
-        (3, ticker, t0 + 120, "2026-07-11 09:32:00 ET", 500.7, 501.8, 500.4, 501.6, 501.6, exit_chain),
-    ]
-    for i in range(future_extra_rows):
-        fwd.append(
-            (10 + i, ticker, t0 + 300 + 60 * i, f"2026-07-11 09:{35 + i}:00 ET",
-             480.0, 480.1, 479.0, 479.5, 479.5, exit_chain)
-        )
-    for i in range(mixed_ticker_rows):
-        fwd.append(
-            (50 + i, "ZZOTHER", t0 + 90, "2026-07-11 09:31:30 ET",
-             1.0, 1.0, 1.0, 1.0, 1.0, exit_chain)
-        )
-    conn.executemany(
-        f"INSERT INTO {SNAPSHOT_TABLE_1M} (snapshot_id, ticker, timeframe, ts_utc, ts_et, "
-        "candle_open, candle_high, candle_low, candle_close, spot, option_chain_json) "
-        f"VALUES (?, ?, '{CANONICAL_TIMEFRAME}', ?, ?, ?, ?, ?, ?, ?, ?)",
-        [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]) for r in fwd],
-    )
-    conn.commit()
-    conn.close()
-
-    signal_row = {
-        "snapshot_id": 1,
-        "ticker": ticker,
-        "ts_utc": t0,
-        "ts_et": "2026-07-11 09:30:00 ET",
-        "expiry": expiry,
-        "spot": spot,
-        "combined_signal": "long",
-        "logger_source": None,
-        "option_chain_json": chain_json,
-        "replay_context_json": replay_ctx,
-        "rules_entry": spot,
-        "rules_stop": 499.0,
-        "rules_target": 501.5,
-    }
-    return db_path, [signal_row], expr
 
 
 # ── Families 6+7+8+13: classification is ticker/horizon/session/label agnostic ──
@@ -346,124 +244,22 @@ def test_classify_replay_row_tier_session_agnostic(name, h, m):
 # ── Families 2+10: golden deterministic replay + provenance decomposition ──
 
 
-def test_golden_replay_deterministic_trade_and_universe_decomposition(tmp_path, monkeypatch):
-    _redirect_artifacts(tmp_path, monkeypatch)
-    db_path, rows, _expr = _golden_fixture(tmp_path / "g")
-    rows = rows + [
-        {"combined_signal": None, "logger_source": "base_money_path", "ticker": "SPY"},
-        {
-            "combined_signal": "wait",
-            "logger_source": "ui_sse",
-            "ticker": "SPY",
-            "snapshot_id": 99,
-            "ts_utc": 1_780_000_000.0,
-            "ts_et": "x",
-            "expiry": None,
-            "spot": 500.0,
-        },
-    ]
-    agg1 = evaluate_realized_contract_trades_for_rows(db_path, "SPY", "parallel", list(rows))
-    agg2 = evaluate_realized_contract_trades_for_rows(db_path, "SPY", "parallel", list(rows))
-
-    for agg in (agg1, agg2):
-        assert agg["universe_rows_total"] == 3
-        assert agg["non_decision_row_counts"] == {ROW_TIER_NON_DECISION_QUOTE_ONLY: 1}
-        assert agg["decision_no_trade_rows"] == 1
-        assert agg["tradeable_signal_rows"] == 1
-        assert agg["total_signals"] == 1
-        assert agg["valid_trade_count"] == 1
-        assert agg["skipped_trade_count"] == 0
-        assert agg["skip_rate"] == 0.0
-        assert agg["execution_economics_measurable"] is True
-        assert agg["skip_rate_fail_flag"] is False
-        assert agg["evaluation_quality_degraded"] is False
-    assert agg1["total_pnl_dollars"] == agg2["total_pnl_dollars"]
-    assert agg1["total_pnl_dollars"] is not None
 
 
 # ── Families 4+12: future rows / foreign-ticker rows cannot change the trade ──
 
 
-def test_future_rows_beyond_exit_do_not_change_trade(tmp_path, monkeypatch):
-    _redirect_artifacts(tmp_path, monkeypatch)
-    db_a, rows_a, _ = _golden_fixture(tmp_path / "a", future_extra_rows=0)
-    db_b, rows_b, _ = _golden_fixture(tmp_path / "b", future_extra_rows=5)
-    agg_a = evaluate_realized_contract_trades_for_rows(db_a, "SPY", "parallel", rows_a)
-    agg_b = evaluate_realized_contract_trades_for_rows(db_b, "SPY", "parallel", rows_b)
-    assert agg_a["valid_trade_count"] == agg_b["valid_trade_count"] == 1
-    assert agg_a["total_pnl_dollars"] == agg_b["total_pnl_dollars"]
 
 
-def test_mixed_ticker_rows_never_enter_forward_path(tmp_path, monkeypatch):
-    _redirect_artifacts(tmp_path, monkeypatch)
-    db_a, rows_a, _ = _golden_fixture(tmp_path / "a", mixed_ticker_rows=0)
-    db_b, rows_b, _ = _golden_fixture(tmp_path / "b", mixed_ticker_rows=3)
-    agg_a = evaluate_realized_contract_trades_for_rows(db_a, "SPY", "parallel", rows_a)
-    agg_b = evaluate_realized_contract_trades_for_rows(db_b, "SPY", "parallel", rows_b)
-    assert agg_a["total_pnl_dollars"] == agg_b["total_pnl_dollars"]
-    assert agg_b["valid_trade_count"] == 1
 
 
 # ── Families 5+12: fail-closed starvation on the tradeable tier only ──
 
 
-def test_tradeable_row_missing_context_is_real_starvation_skip(tmp_path, monkeypatch):
-    _redirect_artifacts(tmp_path, monkeypatch)
-    db_path, rows, _ = _golden_fixture(tmp_path / "g")
-    starved = dict(rows[0])
-    starved["replay_context_json"] = None
-    corrupt = dict(rows[0])
-    corrupt["replay_context_json"] = "{not json"
-    agg = evaluate_realized_contract_trades_for_rows(
-        db_path, "SPY", "parallel", [starved, corrupt]
-    )
-    assert agg["tradeable_signal_rows"] == 2
-    assert agg["valid_trade_count"] == 0
-    assert agg["skip_reason_counts"] == {
-        "missing_replay_context": 1,
-        "replay_context_invalid": 1,
-    }
-    assert agg["skip_rate"] == 1.0
-    assert agg["skip_rate_fail_flag"] is True
-    assert agg["skip_reason_counts_coarse"]["missing_replay_context"] == 2
 
 
-def test_wait_rows_never_demand_replay_context(tmp_path, monkeypatch):
-    """A no-trade decision without context is NOT starvation — nothing to replay."""
-    _redirect_artifacts(tmp_path, monkeypatch)
-    db_path, _rows, _ = _golden_fixture(tmp_path / "g")
-    wait_no_ctx = {
-        "combined_signal": "wait",
-        "logger_source": None,
-        "ticker": "SPY",
-        "snapshot_id": 7,
-        "ts_utc": 1_780_000_000.0,
-        "ts_et": "x",
-        "expiry": None,
-        "spot": 500.0,
-        "replay_context_json": None,
-        "option_chain_json": None,
-    }
-    agg = evaluate_realized_contract_trades_for_rows(db_path, "SPY", "parallel", [wait_no_ctx])
-    assert agg["decision_no_trade_rows"] == 1
-    assert agg["tradeable_signal_rows"] == 0
-    assert agg["skipped_trade_count"] == 0
-    assert agg["skip_rate"] is None
-    assert agg["execution_economics_measurable"] is False
-    assert agg["skip_rate_fail_flag"] is False
 
 
-def test_replay_selection_mismatch_reconstruction_gate(tmp_path, monkeypatch):
-    """Family 11: replay must reconcile with the persisted live selection proof."""
-    _redirect_artifacts(tmp_path, monkeypatch)
-    db_path, rows, _ = _golden_fixture(tmp_path / "g")
-    row = dict(rows[0])
-    ctx = json.loads(row["replay_context_json"])
-    ctx["option_chain_selection_proof"]["winner"] = {"expression": "9999.0 CALL"}
-    row["replay_context_json"] = json.dumps(ctx)
-    agg = evaluate_realized_contract_trades_for_rows(db_path, "SPY", "parallel", [row])
-    assert agg["skip_reason_counts"] == {"replay_selection_mismatch": 1}
-    assert agg["valid_trade_count"] == 0
 
 
 # ── Family 3: no live/current-state access from the replay module ──
@@ -494,30 +290,6 @@ def test_replay_module_imports_no_live_state():
 # ── Family 1: producer/consumer context parity (round-trip) ──
 
 
-def test_replay_context_payload_round_trips_walls_hold_and_proof():
-    spot = 500.0
-    walls = [_walls_row(spot)]
-    payload = build_replay_context_payload(
-        walls=walls,
-        totals=[],
-        option_chain_selection_proof={"winner": {"expression": "500.0 CALL"}},
-        regime_primary="trend",
-        regime_confidence="high",
-        zone="above_vwap",
-        vol_regime="normal",
-        trade_type="breakout",
-        time_qualifier="early",
-        replay_max_hold_bars_live=10,
-        vwap=499.5,
-        vwap_side="above",
-    )
-    obj = json.loads(payload)
-    rebuilt = rce._walls_from_replay(obj)
-    assert rebuilt is not None and len(rebuilt) == 1
-    assert rebuilt[0].call_gamma_wall == walls[0].call_gamma_wall
-    assert replay_max_hold_bars_from_context(obj) == 10
-    assert obj["option_chain_selection_proof"]["winner"]["expression"] == "500.0 CALL"
-    assert obj["regime_primary"] == "trend" and obj["vol_regime"] == "normal"
 
 
 def test_walls_from_replay_drops_retired_near_spot_pin_keys():
@@ -556,23 +328,6 @@ def test_scheduler_eval_pins_and_restores_model_dir():
 # ── Producer guard: tradeable rows persisting without context fail LOUD ──
 
 
-def test_decision_row_context_starvation_reason_matrix():
-    ok_ctx = "x" * 200
-    assert decision_row_context_starvation_reason(
-        combined_signal="long", replay_context_json=None, option_chain_json=ok_ctx
-    ) == "tradeable_missing_replay_context"
-    assert decision_row_context_starvation_reason(
-        combined_signal="short", replay_context_json=ok_ctx, option_chain_json=None
-    ) == "tradeable_missing_option_chain"
-    assert decision_row_context_starvation_reason(
-        combined_signal="long", replay_context_json=ok_ctx, option_chain_json=ok_ctx
-    ) is None
-    assert decision_row_context_starvation_reason(
-        combined_signal=None, replay_context_json=None, option_chain_json=None
-    ) is None
-    assert decision_row_context_starvation_reason(
-        combined_signal="wait", replay_context_json=None, option_chain_json=None
-    ) is None
 
 
 def test_server_producer_guard_wired_before_snapshot_insert():

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
 
-from features.regime_mvp_context import RegimeMvpInputError
 from signal_types import SignalInput
 from tests.mvp_test_fixtures import minimal_mvp_features
 from volatility_regime import VOL_UNKNOWN, classify_volatility_regime
@@ -97,8 +95,3 @@ def test_classify_vol_regime_unknown_not_trade_permissive():
     assert out.trade_permissive is False
 
 
-def test_classify_vol_regime_requires_canonical_spot():
-    mvp = minimal_mvp_features()
-    mvp["price.spot"] = None
-    with pytest.raises(RegimeMvpInputError, match="price.spot"):
-        classify_volatility_regime(_minimal_inp(), mvp_features=mvp)

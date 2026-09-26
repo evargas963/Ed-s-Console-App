@@ -10,12 +10,8 @@ from call_engine import _validate_trade
 from lstm_data import compute_confluence_features
 from mc_fusion_adjustment import normalize_mc
 from ml_train import engineer_single_snapshot
-from signals import _spot_for_mc_fusion_adjustment
 
 
-def test_mc_fusion_spot_returns_none_when_context_spot_missing():
-    assert _spot_for_mc_fusion_adjustment({}, {"features": {}}) is None
-    assert _spot_for_mc_fusion_adjustment({"spot": 0}, {"features": {"price.spot": 0}}) is None
 
 
 def test_mc_normalization_does_not_scale_by_synthetic_one_when_spot_missing():

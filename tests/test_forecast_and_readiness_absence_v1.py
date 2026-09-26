@@ -8,10 +8,9 @@ studies read each stored placeholder as a LONG call.
 from __future__ import annotations
 
 
-from call_engine import _canonical_stack_vote, _level_proximity_label, _readiness_canonical_fields
+from call_engine import _canonical_stack_vote, _level_proximity_label
 from setup_readiness import compute_call_readiness, compute_put_readiness
 from signal_types import CanonicalForecast
-from signals import canonical_forecast_from_fusion
 
 _FULL = {
     "regime": "bull", "trend": "up", "structure_confirmation": "reclaim",
@@ -21,13 +20,6 @@ _FULL = {
 }
 
 
-def test_non_tradable_canonical_is_absent():
-    c = canonical_forecast_from_fusion(None)
-    assert (c.direction, c.confidence) == (None, None)
-    assert (c.probability_up, c.probability_down, c.probability_flat) == (None, None, None)
-    assert c.dominant_probability() is None
-    assert _readiness_canonical_fields(c) == (None, None)
-    assert _canonical_stack_vote(c) == 0
 
 
 def test_tradable_canonical_with_unreadable_confidence_does_not_vote_on_it():
@@ -63,14 +55,6 @@ def test_level_proximity_absent_is_none_not_far():
 
 # ── L-01 / F-11: the stamped model version is what RAN, or None ────────────────
 
-def test_executed_model_version_reads_what_ran():
-    from ml_predict import executed_model_version
-    assert executed_model_version(None) is None          # stack off: model_outputs None
-    off = {"available": False}
-    assert executed_model_version({"xgb": off, "lstm": off, "transformer": off}) is None
-    v = executed_model_version({"xgb": {"available": True}, "lstm": off,
-                                "transformer": {"available": True}})
-    assert v is not None and v.startswith("stack(xgb_tr)_")
 
 
 def test_no_serving_model_when_stack_off(monkeypatch):

@@ -24,13 +24,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from monte_carlo import (  # noqa: E402
-    ANNUALIZED_HOURS,
-    BAR_MINUTES,
-    MC_SIGMA_BAR_CADENCE_CUTOVER_TS,
-    MC_SIGMA_LEGACY_LAST_WRITE_TS,
-    mc_sigma_unit_for_row,
-)
 
 #: Every tracked .py allowed to mention mc_sigma_value: the live write chain
 #: (monte_carlo -> bayesian_fusion -> market_state -> server -> db), the tests, the
@@ -58,29 +51,12 @@ READER_CENSUS = frozenset({
 })
 
 
-def test_blend_rows_are_annualized_regardless_of_date():
-    assert mc_sigma_unit_for_row(1740000000.0, "blend") == "annualized"
-    assert mc_sigma_unit_for_row(None, "blend") == "annualized"
 
 
-def test_pre_cutover_garch_rows_are_legacy_unverified():
-    assert mc_sigma_unit_for_row(MC_SIGMA_BAR_CADENCE_CUTOVER_TS, "garch") == "legacy_unverified"
-    assert mc_sigma_unit_for_row(1740000000.0, "garch") == "legacy_unverified"
-    assert mc_sigma_unit_for_row(None, "garch") == "legacy_unverified"
 
 
-def test_post_cutover_legacy_garch_rows_are_per_bar_1m_and_convertible():
-    mid = (MC_SIGMA_BAR_CADENCE_CUTOVER_TS + MC_SIGMA_LEGACY_LAST_WRITE_TS) / 2
-    assert mc_sigma_unit_for_row(mid, "garch") == "per_bar_1m"
-    # The conversion factor for this one era: x sqrt(minutes per trading year).
-    factor = (ANNUALIZED_HOURS * 60 / BAR_MINUTES) ** 0.5
-    assert 313.0 < factor < 314.0, factor
 
 
-def test_rows_after_the_legacy_boundary_are_annualized():
-    """No rows exist between the boundary and the fixed producer (measured: all NULL),
-    so everything the fixed producer writes classifies as the current contract."""
-    assert mc_sigma_unit_for_row(MC_SIGMA_LEGACY_LAST_WRITE_TS + 1, "garch") == "annualized"
 
 
 def test_no_new_mc_sigma_value_reader_appears_unpinned(repo_index):

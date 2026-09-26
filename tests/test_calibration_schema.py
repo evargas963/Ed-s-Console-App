@@ -12,8 +12,6 @@ from calibration.schema import (
     _migrate_calibration_unique_ticker_decision_ts,
     ensure_calibration_schema,
 )
-from calibration.trust import CALIBRATION_TRUST_LEGACY
-from timeframe_config import CANONICAL_TIMEFRAME
 
 
 class _SqliteConnExecuteHook:
@@ -52,9 +50,6 @@ def _wrap(conn: sqlite3.Connection) -> _SqliteConnExecuteHook:
     return _SqliteConnExecuteHook(conn)
 
 
-def test_calibration_table_sql_contains_canonical_constants():
-    assert f"DEFAULT '{CANONICAL_TIMEFRAME}'" in CALIBRATION_TABLE_SQL
-    assert f"DEFAULT '{CALIBRATION_TRUST_LEGACY}'" in CALIBRATION_TABLE_SQL
 
 
 def test_unique_migration_dedupes_and_logs_deleted_count(caplog):

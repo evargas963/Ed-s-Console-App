@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
-from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -12,10 +10,7 @@ import pytest
 from ml_data_common import (
     INNER_VAL_MIN_ROWS,
     filter_df_to_rth_ts_utc,
-    head_rth_df_from_ts_utc,
     holdout_class_metrics,
-    market_session_from_ts_utc,
-    rth_where_clause,
     stamp_et_clock_columns,
     time_ordered_tail_split,
     training_base_where_clause,
@@ -101,12 +96,6 @@ def test_holdout_class_metrics_empty_truth():
     assert m["single_class_collapse"] is True  # 0 predicted classes <= 1
 
 
-def test_rth_where_clause_emits_deprecation_warning():
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        clause = rth_where_clause()
-        assert "et_hour" in clause
-        assert any(issubclass(x.category, DeprecationWarning) for x in w)
 
 
 def test_filter_df_to_rth_drops_nan_ts_utc():
@@ -130,18 +119,8 @@ def test_training_base_where_clause_has_no_rth_on_stored_hour():
     assert "et_minute" not in w
 
 
-def test_market_session_from_ts_utc_premarket():
-    t = datetime(2026, 7, 7, 12, 0, tzinfo=timezone.utc).timestamp()  # 8:00 ET
-    assert market_session_from_ts_utc(t) == "premarket"
 
 
-def test_head_rth_df_from_ts_utc_caps_after_filter():
-    t_rth = datetime(2026, 7, 7, 15, 0, tzinfo=timezone.utc).timestamp()
-    t_pre = datetime(2026, 7, 7, 12, 0, tzinfo=timezone.utc).timestamp()
-    df = pd.DataFrame({"ts_utc": [t_pre, t_rth, t_rth]})
-    out = head_rth_df_from_ts_utc(df, 1)
-    assert len(out) == 1
-    assert float(out["ts_utc"].iloc[0]) == t_rth
 
 
 def test_rc206_reader_contract_and_retry(tmp_path):

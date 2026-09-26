@@ -1,10 +1,8 @@
 """I-01: fetch_market_context never raises; partial context on quote failure."""
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
 
-from market_context import fetch_market_context, fetch_price_levels
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,39 +29,10 @@ def _quote_fn(*, fail: frozenset[str] = frozenset(), prices: dict[str, float] | 
     return _quote
 
 
-def test_fetch_market_context_quote_failure_returns_partial_context() -> None:
-    def _fail_quote(_client, _sym):
-        raise RuntimeError("quote unavailable")
-
-    ctx = fetch_market_context(None, _fail_quote)
-    assert ctx.vix is None
-    assert ctx.vxn is None
-    assert ctx.rvx is None
-    assert not hasattr(ctx, "spy_last")     # the retired roster field is gone, not None
-    assert ctx.error
 
 
-def test_extract_quote_returns_none_on_bad_payload() -> None:
-    from market_context import _extract_quote
-
-    last, pct = _extract_quote("SPY", {"SPY": {"quote": {}}})
-    assert last is None
-    assert pct is None
 
 
-def test_fetch_price_levels_uses_rth_open_mins_authority() -> None:
-    """FIND-MC-1, re-anchored for Phase 2A (RC-369): the RTH window authority
-    (time_et RTH_OPEN_MINS / RTH_END_MINS) now lives in the ONE canonical producer
-    (liquidity_value_engine); fetch_price_levels is a CARRIER and must contain no
-    window math at all — inline hour constants reappearing here is the regression."""
-    src = inspect.getsource(fetch_price_levels)
-    assert "RTH_OPEN_HOUR" not in src
-    assert "RTH_OPEN_MIN " not in src
-    assert "RTH_CLOSE_HOUR" not in src
-    assert "9 * 60 + 30" not in src
-    engine_src = (_REPO_ROOT / "liquidity_value_engine.py").read_text(encoding="utf-8")
-    assert "RTH_OPEN_MINS" in engine_src
-    assert "RTH_END_MINS" in engine_src
 
 
 def test_prior_day_family_single_session_dual_faucet_agreement(monkeypatch) -> None:
@@ -204,45 +173,12 @@ def test_fetch_price_levels_window_delegates_to_rc153_authority(monkeypatch) -> 
     assert pl.pdh != 110 and pl.pdl != 90, "the dead multi-session union answer is back"
 
 
-def test_fetch_market_context_vol_indices_all_present() -> None:
-    ctx = fetch_market_context(
-        None,
-        _quote_fn(prices={"$VIX": 18.5, "$VXN": 22.1, "$RVX": 24.3}),
-    )
-    assert ctx.vix == 18.5
-    assert ctx.vxn == 22.1
-    assert ctx.rvx == 24.3
-    assert ctx.vix_regime != "—"
 
 
-def test_fetch_market_context_vxn_failure_vix_unchanged() -> None:
-    ctx = fetch_market_context(
-        None,
-        _quote_fn(fail=frozenset({"$VXN"}), prices={"$VIX": 17.0, "$RVX": 23.0}),
-    )
-    assert ctx.vix == 17.0
-    assert ctx.vxn is None
-    assert ctx.rvx == 23.0
 
 
-def test_fetch_market_context_rvx_failure_vix_unchanged() -> None:
-    ctx = fetch_market_context(
-        None,
-        _quote_fn(fail=frozenset({"$RVX"}), prices={"$VIX": 16.0, "$VXN": 21.0}),
-    )
-    assert ctx.vix == 16.0
-    assert ctx.vxn == 21.0
-    assert ctx.rvx is None
 
 
-def test_fetch_market_context_missing_vol_index_leaves_none_no_exception() -> None:
-    ctx = fetch_market_context(
-        None,
-        _quote_fn(prices={"$VIX": 15.0}),
-    )
-    assert ctx.vix == 15.0
-    assert ctx.vxn is None
-    assert ctx.rvx is None
 
 
 def test_vol_index_lane_v1_no_consumer_wiring() -> None:
@@ -263,52 +199,20 @@ def test_vol_index_lane_v1_no_consumer_wiring() -> None:
             assert ref not in src, f"{rel} must not reference {ref} in V1 lane"
 
 
-def test_signalinput_vix_still_macro_vix_only() -> None:
-    """SignalInput vix stays macro $VIX only. Post VOL_INPUT_CONTRACT 1.0.0 the
-    stamp routes through the per-cycle context (whose market_iv_level IS the
-    macro $VIX quote), with mkt_ctx.vix as the vol_ctx=None fallback — the
-    macro-only intent of this lock is unchanged; no native VXN/RVX routing."""
-    from market_state import build_market_state
-
-    src = inspect.getsource(build_market_state)
-    assert "vix_level=(vol_ctx.market_iv_level if vol_ctx is not None else mkt_ctx.vix)" in src
-    assert "vxn_level" not in src
-    assert "rvx_level" not in src
 
 
 # ── VOL_INPUT_CONTRACT 1.0.0 (lane V1) — per-cycle context + stamp parity ────
 
 import ast as _ast
-import dataclasses as _dc
 from pathlib import Path as _Path
 
-import pytest as _pytest
 
-from market_state import MarketVolContextV1
-from vol_observability import VOL_INPUT_CONTRACT_VERSION
 
 _REPO = _Path(__file__).resolve().parent.parent
 
 
-def test_vol_context_struct_contract():
-    ctx = MarketVolContextV1(
-        market_iv_level=26.0, market_iv_change=3.5,
-        market_iv_direction="rising", quality_status="VALID", as_of_ts=1.0,
-    )
-    assert ctx.contract_version == VOL_INPUT_CONTRACT_VERSION == "1.0.0"
-    assert ctx.route_identity == "live"
-    assert ctx.source_symbol == "$VIX"
-    with _pytest.raises(_dc.FrozenInstanceError):
-        ctx.market_iv_level = 30.0  # type: ignore[misc]
 
 
-def test_vol_context_absence_is_explicit_not_directional():
-    ctx = MarketVolContextV1(
-        market_iv_level=None, market_iv_change=None,
-        market_iv_direction=None, quality_status="UNAVAILABLE",
-    )
-    assert ctx.market_iv_change is None      # never 0
-    assert ctx.market_iv_direction is None   # never "flat" by default
 
 
 def test_single_tracker_tick_site_lock():

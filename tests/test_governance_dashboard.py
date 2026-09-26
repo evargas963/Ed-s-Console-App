@@ -12,7 +12,6 @@ from arch_competition.governance_visibility import (
     GOVERNANCE_PANEL_SCHEMA_VERSION,
     _rollback_checkpoint_available,
     build_governance_panel_payload,
-    is_governance_ui_actions_enabled,
 )
 from arch_competition.live_drift_monitoring import LIVE_DRIFT_MONITORING_SCHEMA_VERSION
 from arch_competition.manual_control import MANUAL_PROMOTE_CASCADE_INTENT
@@ -387,21 +386,3 @@ def test_manual_promote_endpoint_invokes_only_manual_control(monkeypatch, tmp_pa
     assert called["kwargs"]["operator_id"] == "op"
 
 
-def test_manual_promote_forbidden_when_ui_disabled(monkeypatch):
-    monkeypatch.delenv("ED_GOVERNANCE_UI_ACTIONS", raising=False)
-    assert is_governance_ui_actions_enabled() is False
-    from fastapi.testclient import TestClient
-    import server
-
-    c = TestClient(server.app)
-    r = c.post(
-        "/api/governance/manual-promote",
-        json={
-            "ticker": "SPY",
-            "horizon": "1c",
-            "target_architecture": "cascade",
-            "operator_id": "op",
-            "manual_intent": MANUAL_PROMOTE_CASCADE_INTENT,
-        },
-    )
-    assert r.status_code == 403

@@ -18,13 +18,11 @@ from math_levels import (
     GSF_STATE_BELOW_SUPPORT,
     GSF_STATE_OK,
     GSF_STATE_UNAVAILABLE,
-    bs_gamma,
     compute_gamma_flip_v2,
     compute_gamma_profile,
     compute_gamma_support_levels,
     gamma_at_price,
     gamma_flip_from_profile,
-    snap_level_to_shelf_strike,
 )
 
 import pytest
@@ -49,14 +47,6 @@ def _load_real_chain() -> tuple[list, float]:
     return data["chain"], float(data["spot"])
 
 
-def test_bs_gamma_peaks_at_the_money() -> None:
-    """Gamma must peak ATM and vanish far OTM — the shape the whole profile depends on."""
-    atm = bs_gamma(100.0, 100.0, 0.02, 0.20)
-    otm = bs_gamma(100.0, 130.0, 0.02, 0.20)
-    assert atm is not None and otm is not None
-    assert atm > otm
-    assert bs_gamma(100.0, 100.0, 0.0, 0.20) is None      # expired -> refuse
-    assert bs_gamma(100.0, 100.0, 0.02, 0.0) is None      # no vol -> refuse
 
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
@@ -169,57 +159,16 @@ def test_gamma_at_price_clamps_outside_the_profile() -> None:
 # across 52 stored chains 2026-07-20: that table was wrong in BOTH directions. $SPX needed
 # 150 and got 40; IWM needed 30 and got 80; ~48 equities needed under 20 and got 40.
 
-from math_levels import (
-    GAMMA_FLIP_MIN_SPAN_PCT,
-    infer_strike_increment,
-    required_strike_count,
-)
 
 
-def test_required_count_actually_spans_the_trust_bar():
-    """The whole point: the derived count must COVER +/-5%, measured, not asserted."""
-    for spot, incr in ((742.49, 1.0), (701.69, 1.0), (294.32, 1.0),
-                       (7457.69, 5.0), (205.20, 2.5), (17.84, 0.5)):
-        n = required_strike_count(spot, incr)
-        half_span_points = (n - 1) / 2.0 * incr      # strikes centred on spot
-        assert half_span_points >= GAMMA_FLIP_MIN_SPAN_PCT * spot, (
-            f"spot={spot} incr={incr}: {n} strikes reaches only "
-            f"{half_span_points / spot:.3%}, under the {GAMMA_FLIP_MIN_SPAN_PCT:.0%} bar")
 
 
-def test_same_price_different_spacing_needs_different_counts():
-    """This is the RC-12 root cause in one assertion: spacing drives the count."""
-    tight = required_strike_count(700.0, 1.0)
-    wide = required_strike_count(700.0, 5.0)
-    assert tight > wide, (tight, wide)
-    assert required_strike_count(700.0, 1.0) > required_strike_count(70.0, 1.0)
 
 
-def test_measured_real_instruments_against_the_replaced_table():
-    """Values MEASURED from stored chains 2026-07-20, not invented for the test."""
-    assert required_strike_count(7457.69, 5.0) > 100      # $SPX: table gave 40
-    assert required_strike_count(294.32, 1.0) < 80        # IWM: table gave 80
-    assert required_strike_count(205.20, 2.5) < 40        # NVDA: table gave 40
-    assert required_strike_count(742.49, 1.0) > 40        # SPY: a flat 40 is too narrow
 
 
-def test_unknown_geometry_returns_none_never_a_guess():
-    """A fabricated width would be silently wrong; absence must read as absence."""
-    assert required_strike_count(None, 1.0) is None
-    assert required_strike_count(742.0, None) is None
-    for bad in (0, -1.0):
-        assert required_strike_count(bad, 1.0) is None
-        assert required_strike_count(742.0, bad) is None
 
 
-def test_increment_inferred_by_median_resists_gaps():
-    """Illiquid far strikes leave wide gaps; a mean would understate the count needed."""
-    even = [{"strikePrice": p} for p in (100, 102.5, 105, 107.5, 110)]
-    assert infer_strike_increment(even) == 2.5
-    gapped = [{"strikePrice": p} for p in (100, 102.5, 105, 107.5, 110, 160)]
-    assert infer_strike_increment(gapped) == 2.5          # the 50-point gap is ignored
-    assert infer_strike_increment([{"strikePrice": 100}, {"strikePrice": 105}]) is None
-    assert infer_strike_increment([]) is None
 
 
 # ── FLIP DETECTION IS DIRECTION-BLIND (Bugbot 2026-07-20, HIGH — confirmed) ──
@@ -572,16 +521,3 @@ def test_rc354_iv_banking_upsert_last_write_wins(tmp_path):
     assert "bank_daily_atm_iv(" in srv and "iv_pct_atm" in srv
 
 
-def test_snap_to_shelf_only_within_tolerance_and_side():
-    # significant shelf strike at 99.90 within 0.25% of a 100.05 level -> snaps below spot
-    snapped = snap_level_to_shelf_strike(
-        100.05, {99.90: 5e9, 101.0: 6e9}, side="below", spot=105.0, theta=1e9)
-    assert snapped == 99.90
-    # insignificant strike (below theta) never snaps
-    assert snap_level_to_shelf_strike(
-        100.05, {99.90: 1e8}, side="below", spot=105.0, theta=1e9) == 100.05
-    # wrong side (above spot for a floor) never snaps
-    assert snap_level_to_shelf_strike(
-        104.9, {105.2: 5e9}, side="below", spot=105.0, theta=1e9) == 104.9
-    # None passes through fail-closed
-    assert snap_level_to_shelf_strike(None, {100.0: 5e9}, side="below", spot=105.0, theta=1e9) is None

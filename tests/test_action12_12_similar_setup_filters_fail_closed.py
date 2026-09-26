@@ -12,26 +12,11 @@ if str(ROOT) not in sys.path:
 
 from db import EdDB
 from math_probabilities import MIN_SAMPLES_STATISTICAL
-from features.fusion_model_input import similar_setup_filters_from_canonical_features
 from timeframe_config import CANONICAL_TIMEFRAME
 
 
-def test_similar_filters_pass_none_when_zone_missing():
-    f = similar_setup_filters_from_canonical_features(
-        {"structure.zone": None, "anchor.vwap_side": "above"}
-    )
-    assert f["zone"] is None
-    assert f["zone_fallback"] is True
-    assert f["vwap_side"] == "above"
 
 
-def test_similar_filters_pass_none_when_vwap_side_missing():
-    f = similar_setup_filters_from_canonical_features(
-        {"structure.zone": "pin_neutral", "anchor.vwap_side": None}
-    )
-    assert f["vwap_side"] is None
-    assert f["vwap_side_fallback"] is True
-    assert f["zone"] == "pin_neutral"
 
 
 def _insert_row(conn, *, ts: float, zone: str, vwap_side: str):

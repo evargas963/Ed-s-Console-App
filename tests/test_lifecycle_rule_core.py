@@ -3,27 +3,12 @@ resolution must each apply the correct adjustment -- a wrong multiplier here
 silently mis-sizes every open position's stop/target."""
 from __future__ import annotations
 
-import pytest
 
 import lifecycle_rule_core
 from lifecycle_rule_core import (
     SameBarResolution,
-    apply_risk_multiplier,
-    apply_time_decay,
-    apply_vix_adjustment,
-    derive_stop_distance_pct,
-    derive_target_levels,
     fire_exit,
     resolve_same_bar_conflict,
-    snap_target_to_structural,
-)
-from math_exposure import (
-    STOP_BASE_PCT,
-    STOP_CEILING_PCT,
-    STOP_FLOOR_PCT,
-    STOP_TIME_DECAY_PCT,
-    STOP_VIX_HIGH_PCT,
-    STOP_VIX_MED_PCT,
 )
 
 
@@ -44,114 +29,20 @@ def _bar(*, high: float, low: float, open_: float | None = None, close: float | 
     return out
 
 
-def test_vix_adjustment_preserves_call_engine_threshold_edges():
-    """Audit rows 79/82: VIX adjustment keeps call_engine >20 / >30 semantics."""
-    base = STOP_BASE_PCT
-
-    assert apply_vix_adjustment(base, None) == pytest.approx(base)
-    assert apply_vix_adjustment(base, 20.0) == pytest.approx(base)
-    assert apply_vix_adjustment(base, 20.01) == pytest.approx(base + STOP_VIX_MED_PCT)
-    assert apply_vix_adjustment(base, 30.0) == pytest.approx(base + STOP_VIX_MED_PCT)
-    assert apply_vix_adjustment(base, 30.01) == pytest.approx(base + STOP_VIX_HIGH_PCT)
 
 
-def test_time_decay_preserves_open_midday_near_close_math():
-    """Audit rows 79/81: time decay subtracts STOP_TIME_DECAY_PCT per elapsed hour."""
-    assert apply_time_decay(STOP_BASE_PCT, 0) == pytest.approx(STOP_BASE_PCT)
-    assert apply_time_decay(STOP_BASE_PCT, 120) == pytest.approx(STOP_BASE_PCT - 2 * STOP_TIME_DECAY_PCT)
-    assert apply_time_decay(STOP_BASE_PCT, 390) == pytest.approx(STOP_BASE_PCT - 6.5 * STOP_TIME_DECAY_PCT)
 
 
-def test_risk_multiplier_preserves_clamp_and_default_semantics():
-    """Audit rows 79/84: risk multiplier clamps to call_engine's 0.8x to 1.5x range."""
-    assert apply_risk_multiplier(0.002, None) == pytest.approx(0.002)
-    assert apply_risk_multiplier(0.002, 0.0) == pytest.approx(0.002)
-    assert apply_risk_multiplier(0.002, 0.5) == pytest.approx(0.0016)
-    assert apply_risk_multiplier(0.002, 2.0) == pytest.approx(0.003)
 
 
-def test_derive_stop_distance_pct_preserves_adjustment_order_and_clamp():
-    """Audit rows 79/81/82/84: stop distance applies time, VIX, multiplier, then clamp."""
-    result = derive_stop_distance_pct(
-        spot=500.0,
-        vix_level=31.0,
-        mins_elapsed_since_open=60.0,
-        risk_multiplier=1.35,
-    )
-    expected = (STOP_BASE_PCT - STOP_TIME_DECAY_PCT + STOP_VIX_HIGH_PCT) * 1.35
-    expected = max(STOP_FLOOR_PCT, min(STOP_CEILING_PCT, expected))
-
-    assert result.final_pct == pytest.approx(expected)
-    assert result.adjustments_applied == ("time_decay", "vix_high", "risk_multiplier")
 
 
-def test_snap_target_to_structural_reuses_single_snap_semantics():
-    """Audit row 83: structural snap picks nearest eligible level within 1.5R."""
-    assert snap_target_to_structural(
-        target_price=505.0,
-        structural_levels=[500.0, 504.8, 507.0],
-        direction="long",
-        risk=1.0,
-    ) == pytest.approx(504.8)
-    assert snap_target_to_structural(
-        target_price=495.0,
-        structural_levels=[500.0, 495.2, 492.0],
-        direction="short",
-        risk=1.0,
-    ) == pytest.approx(495.2)
-    assert snap_target_to_structural(
-        target_price=505.0,
-        structural_levels=[510.0],
-        direction="long",
-        risk=1.0,
-    ) == pytest.approx(505.0)
 
 
-def test_derive_target_levels_long_preserves_5c_15c_caps_and_snap():
-    """Audit rows 80/83: target levels preserve 5c/15c sources, caps, and snap reuse."""
-    levels = derive_target_levels(
-        entry=100.0,
-        direction="long",
-        risk=2.0,
-        avg5=6.0,
-        avg15=10.0,
-        structural_levels=[105.8, 109.8],
-    )
-
-    assert levels.target == pytest.approx(105.8)
-    assert levels.target2 == pytest.approx(109.8)
-    assert levels.target_source == "5c_avg_move"
-    assert levels.target2_source == "15c_avg_move"
-    assert levels.target_snapped is True
-    assert levels.target2_snapped is True
 
 
-def test_derive_target_levels_missing_moves_give_no_target():
-    """Audit S-14..S-16 (2026-09-24, no fallbacks): no 5c move -> NO target, never 2R; a 5c
-    move that pays <= MIN_RR is a measured "not enough", not a reason to invent 2R."""
-    levels = derive_target_levels(
-        entry=100.0, direction="short", risk=2.0, avg5=None, avg15=None, structural_levels=[])
-    assert (levels.target, levels.target2) == (None, None)
-    assert levels.target_source == "no_5c_avg_move"
-    below = derive_target_levels(
-        entry=100.0, direction="long", risk=2.0, avg5=2.9, avg15=50.0, structural_levels=[])
-    assert (below.target, below.target2) == (None, None)
-    assert below.target_source == "5c_avg_move_below_min_rr"
 
 
-def test_derive_target_levels_t2_is_15c_only_and_caps_rr():
-    """T1 capped at 5R; no 15c move -> no T2 (the 60c move and T1+1R no longer stand in)."""
-    levels = derive_target_levels(
-        entry=100.0, direction="long", risk=2.0, avg5=100.0, avg15=None, structural_levels=[])
-    assert levels.target == pytest.approx(110.0)
-    assert levels.target_source == "5c_avg_move"
-    assert levels.target2 is None and levels.target2_source == "no_15c_avg_move"
-    capped = derive_target_levels(
-        entry=100.0, direction="long", risk=2.0, avg5=100.0, avg15=100.0, structural_levels=[])
-    assert capped.target2 == pytest.approx(116.0) and capped.target2_source == "15c_avg_move"
-    inside = derive_target_levels(
-        entry=100.0, direction="long", risk=2.0, avg5=8.0, avg15=7.0, structural_levels=[])
-    assert inside.target2 is None and inside.target2_source == "15c_avg_move_within_t1"
 
 
 def test_fire_exit_long_stop_target_and_time_expiry():

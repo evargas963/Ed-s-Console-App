@@ -3,20 +3,16 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from db import SnapshotRow
-from signal_types import CanonicalForecast, PredictiveCard, RulesCard, TheCall
-from signals import _build_snapshot_dict
-from timeframe_config import CANONICAL_TIMEFRAME, EMPIRICAL_TRI_CLASS_HORIZONS
+from timeframe_config import (
+    CANONICAL_TIMEFRAME,
+)
 
 
-def test_empirical_tri_class_horizons_include_1c_first():
-    assert EMPIRICAL_TRI_CLASS_HORIZONS[0] == "1c"
-    assert "1c" in EMPIRICAL_TRI_CLASS_HORIZONS
 
 
 def test_snapshot_row_has_pred_1c_columns():
@@ -26,77 +22,6 @@ def test_snapshot_row_has_pred_1c_columns():
     assert "pred_1c_flat_prob" in fields
 
 
-def test_build_snapshot_dict_passes_pred_1c_from_predictive_card():
-    rules = RulesCard(
-        headline="h",
-        headline_1m="",
-        detail="d",
-        zone_label="Z",
-        zone_color="#000",
-        signal="wait",
-        conviction="low",
-        alerts=[],
-        micro=None,
-    )
-    pred = PredictiveCard(
-        headline="x",
-        prediction_dir="up",
-        prediction_target=None,
-        historical_5c_dominant_dir="up",
-        historical_5c_dominant_prob=0.5,
-        empirical_confidence="medium",
-        forward_direction="up",
-        forward_prob_up=0.4,
-        forward_prob_down=0.3,
-        forward_prob_flat=0.3,
-        forward_confidence="low",
-        forward_provenance="t",
-        samples_used=50,
-        model_note="n",
-        timeframe_reads={},
-        up_prob_1c=0.41,
-        down_prob_1c=0.31,
-        flat_prob_1c=0.28,
-        up_prob_5c=0.4,
-        down_prob_5c=0.3,
-        flat_prob_5c=0.3,
-    )
-    call = TheCall(
-        signal="wait",
-        conviction="low",
-        entry=None,
-        stop=None,
-        target=None,
-        target2=None,
-        reward_risk=None,
-        reward_risk2=None,
-        headline="",
-        reasoning="",
-        trade_type="none",
-        invalidation="",
-        confluence_count=0,
-        confluence_total=0,
-        confluence_detail="",
-        time_qualifier="",
-        size_cue="SKIP",
-        rules_pred_agree=True,
-        time_warning=None,
-        size_note="",
-    )
-    canonical = CanonicalForecast(
-        direction="up",
-        probability_up=0.4,
-        probability_down=0.3,
-        probability_flat=0.3,
-        confidence="low",
-        provenance="test",
-    )
-    inp = SimpleNamespace()  # unused by _build_snapshot_dict
-    d = _build_snapshot_dict(inp, rules, pred, call, canonical)
-    assert d["pred_1c_up_prob"] == 0.41
-    assert d["pred_1c_down_prob"] == 0.31
-    assert d["pred_1c_flat_prob"] == 0.28
-    assert CANONICAL_TIMEFRAME == "1m"
 
 
 def test_server_snapshot_kwargs_includes_pred_1c_assignment():

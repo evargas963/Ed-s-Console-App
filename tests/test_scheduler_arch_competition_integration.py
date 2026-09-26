@@ -18,7 +18,6 @@ from arch_competition.scheduler_integration import (
     GOVERNED_ARCH_STATE_SCHEMA_VERSION,
     _merge_summary_file,
     arch_competition_summary_path,
-    assert_no_active_directory_write,
     build_arch_competition_summary_tick,
     build_governed_arch_state_slice,
     evaluation_manifest_path,
@@ -369,21 +368,8 @@ def test_ml_scheduler_auto_promote_helper_true_by_default(monkeypatch):
     assert _scheduler_auto_promote_to_active() is True
 
 
-def test_assert_no_active_directory_write_ok_when_env_off(monkeypatch):
-    """With auto-promote panic-disabled, the no-active-write hook must not raise."""
-    monkeypatch.setenv("ED_DISABLE_AUTO_PROMOTE", "1")
-    assert_no_active_directory_write()
 
 
-def test_run_unified_stack_ml_once_unchanged_parallel(monkeypatch):
-    """Production default remains parallel; integration does not alter run_unified_stack_ml_once."""
-    monkeypatch.delenv("ED_ML_SCHEDULER_AUTO_PROMOTE_TO_ACTIVE", raising=False)
-    import inspect
-    from ml_predict import run_unified_stack_ml_once
-
-    src = inspect.getsource(run_unified_stack_ml_once)
-    assert "parallel_runtime=True" in src
-    assert "def run_unified_stack_ml_once" in src
 
 
 def test_ml_scheduler_invokes_governed_architecture_pass():

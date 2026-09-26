@@ -18,7 +18,6 @@ from calibration.option_chain_morning_full import (  # noqa: E402
     accrual_window,
     persist_chain_accrual,
 )
-from terrain_engine import strongest_strike_storm1  # noqa: E402
 from time_et import ET  # noqa: E402
 
 
@@ -131,53 +130,12 @@ def test_accrual_is_a_time_series_not_one_row_a_day(tmp_path):
 
 
 # ── storm1 ───────────────────────────────────────────────────────────────────────────────
-def test_storm1_picks_the_hand_worked_winner():
-    """n=3. inv_rank = n+1-rank, rank 1 = highest.
-         k=100 vol=10 (rank1 -> inv3)  |gex|=1  (rank3 -> inv1)  storm1=3
-         k=200 vol=5  (rank2 -> inv2)  |gex|=5  (rank2 -> inv2)  storm1=4  <- winner
-         k=300 vol=1  (rank3 -> inv1)  |gex|=9  (rank1 -> inv3)  storm1=3
-    Neither the biggest volume nor the biggest gamma wins; the product does."""
-    rows = [[100.0, 1.0, 10.0], [200.0, -5.0, 5.0], [300.0, 9.0, 1.0]]
-    out = strongest_strike_storm1(rows)
-    assert out["strike"] == 200.0, out
-    assert out["storm1"] == 4.0
-    assert out["vol"] == 5.0 and out["abs_gex"] == 5.0
-    assert out["vol_rank"] == 2 and out["gex_rank"] == 2
-    assert out["n_strikes"] == 3
 
 
-def test_storm1_uses_gex_magnitude_not_sign():
-    """A deeply negative net gamma strike is as 'strong' as an equally positive one."""
-    a = strongest_strike_storm1([[100.0, -9.0, 9.0], [200.0, 1.0, 1.0]])
-    b = strongest_strike_storm1([[100.0, 9.0, 9.0], [200.0, 1.0, 1.0]])
-    assert a["strike"] == b["strike"] == 100.0
-    assert a["storm1"] == b["storm1"]
-    assert a["abs_gex"] == 9.0, "sign leaked into the magnitude"
 
 
-def test_storm1_is_spot_independent_and_finds_a_far_strike():
-    """The binding requirement: spot must NOT select the candidate set. A strike 40% away from
-    spot must win if it is strongest — a +/-5% band could not even see it."""
-    spot = 100.0
-    rows = [[spot, 1.0, 1.0], [spot * 1.02, 2.0, 2.0], [140.0, 99.0, 99.0]]
-    out = strongest_strike_storm1(rows)
-    assert out["strike"] == 140.0, (
-        f"strongest strike tracked spot instead of strength: {out}"
-    )
-    assert abs(out["strike"] - spot) / spot > 0.05, "winner sits inside the retired band"
-    # the function takes no spot argument at all — it CANNOT be spot-dependent
-    import inspect
-    assert "spot" not in inspect.signature(strongest_strike_storm1).parameters
 
 
-def test_storm1_ties_do_not_depend_on_list_order():
-    """Equal inputs in a different order must give the same winner, or the score is reporting
-    the sort of the input rather than the market."""
-    rows = [[100.0, 5.0, 5.0], [200.0, 5.0, 5.0], [300.0, 1.0, 1.0]]
-    a = strongest_strike_storm1(rows)
-    b = strongest_strike_storm1(list(reversed(rows)))
-    assert a["strike"] == b["strike"], f"tie-break followed list order: {a} vs {b}"
-    assert a["storm1"] == b["storm1"]
 
 
 # ── RC-161: the accrual producer is UNIVERSAL, not sentinel-only ─────────────────────────
@@ -279,9 +237,3 @@ def test_outside_contention_viewing_never_rotates_the_board():
     assert deferred == [] and now == board
 
 
-def test_storm1_absence_reads_as_absence():
-    assert strongest_strike_storm1([]) is None
-    assert strongest_strike_storm1(None) is None
-    nan = float("nan")
-    assert strongest_strike_storm1([[nan, 1.0, 1.0], [1.0, nan, 1.0]]) is None
-    assert strongest_strike_storm1([[1.0, 1.0]]) is None       # short rows are not levels

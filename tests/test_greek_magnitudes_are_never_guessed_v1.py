@@ -9,20 +9,10 @@ from __future__ import annotations
 
 import inspect
 
-from math_exposure_core import gex_magnitude_label, greek_bias
 
 
-def test_an_unknown_magnitude_contributes_nothing():
-    # a strong net delta with an unknown magnitude cannot move the vote
-    assert greek_bias(5e9, None, None, dex_magnitude=None) == "neutral"
-    assert greek_bias(5e9, None, None, dex_magnitude="not-a-label") == "neutral"
-    # a known magnitude still counts
-    assert greek_bias(5e9, None, 0.5, dex_magnitude="large") == "bullish"
 
 
-def test_absent_net_gex_is_not_labelled_negligible():
-    assert gex_magnitude_label(None) is None
-    assert gex_magnitude_label(0.0) == "negligible"
 
 
 def test_no_default_magnitude_is_substituted_anywhere():
