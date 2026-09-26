@@ -3638,7 +3638,6 @@ from calibration.option_chain_morning_full import (
 from calibration.complete_chain_capture import (
     eligible_near_term_expiries,
     has_complete_chain_capture_today,
-    next_capture_batch,
     persist_complete_chain_capture,
 )
 
@@ -10914,150 +10913,37 @@ def _persist_universal_capture(tk: str, key: tuple[str, str],
                     tk, status, result.get("reason"))
 
 
-#: OPTIONS_ORDER_FLOW_V1 round 4 (material-defect-lifecycle review, 2026-08-31): the
-#: PROVEN-complete strike_range=ALL fetch built for /api/chain (round 3) had NO
-#: systematic producer -- persist_complete_chain_capture only ever ran from that
-#: operator-triggered endpoint, so an expiry earned a proven-complete record ONLY if a
-#: human happened to click it in /options. The systematic collector below reuses the
-#: SAME once-daily universal-capture WINDOW (`universal_capture_window`) the
-#: sentinel/whole-roster wide fetch already uses, and discovers this ticker's listed
-#: expiries from the REGULAR per-cycle terrain chain fetch it is called with -- the
-#: SAME unwindowed "full"-basis request _terrain_refresh_one already makes every cycle
-#: (server.py:_terrain_refresh_one's basis ladder), at ZERO extra vendor cost for
-#: discovery. Only the per-expiry strike_range=ALL fetches below are new vendor calls,
-#: through the same rate-limited/coalesced _gated_safe_get_chain gate every other
-#: chain read uses.
-#:
-#: OPERATOR-CAUGHT DEFECT (2026-08-31, same day): the first version sliced
-#: `eligible[:CAP]` BEFORE filtering out already-captured expiries. Once the first CAP
-#: expiries were captured, every later cycle kept re-selecting that SAME first-CAP
-#: slice (all already done, so the loop body no-opped on every one) -- expiry #(CAP+1)
-#: and beyond were NEVER attempted, on ANY cycle, ANY day: a bounded per-cycle vendor
-#: budget had silently become a PERMANENT completeness ceiling. Fixed by filtering to
-#: `still_needed` (not yet proven complete today, not yet given up on today) FIRST,
-#: THEN slicing the per-cycle budget from THAT -- so once today's first CAP are
-#: captured, they drop out of `still_needed` and the NEXT cycle's slice naturally
-#: advances to the next uncaptured expiries. This also required decoupling this
-#: function from the sibling `_persist_universal_capture`'s once-per-day "done" gate
-#: (it previously only ran once per ticker per day, piggybacked on that gate, so
-#: "successive cycles" never actually happened in production regardless of the slice
-#: bug) -- it is now called every terrain cycle inside the capture window and
-#: self-gates on whether there is still real work, so it gets many chances per day.
-#:
-#: Bounded to _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER new-work items per CALL (not
-#: per day) so an unusually weekly-heavy name cannot unboundedly inflate one cycle's
-#: vendor cost; a chronically-failing expiry gives up after
-#: _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS attempts THE SAME ET day (mirrors
-#: _MORNING_CAPTURE_MAX_ATTEMPTS's existing give-up convention) so it cannot
-#: permanently occupy a budget slot ahead of expiries never yet attempted; both a
-#: truncation and a give-up are logged, never silent.
-_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER = 8
-_COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS = 3
-#: (ticker, expiry, et_date) -> attempts. In-memory, like _morning_capture_attempts --
-#: a restart simply grants a fresh attempt budget, which is safe: the DURABLE state
-#: that must survive restart is COMPLETION (has_complete_chain_capture_today, DB-
-#: backed), not the give-up bookkeeping for a same-day chronic failure.
-_complete_chain_capture_attempts: dict[tuple[str, str, str], int] = {}
 
 
-def _persist_universal_complete_chain(tk: str, client, contracts: list,
+def _persist_universal_complete_chain(tk: str, contracts: list,
                                       ts_utc: float | None = None) -> None:
-    """Systematic near-term COMPLETE-chain capture, one expiry at a time, into
-    complete_chain_captures -- the same table and completeness basis /api/chain's
-    on-demand path already uses, extended to run universally without waiting on an
-    operator's click. Self-gated: returns immediately (zero vendor calls) outside the
-    capture window, on a non-trading day, or once every eligible near-term expiry is
-    already proven complete (or given up on) for today.
-
-    `ts_utc` (defaults to real now) is the ONE clock read this call uses -- derived
-    into et_date/mins AND threaded through to every persisted row, so the idempotency
-    check and the row it is checking against can never disagree about which ET day
-    they mean (a prior draft read `time.time()` twice, separately, for exactly that
-    purpose, and a same-day re-entry test caught it re-fetching every expiry).
-    """
+    """Save each near-term expiry of the full chain just fetched into complete_chain_captures,
+    once per ET day. Zero vendor calls: the contracts are already in hand (they come from the
+    same strike_range=ALL request the capture's completeness basis names). Runs only inside the
+    capture window on a trading day; `ts_utc` is the one clock read, so the "already saved
+    today" check and the rows it writes agree on the ET day."""
     ts = float(ts_utc if ts_utc is not None else time.time())
     et_date, mins = gex_et_date_and_mins(ts)
     if not universal_capture_window(mins) or not is_trading_day_et(et_date):
         return
-    all_exps = {
-        str(c.get("expirationDate") or "")[:10]
-        for c in contracts if isinstance(c, dict) and c.get("expirationDate")
-    }
-    eligible = eligible_near_term_expiries(
-        all_exps, max_dte_days=COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS, now_et_date=et_date)
+    by_expiry: dict[str, list] = {}
+    for c in contracts:
+        if isinstance(c, dict) and c.get("expirationDate"):
+            by_expiry.setdefault(str(c["expirationDate"])[:10], []).append(c)
     db_path = get_db().db_path
-    already_captured = {
-        expiry for expiry in eligible
-        if has_complete_chain_capture_today(db_path, tk, expiry, et_date)
-    }
-    given_up = {
-        expiry for expiry in eligible
-        if _complete_chain_capture_attempts.get((tk, expiry, et_date), 0)
-        >= _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS
-    }
-    still_needed_count = sum(1 for e in eligible if e not in already_captured and e not in given_up)
-    if not still_needed_count:
-        return
-    batch = next_capture_batch(
-        eligible, already_captured=already_captured, given_up=given_up,
-        batch_size=_COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER)
-
-    attempted = captured = failed = 0
-    for expiry in batch:
-        attempt_key = (tk, expiry, et_date)
-        n_attempts = _complete_chain_capture_attempts.get(attempt_key, 0) + 1
-        _complete_chain_capture_attempts[attempt_key] = n_attempts
-        attempted += 1
-        try:
-            d = date.fromisoformat(expiry)
-            c_resp, _gw, _fs = _gated_safe_get_chain(
-                client, tk, strike_range="ALL", from_date=d, to_date=d, priority=False)
-            if c_resp is None or c_resp.status_code != 200:
-                failed += 1
-                continue
-            c_json = c_resp.json()
-            exp_contracts = flatten_chain_contracts(c_json)
-            returned_exps = sorted({
-                str(c.get("expirationDate") or "")[:10]
-                for c in exp_contracts if isinstance(c, dict) and c.get("expirationDate")
-            })
-            if returned_exps != [expiry]:
-                log.warning(
-                    "complete-chain systematic capture: expiry scope mismatch "
-                    "ticker=%s requested=%s returned=%s -- not persisting",
-                    tk, expiry, returned_exps)
-                failed += 1
-                continue
-            exp_spot, _ss, _sa = resolve_spot(tk, chain_json=c_json)
-            result = persist_complete_chain_capture(
-                db_path, ticker=tk, expiry=expiry, contracts=exp_contracts,
-                spot=exp_spot, completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
-                ts_utc=ts)
-            if result.get("status") == "written":
-                captured += 1
-            else:
-                failed += 1
-        except Exception as e:
-            failed += 1
-            log.warning("complete-chain systematic capture failed ticker=%s expiry=%s: %s",
-                        tk, expiry, e)
-        if n_attempts >= _COMPLETE_CAPTURE_EXPIRY_MAX_ATTEMPTS and not has_complete_chain_capture_today(
-            db_path, tk, expiry, et_date
-        ):
-            log.warning(
-                "complete-chain systematic capture: ticker=%s expiry=%s given up for "
-                "today after %d attempts", tk, expiry, n_attempts)
-    if still_needed_count > _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER:
-        log.warning(
-            "complete-chain systematic capture: ticker=%s truncated to %d of %d "
-            "still-needed near-term expiries this cycle -- the remainder are "
-            "carried to the next cycle, never dropped", tk,
-            _COMPLETE_CAPTURE_MAX_EXPIRIES_PER_TICKER, still_needed_count)
-    if attempted:
-        log.info(
-            "complete-chain systematic capture ticker=%s et_date=%s attempted=%d "
-            "captured=%d failed=%d still_needed=%d eligible=%d", tk, et_date, attempted,
-            captured, failed, still_needed_count, len(eligible))
+    spot = None
+    for expiry in eligible_near_term_expiries(set(by_expiry), now_et_date=et_date,
+                                              max_dte_days=COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS):
+        if has_complete_chain_capture_today(db_path, tk, expiry, et_date):
+            continue
+        if spot is None:
+            spot = resolve_spot(tk)[0]
+        result = persist_complete_chain_capture(
+            db_path, ticker=tk, expiry=expiry, contracts=by_expiry[expiry], spot=spot,
+            completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL, ts_utc=ts)
+        if result.get("status") != "written":
+            log.warning("complete-chain capture ticker=%s expiry=%s not written: %s",
+                        tk, expiry, result)
 
 
 #: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
@@ -11415,157 +11301,40 @@ def _contract_expiry_str(ct: dict) -> str:
     return str((ct or {}).get("expirationDate") or "")[:10]
 
 
-def _per_strike_exposures_by_expiry(contracts: list, spot: float) -> "dict[str, dict]":
-    """Partition `contracts` by their own `expirationDate` and run the SAME canonical faucet
-    (compute_exposures_by_strike) once per partition, returning {expiry: exposures_dict}.
-
-    2026-09-16 audit follow-up: this is the building block for an incremental per-strike
-    update, mirroring project_gamma_surface_update_expiry's per-expiry splice for the
-    strike x expiry surface. `_merge_all_expiry_exposures` sums these back into the exact
-    same total compute_exposures_by_strike(contracts, ...) would produce in one call —
-    because every field that function accumulates is a plain per-contract sum, or an OR of
-    a per-contract boolean (see its own body: call_oi/call_delta/call_gamma/.../put_* are
-    running sums; has_oi/has_valid_gamma are booleans; net_gamma/net_delta/net_dex_dollars/
-    net_gex_1pct/total_oi_dollars are linear combinations of those sums) — never an average,
-    rank, or anything else that would make summing per-expiry partials wrong."""
-    from math_exposure_core import compute_exposures_by_strike as _cebs
-    by_exp: "dict[str, list]" = {}
-    for ct in contracts or []:
-        if not isinstance(ct, dict):
-            continue
-        by_exp.setdefault(_contract_expiry_str(ct), []).append(ct)
-    out: "dict[str, dict]" = {}
-    for exp, subset in by_exp.items():
-        exposures, _diag = _cebs(subset, spot=spot, require_oi=True)
-        out[exp] = exposures
-    return out
-
-
-def _merge_strike_exposure_bucket(a: dict, b: dict) -> dict:
-    """Additively merge two per-strike exposure buckets from DIFFERENT expiries (see
-    `_per_strike_exposures_by_expiry`'s docstring for why plain add/OR reproduces the
-    single-call result exactly). Generic over field names, not a hardcoded list, so a field
-    compute_exposures_by_strike adds later merges correctly as long as it keeps the same
-    additive-or-boolean-or-sparse-None shape every existing field already has.
-
-    Two field shapes need special handling beyond plain `+`: `has_oi`/`has_valid_gamma` are
-    booleans (OR, not add), and `call_oi`/`put_oi`/`call_volume`/`put_volume` use `None` —
-    not `0.0` — as their sparse "no contract at this strike/expiry contributed this field"
-    sentinel (see `_strike_bucket`'s own initializer). `None + None -> None` (still nothing
-    contributed anywhere), `None + X -> X` (one side had it, the other didn't -- exactly
-    `_strike_bucket`'s own `prev if prev is not None else ...` accumulation rule, applied to
-    merging two already-summed partials instead of one raw value at a time)."""
-    out = dict(a)
-    for k, v in b.items():
-        if k not in out:
-            out[k] = v
-            continue
-        cur = out[k]
-        if isinstance(v, bool) or isinstance(cur, bool):
-            out[k] = bool(cur) or bool(v)
-        elif cur is None:
-            out[k] = v
-        elif v is None:
-            out[k] = cur
-        else:
-            out[k] = cur + v
-    return out
-
-
-def _merge_all_expiry_exposures(by_expiry: "dict[str, dict]") -> dict:
-    merged: dict = {}
-    for exposures in by_expiry.values():
-        for strike, bucket in exposures.items():
-            merged[strike] = (_merge_strike_exposure_bucket(merged[strike], bucket)
-                              if strike in merged else dict(bucket))
-    return merged
-
-
 def _per_strike_view_from_contracts(contracts: list, spot: float,
                                     by_expiry_out: "dict | None" = None) -> dict:
-    """The exact {all, near, far} shape /api/terrain/strikes serves, computed directly from
-    `contracts` via the SAME reusable, pure functions terrain_engine.compute_terrain already
-    calls internally (compute_exposures_by_strike -> _per_strike_scopes) — not a second
-    formula, just called directly so a caller that already has an OVERLAID contract list (and
-    does not want to pay for the rest of compute_terrain's unrelated fields: pin, walls,
-    regime, confidence) can get a consistent per-strike view from it.
-
-    The 'all' exposures are now built by partitioning `contracts` per expiry and merging
-    (`_per_strike_exposures_by_expiry` / `_merge_all_expiry_exposures`) instead of one call
-    over the whole list — numerically IDENTICAL (see those functions' docstrings), but this
-    lets a caller pass `by_expiry_out` (a dict this function fills in-place) to capture the
-    per-expiry breakdown for a LATER incremental update (`_per_strike_view_update_expiry`)
-    without a second full pass. 'near'/'far' (DTE-scoped chips) are unchanged — still one
-    full-chain pass each inside `_per_strike_scopes` — that cost is paid on this (the
-    REST-cadence) path only, never on the eager per-tick path; see
-    `_per_strike_view_update_expiry`'s own docstring for why those two chips are carried
-    over rather than recomputed on every streamed tick."""
-    from terrain_engine import _per_strike_scopes
-    by_expiry = _per_strike_exposures_by_expiry(contracts, spot)
+    """The {all, near, far} view /api/terrain/strikes serves, from `contracts` (possibly
+    overlaid with streamed greeks) -- the same exposure_books + per_strike_view compute_terrain
+    uses. `by_expiry_out` (filled in place) keeps the books for _per_strike_view_update_expiry."""
+    from math_exposure_core import exposure_books, merge_exposure_books
+    from terrain_engine import per_strike_view
+    books = exposure_books(contracts, spot=spot)
     if by_expiry_out is not None:
         by_expiry_out.clear()
-        by_expiry_out.update(by_expiry)
-    exposures = _merge_all_expiry_exposures(by_expiry)
-    return _per_strike_scopes(exposures, contracts, spot)
+        by_expiry_out.update(books)
+    return per_strike_view(books, merge_exposure_books(books.values())[0], contracts)
 
 
-def _per_strike_view_update_expiry(prior_by_expiry: "dict[str, dict] | None",
-                                   prior_view: "dict | None", overlaid: list, spot: float,
-                                   affected_expiries: "list[str]", *,
-                                   prior_spot: "float | None") -> "tuple[dict, dict] | None":
-    """Incrementally update the per-strike 'all' view for ONLY the expiries a streamed tick
-    actually touched, reusing every OTHER expiry's already-computed contribution from
-    `prior_by_expiry` (2026-09-16 audit follow-up — see `_per_strike_exposures_by_expiry`'s
-    docstring for the additive-merge proof this relies on). Returns
-    `(new_view, new_by_expiry_cache)`, or None when an incremental update cannot be proven
-    safe (no cache to update from, the tick's own contracts carry no resolvable expiry, or
-    spot has moved — see below) — the caller falls back to
-    `_per_strike_view_from_contracts`'s full recompute exactly like
-    `project_gamma_surface_update_expiry`'s own fallback contract.
-
-    Independent-review finding (2026-09-16, follow-up mandate): every field this view
-    reports (net_gex_1pct and the raw exposures the 'all' rows are built from) is a
-    function of spot, for EVERY expiry, not only the touched one — the identical hazard
-    `project_gamma_surface_update_expiry` guards against, and the identical fix: `spot`
-    must be IDENTICAL to `prior_spot` (the spot `prior_by_expiry`/`prior_view` were
-    themselves computed against) or this returns None, forcing a full, fresh-spot
-    recompute of every expiry rather than merging a fresh slice for one expiry with
-    stale-spot contributions cached from every other.
-
-    Scope, disclosed: only the 'all' aggregate (the one /api/terrain/strikes' primary GEX-
-    by-strike panel and the heatmap's own per-cell backfill actually read on a streamed
-    tick) is recomputed here. 'near'/'far' (the <=7DTE / >7DTE chips) are CARRIED OVER
-    unchanged from `prior_view` — recomputing them incrementally would require the same
-    per-expiry decomposition AGAIN split a second way (by DTE, not by expiry identity),
-    which is a real, separable piece of work with its own edge cases (a contract crossing
-    the 7-DTE boundary as calendar time passes) — deferred rather than risked here. Those
-    two chips are refreshed at the normal REST cadence (`_terrain_refresh_one`), same as
-    the expirations list, walls, and regime already are; only the primary aggregate gets
-    the eager, per-tick, incremental treatment the operator's mandate targets."""
+def _per_strike_view_update_expiry(prior_by_expiry: "dict | None", prior_view: "dict | None",
+                                   overlaid: list, spot: float, affected_expiries: "list[str]",
+                                   *, prior_spot: "float | None") -> "tuple[dict, dict] | None":
+    """Re-price only the expiries a streamed tick touched and keep every other expiry's book
+    from `prior_by_expiry`. None (the caller then recomputes everything) when there is nothing
+    to update from, a touched expiry has no contracts, or spot moved -- every book is priced at
+    spot, so a book from another spot cannot be reused."""
     if not prior_by_expiry or not affected_expiries:
         return None
     if prior_spot is None or float(prior_spot) != float(spot):
         return None
-    from terrain_engine import _per_strike_rows
-    new_by_expiry = dict(prior_by_expiry)
-    for exp in affected_expiries:
-        exp_contracts = [ct for ct in overlaid if isinstance(ct, dict)
-                         and _contract_expiry_str(ct) == exp]
-        if not exp_contracts:
-            return None   # nothing to recompute this expiry's contribution from -- unsafe
-        try:
-            from math_exposure_core import compute_exposures_by_strike as _cebs
-            exposures, _diag = _cebs(exp_contracts, spot=spot, require_oi=True)
-        except Exception:
-            return None
-        new_by_expiry[exp] = exposures
-    merged = _merge_all_expiry_exposures(new_by_expiry)
-    new_view = {
-        "all": _per_strike_rows(merged, overlaid),
-        "near": (prior_view or {}).get("near", []),
-        "far": (prior_view or {}).get("far", []),
-    }
-    return new_view, new_by_expiry
+    from math_exposure_core import exposure_books, merge_exposure_books
+    from terrain_engine import per_strike_view
+    touched = set(affected_expiries)
+    fresh = [ct for ct in overlaid if isinstance(ct, dict) and _contract_expiry_str(ct) in touched]
+    if {_contract_expiry_str(ct) for ct in fresh} != touched:
+        return None
+    books = {k: v for k, v in prior_by_expiry.items() if k[0] not in touched}
+    books.update(exposure_books(fresh, spot=spot))
+    return per_strike_view(books, merge_exposure_books(books.values())[0], overlaid), books
 
 
 def _desired_stream_greeks_for_ticker(tk: str) -> dict:
@@ -12518,7 +12287,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             # operator-caught defect this fixes). It self-gates on window/trading-day/
             # remaining-work internally, so a no-op call here costs one cheap DB check,
             # never a vendor call.
-            _persist_universal_complete_chain(tk, client, contracts)
+            _persist_universal_complete_chain(tk, contracts)
         snap = compute_terrain(tk, contracts, spot)
         payload = snap.to_dict()
         payload["computed_ts_utc"] = time.time()

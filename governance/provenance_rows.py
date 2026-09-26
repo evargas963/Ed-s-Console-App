@@ -2941,9 +2941,9 @@ ROWS: tuple[Row, ...] = (
         justification="Builds the [[strike, net_gex_1pct$, session_volume], ...] triples the per-strike panel renders; volume is summed from the chain's own totalVolume through float_nonnegative_or_none, strikes through float_finite_or_none, so a NaN can never become a key or a bar.",
     ),
     Row(
-        file='terrain_engine.py', derivation='_per_strike_scopes', disposition='DERIVED',
+        file='terrain_engine.py', derivation='per_strike_view', disposition='DERIVED',
         producer_refs=('terrain_engine.py:compute_terrain',),
-        justification='Splits the per-strike rows into the {all, near, far} sets the ALL / <=7DTE / MONTHLY+ chips switch between; the maturity split comes from _dte_of and a contract that cannot answer it lands in NEITHER side (RC-290).',
+        justification='Builds the {all, near, far} per-strike rows the ALL / <=7DTE / MONTHLY+ chips switch between from the chain exposure_books (one pricing pass); the maturity split comes from _dte_of and a contract that cannot answer it lands in NEITHER side (RC-290).',
     ),
     Row(
         file='terrain_engine.py', derivation='compute_implied_one_day_move', disposition='SCHWAB_LEAF',

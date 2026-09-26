@@ -741,7 +741,8 @@ def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
     return c if math.isfinite(c) else None
 
 
-def compute_charm_by_strike(contracts: List[dict], spot: float, now=None) -> Dict[float, dict]:
+def compute_charm_by_strike(contracts: List[dict], spot: float, now=None,
+                            parsed: "list | None" = None) -> Dict[float, dict]:
     """Per-strike dealer CHARM exposure, in delta-shares per day.
 
     Charm exposure is standard institutional practice (SpotGamma, Unusual Whales and
@@ -756,11 +757,8 @@ def compute_charm_by_strike(contracts: List[dict], spot: float, now=None) -> Dic
     out: Dict[float, dict] = {}
     if not contracts or not spot or spot <= 0:
         return out
-    for ct in contracts:
-        parsed = _contract_inputs(ct, now=now)
-        if parsed is None:
-            continue
-        strike, oi, mult, t_years, sigma, sign = parsed
+    for strike, oi, mult, t_years, sigma, sign in (parsed if parsed is not None
+                                                   else contract_inputs(contracts, now)):
         c = bs_charm(float(spot), strike, t_years, sigma)
         if c is None:
             continue
@@ -787,6 +785,12 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
     pw = put_k if abs(charm_by_strike[put_k]["put_charm"]) > 0 else None
     return (round(cw, 2) if cw is not None else None,
             round(pw, 2) if pw is not None else None)
+
+
+def contract_inputs(contracts: List[dict], now=None) -> list:
+    """_contract_inputs for every usable contract -- parse a chain once, share it between the
+    gamma profile and charm (compute_terrain)."""
+    return [p for p in (_contract_inputs(c, now=now) for c in contracts if isinstance(c, dict)) if p]
 
 
 def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, float, int] | None:
@@ -839,7 +843,8 @@ def _dealer_sign(side_sign: int, sign_model: str) -> int:
 
 def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float = 0.15,
                           steps: int = 240,
-                          sign_model: str = SIGN_MODEL_NAIVE, now=None) -> List[tuple[float, float]]:
+                          sign_model: str = SIGN_MODEL_NAIVE, now=None,
+                          parsed: "list | None" = None) -> List[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
     Dealer convention per `sign_model` (default naive +call/−put — the only model in
@@ -848,7 +853,8 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
     """
     if not contracts or spot is None or spot <= 0:
         return []
-    parsed = [p for p in (_contract_inputs(c, now=now) for c in contracts if isinstance(c, dict)) if p]
+    if parsed is None:
+        parsed = contract_inputs(contracts, now)
     if not parsed:
         return []
     lo, hi = spot * (1.0 - span_pct), spot * (1.0 + span_pct)

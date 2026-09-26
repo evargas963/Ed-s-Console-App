@@ -20,8 +20,6 @@ from pathlib import Path
 from server import (
     project_gamma_surface,
     project_gamma_surface_update_expiry,
-    _per_strike_exposures_by_expiry,
-    _merge_all_expiry_exposures,
     _per_strike_view_from_contracts,
     _per_strike_view_update_expiry,
 )
@@ -480,9 +478,11 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute(monkeypatch
     monkeypatch.setattr(time_et, "now_et", lambda: frozen)
     chain = _chain()
     full, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
-    by_expiry = _per_strike_exposures_by_expiry(chain, SPOT)
-    assert set(by_expiry.keys()) == {E1, E2}
-    merged = _merge_all_expiry_exposures(by_expiry)
+    from math_exposure_core import exposure_books, merge_exposure_books
+    by_expiry = exposure_books(chain, spot=SPOT)
+    assert {exp for exp, _dte in by_expiry} == {E1, E2}
+    merged, merged_diag = merge_exposure_books(by_expiry.values())
+    assert (merged_diag.contracts_total, merged_diag.contracts_used) == (_diag.contracts_total, _diag.contracts_used)
     assert set(merged.keys()) == set(full.keys())
     for strike, bucket in full.items():
         assert merged[strike] == bucket, (
@@ -505,12 +505,12 @@ def test_per_strike_view_update_expiry_matches_a_full_recompute_for_the_changed_
     assert updated_view["all"] == full_view["all"], (
         "the incremental 'all' aggregate must reconcile exactly to a full recompute — the "
         "same canonical faucet on a narrower input, never an approximation")
-    # 'near'/'far' are deliberately carried over from the prior view, not recomputed here
-    # (see _per_strike_view_update_expiry's own docstring) -- still present, unchanged.
-    assert updated_view["near"] == prior_view.get("near", [])
-    assert updated_view["far"] == prior_view.get("far", [])
-    # the cache for the UNAFFECTED expiry (E2) must be the untouched prior object.
-    assert updated_by_expiry[E2] is by_expiry[E2]
+    # near/far are recomputed from the same books, so they also equal a full recompute
+    assert updated_view["near"] == full_view["near"]
+    assert updated_view["far"] == full_view["far"]
+    # the book for the UNAFFECTED expiry (E2) must be the untouched prior object.
+    (e2_key,) = [k for k in by_expiry if k[0] == E2]
+    assert updated_by_expiry[e2_key] is by_expiry[e2_key]
 
 
 def test_per_strike_view_update_expiry_falls_back_to_none_with_no_prior_cache():

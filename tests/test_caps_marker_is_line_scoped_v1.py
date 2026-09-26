@@ -135,14 +135,14 @@ def test_absent_net_gex_stays_none_not_zero():
 
 def test_unknown_maturity_joins_neither_side_of_the_split():
     """Cursor's probe: a contract with no DTE was classified `far` and rendered there."""
-    from types import SimpleNamespace
-
     import terrain_engine as T
 
-    scopes = T._per_strike_scopes(
-        {740.0: SimpleNamespace(net_gex=1.0)},
-        [{"strikePrice": 740.0, "totalVolume": 10}],      # no daysToExpiration
-        spot=740.0)
+    from math_exposure_core import ExposureDiagnostics
+    bucket = {"has_oi": True, "has_valid_gamma": True, "dollarized": True,
+              "call_gex_1pct": 1.0e6, "put_gex_1pct": 0.0, "net_gex_1pct": 1.0e6}
+    books = {("2026-10-16", None): ({740.0: bucket}, ExposureDiagnostics(1, 1, 0, "OK"))}
+    scopes = T.per_strike_view(books, {740.0: bucket}, [{"strikePrice": 740.0, "totalVolume": 10}])  # no DTE
+    assert scopes["all"], "the contract belongs to ALL (that chip claims no maturity)"
     assert scopes["near"] == [], "unknown maturity rendered under the <=7DTE chip"
     assert scopes["far"] == [], "unknown maturity rendered under the MONTHLY+ chip"
 

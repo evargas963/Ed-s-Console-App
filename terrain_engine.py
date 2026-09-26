@@ -27,11 +27,12 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from math_exposure_core import (
-    compute_exposures_by_strike,
     compute_net_dex_dollars,
     compute_net_vanna,
     compute_zero_dte_gamma_share,
+    exposure_books,
     exposures_have_dollar_gex,
+    merge_exposure_books,
     pick_delta_wall_strikes,
     pick_net_gex_peak_strike,
     pick_pin_and_strength,
@@ -42,6 +43,7 @@ from math_exposure_core import (
 )
 from math_levels import (
     compute_charm_by_strike,
+    contract_inputs,
     compute_gamma_flip_v2,
     compute_gamma_profile,
     compute_gamma_support_levels,
@@ -292,7 +294,7 @@ def _dte_of(ct: object) -> float | None:
     """Days to expiration, or None when the contract does not say.
 
     RC-290: this returned 999.0 for an unreadable DTE and I annotated it "SORT KEY only,
-    never rendered". Cursor executed the claim: `_per_strike_scopes` classifies contracts
+    never rendered". Cursor executed the claim: the per-strike maturity split classifies contracts
     with `_dte_of(c) > 7` as `far`, so 999.0 put every unknown-maturity contract into the
     FAR scope and rendered it there. The reason was false and the fabricated number was
     reaching the operator as a maturity claim.
@@ -424,32 +426,24 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     }
 
 
-def _per_strike_scopes(exposures: dict, contracts: list[dict], spot: float | None,
-                       now=None) -> dict:
-    """`{all, near, far}` rows — the three the ALL / <=7DTE / MONTHLY+ chips switch between.
+def per_strike_view(books: dict, exposures: dict, contracts: list[dict]) -> dict:
+    """`{all, near, far}` rows -- the ALL / <=7DTE / MONTHLY+ chips -- from the chain's
+    exposure_books and their merged full book `exposures` (one pricing pass). A contract whose
+    days-to-expiry cannot be read belongs to `all` only: a maturity split it cannot answer is
+    not answered for it (RC-290)."""
+    from math_exposure_core import merge_exposure_books
 
-    RC-79: the live map had no DTE split at all, so two of the three chips would have shown an
-    empty panel even after the rows themselves were fixed. `all` reuses the exposures already
-    computed for this chain; the two subsets are computed here, where the chain is in hand.
-    """
-    out = {"all": _per_strike_rows(exposures, contracts), "near": [], "far": []}
-    if not contracts or spot is None:
-        return out
-    # RC-290: a contract whose DTE cannot be read belongs to NEITHER maturity side. It used
-    # to arrive here as 999.0 and land in `far`, so unknown maturity was rendered under the
-    # MONTHLY+ chip as if it had been measured. `all` still carries it — that chip claims
-    # no maturity — but a split the contract cannot answer must not be answered for it.
-    _dted = [(c, _dte_of(c)) for c in contracts]
-    for name, subset in (("near", [c for c, d in _dted if d is not None and d <= 7]),
-                         ("far", [c for c, d in _dted if d is not None and d > 7])):
-        if not subset:
-            continue
-        try:
-            ex, _diag = compute_exposures_by_strike(subset, spot=spot, require_oi=True, now=now)
-            out[name] = _per_strike_rows(ex, subset)
-        except Exception:
-            out[name] = []                  # a failed scope renders empty, never as `all`
-    return out
+    def rows(keep) -> list:
+        chosen = [b for (_exp, d), b in books.items() if keep(d)]
+        if not chosen:
+            return []
+        subset_exposures, _diag = merge_exposure_books(chosen)
+        subset = [c for c in contracts if isinstance(c, dict) and keep(_dte_of(c))]
+        return _per_strike_rows(subset_exposures, subset)
+
+    return {"all": _per_strike_rows(exposures, contracts),
+            "near": rows(lambda d: d is not None and d <= 7),
+            "far": rows(lambda d: d is not None and d > 7)}
 
 
 def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[str, Any]]:
@@ -702,8 +696,11 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # the profile priced it at `now` (2026-09-25).
     from time_et import now_et as _now_et
     _terrain_now = now if now is not None else _now_et()
-    exposures, diag = compute_exposures_by_strike(contracts, spot=spot, require_oi=True,
-                                                  now=_terrain_now)
+    # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
+    books = exposure_books(contracts, spot=spot, now=_terrain_now)
+    exposures, diag = merge_exposure_books(books.values())
+    _dtes = [d for (_e, d) in books if d is not None]
+    _front_dte = min(_dtes, default=None)
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
 
@@ -736,7 +733,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # by both the flip verdict and the regime/gamma-at-spot read. Previously the flip built a
     # profile inside compute_gamma_flip_v2 and this function built a SECOND one, each defaulting
     # `now` to its own wall-clock read — two materializations of the same curve at two instants.
-    profile = compute_gamma_profile(contracts, spot, now=_terrain_now)
+    parsed = contract_inputs(contracts, _terrain_now)       # one parse for profile + charm
+    profile = compute_gamma_profile(contracts, spot, now=_terrain_now, parsed=parsed)
     flip, confidence, flip_diag = compute_gamma_flip_v2(
         contracts, spot, now=_terrain_now, profile=profile)
     # RC-354: GSF/GRC from the SAME materialized profile — no second materialization.
@@ -745,29 +743,23 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     _gsl = compute_gamma_support_levels(profile, spot)
     # RC-357: the 0DTE book from the SAME producer with the dte filter — same parser,
     # same sign model; the share is pure attribution, zero new math.
-    _exp_0dte, _ = compute_exposures_by_strike(
-        contracts, spot=spot, require_oi=True, use_only_dte_max=0, now=_terrain_now)
+    # a contract with no readable DTE is kept, as use_only_dte_max always kept it
+    _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is None or d <= 0)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
-    # Max pain on the FRONT expiry only (same producer, dte filter to the nearest expiry).
-    _front_dte = min((d for d in (_dte_of(c) for c in contracts) if d is not None), default=None)
+    # Max pain on the FRONT expiry only.
     _front_max_pain = None
     if _front_dte is not None:
-        _exp_front, _ = compute_exposures_by_strike(
-            contracts, spot=spot, require_oi=True, use_only_dte_max=_front_dte, now=_terrain_now)
+        _exp_front, _ = merge_exposure_books(
+            b for (_e, d), b in books.items() if d is None or d <= _front_dte)
         _front_max_pain = compute_max_pain(_exp_front)
     # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
     from math_volatility import compute_25d_risk_reversal
     _rr25 = compute_25d_risk_reversal(contracts)
-    charm_by_strike = compute_charm_by_strike(contracts, spot, now=_terrain_now)
+    charm_by_strike = compute_charm_by_strike(contracts, spot, now=_terrain_now, parsed=parsed)
     call_charm_wall, put_charm_wall = pick_charm_wall_strikes(charm_by_strike)
 
-    # RC-292: the front expiry of THIS book (nearest readable DTE; RC-290 — a contract
-    # that does not state its maturity is dropped, never defaulted) feeds the DTE gate.
-    _front_dte = min(
-        (d for d in (_dte_of(c) for c in contracts if isinstance(c, dict))
-         if d is not None),
-        default=None,
-    )
+    # RC-292: _front_dte (the nearest readable DTE; RC-290: a contract that does not state
+    # its maturity is dropped, never defaulted) feeds the DTE gate.
     _pin_candidate, _pin_candidate_blockers = qualify_pin_candidate(
         spot=float(spot),
         absolute_gamma_strike=_abs_gamma_strike,
@@ -848,6 +840,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # computed from THIS chain; the per-strike histogram was previously rendered from the
         # frozen morning archive purely because nothing persisted this. Session volume is carried
         # alongside so the volume panel stops serving a 09:47 corpse at 11:31.
-        per_strike=_per_strike_scopes(exposures, contracts, spot, now=_terrain_now),
+        per_strike=per_strike_view(books, exposures, contracts),
         computed_ts_utc=_time.time(),
     )
