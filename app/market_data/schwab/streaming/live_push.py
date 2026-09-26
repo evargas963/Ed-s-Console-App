@@ -41,7 +41,8 @@ LIVE_PUSH_HOST = "127.0.0.1"
 LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: operator port config with its declared default, not market data
 
 #: topic prefix -> the only `src` forwarded for it
-_FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1"}
+_FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
+              "news.": "schwab_news"}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -118,7 +119,7 @@ HEARTBEAT_SEC = 1.0
 
 
 async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
-                        heartbeat_fn=None) -> None:
+                        heartbeat_fn=None, on_wanted=None) -> None:
     """Send the last values, then every live message, until the connection closes.
 
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
@@ -155,8 +156,19 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
                 await ws.send(encode(topic, msg))
                 stats["sent"] += 1
 
+    async def _read() -> None:
+        """The console's frames: {"op": "wanted", "wanted": {service: [symbols]}} -- the whole
+        list of what it wants streamed (capture.Daemon.set_wanted). Ends when the socket closes."""
+        async for frame in ws:
+            try:
+                req = json.loads(frame)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(req, dict) and req.get("op") == "wanted" and on_wanted is not None:
+                on_wanted(req.get("wanted"))
+
     pump = asyncio.create_task(_pump())
-    closed = asyncio.create_task(ws.wait_closed())
+    closed = asyncio.create_task(_read())
     try:
         await asyncio.wait({pump, closed}, return_when=asyncio.FIRST_COMPLETED)
         if pump.done() and not pump.cancelled() and pump.exception() is not None:
@@ -173,7 +185,8 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
 
 async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                           host: str = LIVE_PUSH_HOST, port: int = LIVE_PUSH_PORT,
-                          stats: "dict | None" = None, heartbeat_fn=None) -> None:
+                          stats: "dict | None" = None, heartbeat_fn=None,
+                          on_wanted=None) -> None:
     """Run the push server until `stop` is set. `stats` (mutated) reports clients/sent/dropped."""
     from websockets.asyncio.server import serve
 
@@ -192,13 +205,13 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                 history.record(topic, msg)
 
     async def handler(ws):
-        await _serve_client(ws, bus, stats, history, heartbeat_fn)
+        await _serve_client(ws, bus, stats, history, heartbeat_fn, on_wanted)
 
     tracker = asyncio.create_task(_track())
     try:
         async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20):
             stats["listening"] = f"ws://{host}:{port}"
-            print(f"live push: serving Schwab stream messages on ws://{host}:{port}")
+            log.info("live push: serving Schwab stream messages on ws://%s:%s", host, port)
             await stop.wait()
     finally:
         tracker.cancel()

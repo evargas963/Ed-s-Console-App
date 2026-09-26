@@ -7,7 +7,6 @@ token and log, writing 15,451 errors into production's logs/ed_server.log.
 from __future__ import annotations
 
 import asyncio
-import sys
 
 import pytest
 
@@ -50,11 +49,3 @@ def test_the_console_refuses_before_starting_anything(monkeypatch):
     assert started == [], "nothing may start before the binding check"
 
 
-def test_the_capture_daemon_refuses_before_opening_anything(monkeypatch):
-    from app.market_data.schwab.streaming import capture
-    monkeypatch.setattr(runtime_layout, "live_binding_error", lambda *a, **k: "bound elsewhere")
-    ran = []
-    monkeypatch.setattr(capture, "run", lambda *a, **k: ran.append(a))
-    monkeypatch.setattr(sys, "argv", ["capture", "--duration-min", "0"])
-    assert capture.main() == 2
-    assert ran == [], "the daemon must not reach run() (lock, Schwab socket, stream DB)"

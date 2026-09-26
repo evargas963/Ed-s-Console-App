@@ -8,7 +8,7 @@ REM another daemon already owns the stream (exit 3) or this checkout may not run
 REM Close this window to stop the daemon's restarts (then end the pythonw process if running).
 :loop
 echo  %date% %time%  capture daemon starting (output: logs\stream_capture.log)
-"%~dp0.venv\Scripts\pythonw.exe" -m app.market_data.schwab.streaming.capture --duration-min 0
+"%~dp0.venv\Scripts\pythonw.exe" -m app.market_data.schwab.streaming.capture
 set "CODE=%errorlevel%"
 if "%CODE%"=="3" (
     echo  Another capture daemon already owns the stream - not starting a second one.

@@ -162,7 +162,7 @@ def _seed_both_permanent_databases(
         conn.execute("INSERT INTO snapshots(value) VALUES ('seed')")
     with sqlite3.connect(stream) as conn:
         conn.execute("CREATE TABLE stream_quotes_raw(id INTEGER PRIMARY KEY, value TEXT)")
-        conn.execute("CREATE TABLE stream_producer_heartbeat(id INTEGER PRIMARY KEY)")
+        conn.execute("CREATE TABLE stream_subscriptions(id INTEGER PRIMARY KEY)")
         conn.execute("INSERT INTO stream_quotes_raw(value) VALUES ('seed')")
     return console, stream
 

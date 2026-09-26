@@ -11,7 +11,7 @@ import live_market_plane as lmp
 
 
 def mark_feed_live(*tickers: str) -> None:
-    lmp.record_feed_heartbeat({"schwab_socket_open": True, "equities_held": list(tickers)}, time.time())
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": list(tickers)}}, time.time())
 
 
 def mark_feed_down() -> None:

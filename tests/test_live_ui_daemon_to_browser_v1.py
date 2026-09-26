@@ -60,7 +60,7 @@ class _Feed:
 
     def __call__(self) -> dict:
         return {"ts": time.time(), "schwab_socket_open": self.open,
-                "equities_held": self.held, "health": {}}
+                "held": {"LEVELONE_EQUITIES": self.held}, "health": {}}
 
 
 async def _run(body, feed=None):

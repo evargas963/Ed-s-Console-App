@@ -122,7 +122,7 @@ _BACKUP_FILENAMES = {
     "stream_capture": (
         "stream_capture_backup.db",
         "stream_capture_backup_manifest.json",
-        {"stream_quotes_raw", "stream_producer_heartbeat"},
+        {"stream_quotes_raw", "stream_subscriptions"},
     ),
 }
 

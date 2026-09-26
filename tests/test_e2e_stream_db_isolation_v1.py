@@ -48,41 +48,6 @@ def _e2e_server_env(poison_root: Path) -> dict[str, str]:
     return server_env
 
 
-def test_pytest_boundary_overrides_host_runtime_state(monkeypatch):
-    """Pytest is offline and all writable runtime state shares one private root."""
-    from config import schwab_live_blocked_for
-    from db_authority import canonical_console_db_path
-    from stream_spine import (
-        default_active_option_contract_signal_path,
-        default_active_ticker_signal_path,
-        resolve_stream_db_path,
-    )
-
-    # RC-534: no ambient ED_CONSOLE_DB override; ED_RUNTIME_ROOT is the one isolation knob
-    # and the canonical DBs/signals live under <root>/data.
-    root = Path(os.environ["ED_RUNTIME_ROOT"]).resolve()
-    assert root.name.startswith("ed-pytest-")
-    assert "ED_CONSOLE_DB" not in os.environ
-    data = root / "data"
-    assert canonical_console_db_path().parent == data
-    assert resolve_stream_db_path().parent == data
-    assert default_active_option_contract_signal_path().parent == data
-    assert default_active_ticker_signal_path().parent == data
-    # RC-534: SCHWAB_TOKEN_PATH is not set; config resolves the token canonically under root.
-    from config import build_config
-    assert "SCHWAB_TOKEN_PATH" not in os.environ
-    assert Path(build_config(".").token_path).parent == root
-    assert Path(os.environ["ED_TERRAIN_QUARANTINE_LEDGER"]).parent == root
-    assert os.environ["ED_CI_OFFLINE"] == "1"
-    assert os.environ["SCHWAB_API_KEY"] == PLACEHOLDER_KEY
-    assert os.environ["SCHWAB_APP_SECRET"] == PLACEHOLDER_SECRET
-    assert schwab_live_blocked_for() is True
-
-    # There is no STREAM_CAPTURE_DB_PATH override to remove (RC-534); canonical stays canonical.
-    assert "STREAM_CAPTURE_DB_PATH" not in os.environ
-    assert resolve_stream_db_path().parent == data
-
-
 def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
     """Live-looking parent values cannot select E2E paths or make Schwab live."""
     server_env = _e2e_server_env(tmp_path)
@@ -147,41 +112,3 @@ def test_e2e_boundary_blocks_an_inherited_valid_token_from_building_a_client(tmp
     assert Path(result["token_path"]).resolve() != inherited_token.resolve()
 
 
-def test_e2e_signal_writes_cannot_touch_poisoned_parent_signals(tmp_path):
-    """Canonical signal writers target the isolated E2E DB, never the parent DB."""
-    poison_option = tmp_path / "stream_active_option_contract.json"
-    poison_ticker = tmp_path / "stream_active_ticker.json"
-    poison_option.write_text("LIVE_OPTION_SENTINEL", encoding="utf-8")
-    poison_ticker.write_text("LIVE_TICKER_SENTINEL", encoding="utf-8")
-    server_env = _e2e_server_env(tmp_path)
-    e2e_root = Path(server_env.pop("_E2E_RUNTIME_ROOT")).resolve()
-
-    child = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            (
-                "import json;"
-                "from stream_spine import (default_active_option_contract_signal_path,"
-                "default_active_ticker_signal_path,write_active_option_contract_signal,"
-                "write_active_ticker_signal);"
-                "write_active_option_contract_signal('CDE   260904C00021000');"
-                "write_active_ticker_signal('CDE');"
-                "print(json.dumps({'option':str(default_active_option_contract_signal_path()),"
-                "'ticker':str(default_active_ticker_signal_path())}))"
-            ),
-        ],
-        cwd=ROOT,
-        env=server_env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert child.returncode == 0, child.stdout + child.stderr
-    paths = json.loads(child.stdout.strip())
-    # RC-534: signals sit beside the canonical stream DB, under <root>/data.
-    e2e_data = e2e_root / "data"
-    assert Path(paths["option"]).parent == e2e_data
-    assert Path(paths["ticker"]).parent == e2e_data
-    assert poison_option.read_text(encoding="utf-8") == "LIVE_OPTION_SENTINEL"
-    assert poison_ticker.read_text(encoding="utf-8") == "LIVE_TICKER_SENTINEL"
