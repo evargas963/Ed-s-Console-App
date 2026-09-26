@@ -90,8 +90,10 @@ def test_vanna_by_strike_route_omits_no_oi_strikes_instead_of_a_fabricated_zero(
     tk = server.ticker_storage_key("ZZTESTNOOI")
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
              _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
+    snap = compute_terrain(tk, chain, SPOT)
     with server._terrain_cache_lock:
-        server._terrain_snapshots[tk] = compute_terrain(tk, chain, SPOT)
+        server._terrain_cache[tk] = {"ticker": tk, "spot": SPOT, "computed_ts_utc": time.time(),
+                                     "_vanna_rows": server._vanna_rows(snap)}
     try:
         import json
         body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
@@ -100,7 +102,6 @@ def test_vanna_by_strike_route_omits_no_oi_strikes_instead_of_a_fabricated_zero(
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-            server._terrain_snapshots.pop(tk, None)
 
 
 # ---------------------------------------------------------- 2. a genuine zero still renders ----

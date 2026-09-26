@@ -6,13 +6,23 @@ import time
 import types
 from pathlib import Path
 
+import pytest
+
 import server
+from math_exposure_core import ExposureDiagnostics
 
 #: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
 #: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
 _REAL_CHAIN = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_cde_complete_chain_half_dollar.json")
     .read_text(encoding="utf-8"))["chain"]
+
+
+@pytest.fixture(autouse=True)
+def _session_open(monkeypatch):
+    """These tests are about the open market: levels are computed only then (closed-market
+    behaviour: tests/test_one_levels_producer_v1.py)."""
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
 
 
 def _stub_terrain(monkeypatch, proj):
@@ -47,7 +57,7 @@ class Snap:
 
     def __init__(self, contracts):
         self.contracts = contracts
-        self.books = {("2026-09-04", 0.0): ({}, None)}
+        self.books = {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))}
 
     def to_dict(self):
         return {}
@@ -79,7 +89,7 @@ def test_producer_gates_projection_on_demand(monkeypatch):
     server._note_gamma_surface_demand(tk)
     server._terrain_refresh_one(tk)
     assert calls["n"] == 1
-    assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, None)})
+    assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))})
     surf = dict(_cached_surface(tk))
     assert isinstance(surf.pop("stream_overlay_computed_ts_utc"), float)
     # the spot that priced this generation travels with it; no contract was streaming
@@ -284,19 +294,10 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
         "pre-enrolled board")
 
 
-def test_a_viewed_ticker_still_refreshes_outside_the_archival_loggers_window(monkeypatch):
-    """Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
-    viewing"): _terrain_loop's entire refresh cycle -- enrolled board AND previewed/viewed
-    tickers alike -- used to be gated on _is_loggable_session(), which answers "should the
-    background LOGGER write a durable snapshot right now" (RTH_ONLY, "only log during RTH +
-    30min pre/post buffer"). That is a different question from "does an operator currently
-    looking at this ticker deserve a live refresh attempt". Reproduced live: $SPX, open in a
-    browser tab outside that window, showed today.all == [] with reason "no terrain snapshot
-    has been computed yet" forever, because _terrain_refresh_one was never even attempted for
-    it. The enrolled board's passive sweep staying RTH-gated is correct (nobody is necessarily
-    watching all of it); a ticker someone has open right now must not wait for the archival
-    logger's own schedule.
-    """
+def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch):
+    """Operator design 2026-09-26: while the market is closed no chain is downloaded -- not for
+    the board, not for a ticker someone is viewing. Weekend chains blank open interest (every
+    $SPX contract, 18% of SPY's OI, measured 2026-09-26); the last session's levels stand."""
     import threading
 
     calls: list[str] = []
@@ -304,45 +305,37 @@ def test_a_viewed_ticker_still_refreshes_outside_the_archival_loggers_window(mon
     def proj(contracts, books):
         return {"expirations": [], "strikes": [], "cells": []}
     _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)   # outside the logger's window
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     real_refresh = server._terrain_refresh_one
+    fetched: list[str] = []
+    monkeypatch.setattr(server, "fetch_full_chain", lambda client, tk, **k: fetched.append(tk))
 
     def spy_refresh(tk, priority=False):
         calls.append(tk)
         return real_refresh(tk, priority=priority)
     monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
 
-    enrolled_not_viewed_tk = server.ticker_storage_key("SPY")
     viewed_tk = server.ticker_storage_key("$SPX")
     with server._logger_lock:
         prev_logger_tickers = list(server._logger_tickers)
-        server._logger_tickers[:] = [enrolled_not_viewed_tk]
-    server._gamma_surface_demand.pop(viewed_tk, None)
-    server._note_gamma_surface_demand(viewed_tk)   # someone has this ticker open right now
-
+        server._logger_tickers[:] = [server.ticker_storage_key("SPY")]
+    server._note_gamma_surface_demand(viewed_tk)
     server._terrain_loop_running = True
-    t = threading.Thread(target=server._terrain_loop, daemon=True)
-    t.start()
+    th = threading.Thread(target=server._terrain_loop, daemon=True)
+    th.start()
     try:
-        deadline = time.time() + 5.0
-        while time.time() < deadline and viewed_tk not in calls:
-            time.sleep(0.05)
+        time.sleep(1.0)                       # several 0.2 s cycles
     finally:
         server._terrain_loop_running = False
-        t.join(timeout=5.0)
+        th.join(timeout=5.0)
         with server._logger_lock:
             server._logger_tickers[:] = prev_logger_tickers
         server._gamma_surface_demand.pop(viewed_tk, None)
-
-    assert viewed_tk in calls, (
-        "a ticker someone is actively viewing right now must get a live refresh attempt even "
-        "outside the archival logger's own RTH-only window -- the logger's on/off switch must "
-        "not decide whether an operator looking at a chart right now sees fresh data")
-    assert enrolled_not_viewed_tk not in calls, (
-        "the enrolled board's passive full-universe sweep is correctly RTH-gated -- nobody is "
-        "necessarily watching all of it, so it must not run outside that window just because "
-        "one unrelated ticker has live view demand")
+    assert calls == [], "the loop refreshed a ticker while the market was closed"
+    # a direct request (the /api/terrain cold miss) is refused before any vendor call
+    assert real_refresh(viewed_tk, priority=True) == "skip:market_closed"
+    assert fetched == []
 
 
 def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch):

@@ -66,6 +66,7 @@ def test_the_window_gives_different_levels_than_the_full_chain(at_capture):
 def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture):
     """The one producer (_terrain_refresh_one), with its real compute_terrain, must publish the
     full chain's levels -- not the window's."""
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # an open-market test
     requested = []
 
     def fake_fetch(client, ticker, *, priority=False, expiry=None):

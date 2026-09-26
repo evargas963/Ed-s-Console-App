@@ -170,6 +170,8 @@ def test_fresh_terrain_overlays_every_gamma_family_level(monkeypatch):
 
 
 def test_stale_terrain_blanks_rather_than_serving_the_narrow_book(monkeypatch):
+    import server as S
+    monkeypatch.setattr(S, "_is_loggable_session", lambda: True)   # an open-market test
     md = _overlay({"call_wall": 745.0, "put_wall": 740.0, "confidence": "TRUSTED",
                    "levels_stale": True}, monkeypatch)
     for k in ("kl_call_gamma_wall", "kl_put_gamma_wall", "kl_gamma_flip",

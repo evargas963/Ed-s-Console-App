@@ -196,7 +196,7 @@ def test_chart_still_reads_the_same_paint_fields():
     assert "r[2]" in ui, "the yellow option-volume field is no longer read"
 
 
-def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
+def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor(monkeypatch):
     """RC-165: `TERRAIN_REFRESH_SEC` is a sleep FLOOR between cycles, not a promise. A full sweep
     over ~40 tickers on 2 workers against a 2-slot chain gate costs more than that. MEASURED
     2026-07-31 12:57 ET: SPY inter-observation spacing median 156s, while a fixed 180s threshold
@@ -246,16 +246,13 @@ def test_staleness_is_judged_against_the_delivered_cycle_not_the_sleep_floor():
         s._terrain_last_cycle_sec = 0.0
         assert s.terrain_staleness(now - 400, "ZZTEST")["levels_stale"] is True
 
-        # And the branch that legitimately owns the OTHER sentence: outside its window the loop
-        # is not refreshing on purpose, and saying so is correct — the defect was asserting the
-        # in-window wording while the clock had chosen the out-of-window path.
+        # And the closed market: nothing refreshes by design, so the last session's levels are
+        # labeled with their time -- never judged by the cadence yardstick.
         s._is_loggable_session = lambda *a, **k: False
         s._terrain_last_cycle_sec = 156.0
-        paused = s.terrain_staleness(now - 400, "ZZTEST")
-        assert paused["levels_stale"] is True
-        assert "DELIVERED" not in paused["levels_stale_reason"], (
-            "a loop stopped by design must not be described by the cadence yardstick"
-        )
+        closed = s.terrain_staleness(now - 400, "ZZTEST")
+        assert closed["levels_market_closed"] is True and closed["levels_stale"] is False
+        assert closed["levels_as_of"] and "DELIVERED" not in closed["levels_stale_reason"]
     finally:
         s._terrain_last_cycle_sec = prev
         s._is_loggable_session = prev_gate

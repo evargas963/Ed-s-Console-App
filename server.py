@@ -43,6 +43,7 @@ import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
@@ -112,7 +113,7 @@ class _FlushingFileHandler(logging.FileHandler):
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
 # RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
 # ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
-from runtime_layout import logs_dir as _runtime_logs_dir, reports_dir as _artifact_reports_dir  # noqa: E402
+from runtime_layout import data_dir, logs_dir as _runtime_logs_dir, reports_dir as _artifact_reports_dir  # noqa: E402
 
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
@@ -10821,6 +10822,13 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
     failure = "" if (skipped or quarantined) else str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
     hard_quarantine = bool(q_entry.get("hard"))
+    if not refreshing and computed_ts_utc is not None:
+        as_of = datetime.fromtimestamp(float(computed_ts_utc), tz=ZoneInfo("America/Chicago"))
+        return {"levels_stale": False, "levels_age_sec": round(time.time() - float(computed_ts_utc), 1),
+                "levels_refresh_active": False, "levels_market_closed": True,
+                "levels_as_of": as_of.strftime("%a %m/%d %I:%M %p CT"),
+                "levels_stale_reason": "", "levels_paused_on_purpose": False,
+                "levels_quarantined": False, "levels_failing": False, **token}
     if computed_ts_utc is None:
         return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
                 "levels_stale_reason": (
@@ -11502,6 +11510,7 @@ def _publish_levels(tk: str, chain: "list | None" = None,
             "computed_ts_utc": time.time(), "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
             "chain_basis": "full", "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
             "_per_strike": snap.per_strike, "_gamma_surface": None,
+            "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
             # only a viewed ticker is repriced between chain fetches, so only its chain is kept
             "_chain": chain if viewed else None, "_chain_fetched_ts": fetched_ts,
         })
@@ -11519,9 +11528,69 @@ def _publish_levels(tk: str, chain: "list | None" = None,
             if payload["_gamma_surface"] is not None:
                 payload["_gamma_surface"]["surface_seq"] = _next_gamma_surface_seq(tk)
             _terrain_cache[tk] = payload
-            _terrain_snapshots[tk] = snap
             _terrain_profile_cache[tk] = snap.profile
+        _save_session_levels(tk, payload, snap.profile)
         return snap
+
+
+#: The last levels each ticker published while the market was open, one JSON file per ticker:
+#: what the screen shows while the market is closed and after a restart then.
+SESSION_LEVELS_DIR = data_dir() / "session_levels"
+
+
+def _save_session_levels(tk: str, payload: dict, profile: list) -> None:
+    """Write `tk`'s published payload (without the kept raw chain) and gamma profile."""
+    path = SESSION_LEVELS_DIR / f"{tk.replace('$', '_')}.json"
+    body = {k: v for k, v in payload.items() if k != "_chain"}
+    SESSION_LEVELS_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"payload": body, "profile": profile}), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _load_session_levels() -> int:
+    """Put every saved ticker's last published levels into the cache; returns how many. Their
+    heatmap cells are marked not streaming -- nothing streamed them since they were saved."""
+    n = 0
+    for path in sorted(SESSION_LEVELS_DIR.glob("*.json")) if SESSION_LEVELS_DIR.exists() else []:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        payload = saved["payload"]
+        tk = payload["ticker"]
+        if payload.get("_gamma_surface"):
+            _stamp_gamma_surface_cell_stream_state(payload["_gamma_surface"], {}, set(), {}, set())
+        with _terrain_cache_lock:
+            _terrain_cache[tk] = payload
+            _terrain_profile_cache[tk] = saved["profile"]
+        n += 1
+    return n
+
+
+def _vanna_rows(snap: "TerrainSnapshot") -> list:
+    """[strike, net dealer vanna] for every strike with open interest, from the published book:
+    net_vanna = call_vanna - put_vanna (+call/-put dealer convention)."""
+    from math_exposure_core import merge_exposure_books
+    from numeric_contract import float_finite_or_none as _fin
+    exposures, _diag = merge_exposure_books(snap.books.values())
+    rows = []
+    for k, b in exposures.items():
+        # call_vanna/put_vanna start as a real 0.0 in every bucket; has_oi is the gate
+        if not b.get("has_oi"):
+            continue
+        cv, pv = b.get("call_vanna"), b.get("put_vanna")
+        if cv is None and pv is None:
+            continue
+        net = _fin(cv or 0.0) - _fin(pv or 0.0) if (_fin(cv) is not None or _fin(pv) is not None) else None
+        if net is None:
+            continue
+        rows.append([round(float(k), 2), round(net, 2)])
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
+def _charm_rows(snap: "TerrainSnapshot") -> list:
+    """[strike, net dealer charm] from the published charm map (the charm walls' own)."""
+    return sorted([round(float(k), 2), round(float(b["net_charm"]), 4)]
+                  for k, b in (snap.charm_by_strike or {}).items() if b.get("net_charm") is not None)
 
 
 def _tick_ticker(sym: str) -> "str | None":
@@ -11546,7 +11615,7 @@ def _on_stream_tick(sym: str) -> None:
     option quote carrying greeks, open interest or volume. Queues a reprice of the symbol's
     ticker when someone is viewing it, and returns at once."""
     tk = _tick_ticker(sym)
-    if not tk or not _gamma_surface_wanted(tk):
+    if not tk or not _gamma_surface_wanted(tk) or not _is_loggable_session():
         return
     with _reprice_guard:
         _reprice_dirty.add(tk)
@@ -11599,6 +11668,12 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     # (RC-147) was necessary and not sufficient: a control that reports the burn while the burn
     # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
     # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
+    if not _is_loggable_session():
+        # market closed: the saved last-session levels stand (weekend chains blank open
+        # interest -- measured 2026-09-26: every $SPX contract, 18% of SPY's OI)
+        if terrain_cache_get(tk) is None:
+            _terrain_refresh_last_error[tk] = "market closed; no levels were saved from the last session"
+        return "skip:market_closed"
     if _terrain_quarantine_blocks(tk):
         return "skip:quarantined"
     try:
@@ -11786,18 +11861,6 @@ def _terrain_loop() -> None:
                 tickers = tickers + [tk for tk in _previewed if tk not in tickers]
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
-        elif _viewed_now:
-            # Outside the archival logger's window: the enrolled board's passive sweep does
-            # not run (unchanged), but every ticker someone actually has open right now still
-            # gets a real live attempt -- whatever Schwab is willing to return at this hour is
-            # what gets shown, honestly labelled by its own age/source, never withheld because
-            # the background WRITER happens to be off duty. The morning-contention throttle
-            # above is itself an RTH-only concept (it exists to share chain-fetch slots with
-            # the 09:30-10:00 ET wide-chain capture), so it does not apply here.
-            _terrain_cycle_n += 1
-            tickers = list(_viewed_now)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
-                list(pool.map(_terrain_refresh_one, tickers))
         else:
             tickers = []
         elapsed = time.monotonic() - cycle_start
@@ -11937,6 +12000,7 @@ def start_terrain_loop() -> None:
         return
     if _terrain_loop_running:
         return
+    log.info("session levels loaded for %d tickers", _load_session_levels())
     _terrain_loop_running = True
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
@@ -12068,10 +12132,6 @@ LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the si
 #: Gamma profiles for cached tickers, keyed by ticker. Kept beside the payload cache so a
 #: cached payload can be re-priced without refetching the chain (RC-28).
 _terrain_profile_cache: dict[str, list] = {}
-#: The TerrainSnapshot each ticker's payload was published from (its exposure books and charm map
-#: serve the vanna/charm-by-strike panels). Kept beside the cache, never inside it: the payload is
-#: served as JSON, and the books are keyed by (expiry, dte) tuples. Guarded by _terrain_cache_lock.
-_terrain_snapshots: "dict[str, TerrainSnapshot]" = {}
 
 
 def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
@@ -12461,84 +12521,36 @@ def _merge_forming_bar(bars: list[dict], forming: dict) -> list[dict]:
     return out
 
 
-def _published_snapshot(tk: str) -> "TerrainSnapshot | None":
-    """The snapshot _publish_levels last published for `tk`, or None."""
-    with _terrain_cache_lock:
-        return _terrain_snapshots.get(tk)
-
-
 @app.get("/api/options/vanna-by-strike")
 def get_vanna_by_strike(ticker: str = Query(...)):
-    """Per-strike dealer VANNA exposure (operator field-inventory audit, 2026-09-13): the
-    SAME canonical faucet (math_exposure_core.compute_exposures_by_strike) the Gamma/DEX
-    heatmaps already use, aggregated across every expiry in the live wide chain (Vanna has
-    no per-expiry SURFACE yet — see the Multi-Map subview's own note — so this is the
-    aggregate-by-strike tier the Key Levels 'AGG $ ONLY' badge already discloses, not a
-    narrower or different computation). net_vanna = call_vanna - put_vanna, the SAME
-    +call/-put dealer-book convention net_gex_1pct and net_charm_daily already use (RC-211's
-    exact BS-vanna faucet, math_levels.bs_vanna, independently FD-verified)."""
-    from math_exposure_core import merge_exposure_books
-    from numeric_contract import float_finite_or_none as _fin
-
+    """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
+    put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
     tk = ticker_storage_key(_required_ticker(ticker))
     _touch_tracked_ticker_view(tk)
-    snap = _published_snapshot(tk)
-    if snap is None:
+    payload = terrain_cache_get(tk) or {}
+    if "_vanna_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
-                             "reason": "no live wide chain cached yet for this ticker"})
-    spot = snap.spot
-    exposures, _diag = merge_exposure_books(snap.books.values())
-    rows = []
-    for k, b in exposures.items():
-        # Independent-review finding, REPRODUCED (live SPX, 2026-09-14): call_vanna/put_vanna
-        # are pre-initialized to a real 0.0 by _strike_bucket, so a strike where every contract
-        # failed the OI gate returned (0.0, 0.0) here -- neither None, so the `cv is None and
-        # pv is None` check never caught it and the row rendered a fabricated net_vanna of 0.0.
-        # has_oi (math_exposure_core.py's own canonical signal) is the real gate.
-        if not b.get("has_oi"):
-            continue
-        cv, pv = b.get("call_vanna"), b.get("put_vanna")
-        if cv is None and pv is None:
-            continue
-        net = _fin(cv or 0.0) - _fin(pv or 0.0) if (_fin(cv) is not None or _fin(pv) is not None) else None
-        if net is None:
-            continue
-        rows.append([round(float(k), 2), round(net, 2)])
-    rows.sort(key=lambda r: r[0])
-    return JSONResponse({
-        "ticker": tk, "available": True, "spot": spot, "rows": rows,
-        "method": ("the published levels' exposure book (the one the Gamma/DEX heatmaps "
-                   "use) -> net_vanna = call_vanna - put_vanna, aggregated across every "
-                   "expiry (no per-expiry surface yet)"),
-    })
+                             "reason": "no levels published for this ticker yet"})
+    return JSONResponse({"ticker": tk, "available": True, "spot": payload.get("spot"),
+                         "rows": payload["_vanna_rows"], "levels_as_of": payload.get("levels_as_of"),
+                         "method": "the published levels' exposure book -> call_vanna - put_vanna"})
 
 
 @app.get("/api/options/charm-by-strike")
 def get_charm_by_strike(ticker: str = Query(...)):
-    """Per-strike dealer CHARM exposure (operator field-inventory audit, 2026-09-13): the
-    SAME canonical faucet (math_levels.compute_charm_by_strike, the exact function
-    /api/forces's charm_below/charm_above already sum) applied to the live wide chain, row-
-    shaped for a strike bar chart the same way /api/terrain/strikes already is. Units:
-    delta-shares decaying per day (RC-179 dealer convention: +call/-put)."""
+    """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
+    own): net_charm = call_charm - put_charm per strike, delta-shares/day."""
     tk = ticker_storage_key(_required_ticker(ticker))
     _touch_tracked_ticker_view(tk)
-    snap = _published_snapshot(tk)
-    if snap is None:
+    payload = terrain_cache_get(tk) or {}
+    if "_charm_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
-                             "reason": "no live wide chain cached yet for this ticker"})
-    spot = snap.spot
-    per_ch = snap.charm_by_strike or {}
-    rows = sorted(
-        [round(float(k), 2), round(float(b["net_charm"]), 4)]
-        for k, b in per_ch.items() if b.get("net_charm") is not None
-    )
-    return JSONResponse({
-        "ticker": tk, "available": bool(rows), "spot": spot, "rows": rows,
-        "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
-        "method": ("the published levels' math_levels.compute_charm_by_strike map (the "
-                   "charm walls' own) -> net_charm = call_charm - put_charm per strike, "
-                   "delta-shares/day"),
-    })
+                             "reason": "no levels published for this ticker yet"})
+    rows = payload["_charm_rows"]
+    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": payload.get("spot"),
+                         "rows": rows, "levels_as_of": payload.get("levels_as_of"),
+                         "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
+                         "method": "the published levels' charm map -> call_charm - put_charm"})
 
 
 @app.get("/api/options/tape")
@@ -13023,7 +13035,8 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             # reads surface.reason for the placeholder message; reusing it here means the
             # existing frontend contract picks this up with no client-side change required.
             "reason": None if _gamma_available else surf.get("gamma_unavailable_reason"),
-            "source": "terrain_live_cache", "live": True, "stale": stale,
+            "source": "terrain_live_cache", "live": not live.get("levels_market_closed"),
+            "stale": stale, "levels_as_of": live.get("levels_as_of"),
             "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
             "stream_coverage": _coverage,
             "contract_admission": _contract_admission,
