@@ -54,11 +54,7 @@ echo.
 echo  Starting server at http://localhost:8000/
 echo  Press Ctrl+C to stop.
 echo  (CWD set to script dir - token path resolves from app dir)
-echo  Ops panel /Run tasks/ click-to-run: ON  (localhost only unless ED_OPS_ALLOW_REMOTE=1)
 echo.
-
-set ED_OPS_RUNNER=1
-set ED_CALIBRATION_LOG=1
 
 REM Strip inherited CI/test contamination from parent shells (agent / pytest).
 REM Proven 2026-08-29: launching with ED_CI_OFFLINE=1 left /api/health=200 while
@@ -134,18 +130,6 @@ REM and non-blocking on purpose: 8322 is not required for THIS launch to
 REM succeed, so its result (printed above by the script itself) is informational
 REM only -- deliberately not gated on errorlevel here.
 "%VENV_PY%" "%~dp0launcher_port_guard.py" 8322
-
-REM RC-REHAB-2 (2026-09-22, operator question about WebSocket reliability across restarts):
-REM best-effort safety net for the Schwab stream capture task (EdConsole Stream Capture,
-REM the ONE real Schwab WebSocket connection -- see capture.py). That task is scheduled
-REM weekdays 8:25am-8:25pm CT plus an at-logon trigger, but neither self-heals if this app
-REM is opened outside both windows (e.g. a restart in the early morning before 8:25am, or a
-REM task disabled/stopped by hand). `schtasks /run` forces a start attempt on every launch
-REM of this app. Windows' own MultipleInstances=IgnoreNew setting on that task makes this a
-REM true no-op when it is already running (confirmed live), so it is safe to call
-REM unconditionally -- and deliberately not gated on errorlevel: a scheduling quirk here
-REM must never block the app itself from starting.
-schtasks /run /tn "EdConsole Stream Capture" >nul 2>&1
 
 set "PF86=%ProgramFiles(x86)%"
 set "EDGE_EXE=%PF86%\Microsoft\Edge\Application\msedge.exe"

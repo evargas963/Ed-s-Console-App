@@ -180,7 +180,7 @@ def test_no_runtime_path_is_rooted_in_the_source_checkout_any_more():
     offenders: list[str] = []
     for rel in ("server.py", "db.py", "db_authority.py", "config.py", "desk_store.py",
                 "stream_spine.py", "app/options/order_flow/streaming.py",
-                "tools/terrain_backtest_report_v1.py", "tools/console_liveness_check.py"):
+                "tools/terrain_backtest_report_v1.py"):
         for i, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue

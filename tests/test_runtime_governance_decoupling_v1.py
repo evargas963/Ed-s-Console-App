@@ -89,7 +89,6 @@ def test_the_launcher_still_launches():
         "the live-Schwab runtime preflight is gone — that one is app correctness, not "
         "governance, and must survive the decoupling"
     )
-    assert "ED_OPS_RUNNER=1" in text and "ED_CALIBRATION_LOG=1" in text
 
 
 def test_the_app_imports_and_answers_health_with_governance_unimportable():
