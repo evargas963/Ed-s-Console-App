@@ -96,3 +96,28 @@ def test_desk_timeframes_are_the_ones_the_server_rolls():
     client = TestClient(srv.app)
     for tf in tfs:
         assert client.get(pattern.path, params={"ticker": "SPY", "tf": tf, "limit": 5}).status_code == 200, tf
+
+
+def test_market_context_indices_are_always_requested_and_subscribed():
+    """Measured 2026-09-25: SPX/NDX/VIX read "—" all session on a page whose watchlist did not
+    hold them -- nobody asked the daemon to stream them. They are standing demand now, ranked
+    right after the active ticker, and every page subscribes to them on the price socket."""
+    from app.options.order_flow import streaming as ofs
+    assert ofs.MARKET_CONTEXT_SYMBOLS == ("$SPX", "$NDX", "$VIX")
+    assert ofs._equity_demand["context"] == list(ofs.MARKET_CONTEXT_SYMBOLS)
+    admitted, _ = ofs.rank_equity_symbols("NVDA", {**ofs._equity_demand, "watchlist": ["AAPL"]})
+    assert admitted[:5] == ["NVDA", "$SPX", "$NDX", "$VIX", "AAPL"]
+    core = (ROOT / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
+    page = re.search(r"var MARKET_CONTEXT = \[([^\]]*)\]", core).group(1)
+    assert ["$" + s.strip().strip("'") for s in page.split(",")] == list(ofs.MARKET_CONTEXT_SYMBOLS)
+    body = core.split("function priceSymbols()", 1)[1].split("function subscribePrices()", 1)[0]
+    assert "MARKET_CONTEXT.forEach" in body, "the socket subscription must include the context"
+
+
+def test_equity_microstructure_serves_the_engines_tick_rule_flow_labelled_proxy():
+    client = TestClient(srv.app)
+    d = client.get("/api/order-flow/microstructure", params={"ticker": "SPY"}).json()
+    flow = d["flow"]
+    assert set(flow) >= {"tape_pressure_30s", "tape_pressure_2m", "tape_pressure_5m", "cum_delta_proxy"}
+    assert flow["classification"]["tape_pressure_5m"] == "PROXY"
+    assert flow["native_aggressor_available"] is False

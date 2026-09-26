@@ -767,9 +767,13 @@
     if (!/^\d+$/.test(port)) return null;
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
   }
+  // The market context the server always streams (streaming.MARKET_CONTEXT_SYMBOLS); the
+  // socket pushes only what a page subscribes to, so every page asks for it.
+  var MARKET_CONTEXT = ['SPX', 'NDX', 'VIX'];
   function priceSymbols() {
     var out = [];
     if (state.ticker) out.push(String(state.ticker).toUpperCase());
+    MARKET_CONTEXT.forEach(function (s) { if (out.indexOf(s) === -1) out.push(s); });
     loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
     return out;
   }

@@ -15401,6 +15401,15 @@ def api_order_flow_microstructure(ticker: str = Query(...)):
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, ticker=t)
+    # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
+    # same OrderFlowEngine the analytics state and the option book use (no second classifier).
+    try:
+        from app.options.order_flow.engine import OrderFlowEngine
+        from app.options.order_flow.live_payload import flow_block
+        payload["flow"] = flow_block(OrderFlowEngine().compute(data, ticker=t))
+    except Exception as e:  # flow is additive -- the book payload stands without it
+        log.debug("microstructure flow failed for %s: %s", t, e)
+        payload["flow"] = None
     payload["ticker"] = t
     return JSONResponse(payload)
 

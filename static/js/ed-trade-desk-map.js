@@ -334,20 +334,25 @@
           row('Book age', age(m.ages && m.ages.book_age_sec));
       }
     }
-    // ORDER FLOW — top of book + where price is being crossed
+    // ORDER FLOW — trade side by the tick rule (PROXY: Schwab sends no buy/sell flag, so a
+    // trade above the previous price counts as bought, below as sold -- the server's
+    // OrderFlowEngine), plus where price is being crossed
     c = $('tdmCardFlow');
     if (c) {
-      var tob = m && m.top_of_book;
+      var fl = m && m.flow, tob = m && m.top_of_book;
       var from = windowStart(), cr = ((S.crosses && S.crosses.crosses) || []).filter(function (x) { return x.ts_utc >= from; });
       var up = cr.filter(function (x) { return x.direction === 'up'; }).length, dn = cr.length - up;
-      state(c, cr.length ? (up + ' UP · ' + dn + ' DOWN') : 'NO CROSSES', up > dn ? 'up' : dn > up ? 'dn' : '');
-      c.querySelector('.tdm-hero').innerHTML = (tob && tob.bid_size != null)
-        ? '<span>' + fmtVol(tob.bid_size) + ' <em>×</em> ' + fmtVol(tob.ask_size) + '</span><small>top-of-book size · bid × ask</small>'
-        : '—<small>no top of book</small>';
+      function pct(v) { return v == null ? '—' : '<span class="' + (v > 0 ? 'up' : v < 0 ? 'dn' : '') + '">' + (v > 0 ? '+' : '') + num(v * 100, 0) + '%</span>'; }
+      var p5 = fl ? fl.tape_pressure_5m : null;
+      state(c, p5 == null ? (m === undefined ? 'LOADING' : 'NO TRADES SEEN') : (p5 > 0 ? 'NET BUYING' : p5 < 0 ? 'NET SELLING' : 'BALANCED'),
+        p5 == null ? 'warn' : (p5 > 0 ? 'up' : p5 < 0 ? 'dn' : ''));
+      c.querySelector('.tdm-hero').innerHTML = p5 == null ? '—<small>no trades in the console's tape buffer yet</small>'
+        : pct(p5) + '<small>net traded volume, last 5 min (tick rule, PROXY)</small>';
       c.querySelector('.tdm-rows').innerHTML =
-        row('Microprice', num(m && m.microprice)) + row('Mid', num(m && m.mid)) +
-        row('Level crosses (' + LOOKBACK[S.tf].lbl + ')', String(cr.length)) +
-        row('Aggressor side', 'not produced — Schwab sends no trade side');
+        row('Last 30 s · 2 min', (fl ? pct(fl.tape_pressure_30s) : '—') + ' · ' + (fl ? pct(fl.tape_pressure_2m) : '—')) +
+        row('Cum. delta (tape buffer)', fl && fl.cum_delta_proxy != null ? (fl.cum_delta_proxy >= 0 ? '+' : '−') + fmtVol(Math.abs(fl.cum_delta_proxy)) + ' sh' : '—') +
+        row('Top of book', tob && tob.bid_size != null ? fmtVol(tob.bid_size) + ' × ' + fmtVol(tob.ask_size) : '—') +
+        row('Level crosses (' + LOOKBACK[S.tf].lbl + ')', cr.length ? up + ' up · ' + dn + ' down' : '0');
     }
     // OPTIONS POSITIONING — full-chain terrain
     c = $('tdmCardOpt');
@@ -378,7 +383,7 @@
       }
       c.querySelector('.tdm-rows').innerHTML = row('ATM IV (nearest expiry)', im && im.iv_pct_atm != null ? num(im.iv_pct_atm, 2) + '%' : '—') +
         row('ATR daily', num(t && t.atr_daily)) + row('ATR 15m', num(t && t.atr_15m)) +
-        row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'not streamed — add VIX to the watchlist');
+        row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
     }
     document.querySelectorAll('#tdmCards .tdm-card').forEach(function (el) {
       if (!el.querySelector('.tdm-series')) el.insertAdjacentHTML('beforeend', seriesNote());
@@ -433,7 +438,7 @@
     ['SPX', 'NDX', 'VIX'].forEach(function (s) {
       var el = $('tdmIdx' + s); if (!el) return;
       var r = S.quotes[s];
-      el.title = r ? '' : s + ' is not streamed to this page — add it to the watchlist';
+      el.title = r ? '' : 'waiting for the ' + s + ' stream';
       el.innerHTML = '<span>' + s + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') + '</b>' +
         (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '');
     });

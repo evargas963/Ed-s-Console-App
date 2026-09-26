@@ -23,11 +23,9 @@ _FLOW_KEYS = (
 )
 
 
-def options_live_payload(contract: str, *, content: list | None = None) -> dict[str, Any]:
-    """Book microstructure + labeled PROXY flow for one option contract."""
-    items = content if content is not None else get_content_for_symbol(contract)
-    of = OrderFlowEngine().compute({"content": items or []}, ticker=contract)
-    book = dict(of.get("book_microstructure") or {})
+def flow_block(of: dict[str, Any]) -> dict[str, Any]:
+    """The labeled PROXY tape flow out of one OrderFlowEngine.compute result -- the same block
+    for an option contract and an equity (Trade Desk Order Flow card)."""
     flow = {k: of.get(k) for k in _FLOW_KEYS}
     flow["classification"] = {
         "tape_pressure_30s": "PROXY",
@@ -39,5 +37,13 @@ def options_live_payload(contract: str, *, content: list | None = None) -> dict[
     }
     flow["tape_classification"] = TAPE_CLASSIFICATION
     flow["native_aggressor_available"] = NATIVE_AGGRESSOR_AVAILABLE
-    book["flow"] = flow
+    return flow
+
+
+def options_live_payload(contract: str, *, content: list | None = None) -> dict[str, Any]:
+    """Book microstructure + labeled PROXY flow for one option contract."""
+    items = content if content is not None else get_content_for_symbol(contract)
+    of = OrderFlowEngine().compute({"content": items or []}, ticker=contract)
+    book = dict(of.get("book_microstructure") or {})
+    book["flow"] = flow_block(of)
     return book
