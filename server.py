@@ -2284,30 +2284,11 @@ _terrain_skip_lock = threading.Lock()
 TERRAIN_QUARANTINE_HARD_FAILS: int = 3
 TERRAIN_QUARANTINE_SOFT_BASE_SEC: float = 60.0
 TERRAIN_QUARANTINE_SOFT_MAX_SEC: float = 900.0
-#: Env override exists for TESTS ONLY (set in tests/conftest.py before any import, so a
-#: lazy mid-test `import server` can never write the tracked operator audit file — the
-#: class CI's ledger firewall caught 2026-08-24). Production never sets the variable.
-TERRAIN_QUARANTINE_LEDGER = Path(
-    os.environ.get("ED_TERRAIN_QUARANTINE_LEDGER")
-    or (_artifact_reports_dir() / "terrain_quarantine_ledger.jsonl"))   # RC-523: artifacts root
 
 _terrain_quarantine: dict[str, dict] = {}
 _terrain_consecutive_fails: dict[str, int] = {}
 _terrain_quarantine_skips: dict[str, int] = {}
 _terrain_quarantine_lock = threading.Lock()
-
-
-def _quarantine_ledger_append(event: str, tk: str, payload: dict) -> None:
-    """Append-only record of every quarantine decision. A control the operator cannot audit
-    after the fact is a control they have to take on trust."""
-    try:
-        TERRAIN_QUARANTINE_LEDGER.parent.mkdir(parents=True, exist_ok=True)
-        row = {"ts_utc": time.time(), "et": now_et().isoformat(), "event": event,
-               "ticker": tk, **payload}
-        with open(TERRAIN_QUARANTINE_LEDGER, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row) + "\n")
-    except OSError as e:                      # a ledger that cannot write must not stop the loop
-        log.warning("quarantine ledger write failed for %s: %s", tk, e)
 
 
 def _classify_chain_failure(status_code: int | None, exc_name: str | None) -> str:
@@ -2382,7 +2363,7 @@ def _terrain_quarantine_blocks(tk: str) -> bool:
             _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
             return True
         _terrain_quarantine.pop(tk, None)      # hold expired — back into the rotation
-    _quarantine_ledger_append("hold_expired", tk, {"note": "hold elapsed, retrying"})
+    log.info("terrain hold elapsed for %s, retrying", tk)
     return False
 
 
@@ -2395,7 +2376,6 @@ def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
     and a dropped failure is a retry storm that never reaches its own threshold.
     """
     log_msg: tuple | None = None
-    ledger: tuple | None = None
     with _terrain_quarantine_lock:
         n = _terrain_consecutive_fails.get(tk, 0) + 1
         _terrain_consecutive_fails[tk] = n
@@ -2410,8 +2390,6 @@ def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
                 if not already:
                     log_msg = ("terrain QUARANTINE %s until the next ET day after %d hard "
                                "rejections: %s", tk, n, reason)
-                    ledger = ("quarantine_hard", {"failures": n, "reason": reason,
-                                                  "until_et": next_day.isoformat()})
             else:
                 wait = min(TERRAIN_QUARANTINE_SOFT_MAX_SEC,
                            TERRAIN_QUARANTINE_SOFT_BASE_SEC
@@ -2421,13 +2399,8 @@ def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
                                            "until_ts": time.time() + wait, "kind": kind}
                 log_msg = ("terrain backoff %s for %.0fs after %d failures: %s",
                            tk, wait, n, reason)
-                ledger = ("backoff", {"failures": n, "reason": reason,
-                                      "wait_sec": round(wait, 1)})
-    # Disk and logging stay OUTSIDE the lock: a slow ledger write must never hold the producer.
-    if log_msg:
+    if log_msg:                               # logged outside the lock
         log.warning(*log_msg)
-    if ledger:
-        _quarantine_ledger_append(ledger[0], tk, ledger[1])
 
 
 def _note_terrain_success(tk: str) -> None:
@@ -2436,7 +2409,7 @@ def _note_terrain_success(tk: str) -> None:
         _terrain_consecutive_fails.pop(tk, None)
         had = _terrain_quarantine.pop(tk, None)
     if had:
-        _quarantine_ledger_append("cleared_by_success", tk, {})
+        log.info("terrain %s answered, hold cleared", tk)
 
 
 def _note_terrain_skip(tickers: list[str], reason: str) -> None:

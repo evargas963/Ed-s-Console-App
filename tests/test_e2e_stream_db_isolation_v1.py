@@ -27,7 +27,6 @@ def _e2e_server_env(poison_root: Path) -> dict[str, str]:
         "ED_CI_OFFLINE": "0",
         "SCHWAB_API_KEY": "live-looking-inherited-key",
         "SCHWAB_APP_SECRET": "live-looking-inherited-secret",
-        "ED_TERRAIN_QUARANTINE_LEDGER": str(poison_root / "production_terrain.jsonl"),
     })
     script = (
         "import {e2eServerEnv,e2eRuntimeRoot} from './playwright.config.mjs';"
@@ -60,10 +59,9 @@ def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
     assert Path(server_env["ED_ARTIFACTS_ROOT"]).resolve() == root / "artifacts"
     assert "ED_CONSOLE_DB" not in server_env
     assert "STREAM_CAPTURE_DB_PATH" not in server_env
-    for key in ("SCHWAB_TOKEN_PATH", "ED_TERRAIN_QUARANTINE_LEDGER"):
-        resolved = Path(server_env[key]).resolve()
-        assert resolved.parent == root, (key, resolved)
-        assert tmp_path not in resolved.parents
+    token = Path(server_env["SCHWAB_TOKEN_PATH"]).resolve()
+    assert token.parent == root, token
+    assert tmp_path not in token.parents
     assert server_env["ED_CI_OFFLINE"] == "1"
     assert server_env["SCHWAB_API_KEY"] == PLACEHOLDER_KEY
     assert server_env["SCHWAB_APP_SECRET"] == PLACEHOLDER_SECRET

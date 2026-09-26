@@ -53,5 +53,5 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 
 | ID | Item |
 |---|---|
-| RECON-02 | `Trading/_disk_cleanup_quarantine_20260716` (53 GB): its MANIFEST.txt is shown to the operator; purged only on the operator's word. |
+| RECON-02 | `Trading/_disk_cleanup_quarantine_20260716` (53 GB, manifest read 2026-09-26): about 50 GB is old copies of the database (2026-05-27, 06-10, 06-11 and a 16 GB `db_backups` folder) and about 3 GB old report copies. They are the only database backups, so they are purged, on the operator's word, only after the P2-DB3 copy is made and verified. |
 | RUNTIME-SEPARATION | Move the runtime state (database, logs, token, diagnostics) out of the production checkout into a runtime folder. |
